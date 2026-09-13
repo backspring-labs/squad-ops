@@ -4095,6 +4095,191 @@ class TestProgressAwareTermination:
             )  # no raise
 
 
+class TestCarriedFailuresReplay:
+    """#1501, replayed from stored reports through the path a live round takes.
+
+    Enters at ``CorrectionRunner.run_correction_protocol``, the call the executor's
+    correction round makes, with the failed ``qa.test`` result shaped as the handler
+    shapes it: the stored ``test_report.md`` stdout parsed by the runner's own parsers and
+    turned into the ``tests_pass`` row by ``failed_tests_pass_row``. From there the round
+    goes through ``build_failure_evidence``, ``failure_signature`` and the termination check.
+    The candidates are the stored plan deltas' own: ``tighten_acceptance`` on every round of
+    all three rolls. Each round's evidence is the re-dispatched task's report, never the
+    retest's; round 1's analysis in 1.7.5 roll 3 started after the second qa attempt.
+
+    Bug caught: the rule reading anything but the real per-test identities. A signature
+    built from invented rows can make any rule look right. These rounds burned 103 minutes
+    (1.7.5 roll 3), terminated correctly (1.7.5 roll 6), and lost their termination when the
+    per-test split made a renamed test a shift (1.6.5 roll 3)."""
+
+    _REPLAYS = Path(__file__).resolve().parents[2] / "fixtures" / "roll_replays"
+    _ROLL_3 = (
+        "1-7-5-react-roll-3-qa-attempt-1-test_report.md",
+        "1-7-5-react-roll-3-qa-attempt-2-test_report.md",
+    )
+
+    @classmethod
+    def _qa_failure(cls, report: str, runner: str) -> TaskResult:
+        from squadops.capabilities.handlers.test_runner import (
+            RunTestsResult,
+            failed_tests_pass_row,
+            parse_pytest_failure_rows,
+            parse_vitest_failure_text,
+        )
+
+        text = (cls._REPLAYS / report).read_text(encoding="utf-8")
+        stdout = text.split("## stdout", 1)[1].split("```")[1]
+        rows = (
+            parse_vitest_failure_text(stdout)
+            if runner == "vitest"
+            else parse_pytest_failure_rows(stdout, [])
+        )
+        suite = RunTestsResult(
+            executed=True, exit_code=1, runner=runner, suite_broken=False, test_failures=tuple(rows)
+        )
+        return TaskResult(
+            task_id="task-qa-4",
+            status="FAILED",
+            outputs={
+                "outcome_class": "semantic_failure",
+                "validation_result": {"passed": False, "checks": [failed_tests_pass_row(suite)]},
+            },
+            error="suite failed",
+        )
+
+    @staticmethod
+    def _runner():
+        runner = TestProgressAwareTermination._runner()
+        TestProgressAwareTermination._wire_steps(runner, "tighten_acceptance")
+        return runner
+
+    async def _play(self, runner, cycle, reports, test_runner, **extra) -> None:
+        state: dict = {}
+        for attempt, report in enumerate(reports):
+            await runner.run_correction_protocol(
+                run_id="run_001",
+                cycle=cycle,
+                envelope=TestProgressAwareTermination._envelope(),
+                result=self._qa_failure(report, test_runner),
+                correction_attempts=attempt,
+                prior_outputs={},
+                all_artifact_refs=[],
+                stored_artifacts=[],
+                completed_task_ids=[],
+                plan_delta_refs=[],
+                signature_state=state,
+                **extra,
+            )
+
+    @staticmethod
+    def _terminations(runner) -> list[dict]:
+        return [
+            json.loads(call.args[1])
+            for call in runner._artifact_vault.store.call_args_list
+            if call.args[0].artifact_type == "correction_termination"
+        ]
+
+    @staticmethod
+    def _titles(rendered: list[str]) -> list[str]:
+        return sorted(r.rsplit(";test=", 1)[1] for r in rendered)
+
+    async def test_roll_3_terminates_after_round_1_on_the_failures_it_carried(self, cycle):
+        """cyc_89153929749f: the first qa attempt failed seven tests; the second failed the
+        same seven and two more. The exact rule let it run two further rounds."""
+        from adapters.cycles.execution_errors import _ExecutionError
+
+        runner = self._runner()
+        with pytest.raises(_ExecutionError) as raised:
+            await self._play(runner, cycle, self._ROLL_3, "vitest")
+
+        assert str(raised.value).startswith(
+            "plan_defect: correction terminated at round 1 — 7 failure(s) carried from round 0 "
+            "without progress (0 cleared, 2 added), "
+        )
+        (record,) = self._terminations(runner)
+        assert (record["first_seen_round"], record["terminal_round"]) == (0, 1)
+        assert record["cleared_signature"] == []
+        assert self._titles(record["added_signature"]) == [
+            "RunsListView > renders a list of runs with title, datetime, location, and "
+            "participant count",
+            "RunsListView > shows empty state when no runs exist",
+        ]
+        assert len(record["repeated_signature"]) == 7
+        # The three the issue named as failing in every attempt are among those carried.
+        assert {
+            "CreateRunView > displays a server error when the API rejects the create request",
+            "CreateRunView > navigates to the runs list after a successful create",
+            "RunDetailView > displays the duplicate-name error when join is rejected",
+        } <= set(self._titles(record["repeated_signature"]))
+
+    async def test_roll_6_exact_repeat_reads_as_it_did_live(self, cycle):
+        """cyc_18aa25b4a57e, the control: the same two pytest tests failed on both rounds and
+        the live rule terminated at round 1. The replayed record carries the signature the
+        live log printed, and the message keeps its pre-#1501 wording."""
+        from adapters.cycles.execution_errors import _ExecutionError
+
+        runner = self._runner()
+        reports = (
+            "1-7-5-react-roll-6-qa-attempt-1-test_report.md",
+            "1-7-5-react-roll-6-qa-attempt-2-test_report.md",
+        )
+        with pytest.raises(_ExecutionError, match="failure signature repeated from round 0, "):
+            await self._play(runner, cycle, reports, "pytest")
+
+        (record,) = self._terminations(runner)
+        live = "failed;suite_health=ran;runner=pytest;exit=1;test="
+        assert record["repeated_signature"] == [
+            f"tests_pass|tests/test_runs.py|{live}test_leave_run_removes_participant",
+            f"tests_pass|tests/test_runs.py|{live}test_leave_run_unknown_name_rejected",
+        ]
+        assert (record["cleared_signature"], record["added_signature"]) == ([], [])
+
+    async def test_a_renamed_test_around_a_stable_core_still_terminates(self, cycle):
+        """cyc_184b3a1d194e (1.6.5 roll 3): two tests raised the same TypeError both rounds
+        while the re-authored suite renamed the third. It ended ``plan_defect`` at round 1
+        on the aggregate signature; on the per-test signature it is a shift."""
+        from adapters.cycles.execution_errors import _ExecutionError
+
+        runner = self._runner()
+        reports = (
+            "1-6-5-react-roll-3-round-0-test_report.md",
+            "1-6-5-react-roll-3-round-1-test_report.md",
+        )
+        with pytest.raises(_ExecutionError, match="2 failure\\(s\\) carried from round 0"):
+            await self._play(runner, cycle, reports, "pytest")
+
+        (record,) = self._terminations(runner)
+        assert self._titles(record["repeated_signature"]) == [
+            "test_empty_participant_name_on_leave",
+            "test_join_and_leave_run",
+        ]
+        assert self._titles(record["cleared_signature"]) == ["test_leave_unknown_participant"]
+        assert self._titles(record["added_signature"]) == ["test_leave_unknown_name"]
+
+    @pytest.mark.parametrize(
+        ("reports", "extra"),
+        [
+            # Roll 3's attempts in reverse: nine failing, then seven of them. Real identities,
+            # an order that never ran — the progress reading, which must not terminate.
+            (tuple(reversed(_ROLL_3)), {}),
+            # Round 0's repair refused and never applied: #1129 clears the round first.
+            (_ROLL_3, {"refused_round": 0}),
+        ],
+        ids=["progress", "refused-previous-repair"],
+    )
+    async def test_progress_and_a_refused_round_never_terminate(self, cycle, reports, extra):
+        from squadops.cycles.correction_signature import REPAIR_REFUSED_MARKER
+
+        rejections = (
+            {"repair_rejections": [f"correction attempt 0: {REPAIR_REFUSED_MARKER} (unverified)"]}
+            if extra
+            else {}
+        )
+        runner = self._runner()
+        await self._play(runner, cycle, reports, "vitest", **rejections)  # no raise
+        assert self._terminations(runner) == []
+
+
 class TestRepairRejectionEvidence(TestCorrectionRunnerStandalone):
     """#870: the executor's rejected-repair record reaches this attempt's evidence."""
 
