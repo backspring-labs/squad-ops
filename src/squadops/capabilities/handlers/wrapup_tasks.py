@@ -19,8 +19,6 @@ import logging
 import re
 from typing import TYPE_CHECKING, Any
 
-import yaml
-
 from squadops.capabilities.handlers.base import HandlerResult
 from squadops.capabilities.handlers.planning import _PlanningTaskHandler
 from squadops.cycles.wrapup_models import (
@@ -31,6 +29,7 @@ from squadops.cycles.wrapup_models import (
     NextCycleRecommendation,
     confidence_ceiling,
 )
+from squadops.prompts.frontmatter import FrontmatterError, parse_frontmatter
 from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
@@ -38,7 +37,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
 _VALID_CONFIDENCE = {
     ConfidenceClassification.VERIFIED_COMPLETE,
@@ -137,18 +135,10 @@ def _parse_frontmatter(content: str) -> tuple[dict | None, str | None]:
     Returns:
         (parsed_dict, error_message) — one of the two is None.
     """
-    m = _FRONTMATTER_RE.match(content)
-    if not m:
-        return None, "missing YAML frontmatter (expected --- delimiters)"
-
     try:
-        fm = yaml.safe_load(m.group(1))
-    except yaml.YAMLError as exc:
-        return None, f"invalid YAML frontmatter: {exc}"
-
-    if not isinstance(fm, dict):
-        return None, "YAML frontmatter is not a mapping"
-
+        fm, _ = parse_frontmatter(content)
+    except FrontmatterError as exc:
+        return None, str(exc)
     return fm, None
 
 

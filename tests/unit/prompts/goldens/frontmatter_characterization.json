@@ -82,7 +82,15 @@
    },
    "extract_content_sha": "6ccaa6415b5ee449e3c5c716f57b4608ebe3b780f5aa6b077bc5d8eee5d961f9",
    "parse_fragment": {
-    "raises": "AttributeError"
+    "ok": {
+     "fragment_id": "empty_header",
+     "layer": "identity",
+     "roles": [
+      "*"
+     ],
+     "sha256_hash": "6ccaa6415b5ee449e3c5c716f57b4608ebe3b780f5aa6b077bc5d8eee5d961f9",
+     "version": "0.9.21"
+    }
    },
    "renderer_contract": {
     "ok": {
@@ -166,17 +174,17 @@
   },
   "list_header": {
    "adapter_resolve": {
-    "raises": "AttributeError"
+    "raises": "FrontmatterError"
    },
    "adapter_version": {
-    "raises": "AttributeError"
+    "raises": "FrontmatterError"
    },
    "extract_content_sha": "6ccaa6415b5ee449e3c5c716f57b4608ebe3b780f5aa6b077bc5d8eee5d961f9",
    "parse_fragment": {
-    "raises": "AttributeError"
+    "raises": "FrontmatterError"
    },
    "renderer_contract": {
-    "raises": "AttributeError"
+    "raises": "FrontmatterError"
    },
    "strict": {
     "error": "YAML frontmatter is not a mapping",
@@ -253,17 +261,17 @@
   },
   "scalar_header": {
    "adapter_resolve": {
-    "raises": "AttributeError"
+    "raises": "FrontmatterError"
    },
    "adapter_version": {
-    "raises": "AttributeError"
+    "raises": "FrontmatterError"
    },
    "extract_content_sha": "6ccaa6415b5ee449e3c5c716f57b4608ebe3b780f5aa6b077bc5d8eee5d961f9",
    "parse_fragment": {
-    "raises": "AttributeError"
+    "raises": "FrontmatterError"
    },
    "renderer_contract": {
-    "raises": "AttributeError"
+    "raises": "FrontmatterError"
    },
    "strict": {
     "error": "YAML frontmatter is not a mapping",

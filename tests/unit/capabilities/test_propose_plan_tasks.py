@@ -542,10 +542,7 @@ def test_proposer_provides_every_required_template_variable(handler_cls, templat
     # -> TemplateMissingVariableError crashed every multi-role cycle before the merge.
     # Guard the whole proposer family: each handler must supply every variable its template
     # declares required, or the renderer raises at render time.
-    import re
     from pathlib import Path
-
-    import yaml
 
     template_path = (
         Path(__file__).resolve().parents[3]
@@ -555,10 +552,10 @@ def test_proposer_provides_every_required_template_variable(handler_cls, templat
         / "request_templates"
         / f"{template_id}.md"
     )
-    frontmatter = re.match(
-        r"^---\s*\n(.*?)\n---", template_path.read_text(encoding="utf-8"), re.DOTALL
-    )
-    required = set((yaml.safe_load(frontmatter.group(1)) or {}).get("required_variables", []))
+    from squadops.prompts.frontmatter import read_frontmatter
+
+    header, _ = read_frontmatter(template_path.read_text(encoding="utf-8"))
+    required = set(header.get("required_variables", []))
 
     provided = set(handler_cls()._build_render_variables("PRD", None, {}))
     missing = required - provided
