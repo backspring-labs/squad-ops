@@ -1,13 +1,15 @@
 ---
 sip_uid: '17883224960396698'
-status: proposed
+status: accepted
 title: Cycle Evaluation Scorecard
 author: SquadOps Architecture
 created_at: '2026-02-28T00:00:00Z'
+sip_number: 108
+updated_at: '2026-09-13T16:41:19.026460Z'
 ---
-# SIP-0XXX: Cycle Evaluation Scorecard
+# SIP-0108: Cycle Evaluation Scorecard
 
-**Status:** Proposed
+**Status:** Accepted
 **Authors:** SquadOps Architecture
 **Created:** 2026-02-28
 **Revision:** 3
@@ -18,14 +20,14 @@ created_at: '2026-02-28T00:00:00Z'
 | — | 2026-09-12 | Amended in place by the owner's ruling on the 1.8 plan: this SIP is 1.8's Lane S headline beside Scoped Code Revision, and its 1.8 slice is headless and mechanical. |
 | 2 | 2026-09-13 | **Rewritten to the slice**, before its design review (1.8 plan §3.1). The normative text is now the four deliverables the plan names (§4). The console page, recommendations, profile weighting, the three comparison styles beyond one window, and the internal eval packs move out of the slice, by name (§6). The seven categories become one registry derived from the five failure vocabularies the code already has, not an eighth (§4.2). The computation is ruled mechanical, with no agent in the path (§3.1). The single-model arm is defined as a proposal for the review (§4.4). Every code fact is verified on main `f30938bc`, and line numbers are as of that commit. |
 | 3 | 2026-09-13 | **The design review's required revisions** (written review notes forwarded by the owner, disposition *accept with required revision*). The architecture is unchanged. **Attribution** (§4.2): the classes are renamed to what the evidence shows, not causes; the registry is total over *dispositions* (an attribution class or `non_failure`), over every vocabulary that decides a terminal state (eight, not five); orthogonal facts compose by declared precedence; primary attribution is the terminal evidence of the final state transition, with everything earlier contributing; `unattributed` is preferred to an unsupported mapping. **Comparison** (§4.4): named a system-level experiment — the SquadOps reasoning organization against one generalist agent on the same deterministic substrate — with cost measured, not equalized; authority stays task-scoped; reasoning policy and per-task-type caps frozen and asserted equal; pairs defined; exclusion only on pre-run identity and infrastructure validity. **Capture and identity** (§4.1): usage accounted at `_llm_call` for every invocation including failed ones; the terminal decision stored structured; every assessment names its projection and registry versions and its evidence identity. **Vocabulary:** 1.8 gives Campaign *measures*, not grades. Two acceptance criteria added (§5). |
+| — | 2026-09-13 | **Design review: accepted with required revision.** The owner, the named reviewer, accepted this SIP on written review notes; rev 3 is the required revision, and the notes' suggested rulings are recorded as rulings in §7. |
 
 **Targets: v1.8 — the Lane S headline** (owner's ruling, 2026-09-12; `docs/plans/1-8-0-plan.md`
 §2.2 and §3.4). Its design review has the same reviewer, the owner, and the same outcome
-vocabulary as SIP-0107's: *accepted*, *accepted with required revision*, or *rejected and
-reframed*. **Its acceptance is independent of SIP-0107's**, but for the comparison window to
-stay in 1.8.0 it must land, with the single-model arm defined, before the loop set's
-pre-registration is committed (plan §4.2, §7 step 8). Otherwise deliverable (d) moves to 1.8.1
-by that commit.
+vocabulary as SIP-0107's. **Design review held 2026-09-13: accepted with required revision**
+(rev 3), on written review notes the owner adopted; the rulings are §7's. Acceptance precedes the
+feature branch. The comparison window stays in 1.8.0 because the arm is defined here before the
+loop set's pre-registration is committed (plan §4.2, §7 step 8).
 
 **Sequences after:** SIP-0096 Verification Evidence Integrity (implemented v1.5.0). Every
 indicator here is read from evidence that cannot be fabricated by a stubbed, skipped or inert
@@ -164,7 +166,7 @@ no I/O and reads nothing but its two arguments.** An architecture test holds tha
 | **coordination** | correction rounds; emission retries and contentless emissions, from failed-emission stamps; framing re-rolls (framing runs beyond the first); plan-defect terminations; refunded rounds and the correction movement sequence | vault artifact metadata; registry runs and `failure_reason`; refunds and movement from the run summary below |
 | **efficiency** | wall-clock per run and for the cycle; prompt, completion and reasoning tokens per run and per task type; LLM calls | `cycle_runs` timestamps; the run summary below |
 
-**The run summary — per the review notes (§7 question 2).** At run finalization, beside
+**The run summary — ruled at review (§7 question 2).** At run finalization, beside
 `run_verification_summaries`, the executor persists one durable row per run with the loop facts
 no store holds today:
 - **usage, accounted at the one LLM seam.** Every invocation `_llm_call` observes contributes
@@ -323,7 +325,7 @@ from the registry and the vault. It never reads the driver's JSON records, which
 × model), and a pre-registration gains a comparison section. Both arms are measured by (a) with
 attribution from (b).
 
-**What the experiment is — per the review notes (§7 question 1).** A **system-level** comparison: the
+**What the experiment is — ruled at review (§7 question 1).** A **system-level** comparison: the
 complete SquadOps reasoning organization against one generalist agent, on the same deterministic
 substrate. The **independent variable** is the reasoning organization — role decomposition, the
 role-specific prompts, the framing roles, the handoffs, and agent-mediated correction by the
@@ -444,20 +446,21 @@ Named so silence is not read as shipped:
 
 ---
 
-## 7. The design review — questions and the rulings its notes suggest
+## 7. The design review — rulings (accepted 2026-09-13)
 
-Rev 3 is written to the review notes' suggested rulings. They become rulings when the owner accepts.
+The owner accepted this SIP with required revision on written review notes. Rev 3 is written to
+their rulings, recorded here.
 
-1. **The single-model arm (§4.4) — accept with revision.** A system-level SquadOps-against-generalist
+1. **The single-model arm (§4.4) — ruled: accepted with revision.** A system-level SquadOps-against-generalist
    comparison on an equal deterministic substrate, not an isolation experiment for agent count.
    Cost measured, not equalized. Task-scoped grants and per-task-type reasoning and caps identical.
-2. **The run summary (§4.1) — take the durable row.** Usage populated from the `_llm_call`
+2. **The run summary (§4.1) — ruled: the durable row.** Usage populated from the `_llm_call`
    accounting seam, so failed and retried calls cannot disappear; LangFuse is not the ledger.
-3. **The attribution mapping (§4.2) — revised before acceptance.** Evidence classes rather than
+3. **The attribution mapping (§4.2) — ruled: revised before acceptance.** Evidence classes rather than
    causes; totality over dispositions; composition by declared precedence; terminal-primary against
    contributing; `unattributed` over unsupported inference; `non_failure` declared.
    `input_contract_failure` stays reserved.
-4. **No grade bands in 1.8 (§3.2) — confirmed.** 1.8 measures distributions; 2.0 owns the stopping
+4. **No grade bands in 1.8 (§3.2) — ruled: confirmed.** 1.8 measures distributions; 2.0 owns the stopping
    and continuation policy. The comparison's decision rule is experiment-specific, not a band.
 
 ---

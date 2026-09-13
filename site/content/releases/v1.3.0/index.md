@@ -123,6 +123,6 @@ live-validated on the deployed stack before merge.
 | [SIP-Campaign-Orchestration](../../design/sips/SIP-Campaign-Orchestration.md) | new | proposed |
 | [SIP-Campaign-Self-Improvement-and-Test-Bay-Requirements](../../design/sips/SIP-Campaign-Self-Improvement-and-Test-Bay-Requirements.md) | new | proposed |
 | [SIP-Capability-Backed-Agents](../../design/sips/SIP-Capability-Backed-Agents.md) | new | proposed |
-| [SIP-Cycle-Evaluation-Scorecard](../../design/sips/SIP-Cycle-Evaluation-Scorecard.md) | new | proposed |
+| SIP-Cycle-Evaluation-Scorecard | new | proposed |
 | [SIP-Edge-Deployment-Profile](../../design/sips/SIP-Edge-Deployment-Profile.md) | new | proposed |
 | [SIP-Experiment-Queue-and-Cycle-Assessment](../../design/sips/SIP-Experiment-Queue-and-Cycle-Assessment.md) | new | proposed |

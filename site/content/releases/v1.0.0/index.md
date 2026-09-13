@@ -124,5 +124,5 @@ title: v1.0.0
 | [SIP-0082-Time-Budget-Awareness-in](../../design/sips/SIP-0082-Time-Budget-Awareness-in.md) | new | implemented |
 | [SIP-0083-Multi-Run-Cycle-Orchestration](../../design/sips/SIP-0083-Multi-Run-Cycle-Orchestration.md) | new | implemented |
 | [SIP-API-Contract-Hardening](../../design/sips/SIP-API-Contract-Hardening.md) | new | proposed |
-| [SIP-Cycle-Evaluation-Scorecard](../../design/sips/SIP-Cycle-Evaluation-Scorecard.md) | new | proposed |
+| SIP-Cycle-Evaluation-Scorecard | new | proposed |
 | [SIP-intelligent-delegation-protocols](../../design/sips/SIP-intelligent-delegation-protocols.md) | new | proposed |

@@ -234,7 +234,7 @@ queue deferred to 1.6.1+: #1011, #1012 (byte-verified reproducer banked), #1013,
 | [SIP-Campaign-Orchestration](../../design/sips/SIP-Campaign-Orchestration.md) | new | proposed |
 | [SIP-Capability-Backed-Agents](../../design/sips/SIP-Capability-Backed-Agents.md) | new | proposed |
 | [SIP-Cross-Cycle-Memory](../../design/sips/SIP-Cross-Cycle-Memory.md) | new | proposed |
-| [SIP-Cycle-Evaluation-Scorecard](../../design/sips/SIP-Cycle-Evaluation-Scorecard.md) | new | proposed |
+| SIP-Cycle-Evaluation-Scorecard | new | proposed |
 | [SIP-Cycle-Request-Profile-Naming-Taxonomy](../../design/sips/SIP-Cycle-Request-Profile-Naming-Taxonomy.md) | new | proposed |
 | [SIP-LLM-Emission-Contracts](../../design/sips/SIP-LLM-Emission-Contracts.md) | new | proposed |
 | [SIP-Planning-Sequence-Strategy-First](../../design/sips/SIP-Planning-Sequence-Strategy-First.md) | new | proposed |
