@@ -296,7 +296,7 @@ merge order:
 |---|---|---|---|
 | 1 | **#1506** | the `contentless-builder` diagnostic becomes two: R1 keeps the `FIRST_ATTEMPT` fault; F1 gets `builder_emission_contentless_all_attempts` at `FaultScope.ALL_EMISSION_ATTEMPTS`, so the builder exhausts its emission retries and fails into correction; two readouts in `SEAM_READOUTS`, each reached on its own evidence | instrument — both run on the pinned deploy (§4) |
 | 2 | **#1501** | the repeat rule terminates on a **stable failing core** across adjacent rounds beside the exact match. **As built:** failures are carried when the two signatures share at least one and the round did not reduce the count, so partial reduction stays progress (the #435 principle) and a disjoint round never fires. The reason stays `plan_defect`, whose SIP-0108 disposition is already handoff-or-convergence; the record adds what the round cleared and added. Proven by replaying stored reports through `run_correction_protocol`: 1.7.5 roll 3's first two qa attempts (terminates after round 1), roll 6 as the control (exact repeat, unchanged wording), and 1.6.5 roll 3, whose renamed test made its round-1 termination a shift under the per-test signature. The retests are not round inputs. The seam table is in the PR | **a seam invariant, not a live hypothesis** — a fixture, and a live occurrence read as texture (a set may produce none) |
-| 3 | **#1499** | `dl`/`dt`/`dd` rules in the baseline stylesheet, element-scoped like the rest; both stacks' expanders reach one constant (the #1463 invariant); the committed golden moves once, deliberately, cleared with the owner first | read on the pair: boot audit unchanged; the delivered app's record view styled, photographed for the package |
+| 3 | **#1499** | `dl`/`dt`/`dd` rules in the baseline stylesheet, element-scoped like the rest; both stacks' expanders reach one constant (the #1463 invariant); the committed goldens move once, deliberately, each named in the PR with its diff shape | read on the pair: boot audit unchanged; the delivered app's record view styled, photographed for the package |
 | 4 | **#80** | `framework_version`, `framework_git_sha` and the request-profile *name* on the `Cycle` record (`src/squadops/cycles/models.py:349`; today it carries `squad_profile_id`, `request_profile` and `resolved_config_hash`, no code lineage) — **the scorecard's benchmark registry needs code lineage on the row it grades**; additive, nullable for existing rows (no cosmetic migration) | texture: the pair's records carry the three fields |
 | 5 | **#579** | the frontmatter parser extracted — four inline copies and one helper on the tree today, on every prompt render — byte-equivalent by test on every rendered prompt in the fixture set | CI; the pair proves the render path loaded |
 | 6 | **the lineage seam** (§3.5) | `series_for(cycle)` extracted from inert detection into one module both it and the scorecard read; Campaign's rail, replaced in 2.0 | CI; inert detection's tests unchanged |
@@ -455,8 +455,10 @@ rule on every removal (#1448's globals, the lineage extraction); the characteriz
 the same PR as the seam they characterise; the harvest before every extraction (#1444, the
 lineage seam); **acceptance before the branch** for both headlines; **§5a amendments in the SIP,
 in the PR that diverges** — not in this plan, which is superseded at the cut; **no merge to main
-while a set or the comparison window is open**; a committed golden moves only with the owner's
-prior clearance (#1499). The plan's own PR carries the ROADMAP pointer and the 1.7.5 plan §10
+while a set or the comparison window is open**; a committed golden moves only when every moved
+line is explained by the PR's intended change, with each moved pin and its diff shape named in the
+PR (owner's ruling 2026-09-13, which replaced prior clearance; #1499 moved two pins under it). An
+unexplained move is investigated, never regenerated over, and history pins never move. The plan's own PR carries the ROADMAP pointer and the 1.7.5 plan §10
 amendment.
 
 ---
