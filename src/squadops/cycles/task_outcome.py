@@ -106,17 +106,26 @@ class CorrectionTermination:
 
     reason: str  # CorrectionTerminationReason value
     failed_task_id: str
+    #: The failures carried from the previous round to the terminal one: the whole
+    #: signature on an exact repeat, the stable core when the set around it churned (#1501).
     repeated_signature: tuple[str, ...]
     structural_candidate: str
     first_seen_round: int
     terminal_round: int
     supporting_artifact_ids: tuple[str, ...] = ()
+    #: #1501: what the terminal round cleared from the previous round's failures and what it
+    #: added. Both empty on an exact repeat; otherwise they are the churn around the carried
+    #: failures, recorded so a reader can tell the two cases apart without the round's logs.
+    cleared_signature: tuple[str, ...] = ()
+    added_signature: tuple[str, ...] = ()
 
     def to_dict(self) -> dict:
         return {
             "reason": self.reason,
             "failed_task_id": self.failed_task_id,
             "repeated_signature": list(self.repeated_signature),
+            "cleared_signature": list(self.cleared_signature),
+            "added_signature": list(self.added_signature),
             "structural_candidate": self.structural_candidate,
             "first_seen_round": self.first_seen_round,
             "terminal_round": self.terminal_round,

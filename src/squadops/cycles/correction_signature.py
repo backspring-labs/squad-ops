@@ -4,8 +4,9 @@ The ruled principle: termination may depend on progress, not only on count.
 Typed acceptance gives every failure a machine-comparable identity; this module
 turns a round's ``failure_evidence`` into a normalized signature, classifies
 round-over-round movement, and decides the one termination the 1.5 bounded
-lever authorizes — ``plan_defect`` on an exact adjacent repeat where both
-rounds' decisions carried a structural-plan-change candidate.
+lever authorizes — ``plan_defect`` when a round carried failures from the round
+before it without reducing the count (an exact repeat is the simplest case), and
+both rounds' decisions carried a structural-plan-change candidate (#1501).
 
 Design-gate bindings (decision table on #435; M2→M3 gate evaluation):
 candidates appear in ~89% of deltas, so candidate presence is context — ALL
@@ -177,9 +178,10 @@ def classify_movement(
 
     Partial signature reduction is PROGRESS and resets the repeat condition —
     a binary repeat/no-repeat rule would terminate while some failures are
-    being fixed. Expansion (everything still failing plus more) is recorded
-    but deliberately NOT a repeat: the default rule requires exact equality,
-    and the attempt/budget bounds still apply.
+    being fixed. The classes are the event vocabulary and do not decide
+    termination on their own: ``carried_failures`` does (#1501), and it treats
+    REPEAT, EXPANSION and a SHIFTED round that kept some failures without
+    reducing the count alike.
     """
     if not previous:
         return MOVEMENT_NEW
@@ -192,6 +194,50 @@ def classify_movement(
     return MOVEMENT_SHIFTED
 
 
+def carried_failures(
+    previous: frozenset[tuple[str, str, str]] | None,
+    current: frozenset[tuple[str, str, str]] | None,
+) -> frozenset[tuple[str, str, str]]:
+    """The failures a round carried from the round before it without making progress (#1501).
+
+    Non-empty when the two signatures share at least one element AND the round did not
+    reduce the failure count; the shared elements are the stable core. Empty otherwise.
+
+    **Why exact equality was not enough.** 1.7.5 React roll 3 (``cyc_89153929749f``) spent
+    three correction rounds and 103 minutes on a qa suite whose failing set went 7, 9, 5, 8:
+    five tests failed in every attempt, but the set around them churned, so no two adjacent
+    signatures were equal and the rule never fired. The per-test split (#878) is what made
+    this reachable. A finer signature raises the odds that a genuine repeat reads as a shift,
+    the failure mode the ``failure_signature`` docstring warns about: 1.6.5 React roll 3
+    ended ``plan_defect`` at round 1 on the aggregate element, and today its re-authored
+    suite's renamed test makes the same two rounds a shift.
+
+    **Why the count, and not any overlap.** Partial reduction is progress and resets the
+    repeat condition, the #435 decision table's principle: a repair that fixes three of
+    eight failures leaves five in common and must not terminate. So a round that reduced
+    the count never fires, whether the rest is a strict subset or the round also broke
+    something new. What fires is a round that cleared nothing (a repeat, or everything
+    still failing plus more) or cleared some and broke as many (the churn roll 3 shows).
+    A disjoint round shares nothing and never fires either; #878's roll 2 fixed unrelated
+    defects in sequence.
+
+    **What the stored evidence says, and what it cannot.** Replayed over every correction
+    chain in the vault with suite reports on two adjacent rounds and candidates on both
+    (20 chains, 2026-09-13): this rule fires in 15 and the exact rule in 9, and none of the
+    15 went on to pass its suite. One of the 15 is 1.6.5 React roll 6, whose previous repair
+    was refused; ``repair_refused_in_round`` clears that round before this rule is asked
+    (#1129), and the replay did not model refusals. No stored chain converged after a round
+    that kept any failure, so the corpus cannot show the false-positive side. The principle
+    above is what protects it.
+    """
+    if not previous or not current:
+        return frozenset()
+    shared = previous & current
+    if not shared or len(current) < len(previous):
+        return frozenset()
+    return shared
+
+
 def should_terminate_plan_defect(
     previous: frozenset[tuple[str, str, str]] | None,
     current: frozenset[tuple[str, str, str]] | None,
@@ -200,15 +246,13 @@ def should_terminate_plan_defect(
 ) -> bool:
     """The A4.3 default rule — the ONLY termination this lever authorizes.
 
-    Two ADJACENT rounds, the SAME normalized complete signature, and BOTH
-    rounds' decisions carrying a non-``none`` structural candidate. Candidate
-    presence alone can never fire this (it is true of ~89% of deltas); a
-    missing signature on either side can never fire it (infra rounds cleared
-    the state upstream).
+    Two ADJACENT rounds, failures CARRIED between them without progress
+    (``carried_failures``; an exact repeat is the simplest case), and BOTH rounds'
+    decisions carrying a non-``none`` structural candidate. Candidate presence
+    alone can never fire this (it is true of ~89% of deltas); a missing signature
+    on either side can never fire it (infra rounds cleared the state upstream).
     """
-    if not previous or not current:
-        return False
-    if classify_movement(previous, current) != MOVEMENT_REPEAT:
+    if not carried_failures(previous, current):
         return False
     return bool(
         previous_candidate

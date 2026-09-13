@@ -17,6 +17,7 @@ from squadops.cycles.correction_signature import (
     MOVEMENT_REPEAT,
     MOVEMENT_SHIFTED,
     REPAIR_REFUSED_MARKER,
+    carried_failures,
     classify_movement,
     failure_signature,
     render_signature,
@@ -116,17 +117,58 @@ class TestTerminationRule:
         # candidate cycles that then converge
         assert not should_terminate_plan_defect(None, self._SIG, None, "tighten_acceptance")
 
-    def test_progress_and_expansion_never_fire(self):
+    def test_progress_never_fires_and_expansion_now_does(self):
+        """Partial reduction stays progress. Expansion was non-terminal by design until
+        #1501: everything that failed still failing, plus more, cleared nothing, and 1.7.5
+        React roll 3's round 1 was exactly that shape (7 failing, then those 7 and 2 more)."""
         smaller = frozenset({("tests_pass", "backend/tests/test_integration.js", "exit 1")})
         bigger = smaller | {("frontend_build", "", "failed")}
         assert not should_terminate_plan_defect(bigger, smaller, "add_task", "add_task")  # progress
-        assert not should_terminate_plan_defect(
-            smaller, bigger, "add_task", "add_task"
-        )  # expansion — exact equality only, conservative by design
+        assert should_terminate_plan_defect(smaller, bigger, "add_task", "add_task")  # expansion
 
     def test_render_is_stable_and_sorted(self):
         sig = frozenset({("b", "f2", "r2"), ("a", "f1", "r1")})
         assert render_signature(sig) == ("a|f1|r1", "b|f2|r2")
+
+
+def _t(*names: str) -> frozenset[tuple[str, str, str]]:
+    return frozenset(
+        ("tests_pass", "src/__tests__/runs.test.jsx", f"failed;test={n}") for n in names
+    )
+
+
+class TestCarriedFailures:
+    """#1501: the stable core a round carried without progress, beside the exact repeat.
+
+    Bug caught: a rule that fires on any overlap would terminate a converging chain the
+    moment a repair fixed some failures and not all; a rule that needs equality misses a
+    core that never moves while the failures around it churn, and the chain spends its
+    whole budget (1.7.5 React roll 3: three rounds, 103 minutes)."""
+
+    @pytest.mark.parametrize(
+        ("previous", "current", "carried"),
+        [
+            (_t("a", "b"), _t("a", "b"), _t("a", "b")),  # exact repeat
+            (_t("a", "b"), _t("a", "b", "c"), _t("a", "b")),  # expansion: nothing cleared
+            (_t("a", "b", "c"), _t("a", "b", "d"), _t("a", "b")),  # churn, count held
+            (_t("a", "b"), _t("a", "c", "d"), _t("a")),  # churn, count grew
+        ],
+    )
+    def test_a_core_kept_without_reducing_the_count_is_carried(self, previous, current, carried):
+        assert carried_failures(previous, current) == carried
+
+    @pytest.mark.parametrize(
+        ("previous", "current"),
+        [
+            (_t("a", "b", "c"), _t("a", "b")),  # progress: a strict subset
+            (_t("a", "b", "c", "d"), _t("a", "e", "f")),  # net progress, even with a new break
+            (_t("a", "b"), _t("c", "d")),  # disjoint: unrelated defects fixed in sequence
+            (None, _t("a")),  # first round
+            (_t("a"), None),  # an infra round has no signature
+        ],
+    )
+    def test_progress_disjoint_and_missing_rounds_carry_nothing(self, previous, current):
+        assert carried_failures(previous, current) == frozenset()
 
 
 class TestSuiteHealthDiscriminator:

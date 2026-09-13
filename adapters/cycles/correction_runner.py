@@ -47,6 +47,7 @@ from squadops.capabilities.context_assembly import (
 from squadops.cycles.agent_config import resolve_agent_config
 from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.correction_signature import (
+    carried_failures,
     classify_movement,
     failure_signature,
     render_signature,
@@ -308,6 +309,22 @@ class _Diagnosis:
     analysis_outputs: dict[str, Any]
     decision_outputs: dict[str, Any]
     correlation_id: str
+
+
+def _carry_clause(termination: CorrectionTermination) -> str:
+    """How the terminal round's failures relate to the round before, for ``failure_reason``.
+
+    An exact repeat keeps the wording it has always had, so records and readouts written
+    before #1501 still read the same. A carried core names its size and the churn around it.
+    """
+    if not termination.cleared_signature and not termination.added_signature:
+        return f"failure signature repeated from round {termination.first_seen_round}"
+    return (
+        f"{len(termination.repeated_signature)} failure(s) carried from round "
+        f"{termination.first_seen_round} without progress "
+        f"({len(termination.cleared_signature)} cleared, "
+        f"{len(termination.added_signature)} added)"
+    )
 
 
 class CorrectionRunner:
@@ -676,8 +693,11 @@ class CorrectionRunner:
         all_artifact_refs: list[str],
         repair_rejections: list[str] | None = None,
     ) -> None:
-        """#435 A4.3: terminate the chain as ``plan_defect`` on an exact
-        adjacent repeat with structural candidates on both rounds.
+        """#435 A4.3: terminate the chain as ``plan_defect`` when a round carried
+        failures from the round before it without progress, with structural
+        candidates on both rounds. An exact repeat is the simplest case; #1501
+        added the stable core under a churning set (``carried_failures``), and
+        the record names what was carried, cleared and added.
 
         An infra round (no product signature — A3 owns its routing) CLEARS the
         task's chain state: adjacency is strict, per the decision table. On
@@ -717,7 +737,9 @@ class CorrectionRunner:
             termination = CorrectionTermination(
                 reason=CorrectionTerminationReason.PLAN_DEFECT,
                 failed_task_id=envelope.task_id,
-                repeated_signature=render_signature(current_sig),
+                repeated_signature=render_signature(carried_failures(prev_sig, current_sig)),
+                cleared_signature=render_signature(prev_sig - current_sig),
+                added_signature=render_signature(current_sig - prev_sig),
                 structural_candidate=candidate,
                 first_seen_round=int(state["first_seen_round"]),
                 terminal_round=correction_attempts,
@@ -741,11 +763,15 @@ class CorrectionRunner:
             await self._artifact_vault.store(ref, content)
             all_artifact_refs.append(ref.artifact_id)
             logger.warning(
-                "correction_terminated_plan_defect task=%s rounds=%d..%d candidate=%s signature=%s",
+                "correction_terminated_plan_defect task=%s rounds=%d..%d candidate=%s "
+                "carried=%d cleared=%d added=%d signature=%s",
                 envelope.task_id,
                 termination.first_seen_round,
                 termination.terminal_round,
                 candidate,
+                len(termination.repeated_signature),
+                len(termination.cleared_signature),
+                len(termination.added_signature),
                 "; ".join(termination.repeated_signature),
             )
             # #878 rider: the rule needs a structural candidate PRESENT on both
@@ -753,7 +779,7 @@ class CorrectionRunner:
             # "on both" misstated roll 14's add_task/tighten_acceptance pair.
             raise _ExecutionError(
                 f"plan_defect: correction terminated at round {correction_attempts} — "
-                f"failure signature repeated from round {termination.first_seen_round}, "
+                f"{_carry_clause(termination)}, "
                 f"structural plan-change candidates on both decisions "
                 f"(terminal: {candidate!r}); "
                 f"the plan, not the work product, is the defect "
