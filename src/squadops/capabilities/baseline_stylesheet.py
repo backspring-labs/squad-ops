@@ -90,6 +90,20 @@ ul li {
   padding: 0.75rem 1rem;
 }
 
+/* A record's fields. Apps reach for a definition list seven times as often as a table.
+   Stacked, not a grid: a pair wrapped in its own div must lay out the same as a bare one. */
+dl {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  margin: 0 0 1.5rem;
+}
+dt { font-size: 0.85rem; font-weight: 600; color: var(--muted); }
+dd { margin: 0.1rem 0 0; }
+dd + dt, dl > div + div { margin-top: 0.75rem; }
+li dl { background: none; border: none; padding: 0; margin: 0.5rem 0 0; }
+
 table { width: 100%; border-collapse: collapse; margin: 0 0 1.5rem; background: var(--surface); }
 th, td { text-align: left; padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--line); }
 th { font-weight: 600; color: var(--muted); font-size: 0.85rem; text-transform: uppercase;

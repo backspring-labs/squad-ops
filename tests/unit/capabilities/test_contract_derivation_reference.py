@@ -94,15 +94,21 @@ _MANIFEST = _REPO / "examples" / "03_group_run" / "interface_manifest.yaml"
 #   measured — so the 1.4 FAY figure (6/6) carries no qualification. It cannot make a broken
 #   app pass, and the only way it could reject a working one is by failing to compile, which
 #   the sandbox build disproves. v12 stays in the fixtures directory as that form's record.
+# * v14 (2026-09-13, #1499) differs from v13 in exactly one ``frozen`` entry: the sha256 of
+#   ``frontend/src/index.css``, which now styles ``dl``/``dt``/``dd``. Delivered apps render a
+#   record's fields as a definition list in 99 stored views across 87 cycles, seven times as
+#   often as a table, and the sheet had rules for the table and none for the list. Classified
+#   **reference_defect**, the v13 shape again: a deliberate scaffold change, not a deriver one,
+#   cleared with the owner before the pin moved (2026-09-13). The retrospective obligation is
+#   met by statement: element-scoped presentation adds no check and changes no criterion
+#   (every section but that one hash is byte-identical to v13), and presentation is not what
+#   the window measured, so the 1.4 FAY figure (6/6) carries no qualification. v13 stays in
+#   the fixtures directory as that form's record.
 _EVIDENCE_CONTRACT = (
     _REPO / "tests" / "fixtures" / "reference_contract" / "contract_v9_art_4f368ea08799.yaml"
 )
 _CONTRACT = (
-    _REPO
-    / "tests"
-    / "fixtures"
-    / "reference_contract"
-    / "contract_v13_baseline_stylesheet_1463.yaml"
+    _REPO / "tests" / "fixtures" / "reference_contract" / "contract_v14_definition_lists_1499.yaml"
 )
 
 # The ingested artifacts, by content hash. Measured 2026-08-07 against the vault:
@@ -112,7 +118,7 @@ _CONTRACT = (
 # run against. A change here is a change to the evidence base, not a refactor.
 _MANIFEST_SHA256 = "52d8ea7e204e0ceca9c94a60a7b10f18a24519e594ce5c51654674b82a15a826"
 _EVIDENCE_CONTRACT_SHA256 = "7622f570c949fe9504bfebdcd0562e77e78b4d8bff54d9d670001b7f6482e6fe"
-_CONTRACT_SHA256 = "ee3d8a05e54cb0de16de690ca77a31c6f75b2ff31427de67a4a4324684aa56a5"
+_CONTRACT_SHA256 = "4753a5878589f07ab87d01e1e8156555ea7b870da8a84ef4db3912bc2d7767e1"
 
 
 def _sha256(path: Path) -> str:
@@ -143,7 +149,7 @@ def test_reference_contract_is_still_the_ingested_artifact():
         "evidence was measured against; they are history, and history is not regenerated."
     )
     assert _sha256(_CONTRACT) == _CONTRACT_SHA256, (
-        "tests/fixtures/reference_contract/contract_v12_root_tables_1087.yaml no longer matches "
+        f"{_CONTRACT.relative_to(_REPO)} no longer matches "
         "its pinned hash. Regenerating it in place would make the derivation test below "
         "tautological — a deriver change is classified per the M0 taxonomy and lands with a "
         "new hash here, deliberately."
@@ -198,7 +204,10 @@ def test_the_current_form_differs_from_the_evidence_contract_only_as_classified(
     * #1087 (``reference_defect``): the frozen store ``backend/store.py`` moved, because it
       now exports one store per root-persisted entity and names the shapes that have none;
     * #1463 (``reference_defect``): ``frontend/src/index.css`` is ADDED and
-      ``frontend/src/main.jsx`` moved to import it — the skeleton had no stylesheet at all.
+      ``frontend/src/main.jsx`` moved to import it — the skeleton had no stylesheet at all;
+    * #1499 (``reference_defect``): that added entry's sha is v14's, because the sheet now
+      styles definition lists. An added entry has no v9 sha to move from, so it is re-derived
+      from the expander below like the moved ones.
 
     Three moved ``frozen`` entries and one added, no other, and nothing outside ``frozen``.
     """
@@ -256,6 +265,10 @@ def test_the_current_form_differs_from_the_evidence_contract_only_as_classified(
     # alone is a different broken state — dead bytes, or a build that fails on a missing
     # module.
     assert expanded["frontend/src/index.css"].startswith("/* Baseline presentation.")
+    # #1499: the record shape delivered apps use most has rules, and a pair wrapped in its own
+    # div is spaced like a bare one.
+    assert "\ndl {" in expanded["frontend/src/index.css"]
+    assert "dd + dt, dl > div + div {" in expanded["frontend/src/index.css"]
     assert "import './index.css'\n" in expanded["frontend/src/main.jsx"]
     current["frozen"] = v9["frozen"]
     assert current == v9
