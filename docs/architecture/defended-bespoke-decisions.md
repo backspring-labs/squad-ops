@@ -405,3 +405,88 @@ follows is `store_artifact=lambda *args, **kw: self._store_artifact(...)` on
 `CorrectionRunner` itself (SIP-0097 §6.3, "executor residual, residual-but-watched"): a
 collaborator holds no ports it does not own, and borrows the rest late. *Lives in:* the
 executor's and the runner's constructors.
+
+## 39. A self-evaluation pass re-asks on the whole transcript and validates the merged set, not the follow-up
+
+The second call replays system, the original user prompt, the model's first response and the
+follow-up prompt, with the first call's kwargs unchanged, and each pass re-validates the
+**merged** artifact set (RC-7). A follow-up validated alone would pass on the one file it
+re-emitted while the task stored a set that still failed; a re-ask without the first
+response gives the model nothing to correct. Evaluator-error counts are shared across the
+passes of one `handle()` and dropped after it (SIP-0092 M1.3, #670 / RC-9b), so a check whose
+evaluator errors twice escalates within a task and never across tasks. The loop was copied
+into both producing handlers; it is one method now so a third emission shape does not become
+a third copy. *Lives in:* `_CycleTaskHandler._self_evaluate`.
+
+## 40. The self-evaluation trigger names the checks that opened it, on the qa path
+
+The self-evaluation branch is the sole trigger for a second model call, and nothing recorded
+which check opened it: a roll's summary read 29/29 accepted while a whole extra generation —
+3,574 tokens, 68% of the qa task's wall clock — was unreadable from stored state (#946). The
+line names the failing checks, never a count, because `expected_artifacts` fails for a reason
+fill mode makes invisible (#947). It is logged on the qa path only; the dev path never carried
+it, and an extraction does not add it. *Lives in:* `QATestHandler.handle`, before the call.
+
+## 41. A self-evaluation pass in fill mode goes through the same merge gate, and cannot rewrite a merged shell
+
+A follow-up's fills are parsed, folded into the primary's fill emission and merged through the
+same gate as the primary's — phantom tables (#1087) and declared element kinds (#1094)
+included — rather than extracting as files named `slot-…` that the shell guard then discards
+(1.6.5 C, #947). A follow-up file at a merged shell's path is dropped: in fill mode the slot
+protocol is the only shell surface (SIP-0104 P3). What was applied and what was skipped
+because the slot was already filled is banked per pass as `self_eval_fills`. *Lives in:*
+`_ScaffoldFillShape`, the fill unit in `qa_test.py`.
+
+## 42. Fill fences are stripped before file extraction, and the parse is logged before the merge
+
+Under a verification scaffold the emission is parsed for fills first and the fill blocks are
+stripped before `extract_fenced_files` runs, so the fill protocol and the additive-file surface
+never compete for the same bytes. The parse is logged at the parse site — fills, duplicate
+slots, extracted files, whether scaffold-bound — because three outcomes are indistinguishable
+afterwards: emitted nothing, emitted fills that were refused, emitted a file instead of fills.
+P3 renders a rejected fill as the same failing state as a missing one, and window rolls 3 and
+5 were each diagnosed twice, wrongly, from the result instead of the emission (#924;
+`test_emission_log.py` pins the order). A fills-only emission is authorship, not an emission
+failure. *Lives in:* `_ScaffoldFillShape.split` and `QATestHandler.handle`'s parse log.
+
+## 43. The scaffold evidence lands in `outputs`, after the probes, and is not a check row
+
+SIP-0104 P5 classifies shell failures, correlates them with the probe rows and banks the summary
+as `outputs["scaffold_evidence"]` — after the probes are appended, because correlation joins on
+the shared criterion id. It is deliberately not a `validation_result.checks` row: roll 1
+(`cyc_04d36309d793`) showed that `normalize_task_checks` records any row carrying a `status`,
+so an informational row surfaced in the cycle outcome's `unverified` list with reason
+`unspecified`. A diagnostic is not evidence and is not counted as one (SIP-0096 §6.1). The
+fill-merge evidence rides beside it as a stored `evidence` artifact, because the same
+measurement placed only in `execution_evidence` was persisted by nothing (#999). *Lives in:*
+`_ScaffoldFillShape.append_evidence` and `QATestHandler._fill_merge_evidence_artifact`.
+
+## 44. Which output a capability produces is the capability's own fact
+
+`qa.test` has two outputs — whole files, or fills under a verification scaffold — and the
+reasoning declaration is about the output (#1285; fill mode's level corrected by #1434). The
+handler answers it through `_output_shape(inputs)` rather than shared code reading
+`verification_scaffold` for every capability: reading it in the base broke the
+manifest-authoring stage's enforced input contract. The same answer selects the shape that
+parses, merges and evidences the emission, so the reasoning level and the parse can never
+disagree about which output this is. *Lives in:* `QATestHandler._output_shape` and
+`QATestHandler._SHAPES`.
+
+## 45. An emission containing no fenced block fails with a marker that carries what was written
+
+A producer's response with nothing extractable fails the task with `emission_failure`: its
+length, the expected artifacts, the completion tokens against the cap, and the content itself
+(#566, #1372). The executor turns the marker into an aimed retry that tells the model what it
+wrote rather than asking again blind, and the correction loop's locus classifier reads it as a
+producing-side signal. The full response is also stored as `build_warnings.md`, so the
+emission survives the failed attempt. *Lives in:* `_CycleTaskHandler._no_fenced_blocks_result`.
+
+## 46. Validation evidence rides the passing branch too
+
+`validation_result` goes into `outputs` whether the task passed or failed. It was failure-only
+on the dev surface (#597: a passing roll reported 3/6 criteria verified with 6/6 passing
+evidence) and then, despite a comment saying otherwise, on the qa surface (#1271: React roll 5
+rejected on the first attempt's six failed rows while the re-authored suite passed all eight),
+because the ledger supersedes per `(check_id, subject)` and a check that only ever appears when
+it fails can never be superseded by its own later pass. One helper now attaches it for both
+handlers, so the two cannot diverge a third time. *Lives in:* `_CycleTaskHandler._attach_outcome`.

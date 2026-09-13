@@ -1,0 +1,2948 @@
+{
+ "dev_no_fenced_blocks": {
+  "error": "No valid fenced code blocks found",
+  "evidence_metadata": {},
+  "kwargs": [
+   {
+    "max_tokens": 4000,
+    "timeout_seconds": 300
+   }
+  ],
+  "log": [],
+  "outputs": {
+   "artifacts": [
+    {
+     "content": {
+      "len": 40,
+      "sha": "8f14e06d9c419cba"
+     },
+     "media_type": "text/markdown",
+     "name": "build_warnings.md",
+     "type": "document"
+    }
+   ],
+   "emission_failure": {
+    "completion_cap": 4000,
+    "completion_tokens": 7,
+    "expected_artifacts": [
+     "backend/routes.py"
+    ],
+    "fences": {
+     "fill": 0,
+     "path": 0,
+     "plain": 0
+    },
+    "head": "The routes module needs a join endpoint.",
+    "reason": "no_fenced_blocks",
+    "response_chars": 40,
+    "signature": "unextractable"
+   }
+  },
+  "outputs_keys": [
+   "artifacts",
+   "emission_failure"
+  ],
+  "success": false,
+  "suite_ran_on": [],
+  "transcripts": [
+   [
+    [
+     "system",
+     {
+      "len": 248,
+      "sha": "11df4adaaa5c85e0"
+     }
+    ],
+    [
+     "user",
+     {
+      "len": 65,
+      "sha": "916c317030e92c69"
+     }
+    ]
+   ]
+  ]
+ },
+ "dev_self_eval": {
+  "error": null,
+  "evidence_metadata": {
+   "self_eval_merge_log": [
+    {
+     "action": "added",
+     "name": "backend/routes.py",
+     "size": 2497
+    }
+   ],
+   "self_eval_passes": 1,
+   "validation_result": {
+    "checks": [
+     {
+      "check": "expected_artifacts",
+      "expected": [
+       "backend/routes.py"
+      ],
+      "missing": [],
+      "passed": true,
+      "present": [
+       "backend/routes.py"
+      ]
+     },
+     {
+      "check": "non_stub_files",
+      "passed": true,
+      "stubs_found": []
+     },
+     {
+      "actual": {
+       "file": "backend/wrong.py"
+      },
+      "check": "acceptance:undefined_names",
+      "check_index": 0,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "backend/wrong.py"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "backend/routes.py"
+      },
+      "check": "acceptance:undefined_names",
+      "check_index": 1,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "backend/routes.py"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "backend/wrong.py"
+      },
+      "check": "acceptance:unterminated_source",
+      "check_index": 2,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "backend/wrong.py"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "backend/routes.py"
+      },
+      "check": "acceptance:unterminated_source",
+      "check_index": 3,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "backend/routes.py"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     }
+    ],
+    "coverage_ratio": 1.0,
+    "missing_components": [],
+    "passed": true,
+    "summary": "All checks passed"
+   }
+  },
+  "kwargs": [
+   {
+    "max_tokens": 4000,
+    "timeout_seconds": 300
+   },
+   {
+    "max_tokens": 4000,
+    "timeout_seconds": 300
+   }
+  ],
+  "log": [
+   "typed_acceptance_summary subtask=None evaluated=2 passed=2 blocking_failures=0 overall_passed=False",
+   "typed_acceptance_summary subtask=None evaluated=4 passed=4 blocking_failures=0 overall_passed=True"
+  ],
+  "outputs": {
+   "artifacts": [
+    {
+     "content": {
+      "len": 5,
+      "sha": "8ff436def1451285"
+     },
+     "media_type": "text/x-python",
+     "name": "backend/wrong.py",
+     "type": "source"
+    },
+    {
+     "content": {
+      "len": 2497,
+      "sha": "cec9bc5722525649"
+     },
+     "media_type": "text/x-python",
+     "name": "backend/routes.py",
+     "type": "source"
+    },
+    {
+     "content": {
+      "len": 1314,
+      "sha": "4e01d71cbb99be97"
+     },
+     "media_type": "application/json",
+     "name": "typed_check_evaluation.json",
+     "type": "typed_check_evaluation"
+    }
+   ],
+   "emission_stats": {
+    "artifact_count": 3,
+    "extracted_chars": 4342,
+    "response_chars": 37
+   },
+   "outcome_class": "success",
+   "prompt_provenance": {
+    "system_prompt_bundle_hash": "sha256:test"
+   },
+   "role": "dev",
+   "source_containment": [],
+   "summary": "[dev] Generated 3 source file(s)",
+   "validation_result": {
+    "checks": [
+     {
+      "check": "expected_artifacts",
+      "expected": [
+       "backend/routes.py"
+      ],
+      "missing": [],
+      "passed": true,
+      "present": [
+       "backend/routes.py"
+      ]
+     },
+     {
+      "check": "non_stub_files",
+      "passed": true,
+      "stubs_found": []
+     },
+     {
+      "actual": {
+       "file": "backend/wrong.py"
+      },
+      "check": "acceptance:undefined_names",
+      "check_index": 0,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "backend/wrong.py"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "backend/routes.py"
+      },
+      "check": "acceptance:undefined_names",
+      "check_index": 1,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "backend/routes.py"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "backend/wrong.py"
+      },
+      "check": "acceptance:unterminated_source",
+      "check_index": 2,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "backend/wrong.py"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "backend/routes.py"
+      },
+      "check": "acceptance:unterminated_source",
+      "check_index": 3,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "backend/routes.py"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     }
+    ],
+    "coverage_ratio": 1.0,
+    "missing_components": [],
+    "passed": true,
+    "summary": "All checks passed"
+   }
+  },
+  "outputs_keys": [
+   "summary",
+   "role",
+   "artifacts",
+   "prompt_provenance",
+   "outcome_class",
+   "validation_result",
+   "emission_stats",
+   "source_containment"
+  ],
+  "success": true,
+  "suite_ran_on": [],
+  "transcripts": [
+   [
+    [
+     "system",
+     {
+      "len": 248,
+      "sha": "11df4adaaa5c85e0"
+     }
+    ],
+    [
+     "user",
+     {
+      "len": 65,
+      "sha": "916c317030e92c69"
+     }
+    ]
+   ],
+   [
+    [
+     "system",
+     {
+      "len": 248,
+      "sha": "11df4adaaa5c85e0"
+     }
+    ],
+    [
+     "user",
+     {
+      "len": 65,
+      "sha": "916c317030e92c69"
+     }
+    ],
+    [
+     "assistant",
+     {
+      "len": 37,
+      "sha": "ee13919122eeb17c"
+     }
+    ],
+    [
+     "user",
+     {
+      "len": 373,
+      "sha": "8b067e833722f168"
+     }
+    ]
+   ]
+  ]
+ },
+ "qa_authoring_no_fenced_blocks": {
+  "error": "No valid fenced code blocks found",
+  "evidence_metadata": {},
+  "kwargs": [
+   {
+    "max_tokens": 4000,
+    "timeout_seconds": 300
+   }
+  ],
+  "log": [
+   "qa_test_handler emission parse: fills=0 duplicate_slots=0 extracted_files=0 expected=['tests/test_routes.py'] scaffold_bound=False"
+  ],
+  "outputs": {
+   "artifacts": [
+    {
+     "content": {
+      "len": 50,
+      "sha": "3734f3abb2bbd2c0"
+     },
+     "media_type": "text/markdown",
+     "name": "build_warnings.md",
+     "type": "document"
+    }
+   ],
+   "emission_failure": {
+    "completion_cap": 4000,
+    "completion_tokens": 7,
+    "expected_artifacts": [
+     "tests/test_routes.py"
+    ],
+    "fences": {
+     "fill": 0,
+     "path": 0,
+     "plain": 0
+    },
+    "head": "I will write the tests for the routes module next.",
+    "reason": "no_fenced_blocks",
+    "response_chars": 50,
+    "signature": "unextractable"
+   }
+  },
+  "outputs_keys": [
+   "artifacts",
+   "emission_failure"
+  ],
+  "success": false,
+  "suite_ran_on": [],
+  "transcripts": [
+   [
+    [
+     "system",
+     {
+      "len": 13,
+      "sha": "561257c019e5e351"
+     }
+    ],
+    [
+     "user",
+     {
+      "len": 2924,
+      "sha": "4cac827eeaa238f3"
+     }
+    ]
+   ]
+  ]
+ },
+ "qa_authoring_self_eval": {
+  "error": null,
+  "evidence_metadata": {
+   "self_eval_merge_log": [
+    {
+     "action": "added",
+     "name": "tests/test_routes.py",
+     "size": 4684
+    }
+   ],
+   "self_eval_passes": 1,
+   "validation_result": {
+    "checks": [
+     {
+      "check": "expected_artifacts",
+      "expected": [
+       "tests/test_routes.py"
+      ],
+      "missing": [],
+      "passed": true,
+      "present": [
+       "tests/test_routes.py"
+      ]
+     },
+     {
+      "check": "non_stub_files",
+      "passed": true,
+      "stubs_found": []
+     },
+     {
+      "actual": {
+       "file": "tests/test_wrong.py"
+      },
+      "check": "acceptance:undefined_names",
+      "check_index": 0,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "tests/test_wrong.py"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "tests/test_routes.py"
+      },
+      "check": "acceptance:undefined_names",
+      "check_index": 1,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "tests/test_routes.py"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "tests/test_wrong.py"
+      },
+      "check": "acceptance:unterminated_source",
+      "check_index": 2,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "tests/test_wrong.py"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "tests/test_routes.py"
+      },
+      "check": "acceptance:unterminated_source",
+      "check_index": 3,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "tests/test_routes.py"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "check": "no_stub_fallback_tests",
+      "inspected": [
+       "tests/test_routes.py",
+       "tests/test_wrong.py"
+      ],
+      "passed": true
+     },
+     {
+      "check": "no_self_mocking_tests",
+      "inspected": [],
+      "passed": true
+     }
+    ],
+    "coverage_ratio": 1.0,
+    "missing_components": [],
+    "passed": true,
+    "summary": "All checks passed"
+   }
+  },
+  "kwargs": [
+   {
+    "max_tokens": 4000,
+    "timeout_seconds": 300
+   },
+   {
+    "max_tokens": 4000,
+    "timeout_seconds": 300
+   }
+  ],
+  "log": [
+   "qa_test_handler emission parse: fills=0 duplicate_slots=0 extracted_files=1 expected=['tests/test_routes.py'] scaffold_bound=False",
+   "qa_test_handler self_eval trigger: failing_checks=['expected_artifacts'] missing=['file:tests/test_routes.py'] summary='Missing: file:tests/test_routes.py'",
+   "qa_test_handler suite: framework=pytest executed=True exit_code=0 tests_passed=True test_files=3 source_files=2 uncollected=[] error=''"
+  ],
+  "outputs": {
+   "artifacts": [
+    {
+     "content": {
+      "len": 29,
+      "sha": "1872da2f2b18c0e8"
+     },
+     "media_type": "text/x-python",
+     "name": "tests/test_wrong.py",
+     "type": "test"
+    },
+    {
+     "content": {
+      "len": 4684,
+      "sha": "6163dc7e3e5f2dde"
+     },
+     "media_type": "text/x-python",
+     "name": "tests/test_routes.py",
+     "type": "test"
+    },
+    {
+     "content": {
+      "len": 177,
+      "sha": "4af863f341a6f88a"
+     },
+     "media_type": "text/markdown",
+     "name": "test_report.md",
+     "type": "test_report"
+    },
+    {
+     "content": {
+      "len": 1326,
+      "sha": "81f5480f61daa8c8"
+     },
+     "media_type": "application/json",
+     "name": "typed_check_evaluation.json",
+     "type": "typed_check_evaluation"
+    }
+   ],
+   "emission_stats": {
+    "artifact_count": 4,
+    "extracted_chars": 6742,
+    "response_chars": 64
+   },
+   "outcome_class": "success",
+   "prompt_provenance": {
+    "system_prompt_bundle_hash": "sha256:test"
+   },
+   "role": "qa",
+   "summary": "[qa] Generated 3 test file(s), all tests passed",
+   "test_result": {
+    "executed": true,
+    "exit_code": 0,
+    "source_file_count": 2,
+    "summary": "all tests passed (3 test file(s), 2 source file(s))",
+    "test_file_count": 3,
+    "tests_passed": true
+   },
+   "validation_result": {
+    "checks": [
+     {
+      "check": "expected_artifacts",
+      "expected": [
+       "tests/test_routes.py"
+      ],
+      "missing": [],
+      "passed": true,
+      "present": [
+       "tests/test_routes.py"
+      ]
+     },
+     {
+      "check": "non_stub_files",
+      "passed": true,
+      "stubs_found": []
+     },
+     {
+      "actual": {
+       "file": "tests/test_wrong.py"
+      },
+      "check": "acceptance:undefined_names",
+      "check_index": 0,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "tests/test_wrong.py"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "tests/test_routes.py"
+      },
+      "check": "acceptance:undefined_names",
+      "check_index": 1,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "tests/test_routes.py"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "tests/test_wrong.py"
+      },
+      "check": "acceptance:unterminated_source",
+      "check_index": 2,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "tests/test_wrong.py"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "tests/test_routes.py"
+      },
+      "check": "acceptance:unterminated_source",
+      "check_index": 3,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "tests/test_routes.py"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "check": "no_stub_fallback_tests",
+      "inspected": [
+       "tests/test_routes.py",
+       "tests/test_wrong.py"
+      ],
+      "passed": true
+     },
+     {
+      "check": "no_self_mocking_tests",
+      "inspected": [],
+      "passed": true
+     }
+    ],
+    "coverage_ratio": 1.0,
+    "missing_components": [],
+    "passed": true,
+    "summary": "All checks passed"
+   }
+  },
+  "outputs_keys": [
+   "summary",
+   "role",
+   "artifacts",
+   "emission_stats",
+   "test_result",
+   "prompt_provenance",
+   "outcome_class",
+   "validation_result"
+  ],
+  "success": true,
+  "suite_ran_on": [
+   [
+    {
+     "path": "tests/test_wrong.py",
+     "sha": "1872da2f2b18c0e8"
+    },
+    {
+     "path": "tests/test_routes.py",
+     "sha": "6163dc7e3e5f2dde"
+    }
+   ]
+  ],
+  "transcripts": [
+   [
+    [
+     "system",
+     {
+      "len": 13,
+      "sha": "561257c019e5e351"
+     }
+    ],
+    [
+     "user",
+     {
+      "len": 2924,
+      "sha": "4cac827eeaa238f3"
+     }
+    ]
+   ],
+   [
+    [
+     "system",
+     {
+      "len": 13,
+      "sha": "561257c019e5e351"
+     }
+    ],
+    [
+     "user",
+     {
+      "len": 2924,
+      "sha": "4cac827eeaa238f3"
+     }
+    ],
+    [
+     "assistant",
+     {
+      "len": 64,
+      "sha": "13dc4d3004eda03b"
+     }
+    ],
+    [
+     "user",
+     {
+      "len": 381,
+      "sha": "73ec580edac05c73"
+     }
+    ]
+   ]
+  ]
+ },
+ "qa_fill_no_fills_no_files": {
+  "error": "No valid fenced code blocks found",
+  "evidence_metadata": {},
+  "kwargs": [
+   {
+    "max_tokens": 12000,
+    "timeout_seconds": 300
+   }
+  ],
+  "log": [
+   "qa_test_handler emission parse: fills=0 duplicate_slots=0 extracted_files=0 expected=[] scaffold_bound=True"
+  ],
+  "outputs": {
+   "artifacts": [
+    {
+     "content": {
+      "len": 48,
+      "sha": "e80384f7462c58d2"
+     },
+     "media_type": "text/markdown",
+     "name": "build_warnings.md",
+     "type": "document"
+    }
+   ],
+   "emission_failure": {
+    "completion_cap": 12000,
+    "completion_tokens": 7,
+    "expected_artifacts": [],
+    "fences": {
+     "fill": 0,
+     "path": 0,
+     "plain": 0
+    },
+    "head": "The slots are straightforward; I will fill them.",
+    "reason": "no_fenced_blocks",
+    "response_chars": 48,
+    "signature": "unextractable"
+   }
+  },
+  "outputs_keys": [
+   "artifacts",
+   "emission_failure"
+  ],
+  "success": false,
+  "suite_ran_on": [],
+  "transcripts": [
+   [
+    [
+     "system",
+     {
+      "len": 13,
+      "sha": "561257c019e5e351"
+     }
+    ],
+    [
+     "user",
+     {
+      "len": 313,
+      "sha": "d56241186571880b"
+     }
+    ]
+   ]
+  ]
+ },
+ "qa_fill_self_eval": {
+  "error": "Tests failed (exit 1)",
+  "evidence_metadata": {
+   "fill_merge": {
+    "additive_containment": [],
+    "assertion_strength": {
+     "additive_files": [],
+     "any_fill_touches_the_store": false,
+     "body_chars": 77,
+     "filled_slots": 2,
+     "language_prefixed_fences": [],
+     "not_applicable_slots": 0,
+     "store_slots": [],
+     "store_symbols_used": []
+    },
+    "counts": {
+     "filled": 2,
+     "missing": 6
+    },
+    "dispositions": [
+     {
+      "detail": "",
+      "disposition": "filled",
+      "slot_id": "slot-vc-probe-api-runs"
+     },
+     {
+      "detail": "no fill and no disposition",
+      "disposition": "missing",
+      "slot_id": "slot-vc-probe-api-runs-rejects-blank"
+     },
+     {
+      "detail": "",
+      "disposition": "filled",
+      "slot_id": "slot-vc-probe-api-runs-join"
+     },
+     {
+      "detail": "no fill and no disposition",
+      "disposition": "missing",
+      "slot_id": "slot-vc-probe-api-runs-join-duplicate"
+     },
+     {
+      "detail": "no fill and no disposition",
+      "disposition": "missing",
+      "slot_id": "slot-vc-probe-api-runs-leave"
+     },
+     {
+      "detail": "no fill and no disposition",
+      "disposition": "missing",
+      "slot_id": "slot-vs-get-api-runs"
+     },
+     {
+      "detail": "no fill and no disposition",
+      "disposition": "missing",
+      "slot_id": "slot-vs-get-api-runs-run-id"
+     },
+     {
+      "detail": "no fill and no disposition",
+      "disposition": "missing",
+      "slot_id": "slot-vs-get-api-runs-run-id-not-found"
+     }
+    ],
+    "dropped_shell_rewrites": [
+     "__tests__/scaffold/vc-probe-api-runs-join-duplicate.scaffold.test.ts",
+     "__tests__/scaffold/vc-probe-api-runs-join.scaffold.test.ts",
+     "__tests__/scaffold/vc-probe-api-runs-leave.scaffold.test.ts",
+     "__tests__/scaffold/vc-probe-api-runs-rejects-blank.scaffold.test.ts",
+     "__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts",
+     "__tests__/scaffold/vs-get-api-runs-run-id-not-found.scaffold.test.ts",
+     "__tests__/scaffold/vs-get-api-runs-run-id.scaffold.test.ts",
+     "__tests__/scaffold/vs-get-api-runs.scaffold.test.ts"
+    ],
+    "misaddressed": []
+   },
+   "self_eval_fills": [
+    {
+     "applied": [
+      "slot-vc-probe-api-runs-join"
+     ],
+     "pass": 1,
+     "skipped_filled": []
+    }
+   ],
+   "self_eval_merge_log": [
+    {
+     "action": "added",
+     "name": "__tests__/runs.test.ts",
+     "size": 9011
+    }
+   ],
+   "self_eval_passes": 1,
+   "validation_result": {
+    "checks": [
+     {
+      "check": "expected_artifacts",
+      "expected": [
+       "__tests__/runs.test.ts"
+      ],
+      "missing": [],
+      "passed": true,
+      "present": [
+       "__tests__/runs.test.ts"
+      ]
+     },
+     {
+      "check": "non_stub_files",
+      "passed": true,
+      "stubs_found": []
+     },
+     {
+      "actual": {},
+      "check": "acceptance:declared_imports",
+      "check_index": 0,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "no_package_json_above_file",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {},
+      "check": "acceptance:declared_imports",
+      "check_index": 1,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-rejects-blank.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "no_package_json_above_file",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {},
+      "check": "acceptance:declared_imports",
+      "check_index": 2,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-join.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "no_package_json_above_file",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {},
+      "check": "acceptance:declared_imports",
+      "check_index": 3,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-join-duplicate.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "no_package_json_above_file",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {},
+      "check": "acceptance:declared_imports",
+      "check_index": 4,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-leave.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "no_package_json_above_file",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {},
+      "check": "acceptance:declared_imports",
+      "check_index": 5,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vs-get-api-runs.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "no_package_json_above_file",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {},
+      "check": "acceptance:declared_imports",
+      "check_index": 6,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vs-get-api-runs-run-id.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "no_package_json_above_file",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {},
+      "check": "acceptance:declared_imports",
+      "check_index": 7,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vs-get-api-runs-run-id-not-found.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "no_package_json_above_file",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {},
+      "check": "acceptance:declared_imports",
+      "check_index": 8,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/runs.test.ts"
+      },
+      "passed": true,
+      "reason": "no_package_json_above_file",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "missing_module": "tsc"
+      },
+      "check": "acceptance:undefined_names",
+      "check_index": 9,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "missing_tooling",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "missing_module": "tsc"
+      },
+      "check": "acceptance:undefined_names",
+      "check_index": 10,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-rejects-blank.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "missing_tooling",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "missing_module": "tsc"
+      },
+      "check": "acceptance:undefined_names",
+      "check_index": 11,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-join.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "missing_tooling",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "missing_module": "tsc"
+      },
+      "check": "acceptance:undefined_names",
+      "check_index": 12,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-join-duplicate.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "missing_tooling",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "missing_module": "tsc"
+      },
+      "check": "acceptance:undefined_names",
+      "check_index": 13,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-leave.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "missing_tooling",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "missing_module": "tsc"
+      },
+      "check": "acceptance:undefined_names",
+      "check_index": 14,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vs-get-api-runs.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "missing_tooling",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "missing_module": "tsc"
+      },
+      "check": "acceptance:undefined_names",
+      "check_index": 15,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vs-get-api-runs-run-id.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "missing_tooling",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "missing_module": "tsc"
+      },
+      "check": "acceptance:undefined_names",
+      "check_index": 16,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vs-get-api-runs-run-id-not-found.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "missing_tooling",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "missing_module": "tsc"
+      },
+      "check": "acceptance:undefined_names",
+      "check_index": 17,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/runs.test.ts"
+      },
+      "passed": true,
+      "reason": "missing_tooling",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts"
+      },
+      "check": "acceptance:unterminated_source",
+      "check_index": 18,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-rejects-blank.scaffold.test.ts"
+      },
+      "check": "acceptance:unterminated_source",
+      "check_index": 19,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-rejects-blank.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-join.scaffold.test.ts"
+      },
+      "check": "acceptance:unterminated_source",
+      "check_index": 20,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-join.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-join-duplicate.scaffold.test.ts"
+      },
+      "check": "acceptance:unterminated_source",
+      "check_index": 21,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-join-duplicate.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-leave.scaffold.test.ts"
+      },
+      "check": "acceptance:unterminated_source",
+      "check_index": 22,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-leave.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vs-get-api-runs.scaffold.test.ts"
+      },
+      "check": "acceptance:unterminated_source",
+      "check_index": 23,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vs-get-api-runs.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vs-get-api-runs-run-id.scaffold.test.ts"
+      },
+      "check": "acceptance:unterminated_source",
+      "check_index": 24,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vs-get-api-runs-run-id.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vs-get-api-runs-run-id-not-found.scaffold.test.ts"
+      },
+      "check": "acceptance:unterminated_source",
+      "check_index": 25,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vs-get-api-runs-run-id-not-found.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/runs.test.ts"
+      },
+      "check": "acceptance:unterminated_source",
+      "check_index": 26,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/runs.test.ts"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts",
+       "stack": null
+      },
+      "check": "acceptance:additive_containment",
+      "check_index": 27,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "unknown_stack",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-rejects-blank.scaffold.test.ts",
+       "stack": null
+      },
+      "check": "acceptance:additive_containment",
+      "check_index": 28,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-rejects-blank.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "unknown_stack",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-join.scaffold.test.ts",
+       "stack": null
+      },
+      "check": "acceptance:additive_containment",
+      "check_index": 29,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-join.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "unknown_stack",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-join-duplicate.scaffold.test.ts",
+       "stack": null
+      },
+      "check": "acceptance:additive_containment",
+      "check_index": 30,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-join-duplicate.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "unknown_stack",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-leave.scaffold.test.ts",
+       "stack": null
+      },
+      "check": "acceptance:additive_containment",
+      "check_index": 31,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-leave.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "unknown_stack",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vs-get-api-runs.scaffold.test.ts",
+       "stack": null
+      },
+      "check": "acceptance:additive_containment",
+      "check_index": 32,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vs-get-api-runs.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "unknown_stack",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vs-get-api-runs-run-id.scaffold.test.ts",
+       "stack": null
+      },
+      "check": "acceptance:additive_containment",
+      "check_index": 33,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vs-get-api-runs-run-id.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "unknown_stack",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vs-get-api-runs-run-id-not-found.scaffold.test.ts",
+       "stack": null
+      },
+      "check": "acceptance:additive_containment",
+      "check_index": 34,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vs-get-api-runs-run-id-not-found.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "unknown_stack",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/runs.test.ts",
+       "stack": null
+      },
+      "check": "acceptance:additive_containment",
+      "check_index": 35,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/runs.test.ts"
+      },
+      "passed": true,
+      "reason": "unknown_stack",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "check": "tests_pass",
+      "executed": true,
+      "exit_code": 1,
+      "failing_cases": [
+       {
+        "file": "__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts",
+        "line": 12,
+        "message": "expected 500 to be 201 // Object.is equality",
+        "title": "POST /api/runs -> 201 [vc-probe-api-runs]"
+       }
+      ],
+      "failing_tests": [
+       "__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts::POST /api/runs -> 201 [vc-probe-api-runs]"
+      ],
+      "passed": false,
+      "runner": "vitest",
+      "suite_broken": false,
+      "suite_defects": [],
+      "tests_passed": false
+     },
+     {
+      "check": "no_stub_fallback_tests",
+      "inspected": [],
+      "passed": true
+     },
+     {
+      "check": "no_self_mocking_tests",
+      "inspected": [],
+      "passed": true
+     }
+    ],
+    "coverage_ratio": 0.975609756097561,
+    "missing_components": [
+     "tests_failed:exit_1"
+    ],
+    "passed": false,
+    "summary": "Tests failed (exit 1)"
+   }
+  },
+  "kwargs": [
+   {
+    "max_tokens": 12000,
+    "timeout_seconds": 300
+   },
+   {
+    "max_tokens": 12000,
+    "timeout_seconds": 300
+   }
+  ],
+  "log": [
+   "qa_test_handler emission parse: fills=1 duplicate_slots=0 extracted_files=0 expected=['__tests__/runs.test.ts'] scaffold_bound=True",
+   "qa_test_handler self_eval trigger: failing_checks=['expected_artifacts'] missing=['file:__tests__/runs.test.ts'] summary='Missing: file:__tests__/runs.test.ts'",
+   "qa_test_handler self_eval fills: applied=['slot-vc-probe-api-runs-join'] skipped_filled=[] counts={'filled': 2, 'missing': 6}",
+   "qa_test_handler suite: framework=vitest executed=True exit_code=1 tests_passed=False test_files=3 source_files=2 uncollected=[] error=''"
+  ],
+  "outputs": {
+   "artifacts": [
+    {
+     "content": {
+      "len": 1528,
+      "sha": "9bd08226f1cecbc8"
+     },
+     "media_type": "text/typescript",
+     "name": "__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts",
+     "type": "test"
+    },
+    {
+     "content": {
+      "len": 1423,
+      "sha": "c499dc7ebb4d570f"
+     },
+     "media_type": "text/typescript",
+     "name": "__tests__/scaffold/vc-probe-api-runs-rejects-blank.scaffold.test.ts",
+     "type": "test"
+    },
+    {
+     "content": {
+      "len": 2047,
+      "sha": "faf4053b9fcde7cc"
+     },
+     "media_type": "text/typescript",
+     "name": "__tests__/scaffold/vc-probe-api-runs-join.scaffold.test.ts",
+     "type": "test"
+    },
+    {
+     "content": {
+      "len": 2245,
+      "sha": "e2c693ba509b2ac3"
+     },
+     "media_type": "text/typescript",
+     "name": "__tests__/scaffold/vc-probe-api-runs-join-duplicate.scaffold.test.ts",
+     "type": "test"
+    },
+    {
+     "content": {
+      "len": 2599,
+      "sha": "1678fa79437f3c8f"
+     },
+     "media_type": "text/typescript",
+     "name": "__tests__/scaffold/vc-probe-api-runs-leave.scaffold.test.ts",
+     "type": "test"
+    },
+    {
+     "content": {
+      "len": 1562,
+      "sha": "637706116c1e0eac"
+     },
+     "media_type": "text/typescript",
+     "name": "__tests__/scaffold/vs-get-api-runs.scaffold.test.ts",
+     "type": "test"
+    },
+    {
+     "content": {
+      "len": 2037,
+      "sha": "cb71c302d117389a"
+     },
+     "media_type": "text/typescript",
+     "name": "__tests__/scaffold/vs-get-api-runs-run-id.scaffold.test.ts",
+     "type": "test"
+    },
+    {
+     "content": {
+      "len": 1276,
+      "sha": "cce729b8d3584042"
+     },
+     "media_type": "text/typescript",
+     "name": "__tests__/scaffold/vs-get-api-runs-run-id-not-found.scaffold.test.ts",
+     "type": "test"
+    },
+    {
+     "content": {
+      "len": 9011,
+      "sha": "41f2b206eb7f1d29"
+     },
+     "media_type": "text/typescript",
+     "name": "__tests__/runs.test.ts",
+     "type": "test"
+    },
+    {
+     "content": {
+      "len": 186,
+      "sha": "df9fce52c0c1091c"
+     },
+     "media_type": "text/markdown",
+     "name": "test_report.md",
+     "type": "test_report"
+    },
+    {
+     "content": {
+      "len": 2374,
+      "sha": "245478d04f840c4b"
+     },
+     "media_type": "application/json",
+     "name": "fill_merge_evidence.json",
+     "type": "evidence"
+    },
+    {
+     "content": {
+      "len": 13371,
+      "sha": "b16a5a847ea94726"
+     },
+     "media_type": "application/json",
+     "name": "typed_check_evaluation.json",
+     "type": "typed_check_evaluation"
+    }
+   ],
+   "emission_stats": {
+    "artifact_count": 12,
+    "extracted_chars": 43761,
+    "response_chars": 82
+   },
+   "failure_classification": "work_product",
+   "outcome_class": "semantic_failure",
+   "prompt_provenance": {
+    "system_prompt_bundle_hash": "sha256:test"
+   },
+   "role": "qa",
+   "scaffold_evidence": {
+    "additive_containment": [],
+    "additive_test_count": 0,
+    "correlations": [
+     {
+      "criterion_id": "vc-probe-api-runs",
+      "probe_failures": [],
+      "probe_redundant": false,
+      "shell_observations": [
+       {
+        "criterion_id": "vc-probe-api-runs",
+        "detail": "expected 500 to be 201 // Object.is equality",
+        "failure_class": "app_contract",
+        "file": "__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts",
+        "line": 12,
+        "owner": "dev",
+        "route": "dev_repair",
+        "slot_id": "slot-vc-probe-api-runs"
+       }
+      ]
+     }
+    ],
+    "failure_classes": {
+     "app_contract": 1
+    },
+    "fill_dispositions": {
+     "filled": 2,
+     "missing": 6
+    },
+    "generator_version": 8,
+    "observations": [
+     {
+      "criterion_id": "vc-probe-api-runs",
+      "detail": "expected 500 to be 201 // Object.is equality",
+      "failure_class": "app_contract",
+      "file": "__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts",
+      "line": 12,
+      "owner": "dev",
+      "route": "dev_repair",
+      "slot_id": "slot-vc-probe-api-runs"
+     }
+    ],
+    "probe_redundant_findings": 0,
+    "shell_count": 8,
+    "slot_count": 8,
+    "stack": "nextjs_ts",
+    "uncollected_test_files": [],
+    "uncorrelated_fill_failures": 0
+   },
+   "summary": "[qa] Generated 11 test file(s), tests failed (exit code 1)",
+   "test_result": {
+    "executed": true,
+    "exit_code": 1,
+    "source_file_count": 2,
+    "summary": "tests failed (exit code 1, 3 test file(s), 2 source file(s))",
+    "test_file_count": 3,
+    "tests_passed": false
+   },
+   "validation_result": {
+    "checks": [
+     {
+      "check": "expected_artifacts",
+      "expected": [
+       "__tests__/runs.test.ts"
+      ],
+      "missing": [],
+      "passed": true,
+      "present": [
+       "__tests__/runs.test.ts"
+      ]
+     },
+     {
+      "check": "non_stub_files",
+      "passed": true,
+      "stubs_found": []
+     },
+     {
+      "actual": {},
+      "check": "acceptance:declared_imports",
+      "check_index": 0,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "no_package_json_above_file",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {},
+      "check": "acceptance:declared_imports",
+      "check_index": 1,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-rejects-blank.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "no_package_json_above_file",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {},
+      "check": "acceptance:declared_imports",
+      "check_index": 2,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-join.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "no_package_json_above_file",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {},
+      "check": "acceptance:declared_imports",
+      "check_index": 3,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-join-duplicate.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "no_package_json_above_file",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {},
+      "check": "acceptance:declared_imports",
+      "check_index": 4,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-leave.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "no_package_json_above_file",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {},
+      "check": "acceptance:declared_imports",
+      "check_index": 5,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vs-get-api-runs.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "no_package_json_above_file",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {},
+      "check": "acceptance:declared_imports",
+      "check_index": 6,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vs-get-api-runs-run-id.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "no_package_json_above_file",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {},
+      "check": "acceptance:declared_imports",
+      "check_index": 7,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vs-get-api-runs-run-id-not-found.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "no_package_json_above_file",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {},
+      "check": "acceptance:declared_imports",
+      "check_index": 8,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/runs.test.ts"
+      },
+      "passed": true,
+      "reason": "no_package_json_above_file",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "missing_module": "tsc"
+      },
+      "check": "acceptance:undefined_names",
+      "check_index": 9,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "missing_tooling",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "missing_module": "tsc"
+      },
+      "check": "acceptance:undefined_names",
+      "check_index": 10,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-rejects-blank.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "missing_tooling",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "missing_module": "tsc"
+      },
+      "check": "acceptance:undefined_names",
+      "check_index": 11,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-join.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "missing_tooling",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "missing_module": "tsc"
+      },
+      "check": "acceptance:undefined_names",
+      "check_index": 12,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-join-duplicate.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "missing_tooling",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "missing_module": "tsc"
+      },
+      "check": "acceptance:undefined_names",
+      "check_index": 13,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-leave.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "missing_tooling",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "missing_module": "tsc"
+      },
+      "check": "acceptance:undefined_names",
+      "check_index": 14,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vs-get-api-runs.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "missing_tooling",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "missing_module": "tsc"
+      },
+      "check": "acceptance:undefined_names",
+      "check_index": 15,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vs-get-api-runs-run-id.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "missing_tooling",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "missing_module": "tsc"
+      },
+      "check": "acceptance:undefined_names",
+      "check_index": 16,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vs-get-api-runs-run-id-not-found.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "missing_tooling",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "missing_module": "tsc"
+      },
+      "check": "acceptance:undefined_names",
+      "check_index": 17,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/runs.test.ts"
+      },
+      "passed": true,
+      "reason": "missing_tooling",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts"
+      },
+      "check": "acceptance:unterminated_source",
+      "check_index": 18,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-rejects-blank.scaffold.test.ts"
+      },
+      "check": "acceptance:unterminated_source",
+      "check_index": 19,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-rejects-blank.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-join.scaffold.test.ts"
+      },
+      "check": "acceptance:unterminated_source",
+      "check_index": 20,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-join.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-join-duplicate.scaffold.test.ts"
+      },
+      "check": "acceptance:unterminated_source",
+      "check_index": 21,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-join-duplicate.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-leave.scaffold.test.ts"
+      },
+      "check": "acceptance:unterminated_source",
+      "check_index": 22,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-leave.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vs-get-api-runs.scaffold.test.ts"
+      },
+      "check": "acceptance:unterminated_source",
+      "check_index": 23,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vs-get-api-runs.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vs-get-api-runs-run-id.scaffold.test.ts"
+      },
+      "check": "acceptance:unterminated_source",
+      "check_index": 24,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vs-get-api-runs-run-id.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vs-get-api-runs-run-id-not-found.scaffold.test.ts"
+      },
+      "check": "acceptance:unterminated_source",
+      "check_index": 25,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vs-get-api-runs-run-id-not-found.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/runs.test.ts"
+      },
+      "check": "acceptance:unterminated_source",
+      "check_index": 26,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/runs.test.ts"
+      },
+      "passed": true,
+      "reason": "ok",
+      "severity": "error",
+      "status": "passed",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts",
+       "stack": null
+      },
+      "check": "acceptance:additive_containment",
+      "check_index": 27,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "unknown_stack",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-rejects-blank.scaffold.test.ts",
+       "stack": null
+      },
+      "check": "acceptance:additive_containment",
+      "check_index": 28,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-rejects-blank.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "unknown_stack",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-join.scaffold.test.ts",
+       "stack": null
+      },
+      "check": "acceptance:additive_containment",
+      "check_index": 29,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-join.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "unknown_stack",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-join-duplicate.scaffold.test.ts",
+       "stack": null
+      },
+      "check": "acceptance:additive_containment",
+      "check_index": 30,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-join-duplicate.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "unknown_stack",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-leave.scaffold.test.ts",
+       "stack": null
+      },
+      "check": "acceptance:additive_containment",
+      "check_index": 31,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vc-probe-api-runs-leave.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "unknown_stack",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vs-get-api-runs.scaffold.test.ts",
+       "stack": null
+      },
+      "check": "acceptance:additive_containment",
+      "check_index": 32,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vs-get-api-runs.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "unknown_stack",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vs-get-api-runs-run-id.scaffold.test.ts",
+       "stack": null
+      },
+      "check": "acceptance:additive_containment",
+      "check_index": 33,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vs-get-api-runs-run-id.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "unknown_stack",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/scaffold/vs-get-api-runs-run-id-not-found.scaffold.test.ts",
+       "stack": null
+      },
+      "check": "acceptance:additive_containment",
+      "check_index": 34,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/scaffold/vs-get-api-runs-run-id-not-found.scaffold.test.ts"
+      },
+      "passed": true,
+      "reason": "unknown_stack",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "actual": {
+       "file": "__tests__/runs.test.ts",
+       "stack": null
+      },
+      "check": "acceptance:additive_containment",
+      "check_index": 35,
+      "criterion_id": null,
+      "description": "",
+      "evidence_gap": false,
+      "params": {
+       "file": "__tests__/runs.test.ts"
+      },
+      "passed": true,
+      "reason": "unknown_stack",
+      "severity": "error",
+      "status": "skipped",
+      "task_index": null
+     },
+     {
+      "check": "tests_pass",
+      "executed": true,
+      "exit_code": 1,
+      "failing_cases": [
+       {
+        "file": "__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts",
+        "line": 12,
+        "message": "expected 500 to be 201 // Object.is equality",
+        "title": "POST /api/runs -> 201 [vc-probe-api-runs]"
+       }
+      ],
+      "failing_tests": [
+       "__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts::POST /api/runs -> 201 [vc-probe-api-runs]"
+      ],
+      "passed": false,
+      "runner": "vitest",
+      "suite_broken": false,
+      "suite_defects": [],
+      "tests_passed": false
+     },
+     {
+      "check": "no_stub_fallback_tests",
+      "inspected": [],
+      "passed": true
+     },
+     {
+      "check": "no_self_mocking_tests",
+      "inspected": [],
+      "passed": true
+     }
+    ],
+    "coverage_ratio": 0.975609756097561,
+    "missing_components": [
+     "tests_failed:exit_1"
+    ],
+    "passed": false,
+    "summary": "Tests failed (exit 1)"
+   }
+  },
+  "outputs_keys": [
+   "summary",
+   "role",
+   "artifacts",
+   "emission_stats",
+   "test_result",
+   "prompt_provenance",
+   "outcome_class",
+   "failure_classification",
+   "validation_result",
+   "scaffold_evidence"
+  ],
+  "success": false,
+  "suite_ran_on": [
+   [
+    {
+     "path": "__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts",
+     "sha": "9bd08226f1cecbc8"
+    },
+    {
+     "path": "__tests__/scaffold/vc-probe-api-runs-rejects-blank.scaffold.test.ts",
+     "sha": "c499dc7ebb4d570f"
+    },
+    {
+     "path": "__tests__/scaffold/vc-probe-api-runs-join.scaffold.test.ts",
+     "sha": "faf4053b9fcde7cc"
+    },
+    {
+     "path": "__tests__/scaffold/vc-probe-api-runs-join-duplicate.scaffold.test.ts",
+     "sha": "e2c693ba509b2ac3"
+    },
+    {
+     "path": "__tests__/scaffold/vc-probe-api-runs-leave.scaffold.test.ts",
+     "sha": "1678fa79437f3c8f"
+    },
+    {
+     "path": "__tests__/scaffold/vs-get-api-runs.scaffold.test.ts",
+     "sha": "637706116c1e0eac"
+    },
+    {
+     "path": "__tests__/scaffold/vs-get-api-runs-run-id.scaffold.test.ts",
+     "sha": "cb71c302d117389a"
+    },
+    {
+     "path": "__tests__/scaffold/vs-get-api-runs-run-id-not-found.scaffold.test.ts",
+     "sha": "cce729b8d3584042"
+    },
+    {
+     "path": "__tests__/runs.test.ts",
+     "sha": "41f2b206eb7f1d29"
+    }
+   ]
+  ],
+  "transcripts": [
+   [
+    [
+     "system",
+     {
+      "len": 13,
+      "sha": "561257c019e5e351"
+     }
+    ],
+    [
+     "user",
+     {
+      "len": 313,
+      "sha": "7cbf373fd3013002"
+     }
+    ]
+   ],
+   [
+    [
+     "system",
+     {
+      "len": 13,
+      "sha": "561257c019e5e351"
+     }
+    ],
+    [
+     "user",
+     {
+      "len": 313,
+      "sha": "7cbf373fd3013002"
+     }
+    ],
+    [
+     "assistant",
+     {
+      "len": 82,
+      "sha": "371572792dec0b10"
+     }
+    ],
+    [
+     "user",
+     {
+      "len": 920,
+      "sha": "cce03b4470e7ce6c"
+     }
+    ]
+   ]
+  ]
+ },
+ "qa_fill_validation_off": {
+  "error": null,
+  "evidence_metadata": {
+   "fill_merge": {
+    "additive_containment": [],
+    "assertion_strength": {
+     "additive_files": [],
+     "any_fill_touches_the_store": false,
+     "body_chars": 77,
+     "filled_slots": 2,
+     "language_prefixed_fences": [],
+     "not_applicable_slots": 0,
+     "store_slots": [],
+     "store_symbols_used": []
+    },
+    "counts": {
+     "filled": 2,
+     "missing": 6
+    },
+    "dispositions": [
+     {
+      "detail": "",
+      "disposition": "filled",
+      "slot_id": "slot-vc-probe-api-runs"
+     },
+     {
+      "detail": "no fill and no disposition",
+      "disposition": "missing",
+      "slot_id": "slot-vc-probe-api-runs-rejects-blank"
+     },
+     {
+      "detail": "",
+      "disposition": "filled",
+      "slot_id": "slot-vc-probe-api-runs-join"
+     },
+     {
+      "detail": "no fill and no disposition",
+      "disposition": "missing",
+      "slot_id": "slot-vc-probe-api-runs-join-duplicate"
+     },
+     {
+      "detail": "no fill and no disposition",
+      "disposition": "missing",
+      "slot_id": "slot-vc-probe-api-runs-leave"
+     },
+     {
+      "detail": "no fill and no disposition",
+      "disposition": "missing",
+      "slot_id": "slot-vs-get-api-runs"
+     },
+     {
+      "detail": "no fill and no disposition",
+      "disposition": "missing",
+      "slot_id": "slot-vs-get-api-runs-run-id"
+     },
+     {
+      "detail": "no fill and no disposition",
+      "disposition": "missing",
+      "slot_id": "slot-vs-get-api-runs-run-id-not-found"
+     }
+    ],
+    "dropped_shell_rewrites": [],
+    "misaddressed": []
+   }
+  },
+  "kwargs": [
+   {
+    "max_tokens": 12000,
+    "timeout_seconds": 300
+   }
+  ],
+  "log": [
+   "qa_test_handler emission parse: fills=2 duplicate_slots=0 extracted_files=0 expected=[] scaffold_bound=True",
+   "qa_test_handler suite: framework=vitest executed=True exit_code=0 tests_passed=True test_files=3 source_files=2 uncollected=[] error=''"
+  ],
+  "outputs": {
+   "artifacts": [
+    {
+     "content": {
+      "len": 1528,
+      "sha": "9bd08226f1cecbc8"
+     },
+     "media_type": "text/typescript",
+     "name": "__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts",
+     "type": "test"
+    },
+    {
+     "content": {
+      "len": 1423,
+      "sha": "c499dc7ebb4d570f"
+     },
+     "media_type": "text/typescript",
+     "name": "__tests__/scaffold/vc-probe-api-runs-rejects-blank.scaffold.test.ts",
+     "type": "test"
+    },
+    {
+     "content": {
+      "len": 2047,
+      "sha": "faf4053b9fcde7cc"
+     },
+     "media_type": "text/typescript",
+     "name": "__tests__/scaffold/vc-probe-api-runs-join.scaffold.test.ts",
+     "type": "test"
+    },
+    {
+     "content": {
+      "len": 2245,
+      "sha": "e2c693ba509b2ac3"
+     },
+     "media_type": "text/typescript",
+     "name": "__tests__/scaffold/vc-probe-api-runs-join-duplicate.scaffold.test.ts",
+     "type": "test"
+    },
+    {
+     "content": {
+      "len": 2599,
+      "sha": "1678fa79437f3c8f"
+     },
+     "media_type": "text/typescript",
+     "name": "__tests__/scaffold/vc-probe-api-runs-leave.scaffold.test.ts",
+     "type": "test"
+    },
+    {
+     "content": {
+      "len": 1562,
+      "sha": "637706116c1e0eac"
+     },
+     "media_type": "text/typescript",
+     "name": "__tests__/scaffold/vs-get-api-runs.scaffold.test.ts",
+     "type": "test"
+    },
+    {
+     "content": {
+      "len": 2037,
+      "sha": "cb71c302d117389a"
+     },
+     "media_type": "text/typescript",
+     "name": "__tests__/scaffold/vs-get-api-runs-run-id.scaffold.test.ts",
+     "type": "test"
+    },
+    {
+     "content": {
+      "len": 1276,
+      "sha": "cce729b8d3584042"
+     },
+     "media_type": "text/typescript",
+     "name": "__tests__/scaffold/vs-get-api-runs-run-id-not-found.scaffold.test.ts",
+     "type": "test"
+    },
+    {
+     "content": {
+      "len": 177,
+      "sha": "4af863f341a6f88a"
+     },
+     "media_type": "text/markdown",
+     "name": "test_report.md",
+     "type": "test_report"
+    },
+    {
+     "content": {
+      "len": 1686,
+      "sha": "e71063113ddfc1c8"
+     },
+     "media_type": "application/json",
+     "name": "fill_merge_evidence.json",
+     "type": "evidence"
+    }
+   ],
+   "emission_stats": {
+    "artifact_count": 10,
+    "extracted_chars": 16580,
+    "response_chars": 154
+   },
+   "outcome_class": "success",
+   "prompt_provenance": {
+    "system_prompt_bundle_hash": "sha256:test"
+   },
+   "role": "qa",
+   "scaffold_evidence": {
+    "additive_containment": [],
+    "additive_test_count": 0,
+    "correlations": [],
+    "failure_classes": {},
+    "fill_dispositions": {
+     "filled": 2,
+     "missing": 6
+    },
+    "generator_version": 8,
+    "observations": [],
+    "probe_redundant_findings": 0,
+    "shell_count": 8,
+    "slot_count": 8,
+    "stack": "nextjs_ts",
+    "uncollected_test_files": [],
+    "uncorrelated_fill_failures": 0
+   },
+   "summary": "[qa] Generated 9 test file(s), all tests passed",
+   "test_result": {
+    "executed": true,
+    "exit_code": 0,
+    "source_file_count": 2,
+    "summary": "all tests passed (3 test file(s), 2 source file(s))",
+    "test_file_count": 3,
+    "tests_passed": true
+   }
+  },
+  "outputs_keys": [
+   "summary",
+   "role",
+   "artifacts",
+   "emission_stats",
+   "test_result",
+   "prompt_provenance",
+   "outcome_class",
+   "scaffold_evidence"
+  ],
+  "success": true,
+  "suite_ran_on": [
+   [
+    {
+     "path": "__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts",
+     "sha": "9bd08226f1cecbc8"
+    },
+    {
+     "path": "__tests__/scaffold/vc-probe-api-runs-rejects-blank.scaffold.test.ts",
+     "sha": "c499dc7ebb4d570f"
+    },
+    {
+     "path": "__tests__/scaffold/vc-probe-api-runs-join.scaffold.test.ts",
+     "sha": "faf4053b9fcde7cc"
+    },
+    {
+     "path": "__tests__/scaffold/vc-probe-api-runs-join-duplicate.scaffold.test.ts",
+     "sha": "e2c693ba509b2ac3"
+    },
+    {
+     "path": "__tests__/scaffold/vc-probe-api-runs-leave.scaffold.test.ts",
+     "sha": "1678fa79437f3c8f"
+    },
+    {
+     "path": "__tests__/scaffold/vs-get-api-runs.scaffold.test.ts",
+     "sha": "637706116c1e0eac"
+    },
+    {
+     "path": "__tests__/scaffold/vs-get-api-runs-run-id.scaffold.test.ts",
+     "sha": "cb71c302d117389a"
+    },
+    {
+     "path": "__tests__/scaffold/vs-get-api-runs-run-id-not-found.scaffold.test.ts",
+     "sha": "cce729b8d3584042"
+    }
+   ]
+  ],
+  "transcripts": [
+   [
+    [
+     "system",
+     {
+      "len": 13,
+      "sha": "561257c019e5e351"
+     }
+    ],
+    [
+     "user",
+     {
+      "len": 313,
+      "sha": "d56241186571880b"
+     }
+    ]
+   ]
+  ]
+ }
+}
