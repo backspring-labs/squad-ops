@@ -1,15 +1,17 @@
 ---
 sip_uid: '17883224960412001'
-status: proposed
+status: accepted
 title: Scoped Code Revision
 author: SquadOps Architecture
 created_at: '2026-09-06T00:00:00Z'
+sip_number: 107
+updated_at: '2026-09-13T09:54:01.036245Z'
 ---
-# SIP: Scoped Code Revision
+# SIP-0107: Scoped Code Revision
 
 ## Status
 
-Draft (proposed). **Revision 4.**
+**Accepted** 2026-09-13, at design review with required revision. **Revision 4.**
 
 | Rev | Date | What changed |
 |---|---|---|

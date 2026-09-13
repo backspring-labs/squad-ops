@@ -1,4 +1,4 @@
-last_assigned: 106
+last_assigned: 107
 sips:
 - sip_number: 3
   sip_uid: '17642554775787694'
@@ -955,6 +955,15 @@ sips:
   approver: jladd
   created_at: '2026-08-08T00:00:00Z'
   updated_at: '2026-09-08T08:25:52.842841Z'
+- sip_uid: '17883224960412001'
+  sip_number: 107
+  title: Scoped Code Revision
+  path: sips/accepted/SIP-0107-Scoped-Code-Revision.md
+  status: accepted
+  author: SquadOps Architecture
+  approver: jladd
+  created_at: '2026-09-06T00:00:00Z'
+  updated_at: '2026-09-13T09:54:01.067677Z'
 - sip_uid: '17883224960370906'
   sip_number: null
   title: QA-First Test Strategy for 1-Hour SquadOps Cycles (group_run Focus)
@@ -1164,13 +1173,4 @@ sips:
   author: Unknown
   approver: null
   created_at: null
-  updated_at: null
-- sip_uid: '17883224960412001'
-  sip_number: null
-  title: Scoped Code Revision
-  path: sips/proposed/SIP-Scoped-Code-Revision.md
-  status: proposed
-  author: SquadOps Architecture
-  approver: null
-  created_at: '2026-09-06T00:00:00Z'
   updated_at: null
