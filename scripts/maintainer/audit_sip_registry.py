@@ -87,6 +87,32 @@ def extract_metadata_from_file(file_path: Path) -> dict[str, Any] | None:
     return None
 
 
+def frontmatter_parse_error(file_path: Path) -> str | None:
+    """The YAML error of a frontmatter block that is present but does not parse, else None.
+
+    ``extract_metadata_from_file`` returns None both for a file with no frontmatter (a
+    hand-authored draft, legitimate since #770) and for a block YAML cannot read, and every
+    check below skips a file it gets None for. So a broken block was invisible: #1144's
+    cleanup replaced the first line of SIP-0020's two-line ``created_at`` and left the
+    continuation behind, and the audit that cleanup was answering stayed green on a file it
+    could no longer read. This tells the two cases apart.
+    """
+    try:
+        content = file_path.read_text(encoding="utf-8")
+    except OSError as e:
+        return f"unreadable: {e}"
+    match = re.match(r"^---\s*\n(.*?)\n---\s*\n", content, re.DOTALL)
+    if not match:
+        return None
+    try:
+        parsed = yaml.safe_load(match.group(1))
+    except yaml.YAMLError as e:
+        return str(e).splitlines()[0]
+    if not isinstance(parsed, dict):
+        return f"frontmatter is a {type(parsed).__name__}, not a mapping"
+    return None
+
+
 def is_valid_iso_timestamp(value: Any) -> bool:
     """ISO 8601 at day or second precision — as a string, or as the ``date``/``datetime``
     object YAML parses an unquoted value into.
@@ -368,6 +394,22 @@ def audit_registry() -> dict[str, Any]:
                         "message": f"File not in registry and has no metadata: {filename}",
                     }
                 )
+
+    # Check 7b: A frontmatter block that is present but unparseable. Every check above reads
+    # such a file as having no metadata and skips it silently.
+    for filename, file_path in sorted(all_files.items()):
+        error = frontmatter_parse_error(file_path)
+        if error:
+            issues["data_quality"].append(
+                {
+                    "type": "unparseable_frontmatter",
+                    "file": str(file_path.relative_to(REPO_ROOT)),
+                    "message": (
+                        f"Frontmatter present but not valid YAML, so every other check skips "
+                        f"this file: {filename} ({error})"
+                    ),
+                }
+            )
 
     # Check 8: Missing SIP numbers (informational only)
     last_assigned = registry.get("last_assigned", 0)
