@@ -1,0 +1,46 @@
+# Path boundaries for the Nostromo maintainer crew.
+#
+# Branch rulesets guarantee that only one identity can write to `nostromo/<role>/**`.
+# They cannot constrain WHICH paths that identity touches, because GitHub refuses push
+# rules on public source repositories (Nostromo DEV-006). This file is the substitute,
+# enforced by scripts/dev/check_nostromo_crew_pr.py as a required check.
+#
+# Pattern semantics, deliberately small so a reader can predict them:
+#   "dir/**"  matches anything at or below dir/
+#   anything else is an fnmatch pattern against the repository-relative path
+#
+# A role declares EITHER `allowed` (an allowlist: nothing else may be touched)
+# OR `forbidden` (a denylist: anything else may be touched). Never both.
+version: 1
+
+# Applies to every crew role. A guard that the guarded party can edit is not a guard.
+universal_forbidden:
+  - ".github/nostromo-crew-boundaries.yml"
+  - ".github/workflows/nostromo-crew-checks.yml"
+  - "scripts/dev/check_nostromo_crew_pr.py"
+
+roles:
+  # Warrant Officer: design artifacts and plans. Not implementation.
+  ripley:
+    forbidden:
+      - "src/**"
+      - "adapters/**"
+      - "tests/**"
+
+  # Primary engineer: implementation. Not accepted design — a divergence from an
+  # accepted SIP returns to Ripley to amend, which NOSTROMO-0002 §6 already requires.
+  parker:
+    forbidden:
+      - "sips/**"
+
+  # Supporting engineer: bounded implementation against a task card.
+  brett:
+    forbidden:
+      - "sips/**"
+      - "docs/architecture/**"
+
+  # Science Officer: proof only. The author of a proof must not be able to modify
+  # the thing proved, so this is an allowlist rather than a denylist.
+  ash:
+    allowed:
+      - "tests/**"
