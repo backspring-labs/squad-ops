@@ -330,9 +330,8 @@ whole-file response without fallback authority **accepted and recorded, not refu
 and no legacy mode: only the refusal waits. That keeps a verdict-semantics change out of the
 measured window (the 2026-08-15 ruling: detection reporting-only, promotion a separate call),
 keeps the refusal from being a second explanation for any red on deploy B, and turns 1.8.1 into
-a predicted
-change: the set's unauthorized whole-file count per cell says, before anything ships, how many
-repairs the refusal would have turned away. **What 1.8.0 therefore claims:** scoped revision
+a predicted change: the set's unauthorized whole-file count per cell says, before anything
+ships, how many repairs the refusal would have turned away. **What 1.8.0 therefore claims:** scoped revision
 requested and measured, not enforced; SIP-0107 stays `accepted` at the cut with step 7 named as
 1.8.1's.
 
