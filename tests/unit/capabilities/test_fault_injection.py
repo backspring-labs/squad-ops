@@ -302,6 +302,56 @@ class TestTheFaultReachesTheHandlerTheLiveCycleCalls:
         assert "backend/tests/test_runs.py" not in names
 
 
+class TestTheBuilderFaultsSplitAtTheEmissionRetry:
+    """#1506, entered at ``BuilderAssembleHandler.handle`` — the call the executor makes on the
+    builder's emission retry, carrying #566's marker (register entry 28). Since #1372 that
+    retry recovers a contentless first attempt, so the first-attempt fault can watch only R1.
+    F1 needs the retry faulted too, or the builder never reaches correction.
+
+    Bug caught: an F1 variant whose scope rule reads the retry as a first attempt's re-take —
+    the retry runs clean, the builder succeeds, and the F1 diagnostic reads NO forever, which
+    is exactly how 1.7.5's diagnostic went unreachable."""
+
+    _GOOD = "```dockerfile:Dockerfile\nFROM python:3.12-slim\nCOPY . .\n```\n"
+    _RETRY = {"emission_retry_feedback": {"signature": "contentless"}, "prior_attempts": 1}
+
+    async def _retry(self, fault):
+        from unittest.mock import AsyncMock, MagicMock
+
+        from squadops.capabilities.handlers.cycle_tasks import BuilderAssembleHandler
+        from squadops.llm.models import ChatMessage
+
+        ctx = MagicMock()
+        ctx.task_id = "task-run_x-m005-builder.assemble"
+        chat = AsyncMock(return_value=ChatMessage(role="assistant", content=self._GOOD))
+        ctx.ports.llm.chat = chat
+        ctx.ports.llm.chat_stream_with_usage = chat
+        ctx.ports.llm.default_model = "test-model"
+        assembled = MagicMock()
+        assembled.content = "You are a builder agent."
+        ctx.ports.prompt_service.get_system_prompt = MagicMock(return_value=assembled)
+        ctx.ports.request_renderer = None
+        ctx.ports.llm_observability = None
+        ctx.correlation_context = None
+        inputs = {
+            "prd": "a prd",
+            "resolved_config": {"build_profile": "python_cli_builder", DECLARATION_KEY: [fault]},
+            "artifact_contents": {"my_app/main.py": "def main():\n    pass\n"},
+            **self._RETRY,
+        }
+        return await BuilderAssembleHandler().handle(ctx, inputs)
+
+    async def test_the_all_attempts_variant_faults_the_retry_so_the_builder_fails_on(self):
+        result = await self._retry("builder_emission_contentless_all_attempts")
+        assert result.success is False
+        assert "emission_failure" in result.outputs
+
+    async def test_the_first_attempt_fault_lets_the_retry_recover(self):
+        result = await self._retry("builder_emission_contentless")
+        assert "emission_failure" not in (result.outputs or {})
+        assert "Dockerfile" in [a["name"] for a in result.outputs["artifacts"]]
+
+
 class TestTheDeclarationSurvivesTheWireItArrivesOn:
     """#1298: `execution_overrides` reaches a cycle through `cycles create --set k=v`, whose
     values are strings with no coercion. A declaration of two faults has no other way to
@@ -682,11 +732,12 @@ class TestTheScopeOfOnce:
         )
         assert out == _SUITE
 
-    def test_every_fault_declares_its_scope_and_only_the_absent_suite_widens_it(self):
+    def test_every_fault_declares_its_scope_and_only_the_named_ones_widen_it(self):
         """Scope is a declaration read from the fault, so a record can say which attempts
-        a diagnostic faulted; widening is deliberate and named."""
+        a diagnostic faulted; widening is deliberate and named — the absent suite (#1310) and
+        the builder's F1 variant (#1506)."""
         widened = {n for n, f in FAULTS.items() if f.scope is FaultScope.ALL_EMISSION_ATTEMPTS}
-        assert widened == {"qa_suite_absent"}
+        assert widened == {"qa_suite_absent", "builder_emission_contentless_all_attempts"}
 
     def test_the_application_log_names_the_scope(self, caplog):
         with caplog.at_level("WARNING"):

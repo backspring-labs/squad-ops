@@ -280,16 +280,32 @@ FAULTS: dict[str, Fault] = {
         exercises="L4 (#1273): a prose-only repair is refunded rather than verified",
     ),
     # 1.7.4 plan §3.1: the two void counted rolls in two lines (#1318, #1364) were reached
-    # by chance; this makes the shape exercisable. First attempt only — the recovery under
-    # test is what the loop composes and retries from the empty attempt, not the builder
-    # exhausting its retries.
+    # by chance; this makes the shape exercisable. #1506 split it in two, because since #1372
+    # gave the builder an aimed retry one fault cannot reach both seams: the retry recovers
+    # attempt 2 before the task ever fails into correction. This one is R1's — first attempt
+    # only, so the recovery under test is the retry that carries the fact.
     "builder_emission_contentless": Fault(
         task=TaskType.BUILDER_ASSEMBLE,
         transform=_strip_fences,
         found_in="#1364 — 1.7.3 counted roll 1 (cyc_af7dd4ad95b0), void: a 160-token first "
         "emission with no fence",
-        exercises="F1 (#1374): no false corrected result is composed from a contentless "
-        "builder attempt; R1 (#1372): its retry carries the emission-shape fact",
+        exercises="R1 (#1372): the contentless builder attempt is retried with its "
+        "emission-shape fact, and the retry's emission is accepted",
+    ),
+    # #1506: F1's — the same shape on every emission attempt, so the builder exhausts its
+    # retries and fails into correction, and the accepted patch's framework rows are composed
+    # from the patched set (#1374). The 1.7.5 diagnostic could not reach this seam on any deploy
+    # carrying #1372 (plan §3.9a, record §4); the scope #1310 added for `qa_suite_absent` is
+    # exactly what it lacked.
+    "builder_emission_contentless_all_attempts": Fault(
+        task=TaskType.BUILDER_ASSEMBLE,
+        transform=_strip_fences,
+        found_in="#1506 — the 1.7.5 contentless-builder diagnostic: R1 reached, F1 unreachable "
+        "since #1372's retry recovers the builder before correction",
+        exercises="F1 (#1374): a builder attempt contentless through its emission retries fails "
+        "into correction, and the accepted patch's framework rows are re-derived from the "
+        "patched set, never composed from the contentless attempt",
+        scope=FaultScope.ALL_EMISSION_ATTEMPTS,
     ),
     # 1.7.4 plan §3.1: A1's exercise. The correction task id carries the round as its
     # attempt index (``corr-<run>-00-data.analyze_failure``), so FIRST_ATTEMPT is round 0's

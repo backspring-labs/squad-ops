@@ -1676,42 +1676,119 @@ class TestTheNewFaultsAreReadBySeams:
     )
     _BUILDER_REFUSED = "patch_verification task=task-run_x-m005-builder.assemble status=failed reason=required_files checks=3"
 
-    def test_the_builder_seam_is_the_builders_own_verified_repair(self, driver):
-        """A correction round on some OTHER task, or a refused builder repair, is not the
-        loop recovering the contentless attempt."""
-        out = driver.seam_readouts(
-            ("builder_emission_contentless",),
-            self._rec(correction_rounds=1, patch_verifications=[self._BUILDER_PASSED]),
-        )["builder_emission_contentless"]
-        assert out["reached"] is True
-        assert out["evidence"]["builder_patch_verifications"] == [self._BUILDER_PASSED]
-        qa_only = "patch_verification task=task-run_x-m006-qa.test status=passed reason= checks=2"
-        for texture in (
-            dict(correction_rounds=1, patch_verifications=[qa_only]),
-            dict(correction_rounds=1, patch_verifications=[self._BUILDER_REFUSED]),
-            dict(correction_rounds=0, patch_verifications=[self._BUILDER_PASSED]),
-        ):
-            rec = self._rec(**texture)
-            assert (
-                driver.seam_readouts(("builder_emission_contentless",), rec)[
-                    "builder_emission_contentless"
-                ]["reached"]
-                is False
-            )
+    _BUILDER_RETRY_1 = (
+        "Retryable failure for task-run_x-m005-builder.assemble (attempt 1), retrying — "
+        "signature=contentless response_chars=160 completion_tokens=41 completion_cap=8192"
+    )
+    _BUILDER_RETRY_2 = _BUILDER_RETRY_1.replace("(attempt 1)", "(attempt 2)")
+    _WITH_FACT = (
+        "emission retry feedback appended for builder_assemble_handler: signature=contentless "
+        "appendix_chars=612 expected_files=1"
+    )
+    _REDERIVED = (
+        "patch task=task-run_x-m005-builder.assemble re-derived required_files on the patched "
+        "set: passed=True required=Dockerfile missing=-"
+    )
 
-    def test_the_builder_evidence_carries_the_rows_and_the_retry_facts(self, driver):
-        rec = self._rec(
-            correction_rounds=1,
-            patch_verifications=[self._BUILDER_PASSED],
-            emission_retries=["Retryable failure for task-run_x-m005-builder.assemble (attempt 1)"],
-            retried_with_fact=[],
-            typed_checks={"by_check": {"required_files": {"passed": {"executed": 1}}}},
-        )
-        ev = driver.seam_readouts(("builder_emission_contentless",), rec)[
+    def _r1(self, driver, rec):
+        return driver.seam_readouts(("builder_emission_contentless",), rec)[
             "builder_emission_contentless"
-        ]["evidence"]
+        ]
+
+    def _f1(self, driver, rec):
+        return driver.seam_readouts(("builder_emission_contentless_all_attempts",), rec)[
+            "builder_emission_contentless_all_attempts"
+        ]
+
+    def test_r1_is_the_builders_retry_carrying_its_fact_and_holding(self, driver):
+        """#1506: the first-attempt fault's seam is the retry, which recovers before correction —
+        so R1 is read from the retry, never from a correction round it can no longer reach."""
+        out = self._r1(
+            driver,
+            self._rec(
+                emission_retries=[self._BUILDER_RETRY_1], retried_with_fact=[self._WITH_FACT]
+            ),
+        )
+        assert out["reached"] is True
+        assert out["evidence"]["retry_attempts"] == [1]
+        assert out["evidence"]["retried_with_fact"] == [self._WITH_FACT]
+
+    @pytest.mark.parametrize(
+        "texture",
+        [
+            # a blind retry: aimed, but the handler rendered no fact
+            dict(
+                emission_retries=[_BUILDER_RETRY_1],
+                retried_blind=[
+                    "emission retry feedback NOT appended for builder_assemble_handler "
+                    "(no request_renderer)"
+                ],
+            ),
+            # the retry carried the fact and failed again
+            dict(
+                emission_retries=[_BUILDER_RETRY_1, _BUILDER_RETRY_2],
+                retried_with_fact=[_WITH_FACT, _WITH_FACT],
+            ),
+            # the builder ended in correction after all
+            dict(
+                emission_retries=[_BUILDER_RETRY_1],
+                retried_with_fact=[_WITH_FACT],
+                patch_verifications=[_BUILDER_PASSED],
+            ),
+            # a fact rendered for another handler's retry, not the builder's
+            dict(
+                emission_retries=[_BUILDER_RETRY_1],
+                retried_with_fact=[
+                    _WITH_FACT.replace("builder_assemble_handler", "qa_test_handler")
+                ],
+            ),
+            # no builder retry at all
+            dict(retried_with_fact=[_WITH_FACT]),
+        ],
+    )
+    def test_r1_is_not_reached_by_a_retry_that_did_not_carry_its_fact_or_did_not_hold(
+        self, driver, texture
+    ):
+        assert self._r1(driver, self._rec(**texture))["reached"] is False
+
+    def test_f1_is_the_builders_accepted_patch_rederiving_its_rows(self, driver):
+        """#1506: the all-attempts fault exhausts the retries, so the builder fails into
+        correction and the accepted patch's rows are composed from the patched set (#1374)."""
+        out = self._f1(
+            driver,
+            self._rec(
+                correction_rounds=1,
+                patch_verifications=[self._BUILDER_PASSED],
+                framework_rows_rederived=[self._REDERIVED],
+                emission_retries=[self._BUILDER_RETRY_1, self._BUILDER_RETRY_2],
+                typed_checks={"by_check": {"required_files": {"passed": {"executed": 1}}}},
+            ),
+        )
+        assert out["reached"] is True
+        ev = out["evidence"]
+        assert ev["framework_rows_rederived"] == [self._REDERIVED]
+        assert ev["builder_patch_verifications"] == [self._BUILDER_PASSED]
+        assert ev["builder_emission_retries"] == [self._BUILDER_RETRY_1, self._BUILDER_RETRY_2]
         assert ev["required_files_rows"] == {"passed": {"executed": 1}}
-        assert len(ev["emission_retries"]) == 1 and ev["retried_with_fact"] == []
+
+    @pytest.mark.parametrize(
+        "texture",
+        [
+            # a refused builder repair derives no rows
+            dict(correction_rounds=1, patch_verifications=[_BUILDER_REFUSED]),
+            # rows re-derived for another task's patch, not the builder's
+            dict(
+                correction_rounds=1,
+                framework_rows_rederived=[_REDERIVED.replace("builder.assemble", "qa.test")],
+            ),
+            # no correction round on the record
+            dict(correction_rounds=0, framework_rows_rederived=[_REDERIVED]),
+        ],
+    )
+    def test_f1_is_not_reached_without_the_builders_rows_rederived_in_correction(
+        self, driver, texture
+    ):
+        assert self._f1(driver, self._rec(**texture))["reached"] is False
 
     def test_the_analyzer_seam_is_the_decision_and_an_inherited_claim_is_named(self, driver):
         held = self._rec(
@@ -1863,8 +1940,8 @@ class TestF1HasAProducerBeforeRollOne:
                 "framework_rows_rederived": [self._LINE[self._LINE.index("patch task=") :]],
             },
         }
-        ev = driver.seam_readouts(("builder_emission_contentless",), rec)[
-            "builder_emission_contentless"
+        ev = driver.seam_readouts(("builder_emission_contentless_all_attempts",), rec)[
+            "builder_emission_contentless_all_attempts"
         ]["evidence"]
         assert ev["framework_rows_rederived"] == [self._LINE[self._LINE.index("patch task=") :]]
 
