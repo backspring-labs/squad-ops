@@ -452,7 +452,7 @@ agent container, at emission and at repair, and each image provisions its toolch
 | [SIP-Capability-Backed-Agents](../../design/sips/SIP-Capability-Backed-Agents.md) | new | proposed |
 | [SIP-Continuum-Runtime-Console](../../design/sips/SIP-Continuum-Runtime-Console.md) | new | proposed |
 | [SIP-Cross-Cycle-Memory](../../design/sips/SIP-Cross-Cycle-Memory.md) | new | proposed |
-| [SIP-Cycle-Evaluation-Scorecard](../../design/sips/SIP-Cycle-Evaluation-Scorecard.md) | new | proposed |
+| SIP-Cycle-Evaluation-Scorecard | new | proposed |
 | [SIP-Cycle-Request-Profile-Naming-Taxonomy](../../design/sips/SIP-Cycle-Request-Profile-Naming-Taxonomy.md) | new | proposed |
 | [SIP-Design-Decision-Register](../../design/sips/SIP-Design-Decision-Register.md) | new | proposed |
 | [SIP-Duty-Continuity-and-Handoff-Ledger](../../design/sips/SIP-Duty-Continuity-and-Handoff-Ledger.md) | new | proposed |

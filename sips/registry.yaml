@@ -1,4 +1,4 @@
-last_assigned: 107
+last_assigned: 108
 sips:
 - sip_number: 3
   sip_uid: '17642554775787694'
@@ -964,6 +964,15 @@ sips:
   approver: jladd
   created_at: '2026-09-06T00:00:00Z'
   updated_at: '2026-09-13T09:54:01.067677Z'
+- sip_uid: '17883224960396698'
+  sip_number: 108
+  title: Cycle Evaluation Scorecard
+  path: sips/accepted/SIP-0108-Cycle-Evaluation-Scorecard.md
+  status: accepted
+  author: SquadOps Architecture
+  approver: jladd
+  created_at: '2026-02-28T00:00:00Z'
+  updated_at: '2026-09-13T16:41:19.058293Z'
 - sip_uid: '17883224960370906'
   sip_number: null
   title: QA-First Test Strategy for 1-Hour SquadOps Cycles (group_run Focus)
@@ -1045,15 +1054,6 @@ sips:
   author: Jason Ladd
   approver: null
   created_at: '2026-08-03T00:00:00Z'
-  updated_at: null
-- sip_uid: '17883224960396698'
-  sip_number: null
-  title: Cycle Evaluation Scorecard
-  path: sips/proposed/SIP-Cycle-Evaluation-Scorecard.md
-  status: proposed
-  author: SquadOps Architecture
-  approver: null
-  created_at: '2026-02-28T00:00:00Z'
   updated_at: null
 - sip_uid: '17883224960398652'
   sip_number: null

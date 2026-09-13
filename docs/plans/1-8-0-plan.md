@@ -4,7 +4,8 @@
 evening, recording the owner's rulings on §8 decisions 1–3; rev 3 on a written tightening
 review; rev 4 on the final notes of the Scoped Code Revision design review, which accepted that
 SIP with required revision as SIP-0107; rev 5 on the owner's ruling that its default flip is
-1.8.1's by design (§3.3, §8 decision 15, §10). Written from the ROADMAP's 1.8 row
+1.8.1's by design; rev 6 on the scorecard's design review, which accepted it with required
+revision as SIP-0108 (§3.1, §4.2, §10). Written from the ROADMAP's 1.8 row
 and the reconciliation that wrote it (`docs/plans/post-1-5-roadmap-reconciliation.md`), the
 1.7.5 plan (`docs/plans/1-7-5-plan.md` §3.9a, §5, §6, §7 step 14, §8), the 1.7.5 record
 (`docs/plans/1-7-5-verification-set-record.md` §5, §7, §9), the 1.6.0 plan's "Owed to 1.8"
@@ -14,7 +15,7 @@ Code Revision draft on PR #1325, and every open issue in the tracker on the day 
 
 **1.8 is the release where the squad is judged.** The ROADMAP's ladder reads: *1.6 teaches the
 squad to design, 1.7 makes the seams hold, 1.8 teaches it to judge — and only then to run on
-its own.* 1.7 closed with zero drift under `src/` and `adapters/`, the seams the grades are
+its own.* 1.7 closed with zero drift under `src/` and `adapters/`, the seams the measures are
 computed over now hold, and the authored-mode baseline 1.8 was gated on has been banked four
 times over (1.6.0 4/6; 1.7.3–1.7.5 at 7 to 8 of 9). Nothing structural stands in front of
 this release.
@@ -44,10 +45,10 @@ produces, stated once:
 | lane | headline | what it is | its proof |
 |---|---|---|---|
 | **M — the loop** | **Scoped Code Revision** (**SIP-0107**, accepted 2026-09-13 at rev 4; the default flip is 1.8.1's) | for an existing artifact the agent describes the smallest reliable revision; the framework realizes it under an explicit write grant, preserves every byte outside the accepted range, and verifies exactly the tree it persists | the SIP's own §39: zero outside-grant change, preservation proved by reconstruction, zero restoration, `verified_revision_id == persisted_revision_id`, on **N successful** scoped transactions across qa and dev on both stacks with builder cells declared, N fixed before any transaction that can count is observed (§4) — adopted here as a release gate (§3.9) |
-| **S — the judgement** | **Cycle Evaluation Scorecard, the 1.8 slice** (`sips/proposed/SIP-Cycle-Evaluation-Scorecard.md`, to be revised before review) | `CycleAssessment` as a projection over the `CycleOutcome` seam; **one** failure-attribution registry shared with the vocabularies the code already has; a benchmark registry over the stored counted rolls; the squad-versus-single-model comparison harness | every counted record of this release carries an assessment whose every dimension cites evidence that resolves; the historical corpus re-graded deterministically; **one pre-registered comparison window closed with its result stated, whichever way it goes** |
+| **S — the judgement** | **Cycle Evaluation Scorecard, the 1.8 slice** (**SIP-0108**, `sips/accepted/SIP-0108-Cycle-Evaluation-Scorecard.md`, accepted 2026-09-13 at rev 3) | `CycleAssessment` as a projection over the `CycleOutcome` seam; **one** failure-attribution registry shared with the vocabularies the code already has; a benchmark registry over the stored counted rolls; the squad-versus-single-model comparison harness | every counted record of this release carries an assessment whose every dimension cites evidence that resolves; the historical corpus re-graded deterministically; **one pre-registered comparison window closed with its result stated, whichever way it goes** |
 
 **Moved off the row, by the owner's ruling.** *Campaign Orchestration* is **2.0's headline** —
-behind the grades its continuation policy consumes, the ROADMAP's own ordering rule — and its
+behind the measures its continuation policy reads, the ROADMAP's own ordering rule — and its
 **rail** ships here: the one cycle-lineage seam that inert detection already defines and the
 scorecard must read rather than reinvent. *Cross-Cycle Memory* moves to **2.2**, on evidence
 the row did not have: its seed corpus at the plan gate has dried up (§2.3). What 1.8 keeps of
@@ -121,10 +122,10 @@ got its reasoning declaration wrong (#1434).
 
 ### 2.2 Lane S — the thesis becomes falsifiable
 
-The project can state a functional yield; it cannot state that a squad outperforms a single
-model at equal scaffolding and cost. The scorecard slice is the only roadmap item that makes
+The project can state a functional yield; it cannot state that the squad outperforms one
+generalist agent on the same deterministic substrate, or at what cost. The scorecard slice is the only roadmap item that makes
 that claim testable, and it is the load-bearing dependency of 2.0, whose rule is that
-self-improvement acts on `CycleAssessment` grades and never on raw checks.
+self-improvement acts on `CycleAssessment` measures and never on raw checks.
 
 The seam exists and already names its consumer: `CycleOutcome`
 (`src/squadops/cycles/verification_integrity.py:418`) is "the substrate the later
@@ -146,8 +147,10 @@ mechanical and headless by the ROADMAP's own description. Rev 2 (§3.1) narrows 
 text to the slice, moves the console page to SIP-0069's surface as a later consumer, answers
 the LLM question with *no* (an assessment computed by an agent is exactly the self-graded
 evidence SIP-0096 exists to refuse), and defines the single-model arm — which is a genuine
-design question (§8 decision 5) and the reason the comparison window is a separate
-pre-registration from the loop's set.
+design question (§8 decision 5). **Done:** rev 2 rewrote it to the slice, and rev 3 folded its
+design review's required revisions — evidence classes rather than causes over eight
+vocabularies, and a system-level comparison with cost measured. Accepted as SIP-0108 on
+2026-09-13 (§3.1).
 
 ### 2.3 The two moves, and the evidence behind each
 
@@ -242,8 +245,15 @@ Held 2026-09-13: accepted with required revision.**
   **SIP-0107**. **Acceptance before the branch:** it landed on main when PR #1325 merged on
   2026-09-13, before any feature PR.
 
-**The scorecard SIP, rev 2, then its review.** Written before review because rev 1 does not
-describe the slice (§2.2). Rev 2 must: narrow the normative text to the four slice
+**The scorecard SIP, rev 2, then its review — held 2026-09-13: accepted with required revision
+as SIP-0108.** The owner adopted written review notes; rev 3 is the required revision and
+SIP-0108 §7 records the rulings: the single-model arm is a **system-level** comparison — the
+SquadOps reasoning organization against one generalist agent on the same deterministic
+substrate — with cost measured, not equalized, task-scoped grants, and per-task-type caps and
+reasoning asserted equal; a durable run summary with usage accounted at `_llm_call`, failed
+calls included; attribution as evidence classes, not causes, total over dispositions across
+eight vocabularies, with the terminal evidence primary; no grade bands. What rev 2 was asked to
+do, kept as the record: written before review because rev 1 does not describe the slice (§2.2). Rev 2 must: narrow the normative text to the four slice
 deliverables (§3.4); move the console page out to SIP-0069's surface as a named later
 consumer; make the attribution vocabulary one registry with the five that exist (§2.2) rather
 than an eighth; rule the computation mechanical (no agent in the assessment path); define the
@@ -339,14 +349,15 @@ requested and measured, not enforced; SIP-0107 stays `accepted` at the cut with 
 
 ### 3.4 Lane S — the Cycle Evaluation Scorecard, the 1.8 slice
 
-After rev 2's acceptance (§3.1). Four deliverables, one PR each unless a seam forces two:
+After SIP-0108's acceptance (§3.1), which is the acceptance source for each deliverable below.
+Four deliverables, one PR each unless a seam forces two:
 
 | # | what lands | how it is proven |
 |---|---|---|
-| a | **`CycleAssessment`** as a pure projection over `CycleOutcome` in `src/squadops/cycles/` beside `cycle_outcome.py`: the four dimensions (outcome, quality, coordination, efficiency) with **measurable indicators each of which is a reference into the record** — verdict and criteria coverage, correction rounds and re-dispatches, contentless emissions and refunds, framing re-rolls, tokens and wall-clock from the generation records (#929 made every call visible); computed on read, never stored as truth; **no agent in the path** | an architecture test: the projection performs no I/O and reads only `CycleOutcome` and the record; every dimension's evidence refs resolve on every 1.7.5 record |
-| b | **one failure-attribution registry** — the SIP's seven categories become derivations over the vocabularies that exist (§2.2), declared in one registry with governance attributes in the #730 shape (declaration required, drift-guarded), and the plan-rejection classes, winnability classes, `FailureEvidenceCategory`, `FailureLocus` and the movement tokens each map to exactly one attribution id | a drift test that fails on a vocabulary value with no mapping; **no new string literal for a failure class anywhere else** |
+| a | **`CycleAssessment`** as a pure projection over `CycleOutcome` in `src/squadops/cycles/` beside `cycle_outcome.py`: the four dimensions (outcome, quality, coordination, efficiency) with **measurable indicators each of which is a reference into the record** — verdict and criteria coverage, correction rounds and re-dispatches, contentless emissions and refunds, framing re-rolls, tokens and wall-clock from the durable run summary written at finalization, usage accounted at `_llm_call` (SIP-0108 §4.1); every assessment names its versions and evidence identity; computed on read, never stored as truth; **no agent in the path** | an architecture test: the projection performs no I/O and reads only `CycleOutcome` and the record; every dimension's evidence refs resolve on every 1.7.5 record |
+| b | **one failure-attribution registry** — evidence classes, not causes, over the eight source vocabularies (SIP-0108 §4.2): every value with exactly one declared disposition, category and locus composed by declared precedence, the terminal evidence primary and everything earlier contributing, governance attributes in the #730 shape | a drift test over dispositions and the attribution-determinism fixtures, permutation included; **no attribution literal and no source-to-attribution mapping outside the registry** |
 | c | **the benchmark registry** — the counted rolls 1.6.3 through 1.7.5 (seventy-nine, from the stored per-roll records and the vault) re-graded deterministically, with each row carrying its lineage (#80's fields where they exist, the set's pins where they do not); replay-first, no new cycle (SIP-0101's records are an input, not a completion) | the re-graded 1.7.5 rows agree with the record's headline table; the preflight step (§7) states which of the seventy-nine are re-gradeable and why the rest are not |
-| d | **the comparison harness** — the verification-set driver gains an *arm* axis (squad profile × request profile × model) and the pre-registration a comparison section; the **single-model arm** is what rev 2 defined; **one squad-versus-single-model comparison** on `group_run`, **designed in the loop set's pre-registration before any roll of either arm is observed** — the squad arm's rolls from the loop set, inclusion rules, N per arm, dimensions, cost normalization (§4.2) — with the single-model arm run after the loop set closes on the same frozen deploy, both graded by (a) with attribution from (b) | the window closes with its result stated in the record whichever way it goes — a negative never blocks the cut; an unrun window blocks it **only while (d) is in 1.8.0's scope at the loop set's pre-registration** (§3.9, §4.2) |
+| d | **the comparison harness** — the verification-set driver gains an *arm* axis (squad profile × request profile × model) and the pre-registration a comparison section; the **generalist arm** is SIP-0108 §4.4's; **one squad-versus-generalist comparison** on `group_run`, **designed in the loop set's pre-registration before any roll of either arm is observed** — the squad arm's rolls, the pairs, inclusion rules, N per arm, dimensions, the execution envelope (§4.2) — with the generalist arm run after the loop set closes on the same frozen deploy, both measured by (a) with attribution from (b) | the window closes with its result stated in the record whichever way it goes — a negative never blocks the cut; an unrun window blocks it **only while (d) is in 1.8.0's scope at the loop set's pre-registration** (§3.9, §4.2) |
 
 **Dependency distinction.** (a) and (b) are the judgement contract 2.0 consumes — Campaign's
 prerequisite. (c) and (d) test and accumulate evidence *about* that contract; Campaign does not
@@ -357,8 +368,8 @@ only while it is in scope (§3.9).
 **Out of the slice, named so silence is not read as shipped:** the console Scorecard page
 (SIP-0069's, later), rule-based recommendations, profile-weighting, any LLM in the assessment
 path, and internal eval packs beyond what (a)–(c) need — the ROADMAP's "Dev, QA, Research,
-Tool Executor" packs are rev 2's to keep or move, and this plan's recommendation is that they
-move to 2.0 with the Campaign that would run them (§8 decision 4).
+Tool Executor" packs moved to 2.0 with the Campaign that would run them (SIP-0108 §6; §8
+decision 4).
 
 **Non-droppable.** (a) and (b) — a 1.8 without an assessment over honest evidence has a false
 thesis. (c) and (d) may move to 1.8.1, together or independently, by a plan revision in the open
@@ -431,8 +442,8 @@ the cut follows its own evidence:
 Code Revision (SIP-0107) → **`accepted` at 1.8.0 by design**, with step 7 named as 1.8.1's and
 step 6 beside it if it was re-placed (SIP-0102 precedent); `implemented` is 1.8.1's call once
 the flip lands and §39 holds. An unmet N is not an open step: it fails the experimental gate,
-and the cut does not happen on it. The scorecard → `implemented` if rev 2 narrowed its
-normative text to the slice and (a)–(d) land; if (c) or (d) moved to 1.8.1, `accepted` with
+and the cut does not happen on it. The scorecard (SIP-0108) → `implemented` if (a)–(d) land and its §5
+holds; if (c) or (d) moved to 1.8.1, `accepted` with
 exactly that named — and 1.8.1's plan says it carries a measurement window (the 1.6.3 precedent)
 rather than reading as a fix line. SIP-0105 amended by #598, status unchanged. Nothing else moves; §6 names what stays.
 
@@ -511,16 +522,17 @@ set; a good result never stops it early; a stop in one arm does not stop the oth
 **Registered with the loop set, run after it.** The comparison is designed in the loop set's
 pre-registration (§7 step 8), before any roll of either arm is observed: which of the loop
 set's React rolls constitute the squad arm, the inclusion and exclusion rules, N per arm, the
-comparison dimensions, the cost normalization, and the single-model arm as the scorecard SIP's
-rev 2 defines it. The single-model arm runs after the loop set closes, on the same frozen
-deploy if nothing has moved (else with the drift named); both arms are graded by
+comparison dimensions, the execution envelope, and the generalist arm as SIP-0108 §4.4 defines
+it, with its pairs and its per-task-type caps and reasoning asserted equal. The generalist arm
+runs after the loop set closes, on the same frozen
+deploy if nothing has moved (else with the drift named); both arms are measured by
 `CycleAssessment` with attribution from the one registry. Registering before observing keeps
-the comparison prospective; running the arms separately keeps each run's red its own. If the
-scorecard SIP's rev 2 is not accepted with the single-model arm defined by that commit, (d)
-moves to 1.8.1 at it (§3.4, §5), and 1.8.1 registers a fresh squad arm rather than reusing
-rolls already observed. The question is pre-registered in the record's words — *at equal
-scaffolding and declared cost, does the squad's assessment exceed the single model's on outcome
-and quality, and at what efficiency cost?* — and the answer is stated whichever way it goes. **A negative is a result; it is 2.0's
+the comparison prospective; running the arms separately keeps each run's red its own. SIP-0108 is accepted
+with the arm defined, so (d) is in 1.8.0's scope at that commit unless capacity re-places it
+before it (§3.4, §5) — in which case 1.8.1 registers a fresh squad arm rather than reusing rolls
+already observed. The question is pre-registered in the record's words (SIP-0108 §4.4) — *under the
+same deterministic substrate and execution envelope, does the squad improve outcome and quality
+over one generalist agent, and at what additional or reduced token and wall-clock cost?* — and the answer is stated whichever way it goes. **A negative is a result; it is 2.0's
 problem and the thesis's, not this cut's. An unrun window blocks the cut while (d) is in 1.8.0's
 scope; once (d) has been re-placed to 1.8.1 in the open, before the loop set's pre-registration,
 the window is 1.8.1's criterion and not this cut's (§3.4, §3.9).**
@@ -589,7 +601,7 @@ revises this in the open.
 pack is the loop and the judgement, and a framing change beside them makes a red ambiguous.
 
 **#949, #950, #194 — SIP-0093's completion, at design review, unchanged.** The scorecard's
-"what happened" question overlaps #950's review-packet synthesis; rev 2 notes it as a later
+"what happened" question overlaps #950's review-packet synthesis; SIP-0108 §6 names it a later
 consumer and builds nothing for it.
 
 **#557 — at design review, unchanged.** A SIP-first item by its own text; the review runs after
@@ -611,7 +623,7 @@ SIPs that carry open parts), so the sweep at the cut does not read silence as sh
 | SIP-0092 | M3 unimplemented; M2 partial on 93.4 | **#1444 executes its `handle()` decomposition direction** (re-authored against main, as the direction requires); the rest is not 1.8 work; stays `accepted` |
 | SIP-0093 | 93.4, §5.8 merge rules 2–5, two required tests | #194/#949/#950 at design review; stays `accepted` |
 | SIP-0101 | minimum slice shipped in 1.5 | its records are an input to §3.4 (c); a consumer, not a completion; stays `accepted` |
-| SIP-0102 | steps 3–7 open | **step 5** (clean-room verdicts into SIP-0096's derivation) is a scorecard input rev 2 must name as present or absent; #598's rendering is a §4.2 consequence landing in §3.2; stays `accepted` with the steps named |
+| SIP-0102 | steps 3–7 open | **step 5** (clean-room verdicts into SIP-0096's derivation) is named absent by SIP-0108, whose clean-room indicators are unaskable until it lands; #598's rendering is a §4.2 consequence landing in §3.2; stays `accepted` with the steps named |
 | SIP-0104 | #1122 | stays `accepted` |
 | SIP-0105 | the blueprint rewrite after #1131 | **amended by #598** (the rendering); stays `accepted` |
 
@@ -624,8 +636,9 @@ SIPs that carry open parts), so the sweep at the cut does not read silence as sh
 2. **The Scoped Code Revision design review — held 2026-09-13**: accepted with required
    revision; the SIP's rev 4 folds the revisions and the §43 rulings; `update_sip_status.py …
    accepted` run on PR #1325 — **SIP-0107**; the acceptance lands when that PR merges, and the
-   branch not before. In parallel: **the scorecard SIP rev 2**, then its review and acceptance —
-   done, with the single-model arm defined, by step 8's commit if (d) is to stay in 1.8.0.
+   branch not before. **The scorecard design review — held 2026-09-13**: accepted with required
+   revision as SIP-0108 (rev 3), the generalist arm defined, so (d) is in scope at step 8's
+   commit unless capacity re-places it before then.
 3. **Verify-then-close** #1149, #1443; #176's recipe 2 waits for the idle box. **#1444**, the
    first extraction, harvested first.
 4. **The prelude** (§3.2), one PR each in order — #1506 and #1501 first, #598 last (its SIP-0105
@@ -648,7 +661,7 @@ SIPs that carry open parts), so the sweep at the cut does not read silence as sh
 9. **The seven diagnostics on the pinned deploy**, two-run budget each, their readings appended
    to the pre-registration. A seam not reached stops the line here.
 10. **Counted set 6 + 3** — no merges to main while it is open; the boundary reading at each roll.
-11. **Run the single-model arm** of the comparison registered at step 8 (§4.2) — the same
+11. **Run the generalist arm** of the comparison registered at step 8 (§4.2) — the same
     discipline; nothing merges. If (d) was re-placed to 1.8.1 before step 8's commit, this step
     is 1.8.1's.
 12. **Close both; the live reads and the idle box** — #1177, #176 recipe 2, #1176's gate,
@@ -684,12 +697,12 @@ never share a red.
    the owner, 2026-09-12.** Rev 1's alternative — the row as written, the scorecard and
    Campaign — is closed by the ruling. The loop's loss mode is measured and current (§1), the
    design is accepted (SIP-0107, 2026-09-13) with its acceptance criteria written, and Campaign's policy
-   has nothing principled to continue on until the grades exist.
+   has nothing principled to continue on until the measures exist.
 4. **The scorecard's 1.8 slice is headless and mechanical**: no console page (SIP-0069's, later),
    no recommendations, no agent in the assessment path, the four internal eval packs to 2.0
-   with the Campaign that would run them. Rev 2 narrows the SIP's normative text to match, so
-   the SIP can be `implemented` at this cut rather than staying `accepted` for a page.
-5. **The single-model arm is rev 2's to define, and the comparison is designed in the loop set's
+   with the Campaign that would run them. SIP-0108 narrowed its normative text to match, so it
+   can be `implemented` at this cut rather than staying `accepted` for a page.
+5. **The generalist arm is SIP-0108 §4.4's, and the comparison is designed in the loop set's
    pre-registration and run after it** — prospective, because no squad-arm roll is observed
    before its design is committed, and separable, because each run's red is its own. Its
    result never blocks the cut; its absence does **only while (d) is in 1.8.0's scope at the loop
@@ -751,7 +764,8 @@ Named here so they are not the next line's §6a. Each has a home above or a fix 
   the reach the design assumed, and its wiring test must enumerate all six.
 - **No dev-lane fault exists**, so Scoped Code Revision's largest exposure (the unused
   `WriteGrant.for_dev_fill`) has no diagnostic today. Registered in the prelude (§4.1).
-- **The scorecard SIP describes a console feature, not the slice** — rev 2 before review (§2.2).
+- **The scorecard SIP describes a console feature, not the slice** — rev 2 before review (§2.2);
+  done, and accepted as SIP-0108 at rev 3.
 - **The god-file measurement, 2026-09-12, main `3d18130b`:** the executor 4,741 lines with its
   three largest methods at 396/325/301 (#1507); the correction runner 1,331 with its largest at
   151 (no action); `qa_test.py` `handle()` 617 and `develop.py` `handle()` 332 (#1444);
@@ -765,6 +779,14 @@ Named here so they are not the next line's §6a. Each has a home above or a fix 
 
 ## 10. Revision history
 
+- **Rev 6 (2026-09-13)** — the Cycle Evaluation Scorecard's design review: the owner adopted
+  written review notes as the acceptance, **with required revision** — rev 3 of the SIP — and it is
+  **SIP-0108** (§3.1). The plan follows the SIP: the comparison is a system-level experiment, the
+  squad's reasoning organization against one generalist agent on the same deterministic substrate,
+  with cost measured rather than equalized, so §4.2's registered question is reworded to the SIP's;
+  the arm is "generalist", not "single-model"; attribution is evidence classes over eight
+  vocabularies; 1.8 gives Campaign measures, not grades. References to the draft's path move to
+  the accepted file. No change to the deliverables, the gates, the set or the drop order.
 - **Rev 5 (2026-09-13)** — the owner's ruling that Scoped Code Revision's default flip is
   **1.8.1's by design** (§3.3, §8 decision 15; SIP-0107 §46a). Rev 4 placed all seven steps on
   deploy B, but step 7's precondition is the N measured there, merges are frozen while the set
