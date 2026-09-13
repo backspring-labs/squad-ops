@@ -9,12 +9,24 @@ created_at: '2026-09-06T00:00:00Z'
 
 ## Status
 
-Draft (proposed). **Revision 2.**
+Draft (proposed). **Revision 3.**
 
 | Rev | Date | What changed |
 |---|---|---|
 | 1 | 2026-09-06 | Filed as *Slot-Scoped Emission* (PR #1325): emit the slot body, not the file. |
 | 2 | 2026-09-07 | Renamed. The slot is demoted from the unit of emission to one form of grant-addressable region; the agent describes a revision and the framework realizes it. The evidence is re-read against main after PR #1332 and PR #1354 closed #1323 over the weekend; #1213 is subsumed; the framework's own vocabulary (`WriteGrant`, `compute_revision_id`, the QA slot-body path) replaces coined terms; the review points from the 2026-09-07 read are incorporated throughout. |
+| 3 | 2026-09-13 | Re-read against main `3d18130b` (v1.7.5) before the design review that opens the 1.8 line. **No design change.** The seams a revision lands through have names since 1.7.5's extraction (`PatchAcceptance`, `CorrectionRepair`) and the draft names them (§1.5, §3.4, §3.8, §5.5, §20, §30.2, §38); two 1.7.4 mechanisms the draft predates are placed against it — the retry-with-fact (#1372; §21, §22) and framework rows re-derived from the patched set (#1374; §20, §29) — with the untouched-file rule (#1406; §29) and the one LLM seam (#929; §36); the evidence gains 1.7.5 React roll 3 (#1501; §1.2, §30.2); #1444 is named as the extraction that precedes the first feature PR (§3.2, §38); the placement records the owner's 2026-09-12 ruling (Targets, §44); §39.8's readout takes the three-state vocabulary (#1445) and the per-attempt stamp (#1436) and says where N comes from; §43 gains #414 and the stack order as review questions. Every code fact cited was verified by grep on that commit; line numbers are as of it. |
+
+**Targets: v1.8 — the Lane M headline** (ruled by the owner 2026-09-12; recorded in
+`docs/plans/1-8-0-plan.md` §2.1, §3.1 and §3.3 and in the ROADMAP's 1.8 row, on PR #1508).
+The design review of this draft is that line's opening step: the owner is the reviewer; the
+outcome is one of *accepted*, *accepted with required revision* (the revisions named and
+folded into the draft on this PR before acceptance) or *rejected and reframed*; and it must
+answer §43 — which now carries #414 on the correction budget's one pool (§22, §43.5) and the
+rollout's stack order (§43.6). Acceptance precedes the feature branch (contributor workflow
+steps 3–4); #1444 is the first extraction, before the feature's first PR (§3.2, §38). The
+1.7.3 plan's earlier placement beside #1213 and #1176 is superseded: #1213 closes with §38
+step 4, and #1176 is an experiment in that line's idle box, not this SIP's.
 
 ## Summary
 
@@ -82,7 +94,7 @@ The fill-only constraint exists, and it is soft on both sides: a prompt section
 and a post-hoc integrity pass (`fill_slot_integrity`) that restores a narrow subset of what
 was dropped and records the rest.
 
-## 1.2 What it costs: the 1.6.5 rolls (#1213)
+## 1.2 What it costs: the 1.6.5 rolls (#1213) and 1.7.5 React roll 3 (#1501)
 
 Two of six rolls in the 1.6.5 FastAPI+React set ended as `plan_defect` on whole-file rewrites
 of `backend/routes.py` — a file with no scaffold slots (`docs/plans/1-6-6-plan.md`):
@@ -98,6 +110,18 @@ rounds across its six rolls against Next.js's `0/0/0/0/0/0`. Shapes already file
 downstream of the same cause: #870 (a non-compiling repair passes patch verification and
 poisons the re-dispatch), #667 (repairs strip testid anchors the first fill placed), #1014
 (a dev repair stored a rewrite of a qa-owned file).
+
+**The current reading — 1.7.5 React roll 3 (`cyc_89153929749f`, #1501).** Three correction
+rounds, six patches, 103 minutes, ending `Max correction attempts (3) exhausted` with no named
+reason. The failing set went 6, 4, 5, 6 across four qa attempts while three titles failed in
+every one of them; the loop's exact-repeat rule never saw the stable core. The oscillation is
+the dev repair's blast radius: it re-emitted the same three view files every round
+(`CreateRunView.jsx`, `RunDetailView.jsx`, `RunsListView.jsx`), and a wide edit fixed some
+assertions while breaking others (`docs/plans/1-7-5-verification-set-record.md` §F-1). #1501
+fixes the termination rule — the intersection read beside the exact match, so the round ends
+naming three assertions. This SIP addresses the width of the edit: a revision scoped to the
+handler one assertion exercises cannot change the other two views. Whether the failing set
+still oscillates under it is what §39.8's readout measures.
 
 ## 1.3 What it costs on a slotted file: 1.7.2 counted roll 1
 
@@ -141,7 +165,9 @@ made a round trip through the model.
 
 The same roll's builder authored `docker/serve.py` unbidden. The approved plan named two
 deliverables, `Dockerfile` and `qa_handoff.md`; the builder's task entry read *"Produce
-Dockerfile and qa_handoff.md build artifacts."* The invented file acquired criteria
+Dockerfile and qa_handoff.md build artifacts."* (`qa_handoff.md` was itself retired
+by PR #1430 in 1.7.4 — required, checked by four surfaces and read by nothing; the retirement
+changes nothing in this roll's record.) The invented file acquired criteria
 (`undefined_names`, `unterminated_source`) and was the task's only failure — both checks on
 the planned artifacts passed. The failed attempt was banked at 06:30:28 through a storage
 route that performed no authorization, so the file entered the repair overlay. The repair
@@ -174,7 +200,7 @@ Three defects, with their current state:
 |---|---|
 | **Over-emission.** A small change makes the model reproduce unrelated source. | **Open.** #1213 names it; §1.2 and §1.3 measure it. |
 | **Authorization after generation.** The model constructs a change outside its authority and the framework refuses it afterwards. | **Closed at the executor's seams** by #1332/#1354. Still open at the agent seam: the model is handed a whole file, authors freely, and learns it cannot admit the fix one round later. |
-| **Verification/persistence binding.** Verification evaluates one candidate; persistence stores another. | **Held by call order** at `_try_accept_patch`. Nothing in the evidence identifies the candidate tree that was verified, so the property is a discipline at one seam rather than a fact the record can check (§20). |
+| **Verification/persistence binding.** Verification evaluates one candidate; persistence stores another. | **Held by call order** in `PatchAcceptance.accept` (`adapters/cycles/patch_acceptance.py`; `_try_accept_patch` is its delegator since 1.7.5's extraction, #1152 — §3.8). The verdict names the *base* tree it verified against (`workspace_revision_id`, register entry 26); nothing in the evidence identifies the candidate tree, so the property is a discipline at one seam rather than a fact the record can check (§20). |
 
 The import-ordering repair did not semantically require emitting a file. It did not require
 emitting a slot. It required an import-ordering revision.
@@ -211,11 +237,12 @@ narrows the implementation and shows the architecture fits existing seams.
 
 ## 3.1 Anchored replacement: #1213 and #451
 
-#1213 (open, 1.8 lane per the 1.7.3 plan) proposes exactly §9.2: the repair states the exact
-text it replaces and the replacement; the framework asserts the anchor occurs exactly once;
-everything else is byte-identical by construction. It rejects line numbers (arithmetic the
-model is bad at; an off-by-one corrupts the neighbouring line and looks like success) and
-notes that scaffold slots cannot touch a file the framework did not generate.
+#1213 (open; it closes with §38 step 4, the 1.8 plan §3.3) proposes exactly §9.2: the repair
+states the exact text it replaces and the replacement; the framework asserts the anchor
+occurs exactly once; everything else is byte-identical by construction. It rejects line
+numbers (arithmetic the model is bad at; an off-by-one corrupts the neighbouring line and
+looks like success) and notes that scaffold slots cannot touch a file the framework did not
+generate.
 
 #451 is the uniqueness lesson learned once already: an unanchored
 `raw.replace(stored, computed)` over a whole manifest replaced every `0` character, because
@@ -232,11 +259,22 @@ into `{name: slot_id, content: body, type: "fill"}` and merges them after emissi
 equivalent exists for dev or builder files. The rollout (§38) begins from this primitive
 rather than inventing it.
 
+Its qa consumer is one function. The qa handler's `handle()` is 617 lines on main
+(`handlers/cycle/qa_test.py:1217`, in a 1,875-line file) and carries the fill shape and the
+whole-file authoring shape under one body, with the self-eval follow-up loop copied into the
+dev handler's 332-line `handle()` (`develop.py:408`). A revision transaction is a third output
+shape for exactly these handlers. **#1444 splits them by output shape first** — one `handle()`
+per shape behind the `_output_shape(inputs)` hook #1285 built, the self-eval loop extracted
+once, byte-identical on the stored fixtures, a wiring test at the executor's dispatch — so §38
+step 1 lifts the fill path out of a handler that already has one function per shape. That is
+the extraction this SIP requires and does not contain.
+
 ## 3.3 Write grants exist, and only two producers carry them
 
 `write_authorization.py` defines `WorkspaceOwnership`, `WriteGrant` and `WriteAuthorization`.
 Enforcement (`scaffold_enforcement._producer_grants`) builds `WriteGrant.for_qa` for QA
-producers and `WriteGrant.for_builder` for builder producers. **`WriteGrant.for_dev_fill` is
+producers and `WriteGrant.for_builder` for builder producers (`scaffold_enforcement.py:139`
+and `:144` on main `3d18130b`). **`WriteGrant.for_dev_fill` is
 defined and used only by its own unit test.** A dev repair emission therefore has no enforced
 revision envelope today; only frozen-path and shell rules bind it. The 1.6.5 rolls in §1.2
 were dev repairs. This is the largest remaining exposure, and it is not the builder path
@@ -245,9 +283,10 @@ were dev repairs. This is the largest remaining exposure, and it is not the buil
 ## 3.4 Authority is derived, not carried
 
 The repair's de facto write set is `expected_artifacts` on the repair envelope, produced by
-the correction runner (`_resolve_repair_target`, the own-artifact locus,
-`_apply_ownership_veto`) and applied after emission as a veto
-(`_apply_emission_ownership_veto`). It is prompt guidance plus a post-hoc filter. Enforcement
+`CorrectionRepair` (`adapters/cycles/correction_repair.py` — `_resolve_repair_target`, the
+own-artifact locus, `_apply_ownership_veto`; extracted from the correction runner in 1.7.5,
+#1152) and applied after emission as a veto (`_apply_emission_ownership_veto`, on the same
+collaborator). It is prompt guidance plus a post-hoc filter. Enforcement
 then reconstructs authority from the task type. No envelope carries a grant, and nothing
 negotiates one.
 
@@ -263,7 +302,9 @@ write-everything default. §14's atomicity is this function, wired.
 `compute_revision_id` (`sandbox/models.py`) hashes sorted paths and per-file content hashes:
 a deterministic, order-independent repository-state identity. Patch verification computes it
 on `workspace_files` — the base — immediately *before* `materialize_artifacts` applies the
-patch, and records it as `PatchVerification.workspace_revision_id`. **The candidate the patch
+patch, and records it as `PatchVerification.workspace_revision_id`
+(`src/squadops/cycles/patch_verification.py:750`, then `:754`/`:758`, on main `3d18130b`; the
+acceptance verdict carries that base identity, register entry 26). **The candidate the patch
 produces has no identity.** Per-artifact `expected_sha256` / `attempted_sha256` and
 `manifest_hash` ride every `ScaffoldIntegrityEvidence` record; no candidate-tree identity
 does. §20 names the one-call gap.
@@ -273,6 +314,57 @@ does. §20 names the one-call gap.
 `ScaffoldIntegrityEvidence.correction_requested` is never set true anywhere in `src/` or
 `adapters/`. Historical logs carry `correction_requested: False` faithfully; this SIP does not
 reason from it as a retry mechanism. Removing it is implementation cleanup.
+
+## 3.8 What 1.7.4 and 1.7.5 put under this draft (rev 3)
+
+Rev 2 read main at `dcf69d3e`. Main has moved since in ways that change where this SIP lands
+and what it must say about budgets and rows, none of which changes the design. Verified on
+main `3d18130b`, 2026-09-13; the line numbers are as of that commit.
+
+**The landing seams have names.** `_try_accept_patch` is a delegator
+(`adapters/cycles/dispatched_flow_executor.py:3529`) into `PatchAcceptance.accept`
+(`adapters/cycles/patch_acceptance.py:185`, 939 lines), whose steps are the seams this SIP
+binds: `_authorize_repair_artifacts` (`:326`) → `_build_patch_subject` (`:395`) →
+`_verify_patch` (`:452`) → `_refuse_unpassed_patch` (`:566`) → `_retest_patched_suite` (`:630`)
+→ `_settle_patch_evidence` (`:770`) → `_accept_patch` (`:906`). Repair-step selection, the
+ownership vetoes and the repair dispatch are `CorrectionRepair`
+(`adapters/cycles/correction_repair.py:817`). The candidate identity (§20) is taken after the
+subject is built and before it is verified, and compared before the set is stored; the dev
+grant (§38 step 3) is carried where `CorrectionRepair` composes the repair envelope. Each of
+these seams has an entry in `docs/architecture/defended-bespoke-decisions.md` (entries 16–38);
+a PR that moves one cites the entry it moves.
+
+**A contract failure is re-prompted before it is corrected (#1372, 1.7.4).** Every producer,
+the builder included, retries a contentless or zero-extraction emission once with its own
+shape fact (`_apply_emission_retry_feedback`, `handlers/cycle/base.py:305`; the marker rides
+exactly one dispatch, register entry 28) on the emission-retry allowance, which is bounded
+separately from the correction pool (entry 31). §21's *correction eligible* rows therefore
+have a step in front of them, and §22 says which budget a rejected revision response spends.
+
+**Framework rows are re-derived from the patched set (#1374, 1.7.4).** Every row a task type
+owes by contract is composed from the *patched* set when a patch is accepted
+(`compose_owed_framework_rows`, `src/squadops/cycles/check_registry.py:226`; entry 25). Those
+rows are evidence about the candidate whose identity §20 names; a row derived from any other
+tree is the identity mismatch §39.4 refuses.
+
+**The untouched-file rule (#1406, 1.7.5).** An environment skip on a repair's retest no longer
+erases a criterion another producer executed and passed on a file the repair did not touch
+(`_credit_contract_criteria`, `src/squadops/cycles/verification_integrity.py:581`). On main
+"did not touch" is read from file membership. Under a scoped transaction it is exact: the
+resolved ranges say which bytes changed (§17), so the rule holds per byte, by construction.
+
+**One LLM seam (#929, 1.7.5).** `_llm_call` (`handlers/cycle/base.py:939`) wraps every
+generation and records it. §36's derived measures attach to that generation record, once,
+rather than at seventeen call sites; every banked emission also carries its attempt stamp
+(#1436), so §39.8 counts transactions, never artifacts.
+
+**No dev-lane fault exists.** The fault registry
+(`src/squadops/capabilities/handlers/fault_injection.py:252–:299`) carries three `qa.test`
+faults, one `qa.test_repair`, one `builder.assemble` and one `data.analyze_failure`. §39.6's
+dev-grant refusal — the largest exposure, §3.3 — has no diagnostic until one is registered;
+the 1.8 plan registers it in the prelude (its §4.1). #1506 splits the builder's contentless
+diagnostic into two faults, because under #1372's retry the accepted-patch rows were not
+reachable by the one it had.
 
 ---
 
@@ -369,8 +461,9 @@ same identity was stored.**
 `accepted revisions → compose candidate → candidate_revision_id → verify(candidate_revision_id) → persist(candidate_revision_id)`
 
 No filtering, restoration, formatting, normalization or file removal may alter the candidate
-after its identity is assigned. Main holds `verified set == stored set` by call order at
-`_try_accept_patch` (#1332); this invariant makes the property explicit and evidence-bearing.
+after its identity is assigned. Main holds `verified set == stored set` by call order in
+`PatchAcceptance.accept` (#1332; §3.8); this invariant makes the property explicit and
+evidence-bearing.
 
 ## 5.6 Fail-closed invariant
 
@@ -680,8 +773,10 @@ that evidence.
 The mechanism exists. `compute_revision_id` is the identity; the gap is *when* it is taken.
 Patch verification computes it on the base workspace one call before `materialize_artifacts`
 applies the patch (§3.6). Moving that computation after materialization, recording it on
-`PatchVerification` as the candidate's identity, and having `_collect_artifacts_and_checkpoint`
-recompute and compare before storage, is the whole of this section's implementation.
+`PatchVerification` as the candidate's identity, and having `PatchAcceptance` recompute and
+compare it before `_collect_artifacts_and_checkpoint` stores the set, is the whole of this
+section's implementation (§3.8 for the seams). The verdict already names the base tree it
+verified against (register entry 26); this section puts the candidate's identity beside it.
 
 ---
 
@@ -707,6 +802,12 @@ recompute and compare before storage, is the whole of this section's implementat
 There is no `disposition='dropped'` for an individual revision inside an otherwise accepted
 transaction.
 
+*Correction eligible* names where a rejection goes, not what happens first. On main since
+#1372 (§3.8) a producer's emission that fails its contract is re-prompted once with the typed
+reason on the emission-retry allowance before any correction round; a zero-match or
+multi-match anchor is that kind of failure. Only a rejection that survives its retry becomes a
+correction-round failure. §22 states the budget.
+
 ---
 
 # 22. Correction-budget semantics
@@ -717,14 +818,27 @@ This SIP does not create a second retry economy. Default:
 
 - a deterministic resolver failure caused by framework state (stale base, reference drift)
   does **not** consume an attempt until the model is reinvoked;
+- a revision response the resolver rejects for the response's own fault — contract shape, a
+  zero-match or multi-match anchor, invalid syntax — is re-prompted once with the typed reason
+  on the **emission-retry allowance** (#1372's retry-with-fact, bounded separately by register
+  entry 31), not the correction pool; if the retry is also rejected, the rejection enters
+  correction as a repair failure and the next response consumes an attempt (placed in rev 3
+  against the mechanism 1.7.4 shipped; §43.5 confirms or amends it);
 - a new agent revision response consumes an attempt;
 - an automatic same-role regrant consumes an attempt only when a new model response is
   required;
 - a genuinely sequential revision requiring a second reasoning turn consumes a normal
   correction attempt.
 
-The compliance budget (`contract_compliance_attempts`, SIP-0100 3.4a) continues to count
-refused emissions.
+The compliance budget (`contract_compliance_attempts`, SIP-0100 3.4a) is unchanged: it counts
+unauthorized cross-slot emissions and only those (`_enforce_compliance_budget`, invoked from
+`PatchAcceptance._authorize_repair_artifacts`, `patch_acceptance.py:384`); frozen re-emission
+is deliberately not counted. A revision that resolves outside its grant is that kind of
+emission, and is counted there.
+
+#414 asks whether the single run-level pool should hold a reserve for required checks. It and
+this section draw on one pool; the review answers both together or names why they are
+separate (§43.5).
 
 ---
 
@@ -804,6 +918,10 @@ Verification contracts continue to decide whether the candidate satisfies expect
 This SIP adds repository-state binding: a result identifies the candidate it evaluated, and a
 check cannot be satisfied by a revision later removed from that tree. Main prevents the
 removal by ordering (#1332); the identity makes the prevention checkable from the record.
+Since #1374 the framework rows a task owes are re-derived from the patched set (§3.8), so the
+rows and the identity describe one tree; and the untouched-file rule (#1406) keeps a passed
+criterion on a file the repair did not touch — a fact a scoped transaction states from its
+resolved ranges rather than from file membership.
 
 ---
 
@@ -825,12 +943,19 @@ replaying at minimum:
 - #451 — the unanchored replacement;
 - #430, #470, #502 — the "whole files lost" parser classes;
 - #1213 / 1.6.5 rolls 5 and 6 — whole-file rewrites, one carrying the correct fix;
+- #1501 / 1.7.5 React roll 3 — the same three view files re-emitted on every round;
 - #1323 — the unrequested artifact, refused at creation;
 - representative `fill_slot_integrity` restoration-heavy and observation-heavy repairs.
 
 The goal is not to show that new parsing handles the old emissions. It is to show that those
 emissions are no longer necessary on the normal path, and that each historical failure is
 refused with its typed reason.
+
+The harness enters at `PatchAcceptance.accept` with the captured envelope, result and repair
+artifacts — the caller the live loop uses (§3.8) — not at a check and not at
+`patch_verification` directly. A fixture handed to a seam proves the seam, not the wiring; the
+`roll_replays` fixtures on main prove checks, not the accepted-patch path, and this harness is
+not them.
 
 ---
 
@@ -915,7 +1040,9 @@ ratio; target-resolution retries; structural versus anchored versus region-repla
 whole-file usage; preservation violations; scope-request frequency by case. The evidence
 serves debugging, fixture replay, model comparison and later Continuum explainability, and
 draws the provenance line where it belongs: framework-owned source versus agent-authored
-revision.
+revision. The derived measures attach to the generation record `_llm_call` writes for every
+producer (#929, §3.8) and to the attempt stamp every banked emission carries (#1436), so each
+exists once per generation and never once per call site.
 
 ---
 
@@ -932,6 +1059,10 @@ the model being good at one textual patch dialect.
 
 # 38. Rollout
 
+**Precondition, not a step: #1444.** The qa and dev handlers' `handle()` split by output shape
+(§3.2), before this SIP's first PR. Extraction only; byte-identical on the stored emissions; a
+wiring test at the executor's dispatch.
+
 1. **Generalize the QA slot-body path.** Lift `verification_scaffold_fill` into the common
    revision-transaction abstraction: one transaction type, grant carried, candidate identity
    assigned, `materialize(..., authorization=)` wired. The QA lane keeps working throughout.
@@ -945,6 +1076,10 @@ the model being good at one textual patch dialect.
 6. **Second stack**, demonstrating equivalent semantics across different slot granularity.
 7. **Default repair path.** Scoped revision becomes the normal path for supported existing
    artifacts; legacy whole-file repair emission becomes explicit fallback (§9.4).
+
+The 1.8 plan (§3.3) sequences these one PR per step: steps 1–5 on the first stack are the
+core, step 6 the second stack, step 7 the flip, gated by §39.8's N; each step's proof is the
+previous step's invariant still holding. The stack order is the review's (§43.6).
 
 ---
 
@@ -998,8 +1133,20 @@ successful scoped transactions requiring restoration or recording observed diver
 Rolls are the wrong unit: a roll may carry no repair, and the 1.7.2 pack recorded one drop
 across nine counted rolls. For **every attempted repair** the readout reports which of these
 occurred: structural target used; exact anchored target used; region replacement used;
-whole-file fallback used; no revision executed; failure reason. Successful non-execution is
-counted beside failure, so the shakeout can distinguish a quiet path from an exercised one.
+whole-file fallback used; no revision executed; failure reason. Each field is read in the
+driver's three-state vocabulary (#1445): *observed* with its value, *asked_none* when the
+producer ran and produced nothing, *unaskable(reason)* when the producer could not ask on that
+roll — so a quiet path, an exercised one and a structurally silent one are never one zero.
+Each transaction is counted by the attempt stamp its emission carries (#1436), never by
+artifact.
+
+**Where N comes from is tabled before roll 1.** 1.7.5's nine counted rolls attempted five
+repair rounds in total, on two rolls, both in the qa lane on one stack; seven rolls took no
+correction round. A counted set of that shape cannot reach any honest N alone, so the
+pre-registration tables, per lane and per stack, the fault that forces a repair and the
+transactions it is expected to produce, and the sum against N. A dev-lane fault must exist
+first (§3.8). Fewer than N transactions at the cut is a budget failure the record states, not
+a pass, and §38 step 7 waits.
 
 Token and emitted-byte reductions against the legacy whole-file baseline are recorded as
 supporting evidence, not as correctness gates.
@@ -1081,8 +1228,17 @@ completeness.
 ## 43.5 Budget policy
 
 How do target-resolution failure, stale-context refresh, regrant and genuinely sequential
-revisions consume the correction-attempt budget? §22 states the default this SIP proposes;
-design review confirms or amends it.
+revisions consume the correction-attempt budget? §22 states the default this SIP proposes —
+including rev 3's placement of the emission-retry allowance (#1372) in front of correction —
+and design review confirms or amends it. **#414 is answered here:** its priority reserve for
+required checks and this SIP's defaults draw on one pool; rule on both, or name why they are
+separate.
+
+## 43.6 Stack order for §38 steps 5–6
+
+Which stack takes the structural path first? React is six of nine counted rolls in 1.7.5 and
+the demonstration arm; Next.js is where the slot-body path (§3.2) already ships. The review
+rules; the plan's sequencing follows the ruling.
 
 ---
 
@@ -1091,8 +1247,10 @@ design review confirms or amends it.
 This changes the contract between agents and repository state: task framing, write
 authorization, agent response contracts, scaffold semantics, composition, integrity
 enforcement, repair retries, verification evidence, persistence, replay and observability.
-It gates an even minor under the parity convention and belongs in **1.8**, where the 1.7.3
-plan already places it beside #1213 and #1176.
+It gates an even minor under the parity convention and is **1.8's Lane M headline** by the
+owner's ruling of 2026-09-12 (`docs/plans/1-8-0-plan.md` §2.1 and §3.3; the ROADMAP's 1.8
+row). The 1.7.3 plan's earlier placement beside #1213 and #1176 is superseded: #1213 closes
+with §38 step 4, and #1176 is an experiment in that line's idle box, not this SIP's.
 
 The progression this SIP completes:
 
@@ -1113,9 +1271,22 @@ The progression this SIP completes:
 - #430, #470, #502 — fenced-parser classes whose consequence was "whole files lost"
 - #870, #667, #1014 — downstream shapes of whole-file repair emission
 - #1259, #1264 — repairs judged against trees with inconsistent file membership
+- #1372 — a contentless emission is re-prompted with its own shape fact (closed, 1.7.4)
+- #1374 — the accepted-patch path derives every framework row from the patched set (closed, 1.7.4)
+- #1406 — a repair's verification demoted criteria it could not execute; the untouched-file rule (closed, 1.7.5)
+- #929 — the LLM call sequence extracted to one seam (closed, 1.7.5)
+- #1436, #1445 — the attempt stamp on every banked emission; the three-state record vocabulary (closed, 1.7.5)
+- #1501 — a repair loop burns its budget when the failing set churns around a stable core (open)
+- #1444 — the qa and dev handlers' `handle()` split by output shape; the extraction this SIP requires (open)
+- #1506 — the contentless-builder diagnostic split so the accepted-patch rows are reachable under #1372 (open)
+- #414 — the correction budget's single pool is severity-blind (open; answered at this SIP's review)
+- PR #1430 — `qa_handoff.md` retired
 - `docs/plans/1-6-6-plan.md` — the 1.6.5 rolls 5 and 6 record
 - `docs/plans/1-7-2-verification-set-record.md` §4.3 — roll 1
-- `docs/plans/1-7-3-plan.md` — the 1.8 placement
+- `docs/plans/1-8-0-plan.md` — the placement, the review's terms and the rollout's sequencing (§2.1, §3.1, §3.3, §4.1)
+- `docs/plans/1-7-3-plan.md` — the earlier 1.8 placement, superseded
+- `docs/plans/1-7-5-verification-set-record.md` §F-1 — React roll 3
+- `docs/architecture/defended-bespoke-decisions.md` entries 16–38 — the accepted-patch and correction seams, one entry each
 - SIP-0100, SIP-0101, SIP-0104, SIP-0105, `SIP-LLM-Emission-Contracts`
 
 **Research**
