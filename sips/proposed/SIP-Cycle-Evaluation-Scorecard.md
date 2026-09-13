@@ -374,8 +374,8 @@ not seeded, so pairs are **matched trials, not replicas**, and the record says s
 (`_producer_grants` reads the envelope's task type,
 `src/squadops/cycles/scaffold_enforcement.py:120`), never from the agent. Assigning every task
 to one agent therefore widens no grant and merges no ownership: performing a qa task, the
-generalist holds the qa task's authority, and performing a builder task, the builder task's. The comparison refuses to run if either arm's effective grants
-for a task type differ.
+generalist holds the qa task's authority, and performing a builder task, the builder task's. The
+comparison refuses to run if either arm's effective grants for a task type differ.
 
 **Reasoning policy and caps are frozen per task type.** Reasoning is declared per task type and
 output shape (`REASONING_BY_TASK_TYPE`), so the generalist running the same task types gets the same
