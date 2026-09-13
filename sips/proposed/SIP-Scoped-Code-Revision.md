@@ -9,24 +9,25 @@ created_at: '2026-09-06T00:00:00Z'
 
 ## Status
 
-Draft (proposed). **Revision 3.**
+Draft (proposed). **Revision 4.**
 
 | Rev | Date | What changed |
 |---|---|---|
 | 1 | 2026-09-06 | Filed as *Slot-Scoped Emission* (PR #1325): emit the slot body, not the file. |
 | 2 | 2026-09-07 | Renamed. The slot is demoted from the unit of emission to one form of grant-addressable region; the agent describes a revision and the framework realizes it. The evidence is re-read against main after PR #1332 and PR #1354 closed #1323 over the weekend; #1213 is subsumed; the framework's own vocabulary (`WriteGrant`, `compute_revision_id`, the QA slot-body path) replaces coined terms; the review points from the 2026-09-07 read are incorporated throughout. |
 | 3 | 2026-09-13 | Re-read against main `3d18130b` (v1.7.5) before the design review that opens the 1.8 line. **No design change.** The seams a revision lands through have names since 1.7.5's extraction (`PatchAcceptance`, `CorrectionRepair`) and the draft names them (§1.5, §3.4, §3.8, §5.5, §20, §30.2, §38); two 1.7.4 mechanisms the draft predates are placed against it — the retry-with-fact (#1372; §21, §22) and framework rows re-derived from the patched set (#1374; §20, §29) — with the untouched-file rule (#1406; §29) and the one LLM seam (#929; §36); the evidence gains 1.7.5 React roll 3 (#1501; §1.2, §30.2); #1444 is named as the extraction that precedes the first feature PR (§3.2, §38); the placement records the owner's 2026-09-12 ruling (Targets, §44); §39.8's readout takes the three-state vocabulary (#1445) and the per-attempt stamp (#1436) and says where N comes from; §43 gains #414 and the stack order as review questions. Every code fact cited was verified by grep on that commit; line numbers are as of it. |
+| 4 | 2026-09-13 | **Design review: accepted with required revision.** The owner, the named reviewer (1.8 plan §3.1), accepted this draft on written final review notes; the required revisions are folded here before the number is assigned. **The architecture is unchanged.** One rollout sequence, candidate identity first (§38). N counts successful scoped transactions only, is fixed before any transaction that can count is observed, and sits beside a separate all-attempt integrity reading (§39.8). Coverage is qa and dev on both stacks, builder cells declared (§39.8). Preservation is proved by reconstruction from the base, not by a positional diff (§5.2, §17, §39.2). A formatter effect is a recorded revision or the formatter does not run (§19). Automatic regrant widens only inside a plan-bound ceiling (§15). Whole-file fallback needs explicit authority beyond a whole-file grant (§9.4, §21, §39.5). §22 says what a correction attempt is. Evidence says `verified_revision_id == persisted_revision_id` throughout. The six rulings are recorded in §43. |
 
 **Targets: v1.8 — the Lane M headline** (ruled by the owner 2026-09-12; recorded in
 `docs/plans/1-8-0-plan.md` §2.1, §3.1 and §3.3 and in the ROADMAP's 1.8 row, on PR #1508).
-The design review of this draft is that line's opening step: the owner is the reviewer; the
-outcome is one of *accepted*, *accepted with required revision* (the revisions named and
-folded into the draft on this PR before acceptance) or *rejected and reframed*; and it must
-answer §43 — which now carries #414 on the correction budget's one pool (§22, §43.5) and the
-rollout's stack order (§43.6). Acceptance precedes the feature branch (contributor workflow
-steps 3–4); #1444 is the first extraction, before the feature's first PR (§3.2, §38). The
-1.7.3 plan's earlier placement beside #1213 and #1176 is superseded: #1213 closes with §38
-step 4, and #1176 is an experiment in that line's idle box, not this SIP's.
+**Design review held 2026-09-13** — that line's opening step. The owner, as the named
+reviewer, accepted this draft **with required revision** on written final review notes; the
+revisions are rev 4, and the rulings on §43.1–§43.6 are recorded in §43, including #414's
+shape (§43.5) and the stack order (§43.6). Acceptance precedes the feature branch
+(contributor workflow steps 3–4): it lands when this PR merges; #1444 is the first
+extraction, before the feature's first PR (§3.2, §38). The 1.7.3 plan's earlier placement
+beside #1213 and #1176 is superseded: #1213 closes with §38 step 4, and #1176 is an
+experiment in that line's idle box, not this SIP's.
 
 ## Summary
 
@@ -266,7 +267,7 @@ dev handler's 332-line `handle()` (`develop.py:408`). A revision transaction is 
 shape for exactly these handlers. **#1444 splits them by output shape first** — one `handle()`
 per shape behind the `_output_shape(inputs)` hook #1285 built, the self-eval loop extracted
 once, byte-identical on the stored fixtures, a wiring test at the executor's dispatch — so §38
-step 1 lifts the fill path out of a handler that already has one function per shape. That is
+step 2 lifts the fill path out of a handler that already has one function per shape. That is
 the extraction this SIP requires and does not contain.
 
 ## 3.3 Write grants exist, and only two producers carry them
@@ -440,8 +441,11 @@ agent cannot create authority by naming a path.
 
 ## 5.2 Preservation invariant
 
-For scoped revisions, source outside accepted revision ranges is byte-identical to the
-transaction's base revision. The framework does not reconstruct unrelated source.
+For scoped revisions the candidate is exactly the immutable base with the normalized accepted
+range edits applied (§11), and nothing else: every untouched base span appears, in order,
+byte-identically in the candidate. Source outside accepted revision ranges is therefore
+byte-identical to the transaction's base revision, for replace, insert and remove alike. The
+framework never regenerates unrelated source.
 
 ## 5.3 Revision invariant
 
@@ -600,11 +604,25 @@ a bounded fallback.
 
 ## 9.4 Existing whole-file replacement
 
-Last resort, not the normal repair contract. Permitted only when the task holds an explicit
-whole-file grant, no scoped representation can reasonably express the change, scaffold-owned
-material is not exposed to replacement, and the result is validated under the same revision
-and candidate-identity rules as any transaction. Whole-file replacement is never silently
-selected because a more precise revision failed to resolve.
+Last resort, not the normal repair contract. **A whole-file grant alone is not sufficient**
+(the design review's ruling on §43.3). Whole-file replacement of an existing artifact is
+admitted only when all of these hold:
+
+- the task carries explicit **whole-file-fallback authority**, or the framework produces a
+  typed policy decision admitting it;
+- the task holds a whole-file grant on the artifact;
+- the fallback records a typed reason for each narrower mode it passed over — structural
+  target unavailable or inadequate; exact anchored target unavailable or inadequate;
+  authorized-region replacement inadequate — before the fallback is admitted;
+- no scaffold-owned or framework-owned material is exposed to replacement. For those files
+  the fallback is not admitted at all, unless the task exists to replace the scaffold itself;
+- the result is validated under the same revision and candidate-identity rules as any
+  transaction.
+
+The model does not select whole-file mode because a narrower revision was inconvenient, and
+whole-file replacement is never silently selected because a more precise revision failed to
+resolve. A whole-file response without the authority is refused with a typed policy outcome
+(§21, §39.5).
 
 ---
 
@@ -693,9 +711,21 @@ unattended execution the default policy is:
 
 | Case | Disposition |
 |---|---|
-| **Same-role under-scoping** — the requested region already belongs to the requesting producer's role lane and the plan establishes that ownership | may be automatically regranted and redispatched |
+| **Same-role under-scoping** — the requested region already belongs to the requesting producer's role lane and the plan establishes that ownership | may be automatically regranted **within the plan-bound ceiling** and redispatched |
 | **Cross-role ownership** — the requested region belongs to another producer | reframe: route the repair to the owning role, as the correction protocol's ownership routing already does |
 | **Unplanned artifact** — nothing in the plan establishes the artifact | reject as a plan/framing defect; reframing is the orchestrator's or operator's, not the loop's |
+
+**The ceiling.** The plan establishes a maximum grant for each producer before generation,
+and a task receives a narrower active grant inside it. The ceiling exists on main: the
+permanent bind-time `WorkspaceOwnership` and the stage grant derived from it for each producer
+(`WriteGrant.for_dev_fill`, `for_qa`, `for_builder`,
+`src/squadops/cycles/write_authorization.py:89`, `:94`, `:99`). The active grant is the
+transaction's authorized regions (§6.2). An automatic same-role regrant widens the active grant
+only inside that pre-existing ceiling; it never derives authority from the scope request
+itself, so naming a path cannot widen a grant beyond what the plan bound. A request beyond the
+ceiling is the cross-role or the unplanned case. Every regrant records the original active
+grant, the requested region, the plan-bound ceiling, the resulting grant and the regrant
+reason.
 
 No open-ended loop. A grant expansion is budgeted (§22). Until it is resolved the defect
 remains unresolved and visible: an authorization miss cannot make the failing check disappear
@@ -724,6 +754,15 @@ A candidate produced through scoped revision carries evidence that the framework
 source outside the accepted ranges: which ranges changed; which accepted revision authorized
 each; that no changed source exists outside them.
 
+**The proof is reconstruction, not a positional diff.** Insertions and removals shift every
+following offset, so "changed bytes outside accepted ranges" is not measured byte by byte.
+Applying exactly the normalized accepted range edits (§11) to the immutable base must
+reproduce the candidate byte for byte, with every untouched base span appearing in order
+(§5.2). Zero outside-range change is a consequence of that. Every difference between base and
+candidate is therefore attributable to a recorded revision, including any framework-owned
+formatting revision (§19), and the reconstruction is the fixture harness's deterministic
+oracle (§30.2).
+
 For slotted artifacts the stronger property follows: scaffold-owned bytes outside accepted
 revisions are unchanged *by construction* rather than restored after generation.
 
@@ -747,9 +786,11 @@ revision may still be behaviourally wrong; behavioural verification remains nece
 # 19. Formatting
 
 Whole-file formatting after scoped composition would undermine the preservation invariant.
-Formatting is not an implicit post-composition side effect. If a formatter is required, its
-changes are framework-owned, bounded where possible, included in the candidate before its
-identity is assigned, represented in provenance, and subject to preservation policy. No
+Formatting is not an implicit post-composition side effect. **Any formatter effect in a scoped
+transaction is represented as an explicit framework-owned revision in the same transaction,
+with its ranges and provenance recorded before the candidate's identity is assigned.
+Otherwise the formatter does not run.** There is no bounded-where-possible exception: every
+difference between base and candidate is attributable to a recorded revision (§17). No
 formatter alters the artifact after the candidate has been identified.
 
 ---
@@ -790,7 +831,9 @@ verified against (register entry 26); this section puts the candidate's identity
 | Exact anchor has zero matches | reject; correction eligible |
 | Exact anchor has multiple matches | reject; correction eligible |
 | Resolved target exceeds the grant | reject, or scope request under §15 |
-| Scope request: same-role under-scoping | regrant and redispatch |
+| Whole-file replacement without fallback authority | reject; typed policy outcome (§9.4) |
+| Scope request: same-role under-scoping | regrant within the plan-bound ceiling (§15) and redispatch |
+| Scope request beyond the plan-bound ceiling | cross-role or unplanned case, never an automatic regrant |
 | Scope request: cross-role ownership | reframe to the owning role |
 | Scope request: unplanned artifact | plan/framing defect; run fails naming it |
 | Resolved edits overlap | reject transaction |
@@ -813,8 +856,10 @@ correction-round failure. §22 states the budget.
 # 22. Correction-budget semantics
 
 "Execute another revision turn" is not free. The correction path has three attempts on
-`validated-fullstack`; every fresh model invocation consumes one unless policy says otherwise.
-This SIP does not create a second retry economy. Default:
+`validated-fullstack`. **Every new correction reasoning turn consumes a correction attempt; the
+emission-contract retry remains the separately bounded #1372 allowance** (register entry 31).
+This SIP does not create a second retry economy, and the design review ruled it so (§43.5).
+Default:
 
 - a deterministic resolver failure caused by framework state (stale base, reference drift)
   does **not** consume an attempt until the model is reinvoked;
@@ -823,7 +868,7 @@ This SIP does not create a second retry economy. Default:
   on the **emission-retry allowance** (#1372's retry-with-fact, bounded separately by register
   entry 31), not the correction pool; if the retry is also rejected, the rejection enters
   correction as a repair failure and the next response consumes an attempt (placed in rev 3
-  against the mechanism 1.7.4 shipped; §43.5 confirms or amends it);
+  against the mechanism 1.7.4 shipped; confirmed at design review, §43.5);
 - a new agent revision response consumes an attempt;
 - an automatic same-role regrant consumes an attempt only when a new model response is
   required;
@@ -836,9 +881,10 @@ unauthorized cross-slot emissions and only those (`_enforce_compliance_budget`, 
 is deliberately not counted. A revision that resolves outside its grant is that kind of
 emission, and is counted there.
 
-#414 asks whether the single run-level pool should hold a reserve for required checks. It and
-this section draw on one pool; the review answers both together or names why they are
-separate (§43.5).
+#414 asks whether the single run-level pool should hold a reserve for required checks. The
+design review ruled the shape, not the adoption (§43.5): if a reserve is adopted, it is a
+reservation inside this one correction pool, never a second pool. Whether to adopt one remains
+#414's decision.
 
 ---
 
@@ -1063,23 +1109,33 @@ the model being good at one textual patch dialect.
 (§3.2), before this SIP's first PR. Extraction only; byte-identical on the stored emissions; a
 wiring test at the executor's dispatch.
 
-1. **Generalize the QA slot-body path.** Lift `verification_scaffold_fill` into the common
-   revision-transaction abstraction: one transaction type, grant carried, candidate identity
-   assigned, `materialize(..., authorization=)` wired. The QA lane keeps working throughout.
-2. **Candidate identity.** Move `compute_revision_id` after materialization and compare at
-   storage (§20). This lands independently and first if convenient; it is one call.
+1. **Candidate identity.** Take `compute_revision_id` after materialization, record it as the
+   candidate's identity, and compare it before storage (§20). An integrity improvement to the
+   existing accepted-patch path, independent of every later step; each revision transaction
+   after it inherits the binding.
+2. **Generalize the QA slot-body path.** Lift `verification_scaffold_fill` into the common
+   revision-transaction abstraction: one transaction type, grant carried,
+   `materialize(..., authorization=)` wired, step 1's identity inherited. The QA lane keeps
+   working throughout; the proof runs on the Next.js fill fixtures, where the slot-body path
+   ships.
 3. **Dev grant.** Propagate `WriteGrant.for_dev_fill` into the dev repair path so every lane
    carries an enforced grant (§3.3).
 4. **Exact anchored targets** inside the grant, strict uniqueness (#1213).
-5. **Structural read and addressing** for one stack, then the **structural revision path**
-   (replace, insert, remove) with preservation assertion.
-6. **Second stack**, demonstrating equivalent semantics across different slot granularity.
+5. **Structural read and addressing** for the first stack, React (§43.6), then the
+   **structural revision path** (replace, insert, remove) with the preservation proof (§17).
+6. **Second stack**, Next.js, demonstrating equivalent semantics across different slot
+   granularity.
 7. **Default repair path.** Scoped revision becomes the normal path for supported existing
-   artifacts; legacy whole-file repair emission becomes explicit fallback (§9.4).
+   artifacts; legacy whole-file repair emission becomes the explicitly authorized fallback of
+   §9.4. Gated by §39.8's N.
 
-The 1.8 plan (§3.3) sequences these one PR per step: steps 1–5 on the first stack are the
-core, step 6 the second stack, step 7 the flip, gated by §39.8's N; each step's proof is the
-previous step's invariant still holding. The stack order is the review's (§43.6).
+**This is the one authoritative sequence: one PR per step, in this order**, each step's proof
+the previous step's invariant still holding. **Steps 1–4 establish the stack-independent
+transaction machinery; step 5 proves the structural path end to end on the first stack;
+together they are the core.** Step 6 adds the structural path on the second stack, and step 7
+flips the default. Scoped transactions on the second stack do not wait for step 6: the
+anchored and region modes of steps 2–4 reach it, so §39.8's coverage of both stacks is
+reachable before the second structural resolver exists.
 
 ---
 
@@ -1090,10 +1146,12 @@ previous step's invariant still holding. The stack order is the review's (§43.6
 Each §30.2 fixture is refused with its typed reason on the normal path, and the roll 1
 unrequested artifact is refused at creation with no repair framed.
 
-## 39.2 Zero outside-range revision
+## 39.2 Zero outside-range revision, proved by reconstruction
 
-For scoped transactions, every changed byte is attributable to an accepted resolved revision.
-Changed bytes outside those ranges: zero.
+For every scoped transaction, the candidate is reconstructible from the immutable base by
+applying exactly the normalized accepted range edits, and every untouched base span appears,
+in order, byte-identically in the candidate (§5.2, §17). Zero changed bytes outside accepted
+ranges follows; it is not measured by a positional diff.
 
 ## 39.3 Zero restoration and an empty observed set
 
@@ -1110,7 +1168,9 @@ in the evidence. No exceptions.
 A stale transaction fails rather than rebasing. A multi-match anchor fails rather than
 choosing. An out-of-grant target never enters the candidate and produces an explicit
 authorization outcome. A transaction with one invalid revision applies none. Invalid syntax
-fails before behavioural verification.
+fails before behavioural verification. A whole-file response without fallback authority is
+refused with a typed policy outcome (§9.4), and no automatic regrant exceeds the plan-bound
+ceiling (§15).
 
 ## 39.6 Every producer lane carries a grant
 
@@ -1124,29 +1184,55 @@ stack's slot size becomes the universal granularity.
 
 ## 39.8 Live evidence, counted in transactions
 
-Before becoming the default repair path, observe at least N successfully exercised repair
-revision transactions across both supported stacks and multiple producer lanes — N fixed in
-the pre-registration before the first launch — with zero: outside-grant changes;
-post-verification drops; candidate/persisted identity mismatches; preservation violations;
-successful scoped transactions requiring restoration or recording observed divergence.
+Two readings, never one number.
+
+**Success-path readiness.** Before becoming the default repair path (§38 step 7), observe at
+least **N successful scoped revision transactions**. A successful transaction resolved inside
+its grant, composed, passed its preservation proof (§17), was verified, and was persisted under
+the identity it was verified with (§39.4). **N is fixed in a pre-registration committed before
+any transaction that could count toward it is observed** — before the first diagnostic launch,
+not only before the first counted roll. A transaction that fails closed, by design under a
+diagnostic or otherwise, is audited below and never increases N; neither does a mechanically
+valid transaction whose repair failed verification, nor a repair where no revision executed.
+
+**Coverage.** N spans both supported stacks and every producer lane with an existing-artifact
+revision surface on that stack. **The qa and dev lanes on both stacks are required cells.**
+Each builder cell is declared in the same pre-registration, either with the fault that forces
+a builder revision of an existing artifact or as unaskable with its structural reason. The
+builder's grant is the fill slots it repackages (`write_authorization.py:99`), and what it may
+still revise once its packaging files are a rendering (#598) is read at pre-registration, not
+assumed here.
+
+**All-attempt integrity.** Every attempted transaction — successful, refused, failed closed or
+behaviourally failed — records zero: outside-grant changes; post-verification drops;
+verified/persisted identity mismatches; preservation violations; partial acceptance; automatic
+regrant beyond the plan-bound ceiling; whole-file fallback without fallback authority; and,
+on successful scoped transactions, restoration or recorded observed divergence.
 
 Rolls are the wrong unit: a roll may carry no repair, and the 1.7.2 pack recorded one drop
 across nine counted rolls. For **every attempted repair** the readout reports which of these
 occurred: structural target used; exact anchored target used; region replacement used;
-whole-file fallback used; no revision executed; failure reason. Each field is read in the
-driver's three-state vocabulary (#1445): *observed* with its value, *asked_none* when the
-producer ran and produced nothing, *unaskable(reason)* when the producer could not ask on that
-roll — so a quiet path, an exercised one and a structurally silent one are never one zero.
+whole-file fallback used, with its typed reasons (§9.4); no revision executed; failure reason.
+"No revision executed" is evidence about a quiet path, never a transaction. Each field is
+read in the driver's three-state vocabulary (#1445): *observed* with its value, *asked_none*
+when the producer ran and produced nothing, *unaskable(reason)* when the producer could not
+ask on that roll — so a quiet path, an exercised one and a structurally silent one are never
+one zero.
 Each transaction is counted by the attempt stamp its emission carries (#1436), never by
 artifact.
 
-**Where N comes from is tabled before roll 1.** 1.7.5's nine counted rolls attempted five
-repair rounds in total, on two rolls, both in the qa lane on one stack; seven rolls took no
-correction round. A counted set of that shape cannot reach any honest N alone, so the
-pre-registration tables, per lane and per stack, the fault that forces a repair and the
-transactions it is expected to produce, and the sum against N. A dev-lane fault must exist
-first (§3.8). Fewer than N transactions at the cut is a budget failure the record states, not
-a pass, and §38 step 7 waits.
+**Where N comes from is tabled in that pre-registration.** 1.7.5's nine counted rolls
+attempted five repair rounds in total, on two rolls, both in the qa lane on one stack; seven
+rolls took no correction round. A counted set of that shape cannot reach any honest N alone,
+so the pre-registration tables, for each required cell, the fault that forces a repair and the
+successful transactions it is expected to produce, and the sum against N. A dev-lane fault
+must exist first (§3.8). If the deploy moves after the pre-registration is committed, the
+commit is void and re-made, and no transaction from the superseded deploy counts.
+
+**What an unmet N means here.** In this SIP, fewer than N successful transactions means §38
+step 7 does not happen: the default stays the legacy path, and the record states the shortfall
+as a budget failure, not a pass. A release plan that adopts the same N as a release gate says
+so as its own gate; the 1.8 plan does (its §3.9), and there an unmet N blocks the cut.
 
 Token and emitted-byte reductions against the legacy whole-file baseline are recorded as
 supporting evidence, not as correctness gates.
@@ -1199,25 +1285,45 @@ eliminated.
   binds it to candidate identity.
 - **#1323.** Prior evidence of a lesson taken, not this SIP's motivation.
 - **Vocabulary.** `WriteGrant`, authorized region, revision target, candidate revision identity.
+- **The design review's rulings (2026-09-13).** Recorded in place under each question of §43,
+  and written into the sections they govern: §9.4, §22 and §38.
 
 ---
 
-# 43. Remaining design questions
+# 43. Design questions — ruled at design review, 2026-09-13
+
+Each question is kept as it was put to the review; the ruling follows it.
 
 ## 43.1 Reference representation
 
 How are revision-bound region and entity references serialized so they stay compact,
 traceable and model-friendly?
 
+**Ruled.** The serialized representation stays implementation-owned. The SIP requires only an
+opaque, revision-bound authoritative identity; a human-readable display selector; and an
+evidence round-trip from the reference back to its resolved range. No AST coordinates or
+source offsets are standardized here.
+
 ## 43.2 Resolver selection
 
 Which parser or language service supplies source ranges for each stack? The SIP specifies
 behaviour, not the library.
 
+**Ruled.** No library is chosen in the SIP. The first structural-stack implementation PR (§38
+step 5) chooses the resolver under the behavioural contract defined here. The resolver is
+replaceable; fail-closed semantics are not. The first stack carries a Python backend and a JSX
+frontend, so that PR also names which of the two resolvers comes first; the review did not
+order them.
+
 ## 43.3 Whole-file fallback policy
 
 Should existing-file whole-file replacement require an explicit task-level capability, or is a
 whole-file grant sufficient? The stronger policy is preferable for scaffold-owned files.
+
+**Ruled.** The stronger policy. Explicit whole-file-fallback authority, or a typed policy
+decision admitting it, is required in addition to a whole-file grant, with a recorded reason
+for each narrower mode passed over. For scaffold-owned and framework-owned files the fallback
+is not admitted unless the task exists to replace the scaffold itself. Written into §9.4.
 
 ## 43.4 First-class `move`
 
@@ -1225,20 +1331,36 @@ After experience with replace, insert and remove, should `move` become primitive
 members and other source-preserving relocations? Decide on repair evidence, not vocabulary
 completeness.
 
+**Ruled.** No `move` in 1.8. `remove` + `insert` in one atomic transaction is sufficient to
+test the abstraction. `move` is added only after real evidence shows that provenance or trivia
+ownership makes the pair inadequate.
+
 ## 43.5 Budget policy
 
 How do target-resolution failure, stale-context refresh, regrant and genuinely sequential
 revisions consume the correction-attempt budget? §22 states the default this SIP proposes —
 including rev 3's placement of the emission-retry allowance (#1372) in front of correction —
-and design review confirms or amends it. **#414 is answered here:** its priority reserve for
+and design review confirms or amends it. **#414 is raised here:** its priority reserve for
 required checks and this SIP's defaults draw on one pool; rule on both, or name why they are
 separate.
+
+**Ruled.** One correction pool; no second retry economy for scoped revision. #1372's one-shot
+emission-contract retry stays separately bounded. If #414 adopts a priority reserve, it is a
+reservation inside the same correction pool, never a second pool. §22 is written to this
+ruling; whether to adopt the reserve remains #414's decision.
 
 ## 43.6 Stack order for §38 steps 5–6
 
 Which stack takes the structural path first? React is six of nine counted rolls in 1.7.5 and
 the demonstration arm; Next.js is where the slot-body path (§3.2) already ships. The review
 rules; the plan's sequencing follows the ruling.
+
+**Ruled.** React first for the structural path, Next.js second. React carries the measured
+whole-file repair failures that motivate this SIP (§1.2, §1.3) and is six of nine counted
+rolls and the demonstration arm; Next.js supplies the QA slot-body primitive that §38 step 2
+generalizes. The bootstrap comes from the proven primitive, and the first genuinely new
+structural implementation attacks the failure mode that justified the feature. Written into
+§38.
 
 ---
 
@@ -1249,8 +1371,9 @@ authorization, agent response contracts, scaffold semantics, composition, integr
 enforcement, repair retries, verification evidence, persistence, replay and observability.
 It gates an even minor under the parity convention and is **1.8's Lane M headline** by the
 owner's ruling of 2026-09-12 (`docs/plans/1-8-0-plan.md` §2.1 and §3.3; the ROADMAP's 1.8
-row). The 1.7.3 plan's earlier placement beside #1213 and #1176 is superseded: #1213 closes
-with §38 step 4, and #1176 is an experiment in that line's idle box, not this SIP's.
+row), accepted at its design review on 2026-09-13 with the revisions of rev 4. The 1.7.3
+plan's earlier placement beside #1213 and #1176 is superseded: #1213 closes with §38 step 4,
+and #1176 is an experiment in that line's idle box, not this SIP's.
 
 The progression this SIP completes:
 
