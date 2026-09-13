@@ -1,9 +1,10 @@
 # 1.8.0 — plan
 
-**Revision 4, 2026-09-13.** Rev 1 was written the day the 1.7 line closed; rev 2 the same
+**Revision 5, 2026-09-13.** Rev 1 was written the day the 1.7 line closed; rev 2 the same
 evening, recording the owner's rulings on §8 decisions 1–3; rev 3 on a written tightening
 review; rev 4 on the final notes of the Scoped Code Revision design review, which accepted that
-SIP with required revision as SIP-0107 (§3.1, §10). Written from the ROADMAP's 1.8 row
+SIP with required revision as SIP-0107; rev 5 on the owner's ruling that its default flip is
+1.8.1's by design (§3.3, §8 decision 15, §10). Written from the ROADMAP's 1.8 row
 and the reconciliation that wrote it (`docs/plans/post-1-5-roadmap-reconciliation.md`), the
 1.7.5 plan (`docs/plans/1-7-5-plan.md` §3.9a, §5, §6, §7 step 14, §8), the 1.7.5 record
 (`docs/plans/1-7-5-verification-set-record.md` §5, §7, §9), the 1.6.0 plan's "Owed to 1.8"
@@ -42,7 +43,7 @@ produces, stated once:
 
 | lane | headline | what it is | its proof |
 |---|---|---|---|
-| **M — the loop** | **Scoped Code Revision** (**SIP-0107**, accepted 2026-09-13 at rev 4; on main when PR #1325 merges) | for an existing artifact the agent describes the smallest reliable revision; the framework realizes it under an explicit write grant, preserves every byte outside the accepted range, and verifies exactly the tree it persists | the SIP's own §39: zero outside-grant change, preservation proved by reconstruction, zero restoration, `verified_revision_id == persisted_revision_id`, on **N successful** scoped transactions across qa and dev on both stacks with builder cells declared, N fixed before any transaction that can count is observed (§4) — adopted here as a release gate (§3.9) |
+| **M — the loop** | **Scoped Code Revision** (**SIP-0107**, accepted 2026-09-13 at rev 4; the default flip is 1.8.1's) | for an existing artifact the agent describes the smallest reliable revision; the framework realizes it under an explicit write grant, preserves every byte outside the accepted range, and verifies exactly the tree it persists | the SIP's own §39: zero outside-grant change, preservation proved by reconstruction, zero restoration, `verified_revision_id == persisted_revision_id`, on **N successful** scoped transactions across qa and dev on both stacks with builder cells declared, N fixed before any transaction that can count is observed (§4) — adopted here as a release gate (§3.9) |
 | **S — the judgement** | **Cycle Evaluation Scorecard, the 1.8 slice** (`sips/proposed/SIP-Cycle-Evaluation-Scorecard.md`, to be revised before review) | `CycleAssessment` as a projection over the `CycleOutcome` seam; **one** failure-attribution registry shared with the vocabularies the code already has; a benchmark registry over the stored counted rolls; the squad-versus-single-model comparison harness | every counted record of this release carries an assessment whose every dimension cites evidence that resolves; the historical corpus re-graded deterministically; **one pre-registered comparison window closed with its result stated, whichever way it goes** |
 
 **Moved off the row, by the owner's ruling.** *Campaign Orchestration* is **2.0's headline** —
@@ -238,8 +239,8 @@ Held 2026-09-13: accepted with required revision.**
   ceiling; explicit whole-file fallback authority. This plan takes the matching revisions in its
   own rev 4 (§3.3, §3.4, §3.9, §4, §7, §8, §10).
 - *Gate:* the decision recorded on PR #1325, then `update_sip_status.py … accepted` run there —
-  **SIP-0107**. **Acceptance before the branch:** it lands on main when PR #1325 merges, and the
-  feature's first PR does not open before that.
+  **SIP-0107**. **Acceptance before the branch:** it landed on main when PR #1325 merged on
+  2026-09-13, before any feature PR.
 
 **The scorecard SIP, rev 2, then its review.** Written before review because rev 1 does not
 describe the slice (§2.2). Rev 2 must: narrow the normative text to the four slice
@@ -310,15 +311,30 @@ step, in this order, because each step's proof is the previous step's invariant 
 | 4 | **exact anchored targets** inside the grant, strict uniqueness — **#1213 closes here** | a multi-match anchor fails rather than choosing (§39.5); the #451 fixture |
 | 5 | **structural read and addressing** on **React**, the first stack by the review's ruling (SIP §43.6), then replace / insert / remove with the preservation proof (§17) | preservation by reconstruction — the candidate reproduced from the base by exactly the accepted edits (§39.2); zero restoration and an empty observed set on a scaffolded artifact (§39.3) |
 | 6 | **Next.js, the second stack** — equivalent semantics across different slot granularity (§39.7) | the same criteria on the other stack's fixtures |
-| 7 | **the default** — scoped revision the normal path for supported existing artifacts, legacy whole-file emission the explicitly authorized fallback (SIP §9.4) | **gated by §39.8's N successful scoped transactions** (§4). **An unmet N blocks the 1.8.0 cut** (§3.9): it is a failed experimental gate, not an open step. Once N is met, step 7 may move to 1.8.1 for capacity by a plan revision in the open, and the SIP then stays `accepted` with the flip named open (SIP-0102 precedent) |
+| 7 | **the default — 1.8.1's, by design** (§8 decision 15): scoped revision the normal path for supported existing artifacts, legacy whole-file emission the explicitly authorized fallback (SIP §9.4) | **not in 1.8.0.** Its precondition is §39.8's N, measured on deploy B (§4); **an unmet N blocks the 1.8.0 cut** (§3.9). 1.8.1 lands the refusal with its proof (SIP-0107 §46a): the 1.8.0 set's recorded unauthorized whole-file responses replayed through it, naming each repair it would have turned away, and one checkpoint pair on the flipped deploy |
 
 **The core and the tail, for the cut.** Steps 1–4 establish the stack-independent transaction
 machinery; step 5 proves the structural path end to end on React. **Together they are the
-core.** Step 6 adds the structural path on Next.js; step 7 flips the default. Scoped
-transactions on Next.js do not wait for step 6 — the anchored and region modes of steps 2–4
-reach it — so §4's coverage of both stacks stays reachable if step 6 is re-placed. A core left
-incomplete stops the line. Steps 6 and 7 re-place by name (§5) to 1.8.1 with the reason — step
-7 only once N is met — and the SIP's status follows the evidence, never the calendar.
+core.** Step 6 adds the structural path on Next.js. Scoped transactions on Next.js do not wait
+for step 6 — the anchored and region modes of steps 2–4 reach it — so §4's coverage of both
+stacks stays reachable if step 6 is re-placed. A core left incomplete stops the line. Step 6
+re-places by name (§5) to 1.8.1 with the reason, and the SIP's status follows the evidence,
+never the calendar.
+
+**Step 7 is 1.8.1's, by design — ruled by the owner, 2026-09-13.** N is the flip's
+precondition (SIP §39.8), deploy B is where N is measured, merges are frozen while its set runs
+and the cut expects zero drift from it — so the flip has nowhere to land inside 1.8.0 except
+before its own evidence. **What deploy B runs instead** (SIP-0107 §46a): steps 1–6, with one
+repair contract that requests a scoped revision for every supported existing artifact, and a
+whole-file response without fallback authority **accepted and recorded, not refused**. No flag
+and no legacy mode: only the refusal waits. That keeps a verdict-semantics change out of the
+measured window (the 2026-08-15 ruling: detection reporting-only, promotion a separate call),
+keeps the refusal from being a second explanation for any red on deploy B, and turns 1.8.1 into
+a predicted
+change: the set's unauthorized whole-file count per cell says, before anything ships, how many
+repairs the refusal would have turned away. **What 1.8.0 therefore claims:** scoped revision
+requested and measured, not enforced; SIP-0107 stays `accepted` at the cut with step 7 named as
+1.8.1's.
 
 **Non-droppable.** The core.
 
@@ -409,13 +425,14 @@ the cut follows its own evidence:
 | gate | criterion |
 |---|---|
 | **implementation** | both SIPs accepted before their first feature PR; #1444 merged before §3.3 step 1; every §3.2 row merged and read on the pair; §3.3's core merged; §3.4 (a) and (b) merged, (c) and (d) merged or dropped by a plan revision naming the destination; §3.5's two rails merged; §3.6 merged or dropped |
-| **experimental** | **L1 holds**; **SIP-0107 §39.8's N successful scoped transactions across the declared coverage** — qa and dev on both stacks, each builder cell as declared — **and all-attempt integrity on every attempted transaction** (zero outside-grant changes, post-verification drops, verified/persisted identity mismatches, preservation violations, partial acceptances, over-ceiling regrants, unauthorized whole-file fallbacks, and restorations on a successful scoped transaction), N fixed in the loop set's pre-registration before the first diagnostic launch with its per-cell diagnostic share stated (§4). **This is a release gate adopting the SIP's N, not an extra SIP criterion:** in the SIP an unmet N holds back the default flip; here it also blocks the cut; **the #598 prediction holds**; **every registered diagnostic reaches its seam on the pinned deploy**, F1 included; **the comparison window closed with its result stated, if (d) is in 1.8.0's scope at the loop set's pre-registration** — a negative result never blocks the cut; an unrun window blocks it while (d) is in scope, and is not a criterion once (d) has been re-placed to 1.8.1 by a plan revision in the open before that commit (§3.4, §5); a falsified prediction or an unreached seam stops the set and the plan is revised in the open, not amended after |
+| **experimental** | **L1 holds**; **SIP-0107 §39.8's N successful scoped transactions across the declared coverage** — qa and dev on both stacks, each builder cell as declared — **and all-attempt integrity on every attempted transaction** (zero outside-grant changes, post-verification drops, verified/persisted identity mismatches, preservation violations, partial acceptances, over-ceiling regrants, and restorations on a successful scoped transaction; unauthorized whole-file responses reported as a count per cell, not a violation, until the flip — SIP-0107 §46a), N fixed in the loop set's pre-registration before the first diagnostic launch with its per-cell diagnostic share stated (§4). **This is a release gate adopting the SIP's N, not an extra SIP criterion:** in the SIP an unmet N holds back the default flip; here it also blocks the cut; **the #598 prediction holds**; **every registered diagnostic reaches its seam on the pinned deploy**, F1 included; **the comparison window closed with its result stated, if (d) is in 1.8.0's scope at the loop set's pre-registration** — a negative result never blocks the cut; an unrun window blocks it while (d) is in scope, and is not a criterion once (d) has been re-placed to 1.8.1 by a plan revision in the open before that commit (§3.4, §5); a falsified prediction or an unreached seam stops the set and the plan is revised in the open, not amended after |
 | **evidence** | every counted record carries a `CycleAssessment` whose attribution is a registry id and whose every dimension cites evidence that resolves; every field in the three-state vocabulary; the record reconstructs every counted/void/reset boundary from per-round evidence; deploy-to-tag drift named item by item, expected zero under `src/` and `adapters/`; the package captured with its screenshots — the showcase this release is **a scoped repair**, a delivered app plus the flow-run timeline where the correction round is legible, chosen and explained per rule 3 |
 
 **The SIP sweep at the cut, stated now so the sweep does not read silence as shipped:** Scoped
-Code Revision (SIP-0107) → `implemented` if §38 steps 1–7 land and §39 holds; otherwise
-`accepted` with the open steps named (SIP-0102 precedent) — which covers a re-placed step 6 or
-7, never an unmet N: that fails the experimental gate, and the cut does not happen on it. The scorecard → `implemented` if rev 2 narrowed its
+Code Revision (SIP-0107) → **`accepted` at 1.8.0 by design**, with step 7 named as 1.8.1's and
+step 6 beside it if it was re-placed (SIP-0102 precedent); `implemented` is 1.8.1's call once
+the flip lands and §39 holds. An unmet N is not an open step: it fails the experimental gate,
+and the cut does not happen on it. The scorecard → `implemented` if rev 2 narrowed its
 normative text to the slice and (a)–(d) land; if (c) or (d) moved to 1.8.1, `accepted` with
 exactly that named — and 1.8.1's plan says it carries a measurement window (the 1.6.3 precedent)
 rather than reading as a fix line. SIP-0105 amended by #598, status unchanged. Nothing else moves; §6 names what stays.
@@ -448,7 +465,7 @@ other reading is measured through, and because the headline changes what a repai
 
 | claim | method | falsified by | what a clean set proves |
 |---|---|---|---|
-| **the revision invariant** (SIP-0107 §39.8), two readings: **all-attempt integrity** across every attempted transaction — counted rolls and diagnostics together, successful or refused — zero outside-grant changes, post-verification drops, verified/persisted identity mismatches, preservation violations (by reconstruction), partial acceptances, over-ceiling regrants and unauthorized whole-file fallbacks, and zero restorations on a successful scoped transaction; and **success-path readiness**, at least **N successful scoped transactions** across the declared cells, N fixed in the pre-registration before the first diagnostic launch | the per-repair readout: which resolver each transaction used (structural / anchored / region / whole-file with its typed reasons), successes counted apart from attempts, non-execution counted beside failure, per cell | one of the defect classes on any transaction; **or fewer than N successful transactions, which fails the experimental gate and blocks the cut (§3.9)** | that the contract holds where it was exercised — on this deploy, these stacks, these lanes — and nothing about repairs no roll or diagnostic produced |
+| **the revision invariant** (SIP-0107 §39.8), two readings: **all-attempt integrity** across every attempted transaction — counted rolls and diagnostics together, successful or refused — zero outside-grant changes, post-verification drops, verified/persisted identity mismatches, preservation violations (by reconstruction), partial acceptances and over-ceiling regrants, and zero restorations on a successful scoped transaction, with unauthorized whole-file responses reported as a count per cell, not a violation, until the flip (SIP-0107 §46a); and **success-path readiness**, at least **N successful scoped transactions** across the declared cells, N fixed in the pre-registration before the first diagnostic launch | the per-repair readout: which resolver each transaction used (structural / anchored / region / whole-file, authorized or not), successes counted apart from attempts, non-execution counted beside failure, per cell | one of the defect classes on any transaction; **or fewer than N successful transactions, which fails the experimental gate and blocks the cut (§3.9)** | that the contract holds where it was exercised — on this deploy, these stacks, these lanes — and nothing about repairs no roll or diagnostic produced |
 | **the rendered packaging** (#598): zero `container_packaging` findings on the accepted emission of every counted roll | the check's rows per roll | one finding on an accepted emission | that the rendering is what the boot audit builds and that the builder no longer authors it on this deploy |
 
 **The budget the first prediction actually needs, stated before the first diagnostic launch.** 1.7.5's nine counted
@@ -479,7 +496,8 @@ the derived-rows invariant (F1 — now also live, above), the untouched-file rul
 roll 1:** the resolver mix per repair; emitted bytes and tokens per repair against the 1.7.5
 whole-file figures (supporting evidence, not a gate — the draft's §39.8); correction rounds and
 termination reasons (#1501's new one by name); `dl` styling in the boot audit's screenshot;
-packaging rows; framing-run verdicts; fill-mode completion tokens; generation records per call
+packaging rows; **unauthorized whole-file responses per cell — the count 1.8.1's replay starts
+from**; framing-run verdicts; fill-mode completion tokens; generation records per call
 (#1206, expected equal); the three #80 fields on every record; **the `CycleAssessment` on every
 record, with its attribution id** — texture here, the evidence gate's subject in §3.9.
 
@@ -531,8 +549,7 @@ days. This plan's headlines are each larger than 1.6's individual tracks. The li
 **If capacity forces a drop**, in this order, each to 1.8.1 by a plan revision in the open — and
 for §3.4 (c) and (d) **before the loop set's pre-registration is committed**, so the cut criteria
 never move after the first diagnostic launch:
-§3.4 (d) the comparison window → (c) the benchmark registry → §3.3 step 7 (only once N is met — an unmet N is a failed gate,
-not a capacity drop) → step 6 → §3.6 in
+§3.4 (d) the comparison window → (c) the benchmark registry → §3.3 step 6 → §3.6 in
 reverse (#1039, #1449, #1448). **Non-droppable:** the prelude (§3.2), #1444, §3.3's core,
 §3.4 (a) and (b), the two rails (§3.5), the verify-then-closes and the two reviews. If capacity
 cannot carry these, 1.8 does not cut, and the plan says so rather than re-placing a headline.
@@ -617,7 +634,8 @@ SIPs that carry open parts), so the sweep at the cut does not read silence as sh
 5. **Deploy A; one checkpoint pair** — a red belongs to the prelude; every driver field
    re-checked in the three-state vocabulary; the #598 prediction's first reading; #1506's two
    diagnostics reachable.
-6. **The headlines** — Lane M by §3.3's order, Lane S by §3.4's — and **the hardening list**
+6. **The headlines** — Lane M steps 1–6 by §3.3's order (step 7 is 1.8.1's), Lane S by
+   §3.4's — and **the hardening list**
    (§3.6) riding in CI beside them. Each SIP amended in place where implementation diverges.
 7. **Deploy B; the shakeout loop** to the exit rule, budget three pairs — a red belongs to the
    headlines, because nothing else that can move runtime behaviour is on this deploy.
@@ -640,7 +658,8 @@ SIPs that carry open parts), so the sweep at the cut does not read silence as sh
     deploy before anything else moves; the SIP sweep decided on that reading.
 14. **Final record; cut 1.8.0 by the seven steps** — re-authenticate immediately before the
     capture (the 1.7.5 lesson), the preview read before `--write`, the screenshots of a scoped
-    repair, zero drift named. **Then the 1.9 plan**, whose subject is the executor's completion
+    repair, zero drift named. **Then 1.8.1** — the default flip on N met, proven by the replay and a
+    checkpoint pair (§3.3) — **and the 1.9 plan**, whose subject is the executor's completion
     boundary (#1507) and the debts §6 re-placed — the close of the 1.x line — so that 2.0 can
     open on Campaign.
 
@@ -703,6 +722,10 @@ never share a red.
     walk given a name and a second reader; Campaign replaces its implementation in 2.0.
 14. **Both design reviews have one reviewer and one vocabulary**, and acceptance precedes the
     branch — a feature PR opened against a proposed SIP is closed unmerged.
+15. **Scoped Code Revision's default flip, §3.3 step 7, is 1.8.1's by design. Ruled by the owner,
+    2026-09-13.** Deploy B measures steps 1–6 with unauthorized whole-file responses recorded,
+    not refused; 1.8.1 lands the refusal on N met, proven by replaying the set's recorded
+    responses and one checkpoint pair. Recorded in the SIP as §46a. Rationale §3.3.
 
 ---
 
@@ -743,6 +766,16 @@ Named here so they are not the next line's §6a. Each has a home above or a fix 
 
 ## 10. Revision history
 
+- **Rev 5 (2026-09-13)** — the owner's ruling that Scoped Code Revision's default flip is
+  **1.8.1's by design** (§3.3, §8 decision 15; SIP-0107 §46a). Rev 4 placed all seven steps on
+  deploy B, but step 7's precondition is the N measured there, merges are frozen while the set
+  runs, and the cut expects zero drift, so step 7 could only land before its evidence or after
+  the cut. Deploy B now runs steps 1–6 with one repair contract that requests a scoped revision
+  and records, rather than refuses, a whole-file response without fallback authority; the
+  all-attempt integrity reading reports that as a count per cell (§3.9, §4.1), which also
+  corrects rev 4, where it would have been a violation by construction. The SIP sweep reads
+  `accepted` at 1.8.0 by design (§3.9); step 7 leaves §5's drop order; §7 step 14 names 1.8.1.
+  No change to N's gate, the set, the diagnostics or the other headline.
 - **Rev 4 (2026-09-13)** — on the final notes of the Scoped Code Revision design review, which
   **accepted the SIP with required revision** (SIP-0107, its rev 4, on PR #1325; §3.1). The plan
   takes the revisions that are its own. **Sequencing fixed:** rev 3 ran the seven diagnostics

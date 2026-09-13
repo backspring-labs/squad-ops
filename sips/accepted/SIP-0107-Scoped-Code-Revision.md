@@ -26,7 +26,7 @@ updated_at: '2026-09-13T09:54:01.036245Z'
 reviewer, accepted this draft **with required revision** on written final review notes; the
 revisions are rev 4, and the rulings on §43.1–§43.6 are recorded in §43, including #414's
 shape (§43.5) and the stack order (§43.6). Acceptance precedes the feature branch
-(contributor workflow steps 3–4): it lands when this PR merges; #1444 is the first
+(contributor workflow steps 3–4): it landed when PR #1325 merged, 2026-09-13; #1444 is the first
 extraction, before the feature's first PR (§3.2, §38). The 1.7.3 plan's earlier placement
 beside #1213 and #1176 is superseded: #1213 closes with §38 step 4, and #1176 is an
 experiment in that line's idle box, not this SIP's.
@@ -607,8 +607,8 @@ a bounded fallback.
 ## 9.4 Existing whole-file replacement
 
 Last resort, not the normal repair contract. **A whole-file grant alone is not sufficient**
-(the design review's ruling on §43.3). Whole-file replacement of an existing artifact is
-admitted only when all of these hold:
+(the design review's ruling on §43.3). From §38 step 7 (§46a), whole-file replacement of an
+existing artifact is admitted only when all of these hold:
 
 - the task carries explicit **whole-file-fallback authority**, or the framework produces a
   typed policy decision admitting it;
@@ -833,7 +833,7 @@ verified against (register entry 26); this section puts the candidate's identity
 | Exact anchor has zero matches | reject; correction eligible |
 | Exact anchor has multiple matches | reject; correction eligible |
 | Resolved target exceeds the grant | reject, or scope request under §15 |
-| Whole-file replacement without fallback authority | reject; typed policy outcome (§9.4) |
+| Whole-file replacement without fallback authority | from §38 step 7: reject; typed policy outcome (§9.4). Before it: accept and record as an unauthorized fallback (§46a) |
 | Scope request: same-role under-scoping | regrant within the plan-bound ceiling (§15) and redispatch |
 | Scope request beyond the plan-bound ceiling | cross-role or unplanned case, never an automatic regrant |
 | Scope request: cross-role ownership | reframe to the owning role |
@@ -1129,7 +1129,8 @@ wiring test at the executor's dispatch.
    granularity.
 7. **Default repair path.** Scoped revision becomes the normal path for supported existing
    artifacts; legacy whole-file repair emission becomes the explicitly authorized fallback of
-   §9.4. Gated by §39.8's N.
+   §9.4. Gated by §39.8's N, and landed as its own release after the one that measures N; before
+   it, an unauthorized whole-file response is recorded, not refused (§46a).
 
 **This is the one authoritative sequence: one PR per step, in this order**, each step's proof
 the previous step's invariant still holding. **Steps 1–4 establish the stack-independent
@@ -1170,9 +1171,9 @@ in the evidence. No exceptions.
 A stale transaction fails rather than rebasing. A multi-match anchor fails rather than
 choosing. An out-of-grant target never enters the candidate and produces an explicit
 authorization outcome. A transaction with one invalid revision applies none. Invalid syntax
-fails before behavioural verification. A whole-file response without fallback authority is
-refused with a typed policy outcome (§9.4), and no automatic regrant exceeds the plan-bound
-ceiling (§15).
+fails before behavioural verification. From §38 step 7, a whole-file response without fallback
+authority is refused with a typed policy outcome (§9.4; before it, recorded, §46a), and no
+automatic regrant exceeds the plan-bound ceiling (§15).
 
 ## 39.6 Every producer lane carries a grant
 
@@ -1208,8 +1209,9 @@ assumed here.
 **All-attempt integrity.** Every attempted transaction — successful, refused, failed closed or
 behaviourally failed — records zero: outside-grant changes; post-verification drops;
 verified/persisted identity mismatches; preservation violations; partial acceptance; automatic
-regrant beyond the plan-bound ceiling; whole-file fallback without fallback authority; and,
-on successful scoped transactions, restoration or recorded observed divergence.
+regrant beyond the plan-bound ceiling; whole-file fallback without fallback authority, from §38
+step 7 (before it, a reported count per cell, §46a); and, on successful scoped transactions,
+restoration or recorded observed divergence.
 
 Rolls are the wrong unit: a roll may carry no repair, and the 1.7.2 pack recorded one drop
 across nine counted rolls. For **every attempted repair** the readout reports which of these
@@ -1232,7 +1234,8 @@ must exist first (§3.8). If the deploy moves after the pre-registration is comm
 commit is void and re-made, and no transaction from the superseded deploy counts.
 
 **What an unmet N means here.** In this SIP, fewer than N successful transactions means §38
-step 7 does not happen: the default stays the legacy path, and the record states the shortfall
+step 7 does not happen: the refusal does not land and the pre-flip contract of §46a stays, and
+the record states the shortfall
 as a budget failure, not a pass. A release plan that adopts the same N as a release gate says
 so as its own gate; the 1.8 plan does (its §3.9), and there an unmet N blocks the cut.
 
@@ -1437,3 +1440,45 @@ The progression this SIP completes:
 **[R10]** Microsoft. *Language Server Protocol — WorkspaceEdit / TextEdit*, LSP specification.
 
 **[R11]** Tree-sitter. Node and range API documentation.
+
+---
+
+# 46. Post-acceptance amendments
+
+## 46a. 2026-09-13 — the default flip is its own release; before it, an unauthorized whole-file response is recorded, not refused
+
+**What changed.**
+
+1. **§38 step 7 is a separate release from the one that measures N.** Steps 1–6 land and are
+   measured; step 7 lands afterwards, on that measurement. For 1.8 the flip is 1.8.1's, by
+   design (1.8 plan §3.3).
+2. **Before step 7 there is one repair contract and one code path, not a flag or a legacy
+   mode.** A repair of a supported existing artifact requests a scoped revision. A whole-file
+   response made without the fallback authority of §9.4 is **accepted and recorded as an
+   unauthorized whole-file fallback** instead of being refused. It is handled as main handles a
+   whole-file repair today, with the producer's write grant still enforced, and it passes through
+   candidate identity, verification and persistence like any other response (§20). It is not a
+   scoped transaction, so it never counts toward N.
+3. **What waits for step 7:** §9.4's authority requirement, the §21 row refusing whole-file
+   replacement without fallback authority, and the matching sentence of §39.5. Every other rule
+   in this SIP applies from the step that introduces it.
+4. **§39.8's all-attempt integrity reading:** before step 7, "whole-file fallback without
+   fallback authority" is a **reported count per cell**, not a violation. Every other zero in
+   that reading holds from step 1. The unmet-N paragraph of §39.8 reads accordingly: with fewer
+   than N successful transactions the refusal does not land, and the pre-flip contract stays.
+5. **Step 7's proof:** the pre-flip window's recorded unauthorized whole-file responses replayed
+   through the refusal, naming each repair it would have turned away, plus one checkpoint pair on
+   the deploy that carries the flip. N met is the precondition, unchanged.
+
+**Evidence.** Rev 4 placed N before step 7 (§39.8) while the 1.8 plan landed all seven steps on
+the deploy that measures N. That deploy freezes merges while its set runs, and the cut expects
+zero code drift from it, so step 7 could only have landed before N existed or after the cut.
+Refusing whole-file responses inside the measured window would change what a verdict means
+mid-measurement, which the owner ruled against on 2026-08-15 (detection lands reporting-only;
+promotion to a refusal is a separate call), and would put two behaviour changes on one measured
+deploy so that a rejected roll could not be attributed to either. Rev 4's own all-attempt reading
+also counted every unauthorized whole-file response as a violation, which would have made the
+pre-flip window fail by construction. That is a correction to rev 4 itself.
+
+**Ruled by.** The owner, 2026-09-13, on a written recommendation: the flip goes to 1.8.1 by
+design, with the refusal held back and everything else in steps 1–6 unchanged.
