@@ -21,7 +21,8 @@ evaluates the real subject — not when the check disappears, is renamed, or is
 reclassified optional."
 
 Pure functions over summaries — ``cycle_outcome.resolve_cycle_outcome`` owns
-the registry reads, series scoping, and failure containment.
+the registry reads and failure containment, and series membership is
+``squadops.cycles.lineage`` (the 1.8 lineage seam).
 """
 
 from __future__ import annotations
