@@ -9,7 +9,9 @@ Contents are versioned by SIP-0097 §6.6: in v1.3 the ledger carries the
 pulse boundary verification summaries (the former executor
 ``_pulse_report_entries`` instance state); in v1.4, SIP-0096 extends it to
 every recorded check result and wires its aggregation function to consume
-it at the ``RunCompletion`` seam.
+it at the ``RunCompletion`` seam. In v1.8, SIP-0108 §4.1 adds the loop facts no
+store held — each refunded correction round and each round's movement class —
+which finalization persists as the run summary.
 
 This is an in-memory accumulator, not a persistence abstraction —
 persistence stays with the existing registry/report paths.
@@ -20,17 +22,36 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from squadops.cycles.run_loop_summary import MovementRecord, RefundedRound
     from squadops.cycles.verification_integrity import CheckResult
 
 
 class RunLedger:
     """Append-only per-run evidence ledger with immutable read accessors."""
 
-    __slots__ = ("_pulse_entries", "_check_results")
+    __slots__ = ("_pulse_entries", "_check_results", "_refunded_rounds", "_movements")
 
     def __init__(self) -> None:
         self._pulse_entries: list[dict[str, Any]] = []
         self._check_results: list[CheckResult] = []
+        self._refunded_rounds: list[RefundedRound] = []
+        self._movements: list[MovementRecord] = []
+
+    def record_refunded_round(self, record: RefundedRound) -> None:
+        """Record one correction round handed back rather than spent (#1053, append-only)."""
+        self._refunded_rounds.append(record)
+
+    @property
+    def refunded_rounds(self) -> tuple[RefundedRound, ...]:
+        return tuple(self._refunded_rounds)
+
+    def record_movement(self, record: MovementRecord) -> None:
+        """Record one failed task's round-over-round movement class (A4.2, append-only)."""
+        self._movements.append(record)
+
+    @property
+    def movements(self) -> tuple[MovementRecord, ...]:
+        return tuple(self._movements)
 
     def record_pulse_boundary(self, entry: dict[str, Any]) -> None:
         """Record one pulse boundary-decision summary (append-only)."""

@@ -270,7 +270,13 @@ class RunCompletion:
             if usage is not None:
                 try:
                     await self._cycle_registry.record_run_loop_summary(
-                        run_id, RunLoopSummary(run_id=run_id, usage=usage)
+                        run_id,
+                        RunLoopSummary(
+                            run_id=run_id,
+                            usage=usage,
+                            refunded_rounds=ledger.refunded_rounds if ledger else (),
+                            movements=ledger.movements if ledger else (),
+                        ),
                     )
                 except Exception:
                     logger.warning("Run summary persistence failed", exc_info=True)

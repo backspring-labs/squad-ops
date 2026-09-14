@@ -57,6 +57,7 @@ from squadops.cycles.correction_signature import (
 from squadops.cycles.failure_evidence import build_failure_evidence, compose_failure_trigger
 from squadops.cycles.models import ArtifactRef
 from squadops.cycles.plan_delta import PlanDelta
+from squadops.cycles.run_loop_summary import MovementRecord
 from squadops.cycles.task_outcome import CorrectionTermination, CorrectionTerminationReason
 from squadops.events.types import EventType
 from squadops.tasks.models import TaskEnvelope, TaskResultStatus
@@ -67,6 +68,7 @@ if TYPE_CHECKING:
 
     from adapters.cycles.task_dispatcher import TaskDispatcher
     from squadops.cycles.models import Cycle
+    from squadops.cycles.run_ledger import RunLedger
     from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
     from squadops.ports.cycles.cycle_registry import CycleRegistryPort
     from squadops.ports.events.cycle_event_bus import CycleEventBusPort
@@ -692,6 +694,7 @@ class CorrectionRunner:
         run_id: str,
         all_artifact_refs: list[str],
         repair_rejections: list[str] | None = None,
+        ledger: RunLedger | None = None,
     ) -> None:
         """#435 A4.3: terminate the chain as ``plan_defect`` when a round carried
         failures from the round before it without progress, with structural
@@ -732,6 +735,17 @@ class CorrectionRunner:
         prev_sig = state["signature"] if state else None
         prev_candidate = state["candidate"] if state else None
         candidate = delta.structural_plan_change_candidate
+        movement = classify_movement(prev_sig, current_sig)
+        # SIP-0108 §4.1: the movement sequence joins the run summary. Recorded before the
+        # termination decision, so the round a chain terminates on is in the sequence too.
+        if ledger is not None:
+            ledger.record_movement(
+                MovementRecord(
+                    task_id=envelope.task_id,
+                    round_index=correction_attempts,
+                    movement=movement,
+                )
+            )
 
         if should_terminate_plan_defect(prev_sig, current_sig, prev_candidate, candidate):
             termination = CorrectionTermination(
@@ -786,7 +800,6 @@ class CorrectionRunner:
                 f"(see {ref.artifact_id})"
             )
 
-        movement = classify_movement(prev_sig, current_sig)
         first_seen = (
             int(state["first_seen_round"])
             if state and movement == "repeat"
@@ -819,6 +832,7 @@ class CorrectionRunner:
         scaffold_enforcement_carry: list[str] | None = None,
         budget_guard: Callable[[], None] | None = None,
         signature_state: dict[str, Any] | None = None,
+        ledger: RunLedger | None = None,
         repair_rejections: list[str] | None = None,
         has_accepted_repair: bool = False,
     ) -> CorrectionProtocolResult:
@@ -899,6 +913,7 @@ class CorrectionRunner:
             all_artifact_refs=all_artifact_refs,
             plan_delta_refs=plan_delta_refs,
             signature_state=signature_state,
+            ledger=ledger,
             repair_rejections=repair_rejections,
         )
 
@@ -1183,6 +1198,7 @@ class CorrectionRunner:
         plan_delta_refs: list[str],
         signature_state: dict[str, Any] | None,
         repair_rejections: list[str] | None,
+        ledger: RunLedger | None = None,
     ) -> None:
         """Step 3 — store the plan delta, then the progress-aware termination check.
 
@@ -1240,6 +1256,7 @@ class CorrectionRunner:
         if signature_state is not None:
             await self._check_progress_termination(
                 signature_state=signature_state,
+                ledger=ledger,
                 envelope=envelope,
                 failure_evidence=failure_evidence,
                 delta=delta,

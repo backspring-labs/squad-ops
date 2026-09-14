@@ -77,6 +77,7 @@ from squadops.cycles.rejection_baseline import (
     RejectionClassifier,
 )
 from squadops.cycles.run_ledger import RunLedger
+from squadops.cycles.run_loop_summary import REFUND_EMPTY_REPAIR_EMISSION, RefundedRound
 from squadops.cycles.scaffold_integrity_evidence import (
     STAGE_FAILED_EMISSION,
 )
@@ -1960,6 +1961,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 bound_record=state.ownership.bound_record,
                 compliance_counter=state.ownership.compliance_counter,
                 accepted_repair_task_ids=state.correction.accepted_repair_task_ids,
+                ledger=ledger,
             )
             if action == "accept_patch":
                 # #994: remember that THIS task now has accepted, stored repaired
@@ -3097,8 +3099,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         bound_record: Any = None,
         compliance_counter: dict[str, int] | None = None,
         accepted_repair_task_ids: set[str] | None = None,
+        ledger: RunLedger | None = None,
     ) -> str:
         """Route a failed task outcome. Returns an action string.
+
+        ``ledger`` receives the loop facts the run summary persists (SIP-0108 §4.1): each
+        refunded round, and each round's movement class, recorded where they are decided.
 
         ``budget_guard`` (#511) raises when the run's time budget is spent; it
         is forwarded to every correction-chain dispatch so no lane can start
@@ -3170,6 +3176,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             budget_guard=budget_guard,
             repair_rejection_carry=repair_rejection_carry,
             accepted_repair_task_ids=accepted_repair_task_ids,
+            ledger=ledger,
         )
 
         return await self._route_correction_path(
@@ -3193,6 +3200,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             repair_rejection_carry=repair_rejection_carry,
             bound_record=bound_record,
             compliance_counter=compliance_counter,
+            ledger=ledger,
         )
 
     def _carry_facts_to_the_next_attempt(
@@ -3348,6 +3356,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         budget_guard: Callable[[], None] | None,
         repair_rejection_carry: dict[str, list[str]] | None,
         accepted_repair_task_ids: set[str] | None,
+        ledger: RunLedger | None = None,
     ) -> _CorrectionRound:
         """Block 3 — the budget, then the protocol.
 
@@ -3390,6 +3399,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             interface_manifest=interface_manifest,
             budget_guard=budget_guard,
             signature_state=correction_signature_state,
+            ledger=ledger,
             # 3.4b: run-lived restore+signal carry (created beside correction_counter).
             scaffold_enforcement_carry=scaffold_enforcement_carry,
             # #870: what happened to this task's PREVIOUS repair, so analysis and the
@@ -3439,6 +3449,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         repair_rejection_carry: dict[str, list[str]] | None,
         bound_record: Any,
         compliance_counter: dict[str, int] | None,
+        ledger: RunLedger | None = None,
     ) -> str:
         """Block 4 — refund an empty emission, then act on the protocol's answer.
 
@@ -3464,6 +3475,15 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # without letting a broken emitter run forever.
         if protocol.emission_empty:
             if refund_empty_emission_attempt(correction_counter, max_corrections, attempt):
+                if ledger is not None:
+                    ledger.record_refunded_round(
+                        RefundedRound(
+                            task_id=envelope.task_id,
+                            round_index=attempt,
+                            reason=REFUND_EMPTY_REPAIR_EMISSION,
+                            signatures=tuple(protocol.empty_emission_signatures),
+                        )
+                    )
                 logger.warning(
                     "correction attempt %d refunded: the repair emitted no content (%s), so "
                     "the round is re-taken rather than spent (refund %d of %d, #1053/#998)",

@@ -88,7 +88,14 @@ class TestTheRunSum:
             tasks_reported=2,
             tasks_unreported=("t9",),
         )
-        summary = RunLoopSummary(run_id="run_1", usage=usage)
+        from squadops.cycles.run_loop_summary import MovementRecord, RefundedRound
+
+        summary = RunLoopSummary(
+            run_id="run_1",
+            usage=usage,
+            refunded_rounds=(RefundedRound("t1", 0, "empty_repair_emission", ("cap_exhausted",)),),
+            movements=(MovementRecord("t1", 0, "new"), MovementRecord("t1", 1, "shifted")),
+        )
         assert RunLoopSummary.from_dict(summary.to_dict()) == summary
 
 
