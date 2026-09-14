@@ -21,6 +21,7 @@ from squadops.cycles.inert_detection import (
     cycle_check_state,
     detect_inert_checks,
 )
+from squadops.cycles.lineage import prior_in_series
 from squadops.cycles.replay import (
     REPLAY_COMPATIBILITY_ELEMENTS,
     parse_replay_declaration,
@@ -63,25 +64,16 @@ async def _collect_inert(
     current_summaries: Sequence[RunVerificationSummary],
     threshold: int,
 ) -> tuple[str, ...]:
-    """Walk the cycle's prior same-project/profile cycles for §9 streaks (#684).
+    """Walk the cycle's prior same-series cycles for §9 streaks (#684).
 
-    Series scope is strict: same ``project_id`` + ``squad_profile_id`` +
-    ``request_profile``, created strictly before the perspective cycle — cross-
-    profile history could accrue streaks against checks with different
-    applicability (false inerts). The walk consults at most
-    ``INERT_LOOKBACK_CYCLES`` prior cycles (``list_cycles`` returns newest
-    first — the port's ordering contract); a streak not resolvable within the
-    window is not flagged.
+    Series membership is ``squadops.cycles.lineage`` — same project, squad profile and
+    request profile, created strictly before the perspective cycle; the module says why
+    the scope is strict. The walk consults at most ``INERT_LOOKBACK_CYCLES`` prior cycles
+    (``list_cycles`` returns newest first — the port's ordering contract); a streak not
+    resolvable within the window is not flagged.
     """
     cycles = await registry.list_cycles(cycle.project_id, limit=50)
-    series = [
-        c
-        for c in cycles
-        if c.cycle_id != cycle.cycle_id
-        and c.created_at < cycle.created_at
-        and c.squad_profile_id == cycle.squad_profile_id
-        and c.request_profile == cycle.request_profile
-    ][:INERT_LOOKBACK_CYCLES]
+    series = prior_in_series(cycle, cycles, limit=INERT_LOOKBACK_CYCLES)
     states = [cycle_check_state(current_summaries)]
     for prior in series:
         states.append(
