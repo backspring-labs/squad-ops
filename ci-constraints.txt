@@ -208,6 +208,7 @@ tqdm==4.70.0
 transformers==5.16.1
 tree-sitter==0.26.0
 tree-sitter-javascript==0.25.0
+tree-sitter-typescript==0.23.2
 triton==3.8.0
 typer==0.27.2
 typing-inspection==0.4.4
