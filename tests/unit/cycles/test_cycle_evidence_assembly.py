@@ -19,7 +19,6 @@ from adapters.cycles.filesystem_artifact_vault import FilesystemArtifactVault
 from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
 from squadops.cycles.cycle_assessment import (
     UNRECORDED_PROOFS,
-    UNRECORDED_ROUND_FAILURE_EVENTS,
     AssessorIdentity,
     EvidenceRef,
     Indicator,
@@ -178,7 +177,8 @@ async def test_the_stores_assemble_into_an_assessment_whose_every_reference_reso
     reading = assessment.attribution
     assert reading.terminal_kind == TerminalKind.CORRECTION_TERMINATED
     assert reading.attribution.primary == AttributionClass.BUDGET_EXHAUSTION
-    assert reading.unrecorded == (UNRECORDED_ROUND_FAILURE_EVENTS,)
+    # The row carries its rounds (none recorded on this fixture), so nothing is unrecorded.
+    assert reading.unrecorded == ()
 
     assert await unresolved_refs(assessment, registry, vault) == []
 
