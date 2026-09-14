@@ -3,6 +3,11 @@
 Factory functions for creating telemetry adapters with production mode guards.
 Part of SIP-0.8.7 Infrastructure Ports Migration.
 Extended with LLM observability factory (SIP-0061).
+
+Every selector is required (#1449, the composition-roots standard's R2): ``provider`` on all
+four factories and ``prompt_asset_provider`` on the LLM observability one. A defaulted selector
+let a caller bind a provider nobody chose; both composition roots were doing exactly that for
+LLM observability.
 """
 
 import logging
@@ -25,7 +30,7 @@ DEV_ONLY_ADAPTERS = {"console"}
 
 
 def create_metrics_provider(
-    provider: str = "otel",
+    provider: str,
     production_mode: bool = False,
     output: TextIO | None = None,
 ) -> MetricsPort:
@@ -59,7 +64,7 @@ def create_metrics_provider(
 
 
 def create_event_provider(
-    provider: str = "otel",
+    provider: str,
     production_mode: bool = False,
     output: TextIO | None = None,
 ) -> EventPort:
@@ -93,7 +98,7 @@ def create_event_provider(
 
 
 def create_telemetry_provider(
-    provider: str = "otel",
+    provider: str,
     production_mode: bool = False,
     output: TextIO | None = None,
 ) -> tuple[MetricsPort, EventPort]:
@@ -132,10 +137,11 @@ def create_telemetry_provider(
 
 
 def create_llm_observability_provider(
-    provider: str = "langfuse",
+    provider: str,
+    *,
+    prompt_asset_provider: str,
     config: LangFuseConfig | None = None,
     secret_manager: SecretManager | None = None,
-    prompt_asset_provider: str = "filesystem",
 ) -> LLMObservabilityPort:
     """Create LLM observability provider (SIP-0061).
 

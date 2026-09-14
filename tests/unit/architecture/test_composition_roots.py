@@ -275,3 +275,33 @@ def test_every_selector_is_required_not_defaulted(model, field):
     assert getattr(schema, model).model_fields[field].is_required(), (
         f"{model}.{field} has a default — a defaulted selector is a masking fallback (R2)"
     )
+
+
+#: Assertion 5 — every factory selector PARAMETER is required, not only the config it is read
+#: from (#1449). One row per selector as each factory module converts; #1449's table is the
+#: full list, and a module leaves it when its PR lands here.
+_FACTORY_SELECTORS = (
+    ("adapters.telemetry.factory", "create_metrics_provider", "provider"),
+    ("adapters.telemetry.factory", "create_event_provider", "provider"),
+    ("adapters.telemetry.factory", "create_telemetry_provider", "provider"),
+    ("adapters.telemetry.factory", "create_llm_observability_provider", "provider"),
+    ("adapters.telemetry.factory", "create_llm_observability_provider", "prompt_asset_provider"),
+)
+
+
+@pytest.mark.parametrize(("module", "factory", "selector"), _FACTORY_SELECTORS)
+def test_every_factory_selector_parameter_is_required(module, factory, selector):
+    """Bug caught: a selector default restored on a factory — a script, a test harness or a new
+    root then binds a provider nobody chose, which both roots were doing for LLM observability
+    until #1449."""
+    import importlib
+    import inspect
+
+    parameter = inspect.signature(getattr(importlib.import_module(module), factory)).parameters[
+        selector
+    ]
+
+    assert parameter.default is inspect.Parameter.empty, (
+        f"{module}.{factory}({selector}=…) has a default — a defaulted selector is a masking "
+        "fallback (R2)"
+    )
