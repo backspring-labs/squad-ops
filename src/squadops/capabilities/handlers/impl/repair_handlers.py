@@ -992,6 +992,7 @@ def _merge_repair_fills(
         folded.emission,
         store_tables=scaffold_input.get("store_tables"),
         slot_element_kinds=scaffold_input.get("slot_element_kinds"),
+        producer=TaskType.QA_TEST_REPAIR,
     )
     touched_paths = {
         f.path for f in record.files if any(s.slot_id in folded.applied for s in f.slots)

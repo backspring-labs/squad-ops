@@ -1,0 +1,194 @@
+"""SIP-0107 rollout step 2 — the revision transaction.
+
+Each test names what it catches: a partially applied transaction (the #1323 class at smaller
+granularity), a revision applied against a base it was not resolved on, an edit that moved
+another edit's range, a grant consulted by task type rather than carried, or a candidate whose
+identity is not step 1's.
+"""
+
+from __future__ import annotations
+
+import hashlib
+
+import pytest
+
+from squadops.capabilities.verification_scaffold import (
+    slot_begin_marker as slot_begin,
+)
+from squadops.capabilities.verification_scaffold import (
+    slot_body_span,
+)
+from squadops.capabilities.verification_scaffold import (
+    slot_end_marker as slot_end,
+)
+from squadops.cycles.patch_verification import candidate_revision_id
+from squadops.cycles.revision_transaction import (
+    RefusalReason,
+    Revision,
+    RevisionOperation,
+    RevisionTransaction,
+    base_revision_id,
+    resolve_and_apply,
+)
+from squadops.cycles.write_authorization import WriteGrant
+from squadops.sandbox.models import compute_revision_id
+
+pytestmark = [pytest.mark.domain_orchestration]
+
+_SHELL = "__tests__/scaffold/runs.scaffold.test.ts"
+_OTHER = "__tests__/scaffold/join.scaffold.test.ts"
+
+
+def _shell(*slots: tuple[str, str]) -> str:
+    lines = ["import { it } from 'vitest'", "it('probe', () => {"]
+    for slot_id, body in slots:
+        lines += [slot_begin(slot_id), *([body] if body else []), slot_end(slot_id)]
+    lines += ["})", ""]
+    return "\n".join(lines)
+
+
+_BASE = {
+    _SHELL: _shell(("slot-a", "    // fill me"), ("slot-b", "")),
+    _OTHER: _shell(("slot-c", "    // fill me too")),
+    "lib/store.ts": "export const x = 1\n",
+}
+
+
+def _resolve(_path: str, content: str, region_id: str):
+    return slot_body_span(content, region_id)
+
+
+def _txn(*revisions: Revision, writable=(_SHELL, _OTHER), base=_BASE) -> RevisionTransaction:
+    return RevisionTransaction(
+        base_revision_id=base_revision_id(base),
+        grant=WriteGrant(producer="qa.test", stage="qa_fill", writable=frozenset(writable)),
+        task_id="task-run_1-m005-qa.test",
+        revisions=revisions,
+    )
+
+
+def _replace(path: str, region: str, body: str) -> Revision:
+    return Revision(
+        artifact_path=path,
+        region_id=region,
+        operation=RevisionOperation.REPLACE_REGION,
+        replacement=body,
+    )
+
+
+class TestAccepted:
+    def test_edits_in_one_artifact_do_not_move_each_others_ranges(self):
+        """Bug caught: applying in ascending order, so the first replacement (longer than what
+        it replaced) shifts the second's offsets and it lands inside the wrong lines."""
+        outcome = resolve_and_apply(
+            _BASE,
+            _txn(
+                _replace(_SHELL, "slot-a", "    expect(1).toBe(1)\n    expect(2).toBe(2)\n"),
+                _replace(_SHELL, "slot-b", "    expect(3).toBe(3)\n"),
+            ),
+            _resolve,
+        )
+        assert outcome.accepted
+        assert outcome.candidate_files[_SHELL] == _shell(
+            ("slot-a", "    expect(1).toBe(1)\n    expect(2).toBe(2)"),
+            ("slot-b", "    expect(3).toBe(3)"),
+        )
+        # Untouched artifacts are the base, byte for byte.
+        assert outcome.candidate_files["lib/store.ts"] == _BASE["lib/store.ts"]
+        assert outcome.changed_files().keys() == {_SHELL}
+
+    def test_each_edit_records_the_span_it_replaced_and_the_base_it_was_resolved_on(self):
+        outcome = resolve_and_apply(_BASE, _txn(_replace(_OTHER, "slot-c", "    ok()\n")), _resolve)
+        (edit,) = outcome.edits
+        base = _BASE[_OTHER]
+        assert edit.base_artifact_sha256 == hashlib.sha256(base.encode()).hexdigest()
+        assert base[edit.start : edit.end] == "    // fill me too\n"
+        assert edit.pre_sha256 == hashlib.sha256(b"    // fill me too\n").hexdigest()
+        assert (edit.producer, edit.task_id) == ("qa.test", "task-run_1-m005-qa.test")
+
+    def test_the_candidate_is_named_with_step_ones_identity(self):
+        """Bug caught: a second identity function for transactions — the candidate would read
+        differently in the verdict than in the store."""
+        outcome = resolve_and_apply(_BASE, _txn(_replace(_OTHER, "slot-c", "    ok()\n")), _resolve)
+        changed = [{"name": _OTHER, "content": outcome.candidate_files[_OTHER]}]
+        assert outcome.candidate_revision_id == candidate_revision_id(_BASE, changed)
+        assert outcome.candidate_revision_id == compute_revision_id(outcome.candidate_files)
+
+
+class TestRefused:
+    def test_one_bad_revision_refuses_the_whole_transaction(self):
+        """SIP-0107 §14. Bug caught: keeping the two good revisions — a collection of revisions
+        is one proposed repair, and applying part of it is a change nobody proposed."""
+        outcome = resolve_and_apply(
+            _BASE,
+            _txn(
+                _replace(_SHELL, "slot-a", "    a()\n"),
+                _replace("lib/store.ts", "slot-x", "export const x = 2\n"),
+                _replace(_OTHER, "slot-c", "    c()\n"),
+            ),
+            _resolve,
+        )
+        assert not outcome.accepted
+        assert (outcome.edits, dict(outcome.candidate_files), outcome.candidate_revision_id) == (
+            (),
+            {},
+            None,
+        )
+        assert [(r.revision_index, r.reason) for r in outcome.refusals] == [
+            (1, RefusalReason.OUT_OF_GRANT)
+        ]
+
+    def test_a_base_that_moved_is_stale_not_rebased(self):
+        """SIP-0107 §12. Bug caught: resolving against whatever tree arrived, so a revision
+        planned on one shell lands on another version of it."""
+        moved = {**_BASE, _SHELL: _BASE[_SHELL].replace("probe", "renamed")}
+        outcome = resolve_and_apply(moved, _txn(_replace(_SHELL, "slot-a", "    a()\n")), _resolve)
+        assert [r.reason for r in outcome.refusals] == [RefusalReason.STALE_BASE]
+
+    @pytest.mark.parametrize(
+        ("revision", "reason"),
+        [
+            (
+                _replace("__tests__/scaffold/gone.test.ts", "slot-a", "x\n"),
+                RefusalReason.UNKNOWN_ARTIFACT,
+            ),
+            (_replace(_SHELL, "slot-nope", "x\n"), RefusalReason.UNRESOLVED_REGION),
+            (
+                Revision(
+                    artifact_path=_SHELL,
+                    region_id="slot-a",
+                    operation="insert",  # type: ignore[arg-type]
+                    replacement="x\n",
+                ),
+                RefusalReason.UNSUPPORTED_OPERATION,
+            ),
+        ],
+    )
+    def test_each_unresolvable_revision_names_its_reason(self, revision, reason):
+        writable = (_SHELL, _OTHER, "__tests__/scaffold/gone.test.ts")
+        outcome = resolve_and_apply(_BASE, _txn(revision, writable=writable), _resolve)
+        assert [(r.revision_index, r.reason) for r in outcome.refusals] == [(0, reason)]
+
+    def test_two_revisions_of_one_region_overlap(self):
+        """Bug caught: two replacements of one slot applied one after the other — the result
+        depends on their order, which §13 forbids."""
+        outcome = resolve_and_apply(
+            _BASE,
+            _txn(
+                _replace(_SHELL, "slot-b", "    one()\n"), _replace(_SHELL, "slot-b", "    two()\n")
+            ),
+            _resolve,
+        )
+        assert [r.reason for r in outcome.refusals] == [RefusalReason.OVERLAPPING_RANGES]
+
+
+class TestTheSlotRegion:
+    def test_an_empty_body_is_an_empty_span_between_the_markers(self):
+        text = _BASE[_SHELL]
+        start, end = slot_body_span(text, "slot-b")
+        assert start == end
+        assert text[:start].endswith(slot_begin("slot-b") + "\n")
+        assert text[end:].startswith(slot_end("slot-b"))
+
+    def test_an_undeclared_slot_has_no_span(self):
+        assert slot_body_span(_BASE[_SHELL], "slot-z") is None
