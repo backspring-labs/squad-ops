@@ -7,6 +7,8 @@ verifier accepting a patch without positive executed evidence.
 
 from pathlib import Path
 
+import pytest
+
 from squadops.cycles.implementation_plan import TypedCheck
 from squadops.cycles.patch_verification import (
     PATCH_FAILED,
@@ -14,8 +16,11 @@ from squadops.cycles.patch_verification import (
     PATCH_UNVERIFIABLE,
     EvidenceSupersession,
     PatchCheckRecord,
+    candidate_files,
+    candidate_revision_id,
     overlay_artifacts,
     skip_reasons,
+    storage_altered_accepted_patch,
     supersede_evidence_artifacts,
     verify_patched_artifacts,
 )
@@ -40,6 +45,104 @@ def _heading_criteria() -> list[TypedCheck]:
         )
         for section in ("How to Run", "How to Test", "Implemented Scope")
     ]
+
+
+class TestTheCandidateHasAnIdentity:
+    """SIP-0107 §20 (rollout step 1): the verdict names the candidate it verified — the base
+    with the patch applied — not only the base it landed on (§3.6: the identity existed and
+    named the wrong tree)."""
+
+    _BASE = {"backend/models.py": "x = 1\n", "qa_handoff.md": BROKEN_DOC}
+
+    async def test_the_identity_is_the_patched_tree_and_the_base_stays_the_base(self):
+        """Bug caught: an identity taken before the patch is applied names a tree nothing
+        was verified on, and two different repairs over one base read as the same state."""
+        from squadops.sandbox.models import compute_revision_id
+
+        patch = [{"name": "qa_handoff.md", "content": REPAIRED_DOC}]
+        other = [{"name": "qa_handoff.md", "content": REPAIRED_DOC + "## Notes\n"}]
+        first = await verify_patched_artifacts(
+            _heading_criteria(), patch, workspace_files=self._BASE
+        )
+        second = await verify_patched_artifacts(
+            _heading_criteria(), other, workspace_files=self._BASE
+        )
+
+        assert first.workspace_revision_id == second.workspace_revision_id
+        assert first.workspace_revision_id == compute_revision_id(self._BASE)
+        assert first.candidate_revision_id == compute_revision_id(
+            {"backend/models.py": "x = 1\n", "qa_handoff.md": REPAIRED_DOC}
+        )
+        assert first.candidate_revision_id != second.candidate_revision_id
+
+    @pytest.mark.parametrize("evidence_type", ["test_report", "typed_check_evaluation"])
+    def test_evidence_about_a_run_is_not_repository_state(self, evidence_type):
+        """Bug caught: counting the failed attempt's evidence files, which the accepted-patch
+        path supersedes after verification by design (#1111, #1318), would make every
+        retested patch's identity change between the verdict and storage."""
+        work = [{"name": "qa_handoff.md", "content": REPAIRED_DOC}]
+        stale = {"name": "test_report.md", "content": "failed", "type": evidence_type}
+        fresh = {**stale, "content": "passed"}
+        assert candidate_revision_id(self._BASE, [*work, stale]) == candidate_revision_id(
+            self._BASE, [*work, fresh]
+        )
+        # ...while a change to work product does move it.
+        assert candidate_revision_id(self._BASE, work) != candidate_revision_id(
+            self._BASE, [{"name": "qa_handoff.md", "content": BROKEN_DOC}]
+        )
+
+    @pytest.mark.parametrize("name", ["/etc/passwd", "../outside.py", "a/../../outside.py", ""])
+    def test_a_path_the_materializer_refuses_is_not_counted(self, name):
+        """The identity counts only what ``materialize`` would write, so a path it refuses
+        cannot make the counted tree differ from the verified one."""
+        assert candidate_files({}, [{"name": name, "content": "x"}]) == {}
+
+    async def test_a_counted_file_that_was_not_written_makes_the_verdict_unverifiable(
+        self, monkeypatch
+    ):
+        """Bug caught: a verdict whose identity counts a file the evaluated tree lacks is
+        evidence about a tree nobody built (§5.5). The proof is the materializer's own
+        record of what it wrote."""
+        from squadops.cycles import patch_verification as pv
+
+        real = pv.materialize
+
+        def _skips_the_handoff(artifacts, root, **kw):
+            return real([a for a in artifacts if a.get("name") != "qa_handoff.md"], root, **kw)
+
+        monkeypatch.setattr(pv, "materialize", _skips_the_handoff)
+        result = await verify_patched_artifacts(
+            _heading_criteria(), [{"name": "qa_handoff.md", "content": REPAIRED_DOC}]
+        )
+        assert result.status == PATCH_UNVERIFIABLE
+        assert result.reason == "candidate_not_materialized:qa_handoff.md"
+        assert result.candidate_revision_id is not None
+
+
+class TestStorageMayNotAlterAnAcceptedPatch:
+    """SIP-0107 §5.5: the storage seam enforces grants once more after acceptance; for an
+    accepted patch it must leave the verified set as it was."""
+
+    _ACCEPTED = {"validation_result": {"patch_verified": True, "persisted_revision_id": "abc"}}
+    _SET = [{"name": "start.py", "content": "a"}, {"name": "assembly_notes.md", "content": "b"}]
+
+    def test_a_dropped_file_is_named_by_both_identities(self):
+        altered = storage_altered_accepted_patch(self._ACCEPTED, self._SET, self._SET[1:])
+        assert altered == (
+            candidate_revision_id(None, self._SET),
+            candidate_revision_id(None, self._SET[1:]),
+        )
+
+    @pytest.mark.parametrize(
+        ("outputs", "after"),
+        [
+            (_ACCEPTED, _SET),  # enforcement changed nothing
+            ({"validation_result": {"passed": True}}, _SET[1:]),  # not an accepted patch
+            (None, _SET[1:]),
+        ],
+    )
+    def test_nothing_to_refuse(self, outputs, after):
+        assert storage_altered_accepted_patch(outputs, self._SET, after) is None
 
 
 class TestVerifyPatchedArtifacts:
@@ -80,7 +183,7 @@ class TestVerifyPatchedArtifacts:
 
     async def test_verdict_names_the_exact_workspace_it_evaluated(self):
         """#734 Slice A: the repair-acceptance verdict is content-addressed to
-        the workspace mapping it materialized — computed from the parameter,
+        the BASE workspace mapping it materialized — computed from the parameter,
         never store state (the spike's risk note). Bug caught: hashing
         upstream state that differs from what the evaluator actually saw."""
         from squadops.sandbox.models import compute_revision_id

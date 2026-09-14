@@ -1482,3 +1482,53 @@ pre-flip window fail by construction. That is a correction to rev 4 itself.
 
 **Ruled by.** The owner, 2026-09-13, on a written recommendation: the flip goes to 1.8.1 by
 design, with the refusal held back and everything else in steps 1–6 unchanged.
+
+## 46b. 2026-09-14 — candidate identity as built (§38 step 1): repository state only, and proved at storage as well
+
+**What changed.** §20 described its implementation as "the whole of this section's": take the
+identity after materialization, record it on `PatchVerification`, recompute and compare it in
+`PatchAcceptance` before storage. Building it showed three places where that description is
+narrower or wider than the invariant it serves (§5.5).
+
+1. **The identity is taken over repository state, not every artifact.** `candidate_files`
+   (`src/squadops/cycles/patch_verification.py`) is the accepted workspace with the patch's work
+   product applied. Evidence artifacts (`EVIDENCE_ARTIFACT_TYPES`: `test_report`,
+   `typed_check_evaluation`) are left out. They describe one execution, and the accepted-patch path
+   supersedes them after verification by design (#1111, #1318; register entry 24). An identity
+   that counted them would change between the verdict and storage on every retested patch, so it
+   would report a mismatch where nothing about the delivered tree differs. Only paths `materialize`
+   would write are counted.
+2. **A verdict that returns before materializing still names its candidate.** A structurally
+   unevaluable verdict (`no_typed_criteria`) hands the decision to the behavioural retest
+   (register entry 22). That path is accepted, so its candidate has an identity even though the
+   verifier wrote no tree. On the evaluated path, the materializer's own record of what it wrote
+   proves the tree holds every counted file. A counted file that was not written returns
+   `unverifiable` with `candidate_not_materialized:<paths>`.
+3. **Persistence is proved at the storage seam too.** `_collect_artifacts_and_checkpoint` applies
+   the producers' grants once more after `PatchAcceptance` has compared the identity, so a
+   comparison there alone cannot prove what is stored. For a result the accepted-patch path
+   rendered (it carries `persisted_revision_id`), `storage_altered_accepted_patch` takes the
+   stored work product's identity on both sides of that enforcement. A change fails the run. The
+   base is never re-stored, so it cannot move between them. Main kept the two sets equal by call
+   order (#1323, #1332), and this makes that property evidence-bearing.
+
+A mismatch at either seam raises `_ExecutionError`, the #1350 precedent for a framework defect no
+producer can cause, rather than re-dispatching as an ordinary correction. The accepted result
+carries both `candidate_revision_id` (verified) and `persisted_revision_id`, and the executor logs
+`patch_candidate_identity` with both. The verification-set driver reads that line as
+`loop_texture.candidate_identities`, which is §39.4's evidence on every stored patch.
+
+**Evidence.** Deploy A's archived runtime-api log (four cycles, 1.8.0) carries no storage-stage
+`scaffold_integrity` event, so storage enforcement did not alter a stored set there. That is the
+property item 3 now asserts rather than assumes. Tests enter at `_try_accept_patch` and
+`_collect_artifacts_and_checkpoint`. Three mutations are each caught:
+- an identity over the base only;
+- no accept-side comparison;
+- no storage-side check.
+
+The base-only mutation also failed three pre-existing acceptance tests, because the accept-side
+comparison refused them.
+
+**Ruled by.** The implementer, in the PR that builds §38 step 1, for the owner's review with it.
+None of the three items changes §5.5 or §39.4. Items 1 and 2 narrow where §20's identity is taken,
+and item 3 adds the storage-side proof §5.5 requires.

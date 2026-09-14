@@ -70,6 +70,7 @@ from squadops.cycles.models import (
     RunStatus,
 )
 from squadops.cycles.naming import flow_run_name
+from squadops.cycles.patch_verification import storage_altered_accepted_patch
 from squadops.cycles.rejection_baseline import (
     REJECTION_ARTIFACT_TYPE,
     REJECTION_FILENAME,
@@ -3685,11 +3686,20 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # cannot overwrite a frozen file (pf-26). Recorded, not silent; no-op when unbound.
         # 3.3: enforcement returns structured evidence; emit it (event + log) before storage.
         if bound_record is not None and artifacts:
-            artifacts, integrity_evidence = self._enforce_frozen_ownership(
+            enforced, integrity_evidence = self._enforce_frozen_ownership(
                 artifacts, bound_record, envelope
             )
             for record in integrity_evidence:
                 self._emit_scaffold_integrity_evidence(record, envelope)
+            # SIP-0107 §5.5: an accepted patch is stored as the candidate it was verified as.
+            altered = storage_altered_accepted_patch(result.outputs, artifacts, enforced)
+            if altered is not None:
+                raise _ExecutionError(
+                    f"artifact storage task={envelope.task_id}: ownership enforcement changed an "
+                    f"accepted patch's set (before={altered[0]}, after={altered[1]}) — the stored "
+                    "state would not be the verified candidate (SIP-0107 §5.5)"
+                )
+            artifacts = enforced
             # 3.4a: circuit-breaker — raises CONTRACT_COMPLIANCE past the bound (before storage).
             if compliance_counter is not None:
                 self._enforce_compliance_budget(

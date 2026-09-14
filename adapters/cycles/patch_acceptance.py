@@ -43,6 +43,7 @@ from squadops.cycles.patch_verification import (
     PATCH_PASSED,
     PATCH_UNVERIFIABLE,
     STRUCTURALLY_UNEVALUABLE_REASONS,
+    candidate_revision_id,
     overlay_artifacts,
     skip_reasons,
     supersede_evidence_artifacts,
@@ -320,7 +321,14 @@ class PatchAcceptance:
         )
 
         return self._accept_patch(
-            result, patched_result_holder, verdict, retest, patched_artifacts, spine_rows
+            envelope,
+            result,
+            patched_result_holder,
+            subject,
+            verdict,
+            retest,
+            patched_artifacts,
+            spine_rows,
         )
 
     def _authorize_repair_artifacts(
@@ -905,15 +913,51 @@ class PatchAcceptance:
 
     def _accept_patch(
         self,
+        envelope: TaskEnvelope,
         result: TaskResult,
         patched_result_holder: dict[str, Any],
+        subject: _PatchSubject,
         verdict: _PatchVerdict,
         retest: _RetestOutcome,
         patched_artifacts: list[dict[str, Any]],
         spine_rows: list[dict[str, Any]],
     ) -> str:
-        """Block 7 — render the corrected result and accept it."""
+        """Block 7 — prove the set about to be stored is the candidate that was verified, then
+        render the corrected result and accept it.
+
+        SIP-0107 §20: ``verified_revision_id == persisted_revision_id``, or nothing is accepted.
+        The verifier took the candidate's identity; this recomputes it over the base and the
+        artifacts the corrected result will carry, after every step between them (the retest,
+        evidence supersession, the owed-row derivation) has run. A mismatch is a framework
+        integrity failure whatever the checks said — a verdict about one tree cannot accept
+        another — so it fails the run loudly rather than re-dispatching, which would bury a
+        framework defect under an ordinary correction round (the #1350 precedent).
+        """
         verification = verdict.verification
+        verified_revision_id = verification.candidate_revision_id
+        persisted_revision_id = candidate_revision_id(subject.workspace_files, patched_artifacts)
+        if verified_revision_id != persisted_revision_id:
+            logger.error(
+                "patch_candidate_identity task=%s MISMATCH verified_revision_id=%s "
+                "persisted_revision_id=%s base_revision_id=%s (SIP-0107 §20)",
+                envelope.task_id,
+                verified_revision_id,
+                persisted_revision_id,
+                verification.workspace_revision_id,
+            )
+            raise _ExecutionError(
+                f"patch acceptance task={envelope.task_id}: the set about to be stored is not the "
+                f"candidate that was verified (verified_revision_id={verified_revision_id}, "
+                f"persisted_revision_id={persisted_revision_id}) — SIP-0107 §20"
+            )
+        logger.info(
+            "patch_candidate_identity task=%s verified_revision_id=%s persisted_revision_id=%s "
+            "base_revision_id=%s (SIP-0107 §20)",
+            envelope.task_id,
+            verified_revision_id,
+            persisted_revision_id,
+            verification.workspace_revision_id,
+        )
         corrected_outputs = retest.corrected_outputs
         retest_rows = retest.rows
         corrected_outputs["artifacts"] = patched_artifacts
@@ -926,6 +970,10 @@ class PatchAcceptance:
             # tree it verified against (verify_patched_artifacts computes it
             # from the exact mapping it materialized).
             "workspace_revision_id": verification.workspace_revision_id,
+            # SIP-0107 §20, §39.4: the candidate that was verified and the set that is stored,
+            # both in the evidence — equal, or this line is never reached.
+            "candidate_revision_id": verified_revision_id,
+            "persisted_revision_id": persisted_revision_id,
             "checks": [r.to_check_row() for r in verification.checks] + retest_rows + spine_rows,
         }
         corrected_outputs.pop("outcome_class", None)
