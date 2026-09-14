@@ -307,6 +307,16 @@ def _qa_scaffold_repair_inputs(
     }
 
 
+def _anchored_edits_refused(result: Any) -> bool:
+    """Whether a repair step's anchored edits were refused on its retry too (SIP-0107 §22)."""
+    from squadops.capabilities.anchored_edits import EMISSION_FAILURE_ANCHORED_EDIT_REFUSED
+
+    marker = (getattr(result, "outputs", None) or {}).get("emission_failure")
+    return (
+        isinstance(marker, dict) and marker.get("reason") == EMISSION_FAILURE_ANCHORED_EDIT_REFUSED
+    )
+
+
 def _empty_emission_signature(result: Any) -> list[str]:
     """The #998 signature a repair step's handler put on its ``emission_failure`` marker,
     as a zero-or-one-element list so the caller can ``extend`` without branching."""
@@ -812,6 +822,9 @@ class RepairOutcome:
     typed_checks: list[dict[str, Any]]
     steps_ran: bool
     empty_signatures: list[str]
+    #: SIP-0107 §22: a repair step whose anchored edits were refused on its retry too. It
+    #: emitted a repair that failed — not nothing — so its round is spent, never refunded.
+    anchored_edits_refused: bool = False
 
 
 class CorrectionRepair:
@@ -876,6 +889,7 @@ class CorrectionRepair:
         # the SUBJECT and would point a test re-author at app source files).
         repair_artifacts: list[dict[str, Any]] = []
         repair_typed_checks: list[dict[str, Any]] = []
+        anchored_edits_refused = False
         repair_steps_ran = False
         empty_signatures: list[str] = []
         if correction_path == "patch":
@@ -1031,6 +1045,9 @@ class CorrectionRepair:
                 # #998: the handler names what kind of nothing it emitted; keep it for
                 # the round's disclosure below.
                 empty_signatures.extend(_empty_emission_signature(repair_result))
+                anchored_edits_refused = anchored_edits_refused or _anchored_edits_refused(
+                    repair_result
+                )
                 # #507: re-home repair files onto the failed task's expected
                 # paths before they reach the overlay — a repair emitted under
                 # the wrong directory otherwise lands as a net-new file, patch
@@ -1075,6 +1092,7 @@ class CorrectionRepair:
             typed_checks=repair_typed_checks,
             steps_ran=repair_steps_ran,
             empty_signatures=empty_signatures,
+            anchored_edits_refused=anchored_edits_refused,
         )
 
     def judge_emission(self, repair: RepairOutcome, correction_attempts: int) -> bool:
@@ -1098,10 +1116,15 @@ class CorrectionRepair:
         # terminated as `unverifiable` for a file that was never written (Next.js roll 1,
         # cyc_9be98128f0e9). "Did the repair emit a FILE" is the question; the marker the
         # extractor stamps is the answer.
-        emission_empty = repair_steps_ran and not any(
-            str(a.get("content") or "").strip()
-            for a in repair_artifacts
-            if isinstance(a, dict) and not a.get("emission_fallback")
+        # SIP-0107 §22: refused anchored edits are a repair that failed, not an absent one.
+        emission_empty = (
+            repair_steps_ran
+            and not repair.anchored_edits_refused
+            and not any(
+                str(a.get("content") or "").strip()
+                for a in repair_artifacts
+                if isinstance(a, dict) and not a.get("emission_fallback")
+            )
         )
         if emission_empty:
             logger.warning(

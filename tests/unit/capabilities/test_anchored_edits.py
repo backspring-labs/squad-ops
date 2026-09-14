@@ -180,3 +180,73 @@ def test_stripping_edit_fences_leaves_whole_files_for_the_extractor_and_no_edit_
         assert [f["filename"] for f in extract_fenced_files(strip_edit_blocks(response))] == files
     # The hazard the strip exists for: unstripped, the edit fence reads as a file.
     assert "./backend/routes.py" in [f["filename"] for f in extract_fenced_files(_RESPONSE)]
+
+
+class TestApplication:
+    _BASE = {"backend/routes.py": _ROUTES, "backend/models.py": "class Run:\n    pass\n"}
+
+    def _apply(self, response, *, writable=("backend/routes.py",), whole=()):
+        from squadops.capabilities.anchored_edits import apply_anchored_edits
+
+        return apply_anchored_edits(
+            parse_anchored_edits(response),
+            self._BASE,
+            writable=writable,
+            producer="development.correction_repair",
+            task_id="t",
+            whole_file_paths=whole,
+        )
+
+    def test_an_accepted_application_records_where_each_edit_landed(self):
+        application = self._apply(_RESPONSE)
+
+        record = application.record()
+        assert record["accepted"] is True
+        assert record["refusals"] == []
+        assert [e["path"] for e in record["edits"]] == ["backend/routes.py", "backend/routes.py"]
+        assert record["candidate_revision_id"] == application.outcome.candidate_revision_id
+
+    @pytest.mark.parametrize(
+        ("response", "writable", "whole", "line"),
+        [
+            (
+                "```edit:backend/routes.py\n<<<<<<< SEARCH\n    return 1\n=======\n    return 2\n"
+                ">>>>>>> REPLACE\n```\n",
+                ("backend/routes.py",),
+                (),
+                "`backend/routes.py`: anchor_not_found — ",
+            ),
+            (
+                "```edit:backend/models.py\n<<<<<<< SEARCH\n    pass\n=======\n    id: str\n"
+                ">>>>>>> REPLACE\n```\n",
+                ("backend/routes.py",),
+                (),
+                "`backend/models.py`: out_of_grant — ",
+            ),
+            (
+                _RESPONSE,
+                ("backend/routes.py",),
+                ("backend/routes.py",),
+                "`backend/routes.py`: edited and re-emitted whole",
+            ),
+            (
+                "```edit:backend/routes.py\n<<<<<<< SEARCH\nx\n```\n",
+                ("backend/routes.py",),
+                (),
+                "`backend/routes.py`: missing_divider — ",
+            ),
+        ],
+        ids=["anchor not found", "outside the grant", "edited and re-emitted", "malformed"],
+    )
+    def test_a_refused_application_names_the_file_and_the_typed_reason(
+        self, response, writable, whole, line
+    ):
+        """Bug caught: a retry told only that its edits failed — the model cannot correct an
+        anchor it is not told was missing, in a file it is not told the name of."""
+        application = self._apply(response, writable=writable, whole=whole)
+
+        assert application.accepted is False
+        assert any(r.startswith(line) for r in application.refusal_lines()), (
+            application.refusal_lines()
+        )
+        assert application.record()["edits"] == []

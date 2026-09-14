@@ -6535,3 +6535,56 @@ class TestLoopFactsReachTheRunLedger:
         assert summary.movements == ledger.movements
         assert summary.round_failures == ledger.round_failures
         assert summary.absent_emissions == ledger.absent_emissions
+
+
+class TestRefusedAnchoredRepairIsSpent:
+    """SIP-0107 §22, at ``run_correction_protocol``: a repair whose anchored edits were refused
+    on its retry too emitted a repair that failed — the round is spent, never refunded."""
+
+    _make_runner = TestCorrectionRunnerStandalone._make_runner
+    _failed_envelope = TestCorrectionRunnerStandalone._failed_envelope
+
+    async def test_the_refusal_is_not_an_empty_emission(self, cycle):
+        """Bug caught: #1053's refund handing the round back — a model that keeps missing its
+        anchor would repair forever on the refund allowance."""
+        import dataclasses as _dc
+
+        from squadops.capabilities.anchored_edits import EMISSION_FAILURE_ANCHORED_EDIT_REFUSED
+
+        def responder(envelope):
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "patch",
+                        "decision_rationale": "patchable",
+                        "affected_task_types": ["development.develop"],
+                    },
+                )
+            if envelope.task_type.endswith("correction_repair"):
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "artifacts": [],
+                        "emission_failure": {"reason": EMISSION_FAILURE_ANCHORED_EDIT_REFUSED},
+                    },
+                )
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+        runner, _r, _v, _b = self._make_runner(responder)
+        protocol = await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=_dc.replace(self._failed_envelope(), task_type="development.develop"),
+            result=TaskResult(task_id="task_failed", status="FAILED", error="route failed"),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+
+        assert protocol.emission_empty is False
