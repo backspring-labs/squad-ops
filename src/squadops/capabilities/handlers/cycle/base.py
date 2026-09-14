@@ -271,6 +271,18 @@ class _CycleTaskHandler(CapabilityHandler):
             "prior_outputs": self._format_prior_outputs(prior_outputs),
         }
 
+    def _artifacts_from_response(
+        self, content: str, inputs: dict[str, Any]
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """The artifacts a response yields, and any outputs the reading itself produced.
+
+        A handler whose reading needs the task's inputs — the repair handlers apply anchored
+        edits to the workspace the task was handed (SIP-0107 §9.2) — overrides this. An
+        ``emission_failure`` in the returned outputs is the reading's own verdict and is not
+        replaced by the generic no-file marker.
+        """
+        return self._build_artifacts_from_content(content), {}
+
     def _build_artifacts_from_content(self, content: str) -> list[dict[str, Any]]:
         """Build artifact list from LLM response content.
 
@@ -1074,7 +1086,7 @@ class _CycleTaskHandler(CapabilityHandler):
             provenance["request_render_hash"] = rendered.render_hash
             provenance["prompt_environment"] = "production"
 
-        artifacts = self._build_artifacts_from_content(content)
+        artifacts, response_outputs = self._artifacts_from_response(content, inputs)
         outputs = {
             "summary": f"[{self._role}] {prd_summary}",
             "role": self._role,
@@ -1084,8 +1096,9 @@ class _CycleTaskHandler(CapabilityHandler):
             # production exhibit burned its budget regenerating into a loss
             "emission_stats": emission_stats(len(content), artifacts),
             "prompt_provenance": provenance,
+            **response_outputs,
         }
-        if not content.strip() or not artifacts:
+        if (not content.strip() or not artifacts) and "emission_failure" not in outputs:
             # #998: an EMPTY emission on the generic path — which every repair handler
             # rides — carried no marker at all, so the correction loop could refund the
             # round (#1053) but never say what kind of nothing it was. Three of the

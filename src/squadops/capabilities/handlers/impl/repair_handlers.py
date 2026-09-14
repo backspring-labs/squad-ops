@@ -260,6 +260,10 @@ class _RepairPromptMixin:
             # #788: the application's own traceback. #687 put it on the evidence for the
             # analyzer; the repairer never saw it and worked from the description instead.
             "app_traceback_section": str(inputs.get("app_traceback_section") or ""),
+            # SIP-0107 step 4: the anchored edit form, for the named files that already exist
+            # in the workspace, and — on the one retry — why the previous edits were refused.
+            "anchored_edit_section": str(inputs.get("anchored_edit_section") or ""),
+            "anchored_edit_retry_section": str(inputs.get("anchored_edit_retry_section") or ""),
         }
 
     async def handle(
@@ -305,9 +309,151 @@ class _RepairPromptMixin:
         qa_fill_mode = await self._render_qa_fill_mode_section(context, inputs)
         if qa_fill_mode:
             inputs = {**inputs, "qa_fill_mode_section": qa_fill_mode}
+        anchored = await self._render_anchored_edit_section(context, inputs)
+        if anchored:
+            inputs = {**inputs, "anchored_edit_section": anchored}
         result = await super().handle(context, inputs)
+        result = await self._retry_refused_anchored_edits(context, inputs, result)
         await self._after_emission(inputs, result)
         return result
+
+    def _repair_base_files(self, inputs: dict[str, Any]) -> dict[str, str]:
+        """The tree the repair patches: the workspace the verifier materialises, with the failed
+        task's own files over it (#1264) — the same tree the typed checks evaluate on."""
+        workspace = {
+            str(k): str(v) for k, v in (inputs.get("acceptance_workspace_files") or {}).items()
+        }
+        for art in inputs.get(REPAIR_FAILED_ARTIFACTS_KEY) or ():
+            if isinstance(art, dict) and isinstance(art.get("name"), str):
+                workspace[art["name"]] = str(art.get("content") or "")
+        return workspace
+
+    def _anchorable_files(self, inputs: dict[str, Any]) -> list[str]:
+        """The named files a repair may revise by anchored edit: those it may emit that already
+        exist in its base. A qa repair in fill mode revises slots instead (§9.3), never anchors."""
+        if inputs.get("verification_scaffold"):
+            return []
+        from squadops.cycles.write_authorization import normalize_ws_path
+
+        base = self._repair_base_files(inputs)
+        named = [normalize_ws_path(str(e)) for e in (inputs.get("expected_artifacts") or [])]
+        return sorted({n for n in named if n and n in base})
+
+    async def _render_anchored_edit_section(
+        self, context: ExecutionContext, inputs: dict[str, Any]
+    ) -> str:
+        """The edit form, for the files the repair may anchor into, or "" (SIP-0107 §9.2)."""
+        files = self._anchorable_files(inputs)
+        renderer = getattr(context.ports, "request_renderer", None)
+        if not files or renderer is None:
+            return ""
+        rendered = await renderer.render(
+            "request.cycle_repair_anchored_edit_appendix",
+            {"editable_files": "\n".join(f"- `{f}`" for f in files)},
+        )
+        return rendered.content
+
+    def _artifacts_from_response(
+        self, content: str, inputs: dict[str, Any]
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """Apply the response's anchored edits to the repair's base, or read it as before.
+
+        A response with no edit fence is read exactly as it always was. With one, every edit is
+        resolved in one transaction over the base under a grant of the anchorable files: all of
+        them apply, and each edited file becomes an ordinary full-content artifact beside the
+        files the response emitted whole — or none apply, and the response yields nothing but
+        the refusal (SIP-0107 §14, §21).
+        """
+        from squadops.capabilities.anchored_edits import (
+            EMISSION_FAILURE_ANCHORED_EDIT_REFUSED,
+            apply_anchored_edits,
+            parse_anchored_edits,
+            strip_edit_blocks,
+        )
+
+        parse = parse_anchored_edits(content)
+        if not parse.found:
+            return self._build_artifacts_from_content(content), {}
+        whole = [
+            a
+            for a in self._build_artifacts_from_content(strip_edit_blocks(content))
+            if not a.get("emission_fallback")
+        ]
+        application = apply_anchored_edits(
+            parse,
+            self._repair_base_files(inputs),
+            writable=self._anchorable_files(inputs),
+            producer=str(self._task_type),
+            task_id=str(inputs.get("task_id") or ""),
+            whole_file_paths=[str(a.get("name") or "") for a in whole],
+        )
+        record = application.record()
+        if not application.accepted:
+            return [], {
+                "anchored_edits": record,
+                "emission_failure": {
+                    "reason": EMISSION_FAILURE_ANCHORED_EDIT_REFUSED,
+                    "refusals": record["refusals"],
+                    "expected_artifacts": list(inputs.get("expected_artifacts") or []),
+                },
+            }
+        edited = []
+        for path, text in sorted(application.outcome.changed_files().items()):
+            artifact_type, media_type = _classify_file(path)
+            edited.append(
+                {"name": path, "content": text, "media_type": media_type, "type": artifact_type}
+            )
+        return edited + whole, {"anchored_edits": record}
+
+    async def _retry_refused_anchored_edits(
+        self, context: ExecutionContext, inputs: dict[str, Any], result: HandlerResult
+    ) -> HandlerResult:
+        """Re-prompt once with the refusal's typed reasons (SIP-0107 §22).
+
+        One retry, inside this repair step — not a correction round. A retry that is refused
+        too stands: the step returns the refusal, the round is spent, and the next response
+        consumes an attempt. Without a renderer the retry cannot say why, so it is not made.
+        """
+        from squadops.capabilities.anchored_edits import EMISSION_FAILURE_ANCHORED_EDIT_REFUSED
+
+        outputs = getattr(result, "outputs", None)
+        if not isinstance(outputs, dict):
+            return result
+        marker = outputs.get("emission_failure") or {}
+        if marker.get("reason") != EMISSION_FAILURE_ANCHORED_EDIT_REFUSED:
+            self._log_anchored_edits(outputs, retried=False)
+            return result
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is None:
+            self._log_anchored_edits(outputs, retried=False)
+            return result
+        first_refusals = list(marker.get("refusals") or [])
+        rendered = await renderer.render(
+            "request.cycle_repair_anchored_edit_retry",
+            {"refusal_lines": "\n".join(f"- {line}" for line in first_refusals)},
+        )
+        retried = await super().handle(
+            context, {**inputs, "anchored_edit_retry_section": rendered.content}
+        )
+        if isinstance(getattr(retried, "outputs", None), dict):
+            retried.outputs["anchored_edit_retry"] = {"first_refusals": first_refusals}
+            self._log_anchored_edits(retried.outputs, retried=True)
+        return retried
+
+    def _log_anchored_edits(self, outputs: dict[str, Any], *, retried: bool) -> None:
+        record = outputs.get("anchored_edits")
+        if not isinstance(record, dict):
+            return
+        logger.info(
+            "anchored_edit_transaction handler=%s accepted=%s edits=%d refusals=%d retried=%s "
+            "candidate_revision_id=%s",
+            self._handler_name,
+            record.get("accepted"),
+            len(record.get("edits") or []),
+            len(record.get("refusals") or []),
+            retried,
+            record.get("candidate_revision_id") or "-",
+        )
 
     async def _after_emission(self, inputs: dict[str, Any], result: HandlerResult) -> None:
         """What happens to the emission before it leaves the agent: the typed checks.
@@ -349,10 +495,7 @@ class _RepairPromptMixin:
         # does this evaluation, or a dev repair of a qa failure judges the qa suite's
         # criteria on a tree without the suite (cyc_4ec4ad5e2ca1: six `file_not_found`
         # failures about a file the patch never touched, and a correct fix refused twice).
-        workspace = dict(inputs.get("acceptance_workspace_files") or {})
-        for art in inputs.get(REPAIR_FAILED_ARTIFACTS_KEY) or ():
-            if isinstance(art, dict) and isinstance(art.get("name"), str):
-                workspace[art["name"]] = str(art.get("content") or "")
+        workspace = self._repair_base_files(inputs)
         evaluation_inputs = (
             {**inputs, "acceptance_workspace_files": workspace} if workspace else inputs
         )

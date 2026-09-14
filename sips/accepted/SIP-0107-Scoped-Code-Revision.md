@@ -1734,3 +1734,76 @@ for the owner.
 
 **Ruled by.** The implementer, in the PR that builds the first half of §38 step 4, for the owner's
 review with it. Item 3 records the accepted §13 over #1213's earlier sketch.
+
+## 46f. 2026-09-14 — anchored edits in the repair handlers (§38 step 4, second half)
+
+**What changed.**
+
+1. **Where edits are applied.** Agent-side, in the repair handlers' shared mixin: `development.correction_repair`,
+   `builder.assemble_repair`, and `qa.test_repair` outside fill mode. That is #1213's scope; a qa
+   repair in fill mode revises slots (§9.3) and is never offered the edit form.
+   - **The base is the repair's own tree:** the workspace the verifier materialises
+     (`acceptance_workspace_files`), with the failed task's files over it (#1264). The edit is
+     resolved against the tree that will be verified.
+   - **Accepted edits become ordinary full-content artifacts**, beside any file the response
+     emitted whole. Everything downstream is unchanged: enforcement with step 3's lane grants,
+     patch verification, candidate identity (§20) and the retest.
+2. **The grant is the named files that exist.** A repair may anchor into the files its task
+   names (`expected_artifacts`) that are already in its base, and no other file. An edit
+   anywhere else refuses as `out_of_grant`.
+3. **The edit form reaches the model only where it can apply.** `request.cycle_repair_task`
+   (version 7) renders `request.cycle_repair_anchored_edit_appendix` when at least one named file
+   exists in the base, listing exactly those files. A repair with nothing to edit is not shown
+   the form.
+4. **The retry is one re-prompt inside the repair step (§22).** A repair step has no
+   executor-level emission retry; #1372's covers a task's own attempts. So a refused or
+   malformed edit response is re-prompted once, within the step, with its typed refusal lines
+   (`request.cycle_repair_anchored_edit_retry`): each line names the file and the reason. It is
+   the one retry §22 allows, not a second economy.
+   - **A retry refused too stands.** The step returns no artifacts and an `emission_failure`
+     whose reason is `anchored_edit_refused`.
+   - **Its round is spent, not refunded.** `CorrectionRepair.judge_emission` does not read it as
+     an absent emission, so #1053 does not refund it. #1213 asked for exactly this: a wrong
+     anchor is an informative failure, unlike #1129's gate refusal.
+5. **Before the flip, a whole-file response is read exactly as before** (§46a). A response that
+   both edits a file and re-emits it whole refuses, rather than letting either silently win.
+6. **The edit record rides the repair's outputs.**
+   - **Where:** `anchored_edits` holds the edits applied or the refusals, and `anchored_edit_retry`
+     holds the first refusal. A structured `anchored_edit_transaction` log line carries the same
+     facts.
+   - **Not yet durable:** the record is not persisted to a store. §39.8's count of successful
+     transactions on deploy B reads the log line, as the verification-set driver already reads
+     loop texture. A durable edit record (§36) is a named follow-up, not an omission.
+
+**Evidence.**
+- **Wiring**, entered at `DevelopmentCorrectionRepairHandler.handle` with the real request
+  templates, the real renderer and a scripted model:
+  - **Accepted:** the edit form names only the named files that exist, and an anchored repair
+    becomes the whole file with only its anchor changed.
+  - **Retried:** an ambiguous anchor is retried once, with `anchor_ambiguous — the anchor occurs
+    2 times` in the retry prompt.
+  - **Refused twice:** a second refusal makes exactly two model calls and returns no artifacts.
+  - **Unchanged:** a whole-file response reads as before, and a repair with no existing named file
+    is not offered the form.
+  - **The right tree:** an edit resolves against the failed attempt's file laid over the
+    workspace.
+  - **The grant:** an edit to a file the repair was not named for refuses as `out_of_grant`.
+- **`run_correction_protocol`:** a refused anchored repair is not an empty emission.
+- **Application tests:** accepted records, and refusal lines naming the file and reason for
+  `anchor_not_found`, `out_of_grant`, an edit-and-rewrite conflict, and a malformed block.
+- **Mutations: nine, each caught.**
+  - no retry;
+  - a retry without the reasons;
+  - the edit form never rendered;
+  - the failed attempt's files not overlaid;
+  - every workspace file anchorable;
+  - a refusal falling back to whole-file reading;
+  - a refused repair refunded;
+  - the generic no-file marker overwriting the refusal;
+  - the conflict ignored.
+
+  A tenth, removing a retry guard, survived. It was equivalent, because the retry calls the base
+  handler and cannot re-enter itself, so the dead guard was removed.
+
+**Ruled by.** The implementer, in the PR that completes §38 step 4, for the owner's review with
+it. #1213 closes here.

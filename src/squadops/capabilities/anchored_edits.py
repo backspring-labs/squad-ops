@@ -26,18 +26,28 @@ REPLACE body is content, not the fence's close, so a replacement may itself cont
 
 SEARCH and REPLACE text are their lines, each ending in a newline, exactly as emitted.
 
-Pure: no I/O. The handler wiring, the request template and the retry with the refusal's typed
-reason are SIP-0107 step 4's second half.
+Pure: no I/O. :func:`apply_anchored_edits` resolves a parse through one revision transaction;
+the repair handlers call it on the workspace the verifier materialises, and re-prompt once with
+:meth:`AnchoredApplication.refusal_lines` when it refuses (SIP-0107 §22).
 """
 
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from typing import Any
 
 from squadops.capabilities.handlers.impl._json_extraction import _strip_think_blocks
-from squadops.cycles.revision_transaction import Revision, RevisionOperation
-from squadops.cycles.write_authorization import normalize_ws_path
+from squadops.cycles.revision_transaction import (
+    Revision,
+    RevisionOperation,
+    RevisionTransaction,
+    TransactionOutcome,
+    base_revision_id,
+    resolve_and_apply,
+)
+from squadops.cycles.write_authorization import WriteGrant, normalize_ws_path
 
 #: The fence language that marks an anchored-edit block (``edit:<path>``).
 EDIT_FENCE_LANGUAGE = "edit"
@@ -228,3 +238,99 @@ def revisions_for(parse: AnchoredEditParse) -> tuple[Revision, ...]:
         )
         for e in parse.edits
     )
+
+
+#: The ``emission_failure`` reason a repair carries when its anchored edits were refused on the
+#: retry too — a repair that failed, not one that emitted nothing, so it is never refunded
+#: (SIP-0107 §22; #1053 refunds only an absent emission).
+EMISSION_FAILURE_ANCHORED_EDIT_REFUSED = "anchored_edit_refused"
+
+
+@dataclass(frozen=True)
+class AnchoredApplication:
+    """A response's anchored edits applied to the base — or everything that stopped them.
+
+    ``outcome`` is ``None`` when a malformed edit fence refused the response before any edit
+    was resolved: a partially readable response is refused whole, like a partially resolvable
+    transaction (§14).
+    """
+
+    parse: AnchoredEditParse
+    outcome: TransactionOutcome | None
+    conflicts: tuple[str, ...] = ()
+
+    @property
+    def accepted(self) -> bool:
+        return (
+            not self.parse.malformed
+            and not self.conflicts
+            and self.outcome is not None
+            and self.outcome.accepted
+        )
+
+    def refusal_lines(self) -> tuple[str, ...]:
+        """One line per reason the edits were not applied, naming the file — what a retry is
+        told (§21: typed, never a bare "failed")."""
+        lines = [f"`{m.path}`: {m.reason} — {m.detail}" for m in self.parse.malformed]
+        lines += [
+            f"`{path}`: edited and re-emitted whole in one response — use one form per file"
+            for path in self.conflicts
+        ]
+        if self.outcome is not None:
+            for refusal in self.outcome.refusals:
+                path = (
+                    self.parse.edits[refusal.revision_index].path
+                    if 0 <= refusal.revision_index < len(self.parse.edits)
+                    else "(transaction)"
+                )
+                lines.append(f"`{path}`: {refusal.reason} — {refusal.detail}")
+        return tuple(lines)
+
+    def record(self) -> dict[str, Any]:
+        """The transaction as evidence (§36): what was applied where, or why nothing was."""
+        outcome = self.outcome
+        return {
+            "accepted": self.accepted,
+            "edits_proposed": len(self.parse.edits),
+            "candidate_revision_id": outcome.candidate_revision_id if outcome else None,
+            "edits": [
+                {
+                    "path": e.artifact_path,
+                    "start": e.start,
+                    "end": e.end,
+                    "pre_sha256": e.pre_sha256,
+                    "replacement_chars": len(e.replacement),
+                }
+                for e in (outcome.edits if outcome and self.accepted else ())
+            ],
+            "refusals": list(self.refusal_lines()),
+        }
+
+
+def apply_anchored_edits(
+    parse: AnchoredEditParse,
+    base_files: Mapping[str, str],
+    *,
+    writable: Iterable[str],
+    producer: str,
+    task_id: str,
+    whole_file_paths: Iterable[str] = (),
+) -> AnchoredApplication:
+    """Resolve the parse's edits against ``base_files`` under a grant of ``writable``.
+
+    ``whole_file_paths`` are the files the same response re-emitted whole; a file both edited
+    and re-emitted is refused rather than letting either silently win.
+    """
+    edited = {e.path for e in parse.edits}
+    conflicts = tuple(sorted(edited & {p for p in whole_file_paths if p}))
+    if parse.malformed:
+        return AnchoredApplication(parse=parse, outcome=None, conflicts=conflicts)
+    base = dict(base_files)
+    transaction = RevisionTransaction(
+        base_revision_id=base_revision_id(base),
+        grant=WriteGrant(producer=producer, stage="anchored_repair", writable=frozenset(writable)),
+        task_id=task_id,
+        revisions=revisions_for(parse),
+    )
+    outcome = resolve_and_apply(base, transaction, lambda _path, _content, _region: None)
+    return AnchoredApplication(parse=parse, outcome=outcome, conflicts=conflicts)
