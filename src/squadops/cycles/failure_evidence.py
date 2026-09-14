@@ -36,6 +36,21 @@ _DECLARATION_OWNED_SUITE_CHECKS: frozenset[str] = frozenset(
     }
 )
 
+#: Check rows whose failure means the suite never verified the application — read off the
+#: suite's own source, so no app defect can produce one. The names are the ROWS' names, and
+#: the rows come from two producers: the qa handler's framework rows carry the bare check
+#: name, and a typed acceptance check's row carries the ``acceptance:`` prefix the
+#: typed-acceptance seam gives it (``handlers/cycle/base.py``). #1532: containment sat
+#: here under its bare name from #1022 on, which no row ever carries — its failure alone
+#: routed to the dev chain, and it only reached the qa author when another row co-fired.
+_STRUCTURAL_SUITE_CHECKS: frozenset[str] = frozenset(
+    {
+        CHECK_NO_SELF_MOCKING_TESTS,
+        CHECK_NO_STUB_FALLBACK_TESTS,
+        f"acceptance:{CHECK_ADDITIVE_CONTAINMENT}",
+    }
+)
+
 
 if TYPE_CHECKING:
     from squadops.tasks.models import TaskEnvelope, TaskResult
@@ -491,11 +506,7 @@ def _own_artifact_row(row: dict[str, Any]) -> bool:
     # produced BY an app defect.
     # #1022 joins them at the emission seam: the suite fetched a live server or invoked
     # nothing of the application — read off its bytes against the stack's declaration.
-    if (
-        check
-        in (CHECK_NO_SELF_MOCKING_TESTS, CHECK_NO_STUB_FALLBACK_TESTS, CHECK_ADDITIVE_CONTAINMENT)
-        and row.get("passed") is False
-    ):
+    if check in _STRUCTURAL_SUITE_CHECKS and row.get("passed") is False:
         return True
     # #1130: the runner says the suite raised in its own frame before any application
     # code ran (a NameError in the test module, an argument-binding TypeError at a call
