@@ -392,3 +392,29 @@ def test_the_same_evidence_in_any_order_attributes_the_same():
         for m in itertools.permutations(movements)
     }
     assert len(readings) == 1
+
+
+def test_a_gate_refusing_on_validators_and_proofs_names_both_and_picks_neither():
+    """SIP-0108 §10c. Bug caught: one gate refusing on a plan validator AND a manifest proof
+    (V4's replay does) read as whichever row the caller named — an arbitrary pick between
+    ``plan_gate_failure`` and ``criteria_or_contract_failure``."""
+    from squadops.cycles.failure_attribution import (
+        AttributionClass,
+        TerminalEvidence,
+        TerminalKind,
+        attribute,
+    )
+
+    for kind in (TerminalKind.PLAN_GATE_REFUSED, TerminalKind.MANIFEST_GATE_REFUSED):
+        result = attribute(
+            TerminalEvidence(
+                kind=kind,
+                refused_validators=("validate_frozen_artifact_ownership",),
+                failed_proofs=("error_shape_agrees",),
+            )
+        )
+        assert result.primary == AttributionClass.UNATTRIBUTED, kind
+        assert {(c.value, c.attribution) for c in result.contributing} == {
+            ("validate_frozen_artifact_ownership", AttributionClass.PLAN_GATE_FAILURE),
+            ("error_shape_agrees", AttributionClass.CRITERIA_OR_CONTRACT_FAILURE),
+        }, kind

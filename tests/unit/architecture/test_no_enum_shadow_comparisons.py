@@ -55,16 +55,14 @@ _ALLOWLIST: set[tuple[str, str]] = {
     # coincidental with RunStatus — the same class as coordinator.py's RuntimeMode above.
     ("adapters/persistence/runtime/activity_postgres.py", "paused"),
     ("adapters/persistence/runtime/activity_postgres.py", "running"),
-    # #971's emission_status marker on artifact metadata ("failed" = a banked failed
-    # attempt) — a string field's own vocabulary, not a status enum.
-    ("adapters/cycles/dispatched_flow_executor.py", "failed"),
     # CheckOutcome / PatchCheckRecord status vocabulary (passed/failed/skipped/error)
     # evaluated by the accepted-patch path and by the correction runner — same
     # coincidence as the src/ patch_verification entries above. The executor held these
     # until #1152 step 2 moved the path to `patch_acceptance.py`; the entries moved with
     # the code, and the executor's `"error"` entry went with them rather than staying
-    # behind as a rule about a comparison that is no longer there. (Its `"failed"` entry
-    # remains for a different reason — #971's `emission_status` marker, above.)
+    # behind as a rule about a comparison that is no longer there. (Its `"failed"` entry for
+    # #971's `emission_status` marker went too, once the marker became
+    # `emission_integrity.EMISSION_STATUS_FAILED`.)
     ("adapters/cycles/patch_acceptance.py", "failed"),
     ("adapters/cycles/patch_acceptance.py", "error"),
     # The repair half of the protocol left the runner with #1152 step 5; the entry moved
