@@ -35,7 +35,7 @@ import re
 from collections.abc import Collection
 from typing import TYPE_CHECKING, Any
 
-from squadops.capabilities.app_invocation import AppInvocation
+from squadops.capabilities.app_invocation import JS_MODULE_LOAD, AppInvocation
 from squadops.capabilities.baseline_stylesheet import BASELINE_CSS
 from squadops.capabilities.rendered_packaging import render_packaging
 from squadops.capabilities.success_status import success_status_for
@@ -46,13 +46,14 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, avoids a scaffold impo
 STACK_NAME = "nextjs_ts"
 
 #: #1126: how a suite on this stack invokes the application. Under the in-process model
-#: (#877) a suite reaches the app by importing its ``app/api/`` route handler — required as
-#: an import *statement*, so a ``vi.mock('@/app/api/...')`` string cannot satisfy it — so
+#: (#877) a suite reaches the app by loading its ``app/api/`` route handler — an import
+#: statement, a ``require``, or a dynamic ``import(`` (``JS_MODULE_LOAD``, #1533), never a
+#: ``vi.mock('@/app/api/...')`` string — so
 #: there is no ``fetch`` for a correct suite to stub, and mocking the route module under
 #: test is unconditionally self-mocking. These three patterns used to live in the shared
 #: detector as if they were every stack's; they are this stack's.
 APP_INVOCATION = AppInvocation(
-    invocation_import=r"""^\s*(?:import\b[^\n]*?from\s*|.*\brequire\s*\(\s*)['"`][^'"`]*app/api/""",
+    invocation_import=JS_MODULE_LOAD + r"""['"`][^'"`]*app/api/""",
     subject_mock=r"""(?:vi|jest)\s*\.\s*mock\s*\(\s*['"`][^'"`]*app/api/""",
     invocation_description=(
         "an import of an `app/api/**/route` handler module, called directly with a "

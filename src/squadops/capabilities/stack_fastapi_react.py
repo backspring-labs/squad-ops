@@ -26,7 +26,11 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from squadops.capabilities.app_invocation import NETWORK_SEAM_FETCH_STUB, AppInvocation
+from squadops.capabilities.app_invocation import (
+    JS_MODULE_LOAD,
+    NETWORK_SEAM_FETCH_STUB,
+    AppInvocation,
+)
 from squadops.capabilities.baseline_stylesheet import BASELINE_CSS
 from squadops.capabilities.client_surface import (
     KIND_CLASS,
@@ -49,8 +53,7 @@ STACK_NAME = "fullstack_fastapi_react"
 #: nothing is. Mocking a view or ``App`` module itself is mocking the subject.
 APP_INVOCATION = AppInvocation(
     invocation_import=(
-        r"""^\s*(?:import\b[^\n]*?from\s*|.*\brequire\s*\(\s*)['"`][^'"`]*"""
-        r"""(?:/App|/views/[A-Za-z0-9_]+)(?:\.[jt]sx?)?['"`]"""
+        JS_MODULE_LOAD + r"""['"`][^'"`]*(?:/App|/views/[A-Za-z0-9_]+)(?:\.[jt]sx?)?['"`]"""
     ),
     subject_mock=r"""(?:vi|jest)\s*\.\s*mock\s*\(\s*['"`][^'"`]*(?:/App|/views/)""",
     network_seam_mock=(
