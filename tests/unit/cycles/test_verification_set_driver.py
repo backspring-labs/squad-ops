@@ -1276,6 +1276,43 @@ class TestADiagnosticIsReadByTheSeamItReached:
             base["loop_texture"].pop("correction_rounds", None)
         return base
 
+    _NARROWED = (
+        "correction_repair_target: narrowed to the slot(s) owning the failing probe(s) — "
+        "backend/routes.py; the language-wide surface is withheld (#1015)"
+    )
+
+    def test_the_dev_lane_is_reached_by_a_repair_narrowed_to_the_join_slot_and_applied(
+        self, driver
+    ):
+        rec = self._rec(narrowed_targets=[self._NARROWED], applied_patches=1)
+        rec["correction_rounds"] = 1
+        out = driver.seam_readouts(("dev_join_response_omits_declared_fields",), rec)
+        assert out["dev_join_response_omits_declared_fields"]["reached"] is True
+
+    @pytest.mark.parametrize(
+        ("narrowed", "applied"),
+        [
+            ([], 1),  # a patch applied, but no repair aimed at the join slot: another lane's
+            (
+                [
+                    "correction_repair_target: narrowed to the slot(s) owning the failing "
+                    "probe(s) — frontend/src/views/RunsListView.jsx; the language-wide "
+                    "surface is withheld (#1015)"
+                ],
+                1,
+            ),  # a narrowed repair, on a slot that does not serve the join route
+            (["correction_repair_target: narrowed to ... — backend/routes.py"], 0),  # refused
+        ],
+        ids=["no-narrowed-target", "narrowed-elsewhere", "nothing-applied"],
+    )
+    def test_the_dev_lane_is_not_reached_without_all_three(self, driver, narrowed, applied):
+        """Bug caught: a readout crediting the dev lane for a repair it did not make — a qa
+        repair that applied, or a dev repair that was refused."""
+        rec = self._rec(narrowed_targets=narrowed, applied_patches=applied)
+        rec["correction_rounds"] = 1
+        out = driver.seam_readouts(("dev_join_response_omits_declared_fields",), rec)
+        assert out["dev_join_response_omits_declared_fields"]["reached"] is False
+
     def test_the_round_4_absent_suite_shape_reads_as_not_reached(self, driver):
         """Correction rounds 0, no retest: the fault fired and L2's seam was never touched."""
         out = driver.seam_readouts(("qa_suite_absent",), self._rec(retests=[]))

@@ -1,0 +1,86 @@
+from fastapi import APIRouter, status
+import uuid
+
+from .models import Run, RunCreate, ParticipantIn
+from .store import run_store
+from .errors import ApiError
+
+router = APIRouter()
+
+
+def _find_run(run_id: str) -> Run:
+    run = run_store.get(run_id)
+    if run is None:
+        raise ApiError("run_not_found", f"Run '{run_id}' not found")
+    return run
+
+
+@router.post("/runs", response_model=Run, status_code=status.HTTP_201_CREATED)
+def post_runs(payload: RunCreate):
+    if not payload.title or not payload.title.strip():
+        raise ApiError("validation_error", "title is required and cannot be empty")
+    if not payload.datetime or not payload.datetime.strip():
+        raise ApiError("validation_error", "datetime is required and cannot be empty")
+    if not payload.meeting_location or not payload.meeting_location.strip():
+        raise ApiError("validation_error", "meeting_location is required and cannot be empty")
+
+    run_id = uuid.uuid4().hex[:12]
+
+    run = Run(
+        id=run_id,
+        title=payload.title,
+        datetime=payload.datetime,
+        meeting_location=payload.meeting_location,
+        distance=payload.distance,
+        pace_target=payload.pace_target,
+        route_notes=payload.route_notes,
+        capacity=payload.capacity,
+        participants=[],
+        participant_count=0,
+    )
+    run_store[run_id] = run
+    return run
+
+
+@router.get("/runs", response_model=list[Run])
+def get_runs():
+    return list(run_store.values())
+
+
+@router.get("/runs/{run_id}", response_model=Run)
+def get_runs_run_id(run_id: str):
+    return _find_run(run_id)
+
+
+@router.post("/runs/{run_id}/join", response_model=Run, status_code=200)
+def post_runs_run_id_join(run_id: str, payload: ParticipantIn):
+    run = _find_run(run_id)
+
+    name = payload.name
+    if not name or not name.strip():
+        raise ApiError("validation_error", "Participant name cannot be empty")
+
+    for existing in run.participants:
+        if existing.lower() == name.strip().lower():
+            raise ApiError("duplicate_participant", f"Participant '{name}' is already joined to this run")
+
+    run.participants.append(name)
+    run.participant_count = len(run.participants)
+    return run
+
+
+@router.post("/runs/{run_id}/leave", response_model=Run, status_code=200)
+def post_runs_run_id_leave(run_id: str, payload: ParticipantIn):
+    run = _find_run(run_id)
+
+    name = payload.name
+    if not name or not name.strip():
+        raise ApiError("validation_error", "Participant name cannot be empty")
+
+    for i, existing in enumerate(run.participants):
+        if existing.lower() == name.strip().lower():
+            run.participants.pop(i)
+            run.participant_count = len(run.participants)
+            return run
+
+    raise ApiError("participant_not_found", f"Participant '{name}' not found on this run")

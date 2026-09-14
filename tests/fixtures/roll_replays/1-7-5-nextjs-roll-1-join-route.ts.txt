@@ -1,0 +1,41 @@
+import { TABLES, find, update } from '@/lib/store';
+import { ApiError, errorResponse } from '@/lib/errors';
+
+export async function POST(request: Request, { params }: { params: { run_id: string } }) {
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return errorResponse(new ApiError('validation_failed', 'Request body must be valid JSON'));
+  }
+
+  const participant_name = typeof body.participant_name === 'string' ? body.participant_name.trim() : '';
+
+  if (!participant_name) {
+    return errorResponse(
+      new ApiError('validation_failed', 'participant_name is required and must not be empty')
+    );
+  }
+
+  const run = find(TABLES.Run, params.run_id);
+  if (!run) {
+    return errorResponse(new ApiError('run_not_found', `Run '${params.run_id}' not found`));
+  }
+
+  const existingNames: string[] = Array.isArray(run.participant_names) ? run.participant_names : [];
+
+  const isDuplicate = existingNames.some((name) => name.toLowerCase() === participant_name.toLowerCase());
+  if (isDuplicate) {
+    return errorResponse(
+      new ApiError('duplicate_participant', `Participant '${participant_name}' is already on this run`)
+    );
+  }
+
+  const updatedRun = {
+    ...run,
+    participant_names: [...existingNames, participant_name],
+  };
+
+  const result = update(TABLES.Run, updatedRun);
+  return Response.json(result);
+}
