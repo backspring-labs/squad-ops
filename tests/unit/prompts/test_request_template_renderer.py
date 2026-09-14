@@ -248,7 +248,7 @@ class TestBehaviorContractAppendixAsset:
     async def test_real_asset_renders_pins_and_prefix_rule(self):
         from adapters.prompts.factory import create_prompt_asset_source
 
-        renderer = RequestTemplateRenderer(create_prompt_asset_source())
+        renderer = RequestTemplateRenderer(create_prompt_asset_source("filesystem"))
         rendered = await renderer.render(
             "request.qa_test_behavior_contract_appendix",
             {

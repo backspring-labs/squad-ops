@@ -333,9 +333,28 @@ changes and this standard does not.
     selectors, as does `prompt_asset_provider`, which #1449's grep matched but its table
     omitted. Assertion 5 in `test_composition_roots.py` holds each converted factory's
     selector parameter required, one row per selector.
-  - **Still defaulted,** one PR per module: audit, the cycles factory (project registry, cycle
-    registry, flow executor), capabilities, embeddings, events, memory, prompts (both), tasks,
-    tools (three).
+  - **Every factory selector, 2026-09-14 (#1449 closed).** The rest landed in one PR, because
+    each module's PR edits the same guard table and would conflict with the one before it:
+    tools (three), audit, capabilities, embeddings, events, memory, prompts (both), tasks, and
+    the cycles factory. The cycles factory had **five** defaulted selectors, not the three
+    #1449's table listed: `create_squad_profile_port` (`"config"`) and `create_artifact_vault`
+    (`"filesystem"`) matched no row. An AST scan of every `adapters/**/factory*.py` finds no
+    defaulted selector parameter left. Two root calls had relied on defaults:
+    - the agent's `create_prompt_repository()`, which now names `"filesystem"`;
+    - the agent's `create_memory_provider(provider_type="lancedb", …)`. The factory has no
+      `provider_type` parameter, so the keyword fell into `**config` and the `"lancedb"` default
+      decided. It now passes `provider=`.
+
+    Assertion 5 holds every selector parameter required. A second test holds every root call
+    naming each selector positionally or by the factory's own parameter name.
+  - **Selector defaults outside the factories — closed by #1568 (2026-09-14).** Three sets:
+    - the schema's `cycles.registry_provider` (`"memory"`), `cycles.squad_profile_provider`
+      (`"config"`) and `prompts.asset_source_provider` (`"filesystem"`);
+    - `docker-compose.yml`'s `${…:-filesystem}` and `${…:-noop}` fallbacks;
+    - `AuthMiddleware(provider="keycloak")`.
+
+    The owner ruled one mechanism, required everywhere (R2's "Everywhere" note), over refusing
+    each selector where it is composed. #1565's telemetry backend moved to the same mechanism.
 - **A second ownership path for the runtime-state adapters.** `create_runtime_coordinator`
   (`scheduler_bootstrap`) builds `PostgresFocusLease` and `PostgresRuntimeState` again; the
   root's comment at `main.py:367–373` calls the instances interchangeable because they are

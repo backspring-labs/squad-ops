@@ -372,6 +372,22 @@ _FACTORY_SELECTORS = (
     ("adapters.telemetry.factory", "create_telemetry_provider", "provider"),
     ("adapters.telemetry.factory", "create_llm_observability_provider", "provider"),
     ("adapters.telemetry.factory", "create_llm_observability_provider", "prompt_asset_provider"),
+    ("adapters.tools.factory", "create_filesystem_provider", "provider"),
+    ("adapters.tools.factory", "create_container_provider", "provider"),
+    ("adapters.tools.factory", "create_vcs_provider", "provider"),
+    ("adapters.audit.factory", "create_audit_provider", "provider"),
+    ("adapters.capabilities.factory", "create_capability_repository", "provider"),
+    ("adapters.cycles.factory", "create_project_registry", "provider"),
+    ("adapters.cycles.factory", "create_cycle_registry", "provider"),
+    ("adapters.cycles.factory", "create_squad_profile_port", "provider"),
+    ("adapters.cycles.factory", "create_artifact_vault", "provider"),
+    ("adapters.cycles.factory", "create_flow_executor", "provider"),
+    ("adapters.embeddings.factory", "create_embeddings_provider", "provider"),
+    ("adapters.events.factory", "create_cycle_event_bus", "provider"),
+    ("adapters.memory.factory", "create_memory_provider", "provider"),
+    ("adapters.prompts.factory", "create_prompt_repository", "provider"),
+    ("adapters.prompts.factory", "create_prompt_asset_source", "provider"),
+    ("adapters.tasks.factory", "create_task_registry_provider", "provider"),
     # #1568: the auth middleware's provider, a constructor keyword the runtime root names.
     ("squadops.api.middleware.auth", "AuthMiddleware", "provider"),
 )
@@ -393,3 +409,40 @@ def test_every_factory_selector_parameter_is_required(module, factory, selector)
         f"{module}.{factory}({selector}=…) has a default — a defaulted selector is a masking "
         "fallback (R2)"
     )
+
+
+def _selector_misses(root: str) -> list[str]:
+    """Each root call of a factory in ``_FACTORY_SELECTORS`` that names its selector neither
+    positionally nor by the factory's own keyword."""
+    import importlib
+    import inspect
+
+    selectors: dict[str, list[str]] = {}
+    for module, factory, selector in _FACTORY_SELECTORS:
+        selectors.setdefault(factory, []).append(selector)
+    misses = []
+    for py in _iter_root_modules(root):
+        for node in ast.walk(ast.parse(py.read_text(encoding="utf-8"))):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)):
+                continue
+            wanted = selectors.get(node.func.id)
+            if not wanted:
+                continue
+            module = next(m for m, f, _ in _FACTORY_SELECTORS if f == node.func.id)
+            params = list(
+                inspect.signature(getattr(importlib.import_module(module), node.func.id)).parameters
+            )
+            keywords = {k.arg for k in node.keywords}
+            for selector in wanted:
+                if params.index(selector) >= len(node.args) and selector not in keywords:
+                    misses.append(f"{py.name}:{node.lineno} {node.func.id} names no {selector}")
+    return misses
+
+
+@pytest.mark.parametrize("root", sorted(_EXPECTED_FACTORY_CALLS))
+def test_every_root_names_each_factory_selector_by_the_factorys_own_parameter(root):
+    """Bug caught: a root passing its selector under a keyword the factory does not have. The
+    agent root called ``create_memory_provider(provider_type="lancedb")``: the keyword fell into
+    ``**config`` and the factory's default decided (#1449). With the default gone that is a
+    start-up ``TypeError``; this names it in CI instead."""
+    assert _selector_misses(root) == []

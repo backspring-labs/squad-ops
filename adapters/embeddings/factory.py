@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 
 def create_embeddings_provider(
-    provider: str = "ollama",
+    provider: str,
     secret_manager: SecretManager | None = None,
     base_url: str = "http://localhost:11434",
     model: str = "nomic-embed-text",

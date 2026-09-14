@@ -24,7 +24,7 @@ DEFAULT_TEMPLATES_PATH = (
 
 
 def create_prompt_repository(
-    provider: str = "filesystem",
+    provider: str,
     base_path: Path | None = None,
     **kwargs,
 ) -> PromptRepository:
@@ -50,7 +50,7 @@ def create_prompt_repository(
 
 
 def create_prompt_asset_source(
-    provider: str = "filesystem",
+    provider: str,
     fragments_path: Path | None = None,
     templates_path: Path | None = None,
     **kwargs: Any,

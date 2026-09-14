@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from squadops.orchestration.orchestrator import AgentOrchestrator
 
 
-def create_project_registry(provider: str = "config", **kwargs) -> ProjectRegistryPort:
+def create_project_registry(provider: str, **kwargs) -> ProjectRegistryPort:
     """Create a ProjectRegistryPort adapter."""
     if provider == "config":
         from adapters.cycles.config_project_registry import ConfigProjectRegistry
@@ -25,7 +25,7 @@ def create_project_registry(provider: str = "config", **kwargs) -> ProjectRegist
     raise ValueError(f"Unknown project registry provider: {provider}")
 
 
-def create_cycle_registry(provider: str = "memory", **kwargs) -> CycleRegistryPort:
+def create_cycle_registry(provider: str, **kwargs) -> CycleRegistryPort:
     """Create a CycleRegistryPort adapter."""
     if provider == "memory":
         from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
@@ -41,7 +41,7 @@ def create_cycle_registry(provider: str = "memory", **kwargs) -> CycleRegistryPo
     raise ValueError(f"Unknown cycle registry provider: {provider}")
 
 
-def create_squad_profile_port(provider: str = "config", **kwargs) -> SquadProfilePort:
+def create_squad_profile_port(provider: str, **kwargs) -> SquadProfilePort:
     """Create a SquadProfilePort adapter (T7: consistent naming)."""
     if provider == "config":
         from adapters.cycles.config_squad_profile import ConfigSquadProfile
@@ -57,7 +57,7 @@ def create_squad_profile_port(provider: str = "config", **kwargs) -> SquadProfil
     raise ValueError(f"Unknown squad profile provider: {provider}")
 
 
-def create_artifact_vault(provider: str = "filesystem", **kwargs) -> ArtifactVaultPort:
+def create_artifact_vault(provider: str, **kwargs) -> ArtifactVaultPort:
     """Create an ArtifactVaultPort adapter."""
     if provider == "filesystem":
         from adapters.cycles.filesystem_artifact_vault import FilesystemArtifactVault
@@ -67,7 +67,7 @@ def create_artifact_vault(provider: str = "filesystem", **kwargs) -> ArtifactVau
 
 
 def create_flow_executor(
-    provider: str = "in_process",
+    provider: str,
     *,
     cycle_registry: CycleRegistryPort | None = None,
     artifact_vault: ArtifactVaultPort | None = None,
