@@ -1531,6 +1531,97 @@ class TestFillMergeEvidenceIsReadFromTheTree:
         assert driver.fill_merge_evidence(None, "cyc", "run") == []
 
 
+class TestUncollectedSuitesAreReadFromTheStoredReports:
+    """#1540: a suite the runner never collects fails nothing, so a record that counts only
+    failures reads clean. 1.7.3's accepted Next.js shakeout (`cyc_d988c11c71f5`) stored
+    `__tests__/runs-ui.test.tsx` as run-nothing in its test report and its record never said
+    so; the shape recurred on 1.8.0 deploy A (#1534)."""
+
+    @staticmethod
+    def _tree(tmp_path, reports):
+        import json as _json
+
+        from squadops.capabilities.handlers.cycle.qa_test import UNCOLLECTED_REPORT_LABEL
+
+        for i, (task_id, status, uncollected) in enumerate(reports):
+            art = tmp_path / f"art_{i}"
+            art.mkdir()
+            body = "# Test Execution Report\n\n**Result:** all tests passed\n"
+            if uncollected:
+                # The handler's own line shape: label in bold, each file backticked.
+                body += f"\n**{UNCOLLECTED_REPORT_LABEL}** " + ", ".join(
+                    f"`{name}`" for name in uncollected
+                )
+                body += "\n\n## stdout\n\n```\n`not/a/file.ts` in a stack trace\n```\n"
+            (art / "test_report.md").write_text(body)
+            meta = {"task_id": task_id, "role": "qa"}
+            if status:
+                meta["emission_status"] = status
+            (art / "metadata.json").write_text(
+                _json.dumps(
+                    {
+                        "filename": "test_report.md",
+                        "vault_uri": str((art / "test_report.md").relative_to(tmp_path)),
+                        "metadata": meta,
+                    }
+                )
+            )
+        return tmp_path
+
+    def _read(self, driver, monkeypatch, tree):
+        monkeypatch.setattr(driver, "artifact_dirs", lambda *a, **k: sorted(tree.glob("art_*")))
+        monkeypatch.setattr(driver, "REPO", tree)
+        return driver.uncollected_suites(None, "cyc", "run")
+
+    def test_each_report_naming_uncollected_suites_is_read(self, driver, monkeypatch, tmp_path):
+        tree = self._tree(
+            tmp_path,
+            [
+                ("task-m005-qa.test", "failed", ["__tests__/runs-ui.test.tsx"]),
+                ("task-m005-qa.test", None, ["__tests__/runs-ui.test.tsx", "tests/api.test.ts"]),
+                ("task-m006-qa.test", None, []),
+            ],
+        )
+        out = self._read(driver, monkeypatch, tree)
+        assert out == [
+            {
+                "task_id": "task-m005-qa.test",
+                "banked": "failed",
+                "files": ["__tests__/runs-ui.test.tsx"],
+            },
+            {
+                "task_id": "task-m005-qa.test",
+                "banked": "stored",
+                "files": ["__tests__/runs-ui.test.tsx", "tests/api.test.ts"],
+            },
+        ]
+        assert driver._render_uncollected(out) == (
+            "`__tests__/runs-ui.test.tsx` (2 reports: 1 failed, 1 stored); "
+            "`tests/api.test.ts` (1 report: 1 stored)"
+        )
+
+    @pytest.mark.parametrize(
+        ("reports", "state"),
+        [([], "unaskable"), ([("task-m005-qa.test", None, [])], "asked_none")],
+    )
+    def test_no_report_is_unasked_and_a_clean_report_is_an_answer(
+        self, driver, monkeypatch, tmp_path, reports, state
+    ):
+        """Bug caught: the #1445 shape — a run that stored no test report must not read as
+        "0 uncollected". Entered through ``loop_texture``, the collector's live caller."""
+        tree = self._tree(tmp_path, reports)
+        monkeypatch.setattr(driver, "artifact_dirs", lambda *a, **k: sorted(tree.glob("art_*")))
+        monkeypatch.setattr(driver, "REPO", tree)
+        monkeypatch.setattr(driver, "docker_logs", lambda c, s, u=None: [])
+        monkeypatch.setattr(driver, "_fill_rejections", lambda *a: [])
+        monkeypatch.setattr(driver, "fill_merge_evidence", lambda *a: [])
+        monkeypatch.setattr(driver, "_decision_inherited_claims", lambda *a: [])
+        out = driver.loop_texture(None, "cyc", "run", "2026-09-14T03:00:00Z")
+        assert out["uncollected_suites"]["state"] == state
+        if state == "unaskable":
+            assert "no test_report.md stored" in out["uncollected_suites"]["reason"]
+
+
 class TestRetryFeedbackIsReadFromBothWindows:
     """1.7.4 plan §3.1 (#1372, R1): the field exists before the fix, so the pre-registration
     has a producer to check. The executor aims a retry in the runtime-api window; whether
