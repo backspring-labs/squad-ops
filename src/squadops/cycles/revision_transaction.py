@@ -7,12 +7,14 @@ model — resolves each to an exact source range in the base, checks it against 
 every accepted revision to the immutable base or none of them. The result names its candidate
 with step 1's identity (:func:`~squadops.cycles.patch_verification.candidate_revision_id`).
 
-**Rollout step 2 ships one operation**, :attr:`RevisionOperation.REPLACE_REGION` — §9.3's
+**Two operations.** Rollout step 2 shipped :attr:`RevisionOperation.REPLACE_REGION` — §9.3's
 authorized-region replacement, the shape the qa fill path has always had (a slot body replaced
-wholesale). The fill merge is the first caller, so the transaction proves itself on the lane
-that already works: its output is byte-identical to the merge it replaced. Exact anchors
-(step 4) and structural replace/insert/remove (steps 5–6) add operations and resolvers; the
-atomic validation, the canonical edit and the identity stay as they are here.
+wholesale); the fill merge is its first caller, byte-identical to the merge it replaced. Step 4
+adds :attr:`RevisionOperation.REPLACE_ANCHOR` — §9.2's exact anchored target: the producer
+supplies existing source text, and the framework replaces it only where it occurs **exactly
+once** inside the authorized region. Zero matches and several matches both refuse; nothing is
+normalized, fuzzed or chosen (#451). Structural replace/insert/remove (steps 5–6) add operations
+and resolvers; the atomic validation, the canonical edit and the identity stay as they are here.
 
 **Locus.** Pure — no I/O, no clock. Resolution runs wherever the base is in hand: the qa
 handler and the qa repair handler today, the runtime verifier when a repair arrives as a
@@ -46,6 +48,8 @@ class RevisionOperation(StrEnum):
 
     #: §9.3: replace the whole body of an explicitly authorized region (a scaffold slot).
     REPLACE_REGION = "replace_region"
+    #: §9.2: replace the one exact occurrence of an anchor inside the authorized region.
+    REPLACE_ANCHOR = "replace_anchor"
 
 
 class RefusalReason(StrEnum):
@@ -57,19 +61,28 @@ class RefusalReason(StrEnum):
     UNRESOLVED_REGION = "unresolved_region"
     OVERLAPPING_RANGES = "overlapping_ranges"
     UNSUPPORTED_OPERATION = "unsupported_operation"
+    #: §21: the anchor occurs nowhere in the authorized region.
+    ANCHOR_NOT_FOUND = "anchor_not_found"
+    #: §21: the anchor occurs more than once — the framework never chooses between matches.
+    ANCHOR_AMBIGUOUS = "anchor_ambiguous"
+    #: An anchored revision with no anchor text, which would match everywhere.
+    EMPTY_ANCHOR = "empty_anchor"
 
 
 @dataclass(frozen=True, kw_only=True)
 class Revision:
-    """One revision as a producer proposes it: a region of an artifact, and its new source.
+    """One revision as a producer proposes it: a target in an artifact, and its new source.
 
-    The producer names the region (a slot id today); it never supplies coordinates.
+    The producer names the target — a region (a slot id), or an anchor inside the authorized
+    region — and never supplies coordinates. An anchored revision with no ``region_id`` searches
+    the whole artifact, the region a whole-file grant authorizes.
     """
 
     artifact_path: str
-    region_id: str
     operation: RevisionOperation
     replacement: str
+    region_id: str = ""
+    anchor: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -185,7 +198,10 @@ def resolve_and_apply(
 
     edits: list[RangeEdit] = []
     for index, revision in enumerate(transaction.revisions):
-        if revision.operation != RevisionOperation.REPLACE_REGION:
+        if revision.operation not in (
+            RevisionOperation.REPLACE_REGION,
+            RevisionOperation.REPLACE_ANCHOR,
+        ):
             refusals.append(
                 Refusal(
                     revision_index=index,
@@ -216,17 +232,11 @@ def resolve_and_apply(
                 )
             )
             continue
-        span = resolve_region(revision.artifact_path, content, revision.region_id)
-        if span is None:
-            refusals.append(
-                Refusal(
-                    revision_index=index,
-                    reason=RefusalReason.UNRESOLVED_REGION,
-                    detail=f"{revision.region_id} does not resolve in {revision.artifact_path}",
-                )
-            )
+        target = _resolve_target(index, revision, content, resolve_region)
+        if isinstance(target, Refusal):
+            refusals.append(target)
             continue
-        start, end = span
+        start, end = target
         edits.append(
             RangeEdit(
                 artifact_path=revision.artifact_path,
@@ -264,6 +274,71 @@ def resolve_and_apply(
         candidate_files=candidate,
         candidate_revision_id=candidate_revision_id(base_files, changed),
     )
+
+
+def _resolve_target(
+    index: int, revision: Revision, content: str, resolve_region: RegionResolver
+) -> tuple[int, int] | Refusal:
+    """The span a revision replaces: its region's body, or its anchor's one match inside the
+    authorized region (the named region, else the whole artifact the grant permits)."""
+    if revision.operation == RevisionOperation.REPLACE_ANCHOR and not revision.region_id:
+        region: tuple[int, int] | None = (0, len(content))
+    else:
+        region = resolve_region(revision.artifact_path, content, revision.region_id)
+    if region is None:
+        return Refusal(
+            revision_index=index,
+            reason=RefusalReason.UNRESOLVED_REGION,
+            detail=f"{revision.region_id} does not resolve in {revision.artifact_path}",
+        )
+    if revision.operation == RevisionOperation.REPLACE_ANCHOR:
+        return _resolve_anchor(index, revision, content, region)
+    return region
+
+
+def _anchor_matches(content: str, anchor: str, lo: int, hi: int) -> list[int]:
+    """Every start offset of ``anchor`` lying wholly inside ``[lo, hi)``, overlapping matches
+    included — ``aa`` occurs twice in ``aaa``, and a count that said once would choose."""
+    matches: list[int] = []
+    at = content.find(anchor, lo, hi)
+    while at != -1:
+        matches.append(at)
+        at = content.find(anchor, at + 1, hi)
+    return matches
+
+
+def _resolve_anchor(
+    index: int, revision: Revision, content: str, region: tuple[int, int]
+) -> tuple[int, int] | Refusal:
+    """The anchor's one exact span inside the authorized region, or the refusal (§9.2).
+
+    Exact means exact: no whitespace normalization, no case folding, no nearest match (#451 — an
+    unanchored replace of ``'0'`` rewrote every zero in a manifest).
+    """
+    where = f"{revision.artifact_path}" + (
+        f" region {revision.region_id}" if revision.region_id else ""
+    )
+    if not revision.anchor:
+        return Refusal(
+            revision_index=index,
+            reason=RefusalReason.EMPTY_ANCHOR,
+            detail=f"an anchored revision of {where} carries no anchor text",
+        )
+    lo, hi = region
+    matches = _anchor_matches(content, revision.anchor, lo, hi)
+    if not matches:
+        return Refusal(
+            revision_index=index,
+            reason=RefusalReason.ANCHOR_NOT_FOUND,
+            detail=f"the anchor does not occur in {where}",
+        )
+    if len(matches) > 1:
+        return Refusal(
+            revision_index=index,
+            reason=RefusalReason.ANCHOR_AMBIGUOUS,
+            detail=f"the anchor occurs {len(matches)} times in {where}; it must occur exactly once",
+        )
+    return matches[0], matches[0] + len(revision.anchor)
 
 
 def _overlaps(edits: Sequence[RangeEdit]) -> list[Refusal]:

@@ -192,3 +192,138 @@ class TestTheSlotRegion:
 
     def test_an_undeclared_slot_has_no_span(self):
         assert slot_body_span(_BASE[_SHELL], "slot-z") is None
+
+
+# --- SIP-0107 step 4: exact anchored targets ------------------------------------------------
+
+#: The manifest #451 corrupted: a placeholder hash of '0' among a version, a timestamp and a
+#: sibling hash that all contain zeros. An unanchored replace of '0' rewrote every one of them.
+_MANIFEST = "prompts/manifest.yaml"
+_MANIFEST_TEXT = (
+    "version: 0.9.99\n"
+    "updated_at: '2026-07-15T00:00:00.000000Z'\n"
+    "fragments:\n"
+    "- fragment_id: task_type.good\n"
+    "  sha256: 0a5f00c1\n"
+    "- fragment_id: task_type.new\n"
+    "  sha256: '0'\n"
+    "manifest_hash: placeholder\n"
+)
+_ANCHOR_BASE = {
+    _MANIFEST: _MANIFEST_TEXT,
+    "backend/routes.py": "def a():\n    return 1\n\ndef b():\n    return 1\n",
+    _SHELL: _shell(("slot-a", "    expect(x).toBe(1)"), ("slot-b", "    expect(x).toBe(1)")),
+    "lib/store.ts": "export const x = 1\n",
+}
+
+
+def _anchored(path: str, anchor: str, replacement: str, region: str = "") -> Revision:
+    return Revision(
+        artifact_path=path,
+        operation=RevisionOperation.REPLACE_ANCHOR,
+        anchor=anchor,
+        replacement=replacement,
+        region_id=region,
+    )
+
+
+def _anchor_txn(*revisions: Revision) -> RevisionTransaction:
+    return _txn(*revisions, writable=(_MANIFEST, "backend/routes.py", _SHELL), base=_ANCHOR_BASE)
+
+
+class TestExactAnchoredTargets:
+    def test_the_451_placeholder_anchored_to_its_line_changes_that_line_and_nothing_else(self):
+        """#451, applied. Bug caught: any byte outside the anchored line changing — the version,
+        the timestamp, the sibling hash — when only the placeholder was meant."""
+        outcome = resolve_and_apply(
+            _ANCHOR_BASE,
+            _anchor_txn(_anchored(_MANIFEST, "  sha256: '0'\n", "  sha256: 7e3b9c\n")),
+            _resolve,
+        )
+
+        assert outcome.accepted
+        assert outcome.changed_files()[_MANIFEST] == _MANIFEST_TEXT.replace(
+            "  sha256: '0'\n", "  sha256: 7e3b9c\n"
+        )
+        (edit,) = outcome.edits
+        assert _MANIFEST_TEXT[edit.start : edit.end] == "  sha256: '0'\n"
+
+    def test_the_451_bare_zero_is_ambiguous_and_nothing_is_applied(self):
+        """§39.5: a multi-match anchor fails rather than choosing. Bug caught: the #451 replace —
+        the first match, or every match, rewritten."""
+        outcome = resolve_and_apply(
+            _ANCHOR_BASE, _anchor_txn(_anchored(_MANIFEST, "0", "7e3b9c")), _resolve
+        )
+
+        assert not outcome.accepted
+        assert outcome.candidate_files == {}
+        (refusal,) = outcome.refusals
+        assert refusal.reason == RefusalReason.ANCHOR_AMBIGUOUS
+        assert f"occurs {_MANIFEST_TEXT.count('0')} times" in refusal.detail
+
+    @pytest.mark.parametrize(
+        ("anchor", "reason"),
+        [
+            ("    return 1\n", RefusalReason.ANCHOR_AMBIGUOUS),
+            ("    return  1\n", RefusalReason.ANCHOR_NOT_FOUND),
+            ("    RETURN 1\n", RefusalReason.ANCHOR_NOT_FOUND),
+            ("", RefusalReason.EMPTY_ANCHOR),
+        ],
+        ids=["two matches", "whitespace differs", "case differs", "empty"],
+    )
+    def test_an_anchor_that_does_not_occur_exactly_once_is_refused(self, anchor, reason):
+        """Bug caught: a normalized, case-folded or first-of-many match written — the fuzzy
+        application §9.2 prohibits."""
+        outcome = resolve_and_apply(
+            _ANCHOR_BASE, _anchor_txn(_anchored("backend/routes.py", anchor, "")), _resolve
+        )
+        assert [r.reason for r in outcome.refusals] == [reason]
+
+    def test_overlapping_occurrences_count_as_two(self):
+        """Bug caught: a non-overlapping count reading ``aa`` in ``aaa`` as one match."""
+        base = {"notes.txt": "aaa\n"}
+        txn = RevisionTransaction(
+            base_revision_id=base_revision_id(base),
+            grant=WriteGrant(producer="dev", stage="dev_fill", writable=frozenset({"notes.txt"})),
+            task_id="t",
+            revisions=(_anchored("notes.txt", "aa", "b"),),
+        )
+        (refusal,) = resolve_and_apply(base, txn, _resolve).refusals
+        assert refusal.reason == RefusalReason.ANCHOR_AMBIGUOUS
+
+    def test_a_named_region_bounds_the_search(self):
+        """§9.2: the framework searches only within the authorized region. The same assertion
+        sits in two slots: named, one slot's copy resolves; unnamed, the file holds two."""
+        shell = _ANCHOR_BASE[_SHELL]
+        inside = resolve_and_apply(
+            _ANCHOR_BASE,
+            _anchor_txn(
+                _anchored(_SHELL, "    expect(x).toBe(1)\n", "    expect(x).toBe(2)\n", "slot-b")
+            ),
+            _resolve,
+        )
+        unnamed = resolve_and_apply(
+            _ANCHOR_BASE,
+            _anchor_txn(_anchored(_SHELL, "    expect(x).toBe(1)\n", "    expect(x).toBe(2)\n")),
+            _resolve,
+        )
+
+        (edit,) = inside.edits
+        start, end = slot_body_span(shell, "slot-b")
+        assert start <= edit.start < edit.end <= end
+        assert [r.reason for r in unnamed.refusals] == [RefusalReason.ANCHOR_AMBIGUOUS]
+
+    def test_an_anchor_outside_the_grant_or_overlapping_another_refuses_the_transaction(self):
+        """§13/§14. Bug caught: one good anchored edit applied while its sibling was refused."""
+        good = _anchored("backend/routes.py", "def a():\n", "def a_renamed():\n")
+        overlapping = _anchored("backend/routes.py", "def a():\n    return 1\n", "")
+        outside = _anchored("lib/store.ts", "export const x = 1\n", "export const x = 2\n")
+
+        for siblings, reasons in (
+            ((good, overlapping), [RefusalReason.OVERLAPPING_RANGES]),
+            ((good, outside), [RefusalReason.OUT_OF_GRANT]),
+        ):
+            outcome = resolve_and_apply(_ANCHOR_BASE, _anchor_txn(*siblings), _resolve)
+            assert not outcome.accepted
+            assert outcome.candidate_files == {}
+            assert [r.reason for r in outcome.refusals] == reasons
