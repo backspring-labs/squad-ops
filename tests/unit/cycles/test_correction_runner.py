@@ -6331,3 +6331,100 @@ class TestADisputedGenericOwnArtifactRouteFallsThroughToTheDevChain:
         )
         assert locus == "own_artifact"
         assert expected == ["__tests__/api_runs.test.ts"]
+
+
+class TestLoopFactsReachTheRunLedger:
+    """SIP-0108 §4.1: the refunded rounds and the correction movement sequence join the run
+    summary. Both lived only in logs, which a projection may not read and a rebuild erases."""
+
+    async def test_every_rounds_movement_is_recorded_including_the_terminal_one(self, cycle):
+        """Entry point: ``run_correction_protocol``, as the executor calls it. Bug caught: the
+        movement recorded after the termination check — the round a chain terminated on,
+        the one that explains the termination, would never reach the sequence."""
+        from adapters.cycles.execution_errors import _ExecutionError
+        from squadops.cycles.run_ledger import RunLedger
+
+        harness = TestProgressAwareTermination
+        runner = harness._runner()
+        harness._wire_steps(runner, "tighten_acceptance")
+        ledger = RunLedger()
+        state: dict = {}
+
+        await harness._run_round(harness(), runner, cycle, state, 0, ledger=ledger)
+        with pytest.raises(_ExecutionError, match="plan_defect"):
+            await harness._run_round(harness(), runner, cycle, state, 1, ledger=ledger)
+
+        assert [(m.task_id, m.round_index, m.movement) for m in ledger.movements] == [
+            ("task-qa-4", 0, "new"),
+            ("task-qa-4", 1, "repeat"),
+        ]
+
+    @pytest.mark.parametrize(("already_refunded", "recorded"), [(0, 1), (2, 0)])
+    async def test_a_granted_refund_is_recorded_with_its_signatures_and_a_spent_one_is_not(
+        self, executor, cycle, already_refunded, recorded
+    ):
+        """Entry point: ``_route_correction_path``, where the refund is granted. Bug caught:
+        recording the empty emission rather than the refund — once the allowance is spent the
+        round is billed, and a record that said "refunded" would misstate the budget."""
+        from adapters.cycles.correction_runner import CorrectionProtocolResult
+        from adapters.cycles.dispatched_flow_executor import _CorrectionRound
+        from squadops.cycles.run_ledger import RunLedger
+        from squadops.tasks.models import TaskResult
+
+        ledger = RunLedger()
+        protocol = CorrectionProtocolResult(
+            correction_path="continue",
+            emission_empty=True,
+            empty_emission_signatures=("cap_exhausted",),
+        )
+        await executor._route_correction_path(
+            _CorrectionRound(protocol=protocol, attempt=1, max_attempts=2),
+            TaskResult(task_id="task-qa-4", status="FAILED", error="suite failed"),
+            TestProgressAwareTermination._envelope(),
+            "run_001",
+            cycle=cycle,
+            correction_counter={"n": 1, "empty_refunds": already_refunded},
+            patched_result_holder=None,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+            profile=None,
+            flow_run_id=None,
+            enriched_envelope=None,
+            budget_guard=None,
+            interface_manifest=None,
+            repair_rejection_carry=None,
+            bound_record=None,
+            compliance_counter=None,
+            ledger=ledger,
+        )
+        assert [
+            (r.task_id, r.round_index, r.reason, r.signatures) for r in ledger.refunded_rounds
+        ] == ([("task-qa-4", 1, "empty_repair_emission", ("cap_exhausted",))] if recorded else [])
+
+    async def test_finalization_persists_the_ledgers_loop_facts(self, run):
+        """Entry point: ``RunCompletion.finalize`` with the run's ledger — the row carries
+        what the ledger holds, beside the usage."""
+        from adapters.cycles.run_completion import RunCompletion
+        from squadops.cycles.llm_usage import RunUsage
+        from squadops.cycles.run_ledger import RunLedger
+        from squadops.cycles.run_loop_summary import MovementRecord, RefundedRound
+
+        registry = AsyncMock()
+        registry.get_run = AsyncMock(return_value=run)
+        vault = AsyncMock()
+        vault.store = AsyncMock(side_effect=lambda ref, content: ref)
+        ledger = RunLedger()
+        ledger.record_refunded_round(RefundedRound("t", 0, "empty_repair_emission", ("empty",)))
+        ledger.record_movement(MovementRecord("t", 0, "new"))
+        usage = RunUsage(by_task_type={}, tasks_reported=0, tasks_unreported=())
+
+        await RunCompletion(cycle_registry=registry, artifact_vault=vault).finalize(
+            "cyc_001", "run_001", RunStatus.COMPLETED, None, None, ledger=ledger, usage=usage
+        )
+
+        _, summary = registry.record_run_loop_summary.await_args.args
+        assert summary.refunded_rounds == ledger.refunded_rounds
+        assert summary.movements == ledger.movements
