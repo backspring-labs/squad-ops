@@ -1880,3 +1880,53 @@ it. #1213 closes here.
 
 **Ruled by.** The implementer, in the PR that builds the first half of §38 step 5, for the owner's
 review with it. Item 1 is the resolver choice and order §43.2 delegated to this step.
+
+## 46h. 2026-09-14 — the JavaScript/JSX resolver, on tree-sitter (§38 step 5)
+
+**What changed.**
+
+1. **The React frontend's resolver is tree-sitter's JavaScript grammar.** §43.2 left the library
+   to step 5. The owner chose it on 2026-09-14 over two alternatives:
+   - **a vendored `@babel/parser`** run with the agent containers' node, which checks third-party
+     JS into the repository and pins it by hand;
+   - **`esprima`**, which is unmaintained and does not read `?.` or `??`, both of which the
+     generated views use.
+
+   `tree-sitter` and `tree-sitter-javascript` ship wheels for the images' aarch64 and CI's x86_64.
+   They are declared in `requirements/agent.txt`, the `agent` extra, `tests/requirements.txt`
+   and CI's constraints, and compiled into `agent.lock`. The parser is imported on first use,
+   so no importer that never parses JSX needs it.
+2. **Fail-closed over an error-tolerant parser.** tree-sitter returns a tree for broken input.
+   Every reading checks for an error or missing node first, and a tree carrying one is neither
+   addressed nor accepted: `jsx_syntax_error` refuses it (§18).
+3. **Selectors mirror Python's**, on whole lines: `function:NAME` (with its `export`),
+   `function:NAME#body`, `const:NAME`, `const:NAME#body` (an arrow or function expression with a
+   block body), `class:NAME`, `import:SOURCE`, `imports`.
+   - **An entity must own its lines.** Nothing but whitespace may share its first line before it
+     or its last line after it; JavaScript allows two statements on one line, and such a
+     statement is not addressable.
+   - **A body must sit on its own lines,** with its braces owning theirs.
+   - **Offsets are characters.** tree-sitter reports byte columns, so ranges are taken from rows,
+     never from byte offsets.
+4. **TypeScript is not read.** `.ts` and `.tsx` need their own grammar, and the Next.js stack is
+   step 6's. This grammar reads `.js`, `.jsx`, `.mjs` and `.cjs`.
+5. **The resolver is standalone in this PR.** Wiring both resolvers into one transaction, and the
+   model-facing contract, follow in the next PR, beside the Python half (§46g).
+
+**Evidence.**
+- **Selectors:** every selector's whole lines in a view using `?.`, `??` and JSX, `export default`
+  included.
+- **Offsets:** they stay correct after a line of multibyte text.
+- **Fail-closed:** broken JSX is neither addressed nor accepted; a redeclaration names two
+  entities; a statement sharing its line owns none; a one-line body has none; a `.tsx` file is not
+  read.
+- **The real scaffold:** `RunsListView.jsx` from the FastAPI+React scaffold, the view 1.7.5 React
+  roll 3 re-emitted whole every round (§1.2), parses cleanly and addresses its component and body.
+- **Dependency guards:** the import mirror and constraint-drift tests pass with the new
+  declaration. `agent.lock` gains exactly the two packages.
+- **Mutations: six, each caught.** A tolerant parse addressed; `has_error` ignored; `export` not
+  unwrapped; line ownership not checked; TypeScript read by this grammar; byte columns used as
+  characters.
+
+**Ruled by.** The owner, on the library (2026-09-14). The implementer, on the selectors and the
+fail-closed reading, for the owner's review with them.

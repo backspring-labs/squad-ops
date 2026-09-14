@@ -29,6 +29,8 @@ aiofiles>=23.0.0  # Async file I/O (used by base_agent)
 aio-pika>=9.3.0  # RabbitMQ async client
 asyncpg>=0.29.0  # PostgreSQL async driver
 python-jose[cryptography]>=3.3  # JWT validation used by adapters/auth/keycloak (issue #191)
+tree-sitter>=0.25  # the JSX structural resolver (SIP-0107 step 5)
+tree-sitter-javascript>=0.25
 # Upper bound pins the test env to the FastAPI the project actually runs (0.135.x).
 # Starlette >=0.136 newly rejects including a router instance into more than one
 # app, which the console unit tests do via module-level singleton routers +

@@ -49,6 +49,8 @@ MODULE_TO_DISTRIBUTION: dict[str, str | tuple[str, ...]] = {
     "aio_pika": "aio-pika",
     "multipart": "python-multipart",
     "opentelemetry": ("opentelemetry-api", "opentelemetry-sdk"),
+    "tree_sitter": "tree-sitter",
+    "tree_sitter_javascript": "tree-sitter-javascript",
 }
 
 #: Imported directly, declared only through the named provider — with the reason that
