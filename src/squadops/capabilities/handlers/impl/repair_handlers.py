@@ -31,6 +31,11 @@ if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
 
 
+#: Entities listed per editable file in the repair prompt: scaffold files carry a handful; a
+#: large module is truncated with a count rather than flooding the prompt.
+_MAX_LISTED_ENTITIES = 40
+
+
 def _artifacts_from_fenced_blocks(content: str, fallback_name: str) -> list[dict[str, Any]]:
     """Extract per-file artifacts from fenced code blocks in *content*.
 
@@ -342,14 +347,32 @@ class _RepairPromptMixin:
     async def _render_anchored_edit_section(
         self, context: ExecutionContext, inputs: dict[str, Any]
     ) -> str:
-        """The edit form, for the files the repair may anchor into, or "" (SIP-0107 §9.2)."""
+        """The edit form, for the files the repair may revise, or "" (SIP-0107 §9.1, §9.2).
+
+        Each file is listed with the entities its resolver can address — the references a
+        structural block targets (§7) — read from the same base the edits resolve against, so a
+        listed selector is one the transaction will find. A file no resolver reads, or one that
+        does not parse, is listed without entities: it can still be edited by anchor.
+        """
+        from squadops.cycles.structural_resolution import entity_selectors
+
         files = self._anchorable_files(inputs)
         renderer = getattr(context.ports, "request_renderer", None)
         if not files or renderer is None:
             return ""
+        base = self._repair_base_files(inputs)
+        lines = []
+        for path in files:
+            selectors = entity_selectors(path, base[path]) or ()
+            listed = ", ".join(f"`{sel}`" for sel in selectors[:_MAX_LISTED_ENTITIES])
+            more = (
+                f" (+{len(selectors) - _MAX_LISTED_ENTITIES} more)"
+                if len(selectors) > _MAX_LISTED_ENTITIES
+                else ""
+            )
+            lines.append(f"- `{path}` — entities: {listed}{more}" if selectors else f"- `{path}`")
         rendered = await renderer.render(
-            "request.cycle_repair_anchored_edit_appendix",
-            {"editable_files": "\n".join(f"- `{f}`" for f in files)},
+            "request.cycle_repair_anchored_edit_appendix", {"editable_files": "\n".join(lines)}
         )
         return rendered.content
 

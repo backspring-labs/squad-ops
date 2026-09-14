@@ -26,6 +26,24 @@ REPLACE body is content, not the fence's close, so a replacement may itself cont
 
 SEARCH and REPLACE text are their lines, each ending in a newline, exactly as emitted.
 
+**Structural blocks** (SIP-0107 §38 step 5) share the fence and the transaction. They name an
+entity the file's resolver locates (``structural_resolution``) instead of copying its text::
+
+    ```edit:backend/routes.py
+    <<<<<<< REPLACE function:post_runs#body
+        run = run_event_store.create(payload)
+        return run
+    >>>>>>> END
+    <<<<<<< INSERT BEFORE import:fastapi
+    from __future__ import annotations
+    >>>>>>> END
+    <<<<<<< REMOVE import:os
+    >>>>>>> END
+    ```
+
+``REPLACE``, ``INSERT BEFORE``, ``INSERT AFTER`` and ``REMOVE`` each take one selector and close
+with ``>>>>>>> END``. A ``REMOVE`` carries no lines; an ``INSERT`` must carry some.
+
 Pure: no I/O. :func:`apply_anchored_edits` resolves a parse through one revision transaction;
 the repair handlers call it on the workspace the verifier materialises, and re-prompt once with
 :meth:`AnchoredApplication.refusal_lines` when it refuses (SIP-0107 §22).
@@ -33,6 +51,7 @@ the repair handlers call it on the workspace the verifier materialises, and re-p
 
 from __future__ import annotations
 
+import dataclasses
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -47,6 +66,7 @@ from squadops.cycles.revision_transaction import (
     base_revision_id,
     resolve_and_apply,
 )
+from squadops.cycles.structural_resolution import resolve_entity, syntax_error
 from squadops.cycles.write_authorization import WriteGrant, normalize_ws_path
 
 #: The fence language that marks an anchored-edit block (``edit:<path>``).
@@ -66,12 +86,37 @@ MALFORMED_MISSING_REPLACE = "missing_replace_marker"
 MALFORMED_EMPTY_SEARCH = "empty_search"
 MALFORMED_UNCLOSED_FENCE = "unclosed_fence"
 MALFORMED_NO_BLOCKS = "no_blocks"
+MALFORMED_UNKNOWN_BLOCK = "unknown_block"
+MALFORMED_MISSING_END = "missing_end_marker"
+MALFORMED_REMOVE_WITH_CONTENT = "remove_with_content"
+MALFORMED_EMPTY_INSERT = "empty_insert"
+
+END_MARKER = ">>>>>>> END"
+_STRUCTURAL_OPEN_RE = re.compile(
+    r"^<<<<<<< (?P<op>REPLACE|INSERT BEFORE|INSERT AFTER|REMOVE) (?P<selector>\S+)\s*$"
+)
+_STRUCTURAL_OPERATIONS = {
+    "REPLACE": RevisionOperation.REPLACE_ENTITY,
+    "INSERT BEFORE": RevisionOperation.INSERT_BEFORE_ENTITY,
+    "INSERT AFTER": RevisionOperation.INSERT_AFTER_ENTITY,
+    "REMOVE": RevisionOperation.REMOVE_ENTITY,
+}
 
 
 @dataclass(frozen=True)
 class AnchoredEdit:
     path: str
     anchor: str
+    replacement: str
+
+
+@dataclass(frozen=True)
+class StructuralEdit:
+    """One structural block: an operation on the entity a selector names (§8, §9.1)."""
+
+    path: str
+    operation: RevisionOperation
+    selector: str
     replacement: str
 
 
@@ -84,7 +129,8 @@ class MalformedEdit:
 
 @dataclass(frozen=True)
 class AnchoredEditParse:
-    edits: tuple[AnchoredEdit, ...] = ()
+    #: Anchored and structural edits, in emission order.
+    edits: tuple[AnchoredEdit | StructuralEdit, ...] = ()
     malformed: tuple[MalformedEdit, ...] = ()
 
     @property
@@ -104,7 +150,7 @@ class _FenceReader:
         self.path = path
         self.lines = lines
         self.pos = start
-        self.edits: list[AnchoredEdit] = []
+        self.edits: list[AnchoredEdit | StructuralEdit] = []
         self.malformed: list[MalformedEdit] = []
 
     def _malformed(self, reason: str, detail: str) -> None:
@@ -136,14 +182,19 @@ class _FenceReader:
             self.pos += 1
             if line == _FENCE_CLOSE:
                 if blocks == 0 and not self.malformed:
-                    self._malformed(MALFORMED_NO_BLOCKS, "the edit fence holds no SEARCH block")
+                    self._malformed(MALFORMED_NO_BLOCKS, "the edit fence holds no edit block")
                 return self.pos
             if not line.strip():
                 continue
             if line != SEARCH_MARKER:
+                if line.startswith("<<<<<<< "):
+                    if not self._read_structural(line):
+                        return self.pos
+                    blocks += 1
+                    continue
                 self._malformed(
                     MALFORMED_TEXT_OUTSIDE_BLOCK,
-                    f"line {self.pos} is outside a SEARCH/REPLACE block: {line[:80]!r}",
+                    f"line {self.pos} is outside an edit block: {line[:80]!r}",
                 )
                 continue
             anchor = self._collect_until(DIVIDER_MARKER)
@@ -168,6 +219,37 @@ class _FenceReader:
         self._malformed(MALFORMED_UNCLOSED_FENCE, "the edit fence is never closed")
         return self.pos
 
+    def _read_structural(self, opener: str) -> bool:
+        """One structural block from its opener. False when the fence ended inside it."""
+        match = _STRUCTURAL_OPEN_RE.match(opener)
+        body = self._collect_until(END_MARKER)
+        if body is None:
+            self._malformed(MALFORMED_MISSING_END, f"{opener[:80]!r} has no >>>>>>> END line")
+            return False
+        if match is None:
+            self._malformed(
+                MALFORMED_UNKNOWN_BLOCK,
+                f"{opener[:80]!r} is not SEARCH, or REPLACE / INSERT BEFORE / INSERT AFTER / "
+                "REMOVE followed by one selector",
+            )
+            return True
+        verb, selector = match.group("op"), match.group("selector")
+        if verb == "REMOVE" and any(line.strip() for line in body):
+            self._malformed(MALFORMED_REMOVE_WITH_CONTENT, f"REMOVE {selector} carries lines")
+            return True
+        if verb.startswith("INSERT") and not any(line.strip() for line in body):
+            self._malformed(MALFORMED_EMPTY_INSERT, f"{verb} {selector} carries no lines")
+            return True
+        self.edits.append(
+            StructuralEdit(
+                path=self.path,
+                operation=_STRUCTURAL_OPERATIONS[verb],
+                selector=selector,
+                replacement="" if verb == "REMOVE" else _joined(body),
+            )
+        )
+        return True
+
 
 def _scan(lines: list[str]) -> list[tuple[int, int, _FenceReader]]:
     """Each edit fence as ``(opener line index, index after its close, its reader)``."""
@@ -189,7 +271,7 @@ def parse_anchored_edits(response: str) -> AnchoredEditParse:
     """Every anchored edit the response carries, and every edit fence it could not read."""
     if not response:
         return AnchoredEditParse()
-    edits: list[AnchoredEdit] = []
+    edits: list[AnchoredEdit | StructuralEdit] = []
     malformed: list[MalformedEdit] = []
     for _start, _end, reader in _scan(_strip_think_blocks(response).split("\n")):
         path = normalize_ws_path(reader.path)
@@ -202,10 +284,7 @@ def parse_anchored_edits(response: str) -> AnchoredEditParse:
                 )
             )
             continue
-        edits.extend(
-            AnchoredEdit(path=path, anchor=e.anchor, replacement=e.replacement)
-            for e in reader.edits
-        )
+        edits.extend(dataclasses.replace(e, path=path) for e in reader.edits)
         malformed.extend(
             MalformedEdit(path=path, reason=m.reason, detail=m.detail) for m in reader.malformed
         )
@@ -228,16 +307,28 @@ def strip_edit_blocks(response: str) -> str:
 
 
 def revisions_for(parse: AnchoredEditParse) -> tuple[Revision, ...]:
-    """The parse's edits as anchored revisions, in emission order, for one transaction."""
-    return tuple(
-        Revision(
-            artifact_path=e.path,
-            operation=RevisionOperation.REPLACE_ANCHOR,
-            anchor=e.anchor,
-            replacement=e.replacement,
-        )
-        for e in parse.edits
-    )
+    """The parse's edits as revisions, in emission order, for one transaction."""
+    revisions: list[Revision] = []
+    for e in parse.edits:
+        if isinstance(e, StructuralEdit):
+            revisions.append(
+                Revision(
+                    artifact_path=e.path,
+                    operation=e.operation,
+                    entity=e.selector,
+                    replacement=e.replacement,
+                )
+            )
+        else:
+            revisions.append(
+                Revision(
+                    artifact_path=e.path,
+                    operation=RevisionOperation.REPLACE_ANCHOR,
+                    anchor=e.anchor,
+                    replacement=e.replacement,
+                )
+            )
+    return tuple(revisions)
 
 
 #: The ``emission_failure`` reason a repair carries when its anchored edits were refused on the
@@ -296,6 +387,7 @@ class AnchoredApplication:
             "edits": [
                 {
                     "path": e.artifact_path,
+                    "operation": str(e.operation),
                     "start": e.start,
                     "end": e.end,
                     "pre_sha256": e.pre_sha256,
@@ -332,5 +424,24 @@ def apply_anchored_edits(
         task_id=task_id,
         revisions=revisions_for(parse),
     )
-    outcome = resolve_and_apply(base, transaction, lambda _path, _content, _region: None)
+    outcome = resolve_and_apply(
+        base,
+        transaction,
+        lambda _path, _content, _region: None,
+        resolve_entity=resolve_entity,
+        validate_syntax=_breaks_parsing_base(base),
+    )
     return AnchoredApplication(parse=parse, outcome=outcome, conflicts=conflicts)
+
+
+def _breaks_parsing_base(base: Mapping[str, str]):
+    """§18, for a repair: refuse a candidate that no longer parses — unless its base did not
+    parse either. A repair of an already-broken file (the failure it was sent to fix may be the
+    syntax error) is judged by verification, never refused for still being broken."""
+
+    def validate(path: str, content: str) -> str | None:
+        if path in base and syntax_error(path, base[path]) is not None:
+            return None
+        return syntax_error(path, content)
+
+    return validate

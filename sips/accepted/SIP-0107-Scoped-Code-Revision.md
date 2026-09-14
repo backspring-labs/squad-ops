@@ -1930,3 +1930,61 @@ review with it. Item 1 is the resolver choice and order §43.2 delegated to this
 
 **Ruled by.** The owner, on the library (2026-09-14). The implementer, on the selectors and the
 fail-closed reading, for the owner's review with them.
+
+## 46i. 2026-09-14 — the repair's structural contract (§38 step 5, completing it for React)
+
+**What changed.** Steps 5a (§46g) and 5b (§46h) built the two resolvers, the entity operations,
+syntax validation and the preservation proof. This change puts them in front of the model and
+into the repair path, on the seam step 4 built (§46f).
+
+1. **One dispatch for every reader.** `structural_resolution` routes by suffix: `.py` to the
+   Python resolver; `.js`, `.jsx`, `.mjs` and `.cjs` to the JSX resolver; anything else to
+   nothing. The transaction's entity lookup, the prompt's entity listing and the syntax check all
+   ask the same resolver about the same file, so a selector the prompt lists is one the edit will
+   find.
+2. **References in the prompt (§7).** The edit-form appendix (version 2) lists each editable file
+   with the entities its resolver addresses, read from the same base the edits resolve against. A
+   file without a structural reading is listed without entities and can still be edited by anchor.
+   Listings are capped at forty entities per file, with the remainder counted.
+3. **Structural blocks share the edit fence and the transaction.** Each takes one listed selector
+   and closes with `>>>>>>> END`: `<<<<<<< REPLACE`, `<<<<<<< INSERT BEFORE`,
+   `<<<<<<< INSERT AFTER`, `<<<<<<< REMOVE`. One fence can mix them with anchored blocks. They
+   resolve against one base and apply all together or not at all.
+   - **Malformed shapes are named:** an unknown verb or a missing selector (`unknown_block`), no
+     end marker, a `REMOVE` carrying lines, an `INSERT` carrying none.
+   - **Refusals reach the retry appendix (version 2)** with guidance for `unresolved_entity`,
+     `ambiguous_entity`, `unreadable_structure` and `invalid_syntax`.
+4. **Syntax validation guards a file that parses (§18).** A repair's candidate is refused as
+   `invalid_syntax` when the edited file no longer parses — unless its base did not parse either.
+   A repair of an already-broken file is judged by verification, because the syntax error may be
+   the very failure it was sent to fix; such a file has no structural reading and is edited by
+   anchor. This check now also covers anchored blocks.
+5. **The edit record names each edit's operation,** so §39.8's count can separate structural
+   transactions from anchored ones.
+
+**Not in this change:** step 6, the Next.js stack, which needs the TypeScript grammar.
+
+**Evidence.**
+- **The grammar and the transaction:**
+  - a `REMOVE`, a body `REPLACE` and an anchored block apply in one transaction, recorded in
+    emission order with their operations;
+  - `INSERT BEFORE` and `INSERT AFTER` land on their sides of the entity;
+  - five malformed shapes are named;
+  - on the real FastAPI+React scaffold, `RunsListView.jsx`'s component body is replaced with its
+    `export` line and closing brace intact, and the preservation proof holds.
+- **Syntax:** an edit that breaks a parsing file refuses; an anchored edit of an already-broken
+  file does not.
+- **The dispatcher:** Python, JSX, `.tsx` not read, a file with no grammar, and an unparseable file.
+- **Wiring**, at `DevelopmentCorrectionRepairHandler.handle` with the real templates and renderer:
+  - the prompt lists `backend/routes.py` with `imports`, `import:fastapi`, `function:post_runs`
+    and `function:post_runs#body`;
+  - a body `REPLACE` applies with the decorator and signature intact;
+  - an entity that does not exist is retried with `unresolved_entity — function:delete_run#body is
+    not in backend/routes.py`.
+- **Mutations: six caught, one equivalent.** One of the six needed a test added first. The resolver not passed to the
+  transaction; syntax never validated; a broken base still validated; a `REMOVE` allowed to carry
+  lines; the prompt listing no entities; the insertion verbs swapped. The seventh, routing `.tsx`
+  to the JSX resolver, is equivalent: that resolver refuses `.tsx` itself.
+
+**Ruled by.** The implementer, in the PR that completes §38 step 5's contract for the React stack,
+for the owner's review with it.

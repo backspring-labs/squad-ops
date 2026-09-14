@@ -250,3 +250,196 @@ class TestApplication:
             application.refusal_lines()
         )
         assert application.record()["edits"] == []
+
+
+# --- SIP-0107 step 5: structural blocks ------------------------------------------------------
+
+
+class TestStructuralBlocks:
+    _ROUTES_PY = (
+        "import os\n"
+        "from fastapi import APIRouter\n"
+        "\n"
+        "router = APIRouter()\n"
+        "\n"
+        '@router.post("/runs", status_code=201)\n'
+        "def post_runs(payload):\n"
+        '    raise NotImplementedError("scaffold")\n'
+    )
+
+    def _apply(self, response, base):
+        from squadops.capabilities.anchored_edits import apply_anchored_edits
+
+        return apply_anchored_edits(
+            parse_anchored_edits(response),
+            base,
+            writable=list(base),
+            producer="development.correction_repair",
+            task_id="t",
+        )
+
+    def test_structural_and_anchored_blocks_apply_in_one_transaction(self):
+        """Bug caught: the structural blocks parsed into edits the transaction never resolves,
+        or one kind applied while the other was dropped."""
+        from squadops.capabilities.anchored_edits import StructuralEdit
+        from squadops.cycles.revision_transaction import RevisionOperation
+
+        response = (
+            "```edit:backend/routes.py\n"
+            "<<<<<<< REMOVE import:os\n"
+            ">>>>>>> END\n"
+            "<<<<<<< REPLACE function:post_runs#body\n"
+            "    return {'id': 1, **payload}\n"
+            ">>>>>>> END\n"
+            "<<<<<<< SEARCH\n"
+            "router = APIRouter()\n"
+            "=======\n"
+            "router = APIRouter()  # no prefix\n"
+            ">>>>>>> REPLACE\n"
+            "```\n"
+        )
+        parse = parse_anchored_edits(response)
+
+        assert parse.malformed == ()
+        assert parse.edits[0] == StructuralEdit(
+            "backend/routes.py", RevisionOperation.REMOVE_ENTITY, "import:os", ""
+        )
+        application = self._apply(response, {"backend/routes.py": self._ROUTES_PY})
+        assert application.accepted, application.refusal_lines()
+        assert application.outcome.changed_files()["backend/routes.py"] == (
+            "from fastapi import APIRouter\n"
+            "\n"
+            "router = APIRouter()  # no prefix\n"
+            "\n"
+            '@router.post("/runs", status_code=201)\n'
+            "def post_runs(payload):\n"
+            "    return {'id': 1, **payload}\n"
+        )
+        assert [e["operation"] for e in application.record()["edits"]] == [
+            "remove_entity",
+            "replace_entity",
+            "replace_anchor",
+        ]
+
+    def test_insert_before_and_after_land_on_their_side_of_the_entity(self):
+        """Bug caught: the two insertion verbs mapped to each other's operation — every inserted
+        import or function would land on the wrong side of the entity the model named."""
+        response = (
+            "```edit:backend/routes.py\n"
+            "<<<<<<< INSERT BEFORE import:fastapi\n"
+            "import re\n"
+            ">>>>>>> END\n"
+            "<<<<<<< INSERT AFTER import:fastapi\n"
+            "import json\n"
+            ">>>>>>> END\n"
+            "```\n"
+        )
+
+        application = self._apply(response, {"backend/routes.py": self._ROUTES_PY})
+
+        assert application.accepted, application.refusal_lines()
+        assert application.outcome.changed_files()["backend/routes.py"].startswith(
+            "import os\nimport re\nfrom fastapi import APIRouter\nimport json\n\nrouter"
+        )
+
+    @pytest.mark.parametrize(
+        ("block", "reason"),
+        [
+            ("<<<<<<< MOVE import:os\n>>>>>>> END\n", "unknown_block"),
+            ("<<<<<<< REPLACE\nx = 1\n>>>>>>> END\n", "unknown_block"),
+            ("<<<<<<< REPLACE function:f\nx = 1\n```\n", "missing_end_marker"),
+            ("<<<<<<< REMOVE import:os\nimport os\n>>>>>>> END\n", "remove_with_content"),
+            ("<<<<<<< INSERT AFTER import:os\n\n>>>>>>> END\n", "empty_insert"),
+        ],
+        ids=["no move", "no selector", "no end", "remove with lines", "empty insert"],
+    )
+    def test_a_malformed_structural_block_is_named(self, block, reason):
+        parse = parse_anchored_edits(f"```edit:backend/routes.py\n{block}```\n")
+
+        assert [m.reason for m in parse.malformed] == [reason]
+        assert parse.edits == ()
+
+    def test_a_react_component_body_is_replaced_on_the_real_scaffold_view(self):
+        """The JSX resolver through the grammar and the transaction, on the file 1.7.5 React
+        roll 3 re-emitted whole. Bug caught: the component's export, signature or the lines
+        around its body changed by a body replacement."""
+        from squadops.capabilities.scaffold import expand
+        from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+        view = "frontend/src/views/RunsListView.jsx"
+        files = {
+            f["name"]: f["content"] for f in expand(manifest_for_stack("fullstack_fastapi_react"))
+        }
+        body = '  return <ul data-testid="runs-list">{runs?.length ?? 0}</ul>\n'
+        response = (
+            f"```edit:{view}\n<<<<<<< REPLACE function:RunsListView#body\n{body}>>>>>>> END\n```\n"
+        )
+
+        application = self._apply(response, {view: files[view]})
+
+        assert application.accepted, application.refusal_lines()
+        candidate = application.outcome.changed_files()[view]
+        assert "export default function RunsListView() {\n" + body + "}\n" in candidate
+        assert application.outcome.preservation.holds
+
+    @pytest.mark.parametrize(
+        ("base_body", "block", "accepted"),
+        [
+            (
+                "    return 1\n",
+                "<<<<<<< REPLACE function:g#body\n    return (\n>>>>>>> END\n",
+                False,
+            ),
+            (
+                "    return (\n",
+                "<<<<<<< SEARCH\n    return 2\n=======\n    return (3\n>>>>>>> REPLACE\n",
+                True,
+            ),
+        ],
+        ids=["base parses: a breaking edit is refused", "base already broken: judged later"],
+    )
+    def test_a_candidate_that_stops_parsing_is_refused_unless_the_base_never_parsed(
+        self, base_body, block, accepted
+    ):
+        """§18 for a repair. Bug caught: an edit that breaks a parsing file handed to
+        verification — or a repair of an already-broken file (anchored: an unparseable file
+        has no structural reading) refused for still being broken, when the syntax error may be
+        the failure it was sent to fix."""
+        base = {"backend/util.py": f"def f():\n{base_body}\n\ndef g():\n    return 2\n"}
+
+        application = self._apply(f"```edit:backend/util.py\n{block}```\n", base)
+
+        assert application.accepted is accepted, application.refusal_lines()
+        if not accepted:
+            assert any("invalid_syntax" in line for line in application.refusal_lines())
+
+
+@pytest.mark.parametrize(
+    ("path", "content", "selectors"),
+    [
+        (
+            "backend/a.py",
+            "import os\n\ndef f():\n    return 1\n",
+            ("imports", "import:os", "function:f", "function:f#body"),
+        ),
+        (
+            "frontend/a.jsx",
+            "export const A = () => {\n  return 1\n}\n",
+            ("const:A", "const:A#body"),
+        ),
+        ("app/page.tsx", "export default function P() {}\n", None),
+        ("README.md", "# hi\n", None),
+        ("backend/b.py", "def f(:\n", None),
+    ],
+    ids=["python", "jsx", "typescript not read", "no grammar", "unparseable"],
+)
+def test_the_dispatcher_routes_each_file_to_its_resolver(path, content, selectors):
+    """Bug caught: a file routed to the wrong grammar (a ``.tsx`` read as JSX), or the prompt
+    listing entities the transaction's resolver would not find."""
+    from squadops.cycles.structural_resolution import entity_selectors, resolve_entity
+
+    assert entity_selectors(path, content) == selectors
+    if selectors:
+        assert resolve_entity(path, content, selectors[-1])
+    else:
+        assert resolve_entity(path, content, "function:f") is None

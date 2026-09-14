@@ -224,3 +224,51 @@ async def test_an_edit_to_a_file_the_repair_was_not_named_for_is_refused():
         line.startswith("`backend/main.py`: out_of_grant")
         for line in result.outputs["emission_failure"]["refusals"]
     )
+
+
+async def test_a_structural_repair_targets_an_entity_the_prompt_listed():
+    """SIP-0107 step 5, entered at the handler. Bug caught: the entity listing and the
+    transaction's resolver disagreeing — a selector shown to the model that the edit cannot
+    find — or a body replacement disturbing the decorator and signature around it."""
+    routes = (
+        "from fastapi import APIRouter\n"
+        "router = APIRouter()\n"
+        "\n"
+        '@router.post("/runs", status_code=201)\n'
+        "def post_runs(payload):\n"
+        '    raise NotImplementedError("scaffold")\n'
+    )
+    body = "    return {'id': 'r1', **payload}\n"
+    ctx = _context(
+        f"```edit:backend/routes.py\n<<<<<<< REPLACE function:post_runs#body\n{body}>>>>>>> END\n```\n"
+    )
+
+    result = await DevelopmentCorrectionRepairHandler().handle(
+        ctx, _inputs(acceptance_workspace_files={"backend/routes.py": routes})
+    )
+
+    prompt = _user_prompt(ctx, 0)
+    assert (
+        "- `backend/routes.py` — entities: `imports`, `import:fastapi`, `function:post_runs`, `function:post_runs#body`"
+        in prompt
+    )
+    (artifact,) = result.outputs["artifacts"]
+    assert artifact["content"] == routes.replace(
+        '    raise NotImplementedError("scaffold")\n', body
+    )
+
+
+async def test_an_entity_that_does_not_exist_is_retried_with_its_reason():
+    ctx = _context(
+        "```edit:backend/routes.py\n<<<<<<< REPLACE function:delete_run#body\n    return 1\n>>>>>>> END\n```\n",
+        _GOOD_EDIT,
+    )
+
+    result = await DevelopmentCorrectionRepairHandler().handle(ctx, _inputs())
+
+    retry_prompt = _user_prompt(ctx, 1)
+    assert (
+        "`backend/routes.py`: unresolved_entity — function:delete_run#body is not in backend/routes.py"
+        in retry_prompt
+    )
+    assert result.outputs["anchored_edits"]["accepted"] is True
