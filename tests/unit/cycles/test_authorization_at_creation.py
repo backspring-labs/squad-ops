@@ -440,3 +440,80 @@ def test_the_evidence_record_names_where_enforcement_ran(stage, expected):
     kwargs = {"stage": stage} if stage else {}
     _, evidence = enforce_frozen_ownership([UNAUTHORIZED], _record(), _builder_envelope(), **kwargs)
     assert [e.stage for e in evidence] == [expected]
+
+
+# --- SIP-0107 §20: the verified candidate is the stored candidate --------------------------
+
+
+class TestTheVerifiedCandidateIsTheStoredCandidate:
+    """Entry points: ``_try_accept_patch`` (``PatchAcceptance.accept``) and
+    ``_collect_artifacts_and_checkpoint`` — the two seams between a verdict and the store.
+    Main held ``verified set == stored set`` by call order (#1323); SIP-0107's first rollout
+    step makes it evidence-bearing: ``verified_revision_id == persisted_revision_id``, or
+    nothing is accepted and nothing is stored."""
+
+    async def test_the_accepted_result_carries_both_identities_and_they_agree(self, executor):
+        """Bug caught: an acceptance that cannot say which tree it verified and which it
+        stored — the gap #1323 was, and the evidence §39.4 requires on every stored patch."""
+        from squadops.cycles.patch_verification import candidate_revision_id
+
+        holder: dict = {}
+        action = await executor._try_accept_patch(
+            _builder_envelope(), _failed([]), [AUTHORIZED], holder
+        )
+        assert action == "accept_patch"
+        outputs = holder["patched_result"].outputs
+        validation = outputs["validation_result"]
+        assert validation["candidate_revision_id"] == validation["persisted_revision_id"]
+        assert validation["persisted_revision_id"] == candidate_revision_id(
+            {}, outputs["artifacts"]
+        )
+
+    async def test_a_set_changed_between_verification_and_acceptance_is_refused_loudly(
+        self, executor, monkeypatch
+    ):
+        """Bug caught: SIP-0107 §20's prohibited shape, ``verify A → filter → persist B``. A
+        step after the verdict that touched work product would store a tree nothing
+        verified; it must fail the run, not re-dispatch as an ordinary correction."""
+        from adapters.cycles import patch_acceptance
+        from squadops.cycles.patch_verification import EvidenceSupersession
+
+        def _rewrites_work_product(patched, retest):
+            return EvidenceSupersession(
+                [{**a, "content": a["content"] + "# touched after the verdict\n"} for a in patched]
+            )
+
+        monkeypatch.setattr(
+            patch_acceptance, "supersede_evidence_artifacts", _rewrites_work_product
+        )
+        with pytest.raises(_ExecutionError, match="SIP-0107 §20"):
+            await executor._try_accept_patch(_builder_envelope(), _failed([]), [AUTHORIZED], {})
+
+    async def test_storage_that_would_alter_an_accepted_patch_stores_nothing(self, executor):
+        """Bug caught: the grants storage re-applies dropping a file from an ACCEPTED patch —
+        the accepted verdict would describe a tree that was never persisted. The paired
+        control is ``test_the_producers_own_unnamed_emission_is_judged_as_before``: the same
+        unnamed files, not an accepted patch, are stored with the drop."""
+        accepted = TaskResult(
+            task_id="task-run_1-m004-builder.assemble",
+            status="SUCCEEDED",
+            outputs={
+                "artifacts": [UNAUTHORIZED, AUTHORIZED],
+                "validation_result": {"patch_verified": True, "persisted_revision_id": "x"},
+            },
+        )
+        with pytest.raises(_ExecutionError, match="SIP-0107 §5.5"):
+            await executor._collect_artifacts_and_checkpoint(
+                accepted,
+                _builder_envelope(),
+                _cycle(),
+                "run_1",
+                {},
+                [],
+                [],
+                [],
+                [],
+                bound_record=_record(),
+                compliance_counter={"n": 0},
+            )
+        assert _stored_names(executor) == []

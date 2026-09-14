@@ -1531,6 +1531,61 @@ class TestFillMergeEvidenceIsReadFromTheTree:
         assert driver.fill_merge_evidence(None, "cyc", "run") == []
 
 
+class TestCandidateIdentityIsReadFromThePatchPath:
+    """SIP-0107 rollout step 1: the proof on the pair is ``verified_revision_id ==
+    persisted_revision_id`` in the evidence of every stored patch — read from the line the
+    accepted-patch path writes, beside its other patch-path readouts."""
+
+    _AGREE = (
+        "2026-09-14 12:00:00,000 INFO adapters.cycles.patch_acceptance: patch_candidate_identity "
+        "task=task-run_1-m004-builder.assemble verified_revision_id=aaa persisted_revision_id=aaa "
+        "base_revision_id=bbb (SIP-0107 §20)"
+    )
+    _MISMATCH = (
+        "2026-09-14 12:05:00,000 ERROR adapters.cycles.patch_acceptance: patch_candidate_identity "
+        "task=task-run_1-m005-qa.test MISMATCH verified_revision_id=aaa persisted_revision_id=ccc "
+        "base_revision_id=bbb (SIP-0107 §20)"
+    )
+
+    def test_each_accepted_patch_is_read_with_both_identities(self, driver):
+        """Bug caught: a readout that counted identity lines without reading them would call a
+        mismatch — the failure this step exists to surface — an agreement."""
+        logs = driver._runtime_lines_of_interest(["noise", self._AGREE, self._MISMATCH])
+        out = driver.texture_from_logs(logs)["candidate_identities"]
+        assert out == [
+            {
+                "task": "task-run_1-m004-builder.assemble",
+                "verified": "aaa",
+                "persisted": "aaa",
+                "agree": True,
+            },
+            {
+                "task": "task-run_1-m005-qa.test",
+                "verified": "aaa",
+                "persisted": "ccc",
+                "agree": False,
+            },
+        ]
+        assert driver._render_candidate_identities(out) == (
+            "2 accepted, verified = persisted on 1; MISMATCH on task-run_1-m005-qa.test"
+        )
+
+    @pytest.mark.parametrize(
+        ("correction_entered", "state"), [(False, "unaskable"), (True, "asked_none")]
+    )
+    def test_a_clean_roll_cannot_ask_and_a_patch_path_without_one_answers_none(
+        self, driver, correction_entered, state
+    ):
+        """Bug caught: the #1445 shape — a roll with no correction round reading "0 accepted"
+        as if it had been asked. Entered through ``with_states``, the record's own vocabulary."""
+        out = driver.with_states(
+            "loop_texture",
+            {"candidate_identities": []},
+            {"runtime_window_empty": False, "no_correction_round": not correction_entered},
+        )
+        assert out["candidate_identities"]["state"] == state
+
+
 class TestUncollectedSuitesAreReadFromTheStoredReports:
     """#1540: a suite the runner never collects fails nothing, so a record that counts only
     failures reads clean. 1.7.3's accepted Next.js shakeout (`cyc_d988c11c71f5`) stored

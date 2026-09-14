@@ -277,6 +277,7 @@ EVIDENCE_FIELDS: dict[str, tuple[str, ...]] = {
     "loop_texture.refused_rounds_not_counted": _PATCH_PATH,
     "loop_texture.required_files_declared": _PATCH_PATH,
     "loop_texture.framework_rows_rederived": _PATCH_PATH,
+    "loop_texture.candidate_identities": _PATCH_PATH,
     "loop_texture.analyzer_claims_dropped": _PATCH_PATH,
     "loop_texture.refunded_rounds": _PATCH_PATH,
     "loop_texture.evidence_superseded": _PATCH_PATH,
@@ -1615,6 +1616,8 @@ def _runtime_lines_of_interest(lines: list[str]) -> list[str]:
         # 1.7.4 (#1374, F1): the accepted-patch path re-deriving a framework row on the
         # patched set (#1318/#1364 today; every contract row after #1374).
         "re-derived required_files",
+        # SIP-0107 §20: the accepted-patch path's candidate identity, verified and persisted.
+        "patch_candidate_identity task=",
     )
     return [line for line in lines if any(k in line for k in keys)]
 
@@ -2397,6 +2400,19 @@ def texture_from_logs(logs: list[str]) -> dict:
         "framework_rows_rederived": [
             _fact(line, "patch task=") for line in logs if "re-derived required_files" in line
         ],
+        # SIP-0107 §20 / §39.4: every accepted patch names the candidate it verified and the set
+        # it stored; a mismatch fails the run, so a disagreeing entry is the failure's own line.
+        "candidate_identities": [
+            {
+                "task": _field(line, "task"),
+                "verified": _field(line, "verified_revision_id"),
+                "persisted": _field(line, "persisted_revision_id"),
+                "agree": "MISMATCH" not in line
+                and _field(line, "verified_revision_id") == _field(line, "persisted_revision_id"),
+            }
+            for line in logs
+            if "patch_candidate_identity task=" in line
+        ],
         "analyzer_claims_dropped": [
             _fact(line, "correction_repair_target:")
             for line in logs
@@ -2692,6 +2708,14 @@ def uncollected_suites(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[dic
                 }
             )
     return out if reports else None
+
+
+def _render_candidate_identities(entries: list[dict]) -> str:
+    """``2 accepted, verified = persisted on 2`` — and the tasks where they did not agree."""
+    entries = entries or []
+    disagree = [str(e.get("task")) for e in entries if not e.get("agree")]
+    text = f"{len(entries)} accepted, verified = persisted on {len(entries) - len(disagree)}"
+    return text + (f"; MISMATCH on {', '.join(disagree)}" if disagree else "")
 
 
 def _render_uncollected(entries: list[dict]) -> str:
@@ -3066,6 +3090,8 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         f"{_show_at(rec, 'typed_checks.required_files_rows')} |",
         "| 1.7.4 F1 framework rows re-derived on the patched set (#1374) | "
         f"{_show_at(rec, 'loop_texture.framework_rows_rederived')} |",
+        "| accepted patches whose verified and persisted identities agree (SIP-0107 §20) | "
+        f"{_show_at(rec, 'loop_texture.candidate_identities', _render_candidate_identities)} |",
         "| 1.7.4 R1 emission retries aimed / with fact / blind (#1372) | "
         f"{_show_at(rec, 'loop_texture.emission_retries', _count)} / "
         f"{_show_at(rec, 'loop_texture.retried_with_fact', _count)} / "

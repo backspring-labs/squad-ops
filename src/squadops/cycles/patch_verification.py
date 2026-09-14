@@ -27,8 +27,9 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
+import os
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -163,15 +164,22 @@ def skip_reasons(checks: Sequence[PatchCheckRecord]) -> str:
 class PatchVerification:
     """Aggregate verdict over all typed criteria.
 
-    ``workspace_revision_id`` (#734 Slice A): the content-addressed id of the
-    exact workspace mapping the criteria evaluated against — None only on the
-    early returns that never materialized a workspace.
+    ``workspace_revision_id`` (#734 Slice A): the content-addressed id of the accepted
+    workspace tree the patch lands on — the BASE. None only on the early returns that never
+    materialized a workspace.
+
+    ``candidate_revision_id`` (SIP-0107 §20): the id of the candidate itself — that base with
+    the patch's work product applied (:func:`candidate_files`), the tree the criteria
+    evaluated. The base alone named the wrong tree (SIP-0107 §3.6). The accepted-patch path
+    recomputes it over the set it is about to store and refuses a mismatch, so a verdict is
+    evidence about the state that is persisted and no other.
     """
 
     status: str  # PATCH_PASSED | PATCH_FAILED | PATCH_UNVERIFIABLE
     checks: tuple[PatchCheckRecord, ...] = ()
     reason: str | None = None
     workspace_revision_id: str | None = None
+    candidate_revision_id: str | None = None
     #: #1229: blocking criteria whose verdict came from the repair's own execution,
     #: because this environment could not execute them. Zero when everything that
     #: decided ran here.
@@ -280,6 +288,75 @@ def supersede_evidence_artifacts(
         else:
             dropped.append(str(name))
     return EvidenceSupersession(kept, tuple(replaced), tuple(dropped))
+
+
+def _materializable(name: Any) -> bool:
+    """Whether :func:`materialize` would write ``name`` — a non-empty relative path that stays
+    inside the workspace. Read lexically, so a candidate's identity is computable wherever its
+    mapping is, without a workspace on disk."""
+    if not isinstance(name, str) or not name or Path(name).is_absolute():
+        return False
+    normalized = os.path.normpath(name)
+    return normalized != ".." and not normalized.startswith("../")
+
+
+def candidate_files(
+    workspace_files: Mapping[str, Any] | None, artifacts: Sequence[Mapping[str, Any]] | None
+) -> dict[str, str]:
+    """The candidate a patch produces, as the mapping its identity is taken over (SIP-0107 §20).
+
+    The accepted workspace with the patch's work product applied, each artifact superseding
+    the base file of its name — the tree :func:`verify_patched_artifacts` materializes.
+    Evidence artifacts (:data:`EVIDENCE_ARTIFACT_TYPES`) are not repository state: they
+    describe one execution, and the accepted-patch path supersedes them after verification by
+    design (#1111, #1318), so an identity that counted them would change between the verdict
+    and storage on every retested patch. Only paths :func:`materialize` would write are
+    counted. Bytes content maps through latin-1, which is one-to-one.
+    """
+    files: dict[str, str] = {}
+    for name, content in (workspace_files or {}).items():
+        if _materializable(name):
+            files[name] = content.decode("latin-1") if isinstance(content, bytes) else str(content)
+    for art in artifacts or []:
+        name = _artifact_name(art)
+        if not _materializable(name) or art.get("type") in EVIDENCE_ARTIFACT_TYPES:
+            continue
+        content = art.get("content", "")
+        files[name] = content.decode("latin-1") if isinstance(content, bytes) else str(content)
+    return files
+
+
+def candidate_revision_id(
+    workspace_files: Mapping[str, Any] | None, artifacts: Sequence[Mapping[str, Any]] | None
+) -> str:
+    """The candidate's identity: ``compute_revision_id`` over :func:`candidate_files`."""
+    from squadops.sandbox.models import compute_revision_id
+
+    return compute_revision_id(candidate_files(workspace_files, artifacts))
+
+
+def storage_altered_accepted_patch(
+    outputs: Mapping[str, Any] | None,
+    before: Sequence[Mapping[str, Any]],
+    after: Sequence[Mapping[str, Any]],
+) -> tuple[str, str] | None:
+    """``(before_id, after_id)`` when storage-time enforcement changed an ACCEPTED patch's set,
+    else ``None`` (SIP-0107 §5.5: persistence proves the verified identity was stored).
+
+    The accepted-patch path compares the candidate's identity against the set it hands to
+    storage, but storage enforces the producers' grants once more before writing. Main keeps
+    the two sets equal by call order — the repair was enforced under the same grants before
+    it was verified (#1323, #1332) — and this makes that property evidence-bearing: the stored
+    work product's identity is taken on both sides of the enforcement, and the base, which is
+    never re-stored, cannot change between them. Only a result the accepted-patch path
+    rendered (it carries ``persisted_revision_id``) is judged.
+    """
+    validation = (outputs or {}).get("validation_result")
+    if not isinstance(validation, Mapping) or not validation.get("persisted_revision_id"):
+        return None
+    before_id = candidate_revision_id(None, before)
+    after_id = candidate_revision_id(None, after)
+    return None if before_id == after_id else (before_id, after_id)
 
 
 @dataclass(frozen=True)
@@ -654,6 +731,26 @@ def _required_files_record(
     )
 
 
+def _materialize_candidate(
+    workspace_files: Mapping[str, Any] | None,
+    artifacts: Sequence[Mapping[str, Any]],
+    workspace_root: Path,
+) -> list[str]:
+    """Write the base, then the patch over it; return the candidate files that were NOT
+    written (empty = the tree on disk holds every file the identity counts).
+
+    SIP-0107 §5.5: the identity is taken over the candidate, and this is the proof that the
+    tree the criteria are about to read is that candidate. A file counted and not written
+    would make the verdict evidence about a tree nobody built.
+    """
+    written: set[str] = set()
+    if workspace_files:
+        base = [{"name": name, "content": content} for name, content in workspace_files.items()]
+        written.update(materialize(base, workspace_root).written)
+    written.update(materialize(list(artifacts), workspace_root).written)
+    return sorted(set(candidate_files(workspace_files, artifacts)) - written)
+
+
 async def verify_patched_artifacts(
     criteria: list[Any],
     artifacts: list[dict[str, Any]],
@@ -708,9 +805,18 @@ async def verify_patched_artifacts(
     container — and an evaluator error or skip changes nothing. Gate rows never
     count as positive acceptance evidence — compiling is necessary, not sufficient.
     """
+    # SIP-0107 §20: the candidate's identity, over the composed candidate — every verdict below
+    # is about this tree, including the ones that return before materializing it (a
+    # structurally unevaluable verdict hands the decision to the retest, which runs the same
+    # candidate). The materialization further down proves it wrote every file counted here.
+    candidate_id = candidate_revision_id(workspace_files, artifacts)
     typed = _coerce_typed_criteria(criteria)
     if typed is None:
-        return PatchVerification(status=PATCH_UNVERIFIABLE, reason="unparseable_criteria")
+        return PatchVerification(
+            status=PATCH_UNVERIFIABLE,
+            reason="unparseable_criteria",
+            candidate_revision_id=candidate_id,
+        )
     gate = _dedupe_file_owned(file_owned_criteria, typed)
     # #1264: "the files the patch carries" are the REPAIR's own emissions. ``artifacts`` is
     # the overlay — it also carries the failed task's files (the qa suite rides the qa
@@ -740,6 +846,7 @@ async def verify_patched_artifacts(
             status=PATCH_UNVERIFIABLE,
             reason=REASON_NO_TYPED_CRITERIA,
             checks=tuple(agent_records),
+            candidate_revision_id=candidate_id,
         )
 
     records: list[PatchCheckRecord] = []
@@ -750,12 +857,14 @@ async def verify_patched_artifacts(
     revision_id = compute_revision_id(workspace_files or {})
     with tempfile.TemporaryDirectory(prefix="squadops-patch-verify-") as tmpdir:
         workspace_root = Path(tmpdir)
-        if workspace_files:
-            materialize_artifacts(
-                [{"name": name, "content": content} for name, content in workspace_files.items()],
-                workspace_root,
+        unwritten = _materialize_candidate(workspace_files, artifacts, workspace_root)
+        if unwritten:
+            return PatchVerification(
+                status=PATCH_UNVERIFIABLE,
+                reason=f"candidate_not_materialized:{','.join(unwritten)}",
+                workspace_revision_id=revision_id,
+                candidate_revision_id=candidate_id,
             )
-        materialize_artifacts(artifacts, workspace_root)
 
         # #591: typed criteria read one file at a time, so a patch whose imports
         # cannot resolve passes every one of them and is accepted — then the
@@ -773,6 +882,7 @@ async def verify_patched_artifacts(
                 status=PATCH_FAILED,
                 reason=f"unresolved_imports:{summary}",
                 workspace_revision_id=revision_id,
+                candidate_revision_id=candidate_id,
             )
 
         # #870 file-owned gate, BEFORE the task-criteria loop: an executed blocking
@@ -794,6 +904,7 @@ async def verify_patched_artifacts(
                 checks=tuple(records),
                 reason="file_owned_criteria",
                 workspace_revision_id=revision_id,
+                candidate_revision_id=candidate_id,
             )
         if not typed and deliverable is None:
             # The gate could not reject and the failed task itself has no typed
@@ -804,6 +915,7 @@ async def verify_patched_artifacts(
                 checks=tuple(records),
                 reason=REASON_NO_TYPED_CRITERIA,
                 workspace_revision_id=revision_id,
+                candidate_revision_id=candidate_id,
             )
 
         local = await _evaluate_task_criteria(
@@ -835,6 +947,7 @@ async def verify_patched_artifacts(
                 checks=tuple(records),
                 reason=f"evaluator_error:{evaluator_error}",
                 workspace_revision_id=revision_id,
+                candidate_revision_id=candidate_id,
             )
 
     if blocking_failure:
@@ -842,6 +955,7 @@ async def verify_patched_artifacts(
             status=PATCH_FAILED,
             checks=tuple(records),
             workspace_revision_id=revision_id,
+            candidate_revision_id=candidate_id,
             decided_by_agent=decided_by_agent,
         )
     if blocking_passed == 0:
@@ -854,10 +968,12 @@ async def verify_patched_artifacts(
             checks=tuple(records),
             reason=REASON_NO_EXECUTED_BLOCKING_CHECKS,
             workspace_revision_id=revision_id,
+            candidate_revision_id=candidate_id,
         )
     return PatchVerification(
         status=PATCH_PASSED,
         checks=tuple(records),
         workspace_revision_id=revision_id,
+        candidate_revision_id=candidate_id,
         decided_by_agent=decided_by_agent,
     )
