@@ -31,9 +31,11 @@ from squadops.cycles.benchmark_registry import (
     PreflightRefusal,
     RollRole,
     benchmark_rolls,
+    capture_document,
     lineage_for,
     pins_configs,
     preflight,
+    render_capture,
 )
 from squadops.cycles.cycle_assessment import AssessorIdentity, CycleEvidence, RunRecord
 from squadops.cycles.models import Cycle, Run, TaskFlowPolicy
@@ -238,9 +240,10 @@ def test_lineage_is_the_cycles_commit_else_the_sets_pins_and_never_a_guess(cycle
 async def test_the_regrade_keeps_every_declared_roll_and_grades_only_what_its_preflight_admits(
     tmp_path,
 ):
-    """Wiring: ``regrade`` over the ports the live stores implement. Bug caught: a refused roll
-    dropped from the registry instead of named, a refused roll assessed anyway, or a re-grade that
-    reads different evidence than the live assessment of the same cycle."""
+    """Wiring: ``regrade`` over the ports the live stores implement, through to the capture. Bug
+    caught: a refused roll dropped from the registry instead of named, a refused roll assessed
+    anyway, a re-grade that reads different evidence than the live assessment of the same cycle,
+    or a capture mixing rows graded under another contract version."""
     registry = MemoryCycleRegistry()
     vault = FilesystemArtifactVault(tmp_path / "vault")
     await registry.create_cycle(_cycle())
@@ -278,6 +281,21 @@ async def test_the_regrade_keeps_every_declared_roll_and_grades_only_what_its_pr
     assert rows[0].assessment.evidence_identity == live.evidence_identity
     assert rows[0].series.squad_profile_id == "full-38" and rows[0].unresolved_refs == ()
     assert rows[1].assessment is None and rows[2].assessment is None
+
+    versions = {"assessment_version": 1, "attribution_registry_version": 1}
+    document = json.loads(
+        render_capture(capture_document(rows, versions=versions, assessor=ASSESSOR))
+    )
+    assert document["preflight"] == {
+        "declared": 3,
+        "by_role": {"counted": 3},
+        "gradeable": 1,
+        "refused_by_reason": {"not_launched_as_declared": 1, "not_in_registry": 1},
+    }
+    assert document["sets"]["1.7.5 Next.js"]["pins"]["deploy_commit"] == "8fd30eb8"
+    assert [r["cycle_id"] for r in document["rows"]] == ["cyc_1", "cyc_shakeout", "cyc_gone"]
+    with pytest.raises(ValueError, match="other contract versions"):
+        capture_document(rows, versions={**versions, "assessment_version": 2}, assessor=ASSESSOR)
 
 
 # --- The committed membership and capture ----------------------------------------------------

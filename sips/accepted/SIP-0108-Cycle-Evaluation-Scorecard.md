@@ -776,3 +776,84 @@ assessment reads these fields in the PR that follows this one.
 
 **Ruled by.** The implementer, in the PR that makes the assessment read §10d's records, for the
 owner's review with it.
+
+### 10f. 2026-09-14 — the benchmark registry as built (§4.3 (c))
+
+**What changed.** `src/squadops/cycles/benchmark_registry.py` holds the membership, preflight,
+lineage and capture. `adapters/cycles/benchmark_regrade.py` re-grades from the stores, and
+`scripts/dev/regrade_benchmark.py` runs that re-grade read-only on the box. Seven points resolve
+what §4.3 left open.
+
+1. **Membership is declared, in `docs/benchmark/rolls.yaml`.** The registry holds the cycles but
+   not which of them a set counted: that is the record's decision. A relaunched roll 1 voids the
+   first launch (the 1.7.2 and 1.7.3 records, §0). So the membership is transcribed from the
+   records:
+   - seventy-nine counted rolls across sixteen set arms;
+   - the two void launches, each with its reason.
+2. **The registry checks the transcription.** The driver wrote each cycle's launch note from its
+   set config's template before the roll was observed: `COUNTED roll {roll} of {n}`. The
+   preflight reads that note back.
+   - A declared roll whose note declares another roll, or none, is refused
+     (`not_launched_as_declared`).
+   - So is a declared stack the cycle's own `build_profile` contradicts (`stack_disagrees`).
+
+   The note decides nothing: it only checks the declaration.
+3. **The preflight's other refusals:** a cycle not in the registry, a cycle with no runs, and a
+   cycle with no verification summary on any run. A refused roll stays a row that names its
+   refusals, and is never dropped.
+4. **Lineage.**
+   - **#80's fields,** when the cycle carries a commit. A version without a commit does not name
+     code, so it is carried beside the pins and does not replace them.
+   - **Otherwise, the set's pins.** They are read at re-grade time from the set config's
+     `frozen_deploy_commit` and `frozen_image_ids`, never copied. Before 1.6.5 no set config
+     exists, so those pins are transcribed from the pre-registration named as their source.
+   - **A void launch carries no pins.** Its set restarted on a rebuilt deploy that the pins
+     describe, so the void row has no lineage rather than a wrong one.
+5. **The arm is the stack.** Every 1.x set ran under one project, squad profile and request
+   profile (one `series_for` key across all eighty-one rows), with the stack as an override. Rows
+   group by that series, and the stack is a slice within it. §4.4's squad-profile × model arm
+   axis arrives with (d).
+6. **The re-grade is captured and committed** to `docs/benchmark/regrade.json`, like a release
+   package (the CLAUDE.md release-cut step 7). The stores live on one box, and the acceptance has
+   to be checkable in CI.
+   - **What it holds:** each row's indicators as state and value (or unaskable reason), the
+     count of references cited, its evidence identity, the contract versions that graded it, and
+     the grading commit.
+   - **It is a cache, not the record** (§4.1). A capture that mixes contract versions is refused.
+   - **Read-only, twice over.** The Postgres session is opened read-only and must refuse a probe
+     write before anything is read, and the vault refuses every index write.
+7. **Two limits, named.**
+   - **The deploy's schema predates migration 1500**, so no run summary exists. The script checks
+     for the table by name and records its absence in the capture's `store_notes`; it does not
+     swallow a query error. Usage, refunds and movements read unaskable on every row, as §4.3
+     expects.
+   - **The `inert` disclosure is read through inert detection's history window,** anchored at
+     the project's newest cycles (#1526). A historical row's evidence identity can therefore move
+     as new cycles land. This does not affect verdict, criteria or correction rounds.
+
+**Evidence.**
+- **The capture:** 81 rows declared (79 counted, 2 void), 81 gradeable, zero refusals. 1,796
+  indicator references cited, zero unresolved.
+- **Determinism:** a second re-grade over the same stores wrote a byte-identical file.
+- **The counted verdicts:** 60 accepted, 17 rejected, 2 `blocked_unverified`. Of the 19 not
+  accepted:
+  - 14 read attribution unaskable, because there is no structured terminal decision (§10c);
+  - 4 read `unattributed`, because the failed check's locus is unrecorded;
+  - 1 reads `producer_output_failure`.
+- **Acceptance (§5 criterion 5):** the nine re-graded 1.7.5 rows match that record's headline
+  table on verdict, criteria and correction rounds. A unit test holds this against the committed
+  capture.
+- **Beyond the criterion:** on all 79 counted rows, the re-graded verdict and criteria fraction
+  appear in that cycle's row of its own record's table. This was a text match per row, not a
+  column-exact comparison; rounds were compared only for 1.7.5.
+- **Tests:**
+  - membership, including each manifest refusal;
+  - every preflight refusal;
+  - lineage precedence;
+  - the wiring: `regrade` over a memory registry and a filesystem vault, through to the capture
+    document;
+  - the capture against the committed membership;
+  - the role vocabulary against the release package's.
+- **Mutations: eleven, each caught.**
+
+**Ruled by.** The implementer, in the PR that builds (c), for the owner's review with it.
