@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from squadops.cycles.checkpoint import RunCheckpoint
+from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.models import (
     AgentProfileEntry,
     ArtifactRef,
@@ -30,6 +31,7 @@ from squadops.cycles.models import (
     WorkloadType,
 )
 from squadops.cycles.run_ledger import RunLedger
+from squadops.cycles.run_loop_summary import RunTerminalDecision
 from squadops.events.types import EventType
 from squadops.tasks.models import TaskResult
 
@@ -486,6 +488,8 @@ class TestTimeBudget:
         assert len(fail_events) == 1
         error_msg = fail_events[0].kwargs.get("payload", {}).get("error", "")
         assert "Time budget exhausted" in error_msg
+        _, summary = mock_registry.record_run_loop_summary.await_args.args
+        assert summary.terminal == RunTerminalDecision(kind=TerminalKind.RUN_TIME_BUDGET_EXCEEDED)
 
 
 # ---------------------------------------------------------------------------

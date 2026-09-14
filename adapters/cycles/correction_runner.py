@@ -54,10 +54,11 @@ from squadops.cycles.correction_signature import (
     repair_refused_in_round,
     should_terminate_plan_defect,
 )
+from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.failure_evidence import build_failure_evidence, compose_failure_trigger
 from squadops.cycles.models import ArtifactRef
 from squadops.cycles.plan_delta import PlanDelta
-from squadops.cycles.run_loop_summary import MovementRecord
+from squadops.cycles.run_loop_summary import MovementRecord, RunTerminalDecision
 from squadops.cycles.task_outcome import CorrectionTermination, CorrectionTerminationReason
 from squadops.events.types import EventType
 from squadops.tasks.models import TaskEnvelope, TaskResultStatus
@@ -797,7 +798,13 @@ class CorrectionRunner:
                 f"structural plan-change candidates on both decisions "
                 f"(terminal: {candidate!r}); "
                 f"the plan, not the work product, is the defect "
-                f"(see {ref.artifact_id})"
+                f"(see {ref.artifact_id})",
+                terminal=RunTerminalDecision(
+                    kind=TerminalKind.CORRECTION_TERMINATED,
+                    termination_reason=termination.reason,
+                    failure_classification=delta.failure_classification,
+                    task_id=envelope.task_id,
+                ),
             )
 
         first_seen = (

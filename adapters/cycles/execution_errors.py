@@ -8,9 +8,22 @@ the leading underscore is deliberate.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from squadops.cycles.run_loop_summary import RunTerminalDecision
+
 
 class _ExecutionError(Exception):
-    """Internal: task failure or gate rejection."""
+    """Internal: task failure or gate rejection.
+
+    ``terminal`` is the structured terminal decision the raise site declares (SIP-0108 §4.1). A
+    raise that declares none ends the run as ``other``.
+    """
+
+    def __init__(self, message: str, *, terminal: RunTerminalDecision | None = None) -> None:
+        super().__init__(message)
+        self.terminal = terminal
 
 
 class _CancellationError(Exception):

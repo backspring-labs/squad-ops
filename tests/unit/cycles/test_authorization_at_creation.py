@@ -26,15 +26,17 @@ import pytest
 from adapters.cycles.execution_errors import _ExecutionError
 from squadops.capabilities.scaffold import InterfaceManifest
 from squadops.cycles.bound_scaffold_record import build_bound_record
+from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.implementation_plan import TypedCheck
 from squadops.cycles.models import ArtifactRef, Cycle, TaskFlowPolicy
+from squadops.cycles.run_loop_summary import RunTerminalDecision
 from squadops.cycles.scaffold_enforcement import enforce_frozen_ownership, name_producer
 from squadops.cycles.scaffold_integrity_evidence import (
     STAGE_ARTIFACT_STORAGE,
     STAGE_FAILED_EMISSION,
     STAGE_PATCH_VERIFICATION,
 )
-from squadops.cycles.task_outcome import TaskOutcome
+from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
 from squadops.tasks.models import TaskEnvelope, TaskResult
 
 pytestmark = [pytest.mark.domain_orchestration]
@@ -233,7 +235,7 @@ class TestTheFailedAttemptIsAuthorizedBeforeItIsHeld:
         terminal failure never costs the triage copy."""
         refs: list[str] = []
         counter = {"n": 3}  # at the default bound of 3 — this drop crosses it
-        with pytest.raises(_ExecutionError, match="Contract-compliance budget"):
+        with pytest.raises(_ExecutionError, match="Contract-compliance budget") as raised:
             await executor._admit_failed_emission(
                 _failed([UNAUTHORIZED, AUTHORIZED]),
                 _builder_envelope(),
@@ -245,6 +247,12 @@ class TestTheFailedAttemptIsAuthorizedBeforeItIsHeld:
             )
         assert counter["n"] == 4
         assert refs == ["art_assembly_notes.md"]
+        # SIP-0108 §4.1: the ending names its kind, classification and the task that crossed it.
+        assert raised.value.terminal == RunTerminalDecision(
+            kind=TerminalKind.COMPLIANCE_BUDGET_EXCEEDED,
+            failure_classification=FailureClassification.CONTRACT_COMPLIANCE,
+            task_id=_builder_envelope().task_id,
+        )
 
 
 # --- the repair: authorized before it is verified ----------------------------------------

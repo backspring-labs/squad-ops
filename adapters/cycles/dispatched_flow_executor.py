@@ -54,6 +54,7 @@ from squadops.cycles.contract_derivation import (
     SEEDED_MANIFEST_FILENAME,
     is_interface_manifest,
 )
+from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.failure_evidence import failing_cases_from_evidence
 from squadops.cycles.frozen_check_validation import frozen_check_violations
 from squadops.cycles.manifest_authoring import (
@@ -77,11 +78,15 @@ from squadops.cycles.rejection_baseline import (
     RejectionClassifier,
 )
 from squadops.cycles.run_ledger import RunLedger
-from squadops.cycles.run_loop_summary import REFUND_EMPTY_REPAIR_EMISSION, RefundedRound
+from squadops.cycles.run_loop_summary import (
+    REFUND_EMPTY_REPAIR_EMISSION,
+    RefundedRound,
+    RunTerminalDecision,
+)
 from squadops.cycles.scaffold_integrity_evidence import (
     STAGE_FAILED_EMISSION,
 )
-from squadops.cycles.task_outcome import TaskOutcome
+from squadops.cycles.task_outcome import CorrectionTerminationReason, TaskOutcome
 from squadops.cycles.task_plan import generate_task_plan, inject_contract_inputs
 from squadops.cycles.verification_normalize import normalize_task_checks
 from squadops.events.types import EventType
@@ -518,6 +523,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         obs_ctx = None
         flow_run_id = None
         run_status = RunStatus.COMPLETED
+        # SIP-0108 §4.1: a run that reaches the end of this block completed; the except block
+        # replaces this with the decision the raise site declared.
+        terminal = RunTerminalDecision(kind=TerminalKind.COMPLETED)
         ledger = RunLedger()
         cycle = None
         plan = None
@@ -773,6 +781,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # former per-class handlers).
             outcome = resolve_terminal_outcome(exc, run_id)
             run_status = outcome.run_status
+            terminal = outcome.terminal
             await self._safe_transition(
                 run_id, outcome.run_status, failure_reason=outcome.failure_reason
             )
@@ -825,6 +834,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 ledger=ledger,
                 contract=verification_contract,
                 usage=self._task_dispatcher.take_run_usage(run_id),
+                terminal=terminal,
             )
 
     async def cancel_run(self, run_id: str) -> None:
@@ -1723,7 +1733,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             ):
                 raise _ExecutionError(
                     f"Time budget exhausted ({state.budget.seconds}s) at correction-chain dispatch "
-                    f"after {len(state.checkpoint.completed_task_ids)} tasks"
+                    f"after {len(state.checkpoint.completed_task_ids)} tasks",
+                    terminal=RunTerminalDecision(kind=TerminalKind.RUN_TIME_BUDGET_EXCEEDED),
                 )
 
         # SIP-0079: Resume from checkpoint — restore prior state. Self-resume
@@ -2734,7 +2745,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
         if time_budget is not None and (time.monotonic() - run_start_time) >= time_budget:
             raise _ExecutionError(
-                f"Time budget exhausted ({time_budget}s) after {len(completed_task_ids)} tasks"
+                f"Time budget exhausted ({time_budget}s) after {len(completed_task_ids)} tasks",
+                terminal=RunTerminalDecision(kind=TerminalKind.RUN_TIME_BUDGET_EXCEEDED),
             )
 
         return False
@@ -3367,7 +3379,14 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         max_corrections = cycle.resolved_config().get("max_correction_attempts", 2)
 
         if correction_counter["n"] >= max_corrections:
-            raise _ExecutionError(f"Max correction attempts ({max_corrections}) exhausted")
+            raise _ExecutionError(
+                f"Max correction attempts ({max_corrections}) exhausted",
+                terminal=RunTerminalDecision(
+                    kind=TerminalKind.CORRECTION_TERMINATED,
+                    termination_reason=CorrectionTerminationReason.EXHAUSTED,
+                    task_id=envelope.task_id,
+                ),
+            )
 
         # #374: bump the shared run-level count on THIS correction (before dispatch) so a
         # patch that re-runs the check (below) is bounded, and each re-run gets a fresh
@@ -3666,7 +3685,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 f"Contract-compliance budget ({bound}) exceeded: {compliance_counter['n']} "
                 f"unauthorized cross-slot emissions across the run "
                 f"(latest: task {envelope.task_id} / {envelope.task_type}) — "
-                f"{FailureClassification.CONTRACT_COMPLIANCE}"
+                f"{FailureClassification.CONTRACT_COMPLIANCE}",
+                terminal=RunTerminalDecision(
+                    kind=TerminalKind.COMPLIANCE_BUDGET_EXCEEDED,
+                    failure_classification=FailureClassification.CONTRACT_COMPLIANCE,
+                    task_id=envelope.task_id,
+                ),
             )
 
     @staticmethod
@@ -4491,19 +4515,31 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         if plan is None:
             return
 
-        errors = plan.validate_against_profile(profile)
+        # SIP-0108 §4.1: which validators refused, named where each is called (the
+        # inter-workload net's #809 classifier), so the run's terminal decision carries values.
+        classifier = RejectionClassifier()
+        errors = classifier.collect(
+            "validate_against_profile", plan.validate_against_profile(profile)
+        )
         # #464: criteria-scope validation rides the same fail-fast seam — a
         # style-lottery regex costs seconds at the gate, not an hour of
         # correction budget mid-implementation.
-        errors += plan.validate_criteria_scope()
+        errors += classifier.collect("validate_criteria_scope", plan.validate_criteria_scope())
         # #426: same seam again — a builder task without a build_profile is
         # refused by generate_task_plan anyway, but only after the gate
         # approved the plan and the implementation run was admitted.
-        errors += plan.validate_build_config(cycle.resolved_config())
+        errors += classifier.collect(
+            "validate_build_config", plan.validate_build_config(cycle.resolved_config())
+        )
         # Roll 15: builder floor coverage — both seams per the #718/#719 rule.
-        errors += plan.validate_builder_floor(cycle.resolved_config())
+        errors += classifier.collect(
+            "validate_builder_floor", plan.validate_builder_floor(cycle.resolved_config())
+        )
         # #715: qa.test artifacts that required tests_pass can never judge.
-        errors += plan.validate_check_applicability(cycle.resolved_config())
+        errors += classifier.collect(
+            "validate_check_applicability",
+            plan.validate_check_applicability(cycle.resolved_config()),
+        )
         if errors:
             raise _ExecutionError(
                 f"Plan rejected at gate(s) {gate_names}: the materialized implementation "
@@ -4511,7 +4547,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 + "; ".join(errors)
                 + ". Fix the plan: roles must exist in the profile, regex criteria "
                 "may only target document artifacts, and builder tasks need a "
-                "configured build_profile."
+                "configured build_profile.",
+                terminal=RunTerminalDecision(
+                    kind=TerminalKind.PLAN_GATE_REFUSED,
+                    refused_validators=tuple(sorted(classifier.classes)),
+                ),
             )
 
     # ------------------------------------------------------------------

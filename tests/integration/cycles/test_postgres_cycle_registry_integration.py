@@ -222,8 +222,9 @@ class TestRunLoopSummaryRoundTrip:
     the memory adapter, so only this proves the INSERT and the table agree."""
 
     async def test_the_summary_round_trips_and_a_refinalize_supersedes(self, registry):
+        from squadops.cycles.failure_attribution import TerminalKind
         from squadops.cycles.llm_usage import RunUsage, UsageTotals
-        from squadops.cycles.run_loop_summary import RunLoopSummary
+        from squadops.cycles.run_loop_summary import RunLoopSummary, RunTerminalDecision
 
         cycle = _make_cycle()
         await registry.create_cycle(cycle)
@@ -237,6 +238,10 @@ class TestRunLoopSummaryRoundTrip:
                     by_task_type={"qa.test": UsageTotals(calls=calls, duration_ms=12.5)},
                     tasks_reported=1,
                     tasks_unreported=("t-timeout",),
+                ),
+                terminal=RunTerminalDecision(
+                    kind=TerminalKind.PLAN_GATE_REFUSED,
+                    refused_validators=("validate_build_config", "validate_builder_floor"),
                 ),
             )
 
