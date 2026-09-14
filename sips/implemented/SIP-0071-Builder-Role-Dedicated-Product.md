@@ -486,3 +486,41 @@ criterion was introduced to fix.
 
 `ArtifactType.QA_HANDOFF` remains as a historical constant so rows banked before 1.7.4
 keep the label they were written with.
+
+## 12. Post-acceptance amendment — on the scaffolded stacks the builder no longer authors packaging (2026-09-13)
+
+**What changed.** For `fullstack_fastapi_react` and `nextjs_ts`, the container packaging is
+rendered by the scaffold from the stack's environment contract and frozen (SIP-0105 A1). The two
+build profiles therefore stop asking the builder for it:
+
+- **Required:** `assembly_notes.md`, which was optional under §11. On the legacy profiles it stays
+  optional.
+- **Optional:** `.env.example`.
+- **Removed:** `Dockerfile`, `docker-compose.yaml`, `start.sh`, `nginx.conf` and `.dockerignore`.
+  `docker-compose.yaml` goes rather than moving to the scaffold: the rendering is one container,
+  and a compose file pairing backend and frontend services described a deployment neither stack
+  ships.
+
+The builder's prompt names the rendered files under "Provided by the scaffold — do NOT emit",
+derived from the rendering rather than listed by hand. Framing's builder guidance names the same
+files as not to be assigned in any task's `expected_artifacts`. The notes block tells the builder
+that when it has nothing beyond the declarations, one sentence saying so is a complete answer. The
+builder role, its task and its routing are unchanged; only its deliverable set moved.
+
+**Why the notes are required here, when §11 made them optional.** §11 retired a required document
+nobody read. Two facts differ now. The qa author reads the notes
+(`request.qa_test_assembly_notes_appendix`). And with the packaging gone, the notes are the
+builder's only deliverable on these stacks. A builder task that emits no file fails as a
+contentless emission, so an optional-only deliverable set would have turned an honest "nothing to
+add" into a failed task.
+
+**The evidence.** Every builder run in the vault from 2026-09-01 (117 of 117) authored a
+Dockerfile. `.env.example` appeared in 68, `start.sh` in 41, `docker-compose.yaml` in 25,
+`.dockerignore` in 22 and `nginx.conf` in 17, so packaging was the builder's job on these stacks.
+The defects that authorship carried are recorded in SIP-0105 A1.
+
+**Who ruled it.** The owner. The 1.8.0 plan (§3.2 row 7) rules that the builder stops authoring the
+packaging. The choice of what it authors instead was put to the owner on 2026-09-13, against two
+alternatives: nothing required, which fails as contentless; or no builder task on these stacks,
+which removes the seam the 1.8 contentless-builder diagnostics run through. The owner ruled for
+required notes.

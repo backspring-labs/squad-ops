@@ -45,7 +45,11 @@ _MANIFEST = Path(__file__).parents[3] / "examples" / "03_group_run" / "interface
 #: The roll-1 shape: a net-new source file outside the builder's fill surface (dropped by
 #: the #649 builder grant), beside a deliverable the builder may write.
 UNAUTHORIZED = {"name": "start.py", "content": "from backend.main import app\n"}
-AUTHORIZED = {"name": "start.sh", "content": "#!/bin/sh\nexec uvicorn backend.main:app\n"}
+# The builder's own deliverable. It was start.sh until #598 made the packaging scaffold-frozen.
+AUTHORIZED = {
+    "name": "assembly_notes.md",
+    "content": "The scaffold's packaging is used unchanged.\n",
+}
 
 
 def _record():
@@ -76,7 +80,7 @@ def _builder_envelope() -> TaskEnvelope:
             "resolved_config": {},
             # #1312: the deliverable set is the builder repair's blocking criterion; the
             # handoff and its `sections_present` row are retired.
-            "expected_artifacts": ["start.sh"],
+            "expected_artifacts": ["assembly_notes.md"],
             "acceptance_criteria": [
                 TypedCheck(
                     check="container_packaging",
@@ -178,9 +182,9 @@ class TestTheFailedAttemptIsAuthorizedBeforeItIsHeld:
             bound_record=_record(),
             compliance_counter={"n": 0},
         )
-        assert [a["name"] for a in held.outputs["artifacts"]] == ["start.sh"]
-        assert _stored_names(executor) == ["start.sh"]
-        assert refs == ["art_start.sh"]
+        assert [a["name"] for a in held.outputs["artifacts"]] == ["assembly_notes.md"]
+        assert _stored_names(executor) == ["assembly_notes.md"]
+        assert refs == ["art_assembly_notes.md"]
         # The failed marker still travels with what IS banked (#971 unchanged).
         assert executor._store_artifact.await_args.kwargs["emission_status"] == "failed"
         # Evidence names where enforcement ran, so a record can tell the bank's drop from
@@ -199,7 +203,7 @@ class TestTheFailedAttemptIsAuthorizedBeforeItIsHeld:
             result, _builder_envelope(), _cycle(), "run_1", [], bound_record=_record()
         )
         assert held is result
-        assert _stored_names(executor) == ["start.sh"]
+        assert _stored_names(executor) == ["assembly_notes.md"]
         assert _evidence(executor) == []
 
     async def test_an_unbound_run_admits_everything_as_before(self, executor):
@@ -210,7 +214,7 @@ class TestTheFailedAttemptIsAuthorizedBeforeItIsHeld:
             result, _builder_envelope(), _cycle(), "run_1", [], bound_record=None
         )
         assert held is result
-        assert _stored_names(executor) == ["start.py", "start.sh"]
+        assert _stored_names(executor) == ["start.py", "assembly_notes.md"]
 
     async def test_a_succeeded_result_is_never_touched(self, executor):
         succeeded = TaskResult(
@@ -240,7 +244,7 @@ class TestTheFailedAttemptIsAuthorizedBeforeItIsHeld:
                 compliance_counter=counter,
             )
         assert counter["n"] == 4
-        assert refs == ["art_start.sh"]
+        assert refs == ["art_assembly_notes.md"]
 
 
 # --- the repair: authorized before it is verified ----------------------------------------
@@ -266,7 +270,7 @@ class TestTheRepairIsAuthorizedBeforeItIsVerified:
         )
         assert action == "accept_patch"
         names = [a["name"] for a in holder["patched_result"].outputs["artifacts"]]
-        assert "start.sh" in names
+        assert "assembly_notes.md" in names
         assert "start.py" not in names
         (record,) = _evidence(executor)
         assert record.normalized_path == "start.py"
@@ -290,7 +294,7 @@ class TestTheRepairIsAuthorizedBeforeItIsVerified:
         )
         assert action == "accept_patch"
         names = [a["name"] for a in holder["patched_result"].outputs["artifacts"]]
-        assert {"start.py", "start.sh"} <= set(names)
+        assert {"start.py", "assembly_notes.md"} <= set(names)
         assert _evidence(executor) == []
 
     async def test_a_repair_artifact_naming_no_producer_is_refused_before_any_grant_is_derived(
@@ -344,7 +348,7 @@ class TestTheRepairIsAuthorizedBeforeItIsVerified:
         )
         assert action == "accept_patch"
         names = [a["name"] for a in holder["patched_result"].outputs["artifacts"]]
-        assert {"start.py", "start.sh"} <= set(names)
+        assert {"start.py", "assembly_notes.md"} <= set(names)
         assert _evidence(executor) == []
 
 
@@ -384,7 +388,7 @@ class TestTheReStoreReadsTheSameProducerTheVerifierDid:
             bound_record=_record(),
             compliance_counter=counter,
         )
-        assert _stored_names(executor) == ["start.py", "start.sh"]
+        assert _stored_names(executor) == ["start.py", "assembly_notes.md"]
         assert _evidence(executor) == []
         assert counter["n"] == 0
 
@@ -410,7 +414,7 @@ class TestTheReStoreReadsTheSameProducerTheVerifierDid:
             bound_record=_record(),
             compliance_counter=counter,
         )
-        assert _stored_names(executor) == ["start.sh"]
+        assert _stored_names(executor) == ["assembly_notes.md"]
         (record,) = _evidence(executor)
         assert record.normalized_path == "start.py"
         assert record.stage == STAGE_ARTIFACT_STORAGE

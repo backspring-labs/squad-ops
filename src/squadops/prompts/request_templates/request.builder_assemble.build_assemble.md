@@ -1,6 +1,6 @@
 ---
 template_id: request.builder_assemble.build_assemble
-version: "4"
+version: "5"
 required_variables:
   - prd
   - source_files
@@ -22,7 +22,7 @@ optional_variables:
 {{prior_outputs}}
 {{task_tags}}
 
-You are ASSEMBLING the source code above into a deployable package. Do NOT rewrite or regenerate the source code — it is already written. Your job is to add deployment and packaging artifacts.
+You are ASSEMBLING the source code above into a deployable package. Do NOT rewrite or regenerate the source code — it is already written. Your job is to add the files the build profile names in the system prompt, and none that it says the scaffold provides.
 
 ## Output format (MANDATORY)
 
@@ -31,12 +31,9 @@ Each file MUST be emitted as a fenced code block whose opening line is `` ```<la
 Worked example (copy this exact shape):
 
 ````
-```dockerfile:Dockerfile
-FROM python:3.11-slim
-WORKDIR /app
-COPY . .
-RUN pip install -r requirements.txt
-CMD ["python", "-m", "myapp"]
+```ini:.env.example
+# Comma-separated origins the API accepts
+CORS_ORIGINS=http://localhost:5173
 ```
 
 ```markdown:assembly_notes.md
@@ -51,7 +48,7 @@ Output that does NOT use this exact `<language>:<filepath>` header will be rejec
 
 - File paths use forward slashes only. No colons, no spaces, no leading slash.
 - Do NOT re-emit source files the developer already wrote.
-- Only emit NEW files needed for packaging and deployment.
+- Only emit NEW files the build profile names. Never emit a file it lists as provided by the scaffold.
 
 ## Which files to produce
 

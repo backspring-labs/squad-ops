@@ -812,17 +812,23 @@ async def test_builder_guideline_and_example_carry_the_profile_floor():
     verbatim, so the example must SHOW the profile's required-files floor (the same list
     validate_builder_floor rejects on), not hedge it in description prose.
 
-    #1312 shrank that floor to `Dockerfile` on both stacks — the handoff left it — which
-    makes the reproduce-verbatim habit harmless where it used to demand a document."""
+    #1312 shrank that floor to `Dockerfile` on both stacks; #598 renders the packaging, so the
+    floor is the notes and the scaffold-provided files are named as NOT the plan's to assign.
+    Bug caught: a guideline still routing the Dockerfile to the builder, so the builder emits a
+    file the scaffold owns and storage discards."""
     variables = await _render_vars_for(
         ["lead", "dev", "qa", "builder"],
         {"implementation_plan": True, "build_profile": "nextjs_ts"},
     )
 
-    assert "Dockerfile" in variables["builder_guideline"]
-    assert "qa_handoff" not in variables["builder_guideline"]
-    assert "floor" in variables["builder_guideline"]
-    assert '- "Dockerfile"' in variables["builder_example"]
+    guideline = variables["builder_guideline"]
+    assert "qa_handoff" not in guideline
+    assert "floor" in guideline and "assembly_notes.md" in guideline
+    assert (
+        "list NONE of them in any task's expected_artifacts: Dockerfile, .dockerignore" in guideline
+    )
+    assert '- "assembly_notes.md"' in variables["builder_example"]
+    assert '- "Dockerfile"' not in variables["builder_example"]
     # #1254: the example's acceptance_criteria are PROSE — every typed check a builder
     # emission earns is the framework's or the profile's.
     assert "check:" not in variables["builder_example"]

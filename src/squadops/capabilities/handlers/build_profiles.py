@@ -90,6 +90,21 @@ class BuildProfile:
     artifact_output_mode: str = ARTIFACT_MODE_MULTI_FILE
     default_task_tags: dict[str, str] = field(default_factory=dict)
 
+    def scaffold_provided_files(self) -> tuple[str, ...]:
+        """Files the stack's scaffold renders for this profile, which the builder must not emit.
+
+        #598: the container packaging is rendered from the environment contract and frozen.
+        Derived from the rendering itself, never listed here, so the prompt cannot name a file
+        the scaffold stopped providing. A profile with no rendering (the legacy profiles, which
+        have no scaffold) provides nothing.
+        """
+        from squadops.capabilities.rendered_packaging import render_packaging
+
+        try:
+            return tuple(item["name"] for item in render_packaging(self.name))
+        except ValueError:
+            return ()
+
     @property
     def full_system_prompt(self) -> str:
         """Profile-level prompt — every file the profile requires.
@@ -134,14 +149,28 @@ class BuildProfile:
             optional_block = f"\n\n## Optional artifacts (emit only if needed)\n\n{optional_lines}"
 
         notes_block = ""
-        if ASSEMBLY_NOTES_DOCUMENT in tuple(scoped) + self.optional_files:
-            notes_block = assembly_notes_block(self.name)
+        # #598: a profile may REQUIRE the notes; a decomposed task scoped to other files may
+        # still write them (the #1312 reason below), and is told so as optional.
+        if ASSEMBLY_NOTES_DOCUMENT in tuple(scoped) + self.required_files + self.optional_files:
+            notes_block = assembly_notes_block(
+                self.name, required=ASSEMBLY_NOTES_DOCUMENT in tuple(scoped)
+            )
+        provided_block = ""
+        if provided := self.scaffold_provided_files():
+            provided_lines = "\n".join(f"- `{name}`" for name in provided)
+            provided_block = (
+                "\n\n## Provided by the scaffold — do NOT emit\n\n"
+                "The container packaging is rendered from the stack's declarations and frozen. "
+                "An emitted copy of any of these files is discarded and changes nothing:\n\n"
+                f"{provided_lines}"
+            )
 
         return (
             f"{self.system_prompt_template}\n\n"
             "## Required artifacts (you MUST emit every file in this list)\n\n"
             f"{required_lines}"
             f"{optional_block}"
+            f"{provided_block}"
             f"{notes_block}"
         )
 
@@ -202,20 +231,18 @@ BUILD_PROFILES: dict[str, BuildProfile] = {
         ),
         artifact_output_mode=ARTIFACT_MODE_MULTI_FILE,
     ),
+    # #598 (owner ruling 2026-09-13): the packaging set — Dockerfile, nginx.conf, start.sh,
+    # .dockerignore — is rendered by the scaffold and frozen, so the builder authors the notes
+    # the qa author reads, required here, and an optional `.env.example`. docker-compose.yaml
+    # is gone: the rendering is one container, and a compose file pairing two services
+    # described a deployment the stack does not ship.
     "fullstack_fastapi_react": BuildProfile(
         name="fullstack_fastapi_react",
         system_prompt_template=_narrative("fullstack_fastapi_react"),
-        required_files=("Dockerfile",),
-        optional_files=(
-            "docker-compose.yaml",
-            "start.sh",
-            ".env.example",
-            "nginx.conf",
-            ASSEMBLY_NOTES_DOCUMENT,
-        ),
+        required_files=(ASSEMBLY_NOTES_DOCUMENT,),
+        optional_files=(".env.example",),
         validation_rules=(
-            "Dockerfile must use multi-stage build",
-            "docker-compose.yaml must define backend and frontend services",
+            "the container packaging is the scaffold's rendering; no packaging file is emitted",
         ),
         artifact_output_mode=ARTIFACT_MODE_MULTI_FILE,
     ),
@@ -227,11 +254,13 @@ BUILD_PROFILES: dict[str, BuildProfile] = {
     "nextjs_ts": BuildProfile(
         name="nextjs_ts",
         system_prompt_template=_narrative("nextjs_ts"),
-        # One project at the root: no docker-compose pairing two services, and the packaging
-        # story is a single container serving `next start`.
-        required_files=("Dockerfile",),
-        optional_files=(".dockerignore", ".env.example", "start.sh", ASSEMBLY_NOTES_DOCUMENT),
-        validation_rules=("Dockerfile must build the Next.js app and run `next start`",),
+        # #598: the Dockerfile and .dockerignore are rendered by the scaffold and frozen; the
+        # builder authors the notes, required, and an optional `.env.example`.
+        required_files=(ASSEMBLY_NOTES_DOCUMENT,),
+        optional_files=(".env.example",),
+        validation_rules=(
+            "the container packaging is the scaffold's rendering; no packaging file is emitted",
+        ),
         artifact_output_mode=ARTIFACT_MODE_MULTI_FILE,
     ),
 }

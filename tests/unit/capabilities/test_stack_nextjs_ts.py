@@ -67,13 +67,12 @@ def test_registering_a_second_stack_leaves_the_first_byte_identical():
     reference = _manifest("fullstack_fastapi_react")
 
     assert reference.content_hash().startswith("bb472e267e53d5ad")
-    # contract v14 (#1499): v13 with the baseline stylesheet's sha moved, because the sheet
-    # now styles definition lists; classified reference_defect — see
-    # test_contract_derivation_reference for all pins.
+    # contract v15 (#598): v14 plus the four rendered packaging files as frozen entries;
+    # classified reference_defect — see test_contract_derivation_reference for all pins.
     assert (
         hashlib.sha256(emit_contract_yaml(reference).encode())
         .hexdigest()
-        .startswith("4753a5878589f07a")
+        .startswith("193750aa5c3ac96e")
     )
 
 

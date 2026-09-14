@@ -104,11 +104,21 @@ _MANIFEST = _REPO / "examples" / "03_group_run" / "interface_manifest.yaml"
 #   (every section but that one hash is byte-identical to v13), and presentation is not what
 #   the window measured, so the 1.4 FAY figure (6/6) carries no qualification. v13 stays in
 #   the fixtures directory as that form's record.
+# * v15 (2026-09-13, #598) differs from v14 in exactly four ADDED ``frozen`` entries —
+#   ``Dockerfile``, ``nginx.conf``, ``start.sh`` and ``.dockerignore`` — the container
+#   packaging the scaffold now renders from the environment contract instead of the builder
+#   authoring it per roll (pf-38's green-but-unstartable container, #598). Classified
+#   **reference_defect**: the pinned reference describes a skeleton that shipped no
+#   packaging, which the builder then supplied with defects no criterion read. The
+#   retrospective obligation is met by statement: packaging adds no check and changes no
+#   criterion (every other entry and every other section is byte-identical to v14), and the
+#   window measured the application, never its container, so the 1.4 FAY figure (6/6) carries
+#   no qualification. v14 stays in the fixtures directory as that form's record.
 _EVIDENCE_CONTRACT = (
     _REPO / "tests" / "fixtures" / "reference_contract" / "contract_v9_art_4f368ea08799.yaml"
 )
 _CONTRACT = (
-    _REPO / "tests" / "fixtures" / "reference_contract" / "contract_v14_definition_lists_1499.yaml"
+    _REPO / "tests" / "fixtures" / "reference_contract" / "contract_v15_rendered_packaging_598.yaml"
 )
 
 # The ingested artifacts, by content hash. Measured 2026-08-07 against the vault:
@@ -118,7 +128,7 @@ _CONTRACT = (
 # run against. A change here is a change to the evidence base, not a refactor.
 _MANIFEST_SHA256 = "52d8ea7e204e0ceca9c94a60a7b10f18a24519e594ce5c51654674b82a15a826"
 _EVIDENCE_CONTRACT_SHA256 = "7622f570c949fe9504bfebdcd0562e77e78b4d8bff54d9d670001b7f6482e6fe"
-_CONTRACT_SHA256 = "4753a5878589f07ab87d01e1e8156555ea7b870da8a84ef4db3912bc2d7767e1"
+_CONTRACT_SHA256 = "193750aa5c3ac96e396f0dc57f434deb8ef95728dcec4b3d793631a8eaf0301b"
 
 
 def _sha256(path: Path) -> str:
@@ -207,9 +217,11 @@ def test_the_current_form_differs_from_the_evidence_contract_only_as_classified(
       ``frontend/src/main.jsx`` moved to import it — the skeleton had no stylesheet at all;
     * #1499 (``reference_defect``): that added entry's sha is v14's, because the sheet now
       styles definition lists. An added entry has no v9 sha to move from, so it is re-derived
-      from the expander below like the moved ones.
+      from the expander below like the moved ones;
+    * #598 (``reference_defect``): ``Dockerfile``, ``nginx.conf``, ``start.sh`` and
+      ``.dockerignore`` are ADDED — the rendered container packaging, re-derived the same way.
 
-    Three moved ``frozen`` entries and one added, no other, and nothing outside ``frozen``.
+    Three moved ``frozen`` entries and five added, no other, and nothing outside ``frozen``.
     """
     v9 = yaml.safe_load(_EVIDENCE_CONTRACT.read_text(encoding="utf-8"))
     current = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))
@@ -228,7 +240,8 @@ def test_the_current_form_differs_from_the_evidence_contract_only_as_classified(
     v9_frozen = {e["path"]: e["sha256"] for e in v9["frozen"]}
     current_frozen = {e["path"]: e["sha256"] for e in current["frozen"]}
 
-    assert sorted(set(current_frozen) - set(v9_frozen)) == ["frontend/src/index.css"]
+    added = [".dockerignore", "Dockerfile", "frontend/src/index.css", "nginx.conf", "start.sh"]
+    assert sorted(set(current_frozen) - set(v9_frozen)) == added
     assert not set(v9_frozen) - set(current_frozen), "a frozen file was dropped, not classified"
 
     moved = [
@@ -249,7 +262,7 @@ def test_the_current_form_differs_from_the_evidence_contract_only_as_classified(
     # a classified entry whose sha nobody re-derives is a second pin that can rot.
     for path, _v9_sha, current_sha in [
         *moved,
-        ("frontend/src/index.css", None, current_frozen["frontend/src/index.css"]),
+        *((added_path, None, current_frozen[added_path]) for added_path in added),
     ]:
         emitted = expanded[path]
         assert hashlib.sha256(emitted.encode()).hexdigest() == current_sha, path
@@ -269,6 +282,9 @@ def test_the_current_form_differs_from_the_evidence_contract_only_as_classified(
     # div is spaced like a bare one.
     assert "\ndl {" in expanded["frontend/src/index.css"]
     assert "dd + dt, dl > div + div {" in expanded["frontend/src/index.css"]
+    # #598: the packaging is the scaffold's rendering, and it proxies /api to the backend.
+    assert expanded["Dockerfile"].startswith("# Rendered by the scaffold")
+    assert "proxy_pass http://127.0.0.1:8000/;" in expanded["nginx.conf"]
     assert "import './index.css'\n" in expanded["frontend/src/main.jsx"]
     current["frozen"] = v9["frozen"]
     assert current == v9

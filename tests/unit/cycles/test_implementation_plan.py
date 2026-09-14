@@ -1382,24 +1382,24 @@ class TestValidateBuilderFloor:
             "  total_tasks: 1\n"
         )
 
-    def test_roll_15_shape_missing_dockerfile_rejected(self):
-        errors = self._plan(["qa_handoff.md"]).validate_builder_floor(
-            {"build_profile": "nextjs_ts"}
-        )
+    def test_roll_15_shape_missing_the_floor_is_rejected(self):
+        """Roll 15's shape with #598's floor: a plan still routing the old packaging to the
+        builder, and nothing owning the notes the profile now requires."""
+        errors = self._plan(["Dockerfile"]).validate_builder_floor({"build_profile": "nextjs_ts"})
         assert len(errors) == 1
-        assert "Dockerfile" in errors[0]
+        assert "assembly_notes.md" in errors[0]
         assert "floor" in errors[0]
 
     def test_full_floor_coverage_passes(self):
-        errors = self._plan(["qa_handoff.md", "Dockerfile"]).validate_builder_floor(
+        errors = self._plan(["assembly_notes.md"]).validate_builder_floor(
             {"build_profile": "nextjs_ts"}
         )
         assert errors == []
 
     def test_basename_match_accepts_subdir_paths(self):
         """The #291 gate and the builder validator both compare basenames — a
-        Dockerfile owned at a subpath must satisfy the floor the same way."""
-        errors = self._plan(["docs/qa_handoff.md", "deploy/Dockerfile"]).validate_builder_floor(
+        required file owned at a subpath must satisfy the floor the same way."""
+        errors = self._plan(["docs/assembly_notes.md"]).validate_builder_floor(
             {"build_profile": "nextjs_ts"}
         )
         assert errors == []
@@ -1417,7 +1417,7 @@ class TestValidateBuilderFloor:
             '    focus: "App"\n'
             '    description: "Build app"\n'
             "    expected_artifacts:\n"
-            '      - "Dockerfile"\n'
+            '      - "assembly_notes.md"\n'
             "    depends_on: []\n"
             "  - task_index: 1\n"
             "    task_type: builder.assemble\n"
@@ -1425,7 +1425,7 @@ class TestValidateBuilderFloor:
             '    focus: "Package"\n'
             '    description: "Assemble"\n'
             "    expected_artifacts:\n"
-            '      - "qa_handoff.md"\n'
+            '      - ".env.example"\n'
             "    depends_on: [0]\n"
             "summary:\n"
             "  total_tasks: 2\n"

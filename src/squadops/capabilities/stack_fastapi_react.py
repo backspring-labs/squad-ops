@@ -34,6 +34,7 @@ from squadops.capabilities.client_surface import (
     ClientExport,
     ClientSurface,
 )
+from squadops.capabilities.rendered_packaging import render_packaging
 from squadops.capabilities.success_status import derived_success_status
 from squadops.capabilities.type_tokens import base_type_name
 
@@ -794,6 +795,9 @@ def expand_fullstack_fastapi_react(manifest: InterfaceManifest) -> list[dict[str
     files.append({"name": "frontend/src/__tests__/harness.test.jsx", "content": _HARNESS_TEST_JSX})
     files.append({"name": "frontend/src/main.jsx", "content": _MAIN_JSX})
     files.append({"name": "frontend/src/index.css", "content": BASELINE_CSS})
+    # #598: the container packaging is rendered from the environment contract, frozen like
+    # the stylesheet above, rather than authored by the builder on every roll.
+    files.extend(render_packaging("fullstack_fastapi_react"))
     files.append({"name": _CLIENT_PATH, "content": _API_JS})
     files.append({"name": "frontend/src/App.jsx", "content": _app_jsx(manifest)})
     for route in manifest.frontend.routes:

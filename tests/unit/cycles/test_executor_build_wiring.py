@@ -738,7 +738,7 @@ class TestBuilderDeliverableCompleteness:
         registry = self._registry(cycle, run)
         vault = self._vault()
 
-        # Builder emits qa_handoff.md but never a Dockerfile.
+        # Builder emits the retired handoff but never the notes its profile requires (#598).
         reply_router.responder = lambda env: TaskResult(
             task_id=env["task_id"],
             status="SUCCEEDED",
@@ -771,9 +771,9 @@ class TestBuilderDeliverableCompleteness:
         assert ("run_001", RunStatus.COMPLETED) not in calls
 
     async def test_builder_run_with_all_required_files_completes(self, reply_router):
-        """The gate must not over-fire: when the build emits both Dockerfile and
-        qa_handoff.md, the run completes — proving the FAILED case above is the
-        missing file, not merely 'a builder run'."""
+        """The gate must not over-fire: when the build emits the profile's required notes, the
+        run completes — proving the FAILED case above is the missing file, not merely 'a
+        builder run'."""
         from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
         from squadops.tasks.models import TaskResult
 
@@ -797,14 +797,8 @@ class TestBuilderDeliverableCompleteness:
                 "role": env["metadata"].get("role"),
                 "artifacts": [
                     {
-                        "name": "Dockerfile",
-                        "content": "FROM python:3.12\n",
-                        "type": "source",
-                        "media_type": "text/plain",
-                    },
-                    {
-                        "name": "qa_handoff.md",
-                        "content": "## How to Run\n## How to Test\n## Expected Behavior\n",
+                        "name": "assembly_notes.md",
+                        "content": "The scaffold's packaging and declarations are used unchanged.\n",
                         "type": "document",
                         "media_type": "text/markdown",
                     },

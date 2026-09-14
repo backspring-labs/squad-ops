@@ -694,3 +694,52 @@ which this stack does not opt into — `scaffold.py:2157–2158`).
 **Not harvested here, by design.** `envelope_example` is `ErrorSeam`'s (`scaffold.py:741`),
 stack-neutral, and is not part of the move. `correction_runner.py` and the executor paths are
 harvested before their own extractions (#1152), not in this pass.
+
+---
+
+## Post-acceptance amendments
+
+### A1. The container packaging is a rendering of the environment contract, scaffold-owned (2026-09-13)
+
+**What changed.** SIP-0102 §4.2 left one question to this SIP: whether the blueprint owns the
+packaging set. It does now, for both registered stacks. `squadops.capabilities.rendered_packaging`
+renders each stack's container packaging from its `EnvironmentContract` — the runtime versions
+and the application port come from the contract, the paths from the stack's own layout — and both
+expanders emit it as frozen files beside the baseline stylesheet:
+
+| stack | rendered, frozen |
+|---|---|
+| `fullstack_fastapi_react` | `Dockerfile` (a Node stage builds the Vite frontend; a Python stage installs the backend, serves the build through nginx and proxies `/api` to uvicorn), `nginx.conf`, `start.sh`, `.dockerignore` |
+| `nextjs_ts` | `Dockerfile` (a build stage runs `next build`; a runtime stage runs `next start`), `.dockerignore` |
+
+No new blueprint vocabulary was minted. The rendering reads the declaration that already
+existed, which is this SIP's admission rule applied rather than restated.
+
+Three consequences travel with it:
+
+- **`container_packaging` is the gate on the rendering.** The three pf-38 findings run over every
+  registered stack's full expansion in CI (`tests/unit/capabilities/test_rendered_packaging.py`).
+  On a roll they stay reporting-only, and a role-emitted recipe on these stacks is dropped at
+  storage as a frozen path.
+- **The builder no longer authors packaging on these stacks** (SIP-0071 §12).
+- **`package_builds` stays declared unbuilt.** Nothing in CI builds or starts the image.
+
+**The evidence.** pf-38 (`cyc_32f85a56224d`) went green with a builder-authored container that
+could not build or run: `npm ci` without a lockfile, a `COPY` out of `dist-packages` on an official
+python image, and apt's nginx default site shadowing the app's server block so every `/api/*`
+answered 404. pf-39 drew two of the three again from identical seeds. From 2026-09-01 to this
+amendment, all 117 builder runs in the vault authored a Dockerfile, so a defect a template never
+makes twice was being sampled per roll. When this landed, both renderings were built and run by
+hand against accepted 1.7.5 deliverables with their builder packaging removed:
+
+| deliverable | through the rendered container |
+|---|---|
+| React roll 2 (`cyc_5a6e5ed0caeb`) | `GET /` 200; `GET /runs/abc` 200 (SPA fallback); `POST /api/runs` 201; `GET /api/runs` 200; an empty title 422 with the pinned error envelope |
+| Next.js roll 1 (`cyc_8d383802f3a1`) | `GET /` 200; `POST /api/runs` 201; `GET /api/runs` 200 |
+
+The pinned reference contract moved to v15 by exactly the four added frozen entries, classified
+`reference_defect` (`test_contract_derivation_reference.py`).
+
+**Who ruled it.** The owner, in the accepted 1.8.0 plan (§3.2 row 7): "the Dockerfile and nginx
+config are a rendering of the stack declaration." What the builder authors in its place was ruled
+by the owner on 2026-09-13 (SIP-0071 §12).

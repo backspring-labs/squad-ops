@@ -52,7 +52,8 @@ def _ref(filename: str) -> tuple[str, ArtifactRef]:
     )
 
 
-# fullstack_fastapi_react.required_files == ("Dockerfile", "qa_handoff.md")
+# fullstack_fastapi_react.required_files == ("assembly_notes.md",) since #598 — the packaging is
+# rendered by the scaffold, so the notes are the builder's required deliverable.
 _BUILDER_PLAN = [
     _envelope("development.develop"),
     _envelope("builder.assemble"),
@@ -61,15 +62,15 @@ _BUILDER_PLAN = [
 
 
 def test_missing_required_file_is_reported():
-    """The #276 bug: builder run emits qa_handoff.md but no Dockerfile, and ships
-    green. The gate must return the profile and the missing Dockerfile so the run
-    fails instead."""
+    """The #276 bug, in #598's shape: the builder emits the packaging it used to author and
+    not the notes its profile now requires, and ships green. The gate must return the
+    profile and the missing file so the run fails instead."""
     result = compute_missing_required_files(
         _BUILDER_PLAN,
-        [_ref("qa_handoff.md")],
+        [_ref("Dockerfile"), _ref("docker-compose.yaml")],
         {"build_profile": "fullstack_fastapi_react"},
     )
-    assert result == ("fullstack_fastapi_react", ["Dockerfile"])
+    assert result == ("fullstack_fastapi_react", ["assembly_notes.md"])
 
 
 def test_all_required_files_present_returns_none():
@@ -77,7 +78,7 @@ def test_all_required_files_present_returns_none():
     fail every well-formed builder run."""
     result = compute_missing_required_files(
         _BUILDER_PLAN,
-        [_ref("Dockerfile"), _ref("qa_handoff.md"), _ref("docker-compose.yaml")],
+        [_ref("assembly_notes.md"), _ref(".env.example")],
         {"build_profile": "fullstack_fastapi_react"},
     )
     assert result is None
@@ -97,12 +98,12 @@ def test_non_builder_run_is_never_checked():
 
 
 def test_required_file_in_subdirectory_satisfies_by_basename():
-    """A Dockerfile emitted under a subdirectory still satisfies the required
-    'Dockerfile' — basename matching mirrors the builder handler and must not
-    fail a complete deliverable on a path difference."""
+    """A required file emitted under a subdirectory still satisfies the profile —
+    basename matching mirrors the builder handler and must not fail a complete
+    deliverable on a path difference."""
     result = compute_missing_required_files(
         _BUILDER_PLAN,
-        [_ref("backend/Dockerfile"), _ref("qa_handoff.md")],
+        [_ref("docs/assembly_notes.md")],
         {"build_profile": "fullstack_fastapi_react"},
     )
     assert result is None
