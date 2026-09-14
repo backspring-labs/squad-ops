@@ -806,28 +806,99 @@ class TestAdditiveContainmentLocus:
 
     _evidence_with_check = TestClassifyFailureLocus._evidence_with_check
 
-    def test_a_failed_containment_row_is_own_artifact(self):
-        from squadops.cycles.acceptance_check_spec import CHECK_ADDITIVE_CONTAINMENT
+    #: The row's name as the typed-acceptance seam writes it (#1532). Until #1532 these
+    #: tests used the bare check name, which no producer emits, so they passed while a
+    #: live containment failure routed to the dev chain.
+    _ROW_NAME = "acceptance:additive_containment"
 
+    @pytest.mark.parametrize("tests_pass_also_failed", [False, True])
+    def test_a_failed_containment_row_is_own_artifact(self, tests_pass_also_failed):
         rows = [
             {
-                "check": CHECK_ADDITIVE_CONTAINMENT,
+                "check": self._ROW_NAME,
                 "passed": False,
                 "status": "failed",
                 "params": {"file": "__tests__/api-runs.test.ts", "stack": "nextjs_ts"},
             },
-            {"check": "tests_pass", "executed": True, "exit_code": 1, "passed": False},
         ]
+        if tests_pass_also_failed:
+            # Own-artifact rows are read before tests_pass, whatever the row order (#629 D4).
+            rows.append({"check": "tests_pass", "executed": True, "exit_code": 1, "passed": False})
         evidence = {"validation_result": {"passed": False, "checks": rows}}
         assert classify_failure_locus(evidence) == FailureLocus.OWN_ARTIFACT
 
     def test_a_passed_containment_row_changes_nothing(self):
-        from squadops.cycles.acceptance_check_spec import CHECK_ADDITIVE_CONTAINMENT
-
-        row = {"check": CHECK_ADDITIVE_CONTAINMENT, "passed": True, "status": "passed"}
+        row = {"check": self._ROW_NAME, "passed": True, "status": "passed"}
         tests_pass = {"check": "tests_pass", "executed": True, "exit_code": 1, "passed": False}
         evidence = {"validation_result": {"passed": False, "checks": [row, tests_pass]}}
         assert classify_failure_locus(evidence) == FailureLocus.SUBJECT
+
+    async def test_a_containment_failure_from_the_qa_handler_reaches_the_qa_repair(self):
+        """Wiring (#1532, anti-pattern 6a): the row comes from the handler's own typed-
+        acceptance seam, not a hand-written name, and travels the path the correction loop
+        takes — ``build_failure_evidence`` → ``_locus_and_repair_target`` →
+        ``repair_steps_for``. The suite reaches the app only through its browser client,
+        and it is the ONLY failing row: 1.8.0 deploy A's Next.js checkpoint
+        (``cyc_79f70a0bbac1``) carried exactly that and sent the suite's defect to the dev
+        role, which rewrote seven working files and could not touch the suite."""
+        from adapters.cycles.correction_repair import _locus_and_repair_target
+        from squadops.capabilities.handlers.cycle.qa_test import QATestHandler
+        from squadops.cycles.task_plan import repair_steps_for
+
+        suite = "__tests__/runs-ui.test.ts"
+        artifacts = [
+            {
+                "name": suite,
+                "type": "test",
+                "media_type": "text/typescript",
+                "content": (
+                    "import { expect, it } from 'vitest'\n"
+                    "import { listRuns } from '@/lib/api'\n\n"
+                    "it('lists runs', async () => {\n"
+                    "  expect(Array.isArray(await listRuns())).toBe(true)\n"
+                    "})\n"
+                ),
+            }
+        ]
+        checks: list[dict] = []
+        await QATestHandler()._evaluate_typed_acceptance(
+            {"acceptance_criteria": [], "resolved_config": {"build_profile": "nextjs_ts"}},
+            artifacts,
+            checks,
+            [],
+            {},
+        )
+        failed = [c for c in checks if c.get("passed") is False]
+        assert [c["check"] for c in failed] == [self._ROW_NAME]
+
+        envelope = TaskEnvelope(
+            task_id="task-run_x-m005-qa.test",
+            agent_id="eve",
+            cycle_id="cyc_x",
+            pulse_id="pulse",
+            project_id="proj",
+            task_type="qa.test",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="trace",
+            span_id="span",
+            inputs={},
+            metadata={},
+        )
+        result = TaskResult(
+            task_id=envelope.task_id,
+            status="FAILED",
+            outputs={"validation_result": {"passed": False, "checks": checks}, "artifacts": []},
+            error="validation failed",
+        )
+        evidence = build_failure_evidence(envelope, result, prior_plan_deltas_count=0)
+        locus, target, _, _ = _locus_and_repair_target(
+            "qa.test", evidence, {"expected_artifacts": [suite]}
+        )
+
+        assert locus == FailureLocus.OWN_ARTIFACT
+        assert target == [suite]
+        assert [role for _, role in repair_steps_for("qa.test", locus)] == ["qa"]
 
 
 def test_a_failed_dom_anchor_row_is_the_suites_own_defect():
