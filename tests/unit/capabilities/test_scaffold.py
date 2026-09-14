@@ -1344,17 +1344,17 @@ def test_a_bare_namespace_entry_is_a_convention_and_a_path_is_a_location():
     `app/api/runs/route.ts`. Without the rooted reading, `backend/tests/` would match
     `vendor/backend/tests/`, quietly widening the stack that was already correct.
     """
-    from squadops.capabilities.scaffold import _within_namespace
+    from squadops.capabilities.scaffold import within_namespace
 
     # bare name: a segment at any depth, root included
-    assert _within_namespace("__tests__/harness.test.ts", "__tests__/")
-    assert _within_namespace("app/runs/__tests__/page.test.tsx", "__tests__/")
-    assert not _within_namespace("app/api/runs/route.ts", "__tests__/")
-    assert not _within_namespace("app/my__tests__helper.ts", "__tests__/")
+    assert within_namespace("__tests__/harness.test.ts", "__tests__/")
+    assert within_namespace("app/runs/__tests__/page.test.tsx", "__tests__/")
+    assert not within_namespace("app/api/runs/route.ts", "__tests__/")
+    assert not within_namespace("app/my__tests__helper.ts", "__tests__/")
 
     # multi-segment: the tree root only
-    assert _within_namespace("backend/tests/test_runs.py", "backend/tests/")
-    assert not _within_namespace("vendor/backend/tests/test_runs.py", "backend/tests/")
+    assert within_namespace("backend/tests/test_runs.py", "backend/tests/")
+    assert not within_namespace("vendor/backend/tests/test_runs.py", "backend/tests/")
 
 
 def test_the_scaffold_emission_guard_refuses_a_shell_in_application_source():

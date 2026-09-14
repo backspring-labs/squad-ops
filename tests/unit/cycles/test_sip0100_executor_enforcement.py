@@ -317,3 +317,38 @@ def test_dev_producer_unaffected_by_builder_rule():
     )
     assert evidence == []
     assert enforced[0]["content"] == "X = 1\n"
+
+
+# --- SIP-0107 step 3: the dev lane carries a grant --------------------------------------
+
+
+def test_a_dev_repair_writing_the_qa_suite_is_dropped_with_evidence_and_its_fix_kept():
+    """SIP-0107 §3.3/§39.6. Bug caught: the one lane without a grant — a dev repair of its own
+    failure rewriting the suite it is judged by, beside its real fix. The #1014 veto covers
+    only a foreign-role repair and records nothing; here the suite is dropped with the same
+    evidence a QA or builder overstep gets, and the slot fix and a new helper pass."""
+    enforced, evidence = DispatchedFlowExecutor._enforce_frozen_ownership(
+        object(),
+        [
+            _by(
+                "development.correction_repair",
+                {"name": "backend/routes.py", "content": "def fixed(): return 1\n"},
+            ),
+            _by(
+                "development.correction_repair",
+                {"name": "backend/tests/test_runs.py", "content": "def test_x(): pass\n"},
+            ),
+            _by(
+                "development.correction_repair",
+                {"name": "backend/helpers.py", "content": "X = 1\n"},
+            ),
+        ],
+        _record(),
+        _env("development.develop"),
+    )
+    assert [a["name"] for a in enforced] == ["backend/routes.py", "backend/helpers.py"]
+    (ev,) = evidence
+    assert ev.violation_code == "unauthorized_slot_emission"
+    assert ev.normalized_path == "backend/tests/test_runs.py"
+    assert ev.producer_task_type == "development.correction_repair"
+    assert ev.siblings_retained == 2
