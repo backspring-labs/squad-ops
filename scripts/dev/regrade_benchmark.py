@@ -31,7 +31,6 @@ import json
 import os
 import subprocess
 import sys
-from collections import Counter
 from pathlib import Path
 
 import yaml
@@ -46,10 +45,10 @@ from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry  # noq
 from adapters.persistence.pool import create_pool  # noqa: E402
 from squadops._version import resolve_version  # noqa: E402
 from squadops.cycles.benchmark_registry import (  # noqa: E402
-    BENCHMARK_REGISTRY_VERSION,
     benchmark_rolls,
+    capture_document,
     pins_configs,
-    row_record,
+    render_capture,
 )
 from squadops.cycles.cycle_assessment import ASSESSMENT_VERSION, AssessorIdentity  # noqa: E402
 from squadops.cycles.failure_attribution import ATTRIBUTION_REGISTRY_VERSION  # noqa: E402
@@ -131,38 +130,17 @@ async def _read_only_registry(dsn: str):
     return pool, PostgresCycleRegistry(pool), []
 
 
-def capture(rows, assessor: AssessorIdentity, store_notes: list[str]) -> dict:
-    return {
-        "benchmark_registry_version": BENCHMARK_REGISTRY_VERSION,
-        "assessment_version": ASSESSMENT_VERSION,
-        "attribution_registry_version": ATTRIBUTION_REGISTRY_VERSION,
-        "assessor": {
-            "framework_version": assessor.framework_version,
-            "git_sha": assessor.git_sha,
-        },
-        "store_notes": store_notes,
-        "preflight": {
-            "declared": len(rows),
-            "by_role": dict(Counter(str(r.roll.role) for r in rows)),
-            "gradeable": sum(r.preflight.gradeable for r in rows),
-            "refused_by_reason": dict(
-                Counter(str(reason) for r in rows for reason in r.preflight.refusals)
-            ),
-        },
-        "rows": [row_record(r) for r in rows],
-    }
-
-
 def _line(record: dict) -> str:
     head = f"{record['set']:<22} {record['role']:<7} {record['roll']:>2} {record['cycle_id']}"
     if not record["gradeable"]:
-        return f"{head}  REFUSED {', '.join(record['refusals'])}: {'; '.join(record['refusal_detail'])}"
+        refusals = ", ".join(record["refusals"])
+        return f"{head}  REFUSED {refusals}: {'; '.join(record['refusal_detail'])}"
     ind = record["assessment"]["indicators"]
-    crit = ind["criteria_coverage"].get("value") or {}
+    crit = ind["criteria_coverage"][1] if isinstance(ind["criteria_coverage"][1], dict) else {}
     attribution = record["assessment"]["attribution"]
     return (
-        f"{head}  {ind['verdict'].get('value')!s:<18} "
-        f"{crit.get('verified')}/{crit.get('total')}  rounds {ind['correction_rounds'].get('value')}"
+        f"{head}  {ind['verdict'][1]!s:<18} {crit.get('verified')}/{crit.get('total')}"
+        f"  rounds {ind['correction_rounds'][1]}"
         f"  attribution {attribution.get('primary', attribution['state'])}"
         f"  unresolved {len(record['unresolved_refs'])}"
     )
@@ -190,12 +168,20 @@ async def main() -> int:
     finally:
         await pool.close()
 
-    document = capture(rows, assessor, store_notes)
+    document = capture_document(
+        rows,
+        versions={
+            "assessment_version": ASSESSMENT_VERSION,
+            "attribution_registry_version": ATTRIBUTION_REGISTRY_VERSION,
+        },
+        assessor=assessor,
+        store_notes=tuple(store_notes),
+    )
     for record in document["rows"]:
         print(_line(record))
     print(json.dumps({"store_notes": store_notes, **document["preflight"]}, indent=1))
     if args.write:
-        CAPTURE.write_text(json.dumps(document, indent=1, sort_keys=False) + "\n")
+        CAPTURE.write_text(render_capture(document))
         print(f"wrote {CAPTURE.relative_to(REPO_ROOT)}")
     return 0
 

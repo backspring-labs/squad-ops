@@ -330,11 +330,11 @@ def test_the_regraded_1_7_5_rows_agree_with_that_records_headline_table(committe
     for row in capture["rows"]:
         if row["set"].startswith("1.7.5"):
             ind = row["assessment"]["indicators"]
-            criteria = ind["criteria_coverage"]["value"]
+            criteria = ind["criteria_coverage"][1]
             regraded[row["cycle_id"]] = (
-                ind["verdict"]["value"],
+                ind["verdict"][1],
                 f"{criteria['verified']}/{criteria['total']}",
-                ind["correction_rounds"]["value"],
+                ind["correction_rounds"][1],
             )
 
     assert len(table) == 9

@@ -35,6 +35,7 @@ Pure: the caller reads the manifest, the set configs and the stores, and passes 
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -42,7 +43,12 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from squadops.cycles.cycle_assessment import CycleAssessment, CycleEvidence, EvidenceRef
+    from squadops.cycles.cycle_assessment import (
+        AssessorIdentity,
+        CycleAssessment,
+        CycleEvidence,
+        EvidenceRef,
+    )
     from squadops.cycles.lineage import SeriesKey
     from squadops.cycles.models import Cycle
 
@@ -279,16 +285,21 @@ def _jsonable(value: Any) -> Any:
 
 
 def _assessment_record(assessment: CycleAssessment) -> dict[str, Any]:
-    indicators = {}
-    for dimension in ("outcome", "quality", "coordination", "efficiency"):
-        for ind in getattr(assessment, dimension):
-            entry: dict[str, Any] = {"dimension": dimension, "state": str(ind.state)}
-            if ind.reason is not None:
-                entry["reason"] = ind.reason
-            else:
-                entry["value"] = _jsonable(ind.value)
-            entry["refs"] = len(ind.refs)
-            indicators[ind.name] = entry
+    """Each indicator as ``[state, value]``, or ``[state, reason]`` when unaskable. The dimension
+    and the references are the projection's contract (``assessment_version``), and a re-grade
+    resolves the references again, so the capture keeps only their count."""
+    indicators: dict[str, list[Any]] = {}
+    observed_refs = 0
+    for dimension in (
+        assessment.outcome,
+        assessment.quality,
+        assessment.coordination,
+        assessment.efficiency,
+    ):
+        for ind in dimension:
+            answer = ind.reason if ind.reason is not None else _jsonable(ind.value)
+            indicators[ind.name] = [str(ind.state), answer]
+            observed_refs += len(ind.refs)
     reading = assessment.attribution
     attribution: dict[str, Any] = {"state": str(reading.state)}
     if reading.terminal_kind is not None:
@@ -296,58 +307,114 @@ def _assessment_record(assessment: CycleAssessment) -> dict[str, Any]:
     if reading.attribution is not None:
         attribution["primary"] = _jsonable(reading.attribution.primary)
         attribution["contributing"] = [
-            {"source": c.source, "value": c.value, "attribution": str(c.attribution)}
-            for c in reading.attribution.contributing
+            [c.source, c.value, str(c.attribution)] for c in reading.attribution.contributing
         ]
     if reading.reason is not None:
         attribution["reason"] = reading.reason
-    attribution["unrecorded"] = list(reading.unrecorded)
+    if reading.unrecorded:
+        attribution["unrecorded"] = list(reading.unrecorded)
     return {
-        "assessment_version": assessment.assessment_version,
-        "attribution_registry_version": assessment.attribution_registry_version,
         "evidence_identity": assessment.evidence_identity,
+        "observed_refs": observed_refs,
         "indicators": indicators,
         "attribution": attribution,
     }
 
 
 def row_record(row: BenchmarkRow) -> dict[str, Any]:
-    """One row as the committed capture stores it: every indicator's state and value, the
-    number of references it cited, and no reference ids (a re-grade resolves them again)."""
+    """One row as the capture stores it. The set's record and pins live once in the capture's
+    ``sets`` table; the row names its set and the deploy commit it ran on."""
     roll = row.roll
     record: dict[str, Any] = {
         "cycle_id": roll.cycle_id,
         "set": roll.set_name,
-        "record": roll.record,
-        "stack": roll.stack,
         "roll": roll.roll,
         "role": str(roll.role),
+        "stack": roll.stack,
     }
     if roll.void_reason is not None:
         record["void_reason"] = roll.void_reason
     record["gradeable"] = row.preflight.gradeable
-    record["refusals"] = [str(r) for r in row.preflight.refusals]
-    record["refusal_detail"] = list(row.preflight.detail)
+    if not row.preflight.gradeable:
+        record["refusals"] = [str(r) for r in row.preflight.refusals]
+        record["refusal_detail"] = list(row.preflight.detail)
     if row.series is not None:
-        record["series"] = {
-            "project_id": row.series.project_id,
-            "squad_profile_id": row.series.squad_profile_id,
-            "request_profile": row.series.request_profile,
+        record["series"] = [
+            row.series.project_id,
+            row.series.squad_profile_id,
+            row.series.request_profile,
+        ]
+    lineage = row.lineage
+    record["lineage"] = (
+        None
+        if lineage is None
+        else {
+            "source": str(lineage.source),
+            "framework_version": lineage.framework_version,
+            "framework_git_sha": lineage.framework_git_sha,
+            "deploy_commit": lineage.pins.deploy_commit if lineage.pins else None,
         }
-    if row.lineage is not None:
-        lineage: dict[str, Any] = {
-            "source": str(row.lineage.source),
-            "framework_version": row.lineage.framework_version,
-            "framework_git_sha": row.lineage.framework_git_sha,
-        }
-        if row.lineage.pins is not None:
-            lineage["deploy_commit"] = row.lineage.pins.deploy_commit
-            lineage["image_ids"] = dict(sorted(row.lineage.pins.image_ids.items()))
-            lineage["pins_source"] = row.lineage.pins.source
-        record["lineage"] = lineage
-    else:
-        record["lineage"] = None
+    )
     if row.assessment is not None:
         record["assessment"] = _assessment_record(row.assessment)
         record["unresolved_refs"] = [f"{r.kind}:{r.id}" for r in row.unresolved_refs]
     return record
+
+
+def capture_document(
+    rows: tuple[BenchmarkRow, ...],
+    *,
+    versions: Mapping[str, int],
+    assessor: AssessorIdentity,
+    store_notes: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    """The committed capture: the grading's identity, the preflight, the sets once, the rows.
+
+    ``versions`` are the contracts that graded (the assessment and attribution registry
+    versions); a row assessed under any other is refused rather than mixed in.
+    """
+    sets: dict[str, dict[str, Any]] = {}
+    refused: dict[str, int] = {}
+    for row in rows:
+        roll = row.roll
+        entry = sets.setdefault(roll.set_name, {"record": roll.record, "stack": roll.stack})
+        if roll.pins is not None:
+            entry["pins"] = {
+                "source": roll.pins.source,
+                "deploy_commit": roll.pins.deploy_commit,
+                "image_ids": dict(sorted(roll.pins.image_ids.items())),
+            }
+        for reason in row.preflight.refusals:
+            refused[str(reason)] = refused.get(str(reason), 0) + 1
+        a = row.assessment
+        if a is not None and (
+            a.assessment_version != versions["assessment_version"]
+            or a.attribution_registry_version != versions["attribution_registry_version"]
+        ):
+            raise ValueError(f"{roll.cycle_id} was assessed under other contract versions")
+    by_role: dict[str, int] = {}
+    for row in rows:
+        by_role[str(row.roll.role)] = by_role.get(str(row.roll.role), 0) + 1
+    return {
+        "benchmark_registry_version": BENCHMARK_REGISTRY_VERSION,
+        **versions,
+        "assessor": {"framework_version": assessor.framework_version, "git_sha": assessor.git_sha},
+        "store_notes": list(store_notes),
+        "preflight": {
+            "declared": len(rows),
+            "by_role": by_role,
+            "gradeable": sum(r.preflight.gradeable for r in rows),
+            "refused_by_reason": refused,
+        },
+        "sets": sets,
+        "rows": [row_record(r) for r in rows],
+    }
+
+
+def render_capture(document: Mapping[str, Any]) -> str:
+    """The capture as committed: the header indented, one compact line per row, so a re-grade's
+    diff reads row by row."""
+    header = {k: v for k, v in document.items() if k != "rows"}
+    head = json.dumps(header, indent=1)
+    rows = ",\n".join(json.dumps(r, separators=(",", ":")) for r in document["rows"])
+    return f'{head[:-2]},\n "rows": [\n{rows}\n ]\n}}\n'
