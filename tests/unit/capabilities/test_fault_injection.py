@@ -521,16 +521,39 @@ _ANALYSES = {
 }
 
 
+_REPLAYS = Path(__file__).resolve().parents[2] / "fixtures" / "roll_replays"
+
+#: The two join handlers accepted 1.7.5 rolls actually shipped, as the develop emission that
+#: carried each (a view block beside it, which the fault must leave alone). The dev-lane fault
+#: is scoped to the join route, so a suite or a builder emission is the wrong representative.
+_DEVELOP_EMISSIONS = {
+    "a FastAPI routes file (React roll 2)": (
+        "Here are the routes.\n\n```python:backend/routes.py\n"
+        + (_REPLAYS / "1-7-5-react-roll-2-backend-routes.py.txt").read_text()
+        + "\n```\n\n```jsx:frontend/src/views/RunsListView.jsx\nexport default () => null\n```\n"
+    ),
+    "a Next.js join route (Next.js roll 1)": (
+        "Here is the join route.\n\n```ts:app/api/runs/[run_id]/join/route.ts\n"
+        + (_REPLAYS / "1-7-5-nextjs-roll-1-join-route.ts.txt").read_text()
+        + "\n```\n"
+    ),
+}
+
+
 def _representative_cases():
     """Every fault against every representative emission OF ITS OWN TASK: a suite for the
-    qa and develop faults, a builder emission for the builder's (the suites carry fences
-    too), an analysis for the analyzer's — a fence-stripping transform proves nothing on
-    JSON and a JSON transform nothing on a suite."""
+    qa faults, a builder emission for the builder's (the suites carry fences too), a real
+    develop emission for the dev lane's, an analysis for the analyzer's — a fence-stripping
+    transform proves nothing on JSON and a JSON transform nothing on a suite."""
     from squadops.tasks.task_types import TaskType
 
+    shapes_for_task = {
+        TaskType.DATA_ANALYZE_FAILURE: _ANALYSES,
+        TaskType.DEVELOPMENT_DEVELOP: _DEVELOP_EMISSIONS,
+    }
     cases = []
     for name in sorted(FAULTS):
-        shapes = _ANALYSES if FAULTS[name].task == TaskType.DATA_ANALYZE_FAILURE else _EMISSIONS
+        shapes = shapes_for_task.get(FAULTS[name].task, _EMISSIONS)
         cases += [
             pytest.param(name, shape, shapes[shape], id=f"{name}-{shape}")
             for shape in sorted(shapes)
@@ -923,3 +946,77 @@ class TestTheNewSeamsReachTheHandlersTheLiveCycleCalls:
             task_id="corr-run_x-01-data.analyze_failure",
         )
         assert result.outputs["implicated_files"] == ["backend/routes.py"]
+
+
+class TestTheDevLaneFaultRewritesOnlyTheJoinResponse:
+    """1.8.0 plan §4.1: the dev-lane fault, `dev_join_response_omits_declared_fields`.
+
+    Bug caught: a transform that bites the wrong line — another handler's return, a view
+    block, the join handler's early error return — so the diagnostic forces a different
+    failure than the one it names, or none. Replayed over the join handlers two accepted
+    1.7.5 rolls shipped; the in-process React replay (join 200 clean, 500 faulted) and the
+    Next.js build (``next build`` type-checks, join answers only the id) are in the PR."""
+
+    _FAULT = FAULTS["dev_join_response_omits_declared_fields"]
+
+    @pytest.mark.parametrize("shape", sorted(_DEVELOP_EMISSIONS))
+    def test_exactly_one_line_changes_and_it_is_the_join_success_return(self, shape):
+        import difflib
+
+        before = _DEVELOP_EMISSIONS[shape]
+        after = self._FAULT.transform(before)
+        # A line diff, not set membership: `return run` ends several handlers in the same file.
+        diff = list(difflib.ndiff(before.splitlines(), after.splitlines()))
+        removed = [line[2:] for line in diff if line.startswith("- ")]
+        added = [line[2:] for line in diff if line.startswith("+ ")]
+        assert len(removed) == 1 and len(added) == 1
+        assert removed[0].strip() in ("return run", "return Response.json(result);")
+        assert "injected fault" in added[0]
+        assert (
+            '{"id": getattr(run, "id", None)}' in added[0] or "{ id: (result as unknown" in added[0]
+        )
+
+    def test_the_final_success_return_is_the_one_rewritten_not_an_early_branch(self):
+        """An idempotent join returns early for a name already on the run. The probe joins a
+        new name, so a fault on the early branch would never reach it — the diagnostic would
+        run clean and read as the dev lane holding."""
+        emission = (
+            "```python:backend/routes.py\n"
+            '@router.post("/runs/{run_id}/join", response_model=Run, status_code=200)\n'
+            "def post_runs_run_id_join(run_id: str, payload: JoinRequest):\n"
+            "    run = run_store[run_id]\n"
+            "    if payload.name in run.participants:\n"
+            "        return run\n"
+            "    run.participants.append(payload.name)\n"
+            "    return run\n"
+            "```\n"
+        )
+        lines = self._FAULT.transform(emission).splitlines()
+        assert lines[5] == "        return run"
+        assert lines[7].startswith('    return {"id": getattr(run, "id", None)}')
+
+    def test_the_faulted_python_still_parses(self):
+        after = self._FAULT.transform(_DEVELOP_EMISSIONS["a FastAPI routes file (React roll 2)"])
+        body = after.split("```python:backend/routes.py\n", 1)[1].split("\n```", 1)[0]
+        ast.parse(body)
+
+    @pytest.mark.parametrize(
+        "emission",
+        [
+            "```python:backend/routes.py\n@router.post('/runs')\ndef create():\n    return run\n```\n",
+            "```ts:app/api/runs/route.ts\nexport async function POST() {\n"
+            "  return Response.json(run);\n}\n```\n",
+            "No files this time.",
+        ],
+        ids=["python-without-a-join-route", "a-non-join-typescript-route", "no-fence"],
+    )
+    def test_an_emission_without_a_join_route_is_returned_unchanged(self, emission):
+        assert self._FAULT.transform(emission) == emission
+
+    def test_it_is_scoped_to_the_first_develop_attempt(self):
+        from squadops.tasks.task_types import TaskType
+
+        assert (self._FAULT.task, self._FAULT.scope) == (
+            TaskType.DEVELOPMENT_DEVELOP,
+            FaultScope.FIRST_ATTEMPT,
+        )

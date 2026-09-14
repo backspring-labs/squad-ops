@@ -209,6 +209,102 @@ def _qa_suite_own_frame_failure(content: str) -> str:
     return _inject_py_own_frame_call(content)
 
 
+#: One addressed fenced block of an emission: the opening line's info string and its body.
+_ADDRESSED_BLOCK = re.compile(
+    r"^(?P<open>[ \t]{0,3}```(?P<info>[^\s`]*)[^\n]*\n)(?P<body>.*?)(?P<close>^[ \t]{0,3}```[ \t]*$)",
+    re.M | re.S,
+)
+#: A Python route decorator whose path ends in ``/join`` — the frozen decorator both stacks'
+#: FastAPI skeletons pin (``@router.post("/runs/{run_id}/join", ...)``).
+_PY_JOIN_DECORATOR = re.compile(r"^@\w+\.(?:post|put|patch)\(\s*[\"'][^\"']*/join[\"']", re.M)
+_PY_TOP_LEVEL = re.compile(r"^(?:@|def |async def |class |\S)", re.M)
+_PY_RETURN = re.compile(r"^(?P<indent>[ \t]+)return (?P<expr>[\w.\[\]\"']+)[ \t]*$", re.M)
+#: The success return every stored Next.js join route ends with (3 of 3 accepted 1.7.5 rolls).
+_TS_JSON_RETURN = re.compile(
+    r"return (?P<ctor>Response|NextResponse)\.json\((?P<expr>[\w.]+)(?P<rest>\s*,[^()]*)?\)(?P<semi>;?)"
+)
+_INJECTED_JOIN_NOTE = "#1251 injected fault: the join response omits the run's declared fields"
+
+
+def _python_join_without_fields(body: str) -> str:
+    """The join handler's final ``return <value>`` answers ``{"id": <value>.id}`` instead.
+
+    Every accepted 1.7.5 React roll ends the handler with ``return run`` under the frozen
+    ``response_model=Run`` decorator, so the response fails the model and the app answers
+    500 where the contract probe expects 200 and the run's fields.
+    """
+    decorator = _PY_JOIN_DECORATOR.search(body)
+    if decorator is None:
+        return body
+    start = body.find("\n", decorator.end()) + 1
+    # The handler runs to the next top-level line after its own ``def``.
+    signature = re.compile(r"^(?:async )?def ", re.M).search(body, start)
+    if signature is None:
+        return body
+    after_def = body.find("\n", signature.end()) + 1
+    following = _PY_TOP_LEVEL.search(body, after_def)
+    end = following.start() if following else len(body)
+    returns = list(_PY_RETURN.finditer(body, after_def, end))
+    if not returns:
+        return body
+    last = returns[-1]
+    replacement = (
+        f'{last.group("indent")}return {{"id": getattr({last.group("expr")}, "id", None)}}'
+        f"  # {_INJECTED_JOIN_NOTE}"
+    )
+    return body[: last.start()] + replacement + body[last.end() :]
+
+
+def _typescript_join_without_fields(body: str) -> str:
+    """The route's final ``return Response.json(<value>)`` answers ``{ id }`` instead.
+
+    The frozen join shell's response floor (#1029) asserts the declared fields before any
+    qa fill runs, so the probe fails on the missing fields. The cast keeps ``next build``'s
+    type check clean, so the defect reaches the probe rather than stopping at the build.
+    """
+    returns = list(_TS_JSON_RETURN.finditer(body))
+    if not returns:
+        return body
+    last = returns[-1]
+    replacement = (
+        f"return {last.group('ctor')}.json({{ id: ({last.group('expr')} as unknown as "
+        f"{{ id?: unknown }}).id }}{last.group('rest') or ''}){last.group('semi')} "
+        f"// {_INJECTED_JOIN_NOTE}"
+    )
+    return body[: last.start()] + replacement + body[last.end() :]
+
+
+def _join_response_omits_declared_fields(content: str) -> str:
+    """Make the join endpoint's success response carry only the run's id.
+
+    **The class, not the literal 1.6.3 field.** 1.6.3's Next.js rolls 1, 4 and 5 were
+    rejected, correctly, because the join response failed the frozen response floor every
+    round: bare-string ``participants`` where the manifest declared objects, and a missing
+    ``normalized`` field (record §6). Today's rolls author their own manifests, and in all
+    seven accepted 1.7.5 join handlers the collection's element kind is whatever that
+    manifest declares, so rewriting the element would inject a correct app on some rolls.
+    Omitting the declared fields is the same defect class — the response against the
+    declared shape — and fails on every manifest.
+
+    Scoped by language to the join handler: a Python block's function under a ``/join``
+    decorator, and a TypeScript block addressed at a ``join/route.ts`` path. Every other
+    block, and every other handler in the same file, is returned unchanged.
+    """
+
+    def rewrite(match: re.Match[str]) -> str:
+        info, body = match.group("info"), match.group("body")
+        path = info.partition(":")[2]
+        if path.endswith(".py"):
+            new_body = _python_join_without_fields(body)
+        elif path.endswith("join/route.ts"):
+            new_body = _typescript_join_without_fields(body)
+        else:
+            return match.group(0)
+        return match.group("open") + new_body + match.group("close")
+
+    return _ADDRESSED_BLOCK.sub(rewrite, content)
+
+
 class FaultScope(Enum):
     """Which attempts of the target task take the fault — the scope of "once" (#1310).
 
@@ -306,6 +402,18 @@ FAULTS: dict[str, Fault] = {
         "into correction, and the accepted patch's framework rows are re-derived from the "
         "patched set, never composed from the contentless attempt",
         scope=FaultScope.ALL_EMISSION_ATTEMPTS,
+    ),
+    # 1.8.0 plan §4.1: the dev lane had no fault, so no diagnostic could force a development
+    # repair and Scoped Code Revision's dev grant (SIP-0107 §38 step 3) had nothing to prove
+    # itself on. First attempt only: the develop task's emission takes it, the qa task's
+    # probes reject the app, and the development repair that follows runs clean.
+    "dev_join_response_omits_declared_fields": Fault(
+        task=TaskType.DEVELOPMENT_DEVELOP,
+        transform=_join_response_omits_declared_fields,
+        found_in="#1029's response floor — 1.6.3 Next.js set record §6: rolls 1, 4 and 5 rejected, "
+        "correctly, on a join response that failed the frozen floor every round",
+        exercises="the dev lane: a probe failure on a developer-owned route is repaired by a "
+        "development repair aimed at the probe-owned slot, verified and applied",
     ),
     # 1.7.4 plan §3.1: A1's exercise. The correction task id carries the round as its
     # attempt index (``corr-<run>-00-data.analyze_failure``), so FIRST_ATTEMPT is round 0's

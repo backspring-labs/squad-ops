@@ -1957,6 +1957,24 @@ SEAM_READOUTS: dict[str, tuple[str, tuple[str, ...], Callable[[dict], tuple[bool
             },
         ),
     ),
+    # 1.8.0 plan §4.1: the dev lane. YES = correction was entered, the development repair's
+    # target was narrowed to the probe-owned slot that serves the join route (the line
+    # `correction_repair_target` logs, #1015), and a patch was applied on the patch path. The
+    # patch lines do not name the repairing role, so the narrowed target is what ties the
+    # applied patch to the dev lane; a refused patch, or a repair aimed anywhere else, is the
+    # seam not reached and the evidence says which.
+    "dev_join_response_omits_declared_fields": (
+        "the dev lane: the join probe failure was repaired by a development repair narrowed to "
+        "the probe-owned join slot, and the patch was applied",
+        (
+            "correction_rounds",
+            "loop_texture.narrowed_targets",
+            "loop_texture.patch_verifications",
+            "loop_texture.applied_patches",
+            "loop_texture.refused_patches",
+        ),
+        lambda rec: _dev_join_repair_reading(rec),
+    ),
     # 1.7.4 plan §3.1: A1. YES = a decision was stored for the faulted round and none
     # carries the refuted claim; a decision that inherited it is the seam reached and the
     # invariant false, which the evidence names by artifact (pre-#968 that is the expected
@@ -2025,6 +2043,28 @@ _RETRY_ATTEMPT = re.compile(r"\(attempt (\d+)\)")
 def _builder_lines(lines: Any) -> list[str]:
     """The lines about the builder's task, by its task id suffix."""
     return [line for line in (lines or []) if _BUILDER_TASK in line]
+
+
+#: The slots that serve the join route on each stack: stack #1's single routes file, stack #2's
+#: per-path route file.
+_JOIN_SLOTS = ("backend/routes.py", "/join/route.ts")
+
+
+def _dev_join_repair_reading(rec: Mapping[str, Any]) -> tuple[bool, dict[str, Any]]:
+    """The dev lane (1.8.0 plan §4.1): a repair narrowed to the join slot, and a patch applied."""
+    narrowed = [
+        line
+        for line in value_at(rec, "loop_texture.narrowed_targets", []) or []
+        if any(slot in line for slot in _JOIN_SLOTS)
+    ]
+    applied = value_at(rec, "loop_texture.applied_patches", 0) or 0
+    rounds = value_at(rec, "correction_rounds", 0) or 0
+    return rounds >= 1 and bool(narrowed) and applied >= 1, {
+        "correction_rounds": rounds,
+        "narrowed_to_join_slot": narrowed,
+        "applied_patches": applied,
+        "refused_patches": value_at(rec, "loop_texture.refused_patches", []),
+    }
 
 
 def _builder_retry_reading(rec: Mapping[str, Any]) -> tuple[bool, dict[str, Any]]:

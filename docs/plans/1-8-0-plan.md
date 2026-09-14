@@ -488,12 +488,17 @@ cell — qa and dev on React and on Next.js — the fault that forces a repair a
 transactions it is expected to produce; each builder cell with its forcing fault or as
 unaskable with its reason (the builder's grant is the fill slots it repackages, and #598
 changes what it authors); and the sum against N. Only successful scoped transactions count: a
-diagnostic that forces a refusal proves fail-closed behaviour and adds nothing to N. **A dev-lane fault does not exist today** — the registry
-(`fault_injection.py:252–:299`) carries three `qa.test` faults, one `qa.test_repair`, one
-`builder.assemble` and one `data.analyze_failure` — so one is registered in the prelude from a
-shape a real roll produced (1.6.3's join-probe response floor failure, `participants` as bare
-strings where the manifest declares a list, is the recorded candidate), and step 3 of §3.3 is
-not proven live without it.
+diagnostic that forces a refusal proves fail-closed behaviour and adds nothing to N. **The dev-lane fault is registered** (prelude): `dev_join_response_omits_declared_fields`, on the
+develop task's first attempt. The join handler's final success return answers only the run's id,
+so the qa task's join probe rejects the app and a development repair aimed at the probe-owned
+slot follows. It reproduces 1.6.3's defect *class* — the join response against the declared shape,
+which rejected rolls 1, 4 and 5 — rather than its literal bare-string `participants`: in today's
+authored manifests the element kind varies by roll, and all four accepted 1.7.5 React join
+handlers append plain names to `participants`, so that rewrite would reproduce what those rolls
+shipped as correct. It bites on the
+join handlers every accepted 1.7.5 roll shipped (seven of seven). Replayed, React's join answers
+500 faulted and 200 clean; the Next.js build type-checks and its join answers only the id. It is
+the fault step 3 of §3.3 is proven live on.
 
 **Seam invariants — proven on the pinned deploy, no amendment.** The five 1.7.5 diagnostics
 re-registered under a `1.8/` prefix, with `contentless-builder` now **two** (#1506: R1 at
@@ -764,8 +769,8 @@ Named here so they are not the next line's §6a. Each has a home above or a fix 
 - **`plan_rejection_context` is declared on six task types on main**, not the three the
   reconciliation counted in August — the recall call site, when it ships in 2.1, has twice
   the reach the design assumed, and its wiring test must enumerate all six.
-- **No dev-lane fault exists**, so Scoped Code Revision's largest exposure (the unused
-  `WriteGrant.for_dev_fill`) has no diagnostic today. Registered in the prelude (§4.1).
+- **No dev-lane fault existed**, so Scoped Code Revision's largest exposure (the unused
+  `WriteGrant.for_dev_fill`) had no diagnostic. Registered in the prelude (§4.1).
 - **The scorecard SIP describes a console feature, not the slice** — rev 2 before review (§2.2);
   done, and accepted as SIP-0108 at rev 3.
 - **The god-file measurement, 2026-09-12, main `3d18130b`:** the executor 4,741 lines with its
