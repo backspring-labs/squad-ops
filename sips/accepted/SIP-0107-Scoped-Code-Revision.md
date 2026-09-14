@@ -1988,3 +1988,59 @@ into the repair path, on the seam step 4 built (§46f).
 
 **Ruled by.** The implementer, in the PR that completes §38 step 5's contract for the React stack,
 for the owner's review with it.
+
+## 46j. 2026-09-14 — the structural path on Next.js (§38 step 6)
+
+**What changed.**
+
+1. **TypeScript and TSX read through the same resolver, on the same library.** `structural_jsx`
+   now picks a grammar by suffix:
+   - `.js`, `.jsx`, `.mjs` and `.cjs` through the JavaScript grammar;
+   - `.ts` through `tree-sitter-typescript`'s TypeScript grammar;
+   - `.tsx` through its TSX grammar.
+
+   The grammars share node shapes, so one reading serves all three; the dispatcher routes every
+   ECMAScript suffix there. The owner approved the dependency on 2026-09-14 ("merge and keep
+   going", after the question was put). `tree-sitter-typescript==0.23.2` has aarch64 and x86_64
+   wheels and is declared as tree-sitter's other packages are; `agent.lock` gains exactly that
+   package.
+2. **TypeScript names its own declarations:** `interface:NAME`, `type:NAME` and `enum:NAME`. A
+   directive prologue (`'use client'`, `'use strict'`) precedes the import section, the way a
+   Python module docstring does, so a Next.js page still has an `imports` entity.
+3. **`#try`: the second slot granularity (§39.7).** A Next.js route slot is narrower than its
+   function: the scaffold owns each handler's signature and its `catch (err) { return
+   errorResponse(err) }` envelope, and the fill is the `try` block.
+   - **What it names:** `function:NAME#try` and `const:NAME#try` are the lines inside the `try`
+     block when the body is exactly one `try` statement.
+   - **Why:** a fill revised through it leaves the signature, the envelope and every sibling
+     handler byte-identical by construction. A `#body` revision would have to reproduce the
+     envelope.
+   - **Stack-neutral:** the entity applies to any such function on either stack.
+4. **The second stack meets the same criteria as the first:**
+   - preservation by reconstruction (§39.2);
+   - a candidate that parses under its own grammar (§18);
+   - nothing to restore, because the scaffold-owned bytes are outside the revised range.
+
+   No Next.js integrity instrument restores or observes TypeScript signature drift, so the
+   observed-set criterion (§39.3) is met by construction rather than read off an instrument.
+
+**Evidence.**
+- **On the real Next.js scaffold:**
+  - a `REPLACE function:POST#try` on `app/api/runs/route.ts` leaves `export async function
+    POST(request: Request) {`, the `try {` and `} catch (err) { return errorResponse(err) }`
+    lines, and the whole sibling `GET` handler intact; the proof holds and the candidate parses
+    as TypeScript;
+  - a `REPLACE function:RunsListView#body` on `app/page.tsx` parses as TSX, and the proof holds;
+  - a fill with an unclosed bracket is refused as `invalid_syntax`.
+- **The resolver:**
+  - interface, type, enum, the import section after `'use strict'`, and a handler's `try` block,
+    each by exact text;
+  - `#try` is not offered when the body holds more than the `try` statement;
+  - broken TSX and broken TS are refused by the syntax check;
+  - the dispatcher now routes `.tsx`.
+- **Mutations: six, each caught.** TSX read with the TypeScript grammar; `#try` offered for a
+  multi-statement body; the `try` block not required on its own lines; TypeScript declarations
+  unaddressable; the prologue not skipped; the dispatcher ignoring TypeScript.
+
+**Ruled by.** The owner, on the dependency (2026-09-14). The implementer, on `#try` and the reading
+of §39.3 for a stack without a drift instrument, for the owner's review with them.

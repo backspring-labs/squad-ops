@@ -51,6 +51,7 @@ MODULE_TO_DISTRIBUTION: dict[str, str | tuple[str, ...]] = {
     "opentelemetry": ("opentelemetry-api", "opentelemetry-sdk"),
     "tree_sitter": "tree-sitter",
     "tree_sitter_javascript": "tree-sitter-javascript",
+    "tree_sitter_typescript": "tree-sitter-typescript",
 }
 
 #: Imported directly, declared only through the named provider — with the reason that

@@ -427,15 +427,15 @@ class TestStructuralBlocks:
             "export const A = () => {\n  return 1\n}\n",
             ("const:A", "const:A#body"),
         ),
-        ("app/page.tsx", "export default function P() {}\n", None),
+        ("app/page.tsx", "export default function P() {}\n", ("function:P",)),
         ("README.md", "# hi\n", None),
         ("backend/b.py", "def f(:\n", None),
     ],
-    ids=["python", "jsx", "typescript not read", "no grammar", "unparseable"],
+    ids=["python", "jsx", "tsx", "no grammar", "unparseable"],
 )
 def test_the_dispatcher_routes_each_file_to_its_resolver(path, content, selectors):
-    """Bug caught: a file routed to the wrong grammar (a ``.tsx`` read as JSX), or the prompt
-    listing entities the transaction's resolver would not find."""
+    """Bug caught: a file routed to no grammar or the wrong one, or the prompt listing entities the
+    transaction's resolver would not find."""
     from squadops.cycles.structural_resolution import entity_selectors, resolve_entity
 
     assert entity_selectors(path, content) == selectors

@@ -28,3 +28,5 @@ langfuse>=2.0,<3.0
 # `?.`/`??`). Agent-only: repairs apply structural edits in the agent container.
 tree-sitter>=0.25
 tree-sitter-javascript>=0.25
+# TypeScript and TSX (SIP-0107 §38 step 6): the Next.js stack, on the same library.
+tree-sitter-typescript>=0.23
