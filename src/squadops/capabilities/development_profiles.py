@@ -13,6 +13,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from squadops.capabilities.stack_nextjs_ts import VITEST_SUITE_GLOB
+
 # ---------------------------------------------------------------------------
 # Test framework constants (D5)
 # ---------------------------------------------------------------------------
@@ -20,6 +22,30 @@ from typing import Any
 TEST_FRAMEWORK_PYTEST = "pytest"
 TEST_FRAMEWORK_VITEST = "vitest"
 TEST_FRAMEWORK_BOTH = "both"
+
+
+#: vitest's default ``include`` — what a vitest harness collects when its config names no
+#: ``include`` of its own (vitest 1.x: ``**/*.{test,spec}.?(c|m)[jt]s?(x)``), in the basename
+#: form ``matches_test_file_patterns`` reads. The React scaffold's config names none (#1534).
+VITEST_DEFAULT_TEST_FILE_PATTERNS: tuple[str, ...] = tuple(
+    f"*.{kind}.{ext}" for kind in ("test", "spec") for ext in ("js", "jsx", "ts", "tsx")
+)
+
+
+def test_file_patterns_from_glob(glob: str) -> tuple[str, ...]:
+    """A runner's ``**`` include glob, in the path form ``matches_test_file_patterns`` reads.
+
+    ``fnmatch``'s ``*`` already crosses directories, so an interior ``/**/`` is one ``/`` and a
+    leading ``**/`` is either nothing (a top-level directory) or ``*/`` (a nested one):
+    ``**/__tests__/**/*.test.ts`` → ``__tests__/*.test.ts`` and ``*/__tests__/*.test.ts``.
+    Derived rather than restated beside the glob, because a restated collection rule is how
+    #1534 happened.
+    """
+    body = glob.replace("/**/", "/")
+    if body.startswith("**/"):
+        body = body[len("**/") :]
+        return (body, f"*/{body}")
+    return (body,)
 
 
 # ---------------------------------------------------------------------------
@@ -43,7 +69,16 @@ class DevelopmentProfile:
     test_framework: str
     test_prompt_supplement: str
     source_filter: tuple[str, ...]
+    #: What LOOKS like a test file on this stack — the vocabulary the exclusions read: the qa
+    #: source set leaves these out, and a foreign-role repair may not land one (#1014), where
+    #: over-matching is the safe direction.
     test_file_patterns: tuple[str, ...]
+    #: What this stack's test runner COLLECTS — what plan validation and patch acceptance read
+    #: (#1534). Distinct from ``test_file_patterns`` because the two answers differ where a
+    #: scaffold narrows the runner: Next.js's vitest config collects ``.test.ts`` only under
+    #: ``__tests__/``, while a dev repair's ``extra.test.ts`` or a ``.tsx`` suite still looks
+    #: like a test file. Required on every profile, so no stack inherits another's answer.
+    collected_test_patterns: tuple[str, ...]
     max_completion_tokens: int = 4000
     test_timeout_seconds: int = 60
     # Config/entry files (by basename) needed to *build/test* the deliverable but
@@ -127,6 +162,7 @@ DEVELOPMENT_PROFILES: dict[str, DevelopmentProfile] = {
         ),
         source_filter=(".py",),
         test_file_patterns=("test_*.py", "*_test.py"),
+        collected_test_patterns=("test_*.py", "*_test.py"),
         # max_completion_tokens=4000 (default)
         # test_timeout_seconds=60 (default)
     ),
@@ -173,6 +209,7 @@ DEVELOPMENT_PROFILES: dict[str, DevelopmentProfile] = {
         ),
         source_filter=(".py",),
         test_file_patterns=("test_*.py", "*_test.py"),
+        collected_test_patterns=("test_*.py", "*_test.py"),
         max_completion_tokens=6000,
     ),
     # ── react_app ─────────────────────────────────────────────────────────
@@ -214,6 +251,14 @@ DEVELOPMENT_PROFILES: dict[str, DevelopmentProfile] = {
         ),
         source_filter=(".js", ".jsx"),
         test_file_patterns=(
+            "*.test.js",
+            "*.test.jsx",
+            "*.spec.js",
+            "*.spec.jsx",
+        ),
+        # Not a scaffolded stack: no rendered runner config to read, so collection is stated
+        # as the conventions it has always used rather than claimed from a config (#1534).
+        collected_test_patterns=(
             "*.test.js",
             "*.test.jsx",
             "*.spec.js",
@@ -336,6 +381,9 @@ DEVELOPMENT_PROFILES: dict[str, DevelopmentProfile] = {
             "*.spec.js",
             "*.spec.jsx",
         ),
+        # #1534: pytest's conventions plus what the frontend's vitest collects — its config
+        # names no ``include``, so vitest's default, ``.ts``/``.tsx`` included.
+        collected_test_patterns=("test_*.py", "*_test.py", *VITEST_DEFAULT_TEST_FILE_PATTERNS),
         build_support_files=(
             "package.json",
             "vite.config.js",
@@ -444,6 +492,9 @@ DEVELOPMENT_PROFILES: dict[str, DevelopmentProfile] = {
         ),
         source_filter=(".ts", ".tsx"),
         test_file_patterns=("*.test.ts", "*.test.tsx", "*.spec.ts", "*.spec.tsx"),
+        # #1534: exactly what the scaffold's vitest config collects — not .tsx, not .spec, and
+        # only under __tests__/. One glob, rendered into the config and derived here.
+        collected_test_patterns=test_file_patterns_from_glob(VITEST_SUITE_GLOB),
         build_support_files=(
             "package.json",
             "tsconfig.json",
@@ -505,9 +556,14 @@ def effective_development_profile(resolved_config: Mapping[str, Any] | None) -> 
 
 
 def matches_test_file_patterns(path: str, patterns: tuple[str, ...]) -> bool:
-    """True when ``path``'s basename matches any of the stack's test-file conventions.
+    """True when ``path`` matches any of the stack's test-file conventions.
 
-    Basename globbing only — deliberately narrower than
+    A pattern without a ``/`` is matched against the basename; one with a ``/`` against the
+    whole relative path, because a runner's collection can be a directory rule too (#1534:
+    the Next.js scaffold collects ``.test.ts`` only under ``__tests__/``, and three stored
+    plans named ``tests/*.test.ts`` suites it never ran).
+
+    Basename globbing for the conventions — deliberately narrower than
     ``handlers.cycle.validation._is_test_file``, which additionally treats anything under
     ``__tests__/`` as a test file. That generosity is right for *excluding* files from a
     source set, and wrong for asking "will the runner discover this?": ``__tests__/
@@ -517,8 +573,9 @@ def matches_test_file_patterns(path: str, patterns: tuple[str, ...]) -> bool:
     from fnmatch import fnmatch
     from pathlib import PurePosixPath
 
-    name = PurePosixPath(path).name
-    return any(fnmatch(name, pat) for pat in patterns)
+    normalized = path.replace("\\", "/").removeprefix("./")
+    name = PurePosixPath(normalized).name
+    return any(fnmatch(normalized if "/" in pat else name, pat) for pat in patterns)
 
 
 def test_file_patterns_for(resolved_config: Mapping[str, Any] | None) -> tuple[str, ...]:
@@ -532,3 +589,11 @@ def test_file_patterns_for(resolved_config: Mapping[str, Any] | None) -> tuple[s
     return get_development_profile(
         effective_development_profile(resolved_config)
     ).test_file_patterns
+
+
+def collected_test_patterns_for(resolved_config: Mapping[str, Any] | None) -> tuple[str, ...]:
+    """What a cycle's stack's test runner collects (#1534) — the question plan validation and
+    patch acceptance ask. ``test_file_patterns_for`` answers "what looks like a test file"."""
+    return get_development_profile(
+        effective_development_profile(resolved_config)
+    ).collected_test_patterns

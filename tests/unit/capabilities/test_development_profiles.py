@@ -233,6 +233,8 @@ class TestRegistryCompleteness:
     def test_all_have_non_empty_test_file_patterns(self):
         for name, cap in DEVELOPMENT_PROFILES.items():
             assert len(cap.test_file_patterns) > 0, f"{name} has empty test_file_patterns"
+            # #1534: plan validation reads collection; an empty answer accepts no qa suite.
+            assert len(cap.collected_test_patterns) > 0, f"{name} collects nothing"
 
 
 class TestFullstackPortableIntegration:
@@ -261,3 +263,67 @@ class TestFullstackPortableIntegration:
     def test_drops_the_hardcoded_cors_only_instruction(self, guidance):
         # The old anti-pattern (single hardcoded allowed origin) must not return.
         assert "Configure CORS to allow requests from http://localhost:5173" not in guidance
+
+
+class TestTestFilesAreWhatTheRunnerCollects:
+    """#1534: plan validation and patch acceptance ask what a stack's runner COLLECTS. They
+    read ``test_file_patterns``, the "looks like a test file" vocabulary the exclusions need,
+    and on Next.js that vocabulary names ``.tsx`` and ``.spec`` forms the scaffold's vitest
+    config never collects — so plans named suites that ran nothing."""
+
+    def test_the_nextjs_collection_is_the_scaffolds_rendered_include(self):
+        """Wiring: read the include glob out of the vitest config the scaffold actually
+        emits, not out of the constant, so a config edit that drifts from the profile
+        fails here."""
+        import re
+
+        from squadops.capabilities.development_profiles import (
+            matches_test_file_patterns,
+            test_file_patterns_from_glob,
+        )
+        from squadops.capabilities.scaffold import expand
+        from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+        emitted = {f["name"]: f["content"] for f in expand(manifest_for_stack("nextjs_ts"))}
+        (glob,) = re.findall(r"include: \['([^']+)'\]", emitted["vitest.config.ts"])
+        collected = get_development_profile("nextjs_ts").collected_test_patterns
+        assert collected == test_file_patterns_from_glob(glob)
+        suites = [n for n in emitted if n.startswith("__tests__/") and ".test." in n]
+        assert suites and all(matches_test_file_patterns(n, collected) for n in suites)
+
+    @pytest.mark.parametrize(
+        ("path", "collected"),
+        [
+            ("__tests__/runs.test.ts", True),
+            ("__tests__/scaffold/vs-get-api-runs.scaffold.test.ts", True),
+            ("./__tests__/runs.test.ts", True),
+            ("__tests__/runs-ui.test.tsx", False),
+            ("__tests__/runs.spec.ts", False),
+            ("tests/api.test.ts", False),
+            ("lib/store.test.ts", False),
+        ],
+    )
+    def test_nextjs_collection_is_a_directory_rule_too(self, path, collected):
+        from squadops.capabilities.development_profiles import matches_test_file_patterns
+
+        patterns = get_development_profile("nextjs_ts").collected_test_patterns
+        assert matches_test_file_patterns(path, patterns) is collected
+
+    def test_the_test_file_vocabulary_still_covers_what_collection_leaves_out(self):
+        """The exclusions keep the broad answer: a dev repair's ``extra.test.ts`` or a
+        ``.tsx`` suite is not collected, and must still count as a test file (#1014)."""
+        from squadops.capabilities.development_profiles import matches_test_file_patterns
+
+        vocabulary = get_development_profile("nextjs_ts").test_file_patterns
+        for path in ("extra.test.ts", "__tests__/runs-ui.test.tsx", "__tests__/runs.spec.ts"):
+            assert matches_test_file_patterns(path, vocabulary)
+
+    @pytest.mark.parametrize(
+        "path", ["frontend/tests/runs.test.ts", "frontend/src/__tests__/App.test.tsx"]
+    )
+    def test_react_collection_includes_what_vitest_collects_by_default(self, path):
+        from squadops.capabilities.development_profiles import matches_test_file_patterns
+
+        patterns = get_development_profile("fullstack_fastapi_react").collected_test_patterns
+        assert matches_test_file_patterns(path, patterns)
+        assert not matches_test_file_patterns("frontend/src/api.ts", patterns)

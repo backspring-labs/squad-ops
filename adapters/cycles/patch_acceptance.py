@@ -110,18 +110,18 @@ def _repaired_suite_files(
 ) -> list[str]:
     """The patched files this stack's runner would collect as a suite (#1269).
 
-    Read through the stack's declared test-file conventions
-    (``test_file_patterns_for``/``matches_test_file_patterns``, #846) rather than through
+    Read through what the stack's runner collects
+    (``collected_test_patterns_for``/``matches_test_file_patterns``, #846, #1534) rather than through
     the artifact's ``type``: a repair's files are typed by extension, so a repaired
     ``backend/tests/test_runs.py`` arrives as ``code`` and a ``type``-keyed rule would
     miss exactly the case this exists for.
     """
     from squadops.capabilities.development_profiles import (
+        collected_test_patterns_for,
         matches_test_file_patterns,
-        test_file_patterns_for,
     )
 
-    patterns = test_file_patterns_for(resolved_config)
+    patterns = collected_test_patterns_for(resolved_config)
     if not patterns:
         return []
     return [

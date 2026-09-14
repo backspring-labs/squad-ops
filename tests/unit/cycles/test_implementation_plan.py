@@ -1561,7 +1561,46 @@ class TestValidateCheckApplicability:
         plan = self._plan_with_qa_artifacts('\n      - "__tests__/helpers.ts"')
         (error,) = plan.validate_check_applicability(self._NEXTJS_CONFIG)
         assert "test_*.py" not in error
-        assert "*.test.ts" in error and "*.spec.tsx" in error
+        # #1534: the conventions are what the scaffold's runner COLLECTS. This asserted
+        # `*.spec.tsx` until the profile stopped declaring forms the config never collects.
+        assert "__tests__/*.test.ts" in error and ".tsx" not in error
+
+    @pytest.mark.parametrize(
+        "uncollected",
+        [
+            "__tests__/runs-ui.test.tsx",  # cyc_79f70a0bbac1, cyc_d988c11c71f5
+            "__tests__/runs.spec.ts",
+            "tests/api.test.ts",  # cyc_d6c48bab51e9: .test.ts, but outside __tests__/
+        ],
+    )
+    def test_a_suite_the_runner_never_collects_is_rejected_beside_one_it_does(self, uncollected):
+        """#1534: "at least one discoverable file" let a task declare a collected suite
+        beside an uncollected one. 1.8.0 deploy A's Next.js checkpoint declared
+        `__tests__/runs-api.test.ts` and `__tests__/runs-ui.test.tsx`; the qa author was
+        held to the second, spent a self-eval pass writing it, and vitest ran nothing of it."""
+        plan = self._plan_with_qa_artifacts(
+            f'\n      - "__tests__/runs-api.test.ts"\n      - "{uncollected}"'
+        )
+        (error,) = plan.validate_check_applicability(self._NEXTJS_CONFIG)
+        assert f"['{uncollected}']" in error
+        assert "never collects" in error
+
+    def test_a_helper_beside_a_collected_suite_is_not_a_suite(self):
+        """The over-rejection guard: the stack's own suite vocabulary decides what is a
+        suite, so a helper module next to the suites is not held to collection."""
+        plan = self._plan_with_qa_artifacts(
+            '\n      - "__tests__/runs-api.test.ts"\n      - "__tests__/fixtures.ts"'
+        )
+        assert plan.validate_check_applicability(self._NEXTJS_CONFIG) == []
+
+    def test_a_react_suite_vitest_collects_by_default_is_accepted(self):
+        """#1534, the other direction: the React scaffold's vitest names no `include`, so it
+        collects `.ts` suites by default, but the profile declared `.js`/`.jsx` only — and
+        `cyc_ee7a5dfcdb16`'s `frontend/tests/runs.test.ts` was rejected for a file the
+        runner would have run."""
+        plan = self._plan_with_qa_artifacts('\n      - "frontend/tests/runs.test.ts"')
+        config = {"required_checks": ["tests_pass"], "build_profile": "fullstack_fastapi_react"}
+        assert plan.validate_check_applicability(config) == []
 
     def test_tests_dir_membership_alone_does_not_satisfy(self):
         """`__tests__/` is not a free pass, even though the sibling matcher in

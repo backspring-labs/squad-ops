@@ -269,7 +269,17 @@ const nextConfig = { typescript: { ignoreBuildErrors: false } }
 export default nextConfig
 """
 
-_VITEST_CONFIG = """// The `@` alias is declared twice by necessity: tsconfig.json `paths` covers `tsc` and
+#: The files this stack's test runner collects — rendered into the scaffold's vitest config
+#: below and read by plan validation and patch acceptance through the development profile's
+#: ``test_file_patterns`` (#1534). Stated once because it was stated three times and they
+#: disagreed: the config collected ``__tests__/**/*.test.ts`` while the profile declared
+#: ``.tsx`` and ``.spec`` forms and the plan-authoring rules said vitest discovers ``.tsx``.
+#: Six stored plans named a qa suite the runner never collects; on 1.8.0 deploy A's Next.js
+#: checkpoint (``cyc_79f70a0bbac1``) the qa author spent a self-eval pass writing one.
+VITEST_SUITE_GLOB = "**/__tests__/**/*.test.ts"
+
+_VITEST_CONFIG = (
+    """// The `@` alias is declared twice by necessity: tsconfig.json `paths` covers `tsc` and
 // `next build`, but vitest resolves through vite, which does not read tsconfig paths —
 // without this block every suite importing app code the way this stack teaches it
 // (`@/lib/store`) fails collection with "Failed to load url", including the scaffold's
@@ -282,9 +292,12 @@ const root = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
   resolve: { alias: { '@': root } },
-  test: { environment: 'node', include: ['**/__tests__/**/*.test.ts'] },
+  test: { environment: 'node', include: ['"""
+    + VITEST_SUITE_GLOB
+    + """'] },
 })
 """
+)
 
 _HARNESS_TEST_HEAD = """// Scaffold-owned harness (SIP-0100). QA suites consume the seams this proves, and must
 // not reach past them into the app entry — the boundary that killed pf-25/26 on stack #1.

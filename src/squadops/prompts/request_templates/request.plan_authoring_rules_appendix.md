@@ -1,6 +1,6 @@
 ---
 template_id: request.plan_authoring_rules_appendix
-version: "5"
+version: "6"
 required_variables: []
 ---
 ## PLAN SHAPE RULES (authoritative — a plan that breaks one is rejected)
@@ -62,13 +62,15 @@ task assigned to an absent role can never be dispatched.
 
 **qa-tests-must-be-discoverable** — When the `tests_pass` check is required, every
 `qa.test` task that declares expected artifacts includes at least one file **this stack's
-test runner discovers**. The suite check judges a qa task's emission by that runner's
-conventions, so a task declaring only files it cannot collect fails on any possible
-content — the declared shape, not the work, is the failure. Follow the file-naming
-conventions your stack's guidance states (`test_*.py` / `*_test.py` under pytest,
-`*.test.ts` / `*.spec.ts` and their `.tsx` forms under vitest); a directory named
-`__tests__/` is not itself enough. Express verification that produces no such file
-through the acceptance criteria of a verification-only task instead.
+test runner discovers**, and **every test suite it declares is one that runner collects**.
+The suite check judges a qa task's emission by that runner's conventions, so a task
+declaring only files it cannot collect fails on any possible content — the declared shape,
+not the work, is the failure — and a declared suite the runner never collects runs nothing
+while the collected suites read green. Follow the file-naming and directory conventions
+your stack's guidance states, not a test tool's defaults: a scaffold's runner config can
+collect less than the tool would, and the rejection names this stack's exact patterns. A
+directory named `__tests__/` is not itself enough. Express verification that produces no
+such file through the acceptance criteria of a verification-only task instead.
 
 **builder-floor-coverage** — When the plan carries a builder task, every file the build
 profile's `required_files` lists appears in SOME task's `expected_artifacts` (usually the

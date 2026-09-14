@@ -386,32 +386,59 @@ class ImplementationPlan:
         nothing for the runner to judge. Only applies when ``tests_pass`` is actually
         required by the resolved config.
 
+        **Every declared suite must be one the runner collects (#1534), not just one of
+        them.** A task declaring a collected suite beside an uncollected one passed, and the
+        uncollected file then cost what it always costs: the qa author is held to it, writes
+        it, and it runs nothing while the collected suites read green. Six stored plans did
+        this on Next.js (``__tests__/*.test.tsx``, ``tests/*.test.ts``); on 1.8.0 deploy A's
+        checkpoint (``cyc_79f70a0bbac1``) a self-eval pass wrote one. "Is a suite" is the
+        stack's own vocabulary (``AppInvocation.is_suite``) — a helper module beside the
+        suites is not one — and "collected" is the profile's patterns; a stack with no
+        declared invocation keeps only the rule above.
+
         Returns:
             List of validation error strings (empty = valid).
         """
         if "tests_pass" not in (resolved_config.get("required_checks") or ()):
             return []
         from squadops.capabilities.development_profiles import (
+            collected_test_patterns_for,
             matches_test_file_patterns,
-            test_file_patterns_for,
         )
+        from squadops.capabilities.scaffold import app_invocation_for, scaffold_stack_for
 
-        patterns = test_file_patterns_for(resolved_config)
+        patterns = collected_test_patterns_for(resolved_config)
+        stack = scaffold_stack_for(resolved_config)
+        invocation = app_invocation_for(stack) if stack else None
+        shown = " / ".join(patterns)
         errors: list[str] = []
         for task in self.tasks:
             if not authors_qa_suite(task.task_type) or not task.expected_artifacts:
                 continue
-            if any(matches_test_file_patterns(p, patterns) for p in task.expected_artifacts):
+            if not any(matches_test_file_patterns(p, patterns) for p in task.expected_artifacts):
+                errors.append(
+                    f"Task {task.task_index} ({task.focus}): qa.test declares "
+                    f"{task.expected_artifacts} but no file this stack's test runner "
+                    f"discovers ({shown}) — the required tests_pass check judges this task's "
+                    f"emission by those conventions, so it fails for any possible content. "
+                    f"Name at least one expected artifact matching {shown}, or make this a "
+                    f"verification-only task (expected_artifacts: [])"
+                )
                 continue
-            shown = " / ".join(patterns)
-            errors.append(
-                f"Task {task.task_index} ({task.focus}): qa.test declares "
-                f"{task.expected_artifacts} but no file this stack's test runner "
-                f"discovers ({shown}) — the required tests_pass check judges this task's "
-                f"emission by those conventions, so it fails for any possible content. "
-                f"Name at least one expected artifact matching {shown}, or make this a "
-                f"verification-only task (expected_artifacts: [])"
-            )
+            uncollected = [
+                p
+                for p in task.expected_artifacts
+                if invocation is not None
+                and invocation.is_suite(p)
+                and not matches_test_file_patterns(p, patterns)
+            ]
+            if uncollected:
+                errors.append(
+                    f"Task {task.task_index} ({task.focus}): qa.test declares {uncollected}, "
+                    f"a test suite this stack's runner never collects ({shown}) — it would "
+                    f"run nothing while the collected suites read green. Rename it to match "
+                    f"{shown}, or drop it from expected_artifacts"
+                )
         return errors
 
     def validate_build_config(self, resolved_config: dict) -> list[str]:
