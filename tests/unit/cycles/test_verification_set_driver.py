@@ -38,6 +38,8 @@ _COUNTING_SETS: dict[str, dict[str, int]] = {
     "1-7-3": {"nextjs": 3, "fastapi-react": 6},
     "1-7-4": {"nextjs": 3, "fastapi-react": 6},
     "1-7-5": {"nextjs": 3, "fastapi-react": 6},
+    # 1.8.0 plan §4.1: the loop's set is 6 + 3; deploy A's configs are shakeout-only (no pins).
+    "1-8-0": {"nextjs": 3, "fastapi-react": 6},
 }
 _ARM_STACK = {"nextjs": "nextjs_ts", "fastapi-react": "fullstack_fastapi_react"}
 _COUNTING_SET_FILES = [
