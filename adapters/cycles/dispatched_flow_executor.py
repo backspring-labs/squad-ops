@@ -54,7 +54,7 @@ from squadops.cycles.contract_derivation import (
     SEEDED_MANIFEST_FILENAME,
     is_interface_manifest,
 )
-from squadops.cycles.emission_integrity import EMISSION_STATUS_FAILED
+from squadops.cycles.emission_integrity import EMISSION_FAILURE_KEY, EMISSION_STATUS_FAILED
 from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.failure_evidence import failing_cases_from_evidence
 from squadops.cycles.frozen_check_validation import frozen_check_violations
@@ -81,6 +81,7 @@ from squadops.cycles.rejection_baseline import (
 from squadops.cycles.run_ledger import RunLedger
 from squadops.cycles.run_loop_summary import (
     REFUND_EMPTY_REPAIR_EMISSION,
+    AbsentEmission,
     RefundedRound,
     RunTerminalDecision,
 )
@@ -147,6 +148,26 @@ def refund_empty_emission_attempt(
     correction_counter["empty_refunds"] = refunds + 1
     correction_counter["n"] = attempt
     return True
+
+
+def record_absent_emission(ledger: RunLedger, task_result: Any, envelope: TaskEnvelope) -> None:
+    """Record a task attempt whose response yielded no file (#566's marker; SIP-0108 §4.1).
+
+    The attempt is #1304's ``prior_attempts`` stamp plus one — the same reading the failed-
+    emission bank takes (#1436), so an absent emission and a banked one of one task agree on
+    which attempt they were.
+    """
+    marker = (getattr(task_result, "outputs", None) or {}).get(EMISSION_FAILURE_KEY)
+    if not isinstance(marker, dict):
+        return
+    signature = marker.get("signature")
+    ledger.record_absent_emission(
+        AbsentEmission(
+            task_id=envelope.task_id,
+            signatures=(str(signature),) if signature else (),
+            attempt=int((envelope.inputs or {}).get("prior_attempts") or 0) + 1,
+        )
+    )
 
 
 def record_task_evidence(ledger: RunLedger, task_result, task_id: str) -> None:
@@ -1948,6 +1969,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 compliance_counter=state.ownership.compliance_counter,
             )
             _holder["result"] = result
+            if ledger is not None:
+                record_absent_emission(ledger, result, _envelope)
             action = await self._handle_task_outcome(
                 result=result,
                 envelope=_envelope,
@@ -3494,6 +3517,15 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # correction the budget allows is enough to absorb a transient empty emission
         # without letting a broken emitter run forever.
         if protocol.emission_empty:
+            # SIP-0108 §4.1: the empty repair is recorded whether or not its round is refunded.
+            if ledger is not None:
+                ledger.record_absent_emission(
+                    AbsentEmission(
+                        task_id=envelope.task_id,
+                        signatures=tuple(protocol.empty_emission_signatures),
+                        round_index=attempt,
+                    )
+                )
             if refund_empty_emission_attempt(correction_counter, max_corrections, attempt):
                 if ledger is not None:
                     ledger.record_refunded_round(
@@ -3996,6 +4028,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     payload={"task_type": plan[i].task_type, "error": result.error or ""},
                 )
             if result.status != TaskResultStatus.SUCCEEDED:
+                if ledger is not None:
+                    record_absent_emission(ledger, result, plan[i])
                 raise _ExecutionError(f"Task {plan[i].task_id} failed: {result.error}")
             for art in (result.outputs or {}).get("artifacts", []):
                 ref = await self._store_artifact(art, cycle, run_id, plan[i])

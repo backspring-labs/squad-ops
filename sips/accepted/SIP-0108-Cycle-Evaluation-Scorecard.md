@@ -690,3 +690,56 @@ the stores could not support.
 - **Mutations: twelve, each caught.**
 
 **Ruled by.** The implementer, in the PR that builds (a), for the owner's review with it.
+
+### 10d. 2026-09-14 — round failures and absent emissions join the run summary (§4.1, §4.2)
+
+**What changed.** The run summary gains two recorded facts that §4.1's list did not name and
+§4.2's attribution needs. §10c, the assessment as built, names them as unrecorded inputs.
+
+1. **Each correction round's failure, as its evidence classified it** (`RoundFailure`):
+   - the failed task and the round;
+   - the category, from `derive_failure_category`;
+   - the locus, from `classify_failure_locus`;
+   - the #998 emission signature;
+   - the blocking failed checks.
+
+   It is recorded in the correction runner's diagnosis step, immediately after the evidence is
+   built and before any step dispatches. A round that the time budget ends at dispatch is
+   therefore still in the record, as a time-budget attribution's "failure events up to it"
+   require. The locus is the classifier's deterministic reading of the evidence, not the routing
+   a correction may override (for example, a lead decision disputing the own-artifact locus): the
+   attribution composes what the evidence shows, not what was decided about it.
+2. **Each emission that yielded no file** (`AbsentEmission`):
+   - **a task's own attempt**, with its 1-based attempt read off `prior_attempts`, the stamp the
+     failed-emission bank reads (#1436), recorded where every failed attempt is routed and on the
+     fan-out path's failure;
+   - **a correction round's empty repair**, with its round, recorded whether or not the round is
+     refunded. A spent round's emptiness is as much a coordination fact as a refunded one's.
+3. **A row written before a field was recorded reads it as `None`, never as an empty list.** The
+   field is always written from here on, so `()` means the run had none.
+
+**Still unrecorded, and why:**
+- **A failed check's locus at completion.** The locus classifier reads a task's failure evidence
+  when correction begins; nothing classifies the rows that fail the final verification of a
+  completed run. Classifying them is a new decision, not a capture of an existing one.
+- **A compliance budget's refused emissions.** They exist as evidence events at three enforcement
+  seams, none of which holds the run ledger. Recording them means threading the ledger through
+  the storage, failed-emission and patch-acceptance seams — a change of its own.
+
+**Evidence.**
+- **Stored shape:** both records survive the row; a null, an absent key and an empty list each
+  read as stated.
+- **`from_evidence`:** it takes the classifiers' reading, with an advisory row (`passed: True`)
+  never counted as a failed check.
+- **Wiring:**
+  - `run_correction_protocol` on 1.7.5 React roll 3's real reports records both rounds as
+    `executed_and_failed` / `subject` / `tests_pass`;
+  - an expired time budget still records its round;
+  - `_route_correction_path` records an empty repair whether the refund is granted or spent;
+  - `execute_run` records an attempt that yielded no file, with its signature and attempt 1;
+  - `RunCompletion.finalize` persists both;
+  - the Postgres round trip carries both through JSONB.
+- **Mutations: eight, each caught.**
+
+**Ruled by.** The implementer, in the PR that captures them, for the owner's review with it. The
+assessment reads these fields in the PR that follows this one.

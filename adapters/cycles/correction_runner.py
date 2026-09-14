@@ -58,7 +58,7 @@ from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.failure_evidence import build_failure_evidence, compose_failure_trigger
 from squadops.cycles.models import ArtifactRef
 from squadops.cycles.plan_delta import PlanDelta
-from squadops.cycles.run_loop_summary import MovementRecord, RunTerminalDecision
+from squadops.cycles.run_loop_summary import MovementRecord, RoundFailure, RunTerminalDecision
 from squadops.cycles.task_outcome import (
     CORRECTION_TERMINATION_ARTIFACT_TYPE,
     CorrectionTermination,
@@ -908,6 +908,7 @@ class CorrectionRunner:
             budget_guard=budget_guard,
             repair_rejections=repair_rejections,
             bound_record=bound_record,
+            ledger=ledger,
         )
 
         correction_path = self._resolve_correction_path(
@@ -999,6 +1000,7 @@ class CorrectionRunner:
         budget_guard: Callable[[], None] | None,
         repair_rejections: list[str] | None,
         bound_record: Any,
+        ledger: RunLedger | None = None,
     ) -> _Diagnosis:
         """Step 1 — build the failure evidence and run ``CORRECTION_TASK_STEPS``.
 
@@ -1037,6 +1039,12 @@ class CorrectionRunner:
             repair_rejections=repair_rejections,
             stored_artifacts=stored_artifacts,
         )
+        # SIP-0108 §4.2: the round's failure as its evidence classifies it — recorded before any
+        # step dispatches, so a round the time budget ends at dispatch is still in the record.
+        if ledger is not None:
+            ledger.record_round_failure(
+                RoundFailure.from_evidence(envelope.task_id, correction_attempts, failure_evidence)
+            )
 
         # Issue #95: capture each correction step's outputs in its own variable
         # so the analyzer's classification/analysis_summary survive past the
