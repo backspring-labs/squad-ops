@@ -536,3 +536,15 @@ exists"*) is now satisfied, so it is unblocked by its own criterion.
 **Consequence to note.** `contract_id()` covers the full declaration by design (§7 items
 4/15), so adding `build_mutates_source` changes every contract id and invalidates
 workspace caches keyed to them — a cache miss, not a correctness risk.
+
+### 11b. §4.2's open question is answered: the scaffold renders the packaging (2026-09-13)
+
+**What changed.** §4.2 left open whether the blueprint owns the packaging set and required only
+that the environment definition be deterministic, checked in and pinned. SIP-0105 A1 answers it:
+both registered stacks now render their Dockerfile (and, for `fullstack_fastapi_react`, the nginx
+config and start script) from this SIP's `EnvironmentContract`, frozen and never LLM-authored.
+That is §4.2's "adapter rendering" as written. The sandbox's own operations are unchanged. They
+still run the application directly in the sandbox image, and no sandbox operation builds the
+rendered image. `package_builds` stays declared unbuilt.
+
+**Evidence and ruling.** Recorded in SIP-0105 A1, where the rule lives.
