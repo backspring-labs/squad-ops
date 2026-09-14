@@ -77,8 +77,12 @@ class TestTheHandoffIsGoneAndTheNotesAreOptional:
     surfaces, and read by nothing — and the builder intermittently completed the
     packaging archetype instead, emitting `.env.example` and `docker-compose.yaml`
     and dropping the report on ~9% of cycles. These would catch its return: a profile
-    that requires it again asks for a document no consumer reads, and a profile that
-    lists the notes as REQUIRED rebuilds the same generator under a new name.
+    that requires it again asks for a document no consumer reads.
+
+    #598 (owner ruling 2026-09-13) moved one boundary. Where the scaffold renders the
+    packaging, the notes are the builder's whole deliverable and are required; the qa author
+    reads them (`request.qa_test_assembly_notes_appendix`). Everywhere else they stay optional,
+    and a profile requiring them there rebuilds the #1312 generator under a new name.
     """
 
     @pytest.mark.parametrize("name,profile", list(BUILD_PROFILES.items()))
@@ -89,13 +93,13 @@ class TestTheHandoffIsGoneAndTheNotesAreOptional:
         assert "qa_handoff.md" not in profile.optional_files
 
     @pytest.mark.parametrize("name,profile", list(BUILD_PROFILES.items()))
-    def test_the_notes_are_offered_and_never_required(self, name, profile):
-        assert ASSEMBLY_NOTES_DOCUMENT in profile.optional_files, (
-            f"{name}: the builder is never told it may write notes"
-        )
-        assert ASSEMBLY_NOTES_DOCUMENT not in profile.required_files, (
-            f"{name}: optional-by-construction is the whole point — a required "
-            "notes file is the handoff again"
+    def test_the_notes_are_required_exactly_where_the_packaging_is_rendered(self, name, profile):
+        rendered = bool(profile.scaffold_provided_files())
+        offered = ASSEMBLY_NOTES_DOCUMENT in profile.required_files + profile.optional_files
+        assert offered, f"{name}: the builder is never told it may write notes"
+        assert (ASSEMBLY_NOTES_DOCUMENT in profile.required_files) is rendered, (
+            f"{name}: required notes belong only where the scaffold renders the packaging "
+            "(#598); elsewhere a required notes file is the handoff again (#1312)"
         )
 
 
@@ -162,25 +166,9 @@ class TestFullstackFastapiReactProfile:
         profile = get_profile("fullstack_fastapi_react")
         assert profile.name == "fullstack_fastapi_react"
 
-    def test_required_files_include_dockerfile(self):
-        profile = get_profile("fullstack_fastapi_react")
-        assert "Dockerfile" in profile.required_files
-
-    def test_docker_compose_is_optional(self):
-        profile = get_profile("fullstack_fastapi_react")
-        assert "docker-compose.yaml" in profile.optional_files
-
-    def test_optional_files_include_start_sh(self):
-        profile = get_profile("fullstack_fastapi_react")
-        assert "start.sh" in profile.optional_files
-
     def test_has_system_prompt_template(self):
         profile = get_profile("fullstack_fastapi_react")
         assert "fullstack" in profile.system_prompt_template.lower()
-
-    def test_validation_rules_mention_multi_stage(self):
-        profile = get_profile("fullstack_fastapi_react")
-        assert any("multi-stage" in r for r in profile.validation_rules)
 
     def test_artifact_output_mode_is_multi_file(self):
         profile = get_profile("fullstack_fastapi_react")
@@ -318,13 +306,39 @@ class TestProfileSourceOfTruthInvariants:
         assert "Already supplied to the test author" not in prompt
 
     @pytest.mark.parametrize("stack", ["fullstack_fastapi_react", "nextjs_ts"])
-    def test_the_notes_are_framed_as_omittable(self, stack):
-        """A builder that reads "optional" as "produce something" writes a summary of
-        its own work — the restatement the exclusion list exists to stop. The prompt
-        has to say that writing nothing is a complete answer."""
+    def test_the_required_notes_have_a_one_sentence_complete_answer(self, stack):
+        """#598 made the notes required on these stacks. A builder told "you MUST emit" with
+        nothing to say writes a summary of its own work — the restatement the exclusion list
+        exists to stop. The prompt has to say one sentence is a complete answer."""
         prompt = get_profile(stack).full_system_prompt
-        assert "omit the file" in prompt
+        assert "You MUST emit this file" in prompt
+        assert "write one sentence saying the scaffold's packaging" in prompt
         assert "do not restate" in prompt.lower()
+
+
+class TestTheBuilderIsNotAskedForWhatTheScaffoldRenders:
+    """#598: the container packaging is rendered from the environment contract and frozen.
+
+    Bug caught: a profile or prompt still asking the builder for a file the scaffold owns.
+    Storage drops the emission, so nothing breaks loudly; the builder spends its call on a
+    file that is thrown away, and the next reader of the profile believes it authors it."""
+
+    @pytest.mark.parametrize("stack", ["fullstack_fastapi_react", "nextjs_ts"])
+    def test_no_rendered_file_is_required_or_offered_and_the_prompt_names_them(self, stack):
+        profile = get_profile(stack)
+        provided = profile.scaffold_provided_files()
+        assert "Dockerfile" in provided
+        assert not set(provided) & set(profile.required_files + profile.optional_files)
+        prompt = profile.full_system_prompt
+        section = prompt.split("## Provided by the scaffold — do NOT emit", 1)[1]
+        assert all(f"- `{name}`" in section for name in provided)
+
+    def test_a_profile_with_no_scaffold_is_still_asked_for_its_dockerfile(self):
+        """The legacy profiles have no rendering: their packaging stays the builder's."""
+        profile = get_profile("python_cli_builder")
+        assert profile.scaffold_provided_files() == ()
+        assert "Dockerfile" in profile.required_files
+        assert "Provided by the scaffold" not in profile.full_system_prompt
 
 
 class TestSystemPromptForFiles:
@@ -367,8 +381,10 @@ class TestSystemPromptForFiles:
         not the one framing routed the documentation to.
         """
         profile = self._profile()
-        prompt = profile.system_prompt_for_files(("Dockerfile",))
-        assert f"`{ASSEMBLY_NOTES_DOCUMENT}`" in prompt
+        # #598: the notes are required at profile level now; a task scoped to another file is
+        # still offered them, as optional.
+        prompt = profile.system_prompt_for_files((".env.example",))
+        assert f"`{ASSEMBLY_NOTES_DOCUMENT}` — optional" in prompt
         assert "Already supplied to the test author" in prompt
 
     def test_none_scope_falls_back_to_profile_required(self):

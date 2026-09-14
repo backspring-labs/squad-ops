@@ -23,6 +23,14 @@ qa author never received.
 A stack with no registered environment contract (the three legacy profiles) gets the
 definition and no exclusion list — there are no declarations to derive one from, and an
 invented list would be exactly the drift this module exists to prevent.
+
+**#598 (owner ruling 2026-09-13): required on the two scaffolded stacks.** Once the scaffold
+renders the container packaging, the notes are the builder's whole deliverable there, and an
+emission with no file fails as contentless. So the profiles for `fullstack_fastapi_react` and
+`nextjs_ts` require them, and the block below says so. The #1312 objection was a required
+document *nobody read*; the qa author now reads these (`request.qa_test_assembly_notes_appendix`).
+When the builder has nothing beyond the declarations, one sentence saying so is the complete
+answer. The legacy profiles keep them optional.
 """
 
 from __future__ import annotations
@@ -74,6 +82,17 @@ def already_supplied_lines(stack: str) -> tuple[str, ...]:
     # The port, not the image: the image is the SANDBOX's, and naming it here would read
     # to the builder as a decision about the deliverable's own container, which it is not.
     lines.append(f"- where the application listens — port `{contract.app_port}`")
+    # #598: the packaging the scaffold renders is a declaration too.
+    from squadops.capabilities.rendered_packaging import render_packaging
+
+    try:
+        packaged = ", ".join(f"`{item['name']}`" for item in render_packaging(stack))
+    except ValueError:
+        packaged = ""
+    if packaged:
+        lines.append(
+            f"- how the application is packaged — {packaged}, rendered by the scaffold and frozen"
+        )
 
     namespace = qa_test_namespace_for_stack(stack)
     if namespace:
@@ -86,15 +105,29 @@ def already_supplied_lines(stack: str) -> tuple[str, ...]:
     return tuple(lines)
 
 
-def assembly_notes_block(stack: str) -> str:
+def assembly_notes_block(stack: str, *, required: bool = False) -> str:
     """The builder-facing block: what the notes are for, and what they may not restate.
 
     Empty string for a stack that declares nothing, so a profile with no contract does
-    not carry a heading with nothing under it.
+    not carry a heading with nothing under it. ``required`` (#598) changes only what the
+    builder is told about omitting the file; what the notes may say is the same either way.
     """
     supplied = already_supplied_lines(stack)
     if not supplied:
         return ""
+    if required:
+        return (
+            f"\n\n## `{ASSEMBLY_NOTES_DOCUMENT}` — required, and deliberately narrow\n\n"
+            "You MUST emit this file. It carries **only assembly facts the test author cannot "
+            "already have** — a credential or fixture the deployment needs, a runtime setting "
+            "that changes how the application behaves, something you found the declarations do "
+            "not cover. A summary of your own work does not belong in it.\n\n"
+            "**Already supplied to the test author — do not restate any of it:**\n\n"
+            f"{chr(10).join(supplied)}\n\n"
+            "If you have nothing that is not in that list, write one sentence saying the "
+            "scaffold's packaging and declarations are used unchanged. That is a complete and "
+            "correct answer."
+        )
     return (
         f"\n\n## `{ASSEMBLY_NOTES_DOCUMENT}` — optional, and deliberately narrow\n\n"
         "You may emit this file. It is not required, and emitting it empty or emitting a "

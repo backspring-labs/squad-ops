@@ -125,9 +125,11 @@ async def produce_plan(
         from squadops.capabilities.handlers.build_profiles import get_profile
 
         try:
-            floor = list(get_profile(resolved_config["build_profile"]).required_files)
+            profile = get_profile(resolved_config["build_profile"])
+            floor = list(profile.required_files)
+            provided = list(profile.scaffold_provided_files())
         except (KeyError, ValueError):
-            floor = []
+            floor, provided = [], []
         example_artifacts = floor or ["Dockerfile"]
         floor_guideline = (
             (
@@ -138,11 +140,21 @@ async def produce_plan(
             if floor
             else ""
         )
+        # #598: the scaffold renders these; a builder task listing one is told to emit a file
+        # that is discarded. Derived from the profile, so no stack name enters this prompt.
+        provided_guideline = (
+            (
+                f"- The scaffold already provides these files, frozen; list NONE of them in any "
+                f"task's expected_artifacts: {', '.join(provided)}\n"
+            )
+            if provided
+            else ""
+        )
         builder_guideline = (
-            "- Route packaging, entrypoints, requirements.txt/package.json and "
-            "Dockerfile/startup scripts to `builder.assemble` tasks (role: builder). "
-            "Place AFTER all `development.develop` tasks and BEFORE any `qa.test` "
-            "tasks.\n" + floor_guideline
+            "- Route the build profile's deliverables (packaging, entrypoints, manifests, "
+            "or the notes, as the profile requires) to `builder.assemble` tasks "
+            "(role: builder). Place AFTER all `development.develop` tasks and BEFORE any "
+            "`qa.test` tasks.\n" + floor_guideline + provided_guideline
         )
         builder_example = (
             "  - task_index: 1\n"
@@ -150,8 +162,8 @@ async def produce_plan(
             "    role: builder\n"
             '    focus: "Package the build output for deployment"\n'
             "    description: |\n"
-            "      Assemble packaging (entrypoints, requirements/manifest, "
-            "Dockerfile if applicable) for the code the developer wrote.\n"
+            "      Assemble the build profile's files for the code the developer "
+            "wrote.\n"
             "    expected_artifacts:\n"
             + "".join(f'      - "{name}"\n' for name in example_artifacts)
             # #1254: prose, and only prose. Every typed check a builder emission earns is
