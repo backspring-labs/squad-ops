@@ -31,6 +31,7 @@ recurrence-only baseline would score as zero.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -54,6 +55,10 @@ class RejectionClassifier:
     """
 
     classes: dict[str, int] = field(default_factory=dict)
+    #: SIP-0108 §4.2: the manifest gate's failed proofs, by proof class — what that gate's
+    #: refusal is read as. Apart from ``classes``, whose vocabulary is the plan validators: a
+    #: proof counted there would enter a recurrence baseline as a validator nobody taught.
+    proofs: dict[str, int] = field(default_factory=dict)
 
     def collect(self, validator: str, errors: list[str]) -> list[str]:
         """Record ``errors`` under ``validator`` and return them unchanged.
@@ -66,13 +71,23 @@ class RejectionClassifier:
             self.classes[validator] = self.classes.get(validator, 0) + len(errors)
         return errors
 
+    def collect_proofs(self, proofs: Iterable[str]) -> None:
+        """Record the manifest gate's failed proofs — the blocking ones; an advisory proof
+        refuses nothing (#820)."""
+        for proof in proofs:
+            self.proofs[proof] = self.proofs.get(proof, 0) + 1
+
     def record(self, gate_name: str, errors: list[str]) -> dict[str, Any]:
-        """The artifact payload for a rejection, or ``{}`` when nothing was rejected."""
+        """The artifact payload for a rejection, or ``{}`` when nothing was rejected.
+
+        ``proofs`` is always present on a record written since it was recorded, so a reader
+        can tell "no proof failed" (``{}``) from a record older than the field (absent)."""
         if not errors:
             return {}
         return {
             "gate": gate_name,
             "classes": dict(sorted(self.classes.items())),
+            "proofs": dict(sorted(self.proofs.items())),
             "errors": list(errors),
         }
 

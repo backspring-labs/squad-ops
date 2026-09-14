@@ -24,6 +24,7 @@ Bug classes guarded:
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -328,6 +329,44 @@ async def test_the_gate_rejects_v4s_plan_once_the_contract_is_derived():
     assert any("backend.routes.runs" in e for e in errors)
     # And every criterion aimed at a frozen file, which could never have executed.
     assert any("can never pass" in e for e in errors)
+    # SIP-0108 §4.2: the bind-mode validators that refused are recorded by name, as the
+    # author-mode ones are — before this they reached the record only as prefixed prose.
+    records = [
+        json.loads(content)
+        for (ref, content), _ in executor._artifact_vault.store.await_args_list
+        if ref.artifact_type == "rejection_record"
+    ]
+    (record,) = records
+    assert record["classes"] == {
+        "validate_frozen_artifact_ownership": 3,
+        "validate_module_existence": 1,
+        "validate_unique_expected_artifacts": 1,
+    }
+    # The manifest beside it fails a proof too; the record names it as the note does.
+    assert record["proofs"] == {"error_shape_agrees": 1}
+    assert any(e.startswith("interface_manifest [error_shape_agrees]") for e in errors)
+
+
+@pytest.mark.parametrize("validator", ["validate_criteria_refs", "validate_qa_artifact_ownership"])
+async def test_the_other_bind_mode_validators_are_recorded_by_name(monkeypatch, validator):
+    """SIP-0108 §4.2: the two bind-mode validators V4's plan does not trip, forced to refuse on
+    the same replay. Bug caught: one of the four still reaching the record only as prose."""
+    from squadops.cycles.implementation_plan import ImplementationPlan
+
+    monkeypatch.setattr(ImplementationPlan, validator, lambda self, contract: ["refused"])
+    executor, run, cycle = _gate_executor(with_contract=True)
+
+    errors = await executor._reject_invalid_plan_before_workload_gate(
+        run, cycle, "progress_plan_review"
+    )
+
+    assert "verification_contract: refused" in errors
+    (record,) = [
+        json.loads(content)
+        for (ref, content), _ in executor._artifact_vault.store.await_args_list
+        if ref.artifact_type == "rejection_record"
+    ]
+    assert record["classes"][validator] == 1
 
 
 async def test_without_the_derived_contract_the_gate_sees_none_of_it():
