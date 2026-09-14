@@ -210,6 +210,10 @@ UNASKABLE_REASONS: dict[str, str] = {
         "no correction_decision.md stored — the claim is read from the decision itself (#968)"
     ),
     "no_fill_merge_artifact": "no fill_merge_evidence.json stored for the run (#999)",
+    "no_test_report_stored": (
+        "no test_report.md stored for the run — which suites the runner collected is read from "
+        "the report the qa handler writes (#1540)"
+    ),
     "no_qa_scaffold_suite": (
         "no qa-authored suite stored under __tests__/scaffold/ — the fill layer's rejections "
         "are read from the suite text"
@@ -307,6 +311,7 @@ EVIDENCE_FIELDS: dict[str, tuple[str, ...]] = {
     ),
     "loop_texture.fill_rejections": ("no_implementation_run", "no_qa_scaffold_suite"),
     "loop_texture.fill_merge_evidence": ("no_implementation_run", "no_fill_merge_artifact"),
+    "loop_texture.uncollected_suites": ("no_implementation_run", "no_test_report_stored"),
     "loop_texture.stored_under_placeholder": ("no_implementation_run",),
     # typed_checks: the stored evaluation artifacts
     "typed_checks.by_check": _STORED_EVALUATIONS,
@@ -1833,6 +1838,9 @@ def loop_texture(
     out["fill_rejections"] = rejections or []
     # #999: the qa task's fill-merge evidence, persisted as an artifact and read from it.
     out["fill_merge_evidence"] = fill_merge_evidence(cfg, cycle_id, impl_run) if impl_run else []
+    # #1540: suites the runner never collected — non-execution with no row anywhere else.
+    uncollected = uncollected_suites(cfg, cycle_id, impl_run) if impl_run else None
+    out["uncollected_suites"] = uncollected or []
     # #1311: L8 as two claims. L8a — the model emitted under the placeholder and the
     # extractor repaired it (read from the agent's log, the only place it is visible).
     # L8b — a stored name still carries it (read from the tree, the old readout).
@@ -1851,6 +1859,7 @@ def loop_texture(
         "no_emission_retry_aimed": len(out["emission_retries"]) == 0,
         "no_correction_decision_stored": (correction_rounds or 0) == 0,
         "no_fill_merge_artifact": len(out["fill_merge_evidence"]) == 0,
+        "no_test_report_stored": uncollected is None,
         "no_qa_scaffold_suite": rejections is None,
         "logged_in_the_agent_container": True,
     }
@@ -2648,6 +2657,59 @@ def fill_merge_evidence(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[di
     return out
 
 
+def uncollected_suites(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[dict] | None:
+    """The suites each stored ``test_report.md`` names as never collected (#1540), or ``None``
+    when the run stored no report — an unasked question, not an empty answer.
+
+    A suite the runner does not collect fails nothing: 1.7.3's accepted Next.js shakeout
+    (``cyc_d988c11c71f5``) stored ``__tests__/runs-ui.test.tsx`` as run-nothing and its record
+    read clean, and the shape recurred on 1.8.0 deploy A (#1534). Read from the report, the
+    only persisted carrier, with the qa handler's own label. Each entry names the task and
+    whether the report was banked with a failed emission (#971) or stored as the task's.
+    """
+    from squadops.capabilities.handlers.cycle.qa_test import UNCOLLECTED_REPORT_LABEL
+
+    reports = 0
+    out: list[dict] = []
+    for art in artifact_dirs(cfg, cycle_id, impl_run):
+        m = _metadata(art)
+        if not m or m.get("filename") != "test_report.md":
+            continue
+        try:
+            text = (REPO / m["vault_uri"]).read_text()
+        except (OSError, KeyError):
+            continue
+        reports += 1
+        _, found, rest = text.partition(UNCOLLECTED_REPORT_LABEL)
+        files = re.findall(r"`([^`]+)`", rest.split("\n", 1)[0]) if found else []
+        if files:
+            meta = m.get("metadata") or {}
+            out.append(
+                {
+                    "task_id": meta.get("task_id"),
+                    "banked": "failed" if meta.get("emission_status") == "failed" else "stored",
+                    "files": files,
+                }
+            )
+    return out if reports else None
+
+
+def _render_uncollected(entries: list[dict]) -> str:
+    """``__tests__/runs-ui.test.tsx`` (3 reports: 1 failed, 2 stored) — per file, so a suite
+    that ran nothing on every attempt reads differently from one a repair renamed."""
+    by_file: dict[str, list[str]] = {}
+    for entry in entries or []:
+        for name in entry.get("files") or []:
+            by_file.setdefault(name, []).append(str(entry.get("banked")))
+    if not by_file:
+        return "0"
+    parts = []
+    for name, banked in sorted(by_file.items()):
+        counts = ", ".join(f"{banked.count(k)} {k}" for k in ("failed", "stored") if k in banked)
+        parts.append(f"`{name}` ({len(banked)} report{'s' if len(banked) != 1 else ''}: {counts})")
+    return "; ".join(parts)
+
+
 def _fill_rejections(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[str] | None:
     """The fill layer's rejection lines across the qa-authored scaffold suites, or ``None``
     when no such suite was stored to read — an unasked question, not an empty answer."""
@@ -2870,6 +2932,7 @@ def restate(rec: dict) -> tuple[dict, list[str]]:
         "no_emission_retry_aimed": not value_at(out, "loop_texture.emission_retries", []),
         "no_correction_decision_stored": correction == 0,
         "no_fill_merge_artifact": not value_at(out, "loop_texture.fill_merge_evidence", []),
+        "no_test_report_stored": None,
         "no_qa_scaffold_suite": None,
         "logged_in_the_agent_container": True,
         "no_typed_check_evaluation_stored": None if not by_check else False,
@@ -3030,6 +3093,8 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         f"{_show_at(rec, 'loop_texture.no_execution_by_skip_reason', _render_by_reason)} |",
         "| ...of which on a verification that PASSED | "
         f"{_show_at(rec, 'loop_texture.no_execution_on_passed_verifications', _render_by_reason)} |",
+        "| suites the runner never collected, per stored test report (#1540) | "
+        f"{_show_at(rec, 'loop_texture.uncollected_suites', _render_uncollected)} |",
         "| fill-merge assertion strength per qa task (#999) | "
         f"{_show_at(rec, 'loop_texture.fill_merge_evidence', _fill_strengths)} |",
         "| fill layer rejections in the stored qa suites | "

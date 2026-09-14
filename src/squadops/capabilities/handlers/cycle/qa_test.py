@@ -55,6 +55,11 @@ from squadops.cycles.failure_evidence import failing_case_lines
 
 logger = logging.getLogger(__name__)
 
+#: The test report's label for suites the runner never collected. One statement, because
+#: the verification-set driver reads it back out of the stored report (#1540) — the report is
+#: the only persisted carrier of which suites ran nothing.
+UNCOLLECTED_REPORT_LABEL = "NOT COLLECTED (these ran nothing):"
+
 
 def failing_check_names(checks: list[dict]) -> list[str]:
     """Which checks actually opened the self-eval branch (#946).
@@ -729,7 +734,7 @@ class QATestHandler(_CycleTaskHandler):
             # SIP-0104 roll 1: a suite the runner never collected verifies nothing while
             # the collected ones read green. Named in the report a human actually reads.
             report_lines.append(
-                "\n**NOT COLLECTED (these ran nothing):** "
+                f"\n**{UNCOLLECTED_REPORT_LABEL}** "
                 + ", ".join(f"`{p}`" for p in test_result.uncollected_test_files)
                 + "\n"
             )
