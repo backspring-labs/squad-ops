@@ -1807,3 +1807,76 @@ review with it. Item 3 records the accepted §13 over #1213's earlier sketch.
 
 **Ruled by.** The implementer, in the PR that completes §38 step 4, for the owner's review with
 it. #1213 closes here.
+
+## 46g. 2026-09-14 — structural revision of Python as built (§38 step 5, first half)
+
+**What changed.**
+
+1. **The first structural resolver is Python's, on the stdlib `ast`.** §43.2 left the order of
+   React's two resolvers to this step. The backend goes first:
+   - the whole-file repair failures that motivate the SIP were `backend/routes.py` rewrites
+     (§1.2);
+   - `ast` gives exact extents with no dependency.
+
+   The JSX resolver is the second half of step 5, in its own PR, with its library chosen there.
+   The resolver is replaceable; its fail-closed contract is not. An unparseable base, an absent
+   selector and an ambiguous selector each resolve to nothing, never to a guess.
+2. **Entities are named by a selector that is revision-bound through the transaction** (§7,
+   §43.1): `function:NAME`, `function:NAME#body`, `class:NAME`, `method:CLASS.NAME`,
+   `method:CLASS.NAME#body`, `import:MODULE`, `imports`.
+   - **Ranges are whole lines,** from the first decorator's line through the newline ending the
+     last line. So a replacement, insertion or removal composes with the lines around it intact.
+   - **A body is addressable only when it starts on its own line.**
+   - **The selector is the authoritative identity within an artifact;** the base revision the
+     transaction names binds it to one revision (§12).
+3. **Four entity operations** (§8):
+   - `REPLACE_ENTITY`;
+   - `INSERT_BEFORE_ENTITY` / `INSERT_AFTER_ENTITY`, zero-width at the entity's start or end;
+   - `REMOVE_ENTITY`, whose replacement is always empty.
+
+   They sit in the existing atomic transaction, so a grant, a stale base, an overlap or any
+   refusal refuses them all. Refusals are `unresolved_entity`, `ambiguous_entity`,
+   `unreadable_structure`, and — for two insertions at one point, whose order no rule fixes —
+   `overlapping_ranges`. The import-order repair is `remove` + `insert` in one transaction, as
+   §8.4 rules.
+4. **Application order at one offset is fixed:** the wider edit applies first. An insertion
+   before an entity lands ahead of that entity's replacement, never inside it.
+5. **Syntax validation refuses before anything else runs (§18).** A caller-supplied validator
+   checks every changed artifact of the composed candidate — `python_syntax_error` for Python —
+   and a candidate that does not parse refuses the transaction as `invalid_syntax`.
+6. **The preservation proof is reconstruction (§17).** `preservation_proof(base, edits,
+   candidate)` requires the candidate to be exactly the base with the recorded edits applied, in
+   base order, and every artifact no edit names to be identical.
+   - **On acceptance** it is computed and carried on the outcome, and a failure refuses as
+     `preservation_failed`.
+   - **Standalone** it checks a candidate produced elsewhere against its recorded edits.
+
+**Not in this half:**
+- the JSX resolver;
+- the model-facing contract: repository inspection returning references, the structural emission
+  form and the handler wiring (steps 4b's shape, for entities);
+- the §39.2 reading on live transactions.
+
+**Evidence.**
+- **Addressing:** every selector names its entity's whole lines, decorators included. An inline
+  body, an unparseable file and a redefinition resolve to nothing, nothing, and two spans
+  respectively.
+- **Transactions:**
+  - a body replacement changes only the body, and the proof holds;
+  - the import-order pair applies in one transaction;
+  - an insertion before, a replacement of and an insertion after one method compose in order;
+  - an absent, redefined, unparseable-base, resolver-less, same-point or invalid-syntax revision
+    refuses the whole transaction.
+- **The proof** fails for an untouched line changed, an unrecorded file changed, the edit
+  missing, and a trailing byte added.
+- **On the real FastAPI+React scaffold** (§39.3): a scoped body revision of
+  `backend/routes.py`'s `post_runs` needs no restoration (`restore_declared_status_codes` returns
+  the candidate unchanged, with no divergences) and observes nothing
+  (`signature_divergences` is empty).
+- **Mutations: nine, each caught.** Decorators excluded from the range; an inline body
+  addressable; an ambiguous entity picking the first; the equal-offset order reversed; insert-after
+  landing before; syntax not validated; a remove keeping its replacement text; the proof ignoring
+  unrecorded files; the proof ignoring the tail.
+
+**Ruled by.** The implementer, in the PR that builds the first half of §38 step 5, for the owner's
+review with it. Item 1 is the resolver choice and order §43.2 delegated to this step.

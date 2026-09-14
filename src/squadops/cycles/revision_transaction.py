@@ -50,6 +50,22 @@ class RevisionOperation(StrEnum):
     REPLACE_REGION = "replace_region"
     #: §9.2: replace the one exact occurrence of an anchor inside the authorized region.
     REPLACE_ANCHOR = "replace_anchor"
+    #: §8, §9.1: replace, insert beside, or remove an entity a structural resolver locates.
+    REPLACE_ENTITY = "replace_entity"
+    INSERT_BEFORE_ENTITY = "insert_before_entity"
+    INSERT_AFTER_ENTITY = "insert_after_entity"
+    REMOVE_ENTITY = "remove_entity"
+
+
+#: The operations whose target is a structurally resolved entity.
+ENTITY_OPERATIONS = frozenset(
+    {
+        RevisionOperation.REPLACE_ENTITY,
+        RevisionOperation.INSERT_BEFORE_ENTITY,
+        RevisionOperation.INSERT_AFTER_ENTITY,
+        RevisionOperation.REMOVE_ENTITY,
+    }
+)
 
 
 class RefusalReason(StrEnum):
@@ -67,6 +83,16 @@ class RefusalReason(StrEnum):
     ANCHOR_AMBIGUOUS = "anchor_ambiguous"
     #: An anchored revision with no anchor text, which would match everywhere.
     EMPTY_ANCHOR = "empty_anchor"
+    #: §21: the entity the selector names is not in the artifact.
+    UNRESOLVED_ENTITY = "unresolved_entity"
+    #: The selector names more than one entity — a redefinition is never picked between.
+    AMBIGUOUS_ENTITY = "ambiguous_entity"
+    #: No structural resolver reads this artifact, or its base does not parse.
+    UNREADABLE_STRUCTURE = "unreadable_structure"
+    #: §18: the composed candidate does not parse — refused before any behavioural check.
+    INVALID_SYNTAX = "invalid_syntax"
+    #: §17: the candidate is not the base with exactly the accepted edits applied.
+    PRESERVATION_FAILED = "preservation_failed"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -83,6 +109,8 @@ class Revision:
     replacement: str
     region_id: str = ""
     anchor: str | None = None
+    #: The structural selector an entity operation targets (``function:create_run#body``).
+    entity: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -138,11 +166,36 @@ class TransactionOutcome:
     candidate_files: Mapping[str, str] = field(default_factory=dict)
     candidate_revision_id: str | None = None
     refusals: tuple[Refusal, ...] = ()
+    preservation: PreservationProof | None = None
 
     def changed_files(self) -> dict[str, str]:
         """The artifacts the transaction edited, with their candidate content."""
         paths = {e.artifact_path for e in self.edits}
         return {p: c for p, c in dict(self.candidate_files).items() if p in paths}
+
+
+@dataclass(frozen=True, kw_only=True)
+class PreservationProof:
+    """§17: whether a candidate is its base with exactly the recorded edits applied, every
+    untouched base span appearing in order, byte for byte."""
+
+    holds: bool
+    detail: str = ""
+
+
+class EntityResolver(Protocol):
+    """Every span a selector names in an artifact's content — ``None`` when no structural
+    resolver reads the artifact or its content does not parse (§10, §43.2)."""
+
+    def __call__(
+        self, artifact_path: str, content: str, selector: str
+    ) -> list[tuple[int, int]] | None: ...
+
+
+class SyntaxValidator(Protocol):
+    """``None`` when a candidate artifact parses (or has no parser), else why not (§18)."""
+
+    def __call__(self, artifact_path: str, content: str) -> str | None: ...
 
 
 class RegionResolver(Protocol):
@@ -175,6 +228,9 @@ def resolve_and_apply(
     base_files: Mapping[str, str],
     transaction: RevisionTransaction,
     resolve_region: RegionResolver,
+    *,
+    resolve_entity: EntityResolver | None = None,
+    validate_syntax: SyntaxValidator | None = None,
 ) -> TransactionOutcome:
     """Resolve every revision against ``base_files``, then apply all of them or none (§13, §14).
 
@@ -201,6 +257,7 @@ def resolve_and_apply(
         if revision.operation not in (
             RevisionOperation.REPLACE_REGION,
             RevisionOperation.REPLACE_ANCHOR,
+            *ENTITY_OPERATIONS,
         ):
             refusals.append(
                 Refusal(
@@ -232,7 +289,7 @@ def resolve_and_apply(
                 )
             )
             continue
-        target = _resolve_target(index, revision, content, resolve_region)
+        target = _resolve_target(index, revision, content, resolve_region, resolve_entity)
         if isinstance(target, Refusal):
             refusals.append(target)
             continue
@@ -245,7 +302,11 @@ def resolve_and_apply(
                 start=start,
                 end=end,
                 pre_sha256=_sha256(content[start:end]),
-                replacement=revision.replacement,
+                replacement=(
+                    ""
+                    if revision.operation == RevisionOperation.REMOVE_ENTITY
+                    else revision.replacement
+                ),
                 operation=revision.operation,
                 producer=transaction.grant.producer,
                 task_id=transaction.task_id,
@@ -259,9 +320,29 @@ def resolve_and_apply(
     candidate = dict(base_files)
     for path in sorted({e.artifact_path for e in edits}):
         text = base_files[path]
-        for edit in sorted((e for e in edits if e.artifact_path == path), key=lambda e: -e.start):
+        # Highest offset first; at one offset the wider edit first, so a zero-width insertion
+        # before an entity lands ahead of that entity's replacement rather than inside it.
+        for edit in sorted(
+            (e for e in edits if e.artifact_path == path), key=lambda e: (-e.start, -e.end)
+        ):
             text = text[: edit.start] + edit.replacement + text[edit.end :]
         candidate[path] = text
+
+    changed_paths = sorted({e.artifact_path for e in edits})
+    syntax = _syntax_refusals(edits, candidate, changed_paths, validate_syntax)
+    if syntax:
+        return TransactionOutcome(accepted=False, refusals=tuple(syntax))
+    proof = preservation_proof(base_files, edits, candidate)
+    if not proof.holds:
+        return TransactionOutcome(
+            accepted=False,
+            refusals=(
+                Refusal(
+                    revision_index=-1, reason=RefusalReason.PRESERVATION_FAILED, detail=proof.detail
+                ),
+            ),
+            preservation=proof,
+        )
 
     from squadops.cycles.patch_verification import candidate_revision_id
 
@@ -273,14 +354,96 @@ def resolve_and_apply(
         edits=tuple(edits),
         candidate_files=candidate,
         candidate_revision_id=candidate_revision_id(base_files, changed),
+        preservation=proof,
     )
 
 
+def _syntax_refusals(
+    edits: Sequence[RangeEdit],
+    candidate: Mapping[str, str],
+    changed_paths: Sequence[str],
+    validate_syntax: SyntaxValidator | None,
+) -> list[Refusal]:
+    """§18: every changed artifact that no longer parses, refused before anything else runs."""
+    if validate_syntax is None:
+        return []
+    refusals: list[Refusal] = []
+    for path in changed_paths:
+        error = validate_syntax(path, candidate[path])
+        if error is not None:
+            refusals.append(
+                Refusal(
+                    revision_index=-1,
+                    reason=RefusalReason.INVALID_SYNTAX,
+                    detail=f"{path} does not parse after the revision: {error}",
+                )
+            )
+    return refusals
+
+
+def preservation_proof(
+    base_files: Mapping[str, str],
+    edits: Sequence[RangeEdit],
+    candidate_files: Mapping[str, str],
+) -> PreservationProof:
+    """§17: the candidate is the base with exactly ``edits`` applied — by reconstruction.
+
+    Walks each artifact's edits in base order and requires every untouched base span, then
+    every recorded replacement, to appear in the candidate in sequence, and nothing after the
+    last. An artifact no edit names must be byte-identical. Positional diffs are not used: an
+    insertion shifts every later offset, and reconstruction is what makes "no change outside the
+    accepted ranges" a consequence rather than a measurement.
+    """
+    by_path: dict[str, list[RangeEdit]] = {}
+    for edit in edits:
+        by_path.setdefault(edit.artifact_path, []).append(edit)
+    for path in sorted(set(base_files) | set(candidate_files)):
+        base, cand = base_files.get(path), candidate_files.get(path)
+        path_edits = sorted(by_path.get(path, ()), key=lambda e: (e.start, e.end))
+        if not path_edits:
+            if base != cand:
+                return PreservationProof(holds=False, detail=f"{path} changed with no revision")
+            continue
+        if base is None or cand is None:
+            return PreservationProof(
+                holds=False, detail=f"{path} is missing from base or candidate"
+            )
+        if any(e.base_artifact_sha256 != _sha256(base) for e in path_edits):
+            return PreservationProof(holds=False, detail=f"{path}: an edit names another base")
+        for edit in path_edits:
+            if _sha256(base[edit.start : edit.end]) != edit.pre_sha256:
+                return PreservationProof(
+                    holds=False,
+                    detail=f"{path}: the span {edit.start}-{edit.end} is not the one resolved",
+                )
+        # Reconstruct and compare: the untouched spans and replacements, in base order.
+        pieces: list[str] = []
+        base_at = 0
+        for edit in path_edits:
+            pieces.append(base[base_at : edit.start])
+            pieces.append(edit.replacement)
+            base_at = max(base_at, edit.end)
+        pieces.append(base[base_at:])
+        if "".join(pieces) != cand:
+            return PreservationProof(
+                holds=False,
+                detail=f"{path} is not its base with exactly the recorded edits applied",
+            )
+    return PreservationProof(holds=True)
+
+
 def _resolve_target(
-    index: int, revision: Revision, content: str, resolve_region: RegionResolver
+    index: int,
+    revision: Revision,
+    content: str,
+    resolve_region: RegionResolver,
+    resolve_entity: EntityResolver | None = None,
 ) -> tuple[int, int] | Refusal:
-    """The span a revision replaces: its region's body, or its anchor's one match inside the
-    authorized region (the named region, else the whole artifact the grant permits)."""
+    """The span a revision replaces: its region's body, its anchor's one match inside the
+    authorized region (the named region, else the whole artifact the grant permits), or the one
+    entity its selector names — zero-width before or after it for an insertion."""
+    if revision.operation in ENTITY_OPERATIONS:
+        return _resolve_entity(index, revision, content, resolve_entity)
     if revision.operation == RevisionOperation.REPLACE_ANCHOR and not revision.region_id:
         region: tuple[int, int] | None = (0, len(content))
     else:
@@ -294,6 +457,38 @@ def _resolve_target(
     if revision.operation == RevisionOperation.REPLACE_ANCHOR:
         return _resolve_anchor(index, revision, content, region)
     return region
+
+
+def _resolve_entity(
+    index: int, revision: Revision, content: str, resolve_entity: EntityResolver | None
+) -> tuple[int, int] | Refusal:
+    """The one span an entity selector names, fail-closed on every other count (§10, §43.2)."""
+    path, selector = revision.artifact_path, revision.entity or ""
+    spans = resolve_entity(path, content, selector) if resolve_entity and selector else None
+    if spans is None:
+        return Refusal(
+            revision_index=index,
+            reason=RefusalReason.UNREADABLE_STRUCTURE,
+            detail=f"{path} has no structural reading for {selector or 'an empty selector'}",
+        )
+    if not spans:
+        return Refusal(
+            revision_index=index,
+            reason=RefusalReason.UNRESOLVED_ENTITY,
+            detail=f"{selector} is not in {path}",
+        )
+    if len(spans) > 1:
+        return Refusal(
+            revision_index=index,
+            reason=RefusalReason.AMBIGUOUS_ENTITY,
+            detail=f"{selector} names {len(spans)} entities in {path}; it must name exactly one",
+        )
+    start, end = spans[0]
+    if revision.operation == RevisionOperation.INSERT_BEFORE_ENTITY:
+        return start, start
+    if revision.operation == RevisionOperation.INSERT_AFTER_ENTITY:
+        return end, end
+    return start, end
 
 
 def _anchor_matches(content: str, anchor: str, lo: int, hi: int) -> list[int]:
