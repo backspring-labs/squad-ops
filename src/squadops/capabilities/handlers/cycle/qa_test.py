@@ -331,6 +331,17 @@ class _ScaffoldFill(_WholeFileTests):
             )
         return source, artifacts
 
+    def after_merge(self, artifacts: list[dict], evidence_extra: dict[str, Any]) -> None:
+        # #1535: a pass's path-addressed files join the artifacts after ``absorb``; the
+        # additive half of the evidence is re-read over the merged set on every pass.
+        if not self._merge_evidence:
+            return
+        kept = [a for a in artifacts if a.get("name") not in self._shell_paths]
+        self._handler._bank_additive_surface(
+            self._merge_evidence, kept, self._handler._app_invocation(self._inputs)
+        )
+        evidence_extra["fill_merge"] = self._merge_evidence
+
     def artifact_for(self, file_rec: dict[str, str]) -> dict[str, Any] | None:
         # SIP-0104 P3: a self-eval pass must not rewrite merged shells either — the slot
         # protocol is the only shell surface.
@@ -1023,6 +1034,33 @@ class QATestHandler(_CycleTaskHandler):
             if a.get("type") == "test"
         ]
 
+    @staticmethod
+    def _bank_additive_surface(
+        evidence: dict[str, Any], kept: list[dict], invocation: AppInvocation | None
+    ) -> None:
+        """Write the additive half of the fill-merge evidence for ``kept`` — the artifacts at
+        no shell path — into ``evidence``, in place.
+
+        One statement for the merge and for every self-evaluation pass after it (#1535). The
+        merge computed it only when fills arrived, so a pass that added a suite and no fill
+        left the evidence describing the primary emission: 1.8.0 deploy A's Next.js
+        checkpoint banked ``additive_containment: []`` beside a failed containment row.
+        """
+        from squadops.capabilities.additive_containment import assess_additive_suite
+
+        # The retreat had TWO halves and the fills are only one. Shakedown #1's passing
+        # attempt also dropped an entire additive suite — 81 store calls through TABLES, no
+        # mocking — and ran 8 test files where the failing attempt ran 9. `extracted_files`
+        # went 1 -> 0 in a log line nobody read.
+        evidence.setdefault("assertion_strength", {})["additive_files"] = sorted(
+            a["name"] for a in kept
+        )
+        # #1022: the containment findings for the additive surface, banked here for the
+        # per-round record as #1052 first shipped them — and since 1.7.1 ALSO enforced, as
+        # the typed check `additive_containment` on every suite file at the typed-acceptance
+        # seam. Same function, so the record and the verdict cannot disagree.
+        evidence["additive_containment"] = [str(f) for f in assess_additive_suite(kept, invocation)]
+
     def _merge_fill_artifacts(
         self,
         scaffold_input: dict[str, Any],
@@ -1039,7 +1077,6 @@ class QATestHandler(_CycleTaskHandler):
         in exactly one disposition; missing and rejected slots render as failing states
         inside the merged shells, attributed to the fill layer.
         """
-        from squadops.capabilities.additive_containment import assess_additive_suite
         from squadops.capabilities.verification_scaffold import VerificationScaffoldManifest
         from squadops.capabilities.verification_scaffold_fill import (
             measure_assertion_strength,
@@ -1080,21 +1117,9 @@ class QATestHandler(_CycleTaskHandler):
             # banked a retreat as a clean success because the record could not tell 8 rich
             # fills from 8 that had dropped every store assertion. Banked rather than logged
             # so the per-roll record reads it from stored state.
-            "assertion_strength": {
-                **measure_assertion_strength(fill_emission),
-                # The retreat had TWO halves and the fills are only one. Shakedown #1's
-                # passing attempt also dropped an entire additive suite — 81 store calls
-                # through TABLES, no mocking — and ran 8 test files where the failing
-                # attempt ran 9. `extracted_files` went 1 -> 0 in a log line nobody read.
-                "additive_files": sorted(a["name"] for a in kept),
-            },
-            # #1022: the containment findings for the additive surface, banked here for
-            # the per-round record as #1052 first shipped them — and since 1.7.1 ALSO
-            # enforced, as the typed check `additive_containment` on every suite file at
-            # the typed-acceptance seam. Same function, so the record and the verdict
-            # cannot disagree.
-            "additive_containment": [str(f) for f in assess_additive_suite(kept, invocation)],
+            "assertion_strength": measure_assertion_strength(fill_emission),
         }
+        self._bank_additive_surface(evidence, kept, invocation)
         merged_suite_files = [{"filename": f.path, "content": f.content} for f in merged.files]
         return kept + merged_artifacts, merged_suite_files, evidence
 

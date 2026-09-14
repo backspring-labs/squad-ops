@@ -141,6 +141,14 @@ class SelfEvalFollowup:
         file extraction and the artifact set after it."""
         return content, artifacts
 
+    def after_merge(self, artifacts: list[dict], evidence_extra: dict[str, Any]) -> None:
+        """Bring the shape's banked evidence up to the merged artifact set, once per pass.
+
+        ``absorb`` runs before the pass's extracted files are merged, so evidence it computes
+        describes the set without them (#1535: a fill-less pass added a suite, and the
+        fill-merge evidence kept describing the primary emission). Nothing to do for
+        whole-file emission."""
+
     def artifact_for(self, file_rec: dict[str, str]) -> dict[str, Any] | None:
         """The artifact one extracted file becomes, or None to discard it."""
         artifact_type, media_type = _classify_file(file_rec["filename"])
@@ -852,6 +860,7 @@ class _CycleTaskHandler(CapabilityHandler):
                 if (artifact := followup.artifact_for(f)) is not None
             ]
             artifacts = self._merge_artifacts(artifacts, new_artifacts, evidence_extra)
+            followup.after_merge(artifacts, evidence_extra)
             validation = await self._validate_output(
                 inputs, artifacts, typed_error_counts=typed_error_counts
             )
