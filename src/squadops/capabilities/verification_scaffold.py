@@ -198,6 +198,24 @@ def parse_slot_regions(text: str) -> tuple[SlotRegion, ...]:
     return tuple(regions)
 
 
+def slot_body_span(text: str, slot_id: str) -> tuple[int, int] | None:
+    """The character span of ``slot_id``'s body — the lines between its two markers — or
+    ``None`` when the file declares no such slot.
+
+    The region a revision transaction replaces (SIP-0107 §9.3): ``start`` is the first character
+    after the begin marker's newline, ``end`` the first character of the end marker line, so a
+    replacement written as whole lines (each ending in ``\n``) leaves both markers byte for byte.
+    Raises :class:`ScaffoldSpineError` on a malformed file, like :func:`parse_slot_regions`.
+    """
+    region = next((r for r in parse_slot_regions(text) if r.slot_id == slot_id), None)
+    if region is None:
+        return None
+    lines = text.split("\n")
+    start = sum(len(line) + 1 for line in lines[: region.begin_line])
+    end = sum(len(line) + 1 for line in lines[: region.end_line - 1])
+    return start, end
+
+
 def elide_slot_bodies(text: str) -> str:
     """The canonical spine text: every slot body removed, markers and all else kept.
 

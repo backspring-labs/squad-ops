@@ -72,6 +72,7 @@ from squadops.capabilities.verification_scaffold import (
     parse_slot_regions,
     spine_hash,
 )
+from squadops.tasks.task_types import TaskType
 
 #: Size bounds for one fill body. Generous for domain assertions, prohibitive for a file.
 MAX_FILL_LINES = 120
@@ -443,6 +444,9 @@ def merge_fills(
     emission: FillEmission,
     store_tables: Sequence[str] | None = None,
     slot_element_kinds: Mapping[str, Mapping[str, Any]] | None = None,
+    *,
+    producer: str = TaskType.QA_TEST,
+    task_id: str = "",
 ) -> FillMergeRecord:
     """Merge an authored fill emission into the scaffold, deterministically.
 
@@ -450,8 +454,24 @@ def merge_fills(
     one disposition; the merged spine is re-hashed and must equal the scaffold record's —
     containment is *verified* on every merge, never assumed (a violation here is a bug in
     this module, raised as ``AssertionError`` rather than shipped).
+
+    **The merge is a revision transaction (SIP-0107 rollout step 2).** Each slot's merged body
+    — the fill, a not-applicable note, or the fill layer's failing state — is one
+    region-replacement revision, and the scaffold shells are the base. The transaction carries
+    a grant over exactly those shells for ``producer``, resolves every slot through the marker
+    grammar (:func:`~squadops.capabilities.verification_scaffold.slot_body_span`), and applies
+    all of them or none. The bytes are the ones this function always produced, so the qa lane
+    is the transaction's first proof rather than its first casualty.
     """
-    from squadops.capabilities.verification_scaffold import _sha256
+    from squadops.capabilities.verification_scaffold import _sha256, slot_body_span
+    from squadops.cycles.revision_transaction import (
+        Revision,
+        RevisionOperation,
+        RevisionTransaction,
+        base_revision_id,
+        resolve_and_apply,
+    )
+    from squadops.cycles.write_authorization import WriteGrant
 
     declared = {slot.slot_id for f in record.files for slot in f.slots}
     duplicate_set = set(emission.duplicates)
@@ -467,17 +487,12 @@ def merge_fills(
     )
 
     scaffold_by_path = {f["name"]: f["content"] for f in scaffold_files}
-    merged_files: list[MergedFile] = []
+    base = {file_record.path: scaffold_by_path[file_record.path] for file_record in record.files}
+    revisions: list[Revision] = []
     dispositions: list[SlotDisposition] = []
     for file_record in record.files:
-        content = scaffold_by_path[file_record.path]
-        lines = content.split("\n")
-        regions = {r.slot_id: r for r in parse_slot_regions(content)}
-        out: list[str] = []
-        cursor = 1
+        regions = {r.slot_id: r for r in parse_slot_regions(base[file_record.path])}
         for slot in sorted(file_record.slots, key=lambda s: regions[s.slot_id].begin_line):
-            region = regions[slot.slot_id]
-            out.extend(lines[cursor - 1 : region.begin_line])
             if slot.slot_id in duplicate_set:
                 body, disposition = (
                     _failing_state(slot.slot_id, "fill rejected: slot filled more than once"),
@@ -496,12 +511,35 @@ def merge_fills(
                     if fill
                     else [],
                 )
-            out.extend(body)
-            out.append(lines[region.end_line - 1])
-            cursor = region.end_line + 1
+            revisions.append(
+                Revision(
+                    artifact_path=file_record.path,
+                    region_id=slot.slot_id,
+                    operation=RevisionOperation.REPLACE_REGION,
+                    replacement="".join(f"{line}\n" for line in body),
+                )
+            )
             dispositions.append(disposition)
-        out.extend(lines[cursor - 1 :])
-        merged = "\n".join(out)
+
+    transaction = RevisionTransaction(
+        base_revision_id=base_revision_id(base),
+        grant=WriteGrant(producer=producer, stage="qa_fill", writable=frozenset(base)),
+        task_id=task_id,
+        revisions=tuple(revisions),
+    )
+    outcome = resolve_and_apply(
+        base, transaction, lambda _path, content, slot_id: slot_body_span(content, slot_id)
+    )
+    if not outcome.accepted:
+        raise ScaffoldValidationError(
+            "the fill merge's revision transaction was refused — a defect in merge_fills "
+            "itself, since every revision names a declared slot of a shell it was handed: "
+            + "; ".join(f"{r.reason}: {r.detail}" for r in outcome.refusals)
+        )
+
+    merged_files: list[MergedFile] = []
+    for file_record in record.files:
+        merged = outcome.candidate_files[file_record.path]
         merged_spine = spine_hash(merged)
         if merged_spine != file_record.spine_hash:
             raise ScaffoldValidationError(

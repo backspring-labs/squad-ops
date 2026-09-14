@@ -1532,3 +1532,53 @@ comparison refused them.
 **Ruled by.** The implementer, in the PR that builds §38 step 1, for the owner's review with it.
 None of the three items changes §5.5 or §39.4. Items 1 and 2 narrow where §20's identity is taken,
 and item 3 adds the storage-side proof §5.5 requires.
+
+## 46c. 2026-09-14 — the revision transaction as built (§38 step 2), and what moves to step 3
+
+**What changed.**
+
+1. **One pure module, callable wherever the base is in hand.** `src/squadops/cycles/revision_transaction.py`
+   holds the transaction (§13), the canonical internal revision `RangeEdit` (§11), atomic
+   resolution and application `resolve_and_apply` (§14), and typed refusals (§21). It does no I/O.
+   A region is found by a `RegionResolver` the caller supplies for the artifact's kind, so the
+   module holds no marker grammar of its own. For scaffold slots that resolver is
+   `verification_scaffold.slot_body_span`. Step 2 calls it agent-side, in the qa handler and the qa
+   repair handler (the two callers of `merge_fills`). The runtime verifier calls the same function
+   once a repair arrives as a transaction.
+2. **The grant is the existing path-level `WriteGrant`, carried and checked directly (§6.2).**
+   Region authority is two facts: the grant permits the artifact's path, and the region resolves
+   in that artifact. For the fill merge the grant is exactly the scaffold shells, for the producer
+   that owns them (`qa.test`, or `qa.test_repair` on the repair path). Nothing is reconstructed
+   from task type downstream.
+3. **Step 2 ships one operation, `replace_region`** (§9.3), the shape the qa fill path always had.
+   `merge_fills` builds one region-replacement revision per slot and applies the transaction. Its
+   output is byte-identical to the merge it replaced, and `FillMergeRecord`, the fill-merge evidence
+   (#999), keeps its shape. Later steps add exact anchors and structural operations; the atomic
+   validation, the edit record and the identity stay.
+4. **The candidate carries step 1's identity.** `TransactionOutcome.candidate_revision_id` is
+   `patch_verification.candidate_revision_id` over the base and the edited artifacts. No second
+   identity function exists.
+5. **Not built in step 2, deliberately: `materialize(..., authorization=)`.** §38 lists it for this
+   step. Step 2's candidate is the qa suite's own shells, and the test runner writes them into one
+   workspace beside the additive suites. No transaction grant covers those suites, so authorizing
+   that write with the transaction's grant would either refuse the additive suites or pass a grant
+   wider than the transaction. The call is wired in **step 3**, where a grant first crosses a write
+   seam the runtime enforces: the dev repair path, verified in `patch_verification`.
+6. **The fill transaction's `task_id` is empty at both agent-side callers.** Their seam receives no
+   task identity, and step 2 persists no edit record. The producer is recorded. The id is threaded
+   when edit records become evidence (§36).
+
+**Evidence.**
+- The 445 existing fill and scaffold tests pass unchanged. They include the characterization goldens
+  and the property that recovering fills from a merged shell and merging them again reproduces its
+  bytes.
+- `tests/unit/cycles/test_revision_transaction.py` covers: atomic refusal of a three-revision
+  transaction with one out-of-grant revision; stale base; each unresolvable reason; overlap; two
+  edits in one artifact applied without moving each other's range; span fingerprints; the inherited
+  identity; and the empty and undeclared slot spans.
+- Mutations are each caught: ascending application, the grant not consulted, a stale base
+  accepted, and partial application. A slot span off by one line breaks 30 tests, including the
+  existing fill tests, which is what pins byte identity.
+
+**Ruled by.** The implementer, in the PR that builds §38 step 2, for the owner's review with it.
+Item 5 moves one sentence of §38 to step 3.
