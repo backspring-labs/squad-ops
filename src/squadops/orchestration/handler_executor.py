@@ -13,6 +13,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from squadops.capabilities.handlers.context import ExecutionContext
+from squadops.cycles.llm_usage import UsageTotals
 from squadops.orchestration.handler_registry import HandlerNotFoundError, HandlerRegistry
 from squadops.ports.capabilities.executor import CapabilityExecutor
 from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
@@ -77,6 +78,10 @@ class HandlerExecutor(CapabilityExecutor):
         """
         task_type = envelope.task_type
         task_id = envelope.task_id
+        # SIP-0108 §4.1: None until the context exists; once it does, its usage rides every
+        # result this method returns — and the timeout it re-raises — so a task that failed,
+        # raised or ran out of time still reports the calls it made.
+        context: ExecutionContext | None = None
 
         logger.info(
             "executing_task",
@@ -98,6 +103,8 @@ class HandlerExecutor(CapabilityExecutor):
                     outputs=None,
                     error=f"No handler for task type: {task_type}",
                     execution_evidence={"error": "handler_not_found"},
+                    # No handler ran, so no call was made: a known zero, not an unreported one.
+                    llm_usage=UsageTotals().to_dict(),
                 )
 
             # Create execution context with correlation for LangFuse tracing
@@ -126,6 +133,7 @@ class HandlerExecutor(CapabilityExecutor):
                     outputs=None,
                     error=f"Validation failed: {'; '.join(errors)}",
                     execution_evidence={"validation_errors": errors},
+                    llm_usage=context.llm_usage.to_dict(),
                 )
 
             # Execute with timeout
@@ -137,7 +145,10 @@ class HandlerExecutor(CapabilityExecutor):
                     timeout=timeout,
                 )
             except TimeoutError as err:
-                raise TimeoutError(f"Execution timed out after {timeout}s") from err
+                timed_out = TimeoutError(f"Execution timed out after {timeout}s")
+                # The agent entrypoint builds this task's result from the exception.
+                timed_out.llm_usage = context.llm_usage.to_dict()  # type: ignore[attr-defined]
+                raise timed_out from err
 
             # Convert handler result to task result
             if result.success:
@@ -154,6 +165,7 @@ class HandlerExecutor(CapabilityExecutor):
                     outputs=result.outputs,
                     error=None,
                     execution_evidence=self._evidence_to_dict(result.evidence),
+                    llm_usage=context.llm_usage.to_dict(),
                 )
             else:
                 logger.warning(
@@ -170,6 +182,7 @@ class HandlerExecutor(CapabilityExecutor):
                     outputs=result.outputs,
                     error=result.error,
                     execution_evidence=self._evidence_to_dict(result.evidence),
+                    llm_usage=context.llm_usage.to_dict(),
                 )
 
         except TimeoutError:
@@ -186,6 +199,7 @@ class HandlerExecutor(CapabilityExecutor):
                 outputs=None,
                 error=str(e),
                 execution_evidence={"exception": type(e).__name__},
+                llm_usage=context.llm_usage.to_dict() if context is not None else None,
             )
 
     async def health(self) -> dict[str, Any]:

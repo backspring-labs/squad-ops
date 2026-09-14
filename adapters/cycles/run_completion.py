@@ -32,7 +32,9 @@ from adapters.cycles.execution_errors import (
     _PausedError,
     _RecruitmentRejectedError,
 )
+from squadops.cycles.llm_usage import RunUsage
 from squadops.cycles.models import ArtifactRef, RunStatus
+from squadops.cycles.run_loop_summary import RunLoopSummary
 from squadops.cycles.run_report_builder import build_run_report
 from squadops.cycles.verification_integrity import (
     RunVerificationSummary,
@@ -211,8 +213,13 @@ class RunCompletion:
         plan: list[TaskEnvelope] | None = None,
         ledger: RunLedger | None = None,
         contract: Any | None = None,
+        usage: RunUsage | None = None,
     ) -> None:
         """Close observability traces and generate run report.
+
+        ``usage`` is the run's LLM usage, summed where every dispatch returned (SIP-0108
+        §4.1); it is persisted as the run summary's row. ``None`` writes no row — a caller
+        that never accounted usage must not record a run as having used nothing.
 
         ``contract`` is the bind-mode verification contract the executor loaded for
         this run (None in author mode); its criterion ids become the coverage
@@ -258,6 +265,15 @@ class RunCompletion:
                 await self._cycle_registry.record_run_verification_summary(run_id, summary)
             except Exception:
                 logger.warning("Verification summary persistence failed", exc_info=True)
+            # SIP-0108 §4.1: the run summary, beside the verification summary and under the
+            # same best-effort contract — persistence never changes the run's terminal status.
+            if usage is not None:
+                try:
+                    await self._cycle_registry.record_run_loop_summary(
+                        run_id, RunLoopSummary(run_id=run_id, usage=usage)
+                    )
+                except Exception:
+                    logger.warning("Run summary persistence failed", exc_info=True)
 
         # Run report: best-effort (D10)
         try:

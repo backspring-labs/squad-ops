@@ -200,6 +200,44 @@ class TestSequentialHappyPath:
         assert statuses[0] == RunStatus.RUNNING
         assert statuses[-1] == RunStatus.COMPLETED
 
+    async def test_finalization_persists_the_runs_usage_summed_over_every_reply(
+        self, executor, mock_registry, mock_queue
+    ) -> None:
+        """SIP-0108 §5 criterion 2, the finalization half. Entry point: ``execute_run``, through
+        the dispatcher, to the registry row. Bug caught: the run summary written from anything
+        but the replies the run actually got — or a reply without usage read as a free task."""
+        from squadops.cycles.llm_usage import UsageTotals
+
+        unreported_ids: list[str] = []
+
+        def responder(env):
+            if env["task_type"] == "data.report":
+                unreported_ids.append(env["task_id"])
+            usage = (
+                None
+                if env["task_type"] == "data.report"
+                else UsageTotals(calls=2, failed_calls=1, prompt_tokens=100).to_dict()
+            )
+            return TaskResult(
+                task_id=env["task_id"],
+                status="SUCCEEDED",
+                outputs={"summary": "stub", "role": "strat", "artifacts": []},
+                llm_usage=usage,
+            )
+
+        mock_queue.reply_router.responder = responder
+        with patch(
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        run_id, summary = mock_registry.record_run_loop_summary.await_args.args
+        assert run_id == "run_001"
+        assert summary.usage.total == UsageTotals(calls=8, failed_calls=4, prompt_tokens=400)
+        assert summary.usage.tasks_reported == 4
+        assert list(summary.usage.tasks_unreported) == unreported_ids
+
     async def test_publish_called_5_times(self, executor, mock_queue) -> None:
         """queue.publish called once per pipeline step (5 total)."""
         self._wire_canned_replies(mock_queue)

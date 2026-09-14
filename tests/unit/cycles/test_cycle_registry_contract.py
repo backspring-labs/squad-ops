@@ -396,6 +396,41 @@ class TestRecordRunVerificationSummary:
         assert stored.failed == ("frontend_build",)
 
 
+class TestRunLoopSummary:
+    """SIP-0108 §4.1: the run summary row — terminal-OK, an upsert, and absent for a run that
+    was never given one."""
+
+    async def _terminal_run(self, registry):
+        await registry.create_cycle(_make_cycle())
+        await registry.create_run(_make_run())
+        await registry.update_run_status("run_001", RunStatus.RUNNING)
+        await registry.update_run_status("run_001", RunStatus.COMPLETED)
+
+    @staticmethod
+    def _summary(calls: int):
+        from squadops.cycles.llm_usage import RunUsage, UsageTotals
+        from squadops.cycles.run_loop_summary import RunLoopSummary
+
+        usage = RunUsage(
+            by_task_type={"qa.test": UsageTotals(calls=calls)},
+            tasks_reported=1,
+            tasks_unreported=(),
+        )
+        return RunLoopSummary(run_id="run_001", usage=usage)
+
+    async def test_a_terminal_run_records_and_a_refinalize_supersedes(self, registry):
+        await self._terminal_run(registry)
+        assert await registry.get_run_loop_summary("run_001") is None
+        await registry.record_run_loop_summary("run_001", self._summary(3))
+        await registry.record_run_loop_summary("run_001", self._summary(5))
+        stored = await registry.get_run_loop_summary("run_001")
+        assert stored.usage.total.calls == 5
+
+    async def test_an_unknown_run_raises(self, registry):
+        with pytest.raises(RunNotFoundError):
+            await registry.record_run_loop_summary("nope", self._summary(1))
+
+
 class TestListRunVerificationSummaries:
     """Contract tests for list_run_verification_summaries (SIP-0096 Phase 3 §10)."""
 

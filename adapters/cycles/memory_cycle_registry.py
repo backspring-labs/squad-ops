@@ -28,6 +28,7 @@ from squadops.cycles.models import (
     ValidationError,
 )
 from squadops.cycles.pulse_models import PulseVerificationRecord
+from squadops.cycles.run_loop_summary import RunLoopSummary
 from squadops.cycles.verification_integrity import RunVerificationSummary
 from squadops.ports.cycles.cycle_registry import CycleRegistryPort
 
@@ -42,6 +43,7 @@ class MemoryCycleRegistry(CycleRegistryPort):
         self._cancelled_cycles: set[str] = set()
         self._pulse_verifications: dict[str, list[dict]] = {}
         self._verification_summaries: dict[str, RunVerificationSummary] = {}
+        self._loop_summaries: dict[str, RunLoopSummary] = {}
         self._checkpoints: dict[str, list[RunCheckpoint]] = {}
         # SIP-0101 Slice 2: (run_id, checkpoint_index) pairs excluded from pruning
         # (the model stays retention-agnostic; postgres carries this as a column)
@@ -244,6 +246,15 @@ class MemoryCycleRegistry(CycleRegistryPort):
     async def get_run_verification_summary(self, run_id: str) -> RunVerificationSummary | None:
         """One run's persisted verification roll-up, or None (#682)."""
         return self._verification_summaries.get(run_id)
+
+    async def record_run_loop_summary(self, run_id: str, summary: RunLoopSummary) -> None:
+        """Store a run's loop facts (SIP-0108 §4.1; upsert, terminal-OK)."""
+        if run_id not in self._runs:
+            raise RunNotFoundError(f"Run not found: {run_id}")
+        self._loop_summaries[run_id] = summary
+
+    async def get_run_loop_summary(self, run_id: str) -> RunLoopSummary | None:
+        return self._loop_summaries.get(run_id)
 
     async def list_run_verification_summaries(self, cycle_id: str) -> list[RunVerificationSummary]:
         """Return a cycle's persisted per-run verification summaries, by run_number."""

@@ -216,6 +216,36 @@ class TestCodeLineageRoundTrip:
         assert (fetched.framework_version, fetched.framework_git_sha) == (version, sha)
 
 
+class TestRunLoopSummaryRoundTrip:
+    """SIP-0108 §4.1 against real Postgres: migration 1500's table takes the row, a re-finalize
+    supersedes it, and the JSONB reads back as the same summary. The unit contract test runs
+    the memory adapter, so only this proves the INSERT and the table agree."""
+
+    async def test_the_summary_round_trips_and_a_refinalize_supersedes(self, registry):
+        from squadops.cycles.llm_usage import RunUsage, UsageTotals
+        from squadops.cycles.run_loop_summary import RunLoopSummary
+
+        cycle = _make_cycle()
+        await registry.create_cycle(cycle)
+        run = await registry.create_run(_make_run(cycle.cycle_id))
+        assert await registry.get_run_loop_summary(run.run_id) is None
+
+        def summary(calls: int) -> RunLoopSummary:
+            return RunLoopSummary(
+                run_id=run.run_id,
+                usage=RunUsage(
+                    by_task_type={"qa.test": UsageTotals(calls=calls, duration_ms=12.5)},
+                    tasks_reported=1,
+                    tasks_unreported=("t-timeout",),
+                ),
+            )
+
+        await registry.record_run_loop_summary(run.run_id, summary(3))
+        await registry.record_run_loop_summary(run.run_id, summary(5))
+
+        assert await registry.get_run_loop_summary(run.run_id) == summary(5)
+
+
 class TestFullRunLifecycle:
     """create → running → paused → running → completed (Plan §3.3 item 2)."""
 

@@ -117,6 +117,11 @@ class TaskResult:
     error: str | None = None
     execution_evidence: dict[str, Any] | None = None  # SIP-0.8.8
     outcome_class: str | None = None  # SIP-0079: TaskOutcome constant (optional, backward compat)
+    #: SIP-0108 §4.1: the task's LLM usage as ``UsageTotals.to_dict()`` — every call
+    #: ``_llm_call`` observed, succeeded or raised. ``None`` means none was reported (a reply
+    #: timeout, an agent older than the field), which the run summary counts rather than
+    #: reads as zero.
+    llm_usage: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dict for JSON transport."""
