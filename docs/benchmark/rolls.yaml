@@ -1,0 +1,225 @@
+# The benchmark registry's membership: the counted rolls of 1.6.3 through 1.7.5 (SIP-0108 §4.3,
+# the 1.8.0 plan §3.4 (c)). Seventy-nine counted rolls, plus the two void launches whose
+# registry launch notes still declare a counted roll 1.
+#
+# What each field is, and where it was read:
+# - `counted`: the set's counted rolls, in roll order. They are transcribed from the set's
+#   record; each cycle's own launch note in the registry must declare that roll, or the
+#   re-grade refuses the row (`not_launched_as_declared`).
+# - `void`: a counted-roll launch the record voided (the set stopped and restarted from roll 1).
+#   A void carries no pins, because its set's pins describe the rebuilt deploy it restarted on.
+# - `stack`: the stack the arm ran. The re-grade checks it against the cycle's own
+#   `build_profile` (`stack_disagrees`).
+# - `pins_config`: the set config whose `frozen_deploy_commit` and `frozen_image_ids` are the
+#   lineage, read at re-grade time rather than copied here. Before 1.6.5 no set config exists;
+#   `pins` is then transcribed from the pre-registration named as its `source`.
+#
+# The driver's per-roll JSON records are not an input (SIP-0108 §2): they are partial, and the
+# registry and the vault hold every roll here.
+#
+# Re-grade: scripts/dev/regrade_benchmark.py (read-only). Capture: docs/benchmark/regrade.json.
+
+sets:
+  - name: 1.6.3 Next.js
+    record: docs/plans/1-6-3-repeatability-set-record.md
+    stack: nextjs_ts
+    pins:
+      source: docs/plans/1-6-3-repeatability-set-preregistration.md
+      deploy_commit: 5c6c64f7
+      image_ids:
+        runtime-api: c0cae4d1ea8a
+        max: 964cde436e5f
+        neo: 669a9d536366
+        nat: 8189b36e464a
+        bob: befdaca21f31
+        eve: 98130be6ce7e
+        data: 1a3d4df7afdd
+    counted:
+      - cyc_a24e4619844e
+      - cyc_b04cfe4b6191
+      - cyc_1a3161035eb7
+      - cyc_a38814afc16d
+      - cyc_421d29473f86
+      - cyc_09936ee022b2
+      - cyc_c9fd8db53613
+      - cyc_9c43f56c5cd8
+
+  - name: 1.6.4 Next.js
+    record: docs/plans/1-6-4-verification-set-record.md
+    stack: nextjs_ts
+    pins:
+      source: docs/plans/1-6-4-verification-set-preregistration.md
+      deploy_commit: 5a697dfa
+      image_ids:
+        runtime-api: 5db73df0ed4c
+        max: 7e8f02591878
+        neo: 69fd811e7835
+        nat: c5c6e8fb5810
+        bob: ffb415ff3ecf
+        eve: fef7b35fb9e2
+        data: 02f7c7490747
+    counted:
+      - cyc_13ac22c47a6b
+      - cyc_0f4d7f319c12
+      - cyc_35fca7e65f89
+      - cyc_e9e0ec669118
+      - cyc_cf2a139701d3
+      - cyc_bbc9da03c3c1
+      - cyc_b7352b97cff9
+      - cyc_8d262b968f58
+
+  - name: 1.6.5 Next.js
+    record: docs/plans/1-6-5-verification-set-record.md
+    stack: nextjs_ts
+    pins_config: docs/plans/verification-sets/1-6-5-nextjs.yaml
+    counted:
+      - cyc_a306b4e858d9
+      - cyc_9b17553ce9d5
+      - cyc_0d85a682881a
+      - cyc_face9e37d93a
+      - cyc_345268417e31
+      - cyc_47cd83559c4a
+
+  - name: 1.6.5 FastAPI+React
+    record: docs/plans/1-6-5-verification-set-record.md
+    stack: fullstack_fastapi_react
+    pins_config: docs/plans/verification-sets/1-6-5-fastapi-react.yaml
+    counted:
+      - cyc_b9296c255dfc
+      - cyc_f84649c68646
+      - cyc_184b3a1d194e
+      - cyc_5ef83cc6fc2b
+      - cyc_0e7bc622169a
+      - cyc_d43c644e52d0
+
+  - name: 1.6.6 FastAPI+React
+    record: docs/plans/1-6-6-verification-set-record.md
+    stack: fullstack_fastapi_react
+    pins_config: docs/plans/verification-sets/1-6-6-fastapi-react.yaml
+    counted:
+      - cyc_cdf91361702b
+      - cyc_4f6d873561a2
+      - cyc_38d1e1689766
+      - cyc_ac15b6c6209f
+      - cyc_ae0631fddfc5
+      - cyc_0c4664c2ae9a
+
+  - name: 1.6.6 Next.js
+    record: docs/plans/1-6-6-verification-set-record.md
+    stack: nextjs_ts
+    pins_config: docs/plans/verification-sets/1-6-6-nextjs.yaml
+    counted:
+      - cyc_68b0e1769526
+      - cyc_06987a951236
+
+  # Five of six: the early-stop rule withheld the sixth (the record's opening paragraph).
+  - name: 1.7.1 FastAPI+React
+    record: docs/plans/1-7-1-verification-set-record.md
+    stack: fullstack_fastapi_react
+    pins_config: docs/plans/verification-sets/1-7-1-fastapi-react.yaml
+    counted:
+      - cyc_4d52bbd34a32
+      - cyc_9c085ec2e9e5
+      - cyc_f05692bb3ceb
+      - cyc_de4b2dea73a0
+      - cyc_ca02bed7fbb4
+
+  - name: 1.7.1 Next.js
+    record: docs/plans/1-7-1-verification-set-record.md
+    stack: nextjs_ts
+    pins_config: docs/plans/verification-sets/1-7-1-nextjs.yaml
+    counted:
+      - cyc_9be98128f0e9
+      - cyc_5b027f3e74fc
+
+  - name: 1.7.2 FastAPI+React
+    record: docs/plans/1-7-2-verification-set-record.md
+    stack: fullstack_fastapi_react
+    pins_config: docs/plans/verification-sets/1-7-2-fastapi-react.yaml
+    void:
+      - cycle: cyc_e33939eda950
+        roll: 1
+        reason: "#1318 — an accepted patch never superseded the failed attempt's rows; the set restarted from roll 1 on a rebuilt deploy (record §0)"
+    counted:
+      - cyc_eafdc918e8b0
+      - cyc_b40ae312c8ac
+      - cyc_838e5997c81e
+      - cyc_05935ffcb572
+      - cyc_37f52053d14d
+      - cyc_1f292d1953c6
+
+  - name: 1.7.2 Next.js
+    record: docs/plans/1-7-2-verification-set-record.md
+    stack: nextjs_ts
+    pins_config: docs/plans/verification-sets/1-7-2-nextjs.yaml
+    counted:
+      - cyc_87ca1a908120
+      - cyc_c364a4af38a5
+      - cyc_58279e83c19b
+
+  - name: 1.7.3 FastAPI+React
+    record: docs/plans/1-7-3-verification-set-record.md
+    stack: fullstack_fastapi_react
+    pins_config: docs/plans/verification-sets/1-7-3-fastapi-react.yaml
+    void:
+      - cycle: cyc_af7dd4ad95b0
+        roll: 1
+        reason: "#1364 — a contentless first emission left the spine rows underived, so a verified repair read blocked_unverified; the set restarted from roll 1 on a rebuilt deploy (record §0)"
+    counted:
+      - cyc_597f5cb76fb2
+      - cyc_4acd6ce64ca1
+      - cyc_ce33e6a1da5f
+      - cyc_b9961579f33b
+      - cyc_52a2c7438d12
+      - cyc_3270c790620e
+
+  - name: 1.7.3 Next.js
+    record: docs/plans/1-7-3-verification-set-record.md
+    stack: nextjs_ts
+    pins_config: docs/plans/verification-sets/1-7-3-nextjs.yaml
+    counted:
+      - cyc_2dfbb0f1af81
+      - cyc_5cb087956ba9
+      - cyc_57cdbad02f67
+
+  - name: 1.7.4 FastAPI+React
+    record: docs/plans/1-7-4-verification-set-record.md
+    stack: fullstack_fastapi_react
+    pins_config: docs/plans/verification-sets/1-7-4-fastapi-react.yaml
+    counted:
+      - cyc_a17ee1347743
+      - cyc_e4e818ee8196
+      - cyc_ece3e9d2f3c8
+      - cyc_cdf3c674a49a
+      - cyc_e60b855d0e7a
+      - cyc_08117e841446
+
+  - name: 1.7.4 Next.js
+    record: docs/plans/1-7-4-verification-set-record.md
+    stack: nextjs_ts
+    pins_config: docs/plans/verification-sets/1-7-4-nextjs.yaml
+    counted:
+      - cyc_a142ccb92b6a
+      - cyc_153ef2eaace5
+      - cyc_4f2693c9f281
+
+  - name: 1.7.5 FastAPI+React
+    record: docs/plans/1-7-5-verification-set-record.md
+    stack: fullstack_fastapi_react
+    pins_config: docs/plans/verification-sets/1-7-5-fastapi-react.yaml
+    counted:
+      - cyc_f1f25d100436
+      - cyc_5a6e5ed0caeb
+      - cyc_89153929749f
+      - cyc_25b77dad0ef1
+      - cyc_0eab68279d8e
+      - cyc_18aa25b4a57e
+
+  - name: 1.7.5 Next.js
+    record: docs/plans/1-7-5-verification-set-record.md
+    stack: nextjs_ts
+    pins_config: docs/plans/verification-sets/1-7-5-nextjs.yaml
+    counted:
+      - cyc_8d383802f3a1
+      - cyc_551eaf49884a
+      - cyc_6156e09ad6da
