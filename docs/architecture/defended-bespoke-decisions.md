@@ -256,12 +256,19 @@ refusing on the unmeasured half would change what a verdict means inside a measu
 window. Promotion to a refusal is a separate, deliberate call with evidence behind it.
 *Lives in:* block 6.
 
-## 26. The acceptance verdict names the workspace tree it verified against
+## 26. The acceptance verdict names the base it landed on and the candidate it verified, and nothing is stored that is not that candidate
 
-The repair-acceptance verdict carries the identity of the workspace tree
-`verify_patched_artifacts` computed and verified against (#734 Slice A), so a record can say
-which tree a patch was judged on rather than inferring it from timestamps. *Lives in:* block
-7 (accept).
+The repair-acceptance verdict carries the identity of the accepted workspace the patch landed on
+(`workspace_revision_id`, #734 Slice A) and, since SIP-0107's first rollout step, the identity of
+the candidate itself: that base with the patch's work product applied (`candidate_revision_id`,
+§20), taken over repository state, so evidence artifacts the path supersedes by design do not
+count (entry 24). Block 7 recomputes it over the set the corrected result will carry and refuses a
+mismatch by failing the run; the storage seam checks that its own grant enforcement leaves an
+accepted patch's set unchanged. The base alone named a tree nothing was verified on (SIP-0107
+§3.6), and "verified set equals stored set" held only by call order (#1323). A mismatch fails the
+run rather than re-dispatching, because no producer can cause one (the #1350 precedent), and an
+ordinary correction round would bury the framework defect. *Lives in:* block 7 (accept), and
+`_collect_artifacts_and_checkpoint`.
 
 ## 27. Every handled outcome stamps an attempt, and the facts that attempt exposed ride the next one
 
