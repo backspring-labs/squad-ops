@@ -20,6 +20,7 @@ import posixpath
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+from squadops.capabilities.scaffold import within_namespace
 from squadops.cycles.bound_scaffold_record import BoundScaffoldRecord
 
 
@@ -47,9 +48,18 @@ def normalize_ws_path(path: str) -> str | None:
 
 
 def _in_surface(norm: str, tokens: frozenset[str]) -> bool:
-    """A path is in a surface if it equals a token (an exact fill-slot file) or is under a
-    directory token (a namespace prefix ending in ``/``)."""
-    return any(norm == t or norm.startswith(t) for t in tokens)
+    """A path is in a surface if it equals a token (an exact fill-slot file) or lies in a
+    directory token (a namespace entry ending in ``/``).
+
+    A directory token is read by the scaffold's own namespace rule (``within_namespace``,
+    #1292): a bare name such as ``__tests__/`` is a convention, matched as a segment at any
+    depth; a multi-segment entry is a location at the root. Read as a root prefix,
+    ``nextjs_ts``'s co-located suites fell outside its own QA namespace, so a grant that
+    excludes that namespace could not see a write into one (SIP-0107 §46d)."""
+    return any(
+        within_namespace(norm, t) if t.endswith("/") else (norm == t or norm.startswith(t))
+        for t in tokens
+    )
 
 
 @dataclass(frozen=True)
@@ -84,10 +94,15 @@ class WriteGrant:
     stage: str
     writable: frozenset[str]
     delegated: frozenset[str] = field(default_factory=frozenset)
+    #: #649: whether a path no surface declares may be net-new source. Only assembly is denied
+    #: it; a dev or qa producer may create a file the scaffold never declared (§6.3's new-file
+    #: grant is unchanged).
+    may_author_undeclared_source: bool = True
 
     @classmethod
     def for_dev_fill(cls, producer: str, ownership: WorkspaceOwnership) -> WriteGrant:
-        """A dev fill/repair may write the scaffold fill slots (routes.py, views)."""
+        """A dev fill/repair may write the scaffold fill slots (routes.py, views), never the QA
+        namespace — the suite the dev's own work is judged by (SIP-0107 §3.3, §46d)."""
         return cls(producer=producer, stage="dev_fill", writable=ownership.fill_slots)
 
     @classmethod
@@ -101,7 +116,12 @@ class WriteGrant:
         writable surface. It may not author source (fay-7's uninstructed
         ``start.py``) nor write the QA namespace; undeclared non-source paths
         (``assembly_notes.md``, reports) pass through as deliverables."""
-        return cls(producer=producer, stage="builder", writable=ownership.fill_slots)
+        return cls(
+            producer=producer,
+            stage="builder",
+            writable=ownership.fill_slots,
+            may_author_undeclared_source=False,
+        )
 
 
 @dataclass(frozen=True)

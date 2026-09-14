@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from squadops.capabilities.scaffold import InterfaceManifest
 from squadops.cycles.bound_scaffold_record import build_bound_record
 from squadops.cycles.write_authorization import (
@@ -81,3 +83,37 @@ def test_duplicate_normalized_paths_reject_response():
     authz = WriteAuthorization(own, WriteGrant.for_qa("eve", own))
     r = authz.authorize_response(["backend/tests/a.py", "./backend/tests/a.py"])
     assert not r.allowed
+
+
+def _nextjs_ownership() -> WorkspaceOwnership:
+    from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+    rec = build_bound_record(
+        manifest_for_stack("nextjs_ts"), run_id="r", attempt_id="a", created_at="t"
+    )
+    return WorkspaceOwnership.from_record(rec)
+
+
+@pytest.mark.parametrize(
+    ("ownership", "path", "expected"),
+    [
+        # nextjs_ts declares the co-located convention `__tests__/`: a segment at any depth.
+        (_nextjs_ownership, "app/api/runs/__tests__/route.test.ts", "unauthorized"),
+        (_nextjs_ownership, "__tests__/runs-ui.test.tsx", "unauthorized"),
+        (_nextjs_ownership, "app/my__tests__helper.ts", "undeclared"),
+        # fastapi_react declares locations: matched at the root only, as before.
+        (_ownership, "backend/tests/test_runs.py", "unauthorized"),
+        (_ownership, "vendor/backend/tests/test_runs.py", "undeclared"),
+    ],
+)
+def test_the_dev_grant_reads_the_qa_namespace_by_the_scaffolds_own_rule(ownership, path, expected):
+    """SIP-0107 §46d. Bug caught: a root-prefix reading put nextjs_ts's co-located suites
+    outside its own QA namespace, so the dev grant could not see a write into one (#1292's
+    rule, which the scaffold already applies, not applied here)."""
+    own = ownership()
+    authz = WriteAuthorization(own, WriteGrant.for_dev_fill("development.correction_repair", own))
+    decision = {
+        AuthzDecision.FORBIDDEN_UNAUTHORIZED: "unauthorized",
+        AuthzDecision.FORBIDDEN_UNDECLARED: "undeclared",
+    }.get(authz.authorize(path), str(authz.authorize(path)))
+    assert decision == expected

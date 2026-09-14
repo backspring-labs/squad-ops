@@ -161,15 +161,28 @@ class TestAdversarialProducerEndToEnd:
         assert enforced == []
         assert evidence[0].violation_code == ContractComplianceViolation.FROZEN_PATH_EMISSION
 
-    def test_a_legal_body_edit_passes_any_role(self, record, shells):
-        """The one legal shape — body edits inside intact markers — passes for qa AND for
-        a dev-locus repair (content-based, role-independent: §4.3's 'any role, any locus'
-        cuts both ways)."""
+    def test_a_legal_body_edit_passes_the_qa_lane(self, record, shells):
+        """The one legal shape — body edits inside intact markers — passes for the producer
+        whose lane the shell is in."""
         content = shells[_CREATE_SHELL].replace("    void body", "    expect(body.id).toBeTruthy()")
-        for task_type in ("qa.test", "development.develop"):
-            enforced, evidence = _enforce(record, _art(_CREATE_SHELL, content), task_type=task_type)
-            assert [a["name"] for a in enforced] == [_CREATE_SHELL], task_type
-            assert evidence == [], task_type
+        enforced, evidence = _enforce(record, _art(_CREATE_SHELL, content), task_type="qa.test")
+        assert [a["name"] for a in enforced] == [_CREATE_SHELL]
+        assert evidence == []
+
+    @pytest.mark.parametrize("task_type", ["development.develop", "development.correction_repair"])
+    def test_a_legal_body_edit_by_dev_is_outside_the_dev_grant(self, record, shells, task_type):
+        """SIP-0107 step 3 (§46d). The region rules are role-independent — any role editing the
+        spine is refused as a region violation — but the slot bodies are the qa suite's content
+        (SIP-0104 §5: a failing slot assertion is a qa repair). A dev producer's region-legal
+        edit is outside its grant: dropped as an unauthorized write, with evidence. Bug caught:
+        a dev repair rewriting the assertions its own work is judged by (the #1014 class)
+        landing because the region check passed."""
+        content = shells[_CREATE_SHELL].replace("    void body", "    expect(body.id).toBeTruthy()")
+        enforced, evidence = _enforce(record, _art(_CREATE_SHELL, content), task_type=task_type)
+        assert enforced == []
+        (ev,) = evidence
+        assert ev.violation_code == ContractComplianceViolation.UNAUTHORIZED_SLOT_EMISSION
+        assert (ev.normalized_path, ev.producer_task_type) == (_CREATE_SHELL, task_type)
 
     def test_an_additive_test_file_still_passes(self, record):
         enforced, evidence = _enforce(record, _art("__tests__/extra.test.ts", "// additive"))

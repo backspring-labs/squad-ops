@@ -1582,3 +1582,89 @@ and item 3 adds the storage-side proof §5.5 requires.
 
 **Ruled by.** The implementer, in the PR that builds §38 step 2, for the owner's review with it.
 Item 5 moves one sentence of §38 to step 3.
+
+## 46d. 2026-09-14 — the dev grant as built (§38 step 3), and `materialize(..., authorization=)` left unwired
+
+**What changed.**
+
+1. **Every role family that writes the workspace carries a grant, resolved in one place.**
+   `scaffold_enforcement._producer_authorization` keys the grant on the task type's domain:
+   - `qa` → `WriteGrant.for_qa`;
+   - `development` → `WriteGrant.for_dev_fill`;
+   - `builder` → `WriteGrant.for_builder`.
+
+   `enforce_frozen_ownership` is the only caller. That puts the dev grant at the same seams as
+   QA and builder (§39.6): the failed-emission bank, patch verification, artifact storage and the
+   correction runner's repair emission. The producer an artifact names (#1350) still decides
+   whose grant judges it.
+2. **What the dev grant permits.**
+   - **The fill slots:** allowed.
+   - **The QA namespace:** unauthorized. Such a write is dropped with `unauthorized_slot_emission`
+     evidence and counted against the contract-compliance budget, as a QA or builder overstep is.
+   - **An undeclared path:** passes. A dev producer may create a file the scaffold never
+     declared; §6.3's new-file grant is unchanged.
+
+   The builder's #649 rule, that assembly may author no net-new source, is now a field of its
+   grant (`may_author_undeclared_source=False`). It is no longer a second authorization threaded
+   beside the first.
+3. **The QA namespace is read by the scaffold's own rule.** `write_authorization._in_surface`
+   read every directory token as a root prefix. `nextjs_ts` declares the co-located `__tests__/`
+   convention (#1292), so its co-located suites fell outside its own namespace, and a grant that
+   excludes the namespace could not see a write into one. Directory tokens are now read by
+   `scaffold.within_namespace`, made public for this. No QA or builder disposition changes:
+   - a QA co-located suite moves from undeclared to allowed, and passes either way;
+   - a builder's moves from undeclared source to unauthorized, and is dropped either way.
+4. **One existing test's expectation changes.** A dev producer making a region-legal edit to a
+   verification-scaffold shell's slot bodies used to pass: `test_a_legal_body_edit_passes_any_role`
+   read SIP-0104 §4.3's "any role" as permitting it. §4.3 forbids any role from modifying frozen
+   regions; it grants no role the slot bodies. SIP-0104 §5 assigns a failing slot assertion to a
+   qa repair. The slot bodies are the qa suite's content and live in the QA namespace, so a dev
+   edit is now dropped as unauthorized, with evidence. The test is split: the qa lane passes, and
+   `development.develop` and `development.correction_repair` are dropped.
+5. **`materialize(..., authorization=)` stays unwired.** This supersedes §46c item 5, which
+   moved it here. Its authorization is response-atomic and refuses undeclared paths
+   (`WriteAuthorization.authorize_response`). On the dev repair path that would:
+   - refuse every repair that creates a file the scaffold never declared;
+   - turn a per-artifact drop into a whole-response refusal. `enforce_frozen_ownership` rejects
+     that shape by design, because the squad still re-emits frozen files (#691).
+
+   The seam §3.5 described is already met, in two places:
+   - **for a transaction,** the grant is checked before any edit applies (`resolve_and_apply`,
+     step 2);
+   - **for a whole-file emission,** authorization runs before verification
+     (`enforce_frozen_ownership` at `_try_accept_patch`), so the verified set is the stored set
+     (#1323).
+
+   Whether a whole-file emission should be refused atomically is a refusal decision. It belongs
+   to the default flip (§38 step 7, §46a), not to a step before it.
+
+**Evidence.**
+- **Real emissions.** Across the stored artifacts of bound runs, 171 dev artifacts landed in a QA
+  namespace between 2026-07-27 and 2026-08-21: 168 from `development.correction_repair` and 3 from
+  `development.develop`. Since then there have been none, across 1,995 dev artifacts in 183
+  cycles. The grant drops only what would otherwise be stored, so no stored emission since
+  2026-08-22 is changed by it. An emission refused elsewhere, such as a patch that failed
+  verification, is not in the store and is not counted here.
+- **Tests.**
+  - The namespace rule on both stacks: a co-located suite at depth, a root suite, a look-alike
+    name, and a location at the root and below it.
+  - At the pure seam: a dev repair's suite dropped with evidence, while its slot fix and a new
+    helper pass.
+  - The shell test, split as described in item 4.
+  - Wiring at `_try_accept_patch`: the suite is dropped before the real verifier runs, the
+    evidence stage is patch verification, the drop is counted, and the rest is accepted.
+  - Wiring at `_collect_artifacts_and_checkpoint`: a `development.develop` emission's suite is
+    dropped at storage and counted.
+- **Mutations**, each caught by the test aimed at it:
+  - the dev lane without a grant;
+  - the namespace read as a root prefix;
+  - the undeclared-source rule not consulting the grant;
+  - the builder allowed to author source;
+  - the dev grant widened to the QA namespace.
+- **Live.** The dev-lane fault registered in the 1.8 prelude
+  (`dev_join_response_omits_declared_fields`) runs a dev repair inside its grant on deploy B. A
+  refusal there is fail-closed evidence and never counts toward N (§39.8).
+
+**Ruled by.** The implementer, in the PR that builds §38 step 3, for the owner's review with it.
+Item 4 changes a behaviour an existing test pinned. Item 5 reverses §46c item 5. Both are named
+for the owner.

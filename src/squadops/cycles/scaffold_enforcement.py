@@ -73,22 +73,11 @@ def _artifact_raw_path(art: dict) -> str | None:
     return art.get("name") if art.get("name") is not None else art.get("path")
 
 
-def _is_qa_producer(task_type: str) -> bool:
-    """SIP-0100 3.1: QA task types (``qa.test``, ``qa.validate``) are scoped to the QA test
-    namespace — they write tests, not the source under test."""
-    return task_type.startswith("qa.")
-
-
 # #649: source suffixes a builder may not author. Assembly re-packages accepted
 # code; net-new source is how fay-7's uninstructed start.py entered the tree
 # (import-time RuntimeError in every test workspace, unrepairable — dev-scoped
 # repairs never touch builder artifacts). Docs/reports pass through.
 _BUILDER_FORBIDDEN_SOURCE_SUFFIXES = (".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs")
-
-
-def _is_builder_producer(task_type: str) -> bool:
-    """#649: builder task types are scoped to re-packaging the declared fill surface."""
-    return task_type.startswith("builder.")
 
 
 def bound_record_or_none(interface_manifest: Any, run_id: str) -> Any:
@@ -117,15 +106,18 @@ def bound_record_or_none(interface_manifest: Any, run_id: str) -> Any:
         return None
 
 
-def _producer_grants(envelope: Any, bound_record: Any) -> tuple[Any, Any]:
-    """The (qa, builder) write authorizations for this producer, or (None, None).
+def _producer_authorization(envelope: Any, bound_record: Any) -> Any:
+    """The write authorization for this producer's lane, or None for a role with no lane.
 
-    A QA producer gets a namespace-scoped grant; the 2.1 authorization classes decide
-    whether a non-frozen emission is inside its lane (allow), another producer's slot
-    (drop), or undeclared (allow — could be a deliverable; §4.6 undeclared-reject stays
-    gated on 3.4). #649: a builder producer gets a fill-surface grant — net-new SOURCE
-    and QA-namespace writes drop with evidence; undeclared non-source paths (assembly notes
-    docs, reports) remain deliverables and pass.
+    One grant per role family, keyed on the task type's domain (``TaskType.domain``):
+    - **qa** (SIP-0100 3.1) may write the QA test namespace — tests, not the source under test;
+    - **development** (SIP-0107 §3.3) may write the fill slots, never the QA namespace;
+    - **builder** (#649) may re-package the fill surface and author no net-new source.
+
+    The authorization decides whether a non-frozen emission is inside the lane (allow),
+    another producer's surface (drop, with evidence), or undeclared. An undeclared path passes
+    — it could be a deliverable or a file the scaffold never declared — except net-new source
+    from a grant that may not author it.
     """
     from squadops.cycles.write_authorization import (
         WorkspaceOwnership,
@@ -133,17 +125,15 @@ def _producer_grants(envelope: Any, bound_record: Any) -> tuple[Any, Any]:
         WriteGrant,
     )
 
-    qa_authz = None
-    if _is_qa_producer(envelope.task_type):
-        ownership = WorkspaceOwnership.from_record(bound_record)
-        qa_authz = WriteAuthorization(ownership, WriteGrant.for_qa(envelope.task_type, ownership))
-    builder_authz = None
-    if _is_builder_producer(envelope.task_type):
-        ownership = WorkspaceOwnership.from_record(bound_record)
-        builder_authz = WriteAuthorization(
-            ownership, WriteGrant.for_builder(envelope.task_type, ownership)
-        )
-    return qa_authz, builder_authz
+    grant_for = {
+        "qa": WriteGrant.for_qa,
+        "development": WriteGrant.for_dev_fill,
+        "builder": WriteGrant.for_builder,
+    }.get(str(envelope.task_type).partition(".")[0])
+    if grant_for is None:
+        return None
+    ownership = WorkspaceOwnership.from_record(bound_record)
+    return WriteAuthorization(ownership, grant_for(envelope.task_type, ownership))
 
 
 def _shell_map(bound_record: Any) -> dict[str, Any]:
@@ -277,10 +267,10 @@ def enforce_frozen_ownership(
     # producer (a repair step's emission riding the failed task's envelope) is judged as that
     # producer's; every other artifact is the envelope's own. Frozen paths bind everyone.
     producers = [named_producer(art) or envelope for art in artifacts]
-    grants_by_task_type: dict[str, tuple[Any, Any]] = {}
+    authz_by_task_type: dict[str, Any] = {}
     for producer in producers:
-        if producer.task_type not in grants_by_task_type:
-            grants_by_task_type[producer.task_type] = _producer_grants(producer, bound_record)
+        if producer.task_type not in authz_by_task_type:
+            authz_by_task_type[producer.task_type] = _producer_authorization(producer, bound_record)
 
     # Classify first so each evidence record can report how many sibling artifacts in the SAME
     # response were left untouched (per-artifact disposition — restore/drop keep the rest; a
@@ -298,8 +288,7 @@ def enforce_frozen_ownership(
             frozen=frozen,
             shells=shells,
             shell_verdicts=shell_verdicts,
-            qa_authz=grants_by_task_type[producer.task_type][0],
-            builder_authz=grants_by_task_type[producer.task_type][1],
+            authz=authz_by_task_type[producer.task_type],
         )
         for index, (art, norm, producer) in enumerate(zip(artifacts, norms, producers, strict=True))
     ]
@@ -337,8 +326,7 @@ def _classify(
     frozen: set[str],
     shells: dict[str, Any],
     shell_verdicts: dict[int, tuple[str, str]],
-    qa_authz: Any,
-    builder_authz: Any,
+    authz: Any,
 ) -> str:
     """One artifact's enforcement disposition (records shell verdicts as a side table)."""
     from squadops.cycles.write_authorization import AuthzDecision
@@ -352,18 +340,17 @@ def _classify(
             return _DISP_DROP_SHELL
         # Legal — a fill-merge product (body edits inside intact markers). Falls
         # through to the producer lanes below like any other writable emission.
-    if qa_authz is not None and (
-        qa_authz.authorize(_artifact_raw_path(art) or "") == AuthzDecision.FORBIDDEN_UNAUTHORIZED
+    if authz is None:
+        return _DISP_PASS
+    decision = authz.authorize(_artifact_raw_path(art) or "")
+    if decision == AuthzDecision.FORBIDDEN_UNAUTHORIZED:
+        return _DISP_DROP  # another producer's surface (dev's slot, the QA namespace)
+    if (
+        decision == AuthzDecision.FORBIDDEN_UNDECLARED
+        and not authz.grant.may_author_undeclared_source
+        and (norm or "").endswith(_BUILDER_FORBIDDEN_SOURCE_SUFFIXES)
     ):
-        return _DISP_DROP
-    if builder_authz is not None:
-        decision = builder_authz.authorize(_artifact_raw_path(art) or "")
-        if decision == AuthzDecision.FORBIDDEN_UNAUTHORIZED:
-            return _DISP_DROP  # another producer's lane (e.g. the QA namespace)
-        if decision == AuthzDecision.FORBIDDEN_UNDECLARED and (norm or "").endswith(
-            _BUILDER_FORBIDDEN_SOURCE_SUFFIXES
-        ):
-            return _DISP_DROP  # net-new source (the fay-7 start.py class)
+        return _DISP_DROP  # net-new source (the fay-7 start.py class)
     return _DISP_PASS
 
 

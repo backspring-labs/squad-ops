@@ -305,6 +305,37 @@ class TestTheRepairIsAuthorizedBeforeItIsVerified:
         assert {"start.py", "assembly_notes.md"} <= set(names)
         assert _evidence(executor) == []
 
+    async def test_a_dev_repairs_write_into_the_qa_namespace_is_dropped_before_verification(
+        self, executor
+    ):
+        """SIP-0107 step 3 (§39.6), at the accept-patch seam. Bug caught: the dev lane, alone
+        without a grant, landing a rewrite of the qa suite beside its fix — verified, then
+        stored as the tree the retest runs. The suite is dropped before the real verifier
+        runs, the drop counts against the compliance budget as a QA or builder overstep does,
+        and the corrected result carries the rest."""
+        holder: dict = {}
+        counter = {"n": 0}
+        suite = {"name": "backend/tests/test_runs.py", "content": "def test_x(): pass\n"}
+        action = await executor._try_accept_patch(
+            _builder_envelope(),
+            _failed([]),
+            _repair_by("development.correction_repair", UNAUTHORIZED, AUTHORIZED, suite),
+            holder,
+            bound_record=_record(),
+            compliance_counter=counter,
+            cycle=_cycle(),
+        )
+        assert action == "accept_patch"
+        names = [a["name"] for a in holder["patched_result"].outputs["artifacts"]]
+        assert {"start.py", "assembly_notes.md"} <= set(names)
+        assert "backend/tests/test_runs.py" not in names
+        (record,) = _evidence(executor)
+        assert record.normalized_path == "backend/tests/test_runs.py"
+        assert record.violation_code == "unauthorized_slot_emission"
+        assert record.stage == STAGE_PATCH_VERIFICATION
+        assert record.producer_task_type == "development.correction_repair"
+        assert counter["n"] == 1
+
     async def test_a_repair_artifact_naming_no_producer_is_refused_before_any_grant_is_derived(
         self, executor, monkeypatch
     ):
@@ -399,6 +430,50 @@ class TestTheReStoreReadsTheSameProducerTheVerifierDid:
         assert _stored_names(executor) == ["start.py", "assembly_notes.md"]
         assert _evidence(executor) == []
         assert counter["n"] == 0
+
+    async def test_a_develop_emission_into_the_qa_namespace_is_dropped_at_storage(self, executor):
+        """SIP-0107 step 3 (§39.6), at the storage seam: the dev lane's own emission. Bug
+        caught: ``development.develop`` storing a suite beside the source — the grant existing
+        at the repair seam only, so a first attempt could still land what a repair may not."""
+        import dataclasses
+
+        envelope = dataclasses.replace(
+            _builder_envelope(),
+            task_id="task-run_1-m002-development.develop",
+            task_type="development.develop",
+            metadata={"role": "dev"},
+        )
+        counter = {"n": 0}
+        emission = TaskResult(
+            task_id=envelope.task_id,
+            status="SUCCEEDED",
+            outputs={
+                "artifacts": [
+                    {"name": "backend/routes.py", "content": "def real(): return 1\n"},
+                    {"name": "backend/tests/test_runs.py", "content": "def test_x(): pass\n"},
+                ]
+            },
+        )
+        await executor._collect_artifacts_and_checkpoint(
+            emission,
+            envelope,
+            _cycle(),
+            "run_1",
+            {},
+            [],
+            [],
+            [],
+            [],
+            bound_record=_record(),
+            compliance_counter=counter,
+        )
+        assert _stored_names(executor) == ["backend/routes.py"]
+        (record,) = _evidence(executor)
+        assert (record.normalized_path, record.stage) == (
+            "backend/tests/test_runs.py",
+            STAGE_ARTIFACT_STORAGE,
+        )
+        assert counter["n"] == 1
 
     async def test_the_producers_own_unnamed_emission_is_judged_as_before(self, executor):
         """The paired control: the same files as the builder's OWN emission (no step named)
