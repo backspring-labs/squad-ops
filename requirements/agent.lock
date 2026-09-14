@@ -243,6 +243,14 @@ tqdm==4.70.0
     # via
     #   -c /tmp/tmp.krqcXcy1ef
     #   lancedb
+tree-sitter==0.26.0
+    # via
+    #   -c /tmp/tmp.krqcXcy1ef
+    #   -r requirements/agent.txt
+tree-sitter-javascript==0.25.0
+    # via
+    #   -c /tmp/tmp.krqcXcy1ef
+    #   -r requirements/agent.txt
 typing-extensions==4.16.0
     # via
     #   -c /tmp/tmp.krqcXcy1ef

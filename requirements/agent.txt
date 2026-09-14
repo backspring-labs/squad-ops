@@ -22,3 +22,9 @@ uvicorn>=0.30.0
 
 # LLM Observability (SIP-0061)
 langfuse>=2.0,<3.0
+
+# Structural revision of JavaScript/JSX (SIP-0107 §38 step 5): the React frontend's resolver.
+# Owner's choice 2026-09-14 over a vendored @babel/parser and esprima (which cannot read
+# `?.`/`??`). Agent-only: repairs apply structural edits in the agent container.
+tree-sitter>=0.25
+tree-sitter-javascript>=0.25
