@@ -1668,3 +1668,69 @@ Item 5 moves one sentence of §38 to step 3.
 **Ruled by.** The implementer, in the PR that builds §38 step 3, for the owner's review with it.
 Item 4 changes a behaviour an existing test pinned. Item 5 reverses §46c item 5. Both are named
 for the owner.
+
+## 46e. 2026-09-14 — exact anchored targets as built (§38 step 4, first half)
+
+**What changed.**
+
+1. **Step 4 lands in two PRs.**
+   - **This one:** the pure machinery — anchored targets in the transaction and the emission
+     grammar — with the plan's step 4 proof (a multi-match anchor fails rather than choosing,
+     §39.5; the #451 fixture).
+   - **The second:** the agent-side wiring and model-facing contract — the three repair handlers
+     (#1213's scope), the request template's edit form, the retry with the refusal's typed reason
+     (§22) and the edit record as evidence (§36). #1213 closes with it.
+
+   The split follows a seam: one half is pure and proven in CI, the other changes what a model is
+   told and how its response is handled.
+2. **`RevisionOperation.REPLACE_ANCHOR`**, §9.2. A revision carries an `anchor`; the framework
+   replaces it only where it occurs exactly once inside the authorized region.
+   - **The region:** a named `region_id` bounds the search. Without one, the region is the whole
+     artifact the grant permits, which is an unslotted file's authorized region.
+   - **Refusals:** zero matches refuse as `anchor_not_found`, several as `anchor_ambiguous` (with
+     the count), and an empty anchor as `empty_anchor`.
+   - **Exact:** nothing is whitespace-normalized, case-folded or chosen.
+   - **Overlapping occurrences count:** `aa` occurs twice in `aaa`.
+3. **Anchors resolve against the base, not sequentially.** #1213's sketch applied edits in
+   emission order, each re-checked against the text the previous edit left. §13 is the ruling:
+   every revision resolves against the same starting base, and resolved ranges that overlap refuse
+   the transaction. So two anchored edits cannot depend on each other, and one cannot silently
+   shift another's match.
+4. **The grammar** (`squadops/capabilities/anchored_edits.py`) is #1213's.
+   - **Shape:** an `edit:<path>` fence holding one or more `<<<<<<< SEARCH` / `=======` /
+     `>>>>>>> REPLACE` blocks, the markers whole lines. SEARCH and REPLACE text are their lines,
+     each ending in a newline, exactly as emitted.
+   - **Malformed fences are named with a typed reason:** no divider, no end marker, an empty
+     SEARCH, text outside a block, no blocks, an unclosed fence, an unsafe path. A block missing a
+     marker ends at its fence's close, so it cannot swallow the files emitted after it.
+   - **A bare fence line inside REPLACE is content,** so a replacement may carry fenced text.
+   - **`strip_edit_blocks` runs before whole-file extraction.** Unstripped, `edit:backend/routes.py`
+     matches the strict `lang:path` header and would be stored as a file whose content is the
+     markers.
+
+**Evidence.**
+- **The #451 fixture:**
+  - anchoring the placeholder's own line changes that line and nothing else;
+  - anchoring `0` refuses as ambiguous, with every zero counted, and applies nothing.
+- **Transaction tests:**
+  - two matches, differing whitespace, differing case and an empty anchor, each refused with its
+    reason;
+  - overlapping occurrences;
+  - a named region bounding the search (the same assertion in two slots resolves when the slot is
+    named, and is ambiguous when it is not);
+  - an anchored edit beside an overlapping or out-of-grant sibling refusing the whole transaction.
+- **Grammar tests:**
+  - a well-formed response parsed and applied through a transaction;
+  - fence lines inside a replacement, and a deletion;
+  - each malformed shape;
+  - unsafe paths;
+  - stripping, with the unstripped hazard shown.
+- **Stored artifacts** in `data/artifacts` carry no edit-block text, so nothing already stored
+  reads differently.
+- **Mutations: nine, each caught.** A non-overlapping count; the first of several matches chosen;
+  a named region ignored; a whitespace-normalized match; an empty anchor allowed; a fence line in
+  REPLACE closing the fence; a malformed block swallowing the rest; prose inside a fence ignored;
+  an unsafe path accepted.
+
+**Ruled by.** The implementer, in the PR that builds the first half of §38 step 4, for the owner's
+review with it. Item 3 records the accepted §13 over #1213's earlier sketch.
