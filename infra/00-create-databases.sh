@@ -72,7 +72,12 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
 
         -- Whatever a previous owner left inside it: TRUNCATE and CREATE TABLE IF NOT
         -- EXISTS need ownership, so the tables (indexes and constraints follow) and any
-        -- sequences or views go to the role as well.
+        -- sequences or views go to the role as well. A sequence LINKED to a table (a serial
+        -- or identity column) is skipped: Postgres refuses to re-own it directly ("cannot
+        -- change owner of sequence ... linked to table"), and ALTER TABLE moves it with its
+        -- table. Re-owning it here raised, and the error aborted the block before the tables
+        -- behind it were reached — every deploy from 2026-09-10 left squadops_test owned by
+        -- squadops, and the integration suite could not run locally.
         \c squadops_test
         DO \$\$
         DECLARE r record;
@@ -84,6 +89,10 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
                 WHERE n.nspname = 'public'
                   AND c.relkind IN ('r', 'p', 'S', 'v', 'm')
                   AND pg_get_userbyid(c.relowner) <> 'squadops_test'
+                  AND NOT (c.relkind = 'S' AND EXISTS (
+                      SELECT 1 FROM pg_depend d
+                      WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid
+                        AND d.deptype IN ('a', 'i')))
             LOOP
                 EXECUTE format(
                     'ALTER %s public.%I OWNER TO squadops_test',
