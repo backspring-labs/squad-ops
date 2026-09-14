@@ -611,3 +611,82 @@ reads `None`. Four points resolve what §4.1 left open.
 
 **Ruled by.** The implementer, in the PR that builds the decision, for the owner's review with
 it.
+
+### 10c. 2026-09-14 — the cycle assessment as built (§4.1 (a))
+
+**What changed.** `src/squadops/cycles/cycle_assessment.py` builds the projection.
+`adapters/cycles/cycle_evidence.py` assembles its evidence from the registry and the vault, and
+resolves an assessment's references back to them. Six points resolve what §4.1 left open or what
+the stores could not support.
+
+1. **The assessor is a third, keyword-only argument.** `assess(outcome, evidence, *, assessor)`.
+   The framework version and git sha are facts about the process that computes the assessment;
+   reading them inside the projection would be the environment read §3.1 forbids. So the caller
+   supplies them, and the evidence identity excludes them: the same evidence assessed by two
+   framework versions has one evidence identity and two assessor identities.
+2. **References name one of four stores.** A reference is a run, a vault artifact, a verification
+   summary or a run summary. `unresolved_refs` checks each observed indicator's references, and
+   the attribution's, against the store its kind names.
+3. **Some indicators read from a store the SIP did not name.**
+   - **Correction rounds** are the correction-decision artifacts, by producing task type; this is
+     the count the verification-set driver already makes.
+   - **Plan-defect terminations** are the `correction_termination` artifacts, stored since 1.5 A4,
+     rather than `failure_reason` prose.
+   - **Failed emissions** are counted by the #1436 attempt stamp, and are unaskable on a bank that
+     predates it.
+4. **What no store holds reads unaskable, and the attribution names it.**
+   - **A contentless emission** banks nothing, so `contentless_emissions` is unaskable.
+   - **A correction round's failure events** (category and locus) reach the analyzer's inputs and
+     the log, never a store. A correction-terminated or time-budget primary is still read from
+     the terminal decision, with the movement sequence contributing, and `unrecorded` names the
+     missing events.
+   - **A failed check's locus** is not stored. A completed `rejected` cycle therefore reads
+     `unattributed`, with that input named, rather than guessing the class the table's
+     single-class rule needs.
+   - **A compliance budget's refused emissions** are evidence events, not stored values, and are
+     named the same way.
+   - **A failed run with no structured terminal decision** reads unaskable. That is every failed
+     run finalized before §10b, which includes both rejected 1.7.5 counted rolls.
+
+   Recording these inputs is a capture change, the same kind as §4.1's run summary, and lands in
+   its own PR.
+5. **A gate that refused on validators and proofs picks neither.** One inter-workload gate can
+   refuse on both: V4's replay does. The registry now reads such a refusal as `unattributed`, with
+   both the validators and the proofs contributing, rather than taking whichever row the caller
+   named. A rejection record written before the gate recorded proofs (#1551) reads its classified
+   validators as a plan-gate refusal, with the proofs named as unrecorded. A record with no
+   classified validator could be either gate, so it reads `other`.
+6. **The evidence identity is order-independent.** It is a sha256 over the canonical form of both
+   arguments, with collections sorted. The same evidence read in any order has one identity, and
+   any changed value moves it.
+
+**Evidence.**
+- **The real record, replayed read-only.** The replay covered the nine counted 1.7.5 cycles and
+  the six 1.8 deploy A and A-prime cycles.
+  - It ran through the live Postgres registry, on a session that refused a write before anything
+    was read, and the real `FilesystemArtifactVault`. The vault's root-owned index was rebuilt in
+    memory by a directory scan.
+  - **References:** every observed indicator's and every attribution's references resolved on all
+    fifteen: 330 references across the observed indicators, zero unresolved.
+  - **Verdicts:** all fifteen matched the stored records.
+  - **Correction rounds:** three on `cyc_89153929749f` and zero on each of the seven accepted
+    1.7.5 rolls, as the 1.7.5 release package states.
+  - **Runs without a run summary:** usage reads unaskable on every cycle, because migration 1500
+    is not deployed there and no run has a row.
+  - **Attribution:** the Next.js deploy A rejection (`cyc_79f70a0bbac1`) reads `unattributed`,
+    with the failed check's locus named as unrecorded; the two rejected 1.7.5 rolls read
+    unaskable (no terminal decision).
+- **Tests.**
+  - Each dimension on an accepted cycle, with every observed indicator citing its record.
+  - A historical cycle's loop facts unaskable, never zero.
+  - The attempt stamp.
+  - Every gate-refusal shape.
+  - Exhausted budgets, not-yet-terminal cycles and the three completed verdicts.
+  - Identity under reordering and under a change.
+  - The assembler through a memory registry and a filesystem vault, including a record older than
+    its proofs and each reference kind resolving only against a record that exists.
+- **Architecture test.** The projection's module-level import closure reaches no store, port,
+  adapter, network client, clock or environment, and the module calls none.
+- **Mutations: twelve, each caught.**
+
+**Ruled by.** The implementer, in the PR that builds (a), for the owner's review with it.

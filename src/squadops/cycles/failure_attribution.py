@@ -643,14 +643,18 @@ def attribute(terminal: TerminalEvidence) -> Attribution:
     primary: AttributionClass | None
     contributing: list[Contribution]
 
-    if kind == TerminalKind.PLAN_GATE_REFUSED:
-        primary = AttributionClass.PLAN_GATE_FAILURE
+    if kind in (TerminalKind.PLAN_GATE_REFUSED, TerminalKind.MANIFEST_GATE_REFUSED):
         contributing = _declared_contributions(
             Vocabulary.PLAN_VALIDATOR, terminal.refused_validators
-        )
-    elif kind == TerminalKind.MANIFEST_GATE_REFUSED:
-        primary = AttributionClass.CRITERIA_OR_CONTRACT_FAILURE
-        contributing = _declared_contributions(Vocabulary.WINNABILITY_PROOF, terminal.failed_proofs)
+        ) + _declared_contributions(Vocabulary.WINNABILITY_PROOF, terminal.failed_proofs)
+        if terminal.refused_validators and terminal.failed_proofs:
+            # One gate refused on validators AND proofs — both rows' evidence at once, and no
+            # declared rule picks one, so the primary is not chosen (SIP-0108 §10c).
+            primary = AttributionClass.UNATTRIBUTED
+        elif kind == TerminalKind.PLAN_GATE_REFUSED:
+            primary = AttributionClass.PLAN_GATE_FAILURE
+        else:
+            primary = AttributionClass.CRITERIA_OR_CONTRACT_FAILURE
     elif kind == TerminalKind.CORRECTION_TERMINATED:
         declared = disposition_for(
             Vocabulary.CORRECTION_TERMINATION_REASON, terminal.termination_reason or ""

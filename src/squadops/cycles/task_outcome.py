@@ -93,6 +93,11 @@ class CorrectionTerminationReason:
     INFRASTRUCTURE_FAILURE = "infrastructure_failure"
 
 
+#: The vault artifact type a :class:`CorrectionTermination` is stored under — written by the
+#: correction runner, read back by the assessment's evidence assembler (SIP-0108 §4.1).
+CORRECTION_TERMINATION_ARTIFACT_TYPE = "correction_termination"
+
+
 @dataclass(frozen=True)
 class CorrectionTermination:
     """The typed record of a correction chain's early termination (1.5 A4).

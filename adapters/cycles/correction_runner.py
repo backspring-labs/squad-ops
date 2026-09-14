@@ -59,7 +59,11 @@ from squadops.cycles.failure_evidence import build_failure_evidence, compose_fai
 from squadops.cycles.models import ArtifactRef
 from squadops.cycles.plan_delta import PlanDelta
 from squadops.cycles.run_loop_summary import MovementRecord, RunTerminalDecision
-from squadops.cycles.task_outcome import CorrectionTermination, CorrectionTerminationReason
+from squadops.cycles.task_outcome import (
+    CORRECTION_TERMINATION_ARTIFACT_TYPE,
+    CorrectionTermination,
+    CorrectionTerminationReason,
+)
 from squadops.events.types import EventType
 from squadops.tasks.models import TaskEnvelope, TaskResultStatus
 from squadops.tasks.task_types import TaskType
@@ -766,7 +770,7 @@ class CorrectionRunner:
             ref = ArtifactRef(
                 artifact_id=f"term_{envelope.task_id[-8:]}_{correction_attempts:02d}",
                 project_id=cycle.project_id,
-                artifact_type="correction_termination",
+                artifact_type=CORRECTION_TERMINATION_ARTIFACT_TYPE,
                 filename="correction_termination.json",
                 content_hash=sha256(content).hexdigest(),
                 size_bytes=len(content),

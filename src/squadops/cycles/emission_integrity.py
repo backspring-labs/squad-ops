@@ -80,6 +80,9 @@ def emission_integrity_instruction(name: str, error: str) -> str:
 # instruction the model reads renders from the managed template asset.
 
 EMISSION_FAILURE_KEY = "emission_failure"
+#: #971: the ``emission_status`` artifact-metadata value marking a banked emission that did
+#: not pass — a string field's own vocabulary, not a run or task status.
+EMISSION_STATUS_FAILED = "failed"
 EMISSION_FAILURE_NO_FENCED_BLOCKS = "no_fenced_blocks"
 
 # #998: what KIND of nothing. Three zero-extraction shapes with three different remedies,

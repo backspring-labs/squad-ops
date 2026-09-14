@@ -54,6 +54,7 @@ from squadops.cycles.contract_derivation import (
     SEEDED_MANIFEST_FILENAME,
     is_interface_manifest,
 )
+from squadops.cycles.emission_integrity import EMISSION_STATUS_FAILED
 from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.failure_evidence import failing_cases_from_evidence
 from squadops.cycles.frozen_check_validation import frozen_check_violations
@@ -1548,7 +1549,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         stored_artifacts = [
             (art_id, ref)
             for art_id, ref in stored_artifacts
-            if ref.metadata.get("emission_status") != "failed"
+            if ref.metadata.get("emission_status") != EMISSION_STATUS_FAILED
         ]
 
         if not include_repair_candidates:
@@ -1658,7 +1659,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         for art_id, ref in stored_artifacts:
             if PurePosixPath(str(ref.filename)).name != ASSEMBLY_NOTES_DOCUMENT:
                 continue
-            if ref.metadata.get("emission_status") == "failed":
+            if ref.metadata.get("emission_status") == EMISSION_STATUS_FAILED:
                 continue
             if ref.metadata.get("producing_task_type", "") in REPAIR_TASK_TYPES:
                 continue
@@ -4756,7 +4757,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     run_id,
                     envelope,
                     producing_task_type=envelope.task_type,
-                    emission_status="failed",
+                    emission_status=EMISSION_STATUS_FAILED,
                     attempt=attempt,
                 )
                 new_refs.append(ref.artifact_id)
