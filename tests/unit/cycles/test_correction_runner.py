@@ -2254,6 +2254,78 @@ class TestCorrectionRunnerStandalone:
         assert "testid_surface" not in captured[0].inputs
         assert "dom_testid_surface" not in captured[0].inputs
 
+    async def test_a_repairs_write_outside_its_grant_is_dropped_and_the_next_attempt_told(
+        self, cycle
+    ):
+        """#1549. Bug caught: an unauthorized write dropped with nothing on the carry — the next
+        repair re-emits the same file, each drop counts against the compliance budget, and the
+        run ends on ``compliance_budget_exceeded`` without the producer ever being told why.
+        Entered at ``run_correction_protocol``: a dev repair of a dev failure writes the qa
+        suite beside its fix (outside the dev grant, SIP-0107 step 3)."""
+        from pathlib import Path
+
+        from squadops.capabilities.scaffold import InterfaceManifest
+
+        manifest = InterfaceManifest.from_yaml(
+            (
+                Path(__file__).parents[3] / "examples" / "03_group_run" / "interface_manifest.yaml"
+            ).read_text()
+        )
+
+        def responder(envelope):
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "patch",
+                        "decision_rationale": "patchable",
+                        "affected_task_types": ["development.develop"],
+                    },
+                )
+            if envelope.task_type == "development.correction_repair":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "artifacts": [
+                            {
+                                "name": "backend/tests/test_runs.py",
+                                "content": "def test_x(): pass\n",
+                            },
+                            {"name": "backend/routes.py", "content": "def fill(): return 1\n"},
+                        ],
+                        "summary": "repaired",
+                    },
+                )
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+        runner, _registry, _vault, _bus = self._make_runner(responder)
+        carry: list[str] = []
+
+        protocol_result = await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=self._failed_envelope(),
+            result=TaskResult(task_id="task_failed", status="FAILED", error="route failed"),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+            interface_manifest=manifest,
+            scaffold_enforcement_carry=carry,
+        )
+
+        assert [a["name"] for a in protocol_result.repair_artifacts] == ["backend/routes.py"]
+        (instruction,) = carry
+        assert instruction.startswith(
+            "`backend/tests/test_runs.py` is outside the write grant of "
+            "`development.correction_repair`"
+        )
+        assert "Do NOT re-emit this file" in instruction
+
     async def test_repair_frozen_emission_dropped_and_signaled(self, cycle):
         """SIP-0100 3.4b (pf-27/pf-30 regression), #691: a repair emitting a
         scaffold-frozen path has that artifact DROPPED before any landing point —

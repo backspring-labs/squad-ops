@@ -182,7 +182,29 @@ def enforcement_instruction(record: Any) -> str | None:
         ContractComplianceViolation.PROHIBITED_FILL_EMISSION,
     ):
         return shell_emission_instruction(record)
+    if record.violation_code == ContractComplianceViolation.UNAUTHORIZED_SLOT_EMISSION:
+        return unauthorized_emission_instruction(record)
     return None
+
+
+def unauthorized_emission_instruction(record: Any) -> str:
+    """Authoritative next-attempt instruction for an emission outside the producer's grant (#1549).
+
+    The third enforcement class on the same carry transport as the frozen and shell ones. An
+    unauthorized write was dropped silently to the producer — and every drop counts against the
+    contract-compliance budget, so a producer that keeps writing outside its grant without being
+    told ends the run on ``compliance_budget_exceeded`` instead of being redirected (#691's
+    lesson; SIP-0107 step 3 put the dev lane under a grant too). A data-derived line in the same
+    genre as its two siblings; the block's framing is the repair prompt's."""
+    path = record.normalized_path or record.attempted_path
+    return (
+        f"`{path}` is outside the write grant of `{record.producer_task_type}`: it belongs to "
+        f"another producer's surface — another role's fill slot, or the QA test namespace. A "
+        f"prior emission of it was rejected and DISCARDED; the owning producer's version is "
+        f"unchanged and still in effect, and each such emission counts against the run's "
+        f"contract-compliance budget. Do NOT re-emit this file — make the fix in the files this "
+        f"task may write."
+    )
 
 
 def shell_emission_instruction(record: Any) -> str:
