@@ -91,6 +91,27 @@ def test_the_record_carries_classes_and_the_prose_it_replaces():
     assert record["errors"] == ["regex on source"]
 
 
+def test_failed_proofs_are_recorded_apart_and_never_counted_as_validator_classes():
+    """SIP-0108 §4.2. Bug caught: the manifest gate's refusal readable only from its note, or
+    its proofs entering the recurrence baseline as validators nobody taught. A validator-only
+    record says ``proofs: {}`` — no proof failed — rather than omitting the field."""
+    classifier = RejectionClassifier()
+    classifier.collect("validate_criteria_scope", ["regex on source"])
+    classifier.collect_proofs(["lint", "lint", "source_prd"])
+    record = classifier.record("progress_plan_review", ["regex on source", "lint", "lint", "prd"])
+
+    assert record["proofs"] == {"lint": 2, "source_prd": 1}
+    assert record["classes"] == {"validate_criteria_scope": 1}
+    baseline = build_baseline(
+        "cyc_x", rejection_records=[record], manifest_provenance=None, framing_run_count=1
+    )
+    assert [c.rejection_class for c in baseline.classes] == ["validate_criteria_scope"]
+
+    validators_only = RejectionClassifier()
+    validators_only.collect("validate_criteria_scope", ["regex on source"])
+    assert validators_only.record("g", ["regex on source"])["proofs"] == {}
+
+
 def test_the_baselines_vocabulary_is_the_one_authors_are_taught():
     """The names must be the `validate_*` family `plan_authoring_rules` classifies. A baseline
     speaking different names could not answer "did teaching this rule reduce it?" — which is

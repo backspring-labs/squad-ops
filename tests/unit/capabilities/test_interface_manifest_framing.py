@@ -21,6 +21,7 @@ Bug classes guarded:
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -205,6 +206,13 @@ async def test_net_b_rejects_a_malformed_interface_manifest():
 
     # these errors are what the caller records as the system:plan_validation REJECTED note
     assert any(e.startswith("interface_manifest [") and "endpoint" in e for e in errors)
+    # SIP-0108 §4.2: and the refusal is recorded as values — the proofs that failed, one per
+    # blocking finding, beside validator classes that do not include them.
+    (ref, content), _ = executor._artifact_vault.store.await_args
+    record = json.loads(content)
+    assert ref.artifact_type == "rejection_record"
+    assert record["proofs"] == {"lint": sum(1 for e in errors if "[lint]" in e)}
+    assert "lint" not in record["classes"]
 
 
 async def test_net_b_passes_a_clean_interface_manifest():
@@ -278,3 +286,27 @@ async def test_forwarding_still_carries_the_plan_and_still_drops_run_local_outpu
 
     assert overrides["plan_artifact_refs"] == ["art_plan", "art_doc"]
     assert "art_src" in overrides["prior_workload_artifact_refs"]
+
+
+def test_an_advisory_proof_is_reported_in_the_note_but_not_recorded_as_failed(monkeypatch):
+    """SIP-0108 §4.2 with #820. Bug caught: an advisory proof — reported, refusing nothing —
+    recorded among the proofs that failed, so a refusal reads as caused by what never blocked."""
+    import squadops.cycles.authoring_failure as authoring_failure
+    from squadops.cycles.authoring_failure import AuthoringOutcome, ClassifiedFinding
+    from squadops.cycles.rejection_baseline import RejectionClassifier
+
+    outcome = AuthoringOutcome(
+        findings=(
+            ClassifiedFinding("lint", "an endpoint", "authoring_defect", "author"),
+            ClassifiedFinding(
+                "interface_coherent", "shapes differ", "authoring_defect", "author", advisory=True
+            ),
+        )
+    )
+    monkeypatch.setattr(authoring_failure, "assess_authoring_outcome", lambda content: outcome)
+    classifier = RejectionClassifier()
+
+    errors = DispatchedFlowExecutor._validate_interface_manifest("manifest", classifier)
+
+    assert any("[interface_coherent]" in e for e in errors)
+    assert classifier.proofs == {"lint": 1}

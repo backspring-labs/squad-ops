@@ -4256,7 +4256,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # identical system:plan_validation REJECTED recording.
         # Absent manifest → no-op = today's behavior (byte-identical for plan-only cycles).
         if interface_content is not None:
-            errors.extend(self._validate_interface_manifest(interface_content))
+            errors.extend(self._validate_interface_manifest(interface_content, classifier))
 
         # #1013: manifest↔plan consistency + completeness — the two framing-internal
         # species that cost V38 counted rolls (roll 1's 201-vs-200 contradiction; slot
@@ -4335,17 +4335,35 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     parsed_plan, auto_bound = parsed_plan.with_contract_criteria_bound(contract)
                     for note in auto_bound:
                         logger.info("criteria_auto_bound (gate %s): %s", gate_name, note)
+                    # SIP-0108 §4.2: each bind-mode validator is classified under its own
+                    # name, as the author-mode ones above are — the refusal is read by
+                    # which validators refused, never by parsing this prefix back.
                     errors.extend(
-                        f"verification_contract: {e}"
-                        for e in parsed_plan.validate_criteria_refs(contract)
+                        classifier.collect(
+                            "validate_criteria_refs",
+                            [
+                                f"verification_contract: {e}"
+                                for e in parsed_plan.validate_criteria_refs(contract)
+                            ],
+                        )
                     )
                     errors.extend(
-                        f"verification_contract: {e}"
-                        for e in parsed_plan.validate_qa_artifact_ownership(contract)
+                        classifier.collect(
+                            "validate_qa_artifact_ownership",
+                            [
+                                f"verification_contract: {e}"
+                                for e in parsed_plan.validate_qa_artifact_ownership(contract)
+                            ],
+                        )
                     )
                     errors.extend(
-                        f"verification_contract: {e}"
-                        for e in parsed_plan.validate_frozen_artifact_ownership(contract)
+                        classifier.collect(
+                            "validate_frozen_artifact_ownership",
+                            [
+                                f"verification_contract: {e}"
+                                for e in parsed_plan.validate_frozen_artifact_ownership(contract)
+                            ],
+                        )
                     )
                     # #671: import_present against a module the closed scaffold
                     # surface cannot provide is provably unwinnable here, in
@@ -4353,8 +4371,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     # free where the doomed roll would burn its correction
                     # budget (#522).
                     errors.extend(
-                        f"verification_contract: {e}"
-                        for e in parsed_plan.validate_module_existence(contract)
+                        classifier.collect(
+                            "validate_module_existence",
+                            [
+                                f"verification_contract: {e}"
+                                for e in parsed_plan.validate_module_existence(contract)
+                            ],
+                        )
                     )
                     # pf-42: a typed check aimed at a frozen file is decidable right
                     # now — the skeleton those files will contain is deterministic.
@@ -4433,7 +4456,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             return None
 
     @staticmethod
-    def _validate_interface_manifest(content: str) -> list[str]:
+    def _validate_interface_manifest(
+        content: str, classifier: RejectionClassifier | None = None
+    ) -> list[str]:
         """Run both manifest gates over a framing-emitted manifest, returning errors
         prefixed for the REJECTED gate note.
 
@@ -4448,14 +4473,17 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         and a seeded manifest lives on the cycle's ``plan_artifact_refs`` rail — so bind-mode
         cycles are unaffected by the widening.
 
-        The proof classes are logged rather than returned: the gate note is for the
-        operator, and the ownership attribution is M6's ledger (#785).
+        The gate note is prose for the operator. The failed proofs are also recorded as values
+        on ``classifier`` (SIP-0108 §4.2) — the blocking ones, since an advisory proof refuses
+        nothing — so the refusal is read by which proofs failed, never by parsing this note.
         """
         from squadops.cycles.authoring_failure import assess_authoring_outcome
 
         outcome = assess_authoring_outcome(content)
         if not outcome.rejected:
             return []
+        if classifier is not None:
+            classifier.collect_proofs(f.proof for f in outcome.blocking_findings)
         logger.info("interface_manifest rejected at gate: classes=%s", outcome.class_counts())
         return [f"interface_manifest [{f.proof}]: {f.detail}" for f in outcome.findings]
 
