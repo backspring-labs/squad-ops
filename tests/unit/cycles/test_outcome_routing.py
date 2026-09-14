@@ -1121,6 +1121,34 @@ class TestEmissionRetryFeedbackThreading:
             "backend/tests/test_runs.py"
         ]
 
+    async def test_an_attempt_that_yielded_no_file_is_recorded_on_the_run_summary(
+        self, executor, mock_queue, mock_registry
+    ):
+        """SIP-0108 §4.1, entered at ``execute_run``. Bug caught: the contentless-emission
+        indicator unaskable on every run — the marker drove the aimed retry and reached no
+        store — or the attempt misnumbered against the failed-emission bank's #1436 stamp."""
+        from squadops.cycles.run_loop_summary import AbsentEmission
+
+        marker = {"reason": "no_fenced_blocks", "response_chars": 0, "signature": "empty"}
+        responses = {
+            0: ("FAILED", {"emission_failure": marker}, "No valid fenced code blocks found"),
+        }
+        mock_queue.reply_router.responder = _scripted_responder(responses)
+
+        with patch(
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        published = [json.loads(c.args[1]) for c in mock_queue.publish.call_args_list]
+        _, summary = mock_registry.record_run_loop_summary.await_args.args
+        assert summary.absent_emissions == (
+            AbsentEmission(
+                task_id=published[0]["payload"]["task_id"], signatures=("empty",), attempt=1
+            ),
+        )
+
     async def test_the_marker_rides_one_dispatch_and_not_the_next(
         self, executor, mock_queue, mock_registry, cycle
     ):

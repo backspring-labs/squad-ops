@@ -3921,9 +3921,11 @@ class TestBudgetGatesCorrectionDispatch:
 
     async def test_expired_budget_blocks_correction_before_any_dispatch(self, cycle):
         from adapters.cycles.execution_errors import _ExecutionError
+        from squadops.cycles.run_ledger import RunLedger
         from squadops.tasks.models import TaskResult
 
         runner, dispatcher = self._bare_runner()
+        ledger = RunLedger()
 
         def expired_guard() -> None:
             raise _ExecutionError("Time budget exhausted (10s) at correction-chain dispatch")
@@ -3941,10 +3943,14 @@ class TestBudgetGatesCorrectionDispatch:
                 completed_task_ids=[],
                 plan_delta_refs=[],
                 budget_guard=expired_guard,
+                ledger=ledger,
             )
         # The guard must fire BEFORE any transport work — no task_run, no dispatch.
         dispatcher.create_task_run_if_enabled.assert_not_awaited()
         dispatcher.dispatch_task.assert_not_awaited()
+        # SIP-0108 §4.2: the round the budget ended is still in the record — a time-budget
+        # attribution's contributors are "the failures up to it", this one included.
+        assert [(r.task_id, r.round_index) for r in ledger.round_failures] == [("task-1", 0)]
 
     async def test_unexpired_guard_lets_the_chain_dispatch(self, cycle):
         """Polarity: a live guard that does not raise must not block the chain."""
@@ -4279,6 +4285,25 @@ class TestCarriedFailuresReplay:
             "CreateRunView > navigates to the runs list after a successful create",
             "RunDetailView > displays the duplicate-name error when join is rejected",
         } <= set(self._titles(record["repeated_signature"]))
+
+    async def test_each_round_of_roll_3_is_recorded_as_its_evidence_classified_it(self, cycle):
+        """SIP-0108 §4.2, entered at ``run_correction_protocol`` on roll 3's evidence. Bug
+        caught: the correction-terminated attribution's contributors missing — a round's
+        category and locus reached the analyzer and the log and no store."""
+        from adapters.cycles.execution_errors import _ExecutionError
+        from squadops.cycles.run_ledger import RunLedger
+
+        ledger = RunLedger()
+        with pytest.raises(_ExecutionError, match="plan_defect"):
+            await self._play(self._runner(), cycle, self._ROLL_3, "vitest", ledger=ledger)
+
+        assert [
+            (r.task_id, r.round_index, r.category, r.locus, r.failed_checks)
+            for r in ledger.round_failures
+        ] == [
+            ("task-qa-4", 0, "executed_and_failed", "subject", ("tests_pass",)),
+            ("task-qa-4", 1, "executed_and_failed", "subject", ("tests_pass",)),
+        ]
 
     async def test_roll_6_exact_repeat_reads_as_it_did_live(self, cycle):
         """cyc_18aa25b4a57e, the control: the same two pytest tests failed on both rounds and
@@ -6471,6 +6496,11 @@ class TestLoopFactsReachTheRunLedger:
         assert [
             (r.task_id, r.round_index, r.reason, r.signatures) for r in ledger.refunded_rounds
         ] == ([("task-qa-4", 1, "empty_repair_emission", ("cap_exhausted",))] if recorded else [])
+        # SIP-0108 §4.1: the empty repair itself is recorded either way — a spent round's
+        # emptiness is as much a coordination fact as a refunded one's.
+        assert [
+            (a.task_id, a.round_index, a.attempt, a.signatures) for a in ledger.absent_emissions
+        ] == [("task-qa-4", 1, None, ("cap_exhausted",))]
 
     async def test_finalization_persists_the_ledgers_loop_facts(self, run):
         """Entry point: ``RunCompletion.finalize`` with the run's ledger — the row carries
@@ -6478,7 +6508,12 @@ class TestLoopFactsReachTheRunLedger:
         from adapters.cycles.run_completion import RunCompletion
         from squadops.cycles.llm_usage import RunUsage
         from squadops.cycles.run_ledger import RunLedger
-        from squadops.cycles.run_loop_summary import MovementRecord, RefundedRound
+        from squadops.cycles.run_loop_summary import (
+            AbsentEmission,
+            MovementRecord,
+            RefundedRound,
+            RoundFailure,
+        )
 
         registry = AsyncMock()
         registry.get_run = AsyncMock(return_value=run)
@@ -6487,6 +6522,8 @@ class TestLoopFactsReachTheRunLedger:
         ledger = RunLedger()
         ledger.record_refunded_round(RefundedRound("t", 0, "empty_repair_emission", ("empty",)))
         ledger.record_movement(MovementRecord("t", 0, "new"))
+        ledger.record_round_failure(RoundFailure("t", 0, "executed_and_failed", "subject"))
+        ledger.record_absent_emission(AbsentEmission("t", ("empty",), attempt=1))
         usage = RunUsage(by_task_type={}, tasks_reported=0, tasks_unreported=())
 
         await RunCompletion(cycle_registry=registry, artifact_vault=vault).finalize(
@@ -6496,3 +6533,5 @@ class TestLoopFactsReachTheRunLedger:
         _, summary = registry.record_run_loop_summary.await_args.args
         assert summary.refunded_rounds == ledger.refunded_rounds
         assert summary.movements == ledger.movements
+        assert summary.round_failures == ledger.round_failures
+        assert summary.absent_emissions == ledger.absent_emissions

@@ -285,6 +285,8 @@ class RunCompletion:
                             refunded_rounds=ledger.refunded_rounds if ledger else (),
                             movements=ledger.movements if ledger else (),
                             terminal=terminal,
+                            round_failures=ledger.round_failures if ledger else (),
+                            absent_emissions=ledger.absent_emissions if ledger else (),
                         ),
                     )
                 except Exception:

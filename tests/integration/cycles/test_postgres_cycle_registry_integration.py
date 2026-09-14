@@ -224,7 +224,12 @@ class TestRunLoopSummaryRoundTrip:
     async def test_the_summary_round_trips_and_a_refinalize_supersedes(self, registry):
         from squadops.cycles.failure_attribution import TerminalKind
         from squadops.cycles.llm_usage import RunUsage, UsageTotals
-        from squadops.cycles.run_loop_summary import RunLoopSummary, RunTerminalDecision
+        from squadops.cycles.run_loop_summary import (
+            AbsentEmission,
+            RoundFailure,
+            RunLoopSummary,
+            RunTerminalDecision,
+        )
 
         cycle = _make_cycle()
         await registry.create_cycle(cycle)
@@ -243,6 +248,16 @@ class TestRunLoopSummaryRoundTrip:
                     kind=TerminalKind.PLAN_GATE_REFUSED,
                     refused_validators=("validate_build_config", "validate_builder_floor"),
                 ),
+                round_failures=(
+                    RoundFailure(
+                        task_id="t-qa",
+                        round_index=0,
+                        category="executed_and_failed",
+                        locus="subject",
+                        failed_checks=("tests_pass",),
+                    ),
+                ),
+                absent_emissions=(AbsentEmission("t-build", ("cap_exhausted",), attempt=2),),
             )
 
         await registry.record_run_loop_summary(run.run_id, summary(3))
