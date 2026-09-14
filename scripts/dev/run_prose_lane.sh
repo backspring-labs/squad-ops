@@ -20,6 +20,7 @@ FLOOR=(
   tests/unit/architecture/test_docs_version_sync.py
   tests/unit/architecture/test_sip_registry_audit.py
   tests/unit/architecture/test_site_sip_links.py
+  tests/unit/cycles/test_benchmark_registry.py
   tests/unit/cycles/test_check_governance.py
   tests/unit/cycles/test_verification_set_driver.py
   tests/unit/maintainer/test_release_notes.py
