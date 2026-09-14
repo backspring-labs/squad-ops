@@ -539,3 +539,75 @@ a composition rule.
   proof) are each caught.
 
 **Ruled by.** The implementer, in the PR that builds (b), for the owner's review with it.
+
+### 10b. 2026-09-14 — the structured terminal decision as built (§4.1)
+
+**What changed.** `RunTerminalDecision` (`src/squadops/cycles/run_loop_summary.py`) is a field
+of the run summary row. It is additive under `summary_version` 1, and a row written before it
+reads `None`. Four points resolve what §4.1 left open.
+
+1. **The decision names a kind.** §4.1 lists three values: the termination reason, the failure
+   classification and the task. Those three cannot tell a time budget from a lead's abort, and
+   §4.2's terminal table is keyed on the final state's kind. So the decision also carries
+   `kind`, typed as the registry's own `TerminalKind`, which keeps one vocabulary. For a run
+   refused at the in-run plan gate it carries the refusing validators too.
+2. **Declared where decided.** The raise site that ends a run declares its decision on the
+   error. The mapping in `resolve_terminal_outcome` passes it through and never reads the
+   message.
+
+   | where the run ends | kind | also recorded |
+   |---|---|---|
+   | in-run plan gate (`_reject_unsatisfiable_plan_at_gate`) | `plan_gate_refused` | the refusing validators, named by the #809 classifier |
+   | a plan-defect termination | `correction_terminated` | `plan_defect`; the terminal round's analysed classification; the failed task |
+   | the correction budget found spent | `correction_terminated` | `exhausted`; the failure that found it spent. Classification is `None`: the budget is checked before that failure is analysed |
+   | the contract-compliance budget | `compliance_budget_exceeded` | `contract_compliance`; the task that crossed it |
+   | the time budget, at the main loop or at correction-chain dispatch | `run_time_budget_exceeded` | — |
+   | the end of the run's tasks | `completed` | — the verdict stays in `run_verification_summaries` |
+
+   **Everything else reads `other`.** That covers cancellation, pauses and unexpected
+   exceptions. It also covers the remaining raises:
+   - a definition-of-done task failing without correction;
+   - the lead deciding `abort` or `rewind`;
+   - a missing build deliverable;
+   - storage altering an accepted patch;
+   - an invalid replay declaration.
+
+   §4.2 has no row for these and the termination vocabulary has no value, so "any other
+   reachable state" is the table's own answer. Giving the lead's abort a termination value is a
+   registry change, not a capture change.
+3. **A cycle-level gate refusal is not on the run row.** The inter-workload gate, the one
+   multi-workload cycles traverse, judges a framing run that has already completed. That run's
+   row reads `completed`, and a re-roll then cancels it. The refusal itself is recorded as a
+   system `REJECTED` gate decision and, for plan validators, as a `rejection_record` artifact
+   carrying the validator classes (#809). The assessment projection reads those.
+
+   **Gap named for that projection.** At the same seam, the manifest gate records none of its
+   failed proofs as values. They are logged (`interface_manifest rejected at gate: classes=…`)
+   and joined into the gate note's prose. The emitted manifest's own provenance does carry the
+   proofs its authoring stage found on each rejected attempt (`provenance.revisions[].proofs`,
+   #803). That is the authoring stage's assessment, though: it runs with the expected stack and
+   counts advisory findings, so it is not the gate's verdict. The manifest-gate row of §4.2 reads
+   the gate's failed proofs, so the projection's PR records them before reading them.
+4. **The last finalization's decision stands.** A paused run finalizes with `other`. Resuming
+   runs `execute_run` on the same run id, which upserts the row, so the decision the resumed run
+   ends on replaces it.
+
+**Evidence.**
+- The shape round trip covers every field. A kind the reader does not know reads `other`; an
+  absent decision reads `None`. The Postgres round trip carries a decision through JSONB.
+- The mapping test: a declared decision passes through, and an undeclared `_ExecutionError`, an
+  unexpected exception, a cancellation, a pause and a deferral each read `other`.
+- Wiring, each through the entry point a live run uses:
+  - `execute_run` to the registry row for a completed run, an exhausted correction budget, a
+    main-loop time budget, and a correction-chain time budget (the clock runs out between the
+    task's dispatch and its correction chain);
+  - `_admit_failed_emission` for the compliance budget;
+  - `run_correction_protocol` for a plan-defect termination (roll 3's evidence);
+  - `_reject_unsatisfiable_plan_at_gate` for the plan gate.
+- Twelve mutations are each caught: the declaration dropped at the mapping, at the except block
+  or at finalization; the success path not `completed`; refused validators dropped from the
+  stored shape; an unknown kind raising; each declared site undeclared or stripped of its task,
+  classification or validators.
+
+**Ruled by.** The implementer, in the PR that builds the decision, for the owner's review with
+it.

@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.models import (
     AgentProfileEntry,
     Cycle,
@@ -26,7 +27,8 @@ from squadops.cycles.models import (
     SquadProfile,
     TaskFlowPolicy,
 )
-from squadops.cycles.task_outcome import TaskOutcome
+from squadops.cycles.run_loop_summary import RunTerminalDecision
+from squadops.cycles.task_outcome import CorrectionTerminationReason, TaskOutcome
 from squadops.events.types import EventType
 from squadops.tasks.models import TaskResult
 
@@ -885,6 +887,14 @@ class TestMaxCorrectionAttempts:
             # max_correction_attempts=1 exhausted -> abort
         ]
         _script_replies(mock_queue.reply_router, script)
+        scripted = mock_queue.reply_router.responder
+        dispatched: list[str] = []
+
+        def responder(env):
+            dispatched.append(env["task_id"])
+            return scripted(env)
+
+        mock_queue.reply_router.responder = responder
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -898,6 +908,14 @@ class TestMaxCorrectionAttempts:
         status_calls = mock_registry.update_run_status.call_args_list
         terminal_statuses = [c.args[1] for c in status_calls]
         assert RunStatus.FAILED in terminal_statuses
+        # SIP-0108 §4.1: the row names the ending — an exhausted budget, decided on the failure
+        # that found it spent. Its classification is unasked: that failure was never analysed.
+        _, summary = mock_registry.record_run_loop_summary.await_args.args
+        assert summary.terminal == RunTerminalDecision(
+            kind=TerminalKind.CORRECTION_TERMINATED,
+            termination_reason=CorrectionTerminationReason.EXHAUSTED,
+            task_id=dispatched[3],
+        )
 
 
 class TestEmptyEmissionRefund:
@@ -3858,6 +3876,49 @@ class TestBudgetGatesCorrectionDispatch:
             metadata={"role": "dev"},
         )
 
+    async def test_the_real_guard_ends_the_run_as_a_time_budget_ending(
+        self, executor, mock_queue, mock_registry, mock_event_bus, cycle
+    ):
+        """Entry point: ``execute_run``. The budget holds when the task dispatches and has run
+        out when its correction chain would start. Bug caught: the correction-chain lane's
+        ending recorded as anything but a time budget, which attribution would read as
+        ``unattributed`` rather than ``budget_exhaustion``."""
+        import dataclasses
+
+        mock_registry.get_cycle.return_value = dataclasses.replace(
+            cycle, applied_defaults={"time_budget_seconds": 100}
+        )
+        clock = {"now": 0.0}
+
+        def responder(env):
+            clock["now"] = 1000.0
+            return TaskResult(
+                task_id=env["task_id"],
+                status="FAILED",
+                outputs={"outcome_class": TaskOutcome.SEMANTIC_FAILURE, "role": "strat"},
+                error="bad",
+            )
+
+        mock_queue.reply_router.responder = responder
+        fake_time = MagicMock()
+        fake_time.monotonic.side_effect = lambda: clock["now"]
+        with (
+            patch("adapters.cycles.dispatched_flow_executor.time", fake_time),
+            patch(
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        (failed,) = [
+            c for c in mock_event_bus.emit.call_args_list if c.args[0] == EventType.RUN_FAILED
+        ]
+        assert "at correction-chain dispatch" in failed.kwargs["payload"]["error"]
+        assert mock_queue.publish.call_count == 1
+        _, summary = mock_registry.record_run_loop_summary.await_args.args
+        assert summary.terminal == RunTerminalDecision(kind=TerminalKind.RUN_TIME_BUDGET_EXCEEDED)
+
     async def test_expired_budget_blocks_correction_before_any_dispatch(self, cycle):
         from adapters.cycles.execution_errors import _ExecutionError
         from squadops.tasks.models import TaskResult
@@ -4195,6 +4256,13 @@ class TestCarriedFailuresReplay:
         assert str(raised.value).startswith(
             "plan_defect: correction terminated at round 1 — 7 failure(s) carried from round 0 "
             "without progress (0 cleared, 2 added), "
+        )
+        # SIP-0108 §4.1: the terminal round's analysis classified the failure it decided on.
+        assert raised.value.terminal == RunTerminalDecision(
+            kind=TerminalKind.CORRECTION_TERMINATED,
+            termination_reason=CorrectionTerminationReason.PLAN_DEFECT,
+            failure_classification="work_product",
+            task_id="task-qa-4",
         )
         (record,) = self._terminations(runner)
         assert (record["first_seen_round"], record["terminal_round"]) == (0, 1)

@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.models import (
     AgentProfileEntry,
     ArtifactRef,
@@ -23,6 +24,7 @@ from squadops.cycles.models import (
     SquadProfile,
     TaskFlowPolicy,
 )
+from squadops.cycles.run_loop_summary import RunTerminalDecision
 from squadops.events.types import EventType
 from squadops.runtime import reasons
 from squadops.runtime.coordinator import TransitionOutcome
@@ -206,7 +208,9 @@ class TestSequentialHappyPath:
         """SIP-0108 §5 criterion 2, the finalization half. Entry point: ``execute_run``, through
         the dispatcher, to the registry row. Bug caught: the run summary written from anything
         but the replies the run actually got — or a reply without usage read as a free task."""
+        from squadops.cycles.failure_attribution import TerminalKind
         from squadops.cycles.llm_usage import UsageTotals
+        from squadops.cycles.run_loop_summary import RunTerminalDecision
 
         unreported_ids: list[str] = []
 
@@ -237,6 +241,8 @@ class TestSequentialHappyPath:
         assert summary.usage.total == UsageTotals(calls=8, failed_calls=4, prompt_tokens=400)
         assert summary.usage.tasks_reported == 4
         assert list(summary.usage.tasks_unreported) == unreported_ids
+        # SIP-0108 §4.1: a run that reached the end of its tasks records that it completed.
+        assert summary.terminal == RunTerminalDecision(kind=TerminalKind.COMPLETED)
 
     async def test_publish_called_5_times(self, executor, mock_queue) -> None:
         """queue.publish called once per pipeline step (5 total)."""
@@ -1078,6 +1084,10 @@ class TestGateRejectsBuilderPlanWithoutBuildProfile:
                 gated_cycle,
             )
         assert "build_profile" in str(exc_info.value)
+        # SIP-0108 §4.1: the refusal is a plan-gate ending, naming the validator that refused.
+        assert exc_info.value.terminal == RunTerminalDecision(
+            kind=TerminalKind.PLAN_GATE_REFUSED, refused_validators=("validate_build_config",)
+        )
 
     async def test_build_profile_via_execution_overrides_passes(self, executor, mock_vault, cycle):
         """The gate must read the merged config — a build_profile arriving via
@@ -1137,6 +1147,7 @@ class TestMidRunGateRejectsUnwinnableQaTask:
                 gated_cycle,
             )
         assert "test_*.py" in str(exc_info.value)
+        assert exc_info.value.terminal.refused_validators == ("validate_check_applicability",)
 
 
 # ---------------------------------------------------------------------------

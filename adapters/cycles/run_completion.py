@@ -32,9 +32,10 @@ from adapters.cycles.execution_errors import (
     _PausedError,
     _RecruitmentRejectedError,
 )
+from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.llm_usage import RunUsage
 from squadops.cycles.models import ArtifactRef, RunStatus
-from squadops.cycles.run_loop_summary import RunLoopSummary
+from squadops.cycles.run_loop_summary import RunLoopSummary, RunTerminalDecision
 from squadops.cycles.run_report_builder import build_run_report
 from squadops.cycles.verification_integrity import (
     RunVerificationSummary,
@@ -72,6 +73,9 @@ class TerminalOutcome:
     # #427: persisted on the run row with the terminal transition. Set only by
     # the FAILED mappings — cancellation and pauses have their own affordances.
     failure_reason: str | None = None
+    # SIP-0108 §4.1: the structured decision the run summary records. ``other`` for every
+    # ending no raise site declared — cancellation, a pause, an unexpected exception.
+    terminal: RunTerminalDecision = RunTerminalDecision(kind=TerminalKind.OTHER)
 
 
 def resolve_terminal_outcome(exc: BaseException, run_id: str) -> TerminalOutcome:
@@ -121,6 +125,7 @@ def resolve_terminal_outcome(exc: BaseException, run_id: str) -> TerminalOutcome
             log_kind="error",
             log_message=f"Run {run_id} failed: {exc}",
             failure_reason=failure_reason_text(exc, include_type=False),
+            terminal=exc.terminal or RunTerminalDecision(kind=TerminalKind.OTHER),
         )
     return TerminalOutcome(
         run_status=RunStatus.FAILED,
@@ -214,12 +219,15 @@ class RunCompletion:
         ledger: RunLedger | None = None,
         contract: Any | None = None,
         usage: RunUsage | None = None,
+        terminal: RunTerminalDecision | None = None,
     ) -> None:
         """Close observability traces and generate run report.
 
         ``usage`` is the run's LLM usage, summed where every dispatch returned (SIP-0108
         §4.1); it is persisted as the run summary's row. ``None`` writes no row — a caller
         that never accounted usage must not record a run as having used nothing.
+        ``terminal`` is how the run ended (``resolve_terminal_outcome``'s decision, or
+        ``completed``), recorded on the same row.
 
         ``contract`` is the bind-mode verification contract the executor loaded for
         this run (None in author mode); its criterion ids become the coverage
@@ -276,6 +284,7 @@ class RunCompletion:
                             usage=usage,
                             refunded_rounds=ledger.refunded_rounds if ledger else (),
                             movements=ledger.movements if ledger else (),
+                            terminal=terminal,
                         ),
                     )
                 except Exception:
