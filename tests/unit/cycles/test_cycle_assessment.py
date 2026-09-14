@@ -34,7 +34,12 @@ from squadops.cycles.failure_attribution import (
     TerminalKind,
 )
 from squadops.cycles.llm_usage import RunUsage, UsageTotals
-from squadops.cycles.run_loop_summary import MovementRecord, RefundedRound, RunLoopSummary
+from squadops.cycles.run_loop_summary import (
+    AbsentEmission,
+    MovementRecord,
+    RefundedRound,
+    RunLoopSummary,
+)
 from squadops.cycles.run_loop_summary import RunTerminalDecision as Decision
 from squadops.cycles.task_outcome import CorrectionTerminationReason
 from squadops.cycles.verification_integrity import (
@@ -62,7 +67,16 @@ def _run(run_id, number, workload, status="completed", seconds=600, gates=()):
     )
 
 
-def _summary(calls=4, prompt=100, terminal=None, refunds=(), movements=(), unreported=()):
+def _summary(
+    calls=4,
+    prompt=100,
+    terminal=None,
+    refunds=(),
+    movements=(),
+    unreported=(),
+    round_failures=(),
+    absent_emissions=(),
+):
     return RunLoopSummary(
         run_id="",
         usage=RunUsage(
@@ -73,6 +87,8 @@ def _summary(calls=4, prompt=100, terminal=None, refunds=(), movements=(), unrep
         refunded_rounds=tuple(refunds),
         movements=tuple(movements),
         terminal=terminal,
+        round_failures=round_failures,
+        absent_emissions=absent_emissions,
     )
 
 
@@ -233,14 +249,16 @@ class TestFourDimensions:
         assert assessment.attribution.state == IndicatorState.UNASKABLE
 
 
-def _failed_impl(decision, movements=()):
+def _failed_impl(decision, movements=(), round_failures=()):
     evidence = CycleEvidence(
         cycle_id="cyc_1",
         runs=(_run("run_f1", 1, "framing"), _run("run_i1", 2, "implementation", status="failed")),
         verification_summary_runs=("run_f1", "run_i1"),
         loop_summaries={
             "run_f1": _summary(),
-            "run_i1": _summary(terminal=decision, movements=movements),
+            "run_i1": _summary(
+                terminal=decision, movements=movements, round_failures=round_failures
+            ),
         },
     )
     return _outcome(verdict=RunVerdict.BLOCKED_UNVERIFIED), evidence
@@ -295,9 +313,12 @@ class TestAttribution:
             "no_rejection_record: run_f1",
         )
 
-    def test_an_exhausted_correction_budget_is_budget_exhaustion_and_names_what_is_unrecorded(self):
-        """Bug caught: the primary read from ``failure_reason`` prose, or the missing per-round
-        failure events silently treated as none."""
+    def test_an_exhausted_budget_contributes_every_rounds_failure_composed(self):
+        """§4.2's correction-terminated row, on recorded rounds (§10d). Bug caught: the primary
+        read from ``failure_reason`` prose, or a round's category and locus not composed into
+        the contributors."""
+        from squadops.cycles.run_loop_summary import RoundFailure
+
         decision = Decision(
             kind=TerminalKind.CORRECTION_TERMINATED,
             termination_reason=CorrectionTerminationReason.EXHAUSTED,
@@ -306,15 +327,73 @@ class TestAttribution:
         outcome, evidence = _failed_impl(
             decision,
             movements=(MovementRecord("t-qa", 0, "new"), MovementRecord("t-qa", 1, "repeat")),
+            round_failures=(
+                RoundFailure("t-qa", 0, "executed_and_failed", "subject"),
+                RoundFailure("t-qa", 1, "emission_absent", "own_artifact", "cap_exhausted"),
+            ),
         )
 
         reading = assess(outcome, evidence, assessor=ASSESSOR).attribution
 
         assert reading.terminal_kind == TerminalKind.CORRECTION_TERMINATED
         assert reading.attribution.primary == AttributionClass.BUDGET_EXHAUSTION
-        assert [c.value for c in reading.attribution.contributing] == ["repeat"]
-        assert reading.unrecorded == (UNRECORDED_ROUND_FAILURE_EVENTS,)
+        # Ordered by run, round, task, then source (§4.2's determinism rule).
+        assert [
+            (c.round_index, c.value, c.attribution) for c in reading.attribution.contributing
+        ] == [
+            (0, "executed_and_failed", AttributionClass.PRODUCER_OUTPUT_FAILURE),
+            (1, "repeat", AttributionClass.HANDOFF_OR_CONVERGENCE_FAILURE),
+            (1, "emission_absent", AttributionClass.BUDGET_EXHAUSTION),
+        ]
+        assert reading.unrecorded == ()
         assert EvidenceRef(RefKind.RUN_SUMMARY, "run_i1") in reading.refs
+
+    def test_a_run_summary_older_than_its_round_failures_names_them_unrecorded(self):
+        """Bug caught: a pre-capture row's missing rounds read as a run with no failed rounds —
+        a correction-terminated cycle whose contributors are silently only its movements."""
+        decision = Decision(
+            kind=TerminalKind.CORRECTION_TERMINATED,
+            termination_reason=CorrectionTerminationReason.EXHAUSTED,
+            task_id="t-qa",
+        )
+        outcome, evidence = _failed_impl(decision, round_failures=None)
+
+        reading = assess(outcome, evidence, assessor=ASSESSOR).attribution
+
+        assert reading.attribution.primary == AttributionClass.BUDGET_EXHAUSTION
+        assert reading.unrecorded == (UNRECORDED_ROUND_FAILURE_EVENTS,)
+
+    @pytest.mark.parametrize(
+        ("absent", "expected"),
+        [
+            (
+                (
+                    ("run_i1", AbsentEmission("t-build", ("empty",), attempt=1)),
+                    ("run_i1", AbsentEmission("t-qa", ("cap_exhausted",), round_index=0)),
+                ),
+                (IndicatorState.OBSERVED, {"task_attempts": 1, "repair_rounds": 1}),
+            ),
+            ((), (IndicatorState.ASKED_NONE, {"task_attempts": 0, "repair_rounds": 0})),
+            (None, (IndicatorState.UNASKABLE, None)),
+        ],
+        ids=["recorded", "none", "row predates the capture"],
+    )
+    def test_contentless_emissions_are_read_from_the_run_summary(self, absent, expected):
+        """Bug caught: the indicator unaskable on every run although the row carries it, or a
+        pre-capture row read as zero contentless emissions."""
+        outcome, evidence = _accepted_cycle()
+        summaries = dict(evidence.loop_summaries)
+        if absent is None:
+            summaries["run_i1"] = _summary(absent_emissions=None)
+        else:
+            summaries["run_i1"] = _summary(absent_emissions=tuple(a for _, a in absent))
+        evidence = CycleEvidence(**{**evidence.__dict__, "loop_summaries": summaries})
+
+        ind = assess(outcome, evidence, assessor=ASSESSOR).indicator("contentless_emissions")
+
+        assert (ind.state, ind.value) == expected
+        if ind.state == IndicatorState.OBSERVED:
+            assert ind.refs == (EvidenceRef(RefKind.RUN_SUMMARY, "run_i1"),)
 
     def test_a_failed_run_with_no_terminal_decision_is_unaskable(self):
         outcome, evidence = _failed_impl(None)

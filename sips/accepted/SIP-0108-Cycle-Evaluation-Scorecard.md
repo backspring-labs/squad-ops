@@ -743,3 +743,36 @@ the stores could not support.
 
 **Ruled by.** The implementer, in the PR that captures them, for the owner's review with it. The
 assessment reads these fields in the PR that follows this one.
+
+### 10e. 2026-09-14 — the assessment reads §10d's records
+
+**What changed.** The projection reads the two records §10d put on the run summary.
+
+1. **`contentless_emissions` is observed.** It was unaskable in §10c. It now counts every
+   emission that yielded no file — `task_attempts` and `repair_rounds` separately — from the run
+   summaries that recorded them.
+   - **A run with no row**, or a row older than the capture, makes the indicator unaskable, and
+     the reason names the runs. It never reads as zero.
+2. **A correction-terminated or time-budget attribution contributes every round's failure,
+   composed.** Each `RoundFailure` becomes a failure event carrying its category, locus and
+   emission signature; §4.2's composition rules place it; the movements contribute beside it,
+   ordered by the registry's determinism rule.
+   - **An older row** still names `round_failure_events` as unrecorded. The primary is unchanged,
+     because it is read from the termination reason.
+3. **Still unrecorded, as §10d states:** a failed check's locus at completion (a completed
+   `rejected` cycle reads `unattributed`, with that input named), and a compliance budget's
+   refused emissions.
+
+**Evidence.**
+- **Attribution:** an exhausted budget contributes its two rounds' failures, composed to
+  `producer_output_failure` and `budget_exhaustion`, beside the movement, in the declared order.
+  An older row names its rounds as unrecorded.
+- **The indicator:** `contentless_emissions` reads observed, `asked_none` and unaskable across
+  recorded, empty and pre-capture rows.
+- **The assembler:** its test over a memory registry and a filesystem vault reads nothing
+  unrecorded on a row that carries its rounds.
+- **Mutations: four, each caught.** Pre-capture emissions read as none; round failures not
+  contributed; pre-capture round failures read as none; repair rounds miscounted.
+
+**Ruled by.** The implementer, in the PR that makes the assessment read §10d's records, for the
+owner's review with it.

@@ -13,11 +13,12 @@ answer it for this cycle. A zero is never written for an unaskable indicator. Ev
 carries evidence references — a run, a vault artifact, a verification summary or a run summary —
 that resolve against the stores it was assembled from.
 
-**What the record cannot yet answer is named, not guessed.** Two inputs have no durable value
-today and read unaskable wherever they are needed: the category and locus of each failure a
-correction round saw (they reach the analyzer's inputs and the log, never a store), and a
-contentless emission (it banks nothing). The attribution reports which of its inputs were
-unrecorded, so ``unattributed`` is never mistaken for a judgement the evidence made.
+**What the record cannot answer is named, not guessed.** Each correction round's classified
+failure and each emission that yielded no file are on the run summary (SIP-0108 §10d); a row
+written before them reads unaskable for them. A failed check's locus at completion and a
+compliance budget's refused emissions are not recorded at all. The attribution reports which of
+its inputs were unrecorded, so ``unattributed`` is never mistaken for a judgement the evidence
+made.
 """
 
 from __future__ import annotations
@@ -411,7 +412,7 @@ def _coordination_dimension(evidence: CycleEvidence) -> tuple[Indicator, ...]:
             tuple(EvidenceRef(RefKind.ARTIFACT, a.artifact_id) for a in banked),
         ),
         failed_emissions,
-        Indicator.unaskable("contentless_emissions", "no_durable_record: banks nothing"),
+        _contentless_emissions(evidence, missing),
         Indicator.of(
             "framing_rerolls",
             max(0, len(framing) - 1),
@@ -424,6 +425,32 @@ def _coordination_dimension(evidence: CycleEvidence) -> tuple[Indicator, ...]:
         ),
         refunds,
         movements,
+    )
+
+
+def _contentless_emissions(evidence: CycleEvidence, missing: list[str]) -> Indicator:
+    """Every emission that yielded no file (SIP-0108 §10d): a task's own attempts and the
+    correction rounds whose repair was empty, from the run summaries that recorded them."""
+    name = "contentless_emissions"
+    if missing:
+        return Indicator.unaskable(name, _no_run_summary_reason(missing))
+    predates = sorted(
+        run_id for run_id, s in evidence.loop_summaries.items() if s.absent_emissions is None
+    )
+    if predates:
+        return Indicator.unaskable(name, f"run_summary_predates_capture: {', '.join(predates)}")
+    recorded = [
+        (run_id, a)
+        for run_id, s in sorted(evidence.loop_summaries.items())
+        for a in s.absent_emissions or ()
+    ]
+    return Indicator.of(
+        name,
+        {
+            "task_attempts": sum(1 for _, a in recorded if a.attempt is not None),
+            "repair_rounds": sum(1 for _, a in recorded if a.round_index is not None),
+        },
+        tuple(EvidenceRef(RefKind.RUN_SUMMARY, run_id) for run_id, _ in recorded),
     )
 
 
@@ -515,7 +542,7 @@ def _tokens(totals: UsageTotals) -> dict[str, int]:
 # ---------------------------------------------------------------------------------------------
 
 #: Inputs the attribution rows need and no store holds (see the module docstring).
-UNRECORDED_ROUND_FAILURE_EVENTS = "round_failure_events: category and locus are not stored"
+UNRECORDED_ROUND_FAILURE_EVENTS = "round_failure_events: run summary predates their recording"
 UNRECORDED_CHECK_LOCUS = "failed_check_locus: not stored"
 UNRECORDED_REFUSED_EMISSIONS = "refused_emissions: evidence events are not stored as values"
 UNRECORDED_PROOFS = "failed_proofs: rejection record predates their recording"
@@ -639,8 +666,22 @@ def _failed_run(final: RunRecord, evidence: CycleEvidence) -> AttributionReading
         for m in summary.movements
     )
     unrecorded: tuple[str, ...] = ()
+    failures: tuple[FailureEvent, ...] = ()
     if decision.kind in (TerminalKind.CORRECTION_TERMINATED, TerminalKind.RUN_TIME_BUDGET_EXCEEDED):
-        unrecorded = (UNRECORDED_ROUND_FAILURE_EVENTS,)
+        if summary.round_failures is None:
+            unrecorded = (UNRECORDED_ROUND_FAILURE_EVENTS,)
+        else:
+            failures = tuple(
+                FailureEvent(
+                    run_id=final.run_id,
+                    task_id=r.task_id,
+                    round_index=r.round_index,
+                    category=r.category,
+                    locus=r.locus,
+                    emission_signature=r.emission_signature,
+                )
+                for r in summary.round_failures
+            )
     elif decision.kind == TerminalKind.COMPLIANCE_BUDGET_EXCEEDED:
         unrecorded = (UNRECORDED_REFUSED_EMISSIONS,)
     return _read(
@@ -648,6 +689,7 @@ def _failed_run(final: RunRecord, evidence: CycleEvidence) -> AttributionReading
             kind=decision.kind,
             refused_validators=decision.refused_validators,
             termination_reason=decision.termination_reason,
+            failure_events=failures,
             movements=movements,
         ),
         refs=refs,
