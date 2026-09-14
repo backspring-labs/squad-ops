@@ -16,6 +16,7 @@ Numeric ranges are reserved to keep parallel work streams from colliding. SIP-00
 | `1200–1299` | SIP-0090 Agent Embodiment Substrate (v1.2) | Reserved (tentative) |
 | `1300–1399` | SIP-0091 Duty Durability via Temporal (v1.3) | Reserved (tentative) |
 | `1400–1499` | SIP-0096 Verification Evidence Integrity (v1.4) | In use — see `1400_run_verification_summaries.sql` |
+| `1500–1599` | SIP-0108 Cycle Evaluation Scorecard (v1.8) | In use — `1500_run_loop_summaries.sql`, the run summary (§4.1) |
 
 If your work doesn't fit a reserved range, pick the next free hundred and add a row here in the same PR.
 

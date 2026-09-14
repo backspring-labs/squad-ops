@@ -15,6 +15,7 @@ from squadops.cycles.models import (
     RunStatus,
 )
 from squadops.cycles.pulse_models import PulseVerificationRecord
+from squadops.cycles.run_loop_summary import RunLoopSummary
 from squadops.cycles.verification_integrity import RunVerificationSummary
 
 
@@ -168,6 +169,23 @@ class CycleRegistryPort(ABC):
         Raises:
             RunNotFoundError: If the run_id is not found.
         """
+
+    # --- Run summary (SIP-0108 §4.1) ---
+
+    @abstractmethod
+    async def record_run_loop_summary(self, run_id: str, summary: RunLoopSummary) -> None:
+        """Persist a run's loop facts, one row per run, at finalization (SIP-0108 §4.1).
+
+        Terminal-OK and an upsert, like ``record_run_verification_summary``: the run is
+        already terminal when it is written, and a re-finalize supersedes the prior row.
+
+        Raises:
+            RunNotFoundError: If the run_id is not found.
+        """
+
+    async def get_run_loop_summary(self, run_id: str) -> RunLoopSummary | None:
+        """One run's persisted loop facts, or None — a run finalized before SIP-0108's row."""
+        return None  # default for adapters predating the row
 
     @abstractmethod
     async def get_run_verification_summary(self, run_id: str) -> RunVerificationSummary | None:

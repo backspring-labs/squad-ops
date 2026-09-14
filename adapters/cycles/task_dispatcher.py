@@ -44,6 +44,7 @@ from typing import TYPE_CHECKING
 
 from adapters.cycles.execution_errors import _CancellationError
 from adapters.cycles.task_naming import build_task_name
+from squadops.cycles.llm_usage import RunUsage, RunUsageAccumulator
 from squadops.events.types import EventType
 from squadops.runtime import reasons
 from squadops.tasks.models import TaskResult, TaskResultStatus
@@ -111,6 +112,14 @@ class TaskDispatcher:
         # idiom as ``store_artifact`` / ``handle_task_outcome``: the transport
         # asks "is this run cancelled?" without taking a registry dependency.
         self._is_cancelled = is_cancelled
+        # SIP-0108 §4.1: every reply of a run adds its task's LLM usage here, where every
+        # dispatch returns — tasks, retries, correction steps and retests alike — and
+        # finalization takes the sum for the run's durable summary.
+        self._run_usage: dict[str, RunUsageAccumulator] = {}
+
+    def take_run_usage(self, run_id: str) -> RunUsage:
+        """The run's LLM usage so far, released — called once, at run finalization."""
+        return self._run_usage.pop(run_id, RunUsageAccumulator()).summary()
 
     # SIP-0087: task-run lifecycle lives here (moved out of WorkflowTrackerBridge) so
     # the task_run_id is known before the agent starts producing logs.
@@ -266,9 +275,12 @@ class TaskDispatcher:
             )
             # SIP-0089 §4.4: open a RuntimeActivity for this task (best-effort).
             activity_id = await self._start_task_activity(envelope)
+            usage = self._run_usage.setdefault(run_id, RunUsageAccumulator())
             try:
                 result = await self._publish_and_await(envelope, run_id)
             except BaseException:
+                # No reply to read usage from: counted by task id, never as zero.
+                usage.record(str(envelope.task_type), envelope.task_id, None)
                 # Reply wait raised (rare — _publish_and_await usually returns a
                 # FAILED TaskResult): record the task activity as failed.
                 await self._finish_task_activity(activity_id, None)
@@ -279,6 +291,11 @@ class TaskDispatcher:
                 await self._set_task_run_state(task_run_id, "FAILED", "Failed")
                 raise
             else:
+                usage.record(
+                    str(envelope.task_type),
+                    envelope.task_id,
+                    result.llm_usage if result is not None else None,
+                )
                 await self._finish_task_activity(activity_id, result)
                 if result is not None and result.status == TaskResultStatus.SUCCEEDED:
                     await self._set_task_run_state(task_run_id, "COMPLETED", "Completed")

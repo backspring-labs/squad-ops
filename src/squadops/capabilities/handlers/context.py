@@ -8,8 +8,10 @@ Part of SIP-0.8.8 Phase 5.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
+
+from squadops.cycles.llm_usage import UsageLedger
 
 if TYPE_CHECKING:
     from squadops.agents.base import PortsBundle
@@ -42,6 +44,9 @@ class ExecutionContext:
     ports: PortsBundle
     project_id: str = ""
     correlation_context: CorrelationContext | None = None
+    #: SIP-0108 §4.1: this task's LLM usage, added by ``_llm_call`` for every call — the one
+    #: seam every generation passes — and carried on the task result on every exit path.
+    llm_usage: UsageLedger = field(default_factory=UsageLedger)
 
     @classmethod
     def create(

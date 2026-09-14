@@ -34,6 +34,7 @@ from squadops.cycles.models import (
     ValidationError,
 )
 from squadops.cycles.pulse_models import PulseVerificationRecord
+from squadops.cycles.run_loop_summary import RunLoopSummary
 from squadops.cycles.verification_integrity import (
     CheckInspection,
     FailedCheck,
@@ -426,6 +427,32 @@ class PostgresCycleRegistry(CycleRegistryPort):
                 summary.verdict.value,
                 _verification_summary_to_dict(summary),
             )
+
+    async def record_run_loop_summary(self, run_id: str, summary: RunLoopSummary) -> None:
+        """Persist a run's loop facts to Postgres (SIP-0108 §4.1; upsert, terminal-OK)."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT 1 FROM cycle_runs WHERE run_id = $1", run_id)
+            if row is None:
+                raise RunNotFoundError(f"Run not found: {run_id}")
+            await conn.execute(
+                "INSERT INTO run_loop_summaries (run_id, summary_version, summary) "
+                "VALUES ($1, $2, $3) "
+                "ON CONFLICT (run_id) DO UPDATE SET summary_version = EXCLUDED.summary_version, "
+                "summary = EXCLUDED.summary, recorded_at = now()",
+                run_id,
+                summary.summary_version,
+                summary.to_dict(),
+            )
+
+    async def get_run_loop_summary(self, run_id: str) -> RunLoopSummary | None:
+        """One run's persisted loop facts, or None (a run finalized before the row existed)."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT summary FROM run_loop_summaries WHERE run_id = $1", run_id
+            )
+        if row is None:
+            return None
+        return RunLoopSummary.from_dict(row["summary"])
 
     async def get_run_verification_summary(self, run_id: str) -> RunVerificationSummary | None:
         """One run's persisted verification roll-up, or None (#682)."""

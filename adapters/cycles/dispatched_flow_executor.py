@@ -823,6 +823,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 plan=plan,
                 ledger=ledger,
                 contract=verification_contract,
+                usage=self._task_dispatcher.take_run_usage(run_id),
             )
 
     async def cancel_run(self, run_id: str) -> None:

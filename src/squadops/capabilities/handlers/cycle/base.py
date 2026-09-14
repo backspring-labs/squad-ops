@@ -1224,7 +1224,15 @@ class _CycleTaskHandler(CapabilityHandler):
         Reading it off ``messages`` rather than taking it as an argument is what stops
         the two drifting apart.
         """
-        response = await context.ports.llm.chat_stream_with_usage(messages, **chat_kwargs)
+        # SIP-0108 §4.1: every invocation is accounted exactly once, including one that raises
+        # before any usage exists — undercounting failed calls makes the worse arm cheaper.
+        call_started = time.perf_counter()
+        try:
+            response = await context.ports.llm.chat_stream_with_usage(messages, **chat_kwargs)
+        except BaseException:
+            context.llm_usage.record_failed_call((time.perf_counter() - call_started) * 1000)
+            raise
+        context.llm_usage.record_generation(response, (time.perf_counter() - call_started) * 1000)
         content = response.content
 
         # #1251: a declared fault transforms the emission HERE, before the shape is
