@@ -581,10 +581,13 @@ reads `None`. Four points resolve what §4.1 left open.
    system `REJECTED` gate decision and, for plan validators, as a `rejection_record` artifact
    carrying the validator classes (#809). The assessment projection reads those.
 
-   **Gap named for that projection.** At the same seam, the manifest gate's failed proof
-   classes are logged (`interface_manifest rejected at gate: classes=…`) and joined into the
-   gate note's prose, but never recorded as values. The manifest-gate row of §4.2 needs them as
-   `failed_proofs`, so the projection's PR records them before reading them.
+   **Gap named for that projection.** At the same seam, the manifest gate records none of its
+   failed proofs as values. They are logged (`interface_manifest rejected at gate: classes=…`)
+   and joined into the gate note's prose. The emitted manifest's own provenance does carry the
+   proofs its authoring stage found on each rejected attempt (`provenance.revisions[].proofs`,
+   #803). That is the authoring stage's assessment, though: it runs with the expected stack and
+   counts advisory findings, so it is not the gate's verdict. The manifest-gate row of §4.2 reads
+   the gate's failed proofs, so the projection's PR records them before reading them.
 4. **The last finalization's decision stands.** A paused run finalizes with `other`. Resuming
    runs `execute_run` on the same run id, which upserts the row, so the decision the resumed run
    ends on replaces it.
