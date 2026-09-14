@@ -897,7 +897,9 @@
    "fill_merge": {
     "additive_containment": [],
     "assertion_strength": {
-     "additive_files": [],
+     "additive_files": [
+      "__tests__/runs.test.ts"
+     ],
      "any_fill_touches_the_store": false,
      "body_chars": 77,
      "filled_slots": 2,
@@ -1788,8 +1790,8 @@
     },
     {
      "content": {
-      "len": 2374,
-      "sha": "245478d04f840c4b"
+      "len": 2414,
+      "sha": "c629500dac312f44"
      },
      "media_type": "application/json",
      "name": "fill_merge_evidence.json",
@@ -1807,7 +1809,7 @@
    ],
    "emission_stats": {
     "artifact_count": 12,
-    "extracted_chars": 43761,
+    "extracted_chars": 43801,
     "response_chars": 82
    },
    "failure_classification": "work_product",

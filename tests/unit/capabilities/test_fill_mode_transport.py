@@ -719,3 +719,37 @@ async def test_the_fill_merge_evidence_is_banked_as_an_artifact(scaffold_input, 
     counts = payload["fill_merge"]["counts"]
     assert counts["filled"] == result.outputs["scaffold_evidence"]["fill_dispositions"]["filled"]
     assert "assertion_strength" in payload["fill_merge"]
+
+
+async def test_a_suite_added_by_a_fill_less_self_eval_pass_reaches_the_banked_evidence(
+    scaffold_input, monkeypatch
+):
+    """#1535 through handle(): 1.8.0 deploy A's Next.js checkpoint (`cyc_79f70a0bbac1`)
+    filled every slot in the primary and missed a declared suite; the self-eval pass wrote
+    that suite with no fills. The fill-merge evidence was recomputed only when fills arrived,
+    so it banked `additive_files: []` and `additive_containment: []` beside a typed check that
+    failed the same suite for invoking nothing."""
+    primary = _all_eight_fills("expect(body.id).toBeTruthy()")
+    followup = (
+        "```typescript:__tests__/runs.test.ts\n"
+        "import { listRuns } from '@/lib/api'\n"
+        "it('lists', async () => { await listRuns() })\n"
+        "```\n"
+    )
+    context, _, _ = _self_eval_harness(monkeypatch, primary, followup)
+    # A live cycle's config names the build profile, which is what resolves the stack's own
+    # definition of invoking the app; without it containment judges nothing (#986).
+    config = {**_INPUTS["resolved_config"], "build_profile": "nextjs_ts"}
+
+    result = await QATestHandler().handle(
+        context, {**_INPUTS, "resolved_config": config, "verification_scaffold": scaffold_input}
+    )
+
+    banked = next(a for a in result.outputs["artifacts"] if a["name"] == "fill_merge_evidence.json")
+    fill_merge = json.loads(banked["content"])["fill_merge"]
+    assert fill_merge["assertion_strength"]["additive_files"] == ["__tests__/runs.test.ts"]
+    (finding,) = fill_merge["additive_containment"]
+    assert finding.startswith("__tests__/runs.test.ts: invokes nothing of the application")
+    # the fills the primary merged are untouched by the refresh
+    assert fill_merge["counts"] == {"filled": 8}
+    assert result.outputs["scaffold_evidence"]["additive_containment"] == [finding]
