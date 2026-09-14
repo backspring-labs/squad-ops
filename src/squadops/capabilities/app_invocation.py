@@ -29,6 +29,16 @@ NETWORK_SEAM_FETCH_STUB = r"""(?x)
     | (?:vi|jest)\s*\.\s*spyOn\s*\(\s*global(?:This)?\s*,\s*['"`]fetch['"`]
 """
 
+#: Loading a module — the stack-neutral half of "invokes the application". A JS suite loads
+#: a module three ways: an import statement, a ``require(`` call, or a dynamic ``import(``
+#: expression (``await import('@/app/api/runs/route')``). WHICH module counts is each stack's
+#: declaration, appended to this prefix. The statement form stays anchored at the line start
+#: so a ``vi.mock('…')`` string can never satisfy it; ``vi.mock`` is not a load, and
+#: ``vi.importActual(`` does not match ``import(``. #1533: the prefix used to stop at the
+#: first two forms, and a suite that called a route handler it loaded dynamically was
+#: judged to invoke nothing (1.8.0 deploy A's Next.js checkpoint, ``cyc_79f70a0bbac1``).
+JS_MODULE_LOAD = r"""^\s*(?:import\b[^\n]*?from\s*|.*\brequire\s*\(\s*|.*\bimport\s*\(\s*)"""
+
 #: The test-file suffixes a vitest harness collects — vitest's default include
 #: (``**/*.{test,spec}.[jt]s?(x)``). These are the files the invocation rule judges and
 #: the files the runner reports as uncollected. Both stacks run vitest, so both declare

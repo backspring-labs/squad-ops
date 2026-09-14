@@ -85,6 +85,81 @@ def test_reaching_the_app_only_through_its_browser_client_is_not_invoking_it():
     assert _rules("__tests__/x.test.ts", content) == [RULE_NO_APPLICATION_INVOCATION]
 
 
+@pytest.mark.parametrize(
+    ("path", "load", "invocation"),
+    [
+        (
+            "__tests__/runs-ui.test.ts",
+            "const joinRoute = await import('@/app/api/runs/[run_id]/join/route')",
+            NEXTJS,
+        ),
+        (
+            "__tests__/runs.test.ts",
+            "const { POST } = (await import(`@/app/api/runs/route`))",
+            NEXTJS,
+        ),
+        (
+            "frontend/src/__tests__/x.test.jsx",
+            "const { default: RunsListView } = await import('../views/RunsListView')",
+            REACT,
+        ),
+    ],
+)
+def test_a_module_loaded_by_dynamic_import_invokes_the_application(path, load, invocation):
+    """#1533: 1.8.0 deploy A's Next.js checkpoint (``cyc_79f70a0bbac1``) was rejected on a
+    suite that loaded the join handler with ``await import(...)`` and called it with a
+    ``new Request(...)`` — the in-process model exactly — because the stack's pattern
+    accepted only an import statement or a ``require``. The load is stack-neutral
+    (``JS_MODULE_LOAD``); which module counts stays each stack's."""
+    content = f"import {{ expect, it }} from 'vitest'\nit('x', async () => {{\n  {load}\n}})\n"
+    assert _rules(path, content, invocation) == []
+
+
+async def test_the_qa_handlers_containment_row_passes_a_dynamically_loaded_route_suite():
+    """Wiring (#1533, anti-pattern 6a): the verdict tonight's suite got came from the qa
+    handler's typed-acceptance seam, which injects ``additive_containment`` per suite with
+    the stack from the cycle's config — so the test enters there, not at the rule."""
+    from squadops.capabilities.handlers.cycle.qa_test import QATestHandler
+
+    suite = (
+        "import { expect, it } from 'vitest'\n"
+        "it('rejects a duplicate join', async () => {\n"
+        "  const joinRoute = await import('@/app/api/runs/[run_id]/join/route')\n"
+        "  const res = await joinRoute.POST(new Request('http://test/api/runs/r/join', "
+        "{ method: 'POST', body: JSON.stringify({ name: 'dave' }) }), "
+        "{ params: { run_id: 'r' } })\n"
+        "  expect(res.status).toBe(409)\n"
+        "})\n"
+    )
+    checks: list[dict] = []
+    await QATestHandler()._evaluate_typed_acceptance(
+        {"acceptance_criteria": [], "resolved_config": {"build_profile": "nextjs_ts"}},
+        [{"name": "__tests__/runs-ui.test.ts", "type": "test", "content": suite}],
+        checks,
+        [],
+        {},
+    )
+    rows = [c for c in checks if c["check"] == "acceptance:additive_containment"]
+    assert [(r["params"]["file"], r["status"]) for r in rows] == [
+        ("__tests__/runs-ui.test.ts", "passed")
+    ]
+
+
+@pytest.mark.parametrize(
+    "not_a_load",
+    [
+        "vi.mock('@/app/api/runs/route')",
+        "const actual = await vi.importActual('@/app/api/runs/route')",
+        "vi.mock('@/app/api/runs/route', () => import('./fake-route'))",
+    ],
+)
+def test_naming_a_route_module_without_loading_it_is_still_not_invoking_it(not_a_load):
+    """The over-acceptance guard for #1533: widening the load forms must not let a mock
+    of the route, or a mock factory that loads something else, read as invoking the app."""
+    content = f"import {{ it }} from 'vitest'\n{not_a_load}\nit('x', () => {{}})\n"
+    assert RULE_NO_APPLICATION_INVOCATION in _rules("__tests__/x.test.ts", content)
+
+
 def test_a_url_in_prose_or_a_fixture_is_not_an_execution_model_violation():
     """The finding must mean something: matching any URL anywhere would fire on a
     comment or a seeded fixture value."""
