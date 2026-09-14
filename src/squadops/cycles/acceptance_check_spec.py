@@ -1217,10 +1217,13 @@ CHECK_SPECS: dict[str, CheckSpec] = {
             "the build context, a `COPY --from` of dist-packages off an official python "
             "image, and apt's nginx default site left in place under a conf.d server "
             "block (#598: pf-38's three build/run failures behind an accepted verdict). "
-            "Does not build or start the image; `package_builds` is that criterion and "
-            "stays declared unbuilt. Findings are banked on the evaluation artifact; the "
-            "warning severity keeps them out of the verdict, the correction signature "
-            "and the repair loop."
+            "Since #598 the two scaffolded stacks render their packaging frozen, and the "
+            "same findings gate that rendering in CI (`test_rendered_packaging.py`); on "
+            "those stacks a role-emitted recipe is dropped at storage, so a finding here "
+            "is a role writing packaging it does not own. Does not build or start the "
+            "image; `package_builds` is that criterion and stays declared unbuilt. Findings "
+            "are banked on the evaluation artifact; the warning severity keeps them out of "
+            "the verdict, the correction signature and the repair loop."
         ),
         failure_ownership=OWNERSHIP_PRODUCT,
         qa_available=False,
@@ -1266,7 +1269,9 @@ DECLARED_UNBUILT_CHECKS: tuple[DeclaredUnbuiltCheck, ...] = (
             "verification (sandbox territory, SIP-0102 steps 3-7) and "
             "blueprint-owned packaging facts (Generalized Build). The static "
             "half — pf-38's three recipe defects as findings — is "
-            "`container_packaging`, reporting-only (#598, 1.7.1)"
+            "`container_packaging`, reporting-only (#598, 1.7.1), and since #598 the "
+            "scaffolded stacks' packaging is rendered from the environment contract and "
+            "gated on those findings in CI; building and starting it is what remains"
         ),
         trigger="Stack Blueprint lands (1.6)",
     ),

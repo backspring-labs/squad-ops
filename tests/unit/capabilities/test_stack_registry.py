@@ -138,7 +138,9 @@ def test_the_reference_stack_still_answers_exactly_what_it_did():
     manifest = _manifest()
 
     # 20 since #1463: the tree gained the frozen frontend/src/index.css.
-    assert len(expand(manifest)) == 20
+    # 20 before #598, plus the four rendered packaging files (Dockerfile, nginx.conf,
+    # start.sh, .dockerignore).
+    assert len(expand(manifest)) == 24
     assert fill_slot_paths(manifest) == (
         "backend/routes.py",
         "frontend/src/views/RunsListView.jsx",

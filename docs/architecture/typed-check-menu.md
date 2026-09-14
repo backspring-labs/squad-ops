@@ -93,4 +93,4 @@ surface is only acceptable while something else verifies the code.
 
 | check | why not yet | trigger |
 |---|---|---|
-| `package_builds` | 'the emitted container builds and runs' requires docker-in-verification (sandbox territory, SIP-0102 steps 3-7) and blueprint-owned packaging facts (Generalized Build). The static half — pf-38's three recipe defects as findings — is `container_packaging`, reporting-only (#598, 1.7.1) | Stack Blueprint lands (1.6) |
+| `package_builds` | 'the emitted container builds and runs' requires docker-in-verification (sandbox territory, SIP-0102 steps 3-7) and blueprint-owned packaging facts (Generalized Build). The static half — pf-38's three recipe defects as findings — is `container_packaging`, reporting-only (#598, 1.7.1), and since #598 the scaffolded stacks' packaging is rendered from the environment contract and gated on those findings in CI; building and starting it is what remains | Stack Blueprint lands (1.6) |

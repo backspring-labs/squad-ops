@@ -37,6 +37,7 @@ from typing import TYPE_CHECKING, Any
 
 from squadops.capabilities.app_invocation import AppInvocation
 from squadops.capabilities.baseline_stylesheet import BASELINE_CSS
+from squadops.capabilities.rendered_packaging import render_packaging
 from squadops.capabilities.success_status import success_status_for
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, avoids a scaffold import cycle
@@ -615,6 +616,8 @@ def expand_nextjs_ts(manifest: InterfaceManifest) -> list[dict[str, str]]:
         {"name": "app/layout.tsx", "content": _LAYOUT},
         {"name": "app/globals.css", "content": BASELINE_CSS},
         {"name": "__tests__/harness.test.ts", "content": _harness_test_source(manifest)},
+        # #598: rendered from the environment contract and frozen, not builder-authored.
+        *render_packaging("nextjs_ts"),
     ]
     for path, endpoints in _route_groups(manifest).items():
         files.append({"name": path, "content": _route_stub(path, endpoints)})
