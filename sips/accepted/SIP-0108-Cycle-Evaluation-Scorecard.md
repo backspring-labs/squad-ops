@@ -489,3 +489,53 @@ their rulings, recorded here.
 - `docs/ideas/IDEA-cycle-evaluation-scorecard-framework.md` — the evaluation philosophy, the four
   dimensions, the attribution model and the comparison intent. Its "Target Release: 1.1+" is
   superseded by this SIP's v1.8 target, and the idea document now says so.
+
+---
+
+## 10. Post-acceptance amendments
+
+### 10a. 2026-09-14 — the attribution registry as built (§4.2)
+
+**What changed.** `src/squadops/cycles/failure_attribution.py` builds §4.2. Five points resolve
+what the section left open or has since drifted from. None changes a class, a disposition row or
+a composition rule.
+
+1. **Winnability proofs are fourteen, not ten.** Main now carries `scaffold_ready`,
+   `interface_coherent` (advisory), `source_prd` and `decision_record` beside the ten §2 counted
+   on `f30938bc`. The row's rule was "all proofs → `criteria_or_contract_failure`", and it holds
+   for all fourteen. The registry lists each value rather than introspecting, so a fifteenth fails
+   the drift test until someone declares what its refusal shows. The plan validators are
+   fourteen, as §2 said, and are listed the same way.
+2. **The terminal state has a typed input.** `TerminalEvidence` carries:
+   - the final state kind (plan gate, manifest gate, correction terminated, compliance budget,
+     run time budget, completed, other);
+   - the verdict, the refusing validators or failed proofs and the termination reason;
+   - the failure events;
+   - a blocked completion's unverified checks;
+   - the movement sequence.
+
+   §4.1's run summary populates it. Until that row exists, `attribute()` is exercised on
+   fixtures only.
+3. **Non-failures are excluded from contributing.** The movements `new` and `progress` and the
+   configured non-executions (`config_disabled`, `unsupported_stack`, `filtered_out`) are
+   declared `non_failure`. They never appear as contributing dispositions, and a blocked cycle
+   whose only unverified reasons are configured ones reads `unattributed`.
+4. **A `converged` termination is not a primary.** Its disposition is `non_failure`, so a cycle
+   whose final transition is a converged termination falls to "any other reachable state" and
+   reads `unattributed`. An accepted cycle is read from its completed verdict, which carries
+   neither a primary nor contributors.
+5. **One allowed shared word.** The guard test forbids every class literal outside the registry
+   except `unattributed` in `gate_attribution.py`, which names a different vocabulary: who
+   decided a gate when auth is off (#812).
+
+**Evidence.**
+- The drift test enumerates each of the eight vocabularies from its own module.
+- The composition test covers each of rules 1–5, including environment over locus.
+- The terminal table is covered row by row. A rejection split across classes reads
+  `unattributed`, not a pick.
+- The same correction-terminated evidence under all 144 orderings of its events and movements
+  yields one attribution.
+- Four mutations (rules out of order, an arbitrary pick, unsorted contributions, an undeclared
+  proof) are each caught.
+
+**Ruled by.** The implementer, in the PR that builds (b), for the owner's review with it.
