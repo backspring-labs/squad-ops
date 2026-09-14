@@ -21,10 +21,6 @@ from squadops.telemetry.noop import NoOpLLMObservabilityAdapter
 class TestCreateMetricsProvider:
     """Tests for create_metrics_provider factory."""
 
-    def test_creates_otel_adapter_by_default(self):
-        adapter = create_metrics_provider()
-        assert isinstance(adapter, OTelAdapter)
-
     def test_creates_otel_adapter_explicitly(self):
         adapter = create_metrics_provider(provider="otel")
         assert isinstance(adapter, OTelAdapter)
@@ -65,8 +61,8 @@ class TestCreateMetricsProvider:
 class TestCreateEventProvider:
     """Tests for create_event_provider factory."""
 
-    def test_creates_otel_adapter_by_default(self):
-        adapter = create_event_provider()
+    def test_creates_otel_adapter(self):
+        adapter = create_event_provider(provider="otel")
         assert isinstance(adapter, OTelAdapter)
 
     def test_creates_console_adapter(self):
@@ -108,18 +104,24 @@ class TestCreateLlmObservabilityProvider:
     """Tests for create_llm_observability_provider factory (SIP-0061)."""
 
     def test_returns_noop_when_config_none(self):
-        adapter = create_llm_observability_provider(config=None)
+        adapter = create_llm_observability_provider(
+            "langfuse", prompt_asset_provider="filesystem", config=None
+        )
         assert isinstance(adapter, NoOpLLMObservabilityAdapter)
 
     def test_returns_noop_when_disabled(self):
         config = LangFuseConfig(enabled=False)
-        adapter = create_llm_observability_provider(config=config)
+        adapter = create_llm_observability_provider(
+            "langfuse", prompt_asset_provider="filesystem", config=config
+        )
         assert isinstance(adapter, NoOpLLMObservabilityAdapter)
 
     def test_noop_health_ok_when_disabled(self):
         import asyncio
 
-        adapter = create_llm_observability_provider(config=None)
+        adapter = create_llm_observability_provider(
+            "langfuse", prompt_asset_provider="filesystem", config=None
+        )
         result = asyncio.run(adapter.health())
         assert result["status"] == "ok"
 
@@ -142,7 +144,9 @@ class TestCreateLlmObservabilityProvider:
         # Clear any cached import of the adapter module so it re-imports
         sys.modules.pop("adapters.telemetry.langfuse.adapter", None)
         try:
-            adapter = create_llm_observability_provider(config=config)
+            adapter = create_llm_observability_provider(
+                "langfuse", prompt_asset_provider="filesystem", config=config
+            )
             assert isinstance(adapter, LLMObservabilityPort)
             assert not isinstance(adapter, NoOpLLMObservabilityAdapter)
             # Cleanup
@@ -174,7 +178,9 @@ class TestCreateLlmObservabilityProvider:
             # Block the import by inserting None (forces ImportError)
             sys.modules["langfuse"] = None  # type: ignore[assignment]
             sys.modules.pop("adapters.telemetry.langfuse.adapter", None)
-            adapter = create_llm_observability_provider(config=config)
+            adapter = create_llm_observability_provider(
+                "langfuse", prompt_asset_provider="filesystem", config=config
+            )
             assert isinstance(adapter, NoOpLLMObservabilityAdapter)
             result = asyncio.run(adapter.health())
             assert result["status"] == "degraded"
@@ -190,7 +196,9 @@ class TestCreateLlmObservabilityProvider:
     def test_raises_on_unknown_provider(self):
         config = LangFuseConfig(enabled=True, public_key="pk", secret_key="sk")
         with pytest.raises(ValueError, match="Unknown LLM observability provider"):
-            create_llm_observability_provider(provider="unknown", config=config)
+            create_llm_observability_provider(
+                provider="unknown", prompt_asset_provider="filesystem", config=config
+            )
 
     def test_resolves_secrets(self):
         """Factory resolves secret:// references via secret_manager."""
@@ -214,7 +222,12 @@ class TestCreateLlmObservabilityProvider:
         sys.modules["langfuse"] = fake_langfuse
         sys.modules.pop("adapters.telemetry.langfuse.adapter", None)
         try:
-            adapter = create_llm_observability_provider(config=config, secret_manager=mock_sm)
+            adapter = create_llm_observability_provider(
+                "langfuse",
+                prompt_asset_provider="filesystem",
+                config=config,
+                secret_manager=mock_sm,
+            )
             assert mock_sm.resolve.call_count == 2
             # Cleanup
             adapter._shutdown.set()

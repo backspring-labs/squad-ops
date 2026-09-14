@@ -349,6 +349,15 @@ class AgentRunner:
         from adapters.tools.factory import create_filesystem_provider
         from squadops.prompts.assembler import PromptAssembler
 
+        # #1449: the telemetry selector is required, and refused before any port is built.
+        # This root read ``backend or "otel"``, a masking default one step above the factory's.
+        telemetry_backend = config.telemetry.backend
+        if not telemetry_backend:
+            raise ValueError(
+                "telemetry.backend is required (SQUADOPS__TELEMETRY__BACKEND: otel, console or "
+                "null) — the agent's telemetry selector is never defaulted (#1449)"
+            )
+
         # Create LLM adapter
         # Priority: instance config model > env var > config
         llm_model = (
@@ -433,12 +442,13 @@ class AgentRunner:
                 asset_source, role=self.role, provider="langfuse"
             )
 
-        # Create telemetry (metrics + events)
-        telemetry_backend = config.telemetry.backend if config.telemetry.backend else "otel"
+        # Create telemetry (metrics + events) — the selector was required at the top.
         metrics, events = create_telemetry_provider(telemetry_backend)
 
-        # Create LLM observability (SIP-0061)
+        # Create LLM observability (SIP-0061). LangFuse is its only provider and no config
+        # field selects it, so the root names it — the artifact vault's shape (#1449).
         llm_observability = create_llm_observability_provider(
+            "langfuse",
             config=config.langfuse,
             prompt_asset_provider=config.prompts.asset_source_provider,
         )

@@ -694,8 +694,11 @@ class GCPTelemetryConfig(BaseModel):
 class TelemetryConfig(BaseModel):
     """Telemetry and observability configuration."""
 
+    #: The agent root's telemetry selector (#1449): ``otel``, ``console`` or ``null``, the names
+    #: ``adapters.telemetry.factory`` accepts. Unset is refused where telemetry is composed
+    #: (the agent entrypoint); the runtime API composes none, so it is not required schema-wide.
     backend: str | None = Field(
-        default=None, description="Telemetry backend override (opentelemetry, aws, azure, gcp)"
+        default=None, description="Telemetry backend selector (otel, console, null)"
     )
     otlp_endpoint: str | None = Field(default=None, description="OTLP exporter endpoint")
     prometheus_port: int = Field(

@@ -303,6 +303,18 @@ changes and this standard does not.
   `"langfuse"`), filesystem (`"local"`), container (`"docker"`), vcs (`"git"`). R2 says the
   root passes the selector explicitly regardless; §5 confirms every root does. Removing the
   defaults themselves is #1449, placed by the 1.8 plan, not #301's scope.
+  - **Correction (2026-09-14, #1449's telemetry PR).** §5's confirmation was wrong for two
+    selectors. Both roots called `create_llm_observability_provider` without a provider, so
+    they ran on its `"langfuse"` default. The agent root read `config.telemetry.backend or
+    "otel"`, a masking default in the root itself. Both roots now name LangFuse (no config
+    field selects it, the artifact vault's shape). The agent root refuses an unset
+    `telemetry.backend` before it builds any port. The four telemetry factories require their
+    selectors, as does `prompt_asset_provider`, which #1449's grep matched but its table
+    omitted. Assertion 5 in `test_composition_roots.py` holds each converted factory's
+    selector parameter required, one row per selector.
+  - **Still defaulted,** one PR per module: audit, the cycles factory (project registry, cycle
+    registry, flow executor), capabilities, embeddings, events, memory, prompts (both), tasks,
+    tools (three).
 - **A second ownership path for the runtime-state adapters.** `create_runtime_coordinator`
   (`scheduler_bootstrap`) builds `PostgresFocusLease` and `PostgresRuntimeState` again; the
   root's comment at `main.py:367–373` calls the instances interchangeable because they are

@@ -319,7 +319,9 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     from adapters.telemetry.factory import create_llm_observability_provider
 
     queue_adapter = create_queue_adapter(config.comms)  # #301 (§6.2)
+    # LangFuse is the only provider and no config field selects it: named here (#1449).
     llm_obs = create_llm_observability_provider(
+        "langfuse",
         config=config.langfuse,
         prompt_asset_provider=config.prompts.asset_source_provider,
     )
