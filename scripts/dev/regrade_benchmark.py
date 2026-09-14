@@ -14,9 +14,8 @@ replaces it deliberately, like a golden.
 **Read-only, twice over.**
 - The Postgres session is opened with ``default_transaction_read_only=on``, and a write is
   attempted and must be refused before anything is read.
-- The vault refuses every index write. The deploy's vault index is written by the containers,
-  and may be unreadable to the operator; when it is, the index is rebuilt in memory from the
-  metadata files the vault itself indexes, never on disk.
+- The vault refuses every index write, and rebuilds an index the operator cannot read in memory
+  (``read_only_vault.py``).
 
 Usage:
     SQUADOPS__DB__URL=postgresql://… .venv/bin/python scripts/dev/regrade_benchmark.py \\
@@ -38,9 +37,11 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT))
+sys.path.insert(0, str(REPO_ROOT / "scripts" / "dev"))
+
+from read_only_vault import ReadOnlyVault  # noqa: E402
 
 from adapters.cycles.benchmark_regrade import regrade  # noqa: E402
-from adapters.cycles.filesystem_artifact_vault import FilesystemArtifactVault  # noqa: E402
 from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry  # noqa: E402
 from adapters.persistence.pool import create_pool  # noqa: E402
 from squadops._version import resolve_version  # noqa: E402
@@ -70,26 +71,6 @@ class RegistryWithoutRunSummaries(PostgresCycleRegistry):
 
     async def get_run_loop_summary(self, run_id: str):
         return None
-
-
-class ReadOnlyVault(FilesystemArtifactVault):
-    """The filesystem vault with every index write refused."""
-
-    _memory_index: dict[str, str] | None = None
-
-    def _load_index(self) -> dict[str, str]:
-        try:
-            return super()._load_index()
-        except PermissionError:
-            if self._memory_index is None:
-                self._memory_index = {
-                    meta.parent.name: str(meta.parent.relative_to(self._base_dir))
-                    for meta in self._base_dir.rglob("metadata.json")
-                }
-            return self._memory_index
-
-    def _save_index(self, index: dict[str, str]) -> None:
-        raise RuntimeError("the benchmark re-grade never writes the vault")
 
 
 def _git(*args: str) -> str:

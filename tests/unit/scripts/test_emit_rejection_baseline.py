@@ -115,3 +115,31 @@ async def test_an_input_the_baseline_cannot_read_stops_the_emission(
 
     with pytest.raises(emitter.BaselineInputUnreadable, match=names):
         await emitter._cycle_baseline(reread, "cyc_1", project_id="group_run")
+
+
+async def test_a_vault_whose_index_the_operator_cannot_read_is_read_without_writing(
+    emitter, vault, tmp_path
+):
+    """#1562 on the box: the containers write ``_index.json`` as root, mode 600. Bug caught: the
+    baseline refusing (or, before #1562, reading nothing) on the deploy's own vault, or a read
+    that rewrites the index it could not read."""
+    root = tmp_path / "vault"
+    index = root / "_index.json"
+    before = index.read_bytes()
+    index.chmod(0)
+    try:
+        read_only = emitter.ReadOnlyVault(base_dir=str(root))
+
+        baseline = await emitter._cycle_baseline(read_only, "cyc_1", project_id="group_run")
+        recorded = await emitter.recorded_cycles(read_only, project_id="group_run")
+        with pytest.raises(RuntimeError, match="never writes"):
+            read_only._save_index({})
+    finally:
+        index.chmod(0o600)
+
+    assert [c["class"] for c in baseline.to_dict()["classes"]] == [
+        "lint",
+        "validate_criteria_scope",
+    ]
+    assert recorded == ["cyc_1"]
+    assert index.read_bytes() == before

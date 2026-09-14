@@ -1,0 +1,1258 @@
+{
+  "schema": 1,
+  "purpose": "pre-memory rejection-class baseline (#809, B1) \u2014 recurrence and time-to-resolution per cycle, captured before Cross-Cycle Memory exists",
+  "cycles": [
+    {
+      "cycle_id": "cyc_afa934886acd",
+      "attempts": 4,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 4,
+          "attempts": 4,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 4,
+          "rerolls": 0
+        },
+        {
+          "class": "prd_insufficiency",
+          "occurrences": 1,
+          "attempts": 4,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_0edb55919384",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "validate_check_applicability",
+          "occurrences": 1,
+          "attempts": 1,
+          "rerolls": 0
+        },
+        {
+          "class": "validate_command_checks",
+          "occurrences": 1,
+          "attempts": 1,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_7899ed1feae5",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "validate_criteria_scope",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_d430f25fd01d",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "validate_check_applicability",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_99efd51aedc5",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "prd_insufficiency",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "validate_builder_floor",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_92c44f8704ab",
+      "attempts": 4,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 3,
+          "attempts": 4,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 4,
+          "rerolls": 0
+        },
+        {
+          "class": "prd_insufficiency",
+          "occurrences": 1,
+          "attempts": 4,
+          "rerolls": 0
+        },
+        {
+          "class": "validate_criteria_scope",
+          "occurrences": 1,
+          "attempts": 4,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_16bbfe29464f",
+      "attempts": 3,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 2,
+          "attempts": 3,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 3,
+          "rerolls": 0
+        },
+        {
+          "class": "prd_insufficiency",
+          "occurrences": 1,
+          "attempts": 3,
+          "rerolls": 0
+        },
+        {
+          "class": "validate_command_checks",
+          "occurrences": 1,
+          "attempts": 3,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_9bb225e19448",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 3,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "validate_manifest_plan_consistency",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_e3912098c0cf",
+      "attempts": 3,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 2,
+          "attempts": 3,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 3,
+          "rerolls": 0
+        },
+        {
+          "class": "validate_manifest_plan_consistency",
+          "occurrences": 1,
+          "attempts": 3,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_181c9572bef2",
+      "attempts": 2,
+      "rerolls": 2,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 3,
+          "attempts": 2,
+          "rerolls": 2
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 2
+        },
+        {
+          "class": "validate_manifest_plan_consistency",
+          "occurrences": 2,
+          "attempts": 2,
+          "rerolls": 2
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_79eebcb82205",
+      "attempts": 2,
+      "rerolls": 2,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 2
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 2
+        },
+        {
+          "class": "validate_manifest_plan_consistency",
+          "occurrences": 2,
+          "attempts": 2,
+          "rerolls": 2
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_a24e4619844e",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_b04cfe4b6191",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_1a3161035eb7",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_a38814afc16d",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_421d29473f86",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_09936ee022b2",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_c9fd8db53613",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_9c43f56c5cd8",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_13ac22c47a6b",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_0f4d7f319c12",
+      "attempts": 3,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 2,
+          "attempts": 3,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 2,
+          "attempts": 3,
+          "rerolls": 0
+        },
+        {
+          "class": "prd_insufficiency",
+          "occurrences": 2,
+          "attempts": 3,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_35fca7e65f89",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_e9e0ec669118",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_cf2a139701d3",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_bbc9da03c3c1",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_b7352b97cff9",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "prd_insufficiency",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_8d262b968f58",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_a306b4e858d9",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_9b17553ce9d5",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_0d85a682881a",
+      "attempts": 3,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 2,
+          "attempts": 3,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 2,
+          "attempts": 3,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_face9e37d93a",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_345268417e31",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "prd_insufficiency",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_47cd83559c4a",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "prd_insufficiency",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_b9296c255dfc",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_f84649c68646",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_184b3a1d194e",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_5ef83cc6fc2b",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_0e7bc622169a",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_d43c644e52d0",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_cdf91361702b",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_4f6d873561a2",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_38d1e1689766",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_ac15b6c6209f",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_ae0631fddfc5",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_0c4664c2ae9a",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_68b0e1769526",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_06987a951236",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_4d52bbd34a32",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_9c085ec2e9e5",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_f05692bb3ceb",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_de4b2dea73a0",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_ca02bed7fbb4",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_9be98128f0e9",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_5b027f3e74fc",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_eafdc918e8b0",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_b40ae312c8ac",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_838e5997c81e",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_05935ffcb572",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_37f52053d14d",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_1f292d1953c6",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_87ca1a908120",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_c364a4af38a5",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "prd_insufficiency",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_58279e83c19b",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "prd_insufficiency",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_597f5cb76fb2",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_4acd6ce64ca1",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_ce33e6a1da5f",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_b9961579f33b",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_52a2c7438d12",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_3270c790620e",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_2dfbb0f1af81",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "prd_insufficiency",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_5cb087956ba9",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_57cdbad02f67",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_a17ee1347743",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_e4e818ee8196",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_ece3e9d2f3c8",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_cdf3c674a49a",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_e60b855d0e7a",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_08117e841446",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_a142ccb92b6a",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "prd_insufficiency",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_153ef2eaace5",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "prd_insufficiency",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_4f2693c9f281",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_f1f25d100436",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_5a6e5ed0caeb",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_89153929749f",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_25b77dad0ef1",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_0eab68279d8e",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_18aa25b4a57e",
+      "attempts": 1,
+      "rerolls": 0,
+      "classes": []
+    },
+    {
+      "cycle_id": "cyc_8d383802f3a1",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "prd_insufficiency",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_551eaf49884a",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    },
+    {
+      "cycle_id": "cyc_6156e09ad6da",
+      "attempts": 2,
+      "rerolls": 0,
+      "classes": [
+        {
+          "class": "authoring_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        },
+        {
+          "class": "derivation_defect",
+          "occurrences": 1,
+          "attempts": 2,
+          "rerolls": 0
+        }
+      ]
+    }
+  ]
+}
