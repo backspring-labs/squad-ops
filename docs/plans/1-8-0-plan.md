@@ -546,7 +546,7 @@ record, with its attribution id** — texture here, the evidence gate's subject 
 
 **Shakeout loop** (`docs/plans/verification-sets/README.md`): deploy A one checkpoint pair (a
 red is the prelude's); deploy B enters the loop — exit on a pair with no new seam finding,
-**budget three pairs**; the record reports rounds taken and rounds attributable to the
+**budget three pairs — raised to four by rev 8 (§10)**; the record reports rounds taken and rounds attributable to the
 headlines. **Early stop, one direction:** a falsified prediction or an unreached seam stops the
 set; a good result never stops it early; a stop in one arm does not stop the other.
 
@@ -686,7 +686,7 @@ SIPs that carry open parts), so the sweep at the cut does not read silence as sh
 6. **The headlines** — Lane M steps 1–6 by §3.3's order (step 7 is 1.8.1's), Lane S by
    §3.4's — and **the hardening list**
    (§3.6) riding in CI beside them. Each SIP amended in place where implementation diverges.
-7. **Deploy B; the shakeout loop** to the exit rule, budget three pairs — a red belongs to the
+7. **Deploy B; the shakeout loop** to the exit rule, budget three pairs — raised to four by rev 8 (§10) — a red belongs to the
    headlines, because nothing else that can move runtime behaviour is on this deploy.
 8. **Pre-register the loop's set, on the frozen deploy, before any diagnostic launches** — pins
    from the last shakeout; **N**, counting successful scoped transactions only, with its per-cell
@@ -816,6 +816,17 @@ Named here so they are not the next line's §6a. Each has a home above or a fix 
 
 ## 10. Revision history
 
+- **Rev 8 (2026-09-15)** — the owner's ruling ("fix 1583 and plan for deploy E") that the
+  shakeout loop's budget is **four pairs, not three**. Three pairs ran, on deploys B, C and D,
+  and each found a seam defect the deploy it ran on had just made legible: pair 1 the whole-file
+  response and the missing per-repair instrument (#1574, #1575, then #1576–#1579); pair 2 a
+  qa-attributed test defect routed to the dev, whose correct refusal read as an empty emission
+  (#1581, fixed for deploy D by #1582; the dispute half is SIP-0096 §17a, 1.8.1's); pair 3 a
+  fill-mode qa repair with no scoped path to its free-authored suite, re-emitting it whole and
+  unread as a whole-file response (#1583, SIP-0107 §46p). The fourth pair runs on deploy E,
+  which carries #1583's fix. A fourth finding stops the loop for a revision in the open, not
+  for a fifth pair: the pre-registration then names it. §7 step 7 and §3.9 carry the new
+  budget; nothing else moves.
 - **Rev 7 (2026-09-14)** — the owner's ruling, on a written recommendation, that **§3.4 (d), the
   comparison harness and its window, is 1.8.1's**. The recommendation read the seams SIP-0108
   §4.4 said the generalist arm would not change and found four that it does (§3.4): steps bind

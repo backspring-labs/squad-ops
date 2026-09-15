@@ -558,11 +558,19 @@ def revision_form_reading(
     ]
     fills = [a for a in emitted if a.get("type") == "fill"]
     files = sorted({str(a["name"]) for a in emitted if a.get("type") != "fill"} - set(edited))
+    sizes = dict(base_chars or {})
     whole_offered = [f for f in files if f in offered]
-    new_files = [f for f in files if f not in offered]
+    # §46p (#1583): a file that exists in the base and comes back whole is a whole-file
+    # response whether or not the edit form offered it — deploy D's Next.js qa repair
+    # re-emitted the defective suite whole in fill mode, where nothing was offered, and read
+    # as a new file. ``base_chars`` must cover the base for this to be read; with only the
+    # offered files' sizes it reads as before.
+    whole_unoffered = [f for f in files if f not in offered and f in sizes]
+    new_files = [f for f in files if f not in offered and f not in sizes]
+    whole = whole_offered or whole_unoffered
     if record is not None:
-        form = REVISION_FORM_EDITS_AND_WHOLE_FILE if whole_offered else REVISION_FORM_EDITS
-    elif whole_offered:
+        form = REVISION_FORM_EDITS_AND_WHOLE_FILE if whole else REVISION_FORM_EDITS
+    elif whole:
         form = REVISION_FORM_WHOLE_FILE
     elif fills:
         form = REVISION_FORM_FILL
@@ -574,7 +582,6 @@ def revision_form_reading(
     failure = (
         outputs.get("emission_failure") if isinstance(outputs.get("emission_failure"), dict) else {}
     )
-    sizes = dict(base_chars or {})
     replaced: dict[str, dict[str, int | None]] = {}
     if record is not None and record.get("accepted"):
         spans: dict[str, int] = {}
@@ -589,7 +596,7 @@ def revision_form_reading(
                 "of": of,
                 "pct": round(100 * chars / of) if of else None,
             }
-    for path in whole_offered:
+    for path in whole_offered + whole_unoffered:
         of = sizes.get(path)
         replaced[path] = {"chars": of, "of": of, "pct": 100}
     return {
@@ -600,6 +607,8 @@ def revision_form_reading(
         "failure_reason": failure.get("reason"),
         "edited": edited,
         "whole_file_offered": whole_offered,
+        # §46p: base files re-emitted whole that the edit form never offered.
+        "whole_file_unoffered": whole_unoffered,
         "new_files": new_files,
         "fills": len(fills),
         "accepted": record.get("accepted") if record is not None else None,

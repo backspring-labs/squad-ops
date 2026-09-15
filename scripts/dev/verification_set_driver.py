@@ -2833,6 +2833,9 @@ def _render_revision_forms(entries: list[dict]) -> str:
             detail.insert(0, "/".join(e["modes"]))
         if e.get("whole_file_offered"):
             detail.insert(0, ", ".join(e["whole_file_offered"]))
+        if e.get("whole_file_unoffered"):
+            # §46p: re-emitted whole without ever being offered the edit form (#1583).
+            detail.insert(0, "never offered: " + ", ".join(e["whole_file_unoffered"]))
         if e.get("accepted") is not None:
             detail.append("accepted" if e["accepted"] else f"refused ({e.get('refusals', 0)})")
         if e.get("fragment_anchors"):

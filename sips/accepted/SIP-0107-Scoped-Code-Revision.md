@@ -2264,3 +2264,45 @@ span read from the replacement's length; the whole-file re-emission left unread.
 
 **Ruled by.** The owner, 2026-09-15 ("add the replaced span to the instrument"), on the probe's
 reading; the implementer on the shape.
+
+## 46p. 2026-09-15 — a fill-mode repair's free-authored files are anchorable, and a base file re-emitted whole reads as one whether or not it was offered (§9.3, amending §46f and §46k; #1583)
+
+**What changed.**
+
+1. **§46f's fill-mode rule narrows from "the repair" to "the shells".** §46f made a qa repair in
+   fill mode revise slots and never anchor, by returning no anchorable files whenever the task
+   carried a scaffold. That assumed a scaffold-bound emission is entirely fills. It is not: the
+   Next.js qa task authors a free-authored suite beside the scaffold's shells. Now the shells —
+   read from the scaffold input the runner threads, pristine and current — are excluded from
+   the anchorable files, and every other named file that exists in the base is anchorable,
+   offered the edit form and shown (§46m) as on any other repair. A shell is filled by slot
+   (§9.3) and is never listed as a file to emit whole. A repair naming only shells is exactly
+   what it was.
+2. **The revision form reads a base file re-emitted whole as a whole-file response whether or
+   not the edit form offered it.** §46k read "re-emitted whole" against the offered files only,
+   so a whole-file response in fill mode — where nothing was offered — read as a new file. The
+   handler now passes every base file's size to the reading; a file in the base that comes back
+   whole and was not offered is `whole_file_unoffered`, the form is `whole_file` (or
+   `edits_and_whole_file`), and `replaced` reads it at 100% (§46o). A file not in the base is
+   still a new file. The driver names it: `never offered: <path>`.
+
+**Evidence.** Deploy D's Next.js shakeout (`cyc_95c0e2dbb25c`, 2026-09-15): one assertion in
+`__tests__/runs-ui.test.ts` was wrong; the analyzer and the lead both blamed the suite; #1582
+routed the round to `qa.test_repair`; the repair, offered nothing, emitted 8 slot fills and the
+whole suite — 11,245 characters to 7,564, 299 changed lines — which passed 40 checks and the
+retest and was accepted and persisted. The `repair_revision_form` line read `form=fill, offered
+{}, new_files ["__tests__/runs-ui.test.ts"]`. Neither §39.8 reading could see it: not a scoped
+transaction, and not a counted whole-file response. It was found on the owner's question
+"were the qa fixes targeted or whole-file?" after the pair had been read as clean.
+
+**Tests.** Entered at `QATestRepairHandler.handle` with the real templates: a free-authored suite
+named beside a shell is offered, shown, and edited in place while the shell's fill merges; the
+shell is neither anchorable nor listed as a file that does not exist yet; a repair naming only
+shells offers nothing and reads as `fill`. The reading: a base file re-emitted whole with
+nothing offered reads `whole_file`, `whole_file_unoffered`, 100% replaced, and a file not in
+the base stays new; without the base's sizes the reading is what it was. The driver renders
+`never offered: <path>`. **Mutations: two, each caught** — fill mode offering nothing again (the
+handler test fails); unoffered whole files read as new (three tests fail).
+
+**Ruled by.** The owner, 2026-09-15 ("fix 1583 and plan for deploy E"); the implementer on the
+shape.
