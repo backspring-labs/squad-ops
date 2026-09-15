@@ -5180,6 +5180,59 @@ class TestAnalyzerImplicatedFilesAreVerifiedBeforeUse:
         assert expected[0] == "app/page.tsx"
         assert "app/api/runs/route.ts" not in expected
 
+    def test_a_failing_assertion_both_readings_blame_on_the_suite_goes_to_its_author(self):
+        """#1581, the deploy C React round replayed at the resolver: `tests_pass` exit 1 reads
+        SUBJECT by default; the analyzer implicated only the suite and the lead wrote only
+        "testing". Bug caught: the round went to the dev chain with the suite vetoed off, and
+        the dev was dispatched to repair a routes.py it then (correctly) refused to touch."""
+        from adapters.cycles.correction_repair import _locus_and_repair_target
+        from squadops.cycles.failure_evidence import FailureLocus
+
+        evidence = {
+            "validation_result": {
+                "passed": False,
+                "checks": [
+                    {
+                        "check": "tests_pass",
+                        "status": "failed",
+                        "passed": False,
+                        "executed": True,
+                        "exit_code": 1,
+                        "suite_broken": None,
+                    }
+                ],
+            }
+        }
+        inputs = {**self.INPUTS, "expected_artifacts": ["tests/test_runs.py"]}
+        analysis = {
+            "classification": "work_product",
+            "analysis_summary": "The backend behavior is correct; the test's assertion logic is wrong.",
+            "implicated_files": ["tests/test_runs.py"],
+        }
+        decision = {"correction_path": "patch", "affected_task_types": ["testing"]}
+
+        locus, expected, _, _ = _locus_and_repair_target(
+            "qa.test", evidence, inputs, analysis, decision
+        )
+
+        assert (locus, expected) == (FailureLocus.OWN_ARTIFACT, ["tests/test_runs.py"])
+        # Controls: one app-side reading on either side, and the default stands.
+        locus_dev, expected_dev, _, _ = _locus_and_repair_target(
+            "qa.test", evidence, inputs, analysis, {"affected_task_types": ["backend_routes"]}
+        )
+        assert (
+            locus_dev != FailureLocus.OWN_ARTIFACT
+        )  # the dev chain; #884 vetoes the suite at dispatch
+        locus_app, _, _, _ = _locus_and_repair_target(
+            "qa.test", evidence, inputs, {"implicated_files": ["app/page.tsx"]}, decision
+        )
+        assert locus_app != FailureLocus.OWN_ARTIFACT
+        # A dev task's own assertion failure is never re-routed by this rule.
+        locus_dev_task, _, _, _ = _locus_and_repair_target(
+            "development.develop", evidence, inputs, analysis, decision
+        )
+        assert locus_dev_task != FailureLocus.OWN_ARTIFACT
+
     @pytest.mark.parametrize(
         "analysis", [None, {}, {"implicated_files": []}, {"implicated_files": None}]
     )
@@ -6213,6 +6266,154 @@ class TestVitestOwnFrameRoutesToTheQaRepair(TestCorrectionRunnerStandalone):
         repair = next(e for e in captured if e.task_type == "qa.test_repair")
         assert repair.inputs["expected_artifacts"] == [self._SUITE]
         assert repair.metadata["role"] == "qa"
+
+
+class TestUnanimousSuiteReadingRoutesToTheQaRepair(TestCorrectionRunnerStandalone):
+    """#1581: a failing assertion (`tests_pass` exit 1, the classifier's SUBJECT default) that
+    the analyzer and the lead both attribute to the qa task's own suite, and to nothing else,
+    dispatches `qa.test_repair` on that suite — not a dev repair the ownership veto then
+    empties.
+
+    Entry point is `run_correction_protocol` — the call the live cycle makes — so this proves
+    the routing, not the predicate. Deploy C's React shakeout (cyc_24746bb1091e, 2026-09-15):
+    the analyzer wrote `implicated_files: ["tests/test_runs.py"]` and "the backend behavior is
+    correct; the test's assertion logic is wrong", the lead wrote `affected_task_types:
+    ["testing"]`, and the round went `correction_repair_target: … falling back to
+    same-language implementation source backend/routes.py (#688) … ownership veto (#884)`,
+    then `development.correction_repair`, which answered in prose that routes.py was correct.
+    """
+
+    _SUITE = "tests/test_runs.py"
+
+    def _qa_envelope(self):
+        from squadops.tasks.models import TaskEnvelope
+
+        return TaskEnvelope(
+            task_id="task-run_f2515033-m005-qa.test",
+            agent_id="eve",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="hello_squad",
+            task_type="qa.test",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={
+                "expected_artifacts": [self._SUITE],
+                "subtask_focus": "Integration tests for core API behaviour",
+                "subtask_description": "pytest suite over the five endpoints.",
+                "resolved_config": {"development_profile": "fullstack_fastapi_react"},
+                "implementation_artifacts": ["backend/routes.py", "backend/store.py"],
+            },
+            metadata={"role": "qa"},
+        )
+
+    def _evidence(self):
+        return {
+            "validation_result": {
+                "passed": False,
+                "summary": "tests failed (exit code 1)",
+                "checks": [
+                    {
+                        "check": "tests_pass",
+                        "status": "failed",
+                        "passed": False,
+                        "executed": True,
+                        "exit_code": 1,
+                        "suite_broken": False,
+                        "failing_cases": [
+                            {
+                                "title": "test_join_run_duplicate_name_rejected",
+                                "file": self._SUITE,
+                                "line": 161,
+                                "message": "KeyError: 'participants'",
+                            }
+                        ],
+                    }
+                ],
+            }
+        }
+
+    def _responder(self, captured, labels):
+        def responder(envelope):
+            captured.append(envelope)
+            if envelope.task_type == "data.analyze_failure":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "classification": "work_product",
+                        "analysis_summary": "The backend behavior is correct; the test's "
+                        "assertion logic is wrong.",
+                        "implicated_files": [self._SUITE],
+                    },
+                )
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "patch",
+                        "decision_rationale": "fix the test's assertion",
+                        "affected_task_types": labels,
+                    },
+                )
+            return TaskResult(
+                task_id=envelope.task_id,
+                status="SUCCEEDED",
+                outputs={
+                    "artifacts": [
+                        {
+                            "name": self._SUITE,
+                            "content": "def test_join_run_duplicate_name_rejected():\n    pass\n",
+                            "media_type": "text/x-python",
+                            "type": "test",
+                        }
+                    ]
+                },
+            )
+
+        return responder
+
+    async def _dispatched_repairs(self, cycle, labels):
+        captured: list = []
+        runner, _registry, _vault, _bus = self._make_runner(self._responder(captured, labels))
+        await runner.run_correction_protocol(
+            run_id="run_f25150339ac3",
+            cycle=cycle,
+            envelope=self._qa_envelope(),
+            result=TaskResult(
+                task_id="task-run_f2515033-m005-qa.test",
+                status="FAILED",
+                error="tests failed (exit code 1)",
+                outputs=self._evidence(),
+            ),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+        return [e for e in captured if "repair" in e.task_type]
+
+    async def test_the_round_goes_to_the_qa_role_that_wrote_the_suite(self, cycle):
+        repairs = await self._dispatched_repairs(cycle, ["testing"])
+
+        assert [e.task_type for e in repairs] == ["qa.test_repair"], [e.task_type for e in repairs]
+        assert repairs[0].inputs["expected_artifacts"] == [self._SUITE]
+        assert repairs[0].metadata["role"] == "qa"
+
+    async def test_one_app_side_label_keeps_the_dev_chain(self, cycle):
+        """The #568 guard, at the protocol: the same analysis with a lead that also named the
+        app stays on the dev chain — a qa re-author cannot "fix" an app bug on one reading."""
+        repairs = await self._dispatched_repairs(cycle, ["testing", "backend_routes"])
+
+        assert [e.task_type for e in repairs] == ["development.correction_repair"], [
+            e.task_type for e in repairs
+        ]
+        assert self._SUITE not in repairs[0].inputs["expected_artifacts"]
 
 
 class TestProseOnlyRepairIsRefunded(TestCorrectionRunnerStandalone):

@@ -380,7 +380,12 @@ re-producing that artifact (`qa.test` → `qa.test_repair`), and the repair targ
 failed task's own contract rather than the subject-implementation surface — aiming a test
 re-author at app source files is what `_resolve_repair_target` would otherwise do. The
 decision's own account of what is affected is read **against** the conservative default,
-never as authority (#1054). Two ownership vetoes ride the dispatch: a step under a foreign
+never as authority (#1054) — and, in the one direction the default cannot take alone, two
+model readings that agree the failed qa task's own suite is the defect and nothing else (the
+analyzer's implicated files all its own, every label the lead wrote suite-side) promote a
+failing assertion to the suite's author, with the target limited to the files named (#1581,
+deploy C's React shakeout: the dev was sent to repair a routes.py every party had agreed was
+correct). Two ownership vetoes ride the dispatch: a step under a foreign
 role must not receive the failed task's own artifacts (#884, pre-dispatch) and must not
 *land* them or anything on its test-collection surface (#1014, post-rebase). Both are
 failure-isolated — an unresolvable pattern surface weakens the veto rather than crashing the

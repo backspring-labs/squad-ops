@@ -529,12 +529,15 @@ def _locus_and_repair_target(
     from squadops.cycles.failure_evidence import (
         OWN_ARTIFACT_FROM_TESTS_PASS_ROW,
         FailureLocus,
+        _locus_from_scaffold_classification,
         absent_anchor_cases,
         classify_failure_locus,
         decision_disputes_own_artifact,
         own_artifact_signal,
         qa_owned_suite_defects,
+        suite_files_named_unanimously,
     )
+    from squadops.tasks.task_types import authors_qa_suite
 
     failure_locus = classify_failure_locus(failure_evidence)
     own_expected = [str(e) for e in (failed_inputs.get("expected_artifacts") or []) if e]
@@ -604,6 +607,35 @@ def _locus_and_repair_target(
             failed_inputs.get("subtask_focus"),
             failed_inputs.get("subtask_description"),
         )
+    # #1581: the classifier read the failure as the app's (a failing assertion, exit 1) or
+    # could not read it, no machine signal named the app either, and BOTH model readings
+    # named only the failed qa task's own suite. The mirror of #1054's dispute below: there,
+    # unanimity demotes a suite-side read to the dev chain; here it promotes an unread
+    # assertion failure to the suite's own author. Deploy C's React shakeout: the dev was
+    # dispatched to repair a routes.py everyone had agreed was correct, and said so in prose.
+    if (
+        failure_locus in (FailureLocus.UNKNOWN, FailureLocus.SUBJECT)
+        and authors_qa_suite(failed_task_type)
+        and isinstance(failure_evidence, dict)
+        and _locus_from_scaffold_classification(failure_evidence) is None
+    ):
+        unanimous = suite_files_named_unanimously(failure_analysis, decision_outputs, own_expected)
+        if unanimous:
+            logger.info(
+                "correction_repair_locus: own_artifact — analyzer_and_decision_unanimous: the "
+                "analyzer implicated only %s and the decision named only %s; %s re-authors "
+                "%s (#1581)",
+                ", ".join(unanimous),
+                ", ".join(str(t) for t in (decision_outputs or {}).get("affected_task_types", [])),
+                failed_task_type,
+                ", ".join(unanimous),
+            )
+            return (
+                FailureLocus.OWN_ARTIFACT,
+                unanimous,
+                failed_inputs.get("subtask_focus"),
+                failed_inputs.get("subtask_description"),
+            )
     if failure_locus == FailureLocus.OWN_ARTIFACT and own_expected:
         # #1054: the GENERIC own-artifact route — no fill sites, no qa-owned frame, no
         # absent anchor. Every branch above carries specific machine evidence naming the
