@@ -129,6 +129,48 @@ class TestRendering:
         # 3+ blank lines collapsed to 2
         assert "\n\n\n" not in result.content
 
+    async def test_blank_line_runs_inside_a_fence_are_kept_while_prose_is_still_collapsed(self):
+        """Bug caught (#1576): a file shown in a prompt lost every second blank line — a Python
+        file's two lines between top-level definitions became one — so the text a model was
+        told to copy its anchors from was not the text those anchors are matched against."""
+        template = (
+            "---\ntemplate_id: t\nrequired_variables:\n  - shown\n"
+            "optional_variables:\n  - gone\n---\n"
+            "Start\n{{gone}}\n\n\n\nMiddle\n```\n{{shown}}```\n\n\n\nEnd\n"
+        )
+        shown = "import os\n\n\ndef a():\n    pass\n\n\n\ndef b():\n    pass\n"
+        source = _make_source({"t": template})
+        renderer = RequestTemplateRenderer(source)
+
+        result = await renderer.render("t", {"shown": shown})
+
+        assert f"```\n{shown}```" in result.content
+        assert result.content.startswith("Start\n\nMiddle\n```")
+        assert result.content.endswith("```\n\nEnd\n")
+
+    @pytest.mark.parametrize(
+        ("fence", "inner"),
+        [
+            ("````", "```"),  # a longer fence is not closed by a shorter run
+            ("~~~", "```"),  # nor a tilde fence by backticks
+            ("```", "  ```python"),  # nor by a line carrying an info string
+        ],
+    )
+    async def test_a_fence_is_closed_only_by_its_own_marker(self, fence, inner):
+        """Bug caught: a fence read as closed early, so the rest of the shown file was collapsed
+        as prose."""
+        template = (
+            "---\ntemplate_id: t\nrequired_variables:\n  - shown\n"
+            "optional_variables: []\n---\n"
+            f"{fence}\n{{{{shown}}}}{fence}\n"
+        )
+        shown = f"a\n{inner}\n\n\n\nb\n"
+        renderer = RequestTemplateRenderer(_make_source({"t": template}))
+
+        result = await renderer.render("t", {"shown": shown})
+
+        assert result.content == f"{fence}\n{shown}{fence}\n"
+
     async def test_deterministic_hash(self):
         source = _make_source({"request.test": _SIMPLE_TEMPLATE})
         renderer = RequestTemplateRenderer(source)

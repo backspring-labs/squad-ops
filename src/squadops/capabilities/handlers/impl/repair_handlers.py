@@ -15,6 +15,7 @@ correction-loop flows have distinct, non-overlapping capability ids.
 from __future__ import annotations
 
 import logging
+import re
 from typing import TYPE_CHECKING, Any
 
 from squadops.capabilities.context_assembly import REPAIR_FAILED_ARTIFACTS_KEY
@@ -268,6 +269,10 @@ class _RepairPromptMixin:
             # SIP-0107 step 4: the anchored edit form, for the named files that already exist
             # in the workspace, and — on the one retry — why the previous edits were refused.
             "anchored_edit_section": str(inputs.get("anchored_edit_section") or ""),
+            # #1576: the files the repair may revise, exactly as the edits will be matched
+            # against them. Before this every repair was asked to copy anchors from, or re-emit
+            # byte-identical, a file it had never been shown.
+            "current_files_section": str(inputs.get("current_files_section") or ""),
             "anchored_edit_retry_section": str(inputs.get("anchored_edit_retry_section") or ""),
             # SIP-0107 §46a: what the repair is asked to emit, and the last thing it reads,
             # agree with the edit form — rendered in handle() from one decision.
@@ -319,6 +324,9 @@ class _RepairPromptMixin:
         if qa_fill_mode:
             inputs = {**inputs, "qa_fill_mode_section": qa_fill_mode}
         inputs = {**inputs, **(await self._render_output_form(context, inputs))}
+        current = await self._render_current_files_section(context, inputs)
+        if current:
+            inputs = {**inputs, "current_files_section": current}
         anchored, offered = await self._render_anchored_edit_section(context, inputs)
         if anchored:
             inputs = {**inputs, "anchored_edit_section": anchored}
@@ -414,6 +422,37 @@ class _RepairPromptMixin:
         base = self._repair_base_files(inputs)
         named = [normalize_ws_path(str(e)) for e in (inputs.get("expected_artifacts") or [])]
         return sorted({n for n in named if n and n in base})
+
+    async def _render_current_files_section(
+        self, context: ExecutionContext, inputs: dict[str, Any]
+    ) -> str:
+        """The files the repair may revise, verbatim, or "" (SIP-0107 §9.2, §46m; #1576).
+
+        Each is the copy in the tree the edits resolve against (``_repair_base_files``: the
+        verifier's workspace with the failed task's own files over it), so the text the model
+        copies an anchor from is the text the anchor is matched against. Every repair before
+        this was told to copy anchors "exactly from the file as it is now" — and, under the
+        whole-file contract, to re-emit unfixed files byte-identical — about files the prompt
+        never showed: the readiness probe's routes.py repairs anchored ``@router.post("/runs")``
+        six times in six for a decorator that reads ``…, status_code=201)``, and every retry
+        that applied re-authored all five functions blind through structural blocks.
+        """
+        files = self._anchorable_files(inputs)
+        renderer = getattr(context.ports, "request_renderer", None)
+        if not files or renderer is None:
+            return ""
+        base = self._repair_base_files(inputs)
+        blocks = [_verbatim_block(path, base[path]) for path in files]
+        rendered = await renderer.render(
+            "request.cycle_repair_current_files", {"current_files": "\n\n".join(blocks)}
+        )
+        logger.info(
+            "repair_current_files handler=%s files=%d chars=%d",
+            self._handler_name,
+            len(files),
+            sum(len(base[path]) for path in files),
+        )
+        return rendered.content
 
     async def _render_anchored_edit_section(
         self, context: ExecutionContext, inputs: dict[str, Any]
@@ -1071,6 +1110,17 @@ class _RepairPromptMixin:
             "(` ```language:path/to/file `). Do not emit unrelated files."
         )
         return "\n\n".join(parts)
+
+
+def _verbatim_block(path: str, content: str) -> str:
+    """``path`` and its content inside a fence no run of backticks in the content can close —
+    CommonMark closes a fence only with a run at least as long as the one that opened it. A
+    bare fence, not the ` ```language:<path> ` header, so the shown file is never read as an
+    emission form."""
+    longest = max((len(run) for run in re.findall(r"`+", content)), default=0)
+    fence = "`" * max(3, longest + 1)
+    body = content if content.endswith("\n") else content + "\n"
+    return f"`{path}`:\n{fence}\n{body}{fence}"
 
 
 class DevelopmentCorrectionRepairHandler(_RepairPromptMixin, _CycleTaskHandler):

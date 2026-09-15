@@ -1,6 +1,6 @@
 ---
 template_id: request.cycle_repair_task
-version: "8"
+version: "9"
 required_variables:
   - prd
   - role
@@ -24,6 +24,7 @@ optional_variables:
   - frozen_surface_section
   - loop_state
   - qa_fill_mode_section
+  - current_files_section
   - anchored_edit_section
   - anchored_edit_retry_section
 ---
@@ -46,6 +47,7 @@ Focus: {{subtask_focus}}
 {{subtask_description}}
 
 {{output_form_section}}
+{{current_files_section}}
 {{anchored_edit_section}}
 {{anchored_edit_retry_section}}
 
