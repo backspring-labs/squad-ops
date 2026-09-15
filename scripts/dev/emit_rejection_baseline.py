@@ -12,9 +12,18 @@ skipped, so a vault whose index the operator cannot read (the containers write i
 emitted zero classes for every cycle: a hollow capture that looks like evidence. A rejection
 record or manifest that cannot be read or parsed now stops the emission, naming the artifact.
 
+**Read-only.** The vault is ``read_only_vault.ReadOnlyVault``: it never writes, and it reads an
+index the containers left unreadable to the operator.
+
+**Which cycles.** Named on the command line, and two sources that need no transcription:
+``--recorded`` adds every cycle holding a rejection record in the vault, and
+``--benchmark-rolls`` adds the benchmark registry's counted rolls (SIP-0108 §4.3). The 1.8.0
+plan's B1 rail (§3.5) is both: the recorded cycles and every counted roll since.
+
 Usage:
-    .venv/bin/python scripts/dev/emit_rejection_baseline.py CYCLE_ID [CYCLE_ID ...] \
-        --vault data/artifacts [--project group_run] [--out baseline.json]
+    .venv/bin/python scripts/dev/emit_rejection_baseline.py [CYCLE_ID ...] --vault data/artifacts \
+        [--recorded] [--benchmark-rolls docs/benchmark/rolls.yaml] [--project group_run] \
+        [--out baseline.json]
 """
 
 from __future__ import annotations
@@ -27,8 +36,10 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT))
+sys.path.insert(0, str(REPO_ROOT / "scripts" / "dev"))
 
-from adapters.cycles.filesystem_artifact_vault import FilesystemArtifactVault  # noqa: E402
+from read_only_vault import ReadOnlyVault  # noqa: E402
+
 from squadops.capabilities.scaffold import InterfaceManifest  # noqa: E402
 from squadops.cycles.contract_derivation import is_interface_manifest  # noqa: E402
 from squadops.cycles.rejection_baseline import (  # noqa: E402
@@ -106,19 +117,49 @@ async def _cycle_baseline(vault, cycle_id: str, *, project_id: str):
     )
 
 
+async def recorded_cycles(vault, *, project_id: str) -> list[str]:
+    """Every cycle holding a rejection record, in the order the records were written."""
+    refs = await vault.list_artifacts(project_id=project_id, artifact_type=REJECTION_ARTIFACT_TYPE)
+    ordered = sorted(refs, key=lambda r: (r.created_at, r.artifact_id))
+    return list(dict.fromkeys(r.cycle_id for r in ordered if r.cycle_id))
+
+
+def benchmark_counted_rolls(manifest_path: Path) -> list[str]:
+    """The benchmark registry's counted rolls, in declaration order (SIP-0108 §4.3)."""
+    import yaml
+
+    from squadops.cycles.benchmark_registry import RollRole, benchmark_rolls, pins_configs
+
+    manifest = yaml.safe_load(manifest_path.read_text())
+    configs = {p: yaml.safe_load((REPO_ROOT / p).read_text()) for p in pins_configs(manifest)}
+    return [r.cycle_id for r in benchmark_rolls(manifest, configs) if r.role == RollRole.COUNTED]
+
+
 async def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("cycle_ids", nargs="+")
+    parser.add_argument("cycle_ids", nargs="*")
     parser.add_argument("--vault", required=True, type=Path, help="the artifact vault directory")
     parser.add_argument("--project", default="group_run")
+    parser.add_argument(
+        "--recorded", action="store_true", help="add every cycle holding a rejection record"
+    )
+    parser.add_argument(
+        "--benchmark-rolls", type=Path, help="add the benchmark registry's counted rolls"
+    )
     parser.add_argument("--out", type=Path)
     args = parser.parse_args()
 
-    vault = FilesystemArtifactVault(base_dir=str(args.vault))
+    vault = ReadOnlyVault(base_dir=str(args.vault))
+    cycle_ids = list(args.cycle_ids)
+    if args.recorded:
+        cycle_ids += await recorded_cycles(vault, project_id=args.project)
+    if args.benchmark_rolls:
+        cycle_ids += benchmark_counted_rolls(args.benchmark_rolls)
+    cycle_ids = list(dict.fromkeys(cycle_ids))
+    if not cycle_ids:
+        raise SystemExit("no cycles: name some, or pass --recorded / --benchmark-rolls")
     try:
-        baselines = [
-            await _cycle_baseline(vault, c, project_id=args.project) for c in args.cycle_ids
-        ]
+        baselines = [await _cycle_baseline(vault, c, project_id=args.project) for c in cycle_ids]
     except BaselineInputUnreadable as exc:
         raise SystemExit(f"refusing to emit a baseline over an unread input: {exc}") from exc
     output = render(baselines)
