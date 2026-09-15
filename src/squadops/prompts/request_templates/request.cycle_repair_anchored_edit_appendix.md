@@ -1,11 +1,11 @@
 ---
 template_id: request.cycle_repair_anchored_edit_appendix
-version: "2"
+version: "3"
 required_variables:
   - editable_files
 optional_variables: []
 ---
-### Editing a File That Already Exists (preferred for a repair)
+### How to Write an Edit Fence
 
 These files already exist in the workspace, and you may change them. Where the framework can
 read a file's structure, its addressable entities are listed:
@@ -59,5 +59,5 @@ Rules for both — a response that breaks one is not applied, and nothing from i
 - Blocks in one file must not touch the same lines. Each is matched against the file as it is
   now, not after an earlier block.
 - The result must still parse. Every byte you do not change stays exactly as it is.
-- Do not both edit a file and re-emit it whole in the same response. A file you create, or
-  genuinely rewrite from top to bottom, still uses ` ```language:<path> `.
+- Do not both edit a file and re-emit it whole in the same response. Only a file you create
+  uses ` ```language:<path> `.
