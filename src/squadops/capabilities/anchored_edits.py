@@ -522,12 +522,25 @@ _MODE_BY_OPERATION = {
 }
 
 
-def revision_form_reading(offered: Mapping[str, int], outputs: Mapping[str, Any]) -> dict[str, Any]:
-    """Which form a repair response took, beside what it was offered (SIP-0107 §46a).
+def revision_form_reading(
+    offered: Mapping[str, int],
+    outputs: Mapping[str, Any],
+    base_chars: Mapping[str, int] | None = None,
+) -> dict[str, Any]:
+    """Which form a repair response took, beside what it was offered (SIP-0107 §46a), and how
+    much of each file it replaced (§46o).
 
     ``offered`` maps each file the rendered edit form listed to the number of entities listed
     for it (empty when the form was not rendered). ``outputs`` is the repair task's outputs:
     ``anchored_edits`` when the response carried edit fences, ``artifacts`` for what it yields.
+    ``base_chars`` is each offered file's size in the tree the edits resolve against.
+
+    ``replaced`` reads, per file, the span an accepted transaction replaced — structural spans
+    included — against the file's size, and a file re-emitted whole as the whole file, byte-
+    identical or not. A structural REPLACE of every function in a file is a legal scoped
+    transaction (§17 proves nothing about the inside of an entity); without this reading it
+    counts toward §39.8's N exactly like a five-line edit. The readiness probe of 2026-09-15
+    read 93% of routes.py replaced with the file hidden from the model against 5% with it shown.
 
     Before §38 step 7 an offered file re-emitted whole is an **unauthorized whole-file
     fallback**: accepted, counted per cell, never a scoped transaction, so it never counts
@@ -561,6 +574,24 @@ def revision_form_reading(offered: Mapping[str, int], outputs: Mapping[str, Any]
     failure = (
         outputs.get("emission_failure") if isinstance(outputs.get("emission_failure"), dict) else {}
     )
+    sizes = dict(base_chars or {})
+    replaced: dict[str, dict[str, int | None]] = {}
+    if record is not None and record.get("accepted"):
+        spans: dict[str, int] = {}
+        for e in record.get("edits") or []:
+            spans[str(e.get("path"))] = spans.get(str(e.get("path")), 0) + max(
+                0, int(e.get("end") or 0) - int(e.get("start") or 0)
+            )
+        for path, chars in sorted(spans.items()):
+            of = sizes.get(path)
+            replaced[path] = {
+                "chars": chars,
+                "of": of,
+                "pct": round(100 * chars / of) if of else None,
+            }
+    for path in whole_offered:
+        of = sizes.get(path)
+        replaced[path] = {"chars": of, "of": of, "pct": 100}
     return {
         "offered": dict(sorted(offered.items())),
         "form": form,
@@ -574,4 +605,8 @@ def revision_form_reading(offered: Mapping[str, int], outputs: Mapping[str, Any]
         "accepted": record.get("accepted") if record is not None else None,
         "refusals": len(record.get("refusals") or []) if record is not None else 0,
         "retried": "anchored_edit_retry" in outputs,
+        # §46n: anchors read as a fragment of a line rather than as lines.
+        "fragment_anchors": int(record.get("fragment_anchors") or 0) if record is not None else 0,
+        # §46o: the span replaced per file, against the file's size; a whole file is 100.
+        "replaced": replaced,
     }

@@ -3202,7 +3202,7 @@ class TestRepairRevisionForms:
     """SIP-0107 §46a / §39.8: the record says, per repair, the edit form it was offered and the
     form its response took — the fact deploy B's Next.js repair could not be read for."""
 
-    def _line_the_handler_logs(self, caplog, offered, outputs):
+    def _line_the_handler_logs(self, caplog, offered, outputs, base_chars=None):
         import logging
         from types import SimpleNamespace
 
@@ -3212,7 +3212,7 @@ class TestRepairRevisionForms:
 
         result = SimpleNamespace(success=True, outputs=outputs)
         with caplog.at_level(logging.INFO):
-            DevelopmentCorrectionRepairHandler()._record_revision_form(offered, result)
+            DevelopmentCorrectionRepairHandler()._record_revision_form(offered, result, base_chars)
         (message,) = [
             r.getMessage() for r in caplog.records if "repair_revision_form" in r.getMessage()
         ]
@@ -3227,6 +3227,7 @@ class TestRepairRevisionForms:
             caplog,
             {"app/runs/[run_id]/page.tsx": 4},
             {"artifacts": [{"name": "app/runs/[run_id]/page.tsx", "type": "source"}]},
+            {"app/runs/[run_id]/page.tsx": 5785},
         )
 
         # The agents' window keeps the line (the filter the live read applies first).
@@ -3236,9 +3237,13 @@ class TestRepairRevisionForms:
         assert form["handler"] == "development_correction_repair_handler"
         assert form["form"] == "whole_file"
         assert form["whole_file_offered"] == ["app/runs/[run_id]/page.tsx"]
+        # §46o: a file re-emitted whole is the whole file replaced, byte-identical or not.
+        assert form["replaced"] == {
+            "app/runs/[run_id]/page.tsx": {"chars": 5785, "of": 5785, "pct": 100}
+        }
         assert driver._render_revision_forms([form]) == (
             "development_correction_repair_handler whole_file "
-            "(app/runs/[run_id]/page.tsx; offered 1)"
+            "(app/runs/[run_id]/page.tsx; offered 1; replaced 100% app/runs/[run_id]/page.tsx)"
         )
 
     def test_a_scoped_repair_names_its_modes_and_its_result(self, driver):
@@ -3255,6 +3260,29 @@ class TestRepairRevisionForms:
 
         assert driver._render_revision_forms([form]) == (
             "qa_test_repair_handler edits (anchored/structural; offered 1; refused (2))"
+        )
+
+    def test_an_accepted_scoped_repair_renders_how_much_of_each_file_it_replaced(self, driver):
+        """SIP-0107 §46o. Bug caught (readiness probe v2, 2026-09-15): a structural REPLACE of
+        every function in routes.py — 93% of the file, authored blind — rendered exactly like
+        the five-line edit made with the file shown, and counted toward N the same way."""
+        form = {
+            "handler": "development_correction_repair_handler",
+            "form": "edits",
+            "offered": {"backend/routes.py": 6, "backend/main.py": 1},
+            "modes": ["structural"],
+            "accepted": True,
+            "refusals": 0,
+            "fragment_anchors": 1,
+            "replaced": {
+                "backend/routes.py": {"chars": 2825, "of": 3035, "pct": 93},
+                "backend/main.py": {"chars": 12, "of": None, "pct": None},
+            },
+        }
+
+        assert driver._render_revision_forms([form]) == (
+            "development_correction_repair_handler edits (structural; offered 2; accepted; "
+            "1 fragment anchor(s); replaced ?% backend/main.py; replaced 93% backend/routes.py)"
         )
 
     def test_an_unparseable_line_is_kept_not_dropped(self, driver):

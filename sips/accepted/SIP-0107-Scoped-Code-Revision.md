@@ -2236,3 +2236,31 @@ refuses as ambiguous), and the fragment reading removed (every fragment case ref
 
 **Ruled by.** The owner, 2026-09-15 ("I will want to do 1-3"; item 1), on the probe's reading;
 the implementer on the seam and the line-first order.
+
+## 46o. 2026-09-15 — the revision form reads the span each transaction replaced (§39.8, §46k)
+
+**What changed.** The per-repair `repair_revision_form` line (§46k) and the `revision_form`
+output gain `replaced`: for every file an accepted transaction touched, the characters its
+resolved spans covered — structural spans included — against the file's size in the tree the
+edits resolve on, as `{chars, of, pct}`; a file re-emitted whole reads as the whole file, byte-
+identical or not. The line also carries `fragment_anchors` (§46n). The verification-set driver
+renders both beside the form and the modes (`replaced 93% backend/routes.py`).
+
+**Evidence.** The readiness probe's second run (2026-09-15, the dev agent's image, the live
+model, real repair envelopes, typed checks executing; `var/probes/2026-09-15-scoped-repair-
+readiness-v2/`): with the file hidden from the model, every routes.py repair that applied did so
+by `REPLACE function:` on all five functions — 2,825 of 3,035 characters, 93%, authored blind —
+and passed §17's proof, which covers only the bytes outside the entities. With the file shown
+(§46m), the same repair was five anchored lines, 163 characters, 5%. Both are "successful scoped
+transactions" to §39.8's N and both rendered identically in the readout. The pre-registration's
+per-cell readout needs the span to tell them apart, and N's definition may want a ceiling on it;
+that is the pre-registration's call, made on this reading.
+
+**Tests.** The reading takes the span from the resolved range, not the replacement's length; a
+whole-file re-emission reads as 100% of its file; a refused transaction replaces nothing; the
+handler passes the base's sizes so the line carries them; the driver renders the percentage per
+file and names an unknown size rather than inventing one. **Mutations: two, each caught** — the
+span read from the replacement's length; the whole-file re-emission left unread.
+
+**Ruled by.** The owner, 2026-09-15 ("add the replaced span to the instrument"), on the probe's
+reading; the implementer on the shape.

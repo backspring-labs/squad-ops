@@ -582,3 +582,41 @@ def test_the_revision_form_separates_a_whole_file_fallback_from_what_is_not_one(
         whole,
         new,
     )
+
+
+def test_the_revision_form_reads_the_span_replaced_against_each_file_not_the_replacement():
+    """SIP-0107 §46o. Bug caught: the span read from the replacement's length (a one-line
+    replacement of a whole function reading as tiny), or a whole-file re-emission reading as
+    nothing replaced because no transaction ran."""
+    from squadops.capabilities.anchored_edits import revision_form_reading
+
+    outputs = {
+        "anchored_edits": {
+            "accepted": True,
+            "operations_proposed": ["replace_entity", "replace_anchor"],
+            "fragment_anchors": 1,
+            "edits": [
+                {"path": "a.py", "start": 10, "end": 90, "replacement_chars": 3},
+                {"path": "a.py", "start": 95, "end": 100, "replacement_chars": 40},
+                {"path": "b.py", "start": 0, "end": 4, "replacement_chars": 4},
+            ],
+            "refusals": [],
+        },
+        "artifacts": [
+            {"name": "a.py", "type": "source"},
+            {"name": "b.py", "type": "source"},
+            {"name": "c.py", "type": "source"},
+        ],
+    }
+
+    reading = revision_form_reading(
+        {"a.py": 3, "b.py": 1, "c.py": 2}, outputs, {"a.py": 100, "c.py": 50}
+    )
+
+    assert reading["replaced"] == {
+        "a.py": {"chars": 85, "of": 100, "pct": 85},
+        "b.py": {"chars": 4, "of": None, "pct": None},
+        "c.py": {"chars": 50, "of": 50, "pct": 100},
+    }
+    assert reading["fragment_anchors"] == 1
+    assert reading["form"] == "edits_and_whole_file"

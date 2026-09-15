@@ -2819,8 +2819,10 @@ def _render_candidate_identities(entries: list[dict]) -> str:
 
 
 def _render_revision_forms(entries: list[dict]) -> str:
-    """``development_correction_repair_handler whole_file (app/page.tsx; offered 1)`` per repair
-    — the files re-emitted whole that the repair was offered to revise in place are named."""
+    """``development_correction_repair_handler whole_file (app/page.tsx; offered 1; replaced
+    100% app/page.tsx)`` per repair — the files re-emitted whole that the repair was offered to
+    revise in place are named, and every file's replaced span is read against its size (SIP-0107
+    §46o), so a structural rewrite of a whole file does not read like a five-line edit."""
     parts = []
     for e in entries or []:
         if "unparsed" in e:
@@ -2833,6 +2835,11 @@ def _render_revision_forms(entries: list[dict]) -> str:
             detail.insert(0, ", ".join(e["whole_file_offered"]))
         if e.get("accepted") is not None:
             detail.append("accepted" if e["accepted"] else f"refused ({e.get('refusals', 0)})")
+        if e.get("fragment_anchors"):
+            detail.append(f"{e['fragment_anchors']} fragment anchor(s)")
+        for path, span in sorted((e.get("replaced") or {}).items()):
+            pct = span.get("pct") if isinstance(span, dict) else None
+            detail.append(f"replaced {pct if pct is not None else '?'}% {path}")
         parts.append(f"{e.get('handler')} {e.get('form')} ({'; '.join(detail)})")
     return " · ".join(parts)
 
