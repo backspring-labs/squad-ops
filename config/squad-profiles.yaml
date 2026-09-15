@@ -3,7 +3,7 @@
 # Postgres ONCE, keyed by profile_id (`squad_profiles_seed_log`). A NEW profile added here seeds on
 # the next start; an EDIT to a profile that has already seeded does not reach the deploy — change
 # it through the API (`PUT /api/v1/squad-profiles/{id}`) or clone and activate a new one
-# (`squadops profiles clone` / `activate`). The `config` provider still reads this file directly.
+# (`squadops squad-profiles clone` / `activate`). The `config` provider still reads this file directly.
 profiles:
   - profile_id: smoke
     name: "Smoke Squad"

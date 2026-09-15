@@ -895,7 +895,7 @@ def live_squad_snapshot(profile_id: str) -> str:
     from squadops.cycles.models import AgentProfileEntry, SquadProfile
 
     login()
-    data = json.loads(sh(f"{SQUADOPS} --format json profiles show {shlex.quote(profile_id)}"))
+    data = json.loads(sh(f"{SQUADOPS} --format json squad-profiles show {shlex.quote(profile_id)}"))
     profile = SquadProfile(
         profile_id=data["profile_id"],
         name=data.get("name", ""),

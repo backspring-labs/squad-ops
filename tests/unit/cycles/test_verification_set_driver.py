@@ -3097,7 +3097,11 @@ class TestTheSquadSnapshotIsPinnedBeforeLaunch:
             ("575707c58536cf3b", "575707c58536cf3b" + "0" * 48, []),
             ("", None, ["no expected_squad_snapshot_prefix"]),
             ("575707c58536cf3b", "ffff" * 16, ["SQUAD PROFILE CHANGED", "ffffffffffffffff"]),
-            ("575707c58536cf3b", SystemExit("FAILED: squadops profiles show"), ["could not read"]),
+            (
+                "575707c58536cf3b",
+                SystemExit("FAILED: squadops squad-profiles show"),
+                ["could not read"],
+            ),
         ],
         ids=["frozen squad", "no pin", "profile edited", "API unreadable"],
     )
@@ -3162,3 +3166,33 @@ class TestTheSquadSnapshotIsPinnedBeforeLaunch:
 
         assert [p for p in counting if "SQUAD PROFILE CHANGED" in p]
         assert shakeout == []
+
+    def test_the_command_the_snapshot_reads_through_is_one_the_cli_has(self, driver, monkeypatch):
+        """Bug caught (#1571 as merged): the driver ran `squadops profiles show`, which is no
+        command; the CLI group is `squad-profiles`. The wiring test above replaces the shell call,
+        so it could not see the name. This captures the command ``live_squad_snapshot`` actually
+        runs and resolves it against the real CLI app. Control: the old name is refused."""
+        import shlex
+
+        from typer.testing import CliRunner
+
+        from squadops.cli.main import app
+
+        ran = []
+
+        def fake_sh(cmd, check=True):
+            ran.append(cmd)
+            raise SystemExit("stop after capturing the command")
+
+        monkeypatch.setattr(driver, "login", lambda: None)
+        monkeypatch.setattr(driver, "sh", fake_sh)
+        with pytest.raises(SystemExit):
+            driver.live_squad_snapshot("full-38")
+        args = shlex.split(ran[0])[1:]  # drop the squadops executable
+
+        runner = CliRunner()
+        real = runner.invoke(app, [*args, "--help"])
+        old = runner.invoke(app, ["--format", "json", "profiles", "show", "full-38", "--help"])
+
+        assert real.exit_code == 0, real.output
+        assert old.exit_code != 0
