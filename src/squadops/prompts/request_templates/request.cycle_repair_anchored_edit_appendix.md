@@ -1,6 +1,6 @@
 ---
 template_id: request.cycle_repair_anchored_edit_appendix
-version: "3"
+version: "4"
 required_variables:
   - editable_files
 optional_variables: []
@@ -49,8 +49,9 @@ listed entity:
 >>>>>>> REPLACE
 ```
 
-- Copy the SEARCH text **exactly** from the file as it is now: every character, space and
-  indentation. It must occur **exactly once** in that file; include surrounding lines if needed.
+- Copy the SEARCH text **exactly** from the file as shown above under *The Files as They Are
+  Now*: every character, space and indentation. It must occur **exactly once** in that file;
+  include surrounding lines if needed.
 - An empty REPLACE deletes the SEARCH text.
 
 Rules for both — a response that breaks one is not applied, and nothing from it is used:

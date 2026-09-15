@@ -1,6 +1,6 @@
 ---
 template_id: request.cycle_repair_output_scoped
-version: "1"
+version: "2"
 required_variables:
   - editable_files
   - new_files
@@ -9,7 +9,8 @@ optional_variables: []
 ### Required Output: Revise the Existing Files in Place
 
 These named files already exist in the workspace. **Change them with edit fences only**: one
-` ```edit:<path> ` fence per file you change, holding the blocks described in the next section.
+` ```edit:<path> ` fence per file you change, holding the blocks described in the edit-fence
+section below.
 
 {{editable_files}}
 

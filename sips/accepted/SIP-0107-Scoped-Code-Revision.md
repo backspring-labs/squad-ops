@@ -2138,3 +2138,60 @@ a whole-file response is still accepted and recorded until §38 step 7.
 live model precedes deploy C and any pre-registration (the owner's re-sequence, 2026-09-15).
 
 **Ruled by.** The owner's go on the re-sequence, 2026-09-15; the implementer on the wording.
+
+## 46m. 2026-09-15 — the repair prompt shows the files it asks the model to revise (§9.2; #1576)
+
+**What changed.**
+
+1. **Every repair offered the edit form now sees the files it may revise, verbatim.** A new
+   section, *The Files as They Are Now* (`request.cycle_repair_current_files`), renders each
+   anchorable file from the tree the edits resolve against — the verifier's workspace with the
+   failed task's own files over it (`_repair_base_files`, #1264) — between the output section
+   and the edit-fence instructions, on the retry too. Each file is shown in a bare fence longer
+   than any backtick run inside it, never in the ` ```language:<path> ` emission form. The
+   appendix (v4) and the retry (v3) now say "copy from the file as shown above" instead of "from
+   the file as it is now". A repair not offered the edit form is asked exactly as before.
+2. **The renderer's blank-line cleanup leaves fenced blocks verbatim.** It collapsed every run
+   of three or more newlines, including inside a shown file — a Python file's two blank lines
+   between top-level definitions became one — so the text a model copied from would not have
+   been the text its anchor is matched against. Outside a fence the cleanup is byte for byte as
+   before; inside one, nothing changes. A longer fence is closed only by its own marker.
+3. **§9.2's "refreshed context" is this section**, on the first prompt and not only on the
+   retry. Exactness (#451) is unchanged: the anchor still has to occur exactly once, unmodified.
+
+**Evidence.** No repair prompt path rendered the file being repaired. `request.cycle_repair_task`
+v7 and v8 declare no variable for file content; `_RepairPromptMixin.handle` renders the failure
+evidence, the analyzer's summary, the decision, the PRD and the edit form; `artifact_contents` is
+rendered by the develop and builder handlers and never by the repair handlers; the failed task's
+files and the workspace reached the repair only as the edit base. The readiness probe of
+2026-09-15 (three real failed dev repairs rebuilt from the vault, the real handler, live qwen3.8,
+v7 and v8, three trials each; `var/probes/2026-09-15-scoped-repair-readiness/`) read against
+the rendered prompt:
+
+- the routes.py prompt contains no line of the file (`status_code=201` absent); its six first
+  tries all anchored `@router.post("/runs")` for a decorator reading `…, status_code=201)`;
+- route.ts guessed the quote style every time; page.tsx's exact anchors were the six lines the
+  compiler's excerpt quoted, its import line guessed;
+- every routes.py retry that applied switched to `REPLACE function:<name>` for all five
+  functions, authoring five bodies it had never read — legal under §17, which proves nothing
+  about the inside of an entity, and counted as a scoped transaction by §39.8;
+- deploy B's pair 1 (`cyc_e62d74598211`): the dev repair of a one-line fix came back as a
+  whole file, under a contract that asked for the unfixed lines re-emitted byte-identical.
+
+Of the 63 SEARCH blocks the probe produced, 35 matched a line exactly, 12 were unique fragments
+of a line and 16 misquoted the file — and none matched the workspace's stale copy, so the base
+overlay was right and the model was working from the evidence excerpt and recall.
+
+**Tests.** The prompt shows each editable file as the tree the edits resolve against (the failed
+task's copy, not the workspace's; a named file that does not exist and an unnamed one absent)
+and the applied edit lands on that text with its blank-line run intact; a Markdown file holding a
+fence is wrapped in a longer one and its edit still applies; the retry shows the files again; a
+repair not offered the form carries no section; the renderer keeps blank-line runs inside a
+fence while still collapsing prose, and a fence is closed only by its own marker.
+
+**Not yet shown:** that qwen3.8 copies from the shown file rather than from recall — the
+readiness probe's second run, in the dev agent's container with the typed checks executing,
+reads that before deploy C.
+
+**Ruled by.** The owner, 2026-09-15 ("start with item 2"), on the probe re-read that found the
+missing section; the implementer on the section's placement and the renderer fix.

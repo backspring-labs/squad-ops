@@ -407,3 +407,71 @@ async def test_a_repair_not_offered_the_edit_form_is_asked_exactly_as_before():
     assert prompt.rstrip().endswith(
         "for. Do not include explanatory prose between code blocks unless it is essential."
     )
+    assert "The Files as They Are Now" not in prompt
+
+
+# --- The files as they are now (SIP-0107 §9.2, §46m; #1576) ---------------------------------
+
+_FAILED_ROUTES = _ROUTES.replace(
+    '@router.post("/runs")', '@router.post("/runs", status_code=201)'
+).replace("\n\n@router.get", "\n\n\n@router.get")
+
+
+async def test_the_prompt_shows_each_editable_file_as_the_tree_the_edits_resolve_against():
+    """Bug caught (#1576): the model told to copy anchors "exactly from the file as it is now"
+    about a file the prompt never showed — the readiness probe's routes.py repairs anchored
+    `@router.post("/runs")` six times in six for a decorator reading `…, status_code=201)`. And
+    the other tree: the workspace's copy shown when the failed task's own version is what the
+    edits are matched against (#1264), so an anchor copied faithfully is refused."""
+    ctx = _context(_GOOD_EDIT)
+    inputs = _inputs(
+        failed_task_artifacts=[{"name": "backend/routes.py", "content": _FAILED_ROUTES}]
+    )
+
+    result = await DevelopmentCorrectionRepairHandler().handle(ctx, inputs)
+
+    prompt = _user_prompt(ctx, 0)
+    before, shown = prompt.split("The Files as They Are Now")
+    shown = shown.split("How to Write an Edit Fence")[0]
+    assert f"`backend/routes.py`:\n```\n{_FAILED_ROUTES}```" in shown
+    assert '@router.post("/runs")\n' not in shown  # the workspace's stale copy
+    assert "backend/main.py" not in shown  # in the tree, not named by the task
+    assert "backend/new_helper.py" not in shown  # named, does not exist yet
+    assert "Revise the Existing Files in Place" in before
+    (artifact,) = result.outputs["artifacts"]
+    assert artifact["content"] == _FAILED_ROUTES.replace(
+        "def create(payload):\n    return Run(**payload.dict())\n",
+        "def create(payload):\n    return Run(**payload.dict(exclude_none=True))\n",
+    )
+
+
+async def test_a_shown_file_holding_a_fence_is_wrapped_in_a_longer_one():
+    """Bug caught: a file with a ``` run of its own — a Markdown artifact — closing its block
+    early, so the model reads the rest of it as prose and the renderer collapses its blank
+    lines."""
+    readme = "# Runs\n\n```bash\ncurl /runs\n```\n\n\n## More\n"
+    ctx = _context(
+        "```edit:README.md\n<<<<<<< SEARCH\n## More\n=======\n## Less\n>>>>>>> REPLACE\n```\n"
+    )
+    inputs = _inputs(
+        expected_artifacts=["README.md"], acceptance_workspace_files={"README.md": readme}
+    )
+
+    result = await DevelopmentCorrectionRepairHandler().handle(ctx, inputs)
+
+    shown = _user_prompt(ctx, 0).split("The Files as They Are Now")[1]
+    assert f"`README.md`:\n````\n{readme}````" in shown
+    (artifact,) = result.outputs["artifacts"]
+    assert artifact["content"] == readme.replace("## More", "## Less")
+
+
+async def test_the_retry_shows_the_files_again():
+    """Bug caught: the retry telling the model to copy the anchor again from a file the
+    re-rendered prompt no longer showed."""
+    ctx = _context(_AMBIGUOUS_EDIT, _GOOD_EDIT)
+
+    result = await DevelopmentCorrectionRepairHandler().handle(ctx, _inputs())
+
+    assert result.outputs["anchored_edits"]["accepted"] is True
+    for call in (0, 1):
+        assert f"`backend/routes.py`:\n```\n{_ROUTES}```" in _user_prompt(ctx, call)
