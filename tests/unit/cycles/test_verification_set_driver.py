@@ -3065,3 +3065,100 @@ class TestTheRecordCarriesTheCyclesCodeLineage:
         rec = self._collect(driver, tmp_path, monkeypatch, "1.8.0||validated-fullstack")
 
         assert driver.evidence_at(rec, "lineage.framework_git_sha").state == driver.ASKED_NONE
+
+
+class TestTheSquadSnapshotIsPinnedBeforeLaunch:
+    """#1568: squad profiles live in Postgres and the API can edit one mid-set with no rebuild,
+    so the frozen image ids no longer freeze the squad. A counting set pins the snapshot, and
+    the live profile is compared before the roll launches."""
+
+    def _cfg(self, driver, tmp_path, **overrides):
+        import yaml
+
+        base = {
+            "name": "t",
+            "project": "group_run",
+            "squad_profile": "full-38",
+            "request_profile": "validated-fullstack",
+            "gate_name": "g",
+            "gate_notes": "g",
+            "launch_notes": "r {roll}/{n}",
+            "shakeout_notes": "s",
+            "n_rolls": 2,
+        }
+        base.update(overrides)
+        p = tmp_path / "set.yaml"
+        p.write_text(yaml.safe_dump(base))
+        return driver.load_set_config(p)
+
+    @pytest.mark.parametrize(
+        ("prefix", "live", "expected"),
+        [
+            ("575707c58536cf3b", "575707c58536cf3b" + "0" * 48, []),
+            ("", None, ["no expected_squad_snapshot_prefix"]),
+            ("575707c58536cf3b", "ffff" * 16, ["SQUAD PROFILE CHANGED", "ffffffffffffffff"]),
+            ("575707c58536cf3b", SystemExit("FAILED: squadops profiles show"), ["could not read"]),
+        ],
+        ids=["frozen squad", "no pin", "profile edited", "API unreadable"],
+    )
+    def test_a_counting_roll_on_a_squad_the_set_is_not_frozen_on_is_refused(
+        self, driver, tmp_path, monkeypatch, prefix, live, expected
+    ):
+        """Bug caught: a roll launched after someone edited ``full-38`` through the API — the
+        image ids unchanged, so nothing refused it, and the post-run check stopped the set only
+        after the roll had spent its budget on another squad; or a counting set with no pin,
+        which the post-run check skips entirely."""
+
+        def snapshot(profile_id):
+            assert profile_id == "full-38"
+            if isinstance(live, BaseException):
+                raise live
+            return live
+
+        monkeypatch.setattr(driver, "live_squad_snapshot", snapshot)
+        problems = driver.squad_snapshot_problems(
+            self._cfg(driver, tmp_path, expected_squad_snapshot_prefix=prefix)
+        )
+
+        if not expected:
+            assert problems == []
+        else:
+            assert len(problems) == 1 and all(e in problems[0] for e in expected)
+
+    def test_the_live_snapshot_is_the_hash_the_runtime_stamps_on_a_cycle(self, driver, monkeypatch):
+        """Wiring: ``live_squad_snapshot`` over the JSON the API serves for a profile. Bug
+        caught: the driver hashing a different shape than the runtime does (an override dropped,
+        the version read as a string), so every roll is refused on an unchanged squad or an
+        edited one launches. On ``full-38`` it reads 1.7.5's pin."""
+        import asyncio
+
+        from adapters.cycles.config_squad_profile import ConfigSquadProfile
+        from squadops.api.routes.cycles.mapping import profile_to_response
+        from squadops.cycles.lifecycle import compute_profile_snapshot_hash
+
+        profile = asyncio.run(ConfigSquadProfile().get_profile("full-38"))
+        served = profile_to_response(profile, is_active=False).model_dump_json()
+        monkeypatch.setattr(driver, "login", lambda: None)
+        monkeypatch.setattr(driver, "sh", lambda cmd, check=True: served)
+
+        live = driver.live_squad_snapshot("full-38")
+
+        assert live == compute_profile_snapshot_hash(profile)
+        assert live.startswith("575707c58536cf3b")
+
+    def test_the_launch_preflight_carries_the_refusal_and_a_shakeout_does_not(
+        self, driver, tmp_path, monkeypatch
+    ):
+        """Wiring, entered at ``preflight``, the call the launch makes. Bug caught: the check
+        written and never reached — or reached for a shakeout, whose deploy is unpinned by
+        definition."""
+        monkeypatch.setattr(driver, "psql", lambda *a, **k: "0")
+        monkeypatch.setattr(driver, "sh", lambda *a, **k: "")
+        monkeypatch.setattr(driver, "live_squad_snapshot", lambda profile_id: "ffff" * 16)
+        cfg = self._cfg(driver, tmp_path, expected_squad_snapshot_prefix="575707c58536cf3b")
+
+        counting = driver.preflight(cfg, counting=True, identity={})
+        shakeout = driver.preflight(cfg, counting=False, identity={})
+
+        assert [p for p in counting if "SQUAD PROFILE CHANGED" in p]
+        assert shakeout == []

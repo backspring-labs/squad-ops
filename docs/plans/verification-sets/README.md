@@ -17,7 +17,10 @@ superseded at the cut; this is not.
   squad-snapshot prefixes, the frozen deploy commit and its seven image ids, the gate notes.
 - A **roll** is one counted cycle. The driver asserts the frozen image ids, pins the launch
   checkout's HEAD on roll 1 and holds it, and asserts the config hash; a mismatch records and
-  stops. Scoring — counted / void / reset — is a reading made at the roll boundary by a
+  stops. It also refuses to launch when the squad profile's live snapshot does not carry the
+  set's `expected_squad_snapshot_prefix`, and refuses a counting set with no prefix: since
+  #1568 profiles live in Postgres and can be edited without a rebuild, so the image ids no
+  longer freeze the squad. Scoring — counted / void / reset — is a reading made at the roll boundary by a
   person; the driver reports, the pre-registration decides.
 - A **shakeout** is a non-counting cycle on a fresh deploy. It records the deploy's identity
   instead of asserting it. Its purpose is to find what the pack's tests did not.

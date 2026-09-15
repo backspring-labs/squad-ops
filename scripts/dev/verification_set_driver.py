@@ -862,6 +862,7 @@ def preflight(cfg: SetConfig, *, counting: bool, identity: dict[str, str]) -> li
         problems.append(
             "counting roll with no frozen_image_ids in the set config — pre-register the deploy first"
         )
+    problems.extend(squad_snapshot_problems(cfg))
     problems.extend(framework_drift_problems(cfg))
     for service, expected in cfg.frozen_image_ids.items():
         actual = image_id(service)
@@ -881,6 +882,65 @@ def preflight(cfg: SetConfig, *, counting: bool, identity: dict[str, str]) -> li
     else:
         log(f"pinning HEAD at {head} — §7 binds from here")
     return problems
+
+
+def live_squad_snapshot(profile_id: str) -> str:
+    """The squad snapshot a cycle created now would carry, read from the runtime API.
+
+    The same hash the runtime stamps on a cycle (``compute_profile_snapshot_hash`` over the
+    profile it resolves), computed from the profile the API serves, so it reads Postgres or the
+    YAML file, whichever the deploy runs.
+    """
+    from squadops.cycles.lifecycle import compute_profile_snapshot_hash
+    from squadops.cycles.models import AgentProfileEntry, SquadProfile
+
+    login()
+    data = json.loads(sh(f"{SQUADOPS} --format json profiles show {shlex.quote(profile_id)}"))
+    profile = SquadProfile(
+        profile_id=data["profile_id"],
+        name=data.get("name", ""),
+        description=data.get("description", ""),
+        version=int(data["version"]),
+        agents=tuple(
+            AgentProfileEntry(
+                agent_id=a["agent_id"],
+                role=a["role"],
+                model=a["model"],
+                enabled=bool(a["enabled"]),
+                config_overrides=dict(a.get("config_overrides") or {}),
+            )
+            for a in data["agents"]
+        ),
+        created_at=datetime.now(UTC),
+    )
+    return compute_profile_snapshot_hash(profile)
+
+
+def squad_snapshot_problems(cfg: SetConfig) -> list[str]:
+    """A counting roll refuses to launch on a squad profile the set is not frozen on (#1568).
+
+    The frozen image ids made the squad immutable while profiles lived in the image's YAML.
+    Since #1568 the deploy reads them from Postgres, where the API can edit one mid-set with
+    no rebuild. So a counting set pins the snapshot, and the live profile is compared
+    **before** the roll launches. The post-run comparison in ``_run_cycle`` only stopped the
+    set after a roll had spent its budget on the wrong squad.
+    """
+    prefix = cfg.expected_squad_snapshot_prefix
+    if not prefix:
+        return [
+            "counting roll with no expected_squad_snapshot_prefix in the set config — squad "
+            "profiles are editable data (#1568); pin the snapshot the set is frozen on"
+        ]
+    try:
+        live = live_squad_snapshot(cfg.squad_profile)
+    except (SystemExit, ValueError, KeyError) as exc:
+        return [f"§7 could not read the live snapshot of {cfg.squad_profile}: {exc}"]
+    if identity_mismatch(prefix, live):
+        return [
+            f"§7 SQUAD PROFILE CHANGED: {cfg.squad_profile} snapshots to {live[:16]}, the set is "
+            f"frozen on {prefix}. An edit to the profile mid-set voids comparability."
+        ]
+    return []
 
 
 # ---------------------------------------------------------------------------
