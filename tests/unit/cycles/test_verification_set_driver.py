@@ -3262,6 +3262,25 @@ class TestRepairRevisionForms:
             "qa_test_repair_handler edits (anchored/structural; offered 1; refused (2))"
         )
 
+    def test_a_whole_file_never_offered_is_named_as_such(self, driver):
+        """SIP-0107 §46p (#1583): a base file re-emitted whole in fill mode, where no edit form
+        is offered, must read as a whole-file response and say it was never offered — not as a
+        new file the repair created."""
+        form = {
+            "handler": "qa_test_repair_handler",
+            "form": "whole_file",
+            "offered": {},
+            "fills": 8,
+            "whole_file_offered": [],
+            "whole_file_unoffered": ["__tests__/runs-ui.test.ts"],
+            "replaced": {"__tests__/runs-ui.test.ts": {"chars": 11245, "of": 11245, "pct": 100}},
+        }
+
+        assert driver._render_revision_forms([form]) == (
+            "qa_test_repair_handler whole_file (never offered: __tests__/runs-ui.test.ts; "
+            "offered 0; replaced 100% __tests__/runs-ui.test.ts)"
+        )
+
     def test_an_accepted_scoped_repair_renders_how_much_of_each_file_it_replaced(self, driver):
         """SIP-0107 §46o. Bug caught (readiness probe v2, 2026-09-15): a structural REPLACE of
         every function in routes.py — 93% of the file, authored blind — rendered exactly like

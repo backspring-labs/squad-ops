@@ -217,3 +217,121 @@ async def test_the_repair_addendum_renders_from_the_real_asset():
     assert "`slot-vc-probe-api-runs-join` in `" + _JOIN + "` — why" in out
     assert "fill block is the only way to change a slot" in out
     assert await render_repair_fill_section(renderer, []) == ""
+
+
+# --- #1583: a free-authored suite beside the shells is edited in place, never re-emitted -----
+
+_SUITE = "__tests__/runs-ui.test.ts"
+_SUITE_TEXT = (
+    "import { describe, it, expect } from 'vitest'\n"
+    "\n"
+    "describe('RunDetailView data contract', () => {\n"
+    "  it('returns a Run', async () => {\n"
+    "    const body = { participants: [] }\n"
+    "    expect(typeof body.participants_count).toBe('number')\n"
+    "  })\n"
+    "})\n"
+)
+
+
+def _real_context(*responses):
+    from adapters.prompts.filesystem_asset_adapter import FilesystemPromptAssetAdapter
+    from squadops.prompts.renderer import RequestTemplateRenderer
+
+    llm = AsyncMock()
+    llm.chat_stream_with_usage.side_effect = [
+        MagicMock(content=r, prompt_tokens=10, completion_tokens=10, reasoning_tokens=None)
+        for r in responses
+    ]
+    llm.default_model = "m"
+    context = MagicMock()
+    context.ports.llm = llm
+    context.ports.prompt_service.get_system_prompt = MagicMock(
+        return_value=MagicMock(content="system", assembly_hash="h")
+    )
+    context.ports.llm_observability = None
+    context.ports.request_renderer = RequestTemplateRenderer(
+        FilesystemPromptAssetAdapter(
+            fragments_path=_TEMPLATES.parent / "fragments", templates_path=_TEMPLATES
+        )
+    )
+    context.correlation_context = None
+    return context
+
+
+def _fill_mode_inputs(scaffold_input):
+    return {
+        "prd": "group_run",
+        "failed_task_type": "qa.test",
+        "expected_artifacts": [_JOIN, _SUITE],
+        "verification_scaffold": scaffold_input,
+        "repair_slots": [
+            {"file": _JOIN, "slot_id": "slot-vc-probe-api-runs-join", "detail": "expected 1"}
+        ],
+        "acceptance_workspace_files": {_SUITE: _SUITE_TEXT, "lib/store.ts": "export {}\n"},
+        "resolved_config": {"development_profile": "nextjs_ts"},
+    }
+
+
+async def test_a_free_authored_suite_beside_the_shells_is_offered_the_edit_form_and_edited(
+    scaffold_input,
+):
+    """#1583 (deploy D, `cyc_95c0e2dbb25c`): the shells' fill rule was applied to every file, so
+    the qa repair had no scoped path to the one assertion in its free-authored suite, re-emitted
+    the whole suite (11,245 → 7,564 chars), and — with nothing offered — that read as a new file.
+    Bug caught: the suite not offered, not shown, or a shell listed as a file to emit whole."""
+    response = (
+        "```fill:slot-vc-probe-api-runs-join\n    expect(body.participants).toHaveLength(1)\n```\n"
+        f"```edit:{_SUITE}\n<<<<<<< SEARCH\n"
+        "    expect(typeof body.participants_count).toBe('number')\n=======\n"
+        "    expect(Array.isArray(body.participants)).toBe(true)\n>>>>>>> REPLACE\n```\n"
+    )
+    ctx = _real_context(response)
+    handler = QATestRepairHandler()
+    inputs = _fill_mode_inputs(scaffold_input)
+
+    assert handler._anchorable_files(inputs) == [_SUITE]  # the shell is filled, never anchored
+    result = await handler.handle(ctx, inputs)
+
+    prompt = ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0][-1].content
+    shown = prompt.split("The Files as They Are Now")[1].split("How to Write an Edit Fence")[0]
+    assert f"`{_SUITE}`:\n```\n{_SUITE_TEXT}```" in shown
+    assert _JOIN not in shown
+    output_form = prompt.split("Revise the Existing Files in Place")[1].split(
+        "The Files as They Are Now"
+    )[0]
+    assert f"- `{_SUITE}`" in output_form.split("does not exist yet")[0]
+    assert _JOIN not in output_form  # a shell is not "a file that does not exist yet"
+    assert "slot-vc-probe-api-runs-join" in prompt  # the fill brief still names the slot
+
+    by_name = {a["name"]: a["content"] for a in result.outputs["artifacts"]}
+    assert set(by_name) == {_JOIN, _SUITE}
+    assert "expect(body.participants).toHaveLength(1)" in by_name[_JOIN]
+    assert by_name[_SUITE] == _SUITE_TEXT.replace(
+        "expect(typeof body.participants_count).toBe('number')",
+        "expect(Array.isArray(body.participants)).toBe(true)",
+    )
+    form = result.outputs["revision_form"]
+    assert (form["form"], form["edited"], form["fills"], form["whole_file_unoffered"]) == (
+        "edits",
+        [_SUITE],
+        1,
+        [],
+    )
+
+
+async def test_a_pure_fill_repair_still_offers_nothing_and_reads_as_fill(scaffold_input):
+    """Control: with no free-authored file named, fill mode is exactly what it was — no edit
+    form, no shown files, the fill brief alone."""
+    ctx = _real_context(
+        "```fill:slot-vc-probe-api-runs-join\n    expect(body.participants).toHaveLength(1)\n```\n"
+    )
+    inputs = {**_fill_mode_inputs(scaffold_input), "expected_artifacts": [_JOIN]}
+
+    result = await QATestRepairHandler().handle(ctx, inputs)
+
+    prompt = ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0][-1].content
+    assert "The Files as They Are Now" not in prompt
+    assert "How to Write an Edit Fence" not in prompt
+    assert result.outputs["revision_form"]["form"] == "fill"
+    assert [a["name"] for a in result.outputs["artifacts"]] == [_JOIN]

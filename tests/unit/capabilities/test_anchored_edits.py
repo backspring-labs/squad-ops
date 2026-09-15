@@ -620,3 +620,36 @@ def test_the_revision_form_reads_the_span_replaced_against_each_file_not_the_rep
     }
     assert reading["fragment_anchors"] == 1
     assert reading["form"] == "edits_and_whole_file"
+
+
+def test_a_base_file_re_emitted_whole_that_was_never_offered_reads_as_whole_file_not_new():
+    """SIP-0107 §46p (#1583). Bug caught: deploy D's Next.js qa repair re-emitted the defective
+    suite whole in fill mode, where nothing was offered, and the reading called it a new file —
+    invisible to §46a's whole-file count and to §46o's replaced span."""
+    from squadops.capabilities.anchored_edits import revision_form_reading
+
+    outputs = {
+        "artifacts": [
+            {"name": "__tests__/runs-ui.test.ts", "type": "test"},  # exists in the base
+            {"name": "__tests__/new.test.ts", "type": "test"},  # does not
+            {"name": "x", "type": "fill", "content": "…"},
+        ]
+    }
+
+    reading = revision_form_reading(
+        {}, outputs, {"__tests__/runs-ui.test.ts": 11245, "lib/a.ts": 9}
+    )
+
+    assert reading["form"] == "whole_file"
+    assert reading["whole_file_offered"] == []
+    assert reading["whole_file_unoffered"] == ["__tests__/runs-ui.test.ts"]
+    assert reading["new_files"] == ["__tests__/new.test.ts"]
+    assert reading["replaced"] == {
+        "__tests__/runs-ui.test.ts": {"chars": 11245, "of": 11245, "pct": 100}
+    }
+    assert reading["fills"] == 1
+    # Without the base's sizes the reading is what it was: the file is "new".
+    assert revision_form_reading({}, outputs)["new_files"] == [
+        "__tests__/new.test.ts",
+        "__tests__/runs-ui.test.ts",
+    ]

@@ -333,8 +333,10 @@ class _RepairPromptMixin:
         result = await super().handle(context, inputs)
         result = await self._retry_refused_anchored_edits(context, inputs, result)
         base = self._repair_base_files(inputs)
+        # Every base file's size, not only the offered ones: a base file re-emitted whole that
+        # the form never offered is still a whole-file response (§46p, #1583).
         self._record_revision_form(
-            offered, result, {path: len(base[path]) for path in offered if path in base}
+            offered, result, {path: len(content) for path, content in base.items()}
         )
         await self._after_emission(inputs, result)
         return result
@@ -393,7 +395,10 @@ class _RepairPromptMixin:
         editable = self._anchorable_files(inputs)
         if editable:
             named = [normalize_ws_path(str(e)) for e in (inputs.get("expected_artifacts") or [])]
-            new = [n for n in named if n and n not in editable]
+            shells = self._scaffold_shell_paths(inputs)
+            # A shell is filled by slot (the fill-mode brief says how), never listed as a file
+            # that "does not exist yet" to be emitted whole.
+            new = [n for n in named if n and n not in editable and n not in shells]
             output = await renderer.render(
                 "request.cycle_repair_output_scoped",
                 {
@@ -421,16 +426,40 @@ class _RepairPromptMixin:
                 workspace[art["name"]] = str(art.get("content") or "")
         return workspace
 
+    @staticmethod
+    def _scaffold_shell_paths(inputs: dict[str, Any]) -> set[str]:
+        """The scaffold's shells, by path — the files a fill-mode repair fills by slot (§9.3) and
+        never edits or re-emits. Read from the scaffold input the runner threads (its pristine
+        ``files`` and the task's ``current_files``); no scaffold, no shells."""
+        scaffold = inputs.get("verification_scaffold")
+        if not isinstance(scaffold, dict):
+            return set()
+        from squadops.cycles.write_authorization import normalize_ws_path
+
+        shells: set[str] = set()
+        for key in ("files", "current_files"):
+            for entry in scaffold.get(key) or []:
+                name = (
+                    entry.get("name") if isinstance(entry, dict) else getattr(entry, "path", None)
+                )
+                if name:
+                    shells.add(normalize_ws_path(str(name)))
+        return {path for path in shells if path}
+
     def _anchorable_files(self, inputs: dict[str, Any]) -> list[str]:
         """The named files a repair may revise by anchored edit: those it may emit that already
-        exist in its base. A qa repair in fill mode revises slots instead (§9.3), never anchors."""
-        if inputs.get("verification_scaffold"):
-            return []
+        exist in its base, minus the scaffold's shells. A qa repair in fill mode revises its
+        shells by slot (§9.3) and never anchors them; a free-authored file it also owns — a
+        suite beside the shells — is anchorable like any other file (#1583: with the shells'
+        rule applied to every file, deploy D's Next.js qa repair had no scoped path to the one
+        assertion it had to fix and re-emitted the whole suite, unread as a whole-file response
+        because nothing had been offered)."""
         from squadops.cycles.write_authorization import normalize_ws_path
 
         base = self._repair_base_files(inputs)
+        shells = self._scaffold_shell_paths(inputs)
         named = [normalize_ws_path(str(e)) for e in (inputs.get("expected_artifacts") or [])]
-        return sorted({n for n in named if n and n in base})
+        return sorted({n for n in named if n and n in base and n not in shells})
 
     async def _render_current_files_section(
         self, context: ExecutionContext, inputs: dict[str, Any]
