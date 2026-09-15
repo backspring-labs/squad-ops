@@ -307,8 +307,8 @@ class SandboxConfig(BaseModel):
     to pre-0102 behavior. It is named, never defaulted (#1568).
     """
 
-    provider: str = Field(
-        min_length=1, description="Sandbox provider: 'noop' or 'docker' (required, #1568)"
+    provider: Literal["noop", "docker"] = Field(
+        description="Sandbox provider (required, #1568; the vocabulary is the schema's, R2)"
     )
     environment: str = Field(
         default="fullstack_fastapi_react",
@@ -461,8 +461,8 @@ class AuthConfig(BaseModel):
     """Authentication and authorization configuration (SIP-0062)."""
 
     enabled: bool = Field(default=True, description="Enable authentication")
-    provider: str = Field(
-        min_length=1, description="Auth provider: 'keycloak' or 'disabled' (required, #1568)"
+    provider: Literal["keycloak", "disabled"] = Field(
+        description="Auth provider (required, #1568; the vocabulary is the schema's, R2)"
     )
     oidc: OIDCConfig | None = Field(default=None, description="OIDC provider configuration")
     console: ConsoleAuthConfig | None = Field(
@@ -501,8 +501,6 @@ class AuthConfig(BaseModel):
         """Post-initialization validation."""
         if self.roles_mode == "client" and not self.roles_client_id:
             raise ValueError("roles_client_id is required when roles_mode='client'")
-        if self.enabled and self.provider not in ("keycloak", "disabled"):
-            raise ValueError(f"Unknown auth provider: {self.provider}")
         if self.enabled and self.provider != "disabled" and self.oidc is None:
             raise ValueError(
                 "oidc configuration is required when auth is enabled and provider != 'disabled'"
@@ -516,13 +514,11 @@ class CyclesConfig(BaseModel):
 
     #: #1568: a runtime API started without this key ran an in-memory registry and lost every
     #: cycle at restart. Required; never defaulted.
-    registry_provider: str = Field(
-        min_length=1,
-        description="Cycle registry provider: 'memory' or 'postgres' (required, #1568)",
+    registry_provider: Literal["memory", "postgres"] = Field(
+        description="Cycle registry provider (required, #1568)",
     )
-    squad_profile_provider: str = Field(
-        min_length=1,
-        description="Squad profile provider: 'config' or 'postgres' (SIP-0075; required, #1568)",
+    squad_profile_provider: Literal["config", "postgres"] = Field(
+        description="Squad profile provider (SIP-0075; required, #1568)",
     )
     inert_cycle_threshold: int = Field(
         default=3,
@@ -621,9 +617,8 @@ class LLMConfig(BaseModel):
     surface writes ``SQUADOPS__LLM__PROVIDER`` explicitly; nothing infers it.
     """
 
-    provider: str = Field(
-        min_length=1,
-        description="LLM provider selecting the adapter: 'ollama', 'vllm' or 'atlas' (required)",
+    provider: Literal["ollama", "vllm", "atlas"] = Field(
+        description="LLM provider selecting the adapter (required; the vocabulary is the schema's, R2)",
     )
     url: str = Field(
         default="http://host.docker.internal:11434", description="LLM API URL (Ollama)"
@@ -704,8 +699,8 @@ class TelemetryConfig(BaseModel):
     #: The telemetry selector: ``otel``, ``console`` or ``null``, the names
     #: ``adapters.telemetry.factory`` accepts. Required schema-wide (#1568): #1449 refused it only
     #: where composed, which left a second mechanism beside every other selector's.
-    backend: str = Field(
-        min_length=1, description="Telemetry backend selector (otel, console, null; required)"
+    backend: Literal["otel", "console", "null"] = Field(
+        description="Telemetry backend selector (required, #1568)"
     )
     otlp_endpoint: str | None = Field(default=None, description="OTLP exporter endpoint")
     prometheus_port: int = Field(
@@ -723,9 +718,11 @@ class PromptsConfig(BaseModel):
     filesystem or from Langfuse's prompt management API.
     """
 
-    asset_source_provider: str = Field(
-        min_length=1,
-        description="Prompt asset source provider: 'filesystem' or 'langfuse' (required, #1568)",
+    #: #1568: a Literal, so a misspelled provider fails at config load. As a plain ``str`` it
+    #: reached the agent root's renderer ``try``, whose broad ``except`` logged it and ran the
+    #: agent with no renderer (the #1110 blind-retry shape) instead of refusing the deploy.
+    asset_source_provider: Literal["filesystem", "langfuse"] = Field(
+        description="Prompt asset source provider (required, #1568)",
     )
 
 

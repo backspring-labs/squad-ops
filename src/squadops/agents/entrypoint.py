@@ -409,8 +409,9 @@ class AgentRunner:
                     host=config.langfuse.host,
                 )
             else:
-                # #1568: the configured name, not "filesystem" — an unknown provider is the
-                # factory's refusal, never quietly the filesystem.
+                # #1568: the configured name, never a quiet "filesystem". The schema's Literal
+                # refuses an unknown name at config load, so the ``except`` below only ever
+                # sees a construction failure (a missing SDK, an unreachable registry).
                 asset_source = create_prompt_asset_source(provider=provider)
             request_renderer = RequestTemplateRenderer(asset_source)
             logger.info(

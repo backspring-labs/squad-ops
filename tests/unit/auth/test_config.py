@@ -19,7 +19,8 @@ class TestAuthConfig:
             )
 
     def test_unknown_provider(self):
-        with pytest.raises(ValueError, match="Unknown auth provider"):
+        """#1568: refused by the schema's vocabulary, whether or not auth is enabled."""
+        with pytest.raises(ValueError, match="'keycloak' or 'disabled'"):
             AuthConfig(
                 enabled=True,
                 provider="unknown-provider",

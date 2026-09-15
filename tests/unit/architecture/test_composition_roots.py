@@ -284,20 +284,45 @@ def test_every_selector_is_required_not_defaulted(model, field, env_key):
     )
 
 
+def _valid_value(annotation) -> str:
+    import typing
+
+    args = typing.get_args(annotation)
+    return args[0] if typing.get_origin(annotation) is typing.Literal else "x"
+
+
+@pytest.mark.parametrize("bad", ["", "typo"], ids=["blank", "misspelled"])
 @pytest.mark.parametrize(("model", "field", "env_key"), _SELECTORS)
-def test_a_blank_selector_is_refused_like_a_missing_one(model, field, env_key):
-    """Bug caught: an unset compose variable interpolated to "" and accepted as a provider name —
-    a blank selector reaching a root's ``if provider == ...`` chain and taking its else branch."""
+def test_a_blank_or_misspelled_selector_is_refused_at_config_load(model, field, env_key, bad):
+    """Bug caught: an unset compose variable interpolated to "" and accepted as a provider name,
+    or a misspelled one (``langfuze``) that loads and then fails somewhere a broad ``except``
+    turns it into a degraded service — the agent's renderer ran with no templates (#1568)."""
     from pydantic import ValidationError
 
     from squadops.config import schema
 
     cls = getattr(schema, model)
     others = {
-        name: "x" for name, info in cls.model_fields.items() if info.is_required() and name != field
+        name: _valid_value(info.annotation)
+        for name, info in cls.model_fields.items()
+        if info.is_required() and name != field
     }
     with pytest.raises(ValidationError, match=field):
-        cls(**others, **{field: ""})
+        cls(**others, **{field: bad})
+
+
+#: Every selector carries its vocabulary in the schema (R2: "the vocabulary lives in the config
+#: schema as a ``Literal``"); ``llm.provider`` joined in #1568.
+@pytest.mark.parametrize(("model", "field", "env_key"), _SELECTORS)
+def test_each_selector_names_its_vocabulary_in_the_schema(model, field, env_key):
+    """Bug caught: a selector reverted to ``str``, so a misspelled provider loads and reaches a
+    root instead of failing at config load."""
+    import typing
+
+    from squadops.config import schema
+
+    annotation = getattr(schema, model).model_fields[field].annotation
+    assert typing.get_origin(annotation) is typing.Literal
 
 
 #: The compose services that load ``AppConfig`` (they carry ``SQUADOPS_PROFILE``) must each name

@@ -58,10 +58,14 @@ def test_unknown_environment_raises(tmp_path):
 
 def test_unknown_provider_raises(tmp_path):
     """Bug caught: a typo'd provider silently degrading to NoOp — the stack
-    would believe the sandbox is on while everything runs in-process."""
-    config = SandboxConfig(provider="dokcer", workspace_root=tmp_path)
+    would believe the sandbox is on while everything runs in-process. Since #1568 the
+    schema's vocabulary refuses it at config load; the factory still refuses one that
+    bypassed validation."""
+    with pytest.raises(ValueError, match="'noop' or 'docker'"):
+        SandboxConfig(provider="dokcer", workspace_root=tmp_path)
+    unvalidated = SandboxConfig.model_construct(provider="dokcer", workspace_root=tmp_path)
     with pytest.raises(ValueError, match="Unknown sandbox provider"):
-        create_sandbox_service(config)
+        create_sandbox_service(unvalidated)
 
 
 def test_service_token_passthrough_for_plain_values(tmp_path):

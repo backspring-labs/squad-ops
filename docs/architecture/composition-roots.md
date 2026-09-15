@@ -102,8 +102,11 @@ in the guard's named exceptions (§6.5) so a new one is a decision.
   - **Everywhere, not only at the factory** (the owner's ruling, 2026-09-14, #1568: "make
     providers required everywhere; defaults have been toxic"). A selector has no default in
     any of four places:
-    - the config schema: required and non-blank (`min_length=1`), so an unset compose variable
-      interpolated to `""` is refused like a missing one;
+    - the config schema: required, and typed as the provider vocabulary (a `Literal`, as R2
+      already said), so an unset compose variable interpolated to `""` and a misspelled name
+      (`langfuze`) both fail at config load. A misspelling must not load and then fail inside a
+      root's broad `except`: as a plain `str`, `prompts.asset_source_provider` would have
+      reached the agent's renderer `try` and run the agent with no templates;
     - a constructor keyword (`AuthMiddleware(provider=…)`);
     - the compose file, where a selector is a literal on every service that loads `AppConfig`;
     - `.env` switching, where a selector bootstrap changes through `.env` is interpolated with
@@ -114,7 +117,7 @@ in the guard's named exceptions (§6.5) so a new one is a decision.
     requiring it schema-wide costs a key on a service that never reads it, and #301 already
     accepted that cost (the runtime API names a filesystem provider). Refusing only where a
     value is used would need a hand-written refusal in each root, and the next root to
-    compose the seam would have to remember it. Guards: assertion 4 (required and non-blank),
+    compose the seam would have to remember it. Guards: assertion 4 (required, vocabulary-typed, blank and misspelled refused),
     and a test that every `AppConfig`-loading compose service names every selector with no
     fallback.
 - **R3 — side-effect-free import.** A root module performs no configuration load, no secret
