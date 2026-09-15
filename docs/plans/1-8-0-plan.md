@@ -1,11 +1,12 @@
 # 1.8.0 — plan
 
-**Revision 5, 2026-09-13.** Rev 1 was written the day the 1.7 line closed; rev 2 the same
+**Revision 7, 2026-09-14.** Rev 1 was written the day the 1.7 line closed; rev 2 the same
 evening, recording the owner's rulings on §8 decisions 1–3; rev 3 on a written tightening
 review; rev 4 on the final notes of the Scoped Code Revision design review, which accepted that
 SIP with required revision as SIP-0107; rev 5 on the owner's ruling that its default flip is
 1.8.1's by design; rev 6 on the scorecard's design review, which accepted it with required
-revision as SIP-0108 (§3.1, §4.2, §10). Written from the ROADMAP's 1.8 row
+revision as SIP-0108 (§3.1, §4.2, §10); rev 7 on the owner's ruling that the comparison harness
+and its window, §3.4 (d), are 1.8.1's (§3.4, §4.2, §10). Written from the ROADMAP's 1.8 row
 and the reconciliation that wrote it (`docs/plans/post-1-5-roadmap-reconciliation.md`), the
 1.7.5 plan (`docs/plans/1-7-5-plan.md` §3.9a, §5, §6, §7 step 14, §8), the 1.7.5 record
 (`docs/plans/1-7-5-verification-set-record.md` §5, §7, §9), the 1.6.0 plan's "Owed to 1.8"
@@ -45,7 +46,7 @@ produces, stated once:
 | lane | headline | what it is | its proof |
 |---|---|---|---|
 | **M — the loop** | **Scoped Code Revision** (**SIP-0107**, accepted 2026-09-13 at rev 4; the default flip is 1.8.1's) | for an existing artifact the agent describes the smallest reliable revision; the framework realizes it under an explicit write grant, preserves every byte outside the accepted range, and verifies exactly the tree it persists | the SIP's own §39: zero outside-grant change, preservation proved by reconstruction, zero restoration, `verified_revision_id == persisted_revision_id`, on **N successful** scoped transactions across qa and dev on both stacks with builder cells declared, N fixed before any transaction that can count is observed (§4) — adopted here as a release gate (§3.9) |
-| **S — the judgement** | **Cycle Evaluation Scorecard, the 1.8 slice** (**SIP-0108**, `sips/accepted/SIP-0108-Cycle-Evaluation-Scorecard.md`, accepted 2026-09-13 at rev 3) | `CycleAssessment` as a projection over the `CycleOutcome` seam; **one** failure-attribution registry shared with the vocabularies the code already has; a benchmark registry over the stored counted rolls; the squad-versus-single-model comparison harness | every counted record of this release carries an assessment whose every dimension cites evidence that resolves; the historical corpus re-graded deterministically; **one pre-registered comparison window closed with its result stated, whichever way it goes** |
+| **S — the judgement** | **Cycle Evaluation Scorecard, the 1.8 slice** (**SIP-0108**, `sips/accepted/SIP-0108-Cycle-Evaluation-Scorecard.md`, accepted 2026-09-13 at rev 3) | `CycleAssessment` as a projection over the `CycleOutcome` seam; **one** failure-attribution registry shared with the vocabularies the code already has; a benchmark registry over the stored counted rolls; the squad-versus-single-model comparison harness — **re-placed to 1.8.1 by rev 7** | every counted record of this release carries an assessment whose every dimension cites evidence that resolves; the historical corpus re-graded deterministically; ~~one pre-registered comparison window closed with its result stated~~ — 1.8.1's criterion since rev 7 (§3.4) |
 
 **Moved off the row, by the owner's ruling.** *Campaign Orchestration* is **2.0's headline** —
 behind the measures its continuation policy reads, the ROADMAP's own ordering rule — and its
@@ -357,7 +358,29 @@ Four deliverables, one PR each unless a seam forces two:
 | a | **`CycleAssessment`** as a pure projection over `CycleOutcome` in `src/squadops/cycles/` beside `cycle_outcome.py`: the four dimensions (outcome, quality, coordination, efficiency) with **measurable indicators each of which is a reference into the record** — verdict and criteria coverage, correction rounds and re-dispatches, contentless emissions and refunds, framing re-rolls, tokens and wall-clock from the durable run summary written at finalization, usage accounted at `_llm_call` (SIP-0108 §4.1); every assessment names its versions and evidence identity; computed on read, never stored as truth; **no agent in the path** | an architecture test: the projection performs no I/O and reads only `CycleOutcome` and the record; every dimension's evidence refs resolve on every 1.7.5 record |
 | b | **one failure-attribution registry** — evidence classes, not causes, over the eight source vocabularies (SIP-0108 §4.2): every value with exactly one declared disposition, category and locus composed by declared precedence, the terminal evidence primary and everything earlier contributing, governance attributes in the #730 shape | a drift test over dispositions and the attribution-determinism fixtures, permutation included; **no attribution literal and no source-to-attribution mapping outside the registry** |
 | c | **the benchmark registry** — the counted rolls 1.6.3 through 1.7.5 (seventy-nine, from the stored per-roll records and the vault) re-graded deterministically, with each row carrying its lineage (#80's fields where they exist, the set's pins where they do not); replay-first, no new cycle (SIP-0101's records are an input, not a completion) | the re-graded 1.7.5 rows agree with the record's headline table; the preflight step (§7) states which of the seventy-nine are re-gradeable and why the rest are not |
-| d | **the comparison harness** — the verification-set driver gains an *arm* axis (squad profile × request profile × model) and the pre-registration a comparison section; the **generalist arm** is SIP-0108 §4.4's; **one squad-versus-generalist comparison** on `group_run`, **designed in the loop set's pre-registration before any roll of either arm is observed** — the squad arm's rolls, the pairs, inclusion rules, N per arm, dimensions, the execution envelope (§4.2) — with the generalist arm run after the loop set closes on the same frozen deploy, both measured by (a) with attribution from (b) | the window closes with its result stated in the record whichever way it goes — a negative never blocks the cut; an unrun window blocks it **only while (d) is in 1.8.0's scope at the loop set's pre-registration** (§3.9, §4.2) |
+| d | **Re-placed to 1.8.1 by rev 7 (2026-09-14) — see below the table.** **The comparison harness** — the verification-set driver gains an *arm* axis (squad profile × request profile × model) and the pre-registration a comparison section; the **generalist arm** is SIP-0108 §4.4's; **one squad-versus-generalist comparison** on `group_run`, **designed in the loop set's pre-registration before any roll of either arm is observed** — the squad arm's rolls, the pairs, inclusion rules, N per arm, dimensions, the execution envelope (§4.2) — with the generalist arm run after the loop set closes on the same frozen deploy, both measured by (a) with attribution from (b) | the window closes with its result stated in the record whichever way it goes — a negative never blocks the cut; an unrun window blocks it **only while (d) is in 1.8.0's scope at the loop set's pre-registration** (§3.9, §4.2) |
+
+**(d) is 1.8.1's — rev 7, the owner's ruling of 2026-09-14.** SIP-0108 §4.4 priced the
+generalist arm as "a `solo` squad profile …, a request profile …, and the generalist prompt
+asset. No framework seam changes." Reading the seams on main (`b92f3cf3`) says otherwise:
+- every task step binds a task type to a **role** (`src/squadops/cycles/task_plan.py:87–116`);
+- `resolve_agent_config` falls back to an agent id equal to the role when no enabled agent
+  carries it (`src/squadops/cycles/agent_config.py:44`);
+- an agent process serves exactly **one** role (`src/squadops/agents/entrypoint.py`,
+  `_resolve_role`);
+- the correction protocol dispatches `data.analyze_failure` and
+  `governance.correction_decision` as agent steps (its step table, `adapters/cycles/correction_runner.py:87–88`),
+  which the generalist arm must not run.
+
+So the arm needs a multi-role agent, a correction variant without the analyzer and the lead's
+decision, an agent image and a compose service. Those change role routing and the correction
+path, which is the runtime behaviour deploy B freezes so that a red belongs to the headlines. (d)
+is first in the drop order (§5), Campaign does not depend on it (below), and the ruling precedes
+the loop set's pre-registration, as §3.9 requires. **What 1.8.1 inherits:** the harness and the
+generalist arm built as above, recorded as a SIP-0108 amendment (§10g) before its first code PR;
+a **fresh** squad arm registered with the window, because rolls this line observes cannot be
+reused (§4.2); and SIP-0108 §5 criteria 6 and 7. The 1.8.0 loop set pre-registers no comparison
+section.
 
 **Dependency distinction.** (a) and (b) are the judgement contract 2.0 consumes — Campaign's
 prerequisite. (c) and (d) test and accumulate evidence *about* that contract; Campaign does not
@@ -444,7 +467,8 @@ step 6 beside it if it was re-placed (SIP-0102 precedent); `implemented` is 1.8.
 the flip lands and §39 holds. An unmet N is not an open step: it fails the experimental gate,
 and the cut does not happen on it. The scorecard (SIP-0108) → `implemented` if (a)–(d) land and its §5
 holds; if (c) or (d) moved to 1.8.1, `accepted` with
-exactly that named — and 1.8.1's plan says it carries a measurement window (the 1.6.3 precedent)
+exactly that named — **(d) did move (rev 7), so SIP-0108 is `accepted` at 1.8.0 with (d) and §5
+criteria 6–7 named as 1.8.1's** — and 1.8.1's plan says it carries a measurement window (the 1.6.3 precedent)
 rather than reading as a fix line. SIP-0105 amended by #598, status unchanged. Nothing else moves; §6 names what stays.
 
 ### 3.10 Merge discipline
@@ -466,6 +490,8 @@ amendment.
 ## 4. The verification set — the loop's set, then the comparison window
 
 Two windows, registered together and run apart, so a red in one never reads as the other's.
+**Since rev 7, 1.8.0 runs one:** the loop's set. The comparison window (§4.2) is 1.8.1's, and
+the text below is kept as the design 1.8.1 registers from.
 
 ### 4.1 The loop's set — 6 + 3 on one frozen deploy, the fifth consecutive at that size
 
@@ -526,6 +552,9 @@ set; a good result never stops it early; a stop in one arm does not stop the oth
 
 ### 4.2 The comparison window — the scorecard's first question
 
+**Re-placed to 1.8.1 by rev 7** (§3.4). 1.8.1 registers it with a fresh squad arm; nothing below
+is a 1.8.0 step.
+
 **Registered with the loop set, run after it.** The comparison is designed in the loop set's
 pre-registration (§7 step 8), before any roll of either arm is observed: which of the loop
 set's React rolls constitute the squad arm, the inclusion and exclusion rules, N per arm, the
@@ -567,7 +596,8 @@ days. This plan's headlines are each larger than 1.6's individual tracks. The li
 **If capacity forces a drop**, in this order, each to 1.8.1 by a plan revision in the open — and
 for §3.4 (c) and (d) **before the loop set's pre-registration is committed**, so the cut criteria
 never move after the first diagnostic launch:
-§3.4 (d) the comparison window → (c) the benchmark registry → §3.3 step 6 → §3.6 in
+§3.4 (d) the comparison window (**taken by rev 7**) → (c) the benchmark registry (merged, #1563) →
+§3.3 step 6 (merged, #1561) → §3.6 in
 reverse (#1039, #1449, #1448). **Non-droppable:** the prelude (§3.2), #1444, §3.3's core,
 §3.4 (a) and (b), the two rails (§3.5), the verify-then-closes and the two reviews. If capacity
 cannot carry these, 1.8 does not cut, and the plan says so rather than re-placing a headline.
@@ -661,16 +691,15 @@ SIPs that carry open parts), so the sweep at the cut does not read silence as sh
 8. **Pre-register the loop's set, on the frozen deploy, before any diagnostic launches** — pins
    from the last shakeout; **N**, counting successful scoped transactions only, with its per-cell
    diagnostic share tabled and each builder cell declared; every field's producer and unaskable
-   state as schema properties; **the comparison's design** (§4.2); **the scope of §3.4 (c) and
-   (d) fixed at this commit** — after it the cut criteria do not move, and only diagnostic
+   state as schema properties; ~~the comparison's design (§4.2)~~ (1.8.1's since rev 7); **the
+   scope of §3.4 (c) and (d) fixed at this commit** — (c) in, (d) re-placed — after it the cut criteria do not move, and only diagnostic
    readings are appended. If the deploy moves after this commit, the commit is void and re-made,
    and no transaction from the superseded deploy counts toward N.
 9. **The seven diagnostics on the pinned deploy**, two-run budget each, their readings appended
    to the pre-registration. A seam not reached stops the line here.
 10. **Counted set 6 + 3** — no merges to main while it is open; the boundary reading at each roll.
-11. **Run the generalist arm** of the comparison registered at step 8 (§4.2) — the same
-    discipline; nothing merges. If (d) was re-placed to 1.8.1 before step 8's commit, this step
-    is 1.8.1's.
+11. ~~**Run the generalist arm** of the comparison registered at step 8 (§4.2)~~ — **1.8.1's**:
+    (d) was re-placed by rev 7, before step 8's commit.
 12. **Close both; the live reads and the idle box** — #1177, #176 recipe 2, #1176's gate,
     #1408, #1412 — after, never between.
 13. **The preliminary measurement conclusion**: §3.9's three gates read against the frozen
@@ -714,6 +743,7 @@ never share a red.
    before its design is committed, and separable, because each run's red is its own. Its
    result never blocks the cut; its absence does **only while (d) is in 1.8.0's scope at the loop
    set's pre-registration** — (d) may be re-placed to 1.8.1 before that commit (§3.4, §5).
+   **Ruled 2026-09-14 (rev 7): re-placed to 1.8.1** (§3.4).
 6. **#598 lands as a SIP-0105 amendment plus the rendering, in the prelude, roll-verified** —
    the owner's 1.7.5 ruling executed, not re-opened. The builder's role contract (SIP-0071) is
    amended in the same PR that stops it authoring the files.
@@ -786,6 +816,18 @@ Named here so they are not the next line's §6a. Each has a home above or a fix 
 
 ## 10. Revision history
 
+- **Rev 7 (2026-09-14)** — the owner's ruling, on a written recommendation, that **§3.4 (d), the
+  comparison harness and its window, is 1.8.1's**. The recommendation read the seams SIP-0108
+  §4.4 said the generalist arm would not change and found four that it does (§3.4): steps bind
+  roles, an unmatched role resolves to an agent named after it, an agent serves one role, and
+  correction dispatches the analyzer and the lead's decision as agent steps. Building the arm in
+  1.8.0 would put role-routing and correction-path changes on deploy B, the deploy whose red must
+  belong to the headlines. Applied: §3.4's (d) row and the note under the table (what 1.8.1
+  inherits, including a fresh squad arm), the headline table's S row, §3.9's sweep (SIP-0108
+  `accepted` at the cut with (d) named), §4's opening and §4.2, §5's drop order (with (c) and
+  §3.3 step 6 marked merged), §7 steps 8 and 11, §8 decision 5. SIP-0108 §10g records the
+  capacity finding in the SIP. The ROADMAP's 1.8 row says so. No change to (a)–(c), SIP-0107's
+  rollout, the prelude, the rails, the loop set's size or its gates.
 - **Rev 6 (2026-09-13)** — the Cycle Evaluation Scorecard's design review: the owner adopted
   written review notes as the acceptance, **with required revision** — rev 3 of the SIP — and it is
   **SIP-0108** (§3.1). The plan follows the SIP: the comparison is a system-level experiment, the

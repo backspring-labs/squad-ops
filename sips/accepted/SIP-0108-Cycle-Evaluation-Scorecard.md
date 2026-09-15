@@ -857,3 +857,53 @@ what §4.3 left open.
 - **Mutations: eleven, each caught.**
 
 **Ruled by.** The implementer, in the PR that builds (c), for the owner's review with it.
+
+### 10g. 2026-09-14 — (d) is 1.8.1's: the generalist arm changes framework seams (§4.4)
+
+**What changed.** §4.4 closed with: "a `solo` squad profile of one agent with the squad's
+per-task-type overrides reproduced, a request profile whose task plan assigns every task to that
+agent, and the generalist prompt asset. **No framework seam changes.**" Read against main
+(`b92f3cf3`), the last sentence is wrong in four places.
+
+1. **Steps bind roles, not agents.** Every task step pairs a task type with a role
+   (`src/squadops/cycles/task_plan.py:87–116`). A request profile cannot assign a step to an
+   agent that does not carry the step's role.
+2. **An unmatched role resolves to an agent named after it.** `resolve_agent_config` falls back
+   to an agent id equal to the role when no enabled agent carries it
+   (`src/squadops/cycles/agent_config.py:44`). A one-agent profile would dispatch its lead and
+   data steps to queues no agent consumes.
+3. **An agent process serves one role.** The entrypoint resolves a single role at start-up
+   (`src/squadops/agents/entrypoint.py`, `_resolve_role`). The handler registry can hold several
+   (`src/squadops/bootstrap/handlers.py:149`), but no root passes more than one.
+4. **Correction runs the independent variable as agent steps.** `data.analyze_failure` and
+   `governance.correction_decision` are steps of the correction protocol (its step table,
+   `adapters/cycles/correction_runner.py:87–88`). §4.4 names both as squad-arm-only, so the
+   generalist arm needs a correction variant without them. The loop's budgets and the
+   deterministic repair targeting stay equal.
+
+**What building the arm takes, restated:**
+- an agent that serves every role, or a profile-level role map;
+- the correction variant in item 4;
+- the generalist prompt asset;
+- an agent image and a compose service.
+
+The first two change role routing and the correction path. That is the runtime behaviour the 1.8
+plan's deploy B freezes so that a red belongs to the headlines.
+
+**The ruling.** (d) is re-placed to 1.8.1 (the 1.8 plan rev 7). The move is made before the loop
+set's pre-registration, as the plan's §3.9 and §5 require. At the 1.8.0 cut this SIP is
+`accepted`, with (d) and §5 criteria 6–7 named as 1.8.1's. (a) and (b) are merged; (c) merged as
+§10f.
+
+**What 1.8.1 inherits:**
+- the four items above, built behind this SIP;
+- the pre-registration's comparison section, with a **fresh** squad arm, because rolls 1.8.0
+  observes cannot be reused (§4.4, registration before observation);
+- the window, closed with its result stated whichever way it goes.
+
+§4.4's design (the question, the substrate held equal, pairs, the decision rule) is unchanged.
+Only its capacity estimate was wrong.
+
+**Evidence.** The four file references above, read on `b92f3cf3`.
+
+**Ruled by.** The owner, 2026-09-14, on the implementer's written recommendation.
