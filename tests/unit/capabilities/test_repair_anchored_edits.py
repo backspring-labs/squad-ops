@@ -283,17 +283,44 @@ async def test_an_entity_that_does_not_exist_is_retried_with_its_reason():
         (
             ("```python:backend/routes.py\nrouter = 1\n```\n",),
             {},
-            {"form": "whole_file", "whole_file_offered": ["backend/routes.py"], "accepted": None},
+            {
+                "form": "whole_file",
+                "whole_file_offered": ["backend/routes.py"],
+                "accepted": None,
+                "modes": [],
+            },
         ),
         (
             (_GOOD_EDIT,),
             {},
-            {"form": "edits", "edited": ["backend/routes.py"], "accepted": True, "refusals": 0},
+            {
+                "form": "edits",
+                "edited": ["backend/routes.py"],
+                "accepted": True,
+                "refusals": 0,
+                "modes": ["anchored"],
+            },
         ),
         (
             (_AMBIGUOUS_EDIT, _AMBIGUOUS_EDIT),
             {},
-            {"form": "edits", "edited": [], "accepted": False, "refusals": 1, "retried": True},
+            {
+                "form": "edits",
+                "edited": [],
+                "accepted": False,
+                "refusals": 1,
+                "retried": True,
+                "modes": ["anchored"],
+                "failure_reason": "anchored_edit_refused",
+            },
+        ),
+        (
+            (
+                "```edit:backend/routes.py\n<<<<<<< REPLACE function:create#body\n"
+                "    return None\n>>>>>>> END\n```\n",
+            ),
+            {},
+            {"form": "edits", "edited": ["backend/routes.py"], "modes": ["structural"]},
         ),
         (
             ("```python:backend/new_helper.py\nX = 1\n```\n",),
@@ -301,7 +328,13 @@ async def test_an_entity_that_does_not_exist_is_retried_with_its_reason():
             {"form": "new_files_only", "offered": {}, "new_files": ["backend/new_helper.py"]},
         ),
     ],
-    ids=["offered file re-emitted whole", "scoped edit", "refused twice", "never offered"],
+    ids=[
+        "offered file re-emitted whole",
+        "anchored edit",
+        "refused twice",
+        "structural edit",
+        "never offered",
+    ],
 )
 async def test_every_repair_logs_the_form_it_was_offered_and_the_form_it_took(
     caplog, responses, extra, expected

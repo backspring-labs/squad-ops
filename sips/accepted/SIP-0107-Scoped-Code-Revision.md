@@ -2053,8 +2053,10 @@ the same reading on the task outputs as `revision_form`. The line records:
   `{}` when the form was not rendered;
 - **the form the response took:** `edits`, `whole_file`, `edits_and_whole_file`, `fill`,
   `new_files_only` or `none`;
-- **the transaction's result:** accepted or refused, the refusal count, and whether it was
-  retried.
+- **the transaction's result:** accepted or refused, the refusal count, whether it was
+  retried, and the failure reason;
+- **§39.8's modes:** `structural`, `anchored` and `region`, from the operations the response
+  proposed (the edit record now carries `operations_proposed`, accepted or not).
 
 `whole_file_offered` names the offered files re-emitted whole: §46a's unauthorized whole-file
 fallback, counted per cell before step 7. A file the repair creates is not a fallback, and an

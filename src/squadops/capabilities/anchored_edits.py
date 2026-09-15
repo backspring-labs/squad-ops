@@ -383,6 +383,8 @@ class AnchoredApplication:
         return {
             "accepted": self.accepted,
             "edits_proposed": len(self.parse.edits),
+            # §39.8: which revision modes the response proposed, accepted or not.
+            "operations_proposed": [str(r.operation) for r in revisions_for(self.parse)],
             "candidate_revision_id": outcome.candidate_revision_id if outcome else None,
             "edits": [
                 {
@@ -459,6 +461,16 @@ REVISION_FORM_FILL = "fill"
 REVISION_FORM_NEW_FILES_ONLY = "new_files_only"
 REVISION_FORM_NONE = "none"
 
+#: §39.8's per-repair modes, by the operation a proposed revision carries.
+_MODE_BY_OPERATION = {
+    RevisionOperation.REPLACE_ENTITY: "structural",
+    RevisionOperation.INSERT_BEFORE_ENTITY: "structural",
+    RevisionOperation.INSERT_AFTER_ENTITY: "structural",
+    RevisionOperation.REMOVE_ENTITY: "structural",
+    RevisionOperation.REPLACE_ANCHOR: "anchored",
+    RevisionOperation.REPLACE_REGION: "region",
+}
+
 
 def revision_form_reading(offered: Mapping[str, int], outputs: Mapping[str, Any]) -> dict[str, Any]:
     """Which form a repair response took, beside what it was offered (SIP-0107 §46a).
@@ -495,9 +507,16 @@ def revision_form_reading(offered: Mapping[str, int], outputs: Mapping[str, Any]
         form = REVISION_FORM_NEW_FILES_ONLY
     else:
         form = REVISION_FORM_NONE
+    proposed = (record or {}).get("operations_proposed") or []
+    failure = (
+        outputs.get("emission_failure") if isinstance(outputs.get("emission_failure"), dict) else {}
+    )
     return {
         "offered": dict(sorted(offered.items())),
         "form": form,
+        # §39.8: structural target used, exact anchored target used, region replacement used.
+        "modes": sorted({_MODE_BY_OPERATION.get(RevisionOperation(op), op) for op in proposed}),
+        "failure_reason": failure.get("reason"),
         "edited": edited,
         "whole_file_offered": whole_offered,
         "new_files": new_files,

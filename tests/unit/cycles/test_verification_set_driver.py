@@ -3241,6 +3241,22 @@ class TestRepairRevisionForms:
             "(app/runs/[run_id]/page.tsx; offered 1)"
         )
 
+    def test_a_scoped_repair_names_its_modes_and_its_result(self, driver):
+        """§39.8: structural target used / exact anchored target used / region replacement used.
+        Bug caught: a scoped repair rendered like a whole-file one, with no mode named."""
+        form = {
+            "handler": "qa_test_repair_handler",
+            "form": "edits",
+            "offered": {"a.ts": 3},
+            "modes": ["anchored", "structural"],
+            "accepted": False,
+            "refusals": 2,
+        }
+
+        assert driver._render_revision_forms([form]) == (
+            "qa_test_repair_handler edits (anchored/structural; offered 1; refused (2))"
+        )
+
     def test_an_unparseable_line_is_kept_not_dropped(self, driver):
         """Bug caught: a changed line format reading as fewer repairs instead of as unreadable."""
         forms = driver.repair_revision_forms(["x - INFO - repair_revision_form {not json"])

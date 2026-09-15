@@ -2827,6 +2827,8 @@ def _render_revision_forms(entries: list[dict]) -> str:
             parts.append("UNPARSED line")
             continue
         detail = [f"offered {len(e.get('offered') or {})}"]
+        if e.get("modes"):
+            detail.insert(0, "/".join(e["modes"]))
         if e.get("whole_file_offered"):
             detail.insert(0, ", ".join(e["whole_file_offered"]))
         if e.get("accepted") is not None:
