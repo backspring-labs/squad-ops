@@ -1,18 +1,26 @@
-# 1.8.0 verification set — Next.js+TS (nextjs_ts), deploy A's checkpoint arm (plan §3.2, §4.1).
+# 1.8.0 verification set — Next.js+TS (nextjs_ts), deploy B's checkpoint arm (plan §7 step 7, §4.1).
 #
-# Deploy A carries the PRELUDE (plan §3.2: #1506 #1501 #1499 #80 #579 the lineage seam #598 and the dev-lane fault, over #1444) and nothing from the
-# headlines, so a red on this checkpoint pair belongs to the prelude and is identified per PR by
-# its signature: #1501's is a termination reason, #1499's a golden, #598's a packaging row,
-# #80's a null field, the lineage seam's an inert-detection test.
+# Deploy B carries the HEADLINES on top of deploy A's prelude, so a red on this pair belongs to
+# them and is identified by its signature:
+#   SIP-0107 steps 1–6 (scoped code revision: region, anchored and structural edits for Python,
+#     JSX, TypeScript and TSX; the dev grant; the model-facing contract) — a transaction
+#     refusal, a whole-file fallback, or a preservation reading;
+#   SIP-0108 (a)–(c) and the run summary capture — a run_loop_summaries row, an assessment
+#     reference that does not resolve;
+#   #1449 and #1568 (every provider selector required; squad profiles from Postgres) — a
+#     start-up refusal naming a key, or a squad snapshot that is not full-38's
+#     575707c58536cf3b;
+#   #1571 — the driver's pre-launch squad snapshot check (counting rolls only; a shakeout
+#     records, it does not assert).
 #
-# THE PAIR'S ONE LIVE PREDICTION is #598's, restated as built: no builder emits a container
-# recipe, so `typed_checks.container_packaging_rows` reads unaskable (never evaluated), the
-# frozen rendered Dockerfile is in the accepted tree, the builder's required assembly notes are
-# present, and the boot audit is unchanged. #80's lineage fields get their first reading.
+# THE PAIR'S READINGS: #598's prediction a second time (no builder emits a container recipe);
+# the squad snapshot on the Postgres-seeded profile; a run_loop_summaries row per run; and any
+# scoped transaction the pair happens to exercise, read as texture (most counted rolls take
+# zero correction rounds — the diagnostics supply N, plan §4).
 #
-# NO PRE-REGISTRATION YET, deliberately: plan §7 step 8 pre-registers on deploy B's frozen
-# deploy, after the headlines. NO frozen_image_ids, which is what makes this file
-# SHAKEOUT-ONLY: preflight refuses a counting roll with none.
+# NO PRE-REGISTRATION YET, deliberately: plan §7 step 8 pre-registers from deploy B's LAST
+# shakeout. NO frozen_image_ids and an empty expected_squad_snapshot_prefix, which is what makes
+# this file SHAKEOUT-ONLY: preflight refuses a counting roll with either missing (#1571).
 name: 1-8-0-nextjs
 project: group_run
 squad_profile: full-38
@@ -31,12 +39,14 @@ gate_notes: >-
   applied.
 # {roll} and {n} are the only substitutions the driver makes.
 launch_notes: >-
-  1.8.0 Next.js+TS (nextjs_ts) verification set — COUNTED roll {roll} of {n}. UNUSED on
-  deploy A: this file is shakeout-only until plan step 8's pre-registration.
+  1.8.0 Next.js+TS (nextjs_ts) verification set — COUNTED roll {roll} of {n}. UNUSED until
+  plan step 8's pre-registration: this file is shakeout-only.
 shakeout_notes: >-
-  1.8.0 Next.js+TS (nextjs_ts) CHECKPOINT — NON-COUNTING by declaration before launch. Deploy A,
-  built from main carrying the prelude (#1506 #1501 #1499 #80 #579 the lineage seam #598 and the dev-lane fault, over #1444). A red belongs to
-  the prelude; the #598 prediction's first reading; the lineage fields' first reading.
+  1.8.0 Next.js+TS (nextjs_ts) CHECKPOINT — NON-COUNTING by declaration before launch. Deploy B,
+  built from main carrying the headlines (SIP-0107 steps 1-6, SIP-0108 a-c and the run summary
+  capture) over deploy A's prelude, with #1449 #1568 #1571 (providers required; squad profiles
+  from Postgres). A red belongs to the headlines; #598's second reading; the Postgres-seeded
+  squad snapshot's first reading.
 # "Loaded, not built": run inside the container and recorded with the deploy identity. Each
 # row is a live CALL WITH ITS PAIRED CONTROL, never a symbol import — a symbol can be present
 # and unreachable, which is the shape #1289 had for the whole of 1.7.1. #1425 is why a row
@@ -250,6 +260,27 @@ loaded_checks:
     # the whole-file default are distinct classes.
     _shapes = QATestHandler._SHAPES
     print("1444", sorted(str(k) for k in _shapes), _shapes[None] is not _shapes["fill"])
+    # Deploy B (#1568, SIP-0108): read in the runtime API, which seeds the squad profiles and
+    # finalizes the run summary.
+    import os
+    from pydantic import ValidationError
+    from squadops.config.schema import LLMConfig, PromptsConfig
+    from squadops.cycles.cycle_assessment import ASSESSMENT_VERSION
+    from squadops.cycles.failure_attribution import ATTRIBUTION_REGISTRY_VERSION
+    from squadops.cycles.run_loop_summary import RunLoopSummary
+    from squadops.cycles.benchmark_registry import launched_counted_roll
+    # 1568: squad profiles are data on this deploy; a misspelled selector fails at config load.
+    # Control: a correct name loads.
+    def _refused(f):
+        try:
+            f(); return False
+        except ValidationError:
+            return True
+    print("1568", os.environ.get("SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER"), _refused(lambda: LLMConfig(provider="olama")),
+          _refused(lambda: PromptsConfig(asset_source_provider="langfuze")), not _refused(lambda: PromptsConfig(asset_source_provider="filesystem")))
+    # SIP-0108: the run summary carries the structured terminal decision; the assessment and registry versions deployed.
+    print("0108", ASSESSMENT_VERSION, ATTRIBUTION_REGISTRY_VERSION, "terminal" in RunLoopSummary.__dataclass_fields__,
+          launched_counted_roll("x — COUNTED roll 3 of 6."), launched_counted_roll("SHAKEOUT — NON-COUNTING"))
   # The live hypothesis, read on the container that actually runs qa.test rather than off the
   # framework — a policy present in runtime-api and absent in eve's image is #1289's shape.
   eve: |-
@@ -267,6 +298,23 @@ loaded_checks:
     # 1444: the qa handler's two output shapes, in the container that runs qa.test.
     from squadops.capabilities.handlers.cycle_tasks import QATestHandler
     print("1444", sorted(str(k) for k in QATestHandler._SHAPES))
+
+    # Deploy B, SIP-0107 steps 5-6: applied in the qa repair's container, where tree-sitter is installed.
+    from squadops.capabilities.anchored_edits import apply_anchored_edits, parse_anchored_edits
+    # SIP-0107 steps 5-6: a repair revises one entity; the scaffold-owned envelope is byte-identical.
+    # Control: a fill that breaks the grammar is refused as invalid_syntax, nothing applied.
+    _ts = {"app/api/runs/route.ts": "export async function POST(request: Request): Promise<Response> {\n  try {\n    return Response.json({ ok: 1 })\n  } catch (err) {\n    return errorResponse(err)\n  }\n}\n"}
+    _py = {"backend/routes.py": "def create_run(payload):\n    return None\n"}
+    def _app(base, block):
+        path = next(iter(base))
+        return apply_anchored_edits(parse_anchored_edits(f"```edit:{path}\n{block}```\n"), base, writable=base, producer="development.correction_repair", task_id="probe")
+    _ok = _app(_ts, "<<<<<<< REPLACE function:POST#try\n    return Response.json({ ok: 2 }, { status: 201 })\n>>>>>>> END\n")
+    _bad = _app(_ts, "<<<<<<< REPLACE function:POST#try\n    return Response.json({ ok: 2 \n>>>>>>> END\n")
+    _pyok = _app(_py, "<<<<<<< REPLACE function:create_run#body\n    return payload\n>>>>>>> END\n")
+    _after = _ok.outcome.changed_files()["app/api/runs/route.ts"] if _ok.accepted else ""
+    print("0107 ts", _ok.accepted, "} catch (err) {\n    return errorResponse(err)" in _after, "status: 201" in _after,
+          "ctl", _bad.accepted, [r.split(" — ")[0].split(": ")[-1] for r in _bad.refusal_lines()],
+          "py", _pyok.accepted)
   # 598: the builder's prompt is composed in the builder's container. Control: a legacy profile
   # with no scaffold carries no "provided by the scaffold" block.
   bob: |-
@@ -282,7 +330,24 @@ loaded_checks:
     _join = "```ts:app/api/runs/[run_id]/join/route.ts\nexport async function POST() {\n  return Response.json(run);\n}\n```\n"
     _plain = "```ts:app/api/runs/route.ts\nexport async function POST() {\n  return Response.json(run);\n}\n```\n"
     print("dev-lane", "as unknown as" in _f.transform(_join), _f.transform(_plain) == _plain)
-# EMPTY on deploy A (shakeout-only). Frozen at plan step 8 from deploy B's last shakeout record
+
+    # Deploy B, SIP-0107 steps 5-6: applied in the dev repair's container, where tree-sitter is installed.
+    from squadops.capabilities.anchored_edits import apply_anchored_edits, parse_anchored_edits
+    # SIP-0107 steps 5-6: a repair revises one entity; the scaffold-owned envelope is byte-identical.
+    # Control: a fill that breaks the grammar is refused as invalid_syntax, nothing applied.
+    _ts = {"app/api/runs/route.ts": "export async function POST(request: Request): Promise<Response> {\n  try {\n    return Response.json({ ok: 1 })\n  } catch (err) {\n    return errorResponse(err)\n  }\n}\n"}
+    _py = {"backend/routes.py": "def create_run(payload):\n    return None\n"}
+    def _app(base, block):
+        path = next(iter(base))
+        return apply_anchored_edits(parse_anchored_edits(f"```edit:{path}\n{block}```\n"), base, writable=base, producer="development.correction_repair", task_id="probe")
+    _ok = _app(_ts, "<<<<<<< REPLACE function:POST#try\n    return Response.json({ ok: 2 }, { status: 201 })\n>>>>>>> END\n")
+    _bad = _app(_ts, "<<<<<<< REPLACE function:POST#try\n    return Response.json({ ok: 2 \n>>>>>>> END\n")
+    _pyok = _app(_py, "<<<<<<< REPLACE function:create_run#body\n    return payload\n>>>>>>> END\n")
+    _after = _ok.outcome.changed_files()["app/api/runs/route.ts"] if _ok.accepted else ""
+    print("0107 ts", _ok.accepted, "} catch (err) {\n    return errorResponse(err)" in _after, "status: 201" in _after,
+          "ctl", _bad.accepted, [r.split(" — ")[0].split(": ")[-1] for r in _bad.refusal_lines()],
+          "py", _pyok.accepted)
+# EMPTY on deploy B's shakeouts. Frozen at plan step 8 from deploy B's last shakeout record
 # (#1296: the image ids are the assertion; the commit is a label).
 expected_config_hash_prefix: ""
 expected_squad_snapshot_prefix: ""
