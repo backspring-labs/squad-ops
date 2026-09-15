@@ -252,6 +252,106 @@ class TestApplication:
         assert application.record()["edits"] == []
 
 
+# --- SIP-0107 §46n: an anchor that is a fragment of a line -----------------------------------
+
+
+def _edit(path, search, replace):
+    return f"```edit:{path}\n<<<<<<< SEARCH\n{search}\n=======\n{replace}\n>>>>>>> REPLACE\n```\n"
+
+
+class TestFragmentAnchors:
+    def _apply(self, base, response):
+        from squadops.capabilities.anchored_edits import apply_anchored_edits
+
+        return apply_anchored_edits(
+            parse_anchored_edits(response),
+            base,
+            writable=tuple(base),
+            producer="development.correction_repair",
+            task_id="t",
+        )
+
+    @pytest.mark.parametrize(
+        ("content", "search", "replace", "expected"),
+        [
+            (
+                "import { all } from '@/lib/store';\nimport { x } from '@/lib/errors';\n",
+                "'@/lib/store'",
+                "'../lib/store'",
+                "import { all } from '../lib/store';\nimport { x } from '@/lib/errors';\n",
+            ),
+            (
+                '@router.post("/runs", status_code=201)\ndef create():\n    pass\n',
+                '"/runs", status_code=201',
+                '"/runs", response_model=Run, status_code=201',
+                '@router.post("/runs", response_model=Run, status_code=201)\ndef create():\n'
+                "    pass\n",
+            ),
+            (
+                "a = f(x, verbose=True)\n",
+                ", verbose=True",
+                "",
+                "a = f(x)\n",
+            ),
+            (
+                "import os\nfrom pathlib import Path, PurePath\n",
+                "import os\nfrom pathlib import Path",
+                "import sys\nfrom pathlib import Path",
+                "import sys\nfrom pathlib import Path, PurePath\n",
+            ),
+        ],
+        ids=["a specifier", "decorator arguments", "a deletion", "lines ending in a fragment"],
+    )
+    def test_an_anchor_that_is_a_fragment_of_a_line_replaces_only_that_fragment(
+        self, content, search, replace, expected
+    ):
+        """Bug caught (the readiness probe's 12 refusals of 63 blocks): the grammar's closing
+        newline read as the model's, so `'@/lib/store'` on a line of its own was refused as
+        anchor_not_found in a file where it occurs exactly once — and, the mirror, a fragment
+        replacement carrying a newline of its own into the middle of a line."""
+        application = self._apply({"f": content}, _edit("f", search, replace))
+
+        assert application.accepted is True, application.refusal_lines()
+        assert application.outcome.candidate_files["f"] == expected
+        assert application.record()["fragment_anchors"] == 1
+
+    def test_a_whole_line_that_prefixes_another_is_read_as_the_line_never_the_fragment(self):
+        """Bug caught: the fragment reading tried first, or beside the line reading — `return run`
+        would then match inside `return runs` too and a line that occurs exactly once would be
+        refused as ambiguous."""
+        content = "def a():\n    return run\n\ndef b():\n    return runs\n"
+        application = self._apply({"f": content}, _edit("f", "    return run", "    return ran"))
+
+        assert application.accepted is True, application.refusal_lines()
+        assert application.outcome.candidate_files["f"] == content.replace(
+            "return run\n", "return ran\n"
+        )
+        assert application.record()["fragment_anchors"] == 0
+
+    def test_a_fragment_that_occurs_twice_is_refused_as_ambiguous_not_chosen(self):
+        """Bug caught (#451's shape): the first of several fragment matches taken."""
+        application = self._apply(
+            {"f": "a = f('x') + f('x') + 1\n"}, _edit("f", "f('x')", "g('x')")
+        )
+
+        assert application.accepted is False
+        (line,) = application.refusal_lines()
+        assert line.startswith("`f`: anchor_ambiguous — the anchor occurs 2 times")
+
+    def test_a_fragment_found_nowhere_is_still_anchor_not_found(self):
+        """Bug caught: the fragment reading widening into something other than exact — a
+        misquote (`@router.post("/runs")` for `…, status_code=201)`) must still be refused."""
+        application = self._apply(
+            {"f": '@router.post("/runs", status_code=201)\n'},
+            _edit("f", '@router.post("/runs")', '@router.post("/runs", response_model=Run)'),
+        )
+
+        assert application.accepted is False
+        (line,) = application.refusal_lines()
+        assert line.startswith("`f`: anchor_not_found — ")
+        assert application.record()["fragment_anchors"] == 0
+
+
 # --- SIP-0107 step 5: structural blocks ------------------------------------------------------
 
 
