@@ -48,6 +48,12 @@ _ENV = {
     "SQUADOPS__COMMS__QUEUE__PROVIDER": "rabbitmq",
     "SQUADOPS__COMMS__A2A__PROVIDER": "http",
     "SQUADOPS__TOOLS__FILESYSTEM__PROVIDER": "local",
+    # #1568: and so is every other selector.
+    "SQUADOPS__CYCLES__REGISTRY_PROVIDER": "memory",
+    "SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER": "config",
+    "SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER": "filesystem",
+    "SQUADOPS__TELEMETRY__BACKEND": "null",
+    "SQUADOPS__SANDBOX__PROVIDER": "noop",
 }
 
 _OVERRIDES = {

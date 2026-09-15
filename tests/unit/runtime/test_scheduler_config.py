@@ -15,18 +15,9 @@ import pytest
 from pydantic import ValidationError
 
 from squadops.config.schema import (
-    A2AConfig,
     AppConfig,
-    AuthConfig,
-    CommsConfig,
-    DBConfig,
-    FilesystemToolConfig,
     LLMConfig,
-    QueueConfig,
-    RabbitMQConfig,
-    RedisConfig,
     SchedulerConfig,
-    ToolsConfig,
 )
 
 pytestmark = [pytest.mark.domain_runtime]
@@ -34,18 +25,9 @@ pytestmark = [pytest.mark.domain_runtime]
 
 def _app_config(runtime: dict | None = None) -> AppConfig:
     """Build a minimal valid AppConfig, optionally overriding the runtime section."""
-    kwargs: dict = {
-        "db": DBConfig(url="postgresql://u@localhost:5432/db"),
-        "comms": CommsConfig(
-            queue=QueueConfig(provider="rabbitmq"),
-            a2a=A2AConfig(provider="http"),
-            rabbitmq=RabbitMQConfig(url="amqp://u@localhost:5672/"),
-            redis=RedisConfig(url="redis://localhost:6379/0"),
-        ),
-        "auth": AuthConfig(enabled=False),
-        "tools": ToolsConfig(filesystem=FilesystemToolConfig(provider="local")),
-        "llm": LLMConfig(provider="ollama"),
-    }
+    from tests.unit.config.test_llm_provider_required import _rest
+
+    kwargs: dict = {**_rest(), "llm": LLMConfig(provider="ollama")}
     if runtime is not None:
         kwargs["runtime"] = runtime
     return AppConfig(**kwargs)

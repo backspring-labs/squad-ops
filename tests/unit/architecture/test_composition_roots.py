@@ -259,22 +259,108 @@ def test_every_expected_binding_enters_through_its_factory(root):
     )
 
 
-#: Assertion 4 — every selector a root's factory reads is REQUIRED in the schema (R2).
+#: Assertion 4 — every selector a root's factory reads is REQUIRED in the schema (R2), with the
+#: env key a deploy surface writes it on. #1568 added the last six: "defaults have been toxic".
 _SELECTORS = (
-    ("LLMConfig", "provider"),
-    ("QueueConfig", "provider"),
-    ("A2AConfig", "provider"),
-    ("FilesystemToolConfig", "provider"),
+    ("LLMConfig", "provider", "SQUADOPS__LLM__PROVIDER"),
+    ("QueueConfig", "provider", "SQUADOPS__COMMS__QUEUE__PROVIDER"),
+    ("A2AConfig", "provider", "SQUADOPS__COMMS__A2A__PROVIDER"),
+    ("FilesystemToolConfig", "provider", "SQUADOPS__TOOLS__FILESYSTEM__PROVIDER"),
+    ("AuthConfig", "provider", "SQUADOPS__AUTH__PROVIDER"),
+    ("CyclesConfig", "registry_provider", "SQUADOPS__CYCLES__REGISTRY_PROVIDER"),
+    ("CyclesConfig", "squad_profile_provider", "SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER"),
+    ("PromptsConfig", "asset_source_provider", "SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER"),
+    ("TelemetryConfig", "backend", "SQUADOPS__TELEMETRY__BACKEND"),
+    ("SandboxConfig", "provider", "SQUADOPS__SANDBOX__PROVIDER"),
 )
 
 
-@pytest.mark.parametrize(("model", "field"), _SELECTORS)
-def test_every_selector_is_required_not_defaulted(model, field):
+@pytest.mark.parametrize(("model", "field", "env_key"), _SELECTORS)
+def test_every_selector_is_required_not_defaulted(model, field, env_key):
     from squadops.config import schema
 
     assert getattr(schema, model).model_fields[field].is_required(), (
         f"{model}.{field} has a default — a defaulted selector is a masking fallback (R2)"
     )
+
+
+def _valid_value(annotation) -> str:
+    import typing
+
+    args = typing.get_args(annotation)
+    return args[0] if typing.get_origin(annotation) is typing.Literal else "x"
+
+
+@pytest.mark.parametrize("bad", ["", "typo"], ids=["blank", "misspelled"])
+@pytest.mark.parametrize(("model", "field", "env_key"), _SELECTORS)
+def test_a_blank_or_misspelled_selector_is_refused_at_config_load(model, field, env_key, bad):
+    """Bug caught: an unset compose variable interpolated to "" and accepted as a provider name,
+    or a misspelled one (``langfuze``) that loads and then fails somewhere a broad ``except``
+    turns it into a degraded service — the agent's renderer ran with no templates (#1568)."""
+    from pydantic import ValidationError
+
+    from squadops.config import schema
+
+    cls = getattr(schema, model)
+    others = {
+        name: _valid_value(info.annotation)
+        for name, info in cls.model_fields.items()
+        if info.is_required() and name != field
+    }
+    with pytest.raises(ValidationError, match=field):
+        cls(**others, **{field: bad})
+
+
+#: Every selector carries its vocabulary in the schema (R2: "the vocabulary lives in the config
+#: schema as a ``Literal``"); ``llm.provider`` joined in #1568.
+@pytest.mark.parametrize(("model", "field", "env_key"), _SELECTORS)
+def test_each_selector_names_its_vocabulary_in_the_schema(model, field, env_key):
+    """Bug caught: a selector reverted to ``str``, so a misspelled provider loads and reaches a
+    root instead of failing at config load."""
+    import typing
+
+    from squadops.config import schema
+
+    annotation = getattr(schema, model).model_fields[field].annotation
+    assert typing.get_origin(annotation) is typing.Literal
+
+
+#: The compose services that load ``AppConfig`` (they carry ``SQUADOPS_PROFILE``) must each name
+#: every selector; the sandbox service loads only the sandbox section.
+def _compose_services() -> dict:
+    import pathlib
+
+    import yaml
+
+    path = pathlib.Path(__file__).resolve().parents[3] / "docker-compose.yml"
+    return yaml.safe_load(path.read_text())["services"]
+
+
+def test_every_compose_service_that_loads_config_names_every_selector_without_a_fallback():
+    """#1568 at the deploy surface. Bug caught: a service that loads ``AppConfig`` missing a
+    selector key (a start-up refusal in the deployed stack, found only at deploy), or a
+    ``${VAR:-default}`` fallback — the default removed from the schema, restored one layer out,
+    as ``${SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER:-filesystem}`` was on seven agents."""
+    keys = [env_key for _, _, env_key in _SELECTORS]
+    problems = []
+    loaders = 0
+    for name, service in _compose_services().items():
+        env = service.get("environment") or {}
+        if not isinstance(env, dict):
+            continue
+        if "SQUADOPS_PROFILE" in env:
+            loaders += 1
+            problems += [f"{name}: no {key}" for key in keys if key not in env]
+        elif name == "sandbox-service" and "SQUADOPS__SANDBOX__PROVIDER" not in env:
+            problems.append(f"{name}: no SQUADOPS__SANDBOX__PROVIDER")
+        problems += [
+            f"{name}: {key} falls back to a default"
+            for key in keys
+            if isinstance(env.get(key), str) and ":-" in env[key]
+        ]
+
+    assert loaders >= 8, "the runtime API and the seven agents load AppConfig"
+    assert problems == []
 
 
 #: Assertion 5 — every factory selector PARAMETER is required, not only the config it is read
@@ -286,6 +372,8 @@ _FACTORY_SELECTORS = (
     ("adapters.telemetry.factory", "create_telemetry_provider", "provider"),
     ("adapters.telemetry.factory", "create_llm_observability_provider", "provider"),
     ("adapters.telemetry.factory", "create_llm_observability_provider", "prompt_asset_provider"),
+    # #1568: the auth middleware's provider, a constructor keyword the runtime root names.
+    ("squadops.api.middleware.auth", "AuthMiddleware", "provider"),
 )
 
 

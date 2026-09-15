@@ -11,13 +11,14 @@ from squadops.config.schema import SandboxConfig
 from squadops.sandbox.noop import NoOpExecutionSandbox
 
 
-def test_default_and_absent_config_yield_the_noop_sandbox(tmp_path):
-    """THE parity guard: an unconfigured stack must get the NoOp sandbox —
-    bug caught: default wiring quietly constructing a real backend, breaking
-    the inert-to-merge guarantee on every deployed stack."""
-    assert isinstance(create_execution_sandbox(None), NoOpExecutionSandbox)
-    default = create_execution_sandbox(SandboxConfig(workspace_root=tmp_path))
-    assert isinstance(default, NoOpExecutionSandbox)
+def test_the_noop_provider_yields_the_noop_sandbox_and_no_provider_is_refused(tmp_path):
+    """THE parity guard: a stack that names ``noop`` gets the NoOp sandbox — bug caught: the
+    wiring quietly constructing a real backend, breaking the inert-to-merge guarantee. And
+    since #1568 a stack that names nothing is refused rather than given one."""
+    noop = create_execution_sandbox(SandboxConfig(provider="noop", workspace_root=tmp_path))
+    assert isinstance(noop, NoOpExecutionSandbox)
+    with pytest.raises(ValueError, match="provider"):
+        SandboxConfig(workspace_root=tmp_path)
 
 
 def test_docker_provider_is_contract_driven(tmp_path):
@@ -57,14 +58,18 @@ def test_unknown_environment_raises(tmp_path):
 
 def test_unknown_provider_raises(tmp_path):
     """Bug caught: a typo'd provider silently degrading to NoOp — the stack
-    would believe the sandbox is on while everything runs in-process."""
-    config = SandboxConfig(provider="dokcer", workspace_root=tmp_path)
+    would believe the sandbox is on while everything runs in-process. Since #1568 the
+    schema's vocabulary refuses it at config load; the factory still refuses one that
+    bypassed validation."""
+    with pytest.raises(ValueError, match="'noop' or 'docker'"):
+        SandboxConfig(provider="dokcer", workspace_root=tmp_path)
+    unvalidated = SandboxConfig.model_construct(provider="dokcer", workspace_root=tmp_path)
     with pytest.raises(ValueError, match="Unknown sandbox provider"):
-        create_sandbox_service(config)
+        create_sandbox_service(unvalidated)
 
 
 def test_service_token_passthrough_for_plain_values(tmp_path):
     """Bug caught: token mangling on the non-secret path — every request
     would 401 against a service configured with the same literal."""
-    config = SandboxConfig(workspace_root=tmp_path, service_token="tok-123")
+    config = SandboxConfig(provider="noop", workspace_root=tmp_path, service_token="tok-123")
     assert resolve_service_token(config) == "tok-123"

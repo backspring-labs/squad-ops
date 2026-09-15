@@ -349,15 +349,6 @@ class AgentRunner:
         from adapters.tools.factory import create_filesystem_provider
         from squadops.prompts.assembler import PromptAssembler
 
-        # #1449: the telemetry selector is required, and refused before any port is built.
-        # This root read ``backend or "otel"``, a masking default one step above the factory's.
-        telemetry_backend = config.telemetry.backend
-        if not telemetry_backend:
-            raise ValueError(
-                "telemetry.backend is required (SQUADOPS__TELEMETRY__BACKEND: otel, console or "
-                "null) — the agent's telemetry selector is never defaulted (#1449)"
-            )
-
         # Create LLM adapter
         # Priority: instance config model > env var > config
         llm_model = (
@@ -418,7 +409,10 @@ class AgentRunner:
                     host=config.langfuse.host,
                 )
             else:
-                asset_source = create_prompt_asset_source(provider="filesystem")
+                # #1568: the configured name, never a quiet "filesystem". The schema's Literal
+                # refuses an unknown name at config load, so the ``except`` below only ever
+                # sees a construction failure (a missing SDK, an unreachable registry).
+                asset_source = create_prompt_asset_source(provider=provider)
             request_renderer = RequestTemplateRenderer(asset_source)
             logger.info(
                 "Request template renderer initialized",
@@ -442,8 +436,9 @@ class AgentRunner:
                 asset_source, role=self.role, provider="langfuse"
             )
 
-        # Create telemetry (metrics + events) — the selector was required at the top.
-        metrics, events = create_telemetry_provider(telemetry_backend)
+        # Create telemetry (metrics + events). The selector is required by the schema (#1568),
+        # so an unset backend never reaches this root.
+        metrics, events = create_telemetry_provider(config.telemetry.backend)
 
         # Create LLM observability (SIP-0061). LangFuse is its only provider and no config
         # field selects it, so the root names it — the artifact vault's shape (#1449).

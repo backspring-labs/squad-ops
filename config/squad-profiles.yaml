@@ -1,3 +1,9 @@
+# The seed for the squad profile registry (#1568). Deployments run
+# `cycles.squad_profile_provider: postgres`: at runtime-API start each profile below is copied into
+# Postgres ONCE, keyed by profile_id (`squad_profiles_seed_log`). A NEW profile added here seeds on
+# the next start; an EDIT to a profile that has already seeded does not reach the deploy — change
+# it through the API (`PUT /api/v1/squad-profiles/{id}`) or clone and activate a new one
+# (`squadops profiles clone` / `activate`). The `config` provider still reads this file directly.
 profiles:
   - profile_id: smoke
     name: "Smoke Squad"

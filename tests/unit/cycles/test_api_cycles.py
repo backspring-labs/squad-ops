@@ -99,6 +99,9 @@ def client(
     monkeypatch.setattr(deps_mod, "_cycle_registry", mock_cycle_registry)
     monkeypatch.setattr(deps_mod, "_squad_profile", mock_squad_profile)
     monkeypatch.setattr(deps_mod, "_flow_executor", mock_flow_executor)
+    # #1568: the create-time sandbox preflight reads the provider from the process env, and
+    # the provider is required; compose sets it on the runtime API.
+    monkeypatch.setenv("SQUADOPS__SANDBOX__PROVIDER", "noop")
     return TestClient(app)
 
 
@@ -551,6 +554,20 @@ class TestCreateCyclePreflight:
         """Roles satisfied + LLM backend unreachable (None) → warn-and-allow → 200."""
         resp = client.post("/api/v1/projects/hello_squad/cycles", json=self._REQUEST)
         assert resp.status_code == 200
+
+    def test_an_unnamed_sandbox_provider_refuses_the_create_before_persist(
+        self, client, mock_cycle_registry, monkeypatch
+    ):
+        """#1568 at the runtime's own seam. Bug caught: a runtime API with no sandbox provider
+        treated as dormant — the default the schema no longer has — rather than refusing."""
+        monkeypatch.delenv("SQUADOPS__SANDBOX__PROVIDER")
+
+        resp = client.post("/api/v1/projects/hello_squad/cycles", json=self._REQUEST)
+
+        assert resp.status_code == 422
+        err = resp.json()["detail"]["error"]
+        assert err["code"] == "PREFLIGHT_REJECTED" and "provider" in err["message"]
+        mock_cycle_registry.create_cycle.assert_not_called()
 
     def test_blocks_when_squad_cannot_satisfy_required_roles(
         self, client, mock_squad_profile, mock_cycle_registry

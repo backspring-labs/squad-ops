@@ -130,3 +130,33 @@ class TestFactoryProviders:
 
         with pytest.raises(ValueError, match="Unknown"):
             create_squad_profile_port("nosql")
+
+
+async def test_every_seeded_profile_keeps_its_snapshot_hash_through_the_postgres_row():
+    """#1568 moves the deploy's squad profiles to Postgres, seeded from the YAML. Bug caught: a
+    field the row drops or re-types (an override's int read back as a string, an agent's enabled
+    flag lost), so a seeded profile hashes differently from the same YAML profile and every
+    counted roll's squad snapshot pin moves with no change to the squad. ``full-38`` hashes to
+    1.7.5's pin, ``575707c58536cf3b``, on both sides."""
+    import json
+
+    from adapters.cycles.config_squad_profile import ConfigSquadProfile
+    from adapters.cycles.postgres_squad_profile import PostgresSquadProfile
+    from squadops.cycles.lifecycle import compute_profile_snapshot_hash
+
+    adapter = PostgresSquadProfile.__new__(PostgresSquadProfile)
+    profiles = await ConfigSquadProfile().list_profiles()
+    for profile in profiles:
+        row = {
+            "profile_id": profile.profile_id,
+            "name": profile.name,
+            "description": profile.description,
+            "version": profile.version,
+            # JSONB: what is written is what the codec reads back.
+            "agents": json.loads(json.dumps(adapter._agents_to_dicts(profile.agents))),
+            "created_at": profile.created_at,
+        }
+        seeded = adapter._row_to_profile(row)
+
+        assert compute_profile_snapshot_hash(seeded) == compute_profile_snapshot_hash(profile)
+    assert "full-38" in {p.profile_id for p in profiles}

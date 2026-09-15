@@ -23,17 +23,8 @@ from squadops.api.runtime.scheduler_bootstrap import (
     create_runtime_coordinator,
 )
 from squadops.config.schema import (
-    A2AConfig,
     AppConfig,
-    AuthConfig,
-    CommsConfig,
-    DBConfig,
-    FilesystemToolConfig,
     LLMConfig,
-    QueueConfig,
-    RabbitMQConfig,
-    RedisConfig,
-    ToolsConfig,
 )
 from squadops.runtime.coordinator import RuntimeCoordinator
 from squadops.runtime.scheduler import DutyScheduler
@@ -42,16 +33,10 @@ pytestmark = [pytest.mark.domain_runtime]
 
 
 def _config(*, enabled: bool, poll: int = 30) -> AppConfig:
+    from tests.unit.config.test_llm_provider_required import _rest
+
     return AppConfig(
-        db=DBConfig(url="postgresql://u@localhost:5432/db"),
-        comms=CommsConfig(
-            queue=QueueConfig(provider="rabbitmq"),
-            a2a=A2AConfig(provider="http"),
-            rabbitmq=RabbitMQConfig(url="amqp://u@localhost:5672/"),
-            redis=RedisConfig(url="redis://localhost:6379/0"),
-        ),
-        auth=AuthConfig(enabled=False),
-        tools=ToolsConfig(filesystem=FilesystemToolConfig(provider="local")),
+        **_rest(),
         llm=LLMConfig(provider="ollama"),
         runtime={"scheduler": {"enabled": enabled, "poll_interval_seconds": poll}},
     )

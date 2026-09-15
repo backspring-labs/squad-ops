@@ -303,11 +303,13 @@ class ServiceClientConfig(BaseModel):
 class SandboxConfig(BaseModel):
     """Ephemeral Application Sandbox configuration (SIP-0102).
 
-    Defaults are the dormant posture: provider "noop" keeps every execution
-    path in-process and byte-identical to pre-0102 behavior.
+    The dormant posture is provider "noop": every execution path in-process and byte-identical
+    to pre-0102 behavior. It is named, never defaulted (#1568).
     """
 
-    provider: str = Field(default="noop", description="Sandbox provider: 'noop' or 'docker'")
+    provider: Literal["noop", "docker"] = Field(
+        description="Sandbox provider (required, #1568; the vocabulary is the schema's, R2)"
+    )
     environment: str = Field(
         default="fullstack_fastapi_react",
         description="Environment-contract stack id (see squadops.sandbox.environment)",
@@ -459,7 +461,9 @@ class AuthConfig(BaseModel):
     """Authentication and authorization configuration (SIP-0062)."""
 
     enabled: bool = Field(default=True, description="Enable authentication")
-    provider: str = Field(default="keycloak", description="Auth provider: 'keycloak' or 'disabled'")
+    provider: Literal["keycloak", "disabled"] = Field(
+        description="Auth provider (required, #1568; the vocabulary is the schema's, R2)"
+    )
     oidc: OIDCConfig | None = Field(default=None, description="OIDC provider configuration")
     console: ConsoleAuthConfig | None = Field(
         default=None, description="Console OIDC configuration (Phase 3a)"
@@ -497,8 +501,6 @@ class AuthConfig(BaseModel):
         """Post-initialization validation."""
         if self.roles_mode == "client" and not self.roles_client_id:
             raise ValueError("roles_client_id is required when roles_mode='client'")
-        if self.enabled and self.provider not in ("keycloak", "disabled"):
-            raise ValueError(f"Unknown auth provider: {self.provider}")
         if self.enabled and self.provider != "disabled" and self.oidc is None:
             raise ValueError(
                 "oidc configuration is required when auth is enabled and provider != 'disabled'"
@@ -510,13 +512,13 @@ class AuthConfig(BaseModel):
 class CyclesConfig(BaseModel):
     """Cycle registry configuration."""
 
-    registry_provider: str = Field(
-        default="memory",
-        description="Cycle registry provider: 'memory' or 'postgres'",
+    #: #1568: a runtime API started without this key ran an in-memory registry and lost every
+    #: cycle at restart. Required; never defaulted.
+    registry_provider: Literal["memory", "postgres"] = Field(
+        description="Cycle registry provider (required, #1568)",
     )
-    squad_profile_provider: str = Field(
-        default="config",
-        description="Squad profile provider: 'config' or 'postgres' (SIP-0075)",
+    squad_profile_provider: Literal["config", "postgres"] = Field(
+        description="Squad profile provider (SIP-0075; required, #1568)",
     )
     inert_cycle_threshold: int = Field(
         default=3,
@@ -615,8 +617,8 @@ class LLMConfig(BaseModel):
     surface writes ``SQUADOPS__LLM__PROVIDER`` explicitly; nothing infers it.
     """
 
-    provider: str = Field(
-        description="LLM provider selecting the adapter: 'ollama', 'vllm' or 'atlas' (required)"
+    provider: Literal["ollama", "vllm", "atlas"] = Field(
+        description="LLM provider selecting the adapter (required; the vocabulary is the schema's, R2)",
     )
     url: str = Field(
         default="http://host.docker.internal:11434", description="LLM API URL (Ollama)"
@@ -694,11 +696,11 @@ class GCPTelemetryConfig(BaseModel):
 class TelemetryConfig(BaseModel):
     """Telemetry and observability configuration."""
 
-    #: The agent root's telemetry selector (#1449): ``otel``, ``console`` or ``null``, the names
-    #: ``adapters.telemetry.factory`` accepts. Unset is refused where telemetry is composed
-    #: (the agent entrypoint); the runtime API composes none, so it is not required schema-wide.
-    backend: str | None = Field(
-        default=None, description="Telemetry backend selector (otel, console, null)"
+    #: The telemetry selector: ``otel``, ``console`` or ``null``, the names
+    #: ``adapters.telemetry.factory`` accepts. Required schema-wide (#1568): #1449 refused it only
+    #: where composed, which left a second mechanism beside every other selector's.
+    backend: Literal["otel", "console", "null"] = Field(
+        description="Telemetry backend selector (required, #1568)"
     )
     otlp_endpoint: str | None = Field(default=None, description="OTLP exporter endpoint")
     prometheus_port: int = Field(
@@ -716,9 +718,11 @@ class PromptsConfig(BaseModel):
     filesystem or from Langfuse's prompt management API.
     """
 
-    asset_source_provider: str = Field(
-        default="filesystem",
-        description="Prompt asset source provider: 'filesystem' or 'langfuse'",
+    #: #1568: a Literal, so a misspelled provider fails at config load. As a plain ``str`` it
+    #: reached the agent root's renderer ``try``, whose broad ``except`` logged it and ran the
+    #: agent with no renderer (the #1110 blind-retry shape) instead of refusing the deploy.
+    asset_source_provider: Literal["filesystem", "langfuse"] = Field(
+        description="Prompt asset source provider (required, #1568)",
     )
 
 
@@ -823,22 +827,18 @@ class AppConfig(BaseModel):
     # Runtime API
     runtime_api_url: str = Field(default="http://runtime-api:8001", description="Runtime API URL")
 
-    # Task management
-    tasks_backend: TasksBackend = Field(
-        default=TasksBackend.PREFECT, description="Task backend selection"
-    )
-
     # Secrets and auth
     secrets: SecretsConfig | None = Field(
         default=None, description="Secrets management configuration (optional)"
     )
     auth: AuthConfig = Field(
-        default_factory=AuthConfig, description="Authentication configuration (SIP-0062)"
+        ...,
+        description="Authentication configuration (SIP-0062) (carries a required selector, #1568)",
     )
 
     # Cycles
     cycles: CyclesConfig = Field(
-        default_factory=CyclesConfig, description="Cycle registry configuration"
+        ..., description="Cycle registry configuration (carries a required selector, #1568)"
     )
 
     # Runtime (SIP-0089: agent runtime state, duty scheduler)
@@ -866,7 +866,7 @@ class AppConfig(BaseModel):
 
     # Prompts (SIP-0084)
     prompts: PromptsConfig = Field(
-        default_factory=PromptsConfig, description="Prompt asset source configuration"
+        ..., description="Prompt asset source configuration (carries a required selector, #1568)"
     )
 
     # Agent
@@ -879,7 +879,7 @@ class AppConfig(BaseModel):
 
     # Telemetry
     telemetry: TelemetryConfig = Field(
-        default_factory=TelemetryConfig, description="Telemetry configuration"
+        ..., description="Telemetry configuration (carries a required selector, #1568)"
     )
 
     # LangFuse LLM Observability (SIP-0061) — sibling to telemetry, not nested
@@ -899,8 +899,8 @@ class AppConfig(BaseModel):
 
     # Application sandbox (SIP-0102)
     sandbox: SandboxConfig = Field(
-        default_factory=SandboxConfig,
-        description="Ephemeral Application Sandbox configuration (SIP-0102)",
+        ...,
+        description="Ephemeral Application Sandbox configuration (SIP-0102; required selector, #1568)",
     )
 
     # Private attributes for runtime state (not part of config validation)
