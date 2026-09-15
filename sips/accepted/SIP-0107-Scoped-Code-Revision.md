@@ -1697,8 +1697,7 @@ for the owner.
    the transaction. So two anchored edits cannot depend on each other, and one cannot silently
    shift another's match.
 4. **The grammar** (`squadops/capabilities/anchored_edits.py`) is #1213's.
-   - **Shape:** an `edit:<path>` fence holding one or more `<<<<<<< SEARCH` / `=======` /
-     `>>>>>>> REPLACE` blocks, the markers whole lines. SEARCH and REPLACE text are their lines,
+   - **Shape:** an `edit:<path>` fence holding one or more `     `>>>>>>> REPLACE` blocks, the markers whole lines. SEARCH and REPLACE text are their lines,
      each ending in a newline, exactly as emitted.
    - **Malformed fences are named with a typed reason:** no divider, no end marker, an empty
      SEARCH, text outside a block, no blocks, an unclosed fence, an unsafe path. A block missing a
@@ -2139,6 +2138,7 @@ live model precedes deploy C and any pre-registration (the owner's re-sequence, 
 
 **Ruled by.** The owner's go on the re-sequence, 2026-09-15; the implementer on the wording.
 
+<<<<<<< HEAD
 ## 46m. 2026-09-15 — the repair prompt shows the files it asks the model to revise (§9.2; #1576)
 
 **What changed.**
@@ -2195,3 +2195,44 @@ reads that before deploy C.
 
 **Ruled by.** The owner, 2026-09-15 ("start with item 2"), on the probe re-read that found the
 missing section; the implementer on the section's placement and the renderer fix.
+
+## 46n. 2026-09-15 — an anchor may be a fragment of a line (§9.2, amending §46e item 4)
+
+**What changed.** The grammar's reading of a SEARCH block. §46e item 4 made SEARCH and REPLACE
+text "their lines, each ending in a newline, exactly as emitted", so an anchor was always matched
+with a newline after its last line. The newline closing the block's last line is the block's,
+not the model's: `'@/lib/store'` on a line of its own is the model naming a piece of a line.
+
+1. **Two exact readings, in order.** The anchor as its lines, newline included, is tried first;
+   only when that text occurs nowhere in the file is the anchor read without its final newline
+   — a fragment of a line — and its replacement likewise loses the newline the block gave it.
+   The line reading wins whenever it occurs at all, so a whole line that is also the prefix of a
+   longer one cannot be made ambiguous by this rule.
+2. **Nothing else moves.** Each reading is exact — nothing normalized, folded or chosen (#451) —
+   and the transaction still requires exactly one occurrence inside the authorized region:
+   a fragment occurring twice is `anchor_ambiguous` with its count, a misquote is still
+   `anchor_not_found`. §13 (all edits resolve against one base), §17 and §18 are untouched.
+3. **Where it lives.** The grammar (`anchored_edits.py`), which added the newline, decides
+   whether it is content — against the file the edits will resolve on, before the transaction
+   is built. `RevisionTransaction` and §9.2 are unchanged; §9.2 never said lines. The
+   application record carries `fragment_anchors`, the count read as fragments, beside the
+   modes (§39.8's readout).
+4. **The prompt is unchanged.** The model already writes fragments unprompted (below); a rule
+   inviting them would be one more rule to obey literally.
+
+**Evidence.** The readiness probe of 2026-09-15 (three real failed dev repairs, live qwen3.8,
+18 trials, `var/probes/2026-09-15-scoped-repair-readiness/`): of 63 SEARCH blocks, 12 were
+unique fragments of a line — `'@/lib/store'`, `from '@/lib/errors'` — refused only because the
+newline after them was read as theirs. Four of the five refused trials would have applied under
+this reading. The remaining refusals were misquotes (16 of 63), which this rule does not touch
+and §46m addresses at its cause.
+
+**Tests.** A specifier, decorator arguments, a deletion and a multi-line anchor ending in a
+fragment each replace only the fragment, with the line's remainder and its newline intact; a
+whole line that prefixes another is read as the line and never becomes ambiguous; a fragment
+occurring twice is refused as ambiguous with its count, never chosen; a misquote is still not
+found. **Mutations: two, each caught** — the fragment reading tried first (the prefix test
+refuses as ambiguous), and the fragment reading removed (every fragment case refuses).
+
+**Ruled by.** The owner, 2026-09-15 ("I will want to do 1-3"; item 1), on the probe's reading;
+the implementer on the seam and the line-first order.

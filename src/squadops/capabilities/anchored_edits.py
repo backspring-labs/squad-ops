@@ -24,7 +24,11 @@ SEARCH, an unclosed fence and an unsafe path are each recorded as a malformed ed
 reason — never silently dropped, and never guessed into an edit. A bare fence line inside a
 REPLACE body is content, not the fence's close, so a replacement may itself contain fenced text.
 
-SEARCH and REPLACE text are their lines, each ending in a newline, exactly as emitted.
+SEARCH and REPLACE text are their lines, each ending in a newline, exactly as emitted — the
+newline closing the last line is the block's, not the model's: an anchor whose lines occur
+nowhere in the file, but whose text without that final newline does, is read as a fragment of a
+line, and its replacement likewise (§46n). Both readings are exact, and each still has to occur
+exactly once.
 
 **Structural blocks** (SIP-0107 §38 step 5) share the fence and the transaction. They name an
 entity the file's resolver locates (``structural_resolution``) instead of copying its text::
@@ -306,8 +310,33 @@ def strip_edit_blocks(response: str) -> str:
     return "\n".join(kept)
 
 
-def revisions_for(parse: AnchoredEditParse) -> tuple[Revision, ...]:
-    """The parse's edits as revisions, in emission order, for one transaction."""
+def _anchor_reading(content: str | None, anchor: str, replacement: str) -> tuple[str, str]:
+    """The anchor and its replacement as the model's lines, or — when the lines occur nowhere in
+    ``content`` but the anchor without its final newline does — as a fragment of a line (§9.2,
+    §46n).
+
+    The grammar closes every SEARCH and REPLACE line with a newline; the last one is the block's,
+    not the model's, so ``'@/lib/store'`` on a line of its own is the model naming a piece of a
+    line, not a line. Both readings are exact (#451: nothing normalized, nothing nearest), and the
+    transaction still requires exactly one occurrence. The line reading wins whenever it occurs
+    at all, so a whole line that is also the prefix of a longer one cannot be made ambiguous by
+    this rule. Counted over the whole file, which is the region an anchored repair edit resolves
+    in (no ``region_id`` is built here).
+    """
+    if content is None or not anchor.endswith("\n") or anchor in content:
+        return anchor, replacement
+    fragment = anchor[:-1]
+    if fragment and fragment in content:
+        return fragment, replacement[:-1] if replacement.endswith("\n") else replacement
+    return anchor, replacement
+
+
+def revisions_for(
+    parse: AnchoredEditParse, base_files: Mapping[str, str] | None = None
+) -> tuple[Revision, ...]:
+    """The parse's edits as revisions, in emission order, for one transaction. With
+    ``base_files``, each anchor is read as lines or as a fragment against its file (§46n);
+    without, as lines — enough to name the operations proposed."""
     revisions: list[Revision] = []
     for e in parse.edits:
         if isinstance(e, StructuralEdit):
@@ -320,15 +349,28 @@ def revisions_for(parse: AnchoredEditParse) -> tuple[Revision, ...]:
                 )
             )
         else:
+            content = base_files.get(e.path) if base_files is not None else None
+            anchor, replacement = _anchor_reading(content, e.anchor, e.replacement)
             revisions.append(
                 Revision(
                     artifact_path=e.path,
                     operation=RevisionOperation.REPLACE_ANCHOR,
-                    anchor=e.anchor,
-                    replacement=e.replacement,
+                    anchor=anchor,
+                    replacement=replacement,
                 )
             )
     return tuple(revisions)
+
+
+def fragment_anchor_count(parse: AnchoredEditParse, base_files: Mapping[str, str]) -> int:
+    """How many of the parse's anchors were read as fragments of a line against ``base_files``
+    — evidence for the readout, beside the modes (§39.8)."""
+    return sum(
+        1
+        for e in parse.edits
+        if isinstance(e, AnchoredEdit)
+        and _anchor_reading(base_files.get(e.path), e.anchor, e.replacement)[0] != e.anchor
+    )
 
 
 #: The ``emission_failure`` reason a repair carries when its anchored edits were refused on the
@@ -349,6 +391,8 @@ class AnchoredApplication:
     parse: AnchoredEditParse
     outcome: TransactionOutcome | None
     conflicts: tuple[str, ...] = ()
+    #: Anchors read as a fragment of a line rather than as lines (§46n).
+    fragment_anchors: int = 0
 
     @property
     def accepted(self) -> bool:
@@ -385,6 +429,7 @@ class AnchoredApplication:
             "edits_proposed": len(self.parse.edits),
             # §39.8: which revision modes the response proposed, accepted or not.
             "operations_proposed": [str(r.operation) for r in revisions_for(self.parse)],
+            "fragment_anchors": self.fragment_anchors,
             "candidate_revision_id": outcome.candidate_revision_id if outcome else None,
             "edits": [
                 {
@@ -424,7 +469,7 @@ def apply_anchored_edits(
         base_revision_id=base_revision_id(base),
         grant=WriteGrant(producer=producer, stage="anchored_repair", writable=frozenset(writable)),
         task_id=task_id,
-        revisions=revisions_for(parse),
+        revisions=revisions_for(parse, base),
     )
     outcome = resolve_and_apply(
         base,
@@ -433,7 +478,12 @@ def apply_anchored_edits(
         resolve_entity=resolve_entity,
         validate_syntax=_breaks_parsing_base(base),
     )
-    return AnchoredApplication(parse=parse, outcome=outcome, conflicts=conflicts)
+    return AnchoredApplication(
+        parse=parse,
+        outcome=outcome,
+        conflicts=conflicts,
+        fragment_anchors=fragment_anchor_count(parse, base),
+    )
 
 
 def _breaks_parsing_base(base: Mapping[str, str]):
