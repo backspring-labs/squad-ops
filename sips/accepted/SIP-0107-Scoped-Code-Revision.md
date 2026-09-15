@@ -2044,3 +2044,53 @@ for the owner's review with it.
 
 **Ruled by.** The owner, on the dependency (2026-09-14). The implementer, on `#try` and the reading
 of §39.3 for a stack without a drift instrument, for the owner's review with them.
+
+## 46k. 2026-09-15 — the repair's revision form is recorded on every repair (§46a, §39.8)
+
+**What changed.** Every repair handler logs one `repair_revision_form` line per repair and puts
+the same reading on the task outputs as `revision_form`. The line records:
+- **the offer:** each file the edit form listed, with the number of entities listed for it, or
+  `{}` when the form was not rendered;
+- **the form the response took:** `edits`, `whole_file`, `edits_and_whole_file`, `fill`,
+  `new_files_only` or `none`;
+- **the transaction's result:** accepted or refused, the refusal count, whether it was
+  retried, and the failure reason;
+- **§39.8's modes:** `structural`, `anchored` and `region`, from the operations the response
+  proposed (the edit record now carries `operations_proposed`, accepted or not).
+
+`whole_file_offered` names the offered files re-emitted whole: §46a's unauthorized whole-file
+fallback, counted per cell before step 7. A file the repair creates is not a fallback, and an
+edited file whose applied content rides as an artifact is not a re-emission. The verification-set
+driver reads the line from the agents' windows into `loop_texture.repair_revision_forms` and
+renders it as a record row.
+
+**Evidence: the first live repair on deploy B was unreadable without it.** Deploy B's Next.js
+checkpoint roll, `cyc_e62d74598211`, took one correction round:
+1. The develop task's `app/runs/[run_id]/page.tsx` failed `frontend_compiles`, because it used
+   `router.query` in an App Router page.
+2. The lead decided `patch`, calling it "a straightforward one-line fix".
+3. The dev repair's emission carried one whole-file path fence and no edit fence.
+4. The patch failed the same check, and the develop task was re-dispatched and passed.
+
+Whether the repair was offered the edit form could not be read:
+- **The stored prompt is cut short:** LangFuse truncates it at `MAX_OBSERVABILITY_TEXT_LENGTH`
+  (10,000 characters, `src/squadops/telemetry/models.py:135`), and this prompt was about 9,500
+  tokens, with the edit form past the cut.
+- **The transaction line is conditional:** `anchored_edit_transaction` is written only when a
+  response carries edits.
+
+So a whole-file answer to an offered form could not be told from a repair never offered one. That
+is the distinction §39.8's N and §46a's per-cell count both depend on.
+
+**Tests:**
+- **The reading:** separates a whole-file fallback from a new file, an edited file and a prose
+  fallback.
+- **The wiring:** entered at `DevelopmentCorrectionRepairHandler.handle` for a whole-file answer,
+  a scoped edit, a refusal retried, and a repair never offered the form.
+- **The driver:** parses the handler's own line, keeps an unparseable line, and reads unaskable
+  (never zero) when no line was logged.
+
+**Mutations: five, each caught.**
+
+**Ruled by.** The implementer, on the owner's go for the instrument (2026-09-15). No repair
+behaviour changes; §46a's contract is unchanged.

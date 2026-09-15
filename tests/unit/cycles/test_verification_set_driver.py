@@ -3196,3 +3196,92 @@ class TestTheSquadSnapshotIsPinnedBeforeLaunch:
 
         assert real.exit_code == 0, real.output
         assert old.exit_code != 0
+
+
+class TestRepairRevisionForms:
+    """SIP-0107 §46a / §39.8: the record says, per repair, the edit form it was offered and the
+    form its response took — the fact deploy B's Next.js repair could not be read for."""
+
+    def _line_the_handler_logs(self, caplog, offered, outputs):
+        import logging
+        from types import SimpleNamespace
+
+        from squadops.capabilities.handlers.impl.repair_handlers import (
+            DevelopmentCorrectionRepairHandler,
+        )
+
+        result = SimpleNamespace(success=True, outputs=outputs)
+        with caplog.at_level(logging.INFO):
+            DevelopmentCorrectionRepairHandler()._record_revision_form(offered, result)
+        (message,) = [
+            r.getMessage() for r in caplog.records if "repair_revision_form" in r.getMessage()
+        ]
+        # As the container's log formatter writes it: timestamp, logger, level, message.
+        return f"2026-09-15 04:06:39,383 - squadops.capabilities.handlers.impl.repair_handlers - INFO - {message}"
+
+    def test_the_driver_reads_the_line_the_repair_handler_writes(self, driver, caplog):
+        """Bug caught: the handler's line and the driver's parse drifting apart, so every repair
+        on the deploy reads as absent. The line is produced by the handler itself, not typed
+        here."""
+        line = self._line_the_handler_logs(
+            caplog,
+            {"app/runs/[run_id]/page.tsx": 4},
+            {"artifacts": [{"name": "app/runs/[run_id]/page.tsx", "type": "source"}]},
+        )
+
+        # The agents' window keeps the line (the filter the live read applies first).
+        assert driver._agent_lines_of_interest([line, "unrelated line"]) == [line]
+        (form,) = driver.repair_revision_forms([line, "unrelated line"])
+
+        assert form["handler"] == "development_correction_repair_handler"
+        assert form["form"] == "whole_file"
+        assert form["whole_file_offered"] == ["app/runs/[run_id]/page.tsx"]
+        assert driver._render_revision_forms([form]) == (
+            "development_correction_repair_handler whole_file "
+            "(app/runs/[run_id]/page.tsx; offered 1)"
+        )
+
+    def test_a_scoped_repair_names_its_modes_and_its_result(self, driver):
+        """§39.8: structural target used / exact anchored target used / region replacement used.
+        Bug caught: a scoped repair rendered like a whole-file one, with no mode named."""
+        form = {
+            "handler": "qa_test_repair_handler",
+            "form": "edits",
+            "offered": {"a.ts": 3},
+            "modes": ["anchored", "structural"],
+            "accepted": False,
+            "refusals": 2,
+        }
+
+        assert driver._render_revision_forms([form]) == (
+            "qa_test_repair_handler edits (anchored/structural; offered 1; refused (2))"
+        )
+
+    def test_an_unparseable_line_is_kept_not_dropped(self, driver):
+        """Bug caught: a changed line format reading as fewer repairs instead of as unreadable."""
+        forms = driver.repair_revision_forms(["x - INFO - repair_revision_form {not json"])
+
+        assert forms == [{"unparsed": "x - INFO - repair_revision_form {not json"}]
+        assert driver._render_revision_forms(forms) == "UNPARSED line"
+
+    @pytest.mark.parametrize(
+        ("context", "state"),
+        [
+            ({"no_emission_shape_lines": False, "no_correction_round": True}, "unaskable"),
+            (
+                {
+                    "no_emission_shape_lines": False,
+                    "no_correction_round": False,
+                    "no_repair_revision_form_line": True,
+                },
+                "unaskable",
+            ),
+        ],
+        ids=["clean roll", "a round but no line"],
+    )
+    def test_no_form_line_is_unaskable_never_zero_repairs(self, driver, context, state):
+        """#1445. Bug caught: a pre-instrument image, or a round that dispatched no repair,
+        reading as `none (asked)` — as though repairs happened and none took a form."""
+        out = driver.with_states("loop_texture", {"repair_revision_forms": []}, context)
+
+        assert out["repair_revision_forms"]["state"] == state

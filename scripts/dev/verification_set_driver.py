@@ -247,6 +247,11 @@ UNASKABLE_REASONS: dict[str, str] = {
     "probe_could_not_run": (
         "the probe could not run ({detail}) — an unasked question, not an answer (#1425)"
     ),
+    "no_repair_revision_form_line": (
+        "no `repair_revision_form` line in the agents' windows — a repair handler logs one per "
+        "repair (SIP-0107 §46a), so either no repair was dispatched or the deployed image "
+        "predates the instrument"
+    ),
 }
 
 #: The conditions common to every readout parsed off the runtime-api window's patch path.
@@ -302,6 +307,11 @@ EVIDENCE_FIELDS: dict[str, tuple[str, ...]] = {
     "loop_texture.placeholder_strips": _AGENT_WINDOW,
     "loop_texture.retried_with_fact": (*_AGENT_WINDOW, "no_emission_retry_aimed"),
     "loop_texture.retried_blind": (*_AGENT_WINDOW, "no_emission_retry_aimed"),
+    "loop_texture.repair_revision_forms": (
+        *_AGENT_WINDOW,
+        "no_correction_round",
+        "no_repair_revision_form_line",
+    ),
     # loop_texture: the Prefect server's window (its filter keeps only overrun lines, so an
     # empty window is a quiet one)
     "loop_texture.prefect_loop_overruns": (),
@@ -1692,6 +1702,8 @@ _AGENT_LINE_KEYS = (
     # 1.7.4 (#1372, R1): the handler's own trace that the aimed retry's appendix rendered
     # ("appended for") or did not ("NOT appended for") — logged where the prompt is built.
     "emission retry feedback",
+    # SIP-0107 §46a: one per repair — the edit form it was offered, the form its response took.
+    "repair_revision_form ",
 )
 
 
@@ -1889,6 +1901,7 @@ def loop_texture(
     agent_lines = agent_log_window(since, until)
     out.update(texture_from_emission_shapes(agent_lines))
     out.update(texture_from_retry_feedback(agent_lines))
+    out["repair_revision_forms"] = repair_revision_forms(agent_lines)
     # #330: the Prefect server's loop-service overruns in this cycle's window.
     out["prefect_loop_overruns"] = prefect_loop_overruns(prefect_log_window(since, until))
     out["log_window"] = {"since": since, "until": until}
@@ -1920,6 +1933,7 @@ def loop_texture(
         "no_correction_round": not correction_entered(logs, correction_rounds),
         "no_emission_shape_lines": out["emissions_logged"] == 0,
         "no_emission_retry_aimed": len(out["emission_retries"]) == 0,
+        "no_repair_revision_form_line": len(out["repair_revision_forms"]) == 0,
         "no_correction_decision_stored": (correction_rounds or 0) == 0,
         "no_fill_merge_artifact": len(out["fill_merge_evidence"]) == 0,
         "no_test_report_stored": uncollected is None,
@@ -2311,6 +2325,32 @@ def texture_from_retry_feedback(agent_lines: list[str]) -> dict:
             _fact(line, _RETRY_NOT_APPENDED) for line in agent_lines if _RETRY_NOT_APPENDED in line
         ],
     }
+
+
+_REVISION_FORM_MARKER = "repair_revision_form "
+
+
+def repair_revision_forms(agent_lines: list[str]) -> list[dict]:
+    """Every repair's revision form (SIP-0107 §46a, §39.8), parsed from the handler's own line —
+    pure.
+
+    One line per repair, logged in the repairing role's container: what the edit form offered
+    (each file, with the entities listed for it), the form the response took (``edits``,
+    ``whole_file``, ``edits_and_whole_file``, ``fill``, ``new_files_only`` or ``none``), and the
+    transaction's result. ``whole_file_offered`` is §46a's unauthorized whole-file fallback,
+    counted per cell before the flip. A line that does not parse is kept as ``unparsed`` rather
+    than dropped, so a changed format cannot read as fewer repairs.
+    """
+    forms = []
+    for line in agent_lines:
+        _, marker, payload = line.partition(_REVISION_FORM_MARKER)
+        if not marker:
+            continue
+        try:
+            forms.append(json.loads(payload))
+        except ValueError:
+            forms.append({"unparsed": line.strip()})
+    return forms
 
 
 def _int_or_none(value) -> int | None:
@@ -2778,6 +2818,25 @@ def _render_candidate_identities(entries: list[dict]) -> str:
     return text + (f"; MISMATCH on {', '.join(disagree)}" if disagree else "")
 
 
+def _render_revision_forms(entries: list[dict]) -> str:
+    """``development_correction_repair_handler whole_file (app/page.tsx; offered 1)`` per repair
+    — the files re-emitted whole that the repair was offered to revise in place are named."""
+    parts = []
+    for e in entries or []:
+        if "unparsed" in e:
+            parts.append("UNPARSED line")
+            continue
+        detail = [f"offered {len(e.get('offered') or {})}"]
+        if e.get("modes"):
+            detail.insert(0, "/".join(e["modes"]))
+        if e.get("whole_file_offered"):
+            detail.insert(0, ", ".join(e["whole_file_offered"]))
+        if e.get("accepted") is not None:
+            detail.append("accepted" if e["accepted"] else f"refused ({e.get('refusals', 0)})")
+        parts.append(f"{e.get('handler')} {e.get('form')} ({'; '.join(detail)})")
+    return " · ".join(parts)
+
+
 def _render_uncollected(entries: list[dict]) -> str:
     """``__tests__/runs-ui.test.tsx`` (3 reports: 1 failed, 2 stored) — per file, so a suite
     that ran nothing on every attempt reads differently from one a repair renamed."""
@@ -3152,6 +3211,8 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         f"{_show_at(rec, 'loop_texture.framework_rows_rederived')} |",
         "| accepted patches whose verified and persisted identities agree (SIP-0107 §20) | "
         f"{_show_at(rec, 'loop_texture.candidate_identities', _render_candidate_identities)} |",
+        "| repair responses by revision form — offered, and taken (SIP-0107 §46a) | "
+        f"{_show_at(rec, 'loop_texture.repair_revision_forms', _render_revision_forms)} |",
         "| 1.7.4 R1 emission retries aimed / with fact / blind (#1372) | "
         f"{_show_at(rec, 'loop_texture.emission_retries', _count)} / "
         f"{_show_at(rec, 'loop_texture.retried_with_fact', _count)} / "
