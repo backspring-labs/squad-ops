@@ -237,8 +237,12 @@ class TestRepairMinimalityAndLoopState:
         fill-only section, which guards scaffold-owned *interface* — not change size
         within files the repair legitimately owns. Nothing said 'do not rewrite'."""
         body = (_TEMPLATE_DIR / "request.cycle_repair_task.md").read_text()
-        assert "This is a repair, not a rewrite" in body
-        assert "byte-identical" in body
+        whole = (_TEMPLATE_DIR / "request.cycle_repair_output_whole_file.md").read_text()
+        scoped = (_TEMPLATE_DIR / "request.cycle_repair_output_scoped.md").read_text()
+        # SIP-0107 §46a: the output section is one of two forms; each states minimality.
+        assert "{{output_form_section}}" in body
+        assert "This is a repair, not a rewrite" in whole and "byte-identical" in whole
+        assert "This is a repair, not a rewrite" in scoped and "emit nothing for it" in scoped
         assert "Test files are qa-owned" in body
         assert "{{loop_state}}" in body
 

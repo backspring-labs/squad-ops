@@ -2094,3 +2094,47 @@ is the distinction §39.8's N and §46a's per-cell count both depend on.
 
 **Ruled by.** The implementer, on the owner's go for the instrument (2026-09-15). No repair
 behaviour changes; §46a's contract is unchanged.
+
+## 46l. 2026-09-15 — the repair prompt asks for the form §46a requests (§9.1, §9.2, §46a)
+
+**What changed.** A repair offered the edit form is now asked for it and nothing else.
+`request.cycle_repair_task` v8 renders its output section and its closing instruction from one
+decision, the edit form's own (`_anchorable_files`):
+- **Offered** (`request.cycle_repair_output_scoped`, `request.cycle_repair_closing_scoped`): the
+  existing named files are listed for **edit fences only**, with "do not emit a
+  ` ```language:<path> ` fence for any of these files". A file the task names that does not
+  exist yet is listed for a whole-file fence. The last instruction says the same.
+- **Not offered** (`…_output_whole_file`, `…_closing_whole_file`): v7's output section and
+  closing, verbatim. The rendered prompt is byte-identical to v7's, because the renderer collapses
+  blank-line runs.
+
+The edit-form appendix (v3) is placed directly after the output section. Its heading drops
+"(preferred for a repair)", and its last rule drops "or genuinely rewrite from top to bottom".
+
+**Evidence: the prompt asked for the whole file.** v7 inserted the edit form near the top and
+called edits "preferred", then:
+- **Line 50:** "The repair MUST produce the following file(s) by name, using fenced code blocks
+  … (` ```language:<that path> `)".
+- **Line 58:** "A file you are not fixing must be re-emitted byte-identical".
+- **The last line:** "Produce the named artifacts now. Use fenced code blocks for every file you
+  emit, each header carrying that file's own path".
+
+Deploy B's Next.js repair (`cyc_e62d74598211`) of a change the lead called "a straightforward
+one-line fix" came back as a whole file: the form the last instruction named. §46a's pre-flip
+contract says a repair of a supported existing artifact **requests** a scoped revision. v7
+requested the opposite, so this corrects the implementation to the contract. §46a is unchanged:
+a whole-file response is still accepted and recorded until §38 step 7.
+
+**Tests:**
+- **Offered:** entered at `DevelopmentCorrectionRepairHandler.handle`, the existing file is listed
+  for edits and the new file for a whole fence, neither "MUST produce the following file(s)" nor
+  "re-emitted byte-identical" appears, and the closing forbids a whole fence for an existing file.
+- **Not offered:** v7's section and closing are unchanged.
+- **Minimality:** the template test holds it in both output forms.
+- **Mutations: three, each caught.** The scoped form never chosen; the scoped closing replaced by
+  the whole-file one; new files listed as editable.
+
+**Not yet shown:** whether qwen3.8 follows the coherent prompt. A readiness probe against the
+live model precedes deploy C and any pre-registration (the owner's re-sequence, 2026-09-15).
+
+**Ruled by.** The owner's go on the re-sequence, 2026-09-15; the implementer on the wording.

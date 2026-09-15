@@ -110,11 +110,11 @@ async def test_an_anchored_repair_becomes_the_whole_file_with_only_the_anchor_ch
     result = await DevelopmentCorrectionRepairHandler().handle(ctx, _inputs())
 
     prompt = _user_prompt(ctx, 0)
-    assert "Editing a File That Already Exists" in prompt
+    assert "How to Write an Edit Fence" in prompt
     assert "- `backend/routes.py`" in prompt
     assert (
         "`backend/new_helper.py`"
-        not in prompt.split("Editing a File That Already Exists")[1].split("Rules")[0]
+        not in prompt.split("How to Write an Edit Fence")[1].split("Rules")[0]
     )
     (artifact,) = result.outputs["artifacts"]
     assert artifact["name"] == "backend/routes.py"
@@ -177,7 +177,8 @@ async def test_a_repair_with_no_existing_named_file_is_not_offered_the_edit_form
         ctx, _inputs(expected_artifacts=["backend/new_helper.py"])
     )
 
-    assert "Editing a File That Already Exists" not in _user_prompt(ctx, 0)
+    assert "How to Write an Edit Fence" not in _user_prompt(ctx, 0)
+    assert "Revise the Existing Files in Place" not in _user_prompt(ctx, 0)
 
 
 async def test_the_edit_resolves_against_the_failed_attempts_file_over_the_workspace():
@@ -367,3 +368,42 @@ async def test_every_repair_logs_the_form_it_was_offered_and_the_form_it_took(
         # base the edits resolve on: imports, import:fastapi, and two functions with a body each.
         assert logged["offered"] == {"backend/routes.py": 6}
     assert {k: logged[k] for k in expected} == expected
+
+
+async def test_a_repair_offered_the_edit_form_is_never_also_told_to_emit_the_file_whole():
+    """SIP-0107 §46a: a repair of an existing file requests a scoped revision. Bug caught (deploy
+    B, `cyc_e62d74598211`): the edit form said edits were "preferred" while the output section
+    and the prompt's last line required every named file whole in ` ```language:<path> ` fences,
+    and the dev repair of a one-line fix came back as a whole file. The existing file is asked
+    for as edits, the new file as a whole file, and the last instruction agrees."""
+    ctx = _context(_GOOD_EDIT)
+
+    await DevelopmentCorrectionRepairHandler().handle(ctx, _inputs())
+
+    prompt = _user_prompt(ctx, 0)
+    scoped = prompt.split("Revise the Existing Files in Place")[1].split(
+        "How to Write an Edit Fence"
+    )[0]
+    assert "- `backend/routes.py`" in scoped.split("does not exist yet")[0]
+    assert "- `backend/new_helper.py`" in scoped.split("does not exist yet")[1]
+    assert "MUST produce the following file(s) by name" not in prompt
+    assert "re-emitted byte-identical" not in prompt
+    closing = prompt.rstrip().rsplit("\n\n", 1)[-1]
+    assert closing.startswith("Emit the repair now.") and "never for an existing one" in closing
+
+
+async def test_a_repair_not_offered_the_edit_form_is_asked_exactly_as_before():
+    """Bug caught: the restructure changing what a whole-file repair is asked — the output
+    section and closing line of v7, byte for byte, for a repair with no existing named file."""
+    ctx = _context("```python:backend/new_helper.py\nX = 1\n```\n")
+
+    await DevelopmentCorrectionRepairHandler().handle(
+        ctx, _inputs(expected_artifacts=["backend/new_helper.py"])
+    )
+
+    prompt = _user_prompt(ctx, 0)
+    assert "The repair MUST produce the following file(s) by name" in prompt
+    assert "- `backend/new_helper.py`" in prompt.split("Required Output Artifacts")[1]
+    assert prompt.rstrip().endswith(
+        "for. Do not include explanatory prose between code blocks unless it is essential."
+    )

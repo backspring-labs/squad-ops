@@ -269,6 +269,10 @@ class _RepairPromptMixin:
             # in the workspace, and — on the one retry — why the previous edits were refused.
             "anchored_edit_section": str(inputs.get("anchored_edit_section") or ""),
             "anchored_edit_retry_section": str(inputs.get("anchored_edit_retry_section") or ""),
+            # SIP-0107 §46a: what the repair is asked to emit, and the last thing it reads,
+            # agree with the edit form — rendered in handle() from one decision.
+            "output_form_section": str(inputs.get("output_form_section") or ""),
+            "closing_instruction": str(inputs.get("closing_instruction") or ""),
         }
 
     async def handle(
@@ -314,6 +318,7 @@ class _RepairPromptMixin:
         qa_fill_mode = await self._render_qa_fill_mode_section(context, inputs)
         if qa_fill_mode:
             inputs = {**inputs, "qa_fill_mode_section": qa_fill_mode}
+        inputs = {**inputs, **(await self._render_output_form(context, inputs))}
         anchored, offered = await self._render_anchored_edit_section(context, inputs)
         if anchored:
             inputs = {**inputs, "anchored_edit_section": anchored}
@@ -350,6 +355,43 @@ class _RepairPromptMixin:
                 sort_keys=True,
             ),
         )
+
+    async def _render_output_form(
+        self, context: ExecutionContext, inputs: dict[str, Any]
+    ) -> dict[str, str]:
+        """The output section and the closing instruction, from one decision (SIP-0107 §46a).
+
+        A repair offered the edit form is asked for edit fences on the files that exist and
+        whole-file fences only for the files it creates. Every other repair is asked exactly as
+        before. The two used to disagree: the edit form said edits were preferred while the
+        output section, and the prompt's last line, required every named file whole, so deploy
+        B's Next.js repair of a one-line fix came back as a whole file. The decision is the edit
+        form's own (``_anchorable_files``), so the two cannot drift.
+        """
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is None:
+            return {}
+        from squadops.cycles.write_authorization import normalize_ws_path
+
+        editable = self._anchorable_files(inputs)
+        if editable:
+            named = [normalize_ws_path(str(e)) for e in (inputs.get("expected_artifacts") or [])]
+            new = [n for n in named if n and n not in editable]
+            output = await renderer.render(
+                "request.cycle_repair_output_scoped",
+                {
+                    "editable_files": "\n".join(f"- `{path}`" for path in editable),
+                    "new_files": "\n".join(f"- `{path}`" for path in new) or "- (none)",
+                },
+            )
+            closing = await renderer.render("request.cycle_repair_closing_scoped", {})
+        else:
+            output = await renderer.render(
+                "request.cycle_repair_output_whole_file",
+                {"expected_artifacts": _format_bullets(inputs.get("expected_artifacts"))},
+            )
+            closing = await renderer.render("request.cycle_repair_closing_whole_file", {})
+        return {"output_form_section": output.content, "closing_instruction": closing.content}
 
     def _repair_base_files(self, inputs: dict[str, Any]) -> dict[str, str]:
         """The tree the repair patches: the workspace the verifier materialises, with the failed
