@@ -332,12 +332,21 @@ class _RepairPromptMixin:
             inputs = {**inputs, "anchored_edit_section": anchored}
         result = await super().handle(context, inputs)
         result = await self._retry_refused_anchored_edits(context, inputs, result)
-        self._record_revision_form(offered, result)
+        base = self._repair_base_files(inputs)
+        self._record_revision_form(
+            offered, result, {path: len(base[path]) for path in offered if path in base}
+        )
         await self._after_emission(inputs, result)
         return result
 
-    def _record_revision_form(self, offered: dict[str, int], result: HandlerResult) -> None:
-        """One line per repair: the edit form it was offered and the form its response took.
+    def _record_revision_form(
+        self,
+        offered: dict[str, int],
+        result: HandlerResult,
+        base_chars: dict[str, int] | None = None,
+    ) -> None:
+        """One line per repair: the edit form it was offered, the form its response took, and
+        how much of each offered file it replaced (§46o).
 
         SIP-0107 §46a counts unauthorized whole-file responses per cell before the flip, and
         §39.8's N counts scoped transactions, so neither is readable unless every repair says
@@ -354,7 +363,7 @@ class _RepairPromptMixin:
         outputs = getattr(result, "outputs", None)
         if not isinstance(outputs, dict):
             return
-        reading = revision_form_reading(offered, outputs)
+        reading = revision_form_reading(offered, outputs, base_chars)
         outputs["revision_form"] = reading
         logger.info(
             "repair_revision_form %s",

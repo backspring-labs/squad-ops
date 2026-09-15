@@ -289,6 +289,10 @@ async def test_an_entity_that_does_not_exist_is_retried_with_its_reason():
                 "whole_file_offered": ["backend/routes.py"],
                 "accepted": None,
                 "modes": [],
+                # §46o: re-emitted whole = the whole file, from the base the edits resolve on.
+                "replaced": {
+                    "backend/routes.py": {"chars": len(_ROUTES), "of": len(_ROUTES), "pct": 100}
+                },
             },
         ),
         (
@@ -300,6 +304,19 @@ async def test_an_entity_that_does_not_exist_is_retried_with_its_reason():
                 "accepted": True,
                 "refusals": 0,
                 "modes": ["anchored"],
+                "fragment_anchors": 0,
+                # §46o: the anchor's own span (two lines of the file), not the replacement's.
+                "replaced": {
+                    "backend/routes.py": {
+                        "chars": len("def create(payload):\n    return Run(**payload.dict())\n"),
+                        "of": len(_ROUTES),
+                        "pct": round(
+                            100
+                            * len("def create(payload):\n    return Run(**payload.dict())\n")
+                            / len(_ROUTES)
+                        ),
+                    }
+                },
             },
         ),
         (
@@ -313,6 +330,7 @@ async def test_an_entity_that_does_not_exist_is_retried_with_its_reason():
                 "retried": True,
                 "modes": ["anchored"],
                 "failure_reason": "anchored_edit_refused",
+                "replaced": {},  # nothing applied, nothing replaced
             },
         ),
         (
