@@ -1132,3 +1132,66 @@ If staging is necessary, the cleanest delivery path is A → B → C. Stage A al
 - `src/squadops/capabilities/handlers/cycle_tasks.py` — Build handler implementations
 - `src/squadops/cycles/task_outcome.py` — TaskOutcome and FailureClassification constants
 - `adapters/cycles/distributed_flow_executor.py` — Correction protocol and sequential executor logic
+
+---
+
+## 12. Post-implementation amendments
+
+### 12a. 2026-09-15 — the self-evaluation pass becomes the model's compile loop (proposed; not built; targeted for 1.8.1)
+
+**Status.** Drafted on the owner's ask of 2026-09-15 and **targeted for 1.8.1 by the owner's
+ruling of the same day**. Not built. Until the PR that builds it lands and amends this section
+with what shipped, nothing below describes main.
+
+**What changes.** §6.5 as built re-asks the model once with the validation result
+(`max_self_eval_passes` defaults to 1, `base.py:834`), and that validation already includes the
+task's typed checks (SIP-0092 M1.3, the shared seam). So the loop exists; it is shallow, and the
+evidence it hands back is truncated. Four changes, on that seam and nowhere else:
+
+1. **Depth is the request profile's, not a constant.** `max_self_eval_passes` becomes a
+   required field of every cycle request profile (require, don't default — the owner's ruling
+   of 2026-09-14 on selectors, applied to a tunable). The 1-hour build profiles set it to 3;
+   the selftest profiles to 0. Each pass is recorded in the run's usage ledger (SIP-0108
+   §4.1) under its own key, so a pass is never mistaken for a correction round and its cost
+   is measured, not assumed.
+2. **Every error, not the first.** The `frontend_compiles` check runs `npm run build`, and
+   `next build` stops at the first type error; the check's `stderr_tail` keeps 1,024
+   characters (`acceptance_checks.py:1820`). The readiness probe of 2026-09-15 (see SIP-0107
+   §46m) fixed the named error in six of six trials and every build stopped at a second error
+   the evidence had never shown. On the TypeScript stacks the check runs `tsc --noEmit
+   --pretty false` beside the build and hands the model the full diagnostic list; on the
+   Python stack the equivalent is every failing row, not the first. The evidence limit is
+   raised to carry it, and the failure evidence for a correction round carries the same list.
+3. **The pass sees what it edits.** The follow-up prompt shows the current content of every
+   file the validation names, exactly as SIP-0107 §46m does for a repair, and asks for edits
+   in the edit-fence form when the file already exists. A pass that re-emits a whole file it
+   was shown is recorded on the revision form like a repair's (SIP-0107 §46k, §46o).
+4. **One evaluation per pass, on the verifier's tree.** The repair handlers evaluate the
+   failed task's criteria a second time after the loop (`_attach_typed_checks`, #1229). The
+   amendment folds that into the loop's validation so a repair's passes are judged on the
+   base-plus-patch tree the verifier will build, once per pass.
+
+**What does not change.** The correction protocol (SIP-0079, §6.6 here) and its round budget
+are untouched: a pass is inside the task and never consumes a round. The output-validation
+rule (§6.4) is unchanged. No new task type, no new agent step.
+
+**Why.** A capable coder writes, compiles, reads every error and iterates. The dev and repair
+tasks got one generation and one re-ask on a truncated first error, then waited a full
+correction round — analyzer, decision, repair, retest, roughly five to ten minutes — for the
+next diagnostic. The probe's second error would have cost a round; a pass costs 20 to 60
+seconds on the same model. This is the single largest capability the framework leaves on the
+table for the 27B model it runs, and it is a depth setting on a seam that already exists.
+
+**Evidence.** `var/probes/2026-09-15-scoped-repair-readiness-v2/README.md` (the readiness
+probe's second run: 24 trials, typed checks executing in the dev agent's image); SIP-0107
+§46m and §46o; `base.py:834` (the default of one pass); `acceptance_checks.py` `_tail`
+(1,024 characters); the 1.7.5 rolls' round costs in `docs/benchmark/regrade.json`.
+
+**Open item, measured not assumed.** The reasoning policy assigns `MEDIUM` to
+`development.develop`, `development.correction_repair` and `qa.test`
+(`reasoning_policy.py:65-69`). Whether a deeper level pays for itself on a repair is a
+measurement for the 1.8.1 set, not a change this amendment makes.
+
+**Ruled by.** The owner, 2026-09-15: drafted on the question "does the framework constrain
+the model it runs", and targeted for 1.8.1. The design is the implementer's, for review on
+the PR that builds it.

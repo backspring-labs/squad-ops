@@ -273,3 +273,70 @@ Acceptance of the SIP is all phases (SIP-0089/0090 precedent).
 - **Doctor:** a verification category alongside the SIP-0095 model-availability checks.
 - **Profiles:** a `required_checks` key in the cycle-request-profile / build-profile schema, validated at load (SIP-0082 precedent); naming coordinated with the #316 taxonomy work.
 - **Waiver:** a field on the existing `GateDecision` record + roll-up reference — no new gate type.
+
+---
+
+## 17. Post-implementation amendments
+
+### 17a. 2026-09-15 — a contested result: the producer's dispute becomes evidence (proposed; not built; targeted for 1.8.1)
+
+**Status.** Drafted on the owner's ask of 2026-09-15 and **targeted for 1.8.1 by the owner's
+ruling of the same day**. Not built. Until the PR that builds it lands and amends this section
+with what shipped, nothing below describes main.
+
+**The invariant is unchanged.** Every result still resolves to exactly one of the three
+families of §6, and only executed-and-passed credits. A contested result is an **attribute on
+a row**, never a fourth family: it does not credit, it does not block on its own, and it never
+turns a failure into a pass. What it adds is a voice the evidence has never carried.
+
+**The gap.** The framework has refused correct work more often than it has caught the model
+producing wrong work of the same kind, and each refusal spent a round and handed the producer
+a brief telling it to fix something that was not broken: a correct `@/lib` alias import refused
+by a false-positive `declared_imports` on 2026-09-01, which the model then degraded to a
+relative path to comply (fixed at `acceptance_checks.py:760`); a correct dev fix refused twice
+because the check ran on a tree without the qa suite (#1259); dead Python-AST checks on `.jsx`
+files that burned two rolls' full correction budgets (pf-47, pf-49); an uncollected `.test.tsx`
+suite that rewrote seven app files and rejected an unchanged suite (#1532, #1533); a builder
+repair discarded unheard (#1255). The repair prompt asks the model to "say why in one line
+rather than making it silently" when it believes a change beyond the named failure is needed
+(`request.cycle_repair_task.md`), and nothing reads that line. The producer is judged by
+checks it cannot contest.
+
+**What changes.**
+
+1. **A typed dispute output.** Every build and repair task may emit one structured block,
+   `disputed_checks`, listing `{check, criterion_id, subject, reason}` for a criterion it
+   believes is wrong or inapplicable — through the prompt-asset system, never a prose line.
+   The extractor stores it on the task outputs beside the artifacts; a response with no block
+   disputes nothing.
+2. **`contested` on the row.** At the verification choke point (§6.1), a row whose check,
+   criterion and subject match a dispute gains `contested: {by: <role>, reason}`. The family
+   is unchanged. A dispute that matches no row is recorded as `unmatched_dispute` and read as
+   nothing.
+3. **The failure evidence carries contested rows in their own block**, and the analyzer's
+   prompt asks one question of each: does the evidence support the dispute? Its answer is a
+   typed field on the analysis output, `dispute_confirmed: true|false`, with the reason.
+4. **Routing.** A contested row the analyzer confirms routes the round to the harness path
+   that `blocked_unverified` already uses (§6.5): the round is refunded (SIP-0108 §4.1's
+   refund rule), the check is named in the run's terminal decision, and an issue is opened by
+   the driver's readout, not by the cycle. A contested row the analyzer does not confirm
+   proceeds exactly as an uncontested failure, with the dispute and the rejection recorded.
+   The lead's decision inputs show contested rows and the analyzer's answer; no agent gains
+   waiver authority, which stays the operator's (§6.5).
+5. **The readout.** The verification-set driver counts contested rows per cell beside failed
+   and not-executed ones, split by confirmed and rejected, so a check with a history of
+   confirmed disputes is visible as a check defect (SIP-0108 §4.2:
+   `criteria_or_contract_failure`), and a producer that disputes everything is visible too.
+
+**Why.** A gate that cannot be contested converts every false positive into a lost round and a
+misleading brief, and the record shows the false positives were real and recurring. Giving
+the producer a typed, read, adjudicated voice costs one field and one question to the
+analyzer, and it turns each false positive into a filed check defect on the round it occurs
+instead of a rejected roll read out a week later.
+
+**Evidence.** The cases above, each with its issue or fix; the repair template's unread line;
+`docs/plans/1-8-0-rejection-baseline.md` for the classes those refusals produced.
+
+**Ruled by.** The owner, 2026-09-15: drafted on the question "does the framework constrain
+the model it runs", and targeted for 1.8.1. The design is the implementer's, for review on
+the PR that builds it.
