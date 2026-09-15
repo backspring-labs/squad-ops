@@ -1175,3 +1175,66 @@ class TestTheDecisionCanDisputeASuiteSideRead:
         assert not decision_disputes_own_artifact({})
         assert not decision_disputes_own_artifact(None)
         assert not decision_disputes_own_artifact("patch")
+
+
+class TestSuiteFilesNamedUnanimously:
+    """#1581: the mirror of #1054's dispute rule — two model readings that agree the failed qa
+    task's own suite is the defect, and nothing else, route a failing assertion to its author."""
+
+    def _named(self, implicated, labels, own=("tests/test_runs.py", "tests/conftest.py")):
+        from squadops.cycles.failure_evidence import suite_files_named_unanimously
+
+        return suite_files_named_unanimously(
+            {"implicated_files": implicated}, {"affected_task_types": labels}, own
+        )
+
+    def test_the_deploy_c_round_names_the_suite(self):
+        """The round as stored (cyc_24746bb1091e): analyzer `["tests/test_runs.py"]`, decision
+        `["testing"]`. Bug caught: this read as UNKNOWN and the dev was sent to repair a file
+        every party had agreed was correct."""
+        assert self._named(["tests/test_runs.py"], ["testing"]) == ["tests/test_runs.py"]
+
+    @pytest.mark.parametrize(
+        ("implicated", "labels"),
+        [
+            (["tests/test_runs.py", "backend/routes.py"], ["testing"]),  # an app file too
+            (["tests/test_runs.py"], ["testing", "backend_routes"]),  # a non-suite label too
+            (["backend/routes.py"], ["testing"]),  # the analyzer named the app only
+            (["tests/test_runs.py"], ["frontend"]),  # the lead named the app only
+            ([], ["testing"]),  # the analyzer named nothing
+            (["tests/test_runs.py"], []),  # the lead named nothing
+            (["tests/other_test.py"], ["testing"]),  # not the failed task's own file
+        ],
+        ids=[
+            "app file implicated",
+            "non-suite label",
+            "analyzer names the app",
+            "lead names the app",
+            "no implicated files",
+            "no labels",
+            "not an own file",
+        ],
+    )
+    def test_anything_short_of_unanimity_abstains(self, implicated, labels):
+        """The #568 test-gaming guard: one app file or one app-side label, and the
+        conservative default stands — a qa re-author must never be able to "fix" an app bug
+        by rewriting the tests on one model's say-so."""
+        assert self._named(implicated, labels) == []
+
+    def test_unparseable_input_abstains(self):
+        from squadops.cycles.failure_evidence import suite_files_named_unanimously
+
+        assert (
+            suite_files_named_unanimously(None, {"affected_task_types": ["testing"]}, ["t.py"])
+            == []
+        )
+        assert (
+            suite_files_named_unanimously({"implicated_files": ["t.py"]}, "patch", ["t.py"]) == []
+        )
+
+    def test_the_target_is_the_own_files_named_in_their_own_spelling(self):
+        """Only the files the analyzer named, spelled as the task declares them — a `./`
+        prefix or a duplicate does not add a file."""
+        assert self._named(["./tests/test_runs.py", "tests/test_runs.py"], ["test_assertions"]) == [
+            "tests/test_runs.py"
+        ]

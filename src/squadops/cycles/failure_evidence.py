@@ -327,6 +327,49 @@ def decision_disputes_own_artifact(decision_outputs: Any) -> bool:
     return not any(token in label for label in labels for token in _SUITE_SIDE_TOKENS)
 
 
+def suite_files_named_unanimously(
+    failure_analysis: Any, decision_outputs: Any, own_files: Iterable[str]
+) -> list[str]:
+    """The failed qa task's own suite files that BOTH model readings name, and nothing else —
+    or ``[]`` (abstain). The mirror of :func:`decision_disputes_own_artifact` (#1054), in the
+    one direction the classifier's conservative default cannot take on its own (#1581).
+
+    #1581: deploy C's React shakeout failed one assertion — the suite read ``participants``
+    off a 409 error envelope. The analyzer wrote "the backend behavior is correct; the test's
+    assertion logic is wrong", ``implicated_files: ["tests/test_runs.py"]``; the lead chose
+    ``patch`` with ``affected_task_types: ["testing"]``. The ``tests_pass`` row's exit code 1
+    is the classifier's default guess that the app is wrong, so the round went to the dev
+    chain, the suite was vetoed off the target (#884), and the dev was dispatched to repair a
+    file everyone had just agreed was correct. It said so, in prose nothing reads.
+
+    **Unanimity is the safety argument, as in #1054, doubled.** The analyzer's implicated
+    files must all be the failed task's own files, and every label the lead wrote must carry
+    a suite-side token: one app file, or one non-suite label, and this abstains. Both fields
+    are model-authored, which is why the classifier ignores them alone (#568's test-gaming
+    guard); two independent readings agreeing, a target limited to the files the analyzer
+    named, and the retest of the rewritten suite against the unchanged app under the
+    contract-binding suite checks (#629, #668, #1153) that did not exist when #568 chose its
+    default, are what make this route safe to take. Empty or unparseable input abstains.
+    """
+    if not isinstance(failure_analysis, dict) or not isinstance(decision_outputs, dict):
+        return []
+    from squadops.cycles.write_authorization import normalize_ws_path
+
+    implicated = [
+        normalize_ws_path(str(f)) for f in (failure_analysis.get("implicated_files") or []) if f
+    ]
+    implicated = [f for f in implicated if f]
+    own = {normalize_ws_path(str(f)): str(f) for f in own_files if f}
+    if not implicated or not all(f in own for f in implicated):
+        return []
+    labels = [str(t).strip().lower() for t in (decision_outputs.get("affected_task_types") or [])]
+    labels = [label for label in labels if label]
+    if not labels or not all(any(tok in label for tok in _SUITE_SIDE_TOKENS) for label in labels):
+        return []
+    named = set(implicated)
+    return [original for key, original in own.items() if key in named]
+
+
 #: The own-artifact signal that came from the failed ``tests_pass`` row's exit code or
 #: suite verdict, as opposed to a signal that named the suite outright. #1054's dispute
 #: rule is allowed to question ONLY this one: every other own-artifact signal is a machine
