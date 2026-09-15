@@ -28,6 +28,50 @@ logger = logging.getLogger(__name__)
 
 # Pattern for {{variable}} placeholders in templates
 _PLACEHOLDER_PATTERN = re.compile(r"\{\{(\w+)\}\}")
+_BLANK_RUN_PATTERN = re.compile(r"\n{3,}")
+#: A fenced block's opening line: up to three spaces of indent, then a run of three or more
+#: backticks or tildes (CommonMark). The closing line is the same character, at least as long,
+#: and nothing else.
+_FENCE_OPEN_PATTERN = re.compile(r"^ {0,3}(?P<mark>`{3,}|~{3,})")
+
+
+def collapse_blank_runs_outside_fences(text: str) -> str:
+    """Runs of three or more newlines become two — the cleanup an empty optional leaves behind
+    — everywhere except inside a fenced block, whose lines are verbatim.
+
+    A file shown in a prompt rides inside a fence, and a model is asked to copy its lines
+    exactly (SIP-0107 §9.2). Collapsing the blank lines of a Python file — two between every
+    top-level definition — would show the model a file that is not the one its edits are
+    matched against, and every anchor spanning that gap would be refused (#1576).
+    """
+    fenced = _fenced_line_indices(text.split("\n"))
+    if not fenced:
+        return _BLANK_RUN_PATTERN.sub("\n\n", text)
+
+    def _collapse(match: re.Match[str]) -> str:
+        first_blank_line = text.count("\n", 0, match.start()) + 1
+        return match.group(0) if first_blank_line in fenced else "\n\n"
+
+    return _BLANK_RUN_PATTERN.sub(_collapse, text)
+
+
+def _fenced_line_indices(lines: list[str]) -> set[int]:
+    """The indices of every line inside a fenced block — between its opening and closing
+    lines, neither included. An unclosed fence runs to the end."""
+    fenced: set[int] = set()
+    mark: str | None = None
+    for index, line in enumerate(lines):
+        if mark is None:
+            opened = _FENCE_OPEN_PATTERN.match(line)
+            if opened:
+                mark = opened.group("mark")
+            continue
+        stripped = line.strip()
+        if stripped and set(stripped) == {mark[0]} and len(stripped) >= len(mark):
+            mark = None
+        else:
+            fenced.add(index)
+    return fenced
 
 
 def _parse_template_contract(content: str) -> tuple[str, set[str], set[str]]:
@@ -110,8 +154,7 @@ class RequestTemplateRenderer:
 
         rendered = _PLACEHOLDER_PATTERN.sub(_replace, body)
 
-        # Collapse runs of 3+ blank lines to 2 (cleanup from empty optionals)
-        rendered = re.sub(r"\n{3,}", "\n\n", rendered)
+        rendered = collapse_blank_runs_outside_fences(rendered)
 
         render_hash = RenderedRequest.compute_hash(rendered)
 
