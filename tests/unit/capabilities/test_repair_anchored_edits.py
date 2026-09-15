@@ -272,3 +272,65 @@ async def test_an_entity_that_does_not_exist_is_retried_with_its_reason():
         in retry_prompt
     )
     assert result.outputs["anchored_edits"]["accepted"] is True
+
+
+# --- The revision form, as evidence (SIP-0107 §46a) -----------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("responses", "extra", "expected"),
+    [
+        (
+            ("```python:backend/routes.py\nrouter = 1\n```\n",),
+            {},
+            {"form": "whole_file", "whole_file_offered": ["backend/routes.py"], "accepted": None},
+        ),
+        (
+            (_GOOD_EDIT,),
+            {},
+            {"form": "edits", "edited": ["backend/routes.py"], "accepted": True, "refusals": 0},
+        ),
+        (
+            (_AMBIGUOUS_EDIT, _AMBIGUOUS_EDIT),
+            {},
+            {"form": "edits", "edited": [], "accepted": False, "refusals": 1, "retried": True},
+        ),
+        (
+            ("```python:backend/new_helper.py\nX = 1\n```\n",),
+            {"expected_artifacts": ["backend/new_helper.py"]},
+            {"form": "new_files_only", "offered": {}, "new_files": ["backend/new_helper.py"]},
+        ),
+    ],
+    ids=["offered file re-emitted whole", "scoped edit", "refused twice", "never offered"],
+)
+async def test_every_repair_logs_the_form_it_was_offered_and_the_form_it_took(
+    caplog, responses, extra, expected
+):
+    """Wiring, entered at the dev repair's ``handle``. Bug caught: a whole-file answer to a file
+    the prompt offered for in-place revision leaving no trace, so the record cannot tell it from a
+    repair never offered the form — deploy B's Next.js repair of `app/runs/[run_id]/page.tsx`,
+    unreadable because the stored prompt is cut before the form and the transaction line is
+    written only when a response carries edits."""
+    import json
+    import logging
+
+    ctx = _context(*responses)
+    with caplog.at_level(
+        logging.INFO, logger="squadops.capabilities.handlers.impl.repair_handlers"
+    ):
+        result = await DevelopmentCorrectionRepairHandler().handle(ctx, _inputs(**extra))
+
+    (line,) = [
+        r.getMessage() for r in caplog.records if r.getMessage().startswith("repair_revision_form ")
+    ]
+    logged = json.loads(line.removeprefix("repair_revision_form "))
+    assert logged == {
+        "handler": "development_correction_repair_handler",
+        "task_type": "development.correction_repair",
+        **result.outputs["revision_form"],
+    }
+    if extra.get("expected_artifacts") is None:
+        # The offer names the file with the entities the prompt listed for it, from the same
+        # base the edits resolve on: imports, import:fastapi, and two functions with a body each.
+        assert logged["offered"] == {"backend/routes.py": 6}
+    assert {k: logged[k] for k in expected} == expected

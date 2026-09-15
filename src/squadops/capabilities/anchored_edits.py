@@ -445,3 +445,64 @@ def _breaks_parsing_base(base: Mapping[str, str]):
         return syntax_error(path, content)
 
     return validate
+
+
+# ---------------------------------------------------------------------------------------------
+# The repair's revision form, as evidence (SIP-0107 §46a, §39.8)
+# ---------------------------------------------------------------------------------------------
+
+#: What a repair response did with the files it was offered to revise in place.
+REVISION_FORM_EDITS = "edits"
+REVISION_FORM_EDITS_AND_WHOLE_FILE = "edits_and_whole_file"
+REVISION_FORM_WHOLE_FILE = "whole_file"
+REVISION_FORM_FILL = "fill"
+REVISION_FORM_NEW_FILES_ONLY = "new_files_only"
+REVISION_FORM_NONE = "none"
+
+
+def revision_form_reading(offered: Mapping[str, int], outputs: Mapping[str, Any]) -> dict[str, Any]:
+    """Which form a repair response took, beside what it was offered (SIP-0107 §46a).
+
+    ``offered`` maps each file the rendered edit form listed to the number of entities listed
+    for it (empty when the form was not rendered). ``outputs`` is the repair task's outputs:
+    ``anchored_edits`` when the response carried edit fences, ``artifacts`` for what it yields.
+
+    Before §38 step 7 an offered file re-emitted whole is an **unauthorized whole-file
+    fallback**: accepted, counted per cell, never a scoped transaction, so it never counts
+    toward N. A file the response creates is not a fallback. The reading is pure, so the count
+    the record reports is the count this function decides.
+    """
+    record = (
+        outputs.get("anchored_edits") if isinstance(outputs.get("anchored_edits"), dict) else None
+    )
+    edited = sorted({str(e.get("path")) for e in (record or {}).get("edits") or []})
+    emitted = [
+        a
+        for a in outputs.get("artifacts") or []
+        if isinstance(a, dict) and a.get("name") and not a.get("emission_fallback")
+    ]
+    fills = [a for a in emitted if a.get("type") == "fill"]
+    files = sorted({str(a["name"]) for a in emitted if a.get("type") != "fill"} - set(edited))
+    whole_offered = [f for f in files if f in offered]
+    new_files = [f for f in files if f not in offered]
+    if record is not None:
+        form = REVISION_FORM_EDITS_AND_WHOLE_FILE if whole_offered else REVISION_FORM_EDITS
+    elif whole_offered:
+        form = REVISION_FORM_WHOLE_FILE
+    elif fills:
+        form = REVISION_FORM_FILL
+    elif new_files:
+        form = REVISION_FORM_NEW_FILES_ONLY
+    else:
+        form = REVISION_FORM_NONE
+    return {
+        "offered": dict(sorted(offered.items())),
+        "form": form,
+        "edited": edited,
+        "whole_file_offered": whole_offered,
+        "new_files": new_files,
+        "fills": len(fills),
+        "accepted": record.get("accepted") if record is not None else None,
+        "refusals": len(record.get("refusals") or []) if record is not None else 0,
+        "retried": "anchored_edit_retry" in outputs,
+    }

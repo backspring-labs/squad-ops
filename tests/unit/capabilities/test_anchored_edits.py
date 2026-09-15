@@ -443,3 +443,42 @@ def test_the_dispatcher_routes_each_file_to_its_resolver(path, content, selector
         assert resolve_entity(path, content, selectors[-1])
     else:
         assert resolve_entity(path, content, "function:f") is None
+
+
+@pytest.mark.parametrize(
+    ("outputs", "form", "whole", "new"),
+    [
+        ({"artifacts": [{"name": "a.py", "type": "source"}]}, "whole_file", ["a.py"], []),
+        (
+            {
+                "anchored_edits": {"accepted": True, "edits": [{"path": "a.py"}], "refusals": []},
+                "artifacts": [
+                    {"name": "a.py", "type": "source"},
+                    {"name": "b.py", "type": "source"},
+                ],
+            },
+            "edits_and_whole_file",
+            ["b.py"],
+            [],
+        ),
+        ({"artifacts": [{"name": "slot-x", "type": "fill"}]}, "fill", [], []),
+        ({"artifacts": [{"name": "c.py", "type": "source"}]}, "new_files_only", [], ["c.py"]),
+        ({"artifacts": [{"name": "prose.md", "emission_fallback": True}]}, "none", [], []),
+    ],
+    ids=["whole file", "edit one, rewrite another", "fill", "a new file", "prose fallback"],
+)
+def test_the_revision_form_separates_a_whole_file_fallback_from_what_is_not_one(
+    outputs, form, whole, new
+):
+    """SIP-0107 §46a counts unauthorized whole-file fallbacks per cell. Bug caught: a file the
+    repair CREATES counted as a fallback, an edited file counted as re-emitted because its
+    applied content rides as an artifact, or a prose fallback counted as a file."""
+    from squadops.capabilities.anchored_edits import revision_form_reading
+
+    reading = revision_form_reading({"a.py": 2, "b.py": 1}, outputs)
+
+    assert (reading["form"], reading["whole_file_offered"], reading["new_files"]) == (
+        form,
+        whole,
+        new,
+    )

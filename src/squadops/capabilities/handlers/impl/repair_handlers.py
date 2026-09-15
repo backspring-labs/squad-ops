@@ -314,13 +314,42 @@ class _RepairPromptMixin:
         qa_fill_mode = await self._render_qa_fill_mode_section(context, inputs)
         if qa_fill_mode:
             inputs = {**inputs, "qa_fill_mode_section": qa_fill_mode}
-        anchored = await self._render_anchored_edit_section(context, inputs)
+        anchored, offered = await self._render_anchored_edit_section(context, inputs)
         if anchored:
             inputs = {**inputs, "anchored_edit_section": anchored}
         result = await super().handle(context, inputs)
         result = await self._retry_refused_anchored_edits(context, inputs, result)
+        self._record_revision_form(offered, result)
         await self._after_emission(inputs, result)
         return result
+
+    def _record_revision_form(self, offered: dict[str, int], result: HandlerResult) -> None:
+        """One line per repair: the edit form it was offered and the form its response took.
+
+        SIP-0107 §46a counts unauthorized whole-file responses per cell before the flip, and
+        §39.8's N counts scoped transactions, so neither is readable unless every repair says
+        both halves. The transaction line (``anchored_edit_transaction``) is written only when a
+        response carried edits; a whole-file answer left no line, and the stored prompt is
+        truncated before the edit form (``MAX_OBSERVABILITY_TEXT_LENGTH``), so deploy B's
+        Next.js repair could not be told apart from one never offered the form. Logged before
+        the qa fill merge rewrites the artifacts; recorded on the outputs beside it.
+        """
+        import json
+
+        from squadops.capabilities.anchored_edits import revision_form_reading
+
+        outputs = getattr(result, "outputs", None)
+        if not isinstance(outputs, dict):
+            return
+        reading = revision_form_reading(offered, outputs)
+        outputs["revision_form"] = reading
+        logger.info(
+            "repair_revision_form %s",
+            json.dumps(
+                {"handler": self._handler_name, "task_type": str(self._task_type), **reading},
+                sort_keys=True,
+            ),
+        )
 
     def _repair_base_files(self, inputs: dict[str, Any]) -> dict[str, str]:
         """The tree the repair patches: the workspace the verifier materialises, with the failed
@@ -346,8 +375,9 @@ class _RepairPromptMixin:
 
     async def _render_anchored_edit_section(
         self, context: ExecutionContext, inputs: dict[str, Any]
-    ) -> str:
-        """The edit form, for the files the repair may revise, or "" (SIP-0107 §9.1, §9.2).
+    ) -> tuple[str, dict[str, int]]:
+        """The edit form, for the files the repair may revise, or "" (SIP-0107 §9.1, §9.2) —
+        with what it offered: each listed file and how many entities were listed for it.
 
         Each file is listed with the entities its resolver can address — the references a
         structural block targets (§7) — read from the same base the edits resolve against, so a
@@ -359,11 +389,13 @@ class _RepairPromptMixin:
         files = self._anchorable_files(inputs)
         renderer = getattr(context.ports, "request_renderer", None)
         if not files or renderer is None:
-            return ""
+            return "", {}
         base = self._repair_base_files(inputs)
         lines = []
+        offered: dict[str, int] = {}
         for path in files:
             selectors = entity_selectors(path, base[path]) or ()
+            offered[path] = len(selectors)
             listed = ", ".join(f"`{sel}`" for sel in selectors[:_MAX_LISTED_ENTITIES])
             more = (
                 f" (+{len(selectors) - _MAX_LISTED_ENTITIES} more)"
@@ -374,7 +406,7 @@ class _RepairPromptMixin:
         rendered = await renderer.render(
             "request.cycle_repair_anchored_edit_appendix", {"editable_files": "\n".join(lines)}
         )
-        return rendered.content
+        return rendered.content, offered
 
     def _artifacts_from_response(
         self, content: str, inputs: dict[str, Any]
