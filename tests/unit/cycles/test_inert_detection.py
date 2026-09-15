@@ -248,7 +248,8 @@ def test_config_default_matches_module_constant():
     diverges them would make deployments and library use disagree silently."""
     from squadops.config.schema import CyclesConfig
 
-    assert CyclesConfig().inert_cycle_threshold == INERT_CYCLE_THRESHOLD_DEFAULT
+    field = CyclesConfig.model_fields["inert_cycle_threshold"]
+    assert field.default == INERT_CYCLE_THRESHOLD_DEFAULT
 
 
 def test_outcome_dto_carries_inert():

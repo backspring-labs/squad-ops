@@ -49,7 +49,12 @@ def _test_config():
 
     return AppConfig.model_validate(
         {
-            "auth": {"enabled": False},
+            "auth": {"enabled": False, "provider": "disabled"},
+            # #1568: every selector named.
+            "cycles": {"registry_provider": "memory", "squad_profile_provider": "config"},
+            "prompts": {"asset_source_provider": "filesystem"},
+            "telemetry": {"backend": "null"},
+            "sandbox": {"provider": "noop"},
             "db": {"url": "postgresql://test:test@localhost:5432/test"},
             "comms": {
                 "queue": {"provider": "rabbitmq"},

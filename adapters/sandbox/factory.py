@@ -60,10 +60,10 @@ def create_sandbox_service(config: SandboxConfig) -> SandboxService:
     return SandboxService(store=store, journal=journal, backend=backend)
 
 
-def create_execution_sandbox(config: SandboxConfig | None) -> ExecutionSandboxPort:
-    """The injectable port: NoOp unless explicitly configured (the parity
-    guarantee — absent/default config ⇒ today's in-process behavior)."""
-    if config is None or config.provider == "noop":
+def create_execution_sandbox(config: SandboxConfig) -> ExecutionSandboxPort:
+    """The injectable port. ``noop`` is the parity guarantee (today's in-process behavior),
+    and it is named, never reached by an absent config (#1568)."""
+    if config.provider == "noop":
         return NoOpExecutionSandbox()
     return create_sandbox_service(config)
 

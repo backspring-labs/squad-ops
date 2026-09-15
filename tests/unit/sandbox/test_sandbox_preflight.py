@@ -82,9 +82,17 @@ class TestDoctorCategory:
     """The doctor renders the SAME decision (exit-criterion parity)."""
 
     def test_dormant_config_is_a_passing_check(self, monkeypatch):
-        monkeypatch.delenv("SQUADOPS__SANDBOX__PROVIDER", raising=False)
+        monkeypatch.setenv("SQUADOPS__SANDBOX__PROVIDER", "noop")
         results = doctor_checks._collect_sandbox_checks(profile=None)
         assert [(r.name, r.passed) for r in results] == [("sandbox_dormant", True)]
+
+    def test_an_unnamed_provider_is_a_failing_check_not_dormancy(self, monkeypatch):
+        """#1568. Bug caught: a host with no sandbox provider reported as dormant — the
+        default the schema no longer has, reintroduced by the doctor."""
+        monkeypatch.delenv("SQUADOPS__SANDBOX__PROVIDER", raising=False)
+        results = doctor_checks._collect_sandbox_checks(profile=None)
+        assert [(r.name, r.passed) for r in results] == [("sandbox_config", False)]
+        assert "provider" in results[0].message
 
     def test_missing_image_is_a_failing_check_with_fix_command(self, monkeypatch):
         """Bug caught: doctor and create-time preflight disagreeing about the

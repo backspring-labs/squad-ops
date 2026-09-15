@@ -34,5 +34,5 @@ class TestAuthConfig:
             )
 
     def test_service_clients_default_empty(self):
-        cfg = AuthConfig(enabled=False)
+        cfg = AuthConfig(enabled=False, provider="disabled")
         assert cfg.service_clients == {}

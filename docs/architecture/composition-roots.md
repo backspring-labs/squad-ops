@@ -99,6 +99,24 @@ in the guard's named exceptions (§6.5) so a new one is a decision.
   alone and has one implementation still declares it. A factory that today defaults its
   selector (§7) is a masking fallback: a root passes the selector explicitly whether or not
   the factory would default it.
+  - **Everywhere, not only at the factory** (the owner's ruling, 2026-09-14, #1568: "make
+    providers required everywhere; defaults have been toxic"). A selector has no default in
+    any of four places:
+    - the config schema: required and non-blank (`min_length=1`), so an unset compose variable
+      interpolated to `""` is refused like a missing one;
+    - a constructor keyword (`AuthMiddleware(provider=…)`);
+    - the compose file, where a selector is a literal on every service that loads `AppConfig`;
+    - `.env` switching, where a selector bootstrap changes through `.env` is interpolated with
+      `${VAR:?…}`, never `${VAR:-default}`. `.env.example` carries its value, and a `.env`
+      without it stops every compose command with the key named.
+
+    One mechanism for every selector, including one a process loads but does not compose:
+    requiring it schema-wide costs a key on a service that never reads it, and #301 already
+    accepted that cost (the runtime API names a filesystem provider). Refusing only where a
+    value is used would need a hand-written refusal in each root, and the next root to
+    compose the seam would have to remember it. Guards: assertion 4 (required and non-blank),
+    and a test that every `AppConfig`-loading compose service names every selector with no
+    fallback.
 - **R3 — side-effect-free import.** A root module performs no configuration load, no secret
   resolution, no adapter construction and no network at import. Construction happens in an
   app or service factory called by the process entry point. **The sandbox root is the

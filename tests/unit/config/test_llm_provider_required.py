@@ -16,12 +16,16 @@ from squadops.config.schema import (
     AppConfig,
     AuthConfig,
     CommsConfig,
+    CyclesConfig,
     DBConfig,
     FilesystemToolConfig,
     LLMConfig,
+    PromptsConfig,
     QueueConfig,
     RabbitMQConfig,
     RedisConfig,
+    SandboxConfig,
+    TelemetryConfig,
     ToolsConfig,
 )
 
@@ -37,8 +41,13 @@ def _rest() -> dict:
             rabbitmq=RabbitMQConfig(url="amqp://u@localhost:5672/"),
             redis=RedisConfig(url="redis://localhost:6379/0"),
         ),
-        "auth": AuthConfig(enabled=False),
+        "auth": AuthConfig(enabled=False, provider="disabled"),
         "tools": ToolsConfig(filesystem=FilesystemToolConfig(provider="local")),
+        # #1568: every other selector section, each naming its provider.
+        "cycles": CyclesConfig(registry_provider="memory", squad_profile_provider="config"),
+        "prompts": PromptsConfig(asset_source_provider="filesystem"),
+        "telemetry": TelemetryConfig(backend="null"),
+        "sandbox": SandboxConfig(provider="noop"),
     }
 
 

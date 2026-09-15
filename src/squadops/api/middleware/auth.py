@@ -70,7 +70,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         app,
         auth_port: AuthPort | None = None,
         *,
-        provider: str = "keycloak",
+        provider: str,
         expose_docs: bool = False,
         audit_port=None,
     ) -> None:
