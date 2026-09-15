@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 
 def create_task_registry_provider(
-    provider: str = "sql",
+    provider: str,
     secret_manager: SecretManager | None = None,
     connection_string: str = "",
     prefect_api_url: str | None = None,

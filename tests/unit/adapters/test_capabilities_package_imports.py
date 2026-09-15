@@ -35,7 +35,7 @@ def test_the_dead_executor_and_its_factory_entry_are_gone():
 def test_the_repository_factory_still_builds_the_filesystem_provider(tmp_path):
     from adapters.capabilities import create_capability_repository
 
-    repo = create_capability_repository(base_path=tmp_path, validate_schemas=False)
+    repo = create_capability_repository("filesystem", base_path=tmp_path, validate_schemas=False)
     assert type(repo).__name__ == "FileSystemCapabilityRepository"
     with pytest.raises(ValueError, match="Unknown capability repository provider"):
         create_capability_repository(provider="nowhere")

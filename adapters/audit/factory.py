@@ -5,11 +5,11 @@ Factory for creating audit adapter instances (SIP-0062 Phase 3b).
 from squadops.ports.audit import AuditPort
 
 
-def create_audit_provider(provider: str = "logging") -> AuditPort:
+def create_audit_provider(provider: str) -> AuditPort:
     """Create an AuditPort instance for the given provider.
 
     Args:
-        provider: Provider type ('logging'). Default is 'logging'.
+        provider: Provider type ('logging'). Required (#1449).
 
     Returns:
         AuditPort instance.

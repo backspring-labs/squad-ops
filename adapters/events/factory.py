@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 
 def create_cycle_event_bus(
-    provider: str = "in_process",
+    provider: str,
     *,
     llm_observability: LLMObservabilityPort | None = None,
     workflow_tracker: WorkflowTrackerPort | None = None,
@@ -31,7 +31,7 @@ def create_cycle_event_bus(
     """Select a :class:`CycleEventBusPort` and subscribe standard bridges.
 
     Args:
-        provider: ``"in_process"`` (default) or ``"noop"``.
+        provider: ``"in_process"`` or ``"noop"``, required (#1449).
         llm_observability: When provided, an ``LLMObservabilityBridge`` is
             subscribed so cycle events flow into the LLM-observability port
             (LangFuse / NoOp / etc.).

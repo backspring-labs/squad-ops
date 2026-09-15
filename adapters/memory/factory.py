@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 
 def create_memory_provider(
-    provider: str = "lancedb",
+    provider: str,
     secret_manager: SecretManager | None = None,
     embeddings: EmbeddingsPort | None = None,
     db_path: str = "./data/memory.lancedb",

@@ -26,10 +26,10 @@ class TestCreatePromptAssetSource:
         assert isinstance(adapter, FilesystemPromptAssetAdapter)
         assert isinstance(adapter, PromptAssetSourcePort)
 
-    def test_default_provider_is_filesystem(self):
-        """Omitting provider defaults to filesystem."""
-        adapter = create_prompt_asset_source()
-        assert isinstance(adapter, FilesystemPromptAssetAdapter)
+    def test_the_provider_is_required(self):
+        """#1449: omitting the provider is refused, not defaulted to filesystem."""
+        with pytest.raises(TypeError, match="provider"):
+            create_prompt_asset_source()
 
     def test_unknown_provider_raises(self):
         with pytest.raises(ValueError, match="Unknown prompt asset source provider"):

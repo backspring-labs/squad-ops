@@ -231,6 +231,7 @@ class TestFactory:
         with pytest.raises(ValueError, match="Unknown cycle event bus provider"):
             create_cycle_event_bus("rabbitmq")
 
-    def test_default_provider_is_in_process(self):
-        bus = create_cycle_event_bus()
-        assert isinstance(bus, InProcessCycleEventBus)
+    def test_the_provider_is_required(self):
+        """#1449: no default — a caller that names no bus is refused, not given one."""
+        with pytest.raises(TypeError, match="provider"):
+            create_cycle_event_bus()

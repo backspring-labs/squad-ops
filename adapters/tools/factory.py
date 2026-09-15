@@ -2,6 +2,11 @@
 
 Factory functions for creating tool adapters with security wrappers.
 Part of SIP-0.8.7 Infrastructure Ports Migration.
+
+Every ``provider`` is required (#1449, the composition-roots standard's R2): a defaulted selector
+lets a caller bind a provider nobody chose. The agent root names its filesystem provider from
+``config.tools.filesystem.provider``; nothing composes the container or VCS provider today, so
+their first caller will name one.
 """
 
 from __future__ import annotations
@@ -25,7 +30,7 @@ if TYPE_CHECKING:
 
 
 def create_filesystem_provider(
-    provider: str = "local",
+    provider: str,
     allowed_roots: tuple[Path, ...] | None = None,
     production_mode: bool = False,
     **config,
@@ -62,7 +67,7 @@ def create_filesystem_provider(
 
 
 def create_container_provider(
-    provider: str = "docker",
+    provider: str,
     secret_manager: SecretManager | None = None,
     docker_host: str | None = None,
     **config,
@@ -92,7 +97,7 @@ def create_container_provider(
 
 
 def create_vcs_provider(
-    provider: str = "git",
+    provider: str,
     allowed_roots: tuple[Path, ...] | None = None,
     production_mode: bool = False,
     **config,

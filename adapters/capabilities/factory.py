@@ -17,7 +17,7 @@ DEFAULT_MANIFESTS_PATH = (
 
 
 def create_capability_repository(
-    provider: str = "filesystem",
+    provider: str,
     base_path: Path | None = None,
     validate_schemas: bool = True,
     **kwargs,

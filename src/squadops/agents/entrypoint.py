@@ -382,15 +382,17 @@ class AgentRunner:
         )
 
         # Create memory adapter
+        # #1449: this call named its selector ``provider_type``, a keyword the factory does
+        # not have — it fell into ``**config`` and the ``"lancedb"`` default decided.
         memory = create_memory_provider(
-            provider_type="lancedb",
+            provider="lancedb",
             # Operational default (see the LOG_LEVEL note) — intentional, not
             # masked required config (#333).
             db_path=os.getenv("MEMORY_DB_PATH", "/app/data/memory_db"),
         )
 
         # Create prompt service
-        prompt_repo = create_prompt_repository()
+        prompt_repo = create_prompt_repository("filesystem")  # no config field selects it
         prompt_service = PromptAssembler(prompt_repo)
         self._prompt_service = prompt_service  # Store for use in chat
 
