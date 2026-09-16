@@ -1250,6 +1250,26 @@ class TestSuiteFilesNamedUnanimously:
             == []
         )
 
+    def test_the_leads_verification_label_is_suite_side(self):
+        """#1596: 1.8.0 React roll 6, round 0 as stored (cyc_767ad2dc59d2): analyzer
+        `["backend/tests/test_runs.py"]`, decision `["test", "verification"]`. Bug caught:
+        the branch abstained on `verification` and the dev was handed the suite's own
+        isolation defect, which it refused in prose."""
+        assert self._named(
+            ["backend/tests/test_runs.py"],
+            ["test", "verification"],
+            own=("backend/tests/test_runs.py",),
+        ) == ["backend/tests/test_runs.py"]
+        # Round 1 of the same roll named the app beside the suite — still abstains.
+        assert (
+            self._named(
+                ["backend/tests/test_runs.py"],
+                ["testing", "backend"],
+                own=("backend/tests/test_runs.py",),
+            )
+            == []
+        )
+
     def test_the_target_is_the_own_files_named_in_their_own_spelling(self):
         """Only the files the analyzer named, spelled as the task declares them — a `./`
         prefix or a duplicate does not add a file."""
