@@ -1198,17 +1198,17 @@
   "request.builder_assemble.build_assemble": {
    "adapter_resolve": {
     "ok": {
-     "content_hash": "8807fc15e81fd13214e3313daa6193675d7d17fa516081b3a93b06fed7fd093f",
-     "version": "4"
+     "content_hash": "5f8985e68fb950bd8cd4bfc2c74fccaa0f9ea7b78693648e9293187cad0bcf10",
+     "version": "5"
     }
    },
    "adapter_version": {
-    "ok": "4"
+    "ok": "5"
    },
-   "file_sha": "9be26a3aaef26a07c9385037cb460b010ebe1aaecdfa767a8f37b95be980fb38",
+   "file_sha": "f498ea2da43d4fbb8bac2084b2aa2ecca1d8a1f0a52752ed48afc73d37cad8c8",
    "renderer_contract": {
     "ok": {
-     "body_sha": "0bd1a34392387ca152a0583e73175925b9d64b78a93b48ff6342e93e92508bbb",
+     "body_sha": "ebf8ca9bf92110242c08f725a51acab3265af34abd7da18918152460188726ed",
      "optional": [
       "contract_expectations",
       "prior_outputs",
@@ -1294,6 +1294,66 @@
     ]
    }
   },
+  "request.cycle_repair_anchored_edit_appendix": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "82ce1969b5a0fb6aec2e7548de2637a29070949c4fb2620240f85ae7ba7a7873",
+     "version": "4"
+    }
+   },
+   "adapter_version": {
+    "ok": "4"
+   },
+   "file_sha": "3226da685f8c3a71851cfe597f3ae463893f4eb4a5c4a236f5babe8118c5e8ff",
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "5cd898b04b7d53bbf50df68776b34f2950132cf43db66ed8bfba081371b54663",
+     "optional": [],
+     "required": [
+      "editable_files"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.cycle_repair_anchored_edit_retry": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "0e9535e751d430aee87c6ab051824d06c1da6d98dead3d80f490b562e6cbe6ad",
+     "version": "3"
+    }
+   },
+   "adapter_version": {
+    "ok": "3"
+   },
+   "file_sha": "df09c6da48a6074182e4549222378f4f7d6bd761b11efcf2f70d990762f5147a",
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "fcd2372fe5e3fabb58f7441cc45e34c5d9148623518fc37181cca7fda3252d53",
+     "optional": [],
+     "required": [
+      "refusal_lines"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
   "request.cycle_repair_app_traceback_appendix": {
    "adapter_resolve": {
     "ok": {
@@ -1312,6 +1372,62 @@
      "required": [
       "traceback_blocks"
      ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.cycle_repair_closing_scoped": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "23ae354a7f9870c75f6bdfa6f418e7161d3ca053864f1690bf8edfe1ec6adfa9",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "file_sha": "c0bf131d5b8b262563185aa31f5af94d47934826b5df650fd6f2c6a79a77c911",
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "4afebf8b3cd3b8ecb5930a84ac094e6ea6a0232fb345764d70eefdafbd420cae",
+     "optional": [],
+     "required": []
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.cycle_repair_closing_whole_file": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "0b0079b7d1fbd86b07ef21646ba1b974a95c19ad48e60c2b1c3f4118af2b0101",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "file_sha": "60833bfa476b51068a137886691418cf43e8884cb3787759f41220f8af1ae961",
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "68bcc1c6714987d3c489bdae997a1ab40505129fb85535161abf2db34538d59a",
+     "optional": [],
+     "required": []
     }
    },
    "strict": {
@@ -1353,6 +1469,36 @@
     ]
    }
   },
+  "request.cycle_repair_current_files": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "09490518d94ed020757736e3261f1d2454071e274217fd4b56b18871acce0764",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "file_sha": "463ce9659fe9047b92d74cc927a61fa22bfc8349340d6071f7b1bcce6ac4b65a",
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "e907cc36d5780843dbeda93db313e46a61a8b853d4860ff44beba918811977cb",
+     "optional": [],
+     "required": [
+      "current_files"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
   "request.cycle_repair_loop_state": {
    "adapter_resolve": {
     "ok": {
@@ -1386,25 +1532,89 @@
     ]
    }
   },
-  "request.cycle_repair_task": {
+  "request.cycle_repair_output_scoped": {
    "adapter_resolve": {
     "ok": {
-     "content_hash": "ec34c12150f0ca5377029ff7b12a062bdb3af9dc389d808fab021576a8ef9d2f",
-     "version": "6"
+     "content_hash": "cace2d1d59c244829240e3ecca0de4cd56a2cdafedbcdb410789932b36ea67e3",
+     "version": "2"
     }
    },
    "adapter_version": {
-    "ok": "6"
+    "ok": "2"
    },
-   "file_sha": "83d9640021aa597ac0eb3c39473a9ffdd53a2e85977361e0f07ca692bcf54fa1",
+   "file_sha": "79e2424c5395aac111be769cd29d7d4e5221ca08fc1aedd0c3cff690ba89edb5",
    "renderer_contract": {
     "ok": {
-     "body_sha": "03fc1210690bc4acdfba535bea5e644894d4e24f4407e0c8d0102678d42ecf59",
+     "body_sha": "79344466214c5033495237b7c95d4a0e105f3b198049d929d939b7a05ccec0d9",
+     "optional": [],
+     "required": [
+      "editable_files",
+      "new_files"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.cycle_repair_output_whole_file": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "9a2c7dcec511ba37bf731e3b3481826da5e3488b0cb0b6182fa9e2a46a6b674a",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "file_sha": "9a840158ca8429bbbd3660a6dd9a447c8644521363be9b786e1d9e37f66d5d10",
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "b83af9a3656c5f6c177f8eeaa75a6ac205b0fe58a0b236dd2266cf0c10ba66d0",
+     "optional": [],
+     "required": [
+      "expected_artifacts"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.cycle_repair_task": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "e59219a5fa8349993ade60987eb0d2c91864d681affa887dd3a1ce8a78d0f7b0",
+     "version": "9"
+    }
+   },
+   "adapter_version": {
+    "ok": "9"
+   },
+   "file_sha": "6bc6728c03d469ca550c89b35247ccbe943a46c11fc58370ca2d3be7083e19aa",
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "bed57e1d1a181a6e559df7d4e55cb3986b03269907dbaff7572ae72452990f27",
      "optional": [
       "acceptance_criteria",
+      "anchored_edit_retry_section",
+      "anchored_edit_section",
       "app_traceback_section",
       "client_surface_section",
       "contract_expectations",
+      "current_files_section",
       "dom_anchor_section",
       "expected_artifacts",
       "failing_cases_section",
@@ -1417,9 +1627,11 @@
       "subtask_focus"
      ],
      "required": [
+      "closing_instruction",
       "correction_decision",
       "failed_task_type",
       "failure_summary",
+      "output_form_section",
       "prd",
       "role"
      ]
@@ -2167,17 +2379,17 @@
   "request.plan_authoring_rules_appendix": {
    "adapter_resolve": {
     "ok": {
-     "content_hash": "fb4909abcfbb3c822639bcf54f6706b3dd7f4b3709d66bb9945a30f52c4749d3",
-     "version": "5"
+     "content_hash": "406b1acfcc4bb76b148fa31e22c1b29335317fb6203197d2bc12bb71e707c2da",
+     "version": "7"
     }
    },
    "adapter_version": {
-    "ok": "5"
+    "ok": "7"
    },
-   "file_sha": "6dedbeb12e4b63260cbf0bbd32f29f71104aa224cee77755283a7295febd793d",
+   "file_sha": "bb435087fb9de765cf2779c4c1b8aa5bfe5c5c5a850bd9d464ecf4ae693cabe1",
    "renderer_contract": {
     "ok": {
-     "body_sha": "a26cfd77171dd282eb57c015060dc33112074f60e0bcdd3e586014e3e5986de7",
+     "body_sha": "e5747586b72210aeccccad42b36d0f3e72afddaa5f6d1147234d3bb1867a11e7",
      "optional": [],
      "required": []
     }

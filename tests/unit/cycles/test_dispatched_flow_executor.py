@@ -1435,3 +1435,50 @@ class TestCorrectionDeadlockIsNotRetried:
 
     def test_a_passing_patch_is_not_a_deadlock(self):
         assert self._deadlocked("passed", None) is False
+
+
+class TestGateRejectsAQaSuiteOutsideTheStacksNamespace:
+    """#1587 on the mid-run gate seam: collected is not owned. `tests/test_runs.py` at the
+    repository root passes the collection rule (pytest collects it) and is refused by the
+    namespace rule, under its own validator name, with the namespace in the message."""
+
+    _QA_ROOT_SUITE_PLAN_YAML = (
+        TestGateRejectsBuilderPlanWithoutBuildProfile._BUILDER_PLAN_YAML.replace(
+            "builder.assemble", "qa.test"
+        )
+        .replace("role: builder", "role: qa")
+        .replace("qa_handoff.md", "tests/test_runs.py")
+    )
+
+    async def test_rejected_under_the_namespace_validator_alone(self, executor, mock_vault, cycle):
+        import dataclasses
+
+        from adapters.cycles.execution_errors import _ExecutionError
+
+        gated_cycle = dataclasses.replace(
+            cycle,
+            applied_defaults={
+                "implementation_plan": True,
+                "required_checks": ["tests_pass"],
+                "build_profile": "fullstack_fastapi_react",
+            },
+        )
+        mock_vault.retrieve.return_value = ("ref", self._QA_ROOT_SUITE_PLAN_YAML.encode())
+
+        agent = MagicMock()
+        agent.role = "qa"
+        agent.enabled = True
+        profile = MagicMock()
+        profile.profile_id = "full"
+        profile.agents = [agent]
+
+        with pytest.raises(_ExecutionError) as exc_info:
+            await executor._reject_unsatisfiable_plan_at_gate(
+                TestGateRejectsBuilderPlanWithoutBuildProfile._stored_plan_artifacts(),
+                profile,
+                ["progress_plan_review"],
+                gated_cycle,
+            )
+        assert "'tests/test_runs.py'" in str(exc_info.value)
+        assert "backend/tests/" in str(exc_info.value)
+        assert exc_info.value.terminal.refused_validators == ("validate_qa_suite_namespace",)

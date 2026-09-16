@@ -4243,6 +4243,14 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                             parsed_plan.validate_check_applicability(cycle.resolved_config()),
                         )
                     )
+                    # #1587: collected is not owned — the suite must sit where the stack
+                    # says qa's files live, or nothing downstream treats it as qa's.
+                    errors.extend(
+                        classifier.collect(
+                            "validate_qa_suite_namespace",
+                            parsed_plan.validate_qa_suite_namespace(cycle.resolved_config()),
+                        )
+                    )
                     errors.extend(
                         classifier.collect(
                             "validate_build_config",
@@ -4602,6 +4610,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         errors += classifier.collect(
             "validate_check_applicability",
             plan.validate_check_applicability(cycle.resolved_config()),
+        )
+        errors += classifier.collect(
+            "validate_qa_suite_namespace",
+            plan.validate_qa_suite_namespace(cycle.resolved_config()),
         )
         if errors:
             raise _ExecutionError(

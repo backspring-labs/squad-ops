@@ -170,6 +170,7 @@ PLAN_VALIDATORS: tuple[str, ...] = (
     "validate_manifest_plan_consistency",
     "validate_module_existence",
     "validate_qa_artifact_ownership",
+    "validate_qa_suite_namespace",
     "validate_unique_expected_artifacts",
 )
 

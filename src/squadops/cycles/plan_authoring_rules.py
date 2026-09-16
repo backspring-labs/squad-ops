@@ -28,6 +28,10 @@ AUTHOR_FACING: dict[str, str] = {
     "validate_expected_artifact_shapes": "artifacts-are-files",
     "validate_frozen_artifact_ownership": "no-frozen-claims",
     "validate_qa_artifact_ownership": "qa-owns-only-tests",
+    # #1587: the stack's qa test namespace is the one declaration the binder, the runner and
+    # the locus router read to say a file is qa's; the runner's collection rules are wider,
+    # so a suite the runner collects can still be one nobody owns.
+    "validate_qa_suite_namespace": "qa-tests-live-in-the-stacks-namespace",
     "validate_module_existence": "imports-must-exist",
     "validate_criteria_scope": "regex-only-on-documents",
     # #1254: the framework binds these from declarations the author never sees, so an
