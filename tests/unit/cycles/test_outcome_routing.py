@@ -2454,3 +2454,133 @@ class TestTheAcceptedRepairFactReachesTheCorrectionPolicy:
     async def test_a_task_without_one_is_not(self, executor, cycle):
         seen = await self._capture(executor, cycle, {"some_other_task"})
         assert seen.get("has_accepted_repair") is False
+
+
+class TestQaSuiteRepairAfterAnEmissionFailureIsRetested:
+    """#1586: a qa.test that failed at EMISSION never carried a `test_result`, and a plan
+    author may attach only prose criteria to the qa task. Both were true on the 1.8.0
+    absent-suite diagnostic (cyc_53d6ff52c989): the repair that supplied the missing suite
+    was refused `no_typed_criteria`, the retest escape (keyed on the failed result's
+    `test_result`) stayed shut, and the round terminated as a deadlock — with the retest one
+    step downstream, able to run exactly that suite. The evidence is the suite the patch
+    carries, the same key block 5 already uses (#1269)."""
+
+    def _emission_failed_qa_result(self):
+        # No `test_result`: the emission carried no suite, so nothing ever ran.
+        return TaskResult(
+            task_id="task_6",
+            status="FAILED",
+            outputs={
+                "artifacts": [],
+                "validation_result": {"passed": False, "checks": []},
+                "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
+            },
+            error="qa emission carried no suite",
+        )
+
+    def _prose_only_envelope(self, task_type="qa.test", expected="tests/test_runs.py"):
+        from squadops.tasks.models import TaskEnvelope
+
+        return TaskEnvelope(
+            task_id="task_6",
+            agent_id="eve",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="hello_squad",
+            task_type=task_type,
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={
+                "resolved_config": {},
+                "artifact_contents": {},
+                "expected_artifacts": [expected],
+                # The 1.8.0 plan's shape: narrative only, not one typed row.
+                "acceptance_criteria": [
+                    "At least 8 test functions covering create, list and join.",
+                    "All tests pass against the implemented backend.",
+                ],
+            },
+            metadata={"role": "qa"},
+        )
+
+    def _suite_repair(self):
+        return [{"name": "tests/test_runs.py", "content": "def test_create():\n    assert True\n"}]
+
+    def _retest(self, passed):
+        return TaskResult(
+            task_id="retest",
+            status="SUCCEEDED" if passed else "FAILED",
+            outputs={
+                "test_result": {
+                    "executed": True,
+                    "exit_code": 0 if passed else 1,
+                    "tests_passed": passed,
+                }
+            },
+            error=None if passed else "still failing",
+        )
+
+    def _kwargs(self, cycle):
+        return {
+            "run_id": "run_001",
+            "cycle": cycle,
+            "correction_attempts": 0,
+            "prior_outputs": {},
+            "all_artifact_refs": [],
+            "stored_artifacts": [],
+            "completed_task_ids": [],
+            "plan_delta_refs": [],
+            "profile": None,
+            "flow_run_id": None,
+        }
+
+    async def test_the_supplied_suite_is_retested_and_a_pass_accepts(self, executor, cycle):
+        executor._correction_runner.reexecute_repaired_suite = AsyncMock(
+            return_value=self._retest(True)
+        )
+        holder: dict = {}
+        action = await executor._try_accept_patch(
+            self._prose_only_envelope(),
+            self._emission_failed_qa_result(),
+            self._suite_repair(),
+            holder,
+            **self._kwargs(cycle),
+        )
+        assert action == "accept_patch"
+        assert holder["patched_result"].outputs["test_result"]["tests_passed"] is True
+        executor._correction_runner.reexecute_repaired_suite.assert_awaited_once()
+
+    async def test_a_failing_retest_spends_the_round_rather_than_terminating(self, executor, cycle):
+        """Before #1586 this was "break_correction" — the deadlock — and the suite never ran."""
+        executor._correction_runner.reexecute_repaired_suite = AsyncMock(
+            return_value=self._retest(False)
+        )
+        holder: dict = {}
+        action = await executor._try_accept_patch(
+            self._prose_only_envelope(),
+            self._emission_failed_qa_result(),
+            self._suite_repair(),
+            holder,
+            **self._kwargs(cycle),
+        )
+        assert action == "continue"
+        assert "patched_result" not in holder
+        executor._correction_runner.reexecute_repaired_suite.assert_awaited_once()
+
+    async def test_a_repair_carrying_no_collected_suite_still_terminates(self, executor, cycle):
+        """The #1221 guard survives: no typed criteria, no `test_result`, and no suite in
+        the patch — nothing can decide, so the round is not re-taken blind."""
+        executor._correction_runner.reexecute_repaired_suite = AsyncMock()
+        holder: dict = {}
+        action = await executor._try_accept_patch(
+            self._prose_only_envelope(expected="tests/helpers.py"),
+            self._emission_failed_qa_result(),
+            [{"name": "tests/helpers.py", "content": "def client():\n    return None\n"}],
+            holder,
+            **self._kwargs(cycle),
+        )
+        assert action == "break_correction"
+        assert holder == {}
+        executor._correction_runner.reexecute_repaired_suite.assert_not_awaited()

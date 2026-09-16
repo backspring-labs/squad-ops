@@ -51,7 +51,7 @@ from squadops.cycles.patch_verification import (
 )
 from squadops.cycles.scaffold_integrity_evidence import STAGE_PATCH_VERIFICATION
 from squadops.tasks.models import TaskResultStatus
-from squadops.tasks.task_types import emits_required_files
+from squadops.tasks.task_types import authors_qa_suite, emits_required_files
 
 if TYPE_CHECKING:
     from squadops.cycles.models import ArtifactRef, Cycle
@@ -535,10 +535,27 @@ class PatchAcceptance:
         # exactly these reasons, and only with behavioral evidence to re-run, the
         # retest verdict decides alone. Evaluator errors, parse failures, and real
         # check failures keep failing closed, unchanged.
+        #
+        # #1586: the behavioral evidence is the SUITE, not the failed result's memory of
+        # having run one. A qa.test that failed at EMISSION never carried a `test_result`
+        # (#1269 said so for the accept path and re-keyed its retest on what the patch
+        # contains); keyed only on `result.outputs` here, the repair that finally supplied
+        # the suite was refused unheard as `no_typed_criteria` and the round terminated as
+        # a deadlock — with the retest one step downstream, able to run exactly that suite
+        # (1.8.0 absent-suite diagnostic, cyc_53d6ff52c989: the plan carried no typed row
+        # on the qa task). Same key as block 5: a repair carrying a suite the stack's runner
+        # collects has something to run, so the retest decides.
+        repaired_suites = (
+            _repaired_suite_files(subject.patched_artifacts, subject.resolved_config)
+            if authors_qa_suite(envelope.task_type)
+            else []
+        )
         retest_decides = (
             verification.status == PATCH_UNVERIFIABLE
             and verification.reason in STRUCTURALLY_UNEVALUABLE_REASONS
-            and isinstance((result.outputs or {}).get("test_result"), dict)
+            and (
+                isinstance((result.outputs or {}).get("test_result"), dict) or bool(repaired_suites)
+            )
         )
         if retest_decides:
             logger.info(
