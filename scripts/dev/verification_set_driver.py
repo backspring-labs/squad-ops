@@ -305,6 +305,7 @@ EVIDENCE_FIELDS: dict[str, tuple[str, ...]] = {
     "loop_texture.empty_repair_emissions": _AGENT_WINDOW,
     "loop_texture.emission_tokens_by_handler": _AGENT_WINDOW,
     "loop_texture.placeholder_strips": _AGENT_WINDOW,
+    "loop_texture.faults_applied": _AGENT_WINDOW,
     "loop_texture.retried_with_fact": (*_AGENT_WINDOW, "no_emission_retry_aimed"),
     "loop_texture.retried_blind": (*_AGENT_WINDOW, "no_emission_retry_aimed"),
     "loop_texture.repair_revision_forms": (
@@ -1704,6 +1705,10 @@ _AGENT_LINE_KEYS = (
     "emission retry feedback",
     # SIP-0107 §46a: one per repair — the edit form it was offered, the form its response took.
     "repair_revision_form ",
+    # #1588: the fault hook's own trace — APPLIED to which attempt, or declared and out of
+    # scope. A seam reading that does not know whether its fault applied credited L4 on a
+    # refund the dev's prose answer earned, in a cycle where no qa repair ever ran.
+    "fault_injection: ",
 )
 
 
@@ -1853,6 +1858,44 @@ def placeholder_strips(lines: list[str]) -> list[dict]:
     ]
 
 
+_FAULT_APPLIED = re.compile(
+    r"fault_injection: APPLIED (?P<fault>\w+) to task=(?P<task>\S+) handler=(?P<handler>\S+) "
+    r"chars (?P<before>\d+) -> (?P<after>\d+) scope=(?P<scope>\w+)"
+)
+_FAULT_OUT_OF_SCOPE = re.compile(
+    r"fault_injection: (?P<fault>\w+) declared for (?P<task>\S+) but this attempt is outside "
+    r"its scope \((?P<scope>\w+)\)"
+)
+
+
+def faults_applied(lines: list[str]) -> dict[str, dict[str, list[dict]]]:
+    """Per declared fault, the attempts it was APPLIED to and the attempts it was declared
+    for but out of scope — read from the fault hook's own lines in the agents' logs (#1588).
+
+    A seam reading is a claim about what the fault's application caused. Without this fact
+    the own-frame diagnostic's record credited L4 on a refund that the dev's prose refusal
+    had earned, in a cycle where the qa repair the fault targets never ran; the fault was
+    never applied and the seam was never exercised. Pure; ``seam_readouts`` reads it.
+    """
+    out: dict[str, dict[str, list[dict]]] = {}
+    for line in lines:
+        if (m := _FAULT_APPLIED.search(line)) is not None:
+            out.setdefault(m.group("fault"), {"applied": [], "out_of_scope": []})["applied"].append(
+                {
+                    "task": m.group("task"),
+                    "handler": m.group("handler"),
+                    "chars_before": int(m.group("before")),
+                    "chars_after": int(m.group("after")),
+                    "scope": m.group("scope"),
+                }
+            )
+        elif (m := _FAULT_OUT_OF_SCOPE.search(line)) is not None:
+            out.setdefault(m.group("fault"), {"applied": [], "out_of_scope": []})[
+                "out_of_scope"
+            ].append({"task": m.group("task"), "scope": m.group("scope")})
+    return out
+
+
 def stored_under_placeholder(names) -> list[str]:
     """Stored artifact names that still carry the placeholder — the extractor half of L8."""
     return sorted(name for name in names if str(name).startswith(_PLACEHOLDER_PREFIX))
@@ -1921,6 +1964,8 @@ def loop_texture(
     # extractor repaired it (read from the agent's log, the only place it is visible).
     # L8b — a stored name still carries it (read from the tree, the old readout).
     out["placeholder_strips"] = placeholder_strips(agent_lines)
+    # #1588: which attempts each declared fault actually bit, from the hook's own lines.
+    out["faults_applied"] = faults_applied(agent_lines)
     out["stored_under_placeholder"] = (
         stored_under_placeholder(_stored_artifact_names(cfg, cycle_id, impl_run))
         if impl_run
@@ -1955,15 +2000,8 @@ def loop_texture(
 SEAM_READOUTS: dict[str, tuple[str, tuple[str, ...], Callable[[dict], tuple[bool, Any]]]] = {
     "qa_suite_absent": (
         "L2: the qa task entered correction and its repair was retested",
-        ("correction_rounds", "loop_texture.retests"),
-        lambda rec: (
-            (value_at(rec, "correction_rounds", 0)) >= 1
-            and any("qa.test" in r for r in value_at(rec, "loop_texture.retests", [])),
-            {
-                "correction_rounds": value_at(rec, "correction_rounds", 0),
-                "retests": value_at(rec, "loop_texture.retests", []),
-            },
-        ),
+        ("correction_rounds", "loop_texture.retests", "loop_texture.faults_applied"),
+        lambda rec: _qa_suite_absent_reading(rec),
     ),
     "qa_suite_at_path_prefix": (
         "L8b: the extractor repaired a fence emitted under the placeholder",
@@ -1983,11 +2021,8 @@ SEAM_READOUTS: dict[str, tuple[str, tuple[str, ...], Callable[[dict], tuple[bool
     ),
     "repair_prose_only": (
         "L4: the prose-only repair was refunded rather than verified",
-        ("loop_texture.refunded_rounds",),
-        lambda rec: (
-            len(value_at(rec, "loop_texture.refunded_rounds", [])) >= 1,
-            value_at(rec, "loop_texture.refunded_rounds", []),
-        ),
+        ("loop_texture.refunded_rounds", "loop_texture.faults_applied"),
+        lambda rec: _repair_prose_only_reading(rec),
     ),
     # #1506: the contentless-builder sequence is two seams read on their own evidence. Since
     # #1372 the builder retries a contentless emission with its fact, so one first-attempt
@@ -2090,10 +2125,78 @@ SEAM_READOUTS: dict[str, tuple[str, tuple[str, ...], Callable[[dict], tuple[bool
 }
 
 
+def _applied_attempts(rec: Mapping[str, Any], fault: str) -> list[dict] | None:
+    """The attempts ``fault`` was APPLIED to, per the fault hook's own lines — or ``None``
+    when the record predates the field (#1588) and cannot say."""
+    texture = rec.get("loop_texture") if isinstance(rec, Mapping) else None
+    if not isinstance(texture, Mapping) or "faults_applied" not in texture:
+        return None
+    by_fault = value_at(rec, "loop_texture.faults_applied", {}) or {}
+    return list((by_fault.get(fault) or {}).get("applied") or [])
+
+
+def _out_of_scope_attempts(rec: Mapping[str, Any], fault: str) -> list[dict]:
+    by_fault = value_at(rec, "loop_texture.faults_applied", {}) or {}
+    return list((by_fault.get(fault) or {}).get("out_of_scope") or [])
+
+
+def _lines_naming_applied_tasks(lines: list[str], rec: Mapping[str, Any], fault: str) -> list[str]:
+    """The lines about a task the fault was applied to. When the record cannot say which
+    (it predates the field, or the fault never applied) every line is kept — the applied
+    requirement in ``seam_readouts`` decides the reading in that case, not this join."""
+    ids = [a["task"] for a in (_applied_attempts(rec, fault) or []) if a.get("task")]
+    if not ids:
+        return list(lines)
+    return [line for line in lines if any(task in line for task in ids)]
+
+
+_REPAIR_ROUND = re.compile(r"^repair-run_[0-9a-f]+-(?P<round>\d+)-")
+_REFUND_ATTEMPT = re.compile(r"correction attempt (?P<attempt>\d+) refunded")
+
+
+def _qa_suite_absent_reading(rec: Mapping[str, Any]) -> tuple[bool, dict[str, Any]]:
+    """L2: a retest of the faulted qa task after correction — not of some other task (#1588)."""
+    rounds = value_at(rec, "correction_rounds", 0) or 0
+    retests = [r for r in value_at(rec, "loop_texture.retests", []) or [] if "qa.test" in r]
+    of_faulted = _lines_naming_applied_tasks(retests, rec, "qa_suite_absent")
+    return rounds >= 1 and bool(of_faulted), {
+        "correction_rounds": rounds,
+        "retests": value_at(rec, "loop_texture.retests", []),
+        "retests_of_the_faulted_task": of_faulted,
+    }
+
+
+def _repair_prose_only_reading(rec: Mapping[str, Any]) -> tuple[bool, list[str]]:
+    """L4: the refund of the ROUND whose repair the fault stripped — the repair task id
+    carries the round (``repair-run_x-00-…``) and the refund line the attempt (#1588). The
+    own-frame diagnostic's run 1 carried a refund of the dev's prose answer in a cycle where
+    the fault's target never ran; read without the join, that was L4 reached."""
+    refunds = list(value_at(rec, "loop_texture.refunded_rounds", []) or [])
+    rounds = {
+        int(m.group("round"))
+        for a in (_applied_attempts(rec, "repair_prose_only") or [])
+        if (m := _REPAIR_ROUND.match(str(a.get("task") or ""))) is not None
+    }
+    if rounds:
+        refunds = [
+            r
+            for r in refunds
+            if (m := _REFUND_ATTEMPT.search(r)) is not None and int(m.group("attempt")) in rounds
+        ]
+    return bool(refunds), refunds
+
+
 def seam_readouts(faults, rec: dict) -> dict[str, dict]:
     """Per declared fault: the seam it names, whether the record shows it reached, and the
     evidence read. A fault with no readout is named as such rather than skipped — a
-    diagnostic nothing can read proves nothing (#1300)."""
+    diagnostic nothing can read proves nothing (#1300).
+
+    #1588: a seam is read only when its fault APPLIED. A fault declared for a task that never
+    ran, or whose every attempt fell outside the fault's scope, exercised nothing — the
+    reading is neither YES nor NO, and ``reached`` is ``None`` with the reason beside it, the
+    three-state rule the texture fields follow (#1445). A record that predates the field
+    keeps its reading, with the absence named.
+    """
     out: dict[str, dict] = {}
     for name in faults:
         entry = SEAM_READOUTS.get(name)
@@ -2109,13 +2212,52 @@ def seam_readouts(faults, rec: dict) -> dict[str, dict]:
             for path in reads
             if (ev := evidence_at(rec, path)) is not None and ev.state == UNASKABLE
         }
+        applied = _applied_attempts(rec, name)
+        state: bool | None = bool(reached)
+        if applied is None:
+            unaskable["loop_texture.faults_applied"] = (
+                "not recorded — the record predates the applied fact (#1588); the reading "
+                "stands on the seam's evidence alone"
+            )
+        elif not applied:
+            out_of_scope = _out_of_scope_attempts(rec, name)
+            unaskable["loop_texture.faults_applied"] = (
+                "the fault never applied — "
+                + (
+                    "declared for "
+                    + ", ".join(sorted({str(a.get("task")) for a in out_of_scope}))
+                    + " but every attempt was outside its scope"
+                    if out_of_scope
+                    else "no attempt of its target task ran"
+                )
+                + "; the seam was not exercised, so this is neither YES nor NO (#1588)"
+            )
+            state = None
         out[name] = {
             "seam": seam,
-            "reached": bool(reached),
+            "reached": state,
             "evidence": evidence,
             "unaskable": unaskable,
+            "applied": applied or [],
         }
     return out
+
+
+def _seam_state(reading: Mapping[str, Any]) -> str:
+    if not reading.get("seam"):
+        return "NO READOUT"
+    if reading.get("reached") is None:
+        return "UNASKABLE"
+    return "YES" if reading.get("reached") else "NO"
+
+
+def _applied_words(reading: Mapping[str, Any]) -> str:
+    applied = reading.get("applied") or []
+    if not applied:
+        return ""
+    return " — fault applied to " + ", ".join(
+        f"`{a.get('task')}` ({a.get('chars_before')}→{a.get('chars_after')} chars)" for a in applied
+    )
 
 
 #: The builder's two names in the logs: its task id suffix on the executor's lines, its
@@ -3160,8 +3302,9 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
                 "**. This cycle carried a deliberate emission defect (#1251): its verdict is "
                 "not a verdict about the squad, and it must not be counted.",
                 *(
-                    f"- seam reached — `{name}`: **{'YES' if r.get('reached') else 'NO'}** — "
+                    f"- seam reached — `{name}`: **{_seam_state(r)}** — "
                     f"{r.get('seam') or 'no readout for this fault'} (#1310)"
+                    + _applied_words(r)
                     + (
                         " — **read over unaskable field(s)**: "
                         + "; ".join(f"`{p}` — {why}" for p, why in r["unaskable"].items())
