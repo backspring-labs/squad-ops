@@ -1766,7 +1766,12 @@ class RegexMatchCheck(BaseCheck):
             return CheckOutcome.error(reason="file_unreadable")
 
         try:
-            compiled = re.compile(pattern)
+            # #1594: `^` and `$` anchor LINES. The check is documents-only (#464) and a
+            # heading assertion is a line assertion; compiled bare, `^` matched only the
+            # file's first character, and 1.8.0 React roll 5 was rejected on notes that
+            # carried both required headings in every version — three analyzers read the
+            # headings, none could name why the count was zero.
+            compiled = re.compile(pattern, re.MULTILINE)
         except re.error:
             return CheckOutcome.error(reason="regex_invalid", pattern=pattern)
 

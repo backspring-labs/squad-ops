@@ -867,7 +867,9 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         notes=(
             "Documents only (.md/.txt/.rst) — a regex on a SOURCE file is "
             "rejected at plan validation (#464). To assert a source file defines "
-            "functions (e.g. pytest `test_*`), use `function_defined` instead."
+            "functions (e.g. pytest `test_*`), use `function_defined` instead. "
+            "`^` and `$` anchor lines: `^## How to Run` matches that heading anywhere "
+            "in the document."
         ),
         failure_ownership=OWNERSHIP_PRODUCT,
         qa_available=True,
