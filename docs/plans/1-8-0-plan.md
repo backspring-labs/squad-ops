@@ -528,8 +528,7 @@ the fault step 3 of §3.3 is proven live on.
 
 **Seam invariants — proven on the pinned deploy, no amendment.** The five 1.7.5 diagnostics
 re-registered under a `1.8/` prefix, with `contentless-builder` now **two** (#1506: R1 at
-`FIRST_ATTEMPT`, F1 at `ALL_EMISSION_ATTEMPTS`), and the dev-lane diagnostic above — **seven**
-configs, a two-run budget each, recorded with the entry point each used. A seam not reached
+`FIRST_ATTEMPT`, F1 at `ALL_EMISSION_ATTEMPTS`), and the dev-lane diagnostic above on **both** stacks — **eight** configs (rev 9), a two-run budget each, recorded with the entry point each used. A seam not reached
 after two runs stops the set. The #1501 fixture is CI; a live churning-set occurrence is texture.
 
 **CI invariants, read live as texture:** the rewind invariant (W1), the locus invariant (D1),
@@ -695,7 +694,7 @@ SIPs that carry open parts), so the sweep at the cut does not read silence as sh
    scope of §3.4 (c) and (d) fixed at this commit** — (c) in, (d) re-placed — after it the cut criteria do not move, and only diagnostic
    readings are appended. If the deploy moves after this commit, the commit is void and re-made,
    and no transaction from the superseded deploy counts toward N.
-9. **The seven diagnostics on the pinned deploy**, two-run budget each, their readings appended
+9. **The eight diagnostics on the pinned deploy** (rev 9), two-run budget each, their readings appended
    to the pre-registration. A seam not reached stops the line here.
 10. **Counted set 6 + 3** — no merges to main while it is open; the boundary reading at each roll.
 11. ~~**Run the generalist arm** of the comparison registered at step 8 (§4.2)~~ — **1.8.1's**:
@@ -816,6 +815,16 @@ Named here so they are not the next line's §6a. Each has a home above or a fix 
 
 ## 10. Revision history
 
+- **Rev 9 (2026-09-15)** — the loop set's pre-registration on deploy E
+  (`docs/plans/1-8-0-verification-set-preregistration.md`, §7 step 8). **Eight diagnostics, not
+  seven:** the dev-lane fault runs on both stacks, because dev × Next.js is a required cell of
+  §39.8's N with no other supply (six Next.js shakeouts took no dev round). The pre-registration
+  fixes **N = 6 with at least one successful transaction per required cell**, and three counting
+  rules: a fill-mode qa repair counts as a §9.3 region transaction on its fill-merge evidence; a
+  transaction that replaced more than half its file is a scoped rewrite and does not count; every
+  transaction is read against the round's revision-form row. The builder × Next.js cell is
+  declared unaskable. Nothing in §3.9 moves; the gate adopts the number the pre-registration
+  fixes, as §3.9 always said it would.
 - **Rev 8 (2026-09-15)** — the owner's ruling ("fix 1583 and plan for deploy E") that the
   shakeout loop's budget is **four pairs, not three**. Three pairs ran, on deploys B, C and D,
   and each found a seam defect the deploy it ran on had just made legible: pair 1 the whole-file
