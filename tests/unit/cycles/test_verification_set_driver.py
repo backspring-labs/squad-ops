@@ -3332,3 +3332,174 @@ class TestRepairRevisionForms:
         out = driver.with_states("loop_texture", {"repair_revision_forms": []}, context)
 
         assert out["repair_revision_forms"]["state"] == state
+
+
+class TestASeamIsReadOnlyWhenItsFaultApplied:
+    """#1588: the 1.8.0 own-frame diagnostic's run 1 (cyc_eee9b62e6a4f) credited L4 on a
+    refund the dev's prose answer had earned — in a cycle where the qa repair the fault
+    targets never ran and the fault was never applied. A seam reading is a claim about what
+    the fault's application caused, so it reads the fault hook's own APPLIED lines first."""
+
+    _APPLIED_OWN_FRAME = (
+        "2026-09-16 06:52:12,001 - squadops.capabilities.handlers.fault_injection - WARNING - "
+        "fault_injection: APPLIED qa_suite_own_frame_failure to task=task-run_b8cc47c5-m005-qa.test "
+        "handler=qa_test_handler chars 8360 -> 8482 scope=first_attempt (found_in=#1270 — React "
+        "roll 4 (cyc_de4b2dea73a0), R2 falsified exercises=L7 (#1270): an own-frame failure in a "
+        "qa-owned file routes to `qa.test_repair`) — this cycle is a DIAGNOSTIC and must not be counted"
+    )
+    _APPLIED_PROSE_ONLY = (
+        "2026-09-16 06:53:08,410 - squadops.capabilities.handlers.fault_injection - WARNING - "
+        "fault_injection: APPLIED repair_prose_only to task=repair-run_b8cc47c5-00-qa.test_repair "
+        "handler=qa_test_repair_handler chars 199 -> 48 scope=first_attempt (found_in=#1273 — "
+        "Next.js roll 1 (cyc_9be98128f0e9) exercises=L4 (#1273): a prose-only repair is refunded "
+        "rather than verified) — this cycle is a DIAGNOSTIC and must not be counted"
+    )
+    _OUT_OF_SCOPE = (
+        "2026-09-16 06:56:31,377 - squadops.capabilities.handlers.fault_injection - INFO - "
+        "fault_injection: qa_suite_own_frame_failure declared for task-run_57e2c248-m005-qa.test "
+        "but this attempt is outside its scope (first_attempt) — not applied (the recovery path "
+        "under test runs clean)"
+    )
+    _REFUND_0 = (
+        "correction attempt 0 refunded: the repair emitted no content (signature unreported), "
+        "so the round is re-taken rather than spent (refund 1 of 3, #1053/#998)"
+    )
+
+    def test_the_hooks_lines_are_read_into_applied_and_out_of_scope_attempts(self, driver):
+        """The parser, on the lines the agents wrote on 2026-09-16."""
+        out = driver.faults_applied([self._APPLIED_OWN_FRAME, self._OUT_OF_SCOPE, "noise"])
+        assert out == {
+            "qa_suite_own_frame_failure": {
+                "applied": [
+                    {
+                        "task": "task-run_b8cc47c5-m005-qa.test",
+                        "handler": "qa_test_handler",
+                        "chars_before": 8360,
+                        "chars_after": 8482,
+                        "scope": "first_attempt",
+                    }
+                ],
+                "out_of_scope": [
+                    {"task": "task-run_57e2c248-m005-qa.test", "scope": "first_attempt"}
+                ],
+            }
+        }
+        assert driver.faults_applied([]) == {}
+
+    def test_the_agent_window_keeps_the_hooks_lines(self, driver, monkeypatch):
+        """Wiring: the filter that feeds ``loop_texture`` must keep the fault hook's lines, or
+        every reading below is blind with every unit test green."""
+        monkeypatch.setattr(
+            driver,
+            "docker_logs",
+            lambda container, since, until=None: ["noise", self._APPLIED_PROSE_ONLY],
+        )
+        lines = driver.agent_log_window("2026-09-16T06:00:00Z")
+        assert len(driver.faults_applied(lines)["repair_prose_only"]["applied"]) == len(
+            driver.AGENT_SERVICES
+        )
+
+    @staticmethod
+    def _rec(faults_applied=None, **texture):
+        rec = {"correction_rounds": 1, "loop_texture": dict(texture)}
+        if faults_applied is not None:
+            rec["loop_texture"]["faults_applied"] = faults_applied
+        return rec
+
+    def test_a_refund_with_the_fault_never_applied_is_neither_yes_nor_no(self, driver):
+        """The run-1 shape: the dev's refund present, no qa repair ever dispatched."""
+        rec = self._rec(faults_applied={}, refunded_rounds=[self._REFUND_0])
+        out = driver.seam_readouts(("repair_prose_only",), rec)["repair_prose_only"]
+        assert out["reached"] is None
+        assert out["applied"] == []
+        assert "never applied" in out["unaskable"]["loop_texture.faults_applied"]
+        assert (
+            "no attempt of its target task ran" in out["unaskable"]["loop_texture.faults_applied"]
+        )
+
+    def test_a_fault_declared_but_out_of_scope_on_every_attempt_names_the_attempts(self, driver):
+        applied = driver.faults_applied([self._OUT_OF_SCOPE])
+        rec = self._rec(faults_applied=applied, qa_owned_routed=["qa_owned_routed …"])
+        out = driver.seam_readouts(("qa_suite_own_frame_failure",), rec)
+        reading = out["qa_suite_own_frame_failure"]
+        assert reading["reached"] is None
+        assert (
+            "task-run_57e2c248-m005-qa.test" in reading["unaskable"]["loop_texture.faults_applied"]
+        )
+        assert "outside its scope" in reading["unaskable"]["loop_texture.faults_applied"]
+
+    def test_l4_is_the_refund_of_the_round_the_fault_stripped(self, driver):
+        """Run 2 of the same diagnostic: the fault applied to round 0's qa repair and round 0
+        was refunded — reached. A refund of a different round is not this seam."""
+        applied = driver.faults_applied([self._APPLIED_PROSE_ONLY])
+        reached = driver.seam_readouts(
+            ("repair_prose_only",),
+            self._rec(faults_applied=applied, refunded_rounds=[self._REFUND_0]),
+        )["repair_prose_only"]
+        assert reached["reached"] is True
+        assert reached["evidence"] == [self._REFUND_0]
+        assert reached["applied"][0]["task"] == "repair-run_b8cc47c5-00-qa.test_repair"
+
+        other_round = self._REFUND_0.replace("attempt 0", "attempt 1")
+        not_this = driver.seam_readouts(
+            ("repair_prose_only",), self._rec(faults_applied=applied, refunded_rounds=[other_round])
+        )["repair_prose_only"]
+        assert not_this["reached"] is False
+        assert not_this["evidence"] == []
+
+    def test_l2_is_the_retest_of_the_faulted_qa_task(self, driver):
+        applied = {
+            "qa_suite_absent": {
+                "applied": [
+                    {
+                        "task": "task-run_x-m006-qa.test",
+                        "handler": "qa_test_handler",
+                        "chars_before": 11884,
+                        "chars_after": 48,
+                        "scope": "all_emission_attempts",
+                    }
+                ],
+                "out_of_scope": [],
+            }
+        }
+        own = "patch_retest task=task-run_x-m006-qa.test status=SUCCEEDED passed=True"
+        other = "patch_retest task=task-run_x-m005-qa.test status=SUCCEEDED passed=True"
+        yes = driver.seam_readouts(
+            ("qa_suite_absent",), self._rec(faults_applied=applied, retests=[other, own])
+        )["qa_suite_absent"]
+        assert yes["reached"] is True
+        assert yes["evidence"]["retests_of_the_faulted_task"] == [own]
+        no = driver.seam_readouts(
+            ("qa_suite_absent",), self._rec(faults_applied=applied, retests=[other])
+        )["qa_suite_absent"]
+        assert no["reached"] is False
+
+    def test_a_record_that_predates_the_field_keeps_its_reading_and_says_so(self, driver):
+        """Older records are re-rendered, not re-read: their readings stand on the seam's
+        evidence, and the absence of the applied fact is named rather than inferred."""
+        out = driver.seam_readouts(
+            ("repair_prose_only",), self._rec(refunded_rounds=[self._REFUND_0])
+        )
+        reading = out["repair_prose_only"]
+        assert reading["reached"] is True
+        assert reading["applied"] == []
+        assert "predates" in reading["unaskable"]["loop_texture.faults_applied"]
+
+    def test_the_headline_renders_the_three_states_and_the_applied_facts(self, driver):
+        assert driver._seam_state({"seam": "L4", "reached": None}) == "UNASKABLE"
+        assert driver._seam_state({"seam": "L4", "reached": True}) == "YES"
+        assert driver._seam_state({"seam": "L4", "reached": False}) == "NO"
+        assert driver._seam_state({"seam": None, "reached": None}) == "NO READOUT"
+        words = driver._applied_words(
+            {
+                "applied": [
+                    {
+                        "task": "repair-run_b8cc47c5-00-qa.test_repair",
+                        "chars_before": 199,
+                        "chars_after": 48,
+                    }
+                ]
+            }
+        )
+        assert words == " — fault applied to `repair-run_b8cc47c5-00-qa.test_repair` (199→48 chars)"
+        assert driver._applied_words({"applied": []}) == ""
