@@ -18,10 +18,11 @@
 # scoped transaction the pair happens to exercise, read as texture (most counted rolls take
 # zero correction rounds — the diagnostics supply N, plan §4).
 #
-# NO PRE-REGISTRATION YET, deliberately: plan §7 step 8 pre-registers from deploy B's LAST
-# shakeout. NO frozen_image_ids and an empty expected_squad_snapshot_prefix, which is what makes
-# this file SHAKEOUT-ONLY: preflight refuses a counting roll with either missing (#1571).
+# PRE-REGISTERED (plan §7 step 8) on deploy E after the shakeout loop exited at pair 4 (its
+# budget raised to four by plan rev 8). The pins below make this a COUNTING config: preflight
+# refuses a roll whose live images, config hash or squad snapshot differ (#1296, #1571).
 name: 1-8-0-fastapi-react
+pre_registration: docs/plans/1-8-0-verification-set-preregistration.md
 project: group_run
 squad_profile: full-38
 request_profile: validated-fullstack
@@ -340,9 +341,16 @@ loaded_checks:
     print("0107 ts", _ok.accepted, "} catch (err) {\n    return errorResponse(err)" in _after, "status: 201" in _after,
           "ctl", _bad.accepted, [r.split(" — ")[0].split(": ")[-1] for r in _bad.refusal_lines()],
           "py", _pyok.accepted)
-# EMPTY on deploy B's shakeouts. Frozen at plan step 8 from deploy B's last shakeout record
-# (#1296: the image ids are the assertion; the commit is a label).
-expected_config_hash_prefix: ""
-expected_squad_snapshot_prefix: ""
-frozen_deploy_commit: ""
-frozen_image_ids: {}
+# PINNED at plan step 8 (docs/plans/1-8-0-verification-set-preregistration.md) from deploy E's pair 4,
+# the shakeout that met the exit rule (#1296: the image ids are the assertion; the commit is a label).
+expected_config_hash_prefix: "3921c5a62106"
+expected_squad_snapshot_prefix: "575707c58536cf3b"
+frozen_deploy_commit: "2356c079"
+frozen_image_ids:
+  runtime-api: "4b950e964602"
+  max: "ffa77a2cc779"
+  neo: "013f0ef28813"
+  nat: "d8f4a648f63a"
+  bob: "db271648015e"
+  eve: "713312f65991"
+  data: "ec9700321fda"

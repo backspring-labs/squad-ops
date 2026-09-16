@@ -1,4 +1,4 @@
-# 1.8.0 DIAGNOSTIC on deploy A — a builder emission that bills a budget and carries nothing (R1)
+# 1.8.0 DIAGNOSTIC (first run on deploy A; re-run on the pinned deploy E for the loop set) — a builder emission that bills a budget and carries nothing (R1)
 #
 # Not a roll and not a shakeout: a non-counting cycle that runs the roll's own path with a
 # deliberate fault injected at the builder's emission seam (#1251). The driver REFUSES to count a
@@ -12,6 +12,7 @@
 # emission the fault empties is a notes emission; the seams are unchanged.
 
 name: 1-8-0-diagnostic-contentless-builder
+pre_registration: docs/plans/1-8-0-verification-set-preregistration.md
 records_dir: var/verification_sets/1-8-0-diagnostics/contentless-builder
 project: group_run
 squad_profile: full-38
