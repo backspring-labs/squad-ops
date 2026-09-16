@@ -294,7 +294,11 @@ _SUITE_DEFECT_EXIT_CODES = frozenset({2, 5})
 #: writes `testing`, `qa_test_authoring`, `test_suite_isolation` — never a `TaskType`
 #: value. #1054's own arm A wrote `backend_route_implementation` and
 #: `store_module_integration`, and the 1.7.4 React checkpoint wrote `frontend`, `testing`.
-_SUITE_SIDE_TOKENS = ("test", "spec", "qa", "suite", "assertion", "fixture", "mock")
+# #1596: "verification" is this platform's own word for the qa role's work (the verification
+# contract, verification-only tasks, the verification scaffold), and the lead uses it as such —
+# 1.8.0 React roll 6 named a test-isolation defect `["test", "verification"]` and the branch
+# below abstained on the second label, sending the suite's defect to the dev.
+_SUITE_SIDE_TOKENS = ("test", "spec", "qa", "suite", "assertion", "fixture", "mock", "verif")
 
 
 def decision_disputes_own_artifact(decision_outputs: Any) -> bool:
