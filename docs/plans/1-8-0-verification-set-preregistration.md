@@ -1,6 +1,6 @@
 # 1.8.0 verification set — pre-registration (plan §7 step 8)
 
-**Status:** DRAFT for the owner's approval — committed on the frozen deploy before any diagnostic
+**Status:** rev 10 (2026-09-16) — re-pinned on **deploy F** after the deploy-E set re-opened the shakeout loop (§2, §6, §10). Committed on the frozen deploy before any diagnostic
 launches. Once merged, the cut criteria do not move (plan §7 step 8); only diagnostic readings are
 appended. If the deploy moves after this commit, the commit is void and re-made, and no
 transaction from the superseded deploy counts toward N.
@@ -25,9 +25,9 @@ reaching its seam (plan §3.9).
 | Overrides | FastAPI+React: none. Next.js+TS: `build_profile=nextjs_ts`, `development_profile=nextjs_ts` |
 | `resolved_config_hash` | FastAPI+React **`3921c5a62106`**, Next.js+TS **`33cadf53688e`** — observed on every shakeout of every deploy of this line (A through E), unchanged from 1.7.5 |
 | `squad_profile_snapshot_ref` | `575707c58536cf3b…` — the Postgres-seeded `full-38` (#1568), observed on both arms of pair 4 and identical to the 1.7.5 pin; the driver refuses a counting roll on any other (#1571) |
-| Deploy — commit | **`2356c079`** — main after the shakeout loop's last fix (#1584). A label, not an assertion (#1296): the image ids are the assertion |
-| Deploy — image ids | `runtime-api` **`4b950e964602`**, `max` **`ffa77a2cc779`**, `neo` **`013f0ef28813`**, `nat` **`d8f4a648f63a`**, `bob` **`db271648015e`**, `eve` **`713312f65991`**, `data` **`ec9700321fda`** — deploy E, live 2026-09-15 18:07 ET, backup `squadops-20260915T220605Z.dump` |
-| Loaded, not built | Verified per container as a live call with its paired control at each deploy (`verify_C/D/E_loaded`): SIP-0107 §46k–§46p (the revision form, the scoped output contract, the shown files with the fence-aware renderer, fragment anchors, the replaced span, fill-mode anchorable files), #1581's unanimity rule, and the prelude's surfaces the set configs carry |
+| Deploy — commit | **`969cd44e`** — main after the six fixes the deploy-E set found (#1590, #1591, #1592, #1593, #1595, #1597; rev 10). Deploy E, `2356c079`, ran the set recorded in §10a–§10b. A label, not an assertion (#1296): the image ids are the assertion |
+| Deploy — image ids | `runtime-api` **`b3278c26dd25`**, `max` **`36cc6eb9a923`**, `neo` **`07498c2a4a94`**, `nat` **`1ddf151647c0`**, `bob` **`b59711b8f653`**, `eve` **`14d15dc8e3f7`**, `data` **`9a41965b25ad`** (deploy F, 18:53 ET 2026-09-16; deploy E's were `4b950e964602`, `ffa77a2cc779`, `013f0ef28813`, `d8f4a648f63a`, `db271648015e`, `713312f65991`, `ec9700321fda`) — deploy E, live 2026-09-15 18:07 ET, backup `squadops-20260915T220605Z.dump` |
+| Loaded, not built | Verified per container as a live call with its paired control at each deploy (`verify_C/D/E/F_loaded`; F reads the six fixes from the loaded modules of `runtime-api`, `eve`, `neo` and `bob` — the verifier's escape, the refund branch, the namespace validator and the basename reader, the suite-side token, and a caret-anchored `regex_match` evaluated live on a heading below the first line): SIP-0107 §46k–§46p (the revision form, the scoped output contract, the shown files with the fence-aware renderer, fragment anchors, the replaced span, fill-mode anchorable files), #1581's unanimity rule, and the prelude's surfaces the set configs carry |
 | Gate policy | 1.6.3 §6 constant, verbatim in each set config's `gate_notes`; `--as-agent`; the decider recorded per roll |
 | Audit instrument | `scripts/dev/audit_delivered_app.py` at the deploy commit |
 | Driver | `verification_set_driver.py roll --set docs/plans/verification-sets/1-8-0-<arm>.yaml --roll N` — one roll per invocation; diagnostics via `shakeout --set …-diagnostic-*.yaml` |
@@ -49,10 +49,23 @@ deploy carried, and the last pair found nothing new.
 | D | `0d0e8f41` | 3 | `cyc_c815dbbd832b` accepted, 1 round: #1582 routed to qa; an anchored edit applied and was verified, the retest refused a wrong router API, the patch was discarded | `cyc_95c0e2dbb25c` accepted, 1 round: #1582 routed to qa; the fill repair **re-emitted the free-authored suite whole**, unread as whole-file | #1583 → #1584 (fill-mode anchorable files; unoffered whole re-emission read) |
 | **E** | **`2356c079`** | **4** | `cyc_930df0dbb13c` accepted, 1 round: **the first successful scoped transaction in a live cycle** — one anchored edit, 3% of the file, verified, retest passed, identity held | `cyc_2b8da9f82ed7` accepted, 0 rounds | **none — exit** |
 
+| **E (the set)** | `2356c079` | the counted set | diagnostics 8/8 seams, two on run 2 (#1586, #1587); rolls 1–4 accepted and functional; **5 and 6 rejected — both false rejections of the framework's own making** (#1594; #1596 over #1598) | 3/3 accepted, 0 rounds | seven findings → six fixes (#1590, #1591, #1592, #1593, #1595, #1597) → **deploy F** (rev 10) |
+
 **Rounds taken: four. Budget: four (plan rev 8; three before it).** Rounds attributable to the
 headlines: pairs 1 and 3 (the scoped-repair contract and its instrument); pair 2's routing defect
 predates them and was made legible by them. Records: `var/verification_sets/1-8-0-fastapi-react/`
 and `1-8-0-nextjs/`, `shakeout-2026091{5,6}T*.md`.
+
+**Rev 10 (2026-09-16).** The exit rule was met at pair 4, and the counted set on deploy E re-opened
+the loop: seven latent seams, every one surfaced by plan-author variance the framework accepted at
+one seam and disowned at another — no typed row on the qa task (#1586), a suite at a directory the
+stack's namespace does not own (#1587), an empty repair verified and retested (#1589), a seam read
+without asking whether its fault applied (#1588), a caret-anchored regex the evaluator could never
+match (#1594), a `verification` label the token list did not read (#1596), and a harness that seeds
+no store isolation while the plan hint says it does (#1598, the owner's ruling, not fixed here). Under
+the cut rule that the shakeout is a loop with an exit rule, **the set restarts on deploy F**, which
+carries the six fixes; the E set stands in §10a–§10b as evidence and is not the cut's set. The E
+arm's two rejections are attributed to the framework, not the squad, each by replay (§10b).
 
 **The readiness probe that preceded deploy C** (`var/probes/2026-09-15-scoped-repair-readiness-v2/`,
 gitignored; SIP-0107 §46m): the real repair handler in the dev agent's image against the live
@@ -149,6 +162,21 @@ the fault injected in the producing role's container (#1251); the driver refuses
 **A seam not reached after two runs stops the set.** Each config's `loaded_checks` asserts the
 seam's presence on the deployed image before the run, with a control.
 
+### 3d′. Deploy F — one mechanism prediction per fix (rev 10)
+
+Each fix is read where its mechanism shows, never as a rate. Two are exercised by a diagnostic on
+every run of this set; the others by the counted rolls only when plan-author variance produces the
+shape again, and the record says which it was.
+
+| fix | mechanism predicted | read from |
+|---|---|---|
+| #1590 (#1586) | a qa suite repair for an emission failure is retested whether or not the plan attached a typed row to the qa task; `no_typed_criteria` never terminates a qa-suite round | `absent-suite`: `patch_retest` follows the qa repair on every run; `correction_terminated_unverifiable` absent |
+| #1591 (#1589) | a refunded round shows no `patch_verification` and no retest; the next attempt is told the repair emitted no content | `own-frame-then-prose-repair`: round 0 after the prose-only fault |
+| #1592 (#1587) | a plan declaring a qa suite outside the stack's qa namespace is re-rolled once with the reason; on React the backend suite lands under `backend/tests/` | every React plan; `framing_rerolls` names `validate_qa_suite_namespace` when it fires — **watch the first roll's re-roll count** |
+| #1593 (#1588) | every diagnostic record carries `faults_applied`; a seam whose fault never applied reads UNASKABLE, never YES or NO; L4 reads the refund of the faulted round only | every diagnostic record (reporting-only) |
+| #1595 (#1594) | a caret-anchored heading regex on a document passes when the heading is below the first line | **replay-verified** on roll 5's own notes (the check's regression test) and live in `verify_F_loaded`; exercised by a counted roll only if a plan author anchors a pattern again — named as a replay, not a live reading |
+| #1597 (#1596) | a round whose analyzer names only the suite and whose lead labels it `test` / `verification` routes to the qa repair | any counted round of that shape; not forced by a diagnostic |
+
 ### 3e. CI invariants, read live as texture
 
 The rewind invariant (W1), the locus invariant (D1, now with #1581's unanimity rule beside
@@ -187,6 +215,11 @@ by plan rev 8 when pair 3's finding arrived with the budget spent (§2). Pair 4 
 produced no new seam finding in either arm. A fourth finding would have stopped the loop for a
 plan revision, not a fifth pair; none came.
 
+**Round five (rev 10): the counted set on E.** The pairs found nothing; the set found seven latent
+seams (§2). The loop restarts on deploy F with the same eight diagnostics first — they exercise the
+seams the fixes change (§3d′) and are this deploy's shakeout; no separate pair precedes them. The
+exit is unchanged: a diagnostic that misses its seam twice stops the set; a rejected roll is a result.
+
 **Early stop, one direction.** A falsified prediction or an unreached seam stops the set; a good
 result never stops it early; a stop in one arm does not stop the other.
 
@@ -202,17 +235,61 @@ counted roll** — the launch checkout's HEAD is pinned at the first launch, and
 branch voids the pin. Diagnostic readings are appended to this document's §10 as they land; the
 cut criteria above do not move.
 
+The E set closed at 16:24 ET on 2026-09-16; the six fix PRs and this revision merged after it and
+before the F launch, which is where the prohibition re-opens.
+
 ## 9. Drift the record must declare
 
 **Intended zero** — the tag is the measured deploy plus this pre-registration, the diagnostic
 configs, the records, the baseline and the package.
 
-**One difference exists already and is named here.** The images were built from `2356c079`, and
+**One difference exists already and is named here.** The images were built from `969cd44e`, and
 that is what `frozen_deploy_commit` carries. The driver runs from a checkout at main, which is
-ahead of `2356c079` by this document, the eight diagnostic configs, the pinned set configs and plan
-rev 9 — `git diff 2356c079..HEAD -- src/ adapters/` is **empty**, the condition the driver's own
-framework-drift check enforces on every counting roll. Docs-only, therefore additive.
+ahead of `969cd44e` by this revision and the re-pinned set configs — `git diff 969cd44e..HEAD --
+src/ adapters/` is **empty**, the condition the driver's own framework-drift check enforces on every
+counting roll. Docs-only, therefore additive. (Rev 9's statement of the same shape for `2356c079`
+held through the E set.)
 
 ## 10. Diagnostic readings — appended as they land
+
+### 10a. Deploy E — the eight diagnostics (2026-09-15 23:28 → 2026-09-16 08:32 ET)
+
+| diagnostic | run | cycle | verdict | rounds | seam |
+|---|---|---|---|---|---|
+| `absent-suite` | 1 | `cyc_53d6ff52c989` | blocked_unverified | 1 | L2 **NO** — the plan attached no typed row to the qa task; the repair that supplied the suite was refused `no_typed_criteria` and the round terminated (#1586) |
+| `absent-suite` | 2 | `cyc_547a34c8c037` | accepted | 1 | L2 **YES** — one typed row on the plan; retest ran |
+| `own-frame-then-prose-repair` | 1 | `cyc_eee9b62e6a4f` | accepted | 1 | L7 **NO** — the fault bit a pytest suite at the root `tests/`, outside the stack's qa namespace; routed to the dev (#1587). L4 read YES by the driver **and is corrected here to UNASKABLE**: the prose-only fault never applied because no qa repair ran; the refund it read was the dev's (#1588) |
+| `own-frame-then-prose-repair` | 2 | `cyc_44535c62fbe0` | accepted | 2 | L7 **YES**, L4 **YES** — suites under `backend/tests/` and `frontend/src/__tests__/`; both faults applied; both qa repairs refunded |
+| `path-prefix` | 1 | `cyc_a466aa7690bb` | accepted | 0 | L8b **YES** |
+| `absent-suite-then-false-claim` | 1 | `cyc_0d319c3f68f3` | accepted | 1 | L2 **YES**, A1 **YES** |
+| `contentless-builder` | 1 | `cyc_1417b1f9cfaf` | accepted | 0 | R1 **YES** |
+| `contentless-builder-all-attempts` | 1 | `cyc_1189dc498ac5` | accepted | 2 | F1 **YES** — the first deploy on which F1 was reachable |
+| `dev-lane-fastapi-react` | 1 | `cyc_717f0bb0efcf` | accepted | 1 | **YES** — dev anchored edit on `backend/routes.py`, 122 of 3,826 chars (3%), verified 8 checks, retest passed, identity held |
+| `dev-lane-nextjs` | 1 | `cyc_b6a4ba977d5e` | accepted | 2 | **YES** — dev anchored edits on `app/api/runs/[run_id]/join/route.ts`, 203 of 1,355 chars (15%), first retest failed, second passed, identity held |
+
+Eight of eight seams reached inside the two-run budget; the two run-1 misses are #1586 and #1587,
+each with its run-2 control on the same deploy. During the own-frame run 1, the refund fell through
+to a verification and a retest of the empty patch (#1589).
+
+### 10b. Deploy E — the counted arm (recorded; not the cut's set)
+
+| arm | roll | cycle | verdict | rounds | reading |
+|---|---|---|---|---|---|
+| React | 1 | `cyc_9fd0990f1912` | accepted, functional | 0 | clean |
+| React | 2 | `cyc_0b545fbf8997` | accepted, functional | 0 | clean |
+| React | 3 | `cyc_83934970bdba` | accepted, functional | 1 | **qa × React cell**: anchored edit on `frontend/src/__tests__/runs.test.jsx`, 533 of 7,823 chars (7%), verified 10 checks, retest passed, identity held; routed by #1582's unanimity branch |
+| React | 4 | `cyc_7599ed9ef73b` | accepted, functional | 0 | clean |
+| React | 5 | `cyc_7998e63be37f` | **rejected** (blocked_unverified) | 3 | **framework**: two plan-authored `^`-anchored `regex_match` rows on `assembly_notes.md` could never match below the title line — the notes carried both headings in every version (replayed on the three stored copies) (#1594) |
+| React | 6 | `cyc_767ad2dc59d2` | **rejected** | 2 | **framework over a qa suite defect**: the suite assumed a harness reset the seeded conftest does not provide (#1598); the analyzer named only the suite, the lead labelled it `test`, `verification`, and the router abstained on the second label and sent it to the dev (#1596), who refused in prose |
+| Next.js | 1 | `cyc_7529a4eb8f1f` | accepted, functional | 0 | clean |
+| Next.js | 2 | `cyc_11a72c6842dc` | accepted, functional | 0 | clean |
+| Next.js | 3 | `cyc_c2cae2841022` | accepted, functional | 0 | clean |
+
+React 4 of 6, Next.js 3 of 3. One counted cell filled (qa × React); every other accepted roll
+needed no repair, so the dev cells rest on the two dev-lane diagnostics — a clean squad gives the
+scoped-revision instrument nothing to measure, which is why the diagnostics carry the dev lane by
+design (§3c supply table). L1 held: no counted roll blocked on an unrecovered contentless emission.
+
+### 10c. Deploy F — appended as they land
 
 _(none yet)_

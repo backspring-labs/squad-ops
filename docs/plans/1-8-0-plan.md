@@ -816,6 +816,7 @@ Named here so they are not the next line's §6a. Each has a home above or a fix 
 ## 10. Revision history
 
 - **Rev 9 (2026-09-15)** — the loop set's pre-registration on deploy E
+- **Rev 10 (2026-09-16)** — the deploy-E set re-opened the shakeout loop: eight of eight diagnostic seams reached (two on run 2), React 4/6 with both rejections attributed to the framework by replay, Next.js 3/3; seven findings, six fixes merged (#1590, #1591, #1592, #1593, #1595, #1597; #1598 for the owner's ruling); **the set restarts on deploy F** (`969cd44e`), the diagnostics first as its shakeout; pre-registration rev 10 records the E set in §10a–§10b and one mechanism prediction per fix in §3d′
   (`docs/plans/1-8-0-verification-set-preregistration.md`, §7 step 8). **Eight diagnostics, not
   seven:** the dev-lane fault runs on both stacks, because dev × Next.js is a required cell of
   §39.8's N with no other supply (six Next.js shakeouts took no dev round). The pre-registration
