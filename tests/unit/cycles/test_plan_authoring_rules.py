@@ -135,3 +135,16 @@ def test_proposer_assets_name_only_runnable_command_forms(asset):
             f"{asset.name} never mentions `{tool}`, a form the author may legitimately "
             f"use — an unadvertised check is an unused one"
         )
+
+
+def test_the_namespace_rule_states_every_stacks_declared_namespace():
+    """#1587: the rule names each stack's qa test namespace so the author can place the suite
+    without a re-roll. Prose restating a declaration drifts; this binds the two, the way the
+    rule ids are bound above."""
+    from squadops.capabilities import scaffold
+
+    text = _ASSET.read_text()
+    assert "**qa-tests-live-in-the-stacks-namespace**" in text
+    for stack, declared in scaffold._STACKS.items():
+        for entry in declared.qa_test_namespace:
+            assert f"`{entry}`" in text, f"{stack} declares {entry!r}; the rule does not name it"

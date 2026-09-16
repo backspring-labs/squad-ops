@@ -887,6 +887,49 @@ class ImplementationPlan:
             if artifact in owned
         ]
 
+    def validate_qa_suite_namespace(self, resolved_config: dict) -> list[str]:
+        """#1587: a ``qa.test`` task's expected artifacts live in the stack's qa test namespace.
+
+        The namespace (``ScaffoldStack.qa_test_namespace``) is the one declaration every seam
+        reads to decide whether a file is the qa role's: the binder attaches the stack's suite
+        checks only to files inside it (``task_plan``), the runner stamps an own-frame defect
+        ``qa_owned`` by it, the locus router sends such a defect to the qa repair only when it
+        is stamped, and the fill-mode emission seam refuses a scaffold file outside it
+        (SIP-0100 D1). The runner's collection rules are wider — pytest collects ``test_*.py``
+        anywhere — so a plan could declare ``tests/test_runs.py`` at the repository root, pass
+        ``validate_check_applicability``, and hand the qa role a suite nobody owns: no stack
+        check bound to it, and its own-frame failure routed to the developer (1.8.0 own-frame
+        diagnostic, cyc_eee9b62e6a4f; three of three React plans on deploy E used that layout,
+        beside the root ``conftest.py`` the scaffold seeds). Same referent as the routing and
+        binding seams, applied at authoring time — #1534's rule at one more seam. A stack that
+        declares no namespace is not checked.
+
+        Returns:
+            List of validation error strings (empty = valid).
+        """
+        from squadops.capabilities.scaffold import (
+            is_qa_test_path_for_stack,
+            qa_test_namespace_for_stack,
+            scaffold_stack_for,
+        )
+
+        stack = scaffold_stack_for(resolved_config)
+        namespace = qa_test_namespace_for_stack(stack) if stack else ()
+        if not namespace:
+            return []
+        shown = ", ".join(namespace)
+        return [
+            f"Task {task.task_index} ({task.focus}): qa.test declares {artifact!r}, which is "
+            f"outside this stack's qa test namespace ({shown}). The runner would collect it, "
+            f"but nothing that asks who owns a file answers 'qa' for it: the stack's suite "
+            f"checks are not bound to it, and a failure raised in its own frame is routed to "
+            f"the developer. Place it under one of: {shown}"
+            for task in self.tasks
+            if authors_qa_suite(task.task_type)
+            for artifact in task.expected_artifacts
+            if not is_qa_test_path_for_stack(artifact, stack)
+        ]
+
     def validate_frozen_artifact_ownership(self, contract: VerificationContract) -> list[str]:
         """#658: no task, any role, may declare a frozen-surface file as an
         ``expected_artifact``.

@@ -360,7 +360,22 @@ def suite_files_named_unanimously(
     ]
     implicated = [f for f in implicated if f]
     own = {normalize_ws_path(str(f)): str(f) for f in own_files if f}
-    if not implicated or not all(f in own for f in implicated):
+    # #1587: the analyzer reads pytest's output, which prints nodeids relative to rootdir —
+    # `test_runs.py:35`, not `tests/test_runs.py:35` — and wrote the basename. A bare name
+    # that is the basename of exactly one own file is that file; an ambiguous one abstains.
+    by_basename: dict[str, list[str]] = {}
+    for key in own:
+        by_basename.setdefault(key.rsplit("/", 1)[-1], []).append(key)
+    resolved: list[str] = []
+    for f in implicated:
+        if f in own:
+            resolved.append(f)
+        elif "/" not in f and len(by_basename.get(f, ())) == 1:
+            resolved.append(by_basename[f][0])
+        else:
+            return []
+    implicated = resolved
+    if not implicated:
         return []
     labels = [str(t).strip().lower() for t in (decision_outputs.get("affected_task_types") or [])]
     labels = [label for label in labels if label]

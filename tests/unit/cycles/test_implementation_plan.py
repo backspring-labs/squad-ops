@@ -1656,3 +1656,61 @@ class TestTheAuthoredOrderHonoursDependsOn:
             self._plan(tasks).replace("total_tasks: 2", f"total_tasks: {n}")
         )
         assert len(plan.tasks) == n
+
+
+class TestValidateQaSuiteNamespace:
+    """#1587: collected is not owned. The runner collects `test_*.py` anywhere, so a plan could
+    declare `tests/test_runs.py` at the repository root, pass `validate_check_applicability`,
+    and hand the qa role a suite nobody owns — no stack check bound to it, and its own-frame
+    failure routed to the developer (1.8.0 own-frame diagnostic, cyc_eee9b62e6a4f). The
+    stack's qa test namespace is the one declaration the binder, the runner and the router
+    read; this asks it at authoring time."""
+
+    _REACT = {"required_checks": ["tests_pass"], "build_profile": "fullstack_fastapi_react"}
+    _NEXTJS = {"required_checks": ["tests_pass"], "build_profile": "nextjs_ts"}
+
+    @staticmethod
+    def _plan(artifacts_yaml: str) -> ImplementationPlan:
+        return TestValidateCheckApplicability._plan_with_qa_artifacts(artifacts_yaml)
+
+    @pytest.mark.parametrize(
+        ("config", "artifact"),
+        [
+            ("_REACT", "backend/tests/test_runs.py"),
+            ("_REACT", "frontend/src/__tests__/runs.test.jsx"),
+            ("_REACT", "./frontend/src/tests/flows.test.jsx"),  # normalized like the seams
+            ("_NEXTJS", "__tests__/api.test.ts"),
+            ("_NEXTJS", "app/__tests__/runs.test.ts"),  # a co-located convention
+        ],
+    )
+    def test_a_suite_inside_the_namespace_is_accepted(self, config, artifact):
+        plan = self._plan(f'\n      - "{artifact}"')
+        assert plan.validate_qa_suite_namespace(getattr(self, config)) == []
+
+    @pytest.mark.parametrize(
+        ("config", "artifact", "expected_home"),
+        [
+            ("_REACT", "tests/test_runs.py", "backend/tests/"),  # the deploy-E layout
+            ("_NEXTJS", "tests/api.test.ts", "__tests__/"),
+        ],
+    )
+    def test_a_collected_suite_outside_the_namespace_is_rejected_and_told_where_it_lives(
+        self, config, artifact, expected_home
+    ):
+        """Bug caught: the plan validator accepting a layout the routing seam disowns. The
+        message must name the namespace — the rejection is what the re-roll's author reads."""
+        plan = self._plan(f'\n      - "{artifact}"')
+        (error,) = plan.validate_qa_suite_namespace(getattr(self, config))
+        assert repr(artifact) in error
+        assert expected_home in error
+        assert "routed to the developer" in error
+
+    def test_only_the_file_outside_the_namespace_is_named(self):
+        plan = self._plan('\n      - "backend/tests/test_runs.py"\n      - "tests/helpers.py"')
+        (error,) = plan.validate_qa_suite_namespace(self._REACT)
+        assert "'tests/helpers.py'" in error
+        assert "backend/tests/test_runs.py'" not in error
+
+    def test_a_stack_with_no_namespace_and_a_verification_only_task_are_not_checked(self):
+        assert self._plan('\n      - "tests/test_runs.py"').validate_qa_suite_namespace({}) == []
+        assert self._plan(" []").validate_qa_suite_namespace(self._REACT) == []

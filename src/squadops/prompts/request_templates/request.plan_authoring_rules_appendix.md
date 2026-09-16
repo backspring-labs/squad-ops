@@ -1,6 +1,6 @@
 ---
 template_id: request.plan_authoring_rules_appendix
-version: "6"
+version: "7"
 required_variables: []
 ---
 ## PLAN SHAPE RULES (authoritative — a plan that breaks one is rejected)
@@ -24,6 +24,17 @@ checked against emitted file names, so a directory entry can never be satisfied.
 test files. Never a scaffold file, and never a file another task produces: write
 authorization refuses those at emission, so the task provably cannot produce its own
 declared output.
+
+**qa-tests-live-in-the-stacks-namespace** — A `qa.test` task's `expected_artifacts` sit
+inside the stack's qa test namespace, the directories the stack declares as the qa role's:
+on the FastAPI + React stack, `backend/tests/`, `frontend/src/__tests__/` or
+`frontend/src/tests/`; on the Next.js stack, any `__tests__/` directory. That namespace is
+the one declaration every seam reads to decide whether a file is qa's: the suite checks the
+framework binds, the routing of a failure raised inside the suite itself, and write
+authorization. A suite outside it, such as `tests/test_runs.py` at the repository root
+beside the seeded `conftest.py`, is collected by the runner and owned by nobody: no stack
+check is bound to it, and its own defects are sent to the developer. The root `conftest.py`
+serves `backend/tests/` unchanged.
 
 **no-frozen-claims** — No task of any role declares a scaffold-frozen file as an
 `expected_artifact`. Frozen files are scaffold-owned; an emission touching one is

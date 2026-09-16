@@ -1232,6 +1232,24 @@ class TestSuiteFilesNamedUnanimously:
             suite_files_named_unanimously({"implicated_files": ["t.py"]}, "patch", ["t.py"]) == []
         )
 
+    def test_a_bare_basename_names_the_one_own_file_it_belongs_to(self):
+        """#1587: the analyzer wrote `test_runs.py` — pytest's rootdir-relative nodeid — for
+        the own file `tests/test_runs.py`. Bug caught: the round abstained on a spelling
+        difference and the suite's own defect went to the dev chain."""
+        assert self._named(["test_runs.py"], ["testing"]) == ["tests/test_runs.py"]
+
+    def test_a_basename_two_own_files_share_abstains(self):
+        """Ambiguity keeps the conservative default: two own files with the same basename
+        and a bare name cannot say which one the analyzer meant."""
+        assert (
+            self._named(
+                ["test_runs.py"],
+                ["testing"],
+                own=("tests/test_runs.py", "backend/tests/test_runs.py"),
+            )
+            == []
+        )
+
     def test_the_target_is_the_own_files_named_in_their_own_spelling(self):
         """Only the files the analyzer named, spelled as the task declares them — a `./`
         prefix or a duplicate does not add a file."""
