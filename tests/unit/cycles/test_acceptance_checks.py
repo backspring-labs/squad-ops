@@ -561,6 +561,32 @@ class TestRegexMatch:
         assert result.status == "failed"
         assert result.actual["match_count"] == 3
 
+    async def test_a_caret_anchors_a_line_not_the_file(self, tmp_path):
+        """#1594: 1.8.0 React roll 5's notes, as stored — the title line first, the required
+        headings below it. Bug caught: `re.compile(pattern)` with no flags read `^` as the
+        start of the file, the count was 0 on every version of the notes, and the roll was
+        rejected on content that satisfied the criterion."""
+        (tmp_path / "assembly_notes.md").write_text(
+            "# group_run — Assembly Notes\n\n## How to Run\n\nuvicorn …\n\n## How to Verify\n"
+        )
+        result = await get_check("regex_match").evaluate(
+            {
+                "file": "assembly_notes.md",
+                "pattern": r"^##?\s*(How to (Run|Start|Run/Start)|Running|Getting Started)",
+            },
+            tmp_path,
+        )
+        assert result.status == "passed"
+        assert result.actual["match_count"] == 1
+
+    async def test_an_anchored_count_is_per_line(self, text_workspace):
+        result = await get_check("regex_match").evaluate(
+            {"file": "log.txt", "pattern": r"^ERROR:", "count_min": 3},
+            text_workspace,
+        )
+        assert result.status == "passed"
+        assert result.actual["match_count"] == 3
+
     async def test_invalid_regex_error(self, text_workspace):
         result = await get_check("regex_match").evaluate(
             {"file": "log.txt", "pattern": "((unclosed"},
