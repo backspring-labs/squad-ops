@@ -6861,3 +6861,89 @@ class TestRefusedAnchoredRepairIsSpent:
         )
 
         assert protocol.emission_empty is False
+
+
+class TestAnEmptyRepairRoundIsNotVerified:
+    """#1589: the refund branch of `_route_correction_path` fell through to patch acceptance
+    with an empty artifact list. On the 1.8.0 own-frame diagnostic (cyc_eee9b62e6a4f) the
+    unchanged tree passed the failed task's typed rows, the unrepaired suite was retested,
+    and the record carried a PASSED verification for a round that produced nothing."""
+
+    def _route(self, executor, cycle, protocol, *, already_refunded=0, carry=None):
+        from adapters.cycles.dispatched_flow_executor import _CorrectionRound
+        from squadops.tasks.models import TaskResult
+
+        return executor._route_correction_path(
+            _CorrectionRound(protocol=protocol, attempt=1, max_attempts=2),
+            TaskResult(task_id="task-qa-4", status="FAILED", error="suite failed"),
+            TestProgressAwareTermination._envelope(),
+            "run_001",
+            cycle=cycle,
+            correction_counter={"n": 1, "empty_refunds": already_refunded},
+            patched_result_holder=None,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+            profile=None,
+            flow_run_id=None,
+            enriched_envelope=None,
+            budget_guard=None,
+            interface_manifest=None,
+            repair_rejection_carry=carry,
+            bound_record=None,
+            compliance_counter=None,
+        )
+
+    @pytest.mark.parametrize("already_refunded", [0, 2], ids=["refunded", "allowance spent"])
+    async def test_an_empty_patch_round_skips_acceptance_and_tells_the_next_attempt(
+        self, executor, cycle, already_refunded
+    ):
+        """Entry point: `_route_correction_path`. Bug caught: `_try_accept_patch` awaited on
+        an empty artifact list — a verification and a retest of the unrepaired tree."""
+        from unittest.mock import AsyncMock
+
+        from adapters.cycles.correction_runner import CorrectionProtocolResult
+
+        executor._try_accept_patch = AsyncMock(return_value="accept_patch")
+        carry: dict = {}
+        action = await self._route(
+            executor,
+            cycle,
+            CorrectionProtocolResult(
+                correction_path="patch",
+                emission_empty=True,
+                empty_emission_signatures=("cap_exhausted",),
+            ),
+            already_refunded=already_refunded,
+            carry=carry,
+        )
+        assert action == "continue"
+        executor._try_accept_patch.assert_not_awaited()
+        assert carry == {
+            TestProgressAwareTermination._envelope().task_id: [
+                "correction attempt 1: the repair emitted no content (cap_exhausted) — "
+                "nothing was applied, verified or retested"
+            ]
+        }
+
+    async def test_a_patch_that_carries_content_is_still_verified(self, executor, cycle):
+        """The control: the same route with content goes to acceptance and returns its answer."""
+        from unittest.mock import AsyncMock
+
+        from adapters.cycles.correction_runner import CorrectionProtocolResult
+
+        executor._try_accept_patch = AsyncMock(return_value="accept_patch")
+        action = await self._route(
+            executor,
+            cycle,
+            CorrectionProtocolResult(
+                correction_path="patch",
+                repair_artifacts=[
+                    {"name": "tests/test_runs.py", "content": "def test_x():\n    pass\n"}
+                ],
+            ),
+        )
+        assert action == "accept_patch"
+        executor._try_accept_patch.assert_awaited_once()

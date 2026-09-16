@@ -33,7 +33,7 @@ from adapters.cycles.execution_errors import (
     _PausedError,
     _RecruitmentRejectedError,
 )
-from adapters.cycles.patch_acceptance import PatchAcceptance
+from adapters.cycles.patch_acceptance import PatchAcceptance, _record_repair_rejection
 from adapters.cycles.pulse_boundary_runner import PulseBoundaryRunner
 from adapters.cycles.run_completion import RunCompletion, resolve_terminal_outcome
 from adapters.cycles.task_dispatcher import TaskDispatcher
@@ -3553,6 +3553,24 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     max_corrections,
                 )
 
+        if protocol.emission_empty and correction_path == "patch":
+            # #1589: an emission containing nothing has nothing to verify — the refund
+            # above said so, then fell through to `_try_accept_patch` with an empty
+            # artifact list. The unchanged tree passed the failed task's typed rows, the
+            # unrepaired suite was retested (and failed, as it must), and the record
+            # carried a PASSED verification for a round that produced nothing (1.8.0
+            # own-frame diagnostic, cyc_eee9b62e6a4f). The round's outcome was the same
+            # "continue" a failed retest yields, so say it with control flow. The next
+            # attempt is told what happened (#870) instead of "the repaired suite still
+            # fails", which described a suite nobody repaired.
+            _record_repair_rejection(
+                repair_rejection_carry,
+                envelope.task_id,
+                f"correction attempt {attempt}: the repair emitted no content "
+                f"({', '.join(protocol.empty_emission_signatures) or 'signature unreported'})"
+                " — nothing was applied, verified or retested",
+            )
+            return "continue"
         if correction_path == "abort":
             raise _ExecutionError(
                 f"Correction protocol decided to abort after {envelope.task_type} failure"
