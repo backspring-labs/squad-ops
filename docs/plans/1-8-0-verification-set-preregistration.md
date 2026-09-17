@@ -250,6 +250,10 @@ src/ adapters/` is **empty**, the condition the driver's own framework-drift che
 counting roll. Docs-only, therefore additive. (Rev 9's statement of the same shape for `2356c079`
 held through the E set.)
 
+**At the close (2026-09-17):** the tag is deploy F plus docs — this revision, the SIP-0108
+amendments (#1601) and the set configs. PR #1603 (#1602, a routing change) is held unmerged until
+after the tag; `git diff 969cd44e..HEAD -- src/ adapters/` is empty at the cut.
+
 ## 10. Diagnostic readings — appended as they land
 
 ### 10a. Deploy E — the eight diagnostics (2026-09-15 23:28 → 2026-09-16 08:32 ET)
@@ -290,6 +294,87 @@ needed no repair, so the dev cells rest on the two dev-lane diagnostics — a cl
 scoped-revision instrument nothing to measure, which is why the diagnostics carry the dev lane by
 design (§3c supply table). L1 held: no counted roll blocked on an unrecovered contentless emission.
 
-### 10c. Deploy F — appended as they land
+### 10c. Deploy F — the set (2026-09-16 20:57 → 2026-09-17 16:16 ET)
 
-_(none yet)_
+Launched from the main checkout at `c276419c` on deploy `969cd44e`; the E arm's head pins archived
+beside the records as `.head_pin.deploy-E-971e1b22` so F's roll 1 pinned its own (the 1.7.2/1.7.3
+procedure). Records: `var/verification_sets/1-8-0-diagnostics/*/shakeout-20260917T*`,
+`1-8-0-fastapi-react/roll-0N-20260917T*`, `1-8-0-nextjs/roll-0N-20260917T*`.
+
+**10c.1 The eight diagnostics.**
+
+| diagnostic | run | cycle | verdict | rounds | seam |
+|---|---|---|---|---|---|
+| `absent-suite` | 1 | `cyc_96d03cdfde2e` | accepted | 3 | L2 **YES** |
+| `own-frame-then-prose-repair` | 1 | `cyc_cffd397343a4` | accepted | 2 | L7 **YES**, L4 **YES** — both suites under the namespace, both faults applied, both prose-only repairs refunded (E needed run 2) |
+| `path-prefix` | 1 | `cyc_f653c9ea9d9e` | accepted | 0 | L8b **YES** |
+| `absent-suite-then-false-claim` | 1 | `cyc_ad721e796487` | accepted | 3 | L2 **YES**; A1 read **NO** by the driver and **is corrected here to YES**: #968's refutation fired (`analyzer_claim_refuted … the decision is told rather than inheriting it`), the lead refuted the claim quoting its path, and the reader counts a verbatim mention as inheritance (#1600) |
+| `absent-suite-then-false-claim` | 2 | `cyc_19f760e456c5` | accepted | 3 | L2 **YES**, A1 **YES** |
+| `contentless-builder` | 1 | `cyc_46feb237a509` | accepted | 0 | R1 **YES** |
+| `contentless-builder-all-attempts` | 1 | `cyc_cc6fde7bc637` | blocked_unverified | 1 | F1 **not exercised** — the fault applied on both attempts and the lead chose `rewind`, so no builder repair existed to read; model variance on the decision |
+| `contentless-builder-all-attempts` | 2 | `cyc_5f5a5e61d70c` | accepted | 2 | F1 **YES** |
+| `dev-lane-fastapi-react` | 1 | `cyc_1a884daafed6` | **rejected** | 3 | **YES** — dev anchored edit on `backend/routes.py`, 165 of 3,303 chars (5%), verified 12, identity held, applied; the app then stayed broken through two more rounds (ten qa cases, app errors on create and join) and the run terminated as a plan defect — repair quality on this cycle, not a seam |
+| `dev-lane-nextjs` | 1 | `cyc_13f3a3056c29` | accepted | 2 | **YES** — dev anchored edit on the join route, 150 of 1,334 chars (11%), verified, identity held, retest passed; a builder edit in the same cycle replaced all 61 chars of a near-empty `assembly_notes.md` and is excluded by the ceiling |
+
+Eight of eight inside the two-run budget; the two second runs are a driver reader defect (#1600)
+and a lead's rewind, not seam misses.
+
+**10c.2 The fix predictions (§3d′).**
+
+| fix | reading |
+|---|---|
+| #1590 (#1586) | not exercised — no qa repair met `no_typed_criteria`; the absent-suite repairs verified on file-owned and agent rows |
+| #1591 (#1589) | **held ×3** — the dev's `cap_exhausted` refund on absent-suite and both prose-only refunds on own-frame were followed by no verification and no retest; the E records had carried a passed verification of an empty patch |
+| #1592 (#1587) | **held** — every React plan on F (six counted, both React diagnostics read) put the backend suite under `backend/tests/`, zero framing re-rolls on every F record; the validator never had to fire, the authoring rule was enough |
+| #1593 (#1588) | **held** — every seam line carries its fault's applied attempts; L4 read the faulted round's refund; no reading fell to UNASKABLE |
+| #1595 (#1594) | not exercised live — no F plan carried a caret-anchored regex row; the replay on roll 5's own notes stands as the verification |
+| #1597 (#1596) | not exercised — no round carried a `verification` label; React roll 5 routed by the unanimity branch on test-side labels |
+
+**10c.3 The counted arm.**
+
+| arm | roll | cycle | verdict | rounds | wall | reading |
+|---|---|---|---|---|---|---|
+| React | 1 | `cyc_235bc295e807` | accepted, functional | 0 | 47 min | clean |
+| React | 2 | `cyc_17cf89a479eb` | accepted, functional | 0 | 49 min | clean |
+| React | 3 | `cyc_8265786551de` | accepted, functional | 2 | 58 min | **qa × React**: own-frame TypeError in `backend/tests/test_runs.py` routed `qa_owned_routed` (#1587 live), anchored edit 161 of 7,199 (2%), verified 10, retest passed, identity held; **dev × React**: anchored edit on `frontend/src/views/RunDetail.jsx`, 169 of 4,410 (4%), verified 10, retest passed, identity held |
+| React | 4 | `cyc_f4770fd1a688` | accepted, functional | 0 | 50 min | clean |
+| React | 5 | `cyc_eba0687f150a` | accepted, functional | 1 | 57 min | **qa × React**: routed by #1582's unanimity branch, anchored edit on `frontend/src/__tests__/runViews.test.jsx`, 443 of 7,283 (6%), verified 10, retest passed, identity held |
+| React | 6 | `cyc_af936062dbad` | accepted, functional | 0 | 48 min | clean |
+| Next.js | 1 | `cyc_bb493eb4725b` | **rejected** | 2 | 74 min | a qa suite defect the loop could not finish repairing: the fills and the free-authored `__tests__/runs-api.test.ts` asserted `participant_count` on the store row (the app derives it at the response; the boot audit passed all five probes); the #970 fill branch re-filled the shells, every shell passed the retest, the suite's five cases failed on the same line and were never a target (#1602, PR #1603) |
+| Next.js | 2 | `cyc_76ec16b86eeb` | accepted, functional | 0 | 53 min | clean |
+| Next.js | 3 | `cyc_df0bc3d30e53` | accepted, functional | 0 | 62 min | clean |
+
+React **6 of 6**, Next.js **2 of 3**; eight of nine against six of nine on E. **L1 held** on every
+counted roll (`contentless_emissions` asked, none). **#598** reads unaskable on every counted roll —
+no `container_packaging` row was evaluated on any run — so the prediction is neither held nor
+falsified on this set. Every gate was auto-approved on the fixed notes.
+
+**10c.4 The §3c count — deploy F only.** Transactions on the superseded deploy do not count.
+
+| cell | successful transactions | source |
+|---|---|---|
+| qa × React | 2 | rolls 3 and 5 |
+| dev × React | 2 | roll 3; the false-claim diagnostic run 2 |
+| dev × Next.js | 1 | the dev-lane diagnostic |
+| qa × Next.js | **0** | none |
+| builder × React | 0 | declared, not required; the one builder edit read (dev-lane-nextjs) exceeded the ceiling |
+
+**N = 5 against the registered 6, with one required cell empty.** All-attempt integrity (§3b, first
+reading) held: no outside-grant change, no post-verification drop, and every persisted candidate
+carried the identity it was verified with on every record read.
+
+**A defect in this pre-registration, named.** §3c's supply table gives qa × Next.js two sources: the
+counted rolls, and "the same diagnostic in fill mode" — the own-frame diagnostic on Next.js. No such
+config was registered; only the dev-lane diagnostic has a Next.js variant. The cell's supply was the
+counted rolls alone, and the one Next.js roll that produced a qa fill repair lost its retest to
+#1602. The path the cell stands for, the §9.3 region transaction, has no successful live transaction
+on the pinned deploy.
+
+**10c.5 The ruling.** The owner, 2026-09-17: **the line closes on deploy F with N = 5 of 6 and the
+qa × Next.js cell empty, named here.** The experimental gate is read as not met, as registered; the
+1.7.5 precedent applies. The flip (SIP-0107 §38 step 7) stays 1.8.1's by the ruling of 2026-09-13,
+and 1.8.1 inherits #1602 (PR #1603, held unmerged until after the tag so the tag carries zero
+source drift from the deploy), the registration of the Next.js own-frame diagnostic, and #1600.
+
+**Filed during the set:** #1600 (the A1 reader), #1602 (the fill branch's target).
+
