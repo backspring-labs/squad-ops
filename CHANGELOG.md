@@ -5,6 +5,95 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.8.0] — 2026-09-17
+
+**The Judgement release — Scoped Code Revision, and the Cycle Evaluation Scorecard's 1.8 slice.**
+Plan: `docs/plans/1-8-0-plan.md` (rev 11). Record:
+`docs/plans/1-8-0-verification-set-preregistration.md` §10 — the deploy-E set in §10a–§10b, the
+deploy-F set in §10c.
+
+**Scoped Code Revision (SIP-0107, steps 1–6).** A repair of an existing artifact is a transaction:
+the candidate has an identity and the stored set must be that candidate (step 1, #1543); the qa
+fill merge is the revision transaction's first caller (step 2, #1547); the dev lane carries a
+write grant (step 3, #1550); repairs revise existing files by exact anchored edit under an edit
+grammar (step 4, #1553, #1555); Python and JSX by entity on a tree-sitter resolver, then TypeScript,
+TSX and the handler's try block (steps 5–6, #1557, #1559, #1560, #1561). The line's shakeout then
+amended the contract six times, each with its evidence: every repair records the form it was
+offered and the form it took (§46k, #1574); a repair offered the edit form is asked for edits, not
+the whole file (§46l, #1575); the repair prompt shows the files it asks the model to revise (§46m,
+#1577 — the readiness probe read a 5% edit with the file shown against a 93% blind rewrite without
+it); an anchor may be a fragment of a line (§46n, #1578); the revision form reads the span each
+transaction replaced (§46o, #1579); a fill-mode repair's free-authored files are anchorable (§46p,
+#1584). **The default flip, step 7, is 1.8.1's by design** (§46a, the owner's ruling of 2026-09-13).
+
+**The Cycle Evaluation Scorecard, the 1.8 slice (SIP-0108 (a)–(c)).** The run summary row — LLM
+usage accounted at the one seam, refunded rounds and the correction movement sequence, the
+structured terminal decision, round failures and absent emissions — persisted per run (#1545,
+#1546, #1548, #1554); one failure-attribution registry over the eight source vocabularies, with the
+inter-workload gate's refusal recorded as values (#1544, #1551); the cycle assessment as a pure
+projection, four dimensions of three-state indicators each citing evidence that resolves (#1552,
+#1556); the benchmark registry, 79 counted rolls from 1.6.3 through 1.7.5 re-graded read-only
+(#1563). **(d), the comparison window, is 1.8.1's** (rev 7, §10g); §10h–§10j name its arms, Solo
+and Free-Solo, the placement thesis, and the three aims the scorecard serves.
+
+**The rails and the hardening.** Container packaging rendered from the environment contract, the
+builder authoring only the notes (#598); every cycle records the framework version and commit that
+created it (#80); every provider and telemetry selector required everywhere — schema, compose,
+constructors, both roots (#1449); the pre-memory rejection baseline emitted, 90 cycles read-only
+(plan §3.5 B1); the lineage seam extracted (#1527); one frontmatter parser (#579); a round that
+carries failures without progress terminates (#1501); the contentless-builder diagnostic split in
+two (#1506) and a dev-lane fault registered (#1529); a prose-only diff runs the prose lane in CI
+(#1516); the Nostromo crew contract enforced on crew PRs (#1511); the registry audit reports
+unparseable frontmatter (#1509); the fill-merge evidence refreshed after every self-eval merge
+(#1535); a declared qa suite must be one the runner collects (#1534); a suite loading the app with
+a dynamic import invokes it (#1533); a failed containment row routes to the suite's author (#1532);
+every record reports the suites the runner never collected (#1540); the next attempt is told why an
+unauthorized write was dropped (#1549); the test-database ownership loop skips table-linked
+sequences (#1531); the baseline stylesheet styles definition lists (#1499).
+
+**Found by the line's own sets, and fixed on the deploy the cut measures.** The deploy-E set found
+seven latent seams in one night, every one surfaced by plan-author variance the framework accepted
+at one seam and disowned at another: a qa suite repair for an emission failure refused unheard when
+the plan attached no typed row (#1586); a suite at a root-level `tests/` the stack's namespace does
+not own, routed to the dev (#1587); an empty repair round verified and retested on nothing (#1589);
+a seam read without asking whether its fault applied (#1588); a caret-anchored `regex_match` that
+could never match below a document's first line — a counted roll rejected on notes that carried the
+headings (#1594); the lead's `verification` label not read as suite-side (#1596); and the seeded
+conftest's missing store isolation (#1598, the owner's ruling). Six fixes (#1590, #1591, #1592,
+#1593, #1595, #1597) became deploy F, and the set restarted on it.
+
+**Validated by a pre-registered two-arm verification set** on frozen deploy `969cd44e` (HEAD
+pinned at `c276419c`; images `runtime-api b3278c26dd25`, `max 36cc6eb9a923`, `neo 07498c2a4a94`,
+`nat 1ddf151647c0`, `bob b59711b8f653`, `eve 14d15dc8e3f7`, `data 9a41965b25ad`), **zero drift
+under `src/` or `adapters/` between the deploy and the tag**. Eight diagnostics first, each
+reaching its seam inside the two-run budget — six on the first run, and the two second runs a
+driver reader defect (#1600) and a lead's rewind, not seam misses. Then the counted arm:
+FastAPI+React **6 of 6**, Next.js+TS **2 of 3** — **functional 8 of 9**, boot audit PASS 9/9, P0
+held 9/9, zero framing re-rolls, every gate on the fixed notes. The bar held: **L1, zero contentless
+emissions on every counted roll**. On deploy E the same set had read 4 of 6 and 3 of 3; those
+readings stand in §10a–§10b as evidence and do not count.
+
+**Stated at the cut, not implied.** The experimental gate was **not met as registered**: SIP-0107
+§39.8's N read **5 of 6**, with the **qa × Next.js cell empty**. Its diagnostic supply — the
+own-frame diagnostic in fill mode — was named in the pre-registration's supply table and never
+registered, a defect of the pre-registration itself; and the one Next.js roll that produced a qa
+fill repair lost its retest to #1602, the fill branch aiming at the shells and never at the failing
+free-authored suite beside them (PR #1603, held for 1.8.1 so the tag carries no source drift). The
+owner ruled the line closes with the gap named (the 1.7.5 precedent); the flip stays 1.8.1's. The
+cells that filled — qa × React 2, dev × React 2, dev × Next.js 1 — include the dev lane's first
+live scoped transactions on both stacks: anchored edits of 3% to 11% of the file, verified,
+retested, persisted under the identity verified. **#598** read unaskable on every counted roll — no
+`container_packaging` row was evaluated on any run — so that prediction is neither held nor
+falsified here. **The evidence gate:** every counted cycle's assessment resolves every evidence
+reference (22 indicators, 0 unresolved, nine of nine), with `verified_executable` and
+`verified_functional` unaskable on every cycle because the clean-room verdict is not yet in the
+derivation (SIP-0102 step 5, open); the record does not carry the assessment inline — it is
+recomputed from the stores on read, and no reader prints it yet.
+
+**SIP status at the cut.** SIP-0107 stays `accepted` (step 7 is 1.8.1's; §39 measured, not met).
+SIP-0108 stays `accepted` ((d) and §5 criteria 6–7 are 1.8.1's). SIP-0105 amended by #598, status
+unchanged.
+
 ## [1.7.5] — 2026-09-12
 
 **The three closures — the fifth patch line of 1.7, and the close of the line.** Plan:

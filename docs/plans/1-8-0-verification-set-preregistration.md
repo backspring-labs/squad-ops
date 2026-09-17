@@ -378,3 +378,12 @@ source drift from the deploy), the registration of the Next.js own-frame diagnos
 
 **Filed during the set:** #1600 (the A1 reader), #1602 (the fill branch's target).
 
+**10c.6 The evidence gate (plan §3.9), read at the cut.** The assessment was computed read-only
+over each of the nine counted cycles from the registry and the vault at `e94642a4`: 22 indicators
+per cycle, every evidence reference resolving (0 unresolved, nine of nine), the attribution with
+nothing unrecorded. Two quality indicators, `verified_executable` and `verified_functional`, read
+unaskable on every cycle — the clean-room verdict is not in the derivation (SIP-0102 step 5, open),
+named rather than guessed. The gate's word "carries" is read honestly: the record's durable stores
+carry the assessment's inputs and it is recomputed on read; the driver's record does not render it,
+and no product reader prints it yet (a 1.8.1 item beside (d)).
+
