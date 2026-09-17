@@ -907,3 +907,133 @@ Only its capacity estimate was wrong.
 **Evidence.** The four file references above, read on `b92f3cf3`.
 
 **Ruled by.** The owner, 2026-09-14, on the implementer's written recommendation.
+
+### 10h. 2026-09-17 — three aims, the arms named, and placement on the arm axis (§1, §4.4)
+
+**What changed.** §1 states one aim: make the squad-versus-generalist claim testable and give
+Campaign the measures its continuation policy reads. The owner's ruling of 2026-09-17 states
+**three aims, standing together**, and the scorecard serves all three:
+
+1. **The placement thesis.** The problem the squad exists to solve is balancing the cost and the
+   execution infrastructure of a distributed squad: role decomposition is what lets each kind of
+   work run on the compute that can afford it — a small model at the edge for the cheap steps, a
+   27b on the local box for most of the loop, a frontier model in the cloud for the one step where
+   reasoning depth changes the outcome. A frontier model with unrestrained tokens produces fabulous
+   results nobody can afford at scale; it is the expensive corner of the cost/outcome frontier, not
+   the baseline. The question is **outcome per unit of cost across placements**.
+2. **Campaign.** The iterative improvement loop (2.0, `sips/proposed/SIP-Campaign-Orchestration.md`)
+   reads the assessment as its continuation policy. Critically important in its own right, not as a
+   validation of aim 1.
+3. **Embodiment.** Agent embodiment deployed in the runtime modes
+   (`sips/proposed/SIP-Agent-Embodiment-Runtime.md`; SIP-0028's hybrid deployment model). The
+   mechanism placement runs on, and a product capability on its own.
+
+**The arms, named.** §4.4's "one generalist agent on the same deterministic substrate" is the
+**Solo** arm — one agent, display name Han, role `generalist` in source — built as §10i states.
+A **Free-Solo** arm, not in §4.4, is named in §10j. The topology-isolation window §4.4 names for
+later — one agent running every task with every stage prompt and every correction step kept — is
+**not built** (§10i): it isolates process count and queue handoffs for tasks that already run as
+separate calls sharing nothing but artifacts, and its likely near-zero result would confirm the
+design rather than test it. Its one use, proving the multi-role process and the role map, is
+Solo's own shakeout pair, not a window.
+
+**The arm axis carries placement.** §4.4's axis — squad profile × request profile × model —
+becomes per member: **provider, model, reasoning level and completion cap**, which is placement.
+Squad profiles already carry a model per member (`config/squad-profiles.yaml`: `smoke` on a 3b,
+`lite` on a 7b, `full` on `qwen3.8:27b`); reasoning is declared per task type
+(`REASONING_BY_TASK_TYPE`); the LLM router has a provider registry. What the axis adds is the
+provider per member and the accounting: **cost is a first-class dimension** — tokens per provider
+on the run summary (the durable home §2 said usage lacked), rendered as tokens and, where a
+provider prices them, as cost; wall clock by run, which on a single-GPU box is itself a placement
+fact, since six agents on one box serialize. "Measured, not equalized" (§4.4) stands. The first
+placement windows are cheap to ask: which roles drop to a smaller local model with no loss on
+outcome, and which single task type earns a frontier call.
+
+**Evidence.** The profile, reasoning-policy and router references above; the 1.8.0 loop set's
+records, where every accepted roll's efficiency indicators already read tokens by task type and
+wall clock by run (`docs/plans/1-8-0-verification-set-preregistration.md` §10).
+
+**Ruled by.** The owner, 2026-09-17, in conversation with the implementer.
+
+### 10i. 2026-09-17 — Solo as it will be built: declarations and one container, never a branch (§4.4, §10g)
+
+**What changed.** §10g's four items, restated so that none of them is a vestige the window leaves
+behind. The rule: **Solo may add declarations and one container; if building it requires a branch
+on a squad or profile name anywhere under `src/` or `adapters/`, the design is wrong and stops.**
+
+1. **A declared role → agent map in every squad profile, replacing a silent fallback.**
+   `resolve_agent_config` (`src/squadops/cycles/agent_config.py`) resolves an unmatched role to
+   `ResolvedAgentConfig(role, None, {})` — a queue named after the role, which no agent may consume
+   — "so a misconfigured profile can't crash the correction loop". That is a default at a seam
+   (the owner's 2026-09-14 ruling: require, don't default). Every profile declares its map — `full`
+   the identity map it has today, `solo` every role → `han` — and the fallback is deleted. A
+   cleanup the platform owes regardless of Solo.
+2. **A process serves the roles its profile assigns it.** The handler registry already holds
+   several roles' handlers (`src/squadops/bootstrap/handlers.py`); only the entrypoint's
+   `_resolve_role` restricts a process to one. Han's entrypoint passes all of them. General, not
+   Solo-specific.
+3. **The correction protocol's steps are declared by the request profile**, the way the task plan
+   already is. `validated-fullstack` declares analyze, decide, repair; `solo` declares repair. The
+   runner reads the declaration; there is no second table in code. **When no decide step is
+   declared, the rule is deterministic: patch.** Termination is the correction budget, the
+   deadlock rule (#1221), and repeated failure signatures without progress — #1521's rule with
+   its second conjunct, structural plan-change candidates on both decisions, dropped where no
+   decision exists. Both rules are stated in the window's pre-registration.
+4. **The generalist prompt asset; Han's image and compose service** (the compose change is the
+   owner's, by the docker rule). `han` is a display name in the profile, as `max` and `neo` are;
+   the role in source is `generalist`.
+5. **The repair template's decision section becomes optional** (`request.cycle_repair_task`
+   requires `correction_decision` today); the solo brief renders the deterministic fact — the rule
+   chose patch — in its place. A prompt-asset change, not a runtime branch.
+6. **A per-roll preflight for the solo arm** asserts that no framing document, no failure analysis
+   and no correction decision was stored for the run — "Han never saw it" as a fact the record
+   proves.
+
+**The asymmetry, named.** The #1054 dispute and the #1582 unanimity branches read the analyzer's
+and the lead's outputs; in Solo, routing is the deterministic classifier alone, and the repair
+brief carries the failing cases, the failed rows, the contract expectations and the files as they
+are, with no analysis summary. The pre-registration says so; it is part of what the arm measures.
+
+**Not built.** The topology window (§10h). Silence would read as still planned.
+
+**Teardown.** When the window closes, the solo squad profile, the solo request profile, the
+generalist prompt asset and Han's compose service are removed in one PR unless a product decision
+keeps a solo mode. Items 1–3 stay: each is a general capability the platform is better for.
+
+**Evidence.** The file references above, read on `c276419c`.
+
+**Ruled by.** The owner, 2026-09-17, on the implementer's written recommendation.
+
+### 10j. 2026-09-17 — the Free-Solo arm: a later window, every arm judged from the outside (§4.4)
+
+**What changed.** A third arm §4.4 did not name. **Free-Solo** is the same model on the same box,
+given the PRD and a plain agentic coding loop — write files, run tests, iterate — with **no
+substrate**: no manifest, no plan artifacts, no typed checks, no correction protocol. Its question
+is the product's: *does SquadOps as a whole — substrate and squad together — outperform a capable
+model with a simple harness, and at what cost?* That is the value thesis the owner stated on
+2026-05-02 and affirmed as a bet; it has never been measured, and this SIP's own rule applies —
+the answer is stated whichever way it goes.
+
+**Judging.** The assessment cannot score Free-Solo: it reads the durable record the substrate
+produces, and Free-Solo produces none of it, so its indicators would read unaskable — honestly,
+and uselessly. In that window **every arm is judged from the outside only**: the clean-room audit
+(`scripts/dev/audit_delivered_app.py`: installs, builds, boots, answers the contract probes), a
+**held-out acceptance suite** the harness runs against the delivered app, tokens and wall clock,
+and cost per §10h. The same judge for every arm, reading nothing an arm authored about itself.
+
+**What it takes.** The free-arm harness, the held-out suite, and its own pre-registration with the
+pairing, inclusion and decision rules of §4.4. It is paired with the **successor PRD in the
+group_run product line** (persistence through migrations, a third entity with referential
+integrity, pagination, validation rules), where the substrate's value, if it exists, should show;
+on group_run's size a good model with a plain loop may do well, and that too would be a result.
+
+**Status.** A later window, held with the successor PRD by the owner's ruling. Not in 1.8.1's
+scope unless the owner places it there.
+
+**The promotion bar is unchanged by §10h–§10j.** This SIP goes to `implemented` when §5's seven
+criteria hold — 1–5 on 1.8.0's record, 6–7 on 1.8.1's window with the Solo arm. The placement
+axis of §10h beyond the model axis, its cost accounting, and the Free-Solo window of §10j are
+named here so the design is on the record, and they are **a successor's criteria**, not this
+SIP's: their absence at 1.8.1's close names a gap in the successor, not an open child here.
+
+**Ruled by.** The owner, 2026-09-17.
