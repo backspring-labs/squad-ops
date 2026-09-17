@@ -510,6 +510,23 @@ def _resolve_repair_target(
     )
 
 
+def _own_files_named_by_failing_cases(failure_evidence: Any, own_expected: list[str]) -> list[str]:
+    """The failed task's own expected artifacts that a failing case names (#1602), in the
+    task's own spelling, deduplicated, in case order. Read from the runner's ``tests_pass``
+    rows (``failing_cases_from_evidence``); a case in a file the task does not own is not
+    the task's to repair and is left to the classifier's read."""
+    from squadops.cycles.failure_evidence import failing_cases_from_evidence
+    from squadops.cycles.write_authorization import normalize_ws_path
+
+    own = {normalize_ws_path(str(f)): str(f) for f in own_expected if f}
+    out: list[str] = []
+    for case in failing_cases_from_evidence(failure_evidence):
+        key = normalize_ws_path(str(case.get("file") or ""))
+        if key in own and own[key] not in out:
+            out.append(own[key])
+    return out
+
+
 def _locus_and_repair_target(
     failed_task_type: str,
     failure_evidence: Any,
@@ -552,15 +569,25 @@ def _locus_and_repair_target(
     )
     if failure_locus == FailureLocus.OWN_ARTIFACT and fill_sites:
         shells = list(dict.fromkeys(site["file"] for site in fill_sites))
+        # #1602: the failed task's OWN additive files failing beside the slots are targets
+        # too. 1.8.0 deploy-F Next.js roll 1 (cyc_bb493eb4725b): three fills and the qa's
+        # free-authored ``__tests__/runs-api.test.ts`` failed on one wrong assertion; the
+        # re-fill cleared every shell and the retest failed the suite's five cases on the
+        # same line, because the suite was never a target, and the run terminated as a
+        # plan defect. Own files only — a failing case in an app file is the app's, and the
+        # classifier's read is not overridden here.
+        own_failing = _own_files_named_by_failing_cases(failure_evidence, own_expected)
+        targets = shells + [f for f in own_failing if f not in shells]
         logger.info(
-            "correction_repair_locus: own_artifact — %s re-fills slot(s) %s in %s (#970)",
+            "correction_repair_locus: own_artifact — %s re-fills slot(s) %s in %s%s (#970)",
             failed_task_type,
             ", ".join(site["slot_id"] or "?" for site in fill_sites),
             ", ".join(shells),
+            (" and re-authors " + ", ".join(own_failing) + " (#1602)") if own_failing else "",
         )
         return (
             failure_locus,
-            shells,
+            targets,
             failed_inputs.get("subtask_focus"),
             failed_inputs.get("subtask_description"),
         )
