@@ -1,6 +1,6 @@
 # 1.8.1 — plan
 
-**Revision 3, 2026-09-17.** Rev 1 was written the evening v1.8.0 was tagged; rev 2 the same
+**Revision 4, 2026-09-17.** Rev 1 was written the evening v1.8.0 was tagged; rev 2 the same
 evening, on the owner's review of it: the two capability amendments re-placed to 1.8.2 (§8
 decision 3), the flip's proof given its positive control and the finding behind it (§3.3), the
 window executed as pairs with its void rule, its predicate and its two isolation contracts fixed
@@ -8,7 +8,9 @@ here rather than left to the pre-registration (§4.3, §8), the hardening list m
 rider bounded, and one miscount corrected (§6: twenty-six open issues, not twenty-seven, and #414
 placed); **rev 3 on the owner's ruling that #1448 goes to 1.9**, with the registry's surface
 measured and the auth-boundary finding that sharpens it (§3.7, §8 decision 13) — the last open
-question rev 2's §9 carried. Written from: the 1.8.0 plan (`docs/plans/1-8-0-plan.md`, rev 11) §3.3 step 7, §3.4 (d),
+question rev 2's §9 carried; **rev 4 on the owner's ruling of §8 decision 11 and the word to
+merge** — every decision in §8 is now ruled or confirmed, and the plan enters execution.
+Written from: the 1.8.0 plan (`docs/plans/1-8-0-plan.md`, rev 11) §3.3 step 7, §3.4 (d),
 §4.2, §6, §7 step 14 and §8 decisions 5 and 15; the 1.8.0 pre-registration
 (`docs/plans/1-8-0-verification-set-preregistration.md`) §3c, §3f and §10c — the deploy-F set, the
 §3c count, the owner's ruling and the evidence gate; SIP-0107 §38 step 7, §39 and §46a; SIP-0108
@@ -671,10 +673,11 @@ of change, with B′ differing from B by nothing under `src/` or `adapters/`.
     prelude, and does not grow into UI work here** (§3.6). **Confirmed at review.**
 11. **Free-Solo and the successor PRD are 2.0 planning inputs, not 1.x completion criteria; the
     Embodiment Runtime SIP, a proposed draft since 2026-08-19, is reviewed and accepted with
-    the 1.9 plan and built in 2.0; tokens
-    per provider and the placement axis beyond the model are a successor's** (§2.2, §6).
-    **Recommended at review**, consistent with the owner's rulings of 2026-09-12 and 2026-09-17
-    on the roadmap; the owner's to confirm.
+    the 1.9 plan and built in 2.0; tokens per provider and the placement axis beyond the model
+    are a successor's** (§2.2, §6). **Ruled by the owner, 2026-09-17**, on this plan's review,
+    consistent with the roadmap rulings of 2026-09-12 and 2026-09-17. The 1.9 plan inherits the
+    SIP's review; the 2.0 plan inherits Free-Solo and the successor PRD as inputs, and the hold
+    on both is lifted there rather than here.
 12. **Teardown is the default.** Han, the solo profiles and the active compose service are
     experimental apparatus; their identities are frozen in the record and the runtime surface is
     removed; retention requires a separate, affirmative product decision (§3.5). **Ruled at
@@ -715,6 +718,11 @@ of change, with B′ differing from B by nothing under `src/` or `adapters/`.
 
 ## 10. Revision history
 
+- **Rev 4 (2026-09-17)** — the owner's ruling on §8 decision 11 (Free-Solo and the successor
+  PRD as 2.0 planning inputs; the Embodiment Runtime SIP reviewed and accepted with the 1.9
+  plan, built in 2.0; the placement axis and per-provider tokens a successor's) and the word to
+  merge. **No decision in §8 is left recommended**; §9's four items are each decided by a later
+  commit, not by the owner. Merged at this revision; superseded at the cut.
 - **Rev 3 (2026-09-17)** — the owner's ruling on rev 2's one open question: **#1448 goes to
   1.9** (§3.7, §8 decision 13, now ruled; §9's bullet retired). Behind it, read on `main` at
   3d9970c8 and recorded on the issue: the auth middleware resolves the auth and authorization
