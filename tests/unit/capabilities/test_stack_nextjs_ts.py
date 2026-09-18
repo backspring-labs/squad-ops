@@ -67,12 +67,14 @@ def test_registering_a_second_stack_leaves_the_first_byte_identical():
     reference = _manifest("fullstack_fastapi_react")
 
     assert reference.content_hash().startswith("bb472e267e53d5ad")
-    # contract v15 (#598): v14 plus the four rendered packaging files as frozen entries;
-    # classified reference_defect — see test_contract_derivation_reference for all pins.
+    # contract v16 (#1598): v15 with the seeded ``conftest.py`` frozen sha moved, because its
+    # autouse fixture now clears every scaffold-owned store before each test; classified
+    # reference_defect — see test_contract_derivation_reference for all pins. The manifest's
+    # own content hash above is unchanged: the interface did not move, only the harness.
     assert (
         hashlib.sha256(emit_contract_yaml(reference).encode())
         .hexdigest()
-        .startswith("193750aa5c3ac96e")
+        .startswith("9077219f9885e106")
     )
 
 

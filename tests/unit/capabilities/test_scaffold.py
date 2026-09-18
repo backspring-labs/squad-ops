@@ -392,6 +392,130 @@ def test_scaffold_seeds_consistent_import_root_for_tests(tmp_path):
     assert "ModuleNotFoundError" not in result.stdout + result.stderr
 
 
+_ISOLATION_SUITE = """\
+# Two cases, order-dependent on purpose: the first leaves state behind, the second
+# asserts it starts clean. Neither takes ``client`` — isolation must apply to EVERY
+# test, not only to those that touch the app.
+import backend.store as store
+
+
+def _stores():
+    return [v for k, v in vars(store).items() if k.endswith("_store")]
+
+
+def test_a_leaves_state_behind():
+    assert _stores(), "the scaffold seeded no store to isolate"
+    for s in _stores():
+        s["leaked"] = object()
+    assert any(_stores())
+
+
+def test_b_starts_from_a_clean_store():
+    assert all(s == {} for s in _stores())
+"""
+
+
+def _run_isolation_suite(tmp_path):
+    """Materialize the skeleton, add the two-case suite, run it, return the result."""
+    import subprocess
+    import sys
+
+    for f in expand(_group_run_manifest()):
+        p = tmp_path / f["name"]
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(f["content"])
+    test_dir = tmp_path / "backend" / "tests"
+    test_dir.mkdir(parents=True, exist_ok=True)
+    (test_dir / "test_isolation.py").write_text(_ISOLATION_SUITE)
+    return subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "backend/tests/test_isolation.py",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            # Declaration order is the point of the pair; do not let a shuffling
+            # plugin reorder it.
+            "-p",
+            "no:randomly",
+        ],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_the_seeded_conftest_isolates_the_store_between_cases(tmp_path):
+    """#1598: the seeded ``conftest.py`` clears every scaffold-owned store before each test.
+
+    Bug this catches: ``backend/store.py`` has always shipped ``reset()`` and nothing called
+    it. 1.8.0 React roll 6 (cyc_767ad2dc59d2) authored a suite whose own docstring said "the
+    conftest autouse fixture calls reset() before each test", asserted an empty store, and was
+    rejected with nine rows already present — two correction rounds spent on a harness fact the
+    author had guessed. Isolation of a seeded in-memory store is a harness property; the
+    Next.js stack already treats it as one.
+    """
+    result = _run_isolation_suite(tmp_path)
+
+    assert result.returncode == 0, (
+        f"the materialized skeleton does not isolate its store between cases:\n"
+        f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+    )
+    assert "2 passed" in result.stdout
+
+
+def test_without_the_autouse_fixture_the_second_case_sees_the_first_case_state(tmp_path):
+    """Counterfactual: the exact roll-6 failure mode, on the SAME skeleton.
+
+    Strip the autouse fixture from the seeded conftest and the second case fails on state the
+    first left behind — so the pass above is the fixture's doing and not an import side effect
+    or a fresh interpreter per test.
+    """
+    import re
+    import subprocess
+    import sys
+
+    for f in expand(_group_run_manifest()):
+        p = tmp_path / f["name"]
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(f["content"])
+    conftest = tmp_path / "conftest.py"
+    stripped = re.sub(
+        r"@pytest\.fixture\(autouse=True\)\ndef _isolate_store.*?reset\(\)\n\n\n",
+        "",
+        conftest.read_text(),
+        flags=re.DOTALL,
+    )
+    assert "_isolate_store" not in stripped, "the counterfactual failed to strip the fixture"
+    conftest.write_text(stripped)
+    test_dir = tmp_path / "backend" / "tests"
+    test_dir.mkdir(parents=True, exist_ok=True)
+    (test_dir / "test_isolation.py").write_text(_ISOLATION_SUITE)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "backend/tests/test_isolation.py",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            "-p",
+            "no:randomly",
+        ],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "1 failed" in result.stdout
+    assert "test_b_starts_from_a_clean_store" in result.stdout
+
+
 def test_pf26_import_guess_fails_without_the_seeded_fixture(tmp_path):
     """Counterfactual: the exact pf-26 failure mode. Against the SAME skeleton, a
     suite that guesses its own import root (`from app.main import app` — no `app`

@@ -114,11 +114,30 @@ _MANIFEST = _REPO / "examples" / "03_group_run" / "interface_manifest.yaml"
 #   criterion (every other entry and every other section is byte-identical to v14), and the
 #   window measured the application, never its container, so the 1.4 FAY figure (6/6) carries
 #   no qualification. v14 stays in the fixtures directory as that form's record.
+# * v16 (2026-09-18, #1598) differs from v15 in exactly one ``frozen`` entry: the sha256 of
+#   ``conftest.py``, whose autouse fixture now clears every scaffold-owned store before each
+#   test. ``backend/store.py`` had always shipped ``reset()`` and nothing called it; 1.8.0
+#   React roll 6 (cyc_767ad2dc59d2) authored a suite whose own docstring claimed the conftest
+#   reset per test, asserted an empty store, and was rejected with nine rows standing.
+#   Classified **reference_defect**, the v11 shape exactly (a pinned harness that was wrong,
+#   found by a live set rather than by a deriver change). The retrospective obligation is met
+#   by MEASUREMENT, not statement: the fixture only REMOVES state, so it cannot let a broken
+#   app pass; it can only fail a suite whose case depends on state an earlier case left, which
+#   the qa contract has always prohibited as a hard rule. Every stored Python suite in the
+#   vault was read for that dependence (2,755 files): two use a non-function-scoped fixture,
+#   and neither seeds store state a later case reads — one shares a ``TestClient`` from the
+#   pre-scaffold era, the other reads a document. So the 1.4 FAY figure (6/6) carries no
+#   qualification, and every other section here is byte-identical to v15. v15 stays in the
+#   fixtures directory as that form's record.
 _EVIDENCE_CONTRACT = (
     _REPO / "tests" / "fixtures" / "reference_contract" / "contract_v9_art_4f368ea08799.yaml"
 )
 _CONTRACT = (
-    _REPO / "tests" / "fixtures" / "reference_contract" / "contract_v15_rendered_packaging_598.yaml"
+    _REPO
+    / "tests"
+    / "fixtures"
+    / "reference_contract"
+    / "contract_v16_conftest_isolation_1598.yaml"
 )
 
 # The ingested artifacts, by content hash. Measured 2026-08-07 against the vault:
@@ -128,7 +147,7 @@ _CONTRACT = (
 # run against. A change here is a change to the evidence base, not a refactor.
 _MANIFEST_SHA256 = "52d8ea7e204e0ceca9c94a60a7b10f18a24519e594ce5c51654674b82a15a826"
 _EVIDENCE_CONTRACT_SHA256 = "7622f570c949fe9504bfebdcd0562e77e78b4d8bff54d9d670001b7f6482e6fe"
-_CONTRACT_SHA256 = "193750aa5c3ac96e396f0dc57f434deb8ef95728dcec4b3d793631a8eaf0301b"
+_CONTRACT_SHA256 = "9077219f9885e106983b6b4a5b1663bbf492eb7be68d5caa1752d0184ee44691"
 
 
 def _sha256(path: Path) -> str:
@@ -219,9 +238,12 @@ def test_the_current_form_differs_from_the_evidence_contract_only_as_classified(
       styles definition lists. An added entry has no v9 sha to move from, so it is re-derived
       from the expander below like the moved ones;
     * #598 (``reference_defect``): ``Dockerfile``, ``nginx.conf``, ``start.sh`` and
-      ``.dockerignore`` are ADDED — the rendered container packaging, re-derived the same way.
+      ``.dockerignore`` are ADDED — the rendered container packaging, re-derived the same way;
+    * #1598 (``reference_defect``): the frozen ``conftest.py`` moved, because its autouse
+      fixture now clears every scaffold-owned store before each test — ``reset()`` had shipped
+      in ``backend/store.py`` since the beginning with no caller.
 
-    Three moved ``frozen`` entries and five added, no other, and nothing outside ``frozen``.
+    Four moved ``frozen`` entries and five added, no other, and nothing outside ``frozen``.
     """
     v9 = yaml.safe_load(_EVIDENCE_CONTRACT.read_text(encoding="utf-8"))
     current = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))
@@ -251,6 +273,7 @@ def test_the_current_form_differs_from_the_evidence_contract_only_as_classified(
     ]
     assert sorted(path for path, _, _ in moved) == [
         "backend/store.py",
+        "conftest.py",
         "frontend/src/main.jsx",
         "frontend/src/test-setup.js",
     ]
@@ -268,6 +291,11 @@ def test_the_current_form_differs_from_the_evidence_contract_only_as_classified(
         assert hashlib.sha256(emitted.encode()).hexdigest() == current_sha, path
     # #1127: the harness unmounts between tests.
     assert "afterEach(cleanup)" in expanded["frontend/src/test-setup.js"]
+    # #1598: the harness clears the store between tests, and takes ``reset`` from the module
+    # that owns it rather than re-deriving the clearing itself.
+    conftest = expanded["conftest.py"]
+    assert "from backend.store import reset" in conftest
+    assert "@pytest.fixture(autouse=True)" in conftest
     # #1087: the store is the roots only — RunEvent is stored; Participant (an embedded
     # shape) is named as having no store.
     store = expanded["backend/store.py"]

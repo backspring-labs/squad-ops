@@ -663,11 +663,23 @@ def _view_stub(route: Route) -> str:
 # against ``client`` and never author ``from <root>.main import app`` themselves — so the
 # package root is a scaffold invariant, not a per-suite guess (the pf-26 divergence:
 # files under backend/ but the qa test invented ``from app.main import app``).
+#
+# It owns test isolation too (#1598, SIP-0100 D1). ``backend/store.py`` has always shipped
+# ``reset()`` and nothing called it: 1.8.0 React roll 6 (cyc_767ad2dc59d2) authored a suite
+# whose own docstring said "the conftest autouse fixture calls reset() before each test",
+# asserted an empty store, and was rejected — nine rows were already there. Isolation of a
+# seeded in-memory store is a harness property, not a fact each author re-derives; the
+# Next.js stack already treats it that way (``stack_nextjs_ts._STORE_HEADER``: "Module-level
+# state reset per test via reset()"). Now the two stacks agree.
 _CONFTEST_PY = '''"""Scaffold-owned pytest anchor (frozen) — the single source of the import root.
 
 Puts the workspace root on sys.path so ``import backend`` resolves regardless of the
 working directory pytest runs from, and exposes ``client`` as the ONE place the app is
 imported. Test suites fill bodies against ``client``; they never author the app import.
+
+Isolation is this file's job too: every scaffold-owned store is cleared before each test,
+so a case that asserts "empty" establishes empty instead of hoping to run first. Do not
+define your own reset fixture.
 """
 
 import os
@@ -679,6 +691,13 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from backend.main import app  # noqa: E402  -- after the sys.path anchor above
+from backend.store import reset  # noqa: E402  -- after the sys.path anchor above
+
+
+@pytest.fixture(autouse=True)
+def _isolate_store() -> None:
+    """Clear every scaffold-owned store before each test — isolation is the harness's."""
+    reset()
 
 
 @pytest.fixture
