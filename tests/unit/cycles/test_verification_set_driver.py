@@ -2993,6 +2993,62 @@ class TestTheEmissionCountBehindTheBankedArtifacts:
         assert "UNASKABLE" in driver._show(unaskable)
 
 
+class TestTheRecordRendersTheAssessment:
+    """SIP-0108 §4.1 on the record. The 1.8.0 evidence gate asked that every counted record
+    CARRY a ``CycleAssessment``; it was met by recomputing the projection by hand, because the
+    stores carried its inputs and nothing printed it (1.8.0 pre-registration §10c.6)."""
+
+    _SERVED = {
+        "cycle_id": "cyc_1",
+        "outcome": [{"name": "accepted_functional", "state": "observed", "value": True}],
+        "quality": [{"name": "verified_functional", "state": "unaskable", "reason": "no verdict"}],
+        "coordination": [{"name": "correction_rounds", "state": "asked_none"}],
+        "efficiency": [{"name": "wall_clock_seconds", "state": "observed", "value": 2820}],
+        "attribution": {"primary": None, "state": "unaskable"},
+        "assessment_version": 1,
+        "attribution_registry_version": 2,
+        "evidence_identity": "sha256:abc",
+        "assessor_framework_version": "1.8.1",
+        "assessor_git_sha": "deadbee",
+    }
+
+    def test_the_three_state_tally_is_the_reading_the_gate_is_about(self, driver, monkeypatch):
+        """Bug this catches: a record that carries an assessment whose indicators are mostly
+        unaskable, read as "assessed". The tally says so without the reader opening every
+        indicator — the same reason the driver counts skips beside failures (#1261)."""
+        import types
+
+        monkeypatch.setattr(driver, "sh", lambda cmd, check=True: json.dumps(self._SERVED))
+        out = driver.cycle_assessment(types.SimpleNamespace(project="p"), "cyc_1")
+
+        assert out["state"] == "observed"
+        assert out["indicator_states"] == {"observed": 2, "unaskable": 1, "asked_none": 1}
+        assert out["evidence_identity"] == "sha256:abc"
+        assert out["assessed_by"] == "1.8.1"
+
+    def test_a_deploy_that_serves_none_reads_unaskable_not_absent(self, driver, monkeypatch):
+        """A driver newer than its deploy must not compute an assessment the deploy never
+        produced, and must not fail the whole record over a reading that is texture (#1445).
+
+        Bug this catches: an empty answer rendering as "assessed, nothing observed" — an
+        absence reported as a fact, which is what the three-state vocabulary exists to stop.
+        """
+        import types
+
+        monkeypatch.setattr(driver, "sh", lambda cmd, check=True: "")
+        out = driver.cycle_assessment(types.SimpleNamespace(project="p"), "cyc_1")
+        assert out["state"] == "unaskable"
+        assert "cycles assess" in out["reason"]
+
+        def explode(cmd, check=True):
+            raise FileNotFoundError("squadops")
+
+        monkeypatch.setattr(driver, "sh", explode)
+        out = driver.cycle_assessment(types.SimpleNamespace(project="p"), "cyc_1")
+        assert out["state"] == "unaskable"
+        assert "FileNotFoundError" in out["reason"]
+
+
 class TestTheRecordCarriesTheCyclesCodeLineage:
     """#80: every roll record carries the framework version, commit and request profile the
     cycle row says created the cycle — observed on the record, beside the set config's typed
