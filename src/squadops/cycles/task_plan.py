@@ -212,11 +212,78 @@ IMPLEMENTATION_TASK_STEPS: list[tuple[str, str]] = [
     (TaskType.QA_TEST, "qa"),
 ]
 
-# Correction protocol task steps (SIP-0079 §7.7)
-CORRECTION_TASK_STEPS: list[tuple[str, str]] = [
-    (TaskType.DATA_ANALYZE_FAILURE, "data"),
-    (TaskType.GOVERNANCE_CORRECTION_DECISION, "lead"),
-]
+# Correction protocol task steps (SIP-0079 §7.7), declared by the request profile since
+# 1.8.1 (SIP-0108 §10i item 3) the way the task plan already is. One table, keyed by the name
+# a profile declares — never a second list in code, and never an if/elif on a profile name.
+#
+# ``repair`` is declarable but is not an agent step here: it is the patch path's own dispatch
+# (``correction_repair``), and a protocol that cannot repair is not a correction protocol, so
+# it is required rather than optional.
+CORRECTION_STEP_REPAIR = "repair"
+CORRECTION_STEP_TASKS: dict[str, tuple[str, str]] = {
+    "analyze": (TaskType.DATA_ANALYZE_FAILURE, "data"),
+    "decide": (TaskType.GOVERNANCE_CORRECTION_DECISION, "lead"),
+}
+DECLARABLE_CORRECTION_STEPS: tuple[str, ...] = (
+    *CORRECTION_STEP_TASKS,
+    CORRECTION_STEP_REPAIR,
+)
+
+
+class UndeclaredCorrectionStepsError(ValueError):
+    """A cycle whose request profile does not declare its correction protocol's steps."""
+
+
+def declared_correction_steps(resolved_config: Mapping[str, Any]) -> tuple[str, ...]:
+    """The correction steps this cycle's request profile declares, validated.
+
+    Every cycle can enter correction — ``max_correction_attempts`` defaults rather than
+    requiring opt-in — so every request profile declares what its protocol does. The
+    declaration is the whole answer: there is no step the runner adds because a profile
+    omitted it.
+
+    Raises:
+        UndeclaredCorrectionStepsError: the declaration is missing, empty, names a step
+            outside the vocabulary, or omits ``repair``.
+    """
+    declared = tuple(resolved_config.get("correction_steps") or ())
+    if not declared:
+        raise UndeclaredCorrectionStepsError(
+            "the request profile declares no `correction_steps`; every profile declares what "
+            f"its correction protocol runs, from {list(DECLARABLE_CORRECTION_STEPS)} — the "
+            "squad's is ['analyze', 'decide', 'repair']"
+        )
+    unknown = [s for s in declared if s not in DECLARABLE_CORRECTION_STEPS]
+    if unknown:
+        raise UndeclaredCorrectionStepsError(
+            f"unknown correction step(s) {unknown}; the vocabulary is "
+            f"{list(DECLARABLE_CORRECTION_STEPS)}"
+        )
+    if CORRECTION_STEP_REPAIR not in declared:
+        raise UndeclaredCorrectionStepsError(
+            f"`correction_steps` {list(declared)} omits {CORRECTION_STEP_REPAIR!r}; a protocol "
+            "that cannot repair is not a correction protocol"
+        )
+    return declared
+
+
+def correction_task_steps(resolved_config: Mapping[str, Any]) -> list[tuple[str, str]]:
+    """The dispatched agent steps of this cycle's correction protocol, in declared order."""
+    return [
+        CORRECTION_STEP_TASKS[name]
+        for name in declared_correction_steps(resolved_config)
+        if name in CORRECTION_STEP_TASKS
+    ]
+
+
+def decision_is_declared(resolved_config: Mapping[str, Any]) -> bool:
+    """Whether a lead decides the correction path for this cycle.
+
+    When it does not, the path is deterministic (``patch``) and the plan-defect terminal
+    drops its structural-candidate conjunct, which only a decision can supply.
+    """
+    return "decide" in declared_correction_steps(resolved_config)
+
 
 # Repair task steps (SIP-0079 §7.7).
 # Issue #100: development.correction_repair (NOT development.repair) — the

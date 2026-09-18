@@ -41,6 +41,38 @@ _TESTS_FAIL_ROW = {
 }
 
 
+class TestTheTerminalWithoutADecision:
+    """SIP-0108 §10i item 3: only a lead's decision carries a structural candidate, so where a
+    profile declares no ``decide`` step the rule is the carried failures alone."""
+
+    def test_carried_failures_alone_terminate_when_no_decision_is_declared(self):
+        """Bug this catches: keeping the candidate conjunct with no decision to supply one.
+        Every candidate reads absent, the rule never fires, and a repeating failure spends the
+        whole correction budget — the #1501 shape, on an arm that cannot even diagnose it."""
+        previous = frozenset({("tests_pass", "suite", "case_a")})
+        current = frozenset({("tests_pass", "suite", "case_a")})
+
+        assert should_terminate_plan_defect(previous, current, None, None, decision_declared=False)
+
+    def test_progress_still_stops_the_terminal_without_a_decision(self):
+        """The first conjunct is untouched: a round that cleared a failure is progress, and
+        progress is never a plan defect however the path was chosen."""
+        previous = frozenset({("tests_pass", "suite", "case_a"), ("tests_pass", "suite", "b")})
+        current = frozenset({("tests_pass", "suite", "case_c")})
+
+        assert not should_terminate_plan_defect(
+            previous, current, None, None, decision_declared=False
+        )
+
+    def test_a_declared_decision_still_requires_both_candidates(self):
+        """The control: where a lead decides, the rule is unchanged — candidate presence is
+        true of most deltas, so carried failures alone would terminate healthy chains."""
+        previous = frozenset({("tests_pass", "suite", "case_a")})
+        current = frozenset({("tests_pass", "suite", "case_a")})
+
+        assert not should_terminate_plan_defect(previous, current, None, None)
+
+
 class TestFailureSignature:
     def test_failing_rows_become_elements(self):
         sig = failure_signature(

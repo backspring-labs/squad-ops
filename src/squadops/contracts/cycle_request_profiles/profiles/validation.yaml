@@ -7,6 +7,9 @@ description: >
   are not enabled here). After M2/M3 ship, the same profile shape with those
   flags flipped on becomes the M2 → M3 measurement profile.
 defaults:
+  # SIP-0108 §10i item 3: the correction protocol this profile runs. The squad
+  # analyzes the failure, decides the path, then repairs.
+  correction_steps: [analyze, decide, repair]
   build_strategy: fresh
   task_flow_policy:
     mode: sequential

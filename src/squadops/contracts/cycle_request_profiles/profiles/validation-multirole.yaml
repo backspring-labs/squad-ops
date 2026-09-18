@@ -11,6 +11,9 @@ description: >
   so the merged plan + merge decisions can be inspected before (optionally)
   proceeding to implementation.
 defaults:
+  # SIP-0108 §10i item 3: the correction protocol this profile runs. The squad
+  # analyzes the failure, decides the path, then repairs.
+  correction_steps: [analyze, decide, repair]
   build_strategy: fresh
   # SIP-0093 activation — the whole point of this profile.
   plan_authoring_contributors:

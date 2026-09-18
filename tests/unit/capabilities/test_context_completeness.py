@@ -44,7 +44,7 @@ from squadops.capabilities.context_assembly import (
 from squadops.cycles.task_plan import (
     BUILD_TASK_STEPS,
     BUILDER_ASSEMBLY_TASK_STEPS,
-    CORRECTION_TASK_STEPS,
+    CORRECTION_STEP_TASKS,
     CYCLE_TASK_STEPS,
     IMPLEMENTATION_TASK_STEPS,
     REFINEMENT_TASK_STEPS,
@@ -75,7 +75,7 @@ def _dispatched_task_types() -> set[str]:
         + BUILDER_ASSEMBLY_TASK_STEPS
         + IMPLEMENTATION_TASK_STEPS
         + REFINEMENT_TASK_STEPS
-        + CORRECTION_TASK_STEPS
+        + list(CORRECTION_STEP_TASKS.values())
         + WRAPUP_TASK_STEPS
         + build_planning_steps(["development", "qa", "strategy"], authors_manifest=True)
     )

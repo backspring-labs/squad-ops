@@ -703,7 +703,8 @@ class CorrectionRunner:
     ) -> None:
         """#435 A4.3: terminate the chain as ``plan_defect`` when a round carried
         failures from the round before it without progress, with structural
-        candidates on both rounds. An exact repeat is the simplest case; #1501
+        candidates on both rounds — or on the carried failures alone where the profile
+        declares no ``decide`` step, since only a decision carries a candidate. An exact repeat is the simplest case; #1501
         added the stable core under a churning set (``carried_failures``), and
         the record names what was carried, cleared and added.
 
@@ -752,7 +753,15 @@ class CorrectionRunner:
                 )
             )
 
-        if should_terminate_plan_defect(prev_sig, current_sig, prev_candidate, candidate):
+        from squadops.cycles.task_plan import decision_is_declared
+
+        if should_terminate_plan_defect(
+            prev_sig,
+            current_sig,
+            prev_candidate,
+            candidate,
+            decision_declared=decision_is_declared(cycle.resolved_config()),
+        ):
             termination = CorrectionTermination(
                 reason=CorrectionTerminationReason.PLAN_DEFECT,
                 failed_task_id=envelope.task_id,
@@ -1006,7 +1015,7 @@ class CorrectionRunner:
         bound_record: Any,
         ledger: RunLedger | None = None,
     ) -> _Diagnosis:
-        """Step 1 — build the failure evidence and run ``CORRECTION_TASK_STEPS``.
+        """Step 1 — build the failure evidence and run the profile's declared steps.
 
         Each step's outputs are captured in their own bucket (#95): reusing one variable
         masked the analyzer's classification with defaults at PlanDelta time, because the
@@ -1014,7 +1023,12 @@ class CorrectionRunner:
         """
         from uuid import uuid4
 
-        from squadops.cycles.task_plan import CORRECTION_TASK_STEPS
+        from squadops.cycles.task_plan import correction_task_steps
+
+        # SIP-0108 §10i item 3: the profile declares what this protocol runs. Until 1.8.1 the
+        # steps were a module constant, so every cycle analyzed and decided whether or not its
+        # profile wanted to — there was no way for a one-agent arm to run repair alone.
+        declared_steps = correction_task_steps(cycle.resolved_config())
 
         # 1. Emit CORRECTION_INITIATED
         self._event_bus.emit(
@@ -1059,7 +1073,7 @@ class CorrectionRunner:
         decision_outputs: dict[str, Any] = {}
         corr_correlation_id = uuid4().hex
 
-        for step_idx, (task_type, role) in enumerate(CORRECTION_TASK_STEPS):
+        for step_idx, (task_type, role) in enumerate(declared_steps):
             corr_task_id = f"corr-{run_id[:12]}-{correction_attempts:02d}-{task_type}"
             resolved = resolve_agent_config(role, profile)
             agent_id = resolved.agent_id
@@ -1160,9 +1174,16 @@ class CorrectionRunner:
         # original rationale stays intact in the decision artifact; the
         # override is disclosed in the event payload below.
         from squadops.cycles.correction_policy import resolve_correction_path
+        from squadops.cycles.task_plan import decision_is_declared
+
+        # SIP-0108 §10i item 3: with no `decide` step there is no decision to read, and the
+        # rule is deterministic — patch. The `abort` default below belongs to a DECLARED
+        # decision that produced no path, which is a failed step, not an absent one.
+        decided = decision_is_declared(cycle.resolved_config())
+        proposed_path = decision_outputs.get("correction_path", "abort") if decided else "patch"
 
         resolution = resolve_correction_path(
-            decision_outputs.get("correction_path", "abort"),
+            proposed_path,
             failure_evidence,
             cycle.resolved_config(),
             # pf-45: the rewind anchor keys on the analyzer's classification — a
@@ -1236,6 +1257,19 @@ class CorrectionRunner:
         failure_evidence = diagnosis.failure_evidence
         analysis_outputs = diagnosis.analysis_outputs
         decision_outputs = diagnosis.decision_outputs
+        from squadops.cycles.task_plan import decision_is_declared, declared_correction_steps
+
+        decided = decision_is_declared(cycle.resolved_config())
+        # A profile may declare neither `analyze` nor `decide` (SIP-0108 §10i item 3), and the
+        # delta still has to be a true record of the round. Rather than leaving the analyzer's
+        # and lead's fields empty — which `PlanDelta` refuses on a patch, and which would read
+        # as "an analysis that said nothing" — they carry the deterministic facts that stood in
+        # for those steps: the failed task is the affected task type, and the rule chose the
+        # path. The record then says an analyzer and a lead were not in this loop.
+        analyzed = "analyze" in declared_correction_steps(cycle.resolved_config())
+        affected = tuple(decision_outputs.get("affected_task_types", []))
+        if not decided and not affected:
+            affected = (envelope.task_type,)
         # 6. Store plan delta as artifact
         delta = PlanDelta(
             delta_id=uuid4().hex,
@@ -1243,10 +1277,18 @@ class CorrectionRunner:
             correction_path=correction_path,
             trigger=compose_failure_trigger(envelope, failure_evidence),
             failure_classification=analysis_outputs.get("classification", "unknown"),
-            analysis_summary=analysis_outputs.get("analysis_summary", "N/A"),
-            decision_rationale=decision_outputs.get("decision_rationale", "N/A"),
-            changes=tuple(decision_outputs.get("affected_task_types", [])),
-            affected_task_types=tuple(decision_outputs.get("affected_task_types", [])),
+            analysis_summary=analysis_outputs.get(
+                "analysis_summary",
+                "N/A"
+                if analyzed
+                else "no `analyze` step declared — the failure evidence stands unsummarized",
+            ),
+            decision_rationale=decision_outputs.get(
+                "decision_rationale",
+                "N/A" if decided else "no `decide` step declared — the rule chose the path",
+            ),
+            changes=affected,
+            affected_task_types=affected,
             created_at=datetime.now(UTC),
             # SIP-0092 M2 → M3 gate diagnostic.
             structural_plan_change_candidate=str(

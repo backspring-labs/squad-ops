@@ -191,6 +191,7 @@ def cycle():
         squad_profile_snapshot_ref="sha256:abc",
         task_flow_policy=TaskFlowPolicy(mode="sequential"),
         build_strategy="fresh",
+        applied_defaults={"correction_steps": ["analyze", "decide", "repair"]},
     )
 
 
@@ -402,7 +403,10 @@ class TestCorrectionPatch:
 
         cycle_2 = dataclasses.replace(
             mock_registry.get_cycle.return_value,
-            applied_defaults={"max_correction_attempts": 2},
+            applied_defaults={
+                "max_correction_attempts": 2,
+                "correction_steps": ["analyze", "decide", "repair"],
+            },
         )
         mock_registry.get_cycle.return_value = cycle_2
 
@@ -491,6 +495,7 @@ class TestCorrectionTaskArtifactStorage:
             squad_profile_snapshot_ref="ref",
             task_flow_policy=TaskFlowPolicy(mode="sequential"),
             build_strategy="fresh",
+            applied_defaults={"correction_steps": ["analyze", "decide", "repair"]},
         )
         envelope = TaskEnvelope(
             task_id="repair-1",
@@ -563,6 +568,7 @@ class TestCorrectionTaskArtifactStorage:
             squad_profile_snapshot_ref="ref",
             task_flow_policy=TaskFlowPolicy(mode="sequential"),
             build_strategy="fresh",
+            applied_defaults={"correction_steps": ["analyze", "decide", "repair"]},
         )
         envelope = TaskEnvelope(
             task_id="corr-1",
@@ -616,6 +622,7 @@ class TestCorrectionTaskArtifactStorage:
             squad_profile_snapshot_ref="ref",
             task_flow_policy=TaskFlowPolicy(mode="sequential"),
             build_strategy="fresh",
+            applied_defaults={"correction_steps": ["analyze", "decide", "repair"]},
         )
         envelope = TaskEnvelope(
             task_id="retest-run_x-00-qa.test",
@@ -907,7 +914,13 @@ class TestMaxCorrectionAttempts:
     async def test_max_corrections_exhausted(self, executor, mock_queue, mock_registry, cycle):
         import dataclasses
 
-        cycle_1 = dataclasses.replace(cycle, applied_defaults={"max_correction_attempts": 1})
+        cycle_1 = dataclasses.replace(
+            cycle,
+            applied_defaults={
+                "max_correction_attempts": 1,
+                "correction_steps": ["analyze", "decide", "repair"],
+            },
+        )
         mock_registry.get_cycle.return_value = cycle_1
 
         semantic_outputs = {
@@ -1921,6 +1934,87 @@ class TestCorrectionRunnerStandalone:
         assert delta["analysis_summary"] == "missing acceptance section"
         assert delta["correction_path"] == "continue"
 
+    async def test_a_profile_declaring_only_repair_dispatches_no_agent_steps(self, cycle):
+        """SIP-0108 §10i item 3, entered at ``run_correction_protocol`` — the call the
+        executor makes. The Solo arm declares ``[repair]``: no analyzer, no lead.
+
+        Bug this catches: the steps living as a module constant, so every cycle analyzes and
+        decides whether or not its profile asked for it, and a one-agent arm cannot be
+        expressed without a branch on the profile's name — which SIP-0108 §10i forbids.
+        """
+        import dataclasses
+
+        dispatched: list[str] = []
+
+        def responder(envelope):
+            dispatched.append(envelope.task_type)
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+        solo_cycle = dataclasses.replace(cycle, applied_defaults={"correction_steps": ["repair"]})
+        runner, _registry, _vault, _bus = self._make_runner(responder)
+
+        protocol_result = await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=solo_cycle,
+            envelope=self._failed_envelope(),
+            result=TaskResult(task_id="task_failed", status="FAILED", error="bad"),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+
+        assert "data.analyze_failure" not in dispatched
+        assert "governance.correction_decision" not in dispatched
+        # With no decision to read, the path is the deterministic rule, not the
+        # missing-decision `abort` that a DECLARED-but-silent decision would produce.
+        assert protocol_result.correction_path == "patch"
+
+    async def test_the_squads_profile_still_analyzes_and_decides(self, cycle):
+        """The control: the same entry, the same harness, the declaration the squad carries.
+
+        Bug this catches: reading the declaration in a way that drops a step every profile
+        asks for — the failure the test above cannot see, because it asserts absence.
+        """
+        dispatched: list[str] = []
+
+        def responder(envelope):
+            dispatched.append(envelope.task_type)
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "patch",
+                        "decision_rationale": "repair the failed task",
+                        "affected_task_types": ["development.implement"],
+                    },
+                )
+            return TaskResult(
+                task_id=envelope.task_id,
+                status="SUCCEEDED",
+                outputs={"analysis_summary": "the suite asserts a field the app derives"},
+            )
+
+        runner, _registry, _vault, _bus = self._make_runner(responder)
+
+        await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=self._failed_envelope(),
+            result=TaskResult(task_id="task_failed", status="FAILED", error="bad"),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+
+        assert dispatched[:2] == ["data.analyze_failure", "governance.correction_decision"]
+
     async def test_missing_decision_defaults_to_abort(self, cycle):
         """Edge case: a decision step that returns no correction_path must
         yield "abort" (never a silent continue) — and still emit the full
@@ -2854,6 +2948,7 @@ class TestReexecuteRepairedSuite:
             squad_profile_snapshot_ref="sha256:abc",
             task_flow_policy=TaskFlowPolicy(mode="sequential"),
             build_strategy="fresh",
+            applied_defaults={"correction_steps": ["analyze", "decide", "repair"]},
         )
 
     def _state_kwargs(self):
@@ -4040,7 +4135,11 @@ class TestBudgetGatesCorrectionDispatch:
         import dataclasses
 
         mock_registry.get_cycle.return_value = dataclasses.replace(
-            cycle, applied_defaults={"time_budget_seconds": 100}
+            cycle,
+            applied_defaults={
+                "time_budget_seconds": 100,
+                "correction_steps": ["analyze", "decide", "repair"],
+            },
         )
         clock = {"now": 0.0}
 
@@ -5846,6 +5945,7 @@ class TestRepairCarriesTheDispatchedWorkspace(TestCorrectionRunnerStandalone):
                 squad_profile_snapshot_ref="sha256:abc",
                 task_flow_policy=TaskFlowPolicy(mode="sequential"),
                 build_strategy="fresh",
+                applied_defaults={"correction_steps": ["analyze", "decide", "repair"]},
             ),
             envelope=envelope,
             result=failed,
@@ -5965,6 +6065,7 @@ class TestTheProtocolResultCarriesTheRepairsRows(TestCorrectionRunnerStandalone)
                 squad_profile_snapshot_ref="sha256:abc",
                 task_flow_policy=TaskFlowPolicy(mode="sequential"),
                 build_strategy="fresh",
+                applied_defaults={"correction_steps": ["analyze", "decide", "repair"]},
             ),
             envelope=envelope,
             result=failed,
@@ -6087,6 +6188,7 @@ class TestTheRepairEnvelopeCarriesTheFailedTasksFiles(TestCorrectionRunnerStanda
                 squad_profile_snapshot_ref="sha256:abc",
                 task_flow_policy=TaskFlowPolicy(mode="sequential"),
                 build_strategy="fresh",
+                applied_defaults={"correction_steps": ["analyze", "decide", "repair"]},
             ),
             envelope=envelope,
             result=failed,

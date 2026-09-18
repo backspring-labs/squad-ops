@@ -243,6 +243,8 @@ def should_terminate_plan_defect(
     current: frozenset[tuple[str, str, str]] | None,
     previous_candidate: str | None,
     current_candidate: str | None,
+    *,
+    decision_declared: bool = True,
 ) -> bool:
     """The A4.3 default rule — the ONLY termination this lever authorizes.
 
@@ -251,9 +253,18 @@ def should_terminate_plan_defect(
     decisions carrying a non-``none`` structural candidate. Candidate presence
     alone can never fire this (it is true of ~89% of deltas); a missing signature
     on either side can never fire it (infra rounds cleared the state upstream).
+
+    ``decision_declared`` is False when the cycle's request profile declares no ``decide``
+    step (SIP-0108 §10i item 3). The second conjunct then has no source — only a lead's
+    decision carries a structural candidate — so the rule is the carried failures alone.
+    Keeping the conjunct there would read every absent candidate as "not a plan defect" and
+    let a repeating failure spend the whole budget; dropping it is what §10i specifies, and
+    the window's pre-registration states both forms.
     """
     if not carried_failures(previous, current):
         return False
+    if not decision_declared:
+        return True
     return bool(
         previous_candidate
         and previous_candidate != CANDIDATE_NONE

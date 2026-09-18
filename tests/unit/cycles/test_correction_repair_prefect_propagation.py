@@ -78,6 +78,7 @@ def cycle() -> Cycle:
         squad_profile_snapshot_ref="sha256:abc",
         task_flow_policy=TaskFlowPolicy(mode="sequential"),
         build_strategy="fresh",
+        applied_defaults={"correction_steps": ["analyze", "decide", "repair"]},
     )
 
 

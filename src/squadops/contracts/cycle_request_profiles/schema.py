@@ -30,6 +30,10 @@ _APPLIED_DEFAULTS_EXTRA_KEYS = {
     "max_task_seconds",
     "max_consecutive_failures",
     "max_correction_attempts",
+    # SIP-0108 §10i item 3: what this profile's correction protocol runs, from
+    # ``task_plan.DECLARABLE_CORRECTION_STEPS``. Declared, never inferred — a profile that
+    # omits it is refused rather than given the squad's shape by default.
+    "correction_steps",
     "time_budget_seconds",
     "implementation_pulse_checks",
     "implementation_plan",
