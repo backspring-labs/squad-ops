@@ -298,6 +298,52 @@ class TestComputeProfileSnapshotHash:
         h2 = compute_profile_snapshot_hash(sample_profile)
         assert h1 == h2
 
+    def test_changes_with_the_declared_role_map(self, sample_profile):
+        """#1611 review: ``serves_roles`` decides WHICH agent runs each planned step, so it is
+        execution-determining and belongs in the content identity.
+
+        Bug this catches: two profiles that dispatch differently snapshotting the same. A
+        verification set frozen on one would then run the other without its pre-launch check
+        noticing, which is the whole point of freezing the snapshot (#1568).
+        """
+        import dataclasses
+
+        widened = dataclasses.replace(
+            sample_profile,
+            agents=(
+                dataclasses.replace(
+                    sample_profile.agents[0],
+                    serves_roles=(*sample_profile.agents[0].serves_roles, "data"),
+                ),
+                *sample_profile.agents[1:],
+            ),
+        )
+
+        assert compute_profile_snapshot_hash(widened) != compute_profile_snapshot_hash(
+            sample_profile
+        )
+
+    def test_the_same_map_in_another_order_is_the_same_snapshot(self, sample_profile):
+        """Role service is a set: the payload sorts each agent's declaration.
+
+        Bug this catches: an author reordering ``[qa, dev]`` to ``[dev, qa]`` voiding a frozen
+        set's comparability, when the squad is byte-for-byte the same squad.
+        """
+        import dataclasses
+
+        def with_map(order):
+            return dataclasses.replace(
+                sample_profile,
+                agents=(
+                    dataclasses.replace(sample_profile.agents[0], serves_roles=order),
+                    *sample_profile.agents[1:],
+                ),
+            )
+
+        assert compute_profile_snapshot_hash(with_map(("dev", "qa"))) == (
+            compute_profile_snapshot_hash(with_map(("qa", "dev")))
+        )
+
     def test_changes_with_agent_model(self, sample_profile):
         import dataclasses
 

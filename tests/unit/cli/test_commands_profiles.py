@@ -93,7 +93,7 @@ class TestSquadProfilesCreate:
             "name": "Test Profile",
             "description": "Test desc",
             "agents": [
-                {"agent_id": "neo", "role": "dev", "model": "qwen2.5:7b"},
+                {"agent_id": "neo", "role": "dev", "model": "qwen2.5:7b", "serves_roles": ["dev"]},
             ],
         }
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:

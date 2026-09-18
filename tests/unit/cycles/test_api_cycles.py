@@ -62,7 +62,9 @@ def _full_plan_profile():
         description="All agents",
         version=1,
         agents=tuple(
-            AgentProfileEntry(agent_id=aid, role=role, model="gpt-4", enabled=True)
+            AgentProfileEntry(
+                agent_id=aid, role=role, model="gpt-4", enabled=True, serves_roles=(role,)
+            )
             for aid, role in roles
         ),
         created_at=NOW,
@@ -577,7 +579,11 @@ class TestCreateCyclePreflight:
             name="Lean",
             description="",
             version=1,
-            agents=(AgentProfileEntry(agent_id="max", role="lead", model="gpt-4", enabled=True),),
+            agents=(
+                AgentProfileEntry(
+                    agent_id="max", role="lead", model="gpt-4", enabled=True, serves_roles=("lead",)
+                ),
+            ),
             created_at=NOW,
         )
         mock_squad_profile.resolve_snapshot.return_value = (lean, "sha256:x")

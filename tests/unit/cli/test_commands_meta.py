@@ -49,6 +49,7 @@ AGENTS_RESPONSE = [
         "lifecycle_state": "READY",
         "version": "0.9.3",
         "last_seen": "2026-02-09T14:00:00Z",
+        "serves_roles": ["Task Lead"],
     },
     {
         "agent_id": "neo",
@@ -61,6 +62,7 @@ AGENTS_RESPONSE = [
         "lifecycle_state": "WORKING",
         "version": "0.9.3",
         "last_seen": "2026-02-09T14:00:00Z",
+        "serves_roles": ["Developer"],
     },
 ]
 

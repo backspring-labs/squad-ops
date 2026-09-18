@@ -20,8 +20,12 @@ pytestmark = [pytest.mark.domain_orchestration]
 NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
 _AGENTS = (
-    AgentProfileEntry(agent_id="neo", role="dev", model="qwen2.5:7b", enabled=True),
-    AgentProfileEntry(agent_id="eve", role="qa", model="qwen2.5:7b", enabled=True),
+    AgentProfileEntry(
+        agent_id="neo", role="dev", model="qwen2.5:7b", enabled=True, serves_roles=("dev",)
+    ),
+    AgentProfileEntry(
+        agent_id="eve", role="qa", model="qwen2.5:7b", enabled=True, serves_roles=("qa",)
+    ),
 )
 
 
@@ -49,6 +53,7 @@ def _make_row(
             "model": "qwen2.5:7b",
             "enabled": True,
             "config_overrides": {},
+            "serves_roles": ["dev"],
         },
         {
             "agent_id": "eve",
@@ -56,6 +61,7 @@ def _make_row(
             "model": "qwen2.5:7b",
             "enabled": True,
             "config_overrides": {},
+            "serves_roles": ["qa"],
         },
     ]
 

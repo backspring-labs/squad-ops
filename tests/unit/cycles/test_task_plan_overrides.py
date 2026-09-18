@@ -27,6 +27,7 @@ _FULL_AGENTS = (
         model="qwen2.5:7b",
         enabled=True,
         config_overrides={"temperature": 0.3},
+        serves_roles=("strat",),
     ),
     AgentProfileEntry(
         agent_id="neo",
@@ -34,18 +35,21 @@ _FULL_AGENTS = (
         model="deepseek-coder:6.7b",
         enabled=True,
         config_overrides={"max_completion_tokens": 4096, "temperature": 0.1},
+        serves_roles=("dev",),
     ),
     AgentProfileEntry(
         agent_id="eve",
         role="qa",
         model="qwen2.5:7b",
         enabled=True,
+        serves_roles=("qa",),
     ),
     AgentProfileEntry(
         agent_id="data",
         role="data",
         model="qwen2.5:7b",
         enabled=True,
+        serves_roles=("data",),
     ),
     AgentProfileEntry(
         agent_id="max",
@@ -53,6 +57,7 @@ _FULL_AGENTS = (
         model="gpt-4",
         enabled=True,
         config_overrides={"timeout_seconds": 600},
+        serves_roles=("lead",),
     ),
 )
 
@@ -123,7 +128,9 @@ class TestAgentModelInjection:
     def test_agent_model_none_when_empty_string(self):
         agents = (
             *_FULL_AGENTS[:4],
-            AgentProfileEntry(agent_id="max", role="lead", model="", enabled=True),
+            AgentProfileEntry(
+                agent_id="max", role="lead", model="", enabled=True, serves_roles=("lead",)
+            ),
         )
         plan = generate_task_plan(_make_cycle(), _make_run(), _make_profile(agents))
         lead_envelope = plan[4]
@@ -145,7 +152,9 @@ class TestRequiredRolesValidation:
     def test_disabled_agent_counts_as_missing(self):
         agents = (
             *_FULL_AGENTS[:4],
-            AgentProfileEntry(agent_id="max", role="lead", model="gpt-4", enabled=False),
+            AgentProfileEntry(
+                agent_id="max", role="lead", model="gpt-4", enabled=False, serves_roles=("lead",)
+            ),
         )
         with pytest.raises(CycleError, match="missing required roles.*lead"):
             generate_task_plan(_make_cycle(), _make_run(), _make_profile(agents))
@@ -162,8 +171,12 @@ class TestRequiredRolesValidation:
     def test_build_only_skips_required_role_validation(self):
         # Build-only cycles (plan_tasks=False) only need dev+qa, not all 5 roles
         agents = (
-            AgentProfileEntry(agent_id="neo", role="dev", model="m", enabled=True),
-            AgentProfileEntry(agent_id="eve", role="qa", model="m", enabled=True),
+            AgentProfileEntry(
+                agent_id="neo", role="dev", model="m", enabled=True, serves_roles=("dev",)
+            ),
+            AgentProfileEntry(
+                agent_id="eve", role="qa", model="m", enabled=True, serves_roles=("qa",)
+            ),
         )
         cycle = _make_cycle(
             applied_defaults={

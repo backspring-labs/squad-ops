@@ -269,6 +269,24 @@ def compute_config_hash(applied_defaults: dict, execution_overrides: dict) -> st
 def compute_profile_snapshot_hash(profile: SquadProfile) -> str:
     """Deterministic SHA-256 hash of a SquadProfile for immutable snapshotting.
 
+    The payload is every field that decides how a cycle executes under this profile —
+    including ``serves_roles`` since 1.8.1, which decides WHICH agent runs each planned step
+    (SIP-0108 §10i item 1). A routing field outside the content identity means two profiles
+    that dispatch differently snapshot the same, and a set frozen on one could run the other.
+
+    **Canonicalization.** Agent order is the authored order and is preserved: a profile is a
+    list its author wrote. Each agent's ``serves_roles`` is sorted, because role service is a
+    set — the same map written in two orders is the same map and must hash the same.
+
+    **Refs stamped before 1.8.1 are not recomputable.** They were taken over a payload that
+    omitted ``serves_roles``, so a historical cycle's stored
+    ``squad_profile_snapshot_ref`` cannot be reproduced by this function and is read as opaque
+    evidence of the squad that ran, never re-derived. Nothing recomputes one: the only
+    comparisons are current-era (the verification driver's pre-launch check against the prefix
+    a set is frozen on, and the post-run check against the same). A set pinned before 1.8.1
+    therefore pins a prefix this formula no longer produces, and a new set pins the ref its
+    own deploy stamps.
+
     Args:
         profile: SquadProfile to hash.
 
@@ -285,6 +303,7 @@ def compute_profile_snapshot_hash(profile: SquadProfile) -> str:
                 "model": a.model,
                 "enabled": a.enabled,
                 "config_overrides": a.config_overrides,
+                "serves_roles": sorted(a.serves_roles),
             }
             for a in profile.agents
         ],

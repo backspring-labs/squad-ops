@@ -67,8 +67,22 @@ summary:
 
 @dataclass
 class _FakeAgent:
+    """Models ``AgentProfileEntry`` closely enough for role resolution (SIP-0108 §10i).
+
+    ``serves_roles`` is the declared map and is never empty for an enabled agent; it defaults
+    to the agent's own role here so a fixture reads as one line, the way the real profiles do.
+    """
+
     role: str
     enabled: bool = True
+    serves_roles: tuple[str, ...] = ()
+    agent_id: str = ""
+
+    def __post_init__(self):
+        if not self.serves_roles:
+            object.__setattr__(self, "serves_roles", (self.role,))
+        if not self.agent_id:
+            object.__setattr__(self, "agent_id", f"agent-{self.role}")
 
 
 @dataclass

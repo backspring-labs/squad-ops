@@ -3125,7 +3125,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         stored_artifacts: list[tuple[str, ArtifactRef]],
         completed_task_ids: list[str],
         plan_delta_refs: list[str],
-        profile: Any = None,
+        # Required since 1.8.1 (#1610): every role resolved under this call reads the
+        # declared role → agent map, and a missing profile used to be postponed to dispatch
+        # as a queue named after the role. `execute_run` resolves the snapshot once and
+        # threads it; only test harnesses took the default.
+        profile: Any,
         flow_run_id: str | None = None,
         patched_result_holder: dict[str, Any] | None = None,
         enriched_envelope: TaskEnvelope | None = None,
@@ -4074,7 +4078,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         task_type: str,
         *,
         stored_artifacts: list[tuple[str, ArtifactRef]] | None = None,
-        profile: Any = None,
+        # Required since 1.8.1 (#1610): every role resolved under this call reads the
+        # declared role → agent map, and a missing profile used to be postponed to dispatch
+        # as a queue named after the role. `execute_run` resolves the snapshot once and
+        # threads it; only test harnesses took the default.
+        profile: Any,
     ) -> None:
         """Pause, poll for decision, resume or reject.
 

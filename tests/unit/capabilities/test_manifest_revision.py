@@ -305,7 +305,7 @@ async def test_framing_task_ids_are_deterministic_so_a_checkpoint_can_translate(
         description="d",
         version=1,
         agents=tuple(
-            AgentProfileEntry(agent_id=a, role=r, model="m", enabled=True)
+            AgentProfileEntry(agent_id=a, role=r, model="m", enabled=True, serves_roles=(r,))
             for a, r in (
                 ("nat", "strat"),
                 ("neo", "dev"),

@@ -120,7 +120,9 @@ class TestHandleGateDecisions:
         mock_registry.get_run.return_value = _run_with_gate_decision(GateDecisionValue.APPROVED)
         mock_registry.update_run_status.return_value = None
 
-        await executor._handle_gate("run_001", cycle, "plan_tasks")
+        await executor._handle_gate(
+            "run_001", cycle, "plan_tasks", profile=_profile_without_builder()
+        )
 
         # _handle_gate first pauses, then resumes — check last call is RUNNING
         status_calls = mock_registry.update_run_status.call_args_list
@@ -139,7 +141,9 @@ class TestHandleGateDecisions:
         )
         mock_registry.update_run_status.return_value = None
 
-        await executor._handle_gate("run_001", cycle, "plan_tasks")
+        await executor._handle_gate(
+            "run_001", cycle, "plan_tasks", profile=_profile_without_builder()
+        )
 
         # _handle_gate first pauses, then resumes — check last call is RUNNING
         status_calls = mock_registry.update_run_status.call_args_list
@@ -157,7 +161,9 @@ class TestHandleGateDecisions:
         )
 
         with pytest.raises(_ExecutionError, match="rejected"):
-            await executor._handle_gate("run_001", cycle, "plan_tasks")
+            await executor._handle_gate(
+                "run_001", cycle, "plan_tasks", profile=_profile_without_builder()
+            )
 
     async def test_returned_for_revision_raises_execution_error(
         self, executor, mock_registry, cycle
@@ -170,7 +176,9 @@ class TestHandleGateDecisions:
         )
 
         with pytest.raises(_ExecutionError, match="manual retry-run creation"):
-            await executor._handle_gate("run_001", cycle, "plan_tasks")
+            await executor._handle_gate(
+                "run_001", cycle, "plan_tasks", profile=_profile_without_builder()
+            )
 
     async def test_no_decision_polls_until_decision_arrives(
         self, executor, mock_registry, mock_event_bus, cycle
@@ -193,7 +201,9 @@ class TestHandleGateDecisions:
         # Patch sleep to avoid real delays
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr(asyncio, "sleep", AsyncMock())
-            await executor._handle_gate("run_001", cycle, "plan_tasks")
+            await executor._handle_gate(
+                "run_001", cycle, "plan_tasks", profile=_profile_without_builder()
+            )
 
         assert mock_registry.get_run.call_count == 2
         status_calls = mock_registry.update_run_status.call_args_list
@@ -236,8 +246,12 @@ def _profile_without_builder():
         description="No builder",
         version=1,
         agents=(
-            AgentProfileEntry(agent_id="neo", role="dev", model="m", enabled=True),
-            AgentProfileEntry(agent_id="eve", role="qa", model="m", enabled=True),
+            AgentProfileEntry(
+                agent_id="neo", role="dev", model="m", enabled=True, serves_roles=("dev",)
+            ),
+            AgentProfileEntry(
+                agent_id="eve", role="qa", model="m", enabled=True, serves_roles=("qa",)
+            ),
         ),
         created_at=NOW,
     )
@@ -379,14 +393,23 @@ class TestPlanReviewGateCheck:
         status_calls = mock_registry.update_run_status.call_args_list
         assert status_calls[-1] == ((("run_001", RunStatus.RUNNING),))
 
-    async def test_gate_without_threaded_context_behaves_as_before(
+    async def test_a_gate_without_stored_artifacts_still_resumes(
         self, executor, mock_registry, mock_event_bus, cycle
     ):
-        """Callers that don't thread stored_artifacts/profile (defaults None)
-        get pre-#295 behavior — the check never runs."""
+        """No plan artifact to read means the #295 check has nothing to judge, and the gate
+        resumes on its decision as it always did.
+
+        Re-authored for #1610: this used to prove that a caller threading NEITHER
+        ``stored_artifacts`` NOR ``profile`` got pre-#295 behaviour. What it proved was that
+        the check is skipped when its inputs are absent, and the profile half of that is gone
+        — ``profile`` is required now, so no caller can omit it and there is no profile-less
+        path left to characterise. The artifact half is still real and is what this asserts.
+        """
         mock_registry.get_run.return_value = _run_with_gate_decision(GateDecisionValue.APPROVED)
 
-        await executor._handle_gate("run_001", _plan_cycle(cycle), "plan_tasks")
+        await executor._handle_gate(
+            "run_001", _plan_cycle(cycle), "plan_tasks", profile=_profile_without_builder()
+        )
 
         status_calls = mock_registry.update_run_status.call_args_list
         assert status_calls[-1] == ((("run_001", RunStatus.RUNNING),))

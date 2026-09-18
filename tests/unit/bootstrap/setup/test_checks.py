@@ -564,7 +564,9 @@ class TestRunChecks:
 
 def _squad_profile(models, *, pid="full"):
     agents = tuple(
-        AgentProfileEntry(agent_id=f"a{i}", role=f"r{i}", model=m, enabled=True)
+        AgentProfileEntry(
+            agent_id=f"a{i}", role=f"r{i}", model=m, enabled=True, serves_roles=(f"r{i}",)
+        )
         for i, m in enumerate(models)
     )
     return SquadProfile(

@@ -107,7 +107,15 @@ class TestProfileToResponse:
 
     def test_role_label_populated(self):
         profile = self._make_profile(
-            (AgentProfileEntry(agent_id="neo", role="dev", model="qwen2.5:7b", enabled=True),)
+            (
+                AgentProfileEntry(
+                    agent_id="neo",
+                    role="dev",
+                    model="qwen2.5:7b",
+                    enabled=True,
+                    serves_roles=("dev",),
+                ),
+            )
         )
         resp = profile_to_response(profile)
         agent = resp.agents[0]
@@ -115,7 +123,15 @@ class TestProfileToResponse:
 
     def test_display_name_from_agent_id(self):
         profile = self._make_profile(
-            (AgentProfileEntry(agent_id="max", role="lead", model="qwen2.5:7b", enabled=True),)
+            (
+                AgentProfileEntry(
+                    agent_id="max",
+                    role="lead",
+                    model="qwen2.5:7b",
+                    enabled=True,
+                    serves_roles=("lead",),
+                ),
+            )
         )
         resp = profile_to_response(profile)
         agent = resp.agents[0]
@@ -125,7 +141,11 @@ class TestProfileToResponse:
         profile = self._make_profile(
             (
                 AgentProfileEntry(
-                    agent_id="zara", role="custom_role", model="qwen2.5:7b", enabled=True
+                    agent_id="zara",
+                    role="custom_role",
+                    model="qwen2.5:7b",
+                    enabled=True,
+                    serves_roles=("custom_role",),
                 ),
             )
         )
@@ -136,12 +156,24 @@ class TestProfileToResponse:
 
     def test_all_agents_get_labels(self):
         agents = (
-            AgentProfileEntry(agent_id="max", role="lead", model="m", enabled=True),
-            AgentProfileEntry(agent_id="neo", role="dev", model="m", enabled=True),
-            AgentProfileEntry(agent_id="nat", role="strat", model="m", enabled=True),
-            AgentProfileEntry(agent_id="eve", role="qa", model="m", enabled=True),
-            AgentProfileEntry(agent_id="data", role="data", model="m", enabled=True),
-            AgentProfileEntry(agent_id="bob", role="builder", model="m", enabled=True),
+            AgentProfileEntry(
+                agent_id="max", role="lead", model="m", enabled=True, serves_roles=("lead",)
+            ),
+            AgentProfileEntry(
+                agent_id="neo", role="dev", model="m", enabled=True, serves_roles=("dev",)
+            ),
+            AgentProfileEntry(
+                agent_id="nat", role="strat", model="m", enabled=True, serves_roles=("strat",)
+            ),
+            AgentProfileEntry(
+                agent_id="eve", role="qa", model="m", enabled=True, serves_roles=("qa",)
+            ),
+            AgentProfileEntry(
+                agent_id="data", role="data", model="m", enabled=True, serves_roles=("data",)
+            ),
+            AgentProfileEntry(
+                agent_id="bob", role="builder", model="m", enabled=True, serves_roles=("builder",)
+            ),
         )
         profile = self._make_profile(agents)
         resp = profile_to_response(profile)

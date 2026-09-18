@@ -63,14 +63,35 @@ def _profile(config_overrides=None):
                 model="qwen3.8:27b",
                 enabled=True,
                 config_overrides=config_overrides or {},
+                serves_roles=("strat",),
             ),
-            AgentProfileEntry(agent_id="neo", role="dev", model="qwen3.8:27b", enabled=True),
-            AgentProfileEntry(agent_id="eve", role="qa", model="qwen3.8:27b", enabled=True),
             AgentProfileEntry(
-                agent_id="data-agent", role="data", model="qwen3.8:27b", enabled=True
+                agent_id="neo", role="dev", model="qwen3.8:27b", enabled=True, serves_roles=("dev",)
             ),
-            AgentProfileEntry(agent_id="max", role="lead", model="qwen3.8:27b", enabled=True),
-            AgentProfileEntry(agent_id="bob", role="builder", model="qwen3.8:27b", enabled=True),
+            AgentProfileEntry(
+                agent_id="eve", role="qa", model="qwen3.8:27b", enabled=True, serves_roles=("qa",)
+            ),
+            AgentProfileEntry(
+                agent_id="data-agent",
+                role="data",
+                model="qwen3.8:27b",
+                enabled=True,
+                serves_roles=("data",),
+            ),
+            AgentProfileEntry(
+                agent_id="max",
+                role="lead",
+                model="qwen3.8:27b",
+                enabled=True,
+                serves_roles=("lead",),
+            ),
+            AgentProfileEntry(
+                agent_id="bob",
+                role="builder",
+                model="qwen3.8:27b",
+                enabled=True,
+                serves_roles=("builder",),
+            ),
         ),
         created_at=NOW,
     )

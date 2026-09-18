@@ -836,7 +836,11 @@ class CorrectionRunner:
         stored_artifacts: list[tuple[str, ArtifactRef]],
         completed_task_ids: list[str],
         plan_delta_refs: list[str],
-        profile: Any = None,
+        # Required since 1.8.1 (SIP-0108 §10i item 1): every step here resolves a role
+        # against this profile, and a missing one used to resolve to a queue named after
+        # the role that no agent consumes. The executor has always passed it; only test
+        # harnesses relied on the default.
+        profile: Any,
         flow_run_id: str | None = None,
         interface_manifest: Any = None,
         artifact_contents: dict[str, str] | None = None,
@@ -1305,7 +1309,11 @@ class CorrectionRunner:
         stored_artifacts: list[tuple[str, ArtifactRef]],
         completed_task_ids: list[str],
         plan_delta_refs: list[str],
-        profile: Any = None,
+        # Required since 1.8.1 (SIP-0108 §10i item 1): every step here resolves a role
+        # against this profile, and a missing one used to resolve to a queue named after
+        # the role that no agent consumes. The executor has always passed it; only test
+        # harnesses relied on the default.
+        profile: Any,
         flow_run_id: str | None = None,
         budget_guard: Callable[[], None] | None = None,
     ) -> TaskResult | None:

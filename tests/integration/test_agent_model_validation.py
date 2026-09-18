@@ -223,6 +223,7 @@ class TestAgentModelValidation:
                         "model": model_name,
                         "config_path": config["config_path"],
                         "raw_config": config["raw_model_config"],
+                        "serves_roles": [config],
                     }
                 )
 
@@ -307,6 +308,7 @@ class TestAgentModelValidation:
                         "model": model_name,
                         "config_path": config["config_path"],
                         "error": error_msg,
+                        "serves_roles": [config],
                     }
                 )
 
@@ -357,6 +359,7 @@ class TestAgentModelValidation:
                         "agent_id": agent_id,
                         "role": config["role"],
                         "config_path": config["config_path"],
+                        "serves_roles": [config],
                     }
                 )
 

@@ -108,11 +108,21 @@ def _make_profile() -> SquadProfile:
         description="Test profile",
         version=1,
         agents=[
-            AgentProfileEntry(agent_id="max", role="lead", model="test", enabled=True),
-            AgentProfileEntry(agent_id="neo", role="dev", model="test", enabled=True),
-            AgentProfileEntry(agent_id="nat", role="strat", model="test", enabled=True),
-            AgentProfileEntry(agent_id="eve", role="qa", model="test", enabled=True),
-            AgentProfileEntry(agent_id="data", role="data", model="test", enabled=True),
+            AgentProfileEntry(
+                agent_id="max", role="lead", model="test", enabled=True, serves_roles=("lead",)
+            ),
+            AgentProfileEntry(
+                agent_id="neo", role="dev", model="test", enabled=True, serves_roles=("dev",)
+            ),
+            AgentProfileEntry(
+                agent_id="nat", role="strat", model="test", enabled=True, serves_roles=("strat",)
+            ),
+            AgentProfileEntry(
+                agent_id="eve", role="qa", model="test", enabled=True, serves_roles=("qa",)
+            ),
+            AgentProfileEntry(
+                agent_id="data", role="data", model="test", enabled=True, serves_roles=("data",)
+            ),
         ],
         created_at=NOW,
     )
@@ -279,10 +289,22 @@ class TestGenerateTaskPlanWithManifest:
             description="Missing QA",
             version=1,
             agents=[
-                AgentProfileEntry(agent_id="max", role="lead", model="test", enabled=True),
-                AgentProfileEntry(agent_id="neo", role="dev", model="test", enabled=True),
-                AgentProfileEntry(agent_id="nat", role="strat", model="test", enabled=True),
-                AgentProfileEntry(agent_id="data", role="data", model="test", enabled=True),
+                AgentProfileEntry(
+                    agent_id="max", role="lead", model="test", enabled=True, serves_roles=("lead",)
+                ),
+                AgentProfileEntry(
+                    agent_id="neo", role="dev", model="test", enabled=True, serves_roles=("dev",)
+                ),
+                AgentProfileEntry(
+                    agent_id="nat",
+                    role="strat",
+                    model="test",
+                    enabled=True,
+                    serves_roles=("strat",),
+                ),
+                AgentProfileEntry(
+                    agent_id="data", role="data", model="test", enabled=True, serves_roles=("data",)
+                ),
             ],
             created_at=NOW,
         )
@@ -450,7 +472,13 @@ def _make_builder_profile() -> SquadProfile:
         version=1,
         agents=[
             *profile.agents,
-            AgentProfileEntry(agent_id="bob", role="builder", model="test", enabled=True),
+            AgentProfileEntry(
+                agent_id="bob",
+                role="builder",
+                model="test",
+                enabled=True,
+                serves_roles=("builder",),
+            ),
         ],
         created_at=NOW,
     )

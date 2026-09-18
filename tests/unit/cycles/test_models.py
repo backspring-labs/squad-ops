@@ -280,7 +280,9 @@ class TestArtifactRef:
 
 class TestAgentProfileEntry:
     def test_default_config_overrides(self):
-        entry = AgentProfileEntry(agent_id="a", role="r", model="m", enabled=True)
+        entry = AgentProfileEntry(
+            agent_id="a", role="r", model="m", enabled=True, serves_roles=("r",)
+        )
         assert entry.config_overrides == {}
 
     def test_immutability(self, sample_agent_entry):

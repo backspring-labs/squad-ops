@@ -74,6 +74,7 @@ def profile_provider(tmp_path):
                                 "role": "lead",
                                 "model": "gpt-4",
                                 "enabled": True,
+                                "serves_roles": ["lead"],
                             }
                         ],
                     }

@@ -468,6 +468,15 @@ class AgentProfileEntry:
     model: str
     enabled: bool
     config_overrides: dict = field(default_factory=dict)
+    #: The step roles this agent serves in this profile (SIP-0108 §10i item 1) — the
+    #: role → agent map, declared and never inferred from a role name. ``role`` is what the
+    #: agent IS (``generalist`` for the Solo arm's Han); this is what it DOES here, and for
+    #: today's squads the two coincide and are both stated.
+    #:
+    #: **Empty is invalid, not "the agent's own role".** Every boundary that authors a
+    #: profile refuses an enabled agent without one; the default exists so a value can be
+    #: constructed and rejected, never so one can be interpreted.
+    serves_roles: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

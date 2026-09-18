@@ -46,16 +46,31 @@ def builder_profile():
         description="6 agents",
         version=1,
         agents=(
-            AgentProfileEntry(agent_id="max", role="lead", model="gpt-4", enabled=True),
-            AgentProfileEntry(agent_id="neo", role="dev", model="gpt-4", enabled=True),
-            AgentProfileEntry(agent_id="nat", role="strat", model="gpt-4", enabled=True),
-            AgentProfileEntry(agent_id="bob", role="builder", model="gpt-4", enabled=True),
-            AgentProfileEntry(agent_id="eve", role="qa", model="gpt-4", enabled=True),
+            AgentProfileEntry(
+                agent_id="max", role="lead", model="gpt-4", enabled=True, serves_roles=("lead",)
+            ),
+            AgentProfileEntry(
+                agent_id="neo", role="dev", model="gpt-4", enabled=True, serves_roles=("dev",)
+            ),
+            AgentProfileEntry(
+                agent_id="nat", role="strat", model="gpt-4", enabled=True, serves_roles=("strat",)
+            ),
+            AgentProfileEntry(
+                agent_id="bob",
+                role="builder",
+                model="gpt-4",
+                enabled=True,
+                serves_roles=("builder",),
+            ),
+            AgentProfileEntry(
+                agent_id="eve", role="qa", model="gpt-4", enabled=True, serves_roles=("qa",)
+            ),
             AgentProfileEntry(
                 agent_id="data-agent",
                 role="data",
                 model="gpt-4",
                 enabled=True,
+                serves_roles=("data",),
             ),
         ),
         created_at=NOW,

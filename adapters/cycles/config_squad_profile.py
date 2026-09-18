@@ -18,6 +18,24 @@ from squadops.ports.cycles.squad_profile import SquadProfilePort
 
 logger = logging.getLogger(__name__)
 
+
+def _require_serves_roles(profile_id: str, agent: dict) -> tuple[str, ...]:
+    """The agent's declared served roles, refused when an enabled agent declares none.
+
+    SIP-0108 §10i item 1: every profile declares its role → agent map. A disabled agent is
+    exempt — it assigns nothing — so a profile may keep a retired member beside the agent
+    that replaced it.
+    """
+    declared = tuple(agent.get("serves_roles") or ())
+    if declared or not agent.get("enabled", True):
+        return declared
+    raise ValueError(
+        f"squad profile {profile_id!r}: enabled agent {agent.get('agent_id')!r} declares no "
+        "`serves_roles`. Every enabled agent declares the step roles it serves; for an agent "
+        f"that serves only its own role write `serves_roles: [{agent.get('role')}]`."
+    )
+
+
 _DEFAULT_YAML_PATH = Path("config/squad-profiles.yaml")
 
 
@@ -50,6 +68,7 @@ class ConfigSquadProfile(SquadProfilePort):
                     model=a["model"],
                     enabled=a.get("enabled", True),
                     config_overrides=a.get("config_overrides", {}),
+                    serves_roles=_require_serves_roles(entry["profile_id"], a),
                 )
                 for a in entry.get("agents", [])
             )

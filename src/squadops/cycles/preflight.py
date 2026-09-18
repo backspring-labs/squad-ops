@@ -31,6 +31,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from squadops.cycles.agent_config import served_roles
 from squadops.cycles.check_registry import get_framework_check
 from squadops.cycles.models import (
     REQUIRED_PLAN_ROLES,
@@ -97,7 +98,7 @@ def required_roles_decision(profile: SquadProfile, config: Mapping[str, Any]) ->
     Emits one ``block`` finding per (workload, missing-role). Never warns (role
     satisfiability is always verifiable from the profile).
     """
-    profile_roles = frozenset(a.role for a in profile.agents if a.enabled)
+    profile_roles = served_roles(profile)
     provided = ", ".join(f"`{r}`" for r in sorted(profile_roles)) or "(none)"
     findings: list[Finding] = []
     for label, required in _required_roles_by_workload(config).items():
