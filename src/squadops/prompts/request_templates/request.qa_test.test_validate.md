@@ -1,6 +1,6 @@
 ---
 template_id: request.qa_test.test_validate
-version: "2"
+version: "3"
 required_variables:
   - prd
   - test_supplement
@@ -25,6 +25,10 @@ entry module (e.g. `from backend.main import app`, `from app.main import app`, o
 suite that re-derives it is rejected by the `harness_boundary` check. Request the fixture
 as a test argument (`def test_x(client): ...`); a pure unit test that needs no application
 access needs no fixture.
+
+That same `conftest.py` clears every scaffold-owned in-memory store **before each test**, so
+every case starts from an empty store whether or not it requests `client`. Do not define your
+own reset fixture and do not call `reset()` yourself: assert the state your case creates.
 
 {{test_supplement}}
 {{prior_outputs}}

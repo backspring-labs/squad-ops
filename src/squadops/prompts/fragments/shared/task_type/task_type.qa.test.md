@@ -1,7 +1,7 @@
 ---
 fragment_id: task_type.qa.test
 layer: task_type
-version: "0.9.24"
+version: "0.9.25"
 roles: ["qa"]
 ---
 # Task: Generate and Execute Tests (qa.test)
@@ -61,9 +61,11 @@ an unavailable library, cover that behavior from the other side of the stack
 - Every test must be order-independent: never rely on state created,
   mutated, or left behind by another test.
 - Application state that lives at module level (in-memory stores, caches,
-  registries) persists across all tests in a session. Reset it in a fixture
-  that runs before each test (e.g. an autouse fixture clearing the store) —
-  a test asserting "empty" must establish empty, not hope to run first.
+  registries) persists across all tests in a session. Where the workspace
+  seeds a harness that clears it before each test, rely on that and add no
+  reset of your own; where it does not, clear it at the start of each case.
+  The workspace's own files say which — read them instead of assuming.
+  A test asserting "empty" must establish empty, not hope to run first.
 
 ## Frontend Tests (when the workspace declares a runner)
 
