@@ -534,6 +534,15 @@ class SetConfig:
     loaded_checks: tuple[LoadedCheck, ...] = ()
     records_dir: str = ""
     pre_registration: str = ""
+    #: The comparison arm this set is (SIP-0108 §4.4, §10h): the name a pre-registration's
+    #: comparison section pairs by. Empty means the set is not part of a comparison — every
+    #: set before 1.8.1 is one arm by construction, and saying so is not the same as
+    #: declaring one.
+    #:
+    #: The arm's IDENTITY is squad profile × request profile × model, which this config
+    #: already carries in ``squad_profile`` and ``request_profile``; the declaration names
+    #: it so two configs can be compared and so a record says which arm produced it.
+    arm: str = ""
 
     @property
     def records_path(self) -> Path:
@@ -614,6 +623,7 @@ def load_set_config(path: Path) -> SetConfig:
         loaded_checks=tuple(checks),
         records_dir=str(raw.get("records_dir") or ""),
         pre_registration=str(raw.get("pre_registration") or ""),
+        arm=str(raw.get("arm") or ""),
     )
 
 
@@ -894,6 +904,100 @@ def preflight(cfg: SetConfig, *, counting: bool, identity: dict[str, str]) -> li
             )
     else:
         log(f"pinning HEAD at {head} — §7 binds from here")
+    return problems
+
+
+def arm_substrate(cfg: SetConfig) -> dict:
+    """What a comparison arm holds equal, read from the deploy rather than declared.
+
+    SIP-0108 §4.4: the arms differ ONLY by the reasoning organization. Everything else is
+    held equal, and "the comparison refuses to run if either arm's effective grants for a task
+    type differ" — so the equality is checked, not asserted in prose.
+
+    Read through the API and the framework's own declarations, not from this tree's config
+    files: the arms run on a deploy, and a comparison that compared two YAML files would pass
+    while the deploy served something else.
+    """
+    from squadops.capabilities.reasoning_policy import REASONING_BY_TASK_TYPE
+
+    login()
+    served = json.loads(
+        sh(f"{SQUADOPS} --format json squad-profiles show {shlex.quote(cfg.squad_profile)}")
+    )
+    caps: dict[str, int] = {}
+    for agent in served.get("agents", []):
+        overrides = agent.get("config_overrides") or {}
+        for role in agent.get("serves_roles") or [agent.get("role")]:
+            if "max_completion_tokens" in overrides:
+                caps[str(role)] = int(overrides["max_completion_tokens"])
+    return {
+        "model": sorted({str(a.get("model")) for a in served.get("agents", [])}),
+        # Per-task-type reasoning is declared by the framework, so it is equal by
+        # construction — recorded so a record can show that rather than assume it.
+        "reasoning_by_task_type": dict(sorted(REASONING_BY_TASK_TYPE.items())),
+        # Per-call caps are NOT task-type scoped (§4.4): they are agent-level overrides, so
+        # a one-agent arm must reproduce every one the squad's members carry. Keyed by the
+        # ROLE the override applies to, which is how the two arms become comparable.
+        "completion_caps_by_role": dict(sorted(caps.items())),
+        "request_profile": cfg.request_profile,
+    }
+
+
+def arm_substrate_problems(one: SetConfig, other: SetConfig) -> list[str]:
+    """Refuse a comparison whose arms differ by anything but the reasoning organization.
+
+    Each difference is named with both readings: a comparison that fails closed with "the
+    substrate differs" tells the reader nothing about which half to fix.
+    """
+    problems: list[str] = []
+    a, b = arm_substrate(one), arm_substrate(other)
+    if a["request_profile"] != b["request_profile"] and one.arm == other.arm:
+        problems.append("§4.4: two configs declare the same arm with different request profiles")
+    for key, label in (
+        ("model", "model and serving"),
+        ("reasoning_by_task_type", "per-task-type reasoning level"),
+        ("completion_caps_by_role", "per-call completion cap"),
+    ):
+        if a[key] != b[key]:
+            problems.append(
+                f"§4.4 SUBSTRATE DIFFERS on {label}: {one.arm or one.name} reads {a[key]}, "
+                f"{other.arm or other.name} reads {b[key]}. The arms may differ only by the "
+                "reasoning organization; anything else makes the comparison unreadable."
+            )
+    return problems
+
+
+#: What a Solo roll must NOT have produced (SIP-0108 §10i item 6): "Han never saw it" as a
+#: fact the record proves, rather than a property of a profile nobody re-read.
+_SOLO_FORBIDDEN_ARTIFACTS = (
+    "failure_analysis.md",
+    "correction_decision.md",
+)
+
+
+def solo_absence_problems(cfg: SetConfig, cycle_id: str, run_id: str) -> list[str]:
+    """The per-roll preflight for a solo arm — the three absences, read from the vault.
+
+    §10i item 6. A framing document, a failure analysis or a correction decision stored for a
+    Solo run means the arm did not run without them, whatever the profile declared. The record
+    proves the absence rather than inheriting it from a config.
+    """
+    problems: list[str] = []
+    for art in artifact_dirs(cfg, cycle_id, run_id):
+        m = _metadata(art)
+        if not m:
+            continue
+        filename = str(m.get("filename") or "")
+        if filename in _SOLO_FORBIDDEN_ARTIFACTS:
+            problems.append(
+                f"§10i: solo arm stored {filename} ({art.name}) — the arm is defined by running "
+                "correction without the analyzer and the lead, so this roll did not run the arm"
+            )
+        if str((m.get("metadata") or {}).get("producing_task_type", "")).startswith("governance."):
+            problems.append(
+                f"§10i: solo arm stored a governance artifact ({filename}, {art.name}) — "
+                "framing roles are the squad arm's, not this one's"
+            )
     return problems
 
 
