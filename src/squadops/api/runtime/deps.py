@@ -8,6 +8,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from squadops import __version__ as SQUADOPS_VERSION
+from squadops._version import resolve_git_sha
+from squadops.cycles.cycle_assessment import AssessorIdentity, CycleAssessment
 from squadops.ports.auth.authentication import AuthPort
 from squadops.ports.auth.authorization import AuthorizationPort
 from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
@@ -143,6 +146,24 @@ def get_artifact_vault() -> ArtifactVaultPort:
     if _artifact_vault is None:
         raise RuntimeError("ArtifactVaultPort not configured")
     return _artifact_vault
+
+
+async def assess_cycle_from_stores(cycle_id: str) -> CycleAssessment:
+    """Compute a cycle's assessment from the wired registry and vault (SIP-0108 §4.1 (a)).
+
+    Composed here because assembling the evidence is an adapter concern and only a
+    composition root may import one (#154). The projection itself is pure and lives in
+    ``squadops.cycles.cycle_assessment``; nothing is stored, and the assessor identity is
+    this deploy's, the same pair a cycle records at creation (#80).
+    """
+    from adapters.cycles.cycle_evidence import assess_cycle
+
+    return await assess_cycle(
+        get_cycle_registry(),
+        get_artifact_vault(),
+        cycle_id,
+        assessor=AssessorIdentity(framework_version=SQUADOPS_VERSION, git_sha=resolve_git_sha()),
+    )
 
 
 def get_flow_executor() -> FlowExecutionPort:

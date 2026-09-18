@@ -277,6 +277,69 @@ class CycleCreateResponse(BaseModel):
     warnings: list[PreflightWarningDTO] = Field(default_factory=list)
 
 
+class EvidenceRefDTO(BaseModel):
+    """One evidence reference an indicator read (SIP-0108 §3.3)."""
+
+    kind: str
+    id: str
+
+
+class IndicatorDTO(BaseModel):
+    """One indicator in the three-state vocabulary (#1445)."""
+
+    name: str
+    state: str
+    value: Any = None
+    reason: str | None = None
+    refs: list[EvidenceRefDTO] = Field(default_factory=list)
+
+
+class ContributionDTO(BaseModel):
+    """One contributing disposition, citing the fact it came from (SIP-0108 §4.2)."""
+
+    attribution: str
+    source: str
+    run_id: str
+    task_id: str
+    round_index: int | None = None
+    check_id: str | None = None
+    value: str
+
+
+class AttributionReadingDTO(BaseModel):
+    """The attribution, its state, and what the stores did not hold for it."""
+
+    state: str
+    primary: str | None = None
+    contributing: list[ContributionDTO] = Field(default_factory=list)
+    terminal_kind: str | None = None
+    registry_version: int | None = None
+    reason: str | None = None
+    unrecorded: list[str] = Field(default_factory=list)
+    refs: list[EvidenceRefDTO] = Field(default_factory=list)
+
+
+class CycleAssessmentResponse(BaseModel):
+    """A cycle's assessment, computed on read (SIP-0108 §4.1 (a)).
+
+    Four dimensions of three-state indicators, the attribution, and the identity of what
+    produced them. Nothing here is stored: the assessment is a projection over the durable
+    record, recomputed each time it is asked for.
+    """
+
+    cycle_id: str
+    outcome: list[IndicatorDTO]
+    quality: list[IndicatorDTO]
+    coordination: list[IndicatorDTO]
+    efficiency: list[IndicatorDTO]
+    attribution: AttributionReadingDTO
+    assessment_version: int
+    attribution_registry_version: int
+    evidence_identity: str
+    assessor_framework_version: str
+    assessor_git_sha: str | None = None
+
+
 class AgentProfileEntryResponse(BaseModel):
     agent_id: str
     role: str
