@@ -352,6 +352,12 @@ class AgentProfileEntryResponse(BaseModel):
     model: str
     enabled: bool
     config_overrides: dict = Field(default_factory=dict)
+    #: The declared role → agent map (SIP-0108 §10i item 1). On the wire because it is
+    #: execution-determining and part of the profile's snapshot identity: the verification
+    #: driver rebuilds a profile from this response and recomputes that identity before it
+    #: will launch a counting roll, so a reader that omits the field computes a different
+    #: hash from the runtime and every roll refuses to start.
+    serves_roles: list[str] = Field(default_factory=list)
 
 
 class SquadProfileResponse(BaseModel):

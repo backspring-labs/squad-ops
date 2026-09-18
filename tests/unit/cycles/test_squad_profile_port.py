@@ -140,8 +140,14 @@ async def test_every_seeded_profile_keeps_its_snapshot_hash_through_the_postgres
     """#1568 moves the deploy's squad profiles to Postgres, seeded from the YAML. Bug caught: a
     field the row drops or re-types (an override's int read back as a string, an agent's enabled
     flag lost), so a seeded profile hashes differently from the same YAML profile and every
-    counted roll's squad snapshot pin moves with no change to the squad. ``full-38`` hashes to
-    1.7.5's pin, ``575707c58536cf3b``, on both sides."""
+    counted roll's squad snapshot pin moves with no change to the squad.
+
+    Since 1.8.1 the round trip also carries ``serves_roles``, which the snapshot payload covers
+    because it decides which agent runs each step (SIP-0108 §10i item 1). That makes this the
+    shape check on migration 1510's output too: a backfilled row and the YAML profile it was
+    seeded from must still hash alike. ``full-38`` reads ``78955d7988f21eec`` under the current
+    formula; refs stamped before it were taken over a payload without the field and are not
+    reproducible by it."""
     import json
 
     from adapters.cycles.config_squad_profile import ConfigSquadProfile
@@ -163,4 +169,5 @@ async def test_every_seeded_profile_keeps_its_snapshot_hash_through_the_postgres
         seeded = adapter._row_to_profile(row)
 
         assert compute_profile_snapshot_hash(seeded) == compute_profile_snapshot_hash(profile)
+        assert seeded.agents[0].serves_roles == profile.agents[0].serves_roles
     assert "full-38" in {p.profile_id for p in profiles}

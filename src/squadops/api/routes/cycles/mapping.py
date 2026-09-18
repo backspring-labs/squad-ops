@@ -286,6 +286,7 @@ def profile_to_response(
             AgentProfileEntryResponse(
                 agent_id=a.agent_id,
                 role=a.role,
+                serves_roles=list(a.serves_roles),
                 role_label=get_role_label(a.role),
                 display_name=a.agent_id.title(),
                 model=a.model,

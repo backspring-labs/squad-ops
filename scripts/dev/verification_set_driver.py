@@ -919,6 +919,11 @@ def live_squad_snapshot(profile_id: str) -> str:
                 model=a["model"],
                 enabled=bool(a["enabled"]),
                 config_overrides=dict(a.get("config_overrides") or {}),
+                # The declared role → agent map is part of the snapshot identity since
+                # 1.8.1 (SIP-0108 §10i item 1). Omitting it here would hash an empty map
+                # against the runtime's real one, and every counting roll would refuse to
+                # launch reading "SQUAD PROFILE CHANGED" on a profile nobody touched.
+                serves_roles=tuple(a.get("serves_roles") or ()),
             )
             for a in data["agents"]
         ),

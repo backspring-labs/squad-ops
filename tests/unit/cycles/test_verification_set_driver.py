@@ -3132,8 +3132,16 @@ class TestTheSquadSnapshotIsPinnedBeforeLaunch:
     def test_the_live_snapshot_is_the_hash_the_runtime_stamps_on_a_cycle(self, driver, monkeypatch):
         """Wiring: ``live_squad_snapshot`` over the JSON the API serves for a profile. Bug
         caught: the driver hashing a different shape than the runtime does (an override dropped,
-        the version read as a string), so every roll is refused on an unchanged squad or an
-        edited one launches. On ``full-38`` it reads 1.7.5's pin."""
+        the version read as a string, or — since 1.8.1 — the declared role map absent from the
+        response DTO or the reconstruction), so every roll is refused on an unchanged squad or
+        an edited one launches.
+
+        The pin moved at 1.8.1 (SIP-0108 §10i item 1): the snapshot payload now covers
+        ``serves_roles``, which decides which agent runs each step, so ``full-38`` reads
+        ``78955d79`` where it read 1.7.5's ``575707c5``. Refs stamped under the older formula
+        are not reproducible by it and are not recomputed — a set pins the ref its own deploy
+        stamps.
+        """
         import asyncio
 
         from adapters.cycles.config_squad_profile import ConfigSquadProfile
@@ -3148,7 +3156,73 @@ class TestTheSquadSnapshotIsPinnedBeforeLaunch:
         live = driver.live_squad_snapshot("full-38")
 
         assert live == compute_profile_snapshot_hash(profile)
-        assert live.startswith("575707c58536cf3b")
+        assert live.startswith("78955d7988f21eec")
+
+    def test_a_changed_role_map_moves_both_readings_to_the_same_new_ref(self, driver, monkeypatch):
+        """The negative side of the seam. Bug caught: the routing field entering the runtime
+        hash without reaching the response DTO or the driver's reconstruction — the two
+        readings then disagree on every profile and a counting set cannot launch, reading
+        "SQUAD PROFILE CHANGED" on a squad nobody touched.
+
+        Changing ONLY the declared map must move the runtime's reading and the driver's
+        reading together, to the same value.
+        """
+        import asyncio
+        import dataclasses
+
+        from adapters.cycles.config_squad_profile import ConfigSquadProfile
+        from squadops.api.routes.cycles.mapping import profile_to_response
+        from squadops.cycles.lifecycle import compute_profile_snapshot_hash
+
+        profile = asyncio.run(ConfigSquadProfile().get_profile("full-38"))
+        widened = dataclasses.replace(
+            profile,
+            agents=(
+                dataclasses.replace(profile.agents[0], serves_roles=("lead", "data")),
+                *profile.agents[1:],
+            ),
+        )
+        monkeypatch.setattr(driver, "login", lambda: None)
+
+        monkeypatch.setattr(
+            driver, "sh", lambda cmd, check=True: profile_to_response(widened).model_dump_json()
+        )
+        live_widened = driver.live_squad_snapshot("full-38")
+
+        assert live_widened == compute_profile_snapshot_hash(widened)
+        assert live_widened != compute_profile_snapshot_hash(profile)
+
+    def test_the_same_map_written_in_another_order_is_the_same_squad(self, driver, monkeypatch):
+        """Role service is a set, so the payload sorts it. Bug caught: an author reordering a
+        declaration voids a frozen set's comparability for no reason — the squad is identical."""
+        import asyncio
+        import dataclasses
+
+        from adapters.cycles.config_squad_profile import ConfigSquadProfile
+        from squadops.api.routes.cycles.mapping import profile_to_response
+        from squadops.cycles.lifecycle import compute_profile_snapshot_hash
+
+        profile = asyncio.run(ConfigSquadProfile().get_profile("full-38"))
+        multi = dataclasses.replace(
+            profile,
+            agents=(
+                dataclasses.replace(profile.agents[0], serves_roles=("lead", "data")),
+                *profile.agents[1:],
+            ),
+        )
+        reordered = dataclasses.replace(
+            multi,
+            agents=(
+                dataclasses.replace(multi.agents[0], serves_roles=("data", "lead")),
+                *multi.agents[1:],
+            ),
+        )
+        monkeypatch.setattr(driver, "login", lambda: None)
+        monkeypatch.setattr(
+            driver, "sh", lambda cmd, check=True: profile_to_response(reordered).model_dump_json()
+        )
+
+        assert driver.live_squad_snapshot("full-38") == compute_profile_snapshot_hash(multi)
 
     def test_the_launch_preflight_carries_the_refusal_and_a_shakeout_does_not(
         self, driver, tmp_path, monkeypatch
