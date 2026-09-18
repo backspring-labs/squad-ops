@@ -102,8 +102,8 @@ class TestValidateConfigOverrides:
 class TestValidateAgentEntries:
     def test_valid_entries(self):
         agents = [
-            {"agent_id": "neo", "role": "dev", "model": "qwen2.5:7b"},
-            {"agent_id": "eve", "role": "qa", "model": "qwen2.5:7b"},
+            {"agent_id": "neo", "role": "dev", "model": "qwen2.5:7b", "serves_roles": ["dev"]},
+            {"agent_id": "eve", "role": "qa", "model": "qwen2.5:7b", "serves_roles": ["qa"]},
         ]
         assert validate_agent_entries(agents) == []
 
@@ -112,12 +112,25 @@ class TestValidateAgentEntries:
         role has no defined winner — the resolver silently takes whichever the profile
         listed first, so which agent runs the step depends on YAML ordering."""
         agents = [
-            {"agent_id": "neo", "role": "dev", "model": "m"},
+            {"agent_id": "neo", "role": "dev", "model": "m", "serves_roles": ["dev"]},
             {"agent_id": "han", "role": "generalist", "model": "m", "serves_roles": ["dev", "qa"]},
         ]
         errors = validate_agent_entries(agents)
         assert len(errors) == 1
         assert "role 'dev' is already served by 'neo'" in errors[0]
+
+    def test_an_enabled_agent_declaring_nothing_is_refused_at_authoring(self):
+        """An empty declaration is invalid, not "the agent's own role".
+
+        Bug this catches: reading an omission as the identity map is a second way to express
+        one fact at the seam the map exists to make explicit — the same shape as the resolver
+        fallback this line deleted. The message tells the author exactly what to write.
+        """
+        agents = [{"agent_id": "neo", "role": "dev", "model": "m"}]
+        errors = validate_agent_entries(agents)
+        assert len(errors) == 1
+        assert "`serves_roles` must declare at least one role" in errors[0]
+        assert "[dev]" in errors[0]
 
     def test_a_disabled_agent_does_not_claim_a_role(self):
         """A profile may keep a disabled member beside the agent that replaces it."""
@@ -128,19 +141,19 @@ class TestValidateAgentEntries:
         assert validate_agent_entries(agents) == []
 
     def test_empty_agent_id(self):
-        agents = [{"agent_id": "", "role": "dev", "model": "qwen2.5:7b"}]
+        agents = [{"agent_id": "", "role": "dev", "model": "qwen2.5:7b", "serves_roles": ["dev"]}]
         errors = validate_agent_entries(agents)
         assert any("agent_id must not be empty" in e for e in errors)
 
     def test_empty_model(self):
-        agents = [{"agent_id": "neo", "role": "dev", "model": ""}]
+        agents = [{"agent_id": "neo", "role": "dev", "model": "", "serves_roles": ["dev"]}]
         errors = validate_agent_entries(agents)
         assert any("model must not be empty" in e for e in errors)
 
     def test_duplicate_agent_ids(self):
         agents = [
-            {"agent_id": "neo", "role": "dev", "model": "qwen2.5:7b"},
-            {"agent_id": "neo", "role": "qa", "model": "qwen2.5:7b"},
+            {"agent_id": "neo", "role": "dev", "model": "qwen2.5:7b", "serves_roles": ["dev"]},
+            {"agent_id": "neo", "role": "qa", "model": "qwen2.5:7b", "serves_roles": ["qa"]},
         ]
         errors = validate_agent_entries(agents)
         assert any("duplicate agent_id" in e for e in errors)
@@ -152,6 +165,7 @@ class TestValidateAgentEntries:
                 "role": "dev",
                 "model": "qwen2.5:7b",
                 "config_overrides": {"bad_key": 1},
+                "serves_roles": ["dev"],
             }
         ]
         errors = validate_agent_entries(agents)
@@ -172,6 +186,7 @@ class TestValidateAgentEntries:
                 "role": "dev",
                 "model": "qwen3.8:27b",
                 "config_overrides": {"temperature": 0.7, "top_p": 0.8},
+                "serves_roles": ["dev"],
             }
         ]
         assert validate_agent_entries(agents) == []
@@ -186,6 +201,7 @@ class TestValidateAgentEntries:
                 "role": "dev",
                 "model": "qwen3.6:27b",
                 "config_overrides": {"reasoning": bad},
+                "serves_roles": ["dev"],
             }
         ]
         errors = validate_agent_entries(agents)
@@ -202,10 +218,13 @@ class TestValidateAgentEntries:
                 "role": "dev",
                 "model": "qwen3.6:27b",
                 "config_overrides": {"reasoning": level},
+                "serves_roles": ["dev"],
             }
         ]
         assert validate_agent_entries(agents) == []
 
     def test_missing_fields_use_defaults(self):
-        agents = [{"agent_id": "neo", "role": "dev", "model": "qwen2.5:7b"}]
+        agents = [
+            {"agent_id": "neo", "role": "dev", "model": "qwen2.5:7b", "serves_roles": ["dev"]}
+        ]
         assert validate_agent_entries(agents) == []

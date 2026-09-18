@@ -36,12 +36,24 @@ _HARNESS_PROFILE = SquadProfile(
     description="All",
     version=1,
     agents=(
-        AgentProfileEntry(agent_id="nat", role="strat", model="gpt-4", enabled=True),
-        AgentProfileEntry(agent_id="neo", role="dev", model="gpt-4", enabled=True),
-        AgentProfileEntry(agent_id="eve", role="qa", model="gpt-4", enabled=True),
-        AgentProfileEntry(agent_id="data-agent", role="data", model="gpt-4", enabled=True),
-        AgentProfileEntry(agent_id="max", role="lead", model="gpt-4", enabled=True),
-        AgentProfileEntry(agent_id="bob", role="builder", model="gpt-4", enabled=True),
+        AgentProfileEntry(
+            agent_id="nat", role="strat", model="gpt-4", enabled=True, serves_roles=("strat",)
+        ),
+        AgentProfileEntry(
+            agent_id="neo", role="dev", model="gpt-4", enabled=True, serves_roles=("dev",)
+        ),
+        AgentProfileEntry(
+            agent_id="eve", role="qa", model="gpt-4", enabled=True, serves_roles=("qa",)
+        ),
+        AgentProfileEntry(
+            agent_id="data-agent", role="data", model="gpt-4", enabled=True, serves_roles=("data",)
+        ),
+        AgentProfileEntry(
+            agent_id="max", role="lead", model="gpt-4", enabled=True, serves_roles=("lead",)
+        ),
+        AgentProfileEntry(
+            agent_id="bob", role="builder", model="gpt-4", enabled=True, serves_roles=("builder",)
+        ),
     ),
     created_at=NOW,
 )
@@ -450,6 +462,7 @@ class TestCorrectionIsHandedTheDispatchedEnvelope:
 
         with pytest.raises(RuntimeError, match="stop here"):
             await ex._handle_task_outcome(
+                profile=_HARNESS_PROFILE,
                 result=failed,
                 envelope=failed_envelope,
                 enriched_envelope=enriched,
@@ -536,6 +549,7 @@ class TestTheVerifierIsHandedTheRepairsRows:
         )
 
         action = await ex._handle_task_outcome(
+            profile=_HARNESS_PROFILE,
             result=failed,
             envelope=failed_envelope,
             enriched_envelope=failed_envelope,

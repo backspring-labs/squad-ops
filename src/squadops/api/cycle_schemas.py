@@ -92,7 +92,9 @@ class AgentProfileEntryRequest(BaseModel):
     model: str
     enabled: bool = True
     config_overrides: dict = Field(default_factory=dict)
-    #: Step roles this agent serves; empty means exactly ``role`` (SIP-0108 §10i).
+    #: The step roles this agent serves (SIP-0108 §10i item 1) — declared, never inferred.
+    #: ``role`` is what the agent IS; this is what it DOES in this profile. An enabled agent
+    #: that serves only its own role declares ``[<role>]``; a disabled one may declare none.
     serves_roles: list[str] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid")

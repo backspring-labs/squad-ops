@@ -25,12 +25,15 @@ pytestmark = [pytest.mark.domain_orchestration]
 class _ProfileStub:
     profile_id = "stub"
     agents = (
-        AgentProfileEntry(agent_id="strat-a", role="strat", model="m", enabled=True),
+        AgentProfileEntry(
+            agent_id="strat-a", role="strat", model="m", enabled=True, serves_roles=("strat",)
+        ),
         AgentProfileEntry(
             agent_id="data-disabled",
             role="data",
             model="m-data",
             enabled=False,
+            serves_roles=("data",),
         ),
     )
 
@@ -137,7 +140,9 @@ class TestServedRoles:
     def test_an_empty_declaration_is_the_identity_map(self):
         """A present-but-empty declaration means the same as none — otherwise every profile
         on main would have to be rewritten to keep working."""
-        entry = AgentProfileEntry(agent_id="neo", role="dev", model="m", enabled=True)
+        entry = AgentProfileEntry(
+            agent_id="neo", role="dev", model="m", enabled=True, serves_roles=("dev",)
+        )
         assert roles_served(entry) == ("dev",)
         assert serves_role(_ProfileStub(), "strat") is True
         assert serves_role(_ProfileStub(), "data") is False

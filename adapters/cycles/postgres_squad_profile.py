@@ -23,6 +23,24 @@ from squadops.ports.cycles.squad_profile import SquadProfilePort
 logger = logging.getLogger(__name__)
 
 
+def _require_serves_roles(profile_id: str, agent: dict) -> tuple[str, ...]:
+    """The stored agent's declared served roles, refused when an enabled agent has none.
+
+    SIP-0108 §10i item 1. Rows seeded before 1.8.1 carry no key and are backfilled by
+    ``infra/migrations/1510_squad_profile_serves_roles.sql``, which the runtime API applies at
+    start-up — so a row reaching here without one means the migration did not run, which is a
+    deployment fault to read rather than a shape to interpret.
+    """
+    declared = tuple(agent.get("serves_roles") or ())
+    if declared or not agent.get("enabled", True):
+        return declared
+    raise ValueError(
+        f"squad profile {profile_id!r}: stored agent {agent.get('agent_id')!r} has no "
+        "`serves_roles`. Migration 1510_squad_profile_serves_roles.sql backfills it from "
+        "`role`; the runtime API applies migrations at start-up."
+    )
+
+
 class PostgresSquadProfile(SquadProfilePort):
     """Postgres-backed SquadProfilePort implementation."""
 
@@ -231,8 +249,7 @@ class PostgresSquadProfile(SquadProfilePort):
                 model=a["model"],
                 enabled=a.get("enabled", True),
                 config_overrides=a.get("config_overrides", {}),
-                # Rows seeded before 1.8.1 carry no key: the identity map, as before.
-                serves_roles=tuple(a.get("serves_roles", ()) or ()),
+                serves_roles=_require_serves_roles(row["profile_id"], a),
             )
             for a in agents_data
         )

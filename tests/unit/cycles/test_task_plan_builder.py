@@ -39,12 +39,32 @@ def profile_with_builder():
         description="6 agents",
         version=1,
         agents=(
-            AgentProfileEntry(agent_id="nat", role="strat", model="gpt-4", enabled=True),
-            AgentProfileEntry(agent_id="neo", role="dev", model="gpt-4", enabled=True),
-            AgentProfileEntry(agent_id="eve", role="qa", model="gpt-4", enabled=True),
-            AgentProfileEntry(agent_id="data-agent", role="data", model="gpt-4", enabled=True),
-            AgentProfileEntry(agent_id="max", role="lead", model="gpt-4", enabled=True),
-            AgentProfileEntry(agent_id="bob", role="builder", model="gpt-4", enabled=True),
+            AgentProfileEntry(
+                agent_id="nat", role="strat", model="gpt-4", enabled=True, serves_roles=("strat",)
+            ),
+            AgentProfileEntry(
+                agent_id="neo", role="dev", model="gpt-4", enabled=True, serves_roles=("dev",)
+            ),
+            AgentProfileEntry(
+                agent_id="eve", role="qa", model="gpt-4", enabled=True, serves_roles=("qa",)
+            ),
+            AgentProfileEntry(
+                agent_id="data-agent",
+                role="data",
+                model="gpt-4",
+                enabled=True,
+                serves_roles=("data",),
+            ),
+            AgentProfileEntry(
+                agent_id="max", role="lead", model="gpt-4", enabled=True, serves_roles=("lead",)
+            ),
+            AgentProfileEntry(
+                agent_id="bob",
+                role="builder",
+                model="gpt-4",
+                enabled=True,
+                serves_roles=("builder",),
+            ),
         ),
         created_at=NOW,
     )
@@ -58,11 +78,25 @@ def profile_without_builder():
         description="5 agents",
         version=1,
         agents=(
-            AgentProfileEntry(agent_id="nat", role="strat", model="gpt-4", enabled=True),
-            AgentProfileEntry(agent_id="neo", role="dev", model="gpt-4", enabled=True),
-            AgentProfileEntry(agent_id="eve", role="qa", model="gpt-4", enabled=True),
-            AgentProfileEntry(agent_id="data-agent", role="data", model="gpt-4", enabled=True),
-            AgentProfileEntry(agent_id="max", role="lead", model="gpt-4", enabled=True),
+            AgentProfileEntry(
+                agent_id="nat", role="strat", model="gpt-4", enabled=True, serves_roles=("strat",)
+            ),
+            AgentProfileEntry(
+                agent_id="neo", role="dev", model="gpt-4", enabled=True, serves_roles=("dev",)
+            ),
+            AgentProfileEntry(
+                agent_id="eve", role="qa", model="gpt-4", enabled=True, serves_roles=("qa",)
+            ),
+            AgentProfileEntry(
+                agent_id="data-agent",
+                role="data",
+                model="gpt-4",
+                enabled=True,
+                serves_roles=("data",),
+            ),
+            AgentProfileEntry(
+                agent_id="max", role="lead", model="gpt-4", enabled=True, serves_roles=("lead",)
+            ),
         ),
         created_at=NOW,
     )
@@ -108,6 +142,96 @@ def _make_cycle(applied_defaults: dict) -> Cycle:
 # ---------------------------------------------------------------------------
 
 
+class TestOneAgentServesEveryPlannedRole:
+    """The wiring seam the plan names (`docs/plans/1-8-1-plan.md` §3.2 step 4), entered at
+    ``generate_task_plan`` — the call the executor makes to build a run's envelopes
+    (`adapters/cycles/dispatched_flow_executor.py:631`).
+
+    Bug this catches: a resolver that reads one role per agent leaves every step of a
+    one-agent profile unresolved. Before 1.8.1 that produced an agent id equal to the role —
+    a queue no agent consumes — so the run dispatched into silence and waited out its budget.
+    A test that hands the resolver a role proves the resolver; this proves the wiring.
+    """
+
+    @pytest.fixture
+    def solo_profile(self):
+        return SquadProfile(
+            profile_id="solo",
+            name="Solo",
+            description="One generalist serving every step role",
+            version=1,
+            agents=(
+                AgentProfileEntry(
+                    agent_id="han",
+                    role="generalist",
+                    model="qwen3.8:27b",
+                    enabled=True,
+                    config_overrides={"max_completion_tokens": 12288},
+                    serves_roles=("lead", "strat", "dev", "qa", "data", "builder"),
+                ),
+            ),
+            created_at=NOW,
+        )
+
+    def test_every_envelope_of_a_build_run_is_dispatched_to_the_one_agent(self, run, solo_profile):
+        cycle = _make_cycle({"build_tasks": True})
+
+        envelopes = generate_task_plan(cycle, run, solo_profile)
+
+        assert envelopes, "the plan produced no steps to dispatch"
+        assert {e.agent_id for e in envelopes} == {"han"}
+
+    def test_the_declared_agents_model_and_overrides_ride_every_envelope(self, run, solo_profile):
+        """#110: without the profile's model the handler silently falls back to the
+        container's instance default, so a one-agent profile would run its qa step on
+        whatever image happened to answer."""
+        cycle = _make_cycle({"build_tasks": True})
+
+        envelopes = generate_task_plan(cycle, run, solo_profile)
+
+        assert {e.inputs.get("agent_model") for e in envelopes} == {"qwen3.8:27b"}
+        assert all(
+            e.inputs.get("agent_config_overrides", {}).get("max_completion_tokens") == 12288
+            for e in envelopes
+        )
+
+    def test_a_planned_role_the_profile_does_not_declare_is_refused_by_name(self, run):
+        """The declaration is the whole map: a role left out is refused before any envelope
+        exists, naming the profile and every missing role, instead of dispatching to a queue
+        named for the role and letting the run time out.
+
+        The refusal lands at ``task_plan``'s required-roles check, which reads the declared
+        map through ``served_roles`` — so the check that already existed now sees a one-agent
+        profile correctly instead of seeing only ``generalist``.
+        """
+        partial = SquadProfile(
+            profile_id="solo-partial",
+            name="Solo",
+            description="",
+            version=1,
+            agents=(
+                AgentProfileEntry(
+                    agent_id="han",
+                    role="generalist",
+                    model="m",
+                    enabled=True,
+                    serves_roles=("dev",),
+                ),
+            ),
+            created_at=NOW,
+        )
+        cycle = _make_cycle({"build_tasks": True})
+
+        with pytest.raises(CycleError) as excinfo:
+            generate_task_plan(cycle, run, partial)
+
+        message = str(excinfo.value)
+        assert "solo-partial" in message
+        assert "qa" in message
+        # Every missing role, not the first — the author fixes the profile in one pass.
+        assert "lead" in message
+
+
 class TestHasBuilderRole:
     def test_detects_builder_present(self, profile_with_builder):
         assert _has_builder_role(profile_with_builder) is True
@@ -122,7 +246,13 @@ class TestHasBuilderRole:
             description="Test",
             version=1,
             agents=(
-                AgentProfileEntry(agent_id="bob", role="builder", model="gpt-4", enabled=False),
+                AgentProfileEntry(
+                    agent_id="bob",
+                    role="builder",
+                    model="gpt-4",
+                    enabled=False,
+                    serves_roles=("builder",),
+                ),
             ),
             created_at=NOW,
         )

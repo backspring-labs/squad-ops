@@ -480,8 +480,16 @@ class TestBuildOnlyValidation:
                     description="",
                     version=1,
                     agents=(
-                        AgentProfileEntry(agent_id="neo", role="dev", model="m", enabled=True),
-                        AgentProfileEntry(agent_id="eve", role="qa", model="m", enabled=True),
+                        AgentProfileEntry(
+                            agent_id="neo",
+                            role="dev",
+                            model="m",
+                            enabled=True,
+                            serves_roles=("dev",),
+                        ),
+                        AgentProfileEntry(
+                            agent_id="eve", role="qa", model="m", enabled=True, serves_roles=("qa",)
+                        ),
                     ),
                     created_at=NOW,
                 ),
@@ -601,8 +609,16 @@ class TestBuildOnlySeeding:
                     description="",
                     version=1,
                     agents=(
-                        AgentProfileEntry(agent_id="neo", role="dev", model="m", enabled=True),
-                        AgentProfileEntry(agent_id="eve", role="qa", model="m", enabled=True),
+                        AgentProfileEntry(
+                            agent_id="neo",
+                            role="dev",
+                            model="m",
+                            enabled=True,
+                            serves_roles=("dev",),
+                        ),
+                        AgentProfileEntry(
+                            agent_id="eve", role="qa", model="m", enabled=True, serves_roles=("qa",)
+                        ),
                     ),
                     created_at=NOW,
                 ),
@@ -665,9 +681,23 @@ class TestBuilderDeliverableCompleteness:
                     description="",
                     version=1,
                     agents=(
-                        AgentProfileEntry(agent_id="neo", role="dev", model="m", enabled=True),
-                        AgentProfileEntry(agent_id="bob", role="builder", model="m", enabled=True),
-                        AgentProfileEntry(agent_id="eve", role="qa", model="m", enabled=True),
+                        AgentProfileEntry(
+                            agent_id="neo",
+                            role="dev",
+                            model="m",
+                            enabled=True,
+                            serves_roles=("dev",),
+                        ),
+                        AgentProfileEntry(
+                            agent_id="bob",
+                            role="builder",
+                            model="m",
+                            enabled=True,
+                            serves_roles=("builder",),
+                        ),
+                        AgentProfileEntry(
+                            agent_id="eve", role="qa", model="m", enabled=True, serves_roles=("qa",)
+                        ),
                     ),
                     created_at=NOW,
                 ),
@@ -872,11 +902,37 @@ class TestPlanOnlyCyclesUnaffected:
                     description="",
                     version=1,
                     agents=(
-                        AgentProfileEntry(agent_id="nat", role="strat", model="m", enabled=True),
-                        AgentProfileEntry(agent_id="neo", role="dev", model="m", enabled=True),
-                        AgentProfileEntry(agent_id="eve", role="qa", model="m", enabled=True),
-                        AgentProfileEntry(agent_id="data", role="data", model="m", enabled=True),
-                        AgentProfileEntry(agent_id="max", role="lead", model="m", enabled=True),
+                        AgentProfileEntry(
+                            agent_id="nat",
+                            role="strat",
+                            model="m",
+                            enabled=True,
+                            serves_roles=("strat",),
+                        ),
+                        AgentProfileEntry(
+                            agent_id="neo",
+                            role="dev",
+                            model="m",
+                            enabled=True,
+                            serves_roles=("dev",),
+                        ),
+                        AgentProfileEntry(
+                            agent_id="eve", role="qa", model="m", enabled=True, serves_roles=("qa",)
+                        ),
+                        AgentProfileEntry(
+                            agent_id="data",
+                            role="data",
+                            model="m",
+                            enabled=True,
+                            serves_roles=("data",),
+                        ),
+                        AgentProfileEntry(
+                            agent_id="max",
+                            role="lead",
+                            model="m",
+                            enabled=True,
+                            serves_roles=("lead",),
+                        ),
                     ),
                     created_at=NOW,
                 ),

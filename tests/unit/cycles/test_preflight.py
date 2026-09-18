@@ -21,6 +21,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from squadops.cycles.agent_config import UndeclaredRolesError
 from squadops.cycles.models import (
     VALID_PLAN_AUTHORING_CONTRIBUTORS,
     AgentProfileEntry,
@@ -45,7 +46,9 @@ PLAN_ROLES = ("strat", "dev", "qa", "data", "lead")
 
 def _profile(roles, *, profile_id="test-squad", disabled=()):
     agents = tuple(
-        AgentProfileEntry(agent_id=f"agent-{r}", role=r, model="m", enabled=(r not in disabled))
+        AgentProfileEntry(
+            agent_id=f"agent-{r}", role=r, model="m", enabled=(r not in disabled), serves_roles=(r,)
+        )
         for r in roles
     )
     return SquadProfile(
@@ -75,6 +78,27 @@ def _solo_profile():
         ),
         created_at=NOW,
     )
+
+
+def test_an_under_declared_agent_cannot_reach_preflight():
+    """A profile whose enabled agent declares nothing never comes from a store — every
+    authoring boundary refuses it — so reading one here is an invariant violation, and it
+    raises rather than quietly contributing no roles.
+
+    Bug this catches: if `served_roles` skipped an empty declaration instead of raising, an
+    under-declared profile would read as "serves nothing" and every workload would be blocked
+    for a reason that names the wrong problem.
+    """
+    profile = SquadProfile(
+        profile_id="broken",
+        name="Broken",
+        description="",
+        version=1,
+        agents=(AgentProfileEntry(agent_id="han", role="generalist", model="m", enabled=True),),
+        created_at=NOW,
+    )
+    with pytest.raises(UndeclaredRolesError, match="declares no `serves_roles`"):
+        required_roles_decision(profile, _ws("framing"))
 
 
 def test_one_agent_serving_every_role_satisfies_the_same_workloads():
@@ -233,7 +257,11 @@ def _model_profile(models, *, profile_id="test-squad", disabled_idx=()):
     """Profile whose enabled agents carry the given model names."""
     agents = tuple(
         AgentProfileEntry(
-            agent_id=f"agent-{i}", role=f"r{i}", model=m, enabled=(i not in disabled_idx)
+            agent_id=f"agent-{i}",
+            role=f"r{i}",
+            model=m,
+            enabled=(i not in disabled_idx),
+            serves_roles=(f"r{i}",),
         )
         for i, m in enumerate(models)
     )
@@ -487,7 +515,9 @@ class TestModelRegistrationDecision:
 
     def _profile_with_models(self, *models):
         agents = tuple(
-            AgentProfileEntry(agent_id=f"a{i}", role="dev", model=m, enabled=True)
+            AgentProfileEntry(
+                agent_id=f"a{i}", role="dev", model=m, enabled=True, serves_roles=("dev",)
+            )
             for i, m in enumerate(models)
         )
         return SquadProfile(
@@ -522,8 +552,16 @@ class TestModelRegistrationDecision:
     def test_disabled_agents_are_not_checked(self):
         """Consistent with model_availability_decision: only enabled agents run."""
         agents = (
-            AgentProfileEntry(agent_id="a", role="dev", model="unregistered-y", enabled=False),
-            AgentProfileEntry(agent_id="b", role="qa", model="qwen3.8:27b", enabled=True),
+            AgentProfileEntry(
+                agent_id="a",
+                role="dev",
+                model="unregistered-y",
+                enabled=False,
+                serves_roles=("dev",),
+            ),
+            AgentProfileEntry(
+                agent_id="b", role="qa", model="qwen3.8:27b", enabled=True, serves_roles=("qa",)
+            ),
         )
         profile = SquadProfile(
             profile_id="p", name="T", description="", version=1, agents=agents, created_at=NOW

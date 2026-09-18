@@ -170,11 +170,19 @@ _PROFILE = SquadProfile(
     description="d",
     version=1,
     agents=[
-        AgentProfileEntry(agent_id="max", role="lead", model="m", enabled=True),
-        AgentProfileEntry(agent_id="neo", role="dev", model="m", enabled=True),
-        AgentProfileEntry(agent_id="nat", role="strat", model="m", enabled=True),
-        AgentProfileEntry(agent_id="eve", role="qa", model="m", enabled=True),
-        AgentProfileEntry(agent_id="data", role="data", model="m", enabled=True),
+        AgentProfileEntry(
+            agent_id="max", role="lead", model="m", enabled=True, serves_roles=("lead",)
+        ),
+        AgentProfileEntry(
+            agent_id="neo", role="dev", model="m", enabled=True, serves_roles=("dev",)
+        ),
+        AgentProfileEntry(
+            agent_id="nat", role="strat", model="m", enabled=True, serves_roles=("strat",)
+        ),
+        AgentProfileEntry(agent_id="eve", role="qa", model="m", enabled=True, serves_roles=("qa",)),
+        AgentProfileEntry(
+            agent_id="data", role="data", model="m", enabled=True, serves_roles=("data",)
+        ),
     ],
     created_at=_NOW,
 )

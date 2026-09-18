@@ -28,7 +28,11 @@ _PROFILE = SquadProfile(
     name="Full Squad",
     description="All agents",
     version=1,
-    agents=(AgentProfileEntry(agent_id="max", role="lead", model="gpt-4", enabled=True),),
+    agents=(
+        AgentProfileEntry(
+            agent_id="max", role="lead", model="gpt-4", enabled=True, serves_roles=("lead",)
+        ),
+    ),
     created_at=NOW,
 )
 
@@ -123,7 +127,12 @@ class TestCreateProfile:
             json={
                 "name": "Test Profile",
                 "agents": [
-                    {"agent_id": "neo", "role": "dev", "model": "qwen2.5:7b"},
+                    {
+                        "agent_id": "neo",
+                        "role": "dev",
+                        "model": "qwen2.5:7b",
+                        "serves_roles": ["dev"],
+                    },
                 ],
             },
         )
@@ -138,7 +147,7 @@ class TestCreateProfile:
             json={
                 "name": "Bad Profile",
                 "agents": [
-                    {"agent_id": "neo", "role": "dev", "model": ""},
+                    {"agent_id": "neo", "role": "dev", "model": "", "serves_roles": ["dev"]},
                 ],
             },
         )
@@ -155,6 +164,7 @@ class TestCreateProfile:
                         "role": "dev",
                         "model": "qwen2.5:7b",
                         "config_overrides": {"bad_key": 1},
+                        "serves_roles": ["dev"],
                     },
                 ],
             },
@@ -167,8 +177,18 @@ class TestCreateProfile:
             json={
                 "name": "Bad Profile",
                 "agents": [
-                    {"agent_id": "neo", "role": "dev", "model": "qwen2.5:7b"},
-                    {"agent_id": "neo", "role": "qa", "model": "qwen2.5:7b"},
+                    {
+                        "agent_id": "neo",
+                        "role": "dev",
+                        "model": "qwen2.5:7b",
+                        "serves_roles": ["dev"],
+                    },
+                    {
+                        "agent_id": "neo",
+                        "role": "qa",
+                        "model": "qwen2.5:7b",
+                        "serves_roles": ["qa"],
+                    },
                 ],
             },
         )
@@ -181,7 +201,12 @@ class TestCreateProfile:
             json={
                 "name": "Full Squad",
                 "agents": [
-                    {"agent_id": "neo", "role": "dev", "model": "qwen2.5:7b"},
+                    {
+                        "agent_id": "neo",
+                        "role": "dev",
+                        "model": "qwen2.5:7b",
+                        "serves_roles": ["dev"],
+                    },
                 ],
             },
         )
@@ -192,7 +217,14 @@ class TestCreateProfile:
             "/api/v1/squad-profiles",
             json={
                 "name": "Test",
-                "agents": [{"agent_id": "neo", "role": "dev", "model": "qwen2.5:7b"}],
+                "agents": [
+                    {
+                        "agent_id": "neo",
+                        "role": "dev",
+                        "model": "qwen2.5:7b",
+                        "serves_roles": ["dev"],
+                    }
+                ],
                 "bogus": "bad",
             },
         )
@@ -205,7 +237,12 @@ class TestCreateProfile:
             json={
                 "name": "Warn Profile",
                 "agents": [
-                    {"agent_id": "neo", "role": "dev", "model": "unpulled-model:latest"},
+                    {
+                        "agent_id": "neo",
+                        "role": "dev",
+                        "model": "unpulled-model:latest",
+                        "serves_roles": ["dev"],
+                    },
                 ],
             },
         )
@@ -220,7 +257,12 @@ class TestCreateProfile:
             json={
                 "name": "Good Profile",
                 "agents": [
-                    {"agent_id": "neo", "role": "dev", "model": "qwen2.5:7b"},
+                    {
+                        "agent_id": "neo",
+                        "role": "dev",
+                        "model": "qwen2.5:7b",
+                        "serves_roles": ["dev"],
+                    },
                 ],
             },
         )
@@ -234,7 +276,12 @@ class TestCreateProfile:
             json={
                 "name": "Offline Profile",
                 "agents": [
-                    {"agent_id": "neo", "role": "dev", "model": "anything:latest"},
+                    {
+                        "agent_id": "neo",
+                        "role": "dev",
+                        "model": "anything:latest",
+                        "serves_roles": ["dev"],
+                    },
                 ],
             },
         )

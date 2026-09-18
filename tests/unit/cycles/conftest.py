@@ -118,6 +118,7 @@ def sample_agent_entry():
         role="lead",
         model="gpt-4",
         enabled=True,
+        serves_roles=("lead",),
     )
 
 
@@ -130,10 +131,26 @@ def sample_profile(now, sample_agent_entry):
         version=1,
         agents=(
             sample_agent_entry,
-            AgentProfileEntry(agent_id="neo", role="dev", model="gpt-4", enabled=True),
-            AgentProfileEntry(agent_id="nat", role="strategy", model="gpt-4", enabled=True),
-            AgentProfileEntry(agent_id="eve", role="qa", model="gpt-4", enabled=True),
-            AgentProfileEntry(agent_id="data", role="analytics", model="gpt-4", enabled=True),
+            AgentProfileEntry(
+                agent_id="neo", role="dev", model="gpt-4", enabled=True, serves_roles=("dev",)
+            ),
+            AgentProfileEntry(
+                agent_id="nat",
+                role="strategy",
+                model="gpt-4",
+                enabled=True,
+                serves_roles=("strategy",),
+            ),
+            AgentProfileEntry(
+                agent_id="eve", role="qa", model="gpt-4", enabled=True, serves_roles=("qa",)
+            ),
+            AgentProfileEntry(
+                agent_id="data",
+                role="analytics",
+                model="gpt-4",
+                enabled=True,
+                serves_roles=("analytics",),
+            ),
         ),
         created_at=now,
     )

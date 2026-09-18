@@ -100,12 +100,24 @@ _HARNESS_PROFILE = SquadProfile(
     description="All",
     version=1,
     agents=(
-        AgentProfileEntry(agent_id="nat", role="strat", model="gpt-4", enabled=True),
-        AgentProfileEntry(agent_id="neo", role="dev", model="gpt-4", enabled=True),
-        AgentProfileEntry(agent_id="eve", role="qa", model="gpt-4", enabled=True),
-        AgentProfileEntry(agent_id="data-agent", role="data", model="gpt-4", enabled=True),
-        AgentProfileEntry(agent_id="max", role="lead", model="gpt-4", enabled=True),
-        AgentProfileEntry(agent_id="bob", role="builder", model="gpt-4", enabled=True),
+        AgentProfileEntry(
+            agent_id="nat", role="strat", model="gpt-4", enabled=True, serves_roles=("strat",)
+        ),
+        AgentProfileEntry(
+            agent_id="neo", role="dev", model="gpt-4", enabled=True, serves_roles=("dev",)
+        ),
+        AgentProfileEntry(
+            agent_id="eve", role="qa", model="gpt-4", enabled=True, serves_roles=("qa",)
+        ),
+        AgentProfileEntry(
+            agent_id="data-agent", role="data", model="gpt-4", enabled=True, serves_roles=("data",)
+        ),
+        AgentProfileEntry(
+            agent_id="max", role="lead", model="gpt-4", enabled=True, serves_roles=("lead",)
+        ),
+        AgentProfileEntry(
+            agent_id="bob", role="builder", model="gpt-4", enabled=True, serves_roles=("builder",)
+        ),
     ),
     created_at=NOW,
 )
@@ -136,16 +148,25 @@ def mock_squad_profile():
         description="All",
         version=1,
         agents=(
-            AgentProfileEntry(agent_id="nat", role="strat", model="gpt-4", enabled=True),
-            AgentProfileEntry(agent_id="neo", role="dev", model="gpt-4", enabled=True),
-            AgentProfileEntry(agent_id="eve", role="qa", model="gpt-4", enabled=True),
+            AgentProfileEntry(
+                agent_id="nat", role="strat", model="gpt-4", enabled=True, serves_roles=("strat",)
+            ),
+            AgentProfileEntry(
+                agent_id="neo", role="dev", model="gpt-4", enabled=True, serves_roles=("dev",)
+            ),
+            AgentProfileEntry(
+                agent_id="eve", role="qa", model="gpt-4", enabled=True, serves_roles=("qa",)
+            ),
             AgentProfileEntry(
                 agent_id="data-agent",
                 role="data",
                 model="gpt-4",
                 enabled=True,
+                serves_roles=("data",),
             ),
-            AgentProfileEntry(agent_id="max", role="lead", model="gpt-4", enabled=True),
+            AgentProfileEntry(
+                agent_id="max", role="lead", model="gpt-4", enabled=True, serves_roles=("lead",)
+            ),
         ),
         created_at=NOW,
     )
@@ -1367,7 +1388,11 @@ class TestCorrectionModelResolution:
             version=1,
             agents=(
                 AgentProfileEntry(
-                    agent_id="strat-a", role="strat", model="model-strat", enabled=True
+                    agent_id="strat-a",
+                    role="strat",
+                    model="model-strat",
+                    enabled=True,
+                    serves_roles=("strat",),
                 ),
                 AgentProfileEntry(
                     agent_id="dev-a",
@@ -1375,10 +1400,25 @@ class TestCorrectionModelResolution:
                     model="model-dev",
                     enabled=True,
                     config_overrides={"temperature": 0.42},
+                    serves_roles=("dev",),
                 ),
-                AgentProfileEntry(agent_id="qa-a", role="qa", model="model-qa", enabled=True),
-                AgentProfileEntry(agent_id="data-a", role="data", model="model-data", enabled=True),
-                AgentProfileEntry(agent_id="lead-a", role="lead", model="model-lead", enabled=True),
+                AgentProfileEntry(
+                    agent_id="qa-a", role="qa", model="model-qa", enabled=True, serves_roles=("qa",)
+                ),
+                AgentProfileEntry(
+                    agent_id="data-a",
+                    role="data",
+                    model="model-data",
+                    enabled=True,
+                    serves_roles=("data",),
+                ),
+                AgentProfileEntry(
+                    agent_id="lead-a",
+                    role="lead",
+                    model="model-lead",
+                    enabled=True,
+                    serves_roles=("lead",),
+                ),
             ),
             created_at=NOW,
         )
@@ -2795,7 +2835,11 @@ class TestReexecuteRepairedSuite:
             name="Full",
             description="d",
             version=1,
-            agents=(AgentProfileEntry(agent_id="eve", role="qa", model="qwen", enabled=True),),
+            agents=(
+                AgentProfileEntry(
+                    agent_id="eve", role="qa", model="qwen", enabled=True, serves_roles=("qa",)
+                ),
+            ),
             created_at=NOW,
         )
 

@@ -70,12 +70,14 @@ def validate_reasoning_override(overrides: dict) -> list[str]:
 def validate_agent_entries(agents: list[dict]) -> list[str]:
     """Validate agent entries, returning a list of error messages.
 
-    Checks: non-empty agent_id, non-empty model, no duplicate agent_ids, and no role
-    served by two enabled agents.
+    Checks: non-empty agent_id, non-empty model, no duplicate agent_ids, a non-empty
+    ``serves_roles`` on every enabled agent, and no role served by two enabled agents.
 
-    The last is what makes the declared role → agent map a map (SIP-0108 §10i item 1):
-    two enabled agents answering for one role has no defined winner, and the resolver
-    would silently take whichever the profile listed first.
+    The last two are what make the declared role → agent map a map (SIP-0108 §10i item 1):
+    an agent that declares nothing assigns nothing, and two enabled agents answering for one
+    role has no defined winner — the resolver would silently take whichever the profile
+    listed first. A disabled agent declares nothing and is exempt, so a profile may keep a
+    retired member beside the agent that replaced it.
     """
     errors: list[str] = []
     seen_ids: set[str] = set()
@@ -101,7 +103,12 @@ def validate_agent_entries(agents: list[dict]) -> list[str]:
         errors.extend(f"agents[{i}]: {e}" for e in validate_reasoning_override(overrides))
 
         if agent.get("enabled", True):
-            declared = tuple(agent.get("serves_roles") or ()) or (agent.get("role", ""),)
+            declared = tuple(agent.get("serves_roles") or ())
+            if not declared:
+                errors.append(
+                    f"agents[{i}]: `serves_roles` must declare at least one role — for an "
+                    f"agent that serves only its own role write [{agent.get('role', '')}]"
+                )
             for role in declared:
                 if not role or not role.strip():
                     errors.append(f"agents[{i}]: role must not be empty")

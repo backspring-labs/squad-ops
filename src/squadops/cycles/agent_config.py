@@ -15,6 +15,14 @@ waited out its budget. That is a default at a seam, and the owner's ruling of
 2026-09-14 is require, don't default: a role no enabled agent serves is a
 configuration error, raised here where the profile is read, not a silent queue at
 dispatch.
+
+**An empty declaration is invalid, not meaningful.** The first revision of this change read
+an empty ``serves_roles`` as "the agent's own role", which is a second way to express one
+fact and the same shape as the fallback it removed. Every authoring boundary now refuses an
+enabled agent without a declaration — the profile YAML loader, the API request schema,
+``validate_agent_entries`` and the Postgres reader — so a profile carrying one cannot come
+from any store. Reaching this module with an empty declaration is therefore an invariant
+violation, and it raises rather than choosing a meaning.
 """
 
 from __future__ import annotations
@@ -24,6 +32,14 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from squadops.cycles.models import AgentProfileEntry, SquadProfile
+
+
+class UndeclaredRolesError(ValueError):
+    """An enabled agent with no declared served roles — an under-specified profile.
+
+    Separate from :class:`UnservedRoleError`: that one means the profile is complete and
+    does not carry the role, this one means the profile never said what the agent does.
+    """
 
 
 class UnservedRoleError(ValueError):
@@ -45,23 +61,29 @@ class ResolvedAgentConfig:
 
 
 def roles_served(agent: AgentProfileEntry) -> tuple[str, ...]:
-    """The step roles *agent* serves: its declaration, or its own role.
+    """The step roles *agent* serves, as the profile declares them.
 
     One place decides what "this agent serves that role" means, so the resolver, the
     dispatch map and the builder-presence reader cannot drift apart.
+
+    Raises:
+        UndeclaredRolesError: the agent declares nothing. Every boundary that authors a
+            profile refuses that already, so it means a profile was constructed in code
+            without its map — never a value to interpret.
     """
-    # Convert first, then test: a declaration that is present but empty means the same as
-    # no declaration, and a test double whose attribute iterates empty must not read as
-    # "serves nothing".
     declared = tuple(agent.serves_roles)
-    return declared or (agent.role,)
+    if not declared:
+        raise UndeclaredRolesError(
+            f"agent {agent.agent_id!r} declares no `serves_roles`; every enabled agent "
+            "declares the step roles it serves (SIP-0108 §10i item 1). A profile read from "
+            "a store cannot reach this — see infra/migrations/1510_squad_profile_serves_roles.sql"
+        )
+    return declared
 
 
 def serves_role(profile: SquadProfile | None, role: str) -> bool:
     """Whether *profile* has an enabled agent serving *role*."""
-    if not profile:
-        return False
-    return any(role in roles_served(a) for a in profile.agents if a.enabled)
+    return role in served_roles(profile)
 
 
 def served_roles(profile: SquadProfile | None) -> frozenset[str]:
