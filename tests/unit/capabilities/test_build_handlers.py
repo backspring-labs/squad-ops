@@ -833,6 +833,25 @@ class TestIsTestFileJS:
             is True
         )
 
+    def test_dunder_tests_dir_at_the_workspace_root(self):
+        """#1539: on the App Router stack every suite lives at the root, so the directory
+        clause has to read a LEADING ``__tests__/`` as well as an embedded one.
+
+        Bug this catches: ``"/__tests__/" in path`` never matched a root-level path, so a
+        fixture module the runner imports — named like source, matching no ``*.test.ts``
+        pattern — was handed to the qa author as application source.
+        """
+        assert _is_test_file("__tests__/helpers.ts", ("*.test.ts", "*.test.tsx")) is True
+
+    def test_the_token_must_be_a_path_segment_not_a_substring(self):
+        """A source file whose NAME merely contains the token is still source.
+
+        Bug this catches: fixing #1539 by dropping the slashes (``"__tests__" in path``)
+        would swallow ``app/my__tests__util.ts`` and hide a real source file from the author.
+        """
+        assert _is_test_file("app/my__tests__util.ts", ("*.test.ts",)) is False
+        assert _is_test_file("__tests__helpers/util.ts", ("*.test.ts",)) is False
+
     def test_dunder_tests_dir_even_without_pattern_match(self):
         """Files inside __tests__/ are test files regardless of pattern."""
         assert (

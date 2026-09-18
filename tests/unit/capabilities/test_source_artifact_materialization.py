@@ -40,6 +40,46 @@ def _inputs(development_profile: str) -> dict:
     }
 
 
+_NEXTJS_CONTENTS = {
+    "app/api/runs/route.ts": "export async function GET() { return Response.json([]) }",
+    "app/page.tsx": "export default function Page() { return null }",
+    "package.json": "{}",
+    "__tests__/runs.test.ts": "it('lists runs', () => {})",
+    # Named like source, imported by the suites, matching no *.test.ts pattern — the file
+    # #1539 is about.
+    "__tests__/helpers.ts": "export const seedRun = () => ({ id: 'r1' })",
+}
+
+
+def _nextjs_inputs() -> dict:
+    return {
+        "resolved_config": {"development_profile": "nextjs_ts"},
+        "artifact_contents": dict(_NEXTJS_CONTENTS),
+    }
+
+
+class TestRootLevelTestsDirectoryIsNotQaSource:
+    """#1539, entering at the caller the live cycle uses (``_get_source_artifacts``).
+
+    Bug this guards: the exclusion tested ``"/__tests__/" in path``, which no root-level path
+    can satisfy. On the App Router stack every suite lives at the workspace root, so a helper
+    module there was materialized into the qa author's source set — the author was shown its
+    own harness as the application under test. Every root-level ``__tests__/`` file stored in
+    the vault today happens to match the stack's ``*.test.ts`` patterns, so no stored run
+    changes; this closes the gap the first non-suite helper would have fallen through.
+    """
+
+    def test_the_root_helper_is_excluded_and_the_application_is_not(self):
+        sources = QATestHandler()._get_source_artifacts(_nextjs_inputs())
+        assert set(sources) == {"app/api/runs/route.ts", "app/page.tsx", "package.json"}
+
+    def test_a_source_file_whose_name_contains_the_token_is_still_source(self):
+        inputs = _nextjs_inputs()
+        inputs["artifact_contents"]["app/my__tests__util.ts"] = "export const x = 1"
+        sources = QATestHandler()._get_source_artifacts(inputs)
+        assert "app/my__tests__util.ts" in sources
+
+
 class TestSourceArtifactMaterialization:
     def test_build_support_files_materialized(self):
         sources = QATestHandler()._get_source_artifacts(_inputs("fullstack_fastapi_react"))
