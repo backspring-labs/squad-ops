@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+from datetime import datetime
 
 import asyncpg
 
@@ -102,15 +103,27 @@ class PostgresCycleRegistry(CycleRegistryPort):
         status: CycleStatus | None = None,
         limit: int = 50,
         offset: int = 0,
+        created_before: datetime | None = None,
     ) -> list[Cycle]:
         async with self._pool.acquire() as conn:
-            rows = await conn.fetch(
-                "SELECT * FROM cycle_registry WHERE project_id = $1 "
-                "ORDER BY created_at DESC LIMIT $2 OFFSET $3",
-                project_id,
-                limit,
-                offset,
-            )
+            if created_before is None:
+                rows = await conn.fetch(
+                    "SELECT * FROM cycle_registry WHERE project_id = $1 "
+                    "ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+                    project_id,
+                    limit,
+                    offset,
+                )
+            else:
+                rows = await conn.fetch(
+                    "SELECT * FROM cycle_registry WHERE project_id = $1 "
+                    "AND created_at < $4 "
+                    "ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+                    project_id,
+                    limit,
+                    offset,
+                    created_before,
+                )
         if status is None:
             return [self._row_to_cycle(r) for r in rows]
 

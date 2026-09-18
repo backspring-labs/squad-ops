@@ -194,6 +194,43 @@ class TestInertRealStoreSequence:
         assert "tests_pass" not in outcome.inert  # executes every cycle
         assert outcome.verdict is RunVerdict.ACCEPTED  # disclosure-only, never gates
 
+    async def test_a_historical_cycle_still_sees_its_own_priors(self, registry):
+        """#1526: the candidate read is anchored at the perspective cycle, not at now.
+
+        Bug this catches: ``list_cycles(project, limit=50)`` returns the project's newest 50
+        cycles whichever cycle it is asked about. Once a project has more than 50, every older
+        cycle's series history came back empty and its disclosure silently vanished — and a
+        cycle near the boundary got a TRUNCATED history, which reads as a real streak count
+        rather than as no data. `group_run` passed 50 long ago and stands at 436.
+        """
+        chronic = _summary(verified=["tests_pass"], not_executed=["frontend_build"])
+        perspective = None
+        for i in range(3):
+            perspective = await self._add_cycle(registry, i, chronic)
+        # The project moves on: 60 newer cycles, more than the read's limit of 50.
+        clean = _summary(verified=["tests_pass", "frontend_build"])
+        for i in range(3, 63):
+            await self._add_cycle(registry, i, clean)
+
+        outcome = await resolve_cycle_outcome(registry, perspective.cycle_id)
+
+        assert outcome.inert == ("frontend_build",)
+
+    async def test_the_newest_cycle_reads_exactly_as_before(self, registry):
+        """The anchor moves the window; it does not change what the newest cycle sees.
+
+        Bug this catches: a bound that excluded the perspective cycle's own priors by an
+        off-by-one (``<=`` instead of ``<``, or filtering the wrong side) would break the
+        live path while fixing the historical one.
+        """
+        chronic = _summary(verified=["tests_pass"], not_executed=["frontend_build"])
+        for i in range(3):
+            newest = await self._add_cycle(registry, i, chronic)
+
+        outcome = await resolve_cycle_outcome(registry, newest.cycle_id)
+
+        assert outcome.inert == ("frontend_build",)
+
     async def test_real_execution_clears_the_flag(self, registry):
         chronic = _summary(not_executed=["frontend_build"])
         for i in range(3):

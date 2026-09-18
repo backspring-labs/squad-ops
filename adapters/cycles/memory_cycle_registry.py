@@ -7,6 +7,7 @@ Stores mutable internal records, returns frozen snapshots via dataclasses.replac
 from __future__ import annotations
 
 import dataclasses
+from datetime import datetime
 
 from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.lifecycle import (
@@ -69,6 +70,7 @@ class MemoryCycleRegistry(CycleRegistryPort):
         status: CycleStatus | None = None,
         limit: int = 50,
         offset: int = 0,
+        created_before: datetime | None = None,
     ) -> list[Cycle]:
         from squadops.cycles.lifecycle import derive_cycle_status
 
@@ -77,6 +79,8 @@ class MemoryCycleRegistry(CycleRegistryPort):
             if data["project_id"] != project_id:
                 continue
             cycle = self._to_cycle(data)
+            if created_before is not None and cycle.created_at >= created_before:
+                continue
             if status is not None:
                 runs = [
                     self._to_run(r) for r in self._runs.values() if r["cycle_id"] == cycle.cycle_id
