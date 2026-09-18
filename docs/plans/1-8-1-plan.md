@@ -1,12 +1,14 @@
 # 1.8.1 — plan
 
-**Revision 2, 2026-09-17.** Rev 1 was written the evening v1.8.0 was tagged; rev 2 the same
+**Revision 3, 2026-09-17.** Rev 1 was written the evening v1.8.0 was tagged; rev 2 the same
 evening, on the owner's review of it: the two capability amendments re-placed to 1.8.2 (§8
 decision 3), the flip's proof given its positive control and the finding behind it (§3.3), the
 window executed as pairs with its void rule, its predicate and its two isolation contracts fixed
 here rather than left to the pre-registration (§4.3, §8), the hardening list moved out, the ops
 rider bounded, and one miscount corrected (§6: twenty-six open issues, not twenty-seven, and #414
-placed). Written from: the 1.8.0 plan (`docs/plans/1-8-0-plan.md`, rev 11) §3.3 step 7, §3.4 (d),
+placed); **rev 3 on the owner's ruling that #1448 goes to 1.9**, with the registry's surface
+measured and the auth-boundary finding that sharpens it (§3.7, §8 decision 13) — the last open
+question rev 2's §9 carried. Written from: the 1.8.0 plan (`docs/plans/1-8-0-plan.md`, rev 11) §3.3 step 7, §3.4 (d),
 §4.2, §6, §7 step 14 and §8 decisions 5 and 15; the 1.8.0 pre-registration
 (`docs/plans/1-8-0-verification-set-preregistration.md`) §3c, §3f and §10c — the deploy-F set, the
 §3c count, the owner's ruling and the evidence gate; SIP-0107 §38 step 7, §39 and §46a; SIP-0108
@@ -304,10 +306,28 @@ evidence gate's "carries" is met by a thing a person can look at.
 
 Rev 1 carried #1448 and #1039 as a droppable list. Neither adds to the flip or the window, and a
 line with two measured windows does not carry optional scope to be dropped once execution is
-already expensive. **#1448 goes to 1.9** — a structural refactor of the request path, which the
-even/odd convention places in the stabilization minor beside #1507 (§8 decision 13, differing
-from the review's 1.8.2). **#1039 goes to 1.8.2** — documentation-site design work should not
-compete with a pre-registered experiment.
+already expensive.
+
+**#1448 goes to 1.9 — ruled by the owner, 2026-09-17.** The issue reads as a wiring cleanup of
+ten route modules and is more than that: the auth middleware resolves the auth port *and* the
+authorization port from the same process globals at request time, behind a fallback
+(`src/squadops/api/middleware/auth.py:182–187`, `:246`, `:272–274`). So the refactor moves how
+every authenticated request resolves its identity port, and the two-apps-in-one-process
+isolation half lands on the security boundary rather than on a resource route. Measured on
+`main` at 3d9970c8: **eighteen** module-level port globals and **twenty-six** accessors in
+`src/squadops/api/runtime/deps.py`, **eighty-five** `get_*()` call sites under the routes,
+**thirteen** modules reaching into the registry, **eighteen** test files importing it. Patch
+lines are for urgent or small fixes (CLAUDE.md, the cadence); odd minors exist to quarantine
+exactly this kind of change so a regression has one owner; and it pairs with #1507 as the same
+process's structural cleanup under one verification set. Handed to the 1.9 plan with it: the
+`:182` fallback is a **require-don't-default at the auth seam** (the owner's ruling of
+2026-09-14), so whatever replaces the registry makes the middleware's port required rather than
+preserving the fallback in a new shape. The measurements and the finding are recorded on the
+issue; the plan's recommendation differed from the review's 1.8.2, and the owner ruled the
+plan's.
+
+**#1039 goes to 1.8.2** — documentation-site design work should not compete with a
+pre-registered experiment.
 
 ### 3.8 The ops rider — after the window, bounded
 
@@ -519,7 +539,7 @@ does not re-derive them:
   the disputed check. Falsified by a refunded round with no dispute (the #1053 coincidence) or a
   dispute the framework never read.
 
-**#1039 — 1.8.2** (§3.7). **#1448 — 1.9** (§3.7, §8 decision 13).
+**#1039 — 1.8.2** (§3.7). **#1448 — 1.9, ruled** (§3.7, §8 decision 13).
 
 **#1507, #567, #353, #1031 — 1.9, unchanged** from the 1.8.0 plan §6 and the ROADMAP's 1.9 row.
 
@@ -659,11 +679,14 @@ of change, with B′ differing from B by nothing under `src/` or `adapters/`.
     experimental apparatus; their identities are frozen in the record and the runtime surface is
     removed; retention requires a separate, affirmative product decision (§3.5). **Ruled at
     review, 2026-09-17.**
-13. **#1448 goes to 1.9, not 1.8.2** — the one point where this plan differs from the review:
-    a structural refactor of the request path belongs in the stabilization minor by the
-    even/odd convention, beside #1507. **#1039 to 1.8.2. #1522 and #414 to 1.9 by decision.
-    #1507, #567, #353, #1031 stay 1.9's; #316 2.0's; the design-review items unchanged** (§6).
-    **The #1448 destination is the owner's to confirm.**
+13. **#1448 goes to 1.9. Ruled by the owner, 2026-09-17**, on the measured surface and on the
+    finding that the auth middleware resolves both its ports from the same process globals at
+    request time behind a fallback (§3.7): a refactor that moves the auth boundary's resolution
+    wants the stabilization minor's quarantine and #1507's company, not a patch line beside
+    behaviour changes. This was the one point where the plan differed from the review's 1.8.2,
+    and the owner ruled the plan's. Its require-don't-default half is handed to the 1.9 plan.
+    **#1039 to 1.8.2. #1522 and #414 to 1.9 by decision. #1507, #567, #353, #1031 stay 1.9's;
+    #316 2.0's; the design-review items unchanged** (§6).
 14. **The ops rider is bounded** — each item its recipe, a terminal result closes it, a finding
     needing engineering becomes an issue, never a cut blocker — and runs immediately after the
     window (§3.8). **Recommended at review; adopted.**
@@ -686,14 +709,19 @@ of change, with B′ differing from B by nothing under `src/` or `adapters/`.
   after the measurement (§3.3, §8 decision 2).
 - **The flip PR's size** — the authority path's scope is read on main when the PR is scoped;
   the plan's "one PR" is unverified (§3.3).
-- **Whether #1448's destination is 1.9 or 1.8.2** — recommended 1.9 (§8 decision 13); the
-  owner confirms.
 - **The 1.8.2 plan's own shape** — beyond what §6 hands it.
 
 ---
 
 ## 10. Revision history
 
+- **Rev 3 (2026-09-17)** — the owner's ruling on rev 2's one open question: **#1448 goes to
+  1.9** (§3.7, §8 decision 13, now ruled; §9's bullet retired). Behind it, read on `main` at
+  3d9970c8 and recorded on the issue: the auth middleware resolves the auth and authorization
+  ports from the same process globals at request time behind a fallback, so the refactor moves
+  the auth boundary's resolution and not only ten resource routes; eighteen globals,
+  twenty-six accessors, eighty-five call sites, thirteen modules, eighteen test files. The
+  fallback's require-don't-default half is handed to the 1.9 plan.
 - **Rev 2 (2026-09-17)** — on the owner's review of rev 1. §12a and §17a re-placed to 1.8.2
   by the owner's ruling (their diagnostics' shapes handed over in §6); the flip's proof given a
   positive control, with the finding that no fallback-authority producer exists on main and the
