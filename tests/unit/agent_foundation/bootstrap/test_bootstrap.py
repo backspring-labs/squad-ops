@@ -155,7 +155,7 @@ class TestHandlerBootstrap:
         wiring gap at startup-test time, not in production cycles.
         """
         from squadops.cycles.task_plan import (
-            CORRECTION_TASK_STEPS,
+            CORRECTION_STEP_TASKS,
             REPAIR_TASK_STEPS,
             WRAPUP_TASK_STEPS,
         )
@@ -163,8 +163,9 @@ class TestHandlerBootstrap:
         registry = create_handler_registry()
         capabilities = set(registry.list_task_types())
 
+        # Every correction step a profile may declare, whichever subset one declares.
         all_dispatched: list[tuple[str, str]] = (
-            CORRECTION_TASK_STEPS + REPAIR_TASK_STEPS + WRAPUP_TASK_STEPS
+            list(CORRECTION_STEP_TASKS.values()) + REPAIR_TASK_STEPS + WRAPUP_TASK_STEPS
         )
         missing = [cap for cap, _role in all_dispatched if cap not in capabilities]
         assert not missing, (

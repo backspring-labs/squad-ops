@@ -154,6 +154,7 @@ def cycle():
         squad_profile_snapshot_ref="sha256:abc",
         task_flow_policy=TaskFlowPolicy(mode="sequential"),
         build_strategy="fresh",
+        applied_defaults={"correction_steps": ["analyze", "decide", "repair"]},
     )
 
 
@@ -256,7 +257,13 @@ class TestRetryableFailure:
         """With max_task_retries=3, task gets 3 attempts before SEMANTIC."""
         import dataclasses
 
-        cycle_3 = dataclasses.replace(cycle, applied_defaults={"max_task_retries": 3})
+        cycle_3 = dataclasses.replace(
+            cycle,
+            applied_defaults={
+                "max_task_retries": 3,
+                "correction_steps": ["analyze", "decide", "repair"],
+            },
+        )
         mock_registry.get_cycle.return_value = cycle_3
 
         # All dispatches fail → attempt 1,2 = RETRYABLE, attempt 3 = SEMANTIC

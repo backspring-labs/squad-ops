@@ -77,7 +77,9 @@ _CYCLE = SimpleNamespace(
     cycle_id="cyc_golden",
     project_id="proj",
     prd_ref="PRD-CONTENT",
-    resolved_config=lambda: {},
+    # Every cycle's request profile declares what its correction protocol runs
+    # (SIP-0108 §10i item 3); this golden captures the squad's full protocol.
+    resolved_config=lambda: {"correction_steps": ["analyze", "decide", "repair"]},
 )
 
 _RUN_ID = "run_abcdef123456"

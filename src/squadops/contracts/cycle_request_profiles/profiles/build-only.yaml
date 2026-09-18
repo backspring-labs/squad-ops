@@ -1,6 +1,9 @@
 name: build-only
 description: Build-only cycle that consumes plan artifacts from a prior cycle.
 defaults:
+  # SIP-0108 §10i item 3: the correction protocol this profile runs. The squad
+  # analyzes the failure, decides the path, then repairs.
+  correction_steps: [analyze, decide, repair]
   build_strategy: fresh
   task_flow_policy:
     mode: sequential

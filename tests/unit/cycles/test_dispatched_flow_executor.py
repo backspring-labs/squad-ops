@@ -137,6 +137,7 @@ def cycle():
         squad_profile_snapshot_ref="sha256:abc",
         task_flow_policy=TaskFlowPolicy(mode="sequential"),
         build_strategy="fresh",
+        applied_defaults={"correction_steps": ["analyze", "decide", "repair"]},
     )
 
 
@@ -1088,7 +1089,13 @@ class TestGateRejectsBuilderPlanWithoutBuildProfile:
 
         from adapters.cycles.execution_errors import _ExecutionError
 
-        gated_cycle = dataclasses.replace(cycle, applied_defaults={"implementation_plan": True})
+        gated_cycle = dataclasses.replace(
+            cycle,
+            applied_defaults={
+                "implementation_plan": True,
+                "correction_steps": ["analyze", "decide", "repair"],
+            },
+        )
         mock_vault.retrieve.return_value = ("ref", self._BUILDER_PLAN_YAML.encode())
 
         with pytest.raises(_ExecutionError) as exc_info:
@@ -1112,7 +1119,10 @@ class TestGateRejectsBuilderPlanWithoutBuildProfile:
 
         gated_cycle = dataclasses.replace(
             cycle,
-            applied_defaults={"implementation_plan": True},
+            applied_defaults={
+                "implementation_plan": True,
+                "correction_steps": ["analyze", "decide", "repair"],
+            },
             execution_overrides={"build_profile": "python_cli_builder"},
         )
         mock_vault.retrieve.return_value = ("ref", self._BUILDER_PLAN_YAML.encode())
@@ -1143,7 +1153,11 @@ class TestMidRunGateRejectsUnwinnableQaTask:
 
         gated_cycle = dataclasses.replace(
             cycle,
-            applied_defaults={"implementation_plan": True, "required_checks": ["tests_pass"]},
+            applied_defaults={
+                "implementation_plan": True,
+                "required_checks": ["tests_pass"],
+                "correction_steps": ["analyze", "decide", "repair"],
+            },
         )
         mock_vault.retrieve.return_value = ("ref", self._QA_JS_PLAN_YAML.encode())
 
@@ -1233,7 +1247,11 @@ class TestWorkloadGateSeamValidation:
 
         gated_cycle = dataclasses.replace(
             cycle,
-            applied_defaults={"implementation_plan": True, "required_checks": ["tests_pass"]},
+            applied_defaults={
+                "implementation_plan": True,
+                "required_checks": ["tests_pass"],
+                "correction_steps": ["analyze", "decide", "repair"],
+            },
         )
         gated_run = self._wire(mock_vault, run, self._QA_JS_PLAN_YAML)
 
@@ -1251,7 +1269,10 @@ class TestWorkloadGateSeamValidation:
 
         gated_cycle = dataclasses.replace(
             cycle,
-            applied_defaults={"implementation_plan": True},
+            applied_defaults={
+                "implementation_plan": True,
+                "correction_steps": ["analyze", "decide", "repair"],
+            },
         )
         gated_run = self._wire(mock_vault, run, self._QA_JS_PLAN_YAML)
 
@@ -1269,7 +1290,13 @@ class TestWorkloadGateSeamValidation:
         reaching the #291 dispatch guard."""
         import dataclasses
 
-        gated_cycle = dataclasses.replace(cycle, applied_defaults={"implementation_plan": True})
+        gated_cycle = dataclasses.replace(
+            cycle,
+            applied_defaults={
+                "implementation_plan": True,
+                "correction_steps": ["analyze", "decide", "repair"],
+            },
+        )
         gated_run = self._wire(mock_vault, run, self._BUILDER_PLAN_YAML)
 
         errors = await executor._reject_invalid_plan_before_workload_gate(
@@ -1286,7 +1313,13 @@ class TestWorkloadGatePlanAbsent:
     async def test_absent_plan_rejected(self, executor, mock_vault, cycle, run):
         import dataclasses
 
-        gated_cycle = dataclasses.replace(cycle, applied_defaults={"implementation_plan": True})
+        gated_cycle = dataclasses.replace(
+            cycle,
+            applied_defaults={
+                "implementation_plan": True,
+                "correction_steps": ["analyze", "decide", "repair"],
+            },
+        )
         bare_run = dataclasses.replace(run, artifact_refs=())
 
         errors = await executor._reject_invalid_plan_before_workload_gate(
@@ -1299,7 +1332,13 @@ class TestWorkloadGatePlanAbsent:
         gives it a full diagnosis; only true absence is a collapse."""
         import dataclasses
 
-        gated_cycle = dataclasses.replace(cycle, applied_defaults={"implementation_plan": True})
+        gated_cycle = dataclasses.replace(
+            cycle,
+            applied_defaults={
+                "implementation_plan": True,
+                "correction_steps": ["analyze", "decide", "repair"],
+            },
+        )
         ref = MagicMock()
         ref.filename = "implementation_plan.yaml"
         ref.artifact_type = "control_implementation_plan"
@@ -1477,6 +1516,7 @@ class TestGateRejectsAQaSuiteOutsideTheStacksNamespace:
                 "implementation_plan": True,
                 "required_checks": ["tests_pass"],
                 "build_profile": "fullstack_fastapi_react",
+                "correction_steps": ["analyze", "decide", "repair"],
             },
         )
         mock_vault.retrieve.return_value = ("ref", self._QA_ROOT_SUITE_PLAN_YAML.encode())

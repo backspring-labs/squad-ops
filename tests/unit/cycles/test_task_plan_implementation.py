@@ -1,6 +1,6 @@
 """Tests for implementation workload task plan (SIP-0079).
 
-Covers IMPLEMENTATION_TASK_STEPS, CORRECTION_TASK_STEPS, REPAIR_TASK_STEPS,
+Covers IMPLEMENTATION_TASK_STEPS, CORRECTION_STEP_TASKS, REPAIR_TASK_STEPS,
 deterministic task IDs (RC-1), and backward compat for non-implementation runs.
 """
 
@@ -17,9 +17,13 @@ from squadops.cycles.models import (
     WorkloadType,
 )
 from squadops.cycles.task_plan import (
-    CORRECTION_TASK_STEPS,
+    CORRECTION_STEP_TASKS,
     IMPLEMENTATION_TASK_STEPS,
     REPAIR_TASK_STEPS,
+    UndeclaredCorrectionStepsError,
+    correction_task_steps,
+    decision_is_declared,
+    declared_correction_steps,
     generate_task_plan,
     repair_steps_for,
 )
@@ -123,11 +127,55 @@ class TestImplementationTaskSteps:
 
 
 class TestCorrectionAndRepairSteps:
-    def test_correction_steps_defined(self):
-        assert CORRECTION_TASK_STEPS == [
+    def test_a_profile_that_declares_nothing_is_refused(self):
+        """Every cycle can enter correction — the attempt count defaults rather than requiring
+        opt-in — so every profile declares what its protocol runs.
+
+        Bug this catches: an omission silently inheriting the squad's shape, which is the
+        interpretation rule SIP-0108 §10i item 3 exists to remove.
+        """
+        with pytest.raises(UndeclaredCorrectionStepsError, match="declares no `correction_steps`"):
+            declared_correction_steps({})
+
+    def test_an_unknown_step_name_is_refused_with_the_vocabulary(self):
+        with pytest.raises(UndeclaredCorrectionStepsError, match="unknown correction step"):
+            declared_correction_steps({"correction_steps": ["analyze", "adjudicate"]})
+
+    def test_a_declaration_without_repair_is_refused(self):
+        """A protocol that cannot repair is not a correction protocol."""
+        with pytest.raises(UndeclaredCorrectionStepsError, match="omits 'repair'"):
+            declared_correction_steps({"correction_steps": ["analyze", "decide"]})
+
+    def test_the_dispatched_steps_are_the_declared_ones_in_order(self):
+        """``repair`` is declarable but is the patch path's own dispatch, not an agent step
+        here — so it never appears among the steps the protocol runs itself."""
+        assert correction_task_steps({"correction_steps": ["analyze", "decide", "repair"]}) == [
             ("data.analyze_failure", "data"),
             ("governance.correction_decision", "lead"),
         ]
+        assert correction_task_steps({"correction_steps": ["repair"]}) == []
+        assert decision_is_declared({"correction_steps": ["analyze", "repair"]}) is False
+
+    def test_every_shipped_request_profile_declares_its_protocol(self):
+        """The declaration is required, so no shipped profile may omit it. Bug this catches:
+        a new profile added without one, which would refuse every correction round it entered
+        rather than failing at authoring time."""
+        from squadops.contracts.cycle_request_profiles import list_profiles, load_profile
+
+        names = list_profiles()
+        assert names, "no request profiles found to check"
+        for name in names:
+            steps = declared_correction_steps(load_profile(name).defaults)
+            assert "repair" in steps, name
+
+    def test_the_declarable_correction_steps_and_their_tasks(self):
+        """The one table a request profile's declaration is read through (SIP-0108 §10i
+        item 3). Bug this catches: a step name a profile can declare with no task behind it,
+        or a task the runner dispatches that no profile can decline."""
+        assert CORRECTION_STEP_TASKS == {
+            "analyze": ("data.analyze_failure", "data"),
+            "decide": ("governance.correction_decision", "lead"),
+        }
 
     def test_repair_steps_defined(self):
         # Issue #100: development.correction_repair, NOT development.repair
