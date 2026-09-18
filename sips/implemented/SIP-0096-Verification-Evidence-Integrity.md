@@ -278,10 +278,14 @@ Acceptance of the SIP is all phases (SIP-0089/0090 precedent).
 
 ## 17. Post-implementation amendments
 
-### 17a. 2026-09-15 — a contested result: the producer's dispute becomes evidence (proposed; not built; targeted for 1.8.1)
+### 17a. 2026-09-15 — a contested result: the producer's dispute becomes evidence (proposed; not built; targeted for 1.8.2)
 
-**Status.** Drafted on the owner's ask of 2026-09-15 and **targeted for 1.8.1 by the owner's
-ruling of the same day**. Not built. Until the PR that builds it lands and amends this section
+**Status.** Drafted on the owner's ask of 2026-09-15 and targeted for 1.8.1 by the owner's
+ruling of the same day; **re-targeted to 1.8.2 on 2026-09-17** by the owner's ruling on the
+1.8.1 plan's review (`docs/plans/1-8-1-plan.md` §2.3, §6): the 1.8.1 line carries the flip and the
+Solo window alone, so the window measures the substrate 1.8.0 measured, and 1.8.2 is the
+model-capability tranche — this amendment, SIP-0086 §12a and their diagnostics (the
+`false-criterion` shape is fixed in that plan's §6; #1581 moves with it). Not built. Until the PR that builds it lands and amends this section
 with what shipped, nothing below describes main.
 
 **The invariant is unchanged.** Every result still resolves to exactly one of the three
@@ -339,4 +343,5 @@ instead of a rejected roll read out a week later.
 
 **Ruled by.** The owner, 2026-09-15: drafted on the question "does the framework constrain
 the model it runs", and targeted for 1.8.1. The design is the implementer's, for review on
-the PR that builds it.
+the PR that builds it. **Re-targeted to 1.8.2 by the owner, 2026-09-17**, on the 1.8.1 plan's review
+(the status line above).

@@ -815,6 +815,11 @@ Named here so they are not the next line's §6a. Each has a home above or a fix 
 
 ## 10. Revision history
 
+- **Amendment (2026-09-17, with the 1.8.1 plan)** — everything this plan named as 1.8.1's is
+  placed there by name in `docs/plans/1-8-1-plan.md`: the default flip (§3.3 step 7, §8 decision
+  15) behind a fresh N on that line's deploy A, because §10c.4 read N = 5 of 6; the comparison
+  window (§3.4 (d), §4.2) with the Solo arm of SIP-0108 §10h–§10j; the ops rider of §3.7, which
+  this line's cut skipped; #1448 and #1039 from §3.6, not landed here. Superseded at the cut.
 - **Rev 9 (2026-09-15)** — the loop set's pre-registration on deploy E
 - **Rev 10 (2026-09-16)** — the deploy-E set re-opened the shakeout loop: eight of eight diagnostic seams reached (two on run 2), React 4/6 with both rejections attributed to the framework by replay, Next.js 3/3; seven findings, six fixes merged (#1590, #1591, #1592, #1593, #1595, #1597; #1598 for the owner's ruling); **the set restarts on deploy F** (`969cd44e`), the diagnostics first as its shakeout; pre-registration rev 10 records the E set in §10a–§10b and one mechanism prediction per fix in §3d′
 - **Rev 11 (2026-09-17)** — the deploy-F set closed: diagnostics 8/8, React 6/6, Next.js 2/3 (#1602), L1 held; §3c count N = 5 of 6 with qa × Next.js empty (its diagnostic supply was never registered — a pre-registration defect named in §10c.4); **the owner's ruling: the line closes on F**, the gate read as not met with the gap named (the 1.7.5 precedent); #1602, the Next.js own-frame diagnostic and #1600 are 1.8.1's
