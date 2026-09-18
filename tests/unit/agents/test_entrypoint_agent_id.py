@@ -87,6 +87,75 @@ def test_role_derived_from_instances_when_env_unset(monkeypatch):
     assert entrypoint._resolve_role() == "dev"
 
 
+def test_a_process_serves_every_role_its_roster_entry_declares(monkeypatch):
+    """SIP-0108 §10i item 2: the handler registry has always held several roles' handlers;
+    only this resolution restricted a process to one.
+
+    Bug this catches: a one-agent arm registering only its own role's handlers, so the plan
+    routes a dev step to it and the process has no dev handler — the task fails on a
+    capability miss that reads as a missing handler rather than a roster it can fix.
+    """
+    from squadops.agents import entrypoint
+
+    monkeypatch.delenv("SQUADOPS_AGENT_SERVES_ROLES", raising=False)
+    monkeypatch.setenv("SQUADOPS__AGENT__ID", "han")
+    monkeypatch.setattr(
+        entrypoint,
+        "load_instance_config",
+        lambda aid: {"role": "generalist", "serves_roles": ["lead", "dev", "qa"]},
+    )
+
+    assert entrypoint._resolve_served_roles("generalist") == ["lead", "dev", "qa"]
+
+
+def test_the_served_roles_reach_the_handler_registry_not_the_agents_own_role(monkeypatch):
+    """Wiring: what `AgentRunner` hands the system, which is what decides the handlers.
+
+    Bug this catches: resolving the list and then still passing ``[self.role]`` — the seam
+    that made this a one-role process in the first place, and the one a resolver test alone
+    cannot see.
+    """
+    from squadops.agents.entrypoint import AgentRunner
+
+    monkeypatch.setenv("SQUADOPS__AGENT__ID", "neo")
+    runner = AgentRunner(role="generalist", served_roles=["lead", "dev", "qa"])
+
+    assert runner.served_roles == ["lead", "dev", "qa"]
+    # Identity is untouched: the prompt, the telemetry role and the prompt layers read it.
+    assert runner.role == "generalist"
+
+
+def test_an_undeclared_roster_entry_serves_its_own_role_and_says_so(monkeypatch, caplog):
+    """The roster is data an operator edits and the field is additive, so a container does
+    not refuse to boot over it — but it warns, because a process serving less than its
+    profile assigns fails every task of the roles it dropped."""
+    import logging
+
+    from squadops.agents import entrypoint
+
+    monkeypatch.delenv("SQUADOPS_AGENT_SERVES_ROLES", raising=False)
+    monkeypatch.setenv("SQUADOPS__AGENT__ID", "neo")
+    monkeypatch.setattr(entrypoint, "load_instance_config", lambda aid: {"role": "dev"})
+
+    with caplog.at_level(logging.WARNING):
+        assert entrypoint._resolve_served_roles("dev") == ["dev"]
+    assert "declares no `serves_roles`" in caplog.text
+
+
+def test_every_roster_entry_declares_what_it_serves(monkeypatch):
+    """The shipped roster carries the declaration, so no deployed agent takes the warning
+    path above. Bug this catches: a new instance added without one."""
+    from pathlib import Path
+
+    import yaml
+
+    roster = Path(__file__).resolve().parents[3] / "agents" / "instances" / "instances.yaml"
+    entries = yaml.safe_load(roster.read_text())["instances"]
+    assert entries
+    undeclared = [e["id"] for e in entries if not e.get("serves_roles")]
+    assert not undeclared, f"roster entries with no serves_roles: {undeclared}"
+
+
 def test_role_never_fabricated_from_id(monkeypatch):
     """The bug this catches: the former ``id.split("-")[0]`` fabricated a role for an
     id absent from the roster (e.g. 'quark-1' -> 'quark'), silently mislabeling the

@@ -93,7 +93,9 @@ class AgentRunner:
     - Graceful shutdown
     """
 
-    def __init__(self, role: str, agent_id: str | None = None):
+    def __init__(
+        self, role: str, agent_id: str | None = None, served_roles: list[str] | None = None
+    ):
         """Initialize agent runner.
 
         Args:
@@ -106,6 +108,9 @@ class AgentRunner:
             ValueError: if no agent id is provided or set in the environment.
         """
         self.role = role
+        #: The step roles this process registers handlers for (SIP-0108 §10i item 2). ``role``
+        #: is what the agent IS and drives its prompt and telemetry; this is what it DOES.
+        self.served_roles = list(served_roles) if served_roles else [role]
         # Identity is required, never fabricated. Defaulting the id (the former
         # f"{role}-001") masks a missing SQUADOPS__AGENT__ID and misdirects
         # diagnosis to the instance-config load below — which fails with a
@@ -319,7 +324,7 @@ class AgentRunner:
 
         # Create system
         system_config = SystemConfig(
-            roles=[self.role],
+            roles=list(self.served_roles),
         )
 
         return create_system(
@@ -915,7 +920,7 @@ def setup_signal_handlers(runner: AgentRunner) -> None:
 
 
 def _resolve_role() -> str | None:
-    """Resolve the agent role for bootstrap.
+    """Resolve the agent's own role — what this agent IS — for bootstrap.
 
     Role selection happens before the config loader runs, so it is read from the
     env (``SQUADOPS_AGENT_ROLE`` — a bootstrap selector, deliberately *not* the
@@ -924,6 +929,10 @@ def _resolve_role() -> str | None:
     from the id string. The former hardcoded ``{id: role}`` map duplicated the
     roster, and its ``id.split("-")[0]`` fallback could mislabel an agent: the same
     identity-masking class as the fabricated-id default (#333).
+
+    This is the identity the system prompt, the telemetry role and the prompt layers
+    read. What the process SERVES is :func:`_resolve_served_roles` — a different
+    question, and for a generalist agent a different answer.
     """
     role = os.getenv("SQUADOPS_AGENT_ROLE")
     if role:
@@ -931,6 +940,38 @@ def _resolve_role() -> str | None:
     agent_id = os.getenv("SQUADOPS__AGENT__ID")
     instance = load_instance_config(agent_id) if agent_id else None
     return instance.get("role") if instance else None
+
+
+def _resolve_served_roles(role: str) -> list[str]:
+    """The step roles this process serves — which handlers it registers (SIP-0108 §10i item 2).
+
+    The handler registry has always held several roles' handlers; only this resolution
+    restricted a process to one, which is why a single agent could not serve the whole plan.
+    The roster declares it per instance (``serves_roles``), the same vocabulary a squad
+    profile's agent entry uses, so "which roles does this serve" reads the same on both sides.
+
+    ``SQUADOPS_AGENT_SERVES_ROLES`` overrides it as a comma-separated list, the bootstrap
+    selector beside ``SQUADOPS_AGENT_ROLE``.
+
+    A roster entry that declares none falls back to the agent's own role, and says so in the
+    log: the roster is data an operator edits, and a container that refused to boot over a
+    missing list would take a whole deploy down for a field every current entry carries.
+    """
+    declared = os.getenv("SQUADOPS_AGENT_SERVES_ROLES")
+    if declared:
+        return [r.strip() for r in declared.split(",") if r.strip()]
+    agent_id = os.getenv("SQUADOPS__AGENT__ID")
+    instance = load_instance_config(agent_id) if agent_id else None
+    roles = list(instance.get("serves_roles") or ()) if instance else []
+    if roles:
+        return roles
+    logger.warning(
+        "roster entry for %s declares no `serves_roles`; serving its own role %r only "
+        "(SIP-0108 §10i item 2 — declare the list to serve more)",
+        agent_id,
+        role,
+    )
+    return [role]
 
 
 async def main() -> int:
@@ -946,7 +987,10 @@ async def main() -> int:
 
     logger.info(f"Starting agent with role: {role}")
 
-    runner = AgentRunner(role=role)
+    served = _resolve_served_roles(role)
+    if served != [role]:
+        logger.info("Agent %s serves roles: %s", role, ", ".join(served))
+    runner = AgentRunner(role=role, served_roles=served)
     setup_signal_handlers(runner)
 
     try:

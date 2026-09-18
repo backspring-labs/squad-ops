@@ -19,11 +19,24 @@ logger = logging.getLogger(__name__)
 
 
 class HandlerNotFoundError(Exception):
-    """Raised when a handler is not found."""
+    """Raised when a handler is not found.
 
-    def __init__(self, task_type: str):
+    On a live cycle this almost always means the two `serves_roles` declarations disagree
+    (SIP-0108 §10i): the squad profile routed a step to this agent, and the agent's roster
+    entry does not declare the role that owns it, so the process never registered its
+    handler. The message names both sides so the reader knows which to fix.
+    """
+
+    def __init__(self, task_type: str, registered: list[str] | None = None):
         self.task_type = task_type
-        super().__init__(f"No handler registered for capability: {task_type}")
+        self.registered = list(registered or ())
+        detail = (
+            f" — this process registered {self.registered}; if a squad profile routed this "
+            "step here, its agent's `serves_roles` and the roster's do not agree"
+            if self.registered
+            else ""
+        )
+        super().__init__(f"No handler registered for capability: {task_type}{detail}")
 
 
 class DuplicateHandlerError(Exception):
@@ -147,7 +160,7 @@ class HandlerRegistry:
             HandlerNotFoundError: If no handler registered
         """
         if task_type not in self._handlers:
-            raise HandlerNotFoundError(task_type)
+            raise HandlerNotFoundError(task_type, sorted(self._handlers))
 
         return self._handlers[task_type].handler
 
