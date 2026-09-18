@@ -5309,6 +5309,49 @@ class TestQaRepairReachesFills:
         assert expected == [self._SHELL]
         assert (focus, description) == ("qa", "author the suite")
 
+    def _evidence_with_cases(self, *files):
+        """Fill observations plus a ``tests_pass`` row whose failing cases name ``files``."""
+        evidence = self._evidence()
+        evidence["validation_result"] = {
+            "passed": False,
+            "checks": [
+                {
+                    "check": "tests_pass",
+                    "passed": False,
+                    "failing_cases": [
+                        {"file": f, "title": "joins a run", "message": "expected undefined to be 1"}
+                        for f in files
+                    ],
+                }
+            ],
+        }
+        return evidence
+
+    def test_the_own_additive_suite_failing_beside_the_slots_is_a_target_too(self):
+        """#1602: 1.8.0 deploy-F Next.js roll 1 — three fills and the qa's free-authored
+        suite failed on one wrong assertion. Bug caught: the target was the shells alone,
+        the re-fill cleared them, and the retest failed the suite's cases on the same line."""
+        from adapters.cycles.correction_repair import _locus_and_repair_target
+
+        _, expected, _, _ = _locus_and_repair_target(
+            "qa.test",
+            self._evidence_with_cases(self._SHELL, "./__tests__/runs.test.ts"),
+            self._inputs(),
+        )
+        assert expected == [self._SHELL, "__tests__/runs.test.ts"]
+
+    def test_a_failing_case_in_a_file_the_task_does_not_own_is_not_a_target(self):
+        """The app's route failing beside the fills is the app's; the qa repair is not aimed
+        at it, and the shell stays the only target."""
+        from adapters.cycles.correction_repair import _locus_and_repair_target
+
+        _, expected, _, _ = _locus_and_repair_target(
+            "qa.test",
+            self._evidence_with_cases(self._SHELL, "app/api/runs/[run_id]/join/route.ts"),
+            self._inputs(),
+        )
+        assert expected == [self._SHELL]
+
     def test_without_the_scaffold_the_target_is_the_declared_file_as_before(self):
         from adapters.cycles.correction_repair import _locus_and_repair_target
 
@@ -6947,3 +6990,145 @@ class TestAnEmptyRepairRoundIsNotVerified:
         )
         assert action == "accept_patch"
         executor._try_accept_patch.assert_awaited_once()
+
+
+class TestFillRepairAlsoTargetsTheOwnAdditiveSuite(TestCorrectionRunnerStandalone):
+    """#1602: under fill mode, the failed qa task's own free-authored suite failing beside its
+    fill slots is dispatched to the qa repair with the shells — one round, both files.
+
+    Entry point is `run_correction_protocol`, the call the live cycle makes. 1.8.0 deploy-F
+    Next.js roll 1 (cyc_bb493eb4725b, 2026-09-17): three fills and `__tests__/runs-api.test.ts`
+    failed on one wrong assertion (`participant_count` read off the store row); the round
+    re-filled the shells only, the retest cleared every shell and failed the suite's five cases
+    on the same line, and the run terminated as a plan defect with the suite never targeted.
+    """
+
+    _SHELL = "__tests__/scaffold/vc-probe-api-runs-join.scaffold.test.ts"
+    _SUITE = "__tests__/runs-api.test.ts"
+
+    def _qa_envelope(self):
+        from squadops.tasks.models import TaskEnvelope
+
+        return TaskEnvelope(
+            task_id="task-run_642c6086-m006-qa.test",
+            agent_id="eve",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="hello_squad",
+            task_type="qa.test",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={
+                "expected_artifacts": [self._SUITE],
+                "subtask_focus": "API tests",
+                "subtask_description": "vitest suite over the five endpoints.",
+                "resolved_config": {"build_profile": "nextjs_ts"},
+                "implementation_artifacts": ["app/api/runs/[run_id]/join/route.ts"],
+                "verification_scaffold": {
+                    "manifest": {},
+                    "files": [{"name": self._SHELL, "content": "// pristine shell"}],
+                },
+            },
+            metadata={"role": "qa"},
+        )
+
+    def _evidence(self):
+        return {
+            "scaffold_evidence": {
+                "failure_classes": {"fill": 1},
+                "observations": [
+                    {
+                        "file": self._SHELL,
+                        "slot_id": "slot-vc-probe-api-runs-join",
+                        "failure_class": "fill",
+                        "detail": "expected undefined to be 1",
+                        "criterion_id": "",
+                    }
+                ],
+            },
+            "validation_result": {
+                "passed": False,
+                "summary": "tests failed (exit code 1)",
+                "checks": [
+                    {
+                        "check": "tests_pass",
+                        "status": "failed",
+                        "passed": False,
+                        "executed": True,
+                        "exit_code": 1,
+                        "runner": "vitest",
+                        "suite_broken": False,
+                        "failing_cases": [
+                            {
+                                "title": "POST /api/runs/{run_id}/join -> 200",
+                                "file": self._SHELL,
+                                "message": "expected undefined to be 1",
+                            },
+                            {
+                                "title": "joins a run with a new name; participant count increments",
+                                "file": self._SUITE,
+                                "message": "expected undefined to be 1",
+                            },
+                        ],
+                    }
+                ],
+            },
+        }
+
+    def _responder(self, captured):
+        def responder(envelope):
+            captured.append(envelope)
+            if envelope.task_type == "data.analyze_failure":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "classification": "work_product",
+                        "analysis_summary": "the tests assert participant_count on the store row",
+                        "implicated_files": [self._SHELL, self._SUITE],
+                    },
+                )
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "patch",
+                        "decision_rationale": "fix the assertions",
+                        "affected_task_types": ["qa", "test"],
+                    },
+                )
+            return TaskResult(
+                task_id=envelope.task_id,
+                status="SUCCEEDED",
+                outputs={"artifacts": []},
+            )
+
+        return responder
+
+    async def test_the_qa_repair_is_aimed_at_the_shell_and_the_suite(self, cycle):
+        captured: list = []
+        runner, _registry, _vault, _bus = self._make_runner(self._responder(captured))
+        await runner.run_correction_protocol(
+            run_id="run_642c6086b601",
+            cycle=cycle,
+            envelope=self._qa_envelope(),
+            result=TaskResult(
+                task_id="task-run_642c6086-m006-qa.test",
+                status="FAILED",
+                error="tests failed (exit code 1)",
+                outputs=self._evidence(),
+            ),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+        repairs = [e for e in captured if "repair" in e.task_type]
+        assert [e.task_type for e in repairs] == ["qa.test_repair"], [e.task_type for e in repairs]
+        assert repairs[0].inputs["expected_artifacts"] == [self._SHELL, self._SUITE]
+        assert repairs[0].metadata["role"] == "qa"
