@@ -416,7 +416,7 @@ never mints peer agents.
 - SIP-0102's environment contract expressed as a capability declaration (it is the
   execution-environment seam in embryo; writing it registry-shaped costs nothing now).
 - The `entrypoint.py` name→role cleanup (already filed) — Invariant 1's mechanical floor.
-- **SIP-0086 §12a (the bounded in-task compile loop), targeted for 1.8.1** — the floor this
+- **SIP-0086 §12a (the bounded in-task compile loop), targeted for 1.8.1 and re-targeted to 1.8.2 on 2026-09-17** — the floor this
   SIP's tool-using loop generalizes. §12a deepens the existing self-evaluation seam (passes
   from the profile, every diagnostic, the file shown) without a runtime boundary; this SIP
   is where the producer runs the toolchain itself. §12a lands first and independently, and
