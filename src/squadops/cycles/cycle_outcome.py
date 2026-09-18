@@ -72,7 +72,11 @@ async def _collect_inert(
     (``list_cycles`` returns newest first — the port's ordering contract); a streak not
     resolvable within the window is not flagged.
     """
-    cycles = await registry.list_cycles(cycle.project_id, limit=50)
+    # #1526: anchored at the perspective cycle, not at now. Without the bound the read
+    # returned the project's newest 50 cycles whichever cycle it was asked about, so any
+    # cycle past the fiftieth-newest saw none of its own priors — and one near the boundary
+    # saw a truncated history, which reads as a real streak count rather than as no data.
+    cycles = await registry.list_cycles(cycle.project_id, limit=50, created_before=cycle.created_at)
     series = prior_in_series(cycle, cycles, limit=INERT_LOOKBACK_CYCLES)
     states = [cycle_check_state(current_summaries)]
     for prior in series:

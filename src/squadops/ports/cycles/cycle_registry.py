@@ -5,6 +5,7 @@ CycleRegistryPort — abstract interface for cycle and run persistence (SIP-0064
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from datetime import datetime
 
 from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.models import (
@@ -44,12 +45,19 @@ class CycleRegistryPort(ABC):
         status: CycleStatus | None = None,
         limit: int = 50,
         offset: int = 0,
+        created_before: datetime | None = None,
     ) -> list[Cycle]:
         """List cycles for a project, optionally filtered by status.
 
         Ordering contract: newest first by ``created_at`` — ``limit``/``offset``
         page over that ordering, so a bounded read returns the most recent
         cycles (#684's inert-detection history walk depends on this).
+
+        ``created_before`` anchors that window at a point in time instead of at now
+        (#1526): with it, a bounded read returns the cycles most recent *as of* that
+        instant. A history walk about a perspective cycle must pass the cycle's own
+        ``created_at``, or it reads the newest cycles in the project and finds none of
+        the perspective cycle's priors once the project has moved past the limit.
         """
 
     @abstractmethod
