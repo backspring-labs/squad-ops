@@ -216,6 +216,7 @@ class PostgresSquadProfile(SquadProfilePort):
                 "model": a.model,
                 "enabled": a.enabled,
                 "config_overrides": a.config_overrides,
+                "serves_roles": list(a.serves_roles),
             }
             for a in agents
         ]
@@ -230,6 +231,8 @@ class PostgresSquadProfile(SquadProfilePort):
                 model=a["model"],
                 enabled=a.get("enabled", True),
                 config_overrides=a.get("config_overrides", {}),
+                # Rows seeded before 1.8.1 carry no key: the identity map, as before.
+                serves_roles=tuple(a.get("serves_roles", ()) or ()),
             )
             for a in agents_data
         )

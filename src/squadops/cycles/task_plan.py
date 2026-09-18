@@ -47,7 +47,7 @@ from squadops.cycles.acceptance_check_spec import (
     derived_check_names,
     is_check_applicable,
 )
-from squadops.cycles.agent_config import resolve_agent_config
+from squadops.cycles.agent_config import resolve_agent_config, served_roles, serves_role
 from squadops.cycles.failure_evidence import FailureLocus
 from squadops.cycles.implementation_plan import (
     ImplementationPlan,
@@ -381,7 +381,7 @@ def _has_builder_role(profile: SquadProfile) -> bool:
     V1: presence-only detection (any(...)). Multi-builder selection
     behavior is out of scope and not specified by this plan.
     """
-    return any(a.role == "builder" and a.enabled for a in profile.agents)
+    return serves_role(profile, "builder")
 
 
 def _check_required_roles(
@@ -1011,7 +1011,7 @@ def generate_task_plan(
     Returns:
         Ordered list of TaskEnvelopes, one per pipeline step.
     """
-    profile_roles = {a.role for a in profile.agents if a.enabled}
+    profile_roles = served_roles(profile)
     cycle_reasoning = _resolve_cycle_reasoning(cycle)
 
     # SIP-0093 PR 93.3: framing workload threads plan_authoring_contributors

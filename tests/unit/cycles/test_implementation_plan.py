@@ -69,6 +69,8 @@ summary:
 class _FakeAgent:
     role: str
     enabled: bool = True
+    #: Models ``AgentProfileEntry`` since 1.8.1: empty means the identity map (SIP-0108 §10i).
+    serves_roles: tuple[str, ...] = ()
 
 
 @dataclass

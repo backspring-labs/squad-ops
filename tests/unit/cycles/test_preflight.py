@@ -57,6 +57,68 @@ def _ws(*types):
     return {"workload_sequence": [{"type": t} for t in types]}
 
 
+def _solo_profile():
+    """One agent serving every plan role — the comparison window's arm (SIP-0108 §10i)."""
+    return SquadProfile(
+        profile_id="solo",
+        name="Solo",
+        description="",
+        version=1,
+        agents=(
+            AgentProfileEntry(
+                agent_id="han",
+                role="generalist",
+                model="m",
+                enabled=True,
+                serves_roles=PLAN_ROLES,
+            ),
+        ),
+        created_at=NOW,
+    )
+
+
+def test_one_agent_serving_every_role_satisfies_the_same_workloads():
+    """Create-time preflight reads the DECLARED role map, not the agent's own role name.
+
+    Bug this catches: reading ``{a.role for a in profile.agents}`` sees a one-agent profile
+    as carrying only ``generalist``, so every workload is blocked for a missing role that the
+    profile does serve — and the arm cannot start.
+    """
+    profile = _solo_profile()
+    for wtype in ("framing", "evaluation"):
+        decision = required_roles_decision(profile, _ws(wtype))
+        assert decision.rejected is False, decision.blocking
+
+
+def test_a_role_the_declaration_omits_is_still_blocked_and_named():
+    """The declaration is the whole map: omitting a role does not fall back to the agent's
+    own role name, and the finding names the role and what the profile does provide."""
+    profile = SquadProfile(
+        profile_id="solo-partial",
+        name="Solo",
+        description="",
+        version=1,
+        agents=(
+            AgentProfileEntry(
+                agent_id="han",
+                role="generalist",
+                model="m",
+                enabled=True,
+                serves_roles=("strat", "dev", "qa", "lead"),
+            ),
+        ),
+        created_at=NOW,
+    )
+    decision = required_roles_decision(profile, _ws("framing"))
+    assert decision.rejected is True
+    messages = [f.message for f in decision.blocking]
+    assert len(messages) == 1
+    assert "`data`" in messages[0]
+    assert "solo-partial" in messages[0]
+    # It says what IS provided, so the fix does not need a second look.
+    assert "`qa`" in messages[0]
+
+
 def test_full_plan_squad_satisfies_framing_and_evaluation():
     profile = _profile(PLAN_ROLES)
     for wtype in ("framing", "evaluation"):

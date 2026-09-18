@@ -50,6 +50,7 @@ class ConfigSquadProfile(SquadProfilePort):
                     model=a["model"],
                     enabled=a.get("enabled", True),
                     config_overrides=a.get("config_overrides", {}),
+                    serves_roles=tuple(a.get("serves_roles", ()) or ()),
                 )
                 for a in entry.get("agents", [])
             )

@@ -107,6 +107,26 @@ class TestValidateAgentEntries:
         ]
         assert validate_agent_entries(agents) == []
 
+    def test_a_role_served_by_two_enabled_agents_is_refused(self):
+        """The declared map must be a map. Bug this catches: two agents answering for one
+        role has no defined winner — the resolver silently takes whichever the profile
+        listed first, so which agent runs the step depends on YAML ordering."""
+        agents = [
+            {"agent_id": "neo", "role": "dev", "model": "m"},
+            {"agent_id": "han", "role": "generalist", "model": "m", "serves_roles": ["dev", "qa"]},
+        ]
+        errors = validate_agent_entries(agents)
+        assert len(errors) == 1
+        assert "role 'dev' is already served by 'neo'" in errors[0]
+
+    def test_a_disabled_agent_does_not_claim_a_role(self):
+        """A profile may keep a disabled member beside the agent that replaces it."""
+        agents = [
+            {"agent_id": "neo", "role": "dev", "model": "m", "enabled": False},
+            {"agent_id": "han", "role": "generalist", "model": "m", "serves_roles": ["dev"]},
+        ]
+        assert validate_agent_entries(agents) == []
+
     def test_empty_agent_id(self):
         agents = [{"agent_id": "", "role": "dev", "model": "qwen2.5:7b"}]
         errors = validate_agent_entries(agents)

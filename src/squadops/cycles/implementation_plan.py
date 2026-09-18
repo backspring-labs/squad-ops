@@ -35,6 +35,7 @@ from squadops.cycles.acceptance_check_spec import (
     normalize_route,
     reserved_keys_for,
 )
+from squadops.cycles.agent_config import served_roles
 from squadops.tasks.task_types import TaskType, authors_qa_suite
 
 if TYPE_CHECKING:
@@ -344,7 +345,7 @@ class ImplementationPlan:
         Returns:
             List of validation error strings (empty = valid).
         """
-        available_roles = {a.role for a in profile.agents if a.enabled}  # type: ignore[attr-defined]
+        available_roles = served_roles(profile)
         errors: list[str] = []
         for task in self.tasks:
             if task.role not in available_roles:

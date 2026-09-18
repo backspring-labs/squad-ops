@@ -20,12 +20,32 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from squadops.cycles.models import Cycle, TaskFlowPolicy
+from squadops.cycles.models import AgentProfileEntry, Cycle, SquadProfile, TaskFlowPolicy
 from squadops.cycles.run_ledger import RunLedger
 from squadops.events.types import EventType
 from squadops.tasks.models import TaskEnvelope, TaskResult
 
 NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
+
+#: Every correction protocol in production runs under the cycle's squad profile; since
+#: 1.8.1 the runner requires one rather than resolving a role to a queue named after it
+#: (SIP-0108 §10i item 1).
+_HARNESS_PROFILE = SquadProfile(
+    profile_id="full",
+    name="Full Squad",
+    description="All",
+    version=1,
+    agents=(
+        AgentProfileEntry(agent_id="nat", role="strat", model="gpt-4", enabled=True),
+        AgentProfileEntry(agent_id="neo", role="dev", model="gpt-4", enabled=True),
+        AgentProfileEntry(agent_id="eve", role="qa", model="gpt-4", enabled=True),
+        AgentProfileEntry(agent_id="data-agent", role="data", model="gpt-4", enabled=True),
+        AgentProfileEntry(agent_id="max", role="lead", model="gpt-4", enabled=True),
+        AgentProfileEntry(agent_id="bob", role="builder", model="gpt-4", enabled=True),
+    ),
+    created_at=NOW,
+)
+
 pytestmark = [pytest.mark.domain_orchestration]
 
 
@@ -160,6 +180,7 @@ class TestCorrectionTaskRunPropagation:
             envelope=failed_envelope,
             result=TaskResult(task_id="task_failed", status="FAILED", error="bad"),
             correction_attempts=0,
+            profile=_HARNESS_PROFILE,
             prior_outputs={},
             all_artifact_refs=[],
             stored_artifacts=[],
@@ -214,6 +235,7 @@ class TestCorrectionTaskRunPropagation:
             envelope=failed_envelope,
             result=TaskResult(task_id="task_failed", status="FAILED", error="bad"),
             correction_attempts=0,
+            profile=_HARNESS_PROFILE,
             prior_outputs={},
             all_artifact_refs=[],
             stored_artifacts=[],
@@ -276,6 +298,7 @@ class TestCorrectionPatchRepairTaskRunPropagation:
             envelope=failed_envelope,
             result=TaskResult(task_id="task_failed", status="FAILED", error="bad"),
             correction_attempts=0,
+            profile=_HARNESS_PROFILE,
             prior_outputs={},
             all_artifact_refs=[],
             stored_artifacts=[],

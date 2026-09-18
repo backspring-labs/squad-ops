@@ -468,6 +468,11 @@ class AgentProfileEntry:
     model: str
     enabled: bool
     config_overrides: dict = field(default_factory=dict)
+    #: The step roles this agent serves in this profile (SIP-0108 §10i item 1). Empty
+    #: means exactly its own ``role`` — the identity map every squad profile has today.
+    #: A profile that assigns several roles to one agent declares them here; the
+    #: role → agent map is read from this field and is never inferred from a role name.
+    serves_roles: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

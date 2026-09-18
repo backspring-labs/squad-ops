@@ -70,10 +70,16 @@ def validate_reasoning_override(overrides: dict) -> list[str]:
 def validate_agent_entries(agents: list[dict]) -> list[str]:
     """Validate agent entries, returning a list of error messages.
 
-    Checks: non-empty agent_id, non-empty model, no duplicate agent_ids.
+    Checks: non-empty agent_id, non-empty model, no duplicate agent_ids, and no role
+    served by two enabled agents.
+
+    The last is what makes the declared role → agent map a map (SIP-0108 §10i item 1):
+    two enabled agents answering for one role has no defined winner, and the resolver
+    would silently take whichever the profile listed first.
     """
     errors: list[str] = []
     seen_ids: set[str] = set()
+    role_owner: dict[str, str] = {}
 
     for i, agent in enumerate(agents):
         agent_id = agent.get("agent_id", "")
@@ -93,5 +99,18 @@ def validate_agent_entries(agents: list[dict]) -> list[str]:
         if unknown:
             errors.append(f"agents[{i}]: unknown config_overrides keys: {', '.join(unknown)}")
         errors.extend(f"agents[{i}]: {e}" for e in validate_reasoning_override(overrides))
+
+        if agent.get("enabled", True):
+            declared = tuple(agent.get("serves_roles") or ()) or (agent.get("role", ""),)
+            for role in declared:
+                if not role or not role.strip():
+                    errors.append(f"agents[{i}]: role must not be empty")
+                elif role in role_owner:
+                    errors.append(
+                        f"agents[{i}]: role {role!r} is already served by "
+                        f"{role_owner[role]!r} — a role resolves to exactly one agent"
+                    )
+                else:
+                    role_owner[role] = agent_id
 
     return errors

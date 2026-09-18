@@ -89,6 +89,44 @@ def mock_queue(reply_router):
     return reply_router.bind(mock)
 
 
+#: The squad profile every correction protocol in production runs under. Since 1.8.1 the
+#: runner requires one (SIP-0108 §10i item 1): resolving a role without a profile used to
+#: return an agent id equal to the role — a queue no agent consumes — and these harnesses
+#: were the only callers that relied on it. Supplied once here rather than at ~250 call
+#: sites; a test that cares about resolution builds its own profile and passes it.
+_HARNESS_PROFILE = SquadProfile(
+    profile_id="full",
+    name="Full Squad",
+    description="All",
+    version=1,
+    agents=(
+        AgentProfileEntry(agent_id="nat", role="strat", model="gpt-4", enabled=True),
+        AgentProfileEntry(agent_id="neo", role="dev", model="gpt-4", enabled=True),
+        AgentProfileEntry(agent_id="eve", role="qa", model="gpt-4", enabled=True),
+        AgentProfileEntry(agent_id="data-agent", role="data", model="gpt-4", enabled=True),
+        AgentProfileEntry(agent_id="max", role="lead", model="gpt-4", enabled=True),
+        AgentProfileEntry(agent_id="bob", role="builder", model="gpt-4", enabled=True),
+    ),
+    created_at=NOW,
+)
+
+
+def _runner_class():
+    """``CorrectionRunner`` with the harness profile defaulted onto both protocol entries."""
+    from adapters.cycles.correction_runner import CorrectionRunner
+
+    class _CorrectionRunnerUnderProfile(CorrectionRunner):
+        async def run_correction_protocol(self, *args, **kwargs):
+            kwargs.setdefault("profile", _HARNESS_PROFILE)
+            return await super().run_correction_protocol(*args, **kwargs)
+
+        async def reexecute_repaired_suite(self, *args, **kwargs):
+            kwargs.setdefault("profile", _HARNESS_PROFILE)
+            return await super().reexecute_repaired_suite(*args, **kwargs)
+
+    return _CorrectionRunnerUnderProfile
+
+
 @pytest.fixture
 def mock_squad_profile():
     mock = AsyncMock()
@@ -1659,7 +1697,7 @@ class TestCorrectionRunnerStandalone:
         """Build a CorrectionRunner whose dispatch callable answers via
         ``responder(envelope) -> TaskResult`` and whose store_artifact
         callable records what would be persisted."""
-        from adapters.cycles.correction_runner import CorrectionRunner
+        CorrectionRunner = _runner_class()
         from squadops.cycles.models import ArtifactRef
 
         registry = registry or AsyncMock()
@@ -2704,7 +2742,7 @@ class TestReexecuteRepairedSuite:
     suite against the original workspace', which is worse than not retesting."""
 
     def _make_runner(self, responder):
-        from adapters.cycles.correction_runner import CorrectionRunner
+        CorrectionRunner = _runner_class()
 
         class _PassthroughDispatcher:
             def __init__(self):
@@ -3917,7 +3955,7 @@ class TestBudgetGatesCorrectionDispatch:
 
     @staticmethod
     def _bare_runner():
-        from adapters.cycles.correction_runner import CorrectionRunner
+        CorrectionRunner = _runner_class()
 
         dispatcher = AsyncMock()
         runner = CorrectionRunner(
@@ -4072,7 +4110,7 @@ class TestProgressAwareTermination:
 
     @staticmethod
     def _runner():
-        from adapters.cycles.correction_runner import CorrectionRunner
+        CorrectionRunner = _runner_class()
 
         runner = CorrectionRunner(
             cycle_registry=AsyncMock(),

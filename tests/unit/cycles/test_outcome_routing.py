@@ -26,6 +26,26 @@ from squadops.tasks.models import TaskResult
 
 NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
+#: Every correction protocol in production runs under the cycle's squad profile; since
+#: 1.8.1 the runner requires one rather than resolving a role to a queue named after it
+#: (SIP-0108 §10i item 1).
+_HARNESS_PROFILE = SquadProfile(
+    profile_id="full",
+    name="Full Squad",
+    description="All",
+    version=1,
+    agents=(
+        AgentProfileEntry(agent_id="nat", role="strat", model="gpt-4", enabled=True),
+        AgentProfileEntry(agent_id="neo", role="dev", model="gpt-4", enabled=True),
+        AgentProfileEntry(agent_id="eve", role="qa", model="gpt-4", enabled=True),
+        AgentProfileEntry(agent_id="data-agent", role="data", model="gpt-4", enabled=True),
+        AgentProfileEntry(agent_id="max", role="lead", model="gpt-4", enabled=True),
+        AgentProfileEntry(agent_id="bob", role="builder", model="gpt-4", enabled=True),
+    ),
+    created_at=NOW,
+)
+
+
 pytestmark = [pytest.mark.domain_orchestration]
 
 
@@ -1078,7 +1098,7 @@ class TestAcceptPatchRetestWorkspaceThreading:
             stored_artifacts=[],
             completed_task_ids=[],
             plan_delta_refs=[],
-            profile=None,
+            profile=_HARNESS_PROFILE,
             flow_run_id=None,
             enriched_envelope=enriched,
         )
@@ -2003,7 +2023,7 @@ class TestTheNextAttemptKeepsTheCasesThisOneExposed:
                 stored_artifacts=[],
                 completed_task_ids=[],
                 plan_delta_refs=[],
-                profile=None,
+                profile=_HARNESS_PROFILE,
                 flow_run_id=None,
                 patched_result_holder={},
                 interface_manifest=None,
@@ -2439,7 +2459,7 @@ class TestTheAcceptedRepairFactReachesTheCorrectionPolicy:
                 stored_artifacts=[],
                 completed_task_ids=[],
                 plan_delta_refs=[],
-                profile=None,
+                profile=_HARNESS_PROFILE,
                 flow_run_id=None,
                 patched_result_holder={},
                 interface_manifest=None,
