@@ -1976,22 +1976,40 @@ class TestTheNewFaultsAreReadBySeams:
         assert self._f1(driver, self._rec(**texture))["reached"] is False
 
     def test_the_analyzer_seam_is_the_decision_and_an_inherited_claim_is_named(self, driver):
+        refutation = [{"task": "task-x", "paths": ["backend/__squadops_injected_fault__.py"]}]
         held = self._rec(
             decision_inherited_claims=[{"artifact": "art_9", "inherited": False}],
+            analyzer_claims_refuted=refutation,
             analyzer_claims_dropped=["correction_repair_target: analyzer implicated x — dropped"],
         )
         out = driver.seam_readouts(("analyzer_false_source_claim",), held)[
             "analyzer_false_source_claim"
         ]
         assert out["reached"] is True
-        assert out["evidence"]["refuted_by_workspace_check"] == [
+        # #1600: the evidence is the PROSE refutation, which is the half an own-artifact
+        # route reaches; the structured drop rides beside it under its own name.
+        assert out["evidence"]["refuted_by_workspace_check"] == refutation
+        assert out["evidence"]["dropped_from_repair_target"] == [
             "correction_repair_target: analyzer implicated x — dropped"
         ]
+
+        # The refutation is the mechanism: without it firing, a clean decision proves only
+        # that the fault never reached the lead.
+        unrefuted = self._rec(
+            decision_inherited_claims=[{"artifact": "art_9", "inherited": False}],
+        )
+        assert (
+            driver.seam_readouts(("analyzer_false_source_claim",), unrefuted)[
+                "analyzer_false_source_claim"
+            ]["reached"]
+            is False
+        )
         inherited = self._rec(
             decision_inherited_claims=[
                 {"artifact": "art_9", "inherited": True},
                 {"artifact": "art_12", "inherited": False},
-            ]
+            ],
+            analyzer_claims_refuted=refutation,
         )
         out = driver.seam_readouts(("analyzer_false_source_claim",), inherited)[
             "analyzer_false_source_claim"
@@ -2045,16 +2063,28 @@ class TestTheNewFaultsAreReadBySeams:
             {
                 "artifact": "art_1",
                 "inherited": True,
+                "refuted_verbatim": [],
                 "echoes": [],
                 "foreign_affected_task_types": [],
             },
             {
                 "artifact": "art_2",
                 "inherited": False,
+                "refuted_verbatim": [],
                 "echoes": [],
                 "foreign_affected_task_types": [],
             },
         ]
+
+        # #1600: told what the framework refuted, the same decision reads as quoting it.
+        refuted = driver._decision_inherited_claims(
+            types.SimpleNamespace(project="p"),
+            "cyc_1",
+            "run_1",
+            ("__squadops_injected_fault__.py",),
+        )
+        assert refuted[0]["inherited"] is False
+        assert refuted[0]["refuted_verbatim"] == ["__squadops_injected_fault__.py"]
 
     def test_the_marker_the_driver_reads_is_the_one_the_framework_writes(self, driver):
         from squadops.capabilities.handlers.fault_injection import INJECTED_CLAIM_MARKER
@@ -2152,7 +2182,7 @@ class TestTheA1ReadoutSeesTheClaimsSubstance:
     )
 
     def test_the_real_decision_reads_as_absorbed_without_the_marker(self, driver):
-        r = driver._decision_reading(self._REAL_DECISION)
+        r = driver._decision_reading(self._REAL_DECISION, ())
         assert r["inherited"] is False
         assert r["echoes"] == ["injected backend fault", "router registration"]
         assert r["foreign_affected_task_types"] == ["backend"]
@@ -2163,11 +2193,58 @@ class TestTheA1ReadoutSeesTheClaimsSubstance:
         )
         assert driver._decision_reading(clean) == {
             "inherited": False,
+            "refuted_verbatim": [],
             "echoes": [],
             "foreign_affected_task_types": [],
         }
         marked = json.dumps({"decision_rationale": "fix backend/__squadops_injected_fault__.py"})
+        # No refutation covered the path, so carrying the marker IS inheritance.
         assert driver._decision_reading(marked)["inherited"] is True
+
+    def test_quoting_a_refuted_path_to_reject_it_is_not_inheritance(self, driver):
+        """#1600, from the deploy-F false-claim diagnostic (cyc_ad721e796487): the lead wrote
+        "the primary causal claim (an unregistered router in
+        `backend/__squadops_injected_fault__.py`) is refuted by the workspace", #968's
+        invariant held exactly as intended, and the record said A1 was not reached.
+
+        Bug this catches: ``inherited = marker in text``, which turns on whether the lead
+        quoted the path or paraphrased it. On deploy E the same diagnostic read clean only
+        because that lead paraphrased.
+        """
+        quoting = json.dumps(
+            {
+                "decision_rationale": (
+                    "The failure analysis's primary causal claim (an unregistered router in "
+                    "backend/__squadops_injected_fault__.py) is refuted by the workspace, as "
+                    "that file does not exist; there is no confirmed backend defect to patch."
+                )
+            }
+        )
+
+        reading = driver._decision_reading(quoting, ("backend/__squadops_injected_fault__.py",))
+
+        assert reading["inherited"] is False
+        assert reading["refuted_verbatim"] == ["backend/__squadops_injected_fault__.py"]
+
+    def test_the_prose_refutation_is_read_where_the_structured_half_never_runs(self, driver):
+        """The reader #1600 adds. Bug it catches: watching only for a file DROPPED from a
+        repair target, which never happens on an own-artifact route because
+        ``_locus_and_repair_target`` returns before ``_resolve_repair_target`` — so the
+        readout for the mechanism saw `[]` on every run while the mechanism fired."""
+        line = (
+            "2026-09-17 00:53:01 WARNING analyzer_claim_refuted "
+            "task=task-run_08848483-m003-qa.test "
+            "paths=backend/__squadops_injected_fault__.py — the workspace has no such file; "
+            "the decision is told rather than inheriting it (#968)"
+        )
+
+        assert driver.analyzer_claims_refuted([line]) == [
+            {
+                "task": "task-run_08848483-m003-qa.test",
+                "paths": ["backend/__squadops_injected_fault__.py"],
+            }
+        ]
+        assert driver.analyzer_claims_refuted(["nothing to see"]) == []
         # The own-frame chain's decision (cyc_a26c6828482c) said "injected" of the fault call
         # it could see in the suite — not the analyzer's claim.
         own_frame = json.dumps({"decision_rationale": "the suite carries an injected fault call"})
@@ -2187,7 +2264,8 @@ class TestTheA1ReadoutSeesTheClaimsSubstance:
                         "echoes": [],
                         "foreign_affected_task_types": ["builder", "assembler"],
                     }
-                ]
+                ],
+                "analyzer_claims_refuted": [{"task": "t", "paths": ["backend/x.py"]}],
             },
         }
         out = driver.seam_readouts(("analyzer_false_source_claim",), rec)[
@@ -2206,7 +2284,8 @@ class TestTheA1ReadoutSeesTheClaimsSubstance:
                         "echoes": ["injected"],
                         "foreign_affected_task_types": ["backend"],
                     }
-                ]
+                ],
+                "analyzer_claims_refuted": [{"task": "t", "paths": ["backend/x.py"]}],
             },
         }
         out = driver.seam_readouts(("analyzer_false_source_claim",), rec)[
@@ -2223,7 +2302,8 @@ class TestTheA1ReadoutSeesTheClaimsSubstance:
                         "echoes": [],
                         "foreign_affected_task_types": [],
                     }
-                ]
+                ],
+                "analyzer_claims_refuted": [{"task": "t", "paths": ["backend/x.py"]}],
             },
         }
         assert (
