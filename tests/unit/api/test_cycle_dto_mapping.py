@@ -6,7 +6,20 @@ from datetime import UTC, datetime
 
 import pytest
 
-from squadops.api.routes.cycles.mapping import cycle_to_response, profile_to_response
+from squadops.api.routes.cycles.mapping import (
+    assessment_to_response,
+    cycle_to_response,
+    profile_to_response,
+)
+from squadops.cycles.cycle_assessment import (
+    AssessorIdentity,
+    AttributionReading,
+    CycleAssessment,
+    EvidenceRef,
+    Indicator,
+    IndicatorState,
+    RefKind,
+)
 from squadops.cycles.models import (
     AgentProfileEntry,
     Cycle,
@@ -20,6 +33,65 @@ from squadops.cycles.models import (
 pytestmark = [pytest.mark.domain_api]
 
 NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
+
+
+class TestAssessmentToResponse:
+    """The reader's mapper (SIP-0108 §4.1 (a)).
+
+    The 1.8.0 cut could only recompute an assessment by hand — the stores carried its inputs
+    and nothing printed it, so the evidence gate's "carries" was read as "recomputable".
+    """
+
+    def _assessment(self) -> CycleAssessment:
+        refs = (EvidenceRef(kind=RefKind.RUN, id="run_001"),)
+        return CycleAssessment(
+            cycle_id="cyc_001",
+            outcome=(Indicator.of("accepted_functional", True, refs),),
+            quality=(Indicator.unaskable("verified_functional", "no clean-room verdict"),),
+            coordination=(Indicator.of("correction_rounds", 0),),
+            efficiency=(Indicator.of("wall_clock_seconds", 2820),),
+            attribution=AttributionReading(
+                state=IndicatorState.UNASKABLE,
+                reason="no terminal transition",
+            ),
+            assessment_version=1,
+            attribution_registry_version=2,
+            evidence_identity="sha256:abc",
+            assessor=AssessorIdentity(framework_version="1.8.1", git_sha="deadbee"),
+        )
+
+    def test_the_three_states_survive_the_boundary_distinctly(self):
+        """Bug this catches: collapsing `unaskable` and `asked_none` into one empty value —
+        the #1445 vocabulary exists so a quiet path, an exercised one and a structurally
+        silent one are never one zero, and the wire must keep them apart."""
+        resp = assessment_to_response(self._assessment())
+
+        assert resp.outcome[0].state == "observed"
+        assert resp.outcome[0].value is True
+        assert resp.quality[0].state == "unaskable"
+        assert resp.quality[0].reason == "no clean-room verdict"
+        # `correction_rounds` of zero answers nothing, by the projection's own rule.
+        assert resp.coordination[0].state == "asked_none"
+
+    def test_evidence_references_and_identity_reach_the_wire(self):
+        """Bug this catches: an indicator whose refs are dropped cannot be checked against
+        the stores, which is SIP-0108 §5 criterion 1 — every observed indicator's reference
+        resolves."""
+        resp = assessment_to_response(self._assessment())
+
+        assert [(r.kind, r.id) for r in resp.outcome[0].refs] == [("registry_run", "run_001")]
+        assert resp.evidence_identity == "sha256:abc"
+        assert resp.assessment_version == 1
+        assert resp.attribution_registry_version == 2
+        assert resp.assessor_framework_version == "1.8.1"
+        assert resp.assessor_git_sha == "deadbee"
+
+    def test_an_unattributed_cycle_says_so_rather_than_naming_nothing(self):
+        resp = assessment_to_response(self._assessment())
+
+        assert resp.attribution.primary is None
+        assert resp.attribution.state == "unaskable"
+        assert resp.attribution.reason == "no terminal transition"
 
 
 class TestProfileToResponse:

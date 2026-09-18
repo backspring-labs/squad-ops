@@ -24,6 +24,7 @@ from squadops.contracts.cycle_request_profiles import (
     load_profile,
     merge_config,
 )
+from squadops.cycles.cycle_assessment import IndicatorState
 from squadops.cycles.lifecycle import compute_config_hash
 
 app = typer.Typer(name="cycles", help="Manage experiment cycles")
@@ -90,6 +91,20 @@ def _replay_marker_lines_from_detail(data: dict) -> list[str]:
     from squadops.cycles.replay import ReplayProvenance, replay_marker_lines
 
     return replay_marker_lines(ReplayProvenance.from_dict(replay))
+
+
+def _assessment_cell(indicator: dict) -> str:
+    """What an indicator shows in one column: its value, or the reason it is unaskable.
+
+    The three states never collapse into one blank (#1445): an `unaskable` indicator shows
+    why it could not be asked, and an `asked_none` one shows that it was asked.
+    """
+    if indicator.get("state") == IndicatorState.UNASKABLE:
+        return indicator.get("reason") or "unaskable"
+    if indicator.get("state") == IndicatorState.ASKED_NONE:
+        return "none (asked)"
+    value = indicator.get("value")
+    return "" if value is None else str(value)
 
 
 def _parse_set_flags(set_flags: list[str]) -> dict:
@@ -279,6 +294,72 @@ def show_cycle(
                 quiet=quiet,
                 title="Workload Progress",
             )
+
+
+@app.command("assess")
+def assess_cycle_command(
+    ctx: typer.Context,
+    project_id: str = typer.Argument(...),
+    cycle_id: str = typer.Argument(...),
+):
+    """Show a cycle's assessment — four dimensions of three-state indicators (SIP-0108).
+
+    Computed on read from the durable record; nothing is stored and no agent is in the path.
+    An indicator reads `observed` with a value, `asked_none` when the producer ran and
+    produced nothing, or `unaskable` with the reason it could not be asked.
+    """
+    fmt = ctx.obj.get("format", "table") if ctx.obj else "table"
+    quiet = ctx.obj.get("quiet", False) if ctx.obj else False
+
+    try:
+        client = _get_client(ctx)
+        data = client.get(f"/api/v1/projects/{project_id}/cycles/{cycle_id}/assessment")
+        client.close()
+    except CLIError as e:
+        print_error(str(e))
+        raise typer.Exit(code=e.exit_code) from e
+
+    if fmt == "json":
+        print_json(data)
+        return
+
+    for dimension in ("outcome", "quality", "coordination", "efficiency"):
+        rows = [
+            [
+                ind.get("name", ""),
+                ind.get("state", ""),
+                _assessment_cell(ind),
+                ", ".join(f"{r.get('kind')}:{r.get('id')}" for r in ind.get("refs", [])),
+            ]
+            for ind in data.get(dimension, [])
+        ]
+        if rows:
+            print_table(
+                ["Indicator", "State", "Value / reason", "Evidence"],
+                rows,
+                quiet=quiet,
+                title=dimension.capitalize(),
+            )
+
+    attribution = data.get("attribution", {})
+    print_detail(
+        {
+            "cycle_id": data.get("cycle_id"),
+            "attribution": attribution.get("primary"),
+            "attribution_state": attribution.get("state"),
+            "contributing": ", ".join(
+                c.get("attribution", "") for c in attribution.get("contributing", [])
+            )
+            or None,
+            "unrecorded": ", ".join(attribution.get("unrecorded", [])) or None,
+            "assessment_version": data.get("assessment_version"),
+            "attribution_registry_version": data.get("attribution_registry_version"),
+            "evidence_identity": data.get("evidence_identity"),
+            "assessed_by": data.get("assessor_framework_version"),
+            "assessed_at_sha": data.get("assessor_git_sha"),
+        },
+        quiet=quiet,
+    )
 
 
 @app.command("cat", hidden=True)

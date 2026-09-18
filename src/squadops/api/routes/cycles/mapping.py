@@ -7,10 +7,15 @@ from __future__ import annotations
 from squadops.api.cycle_schemas import (
     AgentProfileEntryResponse,
     ArtifactRefResponse,
+    AttributionReadingDTO,
+    ContributionDTO,
+    CycleAssessmentResponse,
     CycleOutcomeDTO,
     CycleResponse,
+    EvidenceRefDTO,
     GateDecisionResponse,
     GateDTO,
+    IndicatorDTO,
     ProjectResponse,
     ReplayProvenanceDTO,
     RunResponse,
@@ -171,6 +176,64 @@ def _cycle_outcome_to_dto(outcome: CycleOutcome) -> CycleOutcomeDTO:
             if outcome.replay is not None
             else None
         ),
+    )
+
+
+def _indicator_to_dto(ind) -> IndicatorDTO:
+    return IndicatorDTO(
+        name=ind.name,
+        state=str(ind.state),
+        value=ind.value,
+        reason=ind.reason,
+        refs=[EvidenceRefDTO(kind=str(r.kind), id=r.id) for r in ind.refs],
+    )
+
+
+def assessment_to_response(assessment) -> CycleAssessmentResponse:
+    """Map a ``CycleAssessment`` onto the wire (SIP-0108 §4.1 (a)).
+
+    DTO purity: the projection is a domain object and knows nothing about HTTP; the states
+    and ref kinds are ``StrEnum`` members and go out as their plain strings, the way every
+    other boundary in this file carries an enum.
+    """
+    reading = assessment.attribution
+    attribution = reading.attribution
+    return CycleAssessmentResponse(
+        cycle_id=assessment.cycle_id,
+        outcome=[_indicator_to_dto(i) for i in assessment.outcome],
+        quality=[_indicator_to_dto(i) for i in assessment.quality],
+        coordination=[_indicator_to_dto(i) for i in assessment.coordination],
+        efficiency=[_indicator_to_dto(i) for i in assessment.efficiency],
+        attribution=AttributionReadingDTO(
+            state=str(reading.state),
+            primary=(
+                str(attribution.primary)
+                if attribution is not None and attribution.primary is not None
+                else None
+            ),
+            contributing=[
+                ContributionDTO(
+                    attribution=str(c.attribution),
+                    source=c.source,
+                    run_id=c.run_id,
+                    task_id=c.task_id,
+                    round_index=c.round_index,
+                    check_id=c.check_id,
+                    value=c.value,
+                )
+                for c in (attribution.contributing if attribution is not None else ())
+            ],
+            terminal_kind=str(reading.terminal_kind) if reading.terminal_kind else None,
+            registry_version=attribution.registry_version if attribution is not None else None,
+            reason=reading.reason,
+            unrecorded=list(reading.unrecorded),
+            refs=[EvidenceRefDTO(kind=str(r.kind), id=r.id) for r in reading.refs],
+        ),
+        assessment_version=assessment.assessment_version,
+        attribution_registry_version=assessment.attribution_registry_version,
+        evidence_identity=assessment.evidence_identity,
+        assessor_framework_version=assessment.assessor.framework_version,
+        assessor_git_sha=assessment.assessor.git_sha,
     )
 
 

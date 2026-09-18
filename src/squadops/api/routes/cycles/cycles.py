@@ -11,12 +11,13 @@ from fastapi import APIRouter, BackgroundTasks, Depends
 from squadops import __version__ as SQUADOPS_VERSION
 from squadops._version import resolve_git_sha
 from squadops.api.cycle_schemas import (
+    CycleAssessmentResponse,
     CycleCreateRequest,
     CycleCreateResponse,
     PreflightWarningDTO,
 )
 from squadops.api.middleware.auth import require_scopes
-from squadops.api.routes.cycles.mapping import cycle_to_response
+from squadops.api.routes.cycles.mapping import assessment_to_response, cycle_to_response
 from squadops.auth.models import Scope
 from squadops.cycles.check_tooling import resolve_provisioned_tooling
 from squadops.cycles.cycle_outcome import resolve_cycle_outcome
@@ -461,6 +462,24 @@ async def get_cycle(project_id: str, cycle_id: str):
     # derive-on-read pattern as the cycle status above.
     outcome = await resolve_cycle_outcome(registry, cycle_id)
     return cycle_to_response(cycle, runs, cycle_outcome=outcome)
+
+
+@router.get("/{cycle_id}/assessment", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
+async def get_cycle_assessment(project_id: str, cycle_id: str) -> CycleAssessmentResponse:
+    """The cycle's assessment, computed on read (SIP-0108 §4.1 (a)).
+
+    The 1.8.0 cut could only recompute this by hand: the stores carried the assessment's
+    inputs and nothing printed it, so the evidence gate's word "carries" was read as
+    "recomputable". This is the reader that makes it "shows".
+
+    Derive-on-read, the same pattern as the detail GET's verification roll-up: the projection
+    is pure and does no I/O of its own (an architecture test holds that). Assembling the
+    evidence is an adapter concern, so the composition root owns it (#154) and this route
+    asks the root. Read-only — nothing here writes, and no agent is in the path.
+    """
+    from squadops.api.runtime.deps import assess_cycle_from_stores
+
+    return assessment_to_response(await assess_cycle_from_stores(cycle_id))
 
 
 @router.post("/{cycle_id}/cancel", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
