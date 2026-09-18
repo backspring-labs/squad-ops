@@ -332,7 +332,17 @@ def _is_test_file(path: str, patterns: tuple[str, ...]) -> bool:
     *exclude* files from a source set, where over-matching is the safe direction; plan
     validation asks the stricter question "will the runner discover this?", and a
     ``__tests__/helpers.py`` pytest never collects must not count there.
+
+    The clause reads a **leading** ``__tests__/`` too (#1539). On the App Router stack every
+    suite lives at the workspace root, so ``__tests__/helpers.ts`` carries no leading slash and
+    the substring test missed it: a root-level module the runner imports but whose basename
+    matches no ``*.test.ts`` pattern was handed to the qa author as application source. The
+    ``f"/{path}"`` prefix is the whole fix — the convention is the directory, wherever it sits,
+    and the leading slash keeps it a *path segment* rather than a bare substring, so
+    ``app/my__tests__util.ts`` stays source. The dev-repair emission veto already read the
+    convention this way (#1014, ``adapters/cycles/correction_repair.py``); the two exclusions
+    now agree on it.
     """
     from squadops.capabilities.development_profiles import matches_test_file_patterns
 
-    return matches_test_file_patterns(path, patterns) or "/__tests__/" in path
+    return matches_test_file_patterns(path, patterns) or "/__tests__/" in f"/{path}"
