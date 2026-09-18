@@ -1,0 +1,80 @@
+# 1.8.1 DIAGNOSTIC — the own-frame chain on the App Router stack.
+#
+# WHY THIS EXISTS, and it is not a re-registration. The 1.8.0 pre-registration's §3c named two
+# supplies for the qa × Next.js cell of SIP-0107 §39.8's N: the counted rolls, and "the same
+# diagnostic in fill mode" — this one. **No such config was ever registered.** Only the dev-lane
+# diagnostic had a Next.js variant, so the cell's whole supply was the counted rolls, the one
+# Next.js roll that produced a qa fill repair lost its retest to #1602, and the cell read ZERO.
+# N came to 5 of 6 with a required cell empty, and the line closed on the owner's ruling with
+# the gap named (1.8.0 pre-registration §10c.4, §10c.5).
+#
+# So this is the missing supply, registered before deploy A's first diagnostic launch as
+# §39.8 requires — a diagnostic registered after the first launch cannot count toward N.
+#
+# It is the 1.8.0 React config's fault chain on the other stack. The own-frame fault is
+# runner-aware (#1304): on a TypeScript suite it injects `expect.__squadops_injected_fault__()`
+# into the first test body rather than swapping an RTL import, so it bites whatever the planner
+# scheduled. The repair that follows is the qa × Next.js transaction the cell counts — by FILL
+# where the failing case is a scaffold shell (§3c rule 1, counted on the fill-merge evidence)
+# or by anchored edit where it is the task's own free-authored suite, which #1603 made a repair
+# target. Either path supplies the cell; the record says which it was.
+#
+# NON-COUNTING by declaration before launch: it declares faults, and the driver refuses to count
+# a cycle that does.
+name: 1-8-1-diagnostic-own-frame-then-prose-repair-nextjs
+records_dir: var/verification_sets/1-8-1-diagnostics/own-frame-then-prose-repair-nextjs
+pre_registration: docs/plans/1-8-1-verification-set-preregistration.md
+project: group_run
+squad_profile: full-38
+request_profile: validated-fullstack
+overrides:
+  fault_injection: [qa_suite_own_frame_failure, repair_prose_only]
+  build_profile: nextjs_ts
+  development_profile: nextjs_ts
+gate_name: progress_plan_review
+n_rolls: 1
+gate_notes: >-
+  1.8.1 verification set. Approved under the pre-registered gate policy — identical text
+  applied to every roll of this set. System plan validation passed; no additional judgment
+  applied.
+launch_notes: >-
+  UNUSED — a diagnostic is never counted; the driver refuses a counting roll that declares
+  a fault.
+shakeout_notes: >-
+  1.8.1 DIAGNOSTIC — an own-frame suite failure on the App Router stack, then a repair that
+  emits only prose. Exercises L7 (the locus routes to qa.test_repair), L4 (#1273 — a prose-only
+  repair is refunded, not verified) and L5 (the re-take is briefed with its cases) on stack #2,
+  where the 1.8.0 set exercised them only on stack #1. Its reason for existing is the supply
+  gap §10c.4 named: this is the qa × Next.js cell's forcing fault, and without it the cell's
+  only supply is a counted roll that happens to take a qa round. Its red is manufactured.
+loaded_checks:
+  runtime-api: |-
+    # The cell counts a §9.3 region transaction (a fill) or an anchored edit on the task's own
+    # free-authored suite. #1603 made the second reachable: before it, the #970 fill branch
+    # aimed at the shells alone and a suite failing beside them was never a target — which is
+    # how the one Next.js roll that produced a qa fill repair lost its retest. Both halves are
+    # asserted by name, because a deploy without the second reads identically in the record
+    # until the retest fails.
+    from adapters.cycles.correction_repair import (
+        CorrectionRepair,
+        _fill_observations,
+        _locus_and_repair_target,
+        _own_files_named_by_failing_cases,
+    )
+    print("1603", callable(_own_files_named_by_failing_cases))
+    # Control: a failing case in a file the task does not own is not a target.
+    print("1603-own-only", _own_files_named_by_failing_cases(None, []))
+    print("fill-branch", callable(_fill_observations), hasattr(CorrectionRepair, "dispatch"))
+  eve: |-
+    from squadops.capabilities.handlers.fault_injection import (
+        FAULTS,
+        INJECTED_TASKS,
+        _qa_suite_own_frame_failure,
+    )
+    print("faults", sorted(FAULTS), sorted(INJECTED_TASKS))
+    print("chain", [n for n in ("qa_suite_own_frame_failure", "repair_prose_only") if n in FAULTS])
+    # The fault must BITE a TypeScript suite, not only a React one: on stack #2 there is no
+    # RTL import to swap, and a fault that changes nothing is a diagnostic that proves nothing
+    # while reading as launched.
+    ts = 'import { describe, it, expect } from "vitest"\n\ndescribe("runs", () => {\n  it("lists", () => {\n    expect(1).toBe(1)\n  })\n})\n'
+    print("bites-ts", _qa_suite_own_frame_failure(ts) != ts)

@@ -2234,6 +2234,67 @@ class TestTheA1ReadoutSeesTheClaimsSubstance:
         )
 
 
+class TestEveryRequiredCellHasAForcingDiagnostic:
+    """SIP-0107 §39.8 requires N successful scoped transactions with at least one in each of
+    qa × React, dev × React, qa × Next.js and dev × Next.js, and says the diagnostics supply
+    most of it — a counted set of the usual shape reaches no honest N alone.
+
+    Bug this catches, which is not hypothetical: the 1.8.0 pre-registration's §3c named "the
+    same diagnostic in fill mode" as the qa × Next.js supply and **no such config was ever
+    registered**. Only the dev lane had a Next.js variant. The cell's whole supply became the
+    counted rolls, the one Next.js roll that produced a qa fill repair lost its retest to
+    #1602, the cell read zero, and N came to 5 of 6 with a required cell empty (§10c.4). The
+    supply table was prose; nothing compared it to the configs on disk.
+    """
+
+    #: Which producer lane a forcing fault drives a repair into.
+    _LANE_OF_FAULT = {
+        "qa_suite_own_frame_failure": "qa",
+        "dev_join_response_omits_declared_fields": "dev",
+    }
+
+    @staticmethod
+    def _faults(cfg) -> list[str]:
+        """The config's declared faults. ``load_set_config`` normalizes the list to the
+        comma-joined form the CLI's ``--set`` flag takes, so reading it as a sequence yields
+        characters — the shape a test written against the raw YAML would miss."""
+        declared = cfg.overrides.get("fault_injection") or ""
+        if isinstance(declared, str):
+            return [f.strip() for f in declared.split(",") if f.strip()]
+        return list(declared)
+
+    def test_each_required_cell_of_the_1_8_1_line_has_one(self, driver):
+        cells: dict[tuple[str, str], list[str]] = {}
+        for path in sorted(_SETS.glob("1-8-1-diagnostic-*.yaml")):
+            cfg = driver.load_set_config(path)
+            stack = cfg.overrides.get("build_profile") or "fullstack_fastapi_react"
+            for fault in self._faults(cfg):
+                lane = self._LANE_OF_FAULT.get(fault)
+                if lane:
+                    cells.setdefault((lane, stack), []).append(path.name)
+
+        required = {
+            ("qa", "fullstack_fastapi_react"),
+            ("dev", "fullstack_fastapi_react"),
+            ("qa", "nextjs_ts"),
+            ("dev", "nextjs_ts"),
+        }
+        missing = sorted(required - set(cells))
+        assert not missing, (
+            f"required §39.8 cells with no forcing diagnostic registered: {missing}. "
+            "A cell whose only supply is a counted roll that happens to take a round of that "
+            "kind is how 1.8.0 read N = 5 of 6 (§10c.4)."
+        )
+
+    def test_a_diagnostic_never_counts(self, driver):
+        """Every registered diagnostic declares a fault, which is what makes the driver refuse
+        to count it. Bug this catches: a config whose fault list is emptied in an edit, which
+        then reads as an ordinary counting roll on a deliberately broken cycle."""
+        for path in sorted(_SETS.glob("1-8-1-diagnostic-*.yaml")):
+            cfg = driver.load_set_config(path)
+            assert self._faults(cfg), path.name
+
+
 class TestTheLogWindowIsBoundedAtBothEnds:
     """The deploy A re-render of the contentless-builder record (cyc_ceef5581bfd1) carried
     the analyzer diagnostic's qa retries as its own: `docker logs --since` with no end
