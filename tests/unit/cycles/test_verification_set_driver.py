@@ -2993,6 +2993,216 @@ class TestTheEmissionCountBehindTheBankedArtifacts:
         assert "UNASKABLE" in driver._show(unaskable)
 
 
+class TestTheComparisonArmsAreHeldEqual:
+    """SIP-0108 §4.4: the arms differ ONLY by the reasoning organization, and "the comparison
+    refuses to run if either arm's effective grants for a task type differ" — so the equality
+    is checked against the deploy, not asserted in prose."""
+
+    _SQUAD = {
+        "profile_id": "full-38",
+        "agents": [
+            {"agent_id": "neo", "role": "dev", "model": "m", "serves_roles": ["dev"]},
+            {
+                "agent_id": "eve",
+                "role": "qa",
+                "model": "m",
+                "serves_roles": ["qa"],
+                "config_overrides": {"max_completion_tokens": 12288},
+            },
+        ],
+    }
+    _SOLO = {
+        "profile_id": "solo",
+        "agents": [
+            {
+                "agent_id": "han",
+                "role": "generalist",
+                "model": "m",
+                "serves_roles": ["dev", "qa"],
+                "config_overrides": {"max_completion_tokens": 12288},
+            }
+        ],
+    }
+
+    @staticmethod
+    def _cfg(driver, name, arm, profile):
+        return driver.SetConfig(
+            name=name,
+            project="group_run",
+            squad_profile=profile,
+            request_profile="validated-fullstack",
+            gate_name="g",
+            gate_notes="n",
+            launch_notes="l",
+            shakeout_notes="s",
+            n_rolls=6,
+            arm=arm,
+        )
+
+    def _serve(self, driver, monkeypatch, by_profile):
+        monkeypatch.setattr(driver, "login", lambda: None)
+        monkeypatch.setattr(
+            driver,
+            "sh",
+            lambda cmd, check=True: json.dumps(by_profile["solo" if "solo" in cmd else "full-38"]),
+        )
+
+    def test_a_one_agent_arm_cannot_reproduce_a_per_role_cap_and_the_check_says_so(
+        self, driver, monkeypatch
+    ):
+        """A finding this check surfaced, not a case it was written for.
+
+        §4.4 requires both arms' effective per-task-type cap to be EQUAL, and notes that caps
+        are not task-type scoped: `full-38` carries 12288 as an AGENT-level override on its qa
+        member alone. One agent serving every role cannot hold that — whatever cap Han carries
+        applies to his dev work too, so the squad's dev runs at the default and Solo's dev runs
+        at 12288. The arms then differ by something other than the reasoning organization,
+        which is the one thing the comparison may not tolerate.
+
+        The check refuses and names both readings, which is the point: the window's
+        pre-registration has to resolve this — a flat cap across the squad's members, or caps
+        scoped per task type — before either arm runs. Silence here would have produced a
+        number nobody could read.
+        """
+        self._serve(driver, monkeypatch, {"full-38": self._SQUAD, "solo": self._SOLO})
+
+        problems = driver.arm_substrate_problems(
+            self._cfg(driver, "squad", "squad", "full-38"),
+            self._cfg(driver, "solo", "solo", "solo"),
+        )
+
+        assert len(problems) == 1
+        assert "per-call completion cap" in problems[0]
+        assert "'dev': 12288" in problems[0]
+
+    def test_a_flat_cap_on_both_sides_is_equal(self, driver, monkeypatch):
+        """The resolution the pre-registration can take: every squad member carrying the same
+        cap makes the arms comparable, because the one-agent arm then holds the same one.
+
+        Bug this catches: a check so strict that no pair of arms can ever satisfy it, which
+        would make the refusal above meaningless."""
+        flat_squad = {
+            "profile_id": "full-38",
+            "agents": [
+                {
+                    "agent_id": a,
+                    "role": r,
+                    "model": "m",
+                    "serves_roles": [r],
+                    "config_overrides": {"max_completion_tokens": 12288},
+                }
+                for a, r in (("neo", "dev"), ("eve", "qa"))
+            ],
+        }
+        self._serve(driver, monkeypatch, {"full-38": flat_squad, "solo": self._SOLO})
+
+        assert (
+            driver.arm_substrate_problems(
+                self._cfg(driver, "squad", "squad", "full-38"),
+                self._cfg(driver, "solo", "solo", "solo"),
+            )
+            == []
+        )
+
+    def test_a_missing_cap_refuses_the_comparison_and_names_both_readings(
+        self, driver, monkeypatch
+    ):
+        """Bug this catches: failing closed with "the substrate differs", which tells the
+        reader nothing about which half to fix."""
+        solo_without = {
+            "profile_id": "solo",
+            "agents": [
+                {
+                    "agent_id": "han",
+                    "role": "generalist",
+                    "model": "m",
+                    "serves_roles": ["dev", "qa"],
+                }
+            ],
+        }
+        self._serve(driver, monkeypatch, {"full-38": self._SQUAD, "solo": solo_without})
+
+        problems = driver.arm_substrate_problems(
+            self._cfg(driver, "squad", "squad", "full-38"),
+            self._cfg(driver, "solo", "solo", "solo"),
+        )
+
+        assert len(problems) == 1
+        assert "per-call completion cap" in problems[0]
+        assert "'qa': 12288" in problems[0]
+        assert "squad" in problems[0] and "solo" in problems[0]
+
+    def test_a_different_model_refuses_the_comparison(self, driver, monkeypatch):
+        """The same model on the same box is the first thing §4.4 holds equal: a comparison
+        across two models measures the models."""
+        other_model = {
+            "profile_id": "solo",
+            "agents": [
+                {
+                    "agent_id": "han",
+                    "role": "generalist",
+                    "model": "a-different-model",
+                    "serves_roles": ["dev", "qa"],
+                    "config_overrides": {"max_completion_tokens": 12288},
+                }
+            ],
+        }
+        self._serve(driver, monkeypatch, {"full-38": self._SQUAD, "solo": other_model})
+
+        problems = driver.arm_substrate_problems(
+            self._cfg(driver, "squad", "squad", "full-38"),
+            self._cfg(driver, "solo", "solo", "solo"),
+        )
+
+        assert any("model and serving" in p for p in problems)
+
+
+class TestASoloRollProvesTheAbsences:
+    """SIP-0108 §10i item 6: "Han never saw it" as a fact the record proves."""
+
+    def test_a_stored_analysis_or_decision_refuses_the_roll(self, driver, tmp_path, monkeypatch):
+        """Bug this catches: an arm that declared `correction_steps: [repair]` but ran on a
+        deploy or profile where the analyzer and the lead still executed. The comparison's
+        independent variable would then be nothing at all, and only the record would know."""
+        import types
+
+        root = tmp_path / "data" / "artifacts" / "p" / "cyc_1" / "run_1"
+        for art, filename, producing in (
+            ("art_1", "correction_decision.md", "governance.correction_decision"),
+            ("art_2", "failure_analysis.md", "data.analyze_failure"),
+            ("art_3", "runs-api.test.ts", "qa.test"),
+        ):
+            d = root / art
+            d.mkdir(parents=True)
+            (d / "metadata.json").write_text(
+                json.dumps({"filename": filename, "metadata": {"producing_task_type": producing}})
+            )
+        monkeypatch.setattr(driver, "REPO", tmp_path)
+
+        problems = driver.solo_absence_problems(
+            types.SimpleNamespace(project="p"), "cyc_1", "run_1"
+        )
+
+        assert any("correction_decision.md" in p for p in problems)
+        assert any("failure_analysis.md" in p for p in problems)
+        # The qa suite is the arm's own work and must not be flagged.
+        assert not any("runs-api.test.ts" in p for p in problems)
+
+    def test_a_clean_solo_roll_reports_nothing(self, driver, tmp_path, monkeypatch):
+        import types
+
+        d = tmp_path / "data" / "artifacts" / "p" / "cyc_1" / "run_1" / "art_1"
+        d.mkdir(parents=True)
+        (d / "metadata.json").write_text(
+            json.dumps({"filename": "routes.ts", "metadata": {"producing_task_type": "dev"}})
+        )
+        monkeypatch.setattr(driver, "REPO", tmp_path)
+
+        assert (
+            driver.solo_absence_problems(types.SimpleNamespace(project="p"), "cyc_1", "run_1") == []
+        )
+
+
 class TestTheRecordCarriesTheCyclesCodeLineage:
     """#80: every roll record carries the framework version, commit and request profile the
     cycle row says created the cycle — observed on the record, beside the set config's typed
