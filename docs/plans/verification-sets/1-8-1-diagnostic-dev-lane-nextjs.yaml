@@ -1,0 +1,60 @@
+# 1.8.1 DIAGNOSTIC — the dev lane: a probe failure on a developer-owned route is repaired by a
+# development repair aimed at the probe-owned slot, inside its grant (SIP-0107 step 3, §46d;
+# 1.8.0 plan §4.1 "the dev-lane fault is registered"; pre-registration §3c/§3d).
+#
+# Not a roll and not a shakeout: a non-counting cycle that runs the roll's own path with the fault
+# `dev_join_response_omits_declared_fields` injected at the develop task's FIRST attempt (#1251):
+# the join handler's final success return answers only the run's id, so the qa task's join probe
+# rejects the app and a development repair follows. The driver REFUSES to count a cycle whose
+# config declares a fault, and names the fault beside every readout it produces.
+#
+# WHAT THIS RUN SUPPLIES: the nextjs half of the dev cell's N (pre-registration §3c) — a
+# successful scoped transaction on app/api/runs/[run_id]/join/route.ts (`function:POST#try` or an anchored edit), read from the dev
+# repair's `repair_revision_form` line (offered/form/modes/replaced), the `anchored_edit_transaction`
+# line, `patch_verification`, `patch_retest` and `patch_candidate_identity`. A whole-file response
+# is recorded and counted per cell (§46a), never refused on this deploy. Two-run budget.
+
+name: 1-8-1-diagnostic-dev-lane-nextjs
+records_dir: var/verification_sets/1-8-1-diagnostics/dev-lane-nextjs
+pre_registration: docs/plans/1-8-1-verification-set-preregistration.md
+project: group_run
+squad_profile: full-38
+request_profile: validated-fullstack
+overrides:
+  fault_injection: [dev_join_response_omits_declared_fields]
+  build_profile: nextjs_ts
+  development_profile: nextjs_ts
+gate_name: progress_plan_review
+n_rolls: 1
+gate_notes: >-
+  1.8.1 verification set. Approved under the pre-registered gate policy
+  (pre-registration §7) — identical text applied to every roll of this set.
+  System plan validation passed; no additional judgment applied.
+launch_notes: >-
+  UNUSED — a diagnostic is never counted; the driver refuses a counting roll that declares
+  a fault.
+shakeout_notes: >-
+  1.8.1 DIAGNOSTIC — the dev lane on nextjs. NON-COUNTING by declaration before launch: this
+  cycle injects `dev_join_response_omits_declared_fields` at the develop task's first attempt
+  (#1251) so the join probe fails and a development repair of the join handler follows. Its red
+  is manufactured and must never be read as the squad failing. The reading is the dev repair's
+  revision form and whether its transaction is verified, retested and persisted under one
+  identity (SIP-0107 §39.8, pre-registration §3c).
+loaded_checks:
+  runtime-api: |-
+    from squadops.capabilities.handlers.fault_injection import FAULTS, FaultScope
+    from squadops.cycles.failure_evidence import suite_files_named_unanimously, decision_disputes_own_artifact
+    from adapters.cycles.correction_repair import _locus_and_repair_target
+    f = FAULTS["dev_join_response_omits_declared_fields"]
+    # The fault is registered on the develop seam, first attempt only (the loop must RECOVER from it).
+    print("dev-lane", str(f.task), f.scope is FaultScope.FIRST_ATTEMPT)
+    # #1582 present with its abstain control — a probe failure the lead attributes to the app must stay on the dev chain.
+    print("1581", suite_files_named_unanimously({"implicated_files": ["t.py"]}, {"affected_task_types": ["testing"]}, ["t.py"]) == ["t.py"],
+          suite_files_named_unanimously({"implicated_files": ["t.py"]}, {"affected_task_types": ["backend"]}, ["t.py"]) == [])
+  neo: |-
+    from squadops.capabilities.anchored_edits import apply_anchored_edits, parse_anchored_edits, revision_form_reading
+    from squadops.capabilities.handlers.impl.repair_handlers import _RepairPromptMixin
+    import inspect
+    # SIP-0107 §46m/§46o live in the dev container: the repair shows the files it may edit and records the replaced span.
+    print("46m", hasattr(_RepairPromptMixin, "_render_current_files_section"), "base_chars" in inspect.signature(_RepairPromptMixin._record_revision_form).parameters)
+    print("46o", "replaced" in revision_form_reading({}, {}, {}))
