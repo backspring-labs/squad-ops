@@ -145,7 +145,7 @@ async def test_every_seeded_profile_keeps_its_snapshot_hash_through_the_postgres
     Since 1.8.1 the round trip also carries ``serves_roles``, which the snapshot payload covers
     because it decides which agent runs each step (SIP-0108 §10i item 1). That makes this the
     shape check on migration 1510's output too: a backfilled row and the YAML profile it was
-    seeded from must still hash alike. ``full-38`` reads ``78955d7988f21eec`` under the current
+    seeded from must still hash alike. ``full-38`` reads ``cbf3a18d903fec58`` under the current
     formula; refs stamped before it were taken over a payload without the field and are not
     reproducible by it."""
     import json
