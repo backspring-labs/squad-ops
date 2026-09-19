@@ -1335,6 +1335,9 @@ def collect(cfg: SetConfig, cycle_id: str) -> dict:
         "cycle_id": cycle_id,
         "squad_profile_snapshot_ref": snapshot,
         "lineage": lineage,
+        # SIP-0108 §4.1: the projection over the durable record, rendered rather than left
+        # recomputable (the 1.8.0 evidence gate's gap, §10c.6).
+        "cycle_assessment": cycle_assessment(cfg, cycle_id),
         "runs": runs,
         "gate_decisions": [
             dict(zip(("gate", "decision", "decided_by"), g.split("|"), strict=False)) for g in gates
@@ -1371,6 +1374,62 @@ def collect(cfg: SetConfig, cycle_id: str) -> dict:
         ],
         "wall_clock_seconds": sum(r["seconds"] for r in runs),
         "impl_run_id": impl["run_id"] if impl else None,
+    }
+
+
+def cycle_assessment(cfg: SetConfig, cycle_id: str) -> dict:
+    """The cycle's ``CycleAssessment``, read through the product's own reader (SIP-0108 §4.1).
+
+    The 1.8.0 evidence gate asked that every counted record CARRY an assessment. It was met by
+    recomputing the projection by hand over the nine counted cycles, because the durable stores
+    carried its inputs and nothing printed it (1.8.0 pre-registration §10c.6). The record now
+    carries it.
+
+    Read through ``squadops cycles assess`` rather than by importing the projection: the driver
+    reads a deployed container's answer, not this tree's module, exactly as
+    ``live_squad_snapshot`` does. A driver newer than its deploy therefore reads the assessment
+    as unaskable rather than computing one the deploy never produced.
+    """
+    reason = (
+        "the deploy served no assessment for this cycle — a runtime API older than the "
+        "`cycles assess` route, a CLI that has no such command, or a cycle it cannot read"
+    )
+    try:
+        raw = sh(
+            f"{SQUADOPS} --format json cycles assess "
+            f"{shlex.quote(cfg.project)} {shlex.quote(cycle_id)}",
+            check=False,
+        )
+        data = json.loads(raw) if raw.strip() else {}
+    except (ValueError, OSError, SystemExit) as exc:
+        # A driver older or newer than its deploy reads the assessment as UNASKABLE rather
+        # than computing one the deploy never produced, or failing the whole record over a
+        # reading that is texture (#1445).
+        return {"state": "unaskable", "reason": f"{reason} ({type(exc).__name__})"}
+    if not isinstance(data, dict) or "cycle_id" not in data:
+        return {"state": "unaskable", "reason": reason}
+    indicators = {
+        dimension: data.get(dimension) or []
+        for dimension in ("outcome", "quality", "coordination", "efficiency")
+    }
+    states: dict[str, int] = {}
+    for group in indicators.values():
+        for ind in group:
+            states[ind.get("state", "?")] = states.get(ind.get("state", "?"), 0) + 1
+    return {
+        "state": "observed",
+        "attribution": (data.get("attribution") or {}).get("primary"),
+        "attribution_state": (data.get("attribution") or {}).get("state"),
+        "assessment_version": data.get("assessment_version"),
+        "attribution_registry_version": data.get("attribution_registry_version"),
+        "evidence_identity": data.get("evidence_identity"),
+        "assessed_by": data.get("assessor_framework_version"),
+        "assessed_at_sha": data.get("assessor_git_sha"),
+        # The three-state tally is the reading the gate is about: an assessment whose
+        # indicators are mostly unaskable is not an assessed cycle, and a count says so
+        # without the reader opening every indicator.
+        "indicator_states": states,
+        "indicators": indicators,
     }
 
 
