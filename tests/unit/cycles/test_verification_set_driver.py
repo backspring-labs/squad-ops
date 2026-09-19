@@ -2062,6 +2062,7 @@ class TestTheNewFaultsAreReadBySeams:
         assert out == [
             {
                 "artifact": "art_1",
+                "decision_task": "",
                 "inherited": True,
                 "refuted_verbatim": [],
                 "echoes": [],
@@ -2069,22 +2070,13 @@ class TestTheNewFaultsAreReadBySeams:
             },
             {
                 "artifact": "art_2",
+                "decision_task": "",
                 "inherited": False,
                 "refuted_verbatim": [],
                 "echoes": [],
                 "foreign_affected_task_types": [],
             },
         ]
-
-        # #1600: told what the framework refuted, the same decision reads as quoting it.
-        refuted = driver._decision_inherited_claims(
-            types.SimpleNamespace(project="p"),
-            "cyc_1",
-            "run_1",
-            ("__squadops_injected_fault__.py",),
-        )
-        assert refuted[0]["inherited"] is False
-        assert refuted[0]["refuted_verbatim"] == ["__squadops_injected_fault__.py"]
 
     def test_the_marker_the_driver_reads_is_the_one_the_framework_writes(self, driver):
         from squadops.capabilities.handlers.fault_injection import INJECTED_CLAIM_MARKER
@@ -2234,17 +2226,96 @@ class TestTheA1ReadoutSeesTheClaimsSubstance:
         line = (
             "2026-09-17 00:53:01 WARNING analyzer_claim_refuted "
             "task=task-run_08848483-m003-qa.test "
+            "decision_task=corr-run_08848483-00-governance.correction_decision "
             "paths=backend/__squadops_injected_fault__.py — the workspace has no such file; "
             "the decision is told rather than inheriting it (#968)"
         )
 
+        # A deploy that predates `decision_task` still parses; it reads "" and is reported
+        # as unjoinable rather than matched against every decision of the run.
+        old = line.replace("decision_task=corr-run_08848483-00-governance.correction_decision ", "")
+        assert driver.analyzer_claims_refuted([old])[0]["decision_task"] == ""
+
         assert driver.analyzer_claims_refuted([line]) == [
             {
                 "task": "task-run_08848483-m003-qa.test",
+                "decision_task": "corr-run_08848483-00-governance.correction_decision",
                 "paths": ["backend/__squadops_injected_fault__.py"],
             }
         ]
         assert driver.analyzer_claims_refuted(["nothing to see"]) == []
+
+    def test_a_refutation_joins_only_the_decision_it_was_told_to(self, driver):
+        """#1600 review: flattening every refutation's paths and handing the union to every
+        stored decision lets round 0's refutation excuse the SAME path quoted in round 1 — A1
+        false-greens across rounds instead of across prose styles.
+
+        Bug this catches exactly that: two rounds, one refuted, and the unrefuted round's
+        decision must still read as inheriting.
+        """
+        refutations = [
+            {
+                "task": "task-x",
+                "decision_task": "corr-run_abc-00-governance.correction_decision",
+                "paths": ["backend/__squadops_injected_fault__.py"],
+            }
+        ]
+
+        by_decision = driver.refuted_paths_by_decision(refutations)
+
+        assert by_decision == {
+            "corr-run_abc-00-governance.correction_decision": (
+                "backend/__squadops_injected_fault__.py",
+            )
+        }
+        # Round 0 quoted it after the refutation: not inheritance.
+        quoting = json.dumps(
+            {"decision_rationale": "backend/__squadops_injected_fault__.py is refuted"}
+        )
+        round_0 = driver._decision_reading(
+            quoting, by_decision["corr-run_abc-00-governance.correction_decision"]
+        )
+        assert round_0["inherited"] is False
+        # Round 1 carries the same path with NO refutation of its own: still inheritance.
+        round_1 = driver._decision_reading(quoting, ())
+        assert round_1["inherited"] is True
+
+    def test_the_seam_reads_unaskable_when_a_refutation_cannot_be_correlated(self, driver):
+        """A deploy that emitted a refutation without naming its decision step cannot be
+        read either way, and A1 says so instead of guessing.
+
+        Bug this catches: falling back to a run-wide match on an older deploy, which is the
+        cross-round false-green this fix exists to remove — reintroduced by the fallback
+        rather than by the original reader.
+        """
+        rec = {
+            "correction_rounds": 1,
+            "loop_texture": {
+                "decision_inherited_claims": [{"artifact": "a", "inherited": False, "echoes": []}],
+                "analyzer_claims_refuted": [
+                    {"task": "t", "decision_task": "", "paths": ["backend/x.py"]}
+                ],
+                "unjoinable_refutations": [
+                    {"task": "t", "decision_task": "", "paths": ["backend/x.py"]}
+                ],
+            },
+        }
+
+        out = driver.seam_readouts(("analyzer_false_source_claim",), rec)[
+            "analyzer_false_source_claim"
+        ]
+
+        assert out["reached"] is None
+        assert "cannot be correlated" in out["evidence"]["unaskable_reason"]
+
+    def test_a_refutation_with_no_decision_step_cannot_be_joined(self, driver):
+        """A deploy that predates the field emits no ``decision_task``. It is reported as
+        unjoinable rather than matched against every decision of the run."""
+        old = [{"task": "task-x", "decision_task": "", "paths": ["a/b.py"]}]
+
+        assert driver.refuted_paths_by_decision(old) == {}
+        assert driver.unjoinable_refutations(old) == old
+        assert driver.unjoinable_refutations([{"decision_task": "corr-1", "paths": []}]) == []
         # The own-frame chain's decision (cyc_a26c6828482c) said "injected" of the fault call
         # it could see in the suite — not the analyzer's claim.
         own_frame = json.dumps({"decision_rationale": "the suite carries an injected fault call"})
