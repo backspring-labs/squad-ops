@@ -291,6 +291,7 @@ EVIDENCE_FIELDS: dict[str, tuple[str, ...]] = {
     "loop_texture.refunded_rounds": _PATCH_PATH,
     "loop_texture.evidence_superseded": _PATCH_PATH,
     "loop_texture.qa_owned_routed": _PATCH_PATH,
+    "loop_texture.own_artifact_locus": _PATCH_PATH,
     "loop_texture.absent_anchor_routed": _PATCH_PATH,
     "loop_texture.repair_brief_case_counts": _PATCH_PATH,
     "loop_texture.decided_by_agent": _PATCH_PATH,
@@ -2499,6 +2500,50 @@ def _a1_reading(rec: Mapping[str, Any]) -> tuple[bool | None, dict]:
     return reached, evidence
 
 
+_FAULTED_TASK_TYPE = re.compile(r"-(?P<ttype>[a-z_]+\.[a-z_]+)$")
+
+#: The AFFIRMATIVE own-artifact locus, em dash included. #1054's branch logs
+#: ``own_artifact DISPUTED —``, sets the locus to UNKNOWN and falls through to the DEV
+#: CHAIN — the opposite of this seam's question. A prefix match on
+#: ``correction_repair_locus: own_artifact`` swallows it and reads L7 YES on a routing that
+#: was explicitly refused, which is the #1130/#1270 defect reading as a pass.
+_AFFIRMATIVE_OWN_ARTIFACT = "correction_repair_locus: own_artifact \u2014 "
+
+
+def _qa_own_frame_routed_reading(rec: Mapping[str, Any]) -> tuple[bool, list[str]]:
+    """L7: the own-frame failure routed to the qa repair — read from WHERE the repair went,
+    not from which branch logged it.
+
+    Every `correction_repair_locus: own_artifact` branch means the failing task repairs its
+    own artifact, which IS the routing this seam asks about; there is no competing
+    `locus=dev_chain` line, so the #1130/#1270 defect this seam exists to catch shows up as
+    the ABSENCE of an own_artifact locus for the faulted task's type, and still reads NO.
+
+    Joined on the faulted task's type (`task-run_x-mNNN-qa.test` -> `qa.test`) rather than
+    accepting any locus in the run, so a round that routed some other task's failure cannot
+    excuse this one — the #1616 lesson about a flattened join.
+    """
+    # Filtered here as well as in the collector: the seam's guarantee belongs to the
+    # reading, so a field filled by an older collector — or by a hand-built record — cannot
+    # make a DISPUTED line, which routes to the dev chain, read as an own-artifact route.
+    loci = [
+        line
+        for line in (value_at(rec, "loop_texture.own_artifact_locus", []) or [])
+        if _AFFIRMATIVE_OWN_ARTIFACT in line
+    ]
+    types = {
+        m.group("ttype")
+        for a in (_applied_attempts(rec, "qa_suite_own_frame_failure") or [])
+        if (m := _FAULTED_TASK_TYPE.search(str(a.get("task") or ""))) is not None
+    }
+    if types:
+        # Token-aware: a bare ``in`` makes ``qa.test`` match ``qa.test_repair``, so the
+        # repair task's own locus would answer for the task that failed.
+        patterns = [re.compile(rf"(?<![\w.]){re.escape(ttype)}(?![\w.])") for ttype in types]
+        loci = [line for line in loci if any(pat.search(line) for pat in patterns)]
+    return bool(loci), loci
+
+
 SEAM_READOUTS: dict[str, tuple[str, tuple[str, ...], Callable[[dict], tuple[bool, Any]]]] = {
     "qa_suite_absent": (
         "L2: the qa task entered correction and its repair was retested",
@@ -2515,11 +2560,8 @@ SEAM_READOUTS: dict[str, tuple[str, tuple[str, ...], Callable[[dict], tuple[bool
     ),
     "qa_suite_own_frame_failure": (
         "L7: the own-frame failure routed to the qa repair",
-        ("loop_texture.qa_owned_routed",),
-        lambda rec: (
-            len(value_at(rec, "loop_texture.qa_owned_routed", [])) >= 1,
-            value_at(rec, "loop_texture.qa_owned_routed", []),
-        ),
+        ("loop_texture.own_artifact_locus", "loop_texture.qa_owned_routed"),
+        _qa_own_frame_routed_reading,
     ),
     "repair_prose_only": (
         "L4: the prose-only repair was refunded rather than verified",
@@ -3177,6 +3219,17 @@ def texture_from_logs(logs: list[str]) -> dict:
         # executed where verification ran.
         "qa_owned_routed": [
             _fact(line, "correction_repair_locus:") for line in logs if "qa_owned_routed" in line
+        ],
+        # Every own_artifact locus, whichever branch decided it. L7 asks whether an own-frame
+        # failure reached the qa repair; `qa_owned_routed` is ONE of five branches that route
+        # it there (#1130, #1581's unanimity, #970's re-fill, the absent-anchor rule, #1054's
+        # dispute), and reading only that literal marker made a routing that worked read as a
+        # routing that did not. Deploy A's `cyc_464625db7c2b` routed through unanimity and L7
+        # read NO on a held invariant. Same family as #1616 — read the mechanism, not a token.
+        "own_artifact_locus": [
+            _fact(line, "correction_repair_locus:")
+            for line in logs
+            if _AFFIRMATIVE_OWN_ARTIFACT in line
         ],
         "absent_anchor_routed": [
             _fact(line, "correction_repair_locus:")

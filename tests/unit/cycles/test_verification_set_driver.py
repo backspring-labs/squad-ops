@@ -1358,7 +1358,14 @@ class TestADiagnosticIsReadByTheSeamItReached:
                 "placeholder_strips",
                 [{"emitted": "path/x", "stripped_to": "x"}],
             ),
-            ("qa_suite_own_frame_failure", "qa_owned_routed", ["qa_owned_routed task=t"]),
+            # L7 moved off the `qa_owned_routed` literal: it is one of five branches that
+            # route an own-frame failure to the qa repair, and reading only that marker made
+            # deploy A's unanimity-routed cycle read NO on a held invariant.
+            (
+                "qa_suite_own_frame_failure",
+                "own_artifact_locus",
+                ["correction_repair_locus: own_artifact — qa_owned_routed: qa.test raised it"],
+            ),
             (
                 "repair_prose_only",
                 "refunded_rounds",
@@ -4188,3 +4195,90 @@ class TestASeamIsReadOnlyWhenItsFaultApplied:
         )
         assert words == " — fault applied to `repair-run_b8cc47c5-00-qa.test_repair` (199→48 chars)"
         assert driver._applied_words({"applied": []}) == ""
+
+
+class TestL7ReadsTheRoutingMechanismNotAMarker:
+    """#1130's `qa_owned_routed` is one of five branches that route an own-frame failure to
+    the qa repair. Deploy A's cyc_464625db7c2b routed through #1581's unanimity branch and L7
+    read NO on an invariant that HELD — and `qa_owned_routed: []` is also the signature of the
+    real #1130/#1270 defect, so the two were indistinguishable. Same family as #1616."""
+
+    # deploy A's line, verbatim from squadops-runtime-api
+    UNANIMITY = (
+        "correction_repair_locus: own_artifact — analyzer_and_decision_unanimous: the analyzer "
+        "implicated only __tests__/api.test.ts and the decision named only qa.test; qa.test "
+        "re-authors __tests__/api.test.ts (#1581)"
+    )
+    QA_OWNED = (
+        "correction_repair_locus: own_artifact — qa_owned_routed: qa.test raised a defect in its "
+        "own frame"
+    )
+    APPLIED = [{"task": "task-run_e1546b2f-m006-qa.test", "handler": "qa_test_handler"}]
+
+    def _rec(self, driver, loci, applied=None):
+        return {
+            "loop_texture": {
+                "own_artifact_locus": loci,
+                "faults_applied": {
+                    "qa_suite_own_frame_failure": {
+                        "applied": self.APPLIED if applied is None else applied
+                    }
+                },
+            }
+        }
+
+    def test_the_unanimity_branch_reads_the_routing_as_reached(self, driver):
+        """The bug: deploy A's run 1 read NO while the failure did route to the qa repair."""
+        reached, evidence = driver._qa_own_frame_routed_reading(self._rec(driver, [self.UNANIMITY]))
+        assert reached is True
+        assert evidence == [self.UNANIMITY]
+
+    def test_the_qa_owned_branch_still_reads_as_reached(self, driver):
+        """No regression: the branch the old predicate named must keep reading YES."""
+        reached, evidence = driver._qa_own_frame_routed_reading(self._rec(driver, [self.QA_OWNED]))
+        assert reached is True
+        assert evidence == [self.QA_OWNED]
+
+    def test_no_own_artifact_locus_still_reads_NOT_reached(self, driver):
+        """The defect this seam exists to catch (#1130/#1270): the own-frame finding is
+        discarded and the failure routes to the dev chain, which leaves NO own_artifact
+        locus. Widening the reader must not swallow this."""
+        reached, evidence = driver._qa_own_frame_routed_reading(self._rec(driver, []))
+        assert reached is False
+        assert evidence == []
+
+    def test_a_disputed_own_artifact_line_reads_NOT_reached(self, driver):
+        """#1054's branch logs `own_artifact DISPUTED`, sets the locus to UNKNOWN and falls
+        through to the DEV CHAIN — the opposite of this seam's question. A prefix match on
+        `correction_repair_locus: own_artifact` swallows it and reads YES on a routing that
+        was explicitly refused, which is the #1130/#1270 defect reading as a pass."""
+        disputed = (
+            "correction_repair_locus: own_artifact DISPUTED \u2014 the decision names "
+            "development.develop and mentions the suite nowhere, so qa.test does not "
+            "re-author its own __tests__/api.test.ts; the read falls back to the dev chain "
+            "(#1054)"
+        )
+        reached, evidence = driver._qa_own_frame_routed_reading(self._rec(driver, [disputed]))
+        assert reached is False
+        assert evidence == []
+
+    def test_the_repair_tasks_own_locus_does_not_answer_for_the_failed_task(self, driver):
+        """A substring join makes `qa.test` match `qa.test_repair`, so the repair task's own
+        affirmative locus would answer for the task that failed."""
+        repair_locus = (
+            "correction_repair_locus: own_artifact \u2014 qa.test_repair re-produces "
+            "__tests__/api.test.ts"
+        )
+        reached, evidence = driver._qa_own_frame_routed_reading(self._rec(driver, [repair_locus]))
+        assert reached is False
+        assert evidence == []
+
+    def test_a_locus_for_another_task_type_does_not_excuse_this_one(self, driver):
+        """#1616's lesson: a flattened join lets one round's evidence answer another's."""
+        other = (
+            "correction_repair_locus: own_artifact — development.develop re-fills slot(s) x "
+            "in backend/routes.py (#970)"
+        )
+        reached, evidence = driver._qa_own_frame_routed_reading(self._rec(driver, [other]))
+        assert reached is False
+        assert evidence == []
