@@ -61,7 +61,52 @@ Pin `publisher_confirms=True` at channel creation (explicit even if it matches t
 
 ### 5.3 Consumer idempotency
 
-Redis (already in the stack) as the dedup store: `SETNX comms:done:{task_id}` with a TTL (~24h, config) written **after** the reply publish succeeds. On delivery, a hit → ack + structured log (`duplicate_of_completed_task`), no reprocess. Semantics chosen deliberately: dedup on *completed*, not on *seen* — a crash mid-processing leaves no marker, so the redelivery reprocesses (at-least-once preserved). Redis loss shrinks the dedup window to zero until it refills; the failure mode is duplicate work, never lost work — acceptable degradation, noted in Open Questions.
+Redis (already in the stack) as the dedup store: `SETNX comms:done:{task_id}` with a TTL (~24h, config) written **after** the reply publish succeeds. On delivery, a hit → ack + structured log (`duplicate_of_completed_task`), no reprocess. Semantics chosen deliberately: dedup on *completed*, not on *seen* — a crash mid-processing leaves no marker, so the redelivery reprocesses (at-least-once preserved). Redis loss shrinks the dedup window to zero until it refills; the failure mode is duplicate work, never lost work — acceptable degradation, noted in Open Questions. **That holds only where the work terminates: see §5.3a, where reprocessing a crash mid-processing was neither duplicate work nor lost work but an unbounded crash loop (#1626).**
+
+### 5.3a The death path — an incident rule, and a gap in §5.1 (added 2026-09-20, #1626)
+
+**The incident.** The qa agent took a SIGSEGV inside a repair handler (a corrupt
+`tree_sitter` node, #1626). Docker restarted it, the broker redelivered the unacked
+message, and it died again — **37 times over ~90 minutes**. No record was written, no
+termination rule fired, and `cycle_runs.status` stayed `running` with nothing running,
+which by the verification driver's contract makes every later preflight refuse. One
+message bricked the deploy.
+
+**§5.3's reasoning does not cover it.** §5.3 chooses dedup on *completed* rather than
+*seen*, so "a crash mid-processing leaves no marker, so the redelivery reprocesses", on the
+stated grounds that "the failure mode is duplicate work, never lost work". That is true when
+the work *terminates*. #1626 is a third mode the sentence does not admit: **reprocessing can
+be fatal and unbounded.** The crash was deterministic for that input, so every redelivery
+reproduced it.
+
+**§5.1's bound does not cover it either, and this is the gap worth fixing here.** §5.1 bounds
+poison messages with the broker-maintained `x-death` count, advanced by a **raising
+callback** — `nack(requeue=True)` while the count is below N, then `reject(requeue=False)`
+to the DLX. A process that **dies** raises nothing. The channel drops and the broker requeues
+the unacked message, and **a requeue after consumer death is not a dead-lettering: it carries
+no `x-death` entry.** So the count never advances and §5.1's N-attempt bound never trips.
+§5.1's claim that "a poison message burns N attempts and lands in quarantine instead of
+either looping forever or vanishing" holds for a *failing* handler and not for a *dying*
+one. **(Asserted from AMQP dead-lettering semantics, not measured in this deployment —
+confirm before relying on it.)**
+
+**The interim rule, in force now.** Until completed-task deduplication (§5.3) exists:
+
+> A redelivered `comms.task` is converted to a typed `FAILED` result for the original task
+> id and acknowledged. Only the cycle's recorded correction machinery may retry it.
+
+This is sound precisely *because* ack-always still governs the dispatch direction today:
+every ordinary failure is caught and acked, so a redelivery can only mean **the previous
+attempt did not return** — it died, or the connection dropped mid-task. Converting it to a
+failed round with that reason is strictly more informative than an invisible broker replay,
+and it is bounded by construction. Implemented in #1627.
+
+**What §5.1 and §5.3 must add when they land.** The rule above narrows rather than
+disappears. `redeliver_then_dlq` needs a **death-path bound that does not rely on
+`x-death`** — an attempt marker written *before* the handler runs (§5.3's Redis store can
+carry `seen` beside `completed`), or a redelivery treated as terminal for a task with no
+completion marker. Without one, §5.1 ships believing it has bounded poison messages while
+the fatal case remains unbounded.
 
 ### 5.4 Deferred redelivery (fixes Gap D)
 
