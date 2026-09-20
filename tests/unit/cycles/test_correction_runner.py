@@ -6784,6 +6784,39 @@ class TestTheAnalyzersProseIsCheckedBeforeTheDecisionInheritsIt:
 
         return refuted_source_claims(analysis, self._INPUTS if inputs is None else inputs)
 
+    def test_the_refutation_names_the_decision_step_it_is_told_to(self, caplog):
+        """#1600's review: a reader can only correlate a refutation to the decision it was
+        told to if the line names that step.
+
+        Bug this catches: emitting only the FAILED task id, which every round of a run shares
+        in substance but not identity — so a reader joining on the run matches one round's
+        refutation to another round's decision, and A1 false-greens across rounds. The
+        decision step's id is the round's own, and it is the id the stored artifact carries.
+        """
+        import logging
+        from types import SimpleNamespace
+
+        from adapters.cycles.correction_runner import _attach_refuted_claims
+
+        corr_inputs: dict = {}
+        envelope = SimpleNamespace(task_id="task-run_abc-m003-qa.test", inputs=self._INPUTS)
+        analysis = {
+            "analysis_summary": "The router in backend/__squadops_injected_fault__.py is absent."
+        }
+
+        with caplog.at_level(logging.WARNING):
+            _attach_refuted_claims(
+                corr_inputs,
+                analysis,
+                envelope,
+                "corr-run_abc-00-governance.correction_decision",
+            )
+
+        assert corr_inputs["refuted_source_claims"]
+        assert "decision_task=corr-run_abc-00-governance.correction_decision" in caplog.text
+        # The failed task stays on the line unchanged: it is what the claim was ABOUT.
+        assert "task=task-run_abc-m003-qa.test" in caplog.text
+
     def test_a_claim_about_a_file_the_workspace_lacks_is_refuted_with_its_sentence(self):
         """The sentence rides along so the decision can be told what was refuted, not
         merely how many claims were."""

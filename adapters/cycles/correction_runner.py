@@ -149,22 +149,32 @@ def refuted_source_claims(
 
 
 def _attach_refuted_claims(
-    corr_inputs: dict[str, Any], analysis_outputs: dict[str, Any], envelope: Any
+    corr_inputs: dict[str, Any],
+    analysis_outputs: dict[str, Any],
+    envelope: Any,
+    decision_task_id: str = "",
 ) -> None:
     """Ride the refutation beside the analysis the decision inherits (#968).
 
     The analyzer's text is NOT rewritten: an analysis silently edited is a second
     unverifiable claim, and the point is that the decision can see both what was asserted
     and what the workspace says about it.
+
+    ``decision_task_id`` names the step this refutation is told TO — the round's own
+    ``governance.correction_decision`` task, which is the id its stored artifact carries.
+    Without it a reader can only join a refutation to a decision by the run, so a refutation
+    in one round would excuse a claim quoted in another (#1600's review). The failed task
+    stays on the line as ``task=``, unchanged, because it is what the claim was about.
     """
     refuted = refuted_source_claims(analysis_outputs, getattr(envelope, "inputs", None) or {})
     if not refuted:
         return
     corr_inputs["refuted_source_claims"] = refuted
     logger.warning(
-        "analyzer_claim_refuted task=%s paths=%s — the workspace has no such file; the "
-        "decision is told rather than inheriting it (#968)",
+        "analyzer_claim_refuted task=%s decision_task=%s paths=%s — the workspace has no such "
+        "file; the decision is told rather than inheriting it (#968)",
         getattr(envelope, "task_id", "?"),
+        decision_task_id or "?",
         ", ".join(entry["path"] for entry in refuted),
     )
 
@@ -1100,7 +1110,7 @@ class CorrectionRunner:
             }
             if analysis_outputs:
                 corr_inputs["failure_analysis"] = analysis_outputs
-                _attach_refuted_claims(corr_inputs, analysis_outputs, envelope)
+                _attach_refuted_claims(corr_inputs, analysis_outputs, envelope, corr_task_id)
 
             corr_envelope = TaskEnvelope(
                 task_id=corr_task_id,

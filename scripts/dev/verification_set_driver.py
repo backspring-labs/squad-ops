@@ -284,6 +284,8 @@ EVIDENCE_FIELDS: dict[str, tuple[str, ...]] = {
     "loop_texture.framework_rows_rederived": _PATCH_PATH,
     "loop_texture.candidate_identities": _PATCH_PATH,
     "loop_texture.analyzer_claims_dropped": _PATCH_PATH,
+    "loop_texture.analyzer_claims_refuted": _PATCH_PATH,
+    "loop_texture.unjoinable_refutations": _PATCH_PATH,
     "loop_texture.refunded_rounds": _PATCH_PATH,
     "loop_texture.evidence_superseded": _PATCH_PATH,
     "loop_texture.qa_owned_routed": _PATCH_PATH,
@@ -1868,15 +1870,87 @@ def _foreign_task_types(values) -> list[str]:
     return out
 
 
-def _decision_reading(text: str) -> dict:
-    """What a stored correction decision carries of the injected claim — pure."""
+_CLAIM_REFUTED = re.compile(
+    r"analyzer_claim_refuted task=(?P<task>\S+)(?: decision_task=(?P<decision>\S+))? "
+    r"paths=(?P<paths>[^—]+)"
+)
+
+
+def analyzer_claims_refuted(lines) -> list[dict]:
+    """#968's PROSE half: the claims the framework refuted against the workspace.
+
+    The structured half (``analyzer_claims_dropped``) reads a file DROPPED from a repair
+    target, which never runs on an own-artifact route because ``_locus_and_repair_target``
+    returns before ``_resolve_repair_target``. On the deploy-F false-claim diagnostic the
+    refutation fired and that reader saw ``[]`` (#1600) — the mechanism A1 exists to exercise,
+    invisible to the readout watching for it.
+    """
+    out: list[dict] = []
+    for line in lines:
+        m = _CLAIM_REFUTED.search(line)
+        if not m:
+            continue
+        out.append(
+            {
+                "task": m.group("task"),
+                # The round's own decision step — the id its stored artifact carries, and the
+                # only key that joins a refutation to the decision it was told to. A deploy
+                # that predates the field reads "" and cannot be joined, which is a third
+                # state, not a licence to match every decision of the run.
+                "decision_task": m.group("decision") or "",
+                "paths": [p.strip() for p in m.group("paths").split(",") if p.strip()],
+            }
+        )
+    return out
+
+
+def refuted_paths_by_decision(refutations) -> dict[str, tuple[str, ...]]:
+    """Refuted paths keyed by the decision step they were told to (#1600's review).
+
+    Flattening every refutation's paths into one set and handing it to every stored decision
+    lets a refutation in round 0 excuse the same path QUOTED in round 1 — A1 false-greens
+    across rounds instead of across prose styles. The join is per decision, or it is not made.
+    """
+    by_decision: dict[str, list[str]] = {}
+    for entry in refutations or []:
+        key = str(entry.get("decision_task") or "")
+        if not key:
+            continue
+        by_decision.setdefault(key, []).extend(entry.get("paths") or [])
+    return {k: tuple(dict.fromkeys(v)) for k, v in by_decision.items()}
+
+
+def unjoinable_refutations(refutations) -> list[dict]:
+    """Refutations a deploy emitted without naming their decision step.
+
+    They cannot be correlated, and the reading says so rather than matching them to everything.
+    """
+    return [e for e in (refutations or []) if not e.get("decision_task")]
+
+
+def _decision_reading(text: str, refuted_paths: tuple[str, ...] = ()) -> dict:
+    """What a stored correction decision carries of the injected claim — pure.
+
+    ``inherited`` was ``marker in text``, which counts a decision that QUOTES the injected
+    path in order to refute it (#1600): deploy F's lead wrote "the primary causal claim (an
+    unregistered router in `backend/__squadops_injected_fault__.py`) is refuted by the
+    workspace", the invariant held exactly as #968 intends, and the record said the opposite.
+    On deploy E the same diagnostic read ``inherited: false`` only because that lead
+    paraphrased instead of quoting — the reading turned on prose style.
+
+    The join is on content, not prose: a path the framework refuted, repeated by the
+    decision, is ``refuted_verbatim`` — a third state reported beside ``inherited`` and never
+    counted as it. Carrying the marker where NO refutation covered it is inheritance still.
+    """
     lowered = text.lower()
     try:
         doc = json.loads(text)
     except ValueError:
         doc = {}
+    quoted = [p for p in refuted_paths if p and p in text]
     return {
-        "inherited": _INJECTED_CLAIM_MARKER in text,
+        "inherited": _INJECTED_CLAIM_MARKER in text and not quoted,
+        "refuted_verbatim": quoted,
         "echoes": [e for e in _INJECTED_CLAIM_ECHOES if e in lowered],
         "foreign_affected_task_types": _foreign_task_types(
             doc.get("affected_task_types") if isinstance(doc, dict) else None
@@ -1884,7 +1958,12 @@ def _decision_reading(text: str) -> dict:
     }
 
 
-def _decision_inherited_claims(cfg: SetConfig, cycle_id: str, run_id: str) -> list[dict]:
+def _decision_inherited_claims(
+    cfg: SetConfig,
+    cycle_id: str,
+    run_id: str,
+    refuted_by_decision: dict[str, tuple[str, ...]] | None = None,
+) -> list[dict]:
     """Each stored correction decision of the run and what it carries of the analyzer
     fault's claim (A1, #968): the marker verbatim (``inherited``), the claim's substance
     without it (``echoes``), and non-task-type entries in ``affected_task_types``."""
@@ -1897,7 +1976,18 @@ def _decision_inherited_claims(cfg: SetConfig, cycle_id: str, run_id: str) -> li
             text = (REPO / m["vault_uri"]).read_text()
         except (OSError, KeyError):
             continue
-        out.append({"artifact": art.name, **_decision_reading(text)})
+        # Each decision is joined ONLY to the refutation told to its own step. The
+        # artifact's metadata carries that task id; a decision the map does not name was
+        # refuted nothing, whatever another round's refutation said.
+        task_id = str((m.get("metadata") or {}).get("task_id") or "")
+        own = (refuted_by_decision or {}).get(task_id, ())
+        out.append(
+            {
+                "artifact": art.name,
+                "decision_task": task_id,
+                **_decision_reading(text, own),
+            }
+        )
     return out
 
 
@@ -2014,8 +2104,12 @@ def loop_texture(
     out["log_window"] = {"since": since, "until": until}
     # 1.7.4 (#968, A1): whether a stored correction decision carries the analyzer fault's
     # marker — read from the decision itself, the artifact the repair brief is built from.
+    refutations = out.get("analyzer_claims_refuted", [])
+    out["unjoinable_refutations"] = unjoinable_refutations(refutations)
     out["decision_inherited_claims"] = (
-        _decision_inherited_claims(cfg, cycle_id, impl_run) if impl_run else []
+        _decision_inherited_claims(cfg, cycle_id, impl_run, refuted_paths_by_decision(refutations))
+        if impl_run
+        else []
     )
     rejections = _fill_rejections(cfg, cycle_id, impl_run) if impl_run else None
     out["fill_rejections"] = rejections or []
@@ -2061,6 +2155,44 @@ def loop_texture(
 #: Each entry: the seam, the record fields the readout reads (so ``seam_readouts`` can say
 #: which of them were unaskable on the roll — a NO decided over an unaskable field is not a
 #: NO, #1445), and the reading.
+def _a1_reading(rec: Mapping[str, Any]) -> tuple[bool | None, dict]:
+    """A1, with the correlation the reading depends on stated rather than assumed.
+
+    ``reached`` is None — UNASKABLE — when a refutation fired that the deploy did not name a
+    decision step for. Such a refutation cannot be joined to the decision it was told to, and
+    matching it against every decision of the run is what lets a round-0 refutation excuse a
+    path quoted in round 1 (#1600's review). A reading that cannot correlate says so.
+    """
+    decisions = value_at(rec, "loop_texture.decision_inherited_claims", [])
+    refutations = value_at(rec, "loop_texture.analyzer_claims_refuted", [])
+    unjoinable = value_at(rec, "loop_texture.unjoinable_refutations", [])
+    evidence = {
+        "decisions": decisions,
+        "refuted_by_workspace_check": refutations,
+        "unjoinable_refutations": unjoinable,
+        "dropped_from_repair_target": value_at(rec, "loop_texture.analyzer_claims_dropped", []),
+    }
+    if unjoinable:
+        evidence["unaskable_reason"] = (
+            "the deploy emitted a refutation without naming its decision step, so it cannot be "
+            "correlated to the decision it was told to; a run-wide match would let one round's "
+            "refutation excuse another round's quote"
+        )
+        return None, evidence
+    reached = (
+        len(decisions) >= 1
+        # The refutation is the mechanism this diagnostic exists to exercise: without it
+        # firing, a clean decision proves only that the fault never reached the lead.
+        and len(refutations) >= 1
+        # The marker or the claim's substance decides; ``foreign_affected_task_types``
+        # stays in the reading as D1's texture — the contentless-builder diagnostic's
+        # decision (no analyzer fault) already carried `builder`, `assembler`, `data`,
+        # `qa_handoff` there, so the field is the lead's habit, not the claim's leak.
+        and not any(d.get("inherited") or d.get("echoes") for d in decisions)
+    )
+    return reached, evidence
+
+
 SEAM_READOUTS: dict[str, tuple[str, tuple[str, ...], Callable[[dict], tuple[bool, Any]]]] = {
     "qa_suite_absent": (
         "L2: the qa task entered correction and its repair was retested",
@@ -2165,26 +2297,15 @@ SEAM_READOUTS: dict[str, tuple[str, tuple[str, ...], Callable[[dict], tuple[bool
     # invariant false, which the evidence names by artifact (pre-#968 that is the expected
     # reading — the diagnostic proves the fault reaches the decision).
     "analyzer_false_source_claim": (
-        "A1: the correction decision was reached and carried nothing of the refuted claim — "
-        "not the marker, not its substance",
-        ("loop_texture.decision_inherited_claims", "loop_texture.analyzer_claims_dropped"),
-        lambda rec: (
-            len(value_at(rec, "loop_texture.decision_inherited_claims", [])) >= 1
-            # The marker or the claim's substance decides; ``foreign_affected_task_types``
-            # stays in the reading as D1's texture — the contentless-builder diagnostic's
-            # decision (no analyzer fault) already carried `builder`, `assembler`, `data`,
-            # `qa_handoff` there, so the field is the lead's habit, not the claim's leak.
-            and not any(
-                d.get("inherited") or d.get("echoes")
-                for d in value_at(rec, "loop_texture.decision_inherited_claims", [])
-            ),
-            {
-                "decisions": value_at(rec, "loop_texture.decision_inherited_claims", []),
-                "refuted_by_workspace_check": value_at(
-                    rec, "loop_texture.analyzer_claims_dropped", []
-                ),
-            },
+        "A1: the framework refuted the claim against the workspace, a decision was reached, "
+        "and none of them inherited it — quoting a refuted path to reject it is not "
+        "inheritance (#1600)",
+        (
+            "loop_texture.decision_inherited_claims",
+            "loop_texture.analyzer_claims_refuted",
+            "loop_texture.analyzer_claims_dropped",
         ),
+        _a1_reading,
     ),
 }
 
@@ -2277,7 +2398,10 @@ def seam_readouts(faults, rec: dict) -> dict[str, dict]:
             if (ev := evidence_at(rec, path)) is not None and ev.state == UNASKABLE
         }
         applied = _applied_attempts(rec, name)
-        state: bool | None = bool(reached)
+        # A reading that answered None answered UNASKABLE, and it stays that way: coercing it
+        # to False would report "the seam was not reached" for a question the record could
+        # not be asked (#1445). Only a reading that answered a boolean is a YES or a NO.
+        state: bool | None = None if reached is None else bool(reached)
         if applied is None:
             unaskable["loop_texture.faults_applied"] = (
                 "not recorded — the record predates the applied fact (#1588); the reading "
@@ -2724,6 +2848,8 @@ def texture_from_logs(logs: list[str]) -> dict:
             for line in logs
             if "dropped, not aimed at (#968)" in line
         ],
+        # #1600: #968's PROSE half, which is the one an own-artifact route actually reaches.
+        "analyzer_claims_refuted": analyzer_claims_refuted(logs),
         # L4 (#1273): the executor REFUNDS a round whose repair emitted no content — the
         # round is re-taken rather than spent (#1053/#998). This is the seam L4 names, and it
         # is a different mechanism from the #1129 exclusion above (a refused patch's
