@@ -1,7 +1,13 @@
 # 1.8.1 verification set — pre-registration (plan §7 step 5)
 
-**Status:** rev 1 — pinned on **deploy A**, the 1.8.1 prelude complete. Committed on the frozen
-deploy before any diagnostic launches. Once merged, the cut criteria do not move; only diagnostic
+**Status:** rev 2 (2026-09-20) — **re-made after the shakeout's first finding** (#1623, fixed by
+#1624). Rev 1's commit is void by §8: the L7 reader changed, and a change that can alter a reading
+voids the registration. **The deploy does not move.** #1624 touched only the driver, the tests and
+this document — **zero drift under `src/` and `adapters/`** between rev 1's `18798083` and rev 2's
+`f6994271` — so the seven images that serve the framework are byte-identical and are NOT rebuilt.
+Rebuilding would mint new ids for identical source and make the record less comparable, not more.
+The instrument moved; the deploy did not. Committed on the frozen deploy before any diagnostic
+launches. Once merged, the cut criteria do not move; only diagnostic
 readings are appended (§10). If the deploy moves after this commit, the commit is void and re-made,
 and no transaction from the superseded deploy counts toward N.
 
@@ -29,8 +35,8 @@ flip and says so** — SIP-0107 stays `accepted` with step 7 named open, the sho
 | Overrides | FastAPI+React: none. Next.js+TS: `build_profile=nextjs_ts`, `development_profile=nextjs_ts` |
 | `resolved_config_hash` | FastAPI+React observed on roll 1 and recorded in §10, Next.js+TS likewise — 1.8.0 read `3921c5a62106` and `33cadf53688e`; a change is drift the record declares (§9) |
 | `squad_profile_snapshot_ref` | **`2d8d4feb3519a7ec`** — **not precomputable.** `serves_roles` entered the snapshot payload (#1611) and the flat completion cap moved a value (#1620/#1619), and the PUT that lands the cap bumps `version`, which is itself inside `compute_profile_snapshot_hash`'s payload. The pre-1.8.1 pin was `575707c58536cf3b`; the file at version 1 computes `cbf3a18d…`; **the deploy stamps neither.** The driver refuses a counting roll on any other (#1571) |
-| Deploy — commit | **`18798083`** — main with the whole 1.8.1 prelude (twelve merges, §2). A label, not an assertion (#1296): the image ids are the assertion |
-| Deploy — image ids | `runtime-api 0d33b2820245`, `max 4fbb4efad454`, `neo c379594cb4fd`, `nat d7c038b44c32`, `bob c2c1a64c7063`, `eve 4dfeb0dcdb62`, `data 9e1c65ee4d06` (deploy A, 10:36:27 ET 2026-09-20) (deploy F's, superseded, were `runtime-api b3278c26dd25`, `max 36cc6eb9a923`, `neo 07498c2a4a94`, `nat 1ddf151647c0`, `bob b59711b8f653`, `eve 14d15dc8e3f7`, `data 9a41965b25ad`) |
+| Deploy — commit | **`f6994271`** — rev 1's `18798083` plus #1624 (the L7 reader) and this document. **A label, not an assertion** (#1296): the image ids are the assertion, and they are unchanged. `git diff 18798083..f6994271 -- src/ adapters/` is empty, which is why no rebuild followed the fix |
+| Deploy — image ids | `runtime-api 0d33b2820245`, `max 4fbb4efad454`, `neo c379594cb4fd`, `nat d7c038b44c32`, `bob c2c1a64c7063`, `eve 4dfeb0dcdb62`, `data 9e1c65ee4d06` — built 10:36:27 ET 2026-09-20 and **re-read unchanged at rev 2**, as was the pin (deploy F's, superseded, were `runtime-api b3278c26dd25`, `max 36cc6eb9a923`, `neo 07498c2a4a94`, `nat 1ddf151647c0`, `bob b59711b8f653`, `eve 14d15dc8e3f7`, `data 9a41965b25ad`) |
 | Loaded, not built | Verified per container as a live call with its paired control (`verify_A_loaded`): the twelve prelude surfaces of §3d′, read from the loaded modules of `runtime-api`, `eve`, `neo` and `bob` — never by grepping a file (#522) |
 | Gate policy | 1.6.3 §6 constant, verbatim in each set config's `gate_notes`; `--as-agent`; the decider recorded per roll |
 | Audit instrument | `scripts/dev/audit_delivered_app.py` at the deploy commit |
@@ -161,6 +167,18 @@ changing a counting rule between sets is how a shortfall becomes a rounding deci
 Each config's `loaded_checks` asserts the seam's presence on the deployed image before the run,
 with a control. **A seam not reached after two runs stops the set.**
 
+**Round 1 (rev 1) found one, and it was the instrument.** `own-frame-then-prose-repair-nextjs`
+(`cyc_464625db7c2b`, 65 min) read **L4 YES, L7 NO** — on an invariant that HELD. The own-frame
+failure did route to the qa repair, through #1581's unanimity branch; L7's predicate was the
+literal string `qa_owned_routed`, one of five branches that route a failure to its own artifact.
+**The budget was not spent on run 2**, because `qa_owned_routed: []` is also the exact signature of
+the real #1130/#1270 defect — the two readings were indistinguishable, so a second run would have
+read NO again and proved nothing. Fixed by **#1624**: L7 reads the affirmative own-artifact locus
+whichever branch logged it, joined on the faulted task's type. Review of that fix caught a false
+green of its own — #1054's `own_artifact DISPUTED` falls through to the **dev chain** and a prefix
+match swallowed it — so only `own_artifact — ` counts, filtered in the reading as well as the
+collector. The deploy-A reading stands in §10 as evidence and **counts toward nothing**.
+
 ### 3d′. Deploy A — one mechanism prediction per prelude fix
 
 Each fix is read where its mechanism shows, never as a rate. **Four are predicted silent on this
@@ -181,6 +199,12 @@ complies is honest only if the prediction said it would be quiet.
 | **#1618** | every record carries its `CycleAssessment` with the attribution id (SIP-0108 §4.1–4.2) | every record; reporting-only |
 | **#1616** (#1600) | when #968's refutation fires and the lead **quotes** the refuted path in order to reject it, **A1 reads YES** with `refuted_verbatim` naming the path and `inherited: False`. Where the refutation did not fire, **A1 reads UNASKABLE, never YES** — a clean decision without a refutation proves only that the fault never reached the lead | `absent-suite-then-false-claim`'s record: `analyzer_claims_refuted`, `decision_inherited_claims`, `refuted_verbatim`, `unjoinable_refutations` |
 | **#1620** (#1619) | **predicted silent on this set** — no comparison runs on deploy A, and `arm` is empty on all nine diagnostic configs, which declares "not part of a comparison" rather than asserting one. Its live effect here is the flat completion cap reaching the deploy through the PUT | the arm preflight is not invoked; the cap is read in §1 |
+
+**The fix this round produced — one mechanism prediction, same rule as the table above.**
+
+| fix | mechanism predicted | read from |
+|---|---|---|
+| **#1624** (#1623) | on the re-run, the own-frame failure routes to the qa repair and **L7 reads YES with the branch named** — `analyzer_and_decision_unanimous` if the round is unanimous, `qa_owned_routed` if the suite is stamped qa-owned. A run whose routing is DISPUTED (#1054), which falls through to the dev chain, still reads **NO** | `own-frame-then-prose-repair-nextjs` and `own-frame-then-prose-repair`: `loop_texture.own_artifact_locus` and the seam's evidence list |
 
 ### 3e. CI invariants, read live as texture
 
@@ -223,6 +247,10 @@ diagnostic pass on one deploy with **no new seam finding**. A finding becomes a 
 moves, this pre-registration is void and re-made on the new deploy, and no transaction from the
 superseded deploy counts. **Budget: two runs per diagnostic**; a seam unreached after two stops the
 set. The record reports how many rounds it took, which is evidence about the pack.
+
+**Rounds so far: one.** Round 1 (rev 1, deploy A) found #1623 on its first diagnostic and stopped
+there. Round 2 begins at rev 2 on the same images. A pack that yields a finding on its first
+diagnostic is evidence about the pack, and it is recorded as such rather than smoothed away.
 
 ## 7. Gate constant
 
