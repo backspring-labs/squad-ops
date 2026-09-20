@@ -1037,3 +1037,56 @@ named here so the design is on the record, and they are **a successor's criteria
 SIP's: their absence at 1.8.1's close names a gap in the successor, not an open child here.
 
 **Ruled by.** The owner, 2026-09-17.
+
+### 10l. 2026-09-20 — the arms are held equal by flattening the squad's cap, not by reproducing it (§4.4)
+
+*(§10k is reserved for the interleaving amendment the 1.8.1 plan §4.3 names, which lands with the
+window's build on deploy B′.)*
+
+**What changed.** §4.4 prescribes one way to hold the completion cap equal across the arms:
+
+> **Per-call caps are not yet task-type-scoped:** `full-38` sets the qa agent's
+> `max_completion_tokens` to 12288 as an agent-level override. **The generalist profile must
+> reproduce every such override for the task types it covers**, and the pre-registration tables both
+> arms' effective cap and reasoning level per task type and asserts them equal.
+
+**That instruction cannot be followed, and the opposite was built.** The cap is an *agent-level*
+override and the Solo arm is one agent serving every role, so "reproduce every such override for the
+task types it covers" is not a thing a one-agent profile can do: Han carrying the qa override carries
+it for dev, lead and data too, and Han without it runs qa at the default while the squad's qa runs at
+12288. Either way the arms differ by something other than the reasoning organization — the one
+difference §4.4 says the comparison may not tolerate. §4.4's two sentences, read against the profile
+as it stood, could not both hold.
+
+**The resolution, as built: flatten the squad.** Every `full-38` member now carries
+`max_completion_tokens: 12288`, so the squad arm holds **one cap for every task type** and a
+one-agent arm matches it by construction. Only `full-38` moves — the window's squad arm; `full`,
+`lite`, `smoke` and the Atlas arm are untouched, and the canonical meaning of every historical record
+is unchanged. `effective_caps_by_task_type` derives the cap per task type from the **deployed**
+profile through the role that runs it, and names `default` and `no_role_declared` rather than
+omitting a key, so two maps cannot disagree about a key neither has.
+
+**Deliberately not built: task-type-scoped caps.** #1619 called this "the honest fix" and it is
+the one §4.4 gestures at. It is **not built**, and is not an open child of this SIP — it is a
+framework change touching every profile's override handling, with no consumer beyond this window.
+Recorded here because silence reads as shipped.
+
+**A property of the resolution worth stating.** Flattening changes the squad arm's substrate from
+what 1.8.0 measured. That is not a cost, because §4.4 requires a **fresh** squad arm anyway —
+registration precedes observation — and the 1.8.1 pre-registration pins the arm it actually runs on.
+
+**Evidence.**
+- The finding: **#1619**, surfaced by `arm_substrate_problems` on the real `full-38` and a faithful
+  `solo`, naming `'dev': 12288` as the difference. The check was written to hold §4.4's rule, not to
+  find this.
+- The resolution in-tree: **#1620** (`18798083`), `config/squad-profiles.yaml`.
+- The resolution **on the deploy**: `PUT /api/v1/squad-profiles/full-38` on 2026-09-20 took the
+  stored profile from **version 1 to version 2** with all six members at 12288. The file alone
+  reaches nothing — the profile is served from Postgres, was seeded 2026-09-15, and the seeder skips
+  an already-seeded profile. **#1619 closes at that PUT, not at #1620's merge.**
+- The resulting pin, read from the deploy rather than precomputed (the PUT bumps `version`, which is
+  inside `compute_profile_snapshot_hash`'s payload):
+  `2d8d4feb3519a7ec`.
+
+**Ruled by.** The owner, 2026-09-20, folding this amendment into the pre-registration work;
+resolution 1 was chosen on #1620's review, 2026-09-19.
