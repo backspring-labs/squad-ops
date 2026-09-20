@@ -358,7 +358,7 @@ loaded_checks:
 # the shakeout that met the exit rule (#1296: the image ids are the assertion; the commit is a label).
 expected_config_hash_prefix: "3921c5a62106"
 expected_squad_snapshot_prefix: "2d8d4feb3519a7ec"
-frozen_deploy_commit: "18798083"
+frozen_deploy_commit: "f6994271"
 frozen_image_ids:
   runtime-api: "0d33b2820245"
   max: "4fbb4efad454"
