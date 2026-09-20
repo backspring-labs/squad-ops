@@ -238,11 +238,35 @@ class TestACorruptParseTreeIsNotReadFurther:
         with pytest.raises(_CorruptParse):
             self._lines().owns(self._node((-1, 0), (0, 2)))
 
-    def test_span_refuses_a_row_outside_the_content(self):
+    @pytest.mark.parametrize(
+        ("first_row", "last_row", "why"),
+        [
+            (CORRUPT_ROW, 395, "oversized first row — the value the binding returned"),
+            (0, CORRUPT_ROW, "oversized LAST row — fell through to a span to end-of-file"),
+            (-1, 1, "negative first row"),
+            (0, -1, "negative last row"),
+            (1, 0, "reversed endpoints"),
+        ],
+    )
+    def test_span_enforces_the_whole_invariant(self, first_row, last_row, why):
+        """`0 <= first_row <= last_row < row_count`, not half of it.
+
+        The first cut checked the first row and rejected a negative last row, but let an
+        OVERSIZED last row through: the end-offset fallback then returned a span to
+        end-of-file — a plausible answer derived from a corrupt tree, which is the exact
+        failure this guard exists to refuse."""
         from squadops.cycles.structural_jsx import _CorruptParse
 
         with pytest.raises(_CorruptParse):
-            self._lines().span(self.CORRUPT_ROW, 395)
+            self._lines().span(first_row, last_row)
+
+    def test_span_still_answers_for_sound_rows(self):
+        """The control: tightening the invariant must not refuse a legitimate span,
+        including one that ends on the final row."""
+        lines = self._lines()
+        assert lines.span(0, 0)[0] == 0
+        start, end = lines.span(0, len(lines.starts) - 1)
+        assert start == 0 and end == len(lines.content)
 
     def test_jsx_entities_returns_None_rather_than_propagating(self, monkeypatch):
         """The contract callers already handle: `None` means the content does not parse

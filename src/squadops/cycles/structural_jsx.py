@@ -168,13 +168,22 @@ class _Lines:
         return self.encoded[row]
 
     def span(self, first_row: int, last_row: int) -> tuple[int, int]:
-        if not 0 <= first_row < len(self.starts) or last_row < 0:
+        """Character offsets for rows ``first_row``..``last_row`` inclusive.
+
+        The whole invariant, not half of it: ``0 <= first_row <= last_row < row_count``.
+        The first cut checked ``first_row`` and rejected a negative ``last_row`` but let an
+        OVERSIZED ``last_row`` through, where the end-offset fallback quietly returned a
+        span to end-of-file — a plausible answer from a corrupt tree, which is the exact
+        failure this guard exists to refuse. Reversed endpoints are corrupt too.
+        """
+        rows = len(self.starts)
+        if not 0 <= first_row <= last_row < rows:
             raise _CorruptParse(
-                f"node span rows {first_row}-{last_row} are outside the "
-                f"{len(self.starts)}-row content"
+                f"node span rows {first_row}-{last_row} are not within "
+                f"0..{rows - 1} of the {rows}-row content"
             )
         start = self.starts[first_row]
-        end = self.starts[last_row + 1] if last_row + 1 < len(self.starts) else len(self.content)
+        end = self.starts[last_row + 1] if last_row + 1 < rows else len(self.content)
         return start, end
 
     def owns(self, node: Any) -> bool:
