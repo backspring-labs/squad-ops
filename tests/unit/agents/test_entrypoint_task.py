@@ -300,3 +300,110 @@ class TestProcessCommsMessage:
         await r._process_comms_message(self._message(payload))
 
         r._queue.ack.assert_not_awaited()
+
+
+class TestARedeliveredTaskIsRefusedNotRerun:
+    """#1626: the qa agent segfaulted inside a repair handler and was restarted 37 times
+    on the same redelivered message — no record, no termination, and a `running` row that
+    would have made every later preflight refuse.
+
+    SIP-0094 D12 already forbids poison-looping by acking a failing callback, but that is
+    enforceable only when the callback RETURNS. A process that DIES never acks, so the
+    broker requeues. Under ack-always a redelivery therefore means exactly one thing: the
+    previous attempt did not return."""
+
+    def _runner(self):
+        from squadops.agents.entrypoint import AgentRunner
+
+        with patch.object(AgentRunner, "__init__", lambda self, *a, **kw: None):
+            r = AgentRunner.__new__(AgentRunner)
+            r.agent_id = "eve"
+            r.role = "qa"
+            r._queue = AsyncMock()
+            r._handle_chat_message = AsyncMock()
+            r._handle_task_envelope = AsyncMock()
+            return r
+
+    @staticmethod
+    def _message(body: dict, *, redelivered: bool) -> QueueMessage:
+        return QueueMessage(
+            message_id="42",
+            queue_name="eve_comms",
+            payload=json.dumps(body),
+            receipt_handle="42",
+            attributes={"redelivered": redelivered},
+        )
+
+    PAYLOAD = {
+        "action": "comms.task",
+        "metadata": {"reply_queue": "q", "correlation_id": "c1"},
+        "payload": {
+            "task_id": "repair-run_4c30fc23-00-qa.test_repair",
+            "task_type": "qa.test_repair",
+            "correlation_id": "c1",
+        },
+    }
+
+    async def test_a_redelivered_task_is_not_executed_again(self) -> None:
+        """The bug: #1626's handler ran 37 times on the same delivery."""
+        r = self._runner()
+
+        await r._process_comms_message(self._message(self.PAYLOAD, redelivered=True))
+
+        r._handle_task_envelope.assert_not_awaited()
+
+    async def test_the_refusal_publishes_a_FAILED_result_naming_the_reason(self) -> None:
+        """The cycle must hear a failed round with a reason, not silence — every
+        termination rule (the correction budget, the #1221 deadlock rule) assumes the
+        handler returns, so a death that produces no result terminates nothing."""
+        r = self._runner()
+
+        await r._process_comms_message(self._message(self.PAYLOAD, redelivered=True))
+
+        r._queue.publish.assert_awaited_once()
+        queue, body = r._queue.publish.await_args.args
+        assert queue == "q"
+        sent = json.loads(body)
+        assert sent["action"] == "comms.task.result"
+        assert sent["payload"]["task_id"] == "repair-run_4c30fc23-00-qa.test_repair"
+        assert sent["payload"]["status"] == "FAILED"
+        assert "did not return" in sent["payload"]["error"]
+
+    async def test_a_malformed_envelope_is_still_refused_with_a_result(self) -> None:
+        """The refusal must not depend on the envelope being well-formed: the whole
+        premise of this path is that the previous attempt died. A refusal that throws
+        leaves the cycle with silence, which is the failure it exists to prevent."""
+        r = self._runner()
+        payload = {"action": "comms.task", "metadata": {"reply_queue": "q"}, "payload": {}}
+
+        await r._process_comms_message(self._message(payload, redelivered=True))
+
+        r._handle_task_envelope.assert_not_awaited()
+        r._queue.publish.assert_awaited_once()
+        sent = json.loads(r._queue.publish.await_args.args[1])
+        assert sent["payload"]["task_id"] == "unknown"
+        assert sent["payload"]["status"] == "FAILED"
+
+    async def test_a_first_delivery_still_runs_normally(self) -> None:
+        """The control: the bound must not cost an ordinary task its first attempt."""
+        r = self._runner()
+
+        await r._process_comms_message(self._message(self.PAYLOAD, redelivered=False))
+
+        r._handle_task_envelope.assert_awaited_once()
+        r._queue.publish.assert_not_awaited()
+
+    async def test_a_message_with_no_redelivered_attribute_runs_normally(self) -> None:
+        """Adapters that do not surface the flag must not have every task refused."""
+        r = self._runner()
+        msg = QueueMessage(
+            message_id="42",
+            queue_name="eve_comms",
+            payload=json.dumps(self.PAYLOAD),
+            receipt_handle="42",
+            attributes={},
+        )
+
+        await r._process_comms_message(msg)
+
+        r._handle_task_envelope.assert_awaited_once()

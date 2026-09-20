@@ -614,7 +614,25 @@ class AgentRunner:
             if action == "comms.chat":
                 await self._handle_chat_message(payload, metadata)
             elif action == "comms.task":
-                await self._handle_task_envelope(payload, metadata)
+                # SIP-0094 D12 says a failing callback is acked because requeuing
+                # "would only poison-loop". That policy is enforceable only when the
+                # callback RETURNS: if the process DIES mid-task the broker never saw an
+                # ack, requeues, and the loop D12 forbids arrives through a door D12 does
+                # not cover. #1626: the qa agent segfaulted inside a repair handler and was
+                # restarted 37 times on the same redelivered message, with no record, no
+                # termination — the correction budget and the deadlock rule (#1221) all
+                # assume the handler returns — and a `running` row that would have made
+                # every later preflight refuse.
+                #
+                # Under ack-always, a REDELIVERED task can only mean the previous attempt
+                # did not return: it killed the process, or the connection dropped
+                # mid-flight. Either way the cycle must hear about it as a failed round
+                # with a reason, not as an invisible retry, so its own bounded and recorded
+                # correction machinery governs what happens next.
+                if message.attributes.get("redelivered"):
+                    await self._refuse_redelivered_task(payload, metadata)
+                else:
+                    await self._handle_task_envelope(payload, metadata)
             else:
                 logger.warning(
                     f"Unknown action: {action}",
@@ -767,6 +785,65 @@ class AgentRunner:
             logger.error(
                 f"Failed to handle chat message: {e}",
                 extra={"agent_id": self.agent_id, "session_id": session_id},
+            )
+
+    async def _refuse_redelivered_task(self, payload: dict, metadata: dict) -> None:
+        """Fail a redelivered task instead of running it again (#1626).
+
+        A task is only ever redelivered when the previous attempt did not return — every
+        ordinary failure is caught and acked (SIP-0094 D12). Running it again is what
+        produced #1626's 37 restarts, so the round is failed with its reason and the
+        cycle's own budget decides whether to retry. The message is acked by the
+        subscription layer when this returns, which is what stops the loop.
+        """
+        import json
+
+        from squadops.tasks.models import TaskResult, TaskResultStatus
+
+        # Read the two fields the refusal needs straight from the envelope dict rather
+        # than constructing a TaskEnvelope: the whole point of this path is that the
+        # previous attempt died, so it must not itself depend on the envelope being
+        # well-formed enough to build. A refusal that throws leaves the cycle with
+        # silence, which is the failure it exists to prevent.
+        envelope_data = payload.get("payload", {}) or {}
+        task_id = str(envelope_data.get("task_id") or "unknown")
+        task_type = str(envelope_data.get("task_type") or "unknown")
+        correlation_id = envelope_data.get("correlation_id") or metadata.get("correlation_id")
+        reply_queue = metadata.get("reply_queue")
+
+        logger.error(
+            "redelivered_task_refused: task=%s type=%s — the previous attempt did not "
+            "return (the handler process died, or the connection dropped mid-task), so "
+            "this round is failed rather than retried by the broker (#1626)",
+            task_id,
+            task_type,
+            extra={"agent_id": self.agent_id, "task_id": task_id, "task_type": task_type},
+        )
+
+        result = TaskResult(
+            task_id=task_id,
+            status=TaskResultStatus.FAILED,
+            error=(
+                "redelivered after the previous attempt did not return — the handler "
+                "process died or the connection dropped mid-task; refused rather than "
+                "retried, so the correction budget governs any retry (#1626)"
+            ),
+        )
+        if reply_queue:
+            await self._queue.publish(
+                reply_queue,
+                json.dumps(
+                    {
+                        "action": "comms.task.result",
+                        "metadata": {"correlation_id": correlation_id},
+                        "payload": result.to_dict(),
+                    }
+                ),
+            )
+        else:
+            logger.warning(
+                "No reply_queue in metadata, refusal result dropped",
+                extra={"task_id": task_id},
             )
 
     async def _handle_task_envelope(self, payload: dict, metadata: dict) -> None:
