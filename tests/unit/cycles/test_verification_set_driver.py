@@ -4247,6 +4247,32 @@ class TestL7ReadsTheRoutingMechanismNotAMarker:
         assert reached is False
         assert evidence == []
 
+    def test_a_disputed_own_artifact_line_reads_NOT_reached(self, driver):
+        """#1054's branch logs `own_artifact DISPUTED`, sets the locus to UNKNOWN and falls
+        through to the DEV CHAIN — the opposite of this seam's question. A prefix match on
+        `correction_repair_locus: own_artifact` swallows it and reads YES on a routing that
+        was explicitly refused, which is the #1130/#1270 defect reading as a pass."""
+        disputed = (
+            "correction_repair_locus: own_artifact DISPUTED \u2014 the decision names "
+            "development.develop and mentions the suite nowhere, so qa.test does not "
+            "re-author its own __tests__/api.test.ts; the read falls back to the dev chain "
+            "(#1054)"
+        )
+        reached, evidence = driver._qa_own_frame_routed_reading(self._rec(driver, [disputed]))
+        assert reached is False
+        assert evidence == []
+
+    def test_the_repair_tasks_own_locus_does_not_answer_for_the_failed_task(self, driver):
+        """A substring join makes `qa.test` match `qa.test_repair`, so the repair task's own
+        affirmative locus would answer for the task that failed."""
+        repair_locus = (
+            "correction_repair_locus: own_artifact \u2014 qa.test_repair re-produces "
+            "__tests__/api.test.ts"
+        )
+        reached, evidence = driver._qa_own_frame_routed_reading(self._rec(driver, [repair_locus]))
+        assert reached is False
+        assert evidence == []
+
     def test_a_locus_for_another_task_type_does_not_excuse_this_one(self, driver):
         """#1616's lesson: a flattened join lets one round's evidence answer another's."""
         other = (

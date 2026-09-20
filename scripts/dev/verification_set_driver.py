@@ -2502,6 +2502,13 @@ def _a1_reading(rec: Mapping[str, Any]) -> tuple[bool | None, dict]:
 
 _FAULTED_TASK_TYPE = re.compile(r"-(?P<ttype>[a-z_]+\.[a-z_]+)$")
 
+#: The AFFIRMATIVE own-artifact locus, em dash included. #1054's branch logs
+#: ``own_artifact DISPUTED —``, sets the locus to UNKNOWN and falls through to the DEV
+#: CHAIN — the opposite of this seam's question. A prefix match on
+#: ``correction_repair_locus: own_artifact`` swallows it and reads L7 YES on a routing that
+#: was explicitly refused, which is the #1130/#1270 defect reading as a pass.
+_AFFIRMATIVE_OWN_ARTIFACT = "correction_repair_locus: own_artifact \u2014 "
+
 
 def _qa_own_frame_routed_reading(rec: Mapping[str, Any]) -> tuple[bool, list[str]]:
     """L7: the own-frame failure routed to the qa repair — read from WHERE the repair went,
@@ -2516,14 +2523,24 @@ def _qa_own_frame_routed_reading(rec: Mapping[str, Any]) -> tuple[bool, list[str
     accepting any locus in the run, so a round that routed some other task's failure cannot
     excuse this one — the #1616 lesson about a flattened join.
     """
-    loci = list(value_at(rec, "loop_texture.own_artifact_locus", []) or [])
+    # Filtered here as well as in the collector: the seam's guarantee belongs to the
+    # reading, so a field filled by an older collector — or by a hand-built record — cannot
+    # make a DISPUTED line, which routes to the dev chain, read as an own-artifact route.
+    loci = [
+        line
+        for line in (value_at(rec, "loop_texture.own_artifact_locus", []) or [])
+        if _AFFIRMATIVE_OWN_ARTIFACT in line
+    ]
     types = {
         m.group("ttype")
         for a in (_applied_attempts(rec, "qa_suite_own_frame_failure") or [])
         if (m := _FAULTED_TASK_TYPE.search(str(a.get("task") or ""))) is not None
     }
     if types:
-        loci = [line for line in loci if any(ttype in line for ttype in types)]
+        # Token-aware: a bare ``in`` makes ``qa.test`` match ``qa.test_repair``, so the
+        # repair task's own locus would answer for the task that failed.
+        patterns = [re.compile(rf"(?<![\w.]){re.escape(ttype)}(?![\w.])") for ttype in types]
+        loci = [line for line in loci if any(pat.search(line) for pat in patterns)]
     return bool(loci), loci
 
 
@@ -3212,7 +3229,7 @@ def texture_from_logs(logs: list[str]) -> dict:
         "own_artifact_locus": [
             _fact(line, "correction_repair_locus:")
             for line in logs
-            if "correction_repair_locus: own_artifact" in line
+            if _AFFIRMATIVE_OWN_ARTIFACT in line
         ],
         "absent_anchor_routed": [
             _fact(line, "correction_repair_locus:")
