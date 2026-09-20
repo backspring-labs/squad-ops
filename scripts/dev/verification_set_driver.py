@@ -64,6 +64,8 @@ from typing import Any
 import yaml
 
 REPO = Path(__file__).resolve().parents[2]
+#: Where every set config lives, and where a config's ``compare_with`` names its pair.
+SET_CONFIG_DIR = REPO / "docs" / "plans" / "verification-sets"
 SQUADOPS = str(REPO / ".venv" / "bin" / "squadops")
 PYTHON = str(REPO / ".venv" / "bin" / "python")
 
@@ -534,6 +536,19 @@ class SetConfig:
     loaded_checks: tuple[LoadedCheck, ...] = ()
     records_dir: str = ""
     pre_registration: str = ""
+    #: The comparison arm this set is (SIP-0108 §4.4, §10h): the name a pre-registration's
+    #: comparison section pairs by. Empty means the set is not part of a comparison — every
+    #: set before 1.8.1 is one arm by construction, and saying so is not the same as
+    #: declaring one.
+    #:
+    #: The arm's IDENTITY is squad profile × request profile × model, which this config
+    #: already carries in ``squad_profile`` and ``request_profile``; the declaration names
+    #: it so two configs can be compared and so a record says which arm produced it.
+    arm: str = ""
+    #: The set config of the arm this one is compared against, by file name in the same
+    #: directory. Present on exactly one side of a pair: the comparison gate runs from
+    #: whichever config names the other, so the check has two configs to read.
+    compare_with: str = ""
 
     @property
     def records_path(self) -> Path:
@@ -614,6 +629,8 @@ def load_set_config(path: Path) -> SetConfig:
         loaded_checks=tuple(checks),
         records_dir=str(raw.get("records_dir") or ""),
         pre_registration=str(raw.get("pre_registration") or ""),
+        arm=str(raw.get("arm") or ""),
+        compare_with=str(raw.get("compare_with") or ""),
     )
 
 
@@ -877,6 +894,9 @@ def preflight(cfg: SetConfig, *, counting: bool, identity: dict[str, str]) -> li
         )
     problems.extend(squad_snapshot_problems(cfg))
     problems.extend(framework_drift_problems(cfg))
+    # SIP-0108 §4.4: the arms are compared BEFORE either is observed. A substrate that
+    # drifted after the first roll cannot be undone, so this refuses the launch.
+    problems.extend(comparison_problems(cfg))
     for service, expected in cfg.frozen_image_ids.items():
         actual = image_id(service)
         if actual != expected:
@@ -894,6 +914,292 @@ def preflight(cfg: SetConfig, *, counting: bool, identity: dict[str, str]) -> li
             )
     else:
         log(f"pinning HEAD at {head} — §7 binds from here")
+    return problems
+
+
+def _role_by_task_type() -> dict[str, str]:
+    """Every dispatched task type and the role that runs it, from the framework's own tables.
+
+    The union of the step tables, the correction steps and the repair steps — never a guess
+    from a task type's namespace. A type no table names has no role here and is reported as
+    such, which is what makes a missing effective cap a NAMED mismatch rather than a gap.
+    """
+    from squadops.cycles import task_plan as tp
+
+    pairs: dict[str, str] = {}
+    for name in dir(tp):
+        if name.endswith("TASK_STEPS"):
+            for task_type, role in getattr(tp, name):
+                pairs[str(task_type)] = role
+    for task_type, role in tp.CORRECTION_STEP_TASKS.values():
+        pairs[str(task_type)] = role
+    for steps in tp._REPAIR_STEPS_BY_FAILED_TASK_TYPE.values():
+        for task_type, role in steps:
+            pairs[str(task_type)] = role
+    return pairs
+
+
+#: What a task type's effective cap reads when the deploy declares no override for the role
+#: that runs it. A NAMED value, present in both arms' maps, so "no override" on one side and
+#: 12288 on the other is a mismatch the comparison can see rather than a key one map lacks.
+CAP_DEFAULT = "default"
+#: …and when no table names a role for the type at all.
+CAP_NO_ROLE = "no_role_declared"
+
+
+def effective_caps_by_task_type(profile: dict) -> dict[str, object]:
+    """Each dispatched task type's effective completion cap under *profile* (#1619).
+
+    Per-call caps are AGENT-level overrides, not task-type scoped (SIP-0108 §4.4), so the
+    effective cap for a task type is the cap of whichever agent serves the role that runs it.
+    A one-agent arm therefore has one cap for every type, and the squad has one per member —
+    which is why #1619's resolution 1 flattens `full-38`'s members to a single value.
+
+    Every type with a declared reasoning level appears in the map, with ``CAP_DEFAULT`` or
+    ``CAP_NO_ROLE`` where there is nothing to read. An omitted key cannot be compared.
+    """
+    from squadops.capabilities.reasoning_policy import REASONING_BY_TASK_TYPE
+
+    cap_by_role: dict[str, object] = {}
+    for agent in profile.get("agents", []):
+        if not agent.get("enabled", True):
+            continue
+        cap = (agent.get("config_overrides") or {}).get("max_completion_tokens", CAP_DEFAULT)
+        for role in agent.get("serves_roles") or [agent.get("role")]:
+            cap_by_role[str(role)] = cap
+    roles = _role_by_task_type()
+    out: dict[str, object] = {}
+    for task_type in sorted(str(t) for t in REASONING_BY_TASK_TYPE):
+        role = roles.get(task_type)
+        out[task_type] = CAP_NO_ROLE if role is None else cap_by_role.get(role, CAP_DEFAULT)
+    return out
+
+
+#: The grant family each producer namespace draws, as ``scaffold_enforcement`` selects it.
+#: Read from the same rule rather than copied: a namespace that gains a grant there and not
+#: here would make the arms read equal on an authority that had changed.
+def effective_task_authority() -> dict[str, str]:
+    """Each dispatched task type's write-grant family, derived from the task alone.
+
+    A task type outside the three producer namespaces authors under no scaffold grant, which
+    is a NAMED value (``none``) and not an absent key — two maps cannot disagree about a key
+    neither has.
+    """
+    import inspect
+
+    from squadops.capabilities.reasoning_policy import REASONING_BY_TASK_TYPE
+    from squadops.cycles import scaffold_enforcement
+
+    source = inspect.getsource(scaffold_enforcement)
+    families = dict(re.findall(r'"(\w+)": (WriteGrant\.\w+)', source))
+    return {
+        str(t): families.get(str(t).partition(".")[0], "none")
+        for t in sorted(str(x) for x in REASONING_BY_TASK_TYPE)
+    }
+
+
+def arm_substrate(cfg: SetConfig) -> dict:
+    """What a comparison arm holds equal, read from the deploy rather than declared.
+
+    SIP-0108 §4.4: the arms differ ONLY by the reasoning organization. Everything else is
+    held equal, and "the comparison refuses to run if either arm's effective grants for a task
+    type differ" — so the equality is checked, not asserted in prose.
+
+    Read through the API and the framework's own declarations, not from this tree's config
+    files: the arms run on a deploy, and a comparison that compared two YAML files would pass
+    while the deploy served something else.
+    """
+    from squadops.capabilities.reasoning_policy import REASONING_BY_TASK_TYPE
+
+    login()
+    served = json.loads(
+        sh(f"{SQUADOPS} --format json squad-profiles show {shlex.quote(cfg.squad_profile)}")
+    )
+    request = json.loads(
+        sh(f"{SQUADOPS} --format json request-profiles show {shlex.quote(cfg.request_profile)}")
+    )
+    defaults = request.get("defaults") or {}
+    return {
+        "model": sorted({str(a.get("model")) for a in served.get("agents", [])}),
+        # §4.4: "Authority stays task-scoped. A producer's write grant is derived from the
+        # task it performs, never from the agent." The enforcement selects the grant from the
+        # task type's own namespace and reads nothing from the profile, so a one-agent arm
+        # widens no grant — which is a claim the record should CARRY rather than restate. Read
+        # through the same rule the enforcement uses.
+        "task_authority": effective_task_authority(),
+        # Per-task-type reasoning is declared by the framework, so it is equal by
+        # construction — recorded so a record can show that rather than assume it.
+        "reasoning_by_task_type": {
+            str(k): str(v)
+            for k, v in sorted(REASONING_BY_TASK_TYPE.items(), key=lambda kv: str(kv[0]))
+        },
+        # #1619: the EFFECTIVE cap per task type, with a named value where there is no
+        # override — never an absent key, which two maps cannot disagree about.
+        "effective_caps_by_task_type": effective_caps_by_task_type(served),
+        # The execution envelope §4.4 holds equal: the run budget and the loop's own budgets.
+        "execution_envelope": {
+            key: defaults.get(key)
+            for key in (
+                "time_budget_seconds",
+                "max_correction_attempts",
+                "max_self_eval_passes",
+                "max_task_retries",
+                "max_task_seconds",
+                "required_checks",
+            )
+        },
+        "request_profile": cfg.request_profile,
+    }
+
+
+def runtime_topology() -> dict:
+    """Which agent containers are up, as a substrate fact (plan §4.3).
+
+    "All relevant containers remain running for both arms; only the designated arm receives
+    work." A comparison where one arm ran with six agent processes resident and the other with
+    one is a comparison of two memory envelopes on a single-GPU box, whatever the record says
+    about the organization.
+    """
+    return {
+        service: (image_id(service) != "")
+        for service in sorted(s for s in DEPLOY_SERVICES if s not in ("runtime-api",))
+    }
+
+
+def run_state_isolation_problems(cfg: SetConfig) -> list[str]:
+    """Nothing is in flight and no lease is held before an arm's roll launches (plan §4.3).
+
+    Run-state isolation is what lets the record show that an arm could not learn anything from
+    the arm that ran before it. A cycle already running, or a focus lease still held, means the
+    previous roll's state is live while this one starts.
+    """
+    problems: list[str] = []
+    running = psql("select count(*) from cycle_runs where status='running';")
+    if running != "0":
+        problems.append(
+            f"§4.3 run-state isolation: {running} run(s) already in flight — an arm must start "
+            "from a quiet box, or the pair is not a matched trial"
+        )
+    leases = psql("select count(*) from focus_leases where released_at is null;")
+    if leases != "0":
+        problems.append(
+            f"§4.3 run-state isolation: {leases} unreleased focus lease(s) — the previous "
+            "roll's state is still live"
+        )
+    return problems
+
+
+def arm_substrate_problems(one: SetConfig, other: SetConfig) -> list[str]:
+    """Refuse a comparison whose arms differ by anything but the reasoning organization.
+
+    Each difference is named with both readings: a comparison that fails closed with "the
+    substrate differs" tells the reader nothing about which half to fix. Every key §4.4 and
+    plan §4.3 hold equal is compared, and a per-task-type map is diffed key by key so the
+    message names the types rather than two dictionaries.
+    """
+    problems: list[str] = []
+    a, b = arm_substrate(one), arm_substrate(other)
+    if one.arm and one.arm == other.arm:
+        problems.append(
+            f"§4.4: both configs declare the arm {one.arm!r} — a comparison needs two arms"
+        )
+    per_type = (
+        ("effective_caps_by_task_type", "effective per-task-type completion cap"),
+        ("reasoning_by_task_type", "per-task-type reasoning level"),
+        ("task_authority", "effective task authority (write grants)"),
+    )
+    for key, label in per_type:
+        differing = sorted(t for t in set(a[key]) | set(b[key]) if a[key].get(t) != b[key].get(t))
+        if differing:
+            shown = ", ".join(
+                f"{t}: {one.arm or one.name}={a[key].get(t)!r} vs "
+                f"{other.arm or other.name}={b[key].get(t)!r}"
+                for t in differing[:4]
+            )
+            more = f" (+{len(differing) - 4} more)" if len(differing) > 4 else ""
+            problems.append(f"§4.4 SUBSTRATE DIFFERS on {label} — {shown}{more}")
+    for key, label in (
+        ("model", "model and serving"),
+        ("execution_envelope", "execution envelope"),
+    ):
+        if a[key] != b[key]:
+            problems.append(
+                f"§4.4 SUBSTRATE DIFFERS on {label}: {one.arm or one.name} reads {a[key]}, "
+                f"{other.arm or other.name} reads {b[key]}. The arms may differ only by the "
+                "reasoning organization; anything else makes the comparison unreadable."
+            )
+    return problems
+
+
+def comparison_problems(cfg: SetConfig) -> list[str]:
+    """The comparison gate, run BEFORE either arm is observed (SIP-0108 §4.4, plan §4.3).
+
+    A set that names a counterpart is one arm of a pair, and a pair may differ only by the
+    reasoning organization. Everything else §4.4 and §4.3 hold equal is read from the deploy
+    here — effective task authority, per-task-type caps and reasoning levels, the execution
+    envelope, run-state isolation and runtime topology — and any difference refuses the launch.
+    A comparison whose substrate drifted is not a comparison, and after the first roll is
+    observed there is nothing to do about it.
+    """
+    if not cfg.compare_with:
+        return []
+    # Beside this config, which is where every set config lives.
+    other_path = SET_CONFIG_DIR / cfg.compare_with
+    if not other_path.exists():
+        return [
+            f"§4.4: compare_with names {cfg.compare_with}, which is not a set config in "
+            f"{other_path.parent}"
+        ]
+    other = load_set_config(other_path)
+    problems = arm_substrate_problems(cfg, other)
+    problems.extend(run_state_isolation_problems(cfg))
+    topology = runtime_topology()
+    absent = sorted(svc for svc, up in topology.items() if not up)
+    if absent:
+        problems.append(
+            f"§4.3 runtime topology: agent container(s) {absent} are not up. All relevant "
+            "containers stay running for BOTH arms and only the designated arm receives work — "
+            "an arm measured against a different memory envelope on a single-GPU box is a "
+            "comparison of envelopes, not of organizations."
+        )
+    return problems
+
+
+#: The arm name whose rolls must prove the §10i absences. One constant, so the gate and a
+#: set config cannot disagree about which arm is the solo one.
+SOLO_ARM = "solo"
+
+#: What a Solo roll must NOT have produced (SIP-0108 §10i item 6): "Han never saw it" as a
+#: fact the record proves, rather than a property of a profile nobody re-read.
+_SOLO_FORBIDDEN_ARTIFACTS = (
+    "failure_analysis.md",
+    "correction_decision.md",
+)
+
+
+def solo_absence_problems(cfg: SetConfig, cycle_id: str, run_id: str) -> list[str]:
+    """The per-roll preflight for a solo arm — the three absences, read from the vault.
+
+    §10i item 6. A framing document, a failure analysis or a correction decision stored for a
+    Solo run means the arm did not run without them, whatever the profile declared. The record
+    proves the absence rather than inheriting it from a config.
+    """
+    problems: list[str] = []
+    for art in artifact_dirs(cfg, cycle_id, run_id):
+        m = _metadata(art)
+        if not m:
+            continue
+        filename = str(m.get("filename") or "")
+        if filename in _SOLO_FORBIDDEN_ARTIFACTS:
+            problems.append(
+                f"§10i: solo arm stored {filename} ({art.name}) — the arm is defined by running "
+                "correction without the analyzer and the lead, so this roll did not run the arm"
+            )
+        if str((m.get("metadata") or {}).get("producing_task_type", "")).startswith("governance."):
+            problems.append(
+                f"§10i: solo arm stored a governance artifact ({filename}, {art.name}) — "
+                "framing roles are the squad arm's, not this one's"
+            )
     return problems
 
 
@@ -3727,6 +4033,24 @@ def _run_cycle(
         if rec["impl_run_id"]
         else {"ran": False, "reason": "no implementation run"}
     )
+    # SIP-0108 §4.4/§10i on the record: which arm produced this roll, and the substrate it
+    # was admitted under. A reviewer reconstructs why a pair was comparable from the record,
+    # never from a value that existed only while the driver ran.
+    rec["arm"] = cfg.arm
+    rec["arm_substrate"] = arm_substrate(cfg) if cfg.arm else {}
+    # §10i item 6, over the COMPLETED run: a framing document, a failure analysis or a
+    # correction decision means the solo arm did not run without them, whatever its profile
+    # declared. A contaminated roll is named in the record and excluded, not quietly counted.
+    rec["solo_absences"] = (
+        solo_absence_problems(cfg, cyc, rec["impl_run_id"])
+        if cfg.arm == SOLO_ARM and rec["impl_run_id"]
+        else []
+    )
+    if rec["solo_absences"]:
+        for problem in rec["solo_absences"]:
+            log(f"!! {problem}")
+        log("   the roll did not run the solo arm; recording and excluding it")
+        rec["excluded_from_comparison"] = True
     md = render(cfg, title, rec)
     _write_record(cfg, stem, rec, md)
     print()

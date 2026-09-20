@@ -80,15 +80,25 @@ class TestFullSquadBuilderProfile:
 
 
 class TestFull38QaCompletionBudget:
-    """1.6.5 E (#998 ask 2). Bug caught: the override is dropped by the loader, applied
-    to every role, or lands on `full` — any of which silently changes what the set
-    measures."""
+    """1.6.5 E (#998 ask 2), amended by #1619. Bug caught: the override is dropped by the
+    loader or lands on `full` — either silently changes what the set measures.
 
-    async def test_only_eve_on_full_38_carries_the_override(self, provider):
+    The third concern this class carried, "applied to every role", is now the INTENDED state
+    on `full-38` and only there. #1619: per-call caps are agent-level, not task-type scoped
+    (SIP-0108 §4.4), so a one-agent comparison arm holds one cap for every task type and the
+    squad arm can only match it by carrying the same cap on every member. The flat value is
+    what makes the two arms comparable; a per-member cap made them differ on the one thing
+    §4.4 says must be equal.
+    """
+
+    async def test_every_full_38_member_carries_the_flat_override(self, provider):
+        """#1619 resolution 1. Bug this catches: a member added to `full-38` without the cap,
+        which reintroduces the per-role difference the window cannot tolerate — and does it
+        silently, because the profile still looks like a squad."""
         profile = await provider.get_profile("full-38")
-        by_role = {a.role: a for a in profile.agents}
-        assert by_role["qa"].config_overrides == {"max_completion_tokens": 12288}
-        assert all(not a.config_overrides for a in profile.agents if a.role != "qa")
+
+        caps = {a.role: a.config_overrides.get("max_completion_tokens") for a in profile.agents}
+        assert set(caps.values()) == {12288}, caps
 
     async def test_full_is_untouched(self, provider):
         profile = await provider.get_profile("full")
