@@ -42,9 +42,12 @@ its ``}`` starts one, and at least one line lies between.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from functools import cache
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 #: The file suffixes each grammar reads.
 JAVASCRIPT_SUFFIXES = (".js", ".jsx", ".mjs", ".cjs")
@@ -128,6 +131,20 @@ def jsx_syntax_error(path: str, content: str) -> str | None:
     return f"line {error.start_point.row + 1}: {'missing' if error.is_missing else 'unexpected'} {error.type}"
 
 
+class _CorruptParse(Exception):
+    """A node reported a row outside the content it was parsed from (#1626).
+
+    The grammar binding handed back an ``expression_statement`` whose ``start_point.row``
+    was 69,421,703,888,908 in a 396-row file, and the qa agent SEGFAULTED dereferencing the
+    tree around it — 37 restarts on one redelivered message, no record, no termination.
+
+    Raised where a row is read, caught at :func:`jsx_entities`, which already contracts to
+    return ``None`` for content that does not parse cleanly. It is NOT swallowed at the use
+    site: a corrupt row treated as "not owned" would silently drop real entities and return
+    a plausible, wrong entity list — worse than admitting the parse is unusable.
+    """
+
+
 class _Lines:
     """Row → character offsets, and whether a node owns the rows it spans."""
 
@@ -139,21 +156,37 @@ class _Lines:
             self.starts.append(self.starts[-1] + len(row) + 1)
         self.encoded = [row.encode("utf-8") for row in self.rows]
 
+    def _row(self, row: int) -> bytes:
+        """The encoded row, or :class:`_CorruptParse` if the node's row is not in the file.
+
+        Every row this class reads comes from a native node, so this is the one place the
+        values are checked. Python would raise ``IndexError`` for a large positive row, but
+        a NEGATIVE row indexes from the end and would silently read the wrong line.
+        """
+        if not 0 <= row < len(self.encoded):
+            raise _CorruptParse(f"node row {row} is outside the {len(self.encoded)}-row content")
+        return self.encoded[row]
+
     def span(self, first_row: int, last_row: int) -> tuple[int, int]:
+        if not 0 <= first_row < len(self.starts) or last_row < 0:
+            raise _CorruptParse(
+                f"node span rows {first_row}-{last_row} are outside the "
+                f"{len(self.starts)}-row content"
+            )
         start = self.starts[first_row]
         end = self.starts[last_row + 1] if last_row + 1 < len(self.starts) else len(self.content)
         return start, end
 
     def owns(self, node: Any) -> bool:
         (row0, col0), (row1, col1) = node.start_point, node.end_point
-        return not self.encoded[row0][:col0].strip() and not self.encoded[row1][col1:].strip()
+        return not self._row(row0)[:col0].strip() and not self._row(row1)[col1:].strip()
 
     def body_rows(self, block: Any) -> tuple[int, int] | None:
         """The rows strictly inside a ``{ … }`` block, when its braces own their lines."""
         (row0, col0), (row1, col1) = block.start_point, block.end_point
         if row1 - row0 < 2:
             return None
-        if self.encoded[row0][col0 + 1 :].strip() or self.encoded[row1][: col1 - 1].strip():
+        if self._row(row0)[col0 + 1 :].strip() or self._row(row1)[: col1 - 1].strip():
             return None
         return row0 + 1, row1 - 1
 
@@ -235,7 +268,26 @@ def _named_entities(statement: Any, declaration: Any, lines: _Lines) -> list[Jsx
 
 def jsx_entities(content: str, path: str = "module.jsx") -> tuple[JsxEntity, ...] | None:
     """Every addressable entity in ``content`` under ``path``'s grammar, or ``None`` when no
-    grammar reads the path or the content does not parse cleanly."""
+    grammar reads the path or the content does not parse cleanly.
+
+    A tree whose nodes report rows outside the content is not a clean parse either (#1626),
+    and it is the shape that killed the process rather than returning: the caller gets
+    ``None`` — a structural-parse miss the repair path already handles — instead of a
+    SIGSEGV that no correction budget, deadlock rule or retest can terminate.
+    """
+    try:
+        return _jsx_entities(content, path)
+    except _CorruptParse as exc:
+        logger.warning(
+            "jsx_entities: corrupt parse tree for %s — %s; treating the content as "
+            "unparseable rather than reading the tree further (#1626)",
+            path,
+            exc,
+        )
+        return None
+
+
+def _jsx_entities(content: str, path: str) -> tuple[JsxEntity, ...] | None:
     grammar = _grammar_for(path)
     if grammar is None:
         return None

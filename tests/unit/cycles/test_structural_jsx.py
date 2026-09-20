@@ -186,3 +186,79 @@ def test_try_is_addressable_only_when_the_body_is_one_try_statement():
     silently leave the statements before it in place under the model's belief it had the body."""
     assert resolve_jsx_entity("lib/store.ts", _STORE_TS, "function:find#try") == []
     assert resolve_jsx_entity("lib/store.ts", _STORE_TS, "function:find#body")
+
+
+class TestACorruptParseTreeIsNotReadFurther:
+    """#1626: `tree_sitter_typescript` returned an `expression_statement` whose
+    `start_point.row` was 69,421,703,888,908 in a 396-row file, and the qa agent SEGFAULTED
+    dereferencing the tree around it — 37 restarts on one redelivered message, no record,
+    and no termination (every rule assumes the handler returns).
+
+    The real input does not reproduce outside the agent container on identical versions and
+    architecture, which is itself evidence of memory-state-dependent corruption rather than
+    a deterministic parse bug. So the guard is pinned on synthetic nodes: what must hold is
+    that a row outside the content is never read, whatever produced it."""
+
+    #: the value the binding actually returned, kept verbatim
+    CORRUPT_ROW = 69421703888908
+
+    @staticmethod
+    def _node(start, end):
+        class _P:
+            def __init__(self, row, column):
+                self.row, self.column = row, column
+
+            def __iter__(self):
+                return iter((self.row, self.column))
+
+        class _N:
+            start_point = _P(*start)
+            end_point = _P(*end)
+
+        return _N()
+
+    def _lines(self):
+        from squadops.cycles.structural_jsx import _Lines
+
+        return _Lines("const a = 1\nconst b = 2\n")
+
+    def test_the_row_the_binding_actually_returned_raises_rather_than_being_read(self):
+        from squadops.cycles.structural_jsx import _CorruptParse
+
+        lines = self._lines()
+        with pytest.raises(_CorruptParse) as exc:
+            lines.owns(self._node((self.CORRUPT_ROW, 0), (395, 2)))
+        assert str(self.CORRUPT_ROW) in str(exc.value)
+
+    def test_a_negative_row_raises_instead_of_silently_reading_the_wrong_line(self):
+        """Python would index a negative row from the END and return a plausible answer
+        about a line the node has nothing to do with — a wrong entity list, not a crash."""
+        from squadops.cycles.structural_jsx import _CorruptParse
+
+        with pytest.raises(_CorruptParse):
+            self._lines().owns(self._node((-1, 0), (0, 2)))
+
+    def test_span_refuses_a_row_outside_the_content(self):
+        from squadops.cycles.structural_jsx import _CorruptParse
+
+        with pytest.raises(_CorruptParse):
+            self._lines().span(self.CORRUPT_ROW, 395)
+
+    def test_jsx_entities_returns_None_rather_than_propagating(self, monkeypatch):
+        """The contract callers already handle: `None` means the content does not parse
+        cleanly. A corrupt tree is not a clean parse."""
+        import squadops.cycles.structural_jsx as m
+
+        def _boom(content, path):
+            raise m._CorruptParse("node row 69421703888908 is outside the 396-row content")
+
+        monkeypatch.setattr(m, "_jsx_entities", _boom)
+        assert m.jsx_entities("const a = 1\n", "x.ts") is None
+
+    def test_a_sound_tree_still_yields_its_entities(self):
+        """The control: the guard must not cost ordinary content its entities."""
+        from squadops.cycles.structural_jsx import jsx_entities
+
+        entities = jsx_entities("export function a() {\n  return 1\n}\n", "x.ts")
+        assert entities, "a sound parse must still produce entities"
+        assert any("a" in e.selector for e in entities)
