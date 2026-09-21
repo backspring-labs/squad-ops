@@ -614,7 +614,35 @@ class AgentRunner:
             if action == "comms.chat":
                 await self._handle_chat_message(payload, metadata)
             elif action == "comms.task":
-                await self._handle_task_envelope(payload, metadata)
+                # SIP-0094 D12 says a failing callback is acked because requeuing
+                # "would only poison-loop". That policy is enforceable only when the
+                # callback RETURNS: if the process DIES mid-task the broker never saw an
+                # ack, requeues, and the loop D12 forbids arrives through a door D12 does
+                # not cover. #1626: the qa agent segfaulted inside a repair handler and was
+                # restarted 37 times on the same redelivered message. The provable facts:
+                # no handler result ever reached the correction / deadlock (#1221) /
+                # repeated-signature machinery, the run stayed `running`, and each
+                # restarted agent took the poisoned delivery again. Not every termination
+                # mechanism depends on a handler returning — `TaskDispatcher`'s task
+                # timeout does not — so the claim is scoped to the rules that consume a
+                # handler RESULT.
+                #
+                # `redelivered` proves only that a prior delivery was NOT ACKNOWLEDGED. It
+                # does not prove the work did not happen: the ack follows the callback, so
+                # the connection can close before the callback runs, during the work, or
+                # AFTER the work and its reply succeeded — and the broker may mark a message
+                # redelivered that never reached the prior consumer. The prior delivery's
+                # completion is therefore UNKNOWN.
+                #
+                # With completion unknown the broker layer is the wrong place to decide:
+                # re-executing risks unbudgeted duplicate work and, per #1626, can be fatal
+                # and unbounded; discarding risks losing work. Recording a typed FAILED for
+                # the original task id puts the uncertainty where it can be reasoned about
+                # and leaves the retry to the only layer with a budget and a record.
+                if message.attributes.get("redelivered"):
+                    await self._refuse_redelivered_task(payload, metadata)
+                else:
+                    await self._handle_task_envelope(payload, metadata)
             else:
                 logger.warning(
                     f"Unknown action: {action}",
@@ -767,6 +795,71 @@ class AgentRunner:
             logger.error(
                 f"Failed to handle chat message: {e}",
                 extra={"agent_id": self.agent_id, "session_id": session_id},
+            )
+
+    async def _refuse_redelivered_task(self, payload: dict, metadata: dict) -> None:
+        """Fail a redelivered task instead of running it again (SIP §5.3a, #1626).
+
+        A redelivery means a prior delivery went unacknowledged — **not** that the work did
+        not happen. It may have completed and replied before the connection closed, and the
+        broker may mark a message redelivered that never reached the prior consumer. The
+        prior delivery's completion is UNKNOWN, so this refuses to decide at the broker
+        layer: the round is failed for the original task id and the cycle's recorded budget
+        decides any retry. Running it again is what produced #1626's 37 restarts.
+
+        Scope is task dispatch only; `comms.chat` is untouched. The message is acked by the
+        subscription layer when this returns, which is what stops the loop.
+        """
+        import json
+
+        from squadops.tasks.models import TaskResult, TaskResultStatus
+
+        # Read the two fields the refusal needs straight from the envelope dict rather
+        # than constructing a TaskEnvelope: the whole point of this path is that the
+        # previous attempt died, so it must not itself depend on the envelope being
+        # well-formed enough to build. A refusal that throws leaves the cycle with
+        # silence, which is the failure it exists to prevent.
+        envelope_data = payload.get("payload", {}) or {}
+        task_id = str(envelope_data.get("task_id") or "unknown")
+        task_type = str(envelope_data.get("task_type") or "unknown")
+        correlation_id = envelope_data.get("correlation_id") or metadata.get("correlation_id")
+        reply_queue = metadata.get("reply_queue")
+
+        logger.error(
+            "redelivered_task_refused: task=%s type=%s — a prior delivery was not "
+            "acknowledged, so its completion is UNKNOWN (it may have died, or may have "
+            "completed and replied before the ack); refused at the broker layer and failed "
+            "for cycle governance to decide (SIP §5.3a, #1626)",
+            task_id,
+            task_type,
+            extra={"agent_id": self.agent_id, "task_id": task_id, "task_type": task_type},
+        )
+
+        result = TaskResult(
+            task_id=task_id,
+            status=TaskResultStatus.FAILED,
+            error=(
+                "redelivered: a prior delivery of this task was not acknowledged, so its "
+                "completion is unknown — it may have died, or may have completed and "
+                "replied before the ack. Refused at the broker layer rather than re-run; "
+                "the correction budget governs any retry (SIP §5.3a, #1626)"
+            ),
+        )
+        if reply_queue:
+            await self._queue.publish(
+                reply_queue,
+                json.dumps(
+                    {
+                        "action": "comms.task.result",
+                        "metadata": {"correlation_id": correlation_id},
+                        "payload": result.to_dict(),
+                    }
+                ),
+            )
+        else:
+            logger.warning(
+                "No reply_queue in metadata, refusal result dropped",
+                extra={"task_id": task_id},
             )
 
     async def _handle_task_envelope(self, payload: dict, metadata: dict) -> None:

@@ -61,7 +61,92 @@ Pin `publisher_confirms=True` at channel creation (explicit even if it matches t
 
 ### 5.3 Consumer idempotency
 
-Redis (already in the stack) as the dedup store: `SETNX comms:done:{task_id}` with a TTL (~24h, config) written **after** the reply publish succeeds. On delivery, a hit → ack + structured log (`duplicate_of_completed_task`), no reprocess. Semantics chosen deliberately: dedup on *completed*, not on *seen* — a crash mid-processing leaves no marker, so the redelivery reprocesses (at-least-once preserved). Redis loss shrinks the dedup window to zero until it refills; the failure mode is duplicate work, never lost work — acceptable degradation, noted in Open Questions.
+Redis (already in the stack) as the dedup store: `SETNX comms:done:{task_id}` with a TTL (~24h, config) written **after** the reply publish succeeds. On delivery, a hit → ack + structured log (`duplicate_of_completed_task`), no reprocess. Semantics chosen deliberately: dedup on *completed*, not on *seen* — a crash mid-processing leaves no marker, so the redelivery reprocesses (at-least-once preserved). Redis loss shrinks the dedup window to zero until it refills; the failure mode is duplicate work, never lost work — acceptable degradation, noted in Open Questions. **That holds only where the work terminates: see §5.3a, where reprocessing a crash mid-processing was neither duplicate work nor lost work but an unbounded crash loop (#1626).**
+
+### 5.3a The death path — an incident rule, and a gap in §5.1 (added 2026-09-20, #1626)
+
+**The incident.** The qa agent took a SIGSEGV inside a repair handler (a corrupt
+`tree_sitter` node, #1626). Docker restarted it, the broker redelivered the unacked
+message, and it died again — **37 times over ~90 minutes**. Stated as provable: no record was
+written; **no handler result reached the correction, deadlock (#1221) or
+repeated-signature machinery**, each of which consumes a handler RESULT; the run stayed
+`running`; and every restarted agent took the poisoned delivery again. Not every
+termination mechanism depends on a handler returning — `TaskDispatcher._publish_and_await`
+carries a task timeout that does not — and the incident record does not claim otherwise.
+`cycle_runs.status` staying `running` with nothing running is what, by the verification
+driver's contract, makes every later preflight refuse. One message bricked the deploy.
+
+**§5.3's reasoning does not cover it.** §5.3 chooses dedup on *completed* rather than
+*seen*, so "a crash mid-processing leaves no marker, so the redelivery reprocesses", on the
+stated grounds that "the failure mode is duplicate work, never lost work". That is true when
+the work *terminates*. #1626 is a third mode the sentence does not admit: **reprocessing can
+be fatal and unbounded.** The observed fact, stated as observed: in the affected agent
+runtime state the delivery crashed on every one of 37 attempts. **Input alone is not
+sufficient to reproduce it** — the same content parses cleanly in a fresh process on
+identical versions and architecture (#1626), which points at memory-state-dependent
+corruption. The interim rule does not depend on input-only determinism, and must not be
+justified by it.
+
+**§5.1's bound does not cover it either, and this is the gap worth fixing here.** §5.1 bounds
+poison messages with the broker-maintained `x-death` count, advanced by a **raising
+callback** — `nack(requeue=True)` while the count is below N, then `reject(requeue=False)`
+to the DLX. A process that **dies** raises nothing. The channel drops and the broker requeues
+the unacked message, and **a requeue after consumer death is not a dead-lettering: it carries
+no `x-death` entry.** So the count never advances and §5.1's N-attempt bound never trips.
+§5.1's claim that "a poison message burns N attempts and lands in quarantine instead of
+either looping forever or vanishing" holds for a *failing* handler and not for a *dying*
+one. **(Asserted from AMQP dead-lettering semantics, not measured in this deployment —
+confirm before relying on it.)**
+
+**The interim rule, in force now.** Until completed-task deduplication (§5.3) exists:
+
+> A redelivered **`comms.task`** is converted to a typed `FAILED` result for the original
+> task id and acknowledged. Only the cycle's recorded correction machinery may retry it.
+
+**Scope: task dispatch only.** `comms.chat` deliveries are untouched by this rule, and it
+must not be described as bounding consumer poison loops in general — only task dispatch is
+guarded.
+
+**What `redelivered` does and does not prove.** It proves a prior delivery was **not
+acknowledged**. It does *not* prove the work did not happen. The subscription awaits the
+callback and acks only afterwards, so the connection can close before the callback runs,
+during the work, or **after the work and its reply succeeded but before the ack** — and the
+broker may mark a message redelivered that never reached the prior consumer at all. The
+honest statement is therefore: **the prior delivery's completion is unknown.**
+
+**The ack-gap case, and the assumption that makes it safe.** The uncomfortable ordering is:
+a task completes, publishes `SUCCEEDED`, loses its connection before the ack, is
+redelivered, and this rule then publishes `FAILED` for the same task id. In today's
+topology the success is queued first and `ReplyRouter` **pops** the future when it resolves
+(`adapters/cycles/reply_router.py:127`), so the later `FAILED` finds no registered future
+and is dropped — the successful result stands.
+
+That safety is **conditional on one active consumer per `{agent_id}_comms` queue.** With
+overlapping consumers — a rolling restart, a second agent process on the same queue — the
+two results can race and a successful task can be recorded as failed. **Preserving
+single-active-consumer per dispatch queue is therefore an acceptance condition of this
+interim rule**, and it lapses only when completed-task dedup (§5.3) makes the ordering
+irrelevant.
+
+The rule follows from that, not from a cause: with completion unknown, the broker layer is
+the wrong place to decide. Re-executing risks unbudgeted duplicate work and, as #1626 shows,
+can be fatal and unbounded; discarding risks losing work. Emitting a typed `FAILED` for the
+original task id records the uncertainty where it can be reasoned about, and hands the retry
+decision to the only layer with a budget and a record. Implemented in #1627.
+
+**What §5.1 and §5.3 must add when they land — and an acceptance condition.** The rule
+above narrows rather than disappears. `redeliver_then_dlq` needs a **death-path bound that
+does not rely on `x-death`** — an attempt marker written *before* the handler runs (§5.3's
+Redis store can carry `seen` beside `completed`), or a redelivery treated as terminal for a
+task with no completion marker. Without one, §5.1 ships believing it has bounded poison
+messages while the fatal case remains unbounded.
+
+**The two mechanisms cannot coexist, and this is an acceptance condition on §5.1.** Under
+`redeliver_then_dlq` an explicit `nack(requeue=True)` also produces a delivery with
+`redelivered=True`. If the interim flag-only test is still in place then, attempt 2 is
+converted to `FAILED` and acked: **the configured N-attempt budget collapses to one and the
+message never reaches the DLQ.** §5.1 must therefore land with the death-path marker
+**replacing** the flag-only test in the same change, not beside it.
 
 ### 5.4 Deferred redelivery (fixes Gap D)
 
@@ -84,12 +169,12 @@ A shared `comms.wait` queue declared with DLX → default exchange, no consumers
 ## 7. Acceptance Criteria
 
 1. A comms handler that fails N times for the same delivery lands the message in `comms.dlq` with `x-death` history; the agent's consumer keeps processing subsequent messages; the DLQ depth metric and alert fire. No code path acks-and-discards a failed dispatch delivery.
-2. Kill an agent mid-task: the redelivered envelope is reprocessed exactly once end-to-end. Complete a task, then force redelivery of the same envelope: it is deduped (acked, logged, not reprocessed, no duplicate reply).
+2. Kill an agent mid-task. **Until completed-task dedup (§5.3) ships, the interim rule of §5.3a governs**: the redelivered envelope is NOT reprocessed — it yields a typed `FAILED` for the original task id, is acked, the queue drains, and any retry comes from recorded cycle governance. **Once §5.3 ships and §5.1 replaces the flag-only test with a death-path marker**, this criterion becomes its original form: the redelivered envelope is reprocessed exactly once end-to-end. In both eras: complete a task, then force redelivery of the same envelope — it is deduped (acked, logged, not reprocessed, no duplicate reply).
 3. A publish to a nonexistent routing key surfaces as `QueueError` after retries — never silence.
 4. `publish(delay_seconds=30)` delivers the message *after* ~30s, not before; nothing expires undelivered.
 5. Reply-queue behavior is byte-identical to pre-SIP (ack-always, no redelivery) — regression-pinned.
 6. `squadops doctor` fails if the DLX policy is absent on any `*_comms` queue.
-7. **Live-validated on the deployed stack**: induced handler failure → DLQ; agent kill/restart → idempotent redelivery; lite cycle green throughout.
+7. **Live-validated on the deployed stack**: induced handler failure → DLQ; agent kill/restart → the behaviour §7.2 requires *for the era in force* (interim: typed `FAILED`, acked, no broker rerun; post-§5.3: idempotent redelivery); **whether `x-death` is absent on an automatic requeue after consumer death, recorded either way**; lite cycle green throughout.
 
 ## 8. Open Questions (design review)
 

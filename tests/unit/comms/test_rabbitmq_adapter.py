@@ -530,3 +530,32 @@ class TestNativeSubscribe:
         assert handle.active is False
         assert it.exited is True  # consumer context torn down
         assert adapter._resubscribe_total == 0
+
+
+class TestTheRedeliveredFlagReachesTheConsumer:
+    """The dispatch guard (SIP §5.3a, #1626) reads `attributes["redelivered"]`. Its unit
+    tests construct that key directly, which proves the guard and NOT the wiring — the
+    #1250/#1256/#1261 shape, each latent from its own PR and found by a live cycle.
+
+    This is the cheap seam test: the broker's own flag must arrive under that exact key."""
+
+    @staticmethod
+    def _incoming(*, redelivered: bool):
+        msg = _FakeIncoming(7, '{"action": "comms.task"}')
+        msg.redelivered = redelivered
+        return msg
+
+    @pytest.mark.parametrize("flag", [True, False])
+    def test_the_brokers_flag_lands_under_the_key_the_guard_reads(self, flag: bool) -> None:
+        """A true broker `redelivered` must reach `attributes["redelivered"]` verbatim —
+        the guard refuses on exactly this key, and nothing else feeds it."""
+        out = RabbitMQAdapter._to_queue_message(self._incoming(redelivered=flag), "eve_comms")
+
+        assert out.attributes["redelivered"] is flag
+
+    def test_the_key_is_always_present_so_absence_never_means_false(self) -> None:
+        """The guard treats a missing key as "not redelivered". That is only safe because
+        this adapter always sets it; if it ever stopped, every redelivery would run again."""
+        out = RabbitMQAdapter._to_queue_message(self._incoming(redelivered=True), "eve_comms")
+
+        assert "redelivered" in out.attributes
