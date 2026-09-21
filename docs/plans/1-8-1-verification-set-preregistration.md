@@ -7,14 +7,23 @@ deploy does NOT move** — instrument only, `scripts/dev/` — and the images an
 unchanged, exactly the rev 2 precedent (void without rebuild). Voiding and rebuilding are separate
 questions and §8 asks only the first.
 
-**What the change can and cannot touch — the narrowing, stated so it can be overruled.** Adding
-`analyzer_claim_refuted` to the runtime filter only ADDS previously-dropped lines, and feeds
-`analyzer_claims_refuted`, `unjoinable_refutations` and `decision_inherited_claims` alone. It
-cannot alter L7, L4, the dev-lane seam, L2 or L8b, which read different fields. **On that ground
-the six diagnostics cleared under rev 3 stand, and rev 4 re-runs only diagnostic 7 and the two
-never launched.** This is a narrowing of §8's void and the owner may reject it, in which case all
-nine re-run; it is written here rather than acted on silently, because narrowing a void casually is
-how a registration stops meaning anything.
+**The strict rule applies: rev 4 re-runs all nine.** An earlier draft of this block narrowed the
+void — six rev-3 clearances carried, only diagnostics 7–9 re-run — on the ground that adding a
+marker to the runtime filter cannot alter L7, L4, the dev-lane seam, L2 or L8b. **That narrowing
+is withdrawn.** Two reasons, the second decisive:
+
+1. **It was proposed after seeing six favourable results.** Scoped invalidation may be a defensible
+   policy, but inventing it once the results are known is the bias the registration exists to
+   prevent. §6 requires "a diagnostic pass on one deploy with no new seam finding"; §8 makes a
+   reading-changing driver edit the move that voids the registration. Neither admits a carry.
+2. **It was incoherent.** The four required N cells are supplied by those same six diagnostics'
+   transactions, and the superseded-registration rule says those do not carry. The draft therefore
+   either smuggled rev-3 transactions into N or left rev 4 without the supply its own §3c says the
+   cells depend on. It cannot be both.
+
+**So: all nine diagnostics re-run under rev 4, and no rev-3 transaction counts toward N.** If
+scoped invalidation is wanted as a rule, it is written *before* the next set and applies to
+whatever that set finds — not decided here with six clears already in hand.
 
 **The budget clock (Dallas U1), fixed here because the text did not address it.** Diagnostic 7
 exhausted its two runs under rev 3. **A void registration voids its budget accounting with it**:
@@ -206,7 +215,8 @@ match swallowed it — so only `own_artifact — ` counts, filtered in the readi
 collector. The deploy-A reading stands in §10 as evidence and **counts toward nothing**.
 
 **Round 3 (rev 3) found the third, and it was an instrument again.** Six of nine cleared and all
-four required cells exercised — then diagnostic 7 (`absent-suite-then-false-claim`) read **A1 NO on
+four required cells exercised **under rev 3, which is now void — none of those transactions counts
+toward rev 4's N, and all nine re-run** — then diagnostic 7 (`absent-suite-then-false-claim`) read **A1 NO on
 both budget runs**. #968's prose refutation fired correctly, with the `decision_task=` field #1616
 added; `_runtime_lines_of_interest`'s allow-list dropped the line before any collector saw it, so
 `analyzer_claims_refuted` read empty and `_a1_reading`, which requires at least one refutation,
@@ -322,7 +332,8 @@ set. The record reports how many rounds it took, which is evidence about the pac
 
 **Rounds so far: three.** Round 3 is the first to get past its first diagnostic: it cleared six
 of nine and all four required cells before halting on diagnostic 7, where A1 could not read a
-refutation that fired (#1631) — an instrument defect, like round 1's. Round 4 begins at rev 4.
+refutation that fired (#1631) — an instrument defect, like round 1's. **Round 4 begins at rev 4
+and re-runs all nine**; rev 3's clearances are evidence in §10 and count toward nothing.
 
 *Rounds 1 and 2, as recorded then:* **two, and neither reached a second diagnostic.** Round 1 (rev 1) found #1623 —
 an instrument defect — on its first diagnostic. Round 2 (rev 2) found **#1626** on the same
