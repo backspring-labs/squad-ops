@@ -2054,6 +2054,14 @@ def _runtime_lines_of_interest(lines: list[str]) -> list[str]:
         # qa repair's case count (R4) and rule B's agent-decided verifications (R7) do not.
         "correction_repair_brief",
         "decided_by_agent=",
+        # #1631: #968's prose refutation is logged on its OWN line by
+        # `adapters.cycles.correction_runner`, carrying no other key — so without it here the
+        # line never reaches `analyzer_claims_refuted` and A1 reads NO on a mechanism that
+        # fired. #1616 added the reader and the decision_task join and did not add this, and
+        # its replay fed `docker logs` straight to the reader, bypassing this filter: it
+        # proved the function and said nothing about the wiring. Two shakeout runs were spent
+        # on a reading that could not have come back YES.
+        "analyzer_claim_refuted",
         # 1.7.4 (#1372, R1): the executor's aimed emission retry, with the signature and
         # token facts the appendix is built from (#1110).
         "Retryable failure for",

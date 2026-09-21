@@ -3090,6 +3090,13 @@ class TestTheThreeStateEvidenceVocabulary:
     def test_value_at_hands_a_consumer_the_default_for_an_unaskable_field(self, driver):
         """Bug caught: a consumer reading `rec[...]` and getting the unaskable dict, or a
         zero, and doing arithmetic on it. The answer is absent, so the default is returned."""
+        # NOTE (Dallas N2): the record below is hand-built, so this step exercises
+        # `_a1_reading` against a self-consistent fixture. It does NOT prove the join —
+        # that both sides derive from one variable is argued from the emitter and storage
+        # paths (`correction_runner.py:1087` -> `:1113` for the refutation's
+        # `decision_task`; `dispatched_flow_executor.py:4701` for the decision artifact's
+        # `task_id`), not asserted here. What this test does prove is the wiring the defect
+        # was in: the raw line survives the filter and parses.
         rec = {
             "loop_texture": {
                 "refused_patches": driver.Evidence.unaskable("no correction round").record(),
@@ -4282,3 +4289,58 @@ class TestL7ReadsTheRoutingMechanismNotAMarker:
         reached, evidence = driver._qa_own_frame_routed_reading(self._rec(driver, [other]))
         assert reached is False
         assert evidence == []
+
+
+class TestTheRefutationMarkerSurvivesTheRuntimeFilter:
+    """#1631, ONE marker — not the general property. A class-closing test was attempted and
+    dropped as unsound (#1632); naming this class for the general property would let an
+    auditor grep it and believe #1632 was already closed.
+
+    `_runtime_lines_of_interest` gates which runtime lines any collector sees. #968's
+    prose refutation is logged on its OWN line carrying no other key, and the marker was never
+    added — so `analyzer_claims_refuted` read empty, `_a1_reading` requires >=1 refutation, and
+    A1 read NO on a mechanism that fired. Two shakeout runs were spent on it.
+
+    #1616 added that reader and verified it by feeding `docker logs` output straight in,
+    BYPASSING this filter. That proved the function and said nothing about the wiring — the
+    #1250/#1256/#1261 shape. These tests enter at the filter."""
+
+    REFUTATION = (
+        "2026-09-21 10:43:35,824 WARNING adapters.cycles.correction_runner: "
+        "analyzer_claim_refuted task=task-run_01bb55b8-m005-qa.test "
+        "decision_task=corr-run_01bb55b8-00-governance.correction_decision "
+        "paths=backend/__squadops_injected_fault__.py"
+    )
+
+    def test_the_refutation_line_reaches_A1_from_the_raw_log(self, driver):
+        """Entered at the filter, not at the reader: the raw line must survive, parse, and
+        make A1 readable. This is the assertion whose absence cost two runs."""
+        kept = driver._runtime_lines_of_interest([self.REFUTATION])
+        assert kept, "the refutation line must survive the runtime filter"
+
+        refutations = driver.analyzer_claims_refuted(kept)
+        assert len(refutations) == 1
+        assert refutations[0]["decision_task"] == (
+            "corr-run_01bb55b8-00-governance.correction_decision"
+        )
+
+        rec = {
+            "loop_texture": {
+                "analyzer_claims_refuted": refutations,
+                "unjoinable_refutations": driver.unjoinable_refutations(refutations),
+                "decision_inherited_claims": [
+                    {
+                        "artifact": "art_1",
+                        "decision_task": "corr-run_01bb55b8-00-governance.correction_decision",
+                        "inherited": False,
+                        "refuted_verbatim": ["backend/__squadops_injected_fault__.py"],
+                    }
+                ],
+                "analyzer_claims_dropped": [],
+            }
+        }
+        reached, _ = driver._a1_reading(rec)
+        assert reached is True, "A1 must read YES once the line actually reaches the reader"
+
+        # The assertion that matters for #1631 is the one above the fixture: without the
+        # allow-list key, `kept` is empty and this test fails at `assert kept`.

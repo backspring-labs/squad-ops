@@ -1,6 +1,37 @@
 # 1.8.1 verification set — pre-registration (plan §7 step 5)
 
-**Status:** rev 3 (2026-09-20) — **re-made after the shakeout's second finding** (#1626). Rev 2 is
+**Status:** rev 4 (2026-09-21) — **re-made after the shakeout's third finding** (#1631), whose
+fix changes a registered reading. **§8 voids rev 3 on that alone**: a driver-only change is free
+only where it *cannot* alter a reading, and this one exists to make A1 readable at all. **The
+deploy does NOT move** — instrument only, `scripts/dev/` — and the images and pin were re-read
+unchanged, exactly the rev 2 precedent (void without rebuild). Voiding and rebuilding are separate
+questions and §8 asks only the first.
+
+**The strict rule applies: rev 4 re-runs all nine.** An earlier draft of this block narrowed the
+void — six rev-3 clearances carried, only diagnostics 7–9 re-run — on the ground that adding a
+marker to the runtime filter cannot alter L7, L4, the dev-lane seam, L2 or L8b. **That narrowing
+is withdrawn.** Two reasons, the second decisive:
+
+1. **It was proposed after seeing six favourable results.** Scoped invalidation may be a defensible
+   policy, but inventing it once the results are known is the bias the registration exists to
+   prevent. §6 requires "a diagnostic pass on one deploy with no new seam finding"; §8 makes a
+   reading-changing driver edit the move that voids the registration. Neither admits a carry.
+2. **It was incoherent.** The four required N cells are supplied by those same six diagnostics'
+   transactions, and the superseded-registration rule says those do not carry. The draft therefore
+   either smuggled rev-3 transactions into N or left rev 4 without the supply its own §3c says the
+   cells depend on. It cannot be both.
+
+**So: all nine diagnostics re-run under rev 4, and no rev-3 transaction counts toward N.** If
+scoped invalidation is wanted as a rule, it is written *before* the next set and applies to
+whatever that set finds — not decided here with six clears already in hand.
+
+**The budget clock (Dallas U1), fixed here because the text did not address it.** Diagnostic 7
+exhausted its two runs under rev 3. **A void registration voids its budget accounting with it**:
+diagnostic 7 begins rev 4 with a fresh two-run budget. The alternative — carrying an exhausted
+budget across a registration that has been re-made precisely because the reading was broken —
+would make the set unstartable for a defect the framework has already fixed.
+
+*Rev 3's status block, kept for the record:* re-made after the second finding (#1626). Rev 2 is
 void by §8, and this time **the deploy genuinely moves**: #1627 and #1628 change `src/`
 (`agents/entrypoint.py`, `cycles/structural_jsx.py`), so all seven images were rebuilt and every id
 changed. Contrast rev 2, which moved the instrument only and correctly did NOT rebuild.
@@ -183,6 +214,21 @@ green of its own — #1054's `own_artifact DISPUTED` falls through to the **dev 
 match swallowed it — so only `own_artifact — ` counts, filtered in the reading as well as the
 collector. The deploy-A reading stands in §10 as evidence and **counts toward nothing**.
 
+**Round 3 (rev 3) found the third, and it was an instrument again.** Six of nine cleared and all
+four required cells exercised **under rev 3, which is now void — none of those transactions counts
+toward rev 4's N, and all nine re-run** — then diagnostic 7 (`absent-suite-then-false-claim`) read **A1 NO on
+both budget runs**. #968's prose refutation fired correctly, with the `decision_task=` field #1616
+added; `_runtime_lines_of_interest`'s allow-list dropped the line before any collector saw it, so
+`analyzer_claims_refuted` read empty and `_a1_reading`, which requires at least one refutation,
+could not return YES. **Two runs spent on a reading that was structurally incapable of passing.**
+
+Fixed by **#1633** (#1631): the marker is allow-listed and the test enters **at the filter**, not
+at the reader. The cause of the miss is worth the record — **#1616 verified that reader by feeding
+`docker logs` straight into it, bypassing the filter**, proving the function and saying nothing
+about the wiring. That is the #1250/#1256/#1261 shape for the third time on this line. A
+class-closing test was attempted, failed its own mutation check twice, and was dropped to **#1632**
+rather than shipped as a guard that guards nothing.
+
 **Round 2 (rev 2) found the second, and it was not an instrument.** The same diagnostic
 (`cyc_5613d2fb55e4`) reached the qa repair, and the qa agent took a **SIGSEGV** inside
 `qa_test_repair_handler` — a corrupt `tree_sitter` node, #1626. Docker restarted it, the broker
@@ -284,7 +330,12 @@ moves, this pre-registration is void and re-made on the new deploy, and no trans
 superseded deploy counts. **Budget: two runs per diagnostic**; a seam unreached after two stops the
 set. The record reports how many rounds it took, which is evidence about the pack.
 
-**Rounds so far: two, and neither reached a second diagnostic.** Round 1 (rev 1) found #1623 —
+**Rounds so far: three.** Round 3 is the first to get past its first diagnostic: it cleared six
+of nine and all four required cells before halting on diagnostic 7, where A1 could not read a
+refutation that fired (#1631) — an instrument defect, like round 1's. **Round 4 begins at rev 4
+and re-runs all nine**; rev 3's clearances are evidence in §10 and count toward nothing.
+
+*Rounds 1 and 2, as recorded then:* **two, and neither reached a second diagnostic.** Round 1 (rev 1) found #1623 —
 an instrument defect — on its first diagnostic. Round 2 (rev 2) found **#1626** on the same
 diagnostic: the qa agent took a SIGSEGV inside a repair handler and the framework answered with an
 unbounded crash-restart loop, 37 restarts in ~90 minutes, no record, and a `running` row that would
