@@ -4282,3 +4282,51 @@ class TestL7ReadsTheRoutingMechanismNotAMarker:
         reached, evidence = driver._qa_own_frame_routed_reading(self._rec(driver, [other]))
         assert reached is False
         assert evidence == []
+
+
+class TestEveryGreppedMarkerSurvivesTheRuntimeFilter:
+    """#1631: `_runtime_lines_of_interest` gates which runtime lines any collector sees. #968's
+    prose refutation is logged on its OWN line carrying no other key, and the marker was never
+    added — so `analyzer_claims_refuted` read empty, `_a1_reading` requires >=1 refutation, and
+    A1 read NO on a mechanism that fired. Two shakeout runs were spent on it.
+
+    #1616 added that reader and verified it by feeding `docker logs` output straight in,
+    BYPASSING this filter. That proved the function and said nothing about the wiring — the
+    #1250/#1256/#1261 shape. These tests enter at the filter."""
+
+    REFUTATION = (
+        "2026-09-21 10:43:35,824 WARNING adapters.cycles.correction_runner: "
+        "analyzer_claim_refuted task=task-run_01bb55b8-m005-qa.test "
+        "decision_task=corr-run_01bb55b8-00-governance.correction_decision "
+        "paths=backend/__squadops_injected_fault__.py"
+    )
+
+    def test_the_refutation_line_reaches_A1_from_the_raw_log(self, driver):
+        """Entered at the filter, not at the reader: the raw line must survive, parse, and
+        make A1 readable. This is the assertion whose absence cost two runs."""
+        kept = driver._runtime_lines_of_interest([self.REFUTATION])
+        assert kept, "the refutation line must survive the runtime filter"
+
+        refutations = driver.analyzer_claims_refuted(kept)
+        assert len(refutations) == 1
+        assert refutations[0]["decision_task"] == (
+            "corr-run_01bb55b8-00-governance.correction_decision"
+        )
+
+        rec = {
+            "loop_texture": {
+                "analyzer_claims_refuted": refutations,
+                "unjoinable_refutations": driver.unjoinable_refutations(refutations),
+                "decision_inherited_claims": [
+                    {
+                        "artifact": "art_1",
+                        "decision_task": "corr-run_01bb55b8-00-governance.correction_decision",
+                        "inherited": False,
+                        "refuted_verbatim": ["backend/__squadops_injected_fault__.py"],
+                    }
+                ],
+                "analyzer_claims_dropped": [],
+            }
+        }
+        reached, _ = driver._a1_reading(rec)
+        assert reached is True, "A1 must read YES once the line actually reaches the reader"
