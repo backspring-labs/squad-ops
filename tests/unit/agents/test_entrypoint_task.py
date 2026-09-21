@@ -304,8 +304,10 @@ class TestProcessCommsMessage:
 
 class TestARedeliveredTaskIsRefusedNotRerun:
     """#1626: the qa agent segfaulted inside a repair handler and was restarted 37 times
-    on the same redelivered message — no record, no termination, and a `running` row that
-    would have made every later preflight refuse.
+    on the same redelivered message — no record, no handler RESULT reaching the correction /
+    deadlock / repeated-signature machinery, and a `running` row that would have made every
+    later preflight refuse. (`TaskDispatcher`'s task timeout does not need a handler to
+    return; the claim is scoped to the rules that consume a result.)
 
     SIP-0094 D12 already forbids poison-looping by acking a failing callback, but that is
     enforceable only when the callback RETURNS. A process that DIES never acks, so the
@@ -359,8 +361,8 @@ class TestARedeliveredTaskIsRefusedNotRerun:
 
     async def test_the_refusal_publishes_a_FAILED_result_naming_the_reason(self) -> None:
         """The cycle must hear a failed round with a reason, not silence — every
-        termination rule (the correction budget, the #1221 deadlock rule) assumes the
-        handler returns, so a death that produces no result terminates nothing."""
+        rule that consumes a handler RESULT (the correction budget, the #1221 deadlock
+        rule) is starved by a death that produces none."""
         r = self._runner()
 
         await r._process_comms_message(self._message(self.PAYLOAD, redelivered=True))

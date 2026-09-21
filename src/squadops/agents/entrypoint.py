@@ -619,10 +619,13 @@ class AgentRunner:
                 # callback RETURNS: if the process DIES mid-task the broker never saw an
                 # ack, requeues, and the loop D12 forbids arrives through a door D12 does
                 # not cover. #1626: the qa agent segfaulted inside a repair handler and was
-                # restarted 37 times on the same redelivered message, with no record, no
-                # termination — the correction budget and the deadlock rule (#1221) all
-                # assume the handler returns — and a `running` row that would have made
-                # every later preflight refuse.
+                # restarted 37 times on the same redelivered message. The provable facts:
+                # no handler result ever reached the correction / deadlock (#1221) /
+                # repeated-signature machinery, the run stayed `running`, and each
+                # restarted agent took the poisoned delivery again. Not every termination
+                # mechanism depends on a handler returning — `TaskDispatcher`'s task
+                # timeout does not — so the claim is scoped to the rules that consume a
+                # handler RESULT.
                 #
                 # `redelivered` proves only that a prior delivery was NOT ACKNOWLEDGED. It
                 # does not prove the work did not happen: the ack follows the callback, so

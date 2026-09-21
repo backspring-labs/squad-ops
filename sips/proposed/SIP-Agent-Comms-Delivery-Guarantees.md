@@ -67,10 +67,14 @@ Redis (already in the stack) as the dedup store: `SETNX comms:done:{task_id}` wi
 
 **The incident.** The qa agent took a SIGSEGV inside a repair handler (a corrupt
 `tree_sitter` node, #1626). Docker restarted it, the broker redelivered the unacked
-message, and it died again — **37 times over ~90 minutes**. No record was written, no
-termination rule fired, and `cycle_runs.status` stayed `running` with nothing running,
-which by the verification driver's contract makes every later preflight refuse. One
-message bricked the deploy.
+message, and it died again — **37 times over ~90 minutes**. Stated as provable: no record was
+written; **no handler result reached the correction, deadlock (#1221) or
+repeated-signature machinery**, each of which consumes a handler RESULT; the run stayed
+`running`; and every restarted agent took the poisoned delivery again. Not every
+termination mechanism depends on a handler returning — `TaskDispatcher._publish_and_await`
+carries a task timeout that does not — and the incident record does not claim otherwise.
+`cycle_runs.status` staying `running` with nothing running is what, by the verification
+driver's contract, makes every later preflight refuse. One message bricked the deploy.
 
 **§5.3's reasoning does not cover it.** §5.3 chooses dedup on *completed* rather than
 *seen*, so "a crash mid-processing leaves no marker, so the redelivery reprocesses", on the
@@ -109,6 +113,20 @@ callback and acks only afterwards, so the connection can close before the callba
 during the work, or **after the work and its reply succeeded but before the ack** — and the
 broker may mark a message redelivered that never reached the prior consumer at all. The
 honest statement is therefore: **the prior delivery's completion is unknown.**
+
+**The ack-gap case, and the assumption that makes it safe.** The uncomfortable ordering is:
+a task completes, publishes `SUCCEEDED`, loses its connection before the ack, is
+redelivered, and this rule then publishes `FAILED` for the same task id. In today's
+topology the success is queued first and `ReplyRouter` **pops** the future when it resolves
+(`adapters/cycles/reply_router.py:127`), so the later `FAILED` finds no registered future
+and is dropped — the successful result stands.
+
+That safety is **conditional on one active consumer per `{agent_id}_comms` queue.** With
+overlapping consumers — a rolling restart, a second agent process on the same queue — the
+two results can race and a successful task can be recorded as failed. **Preserving
+single-active-consumer per dispatch queue is therefore an acceptance condition of this
+interim rule**, and it lapses only when completed-task dedup (§5.3) makes the ordering
+irrelevant.
 
 The rule follows from that, not from a cause: with completion unknown, the broker layer is
 the wrong place to decide. Re-executing risks unbudgeted duplicate work and, as #1626 shows,
