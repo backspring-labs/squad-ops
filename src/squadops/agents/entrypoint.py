@@ -624,11 +624,18 @@ class AgentRunner:
                 # assume the handler returns — and a `running` row that would have made
                 # every later preflight refuse.
                 #
-                # Under ack-always, a REDELIVERED task can only mean the previous attempt
-                # did not return: it killed the process, or the connection dropped
-                # mid-flight. Either way the cycle must hear about it as a failed round
-                # with a reason, not as an invisible retry, so its own bounded and recorded
-                # correction machinery governs what happens next.
+                # `redelivered` proves only that a prior delivery was NOT ACKNOWLEDGED. It
+                # does not prove the work did not happen: the ack follows the callback, so
+                # the connection can close before the callback runs, during the work, or
+                # AFTER the work and its reply succeeded — and the broker may mark a message
+                # redelivered that never reached the prior consumer. The prior delivery's
+                # completion is therefore UNKNOWN.
+                #
+                # With completion unknown the broker layer is the wrong place to decide:
+                # re-executing risks unbudgeted duplicate work and, per #1626, can be fatal
+                # and unbounded; discarding risks losing work. Recording a typed FAILED for
+                # the original task id puts the uncertainty where it can be reasoned about
+                # and leaves the retry to the only layer with a budget and a record.
                 if message.attributes.get("redelivered"):
                     await self._refuse_redelivered_task(payload, metadata)
                 else:
@@ -788,12 +795,16 @@ class AgentRunner:
             )
 
     async def _refuse_redelivered_task(self, payload: dict, metadata: dict) -> None:
-        """Fail a redelivered task instead of running it again (#1626).
+        """Fail a redelivered task instead of running it again (SIP §5.3a, #1626).
 
-        A task is only ever redelivered when the previous attempt did not return — every
-        ordinary failure is caught and acked (SIP-0094 D12). Running it again is what
-        produced #1626's 37 restarts, so the round is failed with its reason and the
-        cycle's own budget decides whether to retry. The message is acked by the
+        A redelivery means a prior delivery went unacknowledged — **not** that the work did
+        not happen. It may have completed and replied before the connection closed, and the
+        broker may mark a message redelivered that never reached the prior consumer. The
+        prior delivery's completion is UNKNOWN, so this refuses to decide at the broker
+        layer: the round is failed for the original task id and the cycle's recorded budget
+        decides any retry. Running it again is what produced #1626's 37 restarts.
+
+        Scope is task dispatch only; `comms.chat` is untouched. The message is acked by the
         subscription layer when this returns, which is what stops the loop.
         """
         import json
@@ -812,9 +823,10 @@ class AgentRunner:
         reply_queue = metadata.get("reply_queue")
 
         logger.error(
-            "redelivered_task_refused: task=%s type=%s — the previous attempt did not "
-            "return (the handler process died, or the connection dropped mid-task), so "
-            "this round is failed rather than retried by the broker (#1626)",
+            "redelivered_task_refused: task=%s type=%s — a prior delivery was not "
+            "acknowledged, so its completion is UNKNOWN (it may have died, or may have "
+            "completed and replied before the ack); refused at the broker layer and failed "
+            "for cycle governance to decide (SIP §5.3a, #1626)",
             task_id,
             task_type,
             extra={"agent_id": self.agent_id, "task_id": task_id, "task_type": task_type},
@@ -824,9 +836,10 @@ class AgentRunner:
             task_id=task_id,
             status=TaskResultStatus.FAILED,
             error=(
-                "redelivered after the previous attempt did not return — the handler "
-                "process died or the connection dropped mid-task; refused rather than "
-                "retried, so the correction budget governs any retry (#1626)"
+                "redelivered: a prior delivery of this task was not acknowledged, so its "
+                "completion is unknown — it may have died, or may have completed and "
+                "replied before the ack. Refused at the broker layer rather than re-run; "
+                "the correction budget governs any retry (SIP §5.3a, #1626)"
             ),
         )
         if reply_queue:

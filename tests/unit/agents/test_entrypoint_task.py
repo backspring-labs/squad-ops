@@ -309,8 +309,13 @@ class TestARedeliveredTaskIsRefusedNotRerun:
 
     SIP-0094 D12 already forbids poison-looping by acking a failing callback, but that is
     enforceable only when the callback RETURNS. A process that DIES never acks, so the
-    broker requeues. Under ack-always a redelivery therefore means exactly one thing: the
-    previous attempt did not return."""
+    broker requeues.
+
+    `redelivered` proves only that a prior delivery was NOT ACKNOWLEDGED — not that the work
+    did not happen. The ack follows the callback, so the connection can close after the work
+    and its reply succeeded, and the broker may mark a message redelivered that never
+    reached the prior consumer. Completion is UNKNOWN, and the rule follows from the
+    uncertainty rather than from a cause (SIP §5.3a)."""
 
     def _runner(self):
         from squadops.agents.entrypoint import AgentRunner
@@ -367,7 +372,10 @@ class TestARedeliveredTaskIsRefusedNotRerun:
         assert sent["action"] == "comms.task.result"
         assert sent["payload"]["task_id"] == "repair-run_4c30fc23-00-qa.test_repair"
         assert sent["payload"]["status"] == "FAILED"
-        assert "did not return" in sent["payload"]["error"]
+        # the error must claim only what the transport can prove
+        err = sent["payload"]["error"]
+        assert "not acknowledged" in err and "completion is unknown" in err
+        assert "did not return" not in err, "the transport cannot prove the work did not run"
 
     async def test_a_malformed_envelope_is_still_refused_with_a_result(self) -> None:
         """The refusal must not depend on the envelope being well-formed: the whole
@@ -383,6 +391,18 @@ class TestARedeliveredTaskIsRefusedNotRerun:
         sent = json.loads(r._queue.publish.await_args.args[1])
         assert sent["payload"]["task_id"] == "unknown"
         assert sent["payload"]["status"] == "FAILED"
+
+    async def test_a_redelivered_CHAT_delivery_is_not_refused(self) -> None:
+        """Scope is task dispatch only (SIP §5.3a). Chat has no cycle budget to hand a
+        failed round to, and claiming this rule bounds consumer poison loops in general
+        would overstate it."""
+        r = self._runner()
+        chat = {"action": "comms.chat", "metadata": {"correlation_id": "c1"}, "payload": {}}
+
+        await r._process_comms_message(self._message(chat, redelivered=True))
+
+        r._handle_chat_message.assert_awaited_once()
+        r._queue.publish.assert_not_awaited()
 
     async def test_a_first_delivery_still_runs_normally(self) -> None:
         """The control: the bound must not cost an ordinary task its first attempt."""
