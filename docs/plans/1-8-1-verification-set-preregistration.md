@@ -1,8 +1,12 @@
 # 1.8.1 verification set — pre-registration (plan §7 step 5)
 
-**Status:** rev 2 (2026-09-20) — **re-made after the shakeout's first finding** (#1623, fixed by
-#1624). Rev 1's commit is void by §8: the L7 reader changed, and a change that can alter a reading
-voids the registration. **The deploy does not move.** #1624 touched only the driver, the tests and
+**Status:** rev 3 (2026-09-20) — **re-made after the shakeout's second finding** (#1626). Rev 2 is
+void by §8, and this time **the deploy genuinely moves**: #1627 and #1628 change `src/`
+(`agents/entrypoint.py`, `cycles/structural_jsx.py`), so all seven images were rebuilt and every id
+changed. Contrast rev 2, which moved the instrument only and correctly did NOT rebuild.
+
+*Rev 2's note, kept for the record:* re-made after the first finding (#1623, fixed by #1624); the
+deploy did not move. #1624 touched only the driver, the tests and
 this document — **zero drift under `src/` and `adapters/`** between rev 1's `18798083` and rev 2's
 `f6994271` — so the seven images that serve the framework are byte-identical and are NOT rebuilt.
 Rebuilding would mint new ids for identical source and make the record less comparable, not more.
@@ -35,8 +39,8 @@ flip and says so** — SIP-0107 stays `accepted` with step 7 named open, the sho
 | Overrides | FastAPI+React: none. Next.js+TS: `build_profile=nextjs_ts`, `development_profile=nextjs_ts` |
 | `resolved_config_hash` | FastAPI+React observed on roll 1 and recorded in §10, Next.js+TS likewise — 1.8.0 read `3921c5a62106` and `33cadf53688e`; a change is drift the record declares (§9) |
 | `squad_profile_snapshot_ref` | **`2d8d4feb3519a7ec`** — **not precomputable.** `serves_roles` entered the snapshot payload (#1611) and the flat completion cap moved a value (#1620/#1619), and the PUT that lands the cap bumps `version`, which is itself inside `compute_profile_snapshot_hash`'s payload. The pre-1.8.1 pin was `575707c58536cf3b`; the file at version 1 computes `cbf3a18d…`; **the deploy stamps neither.** The driver refuses a counting roll on any other (#1571) |
-| Deploy — commit | **`f6994271`** — rev 1's `18798083` plus #1624 (the L7 reader) and this document. **A label, not an assertion** (#1296): the image ids are the assertion, and they are unchanged. `git diff 18798083..f6994271 -- src/ adapters/` is empty, which is why no rebuild followed the fix |
-| Deploy — image ids | `runtime-api 0d33b2820245`, `max 4fbb4efad454`, `neo c379594cb4fd`, `nat d7c038b44c32`, `bob c2c1a64c7063`, `eve 4dfeb0dcdb62`, `data 9e1c65ee4d06` — built 10:36:27 ET 2026-09-20 and **re-read unchanged at rev 2**, as was the pin (deploy F's, superseded, were `runtime-api b3278c26dd25`, `max 36cc6eb9a923`, `neo 07498c2a4a94`, `nat 1ddf151647c0`, `bob b59711b8f653`, `eve 14d15dc8e3f7`, `data 9a41965b25ad`) |
+| Deploy — commit | **`70f578fe`** — rev 2's `f6994271` plus #1628 (the parse guard) and #1627 (the redelivery bound), both under `src/`. **A label, not an assertion** (#1296): the image ids are the assertion, and they are unchanged. `git diff 18798083..f6994271 -- src/ adapters/` is empty, which is why no rebuild followed the fix |
+| Deploy — image ids | `runtime-api 0d33b2820245`, `max 4fbb4efad454`, `neo c379594cb4fd`, `nat d7c038b44c32`, `runtime-api 3ccd7f7b931e`, `max 84708fd3ceb6`, `neo 1e74a0b5334d`, `nat bd81e2c6fb2c`, `bob 4abda1d62302`, `eve 55a19a45982b`, `data 1af2fef0345a` — **all seven changed** at the rev 3 rebuild (rev 1/2's were `0d33b2820245`, `4fbb4efad454`, `c379594cb4fd`, `d7c038b44c32`, `c2c1a64c7063`, `4dfeb0dcdb62`, `9e1c65ee4d06`). **The pin is unchanged at `2d8d4feb3519a7ec`** — re-read from the deploy, not assumed: the squad profile was not touched (deploy F's, superseded, were `runtime-api b3278c26dd25`, `max 36cc6eb9a923`, `neo 07498c2a4a94`, `nat 1ddf151647c0`, `bob b59711b8f653`, `eve 14d15dc8e3f7`, `data 9a41965b25ad`) |
 | Loaded, not built | Verified per container as a live call with its paired control (`verify_A_loaded`): the twelve prelude surfaces of §3d′, read from the loaded modules of `runtime-api`, `eve`, `neo` and `bob` — never by grepping a file (#522) |
 | Gate policy | 1.6.3 §6 constant, verbatim in each set config's `gate_notes`; `--as-agent`; the decider recorded per roll |
 | Audit instrument | `scripts/dev/audit_delivered_app.py` at the deploy commit |
@@ -179,6 +183,31 @@ green of its own — #1054's `own_artifact DISPUTED` falls through to the **dev 
 match swallowed it — so only `own_artifact — ` counts, filtered in the reading as well as the
 collector. The deploy-A reading stands in §10 as evidence and **counts toward nothing**.
 
+**Round 2 (rev 2) found the second, and it was not an instrument.** The same diagnostic
+(`cyc_5613d2fb55e4`) reached the qa repair, and the qa agent took a **SIGSEGV** inside
+`qa_test_repair_handler` — a corrupt `tree_sitter` node, #1626. Docker restarted it, the broker
+redelivered the unacked message, and it died again: **37 restarts in ~90 minutes, no record
+written, and `cycle_runs.status` left `running` with nothing running**, which by the driver's own
+contract makes every later preflight refuse. One message bricked the deploy.
+
+Two fixes followed, and **only these move the deploy**:
+
+- **#1627** — the bound. A redelivered `comms.task` is converted to a typed `FAILED` for the
+  original task id and acked; only recorded cycle governance may retry it. SIP §5.3a carries the
+  rule, why it follows from *completion being unknown* rather than from a cause, the ack-gap case,
+  and the single-active-consumer condition it rests on.
+- **#1628** — the parse guard. A node row outside the content is a corrupt parse, refused rather
+  than indexed on. **It does not stop the SIGSEGV** — verified: the crash moves rather than
+  stopping, because the binding dies while producing the value. #1626 stays open; subprocess
+  isolation is validated (child `-11`, parent survives) and not built.
+
+**Deployment acceptance ran before this registration**, as the review required: 3 of 4 assertions
+pass on the rebuilt deploy — `FAILED` for the original task id, the queue drains, the handler is
+not broker-run again — plus `x-death` measured absent on an automatic requeue. **The fourth, that
+a run leaves `running` through correction or termination, is NOT covered**: the probe used a
+synthetic task with no `cycle_runs` row. **It is asserted explicitly on the first counted-or-
+diagnostic run of round 3**, not assumed from the other three.
+
 ### 3d′. Deploy A — one mechanism prediction per prelude fix
 
 Each fix is read where its mechanism shows, never as a rate. **Four are predicted silent on this
@@ -205,6 +234,13 @@ complies is honest only if the prediction said it would be quiet.
 | fix | mechanism predicted | read from |
 |---|---|---|
 | **#1624** (#1623) | on the re-run, the own-frame failure routes to the qa repair and **L7 reads YES with the branch named** — `analyzer_and_decision_unanimous` if the round is unanimous, `qa_owned_routed` if the suite is stamped qa-owned. A run whose routing is DISPUTED (#1054), which falls through to the dev chain, still reads **NO** | `own-frame-then-prose-repair-nextjs` and `own-frame-then-prose-repair`: `loop_texture.own_artifact_locus` and the seam's evidence list |
+
+**Round 2's fixes — one mechanism prediction each.**
+
+| fix | mechanism predicted | read from |
+|---|---|---|
+| **#1627** (#1626) | **predicted silent on a clean round.** A redelivery only occurs when a delivery went unacked, which a healthy round never produces. If one *does* occur, the record must show a typed `FAILED` for the original task id, the queue draining, and **no second handler invocation** — never a silent broker replay | the agent's `redelivered_task_refused` line; the run's task results; `eve_comms` depth |
+| **#1628** (#1626) | **predicted silent**, and explicitly NOT a fix for the crash. If a corrupt node recurs, `jsx_entities` returns `None` — a structural-parse miss the repair path already handles — rather than indexing on the row. The SIGSEGV itself is unbounded by this and #1626 stays open | `jsx_entities: corrupt parse tree` warnings, expected absent; a repeat SIGSEGV would be a new finding, not a regression of this fix |
 
 ### 3e. CI invariants, read live as texture
 
@@ -248,8 +284,18 @@ moves, this pre-registration is void and re-made on the new deploy, and no trans
 superseded deploy counts. **Budget: two runs per diagnostic**; a seam unreached after two stops the
 set. The record reports how many rounds it took, which is evidence about the pack.
 
-**Rounds so far: one.** Round 1 (rev 1, deploy A) found #1623 on its first diagnostic and stopped
-there. Round 2 begins at rev 2 on the same images. A pack that yields a finding on its first
+**Rounds so far: two, and neither reached a second diagnostic.** Round 1 (rev 1) found #1623 —
+an instrument defect — on its first diagnostic. Round 2 (rev 2) found **#1626** on the same
+diagnostic: the qa agent took a SIGSEGV inside a repair handler and the framework answered with an
+unbounded crash-restart loop, 37 restarts in ~90 minutes, no record, and a `running` row that would
+have made every later preflight refuse. Round 3 begins at rev 3 on rebuilt images.
+
+**That is evidence about the pack and is recorded as such.** Two rounds, two findings, both on the
+FIRST diagnostic of the nine, and neither was a squad failure: one was a seam reader that could not
+tell a working routing from the defect it exists to catch, the other a native crash with no bound
+around it. A pack that surfaces two framework defects before reaching its second diagnostic is
+doing its job; a cut record that smoothed that into "the shakeout took three rounds" would lose the
+only interesting fact about it. A pack that yields a finding on its first
 diagnostic is evidence about the pack, and it is recorded as such rather than smoothed away.
 
 ## 7. Gate constant
