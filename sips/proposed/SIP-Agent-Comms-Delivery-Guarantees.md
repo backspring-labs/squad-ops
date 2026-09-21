@@ -95,8 +95,19 @@ the unacked message, and **a requeue after consumer death is not a dead-letterin
 no `x-death` entry.** So the count never advances and §5.1's N-attempt bound never trips.
 §5.1's claim that "a poison message burns N attempts and lands in quarantine instead of
 either looping forever or vanishing" holds for a *failing* handler and not for a *dying*
-one. **(Asserted from AMQP dead-lettering semantics, not measured in this deployment —
-confirm before relying on it.)**
+one. **MEASURED on this deployment, 2026-09-20**, through the project's own adapter
+(`create_queue_adapter`) against the running broker: publish one message, consume it
+without acking, close the connection — the consumer-death case — and re-consume.
+
+```
+FIRST delivery : redelivered=False  x-death=None
+AFTER requeue  : redelivered=True   x-death=None
+```
+
+The redelivery carries `redelivered=True` and **no `x-death` entry**. An automatic requeue
+after consumer death is not a dead-lettering, so the count §5.1 bounds on never advances.
+This was recorded here as asserted-not-measured; it is now measured, and §5.1's death-path
+gap is a fact rather than an inference.
 
 **The interim rule, in force now.** Until completed-task deduplication (§5.3) exists:
 
@@ -174,7 +185,7 @@ A shared `comms.wait` queue declared with DLX → default exchange, no consumers
 4. `publish(delay_seconds=30)` delivers the message *after* ~30s, not before; nothing expires undelivered.
 5. Reply-queue behavior is byte-identical to pre-SIP (ack-always, no redelivery) — regression-pinned.
 6. `squadops doctor` fails if the DLX policy is absent on any `*_comms` queue.
-7. **Live-validated on the deployed stack**: induced handler failure → DLQ; agent kill/restart → the behaviour §7.2 requires *for the era in force* (interim: typed `FAILED`, acked, no broker rerun; post-§5.3: idempotent redelivery); **whether `x-death` is absent on an automatic requeue after consumer death, recorded either way**; lite cycle green throughout.
+7. **Live-validated on the deployed stack**: induced handler failure → DLQ; agent kill/restart → the behaviour §7.2 requires *for the era in force* (interim: typed `FAILED`, acked, no broker rerun; post-§5.3: idempotent redelivery); **whether `x-death` is absent on an automatic requeue after consumer death — **measured absent** in §5.3a, to be reconfirmed on the accepted deploy**; lite cycle green throughout.
 
 ## 8. Open Questions (design review)
 
