@@ -189,7 +189,7 @@ class TestSystemBootstrap:
 
     def test_create_orchestrator(self, mock_ports):
         """Should create configured orchestrator."""
-        orchestrator = create_orchestrator(mock_ports)
+        orchestrator = create_orchestrator(mock_ports, role="lead")
 
         # Should have capabilities
         caps = orchestrator.get_available_capabilities()
@@ -197,7 +197,7 @@ class TestSystemBootstrap:
 
     def test_create_orchestrator_with_roles(self, mock_ports):
         """Should create orchestrator with filtered roles."""
-        orchestrator = create_orchestrator(mock_ports, roles=["lead", "dev"])
+        orchestrator = create_orchestrator(mock_ports, role="lead", roles=["lead", "dev"])
 
         caps = orchestrator.get_available_capabilities()
 
@@ -215,6 +215,7 @@ class TestSystemBootstrap:
             metrics=mock_ports.metrics,
             events=mock_ports.events,
             filesystem=mock_ports.filesystem,
+            config=SystemConfig(role="lead"),
         )
 
         assert isinstance(system, SquadOpsSystem)
@@ -226,6 +227,7 @@ class TestSystemBootstrap:
     def test_create_system_with_config(self, mock_ports):
         """Should create system with custom config."""
         config = SystemConfig(
+            role="lead",
             roles=["lead"],
             default_timeout=60.0,
         )
@@ -255,6 +257,7 @@ class TestSystemBootstrap:
             metrics=mock_ports.metrics,
             events=mock_ports.events,
             filesystem=mock_ports.filesystem,
+            config=SystemConfig(role="lead"),
         )
 
         health = await system.health()
@@ -268,8 +271,11 @@ class TestSystemConfig:
     """Tests for SystemConfig."""
 
     def test_default_config(self):
-        """Should have sensible defaults."""
-        config = SystemConfig()
+        """Defaults for what the process serves; NO default for what it is (SIP-0108
+        §10i) — a defaulted identity briefed every container as the lead unnoticed."""
+        with pytest.raises(TypeError):
+            SystemConfig()  # type: ignore[call-arg]
+        config = SystemConfig(role="lead")
 
         assert config.roles is None  # All roles
         assert config.default_timeout == 300.0
@@ -278,6 +284,7 @@ class TestSystemConfig:
     def test_custom_config(self):
         """Should accept custom values."""
         config = SystemConfig(
+            role="lead",
             roles=["lead", "dev"],
             default_timeout=60.0,
             metadata={"env": "test"},

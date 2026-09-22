@@ -324,6 +324,7 @@ class AgentRunner:
 
         # Create system
         system_config = SystemConfig(
+            role=self.role,
             roles=list(self.served_roles),
         )
 

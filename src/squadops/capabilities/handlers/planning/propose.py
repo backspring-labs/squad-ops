@@ -257,7 +257,7 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         user_prompt = rendered.content
 
         assembled = context.ports.prompt_service.assemble(
-            role=self._role,
+            role=context.role_id,  # SIP-0108 §10m: the identity layer is what the process IS
             hook="agent_start",
             task_type=self._task_type,
         )

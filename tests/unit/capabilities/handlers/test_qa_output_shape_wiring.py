@@ -69,7 +69,7 @@ def _executor(sent: list[dict]) -> HandlerExecutor:
         events=MagicMock(),
         filesystem=MagicMock(),
     )
-    return HandlerExecutor("qa-agent", create_handler_registry(roles=["qa"]), ports, "qa")
+    return HandlerExecutor("qa-agent", create_handler_registry(roles=["qa"]), ports, role="qa")
 
 
 def _envelope(stack: str) -> TaskEnvelope:

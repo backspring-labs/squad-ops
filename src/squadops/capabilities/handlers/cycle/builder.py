@@ -392,7 +392,10 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         # that never renders it is the #1289 shape, computed and silently dropped.
         user_prompt = await self._apply_emission_retry_feedback(context, inputs, user_prompt)
 
-        assembled = context.ports.prompt_service.get_system_prompt(self._role)
+        # SIP-0108 §10i: the identity layer is what this process IS (``context.role_id``,
+        # resolved by the entrypoint), not the handler's step role. On a squad container the
+        # two coincide for every registered handler; on a generalist process they do not.
+        assembled = context.ports.prompt_service.get_system_prompt(context.role_id)
         # Issue #107: scope the profile prompt to this task's required
         # files when the framing step decomposed builder work.
         profile_prompt = profile.system_prompt_for_files(task_required_files or None)

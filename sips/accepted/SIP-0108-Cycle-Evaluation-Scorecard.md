@@ -1090,3 +1090,64 @@ registration precedes observation — and the 1.8.1 pre-registration pins the ar
 
 **Ruled by.** The owner, 2026-09-20, folding this amendment into the pre-registration work;
 resolution 1 was chosen on #1620's review, 2026-09-19.
+
+### 10m. 2026-09-22 — the identity layer reads what the process is, not what the step does (§10i)
+
+**What changed.** §10i item 4 names "the generalist prompt asset" as one of the declarations Solo
+adds, and §10i's rule says Solo adds declarations and one container and never a branch. Building
+the asset showed the declaration reaches nothing: every handler assembled its system prompt with
+its **own class role** — four `get_system_prompt(self._role)` calls (the cycle base handler, the
+develop, governance and builder handlers) and seven `assemble(role=self._role, …)` calls (the
+planning base, brief, review, manifest and propose handlers, the qa test handler, and the plan
+authoring service, which took the role as a knob from the merge handler) — so a generalist process
+serving every role would have briefed
+itself as the QA Agent on qa tasks and the Developer Agent on dev tasks, and the fragment
+registered for `generalist` would have been assembled by nothing — a vestige, which §10i forbids.
+
+Behind it, a second finding: `ExecutionContext.role_id`, which the entrypoint's docstring names as
+"the identity the system prompt reads", was built by the handler executor from a **defaulted**
+`default_role = "lead"` that the orchestrator never set. Every container's context carried
+`"lead"`, and nothing noticed because no handler read it.
+
+**As built.** A fourth general item, of the same kind as §10i's items 1–3 — a cleanup the platform
+owes regardless of Solo, not a branch on any squad or profile name:
+
+- **The role a process IS is required at every seam** — `SystemConfig.role`, `AgentOrchestrator`,
+  `HandlerExecutor` — passed from the entrypoint's resolved role, with no default (the owner's
+  ruling of 2026-09-14: require, don't default). `ExecutionContext.role_id` now carries it.
+- **The identity layer reads it.** All eleven identity-carrying assemblies pass
+  `context.role_id`, each with its `task_type` unchanged; the plan authoring service reads the
+  context instead of taking a role knob. The three `assemble_task_only` calls (analyze failure,
+  define done, correction decision) are deliberately outside the rule: they compose the step's
+  task-type fragment alone, with no identity layer, and their role is the override key for that
+  fragment. A handler's `_role` keeps its meaning — the step's role, which owns the step's
+  artifacts and routes its repairs — and every other reader of it is untouched.
+- **The surface is closed syntactically.** The first cut of this amendment covered the four
+  `get_system_prompt` calls and missed the seven `assemble` calls — the crew's review found
+  them, not a test. An architecture guard now parses every call in the handler tree that
+  assembles an identity-carrying prompt and refuses any role argument other than
+  `context.role_id`, naming the file and line; it is sound because the property is a property
+  of the call's text.
+- **Byte-identical for the squad, by invariant.** Every handler's `_role` is the single role it is
+  registered for (`bootstrap/handlers.py`), so on a squad container the process role equals the
+  step role for every handler it runs and no squad prompt changes. The invariant is pinned by a
+  test, as is the wiring at each call site and at the executor.
+
+**What this moves, stated plainly.** It is a change under `src/`, so the window's deploy B′ is
+**not** "deploy B plus one container": the squad's images are rebuilt from the same tree as Han's,
+the squad arm on B′ is proven equal to B by the invariant above rather than by construction, and
+B′ takes one shakeout pair before Han's pair. The 1.8.1 plan §3.5's "zero drift under `src/` from
+B" is amended to name this one change in the window's pre-registration.
+
+**Evidence.** The eleven call sites; `orchestration/handler_executor.py` (the former default);
+`tests/unit/architecture/test_identity_layer_reads_the_process_role.py` — the guard over the
+handler tree; `tests/unit/prompts/test_identity_is_the_process_role.py` — the invariant over the
+handler table, the wiring test at `handle` for nine handlers and at `produce_plan`, the
+executor-to-context wiring, and the require-don't-default assertion at all three constructors;
+mutation checks reverting a `get_system_prompt` site and an `assemble` site each fail their test
+and the guard. The generalist fragment itself: #1640. The review that found the seven: Ripley on
+this PR.
+
+**Ruled by.** The owner, 2026-09-22, on the implementer's finding and recommendation ("build it"),
+having asked that the change not be a hard-wired special case for the Solo window — which is why
+it is a general rule with a squad-invariance proof rather than a role-conditional path.

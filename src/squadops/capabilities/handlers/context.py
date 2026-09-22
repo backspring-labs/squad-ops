@@ -30,7 +30,9 @@ class ExecutionContext:
 
     Attributes:
         agent_id: ID of the executing agent
-        role_id: Role of the agent
+        role_id: the role the executing process IS (SIP-0108 §10i) — the identity layer of
+            every system prompt reads it. A handler's own ``_role`` is the STEP's role: what
+            the task does, which owns its artifacts and routes its repairs.
         task_id: Current task ID
         cycle_id: Current cycle ID
         project_id: Current project ID

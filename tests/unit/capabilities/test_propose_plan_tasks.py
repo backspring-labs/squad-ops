@@ -483,6 +483,8 @@ class TestPromptRegistryIntegration:
     ):
         ctx = _make_context(_DEV_PROPOSAL_RESPONSE)  # response unused for these assertions
         handler = handler_cls()
+        # The squad case: the process IS the step's role (SIP-0108 §10m).
+        ctx.role_id = handler._role
 
         await handler.handle(ctx, _seeded_inputs())
 

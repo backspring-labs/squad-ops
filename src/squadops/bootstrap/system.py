@@ -38,10 +38,14 @@ class SystemConfig:
     """Configuration for SquadOps system initialization.
 
     Attributes:
+        role: the role this process IS — what every handler's ``ExecutionContext.role_id``
+            and the identity layer of its system prompt read (SIP-0108 §10i). Distinct from
+            ``roles``, which is what the process SERVES. Required.
         roles: Roles to enable (None = all)
         default_timeout: Default task timeout in seconds
     """
 
+    role: str
     roles: list[str] | None = None
     default_timeout: float = 300.0
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -96,6 +100,8 @@ def create_orchestrator(
     ports: PortsBundle,
     handler_registry: HandlerRegistry | None = None,
     roles: list[str] | None = None,
+    *,
+    role: str,
 ) -> AgentOrchestrator:
     """Create a configured AgentOrchestrator.
 
@@ -103,6 +109,7 @@ def create_orchestrator(
         ports: PortsBundle with all required ports
         handler_registry: Optional pre-configured handler registry
         roles: Roles to enable (used if registry not provided)
+        role: the role this process IS (SIP-0108 §10i); required
 
     Returns:
         Configured AgentOrchestrator
@@ -113,6 +120,7 @@ def create_orchestrator(
     orchestrator = AgentOrchestrator(
         handler_registry=handler_registry,
         ports=ports,
+        role=role,
     )
 
     logger.info(
@@ -137,7 +145,7 @@ def create_system(
     llm_observability: LLMObservabilityPort | None = None,
     request_renderer: RequestTemplateRenderer | None = None,
     messaging: MessagingPort | None = None,
-    config: SystemConfig | None = None,
+    config: SystemConfig,
 ) -> SquadOpsSystem:
     """Create a fully configured SquadOps system.
 
@@ -153,7 +161,7 @@ def create_system(
         metrics: Metrics collection port
         events: Event/tracing port
         filesystem: Filesystem operations port
-        config: Optional system configuration
+        config: system configuration — carries the role this process IS (required)
 
     Returns:
         Fully configured SquadOpsSystem
@@ -167,11 +175,11 @@ def create_system(
             metrics=metrics_adapter,
             events=events_adapter,
             filesystem=filesystem_adapter,
+            config=SystemConfig(role="dev"),
         )
 
         result = await system.task_service.execute_task(request)
     """
-    config = config or SystemConfig()
 
     # Create ports bundle
     ports = PortsBundle(
@@ -195,6 +203,7 @@ def create_system(
         handler_registry=handler_registry,
         ports=ports,
         llm_observability=llm_observability,
+        role=config.role,
     )
 
     # Create API services
