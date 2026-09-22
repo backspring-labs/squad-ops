@@ -4344,3 +4344,271 @@ class TestTheRefutationMarkerSurvivesTheRuntimeFilter:
 
         # The assertion that matters for #1631 is the one above the fixture: without the
         # allow-list key, `kept` is empty and this test fails at `assert kept`.
+
+
+class TestTheWindowRunsAsPairs:
+    """The comparison window as the pairs it is analysed as (plan §4.3, §8 decisions 5–7).
+
+    Each test names the launch-time bug it would catch. The runner is the driver's own
+    execution logic for the window, so a defect here is a void window, not a wrong reading.
+    """
+
+    def _cfg(self, driver, tmp_path, name, arm, **overrides):
+        import yaml
+
+        base = {
+            "name": name,
+            "project": "group_run",
+            "squad_profile": "full-38",
+            "request_profile": "validated-fullstack",
+            "gate_name": "g",
+            "gate_notes": "g",
+            "launch_notes": "pair {roll} of {n}",
+            "shakeout_notes": "s",
+            "n_rolls": 6,
+            "arm": arm,
+            "records_dir": str(tmp_path / f"records-{name}"),
+        }
+        base.update(overrides)
+        p = tmp_path / f"{name}.yaml"
+        p.write_text(yaml.safe_dump(base))
+        return driver.load_set_config(p)
+
+    @staticmethod
+    def _rec(verdict="accepted", passed=True, **extra):
+        rec = {"verdict": verdict, "boot_audit": {"ran": True, "passed": passed}}
+        rec.update(extra)
+        return rec
+
+    def test_the_order_alternates_by_pair(self, driver):
+        """Bug this catches: six of one arm and then six of the other — a serial order that
+        carries model warming and thermal state into the comparison as an arm effect."""
+        assert [driver.pair_order(k) for k in (1, 2, 3, 4)] == [
+            ("squad", "solo"),
+            ("solo", "squad"),
+            ("squad", "solo"),
+            ("solo", "squad"),
+        ]
+
+    @pytest.mark.parametrize(
+        ("squad", "solo", "outcome"),
+        [
+            (("accepted", True), ("accepted", False), "squad"),
+            (("rejected", True), ("accepted", True), "solo"),
+            (("accepted", True), ("accepted", True), "tie"),
+            (("rejected", False), ("accepted", False), "tie"),
+        ],
+    )
+    def test_the_outcome_is_binary_on_accepted_functional(self, driver, squad, solo, outcome):
+        """Bug this catches: a verdict read without its boot audit (an accepted roll whose
+        app does not boot counts as a win), or a tie read only when both are functional."""
+        s = driver.roll_functional(self._rec(verdict=squad[0], passed=squad[1]))
+        h = driver.roll_functional(self._rec(verdict=solo[0], passed=solo[1]))
+        assert driver.pair_outcome(s, h) == outcome
+
+    def test_the_tally_reads_the_criterion_over_valid_pairs_only(self, driver):
+        """Bug this catches: a void pair counted as a tie, or the criterion read over a short
+        window — plan §4.3 closes an incomplete window rather than reading five of six."""
+        pairs = [
+            {"k": 1, "outcome": "squad", "void": None},
+            {"k": 2, "outcome": None, "void": "solo: preflight refused the launch"},
+            {"k": 3, "outcome": "squad", "void": None},
+            {"k": 4, "outcome": "tie", "void": None},
+            {"k": 5, "outcome": "squad", "void": None},
+            {"k": 6, "outcome": "solo", "void": None},
+            {"k": 7, "outcome": "squad", "void": None},
+        ]
+        tally = driver.window_tally(pairs, required=6, max_attempts=8)
+        assert (tally["squad_wins"], tally["solo_wins"], tally["ties"]) == (4, 1, 1)
+        assert tally["void_pairs"] == 1 and tally["valid_pairs"] == 6
+        assert tally["complete"] is True and tally["criterion"] == "squad"
+
+        short = driver.window_tally(pairs[:6], required=6, max_attempts=8)
+        assert short["complete"] is False
+        assert short["criterion"].startswith("not read")
+
+    def test_a_void_removes_the_pair_and_the_mate_is_not_launched(
+        self, driver, tmp_path, monkeypatch
+    ):
+        """Wiring, entered at ``cmd_window`` — the call the operator makes. Bug this catches:
+        a void pair's mate launched anyway (an hour spent on a roll that cannot count), a void
+        counted as an outcome, or the replacement pair not taken from the next sequential
+        number."""
+        squad = self._cfg(driver, tmp_path, "squad-arm", "squad", compare_with="solo-arm.yaml")
+        solo = self._cfg(driver, tmp_path, "solo-arm", "solo")
+        calls: list[tuple[int, str]] = []
+        script = {
+            (1, "squad"): self._rec(),
+            (1, "solo"): self._rec(passed=False),
+            (2, "solo"): None,  # voids before launch
+            (3, "squad"): self._rec(verdict="rejected", passed=False),
+            (3, "solo"): self._rec(),
+        }
+
+        def fake_roll(cfg, arm, k, required):
+            calls.append((k, arm))
+            rec = script[(k, arm)]
+            if rec is None:
+                return {"arm": arm, "launched": False, "void": "preflight refused the launch"}
+            return {
+                "arm": arm,
+                "launched": True,
+                "exit": 0,
+                "cycle_id": f"cyc_{k}{arm}",
+                "verdict": rec["verdict"],
+                "functional": driver.roll_functional(rec),
+                "wall_clock_seconds": 60,
+                "completion_tokens": 10,
+                "void": None,
+            }
+
+        monkeypatch.setattr(driver, "_window_roll", fake_roll)
+        rc = driver.cmd_window(squad, solo, pairs=2, max_attempts=3, dry_run=False, resume=False)
+
+        assert calls == [(1, "squad"), (1, "solo"), (2, "solo"), (3, "squad"), (3, "solo")]
+        assert rc == 0
+        state = json.loads((squad.records_path / driver.WINDOW_STATE).read_text())
+        assert [p["outcome"] for p in state["pairs"]] == ["squad", None, "solo"]
+        assert state["pairs"][1]["void"].startswith("solo: preflight refused")
+        assert "squad" not in state["pairs"][1]["rolls"], "the void pair's mate was launched"
+        assert state["tally"]["squad_wins"] == 1 and state["tally"]["solo_wins"] == 1
+        md = next(squad.records_path.glob("window-*.md")).read_text()
+        assert "Squad wins / Solo wins / ties: 1 / 1 / 0" in md
+        assert "not launched" in md
+
+    def test_a_window_short_of_its_pairs_closes_incomplete(self, driver, tmp_path, monkeypatch):
+        """Bug this catches: the attempt budget ignored (a ninth pair launched), or a short
+        window reported as a result. Exit 6 is the operator's signal, not 0."""
+        squad = self._cfg(driver, tmp_path, "squad-arm", "squad", compare_with="solo-arm.yaml")
+        solo = self._cfg(driver, tmp_path, "solo-arm", "solo")
+        calls: list[tuple[int, str]] = []
+
+        def always_void(cfg, arm, k, required):
+            calls.append((k, arm))
+            return {"arm": arm, "launched": False, "void": "the seeded tree did not match"}
+
+        monkeypatch.setattr(driver, "_window_roll", always_void)
+        rc = driver.cmd_window(squad, solo, pairs=2, max_attempts=3, dry_run=False, resume=False)
+        assert rc == 6
+        assert calls == [(1, "squad"), (2, "solo"), (3, "squad")]
+        md = next(squad.records_path.glob("window-*.md")).read_text()
+        assert "INCOMPLETE" in md
+
+    def test_two_configs_that_are_not_a_registered_pair_refuse(self, driver, tmp_path):
+        """Bug this catches: a window launched on two configs the comparison gate never
+        admitted — plan §4.3's substrate assertions run from ``compare_with``."""
+        squad = self._cfg(driver, tmp_path, "squad-arm", "squad")
+        solo = self._cfg(driver, tmp_path, "solo-arm", "solo")
+        problems = driver.window_problems(squad, solo, pairs=6, max_attempts=8)
+        assert any("compare_with" in p for p in problems)
+        wrong = self._cfg(driver, tmp_path, "other", "", compare_with="solo-arm.yaml")
+        assert any("expected 'squad'" in p for p in driver.window_problems(wrong, solo, 6, 8))
+        assert driver.window_problems(squad, solo, pairs=6, max_attempts=5)
+
+    def test_a_pin_mismatch_voids_and_a_red_framing_does_not(self, driver, tmp_path, monkeypatch):
+        """Wiring from the roll to the void rule, entered at ``_window_roll``. Bug this
+        catches: an outcome (a roll that never built anything) treated as a void, which would
+        let an arm's failures be replaced instead of counted; or a pinned mismatch counted."""
+        solo = self._cfg(driver, tmp_path, "solo-arm", "solo")
+        monkeypatch.setattr(driver, "deploy_identity", lambda cfg: {})
+        monkeypatch.setattr(driver, "run_state_isolation_problems", lambda cfg: [])
+        monkeypatch.setattr(driver, "cmd_preflight", lambda cfg, counting, identity: 0)
+        monkeypatch.setattr(driver, "stack_for", lambda cfg: "fullstack_fastapi_react")
+        monkeypatch.setattr(driver, "sh", lambda *a, **k: "abcd1234")
+
+        def run_cycle(cfg, stack, notes, *, title, stem, assert_hash, identity):
+            rec = self._rec(verdict="rejected", passed=False, cycle_id="cyc_x", loop_texture={})
+            driver._write_record(cfg, stem, rec, "md")
+            return run_cycle.rc
+
+        monkeypatch.setattr(driver, "_run_cycle", run_cycle)
+
+        run_cycle.rc = 5
+        roll = driver._window_roll(solo, "solo", 1, 6)
+        assert roll["launched"] is True and roll["void"] is None
+        assert roll["functional"] is False and roll["cycle_id"] == "cyc_x"
+
+        run_cycle.rc = 3
+        roll = driver._window_roll(solo, "solo", 2, 6)
+        assert roll["void"] and "config hash or squad snapshot" in roll["void"]
+
+        monkeypatch.setattr(driver, "cmd_preflight", lambda cfg, counting, identity: 2)
+        roll = driver._window_roll(solo, "solo", 3, 6)
+        assert roll["launched"] is False and "preflight refused" in roll["void"]
+
+    def test_resume_finishes_the_pair_whose_mate_is_owed(self, driver, tmp_path, monkeypatch):
+        """Bug this catches: a window resumed after a crash re-running a landed roll (a second
+        squad cycle in pair 1, so the pair is no longer one matched trial)."""
+        squad = self._cfg(driver, tmp_path, "squad-arm", "squad", compare_with="solo-arm.yaml")
+        solo = self._cfg(driver, tmp_path, "solo-arm", "solo")
+        landed = {
+            "arm": "squad",
+            "launched": True,
+            "exit": 0,
+            "cycle_id": "cyc_1squad",
+            "verdict": "accepted",
+            "functional": True,
+            "wall_clock_seconds": 60,
+            "completion_tokens": 10,
+            "void": None,
+        }
+        driver._save_window_state(
+            squad,
+            {
+                "name": "w",
+                "squad_set": "squad-arm",
+                "solo_set": "solo-arm",
+                "started_at": "2026-09-22T00:00:00Z",
+                "required_pairs": 1,
+                "max_attempts": 1,
+                "pairs": [
+                    {
+                        "k": 1,
+                        "order": ["squad", "solo"],
+                        "rolls": {"squad": landed},
+                        "outcome": None,
+                        "void": None,
+                    }
+                ],
+            },
+        )
+        calls: list[tuple[int, str]] = []
+
+        def fake_roll(cfg, arm, k, required):
+            calls.append((k, arm))
+            return dict(landed, arm=arm, cycle_id=f"cyc_{k}{arm}", functional=False)
+
+        monkeypatch.setattr(driver, "_window_roll", fake_roll)
+        rc = driver.cmd_window(squad, solo, pairs=1, max_attempts=1, dry_run=False, resume=True)
+        assert calls == [(1, "solo")]
+        assert rc == 0
+        state = json.loads((squad.records_path / driver.WINDOW_STATE).read_text())
+        assert state["pairs"][0]["outcome"] == "squad"
+
+    def test_the_cli_dispatches_window(self, driver, tmp_path, monkeypatch):
+        """Bug this catches: the subcommand registered but never dispatched — ``main`` falling
+        through to ``cmd_roll`` with no ``--roll``."""
+        squad = self._cfg(driver, tmp_path, "squad-arm", "squad", compare_with="solo-arm.yaml")
+        self._cfg(driver, tmp_path, "solo-arm", "solo")
+        seen = {}
+
+        def fake_window(s, h, *, pairs, max_attempts, dry_run, resume):
+            seen.update(
+                pairs=pairs, max_attempts=max_attempts, dry_run=dry_run, arms=(s.arm, h.arm)
+            )
+            return 0
+
+        monkeypatch.setattr(driver, "cmd_window", fake_window)
+        rc = driver.main(
+            [
+                "window",
+                "--squad-set",
+                str(tmp_path / "squad-arm.yaml"),
+                "--solo-set",
+                str(tmp_path / "solo-arm.yaml"),
+                "--dry-run",
+            ]
+        )
+        assert rc == 0
+        assert seen == {"pairs": 6, "max_attempts": 8, "dry_run": True, "arms": ("squad", "solo")}
+        assert squad.arm == "squad"

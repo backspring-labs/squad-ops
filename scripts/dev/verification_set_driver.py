@@ -4190,6 +4190,355 @@ def cmd_roll(cfg: SetConfig, roll: int, dry_run: bool) -> int:
     )
 
 
+# ---------------------------------------------------------------------------
+# The comparison window — pairs, executed as they are analysed (SIP-0108 §4.4, plan §4.3)
+# ---------------------------------------------------------------------------
+
+#: The squad arm's name, the counterpart of ``SOLO_ARM``. One constant each, so a set config
+#: and the pairing cannot disagree about which arm is which.
+SQUAD_ARM = "squad"
+
+#: The window's running state, written after every roll so a window that spans a day can be
+#: resumed from the last completed roll rather than re-run from pair 1.
+WINDOW_STATE = "window-state.json"
+
+#: Why a roll VOIDS its pair, by the runner's exit code — plan §4.3: "a pair is void only for
+#: pre-run identity or infrastructure invalidity named by the rule, never for outcome."
+#: Exit 0 (a verdict) and 5 (a red framing) are outcomes and never void: a roll that never
+#: built anything is a roll that is not accepted-functional, which is what the predicate reads.
+VOID_BY_EXIT: dict[int, str] = {
+    2: "preflight refused the launch — pre-run identity or infrastructure",
+    3: "the roll's config hash or squad snapshot did not match the arm's pins",
+    4: "P0 refused — the seeded tree did not match the manifest (infrastructure)",
+}
+
+
+def pair_order(k: int) -> tuple[str, str]:
+    """Pair *k*'s execution order, pre-registered and alternating (plan §4.3).
+
+    Odd pairs run Squad then Solo, even pairs Solo then Squad — never six of one arm and then
+    six of the other. Pairs are matched trials; alternating removes the temporal confounds a
+    serial order carries (model and cache warming, host thermal state, accumulated state).
+    """
+    return (SQUAD_ARM, SOLO_ARM) if k % 2 == 1 else (SOLO_ARM, SQUAD_ARM)
+
+
+def roll_functional(rec: Mapping[str, Any]) -> bool:
+    """The predicate's unit: accepted AND the boot audit passed — the same reading ``render``
+    prints as ``functional``, so the window and the roll record cannot disagree."""
+    audit = rec.get("boot_audit") or {}
+    return rec.get("verdict") == "accepted" and audit.get("passed") is True
+
+
+def pair_outcome(squad_functional: bool, solo_functional: bool) -> str:
+    """Per pair, binary on accepted-functional (plan §4.3, §8 decision 7).
+
+    A Squad win when Squad is accepted-functional and Solo is not; a Solo win when Solo is and
+    Squad is not; otherwise a tie — both functional and neither functional are both ties. The
+    verification-quality proxy and efficiency are reported beside this and never break it.
+    """
+    if squad_functional and not solo_functional:
+        return SQUAD_ARM
+    if solo_functional and not squad_functional:
+        return SOLO_ARM
+    return "tie"
+
+
+def emission_tokens_total(rec: Mapping[str, Any]) -> int | None:
+    """Completion tokens summed over every handler, or ``None`` when the record could not ask
+    (an arm that never reached implementation). Efficiency is reported per pair, never a
+    tie-breaker (plan §4.3)."""
+    field = (rec.get("loop_texture") or {}).get("emission_tokens_by_handler") or {}
+    if field.get("state") != "observed":
+        return None
+    total = 0
+    for entry in (field.get("value") or {}).values():
+        if isinstance(entry, Mapping):
+            try:
+                total += int(entry.get("completion_tokens") or 0)
+            except (TypeError, ValueError):
+                continue
+    return total
+
+
+def window_tally(pairs: Sequence[Mapping[str, Any]], required: int, max_attempts: int) -> dict:
+    """The window's reading over its attempted pairs, in the words the plan fixes.
+
+    Always renders Squad wins / Solo wins / ties over the VALID pairs; the directional
+    criterion is at least four wins of six valid for either arm, read as ``squad``, ``solo``
+    or ``neither``. A window with fewer valid pairs than required after the attempt budget is
+    ``complete: False`` and says so — the criterion is then not read at all rather than read
+    over a short count.
+    """
+    # A pair is valid only once BOTH rolls landed and neither voided; a pair whose mate is
+    # still owed (a window resumed mid-pair) is neither valid nor void yet.
+    valid = [p for p in pairs if not p.get("void") and p.get("outcome") is not None]
+    wins = {SQUAD_ARM: 0, SOLO_ARM: 0, "tie": 0}
+    for p in valid:
+        wins[p["outcome"]] += 1
+    complete = len(valid) >= required
+    threshold = (2 * required + 2) // 3  # four of six; scales with the registered count
+    if not complete:
+        criterion = "not read — the window closed incomplete"
+    elif wins[SQUAD_ARM] >= threshold:
+        criterion = SQUAD_ARM
+    elif wins[SOLO_ARM] >= threshold:
+        criterion = SOLO_ARM
+    else:
+        criterion = "neither"
+    return {
+        "squad_wins": wins[SQUAD_ARM],
+        "solo_wins": wins[SOLO_ARM],
+        "ties": wins["tie"],
+        "valid_pairs": len(valid),
+        "void_pairs": sum(1 for p in pairs if p.get("void")),
+        "attempted_pairs": len(pairs),
+        "required_pairs": required,
+        "max_attempts": max_attempts,
+        "threshold": threshold,
+        "complete": complete,
+        "criterion": criterion,
+    }
+
+
+def _latest_record(cfg: SetConfig, stem: str) -> dict | None:
+    paths = sorted(cfg.records_path.glob(f"{stem}-*.json"))
+    if not paths:
+        return None
+    return json.loads(paths[-1].read_text())
+
+
+def _window_roll(cfg: SetConfig, arm: str, k: int, required: int) -> dict:
+    """One arm's roll of pair *k*: preflight, launch, and the void reading in one record."""
+    ident = deploy_identity(cfg)
+    isolation = run_state_isolation_problems(cfg)
+    if isolation:
+        for problem in isolation:
+            log(f"!! {problem}")
+        return {"arm": arm, "launched": False, "void": isolation[0]}
+    rc = cmd_preflight(cfg, counting=True, identity=ident)
+    if rc:
+        return {"arm": arm, "launched": False, "void": VOID_BY_EXIT.get(rc, f"preflight exit {rc}")}
+    stack = stack_for(cfg)
+    log(f"pair {k} {arm} arm — stack {stack}; deploy identity: {json.dumps(ident)}")
+    cfg.records_path.mkdir(parents=True, exist_ok=True)
+    if not cfg.head_pin.exists():
+        cfg.head_pin.write_text(sh(f"git -C {REPO} rev-parse --short HEAD"))
+    stem = f"pair-{k:02d}-{arm}"
+    rc = _run_cycle(
+        cfg,
+        stack,
+        render_launch_notes(cfg.launch_notes, k, required),
+        title=f"pair {k} of {required} — {arm} arm",
+        stem=stem,
+        assert_hash=True,
+        identity=ident,
+    )
+    rec = _latest_record(cfg, stem) or {}
+    out = {
+        "arm": arm,
+        "launched": True,
+        "exit": rc,
+        "cycle_id": rec.get("cycle_id"),
+        "verdict": rec.get("verdict"),
+        "functional": roll_functional(rec),
+        "wall_clock_seconds": value_at(rec, "wall_clock_seconds", None),
+        "completion_tokens": emission_tokens_total(rec),
+        "void": None,
+    }
+    if rc in VOID_BY_EXIT:
+        out["void"] = VOID_BY_EXIT[rc]
+    elif rec.get("excluded_from_comparison"):
+        out["void"] = "§10i: the solo roll stored an artifact the arm is defined by not producing"
+    return out
+
+
+def _window_state_path(squad_cfg: SetConfig) -> Path:
+    return squad_cfg.records_path / WINDOW_STATE
+
+
+def _save_window_state(squad_cfg: SetConfig, state: dict) -> None:
+    squad_cfg.records_path.mkdir(parents=True, exist_ok=True)
+    _window_state_path(squad_cfg).write_text(json.dumps(state, indent=2))
+
+
+def render_window(state: dict, tally: dict) -> str:
+    lines = [
+        f"# {state['name']} — the comparison window",
+        "",
+        f"Squad arm `{state['squad_set']}` · Solo arm `{state['solo_set']}` · "
+        f"{tally['required_pairs']} valid pairs required of at most {tally['max_attempts']} "
+        f"attempted · started {state['started_at']}",
+        "",
+        "## Reading",
+        "",
+        f"- **Squad wins / Solo wins / ties: {tally['squad_wins']} / {tally['solo_wins']} / "
+        f"{tally['ties']}** over {tally['valid_pairs']} valid pair(s) "
+        f"({tally['void_pairs']} void of {tally['attempted_pairs']} attempted)",
+        f"- directional criterion (at least {tally['threshold']} wins of "
+        f"{tally['required_pairs']} valid, either arm): **{tally['criterion']}**",
+        f"- window closed **{'complete' if tally['complete'] else 'INCOMPLETE'}**",
+        "",
+        "The claim is stated as measured — this PRD, this model, this deploy, the squad's "
+        "organization against one generalist process — and is not generalized (plan §4.3, "
+        "§8 decision 9). Quality is a verification-quality proxy and efficiency is reported "
+        "per pair; neither breaks a tie.",
+        "",
+        "## Pairs",
+        "",
+        "| pair | order | squad cycle | squad functional | solo cycle | solo functional | "
+        "outcome | void | wall clock s (squad / solo) | completion tokens (squad / solo) |",
+        "|---|---|---|---|---|---|---|---|---|---|",
+    ]
+    for p in state["pairs"]:
+        squad = p["rolls"].get(SQUAD_ARM) or {}
+        solo = p["rolls"].get(SOLO_ARM) or {}
+
+        def cell(r: Mapping[str, Any], key: str) -> str:
+            if not r.get("launched"):
+                return "not launched"
+            v = r.get(key)
+            return "unaskable" if v is None else str(v)
+
+        lines.append(
+            f"| {p['k']} | {' → '.join(p['order'])} | `{squad.get('cycle_id') or '—'}` | "
+            f"{cell(squad, 'functional')} | `{solo.get('cycle_id') or '—'}` | "
+            f"{cell(solo, 'functional')} | {p.get('outcome') or '—'} | {p.get('void') or '—'} | "
+            f"{cell(squad, 'wall_clock_seconds')} / {cell(solo, 'wall_clock_seconds')} | "
+            f"{cell(squad, 'completion_tokens')} / {cell(solo, 'completion_tokens')} |"
+        )
+    lines.append("")
+    return "\n".join(lines) + "\n"
+
+
+def window_problems(
+    squad_cfg: SetConfig, solo_cfg: SetConfig, pairs: int, max_attempts: int
+) -> list[str]:
+    """Why two configs are not a registered pair — read before anything launches."""
+    problems: list[str] = []
+    if squad_cfg.arm != SQUAD_ARM:
+        problems.append(f"{squad_cfg.name}: arm is {squad_cfg.arm!r}, expected {SQUAD_ARM!r}")
+    if solo_cfg.arm != SOLO_ARM:
+        problems.append(f"{solo_cfg.name}: arm is {solo_cfg.arm!r}, expected {SOLO_ARM!r}")
+    if not (squad_cfg.compare_with or solo_cfg.compare_with):
+        problems.append(
+            "neither config names the other in compare_with — the comparison gate has "
+            "nothing to read, and a pair the gate never admitted is not a pair"
+        )
+    if max_attempts < pairs:
+        problems.append(f"max_attempts {max_attempts} < pairs {pairs}")
+    return problems
+
+
+def _window_state(
+    squad_cfg: SetConfig, solo_cfg: SetConfig, pairs: int, max_attempts: int, resume: bool
+) -> dict:
+    state_path = _window_state_path(squad_cfg)
+    if resume and state_path.exists():
+        state = json.loads(state_path.read_text())
+        log(f"resuming the window from {state_path} — {len(state['pairs'])} pair(s) recorded")
+        return state
+    return {
+        "name": f"{squad_cfg.name} vs {solo_cfg.name}",
+        "squad_set": squad_cfg.name,
+        "solo_set": solo_cfg.name,
+        "started_at": log_since(datetime.now(UTC)),
+        "required_pairs": pairs,
+        "max_attempts": max_attempts,
+        "pairs": [],
+    }
+
+
+def _next_pair(state: dict) -> dict:
+    """The pair to run next: one whose mate is still owed, else a new sequential pair."""
+    pending = [p for p in state["pairs"] if not p.get("void") and p.get("outcome") is None]
+    if pending:
+        return pending[0]
+    k = len(state["pairs"]) + 1
+    pair = {"k": k, "order": list(pair_order(k)), "rolls": {}, "outcome": None, "void": None}
+    state["pairs"].append(pair)
+    return pair
+
+
+def _run_pair(pair: dict, cfgs: Mapping[str, SetConfig], required: int, save: Callable) -> None:
+    """Both rolls of a pair in its registered order; a void on the first stops the mate."""
+    for arm in pair["order"]:
+        if arm in pair["rolls"]:
+            continue
+        roll = _window_roll(cfgs[arm], arm, pair["k"], required)
+        pair["rolls"][arm] = roll
+        if roll.get("void"):
+            pair["void"] = f"{arm}: {roll['void']}"
+            log(f"!! pair {pair['k']} VOID — {pair['void']}; replaced by the next pair")
+            save()
+            return
+        save()
+    pair["outcome"] = pair_outcome(
+        bool(pair["rolls"][SQUAD_ARM].get("functional")),
+        bool(pair["rolls"][SOLO_ARM].get("functional")),
+    )
+    save()
+
+
+def cmd_window(
+    squad_cfg: SetConfig,
+    solo_cfg: SetConfig,
+    *,
+    pairs: int,
+    max_attempts: int,
+    dry_run: bool,
+    resume: bool,
+) -> int:
+    """Run the window as the pairs it is analysed as (plan §4.3, §8 decisions 5–7).
+
+    Interleaved and alternating by pair; a void — pre-run identity or infrastructure
+    invalidity only, never outcome — removes its pair in full and is replaced by the next
+    sequential pair, up to ``max_attempts``; the mate of a roll that voided before launch is
+    not launched. The reading is rendered whichever way it goes, and a window with fewer valid
+    pairs than required after the budget closes INCOMPLETE and says so.
+
+    Exit 0: closed complete. 6: closed incomplete. 2: the arms are not a registered pair.
+    """
+    problems = window_problems(squad_cfg, solo_cfg, pairs, max_attempts)
+    if problems:
+        for p in problems:
+            log(f"!! {p}")
+        return 2
+    cfgs = {SQUAD_ARM: squad_cfg, SOLO_ARM: solo_cfg}
+    if dry_run:
+        for arm, cfg in cfgs.items():
+            rc = cmd_preflight(cfg, counting=True, identity=deploy_identity(cfg))
+            log(f"{arm} arm preflight exit {rc}")
+        return 0
+    state = _window_state(squad_cfg, solo_cfg, pairs, max_attempts, resume)
+
+    def valid_count() -> int:
+        # Landed and not void — a pair whose mate is owed is not valid yet, so a resumed
+        # window finishes it instead of reading it as done.
+        return sum(1 for p in state["pairs"] if not p.get("void") and p.get("outcome") is not None)
+
+    def owed() -> bool:
+        # A pair with one roll landed and its mate not yet run was already attempted; the
+        # attempt budget bounds NEW pairs, never the finishing of one in flight.
+        return any(not p.get("void") and p.get("outcome") is None for p in state["pairs"])
+
+    while valid_count() < pairs and (owed() or len(state["pairs"]) < max_attempts):
+        pair = _next_pair(state)
+        _run_pair(pair, cfgs, pairs, lambda: _save_window_state(squad_cfg, state))
+        if pair.get("outcome"):
+            log(f"pair {pair['k']}: {pair['outcome']} — {valid_count()} valid of {pairs}")
+
+    tally = window_tally(state["pairs"], pairs, max_attempts)
+    state["tally"] = tally
+    _save_window_state(squad_cfg, state)
+    md = render_window(state, tally)
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    (squad_cfg.records_path / f"window-{stamp}.json").write_text(json.dumps(state, indent=2))
+    (squad_cfg.records_path / f"window-{stamp}.md").write_text(md)
+    print(md)
+    return 0 if tally["complete"] else 6
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -4224,7 +4573,30 @@ def main(argv: Sequence[str] | None = None) -> int:
     p.add_argument("--set", required=True, type=Path)
     p.add_argument("--record", required=True, type=Path, help="a stored roll-*.json")
     p.add_argument("--out", required=True, type=Path, help="where the markdown goes")
+    p = sub.add_parser(
+        "window",
+        help="run the comparison window as interleaved pairs with the void rule (plan §4.3)",
+    )
+    p.add_argument("--squad-set", required=True, type=Path, help="the squad arm's set config")
+    p.add_argument("--solo-set", required=True, type=Path, help="the solo arm's set config")
+    p.add_argument("--pairs", type=int, default=6, help="valid pairs required (plan §4.3: 6)")
+    p.add_argument(
+        "--max-attempts", type=int, default=8, help="pairs attempted at most (plan §4.3: 8)"
+    )
+    p.add_argument("--dry-run", action="store_true", help="both arms' preflight, launch nothing")
+    p.add_argument(
+        "--resume", action="store_true", help="continue from the window's recorded state"
+    )
     args = ap.parse_args(argv)
+    if args.command == "window":
+        return cmd_window(
+            load_set_config(args.squad_set),
+            load_set_config(args.solo_set),
+            pairs=args.pairs,
+            max_attempts=args.max_attempts,
+            dry_run=args.dry_run,
+            resume=args.resume,
+        )
     if args.command == "registry":
         print(registry_table())
         return 0
