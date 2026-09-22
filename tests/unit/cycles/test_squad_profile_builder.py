@@ -76,7 +76,10 @@ class TestFullSquadBuilderProfile:
         ids = {p.profile_id for p in profiles}
         # full-38-atlas is arm B of the 1.7.0 Atlas A/B (#1160): the same roster with the
         # model named as Atlas serves it. Inert until that deploy selects it.
-        assert ids == {"smoke", "lite", "full", "full-38", "full-38-atlas"}
+        # solo is the Solo arm of the 1.8.1 comparison window (SIP-0108 §10i): one generalist
+        # process serving every role full-38 serves. Torn down after the window by default
+        # (1.8.1 plan §8 decision 12) — its removal moves this line too.
+        assert ids == {"smoke", "lite", "full", "full-38", "full-38-atlas", "solo"}
 
 
 class TestFull38QaCompletionBudget:

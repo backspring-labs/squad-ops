@@ -73,4 +73,23 @@ profiles:
 # always-runnable 'smoke' tier so an unspecified cycle never hard-fails on a missing
 # model (the former 'full-squad' default was the #173 footgun). Real cycles pass
 # --squad-profile explicitly; the model-availability preflight (#224) guards the rest.
+  # SIP-0108 §10i (1.8.1 plan §3.5): the Solo arm — declarations only. One process, `han`,
+  # role `generalist` in source, serving every step role the squad's `full-38` serves. The
+  # flat completion cap is `full-38`'s (§10l: the arms are held equal by flattening the
+  # squad's cap), so the arms differ by the reasoning organization and nothing else — the
+  # driver's arm preflight refuses the pair if they do. Teardown after the window is the
+  # default (plan §8 decision 12).
+  - profile_id: solo
+    name: "Solo (Han)"
+    description: "One generalist process on qwen3.8:27b serving every role `full-38` serves, with `full-38`'s flat completion cap — the Solo arm of the 1.8.1 comparison window (SIP-0108 §4.4, §10g–§10m). Exists only as that arm; `full-38` is the squad it is compared against."
+    version: 1
+    agents:
+      - agent_id: han
+        role: generalist
+        model: qwen3.8:27b
+        enabled: true
+        serves_roles: [lead, dev, strat, builder, qa, data]
+        config_overrides:
+          max_completion_tokens: 12288
+
 active_profile: smoke
