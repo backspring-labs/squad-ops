@@ -91,6 +91,7 @@ def executor(handler_registry, mock_ports):
         executor_id="test-executor",
         handler_registry=handler_registry,
         ports=mock_ports,
+        role="lead",
     )
 
 
@@ -150,6 +151,7 @@ class TestHandlerExecutor:
             executor_id="test",
             handler_registry=handler_registry,
             ports=mock_ports,
+            role="lead",
         )
         envelope = create_envelope(task_type="mock.requires_input", inputs={})
 
@@ -172,6 +174,7 @@ class TestHandlerExecutor:
             executor_id="test",
             handler_registry=handler_registry,
             ports=mock_ports,
+            role="lead",
         )
         envelope = create_envelope(task_type="mock.failing")
 
@@ -240,6 +243,7 @@ class TestHandlerExecutorTimeout:
             executor_id="test",
             handler_registry=handler_registry,
             ports=mock_ports,
+            role="lead",
         )
         envelope = create_envelope(task_type="mock.slow")
 

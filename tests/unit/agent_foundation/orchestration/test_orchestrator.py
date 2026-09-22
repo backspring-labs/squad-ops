@@ -82,6 +82,7 @@ def orchestrator(handler_registry, mock_ports):
     return AgentOrchestrator(
         handler_registry=handler_registry,
         ports=mock_ports,
+        role="lead",
     )
 
 
@@ -285,6 +286,7 @@ class TestOrchestratorCallSiteBoundary:
             handler_registry=handler_registry,
             ports=mock_ports,
             llm_observability=mock_obs,
+            role="lead",
         )
         envelopes = [create_envelope("governance.review")]
         await orchestrator.submit_batch(envelopes)

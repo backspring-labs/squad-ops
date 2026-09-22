@@ -1020,7 +1020,10 @@ class _CycleTaskHandler(CapabilityHandler):
         # is byte-for-byte what it was.
         user_prompt = await self._apply_emission_retry_feedback(context, inputs, user_prompt)
 
-        assembled = context.ports.prompt_service.get_system_prompt(self._role)
+        # SIP-0108 §10i: the identity layer is what this process IS (``context.role_id``,
+        # resolved by the entrypoint), not the handler's step role. On a squad container the
+        # two coincide for every registered handler; on a generalist process they do not.
+        assembled = context.ports.prompt_service.get_system_prompt(context.role_id)
         system_prompt = assembled.content
 
         messages = [

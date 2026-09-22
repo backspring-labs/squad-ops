@@ -16,6 +16,7 @@ Quick Start:
         metrics=metrics_adapter,
         events=events_adapter,
         filesystem=filesystem_adapter,
+        config=SystemConfig(role="lead"),
     )
 
     # Execute a task

@@ -71,6 +71,7 @@ class AgentOrchestrator:
         orchestrator = AgentOrchestrator(
             handler_registry=registry,
             ports=ports,
+            role="dev",  # the role this process IS (SIP-0108 §10i)
         )
         result = await orchestrator.submit_task(envelope)
     """
@@ -90,6 +91,8 @@ class AgentOrchestrator:
         handler_registry: HandlerRegistry,
         ports: PortsBundle,
         llm_observability: LLMObservabilityPort | None = None,
+        *,
+        role: str,
     ) -> None:
         """Initialize orchestrator.
 
@@ -97,6 +100,8 @@ class AgentOrchestrator:
             handler_registry: Registry of capability handlers
             ports: PortsBundle for port access
             llm_observability: LLM observability port (SIP-0061)
+            role: the role this process IS, carried to every handler's execution context
+                (SIP-0108 §10i); required, never defaulted
         """
         self._handler_registry = handler_registry
         self._ports = ports
@@ -114,6 +119,7 @@ class AgentOrchestrator:
             executor_id="orchestrator-executor",
             handler_registry=handler_registry,
             ports=ports,
+            role=role,
         )
 
     def route_task(self, envelope: TaskEnvelope) -> TaskRouting:

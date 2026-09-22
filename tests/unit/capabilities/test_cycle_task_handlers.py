@@ -415,7 +415,12 @@ class TestHandleUsesPromptService:
         ids=[c.__name__ for c in EXPECTED_ROLES],
     )
     async def test_prompt_service_called_with_role(self, cls, expected_role, mock_context):
+        """On a squad container the process IS the step's role, so the brief is the step's
+        (SIP-0108 §10m: the identity layer reads ``context.role_id``, which the entrypoint
+        resolves; a generalist process reads its own — see
+        tests/unit/prompts/test_identity_is_the_process_role.py)."""
         handler = cls()
+        mock_context.role_id = expected_role
         await handler.handle(mock_context, {"prd": "Build a widget"})
 
         mock_context.ports.prompt_service.get_system_prompt.assert_called_once_with(expected_role)

@@ -163,7 +163,7 @@ def _executor_for(handler, llm):
         events=MagicMock(),
         filesystem=MagicMock(),
     )
-    return HandlerExecutor("exec-1", registry, ports)
+    return HandlerExecutor("exec-1", registry, ports, role="dev")
 
 
 def _envelope(task_id: str = "task-run_1-m000-development.develop") -> TaskEnvelope:

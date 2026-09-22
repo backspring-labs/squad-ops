@@ -39,7 +39,8 @@ class HandlerExecutor(CapabilityExecutor):
         executor_id: str,
         handler_registry: HandlerRegistry,
         ports: PortsBundle,
-        default_role: str = "lead",
+        *,
+        role: str,
     ) -> None:
         """Initialize handler executor.
 
@@ -47,12 +48,17 @@ class HandlerExecutor(CapabilityExecutor):
             executor_id: Unique identifier for this executor
             handler_registry: Registry of capability handlers
             ports: PortsBundle for port access
-            default_role: Default role for agent context
+            role: the role this process IS — what ``ExecutionContext.role_id`` carries and
+                what the identity layer of every system prompt reads (SIP-0108 §10i). On a
+                squad container it equals the role of every handler the process registers; on
+                a generalist process it does not, which is the whole point of the field.
+                Required: a defaulted role here briefed every container as the lead for as
+                long as the default existed, and nothing noticed because no handler read it.
         """
         self._executor_id = executor_id
         self._handler_registry = handler_registry
         self._ports = ports
-        self._default_role = default_role
+        self._role = role
 
     @property
     def executor_id(self) -> str:
@@ -116,7 +122,7 @@ class HandlerExecutor(CapabilityExecutor):
             )
             context = ExecutionContext.create(
                 agent_id=envelope.agent_id,
-                role_id=self._default_role,
+                role_id=self._role,
                 task_id=task_id,
                 cycle_id=envelope.cycle_id,
                 ports=self._ports,
