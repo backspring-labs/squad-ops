@@ -177,6 +177,22 @@ def _format_failure_summary(failure_evidence: Any, failure_analysis: Any) -> str
     return "\n\n".join(parts) if parts else "(no structured failure evidence available)"
 
 
+def _decision_present(correction_decision: Any) -> bool:
+    """Whether a lead's decision exists to render (SIP-0108 §10i item 5).
+
+    The runner hands the repair ``decision_outputs`` whatever the protocol declared; with no
+    ``decide`` step that is ``{}``, which the lead template rendered as the rationale ``{}``
+    under "The lead reviewed the failure". A decision is present when it carries a path or a
+    rationale; a non-dict is present when it is non-empty.
+    """
+    if isinstance(correction_decision, dict):
+        return bool(
+            correction_decision.get("decision_rationale")
+            or correction_decision.get("correction_path")
+        )
+    return bool(correction_decision)
+
+
 def _format_correction_decision(correction_decision: Any) -> str:
     """Render the lead's correction decision rationale for the prompt."""
     if isinstance(correction_decision, dict):
@@ -223,7 +239,9 @@ class _RepairPromptMixin:
                 inputs.get("failure_evidence"),
                 inputs.get("failure_analysis"),
             ),
-            "correction_decision": _format_correction_decision(inputs.get("correction_decision")),
+            # SIP-0108 §10i item 5: the lead's decision where one exists, else the deterministic
+            # fact — the rule chose patch — rendered in handle() from one of two templates.
+            "correction_decision_section": str(inputs.get("correction_decision_section") or ""),
             "subtask_focus": str(inputs.get("subtask_focus") or ""),
             "subtask_description": str(inputs.get("subtask_description") or ""),
             "expected_artifacts": _format_bullets(inputs.get("expected_artifacts")),
@@ -323,6 +341,10 @@ class _RepairPromptMixin:
         qa_fill_mode = await self._render_qa_fill_mode_section(context, inputs)
         if qa_fill_mode:
             inputs = {**inputs, "qa_fill_mode_section": qa_fill_mode}
+        inputs = {
+            **inputs,
+            "correction_decision_section": await self._render_decision_section(context, inputs),
+        }
         inputs = {**inputs, **(await self._render_output_form(context, inputs))}
         current = await self._render_current_files_section(context, inputs)
         if current:
@@ -374,6 +396,29 @@ class _RepairPromptMixin:
                 sort_keys=True,
             ),
         )
+
+    async def _render_decision_section(
+        self, context: ExecutionContext, inputs: dict[str, Any]
+    ) -> str:
+        """The Correction Decision section, from one of two templates (SIP-0108 §10i item 5).
+
+        A lead's decision, where one exists, renders as it always has; where the protocol
+        declared no ``decide`` step the section states the deterministic fact — the rule chose
+        patch — instead of a lead's rationale that is ``{}``. Which template is chosen is a
+        property of the decision the runner handed over, not of any squad or profile name.
+        """
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is None:
+            return ""
+        decision = inputs.get("correction_decision")
+        if _decision_present(decision):
+            rendered = await renderer.render(
+                "request.cycle_repair_decision_lead",
+                {"correction_decision": _format_correction_decision(decision)},
+            )
+        else:
+            rendered = await renderer.render("request.cycle_repair_decision_rule", {})
+        return rendered.content
 
     async def _render_output_form(
         self, context: ExecutionContext, inputs: dict[str, Any]
@@ -1133,8 +1178,15 @@ class _RepairPromptMixin:
         )
         parts.append("### Why the Prior Attempt Failed\n" + failure_summary)
 
-        decision = _format_correction_decision(inputs.get("correction_decision"))
-        parts.append("### Correction Decision\n" + decision)
+        # Kept in step with request.cycle_repair_decision_{lead,rule} (the renderer path).
+        if _decision_present(inputs.get("correction_decision")):
+            decision = _format_correction_decision(inputs.get("correction_decision"))
+            parts.append("### Correction Decision\n" + decision)
+        else:
+            parts.append(
+                "### Correction Decision\nNo lead reviewed this failure: the protocol declares "
+                "repair alone, so the path is patch by rule (SIP-0108 §10i item 3)."
+            )
 
         parts.append(f"### Product Requirements Document\n\n{prd}")
 
