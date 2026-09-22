@@ -1,12 +1,12 @@
 ---
 template_id: request.cycle_repair_task
-version: "9"
+version: "10"
 required_variables:
   - prd
   - role
   - failed_task_type
   - failure_summary
-  - correction_decision
+  - correction_decision_section
   - output_form_section
   - closing_instruction
 optional_variables:
@@ -70,11 +70,7 @@ The narrative criteria below describe intent. They are context, not letter-of-th
 
 {{failure_summary}}
 
-### Correction Decision
-
-The lead reviewed the failure and chose to patch (not rewind). Their rationale:
-
-{{correction_decision}}
+{{correction_decision_section}}
 
 ### Product Requirements Document
 
