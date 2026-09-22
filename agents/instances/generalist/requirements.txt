@@ -1,0 +1,2 @@
+# The union of every served role's extra requirements (qa's pytest runs the suites).
+pytest>=7.0

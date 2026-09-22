@@ -51,7 +51,7 @@ def validate_agent_build(role: str, base_path: Path) -> None:
     This function validates the role exists and provides build info.
 
     Args:
-        role: Agent role name (lead, dev, qa, strat, data)
+        role: Agent role name (lead, dev, qa, strat, data, builder, generalist)
         base_path: Repository base path
     """
     logger.info(f"Validating agent build for role: {role}")
@@ -119,12 +119,12 @@ Examples:
     python scripts/dev/build_agent.py dev
     python scripts/dev/build_agent.py qa
 
-Available roles: lead, dev, qa, strat, data
+Available roles: lead, dev, qa, strat, data, builder, generalist
         """,
     )
     parser.add_argument(
         "role",
-        help="Agent role to validate (lead, dev, qa, strat, data)",
+        help="Agent role to validate (lead, dev, qa, strat, data, builder, generalist)",
     )
 
     args = parser.parse_args()

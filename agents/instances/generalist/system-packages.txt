@@ -1,0 +1,5 @@
+# Han's image (SIP-0108 §10i item 4): the union of every served role's system packages,
+# because one process runs the qa suites and the dev builds the specialists split.
+# Asserted equal to the union by tests/unit/agents/test_han_roster_and_image.py.
+nodejs
+npm
