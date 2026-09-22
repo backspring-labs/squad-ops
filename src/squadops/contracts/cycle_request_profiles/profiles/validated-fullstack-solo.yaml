@@ -1,0 +1,74 @@
+name: validated-fullstack-solo
+description: >
+  `validated-fullstack` for the Solo arm (SIP-0108 §10i item 3, 1.8.1 plan §3.5):
+  every constant verbatim — budgets, required checks, time budget, self-eval depth,
+  the task plan and its gate — and ONE difference, `correction_steps: [repair]`.
+  With no analyze and no decide step the correction path is deterministic (`patch`,
+  task_plan.decision_is_declared) and the plan-defect terminal drops the conjunct
+  only a decision can supply. Steps still bind roles; the `solo` squad profile routes
+  every role to `han`. The parity with `validated-fullstack` is asserted by a test
+  because a drift here is exactly what the window may not tolerate (§4.4).
+defaults:
+  # SIP-0108 §10i item 3: the correction protocol this profile runs. The Solo arm
+  # repairs — no analyzer, no lead; the path is deterministic (patch).
+  correction_steps: [repair]
+  build_strategy: fresh
+  development_profile: fullstack_fastapi_react
+  build_profile: fullstack_fastapi_react
+  task_flow_policy:
+    mode: sequential
+    gates:
+      - name: progress_plan_review
+        description: Review planning artifacts and build manifest before implementation begins.
+        after_task_types:
+          - governance.review
+  expected_artifact_types:
+    - document
+    - source
+    - test
+    - config
+  workload_sequence:
+    - type: framing
+      gate: progress_plan_review
+    - type: implementation
+      gate: null
+  build_tasks: true
+  implementation_plan: true
+  output_validation: true
+  # Implementation-profile depth: typed checks exercise meaningfully and
+  # correction has budget to surface + fix structural issues.
+  max_self_eval_passes: 2
+  max_correction_attempts: 3
+  max_build_subtasks: 15
+  # SIP-0092 M1 instrumentation (typed + command acceptance).
+  typed_acceptance: true
+  command_acceptance_checks: true
+  # Plan-authoring retry runway. The default (2) is too tight for a merger
+  # converging through validation feedback — cyc_7d2f505e5e8f exhausted both
+  # attempts and silently fell back to static (untyped) task steps, voiding
+  # this profile's instrumentation promise (#424). The #422 safelist lint adds
+  # one more constraint to converge on, so give the loop room.
+  manifest_max_attempts: 4
+  # SIP-0096 §6.3 throttle: the fullstack build/test spine this profile REQUIRES.
+  # A run that doesn't execute one — e.g. frontend_build skipped because Node is
+  # absent (#306) — is blocked_unverified instead of reading green (the D13
+  # false-green). Each is emitted on the happy path (tests_pass synthesized from
+  # test_result; frontend_build by qa.test #407; required_files by builder.assemble
+  # #399), so requiring them never false-blocks a clean run. no_stub_fallback_tests
+  # is intentionally omitted — it's a failure-only row, so requiring it would block
+  # a stub-free run.
+  required_checks:
+    - tests_pass
+    - frontend_build
+    - required_files
+  # Long-cycle budget for a full instrumented fullstack build.
+  #
+  # 7200 -> 10800 (owner-approved 2026-08-12): an authored-mode design's size is a
+  # per-roll lottery — VS roll 11 (cyc_1ccd1e422e78) authored 8 develop tasks, executed
+  # 33/33 checks green, and died of TIME mid-qa with zero failures standing, so the
+  # budget (not a defect) was the binding constraint. Roll 12 at 10800s ran its full
+  # correction arc to a natural terminal state at 2h05m. V7's window pre-registers its
+  # own budget, so this is roll configuration, not measurement methodology.
+  time_budget_seconds: 10800
+  experiment_context: {}
+  notes: "SIP-0108 §10i — validated-fullstack verbatim, correction_steps: [repair] (the Solo arm)"
