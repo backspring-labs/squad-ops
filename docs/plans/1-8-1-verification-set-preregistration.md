@@ -1,5 +1,15 @@
 # 1.8.1 verification set — pre-registration (plan §7 step 5)
 
+**Record corrections, 2026-09-22 (not a revision — no fixed parameter, prediction or rule moves):**
+§1's image-id row had listed eleven ids (rev 1/2's four beside rev 3's seven) and the deploy-commit
+row still said the ids were "unchanged", a sentence left from rev 2 — both corrected to what rev 3
+recorded one row down. §10 is appended, which the section header always required and no earlier
+revision did. **One ruling recorded (owner, 2026-09-22):** §3c's *definition* of a successful
+transaction governs the count, and §3d's "N cell" column is the supply forecast, not a restriction
+— a transaction produced by a diagnostic whose column says "none" counts in the cell its repairing
+role and stack place it in. Ruled before the Next.js counted rolls were observed; it changes the
+qa × React reading (§10e) and nothing about qa × Next.js.
+
 **Status:** rev 5 (2026-09-22) — **the counted arms' config-hash pins corrected.** The nine
 diagnostics all cleared under rev 4; counted roll 1 then **refused**, correctly: the set pinned
 `3921c5a62106`, carried verbatim from the 1.8.0 config, and the deploy resolves `58eed2c52e1f`.
@@ -94,8 +104,8 @@ flip and says so** — SIP-0107 stays `accepted` with step 7 named open, the sho
 | Overrides | FastAPI+React: none. Next.js+TS: `build_profile=nextjs_ts`, `development_profile=nextjs_ts` |
 | `resolved_config_hash` | FastAPI+React **`58eed2c52e1f`**, Next.js+TS **`fff4a6435c97`** — read from this deploy at rev 5, NOT carried from 1.8.0 (`3921c5a62106` / `33cadf53688e`), which #1614's `correction_steps` addition invalidated — 1.8.0 read `3921c5a62106` and `33cadf53688e`; a change is drift the record declares (§9) |
 | `squad_profile_snapshot_ref` | **`2d8d4feb3519a7ec`** — **not precomputable.** `serves_roles` entered the snapshot payload (#1611) and the flat completion cap moved a value (#1620/#1619), and the PUT that lands the cap bumps `version`, which is itself inside `compute_profile_snapshot_hash`'s payload. The pre-1.8.1 pin was `575707c58536cf3b`; the file at version 1 computes `cbf3a18d…`; **the deploy stamps neither.** The driver refuses a counting roll on any other (#1571) |
-| Deploy — commit | **`70f578fe`** — rev 2's `f6994271` plus #1628 (the parse guard) and #1627 (the redelivery bound), both under `src/`. **A label, not an assertion** (#1296): the image ids are the assertion, and they are unchanged. `git diff 18798083..f6994271 -- src/ adapters/` is empty, which is why no rebuild followed the fix |
-| Deploy — image ids | `runtime-api 0d33b2820245`, `max 4fbb4efad454`, `neo c379594cb4fd`, `nat d7c038b44c32`, `runtime-api 3ccd7f7b931e`, `max 84708fd3ceb6`, `neo 1e74a0b5334d`, `nat bd81e2c6fb2c`, `bob 4abda1d62302`, `eve 55a19a45982b`, `data 1af2fef0345a` — **all seven changed** at the rev 3 rebuild (rev 1/2's were `0d33b2820245`, `4fbb4efad454`, `c379594cb4fd`, `d7c038b44c32`, `c2c1a64c7063`, `4dfeb0dcdb62`, `9e1c65ee4d06`). **The pin is unchanged at `2d8d4feb3519a7ec`** — re-read from the deploy, not assumed: the squad profile was not touched (deploy F's, superseded, were `runtime-api b3278c26dd25`, `max 36cc6eb9a923`, `neo 07498c2a4a94`, `nat 1ddf151647c0`, `bob b59711b8f653`, `eve 14d15dc8e3f7`, `data 9a41965b25ad`) |
+| Deploy — commit | **`70f578fe`** — rev 2's `f6994271` plus #1628 (the parse guard) and #1627 (the redelivery bound), both under `src/`. **A label, not an assertion** (#1296): the image ids are the assertion, and **all seven changed** at the rev 3 rebuild because those two fixes are under `src/`. (Rev 2's `f6994271` had NOT rebuilt: `git diff 18798083..f6994271 -- src/ adapters/` was empty.) |
+| Deploy — image ids | `runtime-api 3ccd7f7b931e`, `max 84708fd3ceb6`, `neo 1e74a0b5334d`, `nat bd81e2c6fb2c`, `bob 4abda1d62302`, `eve 55a19a45982b`, `data 1af2fef0345a` — **all seven changed** at the rev 3 rebuild (rev 1/2's were `0d33b2820245`, `4fbb4efad454`, `c379594cb4fd`, `d7c038b44c32`, `c2c1a64c7063`, `4dfeb0dcdb62`, `9e1c65ee4d06`). **The pin is unchanged at `2d8d4feb3519a7ec`** — re-read from the deploy, not assumed: the squad profile was not touched (deploy F's, superseded, were `runtime-api b3278c26dd25`, `max 36cc6eb9a923`, `neo 07498c2a4a94`, `nat 1ddf151647c0`, `bob b59711b8f653`, `eve 14d15dc8e3f7`, `data 9a41965b25ad`) |
 | Loaded, not built | Verified per container as a live call with its paired control (`verify_A_loaded`): the twelve prelude surfaces of §3d′, read from the loaded modules of `runtime-api`, `eve`, `neo` and `bob` — never by grepping a file (#522) |
 | Gate policy | 1.6.3 §6 constant, verbatim in each set config's `gate_notes`; `--as-agent`; the decider recorded per roll |
 | Audit instrument | `scripts/dev/audit_delivered_app.py` at the deploy commit |
@@ -396,3 +406,133 @@ named** — `serves_roles` entering the payload (#1611) and the flat cap plus th
 ## 10. Diagnostic readings — appended as they land
 
 *(Appended after each diagnostic and each counted roll. Nothing else in this document moves.)*
+
+Records: `var/verification_sets/1-8-1-diagnostics/<diagnostic>/shakeout-<UTC>.{md,json}`,
+`1-8-1-fastapi-react/roll-0N-<UTC>.*`, `1-8-1-nextjs/roll-0N-<UTC>.*` — on the Spark, gitignored;
+the readings below are the committed evidence. Every reading here is taken from the stored record
+(`seam_reached`, `loop_texture.repair_revision_forms`, `.retests`, `.candidate_identities`), never
+from memory of the run. Times ET.
+
+### 10a. Rounds 1–3 — superseded registrations; evidence, counting toward nothing
+
+| round (rev) | diagnostic | run | cycle | verdict | rounds | seam |
+|---|---|---|---|---|---|---|
+| 1 (rev 1, `87c3311a`) | `own-frame-then-prose-repair-nextjs` | 1 | `cyc_464625db7c2b` | accepted | 1 | L7 **NO** on an invariant that held — the literal-token reader, **#1623**; L4 YES. Run 2 not spent (§3d) |
+| 2 (rev 2, `61057f73`) | `own-frame-then-prose-repair-nextjs` | 1 | `cyc_5613d2fb55e4` | **no record** | — | the qa agent took a SIGSEGV in `qa_test_repair_handler`, 37 restarts in ~90 min — **#1626**; run cancelled through the CLI 18:26 |
+| 3 (rev 3, `9b9d1de7`) | `own-frame-then-prose-repair-nextjs` | 1 | `cyc_162510005044` | accepted | 1 | L7 **NO** — routed to the dev chain (`development_correction_repair_handler none`), L4 **UNASKABLE** (the prose fault's target never ran) |
+| 3 | `own-frame-then-prose-repair-nextjs` | 2 | `cyc_de7f3c333ee5` | accepted | 2 | L7 **YES**, L4 **YES** — both qa repairs prose, both refunded; no qa patch |
+| 3 | `own-frame-then-prose-repair` | 1 | `cyc_0396488b4d39` | accepted | 2 | L7 **YES**, L4 **YES** |
+| 3 | `dev-lane-fastapi-react` | 1 | `cyc_d5b371320f0c` | accepted | 2 | **YES** |
+| 3 | `dev-lane-nextjs` | 1 | `cyc_12d5d6ff7a2c` | accepted | 1 | **YES** |
+| 3 | `absent-suite` | 1 | `cyc_36646382b789` | accepted | 3 | L2 **YES** |
+| 3 | `path-prefix` | 1 | `cyc_4cc271160ce1` | accepted | 0 | L8b **YES** |
+| 3 | `absent-suite-then-false-claim` | 1 | `cyc_fecad3e1f03b` | blocked_unverified | 1 | L2 **NO**, A1 **NO** |
+| 3 | `absent-suite-then-false-claim` | 2 | `cyc_e6eecfd14869` | accepted | 2 | L2 **YES**, A1 **NO** — the refutation fired and the allow-list dropped it, **#1631**; both budget runs structurally unable to read YES |
+
+Round 3 ran 2026-09-20 21:39 → 2026-09-21 07:07 ET and halted at diagnostic 7; diagnostics 8 and 9
+never ran under rev 3.
+
+### 10b. Round 4 (rev 4, driver HEAD `449a162b`, deploy `70f578fe` images) — the nine, in 12 runs
+
+2026-09-21 10:55 → 2026-09-22 01:08 ET. Nine of nine seams reached inside the two-run budget;
+three needed their second run. **No new seam finding — the §6 exit rule is met on this round.**
+
+| diagnostic | run | cycle | verdict | rounds | min | seam |
+|---|---|---|---|---|---|---|
+| `own-frame-then-prose-repair-nextjs` | 1 | `cyc_53dd83ddda50` | accepted | 1 | 59 | L7 **NO** — the own-frame failure routed to the **dev chain** (`development_correction_repair_handler none`, 7 files offered, refunded); L4 **UNASKABLE**. A genuine routing NO, as #1624 predicted for the DISPUTED/dev-chain case |
+| `own-frame-then-prose-repair-nextjs` | 2 | `cyc_bce374af7e89` | accepted | 1 | 60 | L7 **YES** — `own_artifact — analyzer_and_decision_unanimous` (#1581); L4 **YES** — the prose repair refunded (`refund 1 of 3`). **No qa patch followed**: after the refund the qa task **re-emitted** the suite (`task-run_0647ee1b-m004-qa.test` artifacts at 14:00 and again at 14:09 ET), `candidate_identities` asked_none, retests 0 |
+| `own-frame-then-prose-repair` | 1 | `cyc_3ba9057e5cdf` | accepted | 4 | 78 | L7 **YES** — `own_artifact — qa_owned_routed` (#1130) on both suites; L4 **YES**. Three accepted anchored qa edits (5% and 3% of `run_views.test.jsx`) and a 1% dev edit on `routes.py` — **every retest FAILED** (`Repaired suite still fails`), no §20 identity line; the cycle reached `accepted` by the qa task re-emitting each suite after its failed retest (15:07, 15:21, 15:29 ET) |
+| `dev-lane-fastapi-react` | 1 | `cyc_4535eb6c687c` | accepted | 1 | 53 | **YES** — dev anchored edit on `backend/routes.py`, 119 of 3,398 chars (**4%**), verified, retest `SUCCEEDED`, `patch_candidate_identity` verified = persisted |
+| `dev-lane-nextjs` | 1 | `cyc_4162e71ebc57` | accepted | 1 | 52 | **YES** — dev anchored edit on `app/api/runs/[run_id]/join/route.ts`, 200 of 1,631 chars (**12%**), verified, retest passed, identity verified = persisted |
+| `absent-suite` | 1 | `cyc_6070e7a96402` | rejected | 2 | 65 | L2 **NO** — the repair's patch verification failed `contract_assertions_match`, so no retest ran; probes and `tests_pass` failed. A squad miss, not an instrument one |
+| `absent-suite` | 2 | `cyc_38cbb5b54693` | rejected | 3 | 81 | L2 **YES** — three retests ran; one anchored 3% edit accepted by the verifier, **retest FAILED**; two `new_files_only` responses |
+| `path-prefix` | 1 | `cyc_d797d515c06b` | accepted | 0 | 45 | L8b **YES** — zero strips, zero stored under `path/` |
+| `absent-suite-then-false-claim` | 1 | `cyc_df65ea551311` | accepted | 2 | 73 | L2 **YES**; A1 **NO** — the refutation fired (`backend/__squadops_injected_fault__.py`) and the decision did not inherit the path, but **echoed** the claim's phrase (`router registration`); the reader refuses an echo by design (#1600) |
+| `absent-suite-then-false-claim` | 2 | `cyc_dd2822190433` | accepted | 3 | 73 | L2 **YES**; A1 **YES** — refuted verbatim, `inherited: False`, no echo — **the first A1 YES on any 1.8.x deploy**. One anchored 3% qa edit on `backend/tests/test_runs.py` (219 of 7,370), retest `SUCCEEDED`, identity verified = persisted |
+| `contentless-builder` | 1 | `cyc_9e47702af705` | accepted | 1 | 62 | R1 **YES** — the retry carried its emission-shape fact and was accepted. One anchored 2% qa edit accepted by the verifier, **retest FAILED** |
+| `contentless-builder-all-attempts` | 1 | `cyc_b7058e601977` | rejected | 3 | 57 | F1 **YES** — `builder.assemble_repair` reached, framework rows re-derived from the patched set; two anchored edits on `assembly_notes.md` (2% of 1,801; then **62%** of 206), identity verified = persisted. **Read over the unaskable `required_files_rows`** (filtered at the typed-check seam, #114) |
+
+**The three second runs.** Two are the squad, one is the routing: absent-suite's first repair failed
+verification (no retest is the correct NO); the false-claim lead echoed a refuted claim on its first
+run (the correct NO); the Next.js own-frame failure routed to the dev chain on its first run, as it
+had on one of two rev-3 runs — **the route an own-frame failure takes on the App Router stack is not
+deterministic**, two of five runs across the line went to the dev chain.
+
+**L1 on the diagnostics:** the contentless counts in these records are the injected faults
+themselves (`qa_test_handler` ×4 on the absent-suite family, `builder_assemble_handler` on the
+contentless-builder pair, the prose-only `qa_test_repair_handler`); none is a bar reading.
+
+### 10c. The §3d′ fix predictions — read
+
+| fix | reading |
+|---|---|
+| #1603 (#1602) | **half held**: on `cyc_bce374af7e89` the target line named the free-authored suite (`__tests__/runs.test.ts`, 14 entities offered to the qa repair); the retest half is **not exercised** — no qa patch followed the refunded prose repair, so nothing was retested |
+| #1608 (#1539) | predicted silent — **not read on this pass**; the §9 qa source-set comparison is outstanding for the cut record |
+| #1612 (#1526) | reporting-only; `inert` reads `asked_none` on every record and assessment read |
+| #1613 | **held** — `squadops cycles assess` invoked on `cyc_a7354627cf1c` (React) and `cyc_bce374af7e89` (Next.js): verdict, criteria coverage, `required_unverified`, `inert`, each with its evidence column |
+| #1609 (#1598) | predicted silent — **not falsified**: no retest or suite failure in any record is attributed to a store bleed; not separately instrumented |
+| #1611 (#1610) | **held** — 0 `UndeclaredRolesError`, 0 `HandlerNotFoundError` in runtime-api, eve, neo and bob logs since the rev 3 deploy; the served snapshot `2d8d4feb3519a7ec` carries `serves_roles` (§1) |
+| #1614 | **held** — every correcting round in every record runs `data.analyze_failure` → `governance.correction_decision` → repair, read from the artifact lineage (`corr-…-NN-…`, `repair-…-NN-…`) |
+| #1615 | predicted silent — **silent**: 0 `HandlerNotFoundError` |
+| #1617 | **held** — nine configs loaded; the ninth's fault applied (`task-run_0647ee1b-m004-qa.test`, 9,642 → 9,709 chars) and its record read the cell |
+| #1618 | **held** — 22 of 22 records carry `cycle_assessment` |
+| #1616 (#1600) | **held** — A1 YES on `cyc_dd2822190433` with `refuted_verbatim` naming the path and `inherited: False`; the NO on `cyc_df65ea551311` is the echo case, refused as designed; UNASKABLE never read where the refutation fired |
+| #1620 (#1619) | predicted silent — **silent**: the arm preflight was not invoked; the flat cap reached the deploy through the PUT and the pin was read from it (§1) |
+| #1624 (#1623) | **held, with the branch named** — `analyzer_and_decision_unanimous` on Next.js (`cyc_bce374af7e89`), `qa_owned_routed` on React (`cyc_3ba9057e5cdf`); the two dev-chain runs (`cyc_162510005044`, `cyc_53dd83ddda50`) read **NO**, as predicted for that case |
+| #1627 (#1626) | predicted silent — **silent**: `squadops-eve` RestartCount 0 since the rebuild; exactly one `redelivered_task_refused` line in its log, the deployment-acceptance probe. **The fourth acceptance assertion (a run leaves `running` after a refusal) remains unexercised** — no redelivery occurred on any run |
+| #1628 (#1626) | predicted silent — **silent**: 0 `corrupt parse` warnings in runtime-api since the rebuild; no SIGSEGV recurred |
+
+### 10d. The counted arm — FastAPI+React rolls 1–4 (2026-09-22 05:40 → 10:10 ET)
+
+Launched from HEAD `ffd826b2` (rev 5) on the same seven images; config hash `58eed2c52e1f`, snapshot
+`2d8d4feb3519a7ec` — both read from the deploy at launch.
+
+| roll | cycle | verdict | audit | rounds | min | reading |
+|---|---|---|---|---|---|---|
+| 1 | `cyc_b98c45fcd5c8` | **rejected** | FAIL — `vc-probe-dev-seed` 500 | 3 | 114 | one accepted qa edit on `backend/tests/test_runs.py` — 85 of 85 chars (**100%**), one fragment anchor — **retest FAILED**; a second qa repair prose, refunded. **L1: 1 contentless emission, `qa_test_handler:self_eval`** — 0 chars out at the 12,288-token cap, 44,894 reasoning chars. **L1 HELD by construction**: a contentless self-eval pass yields no fenced files, so `_self_evaluate` re-validates the first-pass artifacts and the task proceeds; the loop then ran three correction rounds. The rejection is the probe 500, unrelated |
+| 2 | `cyc_d50ab727db40` | accepted, functional | PASS | 0 | 49 | clean — 18/18 |
+| 3 | `cyc_6bcef7f3f8e4` | accepted, functional | PASS | 0 | 51 | clean — 21/21 |
+| 4 | `cyc_a7354627cf1c` | accepted, functional | PASS | 1 | 50 | **dev × React**: `development_correction_repair_handler` anchored edit on `frontend/src/views/CreateRunView.jsx`, 395 of 3,123 chars (**13%**), verified, retest `SUCCEEDED`, identity verified = persisted |
+
+React 3 of 4 functional. L1 held on all four.
+
+### 10e. N — the working so far (Next.js rolls 1–2 pending; the reading closes with them)
+
+**The counting evidence.** §3c counts a transaction that is verified **and passed its retest** and
+was persisted under the identity it was verified with. That identity is written once, at
+acceptance (`patch_acceptance.py` `_accept_patch`, SIP-0107 §20, the `patch_candidate_identity`
+line), and only after the retest passed — so it is the arbiter. Runtime-api has logged exactly six
+such lines since rev 4 took effect, and they are the six rows below. A verifier-accepted edit whose
+retest failed is, in §3c's words, a transaction "whose repair failed … the retest" and adds nothing.
+
+| cell | count | transaction | replaced | retest | identity |
+|---|---|---|---|---|---|
+| dev × React | **2** | `dev-lane-fastapi-react` — `backend/routes.py` | 4% | SUCCEEDED | held |
+| | | counted React 4 — `frontend/src/views/CreateRunView.jsx` | 13% | SUCCEEDED | held |
+| dev × Next.js | **1** | `dev-lane-nextjs` — `app/api/runs/[run_id]/join/route.ts` | 12% | passed | held |
+| qa × React | **1** | `absent-suite-then-false-claim` run 2 — `backend/tests/test_runs.py` | 3% | SUCCEEDED | held — counts by the owner's ruling above (§3c governs; the §3d column is a forecast) |
+| qa × Next.js | **0** | — | | | |
+| builder × React (declared, not required) | 0 | `contentless-builder-all-attempts` — `assembly_notes.md` | **62%** | (no suite) | held — **excluded by counting rule 2** |
+
+**Total so far: 4 against N = 6, with qa × Next.js at zero.** The remaining registered supply is
+the two Next.js counted rolls, whose §3c expectation was "~1 across two rolls" for the qa cell.
+Nothing is re-run: an unmet N "is recorded as a shortfall, not retried into existence" (§3b).
+
+**What was accepted by the verifier and did not count, and why** — every one is a retest failure:
+
+| where | edit | why it does not count |
+|---|---|---|
+| `own-frame-then-prose-repair` (the registered qa × React supplier) | qa anchored 5% and 3% on `run_views.test.jsx`; dev anchored 1% on `routes.py` | all three retests FAILED |
+| `absent-suite` run 2 | qa anchored 3% on `test_runs.py` | retest FAILED |
+| `contentless-builder` | qa anchored 2% on `run_views.test.jsx` | retest FAILED |
+| counted React 1 | qa anchored, 100% of `test_runs.py` | retest FAILED — and rule 2 |
+| `contentless-builder-all-attempts` | builder anchored 62% | rule 2 |
+
+**The finding this working surfaces, stated as a mechanism.** On this deploy the loop's response to
+a qa own-frame failure is **re-authoring, not scoped repair**: on React every scoped qa repair of
+the faulted suite failed its retest and the qa task then re-emitted the suite; on Next.js the qa
+repair answered in prose (faulted once, and once unfaulted under rev 3) and the qa task re-emitted.
+Five runs of the ninth diagnostic across the line produced **zero** scoped qa transactions on the
+App Router stack. The §3c supply forecast for both qa cells — "1–2, the second repair after the
+prose one is refunded" — assumed the re-take would be a repair; it is a re-emission. This is the
+substantive input to the 1.8.2 plan and to SIP-0107 step 7, whatever the Next.js rolls read.
