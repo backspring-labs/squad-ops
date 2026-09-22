@@ -1,6 +1,10 @@
 # 1.8.1 — plan
 
-**Revision 4, 2026-09-17.** Rev 1 was written the evening v1.8.0 was tagged; rev 2 the same
+**Revision 5, 2026-09-22.** Rev 4 was the revision the line executed under; **rev 5 records what
+execution changed** — deploy A read N unmet (4 of 6, qa × Next.js empty; the flip does not
+land, §3.3 applies as written), and building Solo's prompt asset showed one code change was
+necessary and general, so B′ is a rebuilt deploy for both arms behind a shakeout pair rather than
+"B plus one container" (§3.5, §8 decision 4; SIP-0108 §10m). Rev 1 was written the evening v1.8.0 was tagged; rev 2 the same
 evening, on the owner's review of it: the two capability amendments re-placed to 1.8.2 (§8
 decision 3), the flip's proof given its positive control and the finding behind it (§3.3), the
 window executed as pairs with its void rule, its predicate and its two isolation contracts fixed
@@ -263,11 +267,19 @@ shapes — `compile-loop` and `false-criterion` — as the review settled them; 
 
 ### 3.5 Solo — declarations and one container, on deploy B′
 
-Deploy B′ is deploy B plus Han's container and two profile files. **Zero drift under `src/` and
-`adapters/` from B**, named in the window's pre-registration; the squad's images are B's, so the
-squad arm on B′ is the squad on B by construction. The §10i rule is the stop condition: if
-building any item below needs a branch on a squad or profile name under `src/` or `adapters/`,
-the design is wrong and the work stops for a plan revision.
+Deploy B′ is deploy B plus Han's container and two profile files. ~~**Zero drift under `src/`
+and `adapters/` from B**; the squad's images are B's, so the squad arm on B′ is the squad on B by
+construction.~~ **Amended at rev 5 (2026-09-22).** Building item 4 showed every handler assembled
+its system prompt with its own step role, so a generalist process would have been briefed as
+each specialist per task and the generalist fragment assembled by nothing — a vestige §10i
+forbids. The fix is general and not a branch on any name (SIP-0108 §10m, #1641): the identity
+layer reads the role the process IS, required at every seam; a handler's step role keeps its
+meaning. It is a change under `src/`, so **B′ is a rebuilt deploy for both arms**, the squad arm
+proven equal to B by the invariant that every handler's step role is the one role it is
+registered for (pinned by a test), **and B′ takes one squad shakeout pair before Han's pair**,
+reading that invariance live (the window pre-registration §3a). The §10i rule is the stop
+condition: if building any item below needs a branch on a squad or profile name under `src/` or
+`adapters/`, the design is wrong and the work stops for a plan revision.
 
 | item (§10i) | what lands | where |
 |---|---|---|
@@ -647,7 +659,10 @@ of change, with B′ differing from B by nothing under `src/` or `adapters/`.
 4. **Solo's three general items land in the prelude with byte-identical squad behaviour; the
    arm's declarations and Han land on B′ with zero code drift from B.** The §10i rule is the stop
    condition. The `resolve_agent_config` fallback is deleted, not deprecated (the 2026-09-14
-   ruling). **Confirmed at review.**
+   ruling). **Confirmed at review. Amended at rev 5 (owner's ruling of 2026-09-22, "build it"):**
+   a fourth general item was necessary — the identity layer reads the process's role (SIP-0108
+   §10m, #1641) — so B′ carries one `src/` change from B, is rebuilt for both arms, and takes a
+   squad shakeout pair; §3.5 says how the squad arm is proven equal.
 5. **The window is executed as pairs, in a pre-registered alternating order** (§4.3), never six
    of one arm then six of the other; SIP-0108 §4.4's "runs after" is amended as §10k.
    **Recommended at review; adopted.**
@@ -718,6 +733,14 @@ of change, with B′ differing from B by nothing under `src/` or `adapters/`.
 
 ## 10. Revision history
 
+- **Rev 5 (2026-09-22)** — on execution, not on review. Deploy A read **N = 4 of 6 with
+  qa × Next.js empty** (the deploy-A pre-registration §10e); §3.3 applies as written — no flip,
+  deploy B is A re-pinned, the line continues to B′. §3.5 and §8 decision 4 amended: building
+  the generalist prompt asset required one general `src/` change (SIP-0108 §10m, #1641, ruled
+  by the owner on 2026-09-22 with the condition that it not be a Solo special case), so B′ is
+  rebuilt for both arms behind a squad shakeout pair. The window's pre-registration is
+  `docs/plans/1-8-1-window-preregistration.md` (rev 1: rules; rev 2: pins from B′). Every
+  §3.5 item is on main except the compose block (the owner's, #1643).
 - **Rev 4 (2026-09-17)** — the owner's ruling on §8 decision 11 (Free-Solo and the successor
   PRD as 2.0 planning inputs; the Embodiment Runtime SIP reviewed and accepted with the 1.9
   plan, built in 2.0; the placement axis and per-provider tokens a successor's) and the word to

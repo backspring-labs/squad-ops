@@ -1038,10 +1038,35 @@ SIP's: their absence at 1.8.1's close names a gap in the successor, not an open 
 
 **Ruled by.** The owner, 2026-09-17.
 
-### 10l. 2026-09-20 — the arms are held equal by flattening the squad's cap, not by reproducing it (§4.4)
+### 10k. 2026-09-22 — the window runs as interleaved pairs, and a void is never an outcome (§4.4)
 
-*(§10k is reserved for the interleaving amendment the 1.8.1 plan §4.3 names, which lands with the
-window's build on deploy B′.)*
+**What changed.** §4.4 says "the single-model arm runs after the loop set closes, on the same
+frozen deploy if nothing has moved" — six squad rolls, then six generalist rolls. The 1.8.1 plan
+§4.3 (rev 2, on its review) replaced that order, and the driver's `window` command (#1638) is the
+order as built: **pairs are executed as they are analysed — interleaved and alternating**, pair 1
+Squad → Solo, pair 2 Solo → Squad, and so on, fixed in the pre-registration. A serial order
+carries model and cache warming, host thermal state and accumulated infrastructure state into
+the comparison as an arm effect at no benefit; alternating removes them at no cost, since pairs
+are matched trials, not replicas.
+
+**The void rule, as built.** A pair is void **only** for pre-run identity or infrastructure
+invalidity the pre-registration names — a refused preflight, a pin mismatch, a P0 refusal, a
+solo roll that stored an artifact the arm is defined by not producing — **never for outcome**: a
+red framing or a rejected roll counts as "not accepted-functional". A void removes its pair in
+full, a mate not yet launched is not launched, and the next sequential pair replaces it up to the
+attempt budget; a window short of its pairs after the budget closes **incomplete** with the
+criterion not read. The reading always renders Squad wins / Solo wins / ties with the directional
+criterion (at least four of six for either arm), and quality and efficiency beside it, never as
+tie-breakers.
+
+**Evidence.** #1638 (`pair_order`, `VOID_BY_EXIT`, `window_tally`, `render_window`, with the
+tests that name each launch-time bug); the 1.8.1 plan §4.3 and §8 decisions 5–7; the window's
+pre-registration `docs/plans/1-8-1-window-preregistration.md` §1.
+
+**Ruled by.** The owner on the 1.8.1 plan's review, 2026-09-17 (decisions 5–7 adopted); recorded
+here with the build, 2026-09-22.
+
+### 10l. 2026-09-20 — the arms are held equal by flattening the squad's cap, not by reproducing it (§4.4)
 
 **What changed.** §4.4 prescribes one way to hold the completion cap equal across the arms:
 

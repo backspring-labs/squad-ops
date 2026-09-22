@@ -1,0 +1,80 @@
+# 1.8.1 comparison window — the SOLO arm (plan §4.3, SIP-0108 §4.4, §10g–§10m; the window
+# pre-registration docs/plans/1-8-1-window-preregistration.md).
+#
+# One process, han (role generalist), serving every role full-38 serves, on the same model with
+# the same flat cap; the request profile is validated-fullstack verbatim with
+# correction_steps: [repair]. compare_with names the squad arm, so preflight refuses this launch
+# if the deploy serves the arms unequal in anything but the reasoning organization (#1620).
+#
+# THE PINS ARE READ FROM DEPLOY B′ at rev 2: the solo snapshot as the seeder stored it (a new
+# profile id seeds itself at runtime-api startup), the solo config hash (differs from the
+# squad's by correction_steps and the profile name), the eight image ids.
+name: 1-8-1-window-solo
+pre_registration: docs/plans/1-8-1-window-preregistration.md
+project: group_run
+squad_profile: solo
+request_profile: validated-fullstack-solo
+overrides: {}
+gate_name: progress_plan_review
+n_rolls: 8
+records_dir: var/verification_sets/1-8-1-window-solo
+arm: solo
+compare_with: 1-8-1-window-squad.yaml
+gate_notes: >-
+  1.8.1 comparison window. Approved under the pre-registered gate policy — identical text
+  applied to every roll of both arms. System plan validation passed; no additional judgment
+  applied.
+launch_notes: >-
+  1.8.1 comparison window — SOLO arm, pair {roll} of at most {n} attempted (six valid
+  required). Interleaved with the squad arm in the registered alternating order.
+shakeout_notes: >-
+  1.8.1 deploy B′ SHAKEOUT — SOLO arm (Han's pair), NON-COUNTING by declaration before launch.
+  Read for the seams H1–H6 in the pre-registration §3b: every task dispatched to han, the role
+  map with no fallback, repair alone with the deterministic patch, the three absences, the
+  assessment rendered, the generalist identity briefed. A seam not reached within two runs
+  stops the window for a plan revision.
+# "Loaded, not built" on the container that IS the arm. Each row a live call with its control.
+loaded_checks:
+  runtime-api: |-
+    # #1642: the solo profile is served, with the flat cap and six served roles; the request
+    # profile declares repair alone and no decision (the runner's own readers).
+    from squadops.cycles.task_plan import declared_correction_steps, decision_is_declared
+    from squadops.contracts.cycle_request_profiles import load_profile
+    _d = dict(load_profile("validated-fullstack-solo").defaults)
+    print("1642 steps", declared_correction_steps(_d), decision_is_declared(_d))
+  han: |-
+    # #1643 / §10i item 2: this process serves six roles (the roster, read by the entrypoint's
+    # resolver — the fallback would print one), and its handler registry holds every role's
+    # handlers. Control: a single-role registry is strictly smaller.
+    import os
+    os.environ.setdefault("SQUADOPS__AGENT__ID", "han")
+    from squadops.agents.entrypoint import _resolve_served_roles
+    from squadops.bootstrap.handlers import create_handler_registry
+    _served = sorted(_resolve_served_roles("generalist"))
+    _all = set(create_handler_registry(roles=_served).list_task_types())
+    _one = set(create_handler_registry(roles=["qa"]).list_task_types())
+    print("10i", _served, len(_all), len(_one), _one < _all)
+    # §10m / #1640: Han is briefed as the generalist; the pin is the window pre-registration's,
+    # and a specialist's hash is the control.
+    import hashlib as _hl, pathlib as _pl, squadops.prompts as _sp
+    from adapters.prompts.filesystem import FileSystemPromptRepository as _FSR
+    from squadops.prompts.assembler import PromptAssembler as _PA
+    _asm = _PA(_FSR(_pl.Path(_sp.__file__).parent / "fragments"))
+    _h = lambda r: _hl.sha256(_asm.get_system_prompt(r).content.encode()).hexdigest()[:16]
+    print("10m generalist", _h("generalist"), "qa", _h("qa"), _h("generalist") != _h("qa"))
+    # #1643: the tooling every served role needs is in THIS image. Control: a tool no role
+    # installs is absent.
+    import shutil
+    print("1643", shutil.which("node") is not None, shutil.which("tsc") is not None,
+          __import__("importlib").util.find_spec("pytest") is not None, shutil.which("no-such-tool-xyz") is None)
+    # #1644: both decision templates ship where Han renders repairs.
+    from squadops.prompts.registry_check import shipped_request_template_ids
+    _ids = shipped_request_template_ids()
+    print("1644", "request.cycle_repair_decision_rule" in _ids, "request.cycle_repair_decision_lead" in _ids)
+# PINNED at rev 2 of the window pre-registration, from deploy B′ after the squad's shakeout pair
+# met its exit rule. A wholly blank block is the pre-registration state; preflight --counting
+# refuses to launch on it (#1296, #1571).
+expected_config_hash_prefix: ""
+expected_squad_snapshot_prefix: ""
+frozen_deploy_commit: ""
+frozen_image_ids: {}

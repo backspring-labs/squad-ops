@@ -72,6 +72,11 @@ PYTHON = str(REPO / ".venv" / "bin" / "python")
 #: docker-compose service names (fixed by docker-compose.yml; CLAUDE.md forbids renaming).
 AGENT_SERVICES = ("max", "neo", "nat", "bob", "eve", "data")
 DEPLOY_SERVICES = ("runtime-api", *AGENT_SERVICES)
+#: The Solo arm's one container (SIP-0108 §10i, the 1.8.1 window). Not a deploy service: a
+#: squad deploy has no `han`, and a set that does not name it is not asked about it. A set
+#: names it by pinning its image id or probing it, and only then is it read and required up.
+SOLO_SERVICES = ("han",)
+KNOWN_SERVICES = (*DEPLOY_SERVICES, *SOLO_SERVICES)
 POSTGRES_CONTAINER = "squadops-postgres"
 RUNTIME_API_CONTAINER = "squadops-runtime-api"
 
@@ -592,7 +597,7 @@ def load_set_config(path: Path) -> SetConfig:
         for k, v in (raw.get("overrides") or {}).items()
     }
     image_ids = {str(k): str(v) for k, v in (raw.get("frozen_image_ids") or {}).items()}
-    unknown = sorted(set(image_ids) - set(DEPLOY_SERVICES))
+    unknown = sorted(set(image_ids) - set(KNOWN_SERVICES))
     if unknown:
         raise SystemExit(f"{path}: frozen_image_ids names unknown services {unknown}")
     checks: list[LoadedCheck] = []
@@ -605,7 +610,7 @@ def load_set_config(path: Path) -> SetConfig:
             checks.append(LoadedCheck(name, str(value["service"]), str(value["source"])))
         else:
             checks.append(LoadedCheck(name, name, str(value)))
-    unknown_services = sorted({c.service for c in checks} - set(DEPLOY_SERVICES))
+    unknown_services = sorted({c.service for c in checks} - set(KNOWN_SERVICES))
     if unknown_services:
         raise SystemExit(
             f"{path}: loaded_checks names unknown services {unknown_services} — a probe whose "
@@ -750,8 +755,15 @@ def image_id(service: str) -> str:
     return sh(f"docker inspect --format={{{{.Image}}}} squadops-{service}", check=False)[7:19]
 
 
+def named_services(cfg: SetConfig) -> tuple[str, ...]:
+    """The services this set's identity is read from: the deploy's, plus any solo service the
+    config names by pinning its image or probing it (the 1.8.1 window's `han`)."""
+    extra = {c.service for c in cfg.loaded_checks} | set(cfg.frozen_image_ids)
+    return (*DEPLOY_SERVICES, *(s for s in SOLO_SERVICES if s in extra))
+
+
 def deploy_identity(cfg: SetConfig) -> dict[str, str]:
-    ids = {s: image_id(s) for s in DEPLOY_SERVICES}
+    ids = {s: image_id(s) for s in named_services(cfg)}
     ids["head"] = sh(f"git -C {REPO} rev-parse --short HEAD")
     for check in cfg.loaded_checks:
         # A failed check must say WHY: an ImportError here is the "rebuild exited 0 with
@@ -1053,17 +1065,18 @@ def arm_substrate(cfg: SetConfig) -> dict:
     }
 
 
-def runtime_topology() -> dict:
+def runtime_topology(services: Sequence[str] = DEPLOY_SERVICES) -> dict:
     """Which agent containers are up, as a substrate fact (plan §4.3).
 
     "All relevant containers remain running for both arms; only the designated arm receives
     work." A comparison where one arm ran with six agent processes resident and the other with
     one is a comparison of two memory envelopes on a single-GPU box, whatever the record says
-    about the organization.
+    about the organization. ``services`` is every service either arm names, so a window whose
+    solo arm names `han` requires all eight up, not seven.
     """
     return {
         service: (image_id(service) != "")
-        for service in sorted(s for s in DEPLOY_SERVICES if s not in ("runtime-api",))
+        for service in sorted(s for s in services if s not in ("runtime-api",))
     }
 
 
@@ -1154,7 +1167,7 @@ def comparison_problems(cfg: SetConfig) -> list[str]:
     other = load_set_config(other_path)
     problems = arm_substrate_problems(cfg, other)
     problems.extend(run_state_isolation_problems(cfg))
-    topology = runtime_topology()
+    topology = runtime_topology(sorted(set(named_services(cfg)) | set(named_services(other))))
     absent = sorted(svc for svc, up in topology.items() if not up)
     if absent:
         problems.append(

@@ -45,8 +45,17 @@ _COUNTING_SETS: dict[str, dict[str, int]] = {
     # 1.8.1 plan §4.1: 4 + 2. Smaller than 1.8.0's because the nine diagnostics carry N's
     # supply per required cell and the counted rolls are margin, not the other way round.
     "1-8-1": {"nextjs": 2, "fastapi-react": 4},
+    # 1.8.1 plan §4.3: the comparison window's two arms, React only — six valid pairs of at
+    # most eight attempted, so each arm's n_rolls is the attempt budget. Pinned at rev 2 of
+    # the window pre-registration from deploy B′; blank until then.
+    "1-8-1-window": {"squad": 8, "solo": 8},
 }
-_ARM_STACK = {"nextjs": "nextjs_ts", "fastapi-react": "fullstack_fastapi_react"}
+_ARM_STACK = {
+    "nextjs": "nextjs_ts",
+    "fastapi-react": "fullstack_fastapi_react",
+    "squad": "fullstack_fastapi_react",
+    "solo": "fullstack_fastapi_react",
+}
 _COUNTING_SET_FILES = [
     (f"{line}-{arm}.yaml", arm, rolls)
     for line, arms in _COUNTING_SETS.items()
@@ -420,7 +429,10 @@ class TestSquadSnapshotIsAnIdentity:
         assert re.fullmatch(r"[0-9a-f]{12,16}", cfg.expected_squad_snapshot_prefix)
         assert re.fullmatch(r"[0-9a-f]{12}", cfg.expected_config_hash_prefix)
         assert re.fullmatch(r"[0-9a-f]{8}", cfg.frozen_deploy_commit)
-        assert set(cfg.frozen_image_ids) == set(driver.DEPLOY_SERVICES)
+        # Every deploy service, and possibly the solo arm's (the 1.8.1 window pins `han` too).
+        assert (
+            set(driver.DEPLOY_SERVICES) <= set(cfg.frozen_image_ids) <= set(driver.KNOWN_SERVICES)
+        )
         assert all(re.fullmatch(r"[0-9a-f]{12}", v) for v in cfg.frozen_image_ids.values())
 
     def test_the_guard_covers_every_committed_set(self):
@@ -433,13 +445,20 @@ class TestSquadSnapshotIsAnIdentity:
 
     @pytest.mark.parametrize("line", list(_COUNTING_SETS))
     def test_both_sets_share_the_deploy_and_snapshot_but_not_the_config_hash(self, driver, line):
-        a = driver.load_set_config(_SETS / f"{line}-nextjs.yaml")
-        b = driver.load_set_config(_SETS / f"{line}-fastapi-react.yaml")
+        """A line's two stack arms share the deploy and the squad and differ in the request
+        profile; a comparison window's two arms share the deploy and differ in BOTH the squad
+        (that is the arm) and the request profile (the Solo protocol declares repair alone)."""
+        first, second = _COUNTING_SETS[line]
+        a = driver.load_set_config(_SETS / f"{line}-{first}.yaml")
+        b = driver.load_set_config(_SETS / f"{line}-{second}.yaml")
         if not (a.frozen_image_ids or b.frozen_image_ids or a.frozen_deploy_commit):
             return  # pre-registration: neither arm is pinned yet (same rule as the pin guard)
         assert a.frozen_image_ids == b.frozen_image_ids
         assert a.frozen_deploy_commit == b.frozen_deploy_commit
-        assert a.expected_squad_snapshot_prefix == b.expected_squad_snapshot_prefix
+        if {a.arm, b.arm} == {"squad", "solo"}:
+            assert a.expected_squad_snapshot_prefix != b.expected_squad_snapshot_prefix
+        else:
+            assert a.expected_squad_snapshot_prefix == b.expected_squad_snapshot_prefix
         assert a.expected_config_hash_prefix != b.expected_config_hash_prefix
 
 
@@ -2771,7 +2790,7 @@ class TestALoadedCheckIsAskedWhereItSaysAndAnsweredBeforeLaunch:
         A/B arms and diagnostics alike — the defect reached two files because nothing
         looked at the rest."""
         cfg = driver.load_set_config(_SETS / filename)
-        assert all(c.service in driver.DEPLOY_SERVICES for c in cfg.loaded_checks)
+        assert all(c.service in driver.KNOWN_SERVICES for c in cfg.loaded_checks)
 
 
 class TestFailedEmissionBankingIsReportedAsArtifactsNotEmissions:
@@ -4612,3 +4631,78 @@ class TestTheWindowRunsAsPairs:
         assert rc == 0
         assert seen == {"pairs": 6, "max_attempts": 8, "dry_run": True, "arms": ("squad", "solo")}
         assert squad.arm == "squad"
+
+
+class TestASetThatNamesTheSoloServiceIsReadAndRequiredUp:
+    """The 1.8.1 window's solo arm runs on one container the squad deploy does not have (SIP-0108
+    §10i). A set is asked about `han` only when it names it — by pinning its image or probing
+    it — and then its identity is read and its container required up for the comparison.
+    """
+
+    def _cfg(self, driver, tmp_path, name, **extra):
+        import yaml
+
+        base = {
+            "name": name,
+            "project": "group_run",
+            "squad_profile": "full-38",
+            "request_profile": "validated-fullstack",
+            "gate_name": "g",
+            "gate_notes": "g",
+            "launch_notes": "r {roll}/{n}",
+            "shakeout_notes": "s",
+            "n_rolls": 8,
+        }
+        base.update(extra)
+        p = tmp_path / f"{name}.yaml"
+        p.write_text(yaml.safe_dump(base))
+        return driver.load_set_config(p)
+
+    def test_the_identity_reads_han_only_for_a_set_that_names_it(
+        self, driver, tmp_path, monkeypatch
+    ):
+        """Wiring at ``deploy_identity``. Bug this catches: every set on every deploy asking
+        about a container that does not exist (an empty id recorded as the deploy's), or the
+        solo arm's record carrying no id for the one container it runs on."""
+        monkeypatch.setattr(driver, "image_id", lambda service: f"id-{service}")
+        monkeypatch.setattr(driver, "sh", lambda *a, **k: "abcd1234")
+        squad = self._cfg(driver, tmp_path, "squad-arm", arm="squad")
+        solo = self._cfg(
+            driver,
+            tmp_path,
+            "solo-arm",
+            arm="solo",
+            loaded_checks={"han": "print('x')"},
+        )
+        monkeypatch.setattr(
+            driver.subprocess,
+            "run",
+            lambda *a, **k: type("P", (), {"returncode": 0, "stdout": "x", "stderr": ""})(),
+        )
+        assert "han" not in driver.deploy_identity(squad)
+        assert driver.deploy_identity(solo)["han"] == "id-han"
+        assert driver.named_services(solo) == (*driver.DEPLOY_SERVICES, "han")
+
+    def test_the_comparison_requires_han_up_when_the_solo_arm_names_it(
+        self, driver, tmp_path, monkeypatch
+    ):
+        """Bug this catches: the topology check counting seven containers on a window that
+        runs eight — Han down would read as "all up" and the pair would launch against a
+        different memory envelope than the one registered (plan §4.3)."""
+        self._cfg(driver, tmp_path, "squad-arm", arm="squad")  # the counterpart on disk
+        monkeypatch.setattr(driver, "SET_CONFIG_DIR", tmp_path)
+        solo = self._cfg(
+            driver,
+            tmp_path,
+            "solo-arm",
+            arm="solo",
+            compare_with="squad-arm.yaml",
+            loaded_checks={"han": "print('x')"},
+        )
+        monkeypatch.setattr(driver, "arm_substrate_problems", lambda a, b: [])
+        monkeypatch.setattr(driver, "psql", lambda *a, **k: "0")
+        monkeypatch.setattr(driver, "image_id", lambda service: "" if service == "han" else "up")
+        problems = driver.comparison_problems(solo)
+        assert any("runtime topology" in p and "han" in p for p in problems)
+        monkeypatch.setattr(driver, "image_id", lambda service: "up")
+        assert not [p for p in driver.comparison_problems(solo) if "runtime topology" in p]
