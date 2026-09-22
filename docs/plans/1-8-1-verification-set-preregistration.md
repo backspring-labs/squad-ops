@@ -496,7 +496,23 @@ Launched from HEAD `ffd826b2` (rev 5) on the same seven images; config hash `58e
 
 React 3 of 4 functional. L1 held on all four.
 
-### 10e. N — the working so far (Next.js rolls 1–2 pending; the reading closes with them)
+### 10d′. The counted arm — Next.js+TS rolls 1–2 (2026-09-22 10:11 → 12:56 ET)
+
+Roll 1 launched from HEAD `ffd826b2`; roll 2 from `e2f06d8a` after #1635 (docs only — the diff from
+`ffd826b2` under `src/`, `adapters/`, `scripts/` and `config/` is empty; the roll-1 pin is archived beside
+the records as `.head_pin.rev5-ffd826b2`). Config hash `fff4a6435c97`, snapshot `2d8d4feb3519a7ec`, the
+same seven images.
+
+| roll | cycle | verdict | audit | rounds | min | reading |
+|---|---|---|---|---|---|---|
+| 1 | `cyc_4d9602ce0a66` | accepted, functional | PASS | 1 | 93 | the qa repair (`__tests__/ui.test.ts`, 9 entities offered) emitted **nothing** — `cap_exhausted`: 12,288 completion tokens, the cap, 49,254 reasoning chars, 0 out; refunded; the qa task re-emitted the suite and it passed. **No transaction.** L1: one contentless emission, recovered by the refund and the re-emission — held |
+| 2 | `cyc_5bbf85db4622` | accepted, functional | PASS | 1 | 68 | the decision routed a qa-suite failure to a **dev** repair: `development_correction_repair_handler` anchored edit on `app/api/runs/route.ts`, 677 of 1,919 chars (**35%**), verified 8 checks, **retest FAILED** (`tests_pass` and `frontend_build`), no identity line — the patch was not accepted; the qa task re-emitted the suite at 12:47 ET and it passed on the unpatched tree. **No transaction.** L1: none |
+
+Next.js 2 of 2 functional. L1 held on both. **Zero scoped transactions on the App Router stack across the
+whole line**: nine Next.js cycles (five ninth-diagnostic runs, two dev-lane runs, two counted rolls)
+produced one that counts — the dev-lane diagnostic's — and no qa transaction at all.
+
+### 10e. N — the reading (the set is complete; every registered source observed)
 
 **The counting evidence.** §3c counts a transaction that is verified **and passed its retest** and
 was persisted under the identity it was verified with. That identity is written once, at
@@ -514,9 +530,26 @@ retest failed is, in §3c's words, a transaction "whose repair failed … the re
 | qa × Next.js | **0** | — | | | |
 | builder × React (declared, not required) | 0 | `contentless-builder-all-attempts` — `assembly_notes.md` | **62%** | (no suite) | held — **excluded by counting rule 2** |
 
-**Total so far: 4 against N = 6, with qa × Next.js at zero.** The remaining registered supply is
-the two Next.js counted rolls, whose §3c expectation was "~1 across two rolls" for the qa cell.
-Nothing is re-run: an unmet N "is recorded as a shortfall, not retried into existence" (§3b).
+**N = 4 against 6, with qa × Next.js at zero. The success-path readiness prediction (§3b) is
+falsified on both of its conditions, and SIP-0107 §39.8's precondition for step 7 is not met on
+this deploy.** By plan §3.3 and §8 decision 2: the flip PR is not merged, 1.8.1 ships without it and
+says so, SIP-0107 stays `accepted` with step 7 named open, and deploy B is the prelude's deploy
+re-pinned; the line continues to B′. No discretion enters after this reading, and nothing is
+re-run — an unmet N "is recorded as a shortfall, not retried into existence" (§3b).
+
+**The shortfall in §39.8's own terms.** Two successful transactions short of six, and one required
+cell empty. The empty cell is the one 1.8.0 could not fill either; this line registered its supply
+(the ninth diagnostic, #1617) and the retest that 1.8.0 lost (#1603), ran it five times across four
+registrations, and it produced no scoped qa transaction. The all-attempt integrity prediction
+(§3b, first reading) **held** on every attempted transaction: zero outside-grant changes, zero
+identity mismatches, zero partial acceptances; every verifier-accepted edit that did not count
+failed its retest, which is the contract working, not failing. The rendered-packaging prediction
+(#598) held: no builder-authored Dockerfile, no finding on an accepted emission.
+
+**Counted-roll supply, as forecast and as read.** §3c forecast ~1 dev × React and ~1 qa × React
+across four React rolls (read: 1 and 0), ~0 dev × Next.js and ~1 qa × Next.js across two Next.js
+rolls (read: 0 and 0). Six counted rolls, five functional, one transaction. The diagnostics were
+the supply by design and they supplied three of the four.
 
 **What was accepted by the verifier and did not count, and why** — every one is a retest failure:
 
@@ -527,6 +560,14 @@ Nothing is re-run: an unmet N "is recorded as a shortfall, not retried into exis
 | `contentless-builder` | qa anchored 2% on `run_views.test.jsx` | retest FAILED |
 | counted React 1 | qa anchored, 100% of `test_runs.py` | retest FAILED — and rule 2 |
 | `contentless-builder-all-attempts` | builder anchored 62% | rule 2 |
+
+**Added by the Next.js rolls.** Roll 1's empty qa repair was not prose: it spent the whole flat
+completion cap (#1619/#1620, 12,288) on reasoning and emitted nothing — the same shape as React
+roll 1's self-eval pass (12,288 tokens, 44,894 reasoning chars, 0 out). Two of two cap-exhausted
+emissions on this deploy are reasoning that never reached a fence: one per stack, a count and not a
+rate, and a second 1.8.2 input distinct from the qa repair prompt. Roll 2 adds a wrong-locus round:
+the lead routed a qa-suite failure to a dev repair whose patch broke the frontend build and was
+discarded; the re-authored suite passed on the unpatched tree.
 
 **The finding this working surfaces, stated as a mechanism.** On this deploy the loop's response to
 a qa own-frame failure is **re-authoring, not scoped repair**: on React every scoped qa repair of
