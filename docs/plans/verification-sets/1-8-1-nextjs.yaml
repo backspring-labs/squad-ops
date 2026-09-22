@@ -363,7 +363,7 @@ loaded_checks:
           "py", _pyok.accepted)
 # PINNED at plan step 8 (docs/plans/1-8-1-verification-set-preregistration.md) from deploy E's pair 4,
 # the shakeout that met the exit rule (#1296: the image ids are the assertion; the commit is a label).
-expected_config_hash_prefix: "33cadf53688e"
+expected_config_hash_prefix: "fff4a6435c97"
 expected_squad_snapshot_prefix: "2d8d4feb3519a7ec"
 frozen_deploy_commit: "70f578fe"
 frozen_image_ids:

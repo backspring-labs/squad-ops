@@ -1,6 +1,30 @@
 # 1.8.1 verification set — pre-registration (plan §7 step 5)
 
-**Status:** rev 4 (2026-09-21) — **re-made after the shakeout's third finding** (#1631), whose
+**Status:** rev 5 (2026-09-22) — **the counted arms' config-hash pins corrected.** The nine
+diagnostics all cleared under rev 4; counted roll 1 then **refused**, correctly: the set pinned
+`3921c5a62106`, carried verbatim from the 1.8.0 config, and the deploy resolves `58eed2c52e1f`.
+
+**Cause, and it is a registration defect not a deploy one.** The 1.8.1 counted configs were built
+from 1.8.0's. The deploy commit, the seven image ids and the squad snapshot were updated;
+`expected_config_hash_prefix` was not. The hash legitimately moved because **#1614 — a 1.8.1
+prelude change — added `correction_steps` to every request profile**, which is part of the
+resolved config. Both arms carried a stale value: React `3921c5a62106`, Next.js `33cadf53688e`.
+
+**Corrected to what this deploy resolves:** React **`58eed2c52e1f`**, Next.js **`fff4a6435c97`**,
+each observed by attempting a roll and reading the refusal, each verified stable.
+
+**No roll was counted.** The guard fires after the cycle resolves its config — preflight cannot
+know the hash — so each attempt launched a cycle that was then refused and cancelled through the
+CLI; `cycle_runs` shows zero `running`. Nothing entered N.
+
+**The diagnostics stand, by the owner's ruling of 2026-09-22 ("correct the pin and go").** They
+assert no pins — every diagnostic config carries `expected_squad_snapshot_prefix: ""` — and no
+seam reading depends on the resolved config hash. This is narrower than rev 4's withdrawn
+narrowing and differs in kind: a deploy-IDENTITY assertion corrected to match the deploy, not an
+outcome threshold revisited after seeing outcomes. It is recorded here so the distinction is
+arguable rather than assumed.
+
+*Rev 4's status block, kept for the record:* re-made after the shakeout's third finding (#1631), whose
 fix changes a registered reading. **§8 voids rev 3 on that alone**: a driver-only change is free
 only where it *cannot* alter a reading, and this one exists to make A1 readable at all. **The
 deploy does NOT move** — instrument only, `scripts/dev/` — and the images and pin were re-read
@@ -68,7 +92,7 @@ flip and says so** — SIP-0107 stays `accepted` with step 7 named open, the sho
 | **N** (SIP-0107 §39.8) | **6 successful scoped revision transactions across the counted rolls and the diagnostics together, with at least one in each required cell** — qa × React, qa × Next.js, dev × React, dev × Next.js (§3c). **Re-fixed here**, before any transaction that could count is observed. 1.8.0's five do not carry |
 | Project / PRD / squad / request profile | `group_run`, `full-38`, `validated-fullstack` — identical to 1.6.6 → 1.8.0 |
 | Overrides | FastAPI+React: none. Next.js+TS: `build_profile=nextjs_ts`, `development_profile=nextjs_ts` |
-| `resolved_config_hash` | FastAPI+React observed on roll 1 and recorded in §10, Next.js+TS likewise — 1.8.0 read `3921c5a62106` and `33cadf53688e`; a change is drift the record declares (§9) |
+| `resolved_config_hash` | FastAPI+React **`58eed2c52e1f`**, Next.js+TS **`fff4a6435c97`** — read from this deploy at rev 5, NOT carried from 1.8.0 (`3921c5a62106` / `33cadf53688e`), which #1614's `correction_steps` addition invalidated — 1.8.0 read `3921c5a62106` and `33cadf53688e`; a change is drift the record declares (§9) |
 | `squad_profile_snapshot_ref` | **`2d8d4feb3519a7ec`** — **not precomputable.** `serves_roles` entered the snapshot payload (#1611) and the flat completion cap moved a value (#1620/#1619), and the PUT that lands the cap bumps `version`, which is itself inside `compute_profile_snapshot_hash`'s payload. The pre-1.8.1 pin was `575707c58536cf3b`; the file at version 1 computes `cbf3a18d…`; **the deploy stamps neither.** The driver refuses a counting roll on any other (#1571) |
 | Deploy — commit | **`70f578fe`** — rev 2's `f6994271` plus #1628 (the parse guard) and #1627 (the redelivery bound), both under `src/`. **A label, not an assertion** (#1296): the image ids are the assertion, and they are unchanged. `git diff 18798083..f6994271 -- src/ adapters/` is empty, which is why no rebuild followed the fix |
 | Deploy — image ids | `runtime-api 0d33b2820245`, `max 4fbb4efad454`, `neo c379594cb4fd`, `nat d7c038b44c32`, `runtime-api 3ccd7f7b931e`, `max 84708fd3ceb6`, `neo 1e74a0b5334d`, `nat bd81e2c6fb2c`, `bob 4abda1d62302`, `eve 55a19a45982b`, `data 1af2fef0345a` — **all seven changed** at the rev 3 rebuild (rev 1/2's were `0d33b2820245`, `4fbb4efad454`, `c379594cb4fd`, `d7c038b44c32`, `c2c1a64c7063`, `4dfeb0dcdb62`, `9e1c65ee4d06`). **The pin is unchanged at `2d8d4feb3519a7ec`** — re-read from the deploy, not assumed: the squad profile was not touched (deploy F's, superseded, were `runtime-api b3278c26dd25`, `max 36cc6eb9a923`, `neo 07498c2a4a94`, `nat 1ddf151647c0`, `bob b59711b8f653`, `eve 14d15dc8e3f7`, `data 9a41965b25ad`) |
