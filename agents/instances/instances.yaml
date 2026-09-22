@@ -65,6 +65,17 @@ instances:
     enabled: true
     description: "Analytics - Inductive reasoning"
 
+  # Generalist Role — the Solo arm (SIP-0108 §10i, 1.8.1 plan §3.5). One process serving
+  # every step role the squad's `full-38` serves; `han` is the display identity, `generalist`
+  # the role in source. Torn down after the 1.8.1 window by default (plan §8 decision 12).
+  - id: han
+    display_name: Han
+    role: generalist
+    serves_roles: [lead, dev, strat, builder, qa, data]
+    model: qwen3.8:27b
+    enabled: true
+    description: "Generalist - one process, every role; the Solo arm"
+
   # Finance Role
   - id: finance-agent
     display_name: FinanceAgent

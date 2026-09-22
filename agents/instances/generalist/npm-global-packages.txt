@@ -1,0 +1,2 @@
+# The union of dev's and qa's (see system-packages.txt).
+typescript@5.5.3
