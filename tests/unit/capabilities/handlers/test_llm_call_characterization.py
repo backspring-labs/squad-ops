@@ -676,7 +676,6 @@ class TestFunctionOwnedLoops:
             {"prd": "Build a simple user-CRUD API", "profile_roles": ["lead", "dev", "qa"]},
             planning_content="## Plan\n\nLooks good.",
             resolved_config={"implementation_plan": True},
-            role="lead",
             handler_name="test_harness",
             chat_kwargs={},
             call=partial(handler._llm_call, ctx, inputs={}),

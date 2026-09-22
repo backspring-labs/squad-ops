@@ -10,8 +10,9 @@ contributors, or all proposals failed), and PR 93.0 keeps the current
 inline.
 
 This module is deliberately stateless — every dependency is passed in. The
-only knobs that came from the handler instance are ``role``, ``handler_name``,
-and ``chat_kwargs``; the caller computes those once and hands them in.
+only knobs that came from the handler instance are ``handler_name`` and
+``chat_kwargs``; the caller computes those once and hands them in. The identity the
+system prompt carries is the context's (``context.role_id``, SIP-0108 §10m), never a knob.
 """
 
 from __future__ import annotations
@@ -68,7 +69,6 @@ async def produce_plan(
     planning_content: str,
     resolved_config: dict[str, Any],
     *,
-    role: str,
     handler_name: str,
     chat_kwargs: dict[str, Any],
     call: Callable[..., Awaitable[tuple[Any, str]]],
@@ -278,7 +278,7 @@ async def produce_plan(
     manifest_prompt += await contract_surface_sections(renderer, inputs)
 
     assembled = context.ports.prompt_service.assemble(
-        role=role,
+        role=context.role_id,  # SIP-0108 §10m: the identity layer is what the process IS
         hook="agent_start",
         task_type="governance.review_plan_manifest",
     )

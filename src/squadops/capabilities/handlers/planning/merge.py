@@ -274,7 +274,6 @@ class GovernanceMergePlanHandler(_CycleTaskHandler):
             inputs,
             planning_content=planning_content,
             resolved_config=inputs.get("resolved_config", {}),
-            role=self._role,
             handler_name=self._handler_name,
             chat_kwargs=self._build_chat_kwargs(inputs),
             # #929: the authoring loop borrows this handler's LLM sequence and its

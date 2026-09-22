@@ -113,6 +113,9 @@ class TestAssembleCalledWithTaskType:
         _artifact,
     ):
         ctx = _make_context()
+        # The squad case: the process IS the step's role (SIP-0108 §10m — the identity layer
+        # reads ``context.role_id``; a generalist process reads its own).
+        ctx.role_id = expected_role
         h = cls()
         await h.handle(ctx, VALID_INPUTS)
 

@@ -141,6 +141,8 @@ class DataAnalyzeFailureHandler(_CycleTaskHandler):
         # required JSON FailureAnalysis schema. Role-identity layer
         # primes the role-play response. Suppress it for this
         # JSON-emitting handler.
+        # No identity layer here (task-only assembly): ``role`` is the override key for the
+        # STEP's task-type fragment, so it stays the step's (SIP-0108 §10m).
         assembled = context.ports.prompt_service.assemble_task_only(
             role=self._role,
             task_type=self._task_type,

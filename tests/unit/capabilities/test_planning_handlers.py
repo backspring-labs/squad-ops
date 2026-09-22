@@ -296,6 +296,10 @@ class TestHandleUsesAssemble:
         self, cls, expected_task_type, expected_role, _artifact, mock_context
     ):
         h = cls()
+        # On a squad container the process IS the step's role, so the brief is the step's
+        # (SIP-0108 §10m: the identity layer reads ``context.role_id``; a generalist process
+        # reads its own — see tests/unit/prompts/test_identity_is_the_process_role.py).
+        mock_context.role_id = expected_role
         await h.handle(mock_context, {"prd": "Build a widget"})
 
         mock_context.ports.prompt_service.assemble.assert_called_once_with(
@@ -547,7 +551,6 @@ class TestPRDCoverageDisciplineReachesManifestPrompt:
             {"prd": "Build app. qa_handoff.md must contain ## Expected Behavior."},
             planning_content="## Plan",
             resolved_config={"profile_roles": ["lead", "dev", "qa"]},
-            role="lead",
             handler_name="test_harness",
             chat_kwargs={},
             **_borrowed(ctx),
@@ -984,7 +987,6 @@ class TestProduceManifestIdentifierRewrite:
             {"prd": prd},
             planning_content="plan",
             resolved_config={},
-            role="lead",
             handler_name="test_harness",
             chat_kwargs={},
             **_borrowed(ctx),
@@ -1058,7 +1060,6 @@ class TestProduceManifestRetry:
             inputs,
             planning_content="plan",
             resolved_config=resolved_config or {},
-            role="lead",
             handler_name="test_harness",
             chat_kwargs={},
             **_borrowed(ctx),

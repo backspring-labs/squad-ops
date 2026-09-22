@@ -1537,8 +1537,10 @@ class QATestHandler(_CycleTaskHandler):
         # #448: include the qa.test task_type fragment (dependency constraint,
         # scope discipline) in the assembled system prompt. The fragment is the
         # externalized owner of task-content guidance — not inline literals.
+        # SIP-0108 §10m: the identity layer is what the process IS (``context.role_id``); the
+        # task-type fragment is the step's and is unchanged.
         assembled = context.ports.prompt_service.assemble(
-            self._role, "agent_start", task_type=TaskType.QA_TEST
+            context.role_id, "agent_start", task_type=TaskType.QA_TEST
         )
         system_prompt = assembled.content
 
