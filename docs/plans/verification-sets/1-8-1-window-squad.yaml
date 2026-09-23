@@ -267,6 +267,13 @@ loaded_checks:
     # SIP-0108: the run summary carries the structured terminal decision; the assessment and registry versions deployed.
     print("0108", ASSESSMENT_VERSION, ATTRIBUTION_REGISTRY_VERSION, "terminal" in RunLoopSummary.__dataclass_fields__,
           launched_counted_roll("x — COUNTED roll 3 of 6."), launched_counted_roll("SHAKEOUT — NON-COUNTING"))
+    # #1658: a round whose repair emitted nothing is not a plan_defect round — the carry entry
+    # the executor writes is read as "not applied". Control: a retest that ran and failed
+    # still counts.
+    from squadops.cycles.correction_signature import REPAIR_EMPTY_MARKER, repair_not_applied_in_round
+    _e = [f"correction attempt 0: {REPAIR_EMPTY_MARKER} (cap_exhausted) — nothing was applied"]
+    _r = ["correction attempt 0: repaired suite retest FAILED — 3 errors"]
+    print("1658", repair_not_applied_in_round(_e, 0), repair_not_applied_in_round(_r, 0))
   # The live hypothesis, read on the container that actually runs qa.test rather than off the
   # framework — a policy present in runtime-api and absent in eve's image is #1289's shape.
   eve: |-
@@ -391,18 +398,18 @@ loaded_checks:
     _asm = _PA(_FSR(_pl.Path(_sp.__file__).parent / "fragments"))
     _h = lambda r: _hl.sha256(_asm.get_system_prompt(r).content.encode()).hexdigest()[:16]
     print("10m data", _h("data"), "generalist", _h("generalist"), _h("data") != _h("generalist"))
-# PINNED at rev 2 of the window pre-registration, from deploy B′ after the squad's shakeout pair
-# met its exit rule. A wholly blank block is the pre-registration state; preflight --counting
+# PINNED at rev 3 of the window pre-registration, from deploy B″ (3faab510) after the rebuild;
+# the hashes by the CLI's own computation, confirmed by each shakeout pair's first launch. A wholly blank block is the pre-registration state; preflight --counting
 # refuses to launch on it (#1296, #1571).
 expected_config_hash_prefix: "58eed2c52e1f"
 expected_squad_snapshot_prefix: "2d8d4feb3519a7ec"
-frozen_deploy_commit: "36f2af6e"
+frozen_deploy_commit: "3faab510"
 frozen_image_ids:
-  runtime-api: "75d866b9883c"
-  max: "fcb71587b260"
-  neo: "3ac94b110a13"
-  nat: "5b947a1d469b"
-  bob: "801c18a1c886"
-  eve: "c508e66ee55f"
-  data: "d7349139a4bc"
-  han: "3c63b8422147"
+  runtime-api: "6e79feea4be6"
+  max: "a2024380e17a"
+  neo: "05ed019afaad"
+  nat: "ebab70571b37"
+  bob: "e05878f59014"
+  eve: "26c0677205ed"
+  data: "b81c1a8895d1"
+  han: "9d07cc875bdf"
