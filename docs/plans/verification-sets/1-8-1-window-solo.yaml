@@ -82,18 +82,18 @@ loaded_checks:
     from squadops.prompts.registry_check import shipped_request_template_ids
     _ids = shipped_request_template_ids()
     print("1644", "request.cycle_repair_decision_rule" in _ids, "request.cycle_repair_decision_lead" in _ids)
-# PINNED at rev 2 of the window pre-registration, from deploy B′ after the squad's shakeout pair
-# met its exit rule. A wholly blank block is the pre-registration state; preflight --counting
+# PINNED at rev 3 of the window pre-registration, from deploy B″ (3faab510) after the rebuild;
+# the hashes by the CLI's own computation, confirmed by each shakeout pair's first launch. A wholly blank block is the pre-registration state; preflight --counting
 # refuses to launch on it (#1296, #1571).
 expected_config_hash_prefix: "5c164909188d"
 expected_squad_snapshot_prefix: "ef6111328d35570d"
-frozen_deploy_commit: "36f2af6e"
+frozen_deploy_commit: "3faab510"
 frozen_image_ids:
-  runtime-api: "75d866b9883c"
-  max: "fcb71587b260"
-  neo: "3ac94b110a13"
-  nat: "5b947a1d469b"
-  bob: "801c18a1c886"
-  eve: "c508e66ee55f"
-  data: "d7349139a4bc"
-  han: "3c63b8422147"
+  runtime-api: "6e79feea4be6"
+  max: "a2024380e17a"
+  neo: "05ed019afaad"
+  nat: "ebab70571b37"
+  bob: "e05878f59014"
+  eve: "26c0677205ed"
+  data: "b81c1a8895d1"
+  han: "9d07cc875bdf"
