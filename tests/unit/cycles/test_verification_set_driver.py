@@ -3355,7 +3355,10 @@ class TestTheComparisonArmsAreHeldEqual:
         def answer(cmd, check=True):
             if "request-profiles" in cmd:
                 return json.dumps(request or self._REQUEST)
-            return json.dumps(solo if "solo" in cmd else squad)
+            # The profile is the command's last argument. Matching "solo" anywhere in the
+            # command also matched a checkout whose PATH contains it (the CLI is invoked by
+            # its absolute path), and every read then answered as the solo arm.
+            return json.dumps(solo if cmd.split()[-1].endswith("solo") else squad)
 
         monkeypatch.setattr(driver, "sh", answer)
 
@@ -3422,9 +3425,11 @@ class TestTheComparisonArmsAreHeldEqual:
         def envelope_answer(cmd, check=True):
             if "request-profiles" in cmd:
                 return json.dumps(
-                    {"defaults": {"time_budget_seconds": 600}} if "solo" in cmd else self._REQUEST
+                    {"defaults": {"time_budget_seconds": 600}}
+                    if cmd.split()[-1].endswith("solo")
+                    else self._REQUEST
                 )
-            return json.dumps(self._SOLO if "solo" in cmd else self._FLAT_SQUAD)
+            return json.dumps(self._SOLO if cmd.split()[-1].endswith("solo") else self._FLAT_SQUAD)
 
         monkeypatch.setattr(driver, "sh", envelope_answer)
         solo_cfg = self._cfg(driver, "solo", "solo", "solo")
@@ -3555,6 +3560,8 @@ class TestASoloRollProvesTheAbsences:
             ("art_1", "correction_decision.md", "governance.correction_decision"),
             ("art_2", "failure_analysis.md", "data.analyze_failure"),
             ("art_3", "runs-api.test.ts", "qa.test"),
+            # A decision stored under another name is still the lead's decision.
+            ("art_4", "decision_round_1.md", "governance.correction_decision"),
         ):
             d = root / art
             d.mkdir(parents=True)
@@ -3569,6 +3576,7 @@ class TestASoloRollProvesTheAbsences:
 
         assert any("correction_decision.md" in p for p in problems)
         assert any("failure_analysis.md" in p for p in problems)
+        assert any("decision_round_1.md" in p for p in problems)
         # The qa suite is the arm's own work and must not be flagged.
         assert not any("runs-api.test.ts" in p for p in problems)
 
@@ -3621,13 +3629,31 @@ class TestASoloRollProvesTheAbsences:
         assert captured["solo_absences"] == ["§10i: solo arm stored x"]
         assert captured["excluded_from_comparison"] is True
 
-    def test_a_clean_solo_roll_reports_nothing(self, driver, tmp_path, monkeypatch):
+    @pytest.mark.parametrize(
+        ("filename", "producing"),
+        [
+            # Han's shakeout roll 1 on deploy B′ (cyc_8c6d36b89b6d) stored every one of these.
+            ("definition_of_done.json", "governance.define_done"),
+            ("plan_authoring_brief.yaml", "governance.prepare_plan_authoring_brief"),
+            ("implementation_plan.yaml", "governance.merge_plan"),
+            ("merge_decisions.yaml", "governance.merge_plan"),
+            ("planning_artifact.md", "governance.review_plan"),
+            ("routes.ts", "development.develop"),
+        ],
+    )
+    def test_the_arms_own_steps_are_not_absences(
+        self, driver, tmp_path, monkeypatch, filename, producing
+    ):
+        """#1650. Bug this catches: the check forbade every ``governance.*`` artifact, and the
+        solo task plan the window holds equal to the squad's opens every implementation run
+        with ``governance.define_done``, so every Solo pair voided and the window could never
+        read its criterion. The rows are real emissions from Han's shakeout, not invented."""
         import types
 
         d = tmp_path / "data" / "artifacts" / "p" / "cyc_1" / "run_1" / "art_1"
         d.mkdir(parents=True)
         (d / "metadata.json").write_text(
-            json.dumps({"filename": "routes.ts", "metadata": {"producing_task_type": "dev"}})
+            json.dumps({"filename": filename, "metadata": {"producing_task_type": producing}})
         )
         monkeypatch.setattr(driver, "REPO", tmp_path)
 

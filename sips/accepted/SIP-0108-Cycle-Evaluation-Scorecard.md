@@ -1176,3 +1176,39 @@ this PR.
 **Ruled by.** The owner, 2026-09-22, on the implementer's finding and recommendation ("build it"),
 having asked that the change not be a hard-wired special case for the Solo window — which is why
 it is a general rule with a squad-invariance proof rather than a role-conditional path.
+
+### 10n. 2026-09-23 — Solo's absences are the correction protocol's two steps, not "framing" (§10i item 6)
+
+**What changed.** §10i item 6 required a per-roll preflight asserting that "no framing document, no
+failure analysis and no correction decision was stored" for a Solo run. The driver built "no
+framing document" as "no artifact from any `governance.*` step" (#1620). The window's
+pre-registration, however, holds the task plan equal between the arms (its §3c:
+`validated-fullstack-solo` differs from `validated-fullstack` in `correction_steps` alone), so the
+solo arm runs the whole framing sequence and every implementation run's `governance.define_done`
+itself: they are the steps of the plan, and Han performs them. On deploy B′, both of Han's shakeout
+rolls stored `definition_of_done.json` from `governance.define_done` (the framing run also stored
+`plan_authoring_brief.yaml`, `implementation_plan.yaml`, `merge_decisions.yaml` and
+`planning_artifact.md`, all from Han), and the check flagged each roll. Under the window's void rule,
+**every Solo pair would have voided** and the criterion could never be read (#1650).
+
+"No framing roles" (1.8.1 plan §3.5) and "the task plan held equal" can't both hold. The build and
+the registration chose the second. §4.4's comparison is one generalist *performing* the plan
+against the squad's roles performing it, and §10i's own asymmetry names what Solo is defined
+without: the analyzer and the lead's correction decision.
+
+**As built.** The absences are those two steps. A Solo roll must not store a failure analysis or a
+correction decision, matched by the stored filename (`failure_analysis.md`,
+`correction_decision.md`) **or** by the producing step (`data.analyze_failure`,
+`governance.correction_decision`), so a renamed artifact from either is still caught. Artifacts of
+the plan's own steps, framing and `governance.define_done` included, are the arm's work. That no
+*other* agent performed any step is not this check's reading: the pre-registration's H1 reads it
+from every task envelope naming `han`.
+
+**Evidence.** Han's shakeout pair on B′: `cyc_8c6d36b89b6d` (`art_8c4a9c221cb1`) and
+`cyc_30ee4777d182` (`art_2dfdf855e0b3`), both flagged under the old rule. The driver's
+`solo_absence_problems` and its tests: the five real `governance.*` artifacts from that run are
+parametrized as *not* absences, a decision stored under another name is caught by its producer,
+and restoring the `governance.*` rule fails the five rows (mutation check).
+
+**Ruled by.** The owner, 2026-09-23, adopting the implementer's recommendation on #1650 ("go with
+your recommendation").
