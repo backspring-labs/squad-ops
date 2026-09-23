@@ -1,5 +1,23 @@
 # 1.8.1 comparison window — pre-registration (plan §7 step 9, §4.3)
 
+**Status: rev 2 (2026-09-23) — the pins, read from deploy B′ after the squad's shakeout pair met
+its exit rule (§3a).** B′ was rebuilt from `36f2af6e` (both arms and runtime-api, one rebuild);
+every value below was read from that deploy, none carried. §1's four *rev 2* rows now carry them,
+and both set configs' pin blocks hold the same values. Nothing else in §1–§9 moved. The §3a
+readings are in §10.
+
+**How the config hashes were read.** The rule is "by attempting a roll, never carried" (deploy A
+rev 5). Before the shakeout, one cycle per arm was launched with the driver's own `launch()`
+command and cancelled 0.2 s later: `cyc_4ec8974a3bc1` (squad) and `cyc_cf40784e4389` (solo).
+Nothing counts. **But not "nothing ran"**: each run's first task had already been dispatched, and
+the agent ran it to completion after the cancel (#1648, §10a). **Stability without a second launch:**
+the CLI computes the hash locally and warns on any server mismatch, and printed none. The server
+adds to the hash only a derived `contract_ref` (`api/routes/cycles/cycles.py`, #779), so the value
+is a pure function of the request profile. The squad shakeout pair then launched at the pinned
+squad hash, which confirms it.
+
+*Rev 1's status block, kept for the record:*
+
 **Status: rev 1 (2026-09-22) — the rules, the arms, the pairs and the readouts, committed before
 deploy B′ exists.** The pins — both arms' resolved config hashes, both squad snapshots, the eight
 image ids — are read from deploy B′ after the rebuild and land as **rev 2**, before any roll of
@@ -39,10 +57,10 @@ reads it as texture on both, never as an arm effect.
 | Reported, never tie-breakers | quality as a **verification-quality proxy** (the retest, the boot audit, correction rounds, termination reasons — the clean-room indicators stay unaskable until SIP-0102 step 5, and the label says so); efficiency as wall clock and completion tokens per roll, rendered per pair |
 | Gate policy | the 1.6.3 §6 constant, verbatim in both set configs' `gate_notes`; `--as-agent`; the decider recorded per roll |
 | Driver | `verification_set_driver.py window --squad-set docs/plans/verification-sets/1-8-1-window-squad.yaml --solo-set docs/plans/verification-sets/1-8-1-window-solo.yaml`; shakeouts via `shakeout --set …`. **The sample and the budget are the configs' registered data** (`window_pairs: 6`, `window_max_attempts: 8`, declared on both arms and required equal), never flags; a resume whose arms, sample or budget differ from the recorded state is refused. **No arm is observed until the exact pair has passed the comparison gate**: the runner proves the two supplied configs name each other, then reads both arms from the deploy before pair 1's first roll; the per-launch preflight stays, for drift |
-| Deploy — commit | *rev 2* (a label, not an assertion, #1296) |
-| Deploy — image ids | *rev 2*: the squad's seven **and `han`** — eight services on B′ |
-| `resolved_config_hash` | *rev 2*, one per arm, read from the deploy by attempting a roll — never carried (the deploy-A rev 5 lesson) |
-| `squad_profile_snapshot_ref` | *rev 2*, one per arm: `full-38` at version 2 (the flat cap, #1619) and `solo` as the seeder stored it. Both read from the deploy, not computed |
+| Deploy — commit | **`36f2af6e`** (a label, not an assertion, #1296): main after #1647; runtime-api reports `framework_git_sha` `36f2af6e` |
+| Deploy — image ids | runtime-api **`75d866b9883c`**, max **`fcb71587b260`**, neo **`3ac94b110a13`**, nat **`5b947a1d469b`**, bob **`801c18a1c886`**, eve **`c508e66ee55f`**, data **`d7349139a4bc`**, han **`3c63b8422147`**. All eight differ from deploy A's. **Both configs pin all eight**: the committed guard requires the two arms' image maps to be equal. Pinning `han` names it in the squad arm's identity, so every squad record carries Han's image id beside its own and the topology gate asserts all eight containers up for either arm |
+| `resolved_config_hash` | squad (`validated-fullstack`) **`58eed2c52e1f`**; solo (`validated-fullstack-solo`) **`5c164909188d`**. Read from B′ by attempting a roll (status block). The squad value equals deploy A's React pin, as it should: the request profile did not move between A and B′ |
+| `squad_profile_snapshot_ref` | `full-38` **`2d8d4feb3519a7ec`** (version 2, six × 12288; equals A's pin, because the profile did not move); `solo` **`ef6111328d35570d`** (version 1, seeded at B′'s runtime-api start). Each is the live read (`live_squad_snapshot`) and also the value stamped on that arm's hash-read cycle |
 | Records | `var/verification_sets/1-8-1-window-squad/`, `…/1-8-1-window-solo/`; the window's own state and reading in the squad arm's directory (`window-state.json`, `window-<UTC>.{md,json}`) |
 
 ---
@@ -185,3 +203,86 @@ layer reading the process (§10m), the optional decision section (#1644), the wi
 
 *(§3a's pair, §3b's pair, then the window; rev 2 adds the pins above this line before any roll
 of either arm.)*
+
+### 10a. §3a — the squad's shakeout pair on B′ (2026-09-23, non-counting)
+
+Both rolls ran on `36f2af6e`. Each record's identity block carries the seven squad image ids,
+matching §1. `han` was not yet named in the squad config when the pair ran, so the pair's
+records don't carry Han's id; it was up throughout, idle. Each record stamps config `58eed2c52e1f` and
+snapshot `2d8d4feb3519`, the rev 2 squad pins. Records:
+`var/verification_sets/1-8-1-window-squad/shakeout-20260923T{035939,045147}Z.{md,json}`.
+
+| roll | cycle | verdict | boot audit | functional | criteria | correction rounds | wall clock |
+|---|---|---|---|---|---|---|---|
+| 1 | `cyc_4fd319b021bc` | accepted | PASS (5 probes) | yes | 21 / 21 | none (asked) | 52 min |
+| 2 | `cyc_a1909a39b8a1` | accepted | PASS (7 probes) | yes | 23 / 23 | none (asked) | 51 min |
+
+**I1 — holds, on the live source.** In both rolls' identity blocks, every one of the six squad
+containers hashes its identity prompt to the value §3a registered (`lead 95ecaf9cb6b79fe1`,
+`dev 13e209e6caa5dc9f`, `strat dc64a93d9dcda0c4`, `builder 11ed180485de17f9`,
+`qa 1f1f5c65a90641a7`, `data c74e0e6d4bdd9635`), each against the generalist control
+`ccb18ec10f99b448`. **The stored-prompt half is unaskable, and the registration named a source that
+does not hold it:** LangFuse records each generation's `prompt_layers` ids with `hash: null`, and
+its `input` is the user prompt (10,000-character cap), not the system prompt. What the stored
+generations do show is each task on the right agent with its own role's system layer
+(`data-planning-system` on data … `qa-build-system` on eve), 16 generations on roll 1.
+
+**I2 — unaskable on this pair.** Neither roll entered correction, so no repair prompt was
+rendered. §3a allowed for this ("unaskable on a pair with no correction round, and said so"). The
+lead-decision section is the window's to exercise.
+
+**Seam findings from the pack: none.** Across both rolls (03:06–04:52Z), no B′ container logged an
+ERROR or a traceback that belongs to either roll.
+
+**One finding from outside the pack: #1648.** The two hash-read cycles (status block) were cancelled
+0.2 s after their first dispatch. Cancel marked the runs cancelled, stopped their Prefect flows and
+released their leases. **The agents that had already consumed the envelopes ran them to completion
+anyway:** han until 03:06:47Z, data until 03:11:24Z. Roll 1 passed run-state isolation at 03:06:52
+(runs and leases both clean) and dispatched its first task to data while data was still working
+the cancelled squad run's task. Roll 1's framing therefore started about 4.5 min late, behind a
+ghost generation. Roll 1 is non-counting, and its verdict, audit and criteria don't depend on
+timing. **Its wall clock is inflated by about that much and is not a baseline.** The four
+runtime-api tracebacks in the window all belong to the two cancelled runs (the executor waited on
+the ghost replies, then logged a harmless `cancelled → cancelled`).
+
+**Exit rule, and the question it leaves.** The pack found nothing new, and I1 holds. #1648 is new,
+but the pack didn't produce it: the rev 2 hash-read procedure did. It does bear on §1's void rule
+and §3c's run-state isolation, though: a cancel near a launch puts the next arm's first task behind
+a ghost the gate cannot see. **Whether #1648 voids this registration, is fixed first (driver-side
+gate or agent-side drop), or is carried with a procedural guard is the owner's ruling.** Until
+then, §3a's exit is stated as "met for the pack, open on #1648".
+
+### 10b. §3b — Han's shakeout pair on B′ (2026-09-23, non-counting)
+
+Both rolls ran on `36f2af6e`, config `5c164909188d`, snapshot `ef6111328d35`. Records:
+`var/verification_sets/1-8-1-window-solo/shakeout-20260923T{054958,070323}Z.{md,json}`.
+
+| roll | cycle / impl run | verdict | boot audit | criteria | what correction did | wall clock |
+|---|---|---|---|---|---|---|
+| 1 | `cyc_8c6d36b89b6d` / `run_a3241715d118` | rejected (`tests_pass`) | PASS | 20 / 21 | round 00: dev repair offered no qa-owned file (#884 veto), emitted nothing, refunded; `qa.test` re-authored (1 → 3 failing); `plan_defect` at round 0 | 57 min |
+| 2 | `cyc_30ee4777d182` / `run_aea9baa75e73` | rejected (`tests_pass`) | PASS | 20 / 21 | round 00: patch applied, verification passed (10 checks), retest FAILED; `qa.test` re-authored; round 01: repair hit the completion cap, refunded; `qa.test` re-authored (1 → 4 failing); `plan_defect` at round 1 | 72 min |
+
+Han's own log (read directly, since the driver couldn't; see H-row notes): roll 1, 17 emissions and
+86,806 completion tokens; roll 2, 21 emissions and 106,088 tokens, one of them zero-character.
+
+| seam | reading |
+|---|---|
+| **H1** | **Reached.** Every framing task (8 on roll 1) and every implementation, repair and retest task went to `han_comms`; no role-named queue exists; zero `HandlerNotFoundError` / `UndeclaredRolesError` in any container |
+| **H2** | **Reached.** Han's boot line: `serves roles: lead, dev, strat, builder, qa, data`; the fallback warning is absent |
+| **H3** | **Reached in its core.** Both rolls corrected with the `repair` step alone; no `data.analyze_failure` and no `governance.correction_decision` was dispatched. **The brief's rule section is unaskable from the stored generation**: LangFuse caps `input` at 10,000 characters, and none of the section's phrases appear in the part it keeps (whether it was rendered further on can't be read there). Han's loaded check proves the template (`1644 True True`). **Texture, not a finding:** the deterministic classifier gave a non-own locus to a failure in a qa-owned suite, so the dev repair was offered the views, not the suite (#884). In the squad arm, the lead's decision can name the owner. This is §10i's named asymmetry at work |
+| **H4** | **FAILS on both rolls, and the rule is wrong, not the arm: #1650.** The absence check forbids any `governance.*` artifact, and the solo task plan this registration holds equal (§3c) opens every implementation run with `governance.define_done`. **As coded, every Solo pair voids.** Needs an owner ruling (options in #1650) |
+| **H5** | **Unaskable, driver defect #1654**: `cycle_assessment` ran on an expired CLI token. It reads as unaskable on 8 of the 10 1.8.1 records, including both of §3a's rolls. The driver's exact command after a login returns a full assessment. Fix: #1655 |
+| **H6** | **Holds on the live source** (Han's loaded check: `10m generalist ccb18ec10f99b448`). The stored half is unaskable, as for I1. The generation's `prompt_layers` label reads `dev-system` on Han, but that label is built from the *step's* role (`handlers/cycle/base.py:1055`), not from the prompt it sent, so it's a telemetry label, not evidence either way |
+
+**Driver defects this pair surfaced, beyond H4 and H5:**
+- **#1651:** emission facts were read from the squad's six containers only, so every Solo emission fact read unaskable, including the per-roll completion tokens §1 reports. Fix: #1652.
+- **#1653:** correction rounds are counted by stored correction decisions, so every Solo roll reads 0 rounds, including roll 2, which applied, verified and retested a patch. Needs a definition (does a refunded round count?) before a fix.
+
+**A gap in this registration:** SIP-0108 §10i item 3 says the Solo termination rule is "stated in the
+window's pre-registration". It is not. Both rolls terminated `plan_defect` on the first conjunct
+alone (carried without progress, "candidate=none"), once after a round that had been refunded.
+
+**§3b's exit is not met.** Five findings (#1650, #1651, #1653, #1654 and the termination-rule gap)
+are all in the driver or the registration, none in the deploy. The rule is "a seam not reached within
+two runs stops the window for a plan revision": H4 and H5 were not reached. The window does not
+launch on this registration.
