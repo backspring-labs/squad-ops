@@ -571,6 +571,66 @@ services:
     - squadnet
     extra_hosts:
       - "host.docker.internal:host-gateway"
+  han:
+    build:
+      context: .
+      dockerfile: agents/Dockerfile
+      args:
+        AGENT_ROLE: generalist
+        BUILD_HASH: ${BUILD_HASH:-unknown}
+        SOURCE_HASH: ${SOURCE_HASH:-unknown}
+    container_name: squadops-han
+    init: true  # tini as PID 1 reaps orphaned build subprocesses (esbuild/vite/node) — no zombie pileup
+    restart: unless-stopped
+    secrets:
+      - agent_client_secret
+      - db_password
+      - rabbitmq_password
+      - keycloak_admin_password
+      - keycloak_db_dsn
+    environment:
+      SQUADOPS__AGENT__ID: han
+      SQUADOPS_AGENT_ROLE: generalist
+      SQUADOPS_PROFILE: "${SQUADOPS_PROFILE:?Run bootstrap first}"
+      SQUADOPS__SECRETS__PROVIDER: docker_secret
+      SQUADOPS__DB__URL: postgresql://squadops:secret://db_password@postgres:5432/squadops
+      SQUADOPS__COMMS__RABBITMQ__URL: amqp://squadops:secret://rabbitmq_password@rabbitmq:5672/
+      SQUADOPS__COMMS__REDIS__URL: redis://redis:6379/0
+      SQUADOPS__TELEMETRY__BACKEND: otel
+      SQUADOPS__TELEMETRY__OTLP_ENDPOINT: http://otel-collector:4317
+      SQUADOPS__LANGFUSE__ENABLED: "true"
+      SQUADOPS__LANGFUSE__HOST: http://squadops-langfuse:3000
+      SQUADOPS__LANGFUSE__PUBLIC_KEY: ${SQUADOPS__LANGFUSE__PUBLIC_KEY}
+      SQUADOPS__LANGFUSE__SECRET_KEY: ${SQUADOPS__LANGFUSE__SECRET_KEY}
+      # Prompt asset source (SIP-0084): 'filesystem' or 'langfuse'
+      SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER: ${SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
+      # Agent service identity (#326): no HTTP server, so inbound-auth middleware
+      # stays off; heartbeats to runtime-api authenticate via client credentials.
+      SQUADOPS__AUTH__ENABLED: "false"
+      SQUADOPS__AUTH__OIDC__ISSUER_URL: http://squadops-keycloak:8080/realms/${SQUADOPS_REALM:-squadops-dev}
+      SQUADOPS__AUTH__OIDC__AUDIENCE: squadops-runtime
+      SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_ID: squadops-agent
+      SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
+      SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
+      SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
+      SQUADOPS__COMMS__QUEUE__PROVIDER: rabbitmq  # required, never defaulted (#301)
+      SQUADOPS__COMMS__A2A__PROVIDER: http  # required, never defaulted (#301)
+      SQUADOPS__TOOLS__FILESYSTEM__PROVIDER: local  # required, never defaulted (#301)
+      SQUADOPS__AUTH__PROVIDER: keycloak  # required, never defaulted (#1568)
+      SQUADOPS__CYCLES__REGISTRY_PROVIDER: postgres  # required, never defaulted (#1568)
+      SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
+      SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+    - squadnet
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
   bob:
     build:
       context: .
