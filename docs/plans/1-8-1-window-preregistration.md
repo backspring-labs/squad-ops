@@ -58,7 +58,7 @@ reads it as texture on both, never as an arm effect.
 | Gate policy | the 1.6.3 §6 constant, verbatim in both set configs' `gate_notes`; `--as-agent`; the decider recorded per roll |
 | Driver | `verification_set_driver.py window --squad-set docs/plans/verification-sets/1-8-1-window-squad.yaml --solo-set docs/plans/verification-sets/1-8-1-window-solo.yaml`; shakeouts via `shakeout --set …`. **The sample and the budget are the configs' registered data** (`window_pairs: 6`, `window_max_attempts: 8`, declared on both arms and required equal), never flags; a resume whose arms, sample or budget differ from the recorded state is refused. **No arm is observed until the exact pair has passed the comparison gate**: the runner proves the two supplied configs name each other, then reads both arms from the deploy before pair 1's first roll; the per-launch preflight stays, for drift |
 | Deploy — commit | **`36f2af6e`** (a label, not an assertion, #1296): main after #1647; runtime-api reports `framework_git_sha` `36f2af6e` |
-| Deploy — image ids | runtime-api **`75d866b9883c`**, max **`fcb71587b260`**, neo **`3ac94b110a13`**, nat **`5b947a1d469b`**, bob **`801c18a1c886`**, eve **`c508e66ee55f`**, data **`d7349139a4bc`**, han **`3c63b8422147`**. All eight differ from deploy A's. The squad config pins its seven (`named_services`) and the solo config pins all eight; the topology gate reads the union of both arms, so all eight containers must be up for either arm |
+| Deploy — image ids | runtime-api **`75d866b9883c`**, max **`fcb71587b260`**, neo **`3ac94b110a13`**, nat **`5b947a1d469b`**, bob **`801c18a1c886`**, eve **`c508e66ee55f`**, data **`d7349139a4bc`**, han **`3c63b8422147`**. All eight differ from deploy A's. **Both configs pin all eight**: the committed guard requires the two arms' image maps to be equal. Pinning `han` names it in the squad arm's identity, so every squad record carries Han's image id beside its own and the topology gate asserts all eight containers up for either arm |
 | `resolved_config_hash` | squad (`validated-fullstack`) **`58eed2c52e1f`**; solo (`validated-fullstack-solo`) **`5c164909188d`**. Read from B′ by attempting a roll (status block). The squad value equals deploy A's React pin, as it should: the request profile did not move between A and B′ |
 | `squad_profile_snapshot_ref` | `full-38` **`2d8d4feb3519a7ec`** (version 2, six × 12288; equals A's pin, because the profile did not move); `solo` **`ef6111328d35570d`** (version 1, seeded at B′'s runtime-api start). Each is the live read (`live_squad_snapshot`) and also the value stamped on that arm's hash-read cycle |
 | Records | `var/verification_sets/1-8-1-window-squad/`, `…/1-8-1-window-solo/`; the window's own state and reading in the squad arm's directory (`window-state.json`, `window-<UTC>.{md,json}`) |
@@ -206,7 +206,9 @@ of either arm.)*
 
 ### 10a. §3a — the squad's shakeout pair on B′ (2026-09-23, non-counting)
 
-Both rolls ran on `36f2af6e` with the eight B′ images. Each record stamps config `58eed2c52e1f` and
+Both rolls ran on `36f2af6e`. Each record's identity block carries the seven squad image ids,
+matching §1. `han` was not yet named in the squad config when the pair ran, so the pair's
+records don't carry Han's id; it was up throughout, idle. Each record stamps config `58eed2c52e1f` and
 snapshot `2d8d4feb3519`, the rev 2 squad pins. Records:
 `var/verification_sets/1-8-1-window-squad/shakeout-20260923T{035939,045147}Z.{md,json}`.
 
