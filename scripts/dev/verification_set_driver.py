@@ -1212,20 +1212,31 @@ def pair_comparison_problems(cfg: SetConfig, other: SetConfig) -> list[str]:
 #: set config cannot disagree about which arm is the solo one.
 SOLO_ARM = "solo"
 
-#: What a Solo roll must NOT have produced (SIP-0108 §10i item 6): "Han never saw it" as a
-#: fact the record proves, rather than a property of a profile nobody re-read.
+#: What a Solo roll must NOT have produced (SIP-0108 §10i item 6, as amended by §10n): the
+#: two correction-protocol steps the arm is defined without — the analyzer's failure analysis
+#: and the lead's correction decision. "Han never saw it" as a fact the record proves, rather
+#: than a property of a profile nobody re-read. Matched by the stored filename OR the step that
+#: produced it, so a renamed artifact from either step is still caught.
 _SOLO_FORBIDDEN_ARTIFACTS = (
     "failure_analysis.md",
     "correction_decision.md",
 )
+_SOLO_FORBIDDEN_PRODUCERS = (
+    "data.analyze_failure",
+    "governance.correction_decision",
+)
 
 
 def solo_absence_problems(cfg: SetConfig, cycle_id: str, run_id: str) -> list[str]:
-    """The per-roll preflight for a solo arm — the three absences, read from the vault.
+    """The per-roll preflight for a solo arm — the absences, read from the vault.
 
-    §10i item 6. A framing document, a failure analysis or a correction decision stored for a
-    Solo run means the arm did not run without them, whatever the profile declared. The record
-    proves the absence rather than inheriting it from a config.
+    §10i item 6 as amended by §10n (#1650). The solo arm runs the SAME task plan as the squad
+    (the window pre-registration §3c holds it equal), so Han performs the framing steps and
+    ``governance.define_done`` himself and their artifacts are the arm's own work. What the
+    arm is defined without is the correction protocol's analyzer and lead: a failure analysis
+    or a correction decision stored for a Solo run means the arm did not run without them,
+    whatever the profile declared. That no OTHER agent did any step is H1's reading (every
+    envelope names ``han``), not this one's.
     """
     problems: list[str] = []
     for art in artifact_dirs(cfg, cycle_id, run_id):
@@ -1233,15 +1244,12 @@ def solo_absence_problems(cfg: SetConfig, cycle_id: str, run_id: str) -> list[st
         if not m:
             continue
         filename = str(m.get("filename") or "")
-        if filename in _SOLO_FORBIDDEN_ARTIFACTS:
+        producer = str((m.get("metadata") or {}).get("producing_task_type", ""))
+        if filename in _SOLO_FORBIDDEN_ARTIFACTS or producer in _SOLO_FORBIDDEN_PRODUCERS:
             problems.append(
-                f"§10i: solo arm stored {filename} ({art.name}) — the arm is defined by running "
-                "correction without the analyzer and the lead, so this roll did not run the arm"
-            )
-        if str((m.get("metadata") or {}).get("producing_task_type", "")).startswith("governance."):
-            problems.append(
-                f"§10i: solo arm stored a governance artifact ({filename}, {art.name}) — "
-                "framing roles are the squad arm's, not this one's"
+                f"§10i: solo arm stored {filename} ({art.name}, from {producer or 'no producer'})"
+                " — the arm is defined by running correction without the analyzer and the "
+                "lead, so this roll did not run the arm"
             )
     return problems
 
