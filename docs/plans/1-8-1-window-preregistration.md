@@ -202,3 +202,49 @@ layer reading the process (§10m), the optional decision section (#1644), the wi
 
 *(§3a's pair, §3b's pair, then the window; rev 2 adds the pins above this line before any roll
 of either arm.)*
+
+### 10a. §3a — the squad's shakeout pair on B′ (2026-09-23, non-counting)
+
+Both rolls ran on `36f2af6e` with the eight B′ images. Each record stamps config `58eed2c52e1f` and
+snapshot `2d8d4feb3519`, the rev 2 squad pins. Records:
+`var/verification_sets/1-8-1-window-squad/shakeout-20260923T{035939,045147}Z.{md,json}`.
+
+| roll | cycle | verdict | boot audit | functional | criteria | correction rounds | wall clock |
+|---|---|---|---|---|---|---|---|
+| 1 | `cyc_4fd319b021bc` | accepted | PASS (5 probes) | yes | 21 / 21 | none (asked) | 52 min |
+| 2 | `cyc_a1909a39b8a1` | accepted | PASS (7 probes) | yes | 23 / 23 | none (asked) | 51 min |
+
+**I1 — holds, on the live source.** In both rolls' identity blocks, every one of the six squad
+containers hashes its identity prompt to the value §3a registered (`lead 95ecaf9cb6b79fe1`,
+`dev 13e209e6caa5dc9f`, `strat dc64a93d9dcda0c4`, `builder 11ed180485de17f9`,
+`qa 1f1f5c65a90641a7`, `data c74e0e6d4bdd9635`), each against the generalist control
+`ccb18ec10f99b448`. **The stored-prompt half is unaskable, and the registration named a source that
+does not hold it:** LangFuse records each generation's `prompt_layers` ids with `hash: null`, and
+its `input` is the user prompt (10,000-character cap), not the system prompt. What the stored
+generations do show is each task on the right agent with its own role's system layer
+(`data-planning-system` on data … `qa-build-system` on eve), 16 generations on roll 1.
+
+**I2 — unaskable on this pair.** Neither roll entered correction, so no repair prompt was
+rendered. §3a allowed for this ("unaskable on a pair with no correction round, and said so"). The
+lead-decision section is the window's to exercise.
+
+**Seam findings from the pack: none.** Across both rolls (03:06–04:52Z), no B′ container logged an
+ERROR or a traceback that belongs to either roll.
+
+**One finding from outside the pack: #1648.** The two hash-read cycles (status block) were cancelled
+0.2 s after their first dispatch. Cancel marked the runs cancelled, stopped their Prefect flows and
+released their leases. **The agents that had already consumed the envelopes ran them to completion
+anyway:** han until 03:06:47Z, data until 03:11:24Z. Roll 1 passed run-state isolation at 03:06:52
+(runs and leases both clean) and dispatched its first task to data while data was still working
+the cancelled squad run's task. Roll 1's framing therefore started about 4.5 min late, behind a
+ghost generation. Roll 1 is non-counting, and its verdict, audit and criteria don't depend on
+timing. **Its wall clock is inflated by about that much and is not a baseline.** The four
+runtime-api tracebacks in the window all belong to the two cancelled runs (the executor waited on
+the ghost replies, then logged a harmless `cancelled → cancelled`).
+
+**Exit rule, and the question it leaves.** The pack found nothing new, and I1 holds. #1648 is new,
+but the pack didn't produce it: the rev 2 hash-read procedure did. It does bear on §1's void rule
+and §3c's run-state isolation, though: a cancel near a launch puts the next arm's first task behind
+a ghost the gate cannot see. **Whether #1648 voids this registration, is fixed first (driver-side
+gate or agent-side drop), or is carried with a procedural guard is the owner's ruling.** Until
+then, §3a's exit is stated as "met for the pack, open on #1648".
