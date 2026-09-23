@@ -297,6 +297,7 @@ get_agent_role() {
         joi) echo "comms" ;;
         og) echo "creative" ;;
         hal) echo "audit" ;;
+        han) echo "generalist" ;;
         *) echo "unknown" ;;
     esac
 }
