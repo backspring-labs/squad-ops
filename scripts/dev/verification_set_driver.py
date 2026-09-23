@@ -274,6 +274,7 @@ _STORED_EVALUATIONS = ("no_implementation_run", "no_typed_check_evaluation_store
 EVIDENCE_FIELDS: dict[str, tuple[str, ...]] = {
     # collect(): stored artifacts of the implementation run
     "correction_rounds": ("no_implementation_run",),
+    "correction_decisions_stored": ("no_implementation_run",),
     "failed_emission_artifacts_banked": ("no_implementation_run",),
     "failed_emissions_banked": ("no_implementation_run", "no_attempt_stamp"),
     # loop_texture: the runtime-api window, patch path
@@ -1625,6 +1626,17 @@ def emissions_from_stamps(banked: list[dict]) -> int | None:
     return len({(m.get("task_id"), int(m["attempt"])) for m in banked})
 
 
+#: #1653: the correction steps' task ids carry the round index (``corr-run_<id>-NN-…`` for the
+#: analyzer and the decision, ``repair-run_<id>-NN-…`` for the repair) in both arms.
+_CORRECTION_ROUND_TASK_ID = re.compile(r"^(?:corr|repair)-run_[0-9a-f]+-(\d+)-")
+
+
+def _refunded_suffix(rec: Mapping[str, Any]) -> str:
+    """How many of the rounds were refunded and re-taken (#1053/#998), beside the count."""
+    refunded = value_at(rec, "loop_texture.refunded_rounds", []) or []
+    return f" ({len(refunded)} refunded)" if refunded else ""
+
+
 def collect(cfg: SetConfig, cycle_id: str) -> dict:
     runs = parse_run_rows(
         psql(
@@ -1640,7 +1652,8 @@ def collect(cfg: SetConfig, cycle_id: str) -> dict:
         f"join cycle_runs r on r.run_id=g.run_id where r.cycle_id='{cycle_id}' order by g.decided_at;"
     ).splitlines()
     summary: dict = {}
-    corrections = 0
+    decisions = 0
+    round_indices: set[int] = set()
     # #1431 was a LABEL defect and is fixed as one: this counts the artifacts #971 banks,
     # and the readout now says so. Grouping them into an emission count was tried and
     # reverted (#1436) — `task_id` is the only key the banked metadata carries, and two
@@ -1667,7 +1680,15 @@ def collect(cfg: SetConfig, cycle_id: str) -> dict:
             if not m:
                 continue
             if m.get("filename") == "correction_decision.md":
-                corrections += 1
+                decisions += 1
+            # #1653: a round is its index on the correction steps' task ids, stored by both
+            # arms (Solo has no decision to count, and a squad round re-taken after a refund
+            # stores a second decision under the SAME index).
+            round_id = _CORRECTION_ROUND_TASK_ID.match(
+                str((m.get("metadata") or {}).get("task_id", ""))
+            )
+            if round_id:
+                round_indices.add(int(round_id.group(1)))
             if (m.get("metadata") or {}).get("emission_status") == "failed":
                 failed_emission_artifacts += 1
                 banked_metadata.append(m.get("metadata") or {})
@@ -1706,7 +1727,12 @@ def collect(cfg: SetConfig, cycle_id: str) -> dict:
         # #1445: all three are read from the implementation run's stored artifacts, so
         # without one they are unaskable — a record that read "0 correction rounds" for a
         # cycle that never built anything was reporting an absence as a fact.
-        "correction_rounds": evidence_for("correction_rounds", corrections, context).record(),
+        "correction_rounds": evidence_for(
+            "correction_rounds", len(round_indices), context
+        ).record(),
+        "correction_decisions_stored": evidence_for(
+            "correction_decisions_stored", decisions, context
+        ).record(),
         "failed_emission_artifacts_banked": evidence_for(
             "failed_emission_artifacts_banked", failed_emission_artifacts, context
         ).record(),
@@ -2466,6 +2492,7 @@ def loop_texture(
     until: str | None = None,
     *,
     correction_rounds: int | None = None,
+    correction_decisions: int | None = None,
 ) -> dict:
     raw = docker_logs(RUNTIME_API_CONTAINER, since, until)
     logs = _runtime_lines_of_interest(raw)
@@ -2512,7 +2539,7 @@ def loop_texture(
         "no_emission_shape_lines": out["emissions_logged"] == 0,
         "no_emission_retry_aimed": len(out["emission_retries"]) == 0,
         "no_repair_revision_form_line": len(out["repair_revision_forms"]) == 0,
-        "no_correction_decision_stored": (correction_rounds or 0) == 0,
+        "no_correction_decision_stored": (correction_decisions or 0) == 0,
         "no_fill_merge_artifact": len(out["fill_merge_evidence"]) == 0,
         "no_test_report_stored": uncollected is None,
         "no_qa_scaffold_suite": rejections is None,
@@ -3842,7 +3869,12 @@ def restate(rec: dict) -> tuple[dict, list[str]]:
         ),
         "no_emission_shape_lines": (value_at(out, "loop_texture.emissions_logged", 0) or 0) == 0,
         "no_emission_retry_aimed": not value_at(out, "loop_texture.emission_retries", []),
-        "no_correction_decision_stored": correction == 0,
+        # A record written before #1653 counted rounds BY decisions, so its round count is
+        # its decision count; a newer one carries the decisions separately.
+        "no_correction_decision_stored": (
+            value_at(out, "correction_decisions_stored", correction) or 0
+        )
+        == 0,
         "no_fill_merge_artifact": not value_at(out, "loop_texture.fill_merge_evidence", []),
         "no_test_report_stored": None,
         "no_qa_scaffold_suite": None,
@@ -3959,7 +3991,7 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         "| field | value |",
         "|---|---|",
         f"| framing runs / re-rolls | {rec['framing_runs']} / {rec['framing_rerolls']} |",
-        f"| correction rounds | {_show_at(rec, 'correction_rounds')} |",
+        f"| correction rounds | {_show_at(rec, 'correction_rounds')}{_refunded_suffix(rec)} |",
         f"| failed checks | {', '.join(rec['failed_checks']) or '—'} |",
         f"| criteria verified / total | {rec['criteria_verified']} / {rec['criteria_total']} |",
         "| criteria NOT verified — a row was produced, not credited | "
@@ -4141,6 +4173,7 @@ def _run_cycle(
         launched_at,
         until=cycle_log_until(cyc),
         correction_rounds=value_at(rec, "correction_rounds", 0),
+        correction_decisions=value_at(rec, "correction_decisions_stored", 0),
     )
     # #1445: always produced — without an implementation run every field is unaskable,
     # which is a different record from `{}`.
