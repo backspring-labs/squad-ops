@@ -555,6 +555,15 @@ class SetConfig:
     #: directory. Present on exactly one side of a pair: the comparison gate runs from
     #: whichever config names the other, so the check has two configs to read.
     compare_with: str = ""
+    #: The comparison window's REGISTERED sample and attempt budget (plan §4.3: six valid pairs
+    #: of at most eight attempted), declared on both arm configs and required to agree. Data,
+    #: never a CLI flag: a value the operator could change at launch or on resume is a value
+    #: that could change after results exist.
+    window_pairs: int = 0
+    window_max_attempts: int = 0
+    #: This config's own file name, so a counterpart named in ``compare_with`` can be checked
+    #: against the config actually supplied rather than against "any file that exists".
+    source: str = ""
 
     @property
     def records_path(self) -> Path:
@@ -637,6 +646,9 @@ def load_set_config(path: Path) -> SetConfig:
         pre_registration=str(raw.get("pre_registration") or ""),
         arm=str(raw.get("arm") or ""),
         compare_with=str(raw.get("compare_with") or ""),
+        window_pairs=int(raw.get("window_pairs") or 0),
+        window_max_attempts=int(raw.get("window_max_attempts") or 0),
+        source=path.name,
     )
 
 
@@ -4424,22 +4436,47 @@ def render_window(state: dict, tally: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def window_problems(
-    squad_cfg: SetConfig, solo_cfg: SetConfig, pairs: int, max_attempts: int
-) -> list[str]:
-    """Why two configs are not a registered pair — read before anything launches."""
+def window_problems(squad_cfg: SetConfig, solo_cfg: SetConfig) -> list[str]:
+    """Why two configs are not a registered pair — read before anything launches.
+
+    The pair is the two configs SUPPLIED: ``compare_with`` must name the counterpart's own
+    file (one way or reciprocally), never merely some file that exists — otherwise the
+    per-launch gate could compare one arm against a third config while the runner pairs it
+    with another. The sample and attempt budget are the configs' registered values, declared
+    on both and equal.
+    """
     problems: list[str] = []
     if squad_cfg.arm != SQUAD_ARM:
         problems.append(f"{squad_cfg.name}: arm is {squad_cfg.arm!r}, expected {SQUAD_ARM!r}")
     if solo_cfg.arm != SOLO_ARM:
         problems.append(f"{solo_cfg.name}: arm is {solo_cfg.arm!r}, expected {SOLO_ARM!r}")
-    if not (squad_cfg.compare_with or solo_cfg.compare_with):
+    names_other = {
+        squad_cfg.name: squad_cfg.compare_with == solo_cfg.source,
+        solo_cfg.name: solo_cfg.compare_with == squad_cfg.source,
+    }
+    if not any(names_other.values()):
         problems.append(
-            "neither config names the other in compare_with — the comparison gate has "
-            "nothing to read, and a pair the gate never admitted is not a pair"
+            f"neither config names the other in compare_with (squad: {squad_cfg.compare_with!r}, "
+            f"solo: {solo_cfg.compare_with!r}; the supplied files are {squad_cfg.source!r} and "
+            f"{solo_cfg.source!r}) — a pair the gate never admitted is not a pair"
         )
-    if max_attempts < pairs:
-        problems.append(f"max_attempts {max_attempts} < pairs {pairs}")
+    for cfg in (squad_cfg, solo_cfg):
+        if cfg.compare_with and not names_other[cfg.name]:
+            problems.append(
+                f"{cfg.name}: compare_with names {cfg.compare_with!r}, not the supplied "
+                "counterpart — the gate would compare against a config the runner is not pairing"
+            )
+    pairs, attempts = squad_cfg.window_pairs, squad_cfg.window_max_attempts
+    if (pairs, attempts) != (solo_cfg.window_pairs, solo_cfg.window_max_attempts):
+        problems.append(
+            f"the arms register different windows: squad {pairs}/{attempts}, solo "
+            f"{solo_cfg.window_pairs}/{solo_cfg.window_max_attempts} (pairs/max attempts)"
+        )
+    if pairs < 1 or attempts < pairs:
+        problems.append(
+            f"window_pairs {pairs} / window_max_attempts {attempts} — both registered on the "
+            "configs, at least one pair, the budget at least the sample"
+        )
     return problems
 
 
@@ -4449,6 +4486,19 @@ def _window_state(
     state_path = _window_state_path(squad_cfg)
     if resume and state_path.exists():
         state = json.loads(state_path.read_text())
+        registered = (
+            state.get("squad_set"),
+            state.get("solo_set"),
+            state.get("required_pairs"),
+            state.get("max_attempts"),
+        )
+        supplied = (squad_cfg.name, solo_cfg.name, pairs, max_attempts)
+        if registered != supplied:
+            raise SystemExit(
+                f"resume refused: the recorded window is {registered} and the supplied "
+                f"registration is {supplied} — a window's arms, sample and budget do not "
+                "change after results exist"
+            )
         log(f"resuming the window from {state_path} — {len(state['pairs'])} pair(s) recorded")
         return state
     return {
@@ -4493,30 +4543,34 @@ def _run_pair(pair: dict, cfgs: Mapping[str, SetConfig], required: int, save: Ca
     save()
 
 
-def cmd_window(
-    squad_cfg: SetConfig,
-    solo_cfg: SetConfig,
-    *,
-    pairs: int,
-    max_attempts: int,
-    dry_run: bool,
-    resume: bool,
-) -> int:
+def cmd_window(squad_cfg: SetConfig, solo_cfg: SetConfig, *, dry_run: bool, resume: bool) -> int:
     """Run the window as the pairs it is analysed as (plan §4.3, §8 decisions 5–7).
+
+    No arm is observed until the exact registered pair and its frozen parameters have passed
+    the comparison gate: ``window_problems`` proves the two configs name each other and
+    register the same sample and budget, and ``comparison_problems`` reads both arms from the
+    deploy BEFORE pair 1's first roll — not, as a per-launch preflight alone would, when the
+    second arm launches with the first already observed. The per-launch preflight stays, to
+    catch drift between launches.
 
     Interleaved and alternating by pair; a void — pre-run identity or infrastructure
     invalidity only, never outcome — removes its pair in full and is replaced by the next
-    sequential pair, up to ``max_attempts``; the mate of a roll that voided before launch is
-    not launched. The reading is rendered whichever way it goes, and a window with fewer valid
-    pairs than required after the budget closes INCOMPLETE and says so.
+    sequential pair, up to the registered budget; the mate of a roll that voided before launch
+    is not launched. The reading is rendered whichever way it goes, and a window with fewer
+    valid pairs than required after the budget closes INCOMPLETE and says so.
 
-    Exit 0: closed complete. 6: closed incomplete. 2: the arms are not a registered pair.
+    Exit 0: closed complete. 6: closed incomplete. 2: the arms are not a registered pair or
+    the gate refused them.
     """
-    problems = window_problems(squad_cfg, solo_cfg, pairs, max_attempts)
+    problems = window_problems(squad_cfg, solo_cfg)
+    if not problems:
+        gate = solo_cfg if solo_cfg.compare_with else squad_cfg
+        problems = comparison_problems(gate)
     if problems:
         for p in problems:
             log(f"!! {p}")
         return 2
+    pairs, max_attempts = squad_cfg.window_pairs, squad_cfg.window_max_attempts
     cfgs = {SQUAD_ARM: squad_cfg, SOLO_ARM: solo_cfg}
     if dry_run:
         for arm, cfg in cfgs.items():
@@ -4592,10 +4646,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     p.add_argument("--squad-set", required=True, type=Path, help="the squad arm's set config")
     p.add_argument("--solo-set", required=True, type=Path, help="the solo arm's set config")
-    p.add_argument("--pairs", type=int, default=6, help="valid pairs required (plan §4.3: 6)")
-    p.add_argument(
-        "--max-attempts", type=int, default=8, help="pairs attempted at most (plan §4.3: 8)"
-    )
+    # The sample and the attempt budget are the configs' registered values (window_pairs,
+    # window_max_attempts), never flags: nothing about a registered window is an argument.
     p.add_argument("--dry-run", action="store_true", help="both arms' preflight, launch nothing")
     p.add_argument(
         "--resume", action="store_true", help="continue from the window's recorded state"
@@ -4605,8 +4657,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         return cmd_window(
             load_set_config(args.squad_set),
             load_set_config(args.solo_set),
-            pairs=args.pairs,
-            max_attempts=args.max_attempts,
             dry_run=args.dry_run,
             resume=args.resume,
         )

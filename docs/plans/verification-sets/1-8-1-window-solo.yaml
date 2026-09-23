@@ -17,6 +17,10 @@ request_profile: validated-fullstack-solo
 overrides: {}
 gate_name: progress_plan_review
 n_rolls: 8
+# The REGISTERED window (plan §4.3, the pre-registration §1): six valid pairs of at most eight
+# attempted. Declared on BOTH arms and required equal; never a launch flag.
+window_pairs: 6
+window_max_attempts: 8
 records_dir: var/verification_sets/1-8-1-window-solo
 arm: solo
 compare_with: 1-8-1-window-squad.yaml

@@ -19,6 +19,10 @@ request_profile: validated-fullstack
 overrides: {}
 gate_name: progress_plan_review
 n_rolls: 8
+# The REGISTERED window (plan §4.3, the pre-registration §1): six valid pairs of at most eight
+# attempted. Declared on BOTH arms and required equal; never a launch flag.
+window_pairs: 6
+window_max_attempts: 8
 records_dir: var/verification_sets/1-8-1-window-squad
 # SIP-0108 §4.4 / §10h: which arm this set is. The solo config names this one in compare_with,
 # so the comparison gate reads both from the deploy before either arm is observed (#1620).
@@ -321,6 +325,13 @@ loaded_checks:
     _p = get_profile("fullstack_fastapi_react").full_system_prompt
     print("598", "Provided by the scaffold" in _p, "You MUST emit this file" in _p,
           "Provided by the scaffold" in get_profile("python_cli_builder").full_system_prompt)
+    # ---- deploy B′ (SIP-0108 §10m, #1641): I1 on the builder container -------------------------
+    import hashlib as _hl, pathlib as _pl, squadops.prompts as _sp
+    from adapters.prompts.filesystem import FileSystemPromptRepository as _FSR
+    from squadops.prompts.assembler import PromptAssembler as _PA
+    _asm = _PA(_FSR(_pl.Path(_sp.__file__).parent / "fragments"))
+    _h = lambda r: _hl.sha256(_asm.get_system_prompt(r).content.encode()).hexdigest()[:16]
+    print("10m builder", _h("builder"), "generalist", _h("generalist"), _h("builder") != _h("generalist"))
   # The dev-lane fault is applied in the developer's own container: its registry and its bite
   # are read HERE, not off runtime-api (#1289's shape). Control: a non-join block is unchanged.
   neo: |-
@@ -354,6 +365,32 @@ loaded_checks:
     _asm = _PA(_FSR(_pl.Path(_sp.__file__).parent / "fragments"))
     _h = lambda r: _hl.sha256(_asm.get_system_prompt(r).content.encode()).hexdigest()[:16]
     print("10m dev", _h("dev"), "generalist", _h("generalist"), _h("dev") != _h("generalist"))
+  # I1 on the three squad containers the counted config never probed: the lead, the strategist
+  # and the analyst assemble the identity they did on A's tree, and not the generalist's.
+  max: |-
+    # ---- deploy B′ (SIP-0108 §10m, #1641): I1 on the lead container -------------------------
+    import hashlib as _hl, pathlib as _pl, squadops.prompts as _sp
+    from adapters.prompts.filesystem import FileSystemPromptRepository as _FSR
+    from squadops.prompts.assembler import PromptAssembler as _PA
+    _asm = _PA(_FSR(_pl.Path(_sp.__file__).parent / "fragments"))
+    _h = lambda r: _hl.sha256(_asm.get_system_prompt(r).content.encode()).hexdigest()[:16]
+    print("10m lead", _h("lead"), "generalist", _h("generalist"), _h("lead") != _h("generalist"))
+  nat: |-
+    # ---- deploy B′ (SIP-0108 §10m, #1641): I1 on the strat container -------------------------
+    import hashlib as _hl, pathlib as _pl, squadops.prompts as _sp
+    from adapters.prompts.filesystem import FileSystemPromptRepository as _FSR
+    from squadops.prompts.assembler import PromptAssembler as _PA
+    _asm = _PA(_FSR(_pl.Path(_sp.__file__).parent / "fragments"))
+    _h = lambda r: _hl.sha256(_asm.get_system_prompt(r).content.encode()).hexdigest()[:16]
+    print("10m strat", _h("strat"), "generalist", _h("generalist"), _h("strat") != _h("generalist"))
+  data: |-
+    # ---- deploy B′ (SIP-0108 §10m, #1641): I1 on the data container -------------------------
+    import hashlib as _hl, pathlib as _pl, squadops.prompts as _sp
+    from adapters.prompts.filesystem import FileSystemPromptRepository as _FSR
+    from squadops.prompts.assembler import PromptAssembler as _PA
+    _asm = _PA(_FSR(_pl.Path(_sp.__file__).parent / "fragments"))
+    _h = lambda r: _hl.sha256(_asm.get_system_prompt(r).content.encode()).hexdigest()[:16]
+    print("10m data", _h("data"), "generalist", _h("generalist"), _h("data") != _h("generalist"))
 # PINNED at rev 2 of the window pre-registration, from deploy B′ after the squad's shakeout pair
 # met its exit rule. A wholly blank block is the pre-registration state; preflight --counting
 # refuses to launch on it (#1296, #1571).
