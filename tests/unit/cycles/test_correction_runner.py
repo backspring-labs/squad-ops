@@ -4395,6 +4395,37 @@ class TestProgressAwareTermination:
         with pytest.raises(_ExecutionError, match="plan_defect"):
             await self._run_round(runner, cycle, state, 2, repair_rejections=refused_round_0)
 
+    async def test_an_empty_previous_round_is_not_a_repeat_where_no_decision_is_declared(
+        self, cycle
+    ):
+        """#1658, entered at ``run_correction_protocol`` on a cycle declaring ``[repair]`` —
+        the Solo arm, where the rule is the carried failures alone (§10i item 3). Both of
+        Han's shakeout rolls on deploy B′ ended ``plan_defect`` right after a round whose
+        repair emitted NOTHING — refunded, "re-taken rather than spent" — and roll 1 had
+        applied no repair at all. An empty round clears adjacency like a refused one; a
+        round whose patch WAS applied still counts."""
+        import dataclasses
+
+        from adapters.cycles.execution_errors import _ExecutionError
+        from squadops.cycles.correction_signature import REPAIR_EMPTY_MARKER
+
+        solo_cycle = dataclasses.replace(cycle, applied_defaults={"correction_steps": ["repair"]})
+        runner = self._runner()
+        self._wire_steps(runner, "none")
+        state: dict = {}
+        empty_round_0 = [
+            f"correction attempt 0: {REPAIR_EMPTY_MARKER} (cap_exhausted) — nothing was "
+            "applied, verified or retested"
+        ]
+
+        await self._run_round(runner, solo_cycle, state, 0)
+        # round 1: the same failure carried, but round 0 applied nothing → no termination
+        await self._run_round(runner, solo_cycle, state, 1, repair_rejections=empty_round_0)
+        assert state["task-qa-4"]["first_seen_round"] == 1
+        # round 2: round 1's repair was applied (no entry for it) → the carried failure counts
+        with pytest.raises(_ExecutionError, match="plan_defect"):
+            await self._run_round(runner, solo_cycle, state, 2, repair_rejections=empty_round_0)
+
     async def test_no_state_threaded_is_todays_behavior(self, cycle):
         # legacy callers without signature_state: byte-identical behavior
         runner = self._runner()
@@ -7187,6 +7218,12 @@ class TestAnEmptyRepairRoundIsNotVerified:
                 "nothing was applied, verified or retested"
             ]
         }
+        # #1658: the entry the executor writes is the one the terminal reads as "nothing was
+        # applied", so the next round's repeat is not counted against a repair that never ran.
+        from squadops.cycles.correction_signature import repair_not_applied_in_round
+
+        entries = carry[TestProgressAwareTermination._envelope().task_id]
+        assert repair_not_applied_in_round(entries, 1) is True
 
     async def test_a_patch_that_carries_content_is_still_verified(self, executor, cycle):
         """The control: the same route with content goes to acceptance and returns its answer."""

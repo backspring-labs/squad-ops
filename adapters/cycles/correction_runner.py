@@ -51,7 +51,7 @@ from squadops.cycles.correction_signature import (
     classify_movement,
     failure_signature,
     render_signature,
-    repair_refused_in_round,
+    repair_not_applied_in_round,
     should_terminate_plan_defect,
 )
 from squadops.cycles.failure_attribution import TerminalKind
@@ -739,11 +739,11 @@ class CorrectionRunner:
         if current_sig is None:
             signature_state.pop(envelope.task_id, None)
             return
-        if state and repair_refused_in_round(repair_rejections, int(state.get("round", -1))):
+        if state and repair_not_applied_in_round(repair_rejections, int(state.get("round", -1))):
             logger.info(
-                "plan_defect terminal: round %s's repair for task=%s was refused by patch "
-                "verification and never applied — its signature is not counted as a "
-                "repeat (#1129)",
+                "plan_defect terminal: round %s's repair for task=%s was never applied "
+                "(refused by patch verification, or emitted nothing) — its signature is not "
+                "counted as a repeat (#1129, #1658)",
                 state.get("round"),
                 envelope.task_id,
             )
