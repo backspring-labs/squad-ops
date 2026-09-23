@@ -1274,6 +1274,45 @@ class TestL8ReadsTheExtractorNotTheStoredName:
         assert not any("noise" in line for line in lines)
         assert len(driver.placeholder_strips(lines)) == len(driver.AGENT_SERVICES)
 
+    _HAN_EMISSION = (
+        "2026-09-23 05:43:08,900 - squadops.capabilities.handlers.emission_log - INFO - "
+        "development_correction_repair_handler emission shape: chars=1823 "
+        "completion_tokens=9079 reasoning_chars=0 fences={'fill': 0, 'path': 0, 'plain': 0} "
+        "head='Looking at the three view files'"
+    )
+
+    @pytest.mark.parametrize(
+        ("set_file", "reads_han"),
+        [("1-8-1-window-solo.yaml", True), ("1-8-1-window-squad.yaml", None)],
+    )
+    def test_loop_texture_reads_the_containers_the_set_names(
+        self, driver, monkeypatch, set_file, reads_han
+    ):
+        """Wiring (#1651): a Solo roll's work runs in ``han`` alone, and ``loop_texture`` read
+        only the squad's six containers, so on Han's shakeout pair every emission fact read
+        UNASKABLE, the per-roll completion tokens the window reports included. Entered at
+        ``loop_texture``, the caller the record uses. The squad set reads han exactly when it
+        names han (rev 2 pins all eight; rev 1 named none)."""
+        cfg = driver.load_set_config(_SETS / set_file)
+        seen: list[str] = []
+
+        def fake_docker_logs(container: str, since: str, until: str | None = None) -> list[str]:
+            seen.append(container)
+            return [self._HAN_EMISSION] if container == "squadops-han" else []
+
+        monkeypatch.setattr(driver, "docker_logs", fake_docker_logs)
+        out = driver.loop_texture(cfg, "cyc_x", None, "2026-09-23T04:51:48Z")
+        expected = "han" in driver.named_services(cfg) if reads_han is None else reads_han
+        assert ("squadops-han" in seen) is expected
+        tokens = driver.value_at(
+            {"loop_texture": out}, "loop_texture.emission_tokens_by_handler", {}
+        )
+        if expected:
+            assert out["emissions_logged"]["value"] == 1
+            assert "development_correction_repair_handler" in str(tokens)
+        else:
+            assert out["emissions_logged"]["value"] == 0
+
     def test_the_driver_and_the_extractor_agree_on_the_placeholder(self, driver):
         """The driver reads a deployed container's log, so it holds the literal rather
         than importing it; this is what stops the two drifting apart."""
@@ -1702,7 +1741,8 @@ class TestUncollectedSuitesAreReadFromTheStoredReports:
         monkeypatch.setattr(driver, "_fill_rejections", lambda *a: [])
         monkeypatch.setattr(driver, "fill_merge_evidence", lambda *a: [])
         monkeypatch.setattr(driver, "_decision_inherited_claims", lambda *a: [])
-        out = driver.loop_texture(None, "cyc", "run", "2026-09-14T03:00:00Z")
+        cfg = driver.load_set_config(_SETS / "1-8-1-window-squad.yaml")
+        out = driver.loop_texture(cfg, "cyc", "run", "2026-09-14T03:00:00Z")
         assert out["uncollected_suites"]["state"] == state
         if state == "unaskable":
             assert "no test_report.md stored" in out["uncollected_suites"]["reason"]
@@ -2521,8 +2561,9 @@ class TestTheLogWindowIsBoundedAtBothEnds:
         monkeypatch.setattr(driver, "fill_merge_evidence", lambda *a: [])
         monkeypatch.setattr(driver, "_stored_artifact_names", lambda *a: [])
         monkeypatch.setattr(driver, "_decision_inherited_claims", lambda *a: [])
+        cfg = driver.load_set_config(_SETS / "1-8-1-window-squad.yaml")
         out = driver.loop_texture(
-            None, "cyc_x", None, "2026-09-08T05:30:00Z", until="2026-09-08T06:27:00Z"
+            cfg, "cyc_x", None, "2026-09-08T05:30:00Z", until="2026-09-08T06:27:00Z"
         )
         assert out["log_window"] == {
             "since": "2026-09-08T05:30:00Z",

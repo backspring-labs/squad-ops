@@ -778,6 +778,11 @@ def named_services(cfg: SetConfig) -> tuple[str, ...]:
     return (*DEPLOY_SERVICES, *(s for s in SOLO_SERVICES if s in extra))
 
 
+def set_agent_services(cfg: SetConfig) -> tuple[str, ...]:
+    """The agent containers this set's work can run in: its named services minus the API."""
+    return tuple(s for s in named_services(cfg) if s != "runtime-api")
+
+
 def deploy_identity(cfg: SetConfig) -> dict[str, str]:
     ids = {s: image_id(s) for s in named_services(cfg)}
     ids["head"] = sh(f"git -C {REPO} rev-parse --short HEAD")
@@ -2167,7 +2172,9 @@ def prefect_log_window(since: str, until: str | None = None) -> list[str]:
     ]
 
 
-def agent_log_window(since: str, until: str | None = None) -> list[str]:
+def agent_log_window(
+    since: str, until: str | None = None, services: Sequence[str] = AGENT_SERVICES
+) -> list[str]:
     """The producing agents' emission lines (#1276, #1311).
 
     The loop's emission facts are logged where the emission happens — in the role's own
@@ -2175,9 +2182,14 @@ def agent_log_window(since: str, until: str | None = None) -> list[str]:
     ``empty_repair_emissions`` keyed on a runtime-api token ("repair emitted no content")
     that the 1.7.1 prose-only repairs never produced, and the contentless first attempts
     that shaped five of seven counted rolls appeared in no readout at all.
+
+    ``services`` is the set's agent containers (``set_agent_services``). A solo arm's
+    work runs in ``han`` alone, so a window over the squad's six containers read every
+    emission fact of a Solo roll as unaskable, the per-roll completion tokens the window
+    reports included (#1651).
     """
     lines: list[str] = []
-    for service in AGENT_SERVICES:
+    for service in services:
         lines += _agent_lines_of_interest(docker_logs(f"squadops-{service}", since, until))
     return lines
 
@@ -2447,7 +2459,7 @@ def loop_texture(
     raw = docker_logs(RUNTIME_API_CONTAINER, since, until)
     logs = _runtime_lines_of_interest(raw)
     out = texture_from_logs(logs)
-    agent_lines = agent_log_window(since, until)
+    agent_lines = agent_log_window(since, until, set_agent_services(cfg))
     out.update(texture_from_emission_shapes(agent_lines))
     out.update(texture_from_retry_feedback(agent_lines))
     out["repair_revision_forms"] = repair_revision_forms(agent_lines)
