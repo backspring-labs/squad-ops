@@ -225,7 +225,7 @@ def carried_failures(
     chain in the vault with suite reports on two adjacent rounds and candidates on both
     (20 chains, 2026-09-13): this rule fires in 15 and the exact rule in 9, and none of the
     15 went on to pass its suite. One of the 15 is 1.6.5 React roll 6, whose previous repair
-    was refused; ``repair_refused_in_round`` clears that round before this rule is asked
+    was refused; ``repair_not_applied_in_round`` clears that round before this rule is asked
     (#1129), and the replay did not model refusals. No stored chain converged after a round
     that kept any failure, so the corpus cannot show the false-positive side. The principle
     above is what protects it.
@@ -280,19 +280,35 @@ def should_terminate_plan_defect(
 REPAIR_REFUSED_MARKER = "repair REJECTED by patch verification"
 
 
-def repair_refused_in_round(repair_rejections: list[str] | None, round_no: int) -> bool:
-    """Whether round ``round_no``'s repair was refused by patch verification (#1129).
+#: The executor's wording for a repair that emitted NOTHING (#1053/#1589): the round is
+#: refunded and "nothing was applied, verified or retested". One constant, two readers, like
+#: ``REPAIR_REFUSED_MARKER``: the executor writes it into the rejection carry, and the terminal
+#: below reads it to know the previous round left the tree unrepaired (#1658).
+REPAIR_EMPTY_MARKER = "the repair emitted no content"
 
-    A refused patch is not a round the signature rule may count: no retest ran, the failed
-    task was re-dispatched against the unrepaired tree, and the failure signature repeated
-    *by construction*. Reading that repeat as "the repair did not help" is how 1.6.5
-    FastAPI+React rolls 5 and 6 ended as ``plan_defect`` after zero applied repairs — roll
-    6's refused patch carried the correct fix. The carry entry is the executor's own
-    ``"correction attempt N: <REPAIR_REFUSED_MARKER> …"`` line; a retest that ran and
-    FAILED is a different entry and stays informative.
+
+def repair_not_applied_in_round(repair_rejections: list[str] | None, round_no: int) -> bool:
+    """Whether round ``round_no``'s repair was never applied to the tree (#1129, #1658).
+
+    Such a round is not one the signature rule may count: no retest ran, the failed task was
+    re-dispatched against the unrepaired tree, and the failure signature repeated *by
+    construction*. Two ways a repair is not applied:
+
+    - **refused by patch verification** (#1129) — 1.6.5 FastAPI+React rolls 5 and 6 ended as
+      ``plan_defect`` after zero applied repairs, and roll 6's refused patch carried the fix;
+    - **emitted nothing** (#1658) — the round is refunded and "re-taken rather than spent",
+      and the rule still counted it: both of Han's shakeout rolls on the 1.8.1 deploy B′ ended
+      ``plan_defect`` on such a round, one after zero applied repairs. Where no decision step
+      is declared the rule is the carried failures alone, so nothing else shielded it.
+
+    The carry entries are the executor's own ``"correction attempt N: <marker> …"`` lines; a
+    retest that ran and FAILED is a different entry and stays informative.
     """
-    prefix = f"correction attempt {round_no}: {REPAIR_REFUSED_MARKER}"
-    return any(str(entry).startswith(prefix) for entry in repair_rejections or [])
+    prefixes = tuple(
+        f"correction attempt {round_no}: {marker}"
+        for marker in (REPAIR_REFUSED_MARKER, REPAIR_EMPTY_MARKER)
+    )
+    return any(str(entry).startswith(prefixes) for entry in repair_rejections or [])
 
 
 def render_signature(signature: frozenset[tuple[str, str, str]]) -> tuple[str, ...]:

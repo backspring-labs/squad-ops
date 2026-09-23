@@ -54,6 +54,7 @@ from squadops.cycles.contract_derivation import (
     SEEDED_MANIFEST_FILENAME,
     is_interface_manifest,
 )
+from squadops.cycles.correction_signature import REPAIR_EMPTY_MARKER
 from squadops.cycles.emission_integrity import EMISSION_FAILURE_KEY, EMISSION_STATUS_FAILED
 from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.failure_evidence import failing_cases_from_evidence
@@ -3570,7 +3571,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             _record_repair_rejection(
                 repair_rejection_carry,
                 envelope.task_id,
-                f"correction attempt {attempt}: the repair emitted no content "
+                f"correction attempt {attempt}: {REPAIR_EMPTY_MARKER} "
                 f"({', '.join(protocol.empty_emission_signatures) or 'signature unreported'})"
                 " — nothing was applied, verified or retested",
             )
