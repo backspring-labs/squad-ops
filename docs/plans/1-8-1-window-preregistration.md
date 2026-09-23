@@ -251,3 +251,38 @@ and §3c's run-state isolation, though: a cancel near a launch puts the next arm
 a ghost the gate cannot see. **Whether #1648 voids this registration, is fixed first (driver-side
 gate or agent-side drop), or is carried with a procedural guard is the owner's ruling.** Until
 then, §3a's exit is stated as "met for the pack, open on #1648".
+
+### 10b. §3b — Han's shakeout pair on B′ (2026-09-23, non-counting)
+
+Both rolls ran on `36f2af6e`, config `5c164909188d`, snapshot `ef6111328d35`. Records:
+`var/verification_sets/1-8-1-window-solo/shakeout-20260923T{054958,070323}Z.{md,json}`.
+
+| roll | cycle / impl run | verdict | boot audit | criteria | what correction did | wall clock |
+|---|---|---|---|---|---|---|
+| 1 | `cyc_8c6d36b89b6d` / `run_a3241715d118` | rejected (`tests_pass`) | PASS | 20 / 21 | round 00: dev repair offered no qa-owned file (#884 veto), emitted nothing, refunded; `qa.test` re-authored (1 → 3 failing); `plan_defect` at round 0 | 57 min |
+| 2 | `cyc_30ee4777d182` / `run_aea9baa75e73` | rejected (`tests_pass`) | PASS | 20 / 21 | round 00: patch applied, verification passed (10 checks), retest FAILED; `qa.test` re-authored; round 01: repair hit the completion cap, refunded; `qa.test` re-authored (1 → 4 failing); `plan_defect` at round 1 | 72 min |
+
+Han's own log (read directly, since the driver couldn't; see H-row notes): roll 1, 17 emissions and
+86,806 completion tokens; roll 2, 21 emissions and 106,088 tokens, one of them zero-character.
+
+| seam | reading |
+|---|---|
+| **H1** | **Reached.** Every framing task (8 on roll 1) and every implementation, repair and retest task went to `han_comms`; no role-named queue exists; zero `HandlerNotFoundError` / `UndeclaredRolesError` in any container |
+| **H2** | **Reached.** Han's boot line: `serves roles: lead, dev, strat, builder, qa, data`; the fallback warning is absent |
+| **H3** | **Reached in its core.** Both rolls corrected with the `repair` step alone; no `data.analyze_failure` and no `governance.correction_decision` was dispatched. **The brief's rule section is unaskable from the stored generation**: LangFuse caps `input` at 10,000 characters and the section falls past the cap. Han's loaded check proves the template (`1644 True True`). **Texture, not a finding:** the deterministic classifier gave a non-own locus to a failure in a qa-owned suite, so the dev repair was offered the views, not the suite (#884). In the squad arm, the lead's decision can name the owner. This is §10i's named asymmetry at work |
+| **H4** | **FAILS on both rolls, and the rule is wrong, not the arm: #1650.** The absence check forbids any `governance.*` artifact, and the solo task plan this registration holds equal (§3c) opens every implementation run with `governance.define_done`. **As coded, every Solo pair voids.** Needs an owner ruling (options in #1650) |
+| **H5** | **Unaskable, driver defect #1654**: `cycle_assessment` ran on an expired CLI token. It reads as unaskable on 8 of the 10 1.8.1 records, including both of §3a's rolls. The driver's exact command after a login returns a full assessment. Fix: #1655 |
+| **H6** | **Holds on the live source** (Han's loaded check: `10m generalist ccb18ec10f99b448`). The stored half is unaskable, as for I1. The generation's `prompt_layers` label reads `dev-system` on Han, but that label is built from the *step's* role (`handlers/cycle/base.py:1055`), not from the prompt it sent, so it's a telemetry label, not evidence either way |
+
+**Driver defects this pair surfaced, beyond H4 and H5:**
+- **#1651:** emission facts were read from the squad's six containers only, so every Solo emission fact read unaskable, including the per-roll completion tokens §1 reports. Fix: #1652.
+- **#1653:** correction rounds are counted by stored correction decisions, so every Solo roll reads 0 rounds, including roll 2, which applied, verified and retested a patch. Needs a definition (does a refunded round count?) before a fix.
+
+**A gap in this registration:** SIP-0108 §10i item 3 says the Solo termination rule is "stated in the
+window's pre-registration". It is not. Both rolls terminated `plan_defect` on the first conjunct
+alone (carried without progress, "candidate=none"), once after a round that had been refunded.
+
+**§3b's exit is not met.** Five findings (#1650, #1651, #1653, #1654 and the termination-rule gap)
+are all in the driver or the registration, none in the deploy. The rule is "a seam not reached within
+two runs stops the window for a plan revision": H4 and H5 were not reached. The window does not
+launch on this registration.
