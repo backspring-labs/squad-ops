@@ -267,6 +267,13 @@ loaded_checks:
     # SIP-0108: the run summary carries the structured terminal decision; the assessment and registry versions deployed.
     print("0108", ASSESSMENT_VERSION, ATTRIBUTION_REGISTRY_VERSION, "terminal" in RunLoopSummary.__dataclass_fields__,
           launched_counted_roll("x — COUNTED roll 3 of 6."), launched_counted_roll("SHAKEOUT — NON-COUNTING"))
+    # #1658: a round whose repair emitted nothing is not a plan_defect round — the carry entry
+    # the executor writes is read as "not applied". Control: a retest that ran and failed
+    # still counts.
+    from squadops.cycles.correction_signature import REPAIR_EMPTY_MARKER, repair_not_applied_in_round
+    _e = [f"correction attempt 0: {REPAIR_EMPTY_MARKER} (cap_exhausted) — nothing was applied"]
+    _r = ["correction attempt 0: repaired suite retest FAILED — 3 errors"]
+    print("1658", repair_not_applied_in_round(_e, 0), repair_not_applied_in_round(_r, 0))
   # The live hypothesis, read on the container that actually runs qa.test rather than off the
   # framework — a policy present in runtime-api and absent in eve's image is #1289's shape.
   eve: |-

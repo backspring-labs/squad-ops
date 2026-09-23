@@ -46,6 +46,13 @@ loaded_checks:
     from squadops.contracts.cycle_request_profiles import load_profile
     _d = dict(load_profile("validated-fullstack-solo").defaults)
     print("1642 steps", declared_correction_steps(_d), decision_is_declared(_d))
+    # #1658: a round whose repair emitted nothing is not a plan_defect round — the carry entry
+    # the executor writes is read as "not applied". Control: a retest that ran and failed
+    # still counts.
+    from squadops.cycles.correction_signature import REPAIR_EMPTY_MARKER, repair_not_applied_in_round
+    _e = [f"correction attempt 0: {REPAIR_EMPTY_MARKER} (cap_exhausted) — nothing was applied"]
+    _r = ["correction attempt 0: repaired suite retest FAILED — 3 errors"]
+    print("1658", repair_not_applied_in_round(_e, 0), repair_not_applied_in_round(_r, 0))
   han: |-
     # #1643 / §10i item 2: this process serves six roles (the roster, read by the entrypoint's
     # resolver — the fallback would print one), and its handler registry holds every role's
