@@ -2834,6 +2834,75 @@ class TestALoadedCheckIsAskedWhereItSaysAndAnsweredBeforeLaunch:
         assert all(c.service in driver.KNOWN_SERVICES for c in cfg.loaded_checks)
 
 
+class TestCorrectionRoundsAreCountedByRoundIndex:
+    """#1653. Rounds were counted by stored ``correction_decision.md`` files. The Solo arm is
+    defined by having no decision, so every Solo roll read 0 rounds (Han's roll 2 applied,
+    verified and retested a patch and read 0). And a squad round re-taken after a refund
+    stores a second decision under the SAME index, so deploy A's React roll 1 read 3 rounds
+    for two. Both arms store the round index on the correction steps' task ids."""
+
+    def _collect(self, driver, tmp_path, monkeypatch, rows, impl=True):
+        dirs = []
+        for i, (task_id, filename) in enumerate(rows):
+            art = tmp_path / f"art_{i:012x}"
+            art.mkdir()
+            (art / "metadata.json").write_text(
+                json.dumps({"filename": filename, "metadata": {"task_id": task_id}})
+            )
+            dirs.append(art)
+        run_row = "1|implementation|completed||run_abc|1800" if impl else ""
+        monkeypatch.setattr(
+            driver, "psql", lambda q: run_row if "from cycle_runs where cycle_id" in q else ""
+        )
+        monkeypatch.setattr(driver, "artifact_dirs", lambda cfg, c, r: dirs)
+        monkeypatch.setattr(driver, "cycle_assessment", lambda cfg, c: {"state": "unaskable"})
+        cfg = driver.load_set_config(_SETS / "1-8-1-window-squad.yaml")
+        return driver.collect(cfg, "cyc_test")
+
+    # Real task ids: deploy A React roll 1 (`run_56d6ead9…`) and Han's roll 2 (`run_aea9baa7…`).
+    _SQUAD_RETAKEN = [
+        ("corr-run_56d6ead9-00-data.analyze_failure", "failure_analysis.md"),
+        ("corr-run_56d6ead9-00-governance.correction_decision", "correction_decision.md"),
+        ("repair-run_56d6ead9-00-qa.test_repair", "backend/tests/test_runs.py"),
+        ("corr-run_56d6ead9-01-data.analyze_failure", "failure_analysis.md"),
+        ("corr-run_56d6ead9-01-governance.correction_decision", "correction_decision.md"),
+        ("repair-run_56d6ead9-01-qa.test_repair", "repair_output.md"),
+        ("corr-run_56d6ead9-01-data.analyze_failure", "failure_analysis.md"),
+        ("corr-run_56d6ead9-01-governance.correction_decision", "correction_decision.md"),
+    ]
+    _SOLO = [
+        (
+            "repair-run_aea9baa7-00-development.correction_repair",
+            "frontend/src/views/RunDetail.jsx",
+        ),
+        ("retest-run_aea9baa7-00-qa.test", "test_report.md"),
+        ("repair-run_aea9baa7-01-development.correction_repair", "repair_output.md"),
+        ("task-run_aea9baa7-m006-qa.test", "frontend/src/__tests__/run_views.test.jsx"),
+    ]
+
+    @pytest.mark.parametrize(
+        ("rows", "rounds", "decisions"),
+        [(_SQUAD_RETAKEN, 2, 3), (_SOLO, 2, 0), ([], 0, 0)],
+        ids=["squad-retaken-round", "solo-no-decisions", "clean-roll"],
+    )
+    def test_rounds_are_indices_and_decisions_are_counted_apart(
+        self, driver, tmp_path, monkeypatch, rows, rounds, decisions
+    ):
+        rec = self._collect(driver, tmp_path, monkeypatch, rows)
+        assert driver.value_at(rec, "correction_rounds") == rounds
+        assert driver.value_at(rec, "correction_decisions_stored") == decisions
+
+    def test_without_an_implementation_run_both_are_unaskable(self, driver, tmp_path, monkeypatch):
+        rec = self._collect(driver, tmp_path, monkeypatch, self._SOLO, impl=False)
+        assert driver.Evidence.read(rec["correction_rounds"]).state == driver.UNASKABLE
+        assert driver.Evidence.read(rec["correction_decisions_stored"]).state == driver.UNASKABLE
+
+    def test_the_row_shows_refunds_beside_the_count(self, driver):
+        rec = {"loop_texture": {"refunded_rounds": {"state": "observed", "value": ["r1"]}}}
+        assert driver._refunded_suffix(rec) == " (1 refunded)"
+        assert driver._refunded_suffix({"loop_texture": {}}) == ""
+
+
 class TestFailedEmissionBankingIsReportedAsArtifactsNotEmissions:
     """#1431 was a label defect; #1436 is why it is fixed as one.
 
@@ -2872,6 +2941,8 @@ class TestFailedEmissionBankingIsReportedAsArtifactsNotEmissions:
 
         monkeypatch.setattr(driver, "psql", fake_psql)
         monkeypatch.setattr(driver, "artifact_dirs", lambda cfg, c, r: dirs)
+        # collect() also reads the assessment through the real CLI; not this test's subject.
+        monkeypatch.setattr(driver, "cycle_assessment", lambda cfg, c: {"state": "unaskable"})
         import yaml
 
         p = tmp_path / "set.yaml"
