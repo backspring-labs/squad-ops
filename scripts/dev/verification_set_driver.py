@@ -562,8 +562,11 @@ class SetConfig:
     window_pairs: int = 0
     window_max_attempts: int = 0
     #: This config's own file name, so a counterpart named in ``compare_with`` can be checked
-    #: against the config actually supplied rather than against "any file that exists".
+    #: against the config actually supplied rather than against "any file that exists" — and
+    #: its resolved path, so a supplied file that merely SHARES the canonical basename is
+    #: refused rather than admitted while the gate reloads the canonical one (#1645 review).
     source: str = ""
+    source_path: str = ""
 
     @property
     def records_path(self) -> Path:
@@ -649,6 +652,7 @@ def load_set_config(path: Path) -> SetConfig:
         window_pairs=int(raw.get("window_pairs") or 0),
         window_max_attempts=int(raw.get("window_max_attempts") or 0),
         source=path.name,
+        source_path=str(path.resolve()),
     )
 
 
@@ -1176,7 +1180,15 @@ def comparison_problems(cfg: SetConfig) -> list[str]:
             f"§4.4: compare_with names {cfg.compare_with}, which is not a set config in "
             f"{other_path.parent}"
         ]
-    other = load_set_config(other_path)
+    return pair_comparison_problems(cfg, load_set_config(other_path))
+
+
+def pair_comparison_problems(cfg: SetConfig, other: SetConfig) -> list[str]:
+    """The comparison gate over two LOADED configs — the objects the caller holds, never a
+    counterpart re-read from disk by name. ``cmd_window`` calls this with the two supplied
+    configs before pair 1's first roll, so changing any evaluated field of either supplied
+    config changes what the gate sees; the per-launch gate loads its counterpart and delegates
+    here (the #1645 review's acceptance condition)."""
     problems = arm_substrate_problems(cfg, other)
     problems.extend(run_state_isolation_problems(cfg))
     topology = runtime_topology(sorted(set(named_services(cfg)) | set(named_services(other))))
@@ -4466,6 +4478,14 @@ def window_problems(squad_cfg: SetConfig, solo_cfg: SetConfig) -> list[str]:
                 f"{cfg.name}: compare_with names {cfg.compare_with!r}, not the supplied "
                 "counterpart — the gate would compare against a config the runner is not pairing"
             )
+        # The per-launch gate reloads a counterpart from SET_CONFIG_DIR by name, so a supplied
+        # file that only SHARES that name would be admitted here and substituted there.
+        canonical = str((SET_CONFIG_DIR / cfg.source).resolve())
+        if cfg.source_path and cfg.source_path != canonical:
+            problems.append(
+                f"{cfg.name}: supplied from {cfg.source_path}, not the registered set config "
+                f"{canonical} — a same-name file elsewhere is not the registered arm"
+            )
     pairs, attempts = squad_cfg.window_pairs, squad_cfg.window_max_attempts
     if (pairs, attempts) != (solo_cfg.window_pairs, solo_cfg.window_max_attempts):
         problems.append(
@@ -4564,8 +4584,12 @@ def cmd_window(squad_cfg: SetConfig, solo_cfg: SetConfig, *, dry_run: bool, resu
     """
     problems = window_problems(squad_cfg, solo_cfg)
     if not problems:
-        gate = solo_cfg if solo_cfg.compare_with else squad_cfg
-        problems = comparison_problems(gate)
+        # The exact two configs supplied, as loaded — never a counterpart re-read by name.
+        problems = (
+            pair_comparison_problems(solo_cfg, squad_cfg)
+            if solo_cfg.compare_with
+            else pair_comparison_problems(squad_cfg, solo_cfg)
+        )
     if problems:
         for p in problems:
             log(f"!! {p}")

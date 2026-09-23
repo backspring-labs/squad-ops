@@ -4398,12 +4398,15 @@ class TestTheWindowRunsAsPairs:
         return driver.load_set_config(p)
 
     def _pair(self, driver, tmp_path, monkeypatch, **kw):
-        """A registered pair whose gate passes — the squad names the solo's own file."""
+        """A registered pair whose gate passes — the squad names the solo's own file, both
+        live in the set-config directory (the canonical location), and the pair gate is
+        stubbed open."""
+        monkeypatch.setattr(driver, "SET_CONFIG_DIR", tmp_path)
         squad = self._cfg(
             driver, tmp_path, "squad-arm", "squad", compare_with="solo-arm.yaml", **kw
         )
         solo = self._cfg(driver, tmp_path, "solo-arm", "solo", **kw)
-        monkeypatch.setattr(driver, "comparison_problems", lambda cfg: [])
+        monkeypatch.setattr(driver, "pair_comparison_problems", lambda a, b: [])
         return squad, solo
 
     @staticmethod
@@ -4482,15 +4485,18 @@ class TestTheWindowRunsAsPairs:
         the solo. A drifted substrate must refuse the window with nothing observed."""
         squad = self._cfg(driver, tmp_path, "squad-arm", "squad", compare_with="solo-arm.yaml")
         solo = self._cfg(driver, tmp_path, "solo-arm", "solo")
-        gated: list[str] = []
+        monkeypatch.setattr(driver, "SET_CONFIG_DIR", tmp_path)
+        gated: list[tuple[str, str]] = []
         monkeypatch.setattr(
-            driver, "comparison_problems", lambda cfg: gated.append(cfg.name) or ["§4.4: drift"]
+            driver,
+            "pair_comparison_problems",
+            lambda a, b: gated.append((a.name, b.name)) or ["§4.4: drift"],
         )
         monkeypatch.setattr(
             driver, "_window_roll", lambda *a, **k: pytest.fail("a roll launched before the gate")
         )
         assert driver.cmd_window(squad, solo, dry_run=False, resume=False) == 2
-        assert gated == ["squad-arm"], "the gate runs from the config that names the other"
+        assert gated == [("squad-arm", "solo-arm")], "the gate runs on the two supplied objects"
 
     def test_a_void_removes_the_pair_and_the_mate_is_not_launched(
         self, driver, tmp_path, monkeypatch
@@ -4547,10 +4553,13 @@ class TestTheWindowRunsAsPairs:
         md = next(squad.records_path.glob("window-*.md")).read_text()
         assert "INCOMPLETE" in md
 
-    def test_the_pair_is_the_two_supplied_configs_and_nothing_else(self, driver, tmp_path):
+    def test_the_pair_is_the_two_supplied_configs_and_nothing_else(
+        self, driver, tmp_path, monkeypatch
+    ):
         """Review objection 2 on #1645. Bug this catches: ``compare_with`` naming a file that
         exists but is not the supplied counterpart — the per-launch gate comparing Solo
         against config C while the runner pairs it with config A."""
+        monkeypatch.setattr(driver, "SET_CONFIG_DIR", tmp_path)
         squad = self._cfg(driver, tmp_path, "squad-arm", "squad")
         solo = self._cfg(driver, tmp_path, "solo-arm", "solo")
         assert any(
@@ -4569,6 +4578,45 @@ class TestTheWindowRunsAsPairs:
 
         wrong_arm = self._cfg(driver, tmp_path, "other", "", compare_with="solo-arm.yaml")
         assert any("expected 'squad'" in p for p in driver.window_problems(wrong_arm, solo))
+
+    def test_a_same_name_file_elsewhere_is_not_the_registered_arm(
+        self, driver, tmp_path, monkeypatch
+    ):
+        """The remaining half of objection 2, reproduced by the reviewer at 69877044: a
+        supplied config from another directory with the canonical basename was admitted by
+        the basename check while the gate reloaded the canonical file — the arm that would
+        run was not the arm the gate admitted. Two rules close it: the supplied path must be
+        the registered one, and the pre-loop gate consumes the supplied OBJECTS, so changing
+        any evaluated field of either changes what it sees."""
+        monkeypatch.setattr(driver, "SET_CONFIG_DIR", tmp_path)
+        squad = self._cfg(driver, tmp_path, "squad-arm", "squad", compare_with="solo-arm.yaml")
+        solo = self._cfg(driver, tmp_path, "solo-arm", "solo")
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        impostor = self._cfg(
+            driver,
+            elsewhere,
+            "squad-arm",
+            "squad",
+            compare_with="solo-arm.yaml",
+            request_profile="DIFFERENT-SUPPLIED-CONFIG",
+        )
+        assert impostor.source == squad.source and impostor.source_path != squad.source_path
+        problems = driver.window_problems(impostor, solo)
+        assert any("not the registered set config" in p for p in problems)
+
+        # And the gate itself sees the supplied objects: an evaluated field changed on the
+        # supplied config reaches the substrate comparison, not a canonical reload.
+        seen: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            driver,
+            "arm_substrate_problems",
+            lambda a, b: seen.append((a.request_profile, b.request_profile)) or [],
+        )
+        monkeypatch.setattr(driver, "run_state_isolation_problems", lambda cfg: [])
+        monkeypatch.setattr(driver, "image_id", lambda service: "up")
+        assert driver.pair_comparison_problems(impostor, solo) == []
+        assert seen == [("DIFFERENT-SUPPLIED-CONFIG", "validated-fullstack")]
 
     def test_the_sample_and_budget_are_registered_data_that_the_arms_share(
         self, driver, tmp_path, monkeypatch
