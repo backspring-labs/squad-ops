@@ -8,8 +8,9 @@ readings are in §10.
 
 **How the config hashes were read.** The rule is "by attempting a roll, never carried" (deploy A
 rev 5). Before the shakeout, one cycle per arm was launched with the driver's own `launch()`
-command and cancelled while its framing run was still queued: `cyc_4ec8974a3bc1` (squad) and
-`cyc_cf40784e4389` (solo). Nothing ran and nothing counts. **Stability without a second launch:**
+command and cancelled 0.2 s later: `cyc_4ec8974a3bc1` (squad) and `cyc_cf40784e4389` (solo).
+Nothing counts. **But not "nothing ran"**: each run's first task had already been dispatched, and
+the agent ran it to completion after the cancel (#1648, §10a). **Stability without a second launch:**
 the CLI computes the hash locally and warns on any server mismatch, and printed none. The server
 adds to the hash only a derived `contract_ref` (`api/routes/cycles/cycles.py`, #779), so the value
 is a pure function of the request profile. The squad shakeout pair then launched at the pinned
