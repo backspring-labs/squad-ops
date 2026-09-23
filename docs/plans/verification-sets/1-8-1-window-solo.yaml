@@ -78,7 +78,15 @@ loaded_checks:
 # PINNED at rev 2 of the window pre-registration, from deploy B′ after the squad's shakeout pair
 # met its exit rule. A wholly blank block is the pre-registration state; preflight --counting
 # refuses to launch on it (#1296, #1571).
-expected_config_hash_prefix: ""
-expected_squad_snapshot_prefix: ""
-frozen_deploy_commit: ""
-frozen_image_ids: {}
+expected_config_hash_prefix: "5c164909188d"
+expected_squad_snapshot_prefix: "ef6111328d35570d"
+frozen_deploy_commit: "36f2af6e"
+frozen_image_ids:
+  runtime-api: "75d866b9883c"
+  max: "fcb71587b260"
+  neo: "3ac94b110a13"
+  nat: "5b947a1d469b"
+  bob: "801c18a1c886"
+  eve: "c508e66ee55f"
+  data: "d7349139a4bc"
+  han: "3c63b8422147"

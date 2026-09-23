@@ -1,5 +1,22 @@
 # 1.8.1 comparison window — pre-registration (plan §7 step 9, §4.3)
 
+**Status: rev 2 (2026-09-23) — the pins, read from deploy B′ after the squad's shakeout pair met
+its exit rule (§3a).** B′ was rebuilt from `36f2af6e` (both arms and runtime-api, one rebuild);
+every value below was read from that deploy, none carried. §1's four *rev 2* rows now carry them,
+and both set configs' pin blocks hold the same values. Nothing else in §1–§9 moved. The §3a
+readings are in §10.
+
+**How the config hashes were read.** The rule is "by attempting a roll, never carried" (deploy A
+rev 5). Before the shakeout, one cycle per arm was launched with the driver's own `launch()`
+command and cancelled while its framing run was still queued: `cyc_4ec8974a3bc1` (squad) and
+`cyc_cf40784e4389` (solo). Nothing ran and nothing counts. **Stability without a second launch:**
+the CLI computes the hash locally and warns on any server mismatch, and printed none. The server
+adds to the hash only a derived `contract_ref` (`api/routes/cycles/cycles.py`, #779), so the value
+is a pure function of the request profile. The squad shakeout pair then launched at the pinned
+squad hash, which confirms it.
+
+*Rev 1's status block, kept for the record:*
+
 **Status: rev 1 (2026-09-22) — the rules, the arms, the pairs and the readouts, committed before
 deploy B′ exists.** The pins — both arms' resolved config hashes, both squad snapshots, the eight
 image ids — are read from deploy B′ after the rebuild and land as **rev 2**, before any roll of
@@ -39,10 +56,10 @@ reads it as texture on both, never as an arm effect.
 | Reported, never tie-breakers | quality as a **verification-quality proxy** (the retest, the boot audit, correction rounds, termination reasons — the clean-room indicators stay unaskable until SIP-0102 step 5, and the label says so); efficiency as wall clock and completion tokens per roll, rendered per pair |
 | Gate policy | the 1.6.3 §6 constant, verbatim in both set configs' `gate_notes`; `--as-agent`; the decider recorded per roll |
 | Driver | `verification_set_driver.py window --squad-set docs/plans/verification-sets/1-8-1-window-squad.yaml --solo-set docs/plans/verification-sets/1-8-1-window-solo.yaml`; shakeouts via `shakeout --set …`. **The sample and the budget are the configs' registered data** (`window_pairs: 6`, `window_max_attempts: 8`, declared on both arms and required equal), never flags; a resume whose arms, sample or budget differ from the recorded state is refused. **No arm is observed until the exact pair has passed the comparison gate**: the runner proves the two supplied configs name each other, then reads both arms from the deploy before pair 1's first roll; the per-launch preflight stays, for drift |
-| Deploy — commit | *rev 2* (a label, not an assertion, #1296) |
-| Deploy — image ids | *rev 2*: the squad's seven **and `han`** — eight services on B′ |
-| `resolved_config_hash` | *rev 2*, one per arm, read from the deploy by attempting a roll — never carried (the deploy-A rev 5 lesson) |
-| `squad_profile_snapshot_ref` | *rev 2*, one per arm: `full-38` at version 2 (the flat cap, #1619) and `solo` as the seeder stored it. Both read from the deploy, not computed |
+| Deploy — commit | **`36f2af6e`** (a label, not an assertion, #1296): main after #1647; runtime-api reports `framework_git_sha` `36f2af6e` |
+| Deploy — image ids | runtime-api **`75d866b9883c`**, max **`fcb71587b260`**, neo **`3ac94b110a13`**, nat **`5b947a1d469b`**, bob **`801c18a1c886`**, eve **`c508e66ee55f`**, data **`d7349139a4bc`**, han **`3c63b8422147`**. All eight differ from deploy A's. The squad config pins its seven (`named_services`) and the solo config pins all eight; the topology gate reads the union of both arms, so all eight containers must be up for either arm |
+| `resolved_config_hash` | squad (`validated-fullstack`) **`58eed2c52e1f`**; solo (`validated-fullstack-solo`) **`5c164909188d`**. Read from B′ by attempting a roll (status block). The squad value equals deploy A's React pin, as it should: the request profile did not move between A and B′ |
+| `squad_profile_snapshot_ref` | `full-38` **`2d8d4feb3519a7ec`** (version 2, six × 12288; equals A's pin, because the profile did not move); `solo` **`ef6111328d35570d`** (version 1, seeded at B′'s runtime-api start). Each is the live read (`live_squad_snapshot`) and also the value stamped on that arm's hash-read cycle |
 | Records | `var/verification_sets/1-8-1-window-squad/`, `…/1-8-1-window-solo/`; the window's own state and reading in the squad arm's directory (`window-state.json`, `window-<UTC>.{md,json}`) |
 
 ---
