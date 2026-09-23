@@ -72,6 +72,11 @@ PYTHON = str(REPO / ".venv" / "bin" / "python")
 #: docker-compose service names (fixed by docker-compose.yml; CLAUDE.md forbids renaming).
 AGENT_SERVICES = ("max", "neo", "nat", "bob", "eve", "data")
 DEPLOY_SERVICES = ("runtime-api", *AGENT_SERVICES)
+#: The Solo arm's one container (SIP-0108 §10i, the 1.8.1 window). Not a deploy service: a
+#: squad deploy has no `han`, and a set that does not name it is not asked about it. A set
+#: names it by pinning its image id or probing it, and only then is it read and required up.
+SOLO_SERVICES = ("han",)
+KNOWN_SERVICES = (*DEPLOY_SERVICES, *SOLO_SERVICES)
 POSTGRES_CONTAINER = "squadops-postgres"
 RUNTIME_API_CONTAINER = "squadops-runtime-api"
 
@@ -550,6 +555,18 @@ class SetConfig:
     #: directory. Present on exactly one side of a pair: the comparison gate runs from
     #: whichever config names the other, so the check has two configs to read.
     compare_with: str = ""
+    #: The comparison window's REGISTERED sample and attempt budget (plan §4.3: six valid pairs
+    #: of at most eight attempted), declared on both arm configs and required to agree. Data,
+    #: never a CLI flag: a value the operator could change at launch or on resume is a value
+    #: that could change after results exist.
+    window_pairs: int = 0
+    window_max_attempts: int = 0
+    #: This config's own file name, so a counterpart named in ``compare_with`` can be checked
+    #: against the config actually supplied rather than against "any file that exists" — and
+    #: its resolved path, so a supplied file that merely SHARES the canonical basename is
+    #: refused rather than admitted while the gate reloads the canonical one (#1645 review).
+    source: str = ""
+    source_path: str = ""
 
     @property
     def records_path(self) -> Path:
@@ -592,7 +609,7 @@ def load_set_config(path: Path) -> SetConfig:
         for k, v in (raw.get("overrides") or {}).items()
     }
     image_ids = {str(k): str(v) for k, v in (raw.get("frozen_image_ids") or {}).items()}
-    unknown = sorted(set(image_ids) - set(DEPLOY_SERVICES))
+    unknown = sorted(set(image_ids) - set(KNOWN_SERVICES))
     if unknown:
         raise SystemExit(f"{path}: frozen_image_ids names unknown services {unknown}")
     checks: list[LoadedCheck] = []
@@ -605,7 +622,7 @@ def load_set_config(path: Path) -> SetConfig:
             checks.append(LoadedCheck(name, str(value["service"]), str(value["source"])))
         else:
             checks.append(LoadedCheck(name, name, str(value)))
-    unknown_services = sorted({c.service for c in checks} - set(DEPLOY_SERVICES))
+    unknown_services = sorted({c.service for c in checks} - set(KNOWN_SERVICES))
     if unknown_services:
         raise SystemExit(
             f"{path}: loaded_checks names unknown services {unknown_services} — a probe whose "
@@ -632,6 +649,10 @@ def load_set_config(path: Path) -> SetConfig:
         pre_registration=str(raw.get("pre_registration") or ""),
         arm=str(raw.get("arm") or ""),
         compare_with=str(raw.get("compare_with") or ""),
+        window_pairs=int(raw.get("window_pairs") or 0),
+        window_max_attempts=int(raw.get("window_max_attempts") or 0),
+        source=path.name,
+        source_path=str(path.resolve()),
     )
 
 
@@ -750,8 +771,15 @@ def image_id(service: str) -> str:
     return sh(f"docker inspect --format={{{{.Image}}}} squadops-{service}", check=False)[7:19]
 
 
+def named_services(cfg: SetConfig) -> tuple[str, ...]:
+    """The services this set's identity is read from: the deploy's, plus any solo service the
+    config names by pinning its image or probing it (the 1.8.1 window's `han`)."""
+    extra = {c.service for c in cfg.loaded_checks} | set(cfg.frozen_image_ids)
+    return (*DEPLOY_SERVICES, *(s for s in SOLO_SERVICES if s in extra))
+
+
 def deploy_identity(cfg: SetConfig) -> dict[str, str]:
-    ids = {s: image_id(s) for s in DEPLOY_SERVICES}
+    ids = {s: image_id(s) for s in named_services(cfg)}
     ids["head"] = sh(f"git -C {REPO} rev-parse --short HEAD")
     for check in cfg.loaded_checks:
         # A failed check must say WHY: an ImportError here is the "rebuild exited 0 with
@@ -1053,17 +1081,18 @@ def arm_substrate(cfg: SetConfig) -> dict:
     }
 
 
-def runtime_topology() -> dict:
+def runtime_topology(services: Sequence[str] = DEPLOY_SERVICES) -> dict:
     """Which agent containers are up, as a substrate fact (plan §4.3).
 
     "All relevant containers remain running for both arms; only the designated arm receives
     work." A comparison where one arm ran with six agent processes resident and the other with
     one is a comparison of two memory envelopes on a single-GPU box, whatever the record says
-    about the organization.
+    about the organization. ``services`` is every service either arm names, so a window whose
+    solo arm names `han` requires all eight up, not seven.
     """
     return {
         service: (image_id(service) != "")
-        for service in sorted(s for s in DEPLOY_SERVICES if s not in ("runtime-api",))
+        for service in sorted(s for s in services if s not in ("runtime-api",))
     }
 
 
@@ -1151,10 +1180,18 @@ def comparison_problems(cfg: SetConfig) -> list[str]:
             f"§4.4: compare_with names {cfg.compare_with}, which is not a set config in "
             f"{other_path.parent}"
         ]
-    other = load_set_config(other_path)
+    return pair_comparison_problems(cfg, load_set_config(other_path))
+
+
+def pair_comparison_problems(cfg: SetConfig, other: SetConfig) -> list[str]:
+    """The comparison gate over two LOADED configs — the objects the caller holds, never a
+    counterpart re-read from disk by name. ``cmd_window`` calls this with the two supplied
+    configs before pair 1's first roll, so changing any evaluated field of either supplied
+    config changes what the gate sees; the per-launch gate loads its counterpart and delegates
+    here (the #1645 review's acceptance condition)."""
     problems = arm_substrate_problems(cfg, other)
     problems.extend(run_state_isolation_problems(cfg))
-    topology = runtime_topology()
+    topology = runtime_topology(sorted(set(named_services(cfg)) | set(named_services(other))))
     absent = sorted(svc for svc, up in topology.items() if not up)
     if absent:
         problems.append(
@@ -4411,22 +4448,55 @@ def render_window(state: dict, tally: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def window_problems(
-    squad_cfg: SetConfig, solo_cfg: SetConfig, pairs: int, max_attempts: int
-) -> list[str]:
-    """Why two configs are not a registered pair — read before anything launches."""
+def window_problems(squad_cfg: SetConfig, solo_cfg: SetConfig) -> list[str]:
+    """Why two configs are not a registered pair — read before anything launches.
+
+    The pair is the two configs SUPPLIED: ``compare_with`` must name the counterpart's own
+    file (one way or reciprocally), never merely some file that exists — otherwise the
+    per-launch gate could compare one arm against a third config while the runner pairs it
+    with another. The sample and attempt budget are the configs' registered values, declared
+    on both and equal.
+    """
     problems: list[str] = []
     if squad_cfg.arm != SQUAD_ARM:
         problems.append(f"{squad_cfg.name}: arm is {squad_cfg.arm!r}, expected {SQUAD_ARM!r}")
     if solo_cfg.arm != SOLO_ARM:
         problems.append(f"{solo_cfg.name}: arm is {solo_cfg.arm!r}, expected {SOLO_ARM!r}")
-    if not (squad_cfg.compare_with or solo_cfg.compare_with):
+    names_other = {
+        squad_cfg.name: squad_cfg.compare_with == solo_cfg.source,
+        solo_cfg.name: solo_cfg.compare_with == squad_cfg.source,
+    }
+    if not any(names_other.values()):
         problems.append(
-            "neither config names the other in compare_with — the comparison gate has "
-            "nothing to read, and a pair the gate never admitted is not a pair"
+            f"neither config names the other in compare_with (squad: {squad_cfg.compare_with!r}, "
+            f"solo: {solo_cfg.compare_with!r}; the supplied files are {squad_cfg.source!r} and "
+            f"{solo_cfg.source!r}) — a pair the gate never admitted is not a pair"
         )
-    if max_attempts < pairs:
-        problems.append(f"max_attempts {max_attempts} < pairs {pairs}")
+    for cfg in (squad_cfg, solo_cfg):
+        if cfg.compare_with and not names_other[cfg.name]:
+            problems.append(
+                f"{cfg.name}: compare_with names {cfg.compare_with!r}, not the supplied "
+                "counterpart — the gate would compare against a config the runner is not pairing"
+            )
+        # The per-launch gate reloads a counterpart from SET_CONFIG_DIR by name, so a supplied
+        # file that only SHARES that name would be admitted here and substituted there.
+        canonical = str((SET_CONFIG_DIR / cfg.source).resolve())
+        if cfg.source_path and cfg.source_path != canonical:
+            problems.append(
+                f"{cfg.name}: supplied from {cfg.source_path}, not the registered set config "
+                f"{canonical} — a same-name file elsewhere is not the registered arm"
+            )
+    pairs, attempts = squad_cfg.window_pairs, squad_cfg.window_max_attempts
+    if (pairs, attempts) != (solo_cfg.window_pairs, solo_cfg.window_max_attempts):
+        problems.append(
+            f"the arms register different windows: squad {pairs}/{attempts}, solo "
+            f"{solo_cfg.window_pairs}/{solo_cfg.window_max_attempts} (pairs/max attempts)"
+        )
+    if pairs < 1 or attempts < pairs:
+        problems.append(
+            f"window_pairs {pairs} / window_max_attempts {attempts} — both registered on the "
+            "configs, at least one pair, the budget at least the sample"
+        )
     return problems
 
 
@@ -4436,6 +4506,19 @@ def _window_state(
     state_path = _window_state_path(squad_cfg)
     if resume and state_path.exists():
         state = json.loads(state_path.read_text())
+        registered = (
+            state.get("squad_set"),
+            state.get("solo_set"),
+            state.get("required_pairs"),
+            state.get("max_attempts"),
+        )
+        supplied = (squad_cfg.name, solo_cfg.name, pairs, max_attempts)
+        if registered != supplied:
+            raise SystemExit(
+                f"resume refused: the recorded window is {registered} and the supplied "
+                f"registration is {supplied} — a window's arms, sample and budget do not "
+                "change after results exist"
+            )
         log(f"resuming the window from {state_path} — {len(state['pairs'])} pair(s) recorded")
         return state
     return {
@@ -4480,30 +4563,38 @@ def _run_pair(pair: dict, cfgs: Mapping[str, SetConfig], required: int, save: Ca
     save()
 
 
-def cmd_window(
-    squad_cfg: SetConfig,
-    solo_cfg: SetConfig,
-    *,
-    pairs: int,
-    max_attempts: int,
-    dry_run: bool,
-    resume: bool,
-) -> int:
+def cmd_window(squad_cfg: SetConfig, solo_cfg: SetConfig, *, dry_run: bool, resume: bool) -> int:
     """Run the window as the pairs it is analysed as (plan §4.3, §8 decisions 5–7).
+
+    No arm is observed until the exact registered pair and its frozen parameters have passed
+    the comparison gate: ``window_problems`` proves the two configs name each other and
+    register the same sample and budget, and ``comparison_problems`` reads both arms from the
+    deploy BEFORE pair 1's first roll — not, as a per-launch preflight alone would, when the
+    second arm launches with the first already observed. The per-launch preflight stays, to
+    catch drift between launches.
 
     Interleaved and alternating by pair; a void — pre-run identity or infrastructure
     invalidity only, never outcome — removes its pair in full and is replaced by the next
-    sequential pair, up to ``max_attempts``; the mate of a roll that voided before launch is
-    not launched. The reading is rendered whichever way it goes, and a window with fewer valid
-    pairs than required after the budget closes INCOMPLETE and says so.
+    sequential pair, up to the registered budget; the mate of a roll that voided before launch
+    is not launched. The reading is rendered whichever way it goes, and a window with fewer
+    valid pairs than required after the budget closes INCOMPLETE and says so.
 
-    Exit 0: closed complete. 6: closed incomplete. 2: the arms are not a registered pair.
+    Exit 0: closed complete. 6: closed incomplete. 2: the arms are not a registered pair or
+    the gate refused them.
     """
-    problems = window_problems(squad_cfg, solo_cfg, pairs, max_attempts)
+    problems = window_problems(squad_cfg, solo_cfg)
+    if not problems:
+        # The exact two configs supplied, as loaded — never a counterpart re-read by name.
+        problems = (
+            pair_comparison_problems(solo_cfg, squad_cfg)
+            if solo_cfg.compare_with
+            else pair_comparison_problems(squad_cfg, solo_cfg)
+        )
     if problems:
         for p in problems:
             log(f"!! {p}")
         return 2
+    pairs, max_attempts = squad_cfg.window_pairs, squad_cfg.window_max_attempts
     cfgs = {SQUAD_ARM: squad_cfg, SOLO_ARM: solo_cfg}
     if dry_run:
         for arm, cfg in cfgs.items():
@@ -4579,10 +4670,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     p.add_argument("--squad-set", required=True, type=Path, help="the squad arm's set config")
     p.add_argument("--solo-set", required=True, type=Path, help="the solo arm's set config")
-    p.add_argument("--pairs", type=int, default=6, help="valid pairs required (plan §4.3: 6)")
-    p.add_argument(
-        "--max-attempts", type=int, default=8, help="pairs attempted at most (plan §4.3: 8)"
-    )
+    # The sample and the attempt budget are the configs' registered values (window_pairs,
+    # window_max_attempts), never flags: nothing about a registered window is an argument.
     p.add_argument("--dry-run", action="store_true", help="both arms' preflight, launch nothing")
     p.add_argument(
         "--resume", action="store_true", help="continue from the window's recorded state"
@@ -4592,8 +4681,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         return cmd_window(
             load_set_config(args.squad_set),
             load_set_config(args.solo_set),
-            pairs=args.pairs,
-            max_attempts=args.max_attempts,
             dry_run=args.dry_run,
             resume=args.resume,
         )

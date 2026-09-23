@@ -45,8 +45,17 @@ _COUNTING_SETS: dict[str, dict[str, int]] = {
     # 1.8.1 plan §4.1: 4 + 2. Smaller than 1.8.0's because the nine diagnostics carry N's
     # supply per required cell and the counted rolls are margin, not the other way round.
     "1-8-1": {"nextjs": 2, "fastapi-react": 4},
+    # 1.8.1 plan §4.3: the comparison window's two arms, React only — six valid pairs of at
+    # most eight attempted, so each arm's n_rolls is the attempt budget. Pinned at rev 2 of
+    # the window pre-registration from deploy B′; blank until then.
+    "1-8-1-window": {"squad": 8, "solo": 8},
 }
-_ARM_STACK = {"nextjs": "nextjs_ts", "fastapi-react": "fullstack_fastapi_react"}
+_ARM_STACK = {
+    "nextjs": "nextjs_ts",
+    "fastapi-react": "fullstack_fastapi_react",
+    "squad": "fullstack_fastapi_react",
+    "solo": "fullstack_fastapi_react",
+}
 _COUNTING_SET_FILES = [
     (f"{line}-{arm}.yaml", arm, rolls)
     for line, arms in _COUNTING_SETS.items()
@@ -420,7 +429,10 @@ class TestSquadSnapshotIsAnIdentity:
         assert re.fullmatch(r"[0-9a-f]{12,16}", cfg.expected_squad_snapshot_prefix)
         assert re.fullmatch(r"[0-9a-f]{12}", cfg.expected_config_hash_prefix)
         assert re.fullmatch(r"[0-9a-f]{8}", cfg.frozen_deploy_commit)
-        assert set(cfg.frozen_image_ids) == set(driver.DEPLOY_SERVICES)
+        # Every deploy service, and possibly the solo arm's (the 1.8.1 window pins `han` too).
+        assert (
+            set(driver.DEPLOY_SERVICES) <= set(cfg.frozen_image_ids) <= set(driver.KNOWN_SERVICES)
+        )
         assert all(re.fullmatch(r"[0-9a-f]{12}", v) for v in cfg.frozen_image_ids.values())
 
     def test_the_guard_covers_every_committed_set(self):
@@ -433,13 +445,20 @@ class TestSquadSnapshotIsAnIdentity:
 
     @pytest.mark.parametrize("line", list(_COUNTING_SETS))
     def test_both_sets_share_the_deploy_and_snapshot_but_not_the_config_hash(self, driver, line):
-        a = driver.load_set_config(_SETS / f"{line}-nextjs.yaml")
-        b = driver.load_set_config(_SETS / f"{line}-fastapi-react.yaml")
+        """A line's two stack arms share the deploy and the squad and differ in the request
+        profile; a comparison window's two arms share the deploy and differ in BOTH the squad
+        (that is the arm) and the request profile (the Solo protocol declares repair alone)."""
+        first, second = _COUNTING_SETS[line]
+        a = driver.load_set_config(_SETS / f"{line}-{first}.yaml")
+        b = driver.load_set_config(_SETS / f"{line}-{second}.yaml")
         if not (a.frozen_image_ids or b.frozen_image_ids or a.frozen_deploy_commit):
             return  # pre-registration: neither arm is pinned yet (same rule as the pin guard)
         assert a.frozen_image_ids == b.frozen_image_ids
         assert a.frozen_deploy_commit == b.frozen_deploy_commit
-        assert a.expected_squad_snapshot_prefix == b.expected_squad_snapshot_prefix
+        if {a.arm, b.arm} == {"squad", "solo"}:
+            assert a.expected_squad_snapshot_prefix != b.expected_squad_snapshot_prefix
+        else:
+            assert a.expected_squad_snapshot_prefix == b.expected_squad_snapshot_prefix
         assert a.expected_config_hash_prefix != b.expected_config_hash_prefix
 
 
@@ -2771,7 +2790,7 @@ class TestALoadedCheckIsAskedWhereItSaysAndAnsweredBeforeLaunch:
         A/B arms and diagnostics alike — the defect reached two files because nothing
         looked at the rest."""
         cfg = driver.load_set_config(_SETS / filename)
-        assert all(c.service in driver.DEPLOY_SERVICES for c in cfg.loaded_checks)
+        assert all(c.service in driver.KNOWN_SERVICES for c in cfg.loaded_checks)
 
 
 class TestFailedEmissionBankingIsReportedAsArtifactsNotEmissions:
@@ -4351,9 +4370,11 @@ class TestTheWindowRunsAsPairs:
 
     Each test names the launch-time bug it would catch. The runner is the driver's own
     execution logic for the window, so a defect here is a void window, not a wrong reading.
+    The review of the window's registration (#1645) added the rule the first four pin: no arm
+    is observed until the exact registered pair and its frozen parameters have passed the gate.
     """
 
-    def _cfg(self, driver, tmp_path, name, arm, **overrides):
+    def _cfg(self, driver, tmp_path, name, arm, *, pairs=2, attempts=3, **overrides):
         import yaml
 
         base = {
@@ -4365,8 +4386,10 @@ class TestTheWindowRunsAsPairs:
             "gate_notes": "g",
             "launch_notes": "pair {roll} of {n}",
             "shakeout_notes": "s",
-            "n_rolls": 6,
+            "n_rolls": attempts,
             "arm": arm,
+            "window_pairs": pairs,
+            "window_max_attempts": attempts,
             "records_dir": str(tmp_path / f"records-{name}"),
         }
         base.update(overrides)
@@ -4374,11 +4397,37 @@ class TestTheWindowRunsAsPairs:
         p.write_text(yaml.safe_dump(base))
         return driver.load_set_config(p)
 
+    def _pair(self, driver, tmp_path, monkeypatch, **kw):
+        """A registered pair whose gate passes — the squad names the solo's own file, both
+        live in the set-config directory (the canonical location), and the pair gate is
+        stubbed open."""
+        monkeypatch.setattr(driver, "SET_CONFIG_DIR", tmp_path)
+        squad = self._cfg(
+            driver, tmp_path, "squad-arm", "squad", compare_with="solo-arm.yaml", **kw
+        )
+        solo = self._cfg(driver, tmp_path, "solo-arm", "solo", **kw)
+        monkeypatch.setattr(driver, "pair_comparison_problems", lambda a, b: [])
+        return squad, solo
+
     @staticmethod
     def _rec(verdict="accepted", passed=True, **extra):
         rec = {"verdict": verdict, "boot_audit": {"ran": True, "passed": passed}}
         rec.update(extra)
         return rec
+
+    @staticmethod
+    def _landed(arm, k, functional=True):
+        return {
+            "arm": arm,
+            "launched": True,
+            "exit": 0,
+            "cycle_id": f"cyc_{k}{arm}",
+            "verdict": "accepted" if functional else "rejected",
+            "functional": functional,
+            "wall_clock_seconds": 60,
+            "completion_tokens": 10,
+            "void": None,
+        }
 
     def test_the_order_alternates_by_pair(self, driver):
         """Bug this catches: six of one arm and then six of the other — a serial order that
@@ -4427,6 +4476,28 @@ class TestTheWindowRunsAsPairs:
         assert short["complete"] is False
         assert short["criterion"].startswith("not read")
 
+    def test_the_gate_runs_on_the_exact_pair_before_the_first_roll(
+        self, driver, tmp_path, monkeypatch
+    ):
+        """Review objection 1 on #1645. Bug this catches: pair 1's squad roll observed before
+        the arms were compared — the per-launch preflight reaches the gate only through the
+        config that names the other, which is the SECOND arm to launch when the squad names
+        the solo. A drifted substrate must refuse the window with nothing observed."""
+        squad = self._cfg(driver, tmp_path, "squad-arm", "squad", compare_with="solo-arm.yaml")
+        solo = self._cfg(driver, tmp_path, "solo-arm", "solo")
+        monkeypatch.setattr(driver, "SET_CONFIG_DIR", tmp_path)
+        gated: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            driver,
+            "pair_comparison_problems",
+            lambda a, b: gated.append((a.name, b.name)) or ["§4.4: drift"],
+        )
+        monkeypatch.setattr(
+            driver, "_window_roll", lambda *a, **k: pytest.fail("a roll launched before the gate")
+        )
+        assert driver.cmd_window(squad, solo, dry_run=False, resume=False) == 2
+        assert gated == [("squad-arm", "solo-arm")], "the gate runs on the two supplied objects"
+
     def test_a_void_removes_the_pair_and_the_mate_is_not_launched(
         self, driver, tmp_path, monkeypatch
     ):
@@ -4434,36 +4505,25 @@ class TestTheWindowRunsAsPairs:
         a void pair's mate launched anyway (an hour spent on a roll that cannot count), a void
         counted as an outcome, or the replacement pair not taken from the next sequential
         number."""
-        squad = self._cfg(driver, tmp_path, "squad-arm", "squad", compare_with="solo-arm.yaml")
-        solo = self._cfg(driver, tmp_path, "solo-arm", "solo")
+        squad, solo = self._pair(driver, tmp_path, monkeypatch)
         calls: list[tuple[int, str]] = []
         script = {
-            (1, "squad"): self._rec(),
-            (1, "solo"): self._rec(passed=False),
+            (1, "squad"): True,
+            (1, "solo"): False,
             (2, "solo"): None,  # voids before launch
-            (3, "squad"): self._rec(verdict="rejected", passed=False),
-            (3, "solo"): self._rec(),
+            (3, "squad"): False,
+            (3, "solo"): True,
         }
 
         def fake_roll(cfg, arm, k, required):
             calls.append((k, arm))
-            rec = script[(k, arm)]
-            if rec is None:
+            functional = script[(k, arm)]
+            if functional is None:
                 return {"arm": arm, "launched": False, "void": "preflight refused the launch"}
-            return {
-                "arm": arm,
-                "launched": True,
-                "exit": 0,
-                "cycle_id": f"cyc_{k}{arm}",
-                "verdict": rec["verdict"],
-                "functional": driver.roll_functional(rec),
-                "wall_clock_seconds": 60,
-                "completion_tokens": 10,
-                "void": None,
-            }
+            return self._landed(arm, k, functional)
 
         monkeypatch.setattr(driver, "_window_roll", fake_roll)
-        rc = driver.cmd_window(squad, solo, pairs=2, max_attempts=3, dry_run=False, resume=False)
+        rc = driver.cmd_window(squad, solo, dry_run=False, resume=False)
 
         assert calls == [(1, "squad"), (1, "solo"), (2, "solo"), (3, "squad"), (3, "solo")]
         assert rc == 0
@@ -4479,8 +4539,7 @@ class TestTheWindowRunsAsPairs:
     def test_a_window_short_of_its_pairs_closes_incomplete(self, driver, tmp_path, monkeypatch):
         """Bug this catches: the attempt budget ignored (a ninth pair launched), or a short
         window reported as a result. Exit 6 is the operator's signal, not 0."""
-        squad = self._cfg(driver, tmp_path, "squad-arm", "squad", compare_with="solo-arm.yaml")
-        solo = self._cfg(driver, tmp_path, "solo-arm", "solo")
+        squad, solo = self._pair(driver, tmp_path, monkeypatch)
         calls: list[tuple[int, str]] = []
 
         def always_void(cfg, arm, k, required):
@@ -4488,22 +4547,160 @@ class TestTheWindowRunsAsPairs:
             return {"arm": arm, "launched": False, "void": "the seeded tree did not match"}
 
         monkeypatch.setattr(driver, "_window_roll", always_void)
-        rc = driver.cmd_window(squad, solo, pairs=2, max_attempts=3, dry_run=False, resume=False)
+        rc = driver.cmd_window(squad, solo, dry_run=False, resume=False)
         assert rc == 6
         assert calls == [(1, "squad"), (2, "solo"), (3, "squad")]
         md = next(squad.records_path.glob("window-*.md")).read_text()
         assert "INCOMPLETE" in md
 
-    def test_two_configs_that_are_not_a_registered_pair_refuse(self, driver, tmp_path):
-        """Bug this catches: a window launched on two configs the comparison gate never
-        admitted — plan §4.3's substrate assertions run from ``compare_with``."""
+    def test_the_pair_is_the_two_supplied_configs_and_nothing_else(
+        self, driver, tmp_path, monkeypatch
+    ):
+        """Review objection 2 on #1645. Bug this catches: ``compare_with`` naming a file that
+        exists but is not the supplied counterpart — the per-launch gate comparing Solo
+        against config C while the runner pairs it with config A."""
+        monkeypatch.setattr(driver, "SET_CONFIG_DIR", tmp_path)
         squad = self._cfg(driver, tmp_path, "squad-arm", "squad")
         solo = self._cfg(driver, tmp_path, "solo-arm", "solo")
-        problems = driver.window_problems(squad, solo, pairs=6, max_attempts=8)
-        assert any("compare_with" in p for p in problems)
-        wrong = self._cfg(driver, tmp_path, "other", "", compare_with="solo-arm.yaml")
-        assert any("expected 'squad'" in p for p in driver.window_problems(wrong, solo, 6, 8))
-        assert driver.window_problems(squad, solo, pairs=6, max_attempts=5)
+        assert any(
+            "neither config names the other" in p for p in driver.window_problems(squad, solo)
+        )
+
+        self._cfg(driver, tmp_path, "other-squad", "squad")  # exists on disk
+        wrong = self._cfg(driver, tmp_path, "solo-arm", "solo", compare_with="other-squad.yaml")
+        problems = driver.window_problems(squad, wrong)
+        assert any("not the supplied counterpart" in p for p in problems)
+
+        right = self._cfg(driver, tmp_path, "solo-arm", "solo", compare_with="squad-arm.yaml")
+        assert driver.window_problems(squad, right) == []
+        reciprocal = self._cfg(driver, tmp_path, "squad-arm", "squad", compare_with="solo-arm.yaml")
+        assert driver.window_problems(reciprocal, right) == []
+
+        wrong_arm = self._cfg(driver, tmp_path, "other", "", compare_with="solo-arm.yaml")
+        assert any("expected 'squad'" in p for p in driver.window_problems(wrong_arm, solo))
+
+    def test_a_same_name_file_elsewhere_is_not_the_registered_arm(
+        self, driver, tmp_path, monkeypatch
+    ):
+        """The remaining half of objection 2, reproduced by the reviewer at 69877044: a
+        supplied config from another directory with the canonical basename was admitted by
+        the basename check while the gate reloaded the canonical file — the arm that would
+        run was not the arm the gate admitted. Two rules close it: the supplied path must be
+        the registered one, and the pre-loop gate consumes the supplied OBJECTS, so changing
+        any evaluated field of either changes what it sees."""
+        monkeypatch.setattr(driver, "SET_CONFIG_DIR", tmp_path)
+        squad = self._cfg(driver, tmp_path, "squad-arm", "squad", compare_with="solo-arm.yaml")
+        solo = self._cfg(driver, tmp_path, "solo-arm", "solo")
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        impostor = self._cfg(
+            driver,
+            elsewhere,
+            "squad-arm",
+            "squad",
+            compare_with="solo-arm.yaml",
+            request_profile="DIFFERENT-SUPPLIED-CONFIG",
+        )
+        assert impostor.source == squad.source and impostor.source_path != squad.source_path
+        problems = driver.window_problems(impostor, solo)
+        assert any("not the registered set config" in p for p in problems)
+
+        # And the gate itself sees the supplied objects: an evaluated field changed on the
+        # supplied config reaches the substrate comparison, not a canonical reload.
+        seen: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            driver,
+            "arm_substrate_problems",
+            lambda a, b: seen.append((a.request_profile, b.request_profile)) or [],
+        )
+        monkeypatch.setattr(driver, "run_state_isolation_problems", lambda cfg: [])
+        monkeypatch.setattr(driver, "image_id", lambda service: "up")
+        assert driver.pair_comparison_problems(impostor, solo) == []
+        assert seen == [("DIFFERENT-SUPPLIED-CONFIG", "validated-fullstack")]
+
+    def test_the_sample_and_budget_are_registered_data_that_the_arms_share(
+        self, driver, tmp_path, monkeypatch
+    ):
+        """Review objection 3 on #1645. Bug this catches: N, the threshold or the attempt
+        budget changed at launch or on resume — a flag, or a resume against a state recorded
+        under a different registration."""
+        squad = self._cfg(driver, tmp_path, "squad-arm", "squad", compare_with="solo-arm.yaml")
+        unequal = self._cfg(driver, tmp_path, "solo-arm", "solo", pairs=6, attempts=8)
+        assert any(
+            "register different windows" in p for p in driver.window_problems(squad, unequal)
+        )
+        short = self._cfg(driver, tmp_path, "solo-arm", "solo", pairs=4, attempts=3)
+        squad4 = self._cfg(
+            driver,
+            tmp_path,
+            "squad-arm",
+            "squad",
+            compare_with="solo-arm.yaml",
+            pairs=4,
+            attempts=3,
+        )
+        assert any(
+            "the budget at least the sample" in p for p in driver.window_problems(squad4, short)
+        )
+
+        # A resume must match the recorded registration exactly.
+        squad, solo = self._pair(driver, tmp_path, monkeypatch, pairs=2, attempts=3)
+        driver._save_window_state(
+            squad,
+            {
+                "name": "w",
+                "squad_set": "squad-arm",
+                "solo_set": "solo-arm",
+                "started_at": "2026-09-22T00:00:00Z",
+                "required_pairs": 6,
+                "max_attempts": 8,
+                "pairs": [],
+            },
+        )
+        monkeypatch.setattr(driver, "_window_roll", lambda *a, **k: pytest.fail("launched"))
+        with pytest.raises(SystemExit, match="resume refused"):
+            driver.cmd_window(squad, solo, dry_run=False, resume=True)
+
+        # And the CLI offers no way to change them.
+        with pytest.raises(SystemExit):
+            driver.main(["window", "--squad-set", "a.yaml", "--solo-set", "b.yaml", "--pairs", "3"])
+
+    def test_resume_finishes_the_pair_whose_mate_is_owed(self, driver, tmp_path, monkeypatch):
+        """Bug this catches: a window resumed after a crash re-running a landed roll (a second
+        squad cycle in pair 1, so the pair is no longer one matched trial)."""
+        squad, solo = self._pair(driver, tmp_path, monkeypatch, pairs=1, attempts=1)
+        driver._save_window_state(
+            squad,
+            {
+                "name": "w",
+                "squad_set": "squad-arm",
+                "solo_set": "solo-arm",
+                "started_at": "2026-09-22T00:00:00Z",
+                "required_pairs": 1,
+                "max_attempts": 1,
+                "pairs": [
+                    {
+                        "k": 1,
+                        "order": ["squad", "solo"],
+                        "rolls": {"squad": self._landed("squad", 1)},
+                        "outcome": None,
+                        "void": None,
+                    }
+                ],
+            },
+        )
+        calls: list[tuple[int, str]] = []
+
+        def fake_roll(cfg, arm, k, required):
+            calls.append((k, arm))
+            return self._landed(arm, k, functional=False)
+
+        monkeypatch.setattr(driver, "_window_roll", fake_roll)
+        rc = driver.cmd_window(squad, solo, dry_run=False, resume=True)
+        assert calls == [(1, "solo")]
+        assert rc == 0
+        state = json.loads((squad.records_path / driver.WINDOW_STATE).read_text())
+        assert state["pairs"][0]["outcome"] == "squad"
 
     def test_a_pin_mismatch_voids_and_a_red_framing_does_not(self, driver, tmp_path, monkeypatch):
         """Wiring from the roll to the void rule, entered at ``_window_roll``. Bug this
@@ -4536,55 +4733,6 @@ class TestTheWindowRunsAsPairs:
         roll = driver._window_roll(solo, "solo", 3, 6)
         assert roll["launched"] is False and "preflight refused" in roll["void"]
 
-    def test_resume_finishes_the_pair_whose_mate_is_owed(self, driver, tmp_path, monkeypatch):
-        """Bug this catches: a window resumed after a crash re-running a landed roll (a second
-        squad cycle in pair 1, so the pair is no longer one matched trial)."""
-        squad = self._cfg(driver, tmp_path, "squad-arm", "squad", compare_with="solo-arm.yaml")
-        solo = self._cfg(driver, tmp_path, "solo-arm", "solo")
-        landed = {
-            "arm": "squad",
-            "launched": True,
-            "exit": 0,
-            "cycle_id": "cyc_1squad",
-            "verdict": "accepted",
-            "functional": True,
-            "wall_clock_seconds": 60,
-            "completion_tokens": 10,
-            "void": None,
-        }
-        driver._save_window_state(
-            squad,
-            {
-                "name": "w",
-                "squad_set": "squad-arm",
-                "solo_set": "solo-arm",
-                "started_at": "2026-09-22T00:00:00Z",
-                "required_pairs": 1,
-                "max_attempts": 1,
-                "pairs": [
-                    {
-                        "k": 1,
-                        "order": ["squad", "solo"],
-                        "rolls": {"squad": landed},
-                        "outcome": None,
-                        "void": None,
-                    }
-                ],
-            },
-        )
-        calls: list[tuple[int, str]] = []
-
-        def fake_roll(cfg, arm, k, required):
-            calls.append((k, arm))
-            return dict(landed, arm=arm, cycle_id=f"cyc_{k}{arm}", functional=False)
-
-        monkeypatch.setattr(driver, "_window_roll", fake_roll)
-        rc = driver.cmd_window(squad, solo, pairs=1, max_attempts=1, dry_run=False, resume=True)
-        assert calls == [(1, "solo")]
-        assert rc == 0
-        state = json.loads((squad.records_path / driver.WINDOW_STATE).read_text())
-        assert state["pairs"][0]["outcome"] == "squad"
-
     def test_the_cli_dispatches_window(self, driver, tmp_path, monkeypatch):
         """Bug this catches: the subcommand registered but never dispatched — ``main`` falling
         through to ``cmd_roll`` with no ``--roll``."""
@@ -4592,9 +4740,11 @@ class TestTheWindowRunsAsPairs:
         self._cfg(driver, tmp_path, "solo-arm", "solo")
         seen = {}
 
-        def fake_window(s, h, *, pairs, max_attempts, dry_run, resume):
+        def fake_window(s, h, *, dry_run, resume):
             seen.update(
-                pairs=pairs, max_attempts=max_attempts, dry_run=dry_run, arms=(s.arm, h.arm)
+                dry_run=dry_run,
+                arms=(s.arm, h.arm),
+                registered=(s.window_pairs, s.window_max_attempts),
             )
             return 0
 
@@ -4610,5 +4760,90 @@ class TestTheWindowRunsAsPairs:
             ]
         )
         assert rc == 0
-        assert seen == {"pairs": 6, "max_attempts": 8, "dry_run": True, "arms": ("squad", "solo")}
+        assert seen == {"dry_run": True, "arms": ("squad", "solo"), "registered": (2, 3)}
         assert squad.arm == "squad"
+
+    def test_the_squad_window_config_probes_the_identity_on_every_squad_container(self, driver):
+        """Review objection 4 on #1645. Bug this catches: I1 claiming six live hash checks
+        while the config probes two — four process identities asserted by nothing."""
+        cfg = driver.load_set_config(_SETS / "1-8-1-window-squad.yaml")
+        probed = {c.service for c in cfg.loaded_checks if "10m" in c.source}
+        assert set(driver.AGENT_SERVICES) <= probed, sorted(set(driver.AGENT_SERVICES) - probed)
+        assert cfg.window_pairs == 6 and cfg.window_max_attempts == 8
+        solo = driver.load_set_config(_SETS / "1-8-1-window-solo.yaml")
+        assert driver.window_problems(cfg, solo) == []
+
+
+class TestASetThatNamesTheSoloServiceIsReadAndRequiredUp:
+    """The 1.8.1 window's solo arm runs on one container the squad deploy does not have (SIP-0108
+    §10i). A set is asked about `han` only when it names it — by pinning its image or probing
+    it — and then its identity is read and its container required up for the comparison.
+    """
+
+    def _cfg(self, driver, tmp_path, name, **extra):
+        import yaml
+
+        base = {
+            "name": name,
+            "project": "group_run",
+            "squad_profile": "full-38",
+            "request_profile": "validated-fullstack",
+            "gate_name": "g",
+            "gate_notes": "g",
+            "launch_notes": "r {roll}/{n}",
+            "shakeout_notes": "s",
+            "n_rolls": 8,
+        }
+        base.update(extra)
+        p = tmp_path / f"{name}.yaml"
+        p.write_text(yaml.safe_dump(base))
+        return driver.load_set_config(p)
+
+    def test_the_identity_reads_han_only_for_a_set_that_names_it(
+        self, driver, tmp_path, monkeypatch
+    ):
+        """Wiring at ``deploy_identity``. Bug this catches: every set on every deploy asking
+        about a container that does not exist (an empty id recorded as the deploy's), or the
+        solo arm's record carrying no id for the one container it runs on."""
+        monkeypatch.setattr(driver, "image_id", lambda service: f"id-{service}")
+        monkeypatch.setattr(driver, "sh", lambda *a, **k: "abcd1234")
+        squad = self._cfg(driver, tmp_path, "squad-arm", arm="squad")
+        solo = self._cfg(
+            driver,
+            tmp_path,
+            "solo-arm",
+            arm="solo",
+            loaded_checks={"han": "print('x')"},
+        )
+        monkeypatch.setattr(
+            driver.subprocess,
+            "run",
+            lambda *a, **k: type("P", (), {"returncode": 0, "stdout": "x", "stderr": ""})(),
+        )
+        assert "han" not in driver.deploy_identity(squad)
+        assert driver.deploy_identity(solo)["han"] == "id-han"
+        assert driver.named_services(solo) == (*driver.DEPLOY_SERVICES, "han")
+
+    def test_the_comparison_requires_han_up_when_the_solo_arm_names_it(
+        self, driver, tmp_path, monkeypatch
+    ):
+        """Bug this catches: the topology check counting seven containers on a window that
+        runs eight — Han down would read as "all up" and the pair would launch against a
+        different memory envelope than the one registered (plan §4.3)."""
+        self._cfg(driver, tmp_path, "squad-arm", arm="squad")  # the counterpart on disk
+        monkeypatch.setattr(driver, "SET_CONFIG_DIR", tmp_path)
+        solo = self._cfg(
+            driver,
+            tmp_path,
+            "solo-arm",
+            arm="solo",
+            compare_with="squad-arm.yaml",
+            loaded_checks={"han": "print('x')"},
+        )
+        monkeypatch.setattr(driver, "arm_substrate_problems", lambda a, b: [])
+        monkeypatch.setattr(driver, "psql", lambda *a, **k: "0")
+        monkeypatch.setattr(driver, "image_id", lambda service: "" if service == "han" else "up")
+        problems = driver.comparison_problems(solo)
+        assert any("runtime topology" in p and "han" in p for p in problems)
+        monkeypatch.setattr(driver, "image_id", lambda service: "up")
+        assert not [p for p in driver.comparison_problems(solo) if "runtime topology" in p]

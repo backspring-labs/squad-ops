@@ -1,0 +1,400 @@
+# 1.8.1 comparison window — the SQUAD arm (plan §4.3, SIP-0108 §4.4; the window pre-registration
+# docs/plans/1-8-1-window-preregistration.md).
+#
+# The counted React config's shape (1-8-1-fastapi-react.yaml) with: arm declared; n_rolls = the
+# attempt budget (eight pairs at most, §1); the records under the window's own directory; the
+# prelude's loaded checks carried (their surfaces did not go away) plus deploy B′'s own rows
+# (§10m identity pins, #1644); and the pin block WHOLLY BLANK until rev 2 reads it from B′.
+#
+# THE PINS ARE READ FROM DEPLOY B′, NEVER CARRIED: the images are rebuilt for both arms (the one
+# code change from B, SIP-0108 §10m), so every id moves; the squad snapshot is full-38 at
+# version 2 (the flat cap, #1619) and is read from the deploy; the config hash should equal
+# deploy A's 58eed2c52e1f (the request profile did not move) and is read, not assumed — the
+# deploy-A rev 5 lesson.
+name: 1-8-1-window-squad
+pre_registration: docs/plans/1-8-1-window-preregistration.md
+project: group_run
+squad_profile: full-38
+request_profile: validated-fullstack
+overrides: {}
+gate_name: progress_plan_review
+n_rolls: 8
+# The REGISTERED window (plan §4.3, the pre-registration §1): six valid pairs of at most eight
+# attempted. Declared on BOTH arms and required equal; never a launch flag.
+window_pairs: 6
+window_max_attempts: 8
+records_dir: var/verification_sets/1-8-1-window-squad
+# SIP-0108 §4.4 / §10h: which arm this set is. The solo config names this one in compare_with,
+# so the comparison gate reads both from the deploy before either arm is observed (#1620).
+arm: squad
+# Copied verbatim onto every gate approval — the driver substitutes NOTHING in this text.
+gate_notes: >-
+  1.8.1 comparison window. Approved under the pre-registered gate policy — identical text
+  applied to every roll of both arms. System plan validation passed; no additional judgment
+  applied.
+# {roll} and {n} are the only substitutions the driver makes.
+launch_notes: >-
+  1.8.1 comparison window — SQUAD arm, pair {roll} of at most {n} attempted (six valid
+  required). Interleaved with the solo arm in the registered alternating order.
+shakeout_notes: >-
+  1.8.1 deploy B′ SHAKEOUT — SQUAD arm, NON-COUNTING by declaration before launch. The squad's
+  images rebuilt for the one code change from B (SIP-0108 §10m, #1641): the identity layer reads
+  the process's role. Read for I1 (byte-identical squad prompts) and I2 (the lead's decision in
+  the repair brief) and for any new seam finding; exit rule in the pre-registration §3a.
+loaded_checks:
+  # The prelude's framework surfaces. These run HERE rather than in an agent container
+  # because runtime-api seeds the skeleton and ships examples/ — the builder image does
+  # neither, and deploy B's first identity read an ERROR from bob for exactly that.
+  runtime-api: |-
+    import hashlib, pathlib
+    from squadops.capabilities.baseline_stylesheet import BASELINE_CSS
+    from squadops.capabilities.client_mock_surface import mock_surface_findings
+    from squadops.capabilities.reasoning_policy import default_reasoning_level
+    from squadops.capabilities.scaffold import InterfaceManifest, expand, fill_slot_paths
+    from squadops.capabilities.stack_fastapi_react import CLIENT_SURFACE
+    from squadops.cycles.check_registry import checks_a_run_can_subject
+    from squadops.cycles.manifest_gates import PROOF_INTERFACE_COHERENT, _interface_coherence_findings
+    from squadops.cycles.scaffold_integrity_evidence import KIND_ATTEMPTED_EMISSION, STAGE_FAILED_EMISSION
+    from squadops.cycles.verification_integrity import CheckResult, ENVIRONMENT_INCAPACITY_REASONS, _credit_contract_criteria
+    from squadops.sandbox.environment import get_environment_contract
+    from squadops.capabilities.handlers.cycle.qa_test import _frontend_build_row
+    from squadops.capabilities.handlers.test_runner import BuildCheckResult
+    from squadops.cycles.correction_signature import failure_signature
+    from squadops.cycles.verification_normalize import normalize_task_checks
+    from squadops.cycles.verification_integrity import aggregate_verification
+    from squadops.capabilities.handlers.cycle_tasks import QATestHandler
+    m = InterfaceManifest.from_yaml(pathlib.Path("examples/03_group_run/interface_manifest.yaml").read_text())
+    files = {f["name"]: f["content"] for f in expand(m)}
+    # 1197: the image name, read off the deploy's own contract for BOTH stacks. The boot-audit
+    # evidence line carries it, and the contract hash moved HERE rather than mid-set.
+    imgs = {s: get_environment_contract(s).image for s in ("fullstack_fastapi_react", "nextjs_ts")}
+    # 1463: emitted, byte-identical to the shared constant, imported by the frozen entry
+    # point, and NOT a fill slot. All four, because each failure is a different broken state.
+    css = files.get("frontend/src/index.css", "")
+    css_ok = hashlib.sha256(css.encode()).hexdigest() == hashlib.sha256(BASELINE_CSS.encode()).hexdigest()
+    # 1428: a run owes only the checks its task types can subject. Control: a framing-only run
+    # owes strictly fewer rows than one that authors source.
+    subj_dev = checks_a_run_can_subject(("development.develop",))
+    subj_framing = checks_a_run_can_subject(("development.propose_plan_tasks",))
+    # 820: reporting-only. The control is that the REFERENCE manifest is coherent — a finding
+    # here is a false positive on the very manifest every roll of this set uses.
+    coherent = _interface_coherence_findings(m)
+    # 668: reporting-only, stack #1's client. Control: an honest apiFetch mock yields nothing,
+    # an invented export yields findings. A row that only ever returns 0 proves nothing.
+    honest = "vi.mock('../api', () => ({ apiFetch: vi.fn(), ApiError: class {} }))"
+    invented = "vi.mock('../api', () => ({ fetchApi: vi.fn() }))"
+    f_honest = mock_surface_findings(honest, CLIENT_SURFACE)
+    f_invented = mock_surface_findings(invented, CLIENT_SURFACE)
+    # 1406: ACROSS SUBJECTS, the only shape the rule bites in — _resolve_final_state already
+    # collapses a same-subject re-verification, so a same-subject pair would pass while
+    # exercising nothing. Control: a real failure on the same shape still withholds credit.
+    env_skip = [CheckResult("c1", "passed", criterion_id="k", subject="backend/routes.py"),
+                CheckResult("c2", "skipped", reason="missing_tooling", criterion_id="k", subject="frontend/src/views/X.jsx")]
+    real_fail = [CheckResult("c1", "passed", criterion_id="k", subject="backend/routes.py"),
+                 CheckResult("c2", "failed", criterion_id="k", subject="frontend/src/views/X.jsx")]
+    p_skip, a_skip, kept = _credit_contract_criteria(env_skip)
+    p_fail, a_fail, _ = _credit_contract_criteria(real_fail)
+    print("1197", imgs["fullstack_fastapi_react"], imgs["fullstack_fastapi_react"] == imgs["nextjs_ts"])
+    print("1463", css_ok, "import './index.css'" in files["frontend/src/main.jsx"], "frontend/src/index.css" not in fill_slot_paths(m))
+    print("1428", len(subj_dev), len(subj_framing), subj_framing < subj_dev)
+    print("820", PROOF_INTERFACE_COHERENT, len(coherent))
+    print("668", len(f_honest), len(f_invented))
+    print("1406", sorted(r.value for r in ENVIRONMENT_INCAPACITY_REASONS), sorted(kept), sorted(a_skip), sorted(a_fail))
+    print("1436", KIND_ATTEMPTED_EMISSION, STAGE_FAILED_EMISSION)
+    # 1468: a build that RAN AND FAILED states its cause, and two different failures no
+    # longer collapse to one signature element. Controls: a SKIP still reports its
+    # not-executed reason (the #407 path), and a PASSING row carries no failure evidence.
+    # Deploy A's pair FOUND this defect on both stacks; this row is why the rerun can say
+    # it is closed rather than merely merged.
+    _ev = lambda r: {"validation_result": {"checks": [r]}}
+    _fail = _frontend_build_row(BuildCheckResult(ran=True, ok=False, exit_code=1, error="frontend build failed (exit 1)", stderr="Could not resolve './x'"))
+    _a = _frontend_build_row(BuildCheckResult(ran=True, ok=False, exit_code=1, error="frontend build failed (exit 1)"))
+    _b = _frontend_build_row(BuildCheckResult(ran=True, ok=False, exit_code=2, error="frontend build failed (exit 2)"))
+    _skip = _frontend_build_row(BuildCheckResult(ran=False, error="npm not found"))
+    print("1468", bool(_fail.get("reason")), _fail.get("exit_code"), bool(_fail.get("detail")),
+          failure_signature(_ev(_a)) != failure_signature(_ev(_b)),
+          _skip.get("reason"), _frontend_build_row(BuildCheckResult(ran=True, ok=True)))
+    # 1472: a framework check that fails states its cause IN THE RECORD, derived from the
+    # row's own evidence when the producer set none — entered where the cycle enters
+    # (normalize -> aggregate -> failed_detail), not at the seam. Controls: a producer's own
+    # reason WINS over the derived one, and a row carrying no evidence invents nothing.
+    _row = {"check": "required_files", "passed": False, "missing": ["Dockerfile"]}
+    _fd = aggregate_verification(normalize_task_checks({"validation_result": {"checks": [_row]}}, subject="t"), required_check_ids=["required_files"]).failed_detail
+    _own = aggregate_verification(normalize_task_checks({"validation_result": {"checks": [dict(_row, reason="mine")]}}, subject="t"), required_check_ids=["required_files"]).failed_detail
+    _bare = aggregate_verification(normalize_task_checks({"validation_result": {"checks": [{"check": "required_files", "passed": False}]}}, subject="t"), required_check_ids=["required_files"]).failed_detail
+    print("1472", repr(_fd[0].reason), repr(_own[0].reason), repr(_bare[0].reason))
+    # 1476: the QA build workspace admits the frozen stylesheet the entry point imports.
+    # Entered at the real _get_source_artifacts with the real profile. Control: an unrelated
+    # stylesheet no frozen file imports is still excluded — the fix is two basenames, not
+    # `.css` in source_filter. Printed DROPPED on every deploy before the fix.
+    _prof = "fullstack_fastapi_react"
+    _kept = set(QATestHandler()._get_source_artifacts({"resolved_config": {"development_profile": _prof}, "artifact_contents": {"frontend/src/main.jsx": "x", "frontend/src/index.css": "y", "unrelated/Fancy.css": "z"}}))
+    print("1476", "KEPT" if "frontend/src/index.css" in _kept else "DROPPED", "frontend/src/main.jsx" in _kept, "unrelated/Fancy.css" not in _kept)
+    print("1434", default_reasoning_level("qa.test", output_shape="fill"), default_reasoning_level("qa.test"))
+    # ---- the closures (this deploy's own new surfaces) -------------------------------
+    # A driver that asks only the prelude's questions proves the prelude and nothing about
+    # the three closures deploy B exists to carry. These are live object facts, not file
+    # greps: a marker in a file does not prove the process loaded it (#522).
+    import dataclasses, inspect
+    from squadops.capabilities.handlers.cycle.base import _CycleTaskHandler
+    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor, RunState
+    from squadops.api.runtime.main import build_app, create_app
+    from squadops.config.schema import CommsConfig
+    # 929/1206: every LLM call crosses ONE seam, and the seam records. The keywords are the
+    # fact — `record`/`apply_fault`/`layers`/`attempt` exist only on the extracted method,
+    # and `_record_generation` gained `layers`/`attempt`/`outcome` with it. Control: the
+    # tree the image baked has exactly one `chat_stream_with_usage` call site, in the seam.
+    _call_kw = inspect.signature(_CycleTaskHandler._llm_call).parameters
+    _rec_kw = inspect.signature(_CycleTaskHandler._record_generation).parameters
+    import ast as _ast, squadops as _sq, adapters as _ad
+    _seams = {}
+    for _root in (pathlib.Path(_sq.__file__).parent, pathlib.Path(_ad.__file__).parent):
+        for _p in _root.rglob("*.py"):
+            _n = sum(1 for _x in _ast.walk(_ast.parse(_p.read_text(encoding="utf-8")))
+                     if isinstance(_x, _ast.Call) and isinstance(_x.func, _ast.Attribute)
+                     and _x.func.attr == "chat_stream_with_usage")
+            if _n:
+                _seams[_p.name] = _seams.get(_p.name, 0) + _n
+    print("929", sorted(k for k in ("record", "apply_fault", "layers", "attempt") if k in _call_kw),
+          sorted(k for k in ("layers", "attempt", "outcome") if k in _rec_kw), sorted(_seams.items()))
+    # 1152: the recovery path's two collaborators are CONSTRUCTED by the executor, and the
+    # runner holds the very instance the executor built. Two instances would both "work"
+    # while an injected override did nothing — the wiring is the fact, not the class name.
+    _ex = DispatchedFlowExecutor()
+    print("1152", type(_ex._patch_acceptance).__name__, type(_ex._correction_repair).__name__,
+          _ex._correction_runner._correction_repair is _ex._correction_repair,
+          sorted(f.name for f in dataclasses.fields(RunState)))
+    # 286/301: the app is composed from a config VALUE, and the comms selectors are required.
+    # The raise is the control — a defaulted selector is the masking fallback #1157 banned,
+    # and it would read identically to a working one on every green cycle.
+    try:
+        CommsConfig()
+        _required = "DEFAULTED"
+    except Exception as _exc:
+        _required = type(_exc).__name__
+    print("286/301", callable(build_app), list(inspect.signature(create_app).parameters), _required)
+    STACK = "fullstack_fastapi_react"
+    # ---- the 1.8.0 prelude (deploy A) ------------------------------------------------------
+    # One row per prelude PR, each a live call with its paired control. A marker in a file does
+    # not prove the process loaded it (#522); a row that cannot RUN stops the launch (#1425).
+    import os
+    from datetime import datetime, timedelta, timezone
+    import squadops
+    from squadops._version import resolve_git_sha
+    from squadops.capabilities.handlers.build_profiles import get_profile
+    from squadops.capabilities.handlers.fault_injection import FAULTS, UnknownFault, validate_declaration
+    from squadops.capabilities.rendered_packaging import render_packaging
+    from squadops.cycles import cycle_outcome, lineage
+    from squadops.cycles.correction_signature import carried_failures
+    from squadops.cycles.models import Cycle, TaskFlowPolicy
+    from squadops.prompts import renderer as _renderer
+    from squadops.prompts.frontmatter import FrontmatterError, parse_frontmatter
+    # 1506: the contentless-builder fault is two, one per seam (R1 first attempt, F1 every
+    # emission attempt). Control: an undeclared fault name is refused at create, not ignored.
+    try:
+        validate_declaration({"fault_injection": ["no_such_fault"]})
+        _unknown = "ACCEPTED"
+    except UnknownFault:
+        _unknown = "UnknownFault"
+    print("1506", FAULTS["builder_emission_contentless"].scope.value,
+          FAULTS["builder_emission_contentless_all_attempts"].scope.value, _unknown)
+    # 1501: a round that kept every failure and added one carries it; control: a round that
+    # cleared one is progress and carries nothing.
+    _a = frozenset({("tests_pass", "f", "failed;test=a")})
+    _b = frozenset({("tests_pass", "f", "failed;test=b")})
+    print("1501", len(carried_failures(_a, _a | _b)), len(carried_failures(_a | _b, _a)))
+    # 1499: the shared sheet styles definition lists and the expansion emits it. Control: the
+    # sheet still carries no class selector.
+    print("1499", "\ndl {" in BASELINE_CSS, "dd + dt, dl > div + div {" in css,
+          any("." in _l.split("{")[0] for _l in BASELINE_CSS.splitlines() if "{" in _l))
+    # 80: this image knows the commit it was built from, and a cycle stamps it. Control: the
+    # build argument's default reads as unknown, never as a commit named "unknown".
+    _saved = os.environ.get("SQUADOPS_GIT_SHA")
+    os.environ["SQUADOPS_GIT_SHA"] = "unknown"
+    _unknown_sha = resolve_git_sha()
+    if _saved is None:
+        os.environ.pop("SQUADOPS_GIT_SHA")
+    else:
+        os.environ["SQUADOPS_GIT_SHA"] = _saved
+    print("80", resolve_git_sha(), squadops.__version__, _unknown_sha,
+          sorted(f.name for f in dataclasses.fields(Cycle) if f.name.startswith("framework_")))
+    # 579: the renderer reads frontmatter through the one parser. Control: the strict reading
+    # refuses a missing block by kind.
+    try:
+        parse_frontmatter("no block")
+        _strict = "ACCEPTED"
+    except FrontmatterError as _fe:
+        _strict = _fe.kind
+    print("579", "read_frontmatter" in inspect.getsource(_renderer._parse_template_contract), _strict)
+    # lineage seam: the inert walk calls the seam. Control: another request profile is another series.
+    _cy = lambda i, rp: Cycle(cycle_id=f"c{i}", project_id="p", created_by="t", prd_ref=None,
+        created_at=datetime(2026, 9, 1, tzinfo=timezone.utc) + timedelta(hours=i),
+        squad_profile_id="s", squad_profile_snapshot_ref="x",
+        task_flow_policy=TaskFlowPolicy(mode="sequential"), build_strategy="fresh", request_profile=rp)
+    print("lineage", "prior_in_series" in inspect.getsource(cycle_outcome._collect_inert),
+          [c.cycle_id for c in lineage.prior_in_series(_cy(9, "a"), [_cy(2, "a"), _cy(1, "b")])])
+    # 598: the expansion ships this stack's rendered packaging, frozen, and the builder owes the
+    # notes. Control: a legacy profile with no scaffold still owes its Dockerfile.
+    _pkg = [f["name"] for f in render_packaging(STACK)]
+    print("598", all(p in files and p not in fill_slot_paths(m) for p in _pkg),
+          get_profile(STACK).required_files, "Dockerfile" in get_profile("python_cli_builder").required_files)
+    # dev-lane fault: registered on the develop task. Control: a non-join emission is unchanged.
+    _dev = FAULTS["dev_join_response_omits_declared_fields"]
+    _plain = "```python:backend/models.py\nx = 1\n```\n"
+    print("dev-lane", str(_dev.task), _dev.scope.value, _dev.transform(_plain) == _plain)
+    # 1444: qa.test's output shapes are one table on the handler. Control: the fill shape and
+    # the whole-file default are distinct classes.
+    _shapes = QATestHandler._SHAPES
+    print("1444", sorted(str(k) for k in _shapes), _shapes[None] is not _shapes["fill"])
+    # Deploy B (#1568, SIP-0108): read in the runtime API, which seeds the squad profiles and
+    # finalizes the run summary.
+    import os
+    from pydantic import ValidationError
+    from squadops.config.schema import LLMConfig, PromptsConfig
+    from squadops.cycles.cycle_assessment import ASSESSMENT_VERSION
+    from squadops.cycles.failure_attribution import ATTRIBUTION_REGISTRY_VERSION
+    from squadops.cycles.run_loop_summary import RunLoopSummary
+    from squadops.cycles.benchmark_registry import launched_counted_roll
+    # 1568: squad profiles are data on this deploy; a misspelled selector fails at config load.
+    # Control: a correct name loads.
+    def _refused(f):
+        try:
+            f(); return False
+        except ValidationError:
+            return True
+    print("1568", os.environ.get("SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER"), _refused(lambda: LLMConfig(provider="olama")),
+          _refused(lambda: PromptsConfig(asset_source_provider="langfuze")), not _refused(lambda: PromptsConfig(asset_source_provider="filesystem")))
+    # SIP-0108: the run summary carries the structured terminal decision; the assessment and registry versions deployed.
+    print("0108", ASSESSMENT_VERSION, ATTRIBUTION_REGISTRY_VERSION, "terminal" in RunLoopSummary.__dataclass_fields__,
+          launched_counted_roll("x — COUNTED roll 3 of 6."), launched_counted_roll("SHAKEOUT — NON-COUNTING"))
+  # The live hypothesis, read on the container that actually runs qa.test rather than off the
+  # framework — a policy present in runtime-api and absent in eve's image is #1289's shape.
+  eve: |-
+    from squadops.capabilities.reasoning_policy import default_reasoning_level
+    from squadops.llm.models import ReasoningLevel
+    from squadops.tasks.task_types import TaskType, authors_qa_suite
+    # 1434: BOTH qa shapes move to LOW on the fill shape, and the non-fill control must
+    # DIFFER — without the control the row cannot tell a landed change from a policy that
+    # was always this way, which is the whole failure #1268 and #1285 kept repeating.
+    fill = {t: default_reasoning_level(t, output_shape="fill") for t in ("qa.test", "qa.test_repair")}
+    ctl = {t: default_reasoning_level(t) for t in ("qa.test", "qa.test_repair")}
+    print("1434 fill", sorted(fill.items()), "ctl", sorted(ctl.items()), all(fill[t] != ctl[t] for t in fill), str(ReasoningLevel.LOW))
+    print("559", TaskType.QA_TEST == "qa.test", authors_qa_suite("qa.test"), authors_qa_suite("development.develop"))
+
+    # 1444: the qa handler's two output shapes, in the container that runs qa.test.
+    from squadops.capabilities.handlers.cycle_tasks import QATestHandler
+    print("1444", sorted(str(k) for k in QATestHandler._SHAPES))
+
+    # Deploy B, SIP-0107 steps 5-6: applied in the qa repair's container, where tree-sitter is installed.
+    from squadops.capabilities.anchored_edits import apply_anchored_edits, parse_anchored_edits
+    # SIP-0107 steps 5-6: a repair revises one entity; the scaffold-owned envelope is byte-identical.
+    # Control: a fill that breaks the grammar is refused as invalid_syntax, nothing applied.
+    _ts = {"app/api/runs/route.ts": "export async function POST(request: Request): Promise<Response> {\n  try {\n    return Response.json({ ok: 1 })\n  } catch (err) {\n    return errorResponse(err)\n  }\n}\n"}
+    _py = {"backend/routes.py": "def create_run(payload):\n    return None\n"}
+    def _app(base, block):
+        path = next(iter(base))
+        return apply_anchored_edits(parse_anchored_edits(f"```edit:{path}\n{block}```\n"), base, writable=base, producer="development.correction_repair", task_id="probe")
+    _ok = _app(_ts, "<<<<<<< REPLACE function:POST#try\n    return Response.json({ ok: 2 }, { status: 201 })\n>>>>>>> END\n")
+    _bad = _app(_ts, "<<<<<<< REPLACE function:POST#try\n    return Response.json({ ok: 2 \n>>>>>>> END\n")
+    _pyok = _app(_py, "<<<<<<< REPLACE function:create_run#body\n    return payload\n>>>>>>> END\n")
+    _after = _ok.outcome.changed_files()["app/api/runs/route.ts"] if _ok.accepted else ""
+    print("0107 ts", _ok.accepted, "} catch (err) {\n    return errorResponse(err)" in _after, "status: 201" in _after,
+          "ctl", _bad.accepted, [r.split(" — ")[0].split(": ")[-1] for r in _bad.refusal_lines()],
+          "py", _pyok.accepted)
+
+    # ---- deploy B′ (SIP-0108 §10m, #1641; #1644) --------------------------------------------
+    # I1: the qa identity hashes as it did on A's tree (pin in the window pre-registration §3a)
+    # and the generalist's differs — the control. Read here, on the container that runs qa.
+    import hashlib as _hl, pathlib as _pl, squadops.prompts as _sp
+    from adapters.prompts.filesystem import FileSystemPromptRepository as _FSR
+    from squadops.prompts.assembler import PromptAssembler as _PA
+    _asm = _PA(_FSR(_pl.Path(_sp.__file__).parent / "fragments"))
+    _h = lambda r: _hl.sha256(_asm.get_system_prompt(r).content.encode()).hexdigest()[:16]
+    print("10m qa", _h("qa"), "generalist", _h("generalist"), _h("qa") != _h("generalist"))
+    # #1644: both decision templates ship where the repair renders; the presence predicate
+    # reads `{}` as absent and a path as present.
+    from squadops.capabilities.handlers.impl.repair_handlers import _decision_present
+    from squadops.prompts.registry_check import shipped_request_template_ids
+    _ids = shipped_request_template_ids()
+    print("1644", "request.cycle_repair_decision_lead" in _ids, "request.cycle_repair_decision_rule" in _ids,
+          _decision_present({}), _decision_present({"correction_path": "patch"}))
+  # 598: the builder's prompt is composed in the builder's container. Control: a legacy profile
+  # with no scaffold carries no "provided by the scaffold" block.
+  bob: |-
+    from squadops.capabilities.handlers.build_profiles import get_profile
+    _p = get_profile("fullstack_fastapi_react").full_system_prompt
+    print("598", "Provided by the scaffold" in _p, "You MUST emit this file" in _p,
+          "Provided by the scaffold" in get_profile("python_cli_builder").full_system_prompt)
+    # ---- deploy B′ (SIP-0108 §10m, #1641): I1 on the builder container -------------------------
+    import hashlib as _hl, pathlib as _pl, squadops.prompts as _sp
+    from adapters.prompts.filesystem import FileSystemPromptRepository as _FSR
+    from squadops.prompts.assembler import PromptAssembler as _PA
+    _asm = _PA(_FSR(_pl.Path(_sp.__file__).parent / "fragments"))
+    _h = lambda r: _hl.sha256(_asm.get_system_prompt(r).content.encode()).hexdigest()[:16]
+    print("10m builder", _h("builder"), "generalist", _h("generalist"), _h("builder") != _h("generalist"))
+  # The dev-lane fault is applied in the developer's own container: its registry and its bite
+  # are read HERE, not off runtime-api (#1289's shape). Control: a non-join block is unchanged.
+  neo: |-
+    from squadops.capabilities.handlers.fault_injection import FAULTS
+    _f = FAULTS["dev_join_response_omits_declared_fields"]
+    _join = "```python:backend/routes.py\n@router.post(\"/runs/{run_id}/join\", response_model=Run)\ndef j(run_id):\n    return run\n```\n"
+    _plain = "```python:backend/models.py\nx = 1\n```\n"
+    print("dev-lane", "getattr(run" in _f.transform(_join), _f.transform(_plain) == _plain)
+
+    # Deploy B, SIP-0107 steps 5-6: applied in the dev repair's container, where tree-sitter is installed.
+    from squadops.capabilities.anchored_edits import apply_anchored_edits, parse_anchored_edits
+    # SIP-0107 steps 5-6: a repair revises one entity; the scaffold-owned envelope is byte-identical.
+    # Control: a fill that breaks the grammar is refused as invalid_syntax, nothing applied.
+    _ts = {"app/api/runs/route.ts": "export async function POST(request: Request): Promise<Response> {\n  try {\n    return Response.json({ ok: 1 })\n  } catch (err) {\n    return errorResponse(err)\n  }\n}\n"}
+    _py = {"backend/routes.py": "def create_run(payload):\n    return None\n"}
+    def _app(base, block):
+        path = next(iter(base))
+        return apply_anchored_edits(parse_anchored_edits(f"```edit:{path}\n{block}```\n"), base, writable=base, producer="development.correction_repair", task_id="probe")
+    _ok = _app(_ts, "<<<<<<< REPLACE function:POST#try\n    return Response.json({ ok: 2 }, { status: 201 })\n>>>>>>> END\n")
+    _bad = _app(_ts, "<<<<<<< REPLACE function:POST#try\n    return Response.json({ ok: 2 \n>>>>>>> END\n")
+    _pyok = _app(_py, "<<<<<<< REPLACE function:create_run#body\n    return payload\n>>>>>>> END\n")
+    _after = _ok.outcome.changed_files()["app/api/runs/route.ts"] if _ok.accepted else ""
+    print("0107 ts", _ok.accepted, "} catch (err) {\n    return errorResponse(err)" in _after, "status: 201" in _after,
+          "ctl", _bad.accepted, [r.split(" — ")[0].split(": ")[-1] for r in _bad.refusal_lines()],
+          "py", _pyok.accepted)
+
+    # ---- deploy B′ (SIP-0108 §10m, #1641): I1 on the dev container ---------------------------
+    import hashlib as _hl, pathlib as _pl, squadops.prompts as _sp
+    from adapters.prompts.filesystem import FileSystemPromptRepository as _FSR
+    from squadops.prompts.assembler import PromptAssembler as _PA
+    _asm = _PA(_FSR(_pl.Path(_sp.__file__).parent / "fragments"))
+    _h = lambda r: _hl.sha256(_asm.get_system_prompt(r).content.encode()).hexdigest()[:16]
+    print("10m dev", _h("dev"), "generalist", _h("generalist"), _h("dev") != _h("generalist"))
+  # I1 on the three squad containers the counted config never probed: the lead, the strategist
+  # and the analyst assemble the identity they did on A's tree, and not the generalist's.
+  max: |-
+    # ---- deploy B′ (SIP-0108 §10m, #1641): I1 on the lead container -------------------------
+    import hashlib as _hl, pathlib as _pl, squadops.prompts as _sp
+    from adapters.prompts.filesystem import FileSystemPromptRepository as _FSR
+    from squadops.prompts.assembler import PromptAssembler as _PA
+    _asm = _PA(_FSR(_pl.Path(_sp.__file__).parent / "fragments"))
+    _h = lambda r: _hl.sha256(_asm.get_system_prompt(r).content.encode()).hexdigest()[:16]
+    print("10m lead", _h("lead"), "generalist", _h("generalist"), _h("lead") != _h("generalist"))
+  nat: |-
+    # ---- deploy B′ (SIP-0108 §10m, #1641): I1 on the strat container -------------------------
+    import hashlib as _hl, pathlib as _pl, squadops.prompts as _sp
+    from adapters.prompts.filesystem import FileSystemPromptRepository as _FSR
+    from squadops.prompts.assembler import PromptAssembler as _PA
+    _asm = _PA(_FSR(_pl.Path(_sp.__file__).parent / "fragments"))
+    _h = lambda r: _hl.sha256(_asm.get_system_prompt(r).content.encode()).hexdigest()[:16]
+    print("10m strat", _h("strat"), "generalist", _h("generalist"), _h("strat") != _h("generalist"))
+  data: |-
+    # ---- deploy B′ (SIP-0108 §10m, #1641): I1 on the data container -------------------------
+    import hashlib as _hl, pathlib as _pl, squadops.prompts as _sp
+    from adapters.prompts.filesystem import FileSystemPromptRepository as _FSR
+    from squadops.prompts.assembler import PromptAssembler as _PA
+    _asm = _PA(_FSR(_pl.Path(_sp.__file__).parent / "fragments"))
+    _h = lambda r: _hl.sha256(_asm.get_system_prompt(r).content.encode()).hexdigest()[:16]
+    print("10m data", _h("data"), "generalist", _h("generalist"), _h("data") != _h("generalist"))
+# PINNED at rev 2 of the window pre-registration, from deploy B′ after the squad's shakeout pair
+# met its exit rule. A wholly blank block is the pre-registration state; preflight --counting
+# refuses to launch on it (#1296, #1571).
+expected_config_hash_prefix: ""
+expected_squad_snapshot_prefix: ""
+frozen_deploy_commit: ""
+frozen_image_ids: {}

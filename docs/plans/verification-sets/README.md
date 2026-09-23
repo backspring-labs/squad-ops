@@ -122,6 +122,22 @@ the driver's `render` of what it collected, and what it collected is listed in t
   a docs worktree needs `.venv` and `data` linked (and excluded) for the driver to find the
   CLI and the artifact vault. Counted rolls launch from `main` (owner's ruling, 2026-08-27).
 
+### The comparison window (SIP-0108 §4.4)
+
+Two arm configs, one naming the other in `compare_with`, run as interleaved pairs:
+
+```
+verification_set_driver.py window --squad-set <squad.yaml> --solo-set <solo.yaml>
+```
+
+The sample and the attempt budget are the configs' registered data (`window_pairs`,
+`window_max_attempts`, on both arms), never flags. The runner proves the two supplied configs
+name each other, then runs the comparison gate before either arm is observed and refuses a
+pair whose arms differ by anything but the reasoning organization. A void — pre-run identity or infrastructure invalidity
+only, never outcome — removes its pair and is replaced by the next; the state is written after
+every roll (`--resume` continues it) and the reading is rendered as Squad / Solo / ties whichever
+way it goes. The first window is 1.8.1's (`1-8-1-window-preregistration.md`).
+
 ## What the record must say
 
 The per-roll record is facts; the pre-registration says what they mean. The cut record
