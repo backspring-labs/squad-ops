@@ -3298,6 +3298,28 @@ class TestTheRecordRendersTheAssessment:
         assert out["state"] == "unaskable"
         assert "FileNotFoundError" in out["reason"]
 
+    def test_the_read_logs_in_first_because_it_runs_an_hour_after_launch(self, driver, monkeypatch):
+        """#1654. Bug this catches: the read at the end of a roll ran on the launch's token,
+        expired by then, and 8 of 10 1.8.1 records read "the deploy served no assessment"
+        for a deploy that served one. The fake CLI answers ``cycles assess`` only after a
+        login, as the real one does once the token has expired."""
+        import types
+
+        session = {"fresh": False}
+
+        def cli(cmd, check=True):
+            if " login " in cmd:
+                session["fresh"] = True
+                return "Login successful"
+            if "cycles assess" in cmd:
+                return json.dumps(self._SERVED) if session["fresh"] else ""
+            raise AssertionError(cmd)
+
+        monkeypatch.setattr(driver, "sh", cli)
+        out = driver.cycle_assessment(types.SimpleNamespace(project="p"), "cyc_1")
+        assert out["state"] == "observed"
+        assert out["evidence_identity"] == "sha256:abc"
+
 
 class TestTheComparisonArmsAreHeldEqual:
     """SIP-0108 §4.4: the arms differ ONLY by the reasoning organization, and "the comparison

@@ -1741,6 +1741,9 @@ def cycle_assessment(cfg: SetConfig, cycle_id: str) -> dict:
         "`cycles assess` route, a CLI that has no such command, or a cycle it cannot read"
     )
     try:
+        # #1654: read at the END of a roll, an hour after launch; the token lives minutes.
+        # Without a fresh login the CLI fails and the record blamed the deploy.
+        login()
         raw = sh(
             f"{SQUADOPS} --format json cycles assess "
             f"{shlex.quote(cfg.project)} {shlex.quote(cycle_id)}",
