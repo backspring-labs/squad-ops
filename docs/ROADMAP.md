@@ -23,7 +23,35 @@ Each even-minor consumer sits strictly behind the release that earns its trust: 
 
 ## Release Timeline
 
-### v1.8.0 (2026-09-17) — Current — the Judgement release
+### v1.8.1 (2026-09-24) — Current — the comparison release
+
+**v1.8.1 — the comparison release**: SIP-0108 (d), the squad against **Solo** (one generalist
+process, "Han", serving every role on the same deterministic substrate), measured as six
+interleaved pairs on frozen deploy B″ (`3faab510`). **Squad / Solo / ties 0 / 0 / 6**, criterion
+**neither**, closed complete, all 12 rolls accepted-functional, and cost within about 2% (76,490
+against 75,070 completion tokens per roll). Stated as built: with the task plan held equal, the
+arms differ in the identity fragment and the correction protocol, and neither changed the outcome
+on this PRD, model and deploy. The organized pipeline against an agent without it is Free-Solo's
+question (§10j). **SIP-0108 implemented**; **Solo stays as a declared mode** (§10o), the first
+topology variant for the placement experiments.
+
+Building Solo fixed role assignment for every squad:
+- a declared role → agent map replaces a silent fallback that dispatched to queues nothing
+  consumed (#1611)
+- a process serves its declared roles (#1615)
+- correction steps are declared by the request profile (#1614)
+- the identity layer reads the process's role; every container used to default to "lead" (#1641)
+
+The line also shipped the comparison apparatus (the arm axis #1620, the paired window runner
+#1638, the assessment reader #1613 and #1618) and fixed a redelivered task running twice (#1626)
+and a contentless round ending a chain as `plan_defect` (#1658).
+
+**Not landed, stated:** SIP-0107's flip, since deploy A's N read 4 of 6 with qa × Next.js empty
+for the second line; step 7 open, 1.8.2's decision 1. The ops rider is re-placed to 1.8.2.
+Records: `docs/plans/1-8-1-verification-set-preregistration.md` §10 and
+`docs/plans/1-8-1-window-preregistration.md` §10 (cut record §10f).
+
+### v1.8.0 (2026-09-17) — the Judgement release
 
 **v1.8.0 — the Judgement release**: **Scoped Code Revision** (SIP-0107, steps 1–6 — a repair of
 an existing artifact is a transaction with an identity, realized by exact anchored edit or by
@@ -645,7 +673,6 @@ The following areas are identified for future work but do not block 1.0 readines
 | **SIP-0104** | Deterministic Verification Scaffolding with Semantic Fill Slots | stays accepted — stack #1 parity (#1122) not scheduled |
 | **SIP-0105** | Stack Blueprint Contract | stays accepted — the blueprint rewrite after #1131 open; **amended by #598 in 1.8** (the Dockerfile and nginx config become a rendering of the stack declaration) |
 | **SIP-0107** | Scoped Code Revision | **the 1.8 Lane M headline** — accepted at its design review 2026-09-13 with required revision (rev 4), rolled out by the 1.8 plan §3.3, #1444 first — steps 1–6 in 1.8.0, the default flip in 1.8.1 by design (SIP-0107 §46a) |
-| **SIP-0108** | Cycle Evaluation Scorecard | **the 1.8 Lane S headline** — accepted at its design review 2026-09-13 with required revision (rev 3); the four slice deliverables in the 1.8 plan §3.4, (a) and (b) non-droppable, (c) merged; the comparison's generalist arm defined in its §4.4 and re-placed to 1.8.1 (plan rev 7, SIP §10g) |
 
 ## Proposals (Backlog)
 
@@ -682,10 +709,10 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Stats
 
-*As of 2026-09-17 (v1.8.0):*
+*As of 2026-09-24 (v1.8.1):*
 
-- **Framework version**: 1.8.0
-- **SIPs**: 66 implemented, 11 accepted (SIP-0088, 0090–0093, 0101, 0102, 0104, 0105, 0107, 0108), 20 deprecated (registry)
+- **Framework version**: 1.8.1
+- **SIPs**: 67 implemented, 10 accepted (SIP-0088, 0090–0093, 0101, 0102, 0104, 0105, 0107), 20 deprecated (registry)
 - **Tests**: 10,000+ passing in the regression suite (all of `tests/unit`, #1316)
 - **Python source**: ~109,000 lines measured 2026-09-17 (`src/` ~84,000 + `adapters/` ~25,000; ~168,000 test lines; ~144,000 lines of Markdown under `docs/` and `sips/`)
 - **~6 months** from initial repo (2025-09-20) to 1.0.0 release (2026-03-10)

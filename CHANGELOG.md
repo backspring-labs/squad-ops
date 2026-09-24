@@ -5,6 +5,80 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.8.1] — 2026-09-24
+
+**The comparison release: the squad against one generalist, measured.** Plan:
+`docs/plans/1-8-1-plan.md` (rev 5). Record: `docs/plans/1-8-1-verification-set-preregistration.md`
+§10 (deploy A) and `docs/plans/1-8-1-window-preregistration.md` §10 (B′, B″ and the window), with
+the cut record in §10f.
+
+**The comparison window (SIP-0108 (d)).** Six interleaved pairs on frozen deploy B″ (`3faab510`):
+the squad (`full-38`) against **Solo**, one generalist process ("Han") serving every role on the
+same deterministic substrate. **Squad / Solo / ties 0 / 0 / 6**, criterion **neither**, closed
+complete with no voids. All 12 rolls accepted-functional with the boot audit passing, and zero
+container errors. Cost is within about 2%: squad 76,490 completion tokens and 52.2 min per roll,
+Solo 75,070 and 51.5.
+
+**Stated as built:** the task plan is held equal, so the arms differ in the identity fragment and
+in the correction protocol (the analyzer and the lead's decision, or a deterministic patch rule).
+On this PRD, this model and this deploy, those two did not change the outcome or the cost. Whether
+the organized pipeline beats an agent without it is the Free-Solo window's question (SIP-0108
+§10j). **Solo stays as a declared mode** (§10o), the first topology variant for the placement
+experiments.
+
+**What building Solo fixed, for everyone.** The squad profile declares its role → agent map, and
+the silent fallback that dispatched to queues nothing consumed is deleted (#1611). A process serves
+the roles its roster entry declares (#1615). The correction protocol's steps are declared by the
+request profile (#1614). The identity layer reads the role the process runs as; every container
+used to default to "lead" (#1641, SIP-0108 §10m). Also: the generalist identity fragment (#1640),
+the `solo` and `validated-fullstack-solo` profiles (#1642), Han's roster entry, image and compose
+service (#1643, #1646, #1647), and an optional decision section in the repair brief (#1644).
+
+**The measurement apparatus.**
+- The driver's arm axis, with the substrate held equal and the Solo absences proved (#1620).
+- The window runner: interleaved pairs, the void rule, a pre-loop comparison gate over the exact
+  pair (#1638).
+- A reader for the cycle assessment, one route and one CLI command (#1613), rendered on every
+  record (#1618).
+- The 1.8.1 diagnostics, including the qa × Next.js supply 1.8.0 never registered (#1617).
+
+**Fixed on the line.**
+- A redelivered task is refused, not run again (#1626, #1627).
+- A structural node row outside the content is a corrupt parse, not an index (#1628).
+- A round whose repair emitted nothing is not a `plan_defect` round (#1658, #1659).
+- A fill-mode qa repair targets the free-authored suite failing beside its slots (#1602, #1603).
+- The seeded conftest owns store isolation (#1598).
+- The qa source set excludes a root-level `__tests__/` (#1539).
+- The inert series history is read as of the perspective cycle (#1526).
+- Driver readers:
+  - A1 reads the refutation mechanism, not a literal token (#1600, #1631).
+  - L7 reads where the repair went (#1624).
+  - Emission facts are read from the containers the set names (#1651).
+  - The assessment read logs in first (#1654).
+  - Solo's absences are the analyzer and the decision (#1650, SIP-0108 §10n).
+  - Correction rounds are counted by round index in both arms (#1653).
+
+**Stated at the cut, not implied.**
+- **SIP-0107's flip did not land.** Deploy A's N read **4 of 6, with qa × Next.js empty** for the
+  second line running. SIP-0107 stays `accepted` with step 7 open; whether 1.8.2 re-supplies N is
+  that plan's decision 1. L1 held on all six of A's counted rolls.
+- Eight records' assessments were unaskable at the roll because of #1654 and were **backfilled at
+  the cut** by the same reader, disclosed as such.
+- `verified_executable` and `verified_functional` read unaskable on every cycle (SIP-0102 step 5,
+  open).
+- I2 and the Solo brief's rule section are unaskable. The repair brief exceeds LangFuse's
+  10,000-character input cap (#1661, carried).
+- A cancelled run's already-dispatched task still runs (#1648, carried; guarded procedurally in the
+  window).
+- Rev 3 of the window's registration merged without a crew review, by the owner's ruling.
+- The ops rider is re-placed to 1.8.2.
+
+**Drift:** zero under `src/` and `adapters/` between B″ and the tag, apart from the version string.
+
+**SIP status at the cut.** **SIP-0108 → `implemented`** (§5 criteria 1–5 on 1.8.0, 6–7 on this
+window). SIP-0107 stays `accepted` (step 7 open). SIP-0086 and SIP-0096 stay `implemented`, with
+§12a and §17a re-targeted to 1.8.2. SIP-0102 step 5 stays open.
+
 ## [1.8.0] — 2026-09-17
 
 **The Judgement release — Scoped Code Revision, and the Cycle Evaluation Scorecard's 1.8 slice.**
