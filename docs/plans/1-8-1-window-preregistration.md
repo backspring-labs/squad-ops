@@ -376,3 +376,170 @@ alone (carried without progress, "candidate=none"), once after a round that had 
 are all in the driver or the registration, none in the deploy. The rule is "a seam not reached within
 two runs stops the window for a plan revision": H4 and H5 were not reached. The window does not
 launch on this registration.
+
+### 10c. §3a on B″ — the squad's shakeout pair (2026-09-23, non-counting)
+
+Rev 3 merged **without a crew review**. The owner ruled on 2026-09-23: "I ran out of crew token
+budget. We have to fly solo here." Every revision before it was reviewed, and this one wasn't.
+
+| roll | cycle | verdict | boot audit | criteria | correction | wall clock | tokens |
+|---|---|---|---|---|---|---|---|
+| 1 | `cyc_9c40f4a750a7` | accepted | PASS | 22 / 22 | 1 round: dev repair, scoped edits 8% + 2%, verified (16 checks), retest passed | 57 min | — |
+| 2 | `cyc_47a8718ff9e3` | accepted | PASS | 21 / 21 | none | 47 min | — |
+
+- Roll 1 launched at the pinned hash `58eed2c52e1f`, which the server confirmed, as §2 said it would.
+- **I1 holds** on both rolls, in all six squad containers. Every B″ loaded check read `1658 True
+  False`.
+- **I2 is unaskable** for a reason §3a didn't foresee. Roll 1 corrected, but the repair brief is
+  about 12,000 tokens and LangFuse keeps 10,000 characters. The decision section is past the cap on
+  every repair of either arm (#1661). The owner ruled on 2026-09-23: carry it for this window, fix
+  it in 1.8.2. What *is* read is the behaviour: the analyzer and the lead's decision were
+  dispatched before the repair.
+- **No seam finding**, and zero ERROR or traceback lines in any container across the pair.
+- **§3a's exit is met.**
+
+### 10d. §3b on B″ — Han's shakeout pair (2026-09-23, non-counting)
+
+| roll | cycle | verdict | boot audit | criteria | correction | wall clock |
+|---|---|---|---|---|---|---|
+| 1 | `cyc_878cbcd1f581` | accepted | PASS | 21 / 21 | none | 49 min |
+| 2 | `cyc_e8d021124a00` | accepted | PASS | 24 / 24 | none | 42 min |
+
+Roll 1 launched at the pinned hash `5c164909188d`, which the server confirmed.
+
+| seam | reading |
+|---|---|
+| H1 | **reached**: 17 of 17 and 16 of 16 tasks went to `han_comms`; zero handler or role errors |
+| H2 | **reached**: Han's boot line lists six roles; no fallback warning |
+| H3 | **not reached in the pair**: neither roll entered correction. **Counted as reached by the owner's ruling of 2026-09-23** ("treat H3 as reached"), on the implementer's case: both B′ Han rolls exercised the Solo correction path (repair alone, §10b); B″ changes that path only by #1658, which is proven loaded (`1658 True False`) and by its wiring test; and the window reads H3 on every roll that corrects. **The window then exercised it twice (§10e), and it held both times** |
+| H4 | **reached, as amended (§10n)**: `solo_absences` empty on both rolls |
+| H5 | **reached**: `cycle_assessment` observed on both rolls, the first Solo records to carry it (#1655) |
+| H6 | holds on the live source; the stored source is unaskable (§10b) |
+
+**§3b's exit is met, with H3 by ruling.** The emission facts #1652 made askable are observed on
+both rolls: 16 emissions each.
+
+### 10e. The window — the reading (2026-09-23 12:39 → 23:11 ET, deploy B″ `3faab510`)
+
+**The runner's reading, verbatim** (`var/verification_sets/1-8-1-window-squad/window-20260924T031140Z.md`):
+Squad wins / Solo wins / ties **0 / 0 / 6** over 6 valid pairs (0 void of 6 attempted); the
+directional criterion (at least 4 wins of 6, either arm) reads **neither**; the window closed
+**complete**.
+
+| pair | order | squad cycle | solo cycle | outcome | wall clock min (squad / solo) | completion tokens (squad / solo) | corrections |
+|---|---|---|---|---|---|---|---|
+| 1 | squad → solo | `cyc_75f7ce05d797` | `cyc_27eabd120b9d` | tie | 49 / 52 | 71,827 / 73,299 | — |
+| 2 | solo → squad | `cyc_ff6c7cd5deb1` | `cyc_279bc17abf60` | tie | 51 / 44 | 76,275 / 63,786 | — |
+| 3 | squad → solo | `cyc_3a3d9ee8f12d` | `cyc_5ed239de8fc9` | tie | 54 / 46 | 78,571 / 68,229 | squad: qa-owned `test_runs.py` → analyzer + decision → **`qa.test_repair`**, scoped 4%, retest passed |
+| 4 | solo → squad | `cyc_787cc98c8524` | `cyc_6c9bf65f6b69` | tie | 55 / 51 | 80,250 / 75,218 | squad: frontend `qa.test` → dev repair `RunDetailView.jsx` 8%, retest passed |
+| 5 | squad → solo | `cyc_9ab3b4adc8de` | `cyc_9d66f7e5d5b2` | tie | 50 / 57 | 72,631 / 84,034 | solo: frontend `qa.test` → dev repair alone, structural edit of `RunDetailView.jsx` (one state split into load and action errors), retest passed |
+| 6 | solo → squad | `cyc_bb6d949323b8` | `cyc_04190c786d73` | tie | 54 / 59 | 79,389 / 85,852 | solo: builder repair (accepted), then dev repair, verified but **retest FAILED**; `qa.test` re-authored and passed |
+
+**All 12 rolls accepted-functional**, boot audit PASS; zero ERROR or traceback lines in any B″
+container across the window; no void; the #1648 guard was never needed.
+
+**Reported beside the predicate, never as a tie-breaker:**
+
+| per arm | squad | solo |
+|---|---|---|
+| mean wall clock | 52.2 min (49–55) | 51.5 min (44–59) |
+| mean completion tokens | 76,490 (71,827–80,250) | 75,070 (63,786–85,852) |
+| total completion tokens | 458,943 | 450,418 |
+| rolls that corrected / rounds | 2 / 2, both converged in one round | 2 / 3; one converged, one recovered only through the re-authored suite |
+| verification-quality proxy | 12 of 12 boot audits passed; the SIP-0102 step 5 indicators unaskable on every roll | the same |
+
+The arms are about 2% apart on cost. Per-pair differences swing both ways: Solo was cheaper by up to
+12,489 tokens (pair 2), and the squad by up to 11,403 (pair 5). Cost is not a difference either.
+
+**§3d, read on all 12 records:**
+- **#1641:** I1 held on every squad roll and the generalist hash on every Han roll.
+- **#1644:** unaskable (#1661). The `{}` clause is too coarse as registered: on B″ squad roll 1 it
+  matched a JavaScript default parameter, not a template slot.
+- **#1642:** the arm gate was silent on every launch, as predicted.
+- **#1643:** the one `missing_tooling` skip on Han's repairs also appears on a squad repair
+  (pair 4). It's the substrate's, not Han's.
+- **#1638:** the state file shows the registered order, with no void.
+- **#1658:** not exercised; no empty or refused round preceded a carried failure.
+- **#1652:** Han's emission facts observed on all six Solo rolls.
+- **#1655:** the assessment observed on all 12.
+- **#1656:** absences empty on all six Solo rolls.
+- **#1657:** rounds counted by index on Han's two correcting rolls (1 and 2, with 0 decisions).
+
+**What the window measured, stated as built, not as §4.4 worded it.** §4.4 names the independent
+variable as the squad's organization: role decomposition, role-specific prompts, framing roles,
+handoffs, and agent-mediated correction. With the task plan held equal (§3c, and §10n that follows
+from it), Han performs every framing step, handoff and task with the same task instructions. **The
+arms differ in two things:** the identity fragment (specialist or generalist, §10m) and the
+correction protocol (the analyzer and the lead's decision, or the deterministic patch rule).
+
+**The conclusion, in plan §8 decision 9's terms.** On this PRD (`group_run`, FastAPI + React),
+this model (`qwen3.8:27b`, flat cap 12,288) and deploy B″, **the squad's specialist identities and
+agent-mediated correction did not change the outcome or the cost against one generalist process
+with the deterministic rule: 0 / 0 / 6, cost within about 2%.** Correction was rare (4 of 12 rolls)
+and converged either way, except one Solo round that recovered through re-authoring. That is the
+qa-lane shape deploy A's §10e found in the squad too. The question of whether the organized
+pipeline beats an agent without it is Free-Solo's (§10j), and this reading says nothing about it.
+
+### 10f. The cut record — 1.8.1's three gates, the SIP sweep, and the rulings behind them (2026-09-24)
+
+**Rulings at the cut (the owner, 2026-09-24):**
+1. **The ops rider re-places to 1.8.2.** That covers #1177, #176 recipe 2, #1176, #1408 and #1412.
+   The cut does not wait for it, and plan §3.9's count goes to 4. The 1.8.2 draft already carries it.
+2. **Solo stays as a declared mode; there is no teardown PR.** It's kept as the first topology
+   variant for the placement and topology experiments (SIP-0108 §10o).
+3. **1.8.1 cuts with its gaps stated, and the missing assessments are backfilled** as below.
+
+| gate | reading |
+|---|---|
+| **implementation** | The prelude (§3.2) merged and read on A. **The flip is not merged: A's N was 4 of 6** (deploy-A pre-registration §10e). Every §3.5 Solo item merged; Han's service was applied by the owner's delegation (#1646). The driver's arm axis, comparison section and isolation preflights merged. **The teardown PR is replaced by ruling 2.** B′ and B″ fixes are §2's and §10a–§10b's |
+| **experimental** | L1 held on every counted roll of A. **N not met** (4 of 6, qa × Next.js empty), so there's no flip pair and no replay. Every registered diagnostic reached its seam on A (§10b there). **Han's pair reached its seams on B″, with H3 by ruling.** **The window closed with six valid pairs** and its result is stated above, S / H / tie rendered |
+| **evidence** | Every counted record carries a `CycleAssessment` rendered by the reader, **8 of them backfilled at the cut** (below). The Solo absences held on every Solo roll. The record reconstructs every counted, void and shakeout boundary from per-round records. Drift is below. The package carries one pair's screenshots (step 7) |
+
+**The backfill.** #1654 left eight records' `cycle_assessment` unaskable: deploy A's React rolls 1
+and 4, both Next.js rolls, and all four B′ shakeout rolls. The roll-time read ran on an expired CLI
+token. At the cut, the same reader (`cycles assess`, on B″ after #1655) read each cycle. The answer
+is stored in each record as `cycle_assessment_backfill`, with the read time and deploy. The
+roll-time field is kept as it was recorded. All eight read `observed`. On every record of the
+line, backfilled or not, the two unaskable indicators are `verified_executable` and
+`verified_functional` (`sip_0102_step_5_not_landed`).
+
+**Deploy-to-tag drift.** The window ran on B″ (`3faab510`). The tag carries, beyond it, rev 3 of
+this registration (`d0b1e6ef`), these readings and the release commit's version markers. That is
+**zero under `src/` and `adapters/`**, apart from the version string the release commit bumps.
+
+**The SIP sweep.**
+- **SIP-0108** → `implemented`. §5 criteria 1–5 are on 1.8.0's record; 6–7 are on this window,
+  which closed complete. The result doesn't gate it; the closure does (plan §3.10). §10h's
+  placement axis and cost accounting and §10j's Free-Solo window are a successor's criteria, not
+  open children.
+- **SIP-0107** stays `accepted`, with step 7 (the flip) open and the shortfall stated: N 4 of 6,
+  qa × Next.js empty. Whether 1.8.2 re-supplies N is that plan's decision 1.
+- **SIP-0086** and **SIP-0096** stay `implemented`, with §12a and §17a re-targeted to 1.8.2.
+- **SIP-0102** step 5 stays open and named.
+
+**What the Solo build bought, beyond the window's number** (the owner's reading, 2026-09-23). It
+proved one agent identity can serve every role, and in doing so it exposed how role assignment
+actually worked:
+- a silent role-name fallback that dispatched to queues nothing consumed (§10g), now a declared
+  role map
+- every container's `role_id` defaulting to "lead" (§10m), now the process's role, required at
+  every seam
+- one role per process, now a declared set of served roles
+- a hard-coded correction protocol, now declared steps
+
+Those are what let a later experiment vary the model and the team topology as configuration. The
+window was the first run of the comparison apparatus: the arm axis, the substrate gate, the paired
+runner, the void rule and per-roll cost.
+
+**Carried to 1.8.2, by name:**
+- #1648 (the agent drops a cancelled run's task)
+- #1661 (record which decision section rendered)
+- the qa-lane mechanism: deploy A §10e, and Solo pair 6 here
+- the scoped-revision convergence replay, which measures emitted size and actual diff by mode
+  (pair 5's structural edit spans 95% of the file for a change of about 12 lines)
+- the ops rider
+
+**Observed on B″ for 1.8.2's decision 1, not counted toward any N:** scoped transactions that
+passed their retest. That's one qa × React (window pair 3, squad) and three dev × React (B″
+shakeout roll 1, window pair 4, window pair 5 Solo). A qa × React transaction is the kind A
+couldn't supply.

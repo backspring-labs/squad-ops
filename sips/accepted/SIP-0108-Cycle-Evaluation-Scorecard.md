@@ -1212,3 +1212,44 @@ and restoring the `governance.*` rule fails the five rows (mutation check).
 
 **Ruled by.** The owner, 2026-09-23, adopting the implementer's recommendation on #1650 ("go with
 your recommendation").
+
+### 10o. 2026-09-24 — Solo stays as a declared mode; the window's reading; the variable as built (§4.4, §10i)
+
+**What changed.** §10i's teardown clause said the solo squad profile, the solo request profile, the
+generalist prompt asset and Han's compose service are "removed in one PR unless a product decision
+keeps a solo mode". **The owner made that product decision at the 1.8.1 cut: Solo stays**, as the
+first declared topology variant for the placement and topology experiments §10h names. There is no
+teardown PR. §10i's general items stay, as they always would have: the declared role map, a
+process serving its declared roles, correction steps declared by the request profile, and (§10m)
+the identity layer reading the process role.
+
+**The window's reading** (1.8.1 window pre-registration §10e). Deploy B″ (`3faab510`), six valid
+pairs of six attempted: **Squad / Solo / ties 0 / 0 / 6**, criterion **neither**, closed
+complete. All 12 rolls were accepted-functional. Mean cost per roll: squad 52.2 min and 76,490
+completion tokens, Solo 51.5 min and 75,070, about 2% apart with per-pair swings both ways.
+
+**The independent variable, as built.** §4.4 names it as role decomposition, the role-specific
+prompts, the framing roles, the handoffs and agent-mediated correction. With the task plan held
+equal between the arms (the pre-registration's §3c, and §10n that follows from it), Solo performs
+every framing step, handoff and task with the same task instructions. **The arms as built differ
+in the identity fragment (§10m) and in the correction protocol** (the analyzer and the lead's
+decision, or the deterministic patch rule), and the reading is a statement about those two alone.
+Whether the organized pipeline beats an agent without it is §10j's Free-Solo question, and this
+reading is silent on it.
+
+**What the build bought regardless of the number.** Pushing one agent identity into every role
+exposed how role assignment actually worked:
+- the silent role-name fallback (§10g), now a declared role map
+- `role_id` defaulting to "lead" in every container (§10m), now the process's role, required at
+  every seam
+- one role per process, now a declared set of served roles
+- a hard-coded correction protocol, now declared steps
+
+Varying the model and the team topology is now a configuration change. The window was also the
+first run of the comparison apparatus (the arm axis, the substrate gate, the paired interleaved
+runner, the void rule, per-roll cost), which is the harness the placement experiments reuse.
+
+**Evidence.** `var/verification_sets/1-8-1-window-squad/window-20260924T031140Z.{md,json}` and the
+twelve pair records; the pre-registration §10c–§10f.
+
+**Ruled by.** The owner, 2026-09-24, at the 1.8.1 cut (keeping Solo); the reading is the runner's.
