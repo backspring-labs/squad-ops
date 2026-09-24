@@ -1,5 +1,19 @@
 # 1.8.2 — plan
 
+**Rev 3, 2026-09-24 — the owner's rulings.**
+- **Decision 1, ruled: both.** Campaign readiness is the headline, measured first on deploy A, and
+  the flip rides beside it, strictly conditional:
+  - N is registered on deploy A's existing supply (the 1.8.1 supply diagnostics and the counted
+    set), with no extra rolls
+  - the flip goes on deploy B only if N is met
+  - the flip and deploy B are the **second** thing to drop when the line runs long (§3.9)
+- **Decision 7, ruled: attach.** Each line's full verification records are attached to its GitHub
+  Release at the cut, after a credential scan (§3.2 item 16).
+- **Decisions 2–6 and 8** are adopted as recommended at merge.
+
+§2.3, §3.5, §3.7, §3.9, §4.1, §4.2, §6 and §7 are rewritten to match. Rev 2's and rev 1's status
+blocks are kept below for the record.
+
 **Rev 2, 2026-09-24.** Rev 1 recommended the campaign-readiness shape but gave the claim no test.
 Rev 2 adds four things, at the owner's ask:
 - **a registered test of the claim:** the `unattended-chain` diagnostic (§4.1), with the driver
@@ -124,10 +138,10 @@ as a repair that edits the named file without fixing the named failure. The wind
 counterexample: a React qa scoped edit that passed its retest. **The amendment and the finding are
 one question**, and it is narrower than rev 0 stated.
 
-### 2.3 What this line is for: the flip, or unattended cycles (§7 decision 1)
+### 2.3 What this line is for: unattended cycles, and the flip if N is met (§7 decision 1, ruled)
 
-**Recommended (rev 1): the campaign-readiness shape.** 1.8.2's claim is *a cycle you can leave
-running unattended*. The line keeps:
+**The ruled shape (rev 3): both, with campaign readiness first.** 1.8.2's headline claim is *a
+cycle you can leave running unattended*. The line keeps:
 - **the capability work:** §12a, §17a with #1581, the qa-lane fix scoped from the readout, and the
   cap fix
 - **the seams a campaign exercises by construction:** #1648 agent-side (a campaign cancels, retries
@@ -135,10 +149,19 @@ running unattended*. The line keeps:
   what each round was told)
 - **the housekeeping that keeps unattended evidence safe:** §3.2 items 8–9
 
-It **drops** the N re-supply and deploy B. SIP-0107 step 7 stays open with the per-cell tally still
-reported as a count on every line, and the 1.9 plan names it as a 2.0 decision. The counted set
-remains as the regression bar (L1 and functional yield), not as an N gate. This follows the
-owner's stated priority (Campaign, then cycle memory) and the roadmap's rule that a campaign
+**The flip rides beside it, strictly conditional.** N is registered on runs deploy A makes anyway:
+the 1.8.1 supply diagnostics and the counted set, which now does two jobs, the regression bar
+(L1 and functional yield) and the N count. No extra rolls. **Deploy B happens only if N is met**,
+and it carries the flip alone, as 1.8.1 designed it. If N comes up short a third time, nothing is
+spent past the reading, SIP-0107 stays `accepted` with the third count stated, and the 1.9 plan
+names step 7 as a 2.0 decision. The flip barely touches the unattended seams: its refusal bites
+only on an unauthorized whole-file repair, and 1.8.0–1.8.1 recorded none in 18 responses. It is
+also explicitly droppable (§3.9), so a slow N or a deploy-B shakeout finding cannot hold up the
+campaign-readiness cut. The honest odds: qa × Next.js has been empty twice because the qa repair
+on Next.js never produced a patch, and the qa-lane fix may not reach that stack. Meeting N is
+possible, not likely.
+
+The headline follows the owner's stated priority (Campaign, then cycle memory) and the roadmap's rule that a campaign
 automates over trustworthy cycles: every recurring failure a single cycle has, a campaign
 multiplies.
 
@@ -157,11 +180,9 @@ belongs to Campaign's own design, where its `escalate` outcome already maps to a
 (`sips/proposed/SIP-Campaign-Orchestration.md` §7.1). 1.8.2 does not build it. The chain uses the
 driver's policy and says so on its record (§8).
 
-**The alternative (rev 0's recommendation).** Re-supply N once more, under this line's
-pre-registration, on a deploy that carries §12a and the qa-lane fix, and land the flip on this
-line's deploy B iff the count is met. For it: the mechanism that starved the cell is what this line
-changes, so the count is a new measurement. Against it: a third measured precondition on the same
-cell, a second deploy and a pair, and none of it on Campaign's path.
+*For the record:* rev 0 recommended the flip line alone; rev 1 and rev 2 recommended campaign
+readiness alone. The owner ruled both on 2026-09-24, on the argument above that the flip's
+incremental cost is a registration on existing runs plus a conditional deploy.
 
 ---
 
@@ -176,7 +197,7 @@ cell, a second deploy and a pair, and none of it on Campaign's path.
 
 ### 3.2 The prelude: deploy A, behind the diagnostics and a counted set
 
-One PR per causal unit. Items 1, 4, 5, 8, 9, 12, 13 and 14 are `scripts/dev` or tooling (no
+One PR per causal unit. Items 1, 4, 5, 8, 9, 12, 13, 14 and 16 are `scripts/dev` or tooling (no
 deploy). Items 2, 3, 6, 10, 11 and 15 move the framework. Item 15's compose line is the owner's
 edit (CLAUDE.md's Docker rule), carried in its PR's body as Han's service block was.
 
@@ -298,6 +319,22 @@ edit (CLAUDE.md's Docker rule), carried in its PR's body as Han's service block 
       correction or termination rather than hanging.
     - **Why here:** a campaign stuck on one silent cycle is the unattended failure in its purest
       form.
+16. **Each line's records are attached to its Release, after a credential scan (decision 7,
+    ruled).** A new `scripts/maintainer/attach_release_records.py <version>`:
+    - tars `var/verification_sets/<line>*`, and the line's records under the archive path if any
+      were preserved there
+    - **scans the tarball's contents for credentials before anything leaves the box:** the
+      `SQUADOPS__*` secret values in the running deploy's environment, `secret://` expansions, key
+      prefixes (`pk-lf-`, `sk-lf-`, `sk-`), JWTs, and anything matching the repo's `.env` values.
+      A hit refuses the upload and names the file and line.
+    - uploads the tarball with `gh release upload vX.Y.Z` and writes its sha256 into the release
+      package
+
+    CLAUDE.md's cut procedure gains it as part of step 7, after the package. **Failure it
+    prevents:** the only copy of a line's evidence living on one box (the 1.7.4 and 1.7.5 records
+    survived only because the worktrees were checked). The repo is public, so the Release is too;
+    the package pages already publish each cycle's id, verdict and checks, and the tarball adds the
+    log-derived texture and deploy identities, never a secret.
 
 ### 3.3 SIP-0086 §12a: the compile loop
 
@@ -322,12 +359,13 @@ As drafted:
 Next.js roll 2's wrong-locus round reads as a dispute naming the suite, not as a 35% patch that
 breaks the build.
 
-### 3.5 The flip, only if §7 decision 1 is ruled for rev 0's shape
+### 3.5 The flip: deploy B, only if N is met on A
 
-SIP-0107 §38 step 7 exactly as the 1.8.1 plan §3.3 specified it, applied on this line's deploy B if
-this line's N is met. **Under the recommended shape this section is struck**, and step 7 is named
-for 1.9's plan as a 2.0 decision. The per-cell tally is still read and reported as a count on this
-line's records.
+SIP-0107 §38 step 7 exactly as the 1.8.1 plan §3.3 specified it: the authority path, the historical
+replay, the §30.2 negative fixtures, the positive control, and one checkpoint pair predicting zero
+refusals. It is applied on this line's deploy B **only if N is met on deploy A** (§4.1). If N is not
+met, this section does not run, and step 7 is named for 1.9's plan as a 2.0 decision with the third
+count stated. If the line runs long, this section is the second to drop (§3.9).
 
 ### 3.6 After the set: #1039 and the ops rider, bounded
 
@@ -341,15 +379,15 @@ not their findings.**
 
 | gate | criterion |
 |---|---|
-| **implementation** | §3.2 items 1–15 merged, with 1 and 12 read on the 1.8.1 corpus before items 6 and 12's predictions are finalized; §12a and §17a merged with their SIP sections amended as built; under rev 0's shape only, the flip merged iff A's N was met |
-| **experimental** | L1 holds on every counted roll; `compile-loop`, `false-criterion` and `redelivery` read as predicted; **the `unattended-chain` diagnostic reads as predicted: K cycles, every run terminal within its bound, no ghost generation after the injected cancel, the crash contained, the hang ended at the declared timeout as a typed fact, a quiet box before every launch, an assessment on every cycle, and zero manual actions besides the registered gate policy**; the retest readout's fields on every patch; the replay's pre-registered predictions read; **N** reported as a per-cell count (the recommended shape) or met on A (rev 0's) |
-| **evidence** | every record three-state; the marker self-check passed at every launch; every record written under the main checkout's `var/` (item 8); the hygiene run at the cut with nothing stranded (item 9); the SIP sweep stated before the sweep |
+| **implementation** | §3.2 items 1–16 merged, with 1 and 12 read on the 1.8.1 corpus before items 6 and 12's predictions are finalized; §12a and §17a merged with their SIP sections amended as built; the flip merged **iff** A's N was met, with the authority path and both controls |
+| **experimental** | L1 holds on every counted roll; `compile-loop`, `false-criterion` and `redelivery` read as predicted; **the `unattended-chain` diagnostic reads as predicted: K cycles, every run terminal within its bound, no ghost generation after the injected cancel, the crash contained, the hang ended at the declared timeout as a typed fact, a quiet box before every launch, an assessment on every cycle, and zero manual actions besides the registered gate policy**; the retest readout's fields on every patch; the replay's pre-registered predictions read; **N read on A as registered**, and if met, **the flip's checkpoint pair on B reads zero refusals** |
+| **evidence** | every record three-state; the marker self-check passed at every launch; every record written under the main checkout's `var/` (item 8); the hygiene run at the cut with nothing stranded (item 9); the line's records attached to its Release after a clean credential scan (item 16); the SIP sweep stated before the sweep |
 
 **The SIP sweep, stated now.**
 - **SIP-0086:** §12a amended as built, stays `implemented`.
 - **SIP-0096:** §17a amended as built, stays `implemented`.
-- **SIP-0107:** stays `accepted` under the recommended shape, with step 7 named for 1.9's plan.
-  Under rev 0's shape, `implemented` iff the flip landed and §39 holds.
+- **SIP-0107:** `implemented` iff the flip landed on B and §39 holds on this line's records; else
+  `accepted`, with the third count stated and step 7 named for 1.9's plan.
 - **SIP-0108:** `implemented` at the 1.8.1 cut. No change.
 
 ### 3.8 Merge discipline
@@ -362,25 +400,27 @@ The 1.8.1 plan §3.11, verbatim, plus:
 
 ### 3.9 Capacity: what drops first, and what cannot
 
-The line carries 15 prelude items, two SIP amendments, 13 diagnostics, a counted set, an overnight
-replay and the rider. When it runs long, it sheds in this order, and each drop is recorded in the
+The line carries 16 prelude items, two SIP amendments, 13 diagnostics, a counted set doing two
+jobs, a conditional deploy B, an overnight replay and the rider. When it runs long, it sheds in this order, and each drop is recorded in the
 cut record with the item's new home:
 
 1. **#1039** (the docs site pass) → 1.9's idle-box time.
-2. **The ops rider** → 1.9, with its count at 5. It is never allowed to sit between the set and the
+2. **The flip and deploy B** → 1.9's plan names step 7 as a 2.0 decision, with the count A read
+   stated. N is still read on A, since it costs no rolls.
+3. **The ops rider** → 1.9, with its count at 5. It is never allowed to sit between the set and the
    cut.
-3. **#1665** (the capture reads the run's interface) → 1.9. The cut captures by hand with per-app
+4. **#1665** (the capture reads the run's interface) → 1.9. The cut captures by hand with per-app
    seeds, as 1.8.1's did, and says so.
-4. **The convergence replay** (item 12) → 1.9. The retest readout (item 1) still runs, because
+5. **The convergence replay** (item 12) → 1.9. The retest readout (item 1) still runs, because
    item 6 is scoped from it.
-5. **§12a's diagnostic depth**: the `compile-loop` diagnostic stays, and any further §12a
+6. **§12a's diagnostic depth**: the `compile-loop` diagnostic stays, and any further §12a
    refinements beyond the four drafted changes wait.
 
 **What cannot drop**, because these are the claim:
 - the unattended seams: items 10 (#1648), 3 (#1626), 15 (the hang bound) and 11 (#1661)
 - the chain driver (item 14) and the `unattended-chain` diagnostic
-- the records' home and hygiene (items 8–9), because a line that runs unattended must not strand
-  its evidence
+- the records' home, hygiene and Release attachment (items 8, 9 and 16), because a line that runs
+  unattended must not strand its evidence
 - the retest readout (item 1) and the qa-lane fix it scopes (item 6)
 - §17a with #1581
 
@@ -402,15 +442,16 @@ The 1.8.1 nine, unchanged, plus four:
 | `redelivery` | the qa agent's process killed mid-repair on the roll's own path (the fault injected in the producing role's container, #1251) | #1627's rule and #1626's containment | a typed `FAILED` for the original task id; the queue drains; the handler is not re-run by the broker; **the run leaves `running`**; with item 3 built, a child parse crash returns `None` and the parent survives | none |
 | `unattended-chain` | **K = 4 React cycles back to back** through the chain driver (§3.2 item 14), with three registered faults: **a cancel** of cycle 2 while its first implementation task is in flight; **an agent crash** (the process killed mid-task, #1251's shape) on cycle 3; **an agent hang** on cycle 4 (the handler sleeps past the declared task timeout, item 15) | **the line's claim**: a cycle is safe to leave running unattended | per cycle: a terminal state within its bound; **zero ghost generations** after the cancel (no LangFuse generation or agent emission carries cycle 2's id after its cancel is acknowledged); the crash recorded as a typed fact and the run leaving `running`; the hang ended at the declared timeout as a typed `task_timeout` fact and the run proceeding to correction or termination; a quiet box (no reply outstanding, no agent mid-task) before each launch; the assessment read on every cycle; **zero manual actions** except the registered gate policy, which the record names. **Falsified by** any ghost generation, any run left `running`, a hang past its bound, or a manual step | none |
 
-**The counted set:** four React and two Next.js rolls, as in 1.8.1. Under the recommended shape it
-is the regression bar: L1 on every counted roll and functional yield reported, with the per-cell
-tally read as a count. Under rev 0's shape, N is re-fixed at 6 with one per required cell.
+**The counted set:** four React and two Next.js rolls, as in 1.8.1, doing two jobs. It is **the
+regression bar** (L1 on every counted roll, functional yield reported) and, with the 1.8.1 supply
+diagnostics, **the N supply**: N is re-fixed at 6 with one per required cell, the supply table
+registered as predictions (§4.4), and the tally read at each diagnostic's clearance.
 
-### 4.2 Deploy B: only under rev 0's shape
+### 4.2 Deploy B: the flip alone, only if N is met on A
 
 The 1.8.1 plan §4.2, verbatim: the pre-registration, one checkpoint pair predicting zero refusals,
-and the shakeout loop to its exit rule with a budget of three rounds. **Struck under the
-recommended shape.**
+and the shakeout loop to its exit rule with a budget of three rounds. It runs after the
+campaign-readiness readings on A are recorded, so a finding here cannot reach back into them.
 
 ### 4.3 What this line does not measure
 
@@ -459,35 +500,35 @@ are #1639, #1648, #1661 and #1665, all placed here.)
 
 ## 6. Sequencing
 
-1. **This plan**, merged on the owner's review with §7 decision 1 ruled.
+1. **This plan**, merged on the owner's review (rev 3, decisions 1 and 7 ruled).
 2. **The prelude, no-deploy items first:**
    - items 8 and 9 (records and hygiene: before any set runs, so this line's records are born in
      one place)
    - item 14 (the chain driver), with its fault injection proven on a stub before any deploy
-   - 1, 4, 5, 7 and 13
+   - 1, 4, 5, 7, 13 and 16
    - then 12's harness, with 1 and 12 read on the 1.8.1 corpus
 3. **The framework items:** 10, 11 and 15 (the unattended seams), then 3, then 2, then 6 once
    item 1 has read the corpus.
 4. **§12a**, then **§17a**, each with its diagnostic registered before its PR merges.
 5. **Deploy A. The 1.8.2 pre-registration** is committed before the first launch: the thirteen
-   diagnostics, the supply table as predictions (§4.4), the counted set's role per decision 1, and
+   diagnostics, the supply table as predictions (§4.4), the counted set as regression bar and N supply, and
    the pins read from the deploy without launch-and-cancel, and the declared task timeout in the
    deploy identity. Then the diagnostics, then **the `unattended-chain` diagnostic**, then the
    counted set.
-6. **Under rev 0's shape only:** N read, then the flip PR iff met, then deploy B and its pair.
+6. **N read** on A. **The campaign-readiness readings are recorded first.** Then the flip PR iff N is
+   met, then deploy B and its pair.
 7. **#1039, then the ops rider** on the idle box, bounded.
 8. **The final record; cut 1.8.2 by the seven steps and the new housekeeping row.** Then the 1.9
    plan: #1507, the completion boundary Campaign lands through, with SIP-0107 step 7 named as a 2.0
-   decision under the recommended shape.
+   decision if the flip did not land.
 
 ---
 
-## 7. Decisions: recommended for the owner to overrule, not to fill in
+## 7. Decisions: ruled (1, 7) and adopted at merge (2–6, 8)
 
-1. **The line's shape.** **Recommended (rev 1): campaign readiness** (§2.3). Keep the capability
-   work and the unattended seams; drop the N re-supply and deploy B; keep the counted set as the
-   regression bar; name SIP-0107 step 7 for 1.9's plan. **The alternative (rev 0):** re-supply N
-   and land the flip on deploy B iff met.
+1. **The line's shape. RULED 2026-09-24: both** (§2.3). Campaign readiness is the headline,
+   measured first on A. N is registered on A's existing supply with no extra rolls. The flip goes
+   on deploy B only if N is met, and it is the second thing to drop.
 2. **The qa-lane fix is scoped from the retest readout**, not designed in this plan. Recommended.
    The window's passing qa × React edit is the control.
 3. **The cap finding is fixed by the R1 retry shape** unless the adapter reading shows the budgets
@@ -500,11 +541,10 @@ are #1639, #1648, #1661 and #1665, all placed here.)
    record says so at the revision**, as the 1.8.1 window's rev 3 did. Recommended. On 1.8.1, five
    deploy-A revisions merged unreviewed without saying so; the window's rev 3 merged unreviewed
    and said so.
-7. **Each line's full verification records are attached to its GitHub Release** as a tarball of
-   `var/verification_sets/<line>*` at cut step 7, giving an off-box copy tied to the tag it
-   supports. **The owner's call.** It publishes internal evidence (cycle ids, loop texture, deploy
-   identities) on the Release page. The alternative is a local archive only
-   (`~/squadops-deploy-logs/`), which survives worktree cleanup but not the box.
+7. **Each line's full verification records are attached to its GitHub Release. RULED 2026-09-24:
+   attach**, after a credential scan (§3.2 item 16). The repo is public and so is the Release. The
+   tarball adds the log-derived texture and deploy identities to what the package pages already
+   publish, never a secret; the scan refuses the upload otherwise.
 8. **The housekeeping row joins CLAUDE.md's release-cut procedure** (item 9): hygiene at every cut,
    and a worktree removed in the same step its PR merges. Recommended.
 
@@ -528,6 +568,7 @@ are #1639, #1648, #1661 and #1665, all placed here.)
 
 ## 9. Revision history
 
+
 - **Rev 0 (2026-09-22):** drafted at the 1.8.1 deploy-A N reading on the owner's ask. Recommended
   re-supplying N and landing the flip; §1's window rows and §5's recount left for rev 1.
 - **Rev 1 (2026-09-24):** after the 1.8.1 cut. §1's pending rows written (the window read 0 / 0 /
@@ -545,3 +586,7 @@ are #1639, #1648, #1661 and #1665, all placed here.)
   - The review gate's decider placed in Campaign's design, with the chain using the registered
     policy (§2.3, §8).
   - §3.9, the capacity section, with a drop order and what cannot drop.
+- **Rev 3 (2026-09-24):** the owner's rulings. Decision 1: both, with campaign readiness first and
+  the flip conditional on N and second to drop. Decision 7: attach records to the Release after a
+  credential scan (new item 16). Decisions 2–6 and 8 adopted at merge. §2.3, §3.5, §3.7, §3.9,
+  §4.1, §4.2, §6 and §7 rewritten to match.
