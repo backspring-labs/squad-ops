@@ -239,7 +239,7 @@ procedure costs: six consecutive releases tagged but never advertised.
 | 4 | ROADMAP timeline entry |
 | 5 | SIP promotion sweep — promote what is genuinely implemented; a phased or umbrella SIP with open children stays `accepted`, with the gap named |
 | 6 | `git tag vX.Y.Z && git push origin vX.Y.Z` — the Release publishes itself from the CHANGELOG section (`.github/workflows/release.yml`, #1061) |
-| 7 | **Capture the screenshots, then the package** — `capture_delivered_app.py` and `capture_prefect_run.py` into `assets/` first, then `build_release_package.py <version> --cycle <id>:<role> --showcase <id>:<reason>` to PREVIEW, read the cycle evidence, then re-run with `--write` and commit `site/content/releases/vX.Y.Z/` |
+| 7 | **Capture the screenshots, then the package** — `capture_delivered_app.py` and `capture_prefect_run.py` into `assets/` first, then `build_release_package.py <version> --cycle <id>:<role> --showcase <id>:<reason>` to PREVIEW, read the cycle evidence, then re-run with `--write` and commit `site/content/releases/vX.Y.Z/`; **then attach the line's records** — `scripts/maintainer/attach_release_records.py X.Y.Z` to build and credential-scan the tarball, then `--upload` to attach it to the Release and record its sha256 in the package |
 | 8 | **Housekeeping** — `scripts/dev/worktree_hygiene.py` to preview, then `--apply --archive-root <a directory outside every checkout>`: each merged worktree's `var/` records are preserved into the main checkout's `var/` and archived, then the worktree and its branch are removed; merged branches no worktree holds are deleted; anything unmerged, dirty or holding a real `data/` is named and left |
 
 Steps 1–3 are guarded by `tests/unit/architecture/test_docs_version_sync.py`, and step 6's
@@ -303,6 +303,13 @@ main checkout whichever checkout runs it (1.8.2 item 8); step 8 is the sweep for
 else a line leaves behind. It judges "merged" by the branch's PR, since a squash merge leaves
 the branch off main's history, and it refuses to remove a worktree whose records it could not
 place and verify. On the Spark the archive is `~/squadops-deploy-logs/worktree-var-archive`.
+
+**Step 7 ends with the records on the Release.** The line's verification-set records (every
+roll, shakeout, diagnostic and window record) are write-once evidence whose only copy lived on
+one box. The 1.7.4 and 1.7.5 records survived only because two worktrees were checked before
+removal. The repository is public, so the Release is too: the tarball is scanned for the
+deploy's secret values, secret-named `.env` and container values, key prefixes and JWTs first,
+and a hit refuses the upload by file and line (decision 7 of the 1.8.2 plan).
 
 **Nothing else merges between opening the release PR and merging it.** The release branch
 is cut from main at some commit; anything merged after that still lands in the tag, because
