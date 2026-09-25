@@ -362,6 +362,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             )
             variables["prior_artifacts"] = rendered_artifacts.content
 
+        variables["disputed_checks_section"] = await self._disputed_checks_section(renderer)
         rendered = await renderer.render(
             "request.development_develop.focused_build_task", variables
         )

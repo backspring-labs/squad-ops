@@ -331,6 +331,8 @@ class _RepairPromptMixin:
             # #788: the application's own traceback. #687 put it on the evidence for the
             # analyzer; the repairer never saw it and worked from the description instead.
             "app_traceback_section": str(inputs.get("app_traceback_section") or ""),
+            # SIP-0096 §17a: how to dispute a check, rendered in handle() from its one asset.
+            "disputed_checks_section": str(inputs.get("disputed_checks_section") or ""),
             # SIP-0107 step 4: the anchored edit form, for the named files that already exist
             # in the workspace, and — on the one retry — why the previous edits were refused.
             "anchored_edit_section": str(inputs.get("anchored_edit_section") or ""),
@@ -400,6 +402,10 @@ class _RepairPromptMixin:
         anchored, offered = await self._render_anchored_edit_section(context, inputs)
         if anchored:
             inputs = {**inputs, "anchored_edit_section": anchored}
+        inputs = {
+            **inputs,
+            "disputed_checks_section": await self._render_disputed_checks_section(context),
+        }
         result = await super().handle(context, inputs)
         result = await self._retry_refused_anchored_edits(context, inputs, result)
         base = self._repair_base_files(inputs)
@@ -811,6 +817,12 @@ class _RepairPromptMixin:
             )
             or "-",
         )
+
+    async def _render_disputed_checks_section(self, context: ExecutionContext) -> str:
+        """How to dispute a check (SIP-0096 §17a) — a repair aimed at a false positive is the
+        case the section exists for (#1581) — or "" without a renderer."""
+        renderer = getattr(context.ports, "request_renderer", None)
+        return "" if renderer is None else await self._disputed_checks_section(renderer)
 
     async def _render_qa_fill_mode_section(
         self, context: ExecutionContext, inputs: dict[str, Any]

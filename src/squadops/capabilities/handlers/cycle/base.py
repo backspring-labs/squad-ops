@@ -47,6 +47,7 @@ if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
     from squadops.telemetry.models import PromptLayerMetadata
 
+from squadops.capabilities.disputed_checks import split_disputed_checks
 from squadops.capabilities.handlers.cycle.validation import (
     ValidationResult,
     _build_typed_check_evaluation_artifact,
@@ -1272,7 +1273,10 @@ class _CycleTaskHandler(CapabilityHandler):
             context.llm_usage.record_generation(
                 response, (time.perf_counter() - call_started) * 1000
             )
-            content = response.content
+            # SIP-0096 §17a: a dispute block is the producer's voice, never a file. Stripped
+            # before anything reads the response, so no extractor can store it as one.
+            content, disputes = split_disputed_checks(response.content)
+            context.disputed_checks.extend(d for d in disputes if d not in context.disputed_checks)
             retry_fact = (
                 None
                 if retried
@@ -1335,6 +1339,11 @@ class _CycleTaskHandler(CapabilityHandler):
                 return response, content
             retried = True
             call_messages = [*messages, ChatMessage(role="user", content=retry_fact)]
+
+    @staticmethod
+    async def _disputed_checks_section(renderer: Any) -> str:
+        """How a build or repair task disputes a check (SIP-0096 §17a), from its one asset."""
+        return (await renderer.render("request.disputed_checks_appendix", {})).content
 
     async def _cap_exhausted_fact(
         self,

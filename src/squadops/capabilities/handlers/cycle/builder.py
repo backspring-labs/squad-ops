@@ -179,6 +179,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
                 for tag_key, tag_value in sorted(task_tags.items()):
                     tag_parts.append(f"- **{tag_key}**: {tag_value}")
                 variables["task_tags"] = "\n".join(tag_parts)
+            variables["disputed_checks_section"] = await self._disputed_checks_section(renderer)
             rendered = await renderer.render(
                 "request.builder_assemble.build_assemble",
                 variables,

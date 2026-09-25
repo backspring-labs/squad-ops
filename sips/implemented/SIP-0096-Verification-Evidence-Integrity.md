@@ -278,7 +278,7 @@ Acceptance of the SIP is all phases (SIP-0089/0090 precedent).
 
 ## 17. Post-implementation amendments
 
-### 17a. 2026-09-15 — a contested result: the producer's dispute becomes evidence (proposed; not built; targeted for 1.8.2)
+### 17a. 2026-09-15 — a contested result: the producer's dispute becomes evidence (proposed; change 1 built; targeted for 1.8.2)
 
 **Status.** Drafted on the owner's ask of 2026-09-15 and targeted for 1.8.1 by the owner's
 ruling of the same day; **re-targeted to 1.8.2 on 2026-09-17** by the owner's ruling on the
@@ -345,3 +345,23 @@ instead of a rejected roll read out a week later.
 the model it runs", and targeted for 1.8.1. The design is the implementer's, for review on
 the PR that builds it. **Re-targeted to 1.8.2 by the owner, 2026-09-17**, on the 1.8.1 plan's review
 (the status line above).
+
+**As built — change 1 (2026-09-24, 1.8.2 plan §3.3).** A build or repair response may end with
+one fenced block whose info string is `disputed_checks`, a YAML list of
+`{check, file, criterion_id, reason}` (`src/squadops/capabilities/disputed_checks.py`).
+`_llm_call` strips it from every response before anything reads the response, and collects its
+entries on the task's `ExecutionContext`. The strip has to come first: the fence has no path, so
+on a task expecting one file the single-expected-file fallback (`fenced_parser.py`, #566) would
+store the block as that file. The handler executor carries the entries on the task's outputs as
+`disputed_checks` on every result a handler reached, the failed one included, and adds no key
+when there is no dispute. Develop, qa test, builder assemble and the three correction repairs
+(dev, builder, qa) are told how to dispute through one asset (`request.disputed_checks_appendix`),
+rendered into each template's `disputed_checks_section`. The repair template's "say why in one
+line" sentence, which nothing read, now points at the block instead. The pulse-check repair
+chain's `development.repair` (`request.repair_task_base`) is not told yet: whether a pulse check
+can be contested is decided with change 2. **Diverges from the text above:** the
+dispute names `file`, not `subject`. A typed row carries its subject as `params.file`, and the
+producer sees file paths, so matching (change 2) keys on `(check, params.file, criterion_id)`.
+`check` and `reason` are required; an entry without either disputes nothing and is logged. **Not
+yet built:** changes 2–5. Nothing reads `disputed_checks` yet, so this change credits nothing,
+blocks nothing and routes nothing.

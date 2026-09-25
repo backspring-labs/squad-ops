@@ -251,11 +251,12 @@ class TestCustomHandlerTemplateIdCoverage:
         inputs = {"prd": "Test PRD", **extra_inputs}
         await handler.handle(ctx, inputs)
 
-        renderer.render.assert_called_once()
-        actual_template_id = renderer.render.call_args[0][0]
-        assert actual_template_id == expected_template_id, (
-            f"{handler_cls.__name__} rendered with '{actual_template_id}', "
-            f"expected '{expected_template_id}'"
+        # SIP-0096 §17a: a build task also renders how to dispute a check, from its own asset;
+        # the request itself is still rendered once, from its own template.
+        rendered = [call.args[0] for call in renderer.render.call_args_list]
+        requests = [t for t in rendered if t != "request.disputed_checks_appendix"]
+        assert requests == [expected_template_id], (
+            f"{handler_cls.__name__} rendered {rendered}, expected '{expected_template_id}'"
         )
 
 

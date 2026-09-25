@@ -1894,6 +1894,7 @@ class QATestHandler(_CycleTaskHandler):
                     source_parts.append(f"\n### {path}\n```{lang}\n{code}\n```\n")
                 variables["source_files"] = "\n".join(source_parts)
             variables["prior_outputs"] = self._format_prior_outputs(prior_outputs)
+            variables["disputed_checks_section"] = await self._disputed_checks_section(renderer)
             rendered = await renderer.render(
                 "request.qa_test.test_validate",
                 variables,
