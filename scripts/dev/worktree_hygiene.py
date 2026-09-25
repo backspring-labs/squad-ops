@@ -40,6 +40,9 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from checkouts import main_checkout  # noqa: E402
+
 #: The ignored directory whose contents are evidence and are preserved before removal.
 RECORDS_DIR = "var"
 #: A real (not symlinked) ``data/`` in a worktree is a deploy's volume or a copy of one. This
@@ -94,14 +97,6 @@ def git(*args: str, cwd: Path, check: bool = True) -> subprocess.CompletedProces
     if check and proc.returncode != 0:
         raise SystemExit(f"git {' '.join(args)} (in {cwd}) failed: {proc.stderr.strip()}")
     return proc
-
-
-def main_checkout(cwd: Path) -> Path:
-    common = git("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=cwd).stdout
-    path = Path(common.strip())
-    if path.name != ".git":
-        raise SystemExit(f"{cwd}: {path} is not a checkout's .git; refusing to judge worktrees")
-    return path.parent
 
 
 def gh_pr_lookup(main: Path) -> PrLookup:
