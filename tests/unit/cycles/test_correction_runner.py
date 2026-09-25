@@ -7456,3 +7456,134 @@ class TestARepairsDisputeIsCarriedToTheNextRound:
             {**tests_row, "contested": {"by": "dev", "reason": dispute["reason"]}}
         ]
         assert carry == {"task_failed": [dispute]}
+
+
+class TestAConfirmedDisputeEndsTheChainBeforeItsRepair:
+    """SIP-0096 §17a change 4, entered at ``run_correction_protocol``: a contested row the
+    analyzer confirms ends the chain before any repair, refunded and named on the run's
+    terminal decision; one it does not confirm proceeds exactly as an uncontested failure."""
+
+    _make_runner = TestCorrectionRunnerStandalone._make_runner
+    _failed_envelope = TestCorrectionRunnerStandalone._failed_envelope
+
+    _ROW = {
+        "check": "acceptance:declared_imports",
+        "params": {"file": "frontend/src/views/RunList.jsx"},
+        "status": "failed",
+        "passed": False,
+        "reason": "unresolved import '@/lib/api'",
+        "criterion_id": "vc-list",
+    }
+
+    async def _round(self, cycle, rulings):
+        from squadops.cycles.run_ledger import RunLedger
+
+        dispatched: list[str] = []
+
+        def responder(envelope):
+            dispatched.append(envelope.task_type)
+            if envelope.task_type == "data.analyze_failure":
+                outputs = {
+                    "classification": "work_product",
+                    "analysis_summary": "the alias import was refused",
+                    "dispute_rulings": rulings,
+                }
+            elif envelope.task_type == "governance.correction_decision":
+                outputs = {
+                    "correction_path": "patch",
+                    "decision_rationale": "repair it",
+                    "affected_task_types": ["development.implement"],
+                }
+            else:
+                outputs = {"artifacts": []}
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs=outputs)
+
+        runner, _registry, vault, _bus = self._make_runner(responder)
+        ledger = RunLedger()
+        failed = TaskResult(
+            task_id="task_failed",
+            status="FAILED",
+            error="typed checks failed",
+            outputs={
+                "validation_result": {"checks": [self._ROW]},
+                "disputed_checks": [
+                    {"check": "declared_imports", "reason": "the alias is declared", "by": "dev"}
+                ],
+            },
+        )
+        raised = None
+        try:
+            await runner.run_correction_protocol(
+                run_id="run_001",
+                cycle=cycle,
+                envelope=self._failed_envelope(),
+                result=failed,
+                correction_attempts=1,
+                prior_outputs={},
+                all_artifact_refs=[],
+                stored_artifacts=[],
+                completed_task_ids=[],
+                plan_delta_refs=[],
+                ledger=ledger,
+            )
+        except Exception as exc:  # the terminal path raises; the other returns
+            raised = exc
+        return dispatched, raised, ledger, vault
+
+    async def test_a_confirmed_dispute_ends_the_chain_refunded_and_named(self, cycle):
+        """Bug caught: a confirmed false positive repaired anyway — every round spent on correct
+        work the check will refuse again, which is the loop §17a exists to end — or ended with
+        nothing naming the check the operator must decide on."""
+        ruling = {
+            "check": "acceptance:declared_imports",
+            "file": "frontend/src/views/RunList.jsx",
+            "dispute_confirmed": True,
+            "reason": "tsconfig.json declares @/lib",
+        }
+        dispatched, raised, ledger, vault = await self._round(cycle, [ruling])
+
+        assert "development.correction_repair" not in dispatched, "no repair after a confirmation"
+        assert raised is not None and raised.terminal.termination_reason == "contested_check"
+        assert raised.terminal.contested_checks == (
+            "acceptance:declared_imports on frontend/src/views/RunList.jsx (vc-list)",
+        )
+        (refund,) = ledger.refunded_rounds
+        assert (refund.task_id, refund.round_index, refund.reason) == (
+            "task_failed",
+            1,
+            "confirmed_dispute",
+        )
+        (stored,) = [
+            json.loads(c.args[1])
+            for c in vault.store.call_args_list
+            if c.args[0].artifact_type == "correction_termination"
+        ]
+        assert stored["reason"] == "contested_check"
+        assert stored["contested_checks"][0]["ruling"] == "tsconfig.json declares @/lib"
+
+    @pytest.mark.parametrize(
+        "rulings",
+        [
+            [
+                {
+                    "check": "acceptance:declared_imports",
+                    "dispute_confirmed": False,
+                    "reason": "the alias is not declared anywhere",
+                }
+            ],
+            [{"check": "frontend_build", "dispute_confirmed": True, "reason": "not contested"}],
+            [],
+        ],
+        ids=["ruled against", "confirms a row nobody contested", "not ruled on"],
+    )
+    async def test_a_dispute_not_confirmed_proceeds_as_the_failure_it_disputes(
+        self, cycle, rulings
+    ):
+        """Bug caught: a rejected — or unruled — dispute ending the chain, which would hand any
+        producer an exit from every check by disputing it; or a ruling that names no contested
+        row confirming one that does."""
+        dispatched, raised, ledger, _vault = await self._round(cycle, rulings)
+
+        assert raised is None, raised
+        assert "development.correction_repair" in dispatched
+        assert ledger.refunded_rounds == ()

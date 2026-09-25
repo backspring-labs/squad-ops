@@ -62,7 +62,13 @@ from squadops.cycles.failure_evidence import (
 )
 from squadops.cycles.models import ArtifactRef
 from squadops.cycles.plan_delta import PlanDelta
-from squadops.cycles.run_loop_summary import MovementRecord, RoundFailure, RunTerminalDecision
+from squadops.cycles.run_loop_summary import (
+    REFUND_CONFIRMED_DISPUTE,
+    MovementRecord,
+    RefundedRound,
+    RoundFailure,
+    RunTerminalDecision,
+)
 from squadops.cycles.task_outcome import (
     CORRECTION_TERMINATION_ARTIFACT_TYPE,
     CorrectionTermination,
@@ -789,21 +795,9 @@ class CorrectionRunner:
                     x for x in (state.get("delta_artifact_id"), delta_artifact_id) if x
                 ),
             )
-            content = json.dumps(termination.to_dict()).encode()
-            ref = ArtifactRef(
-                artifact_id=f"term_{envelope.task_id[-8:]}_{correction_attempts:02d}",
-                project_id=cycle.project_id,
-                artifact_type=CORRECTION_TERMINATION_ARTIFACT_TYPE,
-                filename="correction_termination.json",
-                content_hash=sha256(content).hexdigest(),
-                size_bytes=len(content),
-                media_type="application/json",
-                created_at=datetime.now(UTC),
-                cycle_id=cycle.cycle_id,
-                run_id=run_id,
+            ref = await self._store_termination(
+                termination, envelope, cycle, run_id, correction_attempts, all_artifact_refs
             )
-            await self._artifact_vault.store(ref, content)
-            all_artifact_refs.append(ref.artifact_id)
             logger.warning(
                 "correction_terminated_plan_defect task=%s rounds=%d..%d candidate=%s "
                 "carried=%d cleared=%d added=%d signature=%s",
@@ -846,6 +840,103 @@ class CorrectionRunner:
             "round": correction_attempts,
             "delta_artifact_id": delta_artifact_id,
         }
+
+    async def _store_termination(
+        self,
+        termination: CorrectionTermination,
+        envelope: TaskEnvelope,
+        cycle: Cycle,
+        run_id: str,
+        correction_attempts: int,
+        all_artifact_refs: list[str],
+    ) -> ArtifactRef:
+        """Persist a typed termination as the run's ``correction_termination`` artifact —
+        what wrap-up, replay, the assessment and the operator read (1.5 A4, SIP-0108 §4.1)."""
+        content = json.dumps(termination.to_dict()).encode()
+        ref = ArtifactRef(
+            artifact_id=f"term_{envelope.task_id[-8:]}_{correction_attempts:02d}",
+            project_id=cycle.project_id,
+            artifact_type=CORRECTION_TERMINATION_ARTIFACT_TYPE,
+            filename="correction_termination.json",
+            content_hash=sha256(content).hexdigest(),
+            size_bytes=len(content),
+            media_type="application/json",
+            created_at=datetime.now(UTC),
+            cycle_id=cycle.cycle_id,
+            run_id=run_id,
+        )
+        await self._artifact_vault.store(ref, content)
+        all_artifact_refs.append(ref.artifact_id)
+        return ref
+
+    async def _terminate_on_confirmed_dispute(
+        self,
+        diagnosis: _Diagnosis,
+        envelope: TaskEnvelope,
+        cycle: Cycle,
+        run_id: str,
+        correction_attempts: int,
+        *,
+        all_artifact_refs: list[str],
+        ledger: RunLedger | None,
+    ) -> None:
+        """SIP-0096 §17a change 4: end the chain when the analyzer confirmed a dispute.
+
+        A confirmed dispute says the check fails on correct work. No repair can pass it, and a
+        verifier that discounted it would be turning a failure into a pass, which no agent may
+        do. So the round is refunded — it found a check defect, not spent an attempt at the
+        work — the confirmed checks are named on the run's terminal decision, and the operator
+        decides, as for ``blocked_unverified`` (§6.5). The row stays failed. A contest the
+        analyzer did not confirm proceeds as the failure it disputes.
+        """
+        from squadops.capabilities.disputed_checks import confirmed_contests, contest_name
+
+        confirmed = confirmed_contests(
+            diagnosis.failure_evidence.get("contested_rows"),
+            diagnosis.analysis_outputs.get("dispute_rulings"),
+        )
+        if not confirmed:
+            return
+        names = tuple(contest_name(c) for c in confirmed)
+        termination = CorrectionTermination(
+            reason=CorrectionTerminationReason.CONTESTED_CHECK,
+            failed_task_id=envelope.task_id,
+            repeated_signature=(),
+            structural_candidate="",
+            first_seen_round=correction_attempts,
+            terminal_round=correction_attempts,
+            contested_checks=tuple(confirmed),
+        )
+        ref = await self._store_termination(
+            termination, envelope, cycle, run_id, correction_attempts, all_artifact_refs
+        )
+        if ledger is not None:
+            ledger.record_refunded_round(
+                RefundedRound(
+                    task_id=envelope.task_id,
+                    round_index=correction_attempts,
+                    reason=REFUND_CONFIRMED_DISPUTE,
+                )
+            )
+        logger.warning(
+            "correction attempt %d refunded: the analyzer confirmed a dispute of %s — the "
+            "check, not the work, is the defect (task=%s, SIP-0096 §17a)",
+            correction_attempts,
+            "; ".join(names),
+            envelope.task_id,
+        )
+        raise _ExecutionError(
+            f"contested_check: correction ended at round {correction_attempts} — the analyzer "
+            f"confirmed the producer's dispute of {'; '.join(names)}; the check, not the work "
+            f"product, is the defect, and the operator decides (see {ref.artifact_id})",
+            terminal=RunTerminalDecision(
+                kind=TerminalKind.CORRECTION_TERMINATED,
+                termination_reason=termination.reason,
+                failure_classification=diagnosis.analysis_outputs.get("classification"),
+                task_id=envelope.task_id,
+                contested_checks=names,
+            ),
+        )
 
     async def run_correction_protocol(
         self,
@@ -938,6 +1029,18 @@ class CorrectionRunner:
             bound_record=bound_record,
             ledger=ledger,
             repair_disputes=(dispute_carry or {}).get(envelope.task_id),
+        )
+
+        # SIP-0096 §17a change 4: a confirmed dispute ends the chain here, before any repair —
+        # the check, not the work, is the defect, and no repair can pass it.
+        await self._terminate_on_confirmed_dispute(
+            diagnosis,
+            envelope,
+            cycle,
+            run_id,
+            correction_attempts,
+            all_artifact_refs=all_artifact_refs,
+            ledger=ledger,
         )
 
         correction_path = self._resolve_correction_path(

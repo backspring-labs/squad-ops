@@ -31,8 +31,11 @@ from squadops.cycles.llm_usage import RunUsage
 RUN_LOOP_SUMMARY_VERSION = 1
 
 
-#: Why a round was refunded. One reason exists: the repair emitted no content (#1053).
+#: Why a round was refunded: the repair emitted no content (#1053).
 REFUND_EMPTY_REPAIR_EMISSION = "empty_repair_emission"
+#: ...or the analyzer confirmed a producer's dispute of the check (SIP-0096 §17a change 4):
+#: the round found a check defect, not a work defect, and the chain ends before its repair.
+REFUND_CONFIRMED_DISPUTE = "confirmed_dispute"
 
 
 @dataclass(frozen=True)
@@ -212,6 +215,9 @@ class RunTerminalDecision:
     failure_classification: str | None = None
     task_id: str | None = None
     refused_validators: tuple[str, ...] = ()
+    #: SIP-0096 §17a: the checks a ``contested_check`` termination names — each confirmed
+    #: dispute's check, file and criterion, so the run's end says which check is the defect.
+    contested_checks: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -220,6 +226,7 @@ class RunTerminalDecision:
             "failure_classification": self.failure_classification,
             "task_id": self.task_id,
             "refused_validators": list(self.refused_validators),
+            "contested_checks": list(self.contested_checks),
         }
 
     @classmethod
@@ -235,6 +242,7 @@ class RunTerminalDecision:
             failure_classification=_optional_str(data.get("failure_classification")),
             task_id=_optional_str(data.get("task_id")),
             refused_validators=tuple(str(v) for v in data.get("refused_validators") or ()),
+            contested_checks=tuple(str(c) for c in data.get("contested_checks") or ()),
         )
 
 

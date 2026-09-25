@@ -102,6 +102,42 @@ def contested_row_lines(rows: Iterable[Any] | None) -> list[str]:
     return lines
 
 
+def confirmed_contests(rows: Iterable[Any] | None, rulings: Iterable[Any] | None) -> list[dict]:
+    """The contested rows the analyzer confirmed (SIP-0096 §17a change 4), each as its
+    identity, the dispute and the ruling. A ruling names a row the way a dispute does; a row
+    with no confirming ruling — unruled, or ruled against — proceeds as an uncontested
+    failure, and a ruling that names no contested row confirms nothing."""
+    confirmed = []
+    rows = [r for r in rows or () if isinstance(r, Mapping) and r.get("contested")]
+    for ruling in rulings or ():
+        if not isinstance(ruling, Mapping) or ruling.get("dispute_confirmed") is not True:
+            continue
+        for row in rows:
+            if not dispute_names(ruling, row):
+                continue
+            entry = {
+                "check": str(row.get("check")),
+                "file": _row_file(row),
+                "criterion_id": row.get("criterion_id"),
+                "failed": row.get("reason"),
+                "contested": dict(row["contested"]),
+                "ruling": str(ruling.get("reason") or ""),
+            }
+            if entry not in confirmed:
+                confirmed.append(entry)
+    return confirmed
+
+
+def contest_name(contest: Mapping[str, Any]) -> str:
+    """A confirmed contest's check as the run's terminal decision names it."""
+    name = str(contest.get("check"))
+    if contest.get("file"):
+        name += f" on {contest['file']}"
+    if contest.get("criterion_id"):
+        name += f" ({contest['criterion_id']})"
+    return name
+
+
 def dispute_names(dispute: Mapping[str, Any], row: Mapping[str, Any]) -> bool:
     """Whether ``dispute`` names ``row``: the same check, with or without the ``acceptance:``
     prefix, and the same file and criterion wherever the dispute gives them."""

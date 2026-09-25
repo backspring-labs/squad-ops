@@ -289,6 +289,14 @@ DISPOSITIONS: tuple[Disposition, ...] = (
         _C.HANDOFF_OR_CONVERGENCE_FAILURE,
         primary_eligible=True,
     ),
+    # SIP-0096 §17a change 5: a confirmed dispute is a check defect (SIP-0108 §4.2).
+    *_each(
+        Vocabulary.CORRECTION_TERMINATION_REASON,
+        (CorrectionTerminationReason.CONTESTED_CHECK,),
+        _A,
+        _C.CRITERIA_OR_CONTRACT_FAILURE,
+        primary_eligible=True,
+    ),
     *_each(
         Vocabulary.CORRECTION_TERMINATION_REASON,
         (CorrectionTerminationReason.INFRASTRUCTURE_FAILURE,),

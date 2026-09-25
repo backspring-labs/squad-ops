@@ -278,7 +278,7 @@ Acceptance of the SIP is all phases (SIP-0089/0090 precedent).
 
 ## 17. Post-implementation amendments
 
-### 17a. 2026-09-15 — a contested result: the producer's dispute becomes evidence (proposed; changes 1–3 built; targeted for 1.8.2)
+### 17a. 2026-09-15 — a contested result: the producer's dispute becomes evidence (proposed; changes 1–4 built; targeted for 1.8.2)
 
 **Status.** Drafted on the owner's ask of 2026-09-15 and targeted for 1.8.1 by the owner's
 ruling of the same day; **re-targeted to 1.8.2 on 2026-09-17** by the owner's ruling on the
@@ -425,4 +425,32 @@ with no contested row is asked nothing new, and its outputs carry no `dispute_ru
 (Solo's `[repair]`, SIP-0108 §10i) records its contests (change 2) and never adjudicates them;
 each proceeds as an uncontested failure.
 
-**Not yet built:** changes 4–5. Nothing routes on a ruling yet.
+**As built — change 4 (2026-09-24).** After the diagnosis and before any repair, the runner
+reads the rulings against the contested rows (`confirmed_contests`: a ruling names a row the
+way a dispute does). If any contested row is confirmed, the chain ends there, through the
+termination path `plan_defect` already uses (#435):
+- **a typed `CorrectionTermination`** with a new reason, `contested_check`, stored as the run's
+  `correction_termination` artifact with each confirmed contest: identity, dispute, ruling
+- **the round refunded**: a `RefundedRound` with a new reason, `confirmed_dispute`, and the
+  `correction attempt N refunded: …` line the driver already reads
+- **the run's `RunTerminalDecision`** (`correction_terminated` / `contested_check`) naming the
+  confirmed checks in a new field, `contested_checks`
+- **attribution:** `contested_check` is attributed `criteria_or_contract_failure` (SIP-0108
+  §4.2), the check-defect class change 5 names
+
+The failing row stays failed and the verdict stays whatever the rows make it. The operator
+decides, as for a residual `blocked_unverified` (§6.5).
+
+**Why the chain ends rather than the row being set aside.** A confirmed dispute says the check
+fails on correct work. A repair can't pass it, so every further round would be spent on work the
+check refuses again, which is the loop this amendment exists to end. A verifier that discounted
+the row would be turning a failure into a pass, and no agent may do that. So when a round's
+confirmed rows sit beside uncontested failures, it still ends: the uncontested failures are named
+in the same evidence, and the operator reads both.
+
+A contest the analyzer **did not confirm** (ruled against, not ruled on, or ruled on by a
+ruling that names no contested row) proceeds exactly as an uncontested failure. The lead's
+decision step already receives both the contested rows (`failure_evidence`) and the rulings
+(`failure_analysis`).
+
+**Not yet built:** change 5, the driver readout.
