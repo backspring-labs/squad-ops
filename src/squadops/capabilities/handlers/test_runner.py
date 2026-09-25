@@ -841,17 +841,33 @@ _FAILING_CASE_MESSAGE_LIMIT = 300
 
 
 def failing_cases(test_failures) -> list[dict]:
-    """``[{file, title, line, message}]`` for the repair brief, in report order, bounded."""
+    """``[{file, title, line, failing_line, message}]`` for the repair brief, in report order,
+    bounded.
+
+    ``failing_line`` is where the case failed in its own file: the innermost frame the
+    failure's stack has there (1.8.2 item 6). vitest's ``line`` is where the test is
+    DECLARED (its ``location``), so the brief pointed a repair at the ``it(`` line while the
+    assertion that failed sat several lines below: 1.8.1's qa repairs edited line 211 of a
+    suite failing at 217, and 125–127 of one failing at 130, and failed again at the same
+    line. pytest's ``line`` is already the failing line in the test body.
+    """
     cases: list[dict] = []
     for row in test_failures or ():
         if not isinstance(row, dict) or not (row.get("file") or row.get("title")):
             continue
         messages = row.get("messages") or []
+        file = str(row.get("file") or "")
+        own_frames = [
+            f.get("line")
+            for f in row.get("frames") or []
+            if isinstance(f, dict) and f.get("file") == file
+        ]
         cases.append(
             {
-                "file": str(row.get("file") or ""),
+                "file": file,
                 "title": str(row.get("title") or ""),
                 "line": row.get("line"),
+                "failing_line": own_frames[-1] if own_frames else row.get("line"),
                 "message": str(messages[0] if messages else "")[:_FAILING_CASE_MESSAGE_LIMIT],
             }
         )
