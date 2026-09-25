@@ -12,6 +12,7 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
+from squadops.capabilities.disputed_checks import DISPUTED_CHECKS
 from squadops.capabilities.handlers.context import ExecutionContext
 from squadops.cycles.llm_usage import UsageTotals
 from squadops.orchestration.handler_registry import HandlerNotFoundError, HandlerRegistry
@@ -22,6 +23,15 @@ if TYPE_CHECKING:
     from squadops.agents.base import PortsBundle
 
 logger = logging.getLogger(__name__)
+
+
+def _with_disputes(outputs: dict[str, Any] | None, context: ExecutionContext | None):
+    """``outputs`` carrying the checks the task's responses disputed (SIP-0096 §17a), on
+    every result a handler reached — a refused check is disputed most often by a task that
+    then failed. No dispute, no key: a response without the block disputes nothing."""
+    if context is None or not context.disputed_checks:
+        return outputs
+    return {**(outputs or {}), DISPUTED_CHECKS: list(context.disputed_checks)}
 
 
 class HandlerExecutor(CapabilityExecutor):
@@ -168,7 +178,7 @@ class HandlerExecutor(CapabilityExecutor):
                 return TaskResult(
                     task_id=task_id,
                     status=TaskResultStatus.SUCCEEDED,
-                    outputs=result.outputs,
+                    outputs=_with_disputes(result.outputs, context),
                     error=None,
                     execution_evidence=self._evidence_to_dict(result.evidence),
                     llm_usage=context.llm_usage.to_dict(),
@@ -185,7 +195,7 @@ class HandlerExecutor(CapabilityExecutor):
                 return TaskResult(
                     task_id=task_id,
                     status=TaskResultStatus.FAILED,
-                    outputs=result.outputs,
+                    outputs=_with_disputes(result.outputs, context),
                     error=result.error,
                     execution_evidence=self._evidence_to_dict(result.evidence),
                     llm_usage=context.llm_usage.to_dict(),
@@ -202,7 +212,7 @@ class HandlerExecutor(CapabilityExecutor):
             return TaskResult(
                 task_id=task_id,
                 status=TaskResultStatus.FAILED,
-                outputs=None,
+                outputs=_with_disputes(None, context),
                 error=str(e),
                 execution_evidence={"exception": type(e).__name__},
                 llm_usage=context.llm_usage.to_dict() if context is not None else None,

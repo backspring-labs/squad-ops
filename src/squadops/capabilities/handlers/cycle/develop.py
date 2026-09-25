@@ -12,6 +12,7 @@ from squadops.capabilities.development_profiles import (
     effective_development_profile,
     get_development_profile,
 )
+from squadops.capabilities.disputed_checks import criterion_identities
 from squadops.capabilities.handlers.base import HandlerResult
 from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
 from squadops.llm.exceptions import LLMError
@@ -362,6 +363,11 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             )
             variables["prior_artifacts"] = rendered_artifacts.content
 
+        disputes = await self._disputed_checks_section(
+            renderer, criterion_identities(acceptance_criteria)
+        )
+        if disputes:
+            variables["disputed_checks_section"] = disputes
         rendered = await renderer.render(
             "request.development_develop.focused_build_task", variables
         )

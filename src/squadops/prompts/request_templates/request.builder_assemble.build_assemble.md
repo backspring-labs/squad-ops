@@ -1,6 +1,6 @@
 ---
 template_id: request.builder_assemble.build_assemble
-version: "5"
+version: "6"
 required_variables:
   - prd
   - source_files
@@ -9,6 +9,7 @@ optional_variables:
   - task_tags
   - task_section
   - contract_expectations
+  - disputed_checks_section
 ---
 ## Product Requirements Document
 
@@ -63,3 +64,5 @@ writing nothing. Omitting the file is a complete answer.
 
 Where a Contract Expectations block appears above, every one of its checks is
 evaluated against your output exactly as written.
+
+{{disputed_checks_section}}

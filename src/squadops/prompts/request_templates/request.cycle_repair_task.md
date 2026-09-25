@@ -1,6 +1,6 @@
 ---
 template_id: request.cycle_repair_task
-version: "10"
+version: "11"
 required_variables:
   - prd
   - role
@@ -27,6 +27,7 @@ optional_variables:
   - current_files_section
   - anchored_edit_section
   - anchored_edit_retry_section
+  - disputed_checks_section
 ---
 ## Repair Task
 
@@ -54,8 +55,8 @@ Focus: {{subtask_focus}}
 Unrelated changes are how a repair round is lost. Reshaping a response, rewording an error
 string, or refactoring validation while fixing something else introduces new failures that
 the retest attributes to this round, and the round is spent without the original defect
-being resolved. If you believe a change beyond the named failure is required, say why in one
-line rather than making it silently.
+being resolved. If the named failure is not a defect in the code — the check itself is wrong,
+or does not apply to this task — do not change correct code to satisfy it: dispute the check.
 
 Test files are qa-owned: do not emit them. Any test file in your output is discarded.
 {{loop_state}}
@@ -71,6 +72,7 @@ The narrative criteria below describe intent. They are context, not letter-of-th
 {{failure_summary}}
 
 {{correction_decision_section}}
+{{disputed_checks_section}}
 
 ### Product Requirements Document
 

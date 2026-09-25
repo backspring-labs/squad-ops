@@ -49,6 +49,9 @@ class ExecutionContext:
     #: SIP-0108 §4.1: this task's LLM usage, added by ``_llm_call`` for every call — the one
     #: seam every generation passes — and carried on the task result on every exit path.
     llm_usage: UsageLedger = field(default_factory=UsageLedger)
+    #: SIP-0096 §17a: the checks this task's responses disputed, stripped from each response
+    #: by ``_llm_call`` and carried on the task result's outputs by the handler executor.
+    disputed_checks: list[dict[str, str]] = field(default_factory=list)
 
     @classmethod
     def create(

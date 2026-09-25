@@ -1,6 +1,6 @@
 ---
 template_id: request.development_develop.focused_build_task
-version: "1"
+version: "2"
 required_variables:
   - focus
   - expected_files
@@ -11,6 +11,7 @@ optional_variables:
   - contract_expectations
   - narrative_criteria
   - prior_artifacts
+  - disputed_checks_section
 ---
 ## Build Task: {{focus}}
 
@@ -38,3 +39,5 @@ Produce ONLY the files listed in Expected Output Files. Use fenced code blocks w
 ```language:<the file's own path>``` format, using the paths named above exactly as
 written — never a placeholder or a prefixed variant. Do not reproduce files from prior
 artifacts.
+
+{{disputed_checks_section}}

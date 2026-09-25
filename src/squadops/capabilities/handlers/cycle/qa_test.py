@@ -19,6 +19,7 @@ from squadops.capabilities.development_profiles import (
     effective_development_profile,
     get_development_profile,
 )
+from squadops.capabilities.disputed_checks import criterion_identities
 from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
@@ -1500,6 +1501,12 @@ class QATestHandler(_CycleTaskHandler):
             assembly_notes_section = await self._assembly_notes_section(context, inputs)
             if assembly_notes_section:
                 user_prompt = f"{user_prompt}\n{assembly_notes_section}"
+            disputes_section = await self._disputed_checks_section(
+                getattr(context.ports, "request_renderer", None),
+                criterion_identities(inputs.get("acceptance_criteria")),
+            )
+            if disputes_section:
+                user_prompt = f"{user_prompt}\n{disputes_section}"
             rendered = None
             sources = self._get_source_artifacts(inputs)
         else:

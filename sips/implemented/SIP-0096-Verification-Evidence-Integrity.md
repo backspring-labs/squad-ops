@@ -278,7 +278,7 @@ Acceptance of the SIP is all phases (SIP-0089/0090 precedent).
 
 ## 17. Post-implementation amendments
 
-### 17a. 2026-09-15 — a contested result: the producer's dispute becomes evidence (proposed; not built; targeted for 1.8.2)
+### 17a. 2026-09-15 — a contested result: the producer's dispute becomes evidence (proposed; change 1 built; targeted for 1.8.2)
 
 **Status.** Drafted on the owner's ask of 2026-09-15 and targeted for 1.8.1 by the owner's
 ruling of the same day; **re-targeted to 1.8.2 on 2026-09-17** by the owner's ruling on the
@@ -345,3 +345,41 @@ instead of a rejected roll read out a week later.
 the model it runs", and targeted for 1.8.1. The design is the implementer's, for review on
 the PR that builds it. **Re-targeted to 1.8.2 by the owner, 2026-09-17**, on the 1.8.1 plan's review
 (the status line above).
+
+**As built — change 1 (2026-09-24, 1.8.2 plan §3.3).** A build or repair response may end with
+one fenced block whose info string is `disputed_checks`, a YAML list of
+`{check, file, criterion_id, reason}` (`src/squadops/capabilities/disputed_checks.py`).
+`_llm_call` strips it from every response before anything reads the response, and collects its
+entries on the task's `ExecutionContext`. The strip has to come first: the fence has no path, so
+on a task expecting one file the single-expected-file fallback (`fenced_parser.py`, #566) would
+store the block as that file. The handler executor carries the entries on the task's outputs as
+`disputed_checks` on every result a handler reached, the failed one included, and adds no key
+when there is no dispute.
+
+**The section names what it offers.** A dispute has to name its check, and no prompt named one.
+A build task's expectation lines say what each criterion requires but never its check or
+criterion id (`contract_expectations.expectation_line`). A repair and a self-evaluation pass see
+only "Typed checks failed: N of M" (`develop.py`, `qa_test.py`), plus the analyzer's prose. So
+the section, rendered from one asset (`request.disputed_checks_appendix`), lists the checks the
+task may dispute, each as `check`, `file` and `criterion_id`:
+- a build task gets its typed criteria, under the `acceptance:` name their rows will carry
+  (`criterion_identities`)
+- a repair gets the blocking-failed rows of its failure evidence, each with its reason
+  (`failing_row_identities`)
+
+A task judged by no named check gets no section. The paths that carry typed criteria render it:
+develop and qa test on the plan-driven path (the path every manifest-driven task takes),
+builder assemble, and the three correction repairs (dev, builder, qa). The legacy monolithic
+paths carry no typed criteria, so they have nothing to offer. The repair template's "say why in
+one line" sentence, which nothing read, now points at the block instead. The pulse-check repair
+chain's `development.repair` (`request.repair_task_base`) is not given the section yet: whether a
+pulse check can be contested is decided with change 2. The self-evaluation follow-up
+(`_build_self_eval_prompt`) names no check either. SIP-0086 §12a change 3 rewrites that prompt,
+and it gets the section then. **Diverges from the text above:** the
+dispute names `file`, not `subject`. A row's `subject` is the plan-task id that produced it
+(`CheckResult.subject`, §6.3), which the producer does not see. It is implied by which task
+disputed, so matching (change 2) takes it from the task. `file` is what separates one check run
+on several files: a typed row carries it as `params.file`.
+`check` and `reason` are required; an entry without either disputes nothing and is logged. **Not
+yet built:** changes 2–5. Nothing reads `disputed_checks` yet, so this change credits nothing,
+blocks nothing and routes nothing.
