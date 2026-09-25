@@ -229,11 +229,16 @@ class _WholeFileTests(SelfEvalFollowup):
 class _ScaffoldFill(_WholeFileTests):
     """``qa.test`` under a verification scaffold: fills merged into frozen shells (SIP-0104).
 
+    Its shells are filled by slot, never edited, so a pass is not offered the edit form
+    (SIP-0086 §12a change 3).
+
     Holds the fill state one ``handle()`` accumulates — the fill emission, the merged
     shells, the merge evidence — so a self-evaluation pass folds into the state the
     primary merge left and the scaffold evidence reads the final merge (register entries
     41–43). The steps it delegates stay on the handler, where their own tests reach them.
     """
+
+    edits_offered = False
 
     scaffold_bound = True
 
@@ -903,6 +908,125 @@ class QATestHandler(_CycleTaskHandler):
         )
         return rendered.content
 
+    async def _retake_section(
+        self, context: ExecutionContext, inputs: dict[str, Any]
+    ) -> tuple[str, dict[str, int]]:
+        """The re-take's edit request (SIP-0086 §12a change 3, 1.8.2 plan §3.3), or "" — the
+        suite the task already wrote, verbatim, and the edit form for it, with what it offered.
+
+        Set only on the re-dispatch after a refunded repair round (``RETAKE_CURRENT_FILES_KEY``).
+        A scaffold shell is filled by slot, never edited (the repair's own rule, #1583), so a
+        fill-mode re-take is offered only the suite files it wrote beside its shells.
+        """
+        from squadops.capabilities.anchored_edits import editable_file_lines, verbatim_block
+        from squadops.capabilities.context_assembly import (
+            RETAKE_CURRENT_FILES_KEY,
+            scaffold_shell_paths,
+        )
+
+        suite = inputs.get(RETAKE_CURRENT_FILES_KEY) or {}
+        renderer = getattr(context.ports, "request_renderer", None)
+        editable = sorted(set(suite) - scaffold_shell_paths(inputs))
+        if not editable or renderer is None:
+            return "", {}
+        blocks = "\n\n".join(verbatim_block(path, suite[path]) for path in editable)
+        current = await renderer.render(
+            "request.cycle_repair_current_files", {"current_files": blocks}
+        )
+        lines, offered = editable_file_lines(editable, suite)
+        form = await renderer.render(
+            "request.cycle_repair_anchored_edit_appendix", {"editable_files": "\n".join(lines)}
+        )
+        rendered = await renderer.render(
+            "request.qa_test_retake_appendix",
+            {"current_files_section": current.content, "anchored_edit_section": form.content},
+        )
+        return rendered.content, offered
+
+    def _apply_retake_edits(
+        self,
+        context: ExecutionContext,
+        content: str,
+        inputs: dict[str, Any],
+        shape: _WholeFileTests,
+        offered: dict[str, int],
+    ) -> tuple[str, list[dict], dict[str, Any] | None]:
+        """A re-take's edits applied to the suite it was shown, in one transaction (SIP-0107 §14):
+        ``(the response for file extraction, the edited files, the failure's outputs if refused)``.
+
+        Every re-take offered the form records the form it took (``qa_retake_revision_form``,
+        read like a repair's, SIP-0107 §46a/§46o): an edit, or the whole-suite re-emission deploy
+        A saw on every such re-take.
+        """
+        if not offered:
+            return content, [], None
+        import json
+
+        from squadops.capabilities.anchored_edits import (
+            EMISSION_FAILURE_ANCHORED_EDIT_REFUSED,
+            apply_anchored_edits,
+            parse_anchored_edits,
+            revision_form_reading,
+            strip_edit_blocks,
+        )
+        from squadops.capabilities.context_assembly import RETAKE_CURRENT_FILES_KEY
+        from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
+
+        suite = dict(inputs.get(RETAKE_CURRENT_FILES_KEY) or {})
+        parse = parse_anchored_edits(content)
+        body = strip_edit_blocks(content) if parse.found else content
+        whole = [
+            art
+            for f in extract_fenced_files(shape.split(body))
+            if (art := shape.artifact_for(f)) is not None
+        ]
+        edited: list[dict] = []
+        record: dict[str, Any] | None = None
+        refused: dict[str, Any] | None = None
+        if parse.found:
+            application = apply_anchored_edits(
+                parse,
+                suite,
+                writable=list(offered),
+                producer=str(self._task_type),
+                task_id=str(getattr(context, "task_id", "") or ""),
+                whole_file_paths=[str(a.get("name") or "") for a in whole],
+            )
+            record = application.record()
+            if application.accepted:
+                edited = [
+                    {
+                        "name": path,
+                        "content": text,
+                        "media_type": _classify_file(path)[1],
+                        "type": "test",
+                    }
+                    for path, text in sorted(application.outcome.changed_files().items())
+                ]
+            else:
+                refused = {
+                    "retake_edits": record,
+                    "emission_failure": {
+                        "reason": EMISSION_FAILURE_ANCHORED_EDIT_REFUSED,
+                        "refusals": record["refusals"],
+                        "expected_artifacts": list(inputs.get("expected_artifacts") or []),
+                    },
+                }
+        outputs: dict[str, Any] = {"artifacts": [] if refused else edited + whole}
+        if record is not None:
+            outputs["anchored_edits"] = record
+        reading = revision_form_reading(
+            offered, outputs, {path: len(text) for path, text in suite.items()}
+        )
+        logger.info(
+            "qa_retake_revision_form %s",
+            json.dumps(
+                {"handler": self._handler_name, "task_type": str(self._task_type), **reading},
+                sort_keys=True,
+            ),
+        )
+        return body, edited, refused
+
     async def _assembly_notes_section(
         self, context: ExecutionContext, inputs: dict[str, Any]
     ) -> str:
@@ -1480,6 +1604,8 @@ class QATestHandler(_CycleTaskHandler):
                 context, inputs, capability, start_time, inputs["retest_files"]
             )
 
+        # SIP-0086 §12a change 3: what a re-take after a refunded repair was shown, if it is one.
+        retake_offered: dict[str, int] = {}
         # SIP-0086 RC-6: focused prompt path for manifest-driven subtasks
         if inputs.get("subtask_focus") is not None:
             user_prompt = self._build_focused_prompt(inputs)
@@ -1507,6 +1633,9 @@ class QATestHandler(_CycleTaskHandler):
             )
             if disputes_section:
                 user_prompt = f"{user_prompt}\n{disputes_section}"
+            retake_section, retake_offered = await self._retake_section(context, inputs)
+            if retake_section:
+                user_prompt = f"{user_prompt}\n{retake_section}"
             rendered = None
             sources = self._get_source_artifacts(inputs)
         else:
@@ -1616,6 +1745,15 @@ class QATestHandler(_CycleTaskHandler):
             logger.warning("LLM call failed for %s: %s", self._handler_name, exc)
             return self._fail_result(start_time, inputs, str(exc))
 
+        # SIP-0086 §12a change 3: a re-take's edits apply to the suite it was shown, in one
+        # transaction; a refused one fails the task with the refusal, as a repair's does.
+        content, retake_edited, retake_refused = self._apply_retake_edits(
+            context, content, inputs, shape, retake_offered
+        )
+        if retake_refused is not None:
+            return self._fail_result(
+                start_time, inputs, "the re-take's edits were refused", outputs=retake_refused
+            )
         extracted = extract_fenced_files(
             shape.split(content), expected_artifacts=inputs.get("expected_artifacts")
         )
@@ -1635,7 +1773,7 @@ class QATestHandler(_CycleTaskHandler):
             inputs.get("expected_artifacts"),
             shape.scaffold_bound,
         )
-        if not extracted and not shape.has_fills():
+        if not extracted and not shape.has_fills() and not retake_edited:
             return self._no_fenced_blocks_result(start_time, inputs, content, response, chat_kwargs)
 
         artifacts = [
@@ -1646,7 +1784,7 @@ class QATestHandler(_CycleTaskHandler):
                 "type": "test",
             }
             for f in extracted
-        ]
+        ] + retake_edited
 
         # SIP-0086: Output validation + self-evaluation
         evidence_extra: dict[str, Any] = {}

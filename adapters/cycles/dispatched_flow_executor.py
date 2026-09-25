@@ -41,9 +41,11 @@ from adapters.cycles.task_naming import build_task_name
 from squadops.capabilities.context_assembly import (
     ACCEPTANCE_WORKSPACE_FILTER,
     LANDING_PRIOR_OUTPUTS,
+    RETAKE_CURRENT_FILES_KEY,
     dispatch_artifact_filter_spec,
     get_context_contract,
     manifest_surface_fragments,
+    retake_suite_files,
     wrapup_evidence_applies,
 )
 from squadops.cycles.agent_config import build_agent_resolver
@@ -101,6 +103,7 @@ from squadops.runtime.recruitment import reserve_buffer_decision
 from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
 from squadops.tasks.task_types import (
     TaskType,
+    authors_qa_suite,
     fails_without_correction,
 )
 from squadops.telemetry.context import use_correlation_context
@@ -168,6 +171,30 @@ def record_absent_emission(ledger: RunLedger, task_result: Any, envelope: TaskEn
             signatures=(str(signature),) if signature else (),
             attempt=int((envelope.inputs or {}).get("prior_attempts") or 0) + 1,
         )
+    )
+
+
+def _carry_retake_suite(
+    result: TaskResult, envelope: TaskEnvelope, enriched_envelope: TaskEnvelope | None
+) -> None:
+    """SIP-0086 §12a change 3 (1.8.2 plan §3.3): a qa suite whose round's repair was refunded is
+    re-taken as an edit request on the suite it already wrote, not a re-emission — the failed
+    result's suite files ride the re-dispatch. A task that authors no qa suite has no handler to
+    read them, so none is set."""
+    if not authors_qa_suite(envelope.task_type):
+        return
+    suite = retake_suite_files(result.outputs)
+    if not suite:
+        return
+    for env in (envelope, enriched_envelope):
+        if env is not None:
+            env.inputs[RETAKE_CURRENT_FILES_KEY] = dict(suite)
+    logger.info(
+        "retake_current_files: %d suite file(s) from %s ride the re-take as an edit request "
+        "(SIP-0086 §12a): %s",
+        len(suite),
+        envelope.task_id,
+        ", ".join(sorted(suite)),
     )
 
 
@@ -3300,6 +3327,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         envelope.inputs.pop("emission_retry_feedback", None)
         if enriched_envelope is not None:
             enriched_envelope.inputs.pop("emission_retry_feedback", None)
+        # SIP-0086 §12a change 3: the re-take's shown suite rides the one dispatch it was set
+        # for, never a later one.
+        envelope.inputs.pop(RETAKE_CURRENT_FILES_KEY, None)
+        if enriched_envelope is not None:
+            enriched_envelope.inputs.pop(RETAKE_CURRENT_FILES_KEY, None)
 
         retained = failing_cases_from_evidence(result.outputs or {})
         if retained:
@@ -3588,6 +3620,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 f"({', '.join(protocol.empty_emission_signatures) or 'signature unreported'})"
                 " — nothing was applied, verified or retested",
             )
+            _carry_retake_suite(result, envelope, enriched_envelope)
             return "continue"
         if correction_path == "abort":
             raise _ExecutionError(

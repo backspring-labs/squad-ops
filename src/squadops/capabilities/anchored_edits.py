@@ -271,6 +271,46 @@ def _scan(lines: list[str]) -> list[tuple[int, int, _FenceReader]]:
     return fences
 
 
+#: Entities listed per editable file in an edit form: scaffold files carry a handful; a large
+#: module is truncated with a count rather than flooding the prompt.
+MAX_LISTED_ENTITIES = 40
+
+
+def verbatim_block(path: str, content: str) -> str:
+    """``path`` and its content inside a fence no run of backticks in the content can close —
+    CommonMark closes a fence only with a run at least as long as the one that opened it. A
+    bare fence, not the ` ```language:<path> ` header, so the shown file is never read as an
+    emission form."""
+    longest = max((len(run) for run in re.findall(r"`+", content)), default=0)
+    fence = "`" * max(3, longest + 1)
+    body = content if content.endswith("\n") else content + "\n"
+    return f"`{path}`:\n{fence}\n{body}{fence}"
+
+
+def editable_file_lines(
+    files: Iterable[str], base: Mapping[str, str]
+) -> tuple[list[str], dict[str, int]]:
+    """The edit form's file list (SIP-0107 §9.1, §9.2) and what it offered: each file with the
+    entities its resolver can address, read from the same base the edits resolve against so a
+    listed selector is one the transaction will find, and how many were listed for it. A file
+    no resolver reads, or one that does not parse, is listed without entities."""
+    from squadops.cycles.structural_resolution import entity_selectors
+
+    lines: list[str] = []
+    offered: dict[str, int] = {}
+    for path in files:
+        selectors = entity_selectors(path, base[path]) or ()
+        offered[path] = len(selectors)
+        listed = ", ".join(f"`{sel}`" for sel in selectors[:MAX_LISTED_ENTITIES])
+        more = (
+            f" (+{len(selectors) - MAX_LISTED_ENTITIES} more)"
+            if len(selectors) > MAX_LISTED_ENTITIES
+            else ""
+        )
+        lines.append(f"- `{path}` — entities: {listed}{more}" if selectors else f"- `{path}`")
+    return lines, offered
+
+
 def parse_anchored_edits(response: str) -> AnchoredEditParse:
     """Every anchored edit the response carries, and every edit fence it could not read."""
     if not response:

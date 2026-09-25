@@ -7633,3 +7633,89 @@ class TestAConfirmedDisputeEndsTheChainBeforeItsRepair:
         assert driver._render_contests(texture["contested_rows"]) == (
             f"1 / 0 / 0 / 0 (1 dev); confirmed: {name}"
         )
+
+
+class TestARefundedQaRoundIsReTakenAsAnEditRequest:
+    """SIP-0086 §12a change 3, 1.8.2 plan §3.3: a qa suite whose round's repair was refunded is
+    re-taken as an edit request on the suite it wrote. On deploy A every such re-take re-emitted
+    the suite whole — zero scoped qa transactions in five runs on the App Router stack."""
+
+    _SUITE = (
+        "def test_create_run(client):\n    assert client.post('/api/runs').status_code == 201\n"
+    )
+
+    def _failed(self, envelope):
+        from squadops.tasks.models import TaskResult
+
+        return TaskResult(
+            task_id=envelope.task_id,
+            status="FAILED",
+            error="suite failed",
+            outputs={
+                "artifacts": [
+                    {"name": "tests/test_runs.py", "content": self._SUITE, "type": "test"},
+                    {"name": "test_report.md", "content": "1 failed", "type": "test_report"},
+                ]
+            },
+        )
+
+    @pytest.mark.parametrize(
+        ("task_type", "carried"), [("qa.test", True), ("development.develop", False)]
+    )
+    async def test_the_suite_rides_the_re_take_of_a_qa_task_and_no_other(
+        self, executor, cycle, task_type, carried
+    ):
+        """Entry point: ``_route_correction_path``, where the round is refunded. Bug caught: the
+        re-take given nothing to edit, so it re-authors the suite blind — or a dev task handed a
+        carry no handler of its reads."""
+        import dataclasses
+
+        from adapters.cycles.correction_runner import CorrectionProtocolResult
+        from adapters.cycles.dispatched_flow_executor import _CorrectionRound
+
+        protocol = CorrectionProtocolResult(
+            correction_path="patch", emission_empty=True, empty_emission_signatures=("empty",)
+        )
+        envelope = dataclasses.replace(
+            TestProgressAwareTermination._envelope(), task_type=task_type, inputs={}
+        )
+        action = await executor._route_correction_path(
+            _CorrectionRound(protocol=protocol, attempt=0, max_attempts=2),
+            self._failed(envelope),
+            envelope,
+            "run_001",
+            cycle=cycle,
+            correction_counter={"n": 1},
+            patched_result_holder=None,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+            profile=None,
+            flow_run_id=None,
+            enriched_envelope=None,
+            budget_guard=None,
+            interface_manifest=None,
+            repair_rejection_carry=None,
+            bound_record=None,
+            compliance_counter=None,
+        )
+
+        assert action == "continue"
+        expected = {"tests/test_runs.py": self._SUITE} if carried else None
+        assert envelope.inputs.get("retake_current_files") == expected
+
+    def test_the_carry_rides_one_dispatch(self, executor):
+        """Bug caught: a later attempt — after a repair that did land — still told it is a
+        re-take and shown a suite that is no longer the one it wrote."""
+        import dataclasses
+
+        envelope = dataclasses.replace(
+            TestProgressAwareTermination._envelope(),
+            task_type="qa.test",
+            inputs={"retake_current_files": {"tests/test_runs.py": self._SUITE}},
+        )
+        executor._carry_facts_to_the_next_attempt(self._failed(envelope), envelope, None)
+
+        assert "retake_current_files" not in envelope.inputs

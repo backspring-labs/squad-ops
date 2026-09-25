@@ -118,6 +118,32 @@ def _framework_injected_criteria(
     return injected
 
 
+def failing_check_lines(checks: Any) -> list[str]:
+    """Every blocking-failed row as a pass is shown it (SIP-0086 §12a changes 2–3): its
+    identity and reason, then every type error it carried — or, when it carried none, the tail
+    of what the build printed. The summary a pass was shown before ("Typed checks failed: N of
+    M") named no check and no error."""
+    from squadops.capabilities.anchored_edits import verbatim_block
+    from squadops.capabilities.disputed_checks import failing_row_identities
+
+    lines: list[str] = []
+    for row in checks or ():
+        (identity,) = failing_row_identities([row]) or (None,)
+        if identity is None:
+            continue
+        lines.append(identity)
+        actual = row.get("actual") if isinstance(row.get("actual"), dict) else row
+        diagnostics = actual.get("diagnostics") or []
+        if diagnostics:
+            lines.extend(f"  - {d}" for d in diagnostics)
+            more = int(actual.get("diagnostic_count") or 0) - len(diagnostics)
+            if more > 0:
+                lines.append(f"  - (+{more} more)")
+        elif actual.get("stderr_tail"):
+            lines.append(verbatim_block("build output", str(actual["stderr_tail"])))
+    return lines
+
+
 class SelfEvalFollowup:
     """What a self-evaluation follow-up emission means to the handler that asked for it (#1444).
 
@@ -127,6 +153,11 @@ class SelfEvalFollowup:
     handler's scaffold fill folds fills into its merged shells and refuses a rewrite of one —
     so ``_CycleTaskHandler._self_evaluate`` is one loop, not a copy per handler.
     """
+
+    #: SIP-0086 §12a change 3: whether a pass may revise the files it is shown by edit fence. A
+    #: shape that folds its own emission form into the artifacts — the qa scaffold's fills into
+    #: frozen shells — answers False: its shells are filled by slot, never edited.
+    edits_offered: bool = True
 
     async def prompt_suffix(self, context: ExecutionContext, evidence_extra: dict[str, Any]) -> str:
         """Text appended to the follow-up prompt; empty for whole-file emission."""
@@ -768,6 +799,155 @@ class _CycleTaskHandler(CapabilityHandler):
         return "".join(parts)
 
     @staticmethod
+    def _pass_shown_files(validation: ValidationResult, artifacts: list[dict]) -> list[str]:
+        """The files a pass is shown and may edit (SIP-0086 §12a change 3): each file a
+        blocking-failed row names that the task already produced. A missing file has no current
+        content to show; it is emitted whole."""
+        from squadops.capabilities.disputed_checks import row_file
+        from squadops.cycles.verification_normalize import row_is_blocking_failure
+
+        produced = {str(a.get("name")) for a in artifacts if a.get("name")}
+        named = [
+            str(row_file(row))
+            for row in validation.checks or ()
+            if isinstance(row, dict) and row_is_blocking_failure(row) and row_file(row)
+        ]
+        return sorted({path for path in named if path in produced})
+
+    async def _build_pass_prompt(
+        self,
+        renderer: Any,
+        validation: ValidationResult,
+        artifacts: list[dict],
+        shown: list[str],
+    ) -> tuple[str, dict[str, int]]:
+        """A pass's follow-up and the edit form it offered (SIP-0086 §12a change 3): every failing
+        row with what it reported, the current content of the files it may edit, how to edit
+        them, and how to dispute a check — from assets. Without a renderer, the prompt a pass
+        always had, and no edit form."""
+        if renderer is None:
+            return self._build_self_eval_prompt(validation, artifacts), {}
+        from squadops.capabilities.anchored_edits import editable_file_lines, verbatim_block
+        from squadops.capabilities.disputed_checks import failing_row_identities
+
+        names = [str(a.get("name")) for a in artifacts if a.get("name")]
+        variables = {
+            "validation_summary": validation.summary or "(none)",
+            "failing_checks": "\n".join(failing_check_lines(validation.checks))
+            or "- (no check row)",
+            "produced_files": ", ".join(f"`{n}`" for n in names) or "(none)",
+        }
+        if validation.missing_components:
+            variables["missing_components"] = "**Missing components:** " + ", ".join(
+                f"`{m}`" for m in validation.missing_components
+            )
+        offered: dict[str, int] = {}
+        if shown:
+            base = {str(a["name"]): str(a.get("content") or "") for a in artifacts if a.get("name")}
+            blocks = "\n\n".join(verbatim_block(path, base[path]) for path in shown)
+            current = await renderer.render(
+                "request.cycle_repair_current_files", {"current_files": blocks}
+            )
+            lines, offered = editable_file_lines(shown, base)
+            form = await renderer.render(
+                "request.cycle_repair_anchored_edit_appendix", {"editable_files": "\n".join(lines)}
+            )
+            variables["current_files_section"] = current.content
+            variables["anchored_edit_section"] = form.content
+        disputes = await self._disputed_checks_section(
+            renderer, failing_row_identities(validation.checks)
+        )
+        if disputes:
+            variables["disputed_checks_section"] = disputes
+        closing = (
+            "request.cycle_self_eval_closing_edits"
+            if offered
+            else "request.cycle_self_eval_closing_whole_file"
+        )
+        variables["closing_instruction"] = (await renderer.render(closing, {})).content
+        rendered = await renderer.render("request.cycle_self_eval_followup", variables)
+        return rendered.content, offered
+
+    def _pass_edits(
+        self,
+        context: ExecutionContext,
+        source: str,
+        artifacts: list[dict],
+        offered: dict[str, int],
+        followup: SelfEvalFollowup,
+    ) -> tuple[list[dict], dict[str, Any] | None]:
+        """A pass's files: its edits applied to the files it was shown, in one transaction
+        (SIP-0107 §14), beside the files it emitted whole — or nothing from it when the
+        transaction is refused. A response with no edit fence is read as it always was."""
+        from squadops.capabilities.anchored_edits import (
+            apply_anchored_edits,
+            parse_anchored_edits,
+            strip_edit_blocks,
+        )
+        from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
+
+        parse = parse_anchored_edits(source)
+        body = strip_edit_blocks(source) if parse.found else source
+        whole = [
+            artifact
+            for f in extract_fenced_files(body)
+            if (artifact := followup.artifact_for(f)) is not None
+        ]
+        if not parse.found:
+            return whole, None
+        base = {str(a["name"]): str(a.get("content") or "") for a in artifacts if a.get("name")}
+        application = apply_anchored_edits(
+            parse,
+            base,
+            writable=list(offered),
+            producer=str(self._task_type),
+            task_id=str(getattr(context, "task_id", "") or ""),
+            whole_file_paths=[str(a.get("name") or "") for a in whole],
+        )
+        record = application.record()
+        if not application.accepted:
+            return [], record
+        edited = []
+        for path, text in sorted(application.outcome.changed_files().items()):
+            artifact_type, media_type = _classify_file(path)
+            edited.append(
+                {"name": path, "content": text, "media_type": media_type, "type": artifact_type}
+            )
+        return edited + whole, record
+
+    def _record_pass_form(
+        self,
+        offered: dict[str, int],
+        new_artifacts: list[dict],
+        edit_record: dict[str, Any] | None,
+        artifacts: list[dict],
+        pass_number: int,
+        evidence_extra: dict[str, Any],
+    ) -> None:
+        """One line per pass offered the edit form: the form its response took, beside what it
+        was offered (SIP-0086 §12a change 3, recorded like a repair's — SIP-0107 §46k, §46o). Its
+        own marker, so a pass never counts as a repair in §46a's per-cell count."""
+        import json
+
+        from squadops.capabilities.anchored_edits import revision_form_reading
+
+        outputs: dict[str, Any] = {"artifacts": new_artifacts}
+        if edit_record is not None:
+            outputs["anchored_edits"] = edit_record
+        base_chars = {
+            str(a["name"]): len(str(a.get("content") or "")) for a in artifacts if a.get("name")
+        }
+        reading = {"pass": pass_number, **revision_form_reading(offered, outputs, base_chars)}
+        evidence_extra.setdefault("self_eval_revision_forms", []).append(reading)
+        logger.info(
+            "self_eval_revision_form %s",
+            json.dumps(
+                {"handler": self._handler_name, "task_type": str(self._task_type), **reading},
+                sort_keys=True,
+            ),
+        )
+
+    @staticmethod
     def _merge_artifacts(
         existing: list[dict],
         new: list[dict],
@@ -845,9 +1025,13 @@ class _CycleTaskHandler(CapabilityHandler):
         max_self_eval = int(resolved["max_self_eval_passes"])
         self_eval_count = 0
 
+        renderer = getattr(context.ports, "request_renderer", None)
         while not validation.passed and self_eval_count < max_self_eval:
             self_eval_count += 1
-            followup_prompt = self._build_self_eval_prompt(validation, artifacts)
+            shown = self._pass_shown_files(validation, artifacts) if followup.edits_offered else []
+            followup_prompt, offered = await self._build_pass_prompt(
+                renderer, validation, artifacts, shown
+            )
             followup_prompt += await followup.prompt_suffix(context, evidence_extra)
 
             try:
@@ -879,11 +1063,19 @@ class _CycleTaskHandler(CapabilityHandler):
             source, artifacts = followup.absorb(
                 followup_content, artifacts, evidence_extra, self_eval_count
             )
-            new_artifacts = [
-                artifact
-                for f in extract_fenced_files(source)
-                if (artifact := followup.artifact_for(f)) is not None
-            ]
+            if offered:
+                new_artifacts, edit_record = self._pass_edits(
+                    context, source, artifacts, offered, followup
+                )
+                self._record_pass_form(
+                    offered, new_artifacts, edit_record, artifacts, self_eval_count, evidence_extra
+                )
+            else:
+                new_artifacts = [
+                    artifact
+                    for f in extract_fenced_files(source)
+                    if (artifact := followup.artifact_for(f)) is not None
+                ]
             artifacts = self._merge_artifacts(artifacts, new_artifacts, evidence_extra)
             followup.after_merge(artifacts, evidence_extra)
             validation = await self._validate_output(

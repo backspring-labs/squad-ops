@@ -1137,7 +1137,7 @@ If staging is necessary, the cleanest delivery path is A → B → C. Stage A al
 
 ## 12. Post-implementation amendments
 
-### 12a. 2026-09-15 — the self-evaluation pass becomes the model's compile loop (proposed; changes 1–2 built; targeted for 1.8.2)
+### 12a. 2026-09-15 — the self-evaluation pass becomes the model's compile loop (proposed; changes 1–3 built, 4 held for the owner; targeted for 1.8.2)
 
 **Status.** Drafted on the owner's ask of 2026-09-15 and targeted for 1.8.1 by the owner's
 ruling of the same day; **re-targeted to 1.8.2 on 2026-09-17** by the owner's ruling on the
@@ -1238,4 +1238,63 @@ change 3 builds it: no Python check truncates to its first failing row. The qa c
 framework `frontend_build` check (`test_runner.run_frontend_build`) is a separate producer and
 isn't changed here.
 
-**Not yet built:** changes 3–4. This section says so until each lands.
+**As built — change 3, the pass (2026-09-24).** The follow-up is no longer a Python literal
+telling the model its response "was incomplete". It is an asset, `request.cycle_self_eval_followup`,
+that shows:
+- **every blocking-failed row**, with its identity and reason (`failing_check_lines`), then
+  change 2's type errors, or the build's tail when there are none; the old summary named no
+  check
+- **the files the task produced**
+- **the current content of each produced file a failing row names**, verbatim, in the repair's
+  own section (`request.cycle_repair_current_files`)
+- **the edit form** for those files, with their addressable entities
+  (`request.cycle_repair_anchored_edit_appendix`)
+- **the dispute section** (SIP-0096 §17a), listing the failing rows
+- **a closing that matches the form:** edit fences for shown files, whole files only for new
+  ones; or, with nothing shown, whole files
+
+The listing and the verbatim block are the repair's own, moved to `anchored_edits` so both use
+one implementation.
+
+A pass's edits are applied through the repair's transaction (`apply_anchored_edits`, SIP-0107
+§14) over the task's current artifacts, under a grant of the shown files. A refused transaction
+applies nothing from the pass, including the files it emitted whole beside the edits. Every pass
+offered the form records it (`revision_form_reading`: edits, whole-file, or none; how much of
+each file it replaced) in the task's evidence as `self_eval_revision_forms` and on a
+`self_eval_revision_form` line. That's its own marker, so a pass never counts as a repair in
+§46a's per-cell count.
+
+A shape that folds its own emission form in, the qa scaffold fill (`edits_offered = False`), is
+shown no file and no form: its shells are filled by slot, never edited. Without a request
+renderer the pass is asked as before. The qa and dev characterization goldens change in exactly
+one field each: the pass's follow-up message.
+
+**As built — change 3, the qa re-take (2026-09-25; the 1.8.2 plan §3.3's addition from deploy
+A).** On deploy A every qa re-take after a refunded repair re-emitted the suite whole: zero
+scoped qa transactions in five runs on the App Router stack (1.8.1 set record §10b). Now:
+- **The carry.** Where the executor refunds an empty repair round and re-dispatches the failed
+  task (#1589), a task that authors a qa suite (`authors_qa_suite`) carries the suite files its
+  failed result wrote under `retake_current_files`, for that one dispatch. The next attempt's
+  block 1 clears it.
+- **The prompt.** On the plan-driven path, `qa.test` renders a re-take section
+  (`request.qa_test_retake_appendix`): the suite verbatim, the edit form for it, and the
+  instruction to revise rather than re-author. A scaffold shell is filled by slot, never edited
+  (the repair's own rule, #1583), so a fill-mode re-take is offered only the suite files it
+  wrote beside its shells. `scaffold_shell_paths` moves to `context_assembly`, shared with the
+  repair.
+- **The edits** apply in one transaction over the shown suite. A refused transaction fails the
+  task with the typed refusal (`anchored_edit_refused`), as a repair's does. A response of edits
+  alone is not an empty emission.
+- **The record.** Every re-take offered the form records the form it took on a
+  `qa_retake_revision_form` line: an edit, or a whole-suite re-emission, deploy A's shape.
+
+**Change 4 — held for the owner (2026-09-25).** Its text rests on a premise the code does not
+bear out: "the repair handlers evaluate the failed task's criteria a second time after the loop".
+The repair handlers have no loop. They run the generic `base.handle`, which never validates, and
+evaluate the failed task's criteria **once**, after they emit (`_after_emission` →
+`_attach_typed_checks`, #1229), on the base-plus-patch tree the verifier builds. Only `develop`
+and `qa.test` self-evaluate, and their passes are already evaluated once each, on the workspace
+tree. So building change 4 as intended means **giving the repairs a self-evaluation loop**: new
+model calls inside every repair, beside the §22 refusal retry, with a depth to choose. That is a
+behavioural change the plan (§3.3) doesn't settle, so it waits for the owner's ruling rather than
+being read into the text.

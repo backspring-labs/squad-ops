@@ -193,6 +193,11 @@ def _bare(check: Any) -> str:
     return name.removeprefix(_TYPED_ROW_PREFIX)
 
 
+def row_file(row: Mapping[str, Any]) -> str | None:
+    """The file a check row is about: a typed row's ``params.file``, else its own ``file``."""
+    return _row_file(row)
+
+
 def _row_file(row: Mapping[str, Any]) -> str | None:
     params = row.get("params")
     return (params.get("file") if isinstance(params, Mapping) else None) or row.get("file")
