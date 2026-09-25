@@ -278,7 +278,7 @@ Acceptance of the SIP is all phases (SIP-0089/0090 precedent).
 
 ## 17. Post-implementation amendments
 
-### 17a. 2026-09-15 — a contested result: the producer's dispute becomes evidence (proposed; changes 1–2 built; targeted for 1.8.2)
+### 17a. 2026-09-15 — a contested result: the producer's dispute becomes evidence (proposed; changes 1–3 built; targeted for 1.8.2)
 
 **Status.** Drafted on the owner's ask of 2026-09-15 and targeted for 1.8.1 by the owner's
 ruling of the same day; **re-targeted to 1.8.2 on 2026-09-17** by the owner's ruling on the
@@ -407,4 +407,22 @@ to a run-lived `dispute_carry`, which the executor threads the way it threads `s
 (#435), and the next round marks them onto its evidence beside the task's own. A round reads its
 own predecessor's: the carry is replaced each round, not appended.
 
-**Not yet built:** changes 3–5. Nothing asks about `contested_rows` or routes on a contest yet.
+**As built — change 3 (2026-09-24).** When the evidence carries `contested_rows`, the analyzer's
+request gains one section, `request.data_analyze_failure_contested_appendix`. It lists each
+contested row (its identity, why it failed, who disputed it and why) and asks one question of
+each: does the evidence support the dispute? Its task-type fragment names the answer as an
+optional field. The answer is `dispute_rulings` on the analysis output:
+`{check, file?, criterion_id?, dispute_confirmed, reason}`, one per contested row. This
+diverges from the text above, which names a single `dispute_confirmed`: an analysis can carry
+several contested rows, so the answer is per row.
+
+The rulings are parsed **leniently**. A ruling without a boolean `dispute_confirmed`, a `check`
+and a `reason` is dropped and logged, never a reason to reject the analysis: rejecting it would
+send the round to NEEDS_REPLAN for want of an answer that was only ever optional. An analysis
+with no contested row is asked nothing new, and its outputs carry no `dispute_rulings` key.
+
+**Not asked where there is no analyzer.** A profile whose correction steps omit `analyze`
+(Solo's `[repair]`, SIP-0108 §10i) records its contests (change 2) and never adjudicates them;
+each proceeds as an uncontested failure.
+
+**Not yet built:** changes 4–5. Nothing routes on a ruling yet.

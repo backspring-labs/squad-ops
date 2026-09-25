@@ -84,6 +84,24 @@ def failing_row_identities(rows: Iterable[Any] | None) -> list[str]:
     return lines
 
 
+def contested_row_lines(rows: Iterable[Any] | None) -> list[str]:
+    """One line per contested row, for the analyzer's question (SIP-0096 §17a change 3): the
+    row's identity, why it failed, and who disputed it and why."""
+    lines = []
+    for row in rows or ():
+        contest = row.get("contested") if isinstance(row, Mapping) else None
+        if not isinstance(contest, Mapping):
+            continue
+        line = _identity(str(row.get("check")), _row_file(row), row.get("criterion_id"))
+        failed = str(row.get("reason") or "").strip()
+        by = contest.get("by") or "the producer"
+        lines.append(
+            f"{line} — failed: {failed or '(no reason given)'} — disputed by {by}: "
+            f"{contest.get('reason')}"
+        )
+    return lines
+
+
 def dispute_names(dispute: Mapping[str, Any], row: Mapping[str, Any]) -> bool:
     """Whether ``dispute`` names ``row``: the same check, with or without the ``acceptance:``
     prefix, and the same file and criterion wherever the dispute gives them."""

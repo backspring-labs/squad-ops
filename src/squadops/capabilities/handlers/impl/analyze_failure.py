@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
+from squadops.capabilities.disputed_checks import contested_row_lines
 from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
@@ -64,6 +65,38 @@ class FailureAnalysis(BaseModel):
     #: consume it; verified against the workspace before it is trusted (#968), never used
     #: ahead of deterministic site evidence (a failing probe's owning slot, interface drift).
     implicated_files: list[str] = Field(default_factory=list)
+    #: SIP-0096 §17a change 3: one ruling per disputed check the request listed —
+    #: ``{check, file?, criterion_id?, dispute_confirmed, reason}``. Lenient by design: a
+    #: malformed ruling is dropped, never a reason to reject the analysis, which would send
+    #: the round to NEEDS_REPLAN for want of an answer that was only ever optional.
+    dispute_rulings: list[dict[str, Any]] = Field(default_factory=list)
+
+    @field_validator("dispute_rulings", mode="before")
+    @classmethod
+    def keep_well_formed_rulings(cls, v: Any) -> list[dict[str, Any]]:
+        kept: list[dict[str, Any]] = []
+        for item in v if isinstance(v, list) else ():
+            if not isinstance(item, dict) or not isinstance(item.get("dispute_confirmed"), bool):
+                continue
+            check, reason = item.get("check"), item.get("reason")
+            if not (isinstance(check, str) and check.strip()):
+                continue
+            if not (isinstance(reason, str) and reason.strip()):
+                continue
+            ruling: dict[str, Any] = {
+                "check": check.strip(),
+                "dispute_confirmed": item["dispute_confirmed"],
+                "reason": reason.strip(),
+            }
+            for key in ("file", "criterion_id"):
+                value = item.get(key)
+                if isinstance(value, str) and value.strip():
+                    ruling[key] = value.strip()
+            kept.append(ruling)
+        dropped = (len(v) if isinstance(v, list) else 0) - len(kept)
+        if dropped:
+            logger.warning("failure analysis: %d malformed dispute ruling(s) dropped", dropped)
+        return kept
 
     @field_validator("classification")
     @classmethod
@@ -124,6 +157,9 @@ class DataAnalyzeFailureHandler(_CycleTaskHandler):
             if failure_evidence:
                 evidence_json = json.dumps(failure_evidence, indent=2)
                 variables["failure_evidence"] = f"\n\n## Failure Evidence\n\n{evidence_json}"
+            contested_section = await self._contested_section(renderer, failure_evidence)
+            if contested_section:
+                variables["contested_section"] = contested_section
             rendered = await renderer.render("request.data_analyze_failure", variables)
             user_prompt = rendered.content
         else:
@@ -250,6 +286,12 @@ class DataAnalyzeFailureHandler(_CycleTaskHandler):
             "analysis_summary": analysis.get("analysis_summary", ""),
             "contributing_factors": analysis.get("contributing_factors", []),
             "implicated_files": analysis.get("implicated_files", []),
+            # SIP-0096 §17a: present only when the request asked (change 4 routes on it).
+            **(
+                {"dispute_rulings": analysis["dispute_rulings"]}
+                if analysis.get("dispute_rulings")
+                else {}
+            ),
             "artifacts": [
                 {
                     "name": self._artifact_name,
@@ -270,3 +312,18 @@ class DataAnalyzeFailureHandler(_CycleTaskHandler):
         )
 
         return HandlerResult(success=True, outputs=outputs, _evidence=evidence)
+
+    @staticmethod
+    async def _contested_section(renderer: Any, failure_evidence: Any) -> str:
+        """The question asked of each contested row (SIP-0096 §17a change 3), or "" when the
+        evidence carries none — an analysis with no dispute to rule on is asked nothing new."""
+        rows = (
+            failure_evidence.get("contested_rows") if isinstance(failure_evidence, dict) else None
+        )
+        lines = contested_row_lines(rows)
+        if not lines:
+            return ""
+        rendered = await renderer.render(
+            "request.data_analyze_failure_contested_appendix", {"contested": "\n".join(lines)}
+        )
+        return rendered.content

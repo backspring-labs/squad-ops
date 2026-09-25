@@ -1,7 +1,7 @@
 ---
 fragment_id: task_type.data.analyze_failure
 layer: task_type
-version: "1.1.0"
+version: "1.2.0"
 roles: ["data"]
 ---
 ## Failure Analysis (SIP-0079 §7.7)
@@ -56,7 +56,9 @@ Return JSON with these REQUIRED fields:
   that contributed. Each factor must be a concrete observable, not a generic
   phrase.
 
-And ONE optional field:
+And two optional fields:
+- `dispute_rulings` (list[object]): ONLY when the request lists disputed checks — one ruling
+  per disputed check, in the shape the request gives. Omit it otherwise.
 - `implicated_files` (list[string]): repository-relative paths of the implementation
   files the evidence names as the defect site — a failing check's `file`, a slot's
   owning route file, a rejected artifact's name. Only paths that appear in the Failure
