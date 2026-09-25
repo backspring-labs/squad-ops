@@ -5246,13 +5246,25 @@ class TestTheChainRunsUnattended:
             lambda cycle_id=None: [("neo", "development.develop")] if running and cycle_id else [],
         )
         monkeypatch.setattr(driver, "quiet_box_problems", lambda cfg: [])
-        monkeypatch.setattr(driver, "queue_depths", lambda: {"cycle_results_run_2": (1, 0)})
+        monkeypatch.setattr(driver, "queue_depths", lambda: {})
         monkeypatch.setattr(
             driver,
             "agent_log_window",
             lambda since, until=None, services=(): [
                 "neo - emission shape: chars=5045 completion_tokens=4249",
                 "neo - LLM throughput: 32.8 t/s",
+            ],
+        )
+        # The reply router's own drop line (adapters/cycles/reply_router.py), for the cancelled
+        # run's task and for another run's, which must not count.
+        monkeypatch.setattr(
+            driver,
+            "docker_logs",
+            lambda container, since, until=None: [
+                "WARNING adapters.cycles.reply_router: reply-router: reply for unknown/late task "
+                "task-run_2-m000-development.develop — dropping",
+                "WARNING adapters.cycles.reply_router: reply-router: reply for unknown/late task "
+                "task-run_9-m000-development.develop — dropping",
             ],
         )
         monkeypatch.setattr(driver.time, "sleep", lambda s: None)

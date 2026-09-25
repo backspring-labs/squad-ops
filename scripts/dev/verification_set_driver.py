@@ -5085,6 +5085,9 @@ ACTIVE_ACTIVITY_STATES = ("pending", "running", "paused")
 #: The producing agent's own line for one model emission (#1276). Agent log lines carry no
 #: cycle id, so a ghost is read by time window under run-state isolation, never by id.
 GHOST_MARKER = "emission shape:"
+#: The runtime API's reply router consumes every ``<agent>_replies`` delivery and drops one
+#: nothing awaits (``adapters/cycles/reply_router.py``); a late reply is this line, by task id.
+LATE_REPLY_MARKER = "reply-router: reply for unknown/late task "
 
 
 def chain_problems(cfg: SetConfig) -> list[str]:
@@ -5249,21 +5252,29 @@ def ghost_readings(cfg: SetConfig, run_id: str, since: str, until: str) -> dict:
 
     Emissions are read by TIME WINDOW, from the cancel to the quiet box after it: agent log
     lines carry no cycle id, and the chain launches nothing else until the box is quiet, so
-    every emission in that window belongs to the cancelled cycle."""
+    every emission in that window belongs to the cancelled cycle.
+
+    Late replies are read BY ID: the reply router drops a reply nothing awaits and logs its
+    task id, which embeds the run's prefix (``task-run_<8 hex>-…``). They used to be read as
+    messages left ready on ``cycle_results_<run>``, a queue nothing publishes to since
+    SIP-0094 routed replies through ``<agent>_replies``, so the reading was always 0."""
     lines = [
         line
         for line in agent_log_window(since, until, services=set_agent_services(cfg))
         if GHOST_MARKER in line
     ]
-    depths = queue_depths()
+    run_tasks = f"{LATE_REPLY_MARKER}task-run_{run_id.removeprefix('run_')[:8]}-"
+    late = [line for line in docker_logs(RUNTIME_API_CONTAINER, since, until) if run_tasks in line]
     return {
         "emissions_after_cancel": len(lines),
         "examples": [line[:200] for line in lines[:3]],
-        "late_replies": (
-            depths.get(f"cycle_results_{run_id}", (0, 0))[0] if depths is not None else None
-        ),
+        "late_replies": len(late),
+        "late_reply_examples": [line[:200] for line in late[:3]],
         "window": [since, until],
-        "attribution": "by time window under run-state isolation; agent log lines carry no id",
+        "attribution": (
+            "emissions by time window under run-state isolation (agent log lines carry no id); "
+            "late replies by the run's task id in the reply router's drop line"
+        ),
     }
 
 
