@@ -102,30 +102,38 @@ def contested_row_lines(rows: Iterable[Any] | None) -> list[str]:
     return lines
 
 
-def confirmed_contests(rows: Iterable[Any] | None, rulings: Iterable[Any] | None) -> list[dict]:
-    """The contested rows the analyzer confirmed (SIP-0096 §17a change 4), each as its
-    identity, the dispute and the ruling. A ruling names a row the way a dispute does; a row
-    with no confirming ruling — unruled, or ruled against — proceeds as an uncontested
-    failure, and a ruling that names no contested row confirms nothing."""
-    confirmed = []
-    rows = [r for r in rows or () if isinstance(r, Mapping) and r.get("contested")]
+def rule_contests(
+    rows: Iterable[Any] | None, rulings: Iterable[Any] | None
+) -> tuple[list[dict], list[dict], list[dict]]:
+    """The contested rows as the analyzer ruled them (SIP-0096 §17a changes 4–5):
+    ``(confirmed, rejected, unruled)``, each entry the row's identity, the dispute and the
+    ruling. A ruling names a row the way a dispute does, and a confirming ruling wins over a
+    rejecting one. A ruling that names no contested row decides nothing."""
+    contested = [r for r in rows or () if isinstance(r, Mapping) and r.get("contested")]
+    verdicts: dict[int, tuple[bool, str]] = {}
     for ruling in rulings or ():
-        if not isinstance(ruling, Mapping) or ruling.get("dispute_confirmed") is not True:
+        if not isinstance(ruling, Mapping) or not isinstance(ruling.get("dispute_confirmed"), bool):
             continue
-        for row in rows:
-            if not dispute_names(ruling, row):
-                continue
-            entry = {
-                "check": str(row.get("check")),
-                "file": _row_file(row),
-                "criterion_id": row.get("criterion_id"),
-                "failed": row.get("reason"),
-                "contested": dict(row["contested"]),
-                "ruling": str(ruling.get("reason") or ""),
-            }
-            if entry not in confirmed:
-                confirmed.append(entry)
-    return confirmed
+        for i, row in enumerate(contested):
+            if dispute_names(ruling, row) and not verdicts.get(i, (False, ""))[0]:
+                verdicts[i] = (ruling["dispute_confirmed"], str(ruling.get("reason") or ""))
+    confirmed: list[dict] = []
+    rejected: list[dict] = []
+    unruled: list[dict] = []
+    for i, row in enumerate(contested):
+        entry = {
+            "check": str(row.get("check")),
+            "file": _row_file(row),
+            "criterion_id": row.get("criterion_id"),
+            "failed": row.get("reason"),
+            "contested": dict(row["contested"]),
+        }
+        if i not in verdicts:
+            unruled.append(entry)
+            continue
+        entry["ruling"] = verdicts[i][1]
+        (confirmed if verdicts[i][0] else rejected).append(entry)
+    return confirmed, rejected, unruled
 
 
 def contest_name(contest: Mapping[str, Any]) -> str:

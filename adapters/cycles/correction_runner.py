@@ -889,12 +889,38 @@ class CorrectionRunner:
         decides, as for ``blocked_unverified`` (§6.5). The row stays failed. A contest the
         analyzer did not confirm proceeds as the failure it disputes.
         """
-        from squadops.capabilities.disputed_checks import confirmed_contests, contest_name
+        from squadops.capabilities.disputed_checks import contest_name, rule_contests
 
-        confirmed = confirmed_contests(
-            diagnosis.failure_evidence.get("contested_rows"),
-            diagnosis.analysis_outputs.get("dispute_rulings"),
+        evidence = diagnosis.failure_evidence
+        confirmed, rejected, unruled = rule_contests(
+            evidence.get("contested_rows"), diagnosis.analysis_outputs.get("dispute_rulings")
         )
+        unmatched = evidence.get("unmatched_disputes") or []
+        if confirmed or rejected or unruled or unmatched:
+            # Change 5's readout: one line per round that carried a dispute, whatever came of it
+            # — a check with a history of confirmations is a check defect, and a producer that
+            # disputes everything is visible too.
+            by = sorted(
+                {str(e["contested"].get("by")) for e in (*confirmed, *rejected, *unruled)}
+                | {str(d.get("by")) for d in unmatched if isinstance(d, dict)}
+            )
+            verdicts = [
+                *(f"{contest_name(e)}: confirmed" for e in confirmed),
+                *(f"{contest_name(e)}: rejected" for e in rejected),
+                *(f"{contest_name(e)}: unruled" for e in unruled),
+            ]
+            logger.info(
+                "contested_rows task=%s round=%d confirmed=%d rejected=%d unruled=%d "
+                "unmatched=%d by=%s — %s",
+                envelope.task_id,
+                correction_attempts,
+                len(confirmed),
+                len(rejected),
+                len(unruled),
+                len(unmatched),
+                ",".join(by) or "-",
+                "; ".join(verdicts) or "no failing row named",
+            )
         if not confirmed:
             return
         names = tuple(contest_name(c) for c in confirmed)

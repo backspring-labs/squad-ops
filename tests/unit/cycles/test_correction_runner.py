@@ -7587,3 +7587,49 @@ class TestAConfirmedDisputeEndsTheChainBeforeItsRepair:
         assert raised is None, raised
         assert "development.correction_repair" in dispatched
         assert ledger.refunded_rounds == ()
+
+    async def test_the_driver_reads_the_round_as_the_runner_ruled_it(self, cycle, caplog):
+        """Change 5, from the runner's own line to the driver's readout — not a line typed
+        here. Bug caught: the runner logging a shape the driver does not parse, or a filter that
+        drops the line before the reader sees it (#1631's shape) — every contested round would
+        read as none."""
+        import importlib.util
+        import sys
+
+        path = (
+            Path(__file__).resolve().parents[3] / "scripts" / "dev" / "verification_set_driver.py"
+        )
+        spec = importlib.util.spec_from_file_location("verification_set_driver", path)
+        driver = importlib.util.module_from_spec(spec)
+        sys.modules["verification_set_driver"] = driver
+        spec.loader.exec_module(driver)
+        ruling = {
+            "check": "acceptance:declared_imports",
+            "dispute_confirmed": True,
+            "reason": "tsconfig.json declares @/lib",
+        }
+        with caplog.at_level("INFO"):
+            await self._round(cycle, [ruling])
+        lines = [
+            f"2026-09-25 00:00:00,000 INFO adapters.cycles.correction_runner: {r.getMessage()}"
+            for r in caplog.records
+        ]
+
+        texture = driver.texture_from_logs(driver._runtime_lines_of_interest(lines))
+
+        name = "acceptance:declared_imports on frontend/src/views/RunList.jsx (vc-list)"
+        assert texture["contested_rows"] == [
+            {
+                "task": "task_failed",
+                "round": 1,
+                "confirmed": 1,
+                "rejected": 0,
+                "unruled": 0,
+                "unmatched": 0,
+                "by": ["dev"],
+                "checks": [f"{name}: confirmed"],
+            }
+        ]
+        assert driver._render_contests(texture["contested_rows"]) == (
+            f"1 / 0 / 0 / 0 (1 dev); confirmed: {name}"
+        )

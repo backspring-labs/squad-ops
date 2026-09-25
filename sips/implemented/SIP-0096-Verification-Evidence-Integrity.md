@@ -278,7 +278,7 @@ Acceptance of the SIP is all phases (SIP-0089/0090 precedent).
 
 ## 17. Post-implementation amendments
 
-### 17a. 2026-09-15 — a contested result: the producer's dispute becomes evidence (proposed; changes 1–4 built; targeted for 1.8.2)
+### 17a. 2026-09-15 — a contested result: the producer's dispute becomes evidence (built — the as-built paragraphs below record what shipped; 1.8.2)
 
 **Status.** Drafted on the owner's ask of 2026-09-15 and targeted for 1.8.1 by the owner's
 ruling of the same day; **re-targeted to 1.8.2 on 2026-09-17** by the owner's ruling on the
@@ -426,7 +426,7 @@ with no contested row is asked nothing new, and its outputs carry no `dispute_ru
 each proceeds as an uncontested failure.
 
 **As built — change 4 (2026-09-24).** After the diagnosis and before any repair, the runner
-reads the rulings against the contested rows (`confirmed_contests`: a ruling names a row the
+reads the rulings against the contested rows (`rule_contests`: a ruling names a row the
 way a dispute does). If any contested row is confirmed, the chain ends there, through the
 termination path `plan_defect` already uses (#435):
 - **a typed `CorrectionTermination`** with a new reason, `contested_check`, stored as the run's
@@ -453,4 +453,27 @@ ruling that names no contested row) proceeds exactly as an uncontested failure. 
 decision step already receives both the contested rows (`failure_evidence`) and the rulings
 (`failure_analysis`).
 
-**Not yet built:** change 5, the driver readout.
+**Wrong check, or wrong artifact.** #1581's dev answered that the qa suite, not its file, was
+wrong. That isn't a wrong check: `tests_pass` did its job on another role's artifact, and a qa
+repair can fix it. Confirming it would end a chain that a repair could have converged. So the
+analyzer's question says so: a failure caused by another artifact is ruled **rejected**, and that
+artifact is named in `implicated_files`. The own-artifact routing already acts on that name
+(`analyzer_and_decision_unanimous`, the routing half of #1581, fixed earlier). The dispute is
+still heard: its reason is in the evidence the analyzer reads and the verdict is recorded. It
+just doesn't end the chain.
+
+**As built — change 5 (2026-09-24).** The runner logs one line per round that carried a dispute,
+whatever came of it:
+
+    contested_rows task=<id> round=<n> confirmed=<c> rejected=<r> unruled=<u> unmatched=<m> by=<roles> — <check>: <verdict>; …
+
+The verification-set driver reads it as `loop_texture.contested_rows`, one entry per round.
+The record row shows confirmed / rejected / unruled / naming-no-failing-row totals, by role,
+and names each confirmed check. So a check confirmed across cycles reads as the check defect it
+is (the `contested_check` termination is attributed `criteria_or_contract_failure`), and a
+producer that disputes everything is visible too. The line has a real-line sample in the
+marker self-check (#1632), and a test feeds the runner's own line to the driver's reader. No
+issue is opened automatically. **Diverges from the text above**, which has the readout open the
+issue: the driver never writes to GitHub, because it's a measurement tool run against a public
+repository. It names the confirmed check, and whoever reads the readout files the issue, as for
+every other readout. The half that matters holds: the cycle opens nothing.

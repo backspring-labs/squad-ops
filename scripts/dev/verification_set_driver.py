@@ -312,6 +312,8 @@ EVIDENCE_FIELDS: dict[str, tuple[str, ...]] = {
     "loop_texture.evidence_superseded": _PATCH_PATH,
     # 1.8.2 item 15: any roll can hit the bound, so only an empty window leaves it unasked.
     "loop_texture.task_timeouts": ("runtime_window_empty",),
+    # SIP-0096 §17a change 5: a dispute is adjudicated inside a correction round.
+    "loop_texture.contested_rows": _PATCH_PATH,
     "loop_texture.qa_owned_routed": _PATCH_PATH,
     "loop_texture.own_artifact_locus": _PATCH_PATH,
     "loop_texture.absent_anchor_routed": _PATCH_PATH,
@@ -2309,6 +2311,8 @@ _RUNTIME_LINE_KEYS = (
     "patch_candidate_identity task=",
     # 1.8.2 item 15: the declared per-task wait ran out (the hang bound firing).
     "task_timeout task=",
+    # SIP-0096 §17a change 5: each round's disputes as the analyzer ruled them.
+    "contested_rows task=",
 )
 
 
@@ -2763,6 +2767,13 @@ RUNTIME_MARKER_SAMPLES: dict[str, tuple[str, ...]] = {
         "anchor(s) runs-empty; qa.test re-authors backend/tests/test_runs.py (#1123)",
     ),
     # Rendered: adapters/cycles/task_dispatcher.py, the declared wait running out (item 15).
+    # Rendered: adapters/cycles/correction_runner.py, a round's disputes as ruled (§17a).
+    "contested_rows": (
+        "2026-09-25 00:00:00,000 INFO adapters.cycles.correction_runner: contested_rows "
+        "task=task-run_ab12cd34-m004-development.develop round=1 confirmed=1 rejected=0 "
+        "unruled=0 unmatched=0 by=dev — acceptance:declared_imports on "
+        "frontend/src/views/RunList.jsx (vc-list): confirmed",
+    ),
     "task_timeouts": (
         "2026-09-25 00:00:00,000 WARNING adapters.cycles.task_dispatcher: task_timeout "
         "task=task-run_ab12cd34-m000-development.develop type=development.develop agent=neo "
@@ -3389,6 +3400,61 @@ def _fact(line: str, marker: str) -> str:
     return line[at:].rstrip() if at >= 0 else line.strip()
 
 
+#: SIP-0096 §17a change 5: the runner's adjudication line, one per round that carried a dispute.
+_CONTESTED_MARKER = "contested_rows task="
+_CONTESTED_COUNTS = ("confirmed", "rejected", "unruled", "unmatched")
+
+
+def contested_rows(lines: Sequence[str]) -> list[dict[str, Any]]:
+    """Each round's disputes as the analyzer ruled them, from the runner's own line — pure.
+
+    ``checks`` keeps each disputed check with its verdict, so a check confirmed across cycles
+    reads as the check defect it is, and ``by`` keeps who disputed, so a producer that disputes
+    everything is visible too. A line that does not parse is kept as ``unparsed``.
+    """
+    entries: list[dict[str, Any]] = []
+    for line in lines:
+        if _CONTESTED_MARKER not in line:
+            continue
+        fact = _fact(line, _CONTESTED_MARKER)
+        counts = {key: _int_or_none(_field(fact, key)) for key in _CONTESTED_COUNTS}
+        if any(v is None for v in counts.values()):
+            entries.append({"unparsed": fact})
+            continue
+        _, _, tail = fact.partition(" — ")
+        entries.append(
+            {
+                "task": _field(fact, "task"),
+                "round": _int_or_none(_field(fact, "round")),
+                **counts,
+                "by": [r for r in (_field(fact, "by") or "").split(",") if r and r != "-"],
+                "checks": [
+                    c
+                    for c in tail.split("; ")
+                    if c.endswith((": confirmed", ": rejected", ": unruled"))
+                ],
+            }
+        )
+    return entries
+
+
+def _render_contests(entries: Sequence[Mapping[str, Any]]) -> str:
+    if not entries:
+        return "none"
+    totals = [sum(e.get(key) or 0 for e in entries) for key in _CONTESTED_COUNTS]
+    by = _count_by(r for e in entries for r in e.get("by") or ())
+    confirmed = sorted(
+        {
+            c.removesuffix(": confirmed")
+            for e in entries
+            for c in e.get("checks") or ()
+            if c.endswith(": confirmed")
+        }
+    )
+    shown = " / ".join(str(t) for t in totals) + f" ({_render_by_reason(by)})"
+    return shown + (f"; confirmed: {'; '.join(confirmed)}" if confirmed else "")
+
+
 def _field(line: str, key: str) -> str | None:
     """``key=value`` off a space-separated log line — the shape executor readouts use."""
     match = re.search(rf"\b{re.escape(key)}=(\S*)", line)
@@ -3744,6 +3810,8 @@ def texture_from_logs(logs: list[str]) -> dict:
         "task_timeouts": [
             _fact(line, "task_timeout task=") for line in logs if "task_timeout task=" in line
         ],
+        # SIP-0096 §17a change 5: every round that carried a dispute, and what came of it.
+        "contested_rows": contested_rows(logs),
         # 1.7.1 (plan §4). R2: a qa-owned own-frame failure routed to the qa repair
         # (#1130). R4: the qa repair brief's case count (#1123) and an undeclared-anchor
         # routing. R7: patch verifications decided by the producing agent's own executed
@@ -4762,6 +4830,9 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         f"{_show_at(rec, 'loop_texture.retest_regressions')} |",
         "| tasks failed at the declared per-task wait (1.8.2 item 15) | "
         f"{_show_at(rec, 'loop_texture.task_timeouts', _count)} |",
+        "| disputed checks: confirmed / rejected / unruled / naming no failing row, by role "
+        "(SIP-0096 §17a) | "
+        f"{_show_at(rec, 'loop_texture.contested_rows', _render_contests)} |",
         "| suites the runner never collected, per stored test report (#1540) | "
         f"{_show_at(rec, 'loop_texture.uncollected_suites', _render_uncollected)} |",
         "| fill-merge assertion strength per qa task (#999) | "
