@@ -34,8 +34,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -311,6 +312,70 @@ def _join_response_omits_declared_fields(content: str) -> str:
     return _ADDRESSED_BLOCK.sub(rewrite, content)
 
 
+#: SIP-0086 §12a's diagnostic: two independent TypeScript type errors, each its own TS2322 with its
+#: own marker, in a block of their own so neither cascades into the other or into a Next.js route
+#: export check. `next build` stops at the first; `tsc` reports both (§12a change 2).
+_TWO_TYPE_ERRORS = (
+    "\n{\n"
+    '  const squadopsCompileLoopA: number = "compile-loop-marker-a";\n'
+    "  const squadopsCompileLoopB: string = 2026; // compile-loop-marker-b\n"
+    "}\n"
+)
+_TS_SOURCE = re.compile(r"\.(?:ts|tsx)$")
+
+
+def _is_suite_path(path: str) -> bool:
+    return "__tests__/" in path or ".test." in path or ".spec." in path
+
+
+def _two_type_errors(content: str) -> str:
+    """The first non-test TypeScript file of a develop emission with two type errors added —
+    a ``lib/`` file first, since an App Router route or page restricts what it may declare."""
+    blocks = [
+        m
+        for m in _ADDRESSED_BLOCK.finditer(content)
+        if _TS_SOURCE.search(m.group("info").partition(":")[2])
+        and not _is_suite_path(m.group("info").partition(":")[2])
+    ]
+    if not blocks:
+        return content
+    target = next(
+        (m for m in blocks if m.group("info").partition(":")[2].startswith("lib/")), blocks[0]
+    )
+    body = target.group("body")
+    faulted = body + ("" if body.endswith("\n") else "\n") + _TWO_TYPE_ERRORS.lstrip("\n")
+    return content[: target.start("body")] + faulted + content[target.end("body") :]
+
+
+#: SIP-0096 §17a's diagnostic: the 2026-09-01 false positive — a correct `@/lib` alias import
+#: refused by `declared_imports`, which the model then degraded to a relative path to comply.
+_ALIAS_IMPORT = re.compile(r"""from\s+['"](?P<spec>@/lib/[^'"]+)['"]""")
+PLANTED_CRITERION_ID = "vc-declared-imports-lib-alias"
+
+
+def _planted_alias_row(artifacts: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+    """A failing ``declared_imports`` row on the first file that imports through the ``@/lib``
+    alias — the valid import the check once refused — or None when no file does."""
+    for artifact in artifacts:
+        name, content = str(artifact.get("name") or ""), str(artifact.get("content") or "")
+        match = _ALIAS_IMPORT.search(content)
+        if match is None or _is_suite_path(name):
+            continue
+        return {
+            "check": "acceptance:declared_imports",
+            "severity": "error",
+            "params": {"file": name},
+            "description": "",
+            "status": "failed",
+            "actual": {"file": name, "undeclared": [match.group("spec")]},
+            "reason": f"unresolved import '{match.group('spec')}': not a declared dependency",
+            "passed": False,
+            "evidence_gap": False,
+            "criterion_id": PLANTED_CRITERION_ID,
+        }
+    return None
+
+
 class FaultScope(Enum):
     """Which attempts of the target task take the fault — the scope of "once" (#1310).
 
@@ -349,6 +414,21 @@ class Fault:
     #: A hold, not a transform (1.8.2 item 15): the handler stops answering after the model
     #: returns, until the declared task timeout ends it. ``transform`` is then the identity.
     hold: bool = False
+    #: A crash, not a transform (1.8.2 plan §4.1 ``redelivery``): the process exits after the
+    #: model returns, in the producing role's own container — #1251's shape, on the roll's path.
+    crash: bool = False
+    #: A planted row, not a transform (§4.1 ``false-criterion``): given the task's artifacts, a
+    #: failing verification row added to the task's own evaluation, or None when nothing in the
+    #: artifacts carries the shape the row is about.
+    plant_row: Callable[[Sequence[Mapping[str, Any]]], dict[str, Any] | None] | None = None
+    #: The stacks whose emissions carry the file shape the fault is about; empty for any. A
+    #: declaration on another stack's cycle is refused, since the fault could not bite there.
+    stacks: frozenset[str] = frozenset()
+
+    @property
+    def transforms_emission(self) -> bool:
+        """Whether ``inject`` applies it: a hold, a crash and a planted row act at other seams."""
+        return not (self.hold or self.crash or self.plant_row is not None)
 
 
 #: Every declared fault. Adding one is a declaration, not a policy change: the transform
@@ -440,6 +520,41 @@ FAULTS: dict[str, Fault] = {
         "task_timeout fact, and the run proceeds to correction or termination",
         hold=True,
     ),
+    # 1.8.2 plan §4.1 `compile-loop`: SIP-0086 §12a's passes, on the stack whose build stops at
+    # the first type error. First attempt only — the passes are what the diagnostic watches.
+    "compile_loop_two_type_errors": Fault(
+        task=TaskType.DEVELOPMENT_DEVELOP,
+        transform=_two_type_errors,
+        found_in="#1580 (SIP-0086 §12a's evidence) — the 2026-09-15 readiness probe (SIP-0107 "
+        "§46m): the named type error fixed in six trials of six, and every build stopped at a "
+        "second one the evidence never showed",
+        exercises="§12a: the task compiles until clean — both errors repaired by its own passes, "
+        "zero correction rounds, every pass in the usage ledger",
+        stacks=frozenset({"nextjs_ts"}),
+    ),
+    # 1.8.2 plan §4.1 `false-criterion`: SIP-0096 §17a's first case, on the task's own rows.
+    "false_criterion_alias_import": Fault(
+        task=TaskType.DEVELOPMENT_DEVELOP,
+        transform=_unchanged,
+        found_in="#1580 (SIP-0096 §17a's first case) — 2026-09-01: a correct `@/lib` alias "
+        "import refused by a false-positive declared_imports, which the model degraded to a "
+        "relative path to comply (fixed at acceptance_checks.py:760)",
+        exercises="§17a: the producer leaves the correct import unchanged and disputes the row; "
+        "the row reads contested, the analyzer confirms, and the round refunds",
+        plant_row=_planted_alias_row,
+        stacks=frozenset({"nextjs_ts"}),
+    ),
+    # 1.8.2 plan §4.1 `redelivery`: the qa agent's process killed mid-repair, on the roll's own
+    # path, in the producing role's container (#1251). The broker redelivers; #1627 refuses.
+    "qa_repair_process_killed": Fault(
+        task=TaskType.QA_TEST_REPAIR,
+        transform=_unchanged,
+        found_in="#1626 / #1627 — the qa agent SEGFAULTED on one message and was restarted 37 "
+        "times on its redelivery, with no record and no termination",
+        exercises="#1627's rule and #1626's containment: a typed FAILED for the original task "
+        "id, the queue drained, the handler not re-run, and the run leaving `running`",
+        crash=True,
+    ),
     "analyzer_false_source_claim": Fault(
         task=TaskType.DATA_ANALYZE_FAILURE,
         transform=_false_source_claim,
@@ -499,7 +614,20 @@ def validate_declaration(resolved_config: Mapping[str, Any] | None) -> tuple[str
             f"fault(s) declared for task(s) {unreachable}, whose emission seam does not "
             f"call inject(); wired tasks are {sorted(INJECTED_TASKS)}"
         )
+    off_stack = _declared_off_stack(names, resolved_config)
+    if off_stack:
+        raise UnreachableFault(
+            f"fault(s) {off_stack} transform a file shape this cycle's stack does not emit"
+        )
     return names
+
+
+def _declared_off_stack(names: Sequence[str], resolved_config: Mapping[str, Any] | None) -> list:
+    """The declared faults whose stacks exclude this cycle's development profile."""
+    from squadops.capabilities.development_profiles import effective_development_profile
+
+    stack = effective_development_profile(resolved_config)
+    return sorted(n for n in names if FAULTS[n].stacks and stack not in FAULTS[n].stacks)
 
 
 #: The capabilities whose emission seam calls ``inject``. Held to the call sites by
@@ -585,7 +713,7 @@ def inject(
         return content
     for name in names:
         fault = FAULTS.get(name)
-        if fault is None or fault.hold or not task_id.endswith(fault.task):
+        if fault is None or not fault.transforms_emission or not task_id.endswith(fault.task):
             continue
         if not _applies(fault, task_id, inputs):
             logger.info(
@@ -631,6 +759,54 @@ def inject(
 #: How long a hold lasts if nothing ends it: a day, far past any declared task timeout. The
 #: agent's own bound — the declared wait the dispatcher stamps on the task — cancels it first.
 HANG_SECONDS = 24 * 60 * 60
+#: A crash's exit status: SIGKILL's, as a kernel-killed process reports it (128 + 9).
+CRASH_EXIT_CODE = 137
+#: The process exit, bound here so a test can observe a crash without being killed by it.
+_exit = os._exit
+
+
+def planted_rows(
+    artifacts: Sequence[Mapping[str, Any]],
+    *,
+    handler_name: str,
+    task_id: str,
+    resolved_config: Mapping[str, Any] | None,
+    inputs: Mapping[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """The failing rows declared faults plant into this task's own evaluation (§4.1
+    ``false-criterion``), on every evaluation of an attempt in scope — each pass is judged by the
+    same rows. Logged in ``APPLIED`` form; a row with nothing to be about says it did not bite."""
+    rows: list[dict[str, Any]] = []
+    for name in declared_faults(resolved_config):
+        fault = FAULTS.get(name)
+        if fault is None or fault.plant_row is None or not task_id.endswith(fault.task):
+            continue
+        if not _applies(fault, task_id, inputs):
+            continue
+        row = fault.plant_row(artifacts)
+        if row is None:
+            logger.warning(
+                "fault_injection: DID NOT BITE %s on task=%s handler=%s — no artifact carries "
+                "the shape its row is about. THIS DIAGNOSTIC PROVES NOTHING about %s.",
+                name,
+                task_id,
+                handler_name,
+                fault.exercises,
+            )
+            continue
+        logger.warning(
+            "fault_injection: APPLIED %s to task=%s handler=%s rows 0 -> 1 scope=%s "
+            "(found_in=%s exercises=%s) — a planted row; this cycle is a DIAGNOSTIC and must not "
+            "be counted",
+            name,
+            task_id,
+            handler_name,
+            fault.scope.value,
+            fault.found_in,
+            fault.exercises,
+        )
+        rows.append(row)
+    return rows
 
 
 async def hold(
@@ -651,7 +827,7 @@ async def hold(
     """
     for name in declared_faults(resolved_config):
         fault = FAULTS.get(name)
-        if fault is None or not fault.hold or not task_id.endswith(fault.task):
+        if fault is None or not (fault.hold or fault.crash) or not task_id.endswith(fault.task):
             continue
         if not _applies(fault, task_id, inputs):
             logger.info(
@@ -663,6 +839,24 @@ async def hold(
             )
             continue
         size = len(content) if isinstance(content, str) else 0
+        if fault.crash:
+            logger.warning(
+                "fault_injection: APPLIED %s to task=%s handler=%s chars %d -> %d scope=%s "
+                "(found_in=%s exercises=%s) — the process exits now, after the model returned; "
+                "this cycle is a DIAGNOSTIC and must not be counted",
+                name,
+                task_id,
+                handler_name,
+                size,
+                size,
+                fault.scope.value,
+                fault.found_in,
+                fault.exercises,
+            )
+            for handler in logging.getLogger().handlers:
+                handler.flush()
+            _exit(CRASH_EXIT_CODE)
+            return
         logger.warning(
             "fault_injection: APPLIED %s to task=%s handler=%s chars %d -> %d scope=%s "
             "(found_in=%s exercises=%s) — holding after the model returned until the declared "

@@ -563,8 +563,8 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             # SIP-0092 M1.3 / RC-9b: per-criterion error counts persist across
             # self-eval passes within this handle() invocation, then are dropped.
             typed_error_counts: dict[str, int] = {}
-            validation = await self._validate_output(
-                inputs, artifacts, typed_error_counts=typed_error_counts
+            validation = await self._validated(
+                context, inputs, artifacts, typed_error_counts=typed_error_counts
             )
 
             # Self-evaluation loop (Phase 7) — the shared loop, whole-file follow-ups.

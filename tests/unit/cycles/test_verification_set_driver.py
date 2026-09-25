@@ -6053,3 +6053,72 @@ class TestTheHangBoundIsReadFromTheLineTheDispatcherWrites:
         _, _, read = driver.SEAM_READOUTS["handler_hang"]
         reached, value = read({"loop_texture": {"task_timeouts": texture["task_timeouts"]}})
         assert reached is True and value == texture["task_timeouts"]
+
+
+class TestTheDeployADiagnosticsAreReadWhereTheirSeamsWrite:
+    """1.8.2 plan §4.1: `compile-loop` and `redelivery` read lines the framework writes — the
+    emission log's pass line and the entrypoint's refusal line — produced here by the real
+    functions, not typed. Bug caught: a readout keyed on a shape the producer does not write,
+    so the diagnostic reads NO on a seam that fired (#1631's shape)."""
+
+    async def test_compile_loop_reads_the_pass_the_emission_log_writes(self, driver, caplog):
+        from squadops.capabilities.handlers.emission_log import log_emission_shape
+
+        with caplog.at_level("INFO"):
+            log_emission_shape("development_develop_handler:self_eval", "```ts:lib/a.ts\nx\n```", 7)
+        lines = [
+            f"2026-09-25 00:00:00,000 - squadops.capabilities.handlers.emission_log - INFO - "
+            f"{r.getMessage()}"
+            for r in caplog.records
+        ]
+        texture = driver.texture_from_agent_lines(driver._agent_lines_of_interest(lines))
+        _, _, read = driver.SEAM_READOUTS["compile_loop_two_type_errors"]
+
+        assert texture["self_eval_passes"] == ["development_develop_handler"]
+        assert read({"correction_rounds": 0, "loop_texture": texture})[0] is True
+        assert read({"correction_rounds": 1, "loop_texture": texture})[0] is False, (
+            "a correction round means the passes did not compile it clean"
+        )
+
+    async def test_redelivery_reads_the_refusal_the_entrypoint_writes(self, driver, caplog):
+        from unittest.mock import AsyncMock, patch
+
+        from squadops.agents.entrypoint import AgentRunner
+
+        with patch.object(AgentRunner, "__init__", lambda self, *a, **kw: None):
+            runner = AgentRunner.__new__(AgentRunner)
+        runner.agent_id = "eve"
+        runner._queue = AsyncMock()
+        with caplog.at_level("INFO"):
+            await runner._refuse_redelivered_task(
+                {
+                    "payload": {
+                        "task_id": "repair-run_ab12cd34-00-qa.test_repair",
+                        "task_type": "qa.test_repair",
+                    }
+                },
+                {"reply_queue": "eve_replies"},
+            )
+        lines = [
+            f"2026-09-25 00:00:00,000 - squadops.agents.entrypoint - ERROR - {r.getMessage()}"
+            for r in caplog.records
+        ]
+        texture = driver.texture_from_agent_lines(driver._agent_lines_of_interest(lines))
+        _, _, read = driver.SEAM_READOUTS["qa_repair_process_killed"]
+
+        assert texture["redelivered_refusals"] == ["repair-run_ab12cd34-00-qa.test_repair"]
+        assert read({"loop_texture": texture}) == (True, texture["redelivered_refusals"])
+
+    @pytest.mark.parametrize(
+        ("counts", "reached"),
+        [({"confirmed": 1, "rejected": 0}, True), ({"confirmed": 0, "rejected": 1}, False)],
+        ids=["confirmed", "ruled against"],
+    )
+    def test_false_criterion_is_reached_by_a_confirmation_not_by_any_dispute(
+        self, driver, counts, reached
+    ):
+        """Bug caught: a rejected dispute read as §17a holding — the diagnostic's prediction is
+        that the analyzer confirms the planted row, and a rejection falsifies it."""
+        _, _, read = driver.SEAM_READOUTS["false_criterion_alias_import"]
+        entry = {"task": "t", "round": 0, "unruled": 0, "unmatched": 0, "by": ["dev"], **counts}
+        assert read({"loop_texture": {"contested_rows": [entry]}})[0] is reached

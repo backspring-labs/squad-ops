@@ -552,15 +552,26 @@ def _representative_cases():
         TaskType.DEVELOPMENT_DEVELOP: _DEVELOP_EMISSIONS,
     }
     cases = []
-    # A hold is not a transform (1.8.2 item 15): its bite is the time it takes, which
-    # TestTheHangIsEndedByTheDeclaredBound proves at the seam; its emission is untouched.
-    for name in sorted(n for n, f in FAULTS.items() if not f.hold):
+    # A hold, a crash and a planted row are not transforms (1.8.2 item 15, plan §4.1): their
+    # bite is at their own seams, proved there; the emission is untouched. A fault declared
+    # for some stacks is tried on those stacks' emissions — elsewhere its declaration is
+    # refused at cycle create (``validate_declaration``).
+    for name in sorted(n for n, f in FAULTS.items() if f.transforms_emission):
         shapes = shapes_for_task.get(FAULTS[name].task, _EMISSIONS)
+        stacks = FAULTS[name].stacks
         cases += [
             pytest.param(name, shape, shapes[shape], id=f"{name}-{shape}")
             for shape in sorted(shapes)
+            if not stacks or _EMISSION_STACK.get(shape) in stacks
         ]
     return cases
+
+
+#: The stack each representative develop emission came from.
+_EMISSION_STACK = {
+    "a FastAPI routes file (React roll 2)": "fullstack_fastapi_react",
+    "a Next.js join route (Next.js roll 1)": "nextjs_ts",
+}
 
 
 @pytest.mark.parametrize(("name", "shape", "content"), _representative_cases())
@@ -1106,3 +1117,170 @@ class TestTheHangIsEndedByTheDeclaredBound:
             resolved_config={DECLARATION_KEY: ["handler_hang"]},
             inputs={"emission_retry_feedback": {"signature": "unextractable"}},
         )
+
+
+class TestTheDeployADiagnosticsFaults:
+    """1.8.2 plan §4.1: `compile-loop`, `false-criterion` and `redelivery`. Each test names
+    what its diagnostic would misread if the fault did not do what it says."""
+
+    _NEXT = (
+        "```ts:app/api/runs/route.ts\nimport { store } from '@/lib/store'\n"
+        "export async function GET() {\n  return Response.json(store.all('runs'))\n}\n```\n\n"
+        "```ts:lib/store.ts\nexport const store = { all: (t: string) => [] as unknown[] }\n```\n"
+    )
+
+    @pytest.mark.parametrize(
+        ("content", "target"),
+        [
+            (_NEXT, "lib/store.ts"),
+            ("```ts:app/api/runs/route.ts\nexport const x = 1\n```\n", "app/api/runs/route.ts"),
+        ],
+        ids=["a lib file first", "else the first TypeScript file"],
+    )
+    def test_compile_loop_adds_two_independent_type_errors_to_one_file(self, content, target):
+        """Bug caught: both errors cascading from one (a pass fixing one fixes both, and the
+        loop is never exercised past its first error), the errors landing in an App Router
+        route where Next's own export check adds a third, or in a test file no build reads."""
+        out = FAULTS["compile_loop_two_type_errors"].transform(content)
+
+        block = out.split(f":{target}\n", 1)[1].split("```", 1)[0]
+        assert 'const squadopsCompileLoopA: number = "compile-loop-marker-a";' in block
+        assert "const squadopsCompileLoopB: string = 2026; // compile-loop-marker-b" in block
+        assert out.count("compile-loop-marker") == 2, "exactly two, in one file"
+
+    def test_compile_loop_has_nothing_to_bite_without_a_typescript_source(self):
+        content = "```ts:__tests__/runs.test.ts\nit('x', () => {})\n```\n"
+        assert FAULTS["compile_loop_two_type_errors"].transform(content) == content
+
+    def test_a_stack_scoped_fault_is_refused_on_another_stacks_cycle(self):
+        """Bug caught: `compile-loop` declared on a React cycle, where no emission carries a
+        TypeScript file — a green diagnostic that proved nothing."""
+        with pytest.raises(UnreachableFault, match="compile_loop_two_type_errors"):
+            validate_declaration(
+                {
+                    DECLARATION_KEY: ["compile_loop_two_type_errors"],
+                    "development_profile": "fullstack_fastapi_react",
+                }
+            )
+        assert validate_declaration(
+            {
+                DECLARATION_KEY: ["compile_loop_two_type_errors"],
+                "development_profile": "nextjs_ts",
+            }
+        ) == ("compile_loop_two_type_errors",)
+
+    async def test_the_killed_repair_exits_after_the_model_returns_on_its_first_round_only(
+        self, monkeypatch, caplog
+    ):
+        """`redelivery`. Bug caught: the process killed on every round — the broker's
+        redelivery is killed again and the diagnostic never reads the refusal — or not at all."""
+        from squadops.capabilities.handlers import fault_injection as fi
+
+        exits: list[int] = []
+        monkeypatch.setattr(fi, "_exit", exits.append)
+        declared = {DECLARATION_KEY: ["qa_repair_process_killed"]}
+        with caplog.at_level("WARNING"):
+            await fi.hold(
+                "x",
+                handler_name="qa_test_repair_handler",
+                task_id="repair-run_x-00-qa.test_repair",
+                resolved_config=declared,
+            )
+            await fi.hold(
+                "x",
+                handler_name="qa_test_repair_handler",
+                task_id="repair-run_x-01-qa.test_repair",
+                resolved_config=declared,
+            )
+
+        assert exits == [fi.CRASH_EXIT_CODE]
+        assert any("APPLIED qa_repair_process_killed" in r.getMessage() for r in caplog.records)
+
+    async def test_false_criterion_plants_a_row_the_pass_disputes_and_the_evidence_contests(
+        self,
+    ):
+        """End to end through ``HandlerExecutor.execute`` on the real develop handler and
+        templates, read back where the correction protocol reads (``build_failure_evidence``).
+        Bug caught: the row planted where the pass never sees it, planted on a file with no
+        alias import, or disputed by an identity the matcher does not read."""
+        from unittest.mock import MagicMock
+
+        from adapters.prompts.filesystem_asset_adapter import FilesystemPromptAssetAdapter
+        from squadops.agents.base import PortsBundle
+        from squadops.bootstrap.handlers import create_handler_registry
+        from squadops.cycles.failure_evidence import build_failure_evidence
+        from squadops.llm.models import ChatMessage
+        from squadops.orchestration.handler_executor import HandlerExecutor
+        from squadops.prompts.renderer import RequestTemplateRenderer
+        from squadops.tasks.models import TaskEnvelope
+
+        prompts = _SRC / "prompts"
+        route = "import { store } from '@/lib/store'\nexport const GET = () => store\n"
+        dispute = (
+            "```disputed_checks\n- check: acceptance:declared_imports\n"
+            "  file: app/api/runs/route.ts\n  criterion_id: vc-declared-imports-lib-alias\n"
+            "  reason: tsconfig.json maps @/* to ./*, so @/lib/store is a local module\n```\n"
+        )
+        answers = iter([f"```ts:app/api/runs/route.ts\n{route}```\n", dispute])
+        sent: list = []
+
+        async def _chat(messages, **kwargs):
+            sent.append(messages)
+            return ChatMessage(role="assistant", content=next(answers), completion_tokens=40)
+
+        llm = MagicMock()
+        llm.default_model = "qwen3.8:27b"
+        llm.chat_stream_with_usage = _chat
+        prompt_service = MagicMock()
+        prompt_service.assemble.return_value = MagicMock(content="system", assembly_hash="h")
+        ports = PortsBundle(
+            llm=llm,
+            memory=MagicMock(),
+            prompt_service=prompt_service,
+            queue=MagicMock(),
+            metrics=MagicMock(),
+            events=MagicMock(),
+            filesystem=MagicMock(),
+            request_renderer=RequestTemplateRenderer(
+                FilesystemPromptAssetAdapter(prompts / "fragments", prompts / "request_templates")
+            ),
+        )
+        envelope = TaskEnvelope(
+            task_id="task-run_1-m000-development.develop",
+            agent_id="neo",
+            cycle_id="cyc",
+            pulse_id="p",
+            project_id="group_run",
+            task_type="development.develop",
+            correlation_id="c",
+            causation_id="c",
+            trace_id="t",
+            span_id="s",
+            inputs={
+                "prd": "Runs API",
+                "artifact_contents": {"implementation_plan.md": "1. routes"},
+                "subtask_focus": "the runs route",
+                "expected_artifacts": ["app/api/runs/route.ts"],
+                "resolved_config": {
+                    "output_validation": True,
+                    "max_self_eval_passes": 1,
+                    DECLARATION_KEY: ["false_criterion_alias_import"],
+                },
+            },
+            metadata={"role": "dev"},
+        )
+        executor = HandlerExecutor("neo", create_handler_registry(roles=["dev"]), ports, role="dev")
+
+        result = await executor.execute(envelope)
+        evidence = build_failure_evidence(envelope, result, prior_plan_deltas_count=0)
+
+        followup = sent[1][-1].content
+        assert "criterion_id: `vc-declared-imports-lib-alias` — failed: unresolved import" in (
+            followup
+        )
+        assert result.status == "FAILED", "the planted row still fails on the unchanged code"
+        stored = {a["name"]: a["content"] for a in result.outputs["artifacts"]}
+        assert stored["app/api/runs/route.ts"] == route.rstrip("\n"), "the import left as it was"
+        (contested,) = evidence["contested_rows"]
+        assert contested["criterion_id"] == "vc-declared-imports-lib-alias"
+        assert contested["contested"]["by"] == "dev"

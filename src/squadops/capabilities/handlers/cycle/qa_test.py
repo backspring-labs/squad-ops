@@ -1797,8 +1797,8 @@ class QATestHandler(_CycleTaskHandler):
         typed_error_counts: dict[str, int] = {}
 
         if output_validation_enabled:
-            validation = await self._validate_output(
-                inputs, artifacts, typed_error_counts=typed_error_counts
+            validation = await self._validated(
+                context, inputs, artifacts, typed_error_counts=typed_error_counts
             )
 
             # Self-evaluation loop
