@@ -552,7 +552,9 @@ def _representative_cases():
         TaskType.DEVELOPMENT_DEVELOP: _DEVELOP_EMISSIONS,
     }
     cases = []
-    for name in sorted(FAULTS):
+    # A hold is not a transform (1.8.2 item 15): its bite is the time it takes, which
+    # TestTheHangIsEndedByTheDeclaredBound proves at the seam; its emission is untouched.
+    for name in sorted(n for n, f in FAULTS.items() if not f.hold):
         shapes = shapes_for_task.get(FAULTS[name].task, _EMISSIONS)
         cases += [
             pytest.param(name, shape, shapes[shape], id=f"{name}-{shape}")
@@ -1019,4 +1021,79 @@ class TestTheDevLaneFaultRewritesOnlyTheJoinResponse:
         assert (self._FAULT.task, self._FAULT.scope) == (
             TaskType.DEVELOPMENT_DEVELOP,
             FaultScope.FIRST_ATTEMPT,
+        )
+
+
+class TestTheHangIsEndedByTheDeclaredBound:
+    """1.8.2 item 15, the unattended-chain diagnostic's hang cycle: ``handler_hang`` holds the
+    develop handler after the model returns, as a stuck call would, and only the task's
+    declared bound ends it. Entered at ``_llm_call`` on the real develop handler, the seam its
+    emission passes (``develop.py``: ``apply_fault=True``)."""
+
+    async def _call(self, declaration, bound):
+        import asyncio
+        import time
+        from unittest.mock import AsyncMock, MagicMock
+
+        from squadops.capabilities.handlers.cycle.develop import DevelopmentDevelopHandler
+        from squadops.llm.models import ChatMessage
+
+        ctx = MagicMock()
+        ctx.task_id = "task-run_ab12cd34-m000-development.develop"
+        ctx.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(
+                role="assistant", content="```python:backend/routes.py\nx = 1\n```"
+            )
+        )
+        ctx.ports.llm_observability = None
+        ctx.correlation_context = None
+        return await asyncio.wait_for(
+            DevelopmentDevelopHandler()._llm_call(
+                ctx,
+                [ChatMessage(role="user", content="build it")],
+                {},
+                inputs={},
+                started=time.perf_counter(),
+                apply_fault=True,
+                fault_config=declaration,
+            ),
+            timeout=bound,
+        )
+
+    async def test_a_declared_hang_holds_until_the_bound_ends_it(self, caplog):
+        """Bug this catches: a hang fault that returns (no hang reached the bound), or one that
+        blocks the event loop (the agent's heartbeat would stop, which is a different fault)."""
+        with caplog.at_level("WARNING"), pytest.raises(TimeoutError):
+            await self._call({DECLARATION_KEY: ["handler_hang"]}, 0.05)
+        assert any(
+            "fault_injection: APPLIED handler_hang" in r.getMessage() for r in caplog.records
+        )
+
+    async def test_without_the_declaration_the_same_call_returns(self):
+        _message, content = await self._call({}, 5)
+        assert "backend/routes.py" in content
+
+    def test_the_transform_hook_leaves_a_hold_alone(self, caplog):
+        """Bug this catches: the hold read as a transform that "DID NOT BITE", which would
+        tell the record the diagnostic proved nothing when it is about to hang."""
+        emission = "```python:backend/routes.py\nx = 1\n```"
+        with caplog.at_level("INFO"):
+            out = _inject(emission, "task-run_x-m000-development.develop", ["handler_hang"])
+        assert out == emission
+        assert not any("DID NOT BITE" in r.getMessage() for r in caplog.records)
+
+    async def test_the_retry_after_an_emission_failure_is_not_held(self, monkeypatch):
+        """First attempt only, like every fault: what the diagnostic watches is the recovery."""
+        from squadops.capabilities.handlers import fault_injection
+
+        async def never(*_a, **_k):
+            pytest.fail("the retry was held")
+
+        monkeypatch.setattr(fault_injection.asyncio, "sleep", never)
+        await fault_injection.hold(
+            "x",
+            handler_name="development_develop_handler",
+            task_id="task-run_x-m000-development.develop",
+            resolved_config={DECLARATION_KEY: ["handler_hang"]},
+            inputs={"emission_retry_feedback": {"signature": "unextractable"}},
         )

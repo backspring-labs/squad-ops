@@ -310,6 +310,8 @@ EVIDENCE_FIELDS: dict[str, tuple[str, ...]] = {
     "loop_texture.unjoinable_refutations": _PATCH_PATH,
     "loop_texture.refunded_rounds": _PATCH_PATH,
     "loop_texture.evidence_superseded": _PATCH_PATH,
+    # 1.8.2 item 15: any roll can hit the bound, so only an empty window leaves it unasked.
+    "loop_texture.task_timeouts": ("runtime_window_empty",),
     "loop_texture.qa_owned_routed": _PATCH_PATH,
     "loop_texture.own_artifact_locus": _PATCH_PATH,
     "loop_texture.absent_anchor_routed": _PATCH_PATH,
@@ -2305,6 +2307,8 @@ _RUNTIME_LINE_KEYS = (
     "re-derived required_files",
     # SIP-0107 §20: the accepted-patch path's candidate identity, verified and persisted.
     "patch_candidate_identity task=",
+    # 1.8.2 item 15: the declared per-task wait ran out (the hang bound firing).
+    "task_timeout task=",
 )
 
 
@@ -2758,6 +2762,13 @@ RUNTIME_MARKER_SAMPLES: dict[str, tuple[str, ...]] = {
         "own_artifact — absent_anchor_routed: backend/tests/test_runs.py asserted undeclared "
         "anchor(s) runs-empty; qa.test re-authors backend/tests/test_runs.py (#1123)",
     ),
+    # Rendered: adapters/cycles/task_dispatcher.py, the declared wait running out (item 15).
+    "task_timeouts": (
+        "2026-09-25 00:00:00,000 WARNING adapters.cycles.task_dispatcher: task_timeout "
+        "task=task-run_ab12cd34-m000-development.develop type=development.develop agent=neo "
+        "seconds=1800.0 — the declared per-task wait ran out; the task is failed as a typed "
+        "fact (#995)",
+    ),
     "repair_brief_case_counts": (
         "2026-09-23 20:46:40,636 INFO adapters.cycles.correction_repair: correction_repair_brief: "
         "qa.test_repair carries 3 failing case(s) for backend/tests/test_runs.py "
@@ -3035,6 +3046,16 @@ def _qa_own_frame_routed_reading(rec: Mapping[str, Any]) -> tuple[bool, list[str
 
 
 SEAM_READOUTS: dict[str, tuple[str, tuple[str, ...], Callable[[dict], tuple[bool, Any]]]] = {
+    # 1.8.2 item 15: the hold reached the bound when the orchestrator failed the task at its
+    # declared wait, as a typed fact. Whether the run then proceeded is the chain's reading.
+    "handler_hang": (
+        "item 15: the hung task failed at the declared task timeout as a typed fact",
+        ("loop_texture.task_timeouts", "loop_texture.faults_applied"),
+        lambda rec: (
+            len(value_at(rec, "loop_texture.task_timeouts", [])) >= 1,
+            value_at(rec, "loop_texture.task_timeouts", []),
+        ),
+    ),
     "qa_suite_absent": (
         "L2: the qa task entered correction and its repair was retested",
         ("correction_rounds", "loop_texture.retests", "loop_texture.faults_applied"),
@@ -3718,6 +3739,10 @@ def texture_from_logs(logs: list[str]) -> dict:
         ],
         "evidence_superseded": [
             _fact(line, "patch_retest task=") for line in logs if "evidence superseded" in line
+        ],
+        # 1.8.2 item 15: every task the orchestrator failed because its declared wait ran out.
+        "task_timeouts": [
+            _fact(line, "task_timeout task=") for line in logs if "task_timeout task=" in line
         ],
         # 1.7.1 (plan §4). R2: a qa-owned own-frame failure routed to the qa repair
         # (#1130). R4: the qa repair brief's case count (#1123) and an undeclared-anchor
@@ -4735,6 +4760,8 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         f"{_show_at(rec, 'loop_texture.retest_failures_in_edited_region')} / "
         f"{_show_at(rec, 'loop_texture.retest_failures_outside', _render_by_reason)} / "
         f"{_show_at(rec, 'loop_texture.retest_regressions')} |",
+        "| tasks failed at the declared per-task wait (1.8.2 item 15) | "
+        f"{_show_at(rec, 'loop_texture.task_timeouts', _count)} |",
         "| suites the runner never collected, per stored test report (#1540) | "
         f"{_show_at(rec, 'loop_texture.uncollected_suites', _render_uncollected)} |",
         "| fill-merge assertion strength per qa task (#999) | "

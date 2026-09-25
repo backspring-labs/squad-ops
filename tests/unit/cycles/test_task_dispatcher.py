@@ -897,3 +897,49 @@ class TestHeartbeatMilestones:
         elapsed = [float(ln.split("elapsed=")[1].split("s")[0]) for ln in lines]
         assert elapsed[:3] == [60.0, 300.0, 600.0], lines
         assert len(elapsed) <= 4
+
+
+class TestTheDeclaredWaitTravelsWithTheTask:
+    """1.8.2 item 15: the orchestrator's declared per-task wait is stamped on the task it
+    publishes, so the agent bounds the handler by the same value, and a wait that runs out is
+    logged as the bound firing."""
+
+    @staticmethod
+    def _envelope() -> TaskEnvelope:
+        return TaskEnvelope(
+            task_id="task_abc",
+            agent_id="neo",
+            cycle_id="cyc_001",
+            pulse_id="p1",
+            project_id="proj_001",
+            task_type="development.design",
+            correlation_id="corr",
+            causation_id="cause",
+            trace_id="trace",
+            span_id="span",
+            metadata={"role": "dev"},
+        )
+
+    async def test_the_published_task_carries_the_declared_wait(self, dispatcher, mock_queue):
+        """Bug this catches: the agent bounding its handler by its model-call timeout while
+        this side waits on a different, declared value — two ends of one hang."""
+        await dispatcher.dispatch_task(self._envelope(), "run_001")
+
+        (call,) = [c for c in mock_queue.publish.await_args_list if c.args[0] == "neo_comms"]
+        assert json.loads(call.args[1])["payload"]["timeout"] == 5.0
+
+    async def test_a_wait_that_runs_out_is_logged_as_the_bound_firing(
+        self, dispatcher, reply_router, caplog
+    ):
+        """Bug this catches: the hang bound firing with no line a record can read, so the
+        unattended-chain diagnostic's hang cycle reads as never having reached it."""
+        reply_router.suppress.add("task_abc")
+        dispatcher._task_timeout = 0.1
+        with caplog.at_level("WARNING"):
+            result = await dispatcher.dispatch_task(self._envelope(), "run_001")
+
+        assert result.outputs["task_timeout"]["seconds"] == 0.1
+        (line,) = [r.getMessage() for r in caplog.records if "task_timeout task=" in r.getMessage()]
+        assert line.startswith(
+            "task_timeout task=task_abc type=development.design agent=neo seconds=0.1"
+        )

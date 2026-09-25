@@ -5190,11 +5190,7 @@ class TestTheChainRunsUnattended:
 
     @pytest.fixture(autouse=True)
     def _isolated(self, driver, tmp_path, monkeypatch):
-        from squadops.capabilities.handlers import fault_injection
-
         monkeypatch.setattr(driver, "main_checkout", lambda: tmp_path)
-        # The hang is the framework's fault (item 15); a stand-in entry lets the registration pass.
-        monkeypatch.setitem(fault_injection.FAULTS, "handler_hang", object())
 
     def _cfg(self, driver, tmp_path, chain=None, **extra):
         base = {
@@ -5987,3 +5983,73 @@ FAILED backend/tests/test_runs.py::test_post_dev_seed_returns_200 - pydantic_...
         assert rounds[0]["regressions"] is None and rounds[0]["before_executed"] is False
         texture = driver.retest_texture(rounds)
         assert texture["retest_regressions"] == 0
+
+
+class TestTheHangBoundIsReadFromTheLineTheDispatcherWrites:
+    """1.8.2 item 15: the unattended-chain diagnostic's hang cycle reached its seam when the
+    orchestrator failed the task at its declared wait. The line is produced by the dispatcher
+    and the hold's APPLIED line by the fault hook themselves, not typed here."""
+
+    async def test_the_driver_reads_the_bound_firing_and_the_hold_that_caused_it(
+        self, driver, caplog, monkeypatch
+    ):
+        import asyncio
+
+        from adapters.cycles.task_dispatcher import TaskDispatcher
+        from squadops.capabilities.handlers import fault_injection
+        from squadops.tasks.models import TaskEnvelope
+
+        class _NeverReplies:
+            async def ensure_subscribed(self, agent_id):
+                return None
+
+            def register(self, task_id):
+                return asyncio.get_running_loop().create_future()
+
+            def cancel(self, task_id):
+                return None
+
+        queue = type("Q", (), {"publish": staticmethod(lambda *a, **k: asyncio.sleep(0))})()
+        dispatcher = TaskDispatcher(queue=queue, reply_router=_NeverReplies(), task_timeout=0.05)
+        envelope = TaskEnvelope(
+            task_id="task-run_ab12cd34-m000-development.develop",
+            agent_id="neo",
+            cycle_id="cyc",
+            pulse_id="p",
+            project_id="group_run",
+            task_type="development.develop",
+            correlation_id="c",
+            causation_id="c",
+            trace_id="t",
+            span_id="s",
+        )
+
+        # Never patch asyncio.sleep: the dispatcher's heartbeat loop would spin and starve
+        # the timer this test needs to fire (the note on test_timeout_returns_failed).
+        monkeypatch.setattr(fault_injection, "HANG_SECONDS", 0)
+        with caplog.at_level("INFO"):
+            await dispatcher.dispatch_task(envelope, "run_ab12cd34")
+            await fault_injection.hold(
+                "x",
+                handler_name="development_develop_handler",
+                task_id=envelope.task_id,
+                resolved_config={fault_injection.DECLARATION_KEY: ["handler_hang"]},
+            )
+        lines = [
+            f"2026-09-25 00:00:00,000 WARNING adapters.cycles.task_dispatcher: {r.getMessage()}"
+            for r in caplog.records
+            if "task_timeout task=" in r.getMessage()
+            or "fault_injection: APPLIED" in r.getMessage()
+        ]
+        runtime = driver._runtime_lines_of_interest(lines)
+        texture = driver.texture_from_logs(runtime)
+        applied = driver.faults_applied(driver._agent_lines_of_interest(lines))
+
+        assert len(texture["task_timeouts"]) == 1
+        assert texture["task_timeouts"][0].startswith(
+            "task_timeout task=task-run_ab12cd34-m000-development.develop"
+        )
+        assert "handler_hang" in str(applied)
+        _, _, read = driver.SEAM_READOUTS["handler_hang"]
+        reached, value = read({"loop_texture": {"task_timeouts": texture["task_timeouts"]}})
+        assert reached is True and value == texture["task_timeouts"]

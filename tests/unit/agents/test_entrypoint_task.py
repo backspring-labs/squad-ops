@@ -39,6 +39,7 @@ def _make_envelope_payload(envelope: TaskEnvelope, reply_queue: str = "cycle_res
 
 def _sample_envelope() -> TaskEnvelope:
     return TaskEnvelope(
+        timeout=600.0,  # the dispatcher stamps the declared wait (1.8.2 item 15)
         task_id="task_123",
         agent_id="neo",
         cycle_id="cyc_001",
@@ -429,3 +430,50 @@ class TestARedeliveredTaskIsRefusedNotRerun:
         await r._process_comms_message(msg)
 
         r._handle_task_envelope.assert_awaited_once()
+
+
+class TestTheHandlerIsBoundedByTheDeclaredWait:
+    """1.8.2 item 15: the agent bounds a dispatched task's handler by the wait the orchestrator
+    declared and stamped on the task, never by its own model-call timeout."""
+
+    @pytest.fixture
+    def runner(self):
+        from squadops.agents.entrypoint import AgentRunner
+
+        with patch.object(AgentRunner, "__init__", lambda self, *a, **kw: None):
+            r = AgentRunner.__new__(AgentRunner)
+            r.agent_id = "neo"
+            r.role = "dev"
+            r._queue = AsyncMock()
+            r._config = MagicMock()
+            r._config.llm.timeout = 180.0
+            r.system = MagicMock()
+            r.system.orchestrator = AsyncMock()
+            r.system.orchestrator.submit_task.return_value = TaskResult(
+                task_id="task_123", status="SUCCEEDED", outputs={}
+            )
+            return r
+
+    async def test_the_declared_wait_bounds_the_handler_not_the_model_timeout(self, runner):
+        """Wiring, entered at ``_handle_task_envelope`` — the comms path. Bug this catches:
+        the handler killed at llm.timeout (180 s here) while the orchestrator waits the
+        declared 600 s, or the reverse."""
+        payload = _make_envelope_payload(_sample_envelope())
+
+        await runner._handle_task_envelope(payload, payload["metadata"])
+
+        assert runner.system.orchestrator.submit_task.call_args.kwargs["timeout_seconds"] == 600.0
+
+    async def test_a_task_without_a_declared_wait_is_refused_not_defaulted(self, runner):
+        """Require, don't default (2026-09-14): a runtime API older than item 15 sends no
+        wait, and the agent says so instead of bounding the handler by a number nobody chose."""
+        import dataclasses
+
+        payload = _make_envelope_payload(dataclasses.replace(_sample_envelope(), timeout=None))
+
+        await runner._handle_task_envelope(payload, payload["metadata"])
+
+        runner.system.orchestrator.submit_task.assert_not_awaited()
+        published = json.loads(runner._queue.publish.call_args.args[1])
+        assert published["payload"]["status"] == "FAILED"
+        assert "carries no declared timeout" in published["payload"]["error"]

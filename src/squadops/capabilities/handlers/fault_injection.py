@@ -31,6 +31,7 @@ real one.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -49,6 +50,11 @@ logger = logging.getLogger(__name__)
 DECLARATION_KEY = "fault_injection"
 
 _FENCE_OPEN = re.compile(r"^(\s{0,3}```)([^\s`]*)$", re.M)
+
+
+def _unchanged(content: str) -> str:
+    """A hold's transform: the emission is untouched; the fault is the time it takes."""
+    return content
 
 
 def _strip_fences(content: str) -> str:
@@ -340,6 +346,9 @@ class Fault:
     exercises: str
     #: The scope of "once" (#1310).
     scope: FaultScope = FaultScope.FIRST_ATTEMPT
+    #: A hold, not a transform (1.8.2 item 15): the handler stops answering after the model
+    #: returns, until the declared task timeout ends it. ``transform`` is then the identity.
+    hold: bool = False
 
 
 #: Every declared fault. Adding one is a declaration, not a policy change: the transform
@@ -420,6 +429,17 @@ FAULTS: dict[str, Fault] = {
     # analysis only and the rounds after it run clean — the readout asks whether the
     # decision of that round inherited the claim. Reached only behind a failure, so a
     # diagnostic chains it after a failure-producing fault (#1298).
+    # 1.8.2 plan §4.1, the unattended-chain diagnostic's hang cycle: a hold, not a transform.
+    "handler_hang": Fault(
+        task=TaskType.DEVELOPMENT_DEVELOP,
+        transform=_unchanged,
+        found_in="#995 — V7 roll 1: the final development.develop attempt was killed by the "
+        "1,800 s task timeout mid self-eval; the hang a campaign left unattended must survive "
+        "(1.8.2 plan §4.1 unattended-chain)",
+        exercises="item 15: the hung task fails at the declared task timeout as a typed "
+        "task_timeout fact, and the run proceeds to correction or termination",
+        hold=True,
+    ),
     "analyzer_false_source_claim": Fault(
         task=TaskType.DATA_ANALYZE_FAILURE,
         transform=_false_source_claim,
@@ -565,7 +585,7 @@ def inject(
         return content
     for name in names:
         fault = FAULTS.get(name)
-        if fault is None or not task_id.endswith(fault.task):
+        if fault is None or fault.hold or not task_id.endswith(fault.task):
             continue
         if not _applies(fault, task_id, inputs):
             logger.info(
@@ -606,3 +626,54 @@ def inject(
         )
         return faulted
     return content
+
+
+#: How long a hold lasts if nothing ends it: a day, far past any declared task timeout. The
+#: agent's own bound — the declared wait the dispatcher stamps on the task — cancels it first.
+HANG_SECONDS = 24 * 60 * 60
+
+
+async def hold(
+    content: object,
+    *,
+    handler_name: str,
+    task_id: str,
+    resolved_config: Mapping[str, Any] | None,
+    inputs: Mapping[str, Any] | None = None,
+) -> None:
+    """Stop answering, if a declared hold applies to this attempt (1.8.2 item 15).
+
+    Called at the emission seam right after ``inject``: the model has returned and the handler
+    goes quiet, as it would behind a stuck call. The sleep is cooperative, so the agent's
+    heartbeat keeps running; what ends it is the task's declared bound, on the agent's side
+    and the orchestrator's. Logged in ``APPLIED`` form so a record's ``faults_applied`` reads it
+    like any other fault.
+    """
+    for name in declared_faults(resolved_config):
+        fault = FAULTS.get(name)
+        if fault is None or not fault.hold or not task_id.endswith(fault.task):
+            continue
+        if not _applies(fault, task_id, inputs):
+            logger.info(
+                "fault_injection: %s declared for %s but this attempt is outside its scope "
+                "(%s) — not applied (the recovery path is what the diagnostic observes)",
+                name,
+                task_id,
+                fault.scope.value,
+            )
+            continue
+        size = len(content) if isinstance(content, str) else 0
+        logger.warning(
+            "fault_injection: APPLIED %s to task=%s handler=%s chars %d -> %d scope=%s "
+            "(found_in=%s exercises=%s) — holding after the model returned until the declared "
+            "task timeout ends it; this cycle is a DIAGNOSTIC and must not be counted",
+            name,
+            task_id,
+            handler_name,
+            size,
+            size,
+            fault.scope.value,
+            fault.found_in,
+            fault.exercises,
+        )
+        await asyncio.sleep(HANG_SECONDS)

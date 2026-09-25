@@ -53,6 +53,7 @@ from squadops.capabilities.handlers.cycle.validation import (
     _classify_file,
 )
 from squadops.capabilities.handlers.emission_log import log_emission_shape
+from squadops.capabilities.handlers.fault_injection import hold as hold_fault
 from squadops.capabilities.handlers.fault_injection import inject as inject_fault
 
 logger = logging.getLogger(__name__)
@@ -1267,6 +1268,14 @@ class _CycleTaskHandler(CapabilityHandler):
         # ``apply_fault=False`` and stay unreachable by a declaration, as they were.
         if apply_fault:
             content = inject_fault(
+                content,
+                handler_name=self._handler_name,
+                task_id=context.task_id,
+                resolved_config=fault_config,
+                inputs=inputs,
+            )
+            # 1.8.2 item 15: a declared hold stops answering here, after the model returned.
+            await hold_fault(
                 content,
                 handler_name=self._handler_name,
                 task_id=context.task_id,

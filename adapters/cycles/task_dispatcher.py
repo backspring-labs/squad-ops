@@ -387,6 +387,9 @@ class TaskDispatcher:
 
         reply_queue = f"{envelope.agent_id}_replies"
         queue_name = f"{envelope.agent_id}_comms"
+        # 1.8.2 item 15: the declared per-task wait travels with the task, so the agent bounds
+        # its handler by the same value this side waits on — not by its model-call timeout.
+        envelope = dataclasses.replace(envelope, timeout=self._task_timeout)
 
         # Open the agent's reply subscription and register our future BEFORE
         # publishing, so a fast reply can't arrive before we're listening.
@@ -425,6 +428,16 @@ class TaskDispatcher:
             raise
         except TimeoutError:
             self._reply_router.cancel(envelope.task_id)
+            # 1.8.2 item 15: one line per declared wait that ran out, so a record can read the
+            # hang bound firing (the unattended-chain diagnostic's hang cycle) from the log.
+            logger.warning(
+                "task_timeout task=%s type=%s agent=%s seconds=%s — the declared per-task wait "
+                "ran out; the task is failed as a typed fact (#995)",
+                envelope.task_id,
+                envelope.task_type,
+                envelope.agent_id,
+                self._task_timeout,
+            )
             # #995: the timeout is a MACHINE FACT on the result, not only a sentence in
             # `error`. V7 roll 1's final `development.develop` attempt produced two
             # substantive emissions — 7,516 and 5,322 completion tokens, three path
