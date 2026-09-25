@@ -5165,3 +5165,323 @@ class TestRecordsHaveOneHome:
 
         assert "- driver HEAD `abc123`, checkout `/wt/driver`" in driver._render_deploy(cfg, rec)
         assert "- driver HEAD `abc123`, checkout not recorded" in driver._render_deploy(cfg, old)
+
+
+class TestTheChainRunsUnattended:
+    """1.8.2 plan §3.2 item 14: K cycles back to back with no person between them, each
+    registered fault placed on its own cycle, and a quiet box, proven by more than run state,
+    before every launch. The ``unattended-chain`` diagnostic reads the line's claim off this
+    runner, so a defect here is a claim read from a chain that never ran as registered."""
+
+    _CHAIN = {
+        "cycles": 4,
+        "quiet_timeout_seconds": 2400,
+        "faults": [
+            {"cycle": 2, "kind": "cancel", "task_type": "development.develop"},
+            {"cycle": 3, "kind": "crash", "task_type": "development.develop", "service": "neo"},
+            {"cycle": 4, "kind": "hang", "fault": "handler_hang"},
+        ],
+    }
+
+    @pytest.fixture(autouse=True)
+    def _isolated(self, driver, tmp_path, monkeypatch):
+        from squadops.capabilities.handlers import fault_injection
+
+        monkeypatch.setattr(driver, "main_checkout", lambda: tmp_path)
+        # The hang is the framework's fault (item 15); a stand-in entry lets the registration pass.
+        monkeypatch.setitem(fault_injection.FAULTS, "handler_hang", object())
+
+    def _cfg(self, driver, tmp_path, chain=None, **extra):
+        base = {
+            "name": "1-8-2-unattended-chain",
+            "project": "group_run",
+            "squad_profile": "full-38",
+            "request_profile": "validated-fullstack",
+            "gate_name": "g",
+            "gate_notes": "g",
+            "launch_notes": "chain {roll} of {n}",
+            "shakeout_notes": "s",
+            "n_rolls": 1,
+            "chain": self._CHAIN if chain is None else chain,
+            **extra,
+        }
+        p = tmp_path / "chain.yaml"
+        p.write_text(yaml.safe_dump(base))
+        return driver.load_set_config(p)
+
+    def _roll_path(self, driver, monkeypatch, *, running=True):
+        """Every call below the roll path that reaches the box, stubbed; `sh` records the
+        commands the chain issued, `launched` the overrides each cycle was created with."""
+        calls: dict = {"sh": [], "launched": [], "polls": {}}
+
+        def launch(cfg, notes):
+            calls["launched"].append(dict(cfg.overrides))
+            k = len(calls["launched"])
+            return f"cyc_{k}", f"run_{k}", "hash"
+
+        def terminal_impl(cycle_id):
+            calls["polls"][cycle_id] = calls["polls"].get(cycle_id, 0) + 1
+            return "completed" if calls["polls"][cycle_id] > 1 else None
+
+        def psql(query):
+            if "status='running' order by run_number" in query:
+                return "run_" + query.split("cycle_id='cyc_")[1].split("'")[0]
+            return ""
+
+        monkeypatch.setattr(driver, "launch", launch)
+        monkeypatch.setattr(driver, "terminal_impl", terminal_impl)
+        monkeypatch.setattr(driver, "psql", psql)
+        monkeypatch.setattr(driver, "sh", lambda cmd, check=True: calls["sh"].append(cmd) or "")
+        monkeypatch.setattr(driver, "login", lambda: None)
+        monkeypatch.setattr(driver, "gate_pending", lambda cycle_id: None)
+        monkeypatch.setattr(driver, "ended_without_implementation", lambda cycle_id: None)
+        monkeypatch.setattr(
+            driver,
+            "active_activities",
+            lambda cycle_id=None: [("neo", "development.develop")] if running and cycle_id else [],
+        )
+        monkeypatch.setattr(driver, "quiet_box_problems", lambda cfg: [])
+        monkeypatch.setattr(driver, "queue_depths", lambda: {"cycle_results_run_2": (1, 0)})
+        monkeypatch.setattr(
+            driver,
+            "agent_log_window",
+            lambda since, until=None, services=(): [
+                "neo - emission shape: chars=5045 completion_tokens=4249",
+                "neo - LLM throughput: 32.8 t/s",
+            ],
+        )
+        monkeypatch.setattr(driver.time, "sleep", lambda s: None)
+        monkeypatch.setattr(driver, "stack_for", lambda cfg: "fullstack_fastapi_react")
+        monkeypatch.setattr(driver, "deploy_identity", lambda cfg: {})
+        monkeypatch.setattr(driver, "cmd_preflight", lambda cfg, counting, identity: 0)
+        monkeypatch.setattr(
+            driver,
+            "collect",
+            lambda cfg, cyc: {
+                "cycle_id": cyc,
+                "impl_run_id": "run_x",
+                "squad_profile_snapshot_ref": "s",
+                "verdict": "accepted",
+                "cycle_assessment": {"state": "observed"},
+            },
+        )
+        monkeypatch.setattr(driver, "completed_framing_run", lambda *a, **k: None)
+        for name in ("static_checks", "ledger_checks", "loop_texture", "typed_checks_by_check"):
+            monkeypatch.setattr(driver, name, lambda *a, **k: {})
+        monkeypatch.setattr(driver, "loaded_check_evidence", lambda *a, **k: {})
+        monkeypatch.setattr(driver, "seam_readouts", lambda *a, **k: {})
+        monkeypatch.setattr(driver, "boot_audit", lambda *a, **k: {"ran": False})
+        monkeypatch.setattr(driver, "cycle_log_until", lambda *a, **k: "t1")
+        monkeypatch.setattr(driver, "cycle_run_states", lambda cycle_id: [])
+        monkeypatch.setattr(driver, "render", lambda *a, **k: "")
+        return calls
+
+    def test_each_fault_lands_on_its_own_cycle(self, driver, tmp_path, monkeypatch):
+        """Wiring, entered at ``cmd_chain``, the call the operator makes, down through
+        ``_run_cycle`` and ``drive`` to the fault hook. Bug this catches: a hook not wired into
+        the poll loop (every fault silently never fires), a fault placed on the wrong cycle or
+        on every cycle, the hang's override leaking to cycles that should run clean, or the
+        cancel's ghosts never read."""
+        cfg = self._cfg(driver, tmp_path)
+        calls = self._roll_path(driver, monkeypatch)
+
+        assert driver.cmd_chain(cfg, dry_run=False, resume=False) == 0
+
+        assert calls["sh"] == [
+            "SQUADOPS runs cancel group_run cyc_2 run_2".replace("SQUADOPS", driver.SQUADOPS),
+            "docker restart -t 0 squadops-neo",
+        ]
+        assert [o.get("fault_injection") for o in calls["launched"]] == [
+            None,
+            None,
+            None,
+            "handler_hang",
+        ]
+        state = json.loads((cfg.records_path / driver.CHAIN_STATE).read_text())
+        by_k = {c["k"]: c for c in state["cycles"]}
+        assert sorted(by_k) == [1, 2, 3, 4]
+        assert by_k[1]["fault_fired_at"] is None and "ghosts" not in by_k[1]
+        assert by_k[2]["fault_detail"] == "run_2"
+        assert by_k[2]["ghosts"]["emissions_after_cancel"] == 1
+        assert by_k[2]["ghosts"]["late_replies"] == 1
+        assert "squadops-neo killed" in by_k[3]["fault_detail"]
+        assert all(c["quiet_after"]["quiet"] for c in state["cycles"])
+        assert state["resumes"] == 0 and state["stopped"] is None
+        md = next(cfg.records_path.glob("chain-*.md")).read_text()
+        assert "| 2 | cancel | `cyc_2` | accepted |" in md
+        assert "1 emissions, 1 late replies" in md
+
+    def test_a_fault_whose_task_never_runs_is_recorded_as_not_fired(
+        self, driver, tmp_path, monkeypatch
+    ):
+        """Bug this catches: a cancel that never fired read as a chain that survived one."""
+        cfg = self._cfg(
+            driver,
+            tmp_path,
+            chain={
+                "cycles": 1,
+                "quiet_timeout_seconds": 60,
+                "faults": [{"cycle": 1, "kind": "cancel", "task_type": "development.develop"}],
+            },
+        )
+        calls = self._roll_path(driver, monkeypatch, running=False)
+
+        driver.cmd_chain(cfg, dry_run=False, resume=False)
+
+        state = json.loads((cfg.records_path / driver.CHAIN_STATE).read_text())
+        assert state["cycles"][0]["fault_fired_at"] is None
+        assert "ghosts" not in state["cycles"][0]
+        assert not any("runs cancel" in c for c in calls["sh"])
+
+    def test_a_busy_box_stops_the_chain_before_any_launch(self, driver, tmp_path, monkeypatch):
+        """Bug this catches: launching the next cycle while an agent is still working a
+        cancelled cycle's task, which is how #1648's ghost would contaminate the next record."""
+        import types
+
+        cfg = self._cfg(driver, tmp_path)
+        self._roll_path(driver, monkeypatch)
+        monkeypatch.setattr(
+            driver,
+            "quiet_box_problems",
+            lambda cfg: ["neo is mid-task: 1 unacknowledged on neo_comms"],
+        )
+        monkeypatch.setattr(driver, "launch", lambda *a: pytest.fail("launched into a busy box"))
+        clock = iter(range(0, 10_000, 600))
+        monkeypatch.setattr(
+            driver, "time", types.SimpleNamespace(time=lambda: next(clock), sleep=lambda s: None)
+        )
+
+        assert driver.cmd_chain(cfg, dry_run=False, resume=False) == 7
+
+        state = json.loads((cfg.records_path / driver.CHAIN_STATE).read_text())
+        assert state["cycles"] == []
+        assert "neo is mid-task" in state["stopped"]
+        assert state["quiet_at_start"]["waited_seconds"] >= 2400
+
+    def test_quiet_is_read_from_the_agents_queues_not_only_run_state(self, driver, monkeypatch):
+        """Bug this catches: a box called quiet from run state and leases alone. A cancel
+        closes the run and the activity rows while the agent keeps generating (#1648), and
+        only its unacknowledged delivery shows it."""
+        cfg = driver.SetConfig(
+            name="s",
+            project="p",
+            squad_profile="x",
+            request_profile="y",
+            gate_name="g",
+            gate_notes="g",
+            launch_notes="l",
+            shakeout_notes="s",
+            n_rolls=1,
+        )
+        monkeypatch.setattr(driver, "run_state_isolation_problems", lambda cfg: [])
+        monkeypatch.setattr(driver, "active_activities", lambda cycle_id=None: [])
+        depths = {f"{a}_comms": (0, 0) for a in driver.AGENT_SERVICES}
+        depths |= {"neo_comms": (0, 1), "max_comms": (2, 0)}
+        del depths["eve_comms"]
+        monkeypatch.setattr(driver, "queue_depths", lambda: depths)
+
+        problems = driver.quiet_box_problems(cfg)
+
+        assert problems == [
+            "2 task(s) dispatched to max and not yet taken",
+            "neo is mid-task: 1 unacknowledged on neo_comms",
+            "no queue eve_comms on the broker, so eve's state is unasked",
+        ]
+        monkeypatch.setattr(driver, "queue_depths", lambda: None)
+        assert driver.quiet_box_problems(cfg) == [
+            "the broker's queues could not be read, so quiet is not provable"
+        ]
+
+    @pytest.mark.parametrize(
+        ("chain", "expected"),
+        [
+            (
+                {
+                    "cycles": 2,
+                    "quiet_timeout_seconds": 60,
+                    "faults": [{"cycle": 1, "kind": "pause"}],
+                },
+                "unknown kind",
+            ),
+            (
+                {
+                    "cycles": 2,
+                    "quiet_timeout_seconds": 60,
+                    "faults": [{"cycle": 3, "kind": "cancel", "task_type": "development.develop"}],
+                },
+                "the chain runs cycles 1..2",
+            ),
+            (
+                {
+                    "cycles": 2,
+                    "quiet_timeout_seconds": 60,
+                    "faults": [
+                        {"cycle": 1, "kind": "cancel", "task_type": "development.develop"},
+                        {"cycle": 1, "kind": "hang", "fault": "handler_hang"},
+                    ],
+                },
+                "carries 2 faults",
+            ),
+            (
+                {
+                    "cycles": 2,
+                    "quiet_timeout_seconds": 60,
+                    "faults": [{"cycle": 1, "kind": "cancel", "task_type": "develop"}],
+                },
+                "could never fire",
+            ),
+            (
+                {
+                    "cycles": 2,
+                    "quiet_timeout_seconds": 60,
+                    "faults": [
+                        {
+                            "cycle": 1,
+                            "kind": "crash",
+                            "task_type": "development.develop",
+                            "service": "han",
+                        }
+                    ],
+                },
+                "is not one of this set's agent containers",
+            ),
+            (
+                {
+                    "cycles": 2,
+                    "quiet_timeout_seconds": 60,
+                    "faults": [{"cycle": 1, "kind": "hang", "fault": "no_such_fault"}],
+                },
+                "is not in FAULTS",
+            ),
+            ({"cycles": 2, "quiet_timeout_seconds": 0}, "must be set"),
+        ],
+    )
+    def test_a_chain_that_cannot_run_as_registered_is_refused(
+        self, driver, tmp_path, chain, expected
+    ):
+        """Bug this catches: a registration whose fault can never fire (a typo'd task type, a
+        container the set does not run) producing a clean chain that exercised nothing."""
+        problems = driver.chain_problems(self._cfg(driver, tmp_path, chain=chain))
+        assert any(expected in p for p in problems), problems
+
+    def test_a_hang_on_a_set_that_already_injects_is_refused(self, driver, tmp_path):
+        cfg = self._cfg(driver, tmp_path, overrides={"fault_injection": ["qa_suite_absent"]})
+        assert any("would not be this cycle's alone" in p for p in driver.chain_problems(cfg))
+
+    def test_a_resume_continues_and_is_counted(self, driver, tmp_path, monkeypatch):
+        """Bug this catches: a resumed chain re-running recorded cycles, or reading as having
+        needed no person. A resume under a changed registration is refused."""
+        cfg = self._cfg(driver, tmp_path)
+        calls = self._roll_path(driver, monkeypatch)
+        state = driver._chain_state(cfg, resume=False)
+        state["cycles"] = [{"k": 1}, {"k": 2}, {"k": 3}]
+        driver._save_chain_state(cfg, state)
+
+        assert driver.cmd_chain(cfg, dry_run=False, resume=True) == 0
+
+        saved = json.loads((cfg.records_path / driver.CHAIN_STATE).read_text())
+        assert [c["k"] for c in saved["cycles"]] == [1, 2, 3, 4]
+        assert len(calls["launched"]) == 1 and saved["resumes"] == 1
+        changed = self._cfg(driver, tmp_path, chain={**self._CHAIN, "cycles": 5})
+        with pytest.raises(SystemExit, match="resume refused"):
+            driver._chain_state(changed, resume=True)

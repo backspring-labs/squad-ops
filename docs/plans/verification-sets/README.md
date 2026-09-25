@@ -142,6 +142,36 @@ only, never outcome — removes its pair and is replaced by the next; the state 
 every roll (`--resume` continues it) and the reading is rendered as Squad / Solo / ties whichever
 way it goes. The first window is 1.8.1's (`1-8-1-window-preregistration.md`).
 
+### The chain (1.8.2 plan §3.2 item 14)
+
+K cycles back to back with no person between them, for the `unattended-chain` diagnostic:
+
+```
+verification_set_driver.py chain --set <set.yaml>
+```
+
+K, the quiet timeout and the faults are the set config's `chain` block, never flags:
+
+```yaml
+chain:
+  cycles: 4
+  quiet_timeout_seconds: 2400   # at least the declared per-task timeout
+  faults:
+    - {cycle: 2, kind: cancel, task_type: development.develop}
+    - {cycle: 3, kind: crash, task_type: development.develop, service: neo}
+    - {cycle: 4, kind: hang, fault: <a FAULTS name>}
+```
+
+- **Faults and when they fire:**
+  - A **cancel** fires once the named task is running in its cycle (`runtime_activities`): the driver cancels the running run through the CLI.
+  - A **crash** fires the same way on the named agent, with `docker restart -t 0` (the process killed with no chance to reply, #1251's shape).
+  - A **hang** is the framework's own fault, carried on that one cycle's `fault_injection`.
+- **A quiet box before every launch**, proven by more than run state and leases: no open runtime activity, no task dispatched to one of the set's agents and not yet taken, and no agent mid-task. Agents ack a delivery after the handler returns, so an unacknowledged message on `<agent>_comms` is an agent still working, which is how a ghost after a cancel shows. The chain waits up to its timeout for quiet and stops rather than launch into a busy box.
+- **Ghosts after a cancel** are the agents' `emission shape:` lines from the cancel to the next quiet box, read **by time window** because agent log lines carry no cycle id (valid only because nothing else runs), plus any late reply left on `cycle_results_<run>`.
+- **State and records:**
+  - State is written after every cycle, and `--resume` continues it. Each resume is counted, because the chain's claim is that no person was needed.
+  - Per-cycle records are `cycle-NN-*`; the chain's own record is `chain-<stamp>`.
+
 ## What the record must say
 
 The per-roll record is facts; the pre-registration says what they mean. The cut record

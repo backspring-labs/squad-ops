@@ -48,6 +48,7 @@ must be, how a launch survives the session, how a dead driver is re-attached —
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import functools
 import json
 import os
@@ -519,6 +520,41 @@ class LoadedCheck:
     source: str
 
 
+#: The chain's fault kinds (1.8.2 plan §3.2 item 14). ``cancel`` and ``crash`` are injected by
+#: the driver from outside the cycle, once the named task is running. ``hang`` is the
+#: framework's own fault, carried on one cycle's ``fault_injection`` override, because a
+#: handler that stops answering can only be made from inside the agent.
+CHAIN_FAULT_KINDS = ("cancel", "crash", "hang")
+
+
+@dataclass(frozen=True)
+class ChainFault:
+    cycle: int
+    kind: str
+    #: cancel, crash: the fault fires once a task of this type is running in the cycle.
+    task_type: str = ""
+    #: crash: the agent container killed mid-task.
+    service: str = ""
+    #: hang: the ``fault_injection`` name that cycle is created with.
+    fault: str = ""
+
+
+@dataclass(frozen=True)
+class ChainSpec:
+    """A registered chain: K cycles back to back and where each fault goes. Data on the set
+    config, never flags: as with the window, a value the operator could change at launch or on
+    resume is a value that could change after results exist."""
+
+    cycles: int
+    #: How long the chain waits for a quiet box between cycles before it stops. At least the
+    #: declared per-task timeout, since a ghost task after a cancel can run that long.
+    quiet_timeout_seconds: int
+    faults: tuple[ChainFault, ...] = ()
+
+    def fault_for(self, k: int) -> ChainFault | None:
+        return next((f for f in self.faults if f.cycle == k), None)
+
+
 @dataclass(frozen=True)
 class SetConfig:
     name: str
@@ -572,6 +608,8 @@ class SetConfig:
     #: refused rather than admitted while the gate reloads the canonical one (#1645 review).
     source: str = ""
     source_path: str = ""
+    #: The chain this set runs (``chain`` command), or None for a set that is not one.
+    chain: ChainSpec | None = None
 
     @property
     def records_path(self) -> Path:
@@ -614,6 +652,32 @@ def records_dir_problem(records_dir: str) -> str | None:
             "only under the main checkout's var/verification_sets/ (1.8.2 plan §3.2 item 8)"
         )
     return None
+
+
+def parse_chain(path: Path, raw: Any) -> ChainSpec | None:
+    """The ``chain`` block as typed data. Shape only; ``chain_problems`` judges the values
+    against the set before anything launches."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise SystemExit(f"{path}: chain must be a mapping")
+    missing = [k for k in ("cycles", "quiet_timeout_seconds") if k not in raw]
+    if missing:
+        raise SystemExit(f"{path}: chain is missing {', '.join(missing)}")
+    faults: list[ChainFault] = []
+    for entry in raw.get("faults") or []:
+        if not isinstance(entry, dict) or "cycle" not in entry or "kind" not in entry:
+            raise SystemExit(f"{path}: every chain fault needs a cycle and a kind: {entry!r}")
+        faults.append(
+            ChainFault(
+                cycle=int(entry["cycle"]),
+                kind=str(entry["kind"]),
+                task_type=str(entry.get("task_type") or ""),
+                service=str(entry.get("service") or ""),
+                fault=str(entry.get("fault") or ""),
+            )
+        )
+    return ChainSpec(int(raw["cycles"]), int(raw["quiet_timeout_seconds"]), tuple(faults))
 
 
 def load_set_config(path: Path) -> SetConfig:
@@ -676,6 +740,7 @@ def load_set_config(path: Path) -> SetConfig:
         window_max_attempts=int(raw.get("window_max_attempts") or 0),
         source=path.name,
         source_path=str(path.resolve()),
+        chain=parse_chain(path, raw.get("chain")),
     )
 
 
@@ -1461,13 +1526,20 @@ def ended_without_implementation(cycle_id: str) -> str | None:
     )
 
 
-def drive(cfg: SetConfig, cycle_id: str) -> str | None:
+def drive(
+    cfg: SetConfig, cycle_id: str, on_poll: Callable[[str], None] | None = None
+) -> str | None:
     """Approve the gate (§6 constant, verbatim) when it opens; return once the cycle can
     produce nothing further. Returns the reason when it ended with no implementation run
-    (#1168), None on the ordinary path."""
+    (#1168), None on the ordinary path.
+
+    ``on_poll`` runs once per poll, before the checks: the chain's fault trigger, which fires
+    when its named task is running (item 14)."""
     started = time.time()
     approved: set[str] = set()
     while time.time() - started < MAX_WAIT_S:
+        if on_poll is not None:
+            on_poll(cycle_id)
         pending = gate_pending(cycle_id)
         if pending and pending not in approved:
             log(f"gate open on {pending} — applying the §6 constant")
@@ -4189,6 +4261,7 @@ def _run_cycle(
     stem: str,
     assert_hash: bool,
     identity: Mapping[str, str],
+    on_poll: Callable[[str], None] | None = None,
 ) -> int:
     launched_at = log_since(datetime.now(UTC))
     cyc, run, chash = launch(cfg, notes)
@@ -4198,7 +4271,7 @@ def _run_cycle(
         if assert_hash:
             log("   the roll is NOT comparable; recording and stopping")
             return 3
-    ended_early = drive(cfg, cyc)
+    ended_early = drive(cfg, cyc, on_poll)
     rec = collect(cfg, cyc)
     # #1296: the identity this cycle was actually launched against, in the record rather
     # than only in the log. `render`'s fallback to it has been dead since the field was
@@ -4744,6 +4817,404 @@ def cmd_window(squad_cfg: SetConfig, solo_cfg: SetConfig, *, dry_run: bool, resu
     return 0 if tally["complete"] else 6
 
 
+# ---------------------------------------------------------------------------
+# The chain — K cycles back to back, left alone (1.8.2 plan §3.2 item 14)
+# ---------------------------------------------------------------------------
+
+CHAIN_STATE = "chain-state.json"
+RABBITMQ_CONTAINER = "squadops-rabbitmq"
+#: The non-terminal runtime-activity states (``uq_runtime_activities_one_active_per_agent``).
+ACTIVE_ACTIVITY_STATES = ("pending", "running", "paused")
+#: The producing agent's own line for one model emission (#1276). Agent log lines carry no
+#: cycle id, so a ghost is read by time window under run-state isolation, never by id.
+GHOST_MARKER = "emission shape:"
+
+
+def chain_problems(cfg: SetConfig) -> list[str]:
+    """Why this set's chain cannot run, read before anything launches."""
+    spec = cfg.chain
+    if spec is None:
+        return [f"{cfg.name}: the set registers no chain"]
+    problems: list[str] = []
+    if spec.cycles < 1:
+        problems.append(f"chain.cycles {spec.cycles}: at least one cycle")
+    if spec.quiet_timeout_seconds < 1:
+        problems.append(f"chain.quiet_timeout_seconds {spec.quiet_timeout_seconds}: must be set")
+    placed = [f.cycle for f in spec.faults]
+    for cycle in sorted({c for c in placed if placed.count(c) > 1}):
+        problems.append(
+            f"chain cycle {cycle} carries {placed.count(cycle)} faults: one per cycle, or no "
+            "reading is attributable to either"
+        )
+    for f in spec.faults:
+        problems += _chain_fault_problems(cfg, spec, f)
+    return problems
+
+
+def _chain_fault_problems(cfg: SetConfig, spec: ChainSpec, f: ChainFault) -> list[str]:
+    from squadops.capabilities.handlers.fault_injection import FAULTS
+    from squadops.tasks.task_types import TaskType
+
+    where = f"chain fault on cycle {f.cycle} ({f.kind})"
+    if f.kind not in CHAIN_FAULT_KINDS:
+        return [f"{where}: unknown kind; one of {', '.join(CHAIN_FAULT_KINDS)}"]
+    problems: list[str] = []
+    if not 1 <= f.cycle <= spec.cycles:
+        problems.append(f"{where}: the chain runs cycles 1..{spec.cycles}")
+    if f.kind in ("cancel", "crash") and f.task_type not in {t.value for t in TaskType}:
+        problems.append(
+            f"{where}: task_type {f.task_type!r} is not a dispatched task type, so the fault "
+            "could never fire"
+        )
+    if f.kind == "crash" and f.service not in set_agent_services(cfg):
+        problems.append(
+            f"{where}: service {f.service!r} is not one of this set's agent containers "
+            f"{list(set_agent_services(cfg))}"
+        )
+    if f.kind == "hang" and f.fault not in FAULTS:
+        problems.append(f"{where}: fault {f.fault!r} is not in FAULTS")
+    if f.kind == "hang" and "fault_injection" in cfg.overrides:
+        problems.append(
+            f"{where}: the set already declares fault_injection for every cycle, so the hang "
+            "would not be this cycle's alone"
+        )
+    return problems
+
+
+def active_activities(cycle_id: str | None = None) -> list[tuple[str, str]]:
+    """``(agent_id, activity_type)`` of every open runtime activity, optionally one cycle's.
+    The runtime API's view: a cancel aborts these rows whether or not the agent stopped."""
+    states = ", ".join(f"'{s}'" for s in ACTIVE_ACTIVITY_STATES)
+    where = f"state in ({states})" + (f" and cycle_id='{cycle_id}'" if cycle_id else "")
+    rows = psql(f"select agent_id||'|'||activity_type from runtime_activities where {where};")
+    return [(a, t) for a, _, t in (r.partition("|") for r in rows.splitlines() if r)]
+
+
+def queue_depths() -> dict[str, tuple[int, int]] | None:
+    """``{queue: (ready, unacknowledged)}`` from the broker, or None when it cannot be read.
+
+    The agent side of "quiet": agents ack a delivery after the handler returns (#323), so an
+    unacknowledged message on ``<agent>_comms`` is that agent mid-task, and a ready one is a
+    dispatched task nobody has taken. A late reply to a cancelled run sits ready on
+    ``cycle_results_<run>``, which nothing consumes any more.
+    """
+    raw = sh(
+        f"docker exec {RABBITMQ_CONTAINER} rabbitmqctl list_queues name messages_ready "
+        "messages_unacknowledged --formatter json",
+        check=False,
+    )
+    try:
+        rows = json.loads(raw)
+    except ValueError:
+        return None
+    return {
+        str(r["name"]): (int(r["messages_ready"]), int(r["messages_unacknowledged"])) for r in rows
+    }
+
+
+def quiet_box_problems(cfg: SetConfig) -> list[str]:
+    """Why the box is not quiet: more than run state and leases (plan §3.2 item 14)."""
+    problems = run_state_isolation_problems(cfg)
+    active = active_activities()
+    if active:
+        problems.append(
+            f"{len(active)} open runtime activities: "
+            + ", ".join(f"{agent} {kind}" for agent, kind in active)
+        )
+    depths = queue_depths()
+    if depths is None:
+        return [*problems, "the broker's queues could not be read, so quiet is not provable"]
+    for agent in set_agent_services(cfg):
+        queue = f"{agent}_comms"
+        if queue not in depths:
+            problems.append(f"no queue {queue} on the broker, so {agent}'s state is unasked")
+            continue
+        ready, unacked = depths[queue]
+        if unacked:
+            problems.append(f"{agent} is mid-task: {unacked} unacknowledged on {queue}")
+        if ready:
+            problems.append(f"{ready} task(s) dispatched to {agent} and not yet taken")
+    return problems
+
+
+def wait_for_quiet(cfg: SetConfig, timeout_seconds: int) -> dict:
+    """Poll until the box is quiet or the timeout passes; the reading either way."""
+    started = time.time()
+    while True:
+        problems = quiet_box_problems(cfg)
+        waited = round(time.time() - started)
+        if not problems or waited >= timeout_seconds:
+            return {
+                "quiet": not problems,
+                "waited_seconds": waited,
+                "at": log_since(datetime.now(UTC)),
+                "problems": problems,
+            }
+        time.sleep(POLL_S)
+
+
+def fault_trigger(cfg: SetConfig, fault: ChainFault | None) -> tuple[Callable[[str], None], dict]:
+    """The ``drive`` hook that fires a cancel or crash once its task is running, and the
+    reading it fills. A hang is already on the cycle's overrides, so its hook does nothing."""
+    fired: dict = {"fired_at": None, "detail": ""}
+
+    def on_poll(cycle_id: str) -> None:
+        if fault is None or fault.kind not in ("cancel", "crash") or fired["fired_at"]:
+            return
+        running = [
+            agent
+            for agent, kind in active_activities(cycle_id)
+            if kind == fault.task_type and (fault.kind == "cancel" or agent == fault.service)
+        ]
+        if not running:
+            return
+        if fault.kind == "cancel":
+            run_id = psql(
+                f"select run_id from cycle_runs where cycle_id='{cycle_id}' and "
+                "status='running' order by run_number desc limit 1;"
+            )
+            login()
+            sh(f"{SQUADOPS} runs cancel {cfg.project} {cycle_id} {run_id}")
+            fired["detail"] = run_id
+        else:
+            # The process killed with no chance to reply (#1251's shape); the container comes
+            # back and the broker redelivers the unacknowledged task.
+            sh(f"docker restart -t 0 squadops-{fault.service}")
+            fired["detail"] = f"squadops-{fault.service} killed while {running[0]} ran it"
+        fired["fired_at"] = log_since(datetime.now(UTC))
+        log(f"chain fault fired: {fault.kind} on {cycle_id} — {fired['detail']}")
+
+    return on_poll, fired
+
+
+def ghost_readings(cfg: SetConfig, run_id: str, since: str, until: str) -> dict:
+    """What ran for a cancelled run after its cancel was acknowledged.
+
+    Emissions are read by TIME WINDOW, from the cancel to the quiet box after it: agent log
+    lines carry no cycle id, and the chain launches nothing else until the box is quiet, so
+    every emission in that window belongs to the cancelled cycle."""
+    lines = [
+        line
+        for line in agent_log_window(since, until, services=set_agent_services(cfg))
+        if GHOST_MARKER in line
+    ]
+    depths = queue_depths()
+    return {
+        "emissions_after_cancel": len(lines),
+        "examples": [line[:200] for line in lines[:3]],
+        "late_replies": (
+            depths.get(f"cycle_results_{run_id}", (0, 0))[0] if depths is not None else None
+        ),
+        "window": [since, until],
+        "attribution": "by time window under run-state isolation; agent log lines carry no id",
+    }
+
+
+def cycle_run_states(cycle_id: str) -> list[dict]:
+    rows = psql(
+        "select run_id||'|'||workload_type||'|'||status||'|'||coalesce(failure_reason,'') "
+        f"from cycle_runs where cycle_id='{cycle_id}' order by run_number;"
+    )
+    keys = ("run_id", "workload_type", "status", "failure_reason")
+    return [dict(zip(keys, r.split("|", 3), strict=False)) for r in rows.splitlines() if r]
+
+
+def _chain_state_path(cfg: SetConfig) -> Path:
+    return cfg.records_path / CHAIN_STATE
+
+
+def _save_chain_state(cfg: SetConfig, state: dict) -> None:
+    cfg.records_path.mkdir(parents=True, exist_ok=True)
+    _chain_state_path(cfg).write_text(json.dumps(state, indent=2))
+
+
+def _chain_state(cfg: SetConfig, resume: bool) -> dict:
+    spec = cfg.chain
+    assert spec is not None
+    registered = {
+        "cycles": spec.cycles,
+        "quiet_timeout_seconds": spec.quiet_timeout_seconds,
+        "faults": [dataclasses.asdict(f) for f in spec.faults],
+    }
+    path = _chain_state_path(cfg)
+    if resume and path.exists():
+        state = json.loads(path.read_text())
+        if state.get("registration") != registered:
+            raise SystemExit(
+                f"resume refused: the recorded chain is {state.get('registration')} and the set "
+                f"registers {registered} — a chain does not change after results exist"
+            )
+        # A resume is a person acting, and the chain's claim is that none was needed.
+        state["resumes"] = state.get("resumes", 0) + 1
+        log(f"resuming the chain from {path} — {len(state['cycles'])} cycle(s) recorded")
+        return state
+    return {
+        "name": cfg.name,
+        "registration": registered,
+        "started_at": log_since(datetime.now(UTC)),
+        "gate_policy": f"{cfg.gate_name} approved by the driver with the set's gate_notes",
+        "resumes": 0,
+        "quiet_at_start": None,
+        "cycles": [],
+        "stopped": None,
+    }
+
+
+def _chain_cycle(cfg: SetConfig, k: int, stack: str) -> dict:
+    """Cycle *k*: its fault placed, launched and driven through the ordinary roll path."""
+    spec = cfg.chain
+    assert spec is not None
+    fault = spec.fault_for(k)
+    cycle_cfg = (
+        dataclasses.replace(cfg, overrides={**cfg.overrides, "fault_injection": fault.fault})
+        if fault is not None and fault.kind == "hang"
+        else cfg
+    )
+    ident = deploy_identity(cfg)
+    entry: dict = {"k": k, "fault": dataclasses.asdict(fault) if fault else None}
+    if cmd_preflight(cycle_cfg, counting=False, identity=ident):
+        entry["launched"] = False
+        return entry
+    on_poll, fired = fault_trigger(cfg, fault)
+    # Named apart from the chain's own record (``chain-<stamp>``), as the window's pairs are.
+    stem = f"cycle-{k:02d}"
+    rc = _run_cycle(
+        cycle_cfg,
+        stack,
+        render_launch_notes(cfg.launch_notes, k, spec.cycles),
+        title=f"chain cycle {k} of {spec.cycles}",
+        stem=stem,
+        assert_hash=False,
+        identity=ident,
+        on_poll=on_poll,
+    )
+    rec = _latest_record(cfg, stem) or {}
+    cycle_id = rec.get("cycle_id")
+    entry.update(
+        {
+            "launched": True,
+            "exit": rc,
+            "cycle_id": cycle_id,
+            "verdict": rec.get("verdict"),
+            "ended_without_implementation": rec.get("ended_without_implementation"),
+            "runs": cycle_run_states(cycle_id) if cycle_id else [],
+            "assessment": (rec.get("cycle_assessment") or {}).get("state", "absent"),
+            "fault_fired_at": fired["fired_at"],
+            "fault_detail": fired["detail"],
+        }
+    )
+    if fault is not None and fault.kind in ("cancel", "crash") and not fired["fired_at"]:
+        log(f"!! chain cycle {k}: the {fault.kind} never fired — {fault.task_type} never ran")
+    return entry
+
+
+def render_chain(state: dict) -> str:
+    reg = state["registration"]
+    lines = [
+        f"# {state['name']} — the chain",
+        "",
+        f"{reg['cycles']} cycles, quiet timeout {reg['quiet_timeout_seconds']} s · "
+        f"started {state['started_at']} · resumes {state['resumes']} · "
+        f"gates: {state['gate_policy']}",
+        "",
+    ]
+    start = state.get("quiet_at_start") or {}
+    lines.append(
+        f"- quiet at start: {start.get('quiet')} after {start.get('waited_seconds')} s"
+        + (f" — {'; '.join(start['problems'])}" if start.get("problems") else "")
+    )
+    lines += [
+        "",
+        "| k | fault | cycle | verdict | runs | fired | ghosts | assessment | quiet after |",
+        "|---|---|---|---|---|---|---|---|---|",
+    ]
+    for c in state["cycles"]:
+        fault = c.get("fault") or {}
+        runs = ", ".join(f"{r['workload_type']} {r['status']}" for r in c.get("runs") or [])
+        ghosts = c.get("ghosts")
+        ghost_text = (
+            f"{ghosts['emissions_after_cancel']} emissions, {ghosts['late_replies']} late replies"
+            if ghosts
+            else "—"
+        )
+        after = c.get("quiet_after") or {}
+        lines.append(
+            f"| {c['k']} | {fault.get('kind', '—')} | `{c.get('cycle_id') or 'not launched'}` "
+            f"| {c.get('verdict') or '—'} | {runs or '—'} | {c.get('fault_fired_at') or '—'} "
+            f"| {ghost_text} | {c.get('assessment', '—')} "
+            f"| {after.get('quiet')} ({after.get('waited_seconds')} s) |"
+        )
+    if state.get("stopped"):
+        lines += ["", f"**Stopped:** {state['stopped']}"]
+    return "\n".join(lines) + "\n"
+
+
+def cmd_chain(cfg: SetConfig, *, dry_run: bool, resume: bool) -> int:
+    """Run the set's registered chain: K cycles back to back with no person between them.
+
+    Before each launch the box must be quiet by more than run state and leases: no open runtime
+    activity, no dispatched task untaken, and no agent mid-task on its queue. The chain waits
+    up to its registered timeout for that and stops rather than launch into a busy box. Each
+    cycle runs the ordinary roll path (gates by the set's registered policy, the full record),
+    with its registered fault placed. After a cancel, the emissions until the box is quiet
+    again are read as ghosts. State is written after every cycle; ``--resume`` continues it
+    and is counted, because the chain's claim is that no person was needed.
+
+    Exit 0: every registered cycle ran and the box was quiet before each launch and at the end.
+    7: the chain stopped early. 2: the registration is refused.
+    """
+    problems = chain_problems(cfg)
+    if problems:
+        for p in problems:
+            log(f"!! {p}")
+        return 2
+    spec = cfg.chain
+    assert spec is not None
+    if dry_run:
+        return cmd_preflight(cfg, counting=False, identity=deploy_identity(cfg))
+    stack = stack_for(cfg)
+    state = _chain_state(cfg, resume)
+
+    def save() -> None:
+        _save_chain_state(cfg, state)
+
+    quiet = wait_for_quiet(cfg, spec.quiet_timeout_seconds)
+    state["quiet_at_start"] = quiet
+    save()
+    for k in range(len(state["cycles"]) + 1, spec.cycles + 1):
+        if not quiet["quiet"]:
+            state["stopped"] = f"before cycle {k}: the box was not quiet — " + "; ".join(
+                quiet["problems"]
+            )
+            break
+        entry = _chain_cycle(cfg, k, stack)
+        state["cycles"].append(entry)
+        save()
+        if not entry["launched"]:
+            state["stopped"] = f"cycle {k}: preflight refused the launch"
+            break
+        quiet = wait_for_quiet(cfg, spec.quiet_timeout_seconds)
+        entry["quiet_after"] = quiet
+        fault = entry.get("fault") or {}
+        if fault.get("kind") == "cancel" and entry.get("fault_fired_at"):
+            entry["ghosts"] = ghost_readings(
+                cfg, entry["fault_detail"], entry["fault_fired_at"], quiet["at"]
+            )
+        save()
+        log(f"chain cycle {k}: {entry.get('verdict')} — quiet after: {quiet['quiet']}")
+    if not state["stopped"] and not quiet["quiet"]:
+        state["stopped"] = "after the last cycle: the box was not quiet — " + "; ".join(
+            quiet["problems"]
+        )
+    save()
+    md = render_chain(state)
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    (cfg.records_path / f"chain-{stamp}.json").write_text(json.dumps(state, indent=2))
+    (cfg.records_path / f"chain-{stamp}.md").write_text(md)
+    print(md)
+    return 7 if state["stopped"] else 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -4790,7 +5261,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     p.add_argument(
         "--resume", action="store_true", help="continue from the window's recorded state"
     )
+    p = sub.add_parser(
+        "chain",
+        help="run the set's registered chain: K cycles back to back, faults placed (item 14)",
+    )
+    p.add_argument("--set", required=True, type=Path, help="a set config with a chain block")
+    # K, the quiet timeout and the faults are the config's registered values, never flags.
+    p.add_argument("--dry-run", action="store_true", help="registration + preflight only")
+    p.add_argument("--resume", action="store_true", help="continue from the chain's state")
     args = ap.parse_args(argv)
+    if args.command == "chain":
+        return cmd_chain(load_set_config(args.set), dry_run=args.dry_run, resume=args.resume)
     if args.command == "window":
         return cmd_window(
             load_set_config(args.squad_set),
