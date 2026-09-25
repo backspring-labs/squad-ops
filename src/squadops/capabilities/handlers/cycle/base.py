@@ -865,6 +865,8 @@ class _CycleTaskHandler(CapabilityHandler):
                     shape_label=f"{self._handler_name}:self_eval",
                     rendered=rendered,
                     attempt=self_eval_count + 1,
+                    # SIP-0086 §12a change 1: booked under its own key in the usage ledger.
+                    self_eval_pass=True,
                 )
             except LLMError as exc:
                 logger.warning(
@@ -1213,6 +1215,7 @@ class _CycleTaskHandler(CapabilityHandler):
         rendered: object | None = None,
         layers: PromptLayerMetadata | None = None,
         attempt: int | None = None,
+        self_eval_pass: bool = False,
     ) -> tuple[ChatMessage, str]:
         """One LLM call and the sequence that must follow it (#929).
 
@@ -1268,10 +1271,14 @@ class _CycleTaskHandler(CapabilityHandler):
                     call_messages, **chat_kwargs
                 )
             except BaseException:
-                context.llm_usage.record_failed_call((time.perf_counter() - call_started) * 1000)
+                context.llm_usage.record_failed_call(
+                    (time.perf_counter() - call_started) * 1000, self_eval_pass=self_eval_pass
+                )
                 raise
             context.llm_usage.record_generation(
-                response, (time.perf_counter() - call_started) * 1000
+                response,
+                (time.perf_counter() - call_started) * 1000,
+                self_eval_pass=self_eval_pass,
             )
             # SIP-0096 §17a: a dispute block is the producer's voice, never a file. Stripped
             # before anything reads the response, so no extractor can store it as one.
