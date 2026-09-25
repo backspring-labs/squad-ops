@@ -1,0 +1,65 @@
+# 1.8.2 DIAGNOSTIC — `false-criterion` (1.8.2 plan §4.1; SIP-0096 §17a: the producer disputes, the
+# framework reads it)
+#
+# Not a roll and not a shakeout: a non-counting cycle on the roll's own path with the fault
+# `false_criterion_alias_import` declared: a PLANTED failing `acceptance:declared_imports` row on the
+# develop task's first file that imports through the valid `@/lib` alias — the 2026-09-01 false
+# positive §17a cites — added to that task's own evaluation on every validation of its first attempt.
+#
+# PREDICTED: the producer leaves the correct import unchanged and emits a typed dispute naming the
+# planted row; the row reads `contested`; the analyzer CONFIRMS; the round refunds and the chain ends
+# as `contested_check`, the check named on the run's terminal decision.
+# FALSIFIED BY: a refunded round with no dispute, a dispute never read (no contested row), the
+# analyzer rejecting it, or the import degraded to a relative path.
+# Readout: the driver's `false_criterion_alias_import` seam readout (`loop_texture.contested_rows`:
+# a confirmation), the run's terminal decision, and the develop task's stored artifact. N cell: none.
+# Two-run budget.
+name: 1-8-2-diagnostic-false-criterion
+records_dir: var/verification_sets/1-8-2-diagnostics/false-criterion
+pre_registration: docs/plans/1-8-2-deploy-a-preregistration.md
+project: group_run
+squad_profile: full-38
+request_profile: validated-fullstack
+overrides:
+  fault_injection: [false_criterion_alias_import]
+  build_profile: nextjs_ts
+  development_profile: nextjs_ts
+gate_name: progress_plan_review
+n_rolls: 1
+gate_notes: >-
+  1.8.2 verification set. Approved under the pre-registered gate policy
+  (pre-registration §7) — identical text applied to every roll of this set.
+  System plan validation passed; no additional judgment applied.
+launch_notes: >-
+  UNUSED — a diagnostic is never counted; the driver refuses a counting roll that declares
+  a fault.
+shakeout_notes: >-
+  1.8.2 DIAGNOSTIC — false-criterion on nextjs. NON-COUNTING by declaration before launch: a
+  failing declared_imports row is planted against the valid @/lib alias import (SIP-0096 §17a's
+  first case), so the producer must dispute it and the analyzer rule on it. Its red is
+  manufactured and must never be read as the squad failing.
+loaded_checks:
+  runtime-api: |-
+    from squadops.capabilities.disputed_checks import rule_contests
+    from squadops.cycles.task_outcome import CorrectionTerminationReason
+    row = {"check": "acceptance:declared_imports", "params": {"file": "a.ts"}, "criterion_id": "vc", "passed": False, "contested": {"by": "dev", "reason": "alias"}}
+    yes = rule_contests([row], [{"check": "acceptance:declared_imports", "dispute_confirmed": True, "reason": "declared"}])
+    no = rule_contests([row], [{"check": "acceptance:declared_imports", "dispute_confirmed": False, "reason": "not declared"}])
+    # A confirmation confirms; a rejection does not (the control).
+    print("17a-rule", [len(x) for x in yes], [len(x) for x in no], CorrectionTerminationReason.CONTESTED_CHECK)
+  neo: |-
+    from squadops.capabilities.handlers.fault_injection import FAULTS
+    f = FAULTS["false_criterion_alias_import"]
+    # The plant bites a file importing through @/lib; nothing to plant on a relative import (the control).
+    print("plant", (f.plant_row([{"name": "app/r.ts", "content": "import { s } from '@/lib/store'"}]) or {}).get("criterion_id"),
+          f.plant_row([{"name": "app/r.ts", "content": "import { s } from '../lib/store'"}]))
+  data: |-
+    from squadops.capabilities.handlers.impl.analyze_failure import FailureAnalysis
+    a = FailureAnalysis.model_validate({"classification": "work_product", "analysis_summary": "the alias import was refused by the check", "contributing_factors": ["the alias"],
+                                        "dispute_rulings": [{"check": "x", "dispute_confirmed": True, "reason": "declared"}, {"check": "y", "dispute_confirmed": "yes", "reason": "bad"}]})
+    # The analyzer's rulings parse leniently: a malformed one is dropped, the analysis stands.
+    print("17a-analyzer", len(a.dispute_rulings))
+expected_config_hash_prefix: ""
+expected_squad_snapshot_prefix: ""
+frozen_deploy_commit: ""
+frozen_image_ids: {}

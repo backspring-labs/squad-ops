@@ -1,0 +1,59 @@
+# 1.8.2 DIAGNOSTIC — `compile-loop` (1.8.2 plan §4.1; SIP-0086 §12a: the task compiles until clean)
+#
+# Not a roll and not a shakeout: a non-counting cycle that runs the roll's own path with the fault
+# `compile_loop_two_type_errors` injected at the develop task's FIRST attempt (#1251): two independent
+# TS2322 type errors, each with its own marker, in a block of their own in the emission's first non-test
+# TypeScript file (a lib/ file first). `next build` stops at the first; §12a change 2 hands the pass
+# every type error tsc reports, change 3 shows the file and asks for edits, change 1 books each pass.
+#
+# PREDICTED: both errors repaired by the develop task's own passes before it completes; the final
+# compile clean; ZERO correction rounds; every pass in the usage ledger (`development.develop:self_eval`).
+# FALSIFIED BY: a correction round on the develop task, or a pass-less task, or a final compile failing.
+# Readout: the driver's `compile_loop_two_type_errors` seam readout (`correction_rounds`,
+# `loop_texture.self_eval_passes`), the develop task's `self_eval_revision_form` lines, and the run
+# summary's `tokens_by_task_type`. N cell: none. Two-run budget.
+name: 1-8-2-diagnostic-compile-loop
+records_dir: var/verification_sets/1-8-2-diagnostics/compile-loop
+pre_registration: docs/plans/1-8-2-deploy-a-preregistration.md
+project: group_run
+squad_profile: full-38
+request_profile: validated-fullstack
+overrides:
+  fault_injection: [compile_loop_two_type_errors]
+  build_profile: nextjs_ts
+  development_profile: nextjs_ts
+gate_name: progress_plan_review
+n_rolls: 1
+gate_notes: >-
+  1.8.2 verification set. Approved under the pre-registered gate policy
+  (pre-registration §7) — identical text applied to every roll of this set.
+  System plan validation passed; no additional judgment applied.
+launch_notes: >-
+  UNUSED — a diagnostic is never counted; the driver refuses a counting roll that declares
+  a fault.
+shakeout_notes: >-
+  1.8.2 DIAGNOSTIC — compile-loop on nextjs. NON-COUNTING by declaration before launch: this
+  cycle injects two independent TypeScript type errors into the develop task's first emission
+  (#1251) so its self-evaluation passes must compile the file clean (SIP-0086 §12a). Its red is
+  manufactured and must never be read as the squad failing.
+loaded_checks:
+  runtime-api: |-
+    from squadops.capabilities.handlers.fault_injection import FAULTS, FaultScope, validate_declaration, UnreachableFault, DECLARATION_KEY
+    f = FAULTS["compile_loop_two_type_errors"]
+    try:
+        validate_declaration({DECLARATION_KEY: ["compile_loop_two_type_errors"], "development_profile": "fullstack_fastapi_react"})
+        refused = False
+    except UnreachableFault:
+        refused = True
+    # Registered on the develop seam, first attempt only, and refused off its stack (the control).
+    print("compile-loop", str(f.task), f.scope is FaultScope.FIRST_ATTEMPT, sorted(f.stacks), refused)
+  neo: |-
+    from squadops.capabilities.handlers.fault_injection import FAULTS
+    from squadops.cycles.acceptance_checks import type_diagnostics
+    out = FAULTS["compile_loop_two_type_errors"].transform("```ts:lib/store.ts\nexport const x = 1\n```\n")
+    # The transform bites a TS file; the reader parses every tsc error, continuation folded (control: none from prose).
+    print("bites", out.count("compile-loop-marker"), len(type_diagnostics("a.ts(1,1): error TS2322: x\n  y\nb.ts(2,2): error TS2322: z\n")), type_diagnostics("no errors"))
+expected_config_hash_prefix: ""
+expected_squad_snapshot_prefix: ""
+frozen_deploy_commit: ""
+frozen_image_ids: {}

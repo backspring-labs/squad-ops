@@ -1,0 +1,73 @@
+# 1.8.2 DIAGNOSTIC — carried from 1.8.1's `contentless-builder` unchanged in fault, invariant and loaded checks
+# (1.8.2 plan §4.1: "the 1.8.1 nine, unchanged, plus four"). Re-run on deploy A because a
+# re-run on the pinned deploy is what proves the seam is still reached here.
+#
+# ---- the 1.8.1 config's own header follows ----
+# 1.8.1 DIAGNOSTIC (first run on deploy A; re-run on the pinned deploy E for the loop set) — a builder emission that bills a budget and carries nothing (R1)
+#
+# Not a roll and not a shakeout: a non-counting cycle that runs the roll's own path with a
+# deliberate fault injected at the builder's emission seam (#1251). The driver REFUSES to count a
+# cycle whose config declares a fault, and names the fault beside every readout it produces.
+#
+# Plan §7 step 5: deploy A's checkpoint shows #1506's two diagnostics REACHABLE, each on its own
+# evidence (the driver's SEAM_READOUTS). R1 (#1372): the contentless first attempt is retried with its emission-shape fact and the retry's emission is accepted.
+#
+# Shape's provenance: 1.7.3 counted roll 1 (cyc_af7dd4ad95b0) — a 160-token first emission with no
+# fence (#1364). Since #598 the builder's deliverable on these stacks is its assembly notes, so the
+# emission the fault empties is a notes emission; the seams are unchanged.
+
+name: 1-8-2-diagnostic-contentless-builder
+pre_registration: docs/plans/1-8-2-deploy-a-preregistration.md
+records_dir: var/verification_sets/1-8-2-diagnostics/contentless-builder
+project: group_run
+squad_profile: full-38
+request_profile: validated-fullstack
+overrides:
+  fault_injection: [builder_emission_contentless]
+gate_name: progress_plan_review
+n_rolls: 1
+gate_notes: >-
+  1.8.0 deploy A diagnostic. Approved under the standing diagnostic gate policy — identical text
+  applied to every diagnostic of this deploy. System plan validation passed; no additional
+  judgment applied.
+launch_notes: >-
+  UNUSED — a diagnostic is never counted; the driver refuses a counting roll that declares a fault.
+shakeout_notes: >-
+  1.8.2 DIAGNOSTIC on deploy A — R1. NON-COUNTING by declaration before launch: the fault
+  (#1251, `builder_emission_contentless`) empties the builder's emission. Its red is manufactured.
+loaded_checks:
+  runtime-api: |-
+    # F1's composition: the owed framework rows are derived from the PATCHED set when the attempt
+    # carried none (#1374), at check_registry since #1152 step 2. Since #598 the builder's
+    # deliverable on these stacks is its assembly notes, so the probe asks about that file.
+    # Control: a stage that already produced the row is not re-derived.
+    from squadops.cycles.check_registry import compose_owed_framework_rows
+    from adapters.cycles.patch_acceptance import PatchAcceptance
+    from squadops.capabilities.handlers.fault_injection import FAULTS
+    from squadops.tasks.task_types import TaskType, emits_required_files
+    derived = compose_owed_framework_rows(TaskType.BUILDER_ASSEMBLE, produced=set(),
+        expected_artifacts=["assembly_notes.md"], patched_names=["assembly_notes.md"])
+    produced = compose_owed_framework_rows(TaskType.BUILDER_ASSEMBLE, produced={"required_files"},
+        expected_artifacts=["assembly_notes.md"], patched_names=[])
+    print("F1", [(o.check_id, o.disposition, (o.row or {}).get("passed")) for o in derived],
+          [(o.check_id, o.disposition) for o in produced], emits_required_files(TaskType.BUILDER_ASSEMBLE))
+    print("1152-accept", hasattr(PatchAcceptance, "_settle_patch_evidence"))
+    print("1506", FAULTS["builder_emission_contentless"].scope.value)
+  bob: |-
+    from squadops.capabilities.handlers.cycle import builder
+    from squadops.capabilities.handlers.cycle.base import _CycleTaskHandler
+    from squadops.capabilities.handlers.build_profiles import get_profile
+    import inspect
+    # R1: the builder's emission seam asks for the fault, and the retry carries the emission fact.
+    src = inspect.getsource(builder.BuilderAssembleHandler.handle)
+    print("R1", "apply_fault=True" in src, "_apply_emission_retry_feedback" in src)
+    print("929", "inject_fault(" in inspect.getsource(_CycleTaskHandler._llm_call))
+    # 598: what the builder is asked for on this deploy. Control: the legacy profile's Dockerfile.
+    print("598", get_profile("fullstack_fastapi_react").required_files,
+          "Dockerfile" in get_profile("python_cli_builder").required_files)
+# A diagnostic asserts no pins: it runs on deploy A as built, and its record states the identity
+# it observed (#1296).
+expected_config_hash_prefix: ""
+expected_squad_snapshot_prefix: ""
+frozen_deploy_commit: ""
+frozen_image_ids: {}
