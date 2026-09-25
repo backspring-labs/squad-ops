@@ -1646,6 +1646,7 @@
       "exit_code": 1,
       "failing_cases": [
        {
+        "failing_line": 12,
         "file": "__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts",
         "line": 12,
         "message": "expected 500 to be 201 // Object.is equality",
@@ -2539,6 +2540,7 @@
       "exit_code": 1,
       "failing_cases": [
        {
+        "failing_line": 12,
         "file": "__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts",
         "line": 12,
         "message": "expected 500 to be 201 // Object.is equality",

@@ -914,8 +914,14 @@ class TestFailingCases:
             RunTestsResult(executed=True, exit_code=1, runner="vitest", test_failures=rows)
         )
         assert row["failing_cases"] == [
-            {"file": "a.test.jsx", "title": "renders", "line": 12, "message": "x" * 300},
-            {"file": "a.test.jsx", "title": "", "line": None, "message": ""},
+            {
+                "file": "a.test.jsx",
+                "title": "renders",
+                "line": 12,
+                "failing_line": 12,
+                "message": "x" * 300,
+            },
+            {"file": "a.test.jsx", "title": "", "line": None, "failing_line": None, "message": ""},
         ]
 
     def test_a_hundred_case_red_is_bounded(self):

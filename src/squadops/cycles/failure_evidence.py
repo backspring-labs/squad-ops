@@ -498,7 +498,10 @@ def failing_case_lines(cases: list[dict[str, Any]]) -> list[str]:
     """
     lines = []
     for case in cases:
-        where = str(case.get("file", "")) + (f":{case['line']}" if case.get("line") else "")
+        # The line the case FAILED on where the evidence carries it (1.8.2 item 6), else the
+        # runner's own line — for vitest the test's declaration, not its failing assertion.
+        at = case.get("failing_line") or case.get("line")
+        where = str(case.get("file", "")) + (f":{at}" if at else "")
         title = str(case.get("title") or "") or "(suite-level)"
         message = f" — {case['message']}" if case.get("message") else ""
         lines.append(f"`{where}` › {title}{message}")

@@ -218,6 +218,39 @@ def _format_correction_decision(correction_decision: Any) -> str:
     return str(correction_decision or "(no decision available)")
 
 
+#: Lines of the suite shown on each side of a failing line (1.8.2 item 6): enough to take in
+#: the assertion, the setup it rests on and the lines after it in the same case.
+FAILING_LINE_CONTEXT = 6
+
+
+def failing_line_excerpts(cases: list[dict[str, Any]], files: dict[str, str]) -> str:
+    """Each failing case's failing line in the suite as the repair will edit it, numbered, with
+    the line that failed marked — or "" when no case's file and line are in hand.
+
+    The model sees the assertion that failed instead of a line number to find it by (1.8.2
+    item 6, from the retest readout on 1.8.1's corpus): two scoped qa repairs edited lines
+    near the failing one and failed again on it, and two fixed the failing line and failed on
+    the next line of the same case.
+    """
+    blocks = []
+    for case in cases:
+        path, at = str(case.get("file") or ""), case.get("failing_line") or case.get("line")
+        content = files.get(path)
+        if not content or not isinstance(at, int):
+            continue
+        source = content.splitlines()
+        if not 1 <= at <= len(source):
+            continue
+        first = max(1, at - FAILING_LINE_CONTEXT)
+        last = min(len(source), at + FAILING_LINE_CONTEXT)
+        numbered = "\n".join(
+            f"{'→' if n == at else ' '} {n:>4} | {source[n - 1]}" for n in range(first, last + 1)
+        )
+        title = str(case.get("title") or "(suite-level)")
+        blocks.append(f"`{path}:{at}` › {title}\n```\n{numbered}\n```")
+    return "\n\n".join(blocks)
+
+
 class _RepairPromptMixin:
     """Shared prompt-building for correction-loop repair handlers.
 
@@ -1062,10 +1095,14 @@ class _RepairPromptMixin:
         if not cases:
             return ""
         lines = failing_case_lines(cases)
-        rendered = await renderer.render(
-            "request.qa_test_repair_failing_cases_appendix",
-            {"case_lines": "\n".join(f"- {line}" for line in lines), "case_count": str(len(lines))},
-        )
+        variables = {
+            "case_lines": "\n".join(f"- {line}" for line in lines),
+            "case_count": str(len(lines)),
+        }
+        frames = failing_line_excerpts(cases, self._repair_base_files(inputs))
+        if frames:
+            variables["case_frames"] = frames
+        rendered = await renderer.render("request.qa_test_repair_failing_cases_appendix", variables)
         return rendered.content
 
     async def _render_app_traceback_section(
