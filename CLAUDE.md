@@ -240,12 +240,13 @@ procedure costs: six consecutive releases tagged but never advertised.
 | 5 | SIP promotion sweep — promote what is genuinely implemented; a phased or umbrella SIP with open children stays `accepted`, with the gap named |
 | 6 | `git tag vX.Y.Z && git push origin vX.Y.Z` — the Release publishes itself from the CHANGELOG section (`.github/workflows/release.yml`, #1061) |
 | 7 | **Capture the screenshots, then the package** — `capture_delivered_app.py` and `capture_prefect_run.py` into `assets/` first, then `build_release_package.py <version> --cycle <id>:<role> --showcase <id>:<reason>` to PREVIEW, read the cycle evidence, then re-run with `--write` and commit `site/content/releases/vX.Y.Z/` |
+| 8 | **Housekeeping** — `scripts/dev/worktree_hygiene.py` to preview, then `--apply --archive-root <a directory outside every checkout>`: each merged worktree's `var/` records are preserved into the main checkout's `var/` and archived, then the worktree and its branch are removed; merged branches no worktree holds are deleted; anything unmerged, dirty or holding a real `data/` is named and left |
 
 Steps 1–3 are guarded by `tests/unit/architecture/test_docs_version_sync.py`, and step 6's
 Release is now automated on tag push. Step 5 is checked by the `SIP sweep:` line a
 `release/*` PR body must carry (`check_pr_closure.sh`, #1151) and step 7 by
-`scripts/dev/check_release_packages.py` on every push (#1151). **Step 4 remains unguarded**,
-which is why it is written down.
+`scripts/dev/check_release_packages.py` on every push (#1151). **Steps 4 and 8 remain
+unguarded**, which is why they are written down.
 
 **Why step 6 is automated rather than listed.** Across v1.4.0–v1.6.1, *zero* releases were
 published at cut time — every one was backfilled later. The step sat in the cut checklist
@@ -293,6 +294,15 @@ because valid JSON is valid JSON (#1076). A hollow capture is worse than none: i
 like the evidence was taken, and the deploy it came from is gone by the time anyone
 looks. So run it without `--write` first and confirm the verdict, run count and check
 names are actually there.
+
+**Step 8 keeps the records before it removes anything.** The 2026-09-24 cleanup found 18
+worktrees and 86 local branches whose work had long merged, and inside two driver worktrees
+the only copies of the 1.7.4 and 1.7.5 verification-set records: gitignored, invisible to
+`git status`, in directories that looked disposable. The driver now writes records under the
+main checkout whichever checkout runs it (1.8.2 item 8); step 8 is the sweep for everything
+else a line leaves behind. It judges "merged" by the branch's PR, since a squash merge leaves
+the branch off main's history, and it refuses to remove a worktree whose records it could not
+place and verify. On the Spark the archive is `~/squadops-deploy-logs/worktree-var-archive`.
 
 **Nothing else merges between opening the release PR and merging it.** The release branch
 is cut from main at some commit; anything merged after that still lands in the tag, because
