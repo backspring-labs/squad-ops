@@ -2606,7 +2606,7 @@ def placeholder_strips(lines: list[str]) -> list[dict]:
 
 _FAULT_APPLIED = re.compile(
     r"fault_injection: APPLIED (?P<fault>\w+) to task=(?P<task>\S+) handler=(?P<handler>\S+) "
-    r"chars (?P<before>\d+) -> (?P<after>\d+) scope=(?P<scope>\w+)"
+    r"(?P<unit>chars|rows) (?P<before>\d+) -> (?P<after>\d+) scope=(?P<scope>\w+)"
 )
 _FAULT_OUT_OF_SCOPE = re.compile(
     r"fault_injection: (?P<fault>\w+) declared for (?P<task>\S+) but this attempt is outside "
@@ -2626,12 +2626,16 @@ def faults_applied(lines: list[str]) -> dict[str, dict[str, list[dict]]]:
     out: dict[str, dict[str, list[dict]]] = {}
     for line in lines:
         if (m := _FAULT_APPLIED.search(line)) is not None:
+            # A transform reports the emission's characters; a planted row (`false-criterion`)
+            # reports the evaluation's rows — `rows 0 -> 1`, which read as never applied until
+            # deploy A's d2 (pre-registration §11c).
+            unit = m.group("unit")
             out.setdefault(m.group("fault"), {"applied": [], "out_of_scope": []})["applied"].append(
                 {
                     "task": m.group("task"),
                     "handler": m.group("handler"),
-                    "chars_before": int(m.group("before")),
-                    "chars_after": int(m.group("after")),
+                    f"{unit}_before": int(m.group("before")),
+                    f"{unit}_after": int(m.group("after")),
                     "scope": m.group("scope"),
                 }
             )
@@ -2902,6 +2906,11 @@ AGENT_MARKER_SAMPLES: dict[str, tuple[str, ...]] = {
         "fault_injection: APPLIED dev_join_response_omits_declared_fields to "
         "task=task-run_c9a99c8d-m000-development.develop handler=development_develop_handler "
         "chars 3279 -> 3383 scope=first_attempt (found_in=#1029)",
+        # Real: deploy A's `false-criterion`, cyc_1727c96394da (neo) — a planted row's form.
+        "2026-09-25 14:14:19,403 - squadops.capabilities.handlers.fault_injection - WARNING - "
+        "fault_injection: APPLIED false_criterion_alias_import to "
+        "task=task-run_27462d5a-m000-development.develop handler=development_develop_handler "
+        "rows 0 -> 1 scope=first_attempt (found_in=#1580)",
     ),
 }
 AGENT_SAMPLE_ALIASES: dict[str, str] = {
@@ -3408,8 +3417,14 @@ def _applied_words(reading: Mapping[str, Any]) -> str:
     if not applied:
         return ""
     return " — fault applied to " + ", ".join(
-        f"`{a.get('task')}` ({a.get('chars_before')}→{a.get('chars_after')} chars)" for a in applied
+        f"`{a.get('task')}` ({_applied_span(a)})" for a in applied
     )
+
+
+def _applied_span(attempt: Mapping[str, Any]) -> str:
+    """``6631→6769 chars`` for a transform, ``0→1 rows`` for a planted row."""
+    unit = "rows" if "rows_before" in attempt else "chars"
+    return f"{attempt.get(f'{unit}_before')}→{attempt.get(f'{unit}_after')} {unit}"
 
 
 #: The builder's two names in the logs: its task id suffix on the executor's lines, its
