@@ -5708,3 +5708,282 @@ class TestAPinCarriedFromAnEarlierLineSaysWhy:
             "1-8-2-window-squad.yaml": self._cfg(driver, tmp_path, "d", "aaaa11112222", "bbbb"),
         }
         assert carried_pin_problems(configs) == []
+
+
+class TestTheRetestReadout:
+    """1.8.2 plan §3.2 item 1: for every patch retest, which tests failed after the patch,
+    whether each failure's frame lies inside the region the repair edited, and whether a test
+    that passed before the patch fails after it. Item 6 (the qa-lane fix) is scoped from this
+    reading, so a readout that misplaces a failure scopes the fix at the wrong seam."""
+
+    _ROUTE_V1 = "\n".join(
+        [f"// line {n}" for n in range(1, 22)]
+        + ["  const { title, datetime } = body;"]
+        + [f"// line {n}" for n in range(23, 34)]
+        + ["    title,"]
+        + [f"// line {n}" for n in range(35, 41)]
+    )
+    _ROUTE_V2 = _ROUTE_V1.replace(
+        "  const { title, datetime } = body;", "  const { datetime } = body;"
+    )
+    _BEFORE = """## stdout
+```
+ RUN  v1.6.0 /tmp/qa_node_ab12
+ ✓ __tests__/api.test.ts > POST /api/runs > creates a run 12ms
+ × __tests__/api.test.ts > POST /api/runs > rejects blank fields 3ms
+ Tests  1 failed | 1 passed (2)
+```
+## stderr
+```
+ FAIL  __tests__/api.test.ts > POST /api/runs > rejects blank fields
+AssertionError: expected 201 to be 400
+ ❯ __tests__/api.test.ts:30:17
+```
+"""
+    _AFTER = """## stdout
+```
+ RUN  v1.6.0 /tmp/qa_node_cd34
+ × __tests__/api.test.ts > POST /api/runs > creates a run 9ms
+ ✓ __tests__/api.test.ts > POST /api/runs > rejects blank fields 2ms
+ Tests  1 failed | 1 passed (2)
+```
+## stderr
+```
+ FAIL  __tests__/api.test.ts > POST /api/runs > creates a run
+ReferenceError: title is not defined
+ ❯ Module.POST app/api/runs/route.ts:34:5
+ ❯ failureErrorWithLog node_modules/esbuild/lib/main.js:1472:15
+ ❯ __tests__/api.test.ts:12:17
+```
+"""
+
+    @staticmethod
+    def _store(tree, n, filename, task_id, created_at, text):
+        art = tree / f"art_{n:03d}"
+        art.mkdir(parents=True)
+        (art / "body").write_text(text)
+        (art / "metadata.json").write_text(
+            json.dumps(
+                {
+                    "filename": filename,
+                    "created_at": created_at,
+                    "metadata": {"task_id": task_id},
+                    "vault_uri": str((art / "body").relative_to(tree)),
+                }
+            )
+        )
+
+    def _loop_texture(self, driver, monkeypatch, tree):
+        monkeypatch.setattr(driver, "artifact_dirs", lambda *a, **k: sorted(tree.glob("art_*")))
+        monkeypatch.setattr(driver, "main_checkout", lambda: tree)
+        monkeypatch.setattr(driver, "docker_logs", lambda c, s, u=None: [])
+        monkeypatch.setattr(driver, "_fill_rejections", lambda *a: [])
+        monkeypatch.setattr(driver, "fill_merge_evidence", lambda *a: [])
+        monkeypatch.setattr(driver, "_decision_inherited_claims", lambda *a: [])
+        cfg = driver.load_set_config(_SETS / "1-8-1-nextjs.yaml")
+        return driver.loop_texture(cfg, "cyc", "run", "2026-09-22T16:00:00Z")
+
+    def test_the_nextjs_roll_2_shape_reads_as_a_regression_below_the_edit(
+        self, driver, monkeypatch, tmp_path
+    ):
+        """Wiring, entered at ``loop_texture``, the record's live caller, over a vault shaped
+        like 1.8.1 Next.js roll 2: a dev repair edited a destructure, and a test that passed
+        before the patch failed after it a dozen lines below, on the name the edit removed.
+        Bug this catches: that failure read as "outside the repair" (it is in the edited
+        file), or the regression missed because the report's own frames were never joined to
+        the edit."""
+        tree = tmp_path / "vault"
+        route = "app/api/runs/route.ts"
+        self._store(
+            tree, 1, route, "task-run_ab12cd34-m000-development.develop", "t1", self._ROUTE_V1
+        )
+        self._store(tree, 2, "test_report.md", "task-run_ab12cd34-m004-qa.test", "t2", self._BEFORE)
+        repair = "repair-run_ab12cd34-00-development.correction_repair"
+        self._store(tree, 3, route, repair, "t3", self._ROUTE_V2)
+        self._store(tree, 4, "test_report.md", "retest-run_ab12cd34-00-qa.test", "t4", self._AFTER)
+
+        out = self._loop_texture(driver, monkeypatch, tree)
+
+        assert out["retest_failures_in_edited_region"] == {"state": "asked_none", "value": 0}
+        assert out["retest_failures_outside"]["value"] == {"in_edited_file": 1}
+        assert out["retest_regressions"]["value"] == 1
+        (rnd,) = out["retest_rounds"]["value"]
+        assert rnd["edited"] == {route: [[22, 22]]}
+        assert rnd["failures"] == [
+            {
+                "test": "__tests__/api.test.ts > POST /api/runs > creates a run",
+                "where": "in_edited_file",
+                "frames": [f"{route}:34", "__tests__/api.test.ts:12"],
+            }
+        ]
+        assert rnd["regressions"] == ["__tests__/api.test.ts > POST /api/runs > creates a run"]
+
+    def test_a_roll_that_never_retested_a_patch_is_unasked_not_zero(
+        self, driver, monkeypatch, tmp_path
+    ):
+        """Bug this catches: the #1445 shape — a clean roll reading "0 failures in the edited
+        region", which is an answer, where the question was never asked."""
+        tree = tmp_path / "vault"
+        self._store(tree, 1, "test_report.md", "task-run_ab12cd34-m004-qa.test", "t1", self._BEFORE)
+
+        out = self._loop_texture(driver, monkeypatch, tree)
+
+        for field in ("retest_failures_in_edited_region", "retest_regressions", "retest_rounds"):
+            assert out[field]["state"] == "unaskable"
+            assert "no retest report joined to a repair" in out[field]["reason"]
+
+    def test_pytest_failures_keep_repo_frames_and_key_by_node_id(self, driver):
+        """Real pytest --tb=short output (React roll 1's retest). Bug this catches: a
+        site-packages frame read as the failure's locus, or the block and the summary line
+        counted as two failures."""
+        report = """```
+=== Backend (pytest) ===
+F.
+________________________ test_post_dev_seed_returns_200 ________________________
+backend/tests/test_runs.py:35: in test_post_dev_seed_returns_200
+    resp = client.post("/dev/seed")
+/usr/local/lib/python3.12/site-packages/starlette/testclient.py:556: in post
+backend/routes.py:97: in post_dev_seed
+E   pydantic_core._pydantic_core.ValidationError: 1 validation error for RunCreate
+=========================== short test summary info ============================
+FAILED backend/tests/test_runs.py::test_post_dev_seed_returns_200 - pydantic_...
+1 failed, 1 passed, 2 warnings in 0.21s
+```"""
+        parsed = driver.parse_test_report(report)
+
+        assert parsed == {
+            "failures": {
+                "backend/tests/test_runs.py::test_post_dev_seed_returns_200": [
+                    ("backend/tests/test_runs.py", 35),
+                    ("backend/routes.py", 97),
+                ]
+            },
+            "passed": None,
+            "executed": True,
+        }
+
+    def test_a_frontend_vitest_frame_is_placed_under_its_root(self, driver):
+        """The React stack's vitest runs in ``frontend/``: its relative frames and its
+        absolute ``/tmp/qa_*`` frames name the same repo file. Bug this catches: the edited
+        ``frontend/src/…`` file never matching a frame reported as ``src/…``."""
+        report = """ RUN  v2.1.9 /tmp/qa_node_8_qhu4y2/frontend
+ FAIL  src/__tests__/create_run.test.jsx [ src/__tests__/create_run.test.jsx ]
+  File: /tmp/qa_node_8_qhu4y2/frontend/src/__tests__/create_run.test.jsx:234:70
+ ❯ src/views/CreateRunView.jsx:59:3
+"""
+        parsed = driver.parse_test_report(report)
+
+        assert parsed["failures"] == {
+            "src/__tests__/create_run.test.jsx": [
+                ("frontend/src/__tests__/create_run.test.jsx", 234),
+                ("frontend/src/views/CreateRunView.jsx", 59),
+            ]
+        }
+
+    @pytest.mark.parametrize(
+        ("before", "after", "ranges"),
+        [
+            (None, "a\nb\nc", [(1, 3)]),
+            ("a\nb\nc", "a\nB\nc", [(2, 2)]),
+            ("a\nb\nc", "a\nb\nx\ny\nc", [(3, 4)]),
+            ("a\nb\nc\nd", "a\nd", [(2, 2)]),
+            ("a\nb", "a\nb", []),
+        ],
+    )
+    def test_edited_ranges(self, driver, before, after, ranges):
+        assert driver.edited_ranges(before, after) == ranges
+
+    def test_a_pytest_regression_is_a_test_the_pre_repair_file_defined(
+        self, driver, monkeypatch, tmp_path
+    ):
+        """pytest -q prints a dot for a pass, so "passed before" is read from the pre-repair
+        file. Bug this catches: a test the repair ADDED counted as a regression, or no pytest
+        regression ever read because the passes were never named."""
+        tree = tmp_path / "vault"
+        suite = "backend/tests/test_runs.py"
+        v1 = "def test_old():\n    assert True\n"
+        v2 = v1 + "def test_new():\n    assert False\n"
+        report_before = (
+            "```\n1 failed, 1 passed in 0.1s\nFAILED backend/tests/test_runs.py::test_other\n```"
+        )
+        report_after = (
+            "```\nFAILED backend/tests/test_runs.py::test_old - boom\n"
+            "FAILED backend/tests/test_runs.py::test_new - boom\n2 failed in 0.1s\n```"
+        )
+        self._store(tree, 1, suite, "task-run_ab12cd34-m005-qa.test", "t1", v1)
+        self._store(
+            tree, 2, "test_report.md", "task-run_ab12cd34-m005-qa.test", "t2", report_before
+        )
+        self._store(tree, 3, suite, "repair-run_ab12cd34-00-qa.test_repair", "t3", v2)
+        self._store(tree, 4, "test_report.md", "retest-run_ab12cd34-00-qa.test", "t4", report_after)
+        monkeypatch.setattr(driver, "artifact_dirs", lambda *a, **k: sorted(tree.glob("art_*")))
+        monkeypatch.setattr(driver, "main_checkout", lambda: tree)
+
+        (rnd,) = driver.retest_readout(
+            driver.SetConfig(
+                name="s",
+                project="p",
+                squad_profile="x",
+                request_profile="y",
+                gate_name="g",
+                gate_notes="g",
+                launch_notes="l",
+                shakeout_notes="s",
+                n_rolls=1,
+            ),
+            "cyc",
+            "run",
+        )
+
+        assert rnd["regressions"] == [f"{suite}::test_old"]
+        assert {f["test"]: f["where"] for f in rnd["failures"]} == {
+            f"{suite}::test_old": "no_repo_frame",
+            f"{suite}::test_new": "no_repo_frame",
+        }
+
+    def test_a_round_whose_pre_patch_report_ran_nothing_cannot_read_regressions(
+        self, driver, monkeypatch, tmp_path
+    ):
+        """Bug this catches: every failure after a patch read as a regression when the suite
+        never ran before it (a collection error, an absent suite)."""
+        tree = tmp_path / "vault"
+        nothing_ran = "## Error\nbackend: no pytest-discoverable test files\n"
+        self._store(tree, 1, "test_report.md", "task-run_ab12cd34-m005-qa.test", "t1", nothing_ran)
+        self._store(
+            tree,
+            2,
+            "backend/tests/test_runs.py",
+            "repair-run_ab12cd34-00-qa.test_repair",
+            "t2",
+            "x\n",
+        )
+        self._store(
+            tree,
+            3,
+            "test_report.md",
+            "retest-run_ab12cd34-00-qa.test",
+            "t3",
+            "FAILED backend/tests/test_runs.py::test_a - boom\n1 failed\n",
+        )
+        monkeypatch.setattr(driver, "artifact_dirs", lambda *a, **k: sorted(tree.glob("art_*")))
+        monkeypatch.setattr(driver, "main_checkout", lambda: tree)
+
+        rounds = driver.retest_readout(
+            driver.SetConfig(
+                name="s",
+                project="p",
+                squad_profile="x",
+                request_profile="y",
+                gate_name="g",
+                gate_notes="g",
+                launch_notes="l",
+                shakeout_notes="s",
+                n_rolls=1,
+            ),
+            "cyc",
+            "run",
+        )
+
+        assert rounds[0]["regressions"] is None and rounds[0]["before_executed"] is False
+        texture = driver.retest_texture(rounds)
+        assert texture["retest_regressions"] == 0

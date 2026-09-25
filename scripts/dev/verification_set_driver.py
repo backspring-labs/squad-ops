@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import difflib
 import functools
 import json
 import os
@@ -233,6 +234,14 @@ UNASKABLE_REASONS: dict[str, str] = {
     "no_typed_check_evaluation_stored": (
         "no typed_check_evaluation_*.json stored for the run (#114)"
     ),
+    "no_patch_retest_stored": (
+        "no retest report joined to a repair was stored — the readout reads what a patch's "
+        "retest ran, so a roll that never retested a patch cannot answer (1.8.2 item 1)"
+    ),
+    "no_pre_patch_run_executed": (
+        "no retested round had a report from before its patch in which tests executed — a "
+        "regression is a test that passed before and fails after, and nothing ran before"
+    ),
     "check_never_evaluated": (
         "no row of `{detail}` was evaluated on the run — a stack- or content-conditional check "
         "that had nothing to look at"
@@ -340,6 +349,18 @@ EVIDENCE_FIELDS: dict[str, tuple[str, ...]] = {
     "loop_texture.fill_rejections": ("no_implementation_run", "no_qa_scaffold_suite"),
     "loop_texture.fill_merge_evidence": ("no_implementation_run", "no_fill_merge_artifact"),
     "loop_texture.uncollected_suites": ("no_implementation_run", "no_test_report_stored"),
+    # 1.8.2 item 1: where a retested patch still fails, read from the vault.
+    "loop_texture.retest_rounds": ("no_implementation_run", "no_patch_retest_stored"),
+    "loop_texture.retest_failures_in_edited_region": (
+        "no_implementation_run",
+        "no_patch_retest_stored",
+    ),
+    "loop_texture.retest_failures_outside": ("no_implementation_run", "no_patch_retest_stored"),
+    "loop_texture.retest_regressions": (
+        "no_implementation_run",
+        "no_patch_retest_stored",
+        "no_pre_patch_run_executed",
+    ),
     "loop_texture.stored_under_placeholder": ("no_implementation_run",),
     # typed_checks: the stored evaluation artifacts
     "typed_checks.by_check": _STORED_EVALUATIONS,
@@ -2894,6 +2915,8 @@ def loop_texture(
     # #1540: suites the runner never collected — non-execution with no row anywhere else.
     uncollected = uncollected_suites(cfg, cycle_id, impl_run) if impl_run else None
     out["uncollected_suites"] = uncollected or []
+    # 1.8.2 item 1: per retested patch, where the retest still fails against what it edited.
+    out.update(retest_texture(retest_readout(cfg, cycle_id, impl_run) if impl_run else []))
     # #1311: L8b — a stored name still carries the placeholder (read from the tree); L8a is
     # the agents' window, in texture_from_agent_lines.
     out["stored_under_placeholder"] = (
@@ -2912,6 +2935,8 @@ def loop_texture(
         "no_correction_decision_stored": (correction_decisions or 0) == 0,
         "no_fill_merge_artifact": len(out["fill_merge_evidence"]) == 0,
         "no_test_report_stored": uncollected is None,
+        "no_patch_retest_stored": not out["retest_rounds"],
+        "no_pre_patch_run_executed": not any(r["before_executed"] for r in out["retest_rounds"]),
         "no_qa_scaffold_suite": rejections is None,
         "logged_in_the_agent_container": True,
     }
@@ -3920,6 +3945,276 @@ def _stale_evaluations(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[dic
     return stale
 
 
+# ---------------------------------------------------------------------------
+# The retest readout (1.8.2 plan §3.2 item 1): where a retested patch still fails
+# ---------------------------------------------------------------------------
+
+#: A retest's own report and a repair's own artifacts, joined by the round index they carry.
+_RETEST_TASK = re.compile(r"^retest-run_[0-9a-f]+-(\d+)-")
+_REPAIR_TASK = re.compile(r"^repair-run_[0-9a-f]+-(\d+)-")
+#: pytest --tb=short: a failure block's header, a repo frame (relative, so site-packages and
+#: the interpreter's own frames never count), and the short summary's node id.
+_PYTEST_HEADER = re.compile(r"^_{3,} (?:ERROR collecting )?(\S.*?) _{3,}$")
+_PYTEST_FRAME = re.compile(r"^([\w.][\w./-]*\.py):(\d+):")
+_PYTEST_SUMMARY = re.compile(r"^(?:FAILED|ERROR) (\S+?)(?: - .*)?$")
+#: vitest: the run's root (a repo-relative prefix for its frames), the verbose ✓/× lines, a
+#: failure block's header, and a frame (``❯ fn path:line:col`` or ``File: path:line:col``).
+_VITEST_ROOT = re.compile(r"\bRUN\s+v[\d.]+\s+/tmp/qa_[^/\s]+/?(\S*)")
+_VITEST_RESULT = re.compile(r"^\s*([✓×])\s+(.+?)\s*$")
+_VITEST_FAIL = re.compile(r"^\s*FAIL\s+(.+?)\s*$")
+_VITEST_FRAME = re.compile(
+    r"(?:❯|File:)\s+(?:\S+\s+)?(/tmp/qa_[^/\s]+/\S+?|[\w@.\[\]/-]+?\.[cm]?[jt]sx?):(\d+):\d+"
+)
+#: A retest report whose tests executed at all (a transform or collection error is a failure
+#: with no test run; a report with neither is a suite that never started).
+_TESTS_RAN = re.compile(r"\b\d+ passed\b|\b\d+ failed\b|^\s*[✓×]\s", re.M)
+#: vitest's verbose line ends with the test's duration; its failure block's header does not.
+_VITEST_DURATION = re.compile(r"\s+\d+(?:\.\d+)?m?s$")
+
+
+class _ReportParser:
+    """One qa ``test_report.md``, line by line: pytest's blocks and summary, vitest's verbose
+    results and failure blocks, each failure's repo frames."""
+
+    def __init__(self) -> None:
+        self.failures: dict[str, list[tuple[str, int]]] = {}
+        self.passed: set[str] = set()
+        self.named_passes = False
+        self.node_ids: dict[str, str] = {}
+        self.root = ""
+        self.current: str | None = None
+
+    def feed(self, line: str) -> None:
+        if m := _VITEST_ROOT.search(line):
+            self.root = m.group(1).strip("/")
+        if not (self._header(line) or self.current is None):
+            self._frame(line)
+
+    def _header(self, line: str) -> bool:
+        if m := _PYTEST_SUMMARY.match(line):
+            self.node_ids[m.group(1).rpartition("::")[2]] = m.group(1)
+            self.failures.setdefault(m.group(1), [])
+        elif m := _PYTEST_HEADER.match(line):
+            self.current = m.group(1)
+            self.failures.setdefault(self.current, [])
+        elif m := _VITEST_RESULT.match(line):
+            self.named_passes = True
+            test = _VITEST_DURATION.sub("", m.group(2))
+            if m.group(1) == "✓":
+                self.passed.add(test)
+            else:
+                self.failures.setdefault(test, [])
+        elif m := _VITEST_FAIL.match(line):
+            self.current = _VITEST_DURATION.sub("", m.group(1).split(" [ ")[0])
+            self.failures.setdefault(self.current, [])
+        else:
+            return False
+        return True
+
+    def _frame(self, line: str) -> None:
+        assert self.current is not None
+        if m := _PYTEST_FRAME.match(line):
+            self.failures[self.current].append((m.group(1), int(m.group(2))))
+        elif m := _VITEST_FRAME.search(line):
+            path = m.group(1)
+            if path.startswith("/tmp/qa_"):
+                path = path.split("/", 3)[3]
+            elif self.root:
+                path = f"{self.root}/{path}"
+            if "node_modules/" not in path:
+                self.failures[self.current].append((path, int(m.group(2))))
+
+    def result(self, text: str) -> dict:
+        # pytest names a block by its short name and the summary by node id: one test, one key.
+        for short, node in self.node_ids.items():
+            if short in self.failures and short != node:
+                self.failures[node] = self.failures.pop(short) + self.failures.get(node, [])
+        return {
+            "failures": {t: list(dict.fromkeys(f)) for t, f in self.failures.items()},
+            "passed": self.passed if self.named_passes else None,
+            "executed": bool(self.failures) or bool(_TESTS_RAN.search(text)),
+        }
+
+
+def parse_test_report(text: str) -> dict:
+    """``{"failures": {test: [(file, line), ...]}, "passed": set | None, "executed": bool}``
+    from a qa ``test_report.md``. ``passed`` is None where the runner does not name passing
+    tests (pytest -q prints a dot), which is what a regression reading has to know."""
+    parser = _ReportParser()
+    for line in text.splitlines():
+        parser.feed(line.rstrip())
+    return parser.result(text)
+
+
+def edited_ranges(before: str | None, after: str) -> list[tuple[int, int]]:
+    """The 1-based, inclusive line ranges of ``after`` that differ from ``before``; the whole
+    file when there was no ``before``. A pure deletion marks the line it closed up on."""
+    lines = after.splitlines()
+    if before is None:
+        return [(1, max(1, len(lines)))]
+    ranges = []
+    matcher = difflib.SequenceMatcher(a=before.splitlines(), b=lines, autojunk=False)
+    for tag, _i1, _i2, j1, j2 in matcher.get_opcodes():
+        if tag != "equal":
+            ranges.append((j1 + 1, max(j1 + 1, j2)))
+    return ranges
+
+
+def _vault_versions(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[dict]:
+    """Every stored artifact of the run as ``{filename, task_id, created_at, text}``, oldest
+    first. Text is read lazily by callers through ``_vault_text``."""
+    out = []
+    for art in artifact_dirs(cfg, cycle_id, impl_run):
+        m = _metadata(art)
+        if not m or not m.get("filename"):
+            continue
+        out.append(
+            {
+                "filename": str(m["filename"]),
+                "task_id": str((m.get("metadata") or {}).get("task_id") or ""),
+                "created_at": str(m.get("created_at") or ""),
+                "vault_uri": m.get("vault_uri"),
+            }
+        )
+    return sorted(out, key=lambda v: v["created_at"])
+
+
+def _vault_text(version: Mapping[str, Any]) -> str | None:
+    try:
+        return (main_checkout() / str(version["vault_uri"])).read_text()
+    except (OSError, KeyError, TypeError):
+        return None
+
+
+def _latest_before(versions: Sequence[dict], filename: str, moment: str) -> dict | None:
+    earlier = [v for v in versions if v["filename"] == filename and v["created_at"] < moment]
+    return earlier[-1] if earlier else None
+
+
+def _existed_before(test: str, before: dict, versions: Sequence[dict], moment: str) -> bool | None:
+    """Whether a test failing after the patch existed, passing, before it. vitest names its
+    passes; pytest prints a dot, so a pytest test existed if its ``def`` is in the file's
+    pre-repair version. None when neither can say."""
+    if before["passed"] is not None:
+        return test in before["passed"]
+    path, sep, name = test.partition("::")
+    if not sep:
+        return None
+    prior = _latest_before(versions, path, moment)
+    text = _vault_text(prior) if prior else None
+    if text is None:
+        return None
+    return (
+        re.search(rf"^\s*(?:async\s+)?def {re.escape(name.split('[')[0])}\(", text, re.M)
+        is not None
+    )
+
+
+#: Where a retest failure's frames lie against the repair's edit, most specific first.
+#: ``in_edited_file`` is a frame in a file the repair edited but outside the lines it changed:
+#: Next.js roll 2's dev repair edited three lines of a route and the retest failed a few lines
+#: below, on a name the edit had removed.
+RETEST_LOCI = ("in_edited_region", "in_edited_file", "outside_edited_files", "no_repo_frame")
+
+
+def _failure_locus(frames: Sequence[tuple[str, int]], edited: Mapping[str, Any]) -> str:
+    if any(any(lo <= n <= hi for lo, hi in edited.get(f, [])) for f, n in frames):
+        return "in_edited_region"
+    if any(f in edited for f, _ in frames):
+        return "in_edited_file"
+    return "outside_edited_files" if frames else "no_repo_frame"
+
+
+def retest_readout(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[dict]:
+    """Per patch retest of the run: which tests failed after the patch, whether each failing
+    test's frame lies inside the region the repair edited, and whether a test that passed
+    before the patch fails after it (1.8.2 plan §3.2 item 1).
+
+    Everything is read from the vault. A round's repair and retest share the round index in
+    their task ids; the "before" report is the last one stored before the repair; the edited
+    region is the diff of each repaired file against its last stored version.
+    """
+    versions = _vault_versions(cfg, cycle_id, impl_run)
+    rounds: dict[int, dict] = {}
+    for v in versions:
+        if (m := _RETEST_TASK.match(v["task_id"])) and v["filename"] == "test_report.md":
+            rounds.setdefault(int(m.group(1)), {})["retest"] = v
+        elif m := _REPAIR_TASK.match(v["task_id"]):
+            rounds.setdefault(int(m.group(1)), {}).setdefault("repair", []).append(v)
+    out = []
+    for index, parts in sorted(rounds.items()):
+        retest, repair = parts.get("retest"), parts.get("repair") or []
+        if retest is None or not repair:
+            continue
+        moment = min(v["created_at"] for v in repair)
+        prior_report = _latest_before(versions, "test_report.md", moment)
+        after = parse_test_report(_vault_text(retest) or "")
+        before = parse_test_report(_vault_text(prior_report) or "") if prior_report else None
+        edited = {}
+        for v in repair:
+            if v["filename"].endswith((".md", ".json")):
+                continue
+            prior = _latest_before(versions, v["filename"], moment)
+            text = _vault_text(v)
+            if text is not None:
+                edited[v["filename"]] = edited_ranges(_vault_text(prior) if prior else None, text)
+        failures = [
+            {
+                "test": test,
+                "where": _failure_locus(frames, edited),
+                "frames": [f"{f}:{n}" for f, n in frames][:4],
+            }
+            for test, frames in after["failures"].items()
+        ]
+        regressions = None
+        if before is not None and before["executed"]:
+            regressions = [
+                f["test"]
+                for f in failures
+                if f["test"] not in before["failures"]
+                and _existed_before(f["test"], before, versions, moment)
+            ]
+        out.append(
+            {
+                "round": index,
+                "repair": sorted({_REPAIR_TASK.sub("", v["task_id"]) for v in repair}),
+                "edited": {f: [list(r) for r in ranges] for f, ranges in edited.items()},
+                "retest_executed": after["executed"],
+                "failures": failures,
+                "before_failures": len(before["failures"]) if before else None,
+                "before_executed": bool(before and before["executed"]),
+                "regressions": regressions,
+            }
+        )
+    return out
+
+
+def retest_texture(rounds: list[dict]) -> dict:
+    """The three readouts over every retested round, and the rounds themselves. Outside the
+    edited region is a ``{locus: count}`` map: a failure in the edited file but below the
+    edit and one in a file the repair never touched are different findings (#1276)."""
+    failures = [f for r in rounds for f in r["failures"]]
+    return {
+        "retest_rounds": rounds,
+        "retest_failures_in_edited_region": sum(f["where"] == "in_edited_region" for f in failures),
+        "retest_failures_outside": _count_by(
+            f["where"] for f in failures if f["where"] != "in_edited_region"
+        ),
+        "retest_regressions": sum(len(r["regressions"] or []) for r in rounds),
+    }
+
+
+def _restated_retest_conditions(out: Mapping[str, Any]) -> dict[str, bool | None]:
+    rounds = evidence_at(out, "loop_texture.retest_rounds")
+    if rounds is None:
+        return {"no_patch_retest_stored": None, "no_pre_patch_run_executed": None}
+    stored = rounds.value_or([]) or []
+    return {
+        "no_patch_retest_stored": not stored,
+        "no_pre_patch_run_executed": not any(r.get("before_executed") for r in stored),
+    }
+
+
 def fill_merge_evidence(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[dict]:
     """Every qa task's stored ``fill_merge_evidence.json`` (#999) — the fill-merge
     dispositions, counts, assertion strength and additive-containment findings, read from
@@ -4268,6 +4563,8 @@ def restate(rec: dict) -> tuple[dict, list[str]]:
         == 0,
         "no_fill_merge_artifact": not value_at(out, "loop_texture.fill_merge_evidence", []),
         "no_test_report_stored": None,
+        # A record written before 1.8.2 item 1 has no retest readout: underivable, not "none".
+        **_restated_retest_conditions(out),
         "no_qa_scaffold_suite": None,
         "logged_in_the_agent_container": True,
         "no_typed_check_evaluation_stored": None if not by_check else False,
@@ -4433,6 +4730,11 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         f"{_show_at(rec, 'loop_texture.no_execution_by_skip_reason', _render_by_reason)} |",
         "| ...of which on a verification that PASSED | "
         f"{_show_at(rec, 'loop_texture.no_execution_on_passed_verifications', _render_by_reason)} |",
+        "| retest failures in the edited region / outside it, by locus / regressions "
+        "(1.8.2 item 1) | "
+        f"{_show_at(rec, 'loop_texture.retest_failures_in_edited_region')} / "
+        f"{_show_at(rec, 'loop_texture.retest_failures_outside', _render_by_reason)} / "
+        f"{_show_at(rec, 'loop_texture.retest_regressions')} |",
         "| suites the runner never collected, per stored test report (#1540) | "
         f"{_show_at(rec, 'loop_texture.uncollected_suites', _render_uncollected)} |",
         "| fill-merge assertion strength per qa task (#999) | "
