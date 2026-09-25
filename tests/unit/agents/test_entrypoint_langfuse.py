@@ -20,6 +20,7 @@ pytestmark = [pytest.mark.domain_agents]
 def _make_envelope_payload() -> dict:
     """Build a payload dict as would arrive from the queue."""
     envelope = TaskEnvelope(
+        timeout=600.0,  # the dispatcher stamps the declared wait (1.8.2 item 15)
         task_id="task_abc",
         agent_id="neo",
         cycle_id="cyc_001",

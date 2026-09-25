@@ -25,7 +25,7 @@ import signal
 import sys
 from typing import TYPE_CHECKING
 
-from squadops.tasks.models import TaskResultStatus
+from squadops.tasks.models import TaskEnvelope, TaskResultStatus
 
 # Configure logging early.
 # LOG_LEVEL (and MEMORY_DB_PATH / HEARTBEAT_INTERVAL below) are bare-env
@@ -80,6 +80,23 @@ def load_instance_config(agent_id: str) -> dict | None:
                 logger.warning(f"Failed to load instances from {instances_path}: {e}")
 
     return None
+
+
+def declared_task_bound(envelope: TaskEnvelope) -> float:
+    """How long this agent lets a dispatched task's handler run: the orchestrator's declared
+    per-task wait, which the dispatcher stamps on the envelope (1.8.2 plan §3.2 item 15).
+
+    It was ``llm.timeout``: the model-call timeout bounding a whole task on the agent's side,
+    as it once did on the orchestrator's, so the two sides of one hang could end it at
+    different times. An envelope that carries no declared wait is refused, never bounded by a
+    default: it comes from a runtime API older than this change.
+    """
+    if envelope.timeout is None:
+        raise ValueError(
+            f"task {envelope.task_id} carries no declared timeout — a runtime API older than "
+            "1.8.2 item 15; refused rather than bounded by llm.timeout"
+        )
+    return float(envelope.timeout)
 
 
 class AgentRunner:
@@ -922,11 +939,11 @@ class AgentRunner:
                 if flow_run_id is not None or task_run_id is not None:
                     with use_run_ids(flow_run_id=flow_run_id, task_run_id=task_run_id):
                         result = await self.system.orchestrator.submit_task(
-                            envelope, timeout_seconds=self._config.llm.timeout
+                            envelope, timeout_seconds=declared_task_bound(envelope)
                         )
                 else:
                     result = await self.system.orchestrator.submit_task(
-                        envelope, timeout_seconds=self._config.llm.timeout
+                        envelope, timeout_seconds=declared_task_bound(envelope)
                     )
         except Exception as e:
             logger.error(f"Task execution failed: {e}", extra={"task_id": envelope.task_id})

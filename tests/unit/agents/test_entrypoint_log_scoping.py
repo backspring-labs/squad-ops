@@ -24,6 +24,7 @@ pytestmark = [pytest.mark.domain_agents]
 
 def _envelope_with_run_ids(*, flow_run_id: str, task_run_id: str) -> TaskEnvelope:
     return TaskEnvelope(
+        timeout=600.0,  # the dispatcher stamps the declared wait (1.8.2 item 15)
         task_id="task_123",
         agent_id="neo",
         cycle_id="cyc_001",
