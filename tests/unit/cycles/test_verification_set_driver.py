@@ -6230,3 +6230,43 @@ class TestTheDeployADiagnosticsAreReadWhereTheirSeamsWrite:
         _, _, read = driver.SEAM_READOUTS["false_criterion_alias_import"]
         entry = {"task": "t", "round": 0, "unruled": 0, "unmatched": 0, "by": ["dev"], **counts}
         assert read({"loop_texture": {"contested_rows": [entry]}})[0] is reached
+
+    def test_false_criterion_reads_the_row_the_plant_writes_as_applied(self, driver, caplog):
+        """Entered at ``planted_rows``, the producer, and read through ``seam_readouts`` — the
+        wrapper that asks whether the fault applied. Bug caught (deploy A d2, cyc_1727c96394da):
+        the plant logs ``rows 0 -> 1`` where a transform logs ``chars N -> M``, the driver's
+        parse took only the latter, and a seam that fired four times read UNASKABLE."""
+        from squadops.capabilities.handlers import fault_injection
+
+        task = "task-run_27462d5a-m000-development.develop"
+        with caplog.at_level("WARNING"):
+            rows = fault_injection.planted_rows(
+                [
+                    {
+                        "name": "app/api/runs/route.ts",
+                        "content": "import { all } from '@/lib/store'\n",
+                    }
+                ],
+                handler_name="development_develop_handler",
+                task_id=task,
+                resolved_config={fault_injection.DECLARATION_KEY: ["false_criterion_alias_import"]},
+            )
+        lines = [
+            f"2026-09-25 14:14:19,403 - squadops.capabilities.handlers.fault_injection - "
+            f"WARNING - {r.getMessage()}"
+            for r in caplog.records
+        ]
+        applied = driver.faults_applied(driver._agent_lines_of_interest(lines))
+        confirmed = {"task": task, "round": 0, "confirmed": 1, "rejected": 0, "by": ["dev"]}
+        rec = {
+            "loop_texture": driver.with_states(
+                "loop_texture", {"faults_applied": applied, "contested_rows": [confirmed]}, {}
+            )
+        }
+
+        assert len(rows) == 1
+        reading = driver.seam_readouts(["false_criterion_alias_import"], rec)[
+            "false_criterion_alias_import"
+        ]
+        assert reading["reached"] is True
+        assert driver._applied_words(reading) == f" — fault applied to `{task}` (0→1 rows)"

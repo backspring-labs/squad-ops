@@ -1,5 +1,6 @@
 # 1.8.2 deploy A — pre-registration (plan §4.1, §4.4)
 
+**Rev 3 (2026-09-25, after the second diagnostic): a second instrument fix — §11c.**
 **Rev 2 (2026-09-25, after the first diagnostic): one owner ruling on a falsifier's wording
 and one instrument fix — §11. No pin, arm, fault or budget moved.**
 
@@ -303,6 +304,33 @@ Record `compile-loop/shakeout-20260925T131200Z.json`. Driver at `cc71ec54`.
 - **Harness note:** the sequencer launching the diagnostics misread the deploy-identity file as
   this cycle's record, and was stopped before it relaunched `compile-loop`; no extra cycle ran.
 
+### d2 — `false-criterion`, run 1 of 2: `cyc_1727c96394da` / implementation `run_27462d5a739b`, 09:31–10:22 ET
+
+Record `false-criterion/shakeout-20260925T142214Z.json`. Driver at `a284f17c`.
+
+- **Outcome:** `blocked_unverified`; one correction round, which terminated
+  `correction_terminated` / **`contested_check`**. The run's `RunTerminalDecision` names the
+  check: `acceptance:declared_imports on app/api/runs/route.ts (vc-declared-imports-lib-alias)`.
+- **The fault** planted its row on every evaluation of the develop task's first attempt: four
+  `APPLIED … rows 0 -> 1` lines in the develop agent's log, 10:14–10:19 ET.
+- **The dispute:**
+  - Captured on the develop task (`by: dev`, round 0) and matched to the planted row.
+  - Ruled **confirmed** by the analyzer: 1 confirmed, 0 rejected, 0 unruled.
+- **The import:** unchanged. The develop task's stored `app/api/runs/route.ts` still imports
+  through `@/lib/store`, `@/lib/errors` and `@/lib/models`.
+- **The passes:** all three answered `form: none`, changing nothing — the right answer to a
+  check the producer holds is false.
+  - Pass 2's `disputed_checks` block did not parse, and was logged as such.
+  - The dispute counted came from one of the task's other emissions; the record does not say
+    which.
+- **The driver's seam readout: `reached: null` (UNASKABLE)**, "the fault never applied". It could
+  not parse the plant's `rows 0 -> 1` form (§11c). **Every observable the prediction names held**
+  (§3b: no refund without a dispute, the dispute read, no rejection, the import not degraded).
+  The reading on the record's own terms waits for run 2, on the fixed driver.
+- **L1:** no contentless emission.
+- **Evidence kept:** the fault and form lines, verbatim, at
+  `var/1-8-2-logs/false-criterion-1-fault-and-forms.log`.
+
 ---
 
 ## 11. Amendments after the first launch
@@ -353,3 +381,24 @@ roll 1.
 
 **d1's forms** are not in its record. They were read from the containers before any rebuild and
 kept verbatim at `var/1-8-2-logs/compile-loop-1-revision-forms.log`. §10's d1 reading cites them.
+
+### 11c. The driver reads a planted row's `APPLIED` line — an instrument gap, fixed before d2's second run
+
+**The gap.** `faults_applied` parsed only a transform's `chars N -> M` form. `false-criterion`'s
+fault is a planted row, which logs `rows 0 -> 1` (1.8.2 plan §4.1, #1689). Its four `APPLIED`
+lines were never read, so `seam_readouts` found the fault "never applied" and read the seam
+UNASKABLE (#1588's rule), although the dispute it exists to produce was captured and confirmed.
+
+**Why the guards missed it:**
+- The #1689 test read the seam through `SEAM_READOUTS` directly, never through `seam_readouts`,
+  the wrapper that asks whether the fault applied.
+- The #1632 marker self-check had only a `chars`-form sample for `faults_applied`.
+
+**The fix** (driver-only; it lets the reading be asked and alters no other reading):
+- The parse takes both forms, keeping each attempt's unit (`rows_before`/`rows_after` for a plant).
+- The render names the unit.
+- A real `rows`-form line is added to the marker samples.
+- A test enters at `planted_rows` and reads through `seam_readouts`.
+
+**d2's budget.** Run 1 read UNASKABLE, so run 2 of 2 runs on the fixed driver. That is the
+budget's own rule for a seam the record could not ask, and needs no ruling.
