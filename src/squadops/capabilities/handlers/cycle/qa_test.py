@@ -229,11 +229,16 @@ class _WholeFileTests(SelfEvalFollowup):
 class _ScaffoldFill(_WholeFileTests):
     """``qa.test`` under a verification scaffold: fills merged into frozen shells (SIP-0104).
 
+    Its shells are filled by slot, never edited, so a pass is not offered the edit form
+    (SIP-0086 §12a change 3).
+
     Holds the fill state one ``handle()`` accumulates — the fill emission, the merged
     shells, the merge evidence — so a self-evaluation pass folds into the state the
     primary merge left and the scaffold evidence reads the final merge (register entries
     41–43). The steps it delegates stay on the handler, where their own tests reach them.
     """
+
+    edits_offered = False
 
     scaffold_bound = True
 

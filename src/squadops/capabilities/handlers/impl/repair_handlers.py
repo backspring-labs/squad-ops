@@ -15,9 +15,9 @@ correction-loop flows have distinct, non-overlapping capability ids.
 from __future__ import annotations
 
 import logging
-import re
 from typing import TYPE_CHECKING, Any
 
+from squadops.capabilities.anchored_edits import editable_file_lines, verbatim_block
 from squadops.capabilities.context_assembly import REPAIR_FAILED_ARTIFACTS_KEY
 from squadops.capabilities.disputed_checks import failing_row_identities
 from squadops.capabilities.handlers.cycle_tasks import _classify_file, _CycleTaskHandler
@@ -31,11 +31,6 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.base import HandlerResult
     from squadops.capabilities.handlers.context import ExecutionContext
-
-
-#: Entities listed per editable file in the repair prompt: scaffold files carry a handful; a
-#: large module is truncated with a count rather than flooding the prompt.
-_MAX_LISTED_ENTITIES = 40
 
 
 def _artifacts_from_fenced_blocks(content: str, fallback_name: str) -> list[dict[str, Any]]:
@@ -594,7 +589,7 @@ class _RepairPromptMixin:
         if not files or renderer is None:
             return ""
         base = self._repair_base_files(inputs)
-        blocks = [_verbatim_block(path, base[path]) for path in files]
+        blocks = [verbatim_block(path, base[path]) for path in files]
         rendered = await renderer.render(
             "request.cycle_repair_current_files", {"current_files": "\n\n".join(blocks)}
         )
@@ -617,25 +612,11 @@ class _RepairPromptMixin:
         listed selector is one the transaction will find. A file no resolver reads, or one that
         does not parse, is listed without entities: it can still be edited by anchor.
         """
-        from squadops.cycles.structural_resolution import entity_selectors
-
         files = self._anchorable_files(inputs)
         renderer = getattr(context.ports, "request_renderer", None)
         if not files or renderer is None:
             return "", {}
-        base = self._repair_base_files(inputs)
-        lines = []
-        offered: dict[str, int] = {}
-        for path in files:
-            selectors = entity_selectors(path, base[path]) or ()
-            offered[path] = len(selectors)
-            listed = ", ".join(f"`{sel}`" for sel in selectors[:_MAX_LISTED_ENTITIES])
-            more = (
-                f" (+{len(selectors) - _MAX_LISTED_ENTITIES} more)"
-                if len(selectors) > _MAX_LISTED_ENTITIES
-                else ""
-            )
-            lines.append(f"- `{path}` — entities: {listed}{more}" if selectors else f"- `{path}`")
+        lines, offered = editable_file_lines(files, self._repair_base_files(inputs))
         rendered = await renderer.render(
             "request.cycle_repair_anchored_edit_appendix", {"editable_files": "\n".join(lines)}
         )
@@ -1285,17 +1266,6 @@ class _RepairPromptMixin:
             "(` ```language:path/to/file `). Do not emit unrelated files."
         )
         return "\n\n".join(parts)
-
-
-def _verbatim_block(path: str, content: str) -> str:
-    """``path`` and its content inside a fence no run of backticks in the content can close —
-    CommonMark closes a fence only with a run at least as long as the one that opened it. A
-    bare fence, not the ` ```language:<path> ` header, so the shown file is never read as an
-    emission form."""
-    longest = max((len(run) for run in re.findall(r"`+", content)), default=0)
-    fence = "`" * max(3, longest + 1)
-    body = content if content.endswith("\n") else content + "\n"
-    return f"`{path}`:\n{fence}\n{body}{fence}"
 
 
 class DevelopmentCorrectionRepairHandler(_RepairPromptMixin, _CycleTaskHandler):

@@ -1137,7 +1137,7 @@ If staging is necessary, the cleanest delivery path is A → B → C. Stage A al
 
 ## 12. Post-implementation amendments
 
-### 12a. 2026-09-15 — the self-evaluation pass becomes the model's compile loop (proposed; changes 1–2 built; targeted for 1.8.2)
+### 12a. 2026-09-15 — the self-evaluation pass becomes the model's compile loop (proposed; changes 1–3 built, 3's qa re-take and 4 not yet; targeted for 1.8.2)
 
 **Status.** Drafted on the owner's ask of 2026-09-15 and targeted for 1.8.1 by the owner's
 ruling of the same day; **re-targeted to 1.8.2 on 2026-09-17** by the owner's ruling on the
@@ -1238,4 +1238,36 @@ change 3 builds it: no Python check truncates to its first failing row. The qa c
 framework `frontend_build` check (`test_runner.run_frontend_build`) is a separate producer and
 isn't changed here.
 
-**Not yet built:** changes 3–4. This section says so until each lands.
+**As built — change 3, the pass (2026-09-24).** The follow-up is no longer a Python literal
+telling the model its response "was incomplete". It is an asset, `request.cycle_self_eval_followup`,
+that shows:
+- **every blocking-failed row**, with its identity and reason (`failing_check_lines`), then
+  change 2's type errors, or the build's tail when there are none; the old summary named no
+  check
+- **the files the task produced**
+- **the current content of each produced file a failing row names**, verbatim, in the repair's
+  own section (`request.cycle_repair_current_files`)
+- **the edit form** for those files, with their addressable entities
+  (`request.cycle_repair_anchored_edit_appendix`)
+- **the dispute section** (SIP-0096 §17a), listing the failing rows
+- **a closing that matches the form:** edit fences for shown files, whole files only for new
+  ones; or, with nothing shown, whole files
+
+The listing and the verbatim block are the repair's own, moved to `anchored_edits` so both use
+one implementation.
+
+A pass's edits are applied through the repair's transaction (`apply_anchored_edits`, SIP-0107
+§14) over the task's current artifacts, under a grant of the shown files. A refused transaction
+applies nothing from the pass, including the files it emitted whole beside the edits. Every pass
+offered the form records it (`revision_form_reading`: edits, whole-file, or none; how much of
+each file it replaced) in the task's evidence as `self_eval_revision_forms` and on a
+`self_eval_revision_form` line. That's its own marker, so a pass never counts as a repair in
+§46a's per-cell count.
+
+A shape that folds its own emission form in, the qa scaffold fill (`edits_offered = False`), is
+shown no file and no form: its shells are filled by slot, never edited. Without a request
+renderer the pass is asked as before. The qa and dev characterization goldens change in exactly
+one field each: the pass's follow-up message.
+
+**Not yet built:** the qa task's re-take after a refunded repair as an edit request (plan §3.3's
+addition to change 3), and change 4. This section says so until each lands.

@@ -374,8 +374,8 @@ paths carry no typed criteria, so they have nothing to offer. The repair templat
 one line" sentence, which nothing read, now points at the block instead. The pulse-check repair
 chain's `development.repair` (`request.repair_task_base`) is not given the section yet: whether a
 pulse check can be contested is decided with change 2. The self-evaluation follow-up
-(`_build_self_eval_prompt`) names no check either. SIP-0086 §12a change 3 rewrites that prompt,
-and it gets the section then. **Diverges from the text above:** the
+named no check either; SIP-0086 §12a change 3 rewrote it as an asset, and it now carries the
+section, listing the pass's failing rows as a repair's does. **Diverges from the text above:** the
 dispute names `file`, not `subject`. A row's `subject` is the plan-task id that produced it
 (`CheckResult.subject`, §6.3), which the producer does not see. It is implied by which task
 disputed, so matching (change 2) takes it from the task. `file` is what separates one check run
