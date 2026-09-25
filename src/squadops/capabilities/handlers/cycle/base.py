@@ -4,6 +4,7 @@ Split from cycle_tasks.py (#152).
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import tempfile
 import time
@@ -985,6 +986,45 @@ class _CycleTaskHandler(CapabilityHandler):
         evidence.setdefault("self_eval_merge_log", []).extend(merge_log)
         return list(by_name.values())
 
+    async def _validated(
+        self,
+        context: ExecutionContext,
+        inputs: dict[str, Any],
+        artifacts: list[dict],
+        *,
+        typed_error_counts: dict[str, int],
+    ) -> ValidationResult:
+        """``_validate_output``, with any row a declared fault plants into this task's own
+        evaluation (1.8.2 plan §4.1 ``false-criterion``). The row is judged like any other —
+        the pass that follows sees it, and may dispute it — and the summary is recounted, so a
+        planted failure reads as the check failure it imitates."""
+        from squadops.capabilities.handlers.fault_injection import planted_rows
+
+        validation = await self._validate_output(
+            inputs, artifacts, typed_error_counts=typed_error_counts
+        )
+        planted = planted_rows(
+            artifacts,
+            handler_name=self._handler_name,
+            task_id=str(getattr(context, "task_id", "") or ""),
+            resolved_config=inputs.get("resolved_config"),
+            inputs=inputs,
+        )
+        if not planted:
+            return validation
+        checks = [*validation.checks, *planted]
+        typed = [c for c in checks if str(c.get("check", "")).startswith("acceptance:")]
+        failed = sum(
+            1 for c in typed if c.get("status") in (ResultStatus.FAILED, ResultStatus.ERROR)
+        )
+        kept = [
+            part
+            for part in (validation.summary or "").split("; ")
+            if part and part != "All checks passed" and not part.startswith("Typed checks failed")
+        ]
+        summary = "; ".join([*kept, f"Typed checks failed: {failed} of {len(typed)}"])
+        return dataclasses.replace(validation, passed=False, checks=checks, summary=summary)
+
     async def _self_evaluate(
         self,
         context: ExecutionContext,
@@ -1078,8 +1118,8 @@ class _CycleTaskHandler(CapabilityHandler):
                 ]
             artifacts = self._merge_artifacts(artifacts, new_artifacts, evidence_extra)
             followup.after_merge(artifacts, evidence_extra)
-            validation = await self._validate_output(
-                inputs, artifacts, typed_error_counts=typed_error_counts
+            validation = await self._validated(
+                context, inputs, artifacts, typed_error_counts=typed_error_counts
             )
 
         evidence_extra["self_eval_passes"] = self_eval_count

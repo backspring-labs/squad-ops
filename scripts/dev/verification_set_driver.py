@@ -335,6 +335,9 @@ EVIDENCE_FIELDS: dict[str, tuple[str, ...]] = {
     "loop_texture.emission_tokens_by_handler": _AGENT_WINDOW,
     "loop_texture.placeholder_strips": _AGENT_WINDOW,
     "loop_texture.faults_applied": _AGENT_WINDOW,
+    # 1.8.2 plan §4.1: `compile-loop`'s passes and `redelivery`'s refusal, in the agents' logs.
+    "loop_texture.self_eval_passes": _AGENT_WINDOW,
+    "loop_texture.redelivered_refusals": _AGENT_WINDOW,
     "loop_texture.retried_with_fact": (*_AGENT_WINDOW, "no_emission_retry_aimed"),
     "loop_texture.retried_blind": (*_AGENT_WINDOW, "no_emission_retry_aimed"),
     "loop_texture.repair_revision_forms": (
@@ -2336,6 +2339,8 @@ _AGENT_LINE_KEYS = (
     # scope. A seam reading that does not know whether its fault applied credited L4 on a
     # refund the dev's prose answer earned, in a cycle where no qa repair ever ran.
     "fault_injection: ",
+    # 1.8.2 plan §4.1 `redelivery`: the entrypoint refusing a redelivered task (#1627).
+    "redelivered_task_refused: ",
 )
 
 
@@ -2808,6 +2813,20 @@ RUNTIME_FIELDS_NOT_LOGGED_HERE: dict[str, str] = {
 
 #: The same for the agents' windows (``_AGENT_LINE_KEYS``, ``texture_from_agent_lines``).
 AGENT_MARKER_SAMPLES: dict[str, tuple[str, ...]] = {
+    # Rendered: src/squadops/capabilities/handlers/emission_log.py, a pass's shape (§12a).
+    "self_eval_passes": (
+        "2026-09-25 00:00:00,000 - squadops.capabilities.handlers.emission_log - INFO - "
+        "development_develop_handler:self_eval emission shape: chars=2530 completion_tokens=7 "
+        "fences={'fill': 0, 'path': 1, 'plain': 0} head='```ts:lib/store.ts export const'",
+    ),
+    # Rendered: src/squadops/agents/entrypoint.py, a redelivered task refused (#1627).
+    "redelivered_refusals": (
+        "2026-09-25 00:00:00,000 - squadops.agents.entrypoint - ERROR - redelivered_task_refused: "
+        "task=repair-run_ab12cd34-00-qa.test_repair type=qa.test_repair — a prior delivery was "
+        "not acknowledged, so its completion is UNKNOWN (it may have died, or may have completed "
+        "and replied before the ack); refused at the broker layer and failed for cycle "
+        "governance to decide (SIP §5.3a, #1626)",
+    ),
     "emissions_logged": (
         "2026-09-23 13:13:44,716 - squadops.capabilities.handlers.emission_log - INFO - "
         "governance_prepare_plan_authoring_brief_handler emission shape: chars=10986 "
@@ -3057,6 +3076,42 @@ def _qa_own_frame_routed_reading(rec: Mapping[str, Any]) -> tuple[bool, list[str
 
 
 SEAM_READOUTS: dict[str, tuple[str, tuple[str, ...], Callable[[dict], tuple[bool, Any]]]] = {
+    # 1.8.2 plan §4.1 `compile-loop`: the faulted develop task compiled clean through its own
+    # passes — at least one pass, and no correction round.
+    "compile_loop_two_type_errors": (
+        "§12a: the task compiled until clean through its passes, with no correction round",
+        ("correction_rounds", "loop_texture.self_eval_passes", "loop_texture.faults_applied"),
+        lambda rec: (
+            (value_at(rec, "correction_rounds", 0) or 0) == 0
+            and "development_develop_handler"
+            in (value_at(rec, "loop_texture.self_eval_passes", []) or []),
+            {
+                "correction_rounds": value_at(rec, "correction_rounds", 0),
+                "self_eval_passes": value_at(rec, "loop_texture.self_eval_passes", []),
+            },
+        ),
+    ),
+    # `false-criterion`: the planted row was disputed, contested and confirmed (SIP-0096 §17a).
+    "false_criterion_alias_import": (
+        "§17a: the producer disputed the planted row, and the analyzer confirmed it",
+        ("loop_texture.contested_rows", "loop_texture.faults_applied"),
+        lambda rec: (
+            any(
+                (e.get("confirmed") or 0) >= 1
+                for e in value_at(rec, "loop_texture.contested_rows", []) or []
+            ),
+            value_at(rec, "loop_texture.contested_rows", []),
+        ),
+    ),
+    # `redelivery`: the qa repair's process killed; its redelivery refused, not re-run (#1627).
+    "qa_repair_process_killed": (
+        "#1627: the killed repair's redelivery was refused as a typed FAILED, not re-run",
+        ("loop_texture.redelivered_refusals", "loop_texture.faults_applied"),
+        lambda rec: (
+            len(value_at(rec, "loop_texture.redelivered_refusals", []) or []) >= 1,
+            value_at(rec, "loop_texture.redelivered_refusals", []),
+        ),
+    ),
     # 1.8.2 item 15: the hold reached the bound when the orchestrator failed the task at its
     # declared wait, as a typed fact. Whether the run then proceeded is the chain's reading.
     "handler_hang": (
@@ -3568,7 +3623,20 @@ def texture_from_agent_lines(agent_lines: list[str]) -> dict:
     out["placeholder_strips"] = placeholder_strips(agent_lines)
     # #1588: which attempts each declared fault actually bit, from the hook's own lines.
     out["faults_applied"] = faults_applied(agent_lines)
+    # 1.8.2 plan §4.1: each self-evaluation pass, by handler (`compile-loop`), and each task
+    # the entrypoint refused on redelivery (`redelivery`).
+    out["self_eval_passes"] = [
+        m.group("handler") for line in agent_lines if (m := _SELF_EVAL_SHAPE.search(line))
+    ]
+    out["redelivered_refusals"] = [
+        _field(line, "task") for line in agent_lines if _REDELIVERED_REFUSAL in line
+    ]
     return out
+
+
+#: A self-evaluation pass's own emission-shape line (``<handler>:self_eval emission shape:``).
+_SELF_EVAL_SHAPE = re.compile(r"(?P<handler>\w+):self_eval emission shape:")
+_REDELIVERED_REFUSAL = "redelivered_task_refused: "
 
 
 _RETRY_APPENDED = "emission retry feedback appended for"
