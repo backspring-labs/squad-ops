@@ -245,3 +245,103 @@ class TestTheRuntimeSideSumsEveryDispatch:
         with pytest.raises(RuntimeError):
             await dispatcher.dispatch_task(_envelope("t-x"), "run_x")
         assert dispatcher.take_run_usage("run_x").tasks_unreported == ("t-x",)
+
+
+class TestASelfEvaluationPassIsBookedUnderItsOwnKey:
+    """SIP-0086 §12a change 1: each self-evaluation pass is recorded under its own key, so a
+    pass is never mistaken for a correction round and its cost is measured, not assumed."""
+
+    async def test_a_pass_reaches_the_run_under_its_own_key_and_the_total_is_unchanged(self):
+        """Entered at ``HandlerExecutor.execute`` on the real develop handler, whose first
+        emission fails a typed criterion and whose one pass fixes it; the reply's usage is then
+        booked where the runtime books every reply. Bug caught: a pass folded into the task's
+        first attempt (its cost invisible), booked twice (the run total inflated), or not
+        marked at the seam at all."""
+        from squadops.bootstrap.handlers import create_handler_registry
+        from squadops.llm.models import ChatMessage
+        from squadops.orchestration.handler_executor import HandlerExecutor
+
+        emissions = iter(
+            [
+                "```python:backend/routes.py\nx = 1\n```\n",
+                "```python:backend/routes.py\nimport fastapi\n```\n",
+            ]
+        )
+
+        async def _chat(messages, **kwargs):
+            return ChatMessage(
+                role="assistant", content=next(emissions), prompt_tokens=100, completion_tokens=40
+            )
+
+        llm = MagicMock()
+        llm.default_model = "qwen3.8:27b"
+        llm.chat_stream_with_usage = _chat
+        from squadops.agents.base import PortsBundle
+
+        prompt_service = MagicMock()
+        prompt_service.assemble.return_value = MagicMock(content="system", assembly_hash="h")
+        ports = PortsBundle(
+            llm=llm,
+            memory=MagicMock(),
+            prompt_service=prompt_service,
+            queue=MagicMock(),
+            metrics=MagicMock(),
+            events=MagicMock(),
+            filesystem=MagicMock(),
+        )
+        envelope = TaskEnvelope(
+            task_id="task-run_1-m000-development.develop",
+            agent_id="neo",
+            cycle_id="cyc_1",
+            pulse_id="p",
+            project_id="proj",
+            task_type="development.develop",
+            correlation_id="c",
+            causation_id="c",
+            trace_id="t",
+            span_id="s",
+            inputs={
+                "prd": "Runs API",
+                "artifact_contents": {"implementation_plan.md": "1. routes"},
+                "subtask_focus": "the runs routes",
+                "expected_artifacts": ["backend/routes.py"],
+                "acceptance_criteria": [
+                    {
+                        "check": "import_present",
+                        "params": {"file": "backend/routes.py", "module": "fastapi"},
+                    }
+                ],
+                "resolved_config": {"output_validation": True, "max_self_eval_passes": 1},
+            },
+        )
+        executor = HandlerExecutor("neo", create_handler_registry(roles=["dev"]), ports, role="dev")
+
+        result = await executor.execute(envelope)
+        run = RunUsageAccumulator()
+        run.record(envelope.task_type, envelope.task_id, result.llm_usage)
+        summary = run.summary()
+
+        assert result.status == "SUCCEEDED", result.error
+        assert summary.by_task_type["development.develop"].calls == 1
+        assert summary.by_task_type["development.develop:self_eval"].calls == 1
+        assert summary.by_task_type["development.develop:self_eval"].completion_tokens == 40
+        assert summary.total.calls == 2
+        assert summary.total.prompt_tokens == 200
+
+    def test_a_task_that_ran_no_pass_carries_no_pass_key(self):
+        """The control: a task that never self-evaluated reports exactly what it did before."""
+        ledger = UsageLedger()
+        ledger.record_generation(_response(10, 5, 0), 3.0)
+        assert "self_eval_passes" not in ledger.to_dict()
+
+    def test_passes_larger_than_their_task_are_booked_whole_never_negative(self):
+        """A malformed report — a subset exceeding its whole — is booked as the task's usage,
+        never split into a negative count."""
+        usage = {
+            **UsageTotals(calls=1).to_dict(),
+            "self_eval_passes": UsageTotals(calls=3).to_dict(),
+        }
+        run = RunUsageAccumulator()
+        run.record("development.develop", "t", usage)
+
+        assert run.summary().by_task_type == {"development.develop": UsageTotals(calls=1)}

@@ -1137,7 +1137,7 @@ If staging is necessary, the cleanest delivery path is A → B → C. Stage A al
 
 ## 12. Post-implementation amendments
 
-### 12a. 2026-09-15 — the self-evaluation pass becomes the model's compile loop (proposed; not built; targeted for 1.8.2)
+### 12a. 2026-09-15 — the self-evaluation pass becomes the model's compile loop (proposed; change 1 built; targeted for 1.8.2)
 
 **Status.** Drafted on the owner's ask of 2026-09-15 and targeted for 1.8.1 by the owner's
 ruling of the same day; **re-targeted to 1.8.2 on 2026-09-17** by the owner's ruling on the
@@ -1201,7 +1201,7 @@ the model it runs", and targeted for 1.8.1. The design is the implementer's, for
 the PR that builds it. **Re-targeted to 1.8.2 by the owner, 2026-09-17**, on the 1.8.1 plan's review
 (the status line above).
 
-**As built — change 1 (2026-09-25, 1.8.2 plan §3.2/§3.3).** `max_self_eval_passes` is required:
+**As built — change 1 (2026-09-24, 1.8.2 plan §3.2/§3.3).** `max_self_eval_passes` is required:
 `CycleRequestProfile`'s validator refuses a profile that does not declare it or declares
 anything but a non-negative integer (`_validate_self_eval_depth`), and the handler's
 self-evaluation loop refuses a resolved config without it instead of reading 1
@@ -1209,6 +1209,15 @@ self-evaluation loop refuses a resolved config without it instead of reading 1
 `validated-fullstack-solo`, `implementation`, `validation`, `validation-multirole`) declare 3;
 `build` keeps its 1, which it already declared; the eleven profiles that run no output
 validation declare 0 (the loop only opens on a failed output validation, and
-`output_validation` defaults to false, so 0 changes none of them). **Not yet built:** the
-per-pass key in the usage ledger (it lands on the same `_llm_call` seam as 1.8.2 item 2, after
-it), and changes 2–4. This section says so until each lands.
+`output_validation` defaults to false, so 0 changes none of them).
+
+**The per-pass key in the usage ledger** follows. The self-evaluation loop's call is marked at
+the one LLM seam (`_llm_call(..., self_eval_pass=True)`). The task's `UsageLedger` keeps what
+the passes spent beside its totals: the totals still cover every call, and the passes ride under
+`self_eval_passes` only when a pass ran. The run's `RunUsageAccumulator` books the passes under
+`<task_type>:self_eval` and the rest under the task type, so the run total is unchanged. The
+assessment's `tokens_by_task_type` shows a pass's cost beside its task's. A report whose passes
+exceed their task's totals is booked whole under the task type, never as a negative count. (This
+paragraph's date first read 2026-09-25, the UTC date; it's 2026-09-24 ET.)
+
+**Not yet built:** changes 2–4. This section says so until each lands.

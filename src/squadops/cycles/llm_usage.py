@@ -28,6 +28,12 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+#: SIP-0086 §12a change 1: the part of a task's usage its self-evaluation passes spent, carried
+#: beside the task's totals under this key, and booked on the run under ``<task_type>`` plus
+#: this suffix — so a pass is never mistaken for a correction round and its cost is measured.
+SELF_EVAL_KEY = "self_eval_passes"
+SELF_EVAL_SUFFIX = ":self_eval"
+
 
 @dataclass(frozen=True)
 class UsageTotals:
@@ -59,6 +65,16 @@ class UsageTotals:
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)
 
+    def without(self, part: UsageTotals) -> UsageTotals | None:
+        """These totals less ``part``, or ``None`` when ``part`` is not contained in them — a
+        subset that exceeds its whole is a malformed report, never a negative count."""
+        rest = {
+            f.name: getattr(self, f.name) - getattr(part, f.name) for f in dataclasses.fields(self)
+        }
+        if any(v < 0 for v in rest.values()):
+            return None
+        return UsageTotals(**rest)
+
     @classmethod
     def from_dict(cls, data: Mapping[str, Any] | None) -> UsageTotals | None:
         """Read totals off the wire, or ``None`` when they are absent or malformed.
@@ -84,37 +100,54 @@ class UsageLedger:
 
     def __init__(self) -> None:
         self._totals = UsageTotals()
+        self._self_eval = UsageTotals()
 
     @property
     def totals(self) -> UsageTotals:
         return self._totals
 
-    def record_generation(self, response: Any, duration_ms: float) -> None:
+    def record_generation(
+        self, response: Any, duration_ms: float, *, self_eval_pass: bool = False
+    ) -> None:
         """One call that returned. Token figures the provider did not report are counted as
         unreported, never as zero tokens."""
         prompt = getattr(response, "prompt_tokens", None)
         completion = getattr(response, "completion_tokens", None)
         reasoning = getattr(response, "reasoning_tokens", None)
-        self._totals = self._totals + UsageTotals(
-            calls=1,
-            prompt_tokens=prompt or 0,
-            completion_tokens=completion or 0,
-            reasoning_tokens=reasoning or 0,
-            duration_ms=max(duration_ms, 0.0),
-            unreported_prompt=int(prompt is None),
-            unreported_completion=int(completion is None),
-            unreported_reasoning=int(reasoning is None),
+        self._add(
+            UsageTotals(
+                calls=1,
+                prompt_tokens=prompt or 0,
+                completion_tokens=completion or 0,
+                reasoning_tokens=reasoning or 0,
+                duration_ms=max(duration_ms, 0.0),
+                unreported_prompt=int(prompt is None),
+                unreported_completion=int(completion is None),
+                unreported_reasoning=int(reasoning is None),
+            ),
+            self_eval_pass,
         )
 
-    def record_failed_call(self, duration_ms: float) -> None:
+    def record_failed_call(self, duration_ms: float, *, self_eval_pass: bool = False) -> None:
         """One call that raised before usage existed — it cost wall-clock and may have cost
         tokens nobody reported, so it is counted rather than dropped."""
-        self._totals = self._totals + UsageTotals(
-            calls=1, failed_calls=1, duration_ms=max(duration_ms, 0.0)
+        self._add(
+            UsageTotals(calls=1, failed_calls=1, duration_ms=max(duration_ms, 0.0)),
+            self_eval_pass,
         )
 
+    def _add(self, call: UsageTotals, self_eval_pass: bool) -> None:
+        self._totals = self._totals + call
+        if self_eval_pass:
+            self._self_eval = self._self_eval + call
+
     def to_dict(self) -> dict[str, Any]:
-        return self._totals.to_dict()
+        """The task's totals — every call, passes included, as readers before §12a read them —
+        and, when a pass ran, what the passes spent under ``SELF_EVAL_KEY``."""
+        out = self._totals.to_dict()
+        if self._self_eval.calls:
+            out[SELF_EVAL_KEY] = self._self_eval.to_dict()
+        return out
 
 
 @dataclass(frozen=True)
@@ -168,7 +201,18 @@ class RunUsageAccumulator:
             self._unreported.append(task_id)
             return
         self._reported += 1
-        self._by_type[task_type] = self._by_type.get(task_type, UsageTotals()) + totals
+        # SIP-0086 §12a: the passes under their own key and the rest under the task type, so
+        # the run's total is unchanged and a pass is never read as part of the first attempt.
+        passes = UsageTotals.from_dict(usage.get(SELF_EVAL_KEY)) if usage else None
+        rest = totals.without(passes) if passes is not None else None
+        if passes is not None and rest is not None:
+            self._book(task_type, rest)
+            self._book(f"{task_type}{SELF_EVAL_SUFFIX}", passes)
+        else:
+            self._book(task_type, totals)
+
+    def _book(self, key: str, totals: UsageTotals) -> None:
+        self._by_type[key] = self._by_type.get(key, UsageTotals()) + totals
 
     def summary(self) -> RunUsage:
         return RunUsage(
