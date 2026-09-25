@@ -1030,7 +1030,7 @@ class TestTheHangIsEndedByTheDeclaredBound:
     declared bound ends it. Entered at ``_llm_call`` on the real develop handler, the seam its
     emission passes (``develop.py``: ``apply_fault=True``)."""
 
-    async def _call(self, declaration, bound):
+    async def _call(self, declaration, bound, *, apply_fault=True):
         import asyncio
         import time
         from unittest.mock import AsyncMock, MagicMock
@@ -1054,7 +1054,7 @@ class TestTheHangIsEndedByTheDeclaredBound:
                 {},
                 inputs={},
                 started=time.perf_counter(),
-                apply_fault=True,
+                apply_fault=apply_fault,
                 fault_config=declaration,
             ),
             timeout=bound,
@@ -1071,6 +1071,15 @@ class TestTheHangIsEndedByTheDeclaredBound:
 
     async def test_without_the_declaration_the_same_call_returns(self):
         _message, content = await self._call({}, 5)
+        assert "backend/routes.py" in content
+
+    async def test_a_seam_that_takes_no_fault_is_not_held(self):
+        """Bug this catches: the hold placed outside the ``apply_fault`` guard — a rebase onto
+        the cap-exhausted retry loop put it there — so every call seam (a self-eval pass, the
+        analyzer, the discarded cap-exhausted call) would hang on a declaration aimed at one."""
+        _message, content = await self._call(
+            {DECLARATION_KEY: ["handler_hang"]}, 1, apply_fault=False
+        )
         assert "backend/routes.py" in content
 
     def test_the_transform_hook_leaves_a_hold_alone(self, caplog):

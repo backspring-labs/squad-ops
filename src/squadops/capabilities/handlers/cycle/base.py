@@ -1250,68 +1250,143 @@ class _CycleTaskHandler(CapabilityHandler):
         Reading it off ``messages`` rather than taking it as an argument is what stops
         the two drifting apart.
         """
-        # SIP-0108 §4.1: every invocation is accounted exactly once, including one that raises
-        # before any usage exists — undercounting failed calls makes the worse arm cheaper.
-        call_started = time.perf_counter()
-        try:
-            response = await context.ports.llm.chat_stream_with_usage(messages, **chat_kwargs)
-        except BaseException:
-            context.llm_usage.record_failed_call((time.perf_counter() - call_started) * 1000)
-            raise
-        context.llm_usage.record_generation(response, (time.perf_counter() - call_started) * 1000)
-        content = response.content
-
-        # #1251: a declared fault transforms the emission HERE, before the shape is
-        # logged, so every readout downstream reads one consistent emission and the log
-        # records what the handler actually got. A normal cycle declares none and this
-        # returns the emission unchanged. Five seams are wired for it; the rest pass
-        # ``apply_fault=False`` and stay unreachable by a declaration, as they were.
-        if apply_fault:
-            content = inject_fault(
-                content,
-                handler_name=self._handler_name,
-                task_id=context.task_id,
-                resolved_config=fault_config,
-                inputs=inputs,
+        # 1.8.2 item 2: a call that spent its whole completion budget and wrote nothing is
+        # asked again once, with that fact. The loop keeps ONE call and one sequence: every
+        # call — the discarded one included — is accounted, shape-logged and recorded here,
+        # and the declared fault applies only to the emission this returns.
+        call_messages = messages
+        retried = False
+        label = shape_label or self._handler_name
+        while True:
+            # SIP-0108 §4.1: every invocation is accounted exactly once, including one that
+            # raises before any usage exists — undercounting failed calls makes the worse arm
+            # cheaper.
+            call_started = time.perf_counter()
+            try:
+                response = await context.ports.llm.chat_stream_with_usage(
+                    call_messages, **chat_kwargs
+                )
+            except BaseException:
+                context.llm_usage.record_failed_call((time.perf_counter() - call_started) * 1000)
+                raise
+            context.llm_usage.record_generation(
+                response, (time.perf_counter() - call_started) * 1000
             )
-            # 1.8.2 item 15: a declared hold stops answering here, after the model returned.
-            await hold_fault(
-                content,
-                handler_name=self._handler_name,
-                task_id=context.task_id,
-                resolved_config=fault_config,
-                inputs=inputs,
+            content = response.content
+            retry_fact = (
+                None
+                if retried
+                else await self._cap_exhausted_fact(context, response, content, chat_kwargs, label)
             )
 
-        # #924: unconditional, and deliberately NOT inside the observability gate below
-        # — that gate is ``llm_obs and correlation_context``, so a capture placed there
-        # would go missing in exactly the setups where the emission is unexplained.
-        log_emission_shape(
-            shape_label or self._handler_name,
-            content,
-            response.completion_tokens,
-            response.reasoning_tokens,
-            response.reasoning_text,
+            # #1251: a declared fault transforms the emission HERE, before the shape is
+            # logged, so every readout downstream reads one consistent emission and the log
+            # records what the handler actually got. A normal cycle declares none and this
+            # returns the emission unchanged. Five seams are wired for it; the rest pass
+            # ``apply_fault=False`` and stay unreachable by a declaration, as they were. A
+            # discarded cap-exhausted emission is not the one the handler gets.
+            if apply_fault and retry_fact is None:
+                content = inject_fault(
+                    content,
+                    handler_name=self._handler_name,
+                    task_id=context.task_id,
+                    resolved_config=fault_config,
+                    inputs=inputs,
+                )
+                # 1.8.2 item 15: a declared hold stops answering here, after the model returned.
+                await hold_fault(
+                    content,
+                    handler_name=self._handler_name,
+                    task_id=context.task_id,
+                    resolved_config=fault_config,
+                    inputs=inputs,
+                )
+
+            # #924: unconditional, and deliberately NOT inside the observability gate below
+            # — that gate is ``llm_obs and correlation_context``, so a capture placed there
+            # would go missing in exactly the setups where the emission is unexplained. The
+            # discarded emission is logged under its own label, so a record counts it.
+            log_emission_shape(
+                label if retry_fact is None else f"{label}:cap_exhausted",
+                content,
+                response.completion_tokens,
+                response.reasoning_tokens,
+                response.reasoning_text,
+            )
+
+            # #1206: every seam, not the seven that happened to have the line. A record
+            # subset that does not announce itself is worse than an absent one — LangFuse
+            # read 26 of 35 calls on the 2026-08-31 pair and ``gens_per_task`` read exactly
+            # 1.00, which looks like an invariant and was the second call dropped each time.
+            if record:
+                self._record_generation(
+                    context,
+                    call_messages[-1].content,
+                    content,
+                    (time.perf_counter() - started) * 1000,
+                    chat_kwargs.get("model"),
+                    rendered=rendered,
+                    chat_response=response,
+                    reasoning=chat_kwargs.get("reasoning"),
+                    layers=layers,
+                    attempt=attempt,
+                )
+            if retry_fact is None:
+                return response, content
+            retried = True
+            call_messages = [*messages, ChatMessage(role="user", content=retry_fact)]
+
+    async def _cap_exhausted_fact(
+        self,
+        context: ExecutionContext,
+        response: ChatMessage,
+        content: str,
+        chat_kwargs: dict[str, Any],
+        label: str,
+    ) -> str | None:
+        """The retry's fact for a call that spent its whole budget and wrote nothing, or None
+        (1.8.2 plan §3.2 item 2, the R1 shape of #1372).
+
+        The provider's completion limit counts reasoning tokens: 1.8.1's cap-exhausted
+        emissions each report ``completion_tokens=12288`` (the squad profile's flat cap) with
+        ``chars=0`` and 44–49k reasoning characters — a qa self-eval pass, a qa repair and a
+        dev repair. The budget cannot be separated on this provider, so the call is asked
+        again once with what happened. Content that did come back, or a response under the
+        cap, is not a cap exhaustion and answers None; so does a handler with no renderer to
+        state the fact from its asset.
+        """
+        from squadops.cycles.emission_integrity import (
+            SIGNATURE_CAP_EXHAUSTED,
+            classify_empty_emission,
         )
 
-        # #1206: every seam, not the seven that happened to have the line. A record
-        # subset that does not announce itself is worse than an absent one — LangFuse
-        # read 26 of 35 calls on the 2026-08-31 pair and ``gens_per_task`` read exactly
-        # 1.00, which looks like an invariant and was the second call dropped each time.
-        if record:
-            self._record_generation(
-                context,
-                messages[-1].content,
-                content,
-                (time.perf_counter() - started) * 1000,
-                chat_kwargs.get("model"),
-                rendered=rendered,
-                chat_response=response,
-                reasoning=chat_kwargs.get("reasoning"),
-                layers=layers,
-                attempt=attempt,
+        cap = chat_kwargs.get("max_tokens")
+        if (
+            classify_empty_emission(len(content or ""), response.completion_tokens, cap)
+            != SIGNATURE_CAP_EXHAUSTED
+        ):
+            return None
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is None:
+            logger.warning(
+                "cap_exhausted: %s spent its %s-token budget and wrote nothing; there is no "
+                "request renderer to state the fact, so it is not asked again (1.8.2 item 2)",
+                label,
+                cap,
             )
-        return response, content
+            return None
+        fact = await renderer.render(
+            "request.cycle_cap_exhausted_retry",
+            {"completion_cap": str(cap), "completion_tokens": str(response.completion_tokens)},
+        )
+        logger.warning(
+            "cap_exhausted_retry handler=%s tokens=%s cap=%s — the whole budget went to "
+            "reasoning and nothing was written; asked again once with the fact (1.8.2 item 2)",
+            label,
+            response.completion_tokens,
+            cap,
+        )
+        return fact.content
 
     # Prompt-layer naming for _record_generation; BuilderAssembleHandler
     # overrides with "assemble" (its layer set is {role}-assemble).
