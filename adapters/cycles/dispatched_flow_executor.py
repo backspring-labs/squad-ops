@@ -289,6 +289,9 @@ class _Correction:
     #: #870: what happened to each task's PREVIOUS repair, so the next round is told
     #: rather than re-deriving the failure blind.
     rejection_carry: dict[str, list[str]] = dataclasses.field(default_factory=dict)
+    #: SIP-0096 §17a: the checks each task's PREVIOUS repair disputed — its next round's
+    #: analyzer runs before its repair, so a repair's dispute is read there or nowhere.
+    dispute_carry: dict[str, list[dict[str, Any]]] = dataclasses.field(default_factory=dict)
     #: #994: task ids whose repair was accepted and stored this run — a rewind after one
     #: discards known-good state, so the correction policy is told.
     accepted_repair_task_ids: set[str] = dataclasses.field(default_factory=set)
@@ -1997,6 +2000,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 interface_manifest=interface_manifest,
                 budget_guard=budget_guard,
                 repair_rejection_carry=state.correction.rejection_carry,
+                repair_dispute_carry=state.correction.dispute_carry,
                 bound_record=state.ownership.bound_record,
                 compliance_counter=state.ownership.compliance_counter,
                 accepted_repair_task_ids=state.correction.accepted_repair_task_ids,
@@ -3140,6 +3144,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         interface_manifest: Any = None,
         budget_guard: Callable[[], None] | None = None,
         repair_rejection_carry: dict[str, list[str]] | None = None,
+        repair_dispute_carry: dict[str, list[dict[str, Any]]] | None = None,
         bound_record: Any = None,
         compliance_counter: dict[str, int] | None = None,
         accepted_repair_task_ids: set[str] | None = None,
@@ -3219,6 +3224,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             interface_manifest=interface_manifest,
             budget_guard=budget_guard,
             repair_rejection_carry=repair_rejection_carry,
+            repair_dispute_carry=repair_dispute_carry,
             accepted_repair_task_ids=accepted_repair_task_ids,
             ledger=ledger,
         )
@@ -3401,6 +3407,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         repair_rejection_carry: dict[str, list[str]] | None,
         accepted_repair_task_ids: set[str] | None,
         ledger: RunLedger | None = None,
+        repair_dispute_carry: dict[str, list[dict[str, Any]]] | None = None,
     ) -> _CorrectionRound:
         """Block 3 — the budget, then the protocol.
 
@@ -3459,6 +3466,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # #994: whether an earlier round of this task already had a repair accepted
             # and stored — the fact the rewind guard needs and only this loop holds.
             has_accepted_repair=envelope.task_id in (accepted_repair_task_ids or set()),
+            # SIP-0096 §17a: read by the runner into this round's evidence, and replaced by
+            # this round's repair's disputes (run-lived, like `signature_state`).
+            dispute_carry=repair_dispute_carry,
             # RC3 (pf-23): re-resolve the workspace from the LIVE stored_artifacts
             # instead of the enriched envelope's copy captured once at the original
             # dispatch. stored_artifacts accumulates each attempt's repair outputs

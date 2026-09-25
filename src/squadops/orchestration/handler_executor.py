@@ -31,7 +31,10 @@ def _with_disputes(outputs: dict[str, Any] | None, context: ExecutionContext | N
     then failed. No dispute, no key: a response without the block disputes nothing."""
     if context is None or not context.disputed_checks:
         return outputs
-    return {**(outputs or {}), DISPUTED_CHECKS: list(context.disputed_checks)}
+    # Each dispute says which role made it: the row it contests is marked with it (change 2),
+    # and a failed result's outputs need not carry the role anywhere else.
+    disputes = [{**d, "by": context.role_id} for d in context.disputed_checks]
+    return {**(outputs or {}), DISPUTED_CHECKS: disputes}
 
 
 class HandlerExecutor(CapabilityExecutor):

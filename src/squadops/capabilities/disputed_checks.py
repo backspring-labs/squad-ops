@@ -84,6 +84,115 @@ def failing_row_identities(rows: Iterable[Any] | None) -> list[str]:
     return lines
 
 
+def contested_row_lines(rows: Iterable[Any] | None) -> list[str]:
+    """One line per contested row, for the analyzer's question (SIP-0096 §17a change 3): the
+    row's identity, why it failed, and who disputed it and why."""
+    lines = []
+    for row in rows or ():
+        contest = row.get("contested") if isinstance(row, Mapping) else None
+        if not isinstance(contest, Mapping):
+            continue
+        line = _identity(str(row.get("check")), _row_file(row), row.get("criterion_id"))
+        failed = str(row.get("reason") or "").strip()
+        by = contest.get("by") or "the producer"
+        lines.append(
+            f"{line} — failed: {failed or '(no reason given)'} — disputed by {by}: "
+            f"{contest.get('reason')}"
+        )
+    return lines
+
+
+def rule_contests(
+    rows: Iterable[Any] | None, rulings: Iterable[Any] | None
+) -> tuple[list[dict], list[dict], list[dict]]:
+    """The contested rows as the analyzer ruled them (SIP-0096 §17a changes 4–5):
+    ``(confirmed, rejected, unruled)``, each entry the row's identity, the dispute and the
+    ruling. A ruling names a row the way a dispute does, and a confirming ruling wins over a
+    rejecting one. A ruling that names no contested row decides nothing."""
+    contested = [r for r in rows or () if isinstance(r, Mapping) and r.get("contested")]
+    verdicts: dict[int, tuple[bool, str]] = {}
+    for ruling in rulings or ():
+        if not isinstance(ruling, Mapping) or not isinstance(ruling.get("dispute_confirmed"), bool):
+            continue
+        for i, row in enumerate(contested):
+            if dispute_names(ruling, row) and not verdicts.get(i, (False, ""))[0]:
+                verdicts[i] = (ruling["dispute_confirmed"], str(ruling.get("reason") or ""))
+    confirmed: list[dict] = []
+    rejected: list[dict] = []
+    unruled: list[dict] = []
+    for i, row in enumerate(contested):
+        entry = {
+            "check": str(row.get("check")),
+            "file": _row_file(row),
+            "criterion_id": row.get("criterion_id"),
+            "failed": row.get("reason"),
+            "contested": dict(row["contested"]),
+        }
+        if i not in verdicts:
+            unruled.append(entry)
+            continue
+        entry["ruling"] = verdicts[i][1]
+        (confirmed if verdicts[i][0] else rejected).append(entry)
+    return confirmed, rejected, unruled
+
+
+def contest_name(contest: Mapping[str, Any]) -> str:
+    """A confirmed contest's check as the run's terminal decision names it."""
+    name = str(contest.get("check"))
+    if contest.get("file"):
+        name += f" on {contest['file']}"
+    if contest.get("criterion_id"):
+        name += f" ({contest['criterion_id']})"
+    return name
+
+
+def dispute_names(dispute: Mapping[str, Any], row: Mapping[str, Any]) -> bool:
+    """Whether ``dispute`` names ``row``: the same check, with or without the ``acceptance:``
+    prefix, and the same file and criterion wherever the dispute gives them."""
+    if _bare(row.get("check")) != _bare(dispute.get("check")):
+        return False
+    if dispute.get("file") and str(_row_file(row) or "") != str(dispute["file"]):
+        return False
+    criterion = dispute.get("criterion_id")
+    return not criterion or str(row.get("criterion_id") or "") == str(criterion)
+
+
+def mark_contested(
+    rows: Iterable[Any] | None, disputes: Iterable[Any] | None
+) -> tuple[list[Any], list[dict[str, Any]]]:
+    """``rows`` with ``contested: {by, reason}`` on each blocking-failed row a dispute names,
+    and the disputes that named none (SIP-0096 §17a change 2).
+
+    Only a blocking failure can be contested: a row that passed, or failed only as advice,
+    has nothing to dispute, so a dispute naming only such rows is unmatched. A dispute
+    without file or criterion names every failing row of its check. Where two disputes name
+    one row, the first stands. Pure: the rows handed in are not changed.
+    """
+    marked = list(rows or ())
+    unmatched: list[dict[str, Any]] = []
+    for dispute in disputes or ():
+        if not isinstance(dispute, Mapping) or not dispute.get("reason"):
+            continue
+        named = False
+        for i, row in enumerate(marked):
+            if not isinstance(row, Mapping) or not row_is_blocking_failure(row):
+                continue
+            if not dispute_names(dispute, row):
+                continue
+            named = True
+            if not row.get("contested"):
+                contest = {"by": dispute.get("by"), "reason": str(dispute["reason"])}
+                marked[i] = {**row, "contested": contest}
+        if not named:
+            unmatched.append(dict(dispute))
+    return marked, unmatched
+
+
+def _bare(check: Any) -> str:
+    name = str(check or "")
+    return name.removeprefix(_TYPED_ROW_PREFIX)
+
+
 def _row_file(row: Mapping[str, Any]) -> str | None:
     params = row.get("params")
     return (params.get("file") if isinstance(params, Mapping) else None) or row.get("file")

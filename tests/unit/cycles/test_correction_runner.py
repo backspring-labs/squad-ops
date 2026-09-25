@@ -7386,3 +7386,250 @@ class TestFillRepairAlsoTargetsTheOwnAdditiveSuite(TestCorrectionRunnerStandalon
         assert [e.task_type for e in repairs] == ["qa.test_repair"], [e.task_type for e in repairs]
         assert repairs[0].inputs["expected_artifacts"] == [self._SHELL, self._SUITE]
         assert repairs[0].metadata["role"] == "qa"
+
+
+class TestARepairsDisputeIsCarriedToTheNextRound:
+    """SIP-0096 §17a change 2: a repair's disputes, carried to the round that can read them.
+    The standalone harness's helpers are borrowed, not inherited, so its tests do not run here
+    a second time."""
+
+    _make_runner = TestCorrectionRunnerStandalone._make_runner
+    _failed_envelope = TestCorrectionRunnerStandalone._failed_envelope
+
+    async def test_a_repairs_dispute_is_read_by_the_next_rounds_analyzer(self, cycle):
+        """SIP-0096 §17a, #1581's shape, entered at ``run_correction_protocol`` — the call the
+        executor makes each round — with the run-lived carry the executor threads. Round 1's
+        dev repair answers that the suite, not the app, is wrong; round 2 diagnoses the task's
+        next failure.
+
+        Bug this catches: a repair's dispute read nowhere. Each round re-dispatches the failed
+        task and its analyzer runs before its repair, so a dispute the runner does not carry
+        into the next round's evidence is never adjudicated."""
+        analyzed: list[dict] = []
+        dispute = {
+            "check": "tests_pass",
+            "reason": "the suite asserts `title`, which the PRD drops",
+            "by": "dev",
+        }
+
+        def responder(envelope):
+            if envelope.task_type == "data.analyze_failure":
+                analyzed.append(envelope.inputs["failure_evidence"])
+                outputs = {"classification": "work_product", "analysis_summary": "suite fails"}
+            elif envelope.task_type == "governance.correction_decision":
+                outputs = {
+                    "correction_path": "patch",
+                    "decision_rationale": "repair it",
+                    "affected_task_types": ["development.implement"],
+                }
+            else:
+                outputs = {"artifacts": [], "disputed_checks": [dispute]}
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs=outputs)
+
+        runner, *_ = self._make_runner(responder)
+        tests_row = {"check": "tests_pass", "passed": False, "reason": "1 failed"}
+        failed = TaskResult(
+            task_id="task_failed",
+            status="FAILED",
+            error="tests failed",
+            outputs={"validation_result": {"checks": [tests_row]}},
+        )
+        carry: dict = {}
+        for attempt in (0, 1):
+            await runner.run_correction_protocol(
+                run_id="run_001",
+                cycle=cycle,
+                envelope=self._failed_envelope(),
+                result=failed,
+                correction_attempts=attempt,
+                prior_outputs={},
+                all_artifact_refs=[],
+                stored_artifacts=[],
+                completed_task_ids=[],
+                plan_delta_refs=[],
+                dispute_carry=carry,
+            )
+
+        first, second = analyzed
+        assert "contested_rows" not in first, "round 1 has no repair behind it yet"
+        assert second["contested_rows"] == [
+            {**tests_row, "contested": {"by": "dev", "reason": dispute["reason"]}}
+        ]
+        assert carry == {"task_failed": [dispute]}
+
+
+class TestAConfirmedDisputeEndsTheChainBeforeItsRepair:
+    """SIP-0096 §17a change 4, entered at ``run_correction_protocol``: a contested row the
+    analyzer confirms ends the chain before any repair, refunded and named on the run's
+    terminal decision; one it does not confirm proceeds exactly as an uncontested failure."""
+
+    _make_runner = TestCorrectionRunnerStandalone._make_runner
+    _failed_envelope = TestCorrectionRunnerStandalone._failed_envelope
+
+    _ROW = {
+        "check": "acceptance:declared_imports",
+        "params": {"file": "frontend/src/views/RunList.jsx"},
+        "status": "failed",
+        "passed": False,
+        "reason": "unresolved import '@/lib/api'",
+        "criterion_id": "vc-list",
+    }
+
+    async def _round(self, cycle, rulings):
+        from squadops.cycles.run_ledger import RunLedger
+
+        dispatched: list[str] = []
+
+        def responder(envelope):
+            dispatched.append(envelope.task_type)
+            if envelope.task_type == "data.analyze_failure":
+                outputs = {
+                    "classification": "work_product",
+                    "analysis_summary": "the alias import was refused",
+                    "dispute_rulings": rulings,
+                }
+            elif envelope.task_type == "governance.correction_decision":
+                outputs = {
+                    "correction_path": "patch",
+                    "decision_rationale": "repair it",
+                    "affected_task_types": ["development.implement"],
+                }
+            else:
+                outputs = {"artifacts": []}
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs=outputs)
+
+        runner, _registry, vault, _bus = self._make_runner(responder)
+        ledger = RunLedger()
+        failed = TaskResult(
+            task_id="task_failed",
+            status="FAILED",
+            error="typed checks failed",
+            outputs={
+                "validation_result": {"checks": [self._ROW]},
+                "disputed_checks": [
+                    {"check": "declared_imports", "reason": "the alias is declared", "by": "dev"}
+                ],
+            },
+        )
+        raised = None
+        try:
+            await runner.run_correction_protocol(
+                run_id="run_001",
+                cycle=cycle,
+                envelope=self._failed_envelope(),
+                result=failed,
+                correction_attempts=1,
+                prior_outputs={},
+                all_artifact_refs=[],
+                stored_artifacts=[],
+                completed_task_ids=[],
+                plan_delta_refs=[],
+                ledger=ledger,
+            )
+        except Exception as exc:  # the terminal path raises; the other returns
+            raised = exc
+        return dispatched, raised, ledger, vault
+
+    async def test_a_confirmed_dispute_ends_the_chain_refunded_and_named(self, cycle):
+        """Bug caught: a confirmed false positive repaired anyway — every round spent on correct
+        work the check will refuse again, which is the loop §17a exists to end — or ended with
+        nothing naming the check the operator must decide on."""
+        ruling = {
+            "check": "acceptance:declared_imports",
+            "file": "frontend/src/views/RunList.jsx",
+            "dispute_confirmed": True,
+            "reason": "tsconfig.json declares @/lib",
+        }
+        dispatched, raised, ledger, vault = await self._round(cycle, [ruling])
+
+        assert "development.correction_repair" not in dispatched, "no repair after a confirmation"
+        assert raised is not None and raised.terminal.termination_reason == "contested_check"
+        assert raised.terminal.contested_checks == (
+            "acceptance:declared_imports on frontend/src/views/RunList.jsx (vc-list)",
+        )
+        (refund,) = ledger.refunded_rounds
+        assert (refund.task_id, refund.round_index, refund.reason) == (
+            "task_failed",
+            1,
+            "confirmed_dispute",
+        )
+        (stored,) = [
+            json.loads(c.args[1])
+            for c in vault.store.call_args_list
+            if c.args[0].artifact_type == "correction_termination"
+        ]
+        assert stored["reason"] == "contested_check"
+        assert stored["contested_checks"][0]["ruling"] == "tsconfig.json declares @/lib"
+
+    @pytest.mark.parametrize(
+        "rulings",
+        [
+            [
+                {
+                    "check": "acceptance:declared_imports",
+                    "dispute_confirmed": False,
+                    "reason": "the alias is not declared anywhere",
+                }
+            ],
+            [{"check": "frontend_build", "dispute_confirmed": True, "reason": "not contested"}],
+            [],
+        ],
+        ids=["ruled against", "confirms a row nobody contested", "not ruled on"],
+    )
+    async def test_a_dispute_not_confirmed_proceeds_as_the_failure_it_disputes(
+        self, cycle, rulings
+    ):
+        """Bug caught: a rejected — or unruled — dispute ending the chain, which would hand any
+        producer an exit from every check by disputing it; or a ruling that names no contested
+        row confirming one that does."""
+        dispatched, raised, ledger, _vault = await self._round(cycle, rulings)
+
+        assert raised is None, raised
+        assert "development.correction_repair" in dispatched
+        assert ledger.refunded_rounds == ()
+
+    async def test_the_driver_reads_the_round_as_the_runner_ruled_it(self, cycle, caplog):
+        """Change 5, from the runner's own line to the driver's readout — not a line typed
+        here. Bug caught: the runner logging a shape the driver does not parse, or a filter that
+        drops the line before the reader sees it (#1631's shape) — every contested round would
+        read as none."""
+        import importlib.util
+        import sys
+
+        path = (
+            Path(__file__).resolve().parents[3] / "scripts" / "dev" / "verification_set_driver.py"
+        )
+        spec = importlib.util.spec_from_file_location("verification_set_driver", path)
+        driver = importlib.util.module_from_spec(spec)
+        sys.modules["verification_set_driver"] = driver
+        spec.loader.exec_module(driver)
+        ruling = {
+            "check": "acceptance:declared_imports",
+            "dispute_confirmed": True,
+            "reason": "tsconfig.json declares @/lib",
+        }
+        with caplog.at_level("INFO"):
+            await self._round(cycle, [ruling])
+        lines = [
+            f"2026-09-25 00:00:00,000 INFO adapters.cycles.correction_runner: {r.getMessage()}"
+            for r in caplog.records
+        ]
+
+        texture = driver.texture_from_logs(driver._runtime_lines_of_interest(lines))
+
+        name = "acceptance:declared_imports on frontend/src/views/RunList.jsx (vc-list)"
+        assert texture["contested_rows"] == [
+            {
+                "task": "task_failed",
+                "round": 1,
+                "confirmed": 1,
+                "rejected": 0,
+                "unruled": 0,
+                "unmatched": 0,
+                "by": ["dev"],
+                "checks": [f"{name}: confirmed"],
+            }
+        ]
+        assert driver._render_contests(texture["contested_rows"]) == (
+            f"1 / 0 / 0 / 0 (1 dev); confirmed: {name}"
+        )

@@ -278,7 +278,7 @@ Acceptance of the SIP is all phases (SIP-0089/0090 precedent).
 
 ## 17. Post-implementation amendments
 
-### 17a. 2026-09-15 — a contested result: the producer's dispute becomes evidence (proposed; change 1 built; targeted for 1.8.2)
+### 17a. 2026-09-15 — a contested result: the producer's dispute becomes evidence (built — the as-built paragraphs below record what shipped; 1.8.2)
 
 **Status.** Drafted on the owner's ask of 2026-09-15 and targeted for 1.8.1 by the owner's
 ruling of the same day; **re-targeted to 1.8.2 on 2026-09-17** by the owner's ruling on the
@@ -380,6 +380,100 @@ dispute names `file`, not `subject`. A row's `subject` is the plan-task id that 
 (`CheckResult.subject`, §6.3), which the producer does not see. It is implied by which task
 disputed, so matching (change 2) takes it from the task. `file` is what separates one check run
 on several files: a typed row carries it as `params.file`.
-`check` and `reason` are required; an entry without either disputes nothing and is logged. **Not
-yet built:** changes 2–5. Nothing reads `disputed_checks` yet, so this change credits nothing,
-blocks nothing and routes nothing.
+`check` and `reason` are required; an entry without either disputes nothing and is logged.
+
+**As built — change 2 (2026-09-24).** The handler executor stamps each dispute with the role
+that made it (`by`), because a failed result's outputs don't always carry the role elsewhere.
+`mark_contested` puts `contested: {by, reason}` on each **blocking-failed** row a dispute names:
+- the same check, with or without the `acceptance:` prefix
+- the same `params.file` and `criterion_id` wherever the dispute gives them
+
+A row that passed, or failed only as advice, has nothing to contest, so a dispute naming only
+such rows is `unmatched`. It marks at the two readers of a task's rows, over the same outputs:
+- **`normalize_task_checks`**, the §6.1 producer adapter. The result gains
+  `CheckResult.contested` and the roll-up `FailedCheck.contested`, stored with the summary
+  (`failed_detail[].contested`). A dispute of `tests_pass` rides the result synthesized from
+  `test_result`, since the row itself is skipped. The family and the verdict are unchanged,
+  and a test holds the verdict equal with and without a contest.
+- **`build_failure_evidence`**, where the analyzer reads. Contested rows are carried in their
+  own block, `contested_rows` (change 3's question is asked of it). Disputes that named no
+  failing row go in `unmatched_disputes`, recorded and read as nothing. `contested` is a
+  structural row key, so it never enters a derived reason or the correction signature.
+
+**A repair's dispute is carried to the next round.** Each round re-dispatches the failed task
+and runs its analyzer before its repair, so a repair's dispute (#1581's shape) is read in the
+next round or nowhere. The repair outcome collects the steps' disputes. The runner writes them
+to a run-lived `dispute_carry`, which the executor threads the way it threads `signature_state`
+(#435), and the next round marks them onto its evidence beside the task's own. A round reads its
+own predecessor's: the carry is replaced each round, not appended.
+
+**As built — change 3 (2026-09-24).** When the evidence carries `contested_rows`, the analyzer's
+request gains one section, `request.data_analyze_failure_contested_appendix`. It lists each
+contested row (its identity, why it failed, who disputed it and why) and asks one question of
+each: does the evidence support the dispute? Its task-type fragment names the answer as an
+optional field. The answer is `dispute_rulings` on the analysis output:
+`{check, file?, criterion_id?, dispute_confirmed, reason}`, one per contested row. This
+diverges from the text above, which names a single `dispute_confirmed`: an analysis can carry
+several contested rows, so the answer is per row.
+
+The rulings are parsed **leniently**. A ruling without a boolean `dispute_confirmed`, a `check`
+and a `reason` is dropped and logged, never a reason to reject the analysis: rejecting it would
+send the round to NEEDS_REPLAN for want of an answer that was only ever optional. An analysis
+with no contested row is asked nothing new, and its outputs carry no `dispute_rulings` key.
+
+**Not asked where there is no analyzer.** A profile whose correction steps omit `analyze`
+(Solo's `[repair]`, SIP-0108 §10i) records its contests (change 2) and never adjudicates them;
+each proceeds as an uncontested failure.
+
+**As built — change 4 (2026-09-24).** After the diagnosis and before any repair, the runner
+reads the rulings against the contested rows (`rule_contests`: a ruling names a row the
+way a dispute does). If any contested row is confirmed, the chain ends there, through the
+termination path `plan_defect` already uses (#435):
+- **a typed `CorrectionTermination`** with a new reason, `contested_check`, stored as the run's
+  `correction_termination` artifact with each confirmed contest: identity, dispute, ruling
+- **the round refunded**: a `RefundedRound` with a new reason, `confirmed_dispute`, and the
+  `correction attempt N refunded: …` line the driver already reads
+- **the run's `RunTerminalDecision`** (`correction_terminated` / `contested_check`) naming the
+  confirmed checks in a new field, `contested_checks`
+- **attribution:** `contested_check` is attributed `criteria_or_contract_failure` (SIP-0108
+  §4.2), the check-defect class change 5 names
+
+The failing row stays failed and the verdict stays whatever the rows make it. The operator
+decides, as for a residual `blocked_unverified` (§6.5).
+
+**Why the chain ends rather than the row being set aside.** A confirmed dispute says the check
+fails on correct work. A repair can't pass it, so every further round would be spent on work the
+check refuses again, which is the loop this amendment exists to end. A verifier that discounted
+the row would be turning a failure into a pass, and no agent may do that. So when a round's
+confirmed rows sit beside uncontested failures, it still ends: the uncontested failures are named
+in the same evidence, and the operator reads both.
+
+A contest the analyzer **did not confirm** (ruled against, not ruled on, or ruled on by a
+ruling that names no contested row) proceeds exactly as an uncontested failure. The lead's
+decision step already receives both the contested rows (`failure_evidence`) and the rulings
+(`failure_analysis`).
+
+**Wrong check, or wrong artifact.** #1581's dev answered that the qa suite, not its file, was
+wrong. That isn't a wrong check: `tests_pass` did its job on another role's artifact, and a qa
+repair can fix it. Confirming it would end a chain that a repair could have converged. So the
+analyzer's question says so: a failure caused by another artifact is ruled **rejected**, and that
+artifact is named in `implicated_files`. The own-artifact routing already acts on that name
+(`analyzer_and_decision_unanimous`, the routing half of #1581, fixed earlier). The dispute is
+still heard: its reason is in the evidence the analyzer reads and the verdict is recorded. It
+just doesn't end the chain.
+
+**As built — change 5 (2026-09-24).** The runner logs one line per round that carried a dispute,
+whatever came of it:
+
+    contested_rows task=<id> round=<n> confirmed=<c> rejected=<r> unruled=<u> unmatched=<m> by=<roles> — <check>: <verdict>; …
+
+The verification-set driver reads it as `loop_texture.contested_rows`, one entry per round.
+The record row shows confirmed / rejected / unruled / naming-no-failing-row totals, by role,
+and names each confirmed check. So a check confirmed across cycles reads as the check defect it
+is (the `contested_check` termination is attributed `criteria_or_contract_failure`), and a
+producer that disputes everything is visible too. The line has a real-line sample in the
+marker self-check (#1632), and a test feeds the runner's own line to the driver's reader. No
+issue is opened automatically. **Diverges from the text above**, which has the readout open the
+issue: the driver never writes to GitHub, because it's a measurement tool run against a public
+repository. It names the confirmed check, and whoever reads the readout files the issue, as for
+every other readout. The half that matters holds: the cycle opens nothing.

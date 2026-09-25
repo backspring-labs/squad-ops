@@ -88,6 +88,10 @@ class CorrectionTerminationReason:
     produced by the A4 lever). Constants-class pattern, like ``TaskOutcome``."""
 
     PLAN_DEFECT = "plan_defect"
+    #: SIP-0096 §17a change 4: the analyzer confirmed a producer's dispute — the check, not
+    #: the work, is the defect, so no repair can pass it. Routed to the operator, as
+    #: ``blocked_unverified`` is (§6.5); no agent waives it.
+    CONTESTED_CHECK = "contested_check"
     EXHAUSTED = "exhausted"
     CONVERGED = "converged"
     INFRASTRUCTURE_FAILURE = "infrastructure_failure"
@@ -123,6 +127,9 @@ class CorrectionTermination:
     #: failures, recorded so a reader can tell the two cases apart without the round's logs.
     cleared_signature: tuple[str, ...] = ()
     added_signature: tuple[str, ...] = ()
+    #: SIP-0096 §17a: for a ``contested_check`` termination, each confirmed contest — the
+    #: row's identity, the dispute and the analyzer's ruling.
+    contested_checks: tuple[dict, ...] = ()
 
     def to_dict(self) -> dict:
         return {
@@ -135,4 +142,5 @@ class CorrectionTermination:
             "first_seen_round": self.first_seen_round,
             "terminal_round": self.terminal_round,
             "supporting_artifact_ids": list(self.supporting_artifact_ids),
+            "contested_checks": [dict(c) for c in self.contested_checks],
         }
