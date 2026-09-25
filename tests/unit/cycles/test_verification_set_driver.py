@@ -5586,3 +5586,113 @@ class TestEveryCollectorMarkerSurvivesItsFilter:
         hides that its reader went away), or a key whose reader has no sample."""
         lines = [line for group in getattr(driver, samples).values() for line in group]
         assert [k for k in getattr(driver, keys) if not any(k in line for line in lines)] == []
+
+
+#: From this line on, a counting set whose pin equals an earlier line's must say why (1.8.2 plan
+#: §3.2 item 5). Earlier lines carried pins without one, and are history.
+_PIN_STALENESS_SINCE = (1, 8, 2)
+
+
+def _line_version(line: str) -> tuple[int, int, int]:
+    major, minor, patch = line.split("-")[:3]
+    return int(major), int(minor), int(patch)
+
+
+def carried_pin_problems(configs: dict[str, object]) -> list[str]:
+    """``configs``: set-config file name → its loaded SetConfig, every counting set of every
+    line. A pin a line from ``_PIN_STALENESS_SINCE`` on shares with an EARLIER line, carried
+    with no ``pins_unmoved_because``, is named with the line it matches."""
+    problems: list[str] = []
+    for name, cfg in sorted(configs.items()):
+        version = _line_version(name)
+        if version < _PIN_STALENESS_SINCE or cfg.pins_unmoved_because:
+            continue
+        for pin in ("expected_config_hash_prefix", "expected_squad_snapshot_prefix"):
+            mine = getattr(cfg, pin)
+            earlier = sorted(
+                other
+                for other, ocfg in configs.items()
+                if _line_version(other) < version
+                and mine
+                and getattr(ocfg, pin)
+                and (getattr(ocfg, pin).startswith(mine) or mine.startswith(getattr(ocfg, pin)))
+            )
+            if earlier:
+                problems.append(
+                    f"{name}: {pin} {mine} is {earlier[-1]}'s — re-read it from this line's "
+                    "deploy, and if it truly did not move say why in pins_unmoved_because "
+                    "(1.8.1 rev 5: a carried hash refused the first counted roll)"
+                )
+    return problems
+
+
+class TestAPinCarriedFromAnEarlierLineSaysWhy:
+    """1.8.2 plan §3.2 item 5. 1.8.1's counted configs were built from 1.8.0's: the deploy
+    commit, the image ids and the snapshot were updated and the config hash was not. #1614 had
+    moved the resolved config, so the first counted roll launched and was refused (rev 5). A
+    pin that legitimately did not move is fine; one nobody re-read is not, and the two look
+    identical in the file unless the registration says which it is."""
+
+    def test_the_committed_counting_sets(self, driver):
+        configs = {name: driver.load_set_config(_SETS / name) for name, _, _ in _COUNTING_SET_FILES}
+        assert carried_pin_problems(configs) == []
+
+    def _cfg(self, driver, tmp_path, name, hash_prefix, snapshot, **extra):
+        base = {
+            "name": name,
+            "project": "group_run",
+            "squad_profile": "full-38",
+            "request_profile": "validated-fullstack",
+            "gate_name": "g",
+            "gate_notes": "g",
+            "launch_notes": "l",
+            "shakeout_notes": "s",
+            "n_rolls": 4,
+            "expected_config_hash_prefix": hash_prefix,
+            "expected_squad_snapshot_prefix": snapshot,
+            **extra,
+        }
+        p = tmp_path / f"{name}.yaml"
+        p.write_text(yaml.safe_dump(base))
+        return driver.load_set_config(p)
+
+    def test_the_rev_5_shape_is_named_and_an_explained_pin_passes(self, driver, tmp_path):
+        """Bug this catches: 1.8.1 rev 5 one line later, the hash copied from the previous
+        line. The snapshot that truly did not move passes once the config says why."""
+        prior = self._cfg(
+            driver, tmp_path, "1-8-1-fastapi-react", "58eed2c52e1f", "2d8d4feb3519a7ec"
+        )
+        carried = self._cfg(driver, tmp_path, "1-8-2-fastapi-react", "58eed2c52e1f", "9999aaaa")
+        explained = self._cfg(
+            driver,
+            tmp_path,
+            "1-8-2-nextjs",
+            "0123456789ab",
+            "2d8d4feb3519a7ec",
+            pins_unmoved_because="full-38 unchanged since 1.8.1; read from deploy A's CLI",
+        )
+        configs = {
+            "1-8-1-fastapi-react.yaml": prior,
+            "1-8-2-fastapi-react.yaml": carried,
+            "1-8-2-nextjs.yaml": explained,
+        }
+
+        problems = carried_pin_problems(configs)
+
+        assert problems == [
+            "1-8-2-fastapi-react.yaml: expected_config_hash_prefix 58eed2c52e1f is "
+            "1-8-1-fastapi-react.yaml's — re-read it from this line's deploy, and if it truly "
+            "did not move say why in pins_unmoved_because (1.8.1 rev 5: a carried hash refused "
+            "the first counted roll)"
+        ]
+
+    def test_a_line_before_the_rule_and_its_own_arms_are_not_compared(self, driver, tmp_path):
+        """A line's arms share pins by design (the window's squad arm is the React set's
+        config), and lines before 1.8.2 are history."""
+        configs = {
+            "1-8-0-fastapi-react.yaml": self._cfg(driver, tmp_path, "a", "3921c5a62106", "5757"),
+            "1-8-1-fastapi-react.yaml": self._cfg(driver, tmp_path, "b", "3921c5a62106", "5757"),
+            "1-8-2-fastapi-react.yaml": self._cfg(driver, tmp_path, "c", "aaaa11112222", "bbbb"),
+            "1-8-2-window-squad.yaml": self._cfg(driver, tmp_path, "d", "aaaa11112222", "bbbb"),
+        }
+        assert carried_pin_problems(configs) == []

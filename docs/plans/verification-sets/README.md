@@ -15,6 +15,10 @@ superseded at the cut; this is not.
 - A **set config** (`<line>-<stack>.yaml`) carries the fixed parameters the driver asserts:
   project, squad and request profiles, overrides, the expected config-hash and
   squad-snapshot prefixes, the frozen deploy commit and its seven image ids, the gate notes.
+  Every pin is **re-read from this line's deploy, never carried from the last line's config**:
+  1.8.1's counted configs carried 1.8.0's config hash, which #1614 had moved, and the first
+  counted roll was refused (rev 5). From 1.8.2 on, a pin equal to an earlier line's must say
+  why it did not move in `pins_unmoved_because`, or the set's test fails.
 - A **roll** is one counted cycle. The driver asserts the frozen image ids, pins the launch
   checkout's HEAD on roll 1 and holds it, and asserts the config hash; a mismatch records and
   stops. It also refuses to launch when the squad profile's live snapshot does not carry the
