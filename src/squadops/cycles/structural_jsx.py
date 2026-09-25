@@ -43,6 +43,12 @@ its ``}`` starts one, and at least one line lies between.
 from __future__ import annotations
 
 import logging
+import multiprocessing
+import threading
+from collections.abc import Callable
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
+from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass
 from functools import cache
 from typing import Any
@@ -117,10 +123,71 @@ def _first_error(node: Any) -> Any | None:
     return node
 
 
+# ---------------------------------------------------------------------------
+# Containment (#1626): tree-sitter is native code, and a parse can kill the process
+# ---------------------------------------------------------------------------
+
+#: Seconds one parse may take in the worker before it is treated as hung. A parse of a whole
+#: view is milliseconds; this only bounds a parser that stopped answering.
+PARSE_TIMEOUT_SECONDS = 30.0
+#: What the syntax check answers when the parser died on the content: not parseable, never
+#: "parses" (fail-closed, §18).
+PARSER_DIED = "the parser died on this content (a native fault, #1626); treated as unparseable"
+
+_worker: ProcessPoolExecutor | None = None
+_worker_lock = threading.Lock()
+
+
+def _in_worker(fn: Callable[..., Any], *args: Any) -> tuple[bool, Any]:
+    """``(True, fn(*args))`` computed in the parse worker, or ``(False, None)`` when the worker
+    died or hung on it (#1626).
+
+    1.8.1 deploy A's qa agent segfaulted inside tree-sitter on one repair input and took the
+    whole agent with it: no traceback, no result, a run left ``running``. Parsing in a
+    separate process turns that into a structural miss the repair path already handles, and
+    the next call gets a fresh worker. One long-lived worker, spawned rather than forked (the
+    agent is multi-threaded), so the cost is paid once per process and once per crash.
+    """
+    global _worker
+    with _worker_lock:
+        if _worker is None:
+            _worker = ProcessPoolExecutor(
+                max_workers=1, mp_context=multiprocessing.get_context("spawn")
+            )
+        worker = _worker
+    try:
+        return True, worker.submit(fn, *args).result(timeout=PARSE_TIMEOUT_SECONDS)
+    except (BrokenProcessPool, FutureTimeout) as exc:
+        logger.warning(
+            "structural parse worker %s on %s — the content is treated as unparseable and the "
+            "next parse starts a fresh worker (#1626)",
+            "hung" if isinstance(exc, FutureTimeout) else "died",
+            getattr(fn, "__name__", fn),
+        )
+        with _worker_lock:
+            if _worker is worker:
+                _worker = None
+        # Taken before shutdown, which drops them: a hung child must be killed, or it holds
+        # this process's exit until its parse returns.
+        processes = list((getattr(worker, "_processes", None) or {}).values())
+        worker.shutdown(wait=False, cancel_futures=True)
+        for process in processes:
+            process.kill()
+        return False, None
+
+
 def jsx_syntax_error(path: str, content: str) -> str | None:
     """``None`` when ``content`` parses under the path's grammar, else where it does not (§18).
 
-    A path no grammar here reads has no validator and answers ``None``."""
+    A path no grammar here reads has no validator and answers ``None``. Parsed in the worker
+    (#1626); a parser that dies on the content answers ``PARSER_DIED``, never ``None``."""
+    if _grammar_for(path) is None:
+        return None
+    ok, result = _in_worker(_syntax_error_here, path, content)
+    return result if ok else PARSER_DIED
+
+
+def _syntax_error_here(path: str, content: str) -> str | None:
     grammar = _grammar_for(path)
     if grammar is None:
         return None
@@ -282,8 +349,16 @@ def jsx_entities(content: str, path: str = "module.jsx") -> tuple[JsxEntity, ...
     A tree whose nodes report rows outside the content is not a clean parse either (#1626),
     and it is the shape that killed the process rather than returning: the caller gets
     ``None`` — a structural-parse miss the repair path already handles — instead of a
-    SIGSEGV that no correction budget, deadlock rule or retest can terminate.
+    SIGSEGV that no correction budget, deadlock rule or retest can terminate. The parse runs in
+    the worker, so a SIGSEGV the row check does not anticipate kills the worker, not the agent,
+    and answers ``None`` the same way.
     """
+    ok, result = _in_worker(_jsx_entities_here, content, path)
+    return result if ok else None
+
+
+def _jsx_entities_here(content: str, path: str) -> tuple[JsxEntity, ...] | None:
+    """The reading itself, in the worker process."""
     try:
         return _jsx_entities(content, path)
     except _CorruptParse as exc:

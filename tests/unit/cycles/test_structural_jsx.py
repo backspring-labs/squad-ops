@@ -270,14 +270,15 @@ class TestACorruptParseTreeIsNotReadFurther:
 
     def test_jsx_entities_returns_None_rather_than_propagating(self, monkeypatch):
         """The contract callers already handle: `None` means the content does not parse
-        cleanly. A corrupt tree is not a clean parse."""
+        cleanly. A corrupt tree is not a clean parse. Tested on the reading the parse worker
+        runs (#1626 containment), since a patch in this process never reaches the worker."""
         import squadops.cycles.structural_jsx as m
 
         def _boom(content, path):
             raise m._CorruptParse("node row 69421703888908 is outside the 396-row content")
 
         monkeypatch.setattr(m, "_jsx_entities", _boom)
-        assert m.jsx_entities("const a = 1\n", "x.ts") is None
+        assert m._jsx_entities_here("const a = 1\n", "x.ts") is None
 
     def test_a_sound_tree_still_yields_its_entities(self):
         """The control: the guard must not cost ordinary content its entities."""
@@ -286,3 +287,55 @@ class TestACorruptParseTreeIsNotReadFurther:
         entities = jsx_entities("export function a() {\n  return 1\n}\n", "x.ts")
         assert entities, "a sound parse must still produce entities"
         assert any("a" in e.selector for e in entities)
+
+
+def _die_like_1626() -> None:
+    """What the qa agent did on deploy A (#1626): a native fault, no traceback."""
+    import os
+    import signal
+
+    os.kill(os.getpid(), signal.SIGSEGV)
+
+
+def _never_answer() -> None:
+    import time
+
+    time.sleep(3600)
+
+
+class TestANativeFaultKillsTheWorkerNotTheAgent:
+    """#1626 (1.8.2 item 3): tree-sitter is native code, and on one repair input it segfaulted
+    the qa agent itself — no traceback, no result, a run left `running`. The parse now runs in
+    a worker process: a fault there is a structural miss the repair path already handles."""
+
+    def test_a_segfault_in_the_worker_answers_and_the_next_parse_gets_a_fresh_one(self):
+        """Entered at the worker seam every structural read goes through, with the worker
+        really killed by SIGSEGV. Bug this catches: the fault reaching the caller (the agent
+        dies), or a dead worker left in place so every later parse fails too."""
+        import squadops.cycles.structural_jsx as m
+
+        assert m._in_worker(_die_like_1626) == (False, None)
+        entities = m.jsx_entities("export function a() {\n  return 1\n}\n", "x.ts")
+        assert entities and entities[0].selector == "function:a"
+
+    def test_a_hung_worker_is_bounded_and_replaced(self, monkeypatch):
+        import squadops.cycles.structural_jsx as m
+
+        monkeypatch.setattr(m, "PARSE_TIMEOUT_SECONDS", 1.0)
+        assert m._in_worker(_never_answer) == (False, None)
+        assert m.jsx_syntax_error("a.ts", "const a = 1\n") is None
+
+    @pytest.mark.parametrize(
+        ("read", "expected"),
+        [
+            (lambda m: m.jsx_entities("const a = 1\n", "x.ts"), None),
+            (lambda m: m.jsx_syntax_error("x.ts", "const a = 1\n"), "PARSER_DIED"),
+        ],
+    )
+    def test_a_parse_the_worker_did_not_finish_fails_closed(self, monkeypatch, read, expected):
+        """Bug this catches: a dead parse read as "parses" (the syntax check answering None
+        lets unparseable content through) or as an empty entity list (a real answer)."""
+        import squadops.cycles.structural_jsx as m
+
+        monkeypatch.setattr(m, "_in_worker", lambda fn, *a: (False, None))
+        assert read(m) == (m.PARSER_DIED if expected == "PARSER_DIED" else expected)
