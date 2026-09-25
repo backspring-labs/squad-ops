@@ -1017,6 +1017,9 @@ def preflight(cfg: SetConfig, *, counting: bool, identity: dict[str, str]) -> li
     # built" is the only evidence that the deploy carries the code the set claims, so an
     # error here stops the launch rather than riding into the record for someone to notice.
     problems.extend(loaded_check_problems(identity))
+    # #1632: every collector's marker survives its window's filter and feeds its field, so a
+    # dropped marker refuses here by name instead of reading NO through a whole set (#1631).
+    problems.extend(marker_self_check_problems())
     leases = psql("select count(*) from focus_leases where released_at is null;")
     if leases != "0":
         problems.append(f"§2.6: {leases} unreleased focus leases (must be 0) — #529 deadlock risk")
@@ -2242,41 +2245,43 @@ def runtime_log_window(since: str, until: str | None = None) -> list[str]:
     return _runtime_lines_of_interest(docker_logs(RUNTIME_API_CONTAINER, since, until))
 
 
+#: The runtime-api lines the loop's collectors read. Every key is exercised by a sample in
+#: ``RUNTIME_MARKER_SAMPLES`` and every collector field is fed by one (#1632).
+_RUNTIME_LINE_KEYS = (
+    "correction_repair_target",
+    "correction_repair_locus",
+    "repair emitted no content",
+    "correction_terminated",
+    "patch_verification task=",
+    "patch_retest task=",
+    "Dispatched task task-",
+    "plan_defect terminal",
+    "evidence superseded",
+    # 1.7.1 (plan §4): R2/R4's routing tokens ride correction_repair_locus lines; the
+    # qa repair's case count (R4) and rule B's agent-decided verifications (R7) do not.
+    "correction_repair_brief",
+    "decided_by_agent=",
+    # #1631: #968's prose refutation is logged on its OWN line by
+    # `adapters.cycles.correction_runner`, carrying no other key — so without it here the
+    # line never reaches `analyzer_claims_refuted` and A1 reads NO on a mechanism that
+    # fired. #1616 added the reader and the decision_task join and did not add this, and
+    # its replay fed `docker logs` straight to the reader, bypassing this filter: it
+    # proved the function and said nothing about the wiring. Two shakeout runs were spent
+    # on a reading that could not have come back YES.
+    "analyzer_claim_refuted",
+    # 1.7.4 (#1372, R1): the executor's aimed emission retry, with the signature and
+    # token facts the appendix is built from (#1110).
+    "Retryable failure for",
+    # 1.7.4 (#1374, F1): the accepted-patch path re-deriving a framework row on the
+    # patched set (#1318/#1364 today; every contract row after #1374).
+    "re-derived required_files",
+    # SIP-0107 §20: the accepted-patch path's candidate identity, verified and persisted.
+    "patch_candidate_identity task=",
+)
+
+
 def _runtime_lines_of_interest(lines: list[str]) -> list[str]:
-    keys = (
-        "correction_repair_target",
-        "correction_repair_locus",
-        "repair emitted no content",
-        "correction_terminated",
-        "self_eval fills",
-        "fill merge",
-        "patch_verification task=",
-        "patch_retest task=",
-        "Dispatched task task-",
-        "plan_defect terminal",
-        "evidence superseded",
-        # 1.7.1 (plan §4): R2/R4's routing tokens ride correction_repair_locus lines; the
-        # qa repair's case count (R4) and rule B's agent-decided verifications (R7) do not.
-        "correction_repair_brief",
-        "decided_by_agent=",
-        # #1631: #968's prose refutation is logged on its OWN line by
-        # `adapters.cycles.correction_runner`, carrying no other key — so without it here the
-        # line never reaches `analyzer_claims_refuted` and A1 reads NO on a mechanism that
-        # fired. #1616 added the reader and the decision_task join and did not add this, and
-        # its replay fed `docker logs` straight to the reader, bypassing this filter: it
-        # proved the function and said nothing about the wiring. Two shakeout runs were spent
-        # on a reading that could not have come back YES.
-        "analyzer_claim_refuted",
-        # 1.7.4 (#1372, R1): the executor's aimed emission retry, with the signature and
-        # token facts the appendix is built from (#1110).
-        "Retryable failure for",
-        # 1.7.4 (#1374, F1): the accepted-patch path re-deriving a framework row on the
-        # patched set (#1318/#1364 today; every contract row after #1374).
-        "re-derived required_files",
-        # SIP-0107 §20: the accepted-patch path's candidate identity, verified and persisted.
-        "patch_candidate_identity task=",
-    )
-    return [line for line in lines if any(k in line for k in keys)]
+    return [line for line in lines if any(k in line for k in _RUNTIME_LINE_KEYS)]
 
 
 #: The lines the driver keeps from the producing agents' windows. ``emission shape:`` is
@@ -2610,6 +2615,245 @@ def correction_entered(logs: Sequence[str], correction_rounds: int | None) -> bo
     return any(marker in line for line in logs for marker in _CORRECTION_MARKERS)
 
 
+#: One sample line per runtime-api collector field, as its emitter writes it (#1632). Copied
+#: from deploy logs where one was ever emitted (the timestamp says which), else rendered from
+#: the emitter's format string (the comment cites it). Preflight runs every sample through
+#: ``_runtime_lines_of_interest`` and ``texture_from_logs``; a line the filter drops, or one
+#: that feeds nothing, refuses the launch by name. A test holds every field and every filter
+#: key to a sample, so a collector added without one fails CI, not a set.
+#:
+#: This is behavioural on purpose. #1632 recorded why a static scan of the collectors cannot
+#: be sound (delegating helpers, regex markers, implicit concatenation, format substitution):
+#: it passed while #1631 was live. Running the real filter and the real collector on the
+#: emitter's real line has none of those holes.
+RUNTIME_MARKER_SAMPLES: dict[str, tuple[str, ...]] = {
+    "narrowed_targets": (
+        "2026-09-21 05:52:53,066 INFO adapters.cycles.correction_repair: correction_repair_target: "
+        "narrowed to the slot(s) owning the failing probe(s) — backend/routes.py; the "
+        "language-wide surface is withheld (#1015)",
+    ),
+    "language_fallbacks": (
+        "2026-09-21 02:32:30,594 INFO adapters.cycles.correction_repair: correction_repair_target: "
+        "package scoping matched nothing for anchors __tests__/runs.api.test.ts — falling back "
+        "to same-language implementation source app/api/runs/route.ts (#688)",
+    ),
+    # Rendered: adapters/cycles/correction_repair.py, the #970 re-fill locus.
+    "fill_targets": (
+        "2026-09-24 00:00:00,000 INFO adapters.cycles.correction_repair: correction_repair_locus: "
+        "own_artifact — qa.test re-fills slot(s) runs-create in backend/tests/test_runs.py (#970)",
+    ),
+    "refused_patches": (
+        "2026-09-21 10:46:18,252 INFO adapters.cycles.patch_acceptance: patch_verification "
+        "task=task-run_01bb55b8-m005-qa.test task_type=qa.test status=failed reason= checks=8 "
+        "failed=contract_assertions_match decided_by_agent=0 agent_rows=5 agent_executed=5 "
+        "skips=-",
+        # Rendered: patch_acceptance.py's verification line, unverifiable, then the executor
+        # re-dispatching the task (the Next.js 1.6.6 shape the refused reading counts).
+        "2026-09-24 00:00:00,000 INFO adapters.cycles.patch_acceptance: patch_verification "
+        "task=task-run_3aff38c4-m004-development.develop task_type=development.develop "
+        "status=unverifiable reason=no_executed_blocking_checks checks=0 failed=- "
+        "decided_by_agent=0 agent_rows=0 agent_executed=0 skips=missing_tooling:2",
+        "2026-09-23 12:47:34,637 INFO adapters.cycles.task_dispatcher: Dispatched task "
+        "task-run_3aff38c4-m004-development.develop (development.develop) to neo_comms, "
+        "awaiting reply on neo_replies",
+    ),
+    "patch_verifications": (
+        "2026-09-23 13:45:11,184 INFO adapters.cycles.patch_acceptance: patch_verification "
+        "task=task-run_c2103c7f-m006-qa.test task_type=qa.test status=passed reason= checks=16 "
+        "failed=- decided_by_agent=1 agent_rows=10 agent_executed=10 skips=missing_tooling:3",
+    ),
+    "retests": (
+        "2026-09-23 13:45:20,213 INFO adapters.cycles.patch_acceptance: patch_retest "
+        "task=task-run_c2103c7f-m006-qa.test status=SUCCEEDED passed=True reason=Repaired suite "
+        "passed",
+    ),
+    "plan_defect_terminations": (
+        "2026-09-22 11:34:10,301 WARNING adapters.cycles.correction_runner: "
+        "correction_terminated_plan_defect task=task-run_56d6ead9-m005-qa.test rounds=1..1 "
+        "candidate=tighten_acceptance carried=2 cleared=2 added=5 signature=tests_pass",
+    ),
+    "refused_rounds_not_counted": (
+        "2026-09-22 04:59:11,312 INFO adapters.cycles.correction_runner: plan_defect terminal: "
+        "round 1's repair for task=task-run_b2a73746-m006-builder.assemble was refused by patch "
+        "verification and never applied — its signature is not counted as a repeat (#1129)",
+    ),
+    "emission_retries": (
+        "2026-09-21 07:43:54,557 INFO adapters.cycles.dispatched_flow_executor: Retryable "
+        "failure for task-run_1d52abf3-m005-qa.test (attempt 1), retrying — "
+        "signature=unextractable response_chars=48 completion_tokens=8820 completion_cap=12288",
+    ),
+    "required_files_declared": (
+        "2026-09-24 01:56:22,050 INFO adapters.cycles.patch_acceptance: patch "
+        "task=task-run_6072d5fd-m004-builder.assemble re-derived required_files on the patched "
+        "set: passed=True required=assembly_notes.md missing=- (#1318, #1364, #1374)",
+    ),
+    "candidate_identities": (
+        "2026-09-23 13:45:20,213 INFO adapters.cycles.patch_acceptance: patch_candidate_identity "
+        "task=task-run_c2103c7f-m006-qa.test verified_revision_id=2404c4ed "
+        "persisted_revision_id=2404c4ed base_revision_id=51a0a734 (SIP-0107 §20)",
+    ),
+    # Rendered: adapters/cycles/correction_repair.py, #968's structured half.
+    "analyzer_claims_dropped": (
+        "2026-09-24 00:00:00,000 INFO adapters.cycles.correction_repair: correction_repair_target: "
+        "analyzer implicated backend/__squadops_injected_fault__.py but the workspace has no "
+        "such file — dropped, not aimed at (#968)",
+    ),
+    "analyzer_claims_refuted": (
+        "2026-09-21 09:54:39,998 WARNING adapters.cycles.correction_runner: analyzer_claim_refuted "
+        "task=task-run_94fc5be2-m005-qa.test decision_task=corr-run_94fc5be2-00-governance."
+        "correction_decision paths=backend/__squadops_injected_fault__.py — the workspace has "
+        "no such file; the decision is told rather than inheriting it (#968)",
+    ),
+    "refunded_rounds": (
+        "2026-09-21 02:35:02,717 WARNING adapters.cycles.dispatched_flow_executor: correction "
+        "attempt 0 refunded: the repair emitted no content (signature unreported), so the round "
+        "is re-taken rather than spent (refund 1 of 3, #1053/#998)",
+    ),
+    "evidence_superseded": (
+        "2026-09-23 13:45:20,213 INFO adapters.cycles.patch_acceptance: patch "
+        "task=task-run_c2103c7f-m006-qa.test failed-attempt evidence superseded: "
+        "replaced=test_report.md dropped=typed_check_evaluation_task_6.json (retest=yes) "
+        "(#1111/#1318)",
+        "2026-09-23 13:45:20,213 INFO adapters.cycles.patch_acceptance: patch_retest "
+        "task=task-run_c2103c7f-m006-qa.test status=SUCCEEDED passed=True reason=Repaired suite "
+        "passed",
+    ),
+    "qa_owned_routed": (
+        "2026-09-23 20:46:40,636 INFO adapters.cycles.correction_repair: correction_repair_locus: "
+        "own_artifact — qa_owned_routed: backend/tests/test_runs.py raised TypeError in its own "
+        "frame (test_leave_run_happy_path:211); qa.test re-authors backend/tests/test_runs.py "
+        "(#1130)",
+    ),
+    # Rendered: adapters/cycles/correction_repair.py, the #1123 undeclared-anchor route.
+    "absent_anchor_routed": (
+        "2026-09-24 00:00:00,000 INFO adapters.cycles.correction_repair: correction_repair_locus: "
+        "own_artifact — absent_anchor_routed: backend/tests/test_runs.py asserted undeclared "
+        "anchor(s) runs-empty; qa.test re-authors backend/tests/test_runs.py (#1123)",
+    ),
+    "repair_brief_case_counts": (
+        "2026-09-23 20:46:40,636 INFO adapters.cycles.correction_repair: correction_repair_brief: "
+        "qa.test_repair carries 3 failing case(s) for backend/tests/test_runs.py "
+        "from=task-run_7960da38-m005-qa.test tests_pass_rows=1",
+    ),
+}
+#: Fields fed by a sample registered under another field (one emitted line feeds several).
+RUNTIME_SAMPLE_ALIASES: dict[str, str] = {
+    "applied_patches": "patch_verifications",
+    "decided_by_agent": "patch_verifications",
+    "no_execution_by_skip_reason": "patch_verifications",
+    "no_execution_on_passed_verifications": "patch_verifications",
+    "unverifiable_by_reason": "refused_patches",
+    "plan_defect_after_zero_applied": "plan_defect_terminations",
+    "framework_rows_rederived": "required_files_declared",
+    "own_artifact_locus": "qa_owned_routed",
+}
+#: Fields no runtime-api line can feed, with why — declared, not sampled.
+RUNTIME_FIELDS_NOT_LOGGED_HERE: dict[str, str] = {
+    "self_eval_fill_merges": (
+        "logged by the qa handler in its own container; declared unaskable "
+        "(logged_in_the_agent_container) and stored as fill_merge_evidence[].self_eval_fills "
+        "(#1445)"
+    ),
+}
+
+#: The same for the agents' windows (``_AGENT_LINE_KEYS``, ``texture_from_agent_lines``).
+AGENT_MARKER_SAMPLES: dict[str, tuple[str, ...]] = {
+    "emissions_logged": (
+        "2026-09-23 13:13:44,716 - squadops.capabilities.handlers.emission_log - INFO - "
+        "governance_prepare_plan_authoring_brief_handler emission shape: chars=10986 "
+        "completion_tokens=5203 reasoning_chars=9771 fences={'fill': 0, 'path': 1, 'plain': 0} "
+        "head='```yaml:plan_authoring_brief.yaml version: 1'",
+    ),
+    "empty_repair_emissions": (
+        "2026-09-22 15:33:41,406 - squadops.capabilities.handlers.emission_log - INFO - "
+        "qa_test_repair_handler emission shape: chars=0 completion_tokens=12288 "
+        "reasoning_chars=49254 fences={'fill': 0, 'path': 0, 'plain': 0} head=''",
+    ),
+    "retried_with_fact": (
+        "2026-09-22 03:49:10,092 - squadops.capabilities.handlers.cycle.base - INFO - emission "
+        "retry feedback appended for builder_assemble_handler: signature=unextractable "
+        "appendix_chars=978 expected_files=1",
+    ),
+    # Rendered: src/squadops/capabilities/handlers/cycle/base.py, the #1289 blind retry.
+    "retried_blind": (
+        "2026-09-24 00:00:00,000 - squadops.capabilities.handlers.cycle.base - WARNING - emission "
+        "retry feedback NOT appended for qa_test_handler (no request_renderer) — this retry "
+        "re-rolls blind on the same prior; signature=unextractable",
+    ),
+    "repair_revision_forms": (
+        "2026-09-23 13:45:04,742 - squadops.capabilities.handlers.impl.repair_handlers - INFO - "
+        'repair_revision_form {"accepted": true, "edited": ["frontend/src/views/RunDetailView.jsx"], '
+        '"failure_reason": null, "fills": 0, "form": "edits", "fragment_anchors": 0, '
+        '"handler": "development_correction_repair_handler", "modes": ["anchor"]}',
+    ),
+    "placeholder_strips": (
+        "2026-09-21 08:56:24,643 - squadops.capabilities.handlers.fenced_parser - WARNING - fence "
+        "path placeholder: 'path/backend/tests/test_runs.py' emitted under the example's literal "
+        "'path/' segment; stripped to 'backend/tests/test_runs.py', which the task expects (#1272)",
+    ),
+    "faults_applied": (
+        "2026-09-21 05:41:41,684 - squadops.capabilities.handlers.fault_injection - WARNING - "
+        "fault_injection: APPLIED dev_join_response_omits_declared_fields to "
+        "task=task-run_c9a99c8d-m000-development.develop handler=development_develop_handler "
+        "chars 3279 -> 3383 scope=first_attempt (found_in=#1029)",
+    ),
+}
+AGENT_SAMPLE_ALIASES: dict[str, str] = {
+    "contentless_emissions": "empty_repair_emissions",
+    "contentless_by_handler": "empty_repair_emissions",
+    "emission_tokens_by_handler": "emissions_logged",
+}
+
+
+def marker_self_check_problems() -> list[str]:
+    """Every registered collector marker survives its window's filter and feeds its field
+    (#1632). Run at preflight: a marker the filter drops refuses the launch by name, rather
+    than reading NO through a whole set as #1631's did for two budget runs."""
+    problems: list[str] = []
+    windows = (
+        (
+            "runtime-api",
+            RUNTIME_MARKER_SAMPLES,
+            RUNTIME_SAMPLE_ALIASES,
+            _runtime_lines_of_interest,
+            texture_from_logs,
+        ),
+        (
+            "agent",
+            AGENT_MARKER_SAMPLES,
+            AGENT_SAMPLE_ALIASES,
+            _agent_lines_of_interest,
+            texture_from_agent_lines,
+        ),
+    )
+    for window, samples, aliases, keep, read in windows:
+        empty = read([])
+        fields = {**{f: f for f in samples}, **aliases}
+        for name, source in sorted(fields.items()):
+            lines = list(samples[source])
+            kept = keep(lines)
+            dropped = [line for line in lines if line not in kept]
+            if dropped:
+                problems.append(
+                    f"#1632: the {window} filter drops {name}'s marker line — the field can "
+                    f"never read YES: {dropped[0][:140]!r}"
+                )
+            elif read(kept).get(name) == empty.get(name):
+                problems.append(
+                    f"#1632: {name}'s {window} sample survives the filter and feeds nothing — "
+                    "the collector no longer reads the line its emitter writes"
+                )
+    for marker in _CORRECTION_MARKERS:
+        lines = [line for sample in RUNTIME_MARKER_SAMPLES.values() for line in sample]
+        carrying = [line for line in _runtime_lines_of_interest(lines) if marker in line]
+        if not carrying:
+            problems.append(
+                f"#1632: no sample carrying {marker!r} survives the runtime filter, so "
+                "correction_entered cannot see it"
+            )
+    return problems
+
+
 def loop_texture(
     cfg: SetConfig,
     cycle_id: str,
@@ -2623,10 +2867,7 @@ def loop_texture(
     raw = docker_logs(RUNTIME_API_CONTAINER, since, until)
     logs = _runtime_lines_of_interest(raw)
     out = texture_from_logs(logs)
-    agent_lines = agent_log_window(since, until, set_agent_services(cfg))
-    out.update(texture_from_emission_shapes(agent_lines))
-    out.update(texture_from_retry_feedback(agent_lines))
-    out["repair_revision_forms"] = repair_revision_forms(agent_lines)
+    out.update(texture_from_agent_lines(agent_log_window(since, until, set_agent_services(cfg))))
     # #330: the Prefect server's loop-service overruns in this cycle's window.
     out["prefect_loop_overruns"] = prefect_loop_overruns(prefect_log_window(since, until))
     out["log_window"] = {"since": since, "until": until}
@@ -2646,12 +2887,8 @@ def loop_texture(
     # #1540: suites the runner never collected — non-execution with no row anywhere else.
     uncollected = uncollected_suites(cfg, cycle_id, impl_run) if impl_run else None
     out["uncollected_suites"] = uncollected or []
-    # #1311: L8 as two claims. L8a — the model emitted under the placeholder and the
-    # extractor repaired it (read from the agent's log, the only place it is visible).
-    # L8b — a stored name still carries it (read from the tree, the old readout).
-    out["placeholder_strips"] = placeholder_strips(agent_lines)
-    # #1588: which attempts each declared fault actually bit, from the hook's own lines.
-    out["faults_applied"] = faults_applied(agent_lines)
+    # #1311: L8b — a stored name still carries the placeholder (read from the tree); L8a is
+    # the agents' window, in texture_from_agent_lines.
     out["stored_under_placeholder"] = (
         stored_under_placeholder(_stored_artifact_names(cfg, cycle_id, impl_run))
         if impl_run
@@ -3201,6 +3438,20 @@ def texture_from_emission_shapes(lines: list[str]) -> dict:
     }
 
 
+def texture_from_agent_lines(agent_lines: list[str]) -> dict:
+    """Every readout ``loop_texture`` takes from the agents' windows, in one place, so the
+    marker self-check exercises exactly what a roll's record reads (#1632)."""
+    out = texture_from_emission_shapes(agent_lines)
+    out.update(texture_from_retry_feedback(agent_lines))
+    out["repair_revision_forms"] = repair_revision_forms(agent_lines)
+    # #1311: L8a — the model emitted under the placeholder and the extractor repaired it
+    # (read from the agent's log, the only place it is visible).
+    out["placeholder_strips"] = placeholder_strips(agent_lines)
+    # #1588: which attempts each declared fault actually bit, from the hook's own lines.
+    out["faults_applied"] = faults_applied(agent_lines)
+    return out
+
+
 _RETRY_APPENDED = "emission retry feedback appended for"
 _RETRY_NOT_APPENDED = "emission retry feedback NOT appended for"
 
@@ -3344,6 +3595,9 @@ def texture_from_logs(logs: list[str]) -> dict:
         "fill_targets": [
             _fact(line, "correction_repair_locus:") for line in logs if "re-fills slot" in line
         ],
+        # Never logged in this window (the qa handler logs it in its own container), so it is
+        # declared unaskable in EVIDENCE_FIELDS and the stored fact is
+        # fill_merge_evidence[].self_eval_fills (#1445). Its filter key is gone (#1632).
         "self_eval_fill_merges": [
             _fact(line, "self_eval fills") for line in logs if "self_eval fills" in line
         ],
