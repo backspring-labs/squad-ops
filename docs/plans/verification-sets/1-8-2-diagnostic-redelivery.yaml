@@ -1,0 +1,46 @@
+# 1.8.2 DIAGNOSTIC — `redelivery` (1.8.2 plan §4.1; #1627's rule and #1626's containment)
+#
+# Not a roll and not a shakeout: a non-counting cycle on the roll's own path with two chained faults
+# (#1251): `qa_suite_own_frame_failure` routes a qa failure to `qa.test_repair` (L7), and
+# `qa_repair_process_killed` kills the qa agent's process after that repair's model returns, on its
+# first round only, in its own container. Docker restarts it; the broker redelivers the unacked task.
+#
+# PREDICTED: a typed FAILED for the original task id; the queue drains; the handler is NOT re-run by
+# the broker; the run LEAVES `running` (through correction or termination); with item 3 built, a
+# child parse crash returns None and the parent survives.
+# FALSIFIED BY: the repair handler re-run on redelivery, a run left `running`, or a crash loop.
+# Readout: the driver's `qa_repair_process_killed` seam readout (`loop_texture.redelivered_refusals`),
+# the run's terminal state, and the qa container's restart count. N cell: none. Two-run budget.
+name: 1-8-2-diagnostic-redelivery
+records_dir: var/verification_sets/1-8-2-diagnostics/redelivery
+pre_registration: docs/plans/1-8-2-deploy-a-preregistration.md
+project: group_run
+squad_profile: full-38
+request_profile: validated-fullstack
+overrides:
+  fault_injection: [qa_suite_own_frame_failure, qa_repair_process_killed]
+gate_name: progress_plan_review
+n_rolls: 1
+gate_notes: >-
+  1.8.2 verification set. Approved under the pre-registered gate policy
+  (pre-registration §7) — identical text applied to every roll of this set.
+  System plan validation passed; no additional judgment applied.
+launch_notes: >-
+  UNUSED — a diagnostic is never counted; the driver refuses a counting roll that declares
+  a fault.
+shakeout_notes: >-
+  1.8.2 DIAGNOSTIC — redelivery. NON-COUNTING by declaration before launch: an own-frame suite
+  failure routes to the qa repair, whose process is then killed after its model returns (#1251);
+  the broker's redelivery must be refused as a typed FAILED (#1627), never re-run. Its red and its
+  crash are manufactured and must never be read as the squad failing.
+loaded_checks:
+  eve: |-
+    from squadops.capabilities.handlers.fault_injection import FAULTS, FaultScope, CRASH_EXIT_CODE
+    from squadops.agents.entrypoint import AgentRunner
+    f = FAULTS["qa_repair_process_killed"]
+    # The crash is registered on the qa repair's seam, first round only; the refusal path is in the image.
+    print("redelivery", str(f.task), f.crash, f.scope is FaultScope.FIRST_ATTEMPT, CRASH_EXIT_CODE, hasattr(AgentRunner, "_refuse_redelivered_task"))
+expected_config_hash_prefix: ""
+expected_squad_snapshot_prefix: ""
+frozen_deploy_commit: ""
+frozen_image_ids: {}

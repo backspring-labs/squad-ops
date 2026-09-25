@@ -1,0 +1,70 @@
+# 1.8.2 DIAGNOSTIC — `unattended-chain` (1.8.2 plan §4.1; THE LINE'S CLAIM: a cycle is safe to leave
+# running unattended)
+#
+# K = 4 React cycles back to back through the driver's `chain` command (§3.2 item 14), no human action
+# between them except the registered gate policy. Three registered faults, one per cycle, as DATA:
+#   cycle 2 — a CANCEL while its first implementation task (development.develop) is in flight;
+#   cycle 3 — an agent CRASH: the dev agent's container killed mid-task (#1251's shape);
+#   cycle 4 — an agent HANG: `handler_hang` holds the develop handler after its model returns, until
+#             the declared per-task wait (item 15, 1800 s) ends it as a typed `task_timeout` fact.
+# Between launches the driver asserts a quiet box by more than run state and leases: no dispatched
+# task without a reply, no agent mid-task (item 10's signal), for up to `quiet_timeout_seconds`.
+#
+# PREDICTED, per cycle: a terminal state within its bound; ZERO ghost generations after the cancel (no
+# LangFuse generation or agent emission carries cycle 2's id after its cancel is acknowledged — item
+# 10, #1648); the crash recorded as a typed fact and the run leaving `running`; the hang ended at the
+# declared timeout as a typed `task_timeout` fact and the run proceeding to correction or termination;
+# a quiet box before each launch; the assessment read on every cycle; ZERO manual actions except the
+# registered gate policy, which the record names.
+# FALSIFIED BY: any ghost generation, any run left `running`, a hang past its bound, or a manual step.
+# Readout: the chain record (`chain-state.json`, per-cycle `cycle-NN` records): terminal state and
+# kind, `ghost_readings` (late replies read where they land, #1677), the quiet-box readings, the
+# `handler_hang` seam readout (`loop_texture.task_timeouts`). N cell: none. One chain; a chain that
+# fails its prediction stops the set and the plan is revised in the open.
+name: 1-8-2-diagnostic-unattended-chain
+records_dir: var/verification_sets/1-8-2-diagnostics/unattended-chain
+pre_registration: docs/plans/1-8-2-deploy-a-preregistration.md
+project: group_run
+squad_profile: full-38
+request_profile: validated-fullstack
+overrides: {}
+gate_name: progress_plan_review
+n_rolls: 1
+gate_notes: >-
+  1.8.2 verification set. Approved under the pre-registered gate policy
+  (pre-registration §7) — identical text applied to every roll of this set.
+  System plan validation passed; no additional judgment applied.
+launch_notes: >-
+  UNUSED — a diagnostic is never counted.
+shakeout_notes: >-
+  1.8.2 DIAGNOSTIC — unattended-chain, cycle {roll} of {n}. NON-COUNTING by declaration before
+  launch: four React cycles back to back with a cancel on cycle 2, a dev-agent crash on cycle 3
+  and a develop-handler hang on cycle 4, each registered before launch. Its reds are manufactured
+  and must never be read as the squad failing.
+chain:
+  cycles: 4
+  # At least the declared per-task wait (1800 s): a ghost task after the cancel could run that long.
+  quiet_timeout_seconds: 2400
+  faults:
+    - {cycle: 2, kind: cancel, task_type: development.develop}
+    - {cycle: 3, kind: crash, task_type: development.develop, service: neo}
+    - {cycle: 4, kind: hang, fault: handler_hang}
+loaded_checks:
+  runtime-api: |-
+    from squadops.comms.run_cancellation import control_queue, run_cancelled_notice
+    from adapters.cycles.task_dispatcher import TaskDispatcher
+    import inspect
+    # item 10: the cancel's notice goes on the agent's control queue; item 15: the wait is declared.
+    print("chain-runtime", control_queue("neo"), run_cancelled_notice("c", ["r"])["action"],
+          inspect.signature(TaskDispatcher.__init__).parameters["task_timeout"].default is inspect.Parameter.empty)
+  neo: |-
+    from squadops.agents.entrypoint import CancelledRuns, declared_task_bound
+    from squadops.capabilities.handlers.fault_injection import FAULTS, HANG_SECONDS
+    cr = CancelledRuns()
+    cr.add(["r1"], 0.0)
+    # The dev agent drops a told run's task (control: another run's), and the hang is a hold past any bound.
+    print("chain-agent", cr.is_cancelled("r1"), cr.is_cancelled("r2"), FAULTS["handler_hang"].hold, HANG_SECONDS > 1800)
+expected_config_hash_prefix: ""
+expected_squad_snapshot_prefix: ""
+frozen_deploy_commit: ""
+frozen_image_ids: {}

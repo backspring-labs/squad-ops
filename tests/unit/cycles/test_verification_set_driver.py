@@ -49,6 +49,9 @@ _COUNTING_SETS: dict[str, dict[str, int]] = {
     # most eight attempted, so each arm's n_rolls is the attempt budget. Pinned at rev 2 of
     # the window pre-registration from deploy B′; blank until then.
     "1-8-1-window": {"squad": 8, "solo": 8},
+    # 1.8.2 plan §4.1: 4 + 2, as in 1.8.1 — the regression bar and N's margin. Pinned at the
+    # deploy A pre-registration (rev 1), before any launch.
+    "1-8-2": {"nextjs": 2, "fastapi-react": 4},
 }
 _ARM_STACK = {
     "nextjs": "nextjs_ts",
