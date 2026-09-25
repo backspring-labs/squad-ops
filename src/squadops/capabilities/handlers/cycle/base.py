@@ -831,7 +831,16 @@ class _CycleTaskHandler(CapabilityHandler):
         from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
 
         system_prompt, user_prompt, content = transcript
-        max_self_eval = inputs.get("resolved_config", {}).get("max_self_eval_passes", 1)
+        # SIP-0086 §12a change 1: the depth is the request profile's, required. It was read
+        # with a default of 1 here, so a profile that never said how deep its loop runs got
+        # one pass by accident.
+        resolved = inputs.get("resolved_config") or {}
+        if "max_self_eval_passes" not in resolved:
+            raise ValueError(
+                "resolved_config.max_self_eval_passes is required: the cycle's request profile "
+                "declares how many self-evaluation passes a task gets (SIP-0086 §12a)"
+            )
+        max_self_eval = int(resolved["max_self_eval_passes"])
         self_eval_count = 0
 
         while not validation.passed and self_eval_count < max_self_eval:

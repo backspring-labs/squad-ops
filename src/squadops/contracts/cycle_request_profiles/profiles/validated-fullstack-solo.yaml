@@ -37,7 +37,8 @@ defaults:
   output_validation: true
   # Implementation-profile depth: typed checks exercise meaningfully and
   # correction has budget to surface + fix structural issues.
-  max_self_eval_passes: 2
+  # SIP-0086 §12a change 1: the compile loop's depth for a one-hour build profile.
+  max_self_eval_passes: 3
   max_correction_attempts: 3
   max_build_subtasks: 15
   # SIP-0092 M1 instrumentation (typed + command acceptance).

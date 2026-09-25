@@ -30,6 +30,7 @@ class TestCycleRequestProfileWithPulseDefaults:
         profile = CycleRequestProfile(
             name="pulse-test",
             defaults={
+                "max_self_eval_passes": 0,
                 "pulse_checks": [
                     {
                         "suite_id": "smoke",
@@ -46,6 +47,7 @@ class TestCycleRequestProfileWithPulseDefaults:
         profile = CycleRequestProfile(
             name="cadence-test",
             defaults={
+                "max_self_eval_passes": 0,
                 "cadence_policy": {"max_pulse_seconds": 300, "max_tasks_per_pulse": 3},
             },
         )
@@ -56,5 +58,5 @@ class TestCycleRequestProfileWithPulseDefaults:
         with pytest.raises(Exception, match="Unknown"):
             CycleRequestProfile(
                 name="bad",
-                defaults={"totally_unknown_key": True},
+                defaults={"max_self_eval_passes": 0, "totally_unknown_key": True},
             )

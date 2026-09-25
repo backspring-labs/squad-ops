@@ -23,19 +23,24 @@ def test_required_checks_is_an_allowed_default_key():
 def test_valid_required_checks_list_loads():
     profile = CycleRequestProfile(
         name="req-test",
-        defaults={"required_checks": ["tests_pass", "no_stub_fallback_tests"]},
+        defaults={
+            "max_self_eval_passes": 0,
+            "required_checks": ["tests_pass", "no_stub_fallback_tests"],
+        },
     )
     assert profile.defaults["required_checks"] == ["tests_pass", "no_stub_fallback_tests"]
 
 
 def test_absent_required_checks_is_fine():
     """Omitting the key means nothing is required — the Phase 1 default (throttle off)."""
-    profile = CycleRequestProfile(name="none", defaults={})
+    profile = CycleRequestProfile(name="none", defaults={"max_self_eval_passes": 0})
     assert "required_checks" not in profile.defaults
 
 
 def test_empty_required_checks_list_is_fine():
-    profile = CycleRequestProfile(name="empty", defaults={"required_checks": []})
+    profile = CycleRequestProfile(
+        name="empty", defaults={"max_self_eval_passes": 0, "required_checks": []}
+    )
     assert profile.defaults["required_checks"] == []
 
 
@@ -48,19 +53,25 @@ def test_empty_required_checks_list_is_fine():
 )
 def test_non_list_required_checks_rejected(bad):
     with pytest.raises(ValidationError, match="required_checks must be a list"):
-        CycleRequestProfile(name="bad", defaults={"required_checks": bad})
+        CycleRequestProfile(
+            name="bad", defaults={"max_self_eval_passes": 0, "required_checks": bad}
+        )
 
 
 @pytest.mark.parametrize("bad_entry", ["", "   ", 3, None])
 def test_non_string_or_empty_entries_rejected(bad_entry):
     with pytest.raises(ValidationError, match="required_checks entries must be non-empty strings"):
-        CycleRequestProfile(name="bad", defaults={"required_checks": ["ok", bad_entry]})
+        CycleRequestProfile(
+            name="bad", defaults={"max_self_eval_passes": 0, "required_checks": ["ok", bad_entry]}
+        )
 
 
 def test_duplicate_check_ids_rejected():
     """A duplicate is a profile-authoring bug — surfaced at load, not tolerated."""
     with pytest.raises(ValidationError, match="duplicate check-id"):
-        CycleRequestProfile(name="dup", defaults={"required_checks": ["a", "a"]})
+        CycleRequestProfile(
+            name="dup", defaults={"max_self_eval_passes": 0, "required_checks": ["a", "a"]}
+        )
 
 
 def test_unknown_check_id_rejected():
@@ -68,7 +79,10 @@ def test_unknown_check_id_rejected():
     must fail loud at load, not validate and then silently match nothing at run
     end — the profile would look enforced but be inert (§6.3)."""
     with pytest.raises(ValidationError, match="unknown check-id"):
-        CycleRequestProfile(name="typo", defaults={"required_checks": ["tests_pass", "test_pass"]})
+        CycleRequestProfile(
+            name="typo",
+            defaults={"max_self_eval_passes": 0, "required_checks": ["tests_pass", "test_pass"]},
+        )
 
 
 def test_every_registry_id_is_accepted():
@@ -77,5 +91,7 @@ def test_every_registry_id_is_accepted():
     from squadops.cycles.check_registry import framework_check_ids
 
     ids = sorted(framework_check_ids())
-    profile = CycleRequestProfile(name="all", defaults={"required_checks": ids})
+    profile = CycleRequestProfile(
+        name="all", defaults={"max_self_eval_passes": 0, "required_checks": ids}
+    )
     assert profile.defaults["required_checks"] == ids

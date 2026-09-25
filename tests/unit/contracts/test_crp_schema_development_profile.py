@@ -33,7 +33,7 @@ class TestCycleRequestProfileWithDevCapability:
     def test_development_profile_accepted_in_defaults(self):
         profile = CycleRequestProfile(
             name="fullstack-test",
-            defaults={"development_profile": "fullstack_fastapi_react"},
+            defaults={"max_self_eval_passes": 0, "development_profile": "fullstack_fastapi_react"},
         )
         assert "development_profile" in profile.defaults
 
@@ -41,6 +41,7 @@ class TestCycleRequestProfileWithDevCapability:
         profile = CycleRequestProfile(
             name="fullstack-test",
             defaults={
+                "max_self_eval_passes": 0,
                 "development_profile": "fullstack_fastapi_react",
                 "build_profile": "fullstack_fastapi_react",
             },
@@ -52,7 +53,7 @@ class TestCycleRequestProfileWithDevCapability:
         with pytest.raises(Exception, match="Unknown"):
             CycleRequestProfile(
                 name="bad",
-                defaults={"totally_unknown_key": True},
+                defaults={"max_self_eval_passes": 0, "totally_unknown_key": True},
             )
 
 

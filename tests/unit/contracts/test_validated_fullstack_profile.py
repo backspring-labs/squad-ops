@@ -40,7 +40,7 @@ def test_composes_validation_instrumentation():
     assert defaults["typed_acceptance"] is True
     assert defaults["command_acceptance_checks"] is True
     assert defaults["implementation_plan"] is True
-    assert defaults["max_self_eval_passes"] == 2
+    assert defaults["max_self_eval_passes"] == 3  # SIP-0086 §12a change 1
     assert defaults["max_correction_attempts"] == 3
 
 

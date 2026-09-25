@@ -115,6 +115,22 @@ def _validate_required_checks(defaults: dict) -> None:
         )
 
 
+def _validate_self_eval_depth(defaults: dict) -> None:
+    """``max_self_eval_passes`` is declared, and is a non-negative integer (SIP-0086 §12a).
+
+    It was read with a default of 1 where the handler used it, so a profile that never said
+    how deep its compile loop runs got one pass by accident, and eleven of seventeen did.
+    """
+    if "max_self_eval_passes" not in defaults:
+        raise ValueError(
+            "max_self_eval_passes is required: every cycle request profile declares how many "
+            "self-evaluation passes a task gets (SIP-0086 §12a; 0 declares none)"
+        )
+    depth = defaults["max_self_eval_passes"]
+    if isinstance(depth, bool) or not isinstance(depth, int) or depth < 0:
+        raise ValueError(f"max_self_eval_passes must be a non-negative integer, got {depth!r}")
+
+
 def _validate_workload_sequence_gates(defaults: dict) -> None:
     """Validate that gate names in workload_sequence use allowed prefixes (case-sensitive)."""
     sequence = defaults.get("workload_sequence")
@@ -166,4 +182,7 @@ class CycleRequestProfile(BaseModel):
         _validate_workload_sequence_gates(v)
         # SIP-0096 §6.3: validate the required_checks declaration shape
         _validate_required_checks(v)
+        # SIP-0086 §12a change 1: the self-evaluation depth is the profile's, never a
+        # constant. Required, not defaulted (the 2026-09-14 ruling, applied to a tunable).
+        _validate_self_eval_depth(v)
         return v

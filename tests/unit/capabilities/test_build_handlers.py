@@ -188,7 +188,8 @@ class TestDevSuccessEvidence:
             "subtask_index": 0,
             "expected_artifacts": ["src/main.py", "src/utils.py"],
             "acceptance_criteria": [],
-            "resolved_config": {"output_validation": True},
+            # The request profile declares the self-evaluation depth (SIP-0086 §12a).
+            "resolved_config": {"output_validation": True, "max_self_eval_passes": 1},
         }
 
     async def test_passing_focused_task_outputs_carry_validation_result(
