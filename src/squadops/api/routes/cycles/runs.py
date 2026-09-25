@@ -194,9 +194,12 @@ async def cancel_run(project_id: str, cycle_id: str, run_id: str):
     from squadops.api.routes.cycles.cancellation import (
         abort_cancelled_cycle_activities,
         cancel_orphaned_flow_runs,
+        notify_agents_of_cancel,
         release_cancelled_run_leases,
     )
 
+    # #1648: first, while the activities and leases still say who holds the run's tasks.
+    agents_notified = await notify_agents_of_cancel(cycle_id, [run_id])
     cancelled = await cancel_orphaned_flow_runs(project_id, cycle_id, [run_id])
     leases_released = await release_cancelled_run_leases(cycle_id, [run_id])
     activities_ended = await abort_cancelled_cycle_activities(cycle_id)
@@ -207,6 +210,7 @@ async def cancel_run(project_id: str, cycle_id: str, run_id: str):
         "prefect_flow_runs_cancelled": cancelled,
         "focus_leases_released": leases_released,
         "activities_ended": activities_ended,
+        "agents_notified": agents_notified,
     }
 
 

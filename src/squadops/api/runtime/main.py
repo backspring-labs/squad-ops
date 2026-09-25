@@ -398,7 +398,9 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     # and end the activities the cancelled run leaves behind.
     from squadops.api.runtime.deps import set_cancellation_ports
 
-    set_cancellation_ports(state.runtime_coordinator, focus_lease_port, activity_port)
+    set_cancellation_ports(
+        state.runtime_coordinator, focus_lease_port, activity_port, queue=queue_adapter
+    )
 
     # Startup hygiene: clear runtime state a dead process left active, before
     # anything recruits against it. Each sweep is best-effort and owns its own

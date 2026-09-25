@@ -926,7 +926,10 @@ class TestTheDeclaredWaitTravelsWithTheTask:
         await dispatcher.dispatch_task(self._envelope(), "run_001")
 
         (call,) = [c for c in mock_queue.publish.await_args_list if c.args[0] == "neo_comms"]
-        assert json.loads(call.args[1])["payload"]["timeout"] == 5.0
+        payload = json.loads(call.args[1])["payload"]
+        assert payload["timeout"] == 5.0
+        # #1648: and its run, so the agent can drop it when that run is cancelled.
+        assert payload["metadata"]["run_id"] == "run_001"
 
     async def test_a_wait_that_runs_out_is_logged_as_the_bound_firing(
         self, dispatcher, reply_router, caplog

@@ -44,6 +44,7 @@ from typing import TYPE_CHECKING
 
 from adapters.cycles.execution_errors import _CancellationError
 from adapters.cycles.task_naming import build_task_name
+from squadops.comms.run_cancellation import RUN_ID_METADATA_KEY
 from squadops.cycles.llm_usage import RunUsage, RunUsageAccumulator
 from squadops.events.types import EventType
 from squadops.runtime import reasons
@@ -389,7 +390,12 @@ class TaskDispatcher:
         queue_name = f"{envelope.agent_id}_comms"
         # 1.8.2 item 15: the declared per-task wait travels with the task, so the agent bounds
         # its handler by the same value this side waits on — not by its model-call timeout.
-        envelope = dataclasses.replace(envelope, timeout=self._task_timeout)
+        # #1648: and its run, so the agent can drop it when that run is cancelled.
+        envelope = dataclasses.replace(
+            envelope,
+            timeout=self._task_timeout,
+            metadata={**(envelope.metadata or {}), RUN_ID_METADATA_KEY: run_id},
+        )
 
         # Open the agent's reply subscription and register our future BEFORE
         # publishing, so a fast reply can't arrive before we're listening.

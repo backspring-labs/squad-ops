@@ -27,6 +27,7 @@ import logging
 
 from squadops.api.runtime.deps import (
     get_activity_port,
+    get_cancel_queue_port,
     get_focus_lease_port,
     get_runtime_coordinator,
     get_workflow_tracker,
@@ -99,6 +100,63 @@ async def release_cancelled_run_leases(cycle_id: str, run_ids: list[str]) -> int
             run_ids,
         )
     return released
+
+
+async def notify_agents_of_cancel(cycle_id: str, run_ids: list[str]) -> int:
+    """Tell every agent holding the cancelled run's work to drop it (#1648). Returns how many
+    agents were told.
+
+    The agents are the ones with an open activity in the cycle (a dispatched task not yet
+    answered) and the ones the run holds a lease on. Read BEFORE the activities are ended and
+    the leases released, which is what makes them findable. The notice goes on each agent's
+    control queue, not its comms queue: the agent takes one comms delivery at a time, so a
+    notice there would wait behind the task it was sent to stop. Best-effort, never raises: a
+    cancel succeeds whether or not the agents hear of it.
+    """
+    queue = get_cancel_queue_port()
+    if queue is None or not run_ids:
+        return 0
+    import json
+
+    from squadops.comms.run_cancellation import control_queue, run_cancelled_notice
+
+    agents: set[str] = set()
+    activity_port = get_activity_port()
+    focus_lease = get_focus_lease_port()
+    try:
+        if activity_port is not None:
+            agents |= {
+                a.agent_id for a in await activity_port.list_active_activities(cycle_id=cycle_id)
+            }
+        if focus_lease is not None:
+            for run_id in run_ids:
+                agents |= {
+                    lease.agent_id
+                    for lease in await focus_lease.list_active_leases(owner_ref=run_id)
+                }
+    except Exception:
+        logger.warning(
+            "#1648: could not read which agents hold cancelled cycle %s's work",
+            cycle_id,
+            exc_info=True,
+        )
+    notice = json.dumps(run_cancelled_notice(cycle_id, run_ids))
+    told = 0
+    for agent_id in sorted(agents):
+        try:
+            await queue.publish(control_queue(agent_id), notice)
+            told += 1
+        except Exception:
+            logger.warning("#1648: cancel notice to %s failed", agent_id, exc_info=True)
+    if told:
+        logger.info(
+            "#1648: told %d agent(s) to drop cancelled cycle %s's tasks (runs=%s): %s",
+            told,
+            cycle_id,
+            ",".join(run_ids),
+            ",".join(sorted(agents)),
+        )
+    return told
 
 
 async def abort_cancelled_cycle_activities(cycle_id: str) -> int:
