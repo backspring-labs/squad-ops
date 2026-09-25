@@ -5485,3 +5485,99 @@ class TestTheChainRunsUnattended:
         changed = self._cfg(driver, tmp_path, chain={**self._CHAIN, "cycles": 5})
         with pytest.raises(SystemExit, match="resume refused"):
             driver._chain_state(changed, resume=True)
+
+
+class TestEveryCollectorMarkerSurvivesItsFilter:
+    """#1632. #1631 was one marker missing from the runtime filter's allow-list: the reader
+    returned empty, the seam read NO on a mechanism that fired, and two budget runs paid for
+    it. A static scan of the collectors could not be made sound (the issue records why), so
+    the check is behavioural. The emitter's real line goes through the real filter and the
+    real collector, and preflight refuses the launch when a marker is dropped."""
+
+    def test_the_live_registry_is_clean(self, driver):
+        assert driver.marker_self_check_problems() == []
+
+    def test_a_dropped_marker_refuses_the_launch_by_name(self, driver, monkeypatch, tmp_path):
+        """Wiring, entered at ``preflight``, the call every launch makes, with #1631 recreated:
+        the refutation marker left out of the runtime filter. Bug this catches: the self-check
+        written and never run, or run and not refusing."""
+        monkeypatch.setattr(
+            driver,
+            "_RUNTIME_LINE_KEYS",
+            tuple(k for k in driver._RUNTIME_LINE_KEYS if k != "analyzer_claim_refuted"),
+        )
+        monkeypatch.setattr(driver, "psql", lambda *a, **k: "0")
+        monkeypatch.setattr(driver, "sh", lambda *a, **k: "")
+        cfg = driver.SetConfig(
+            name="s",
+            project="p",
+            squad_profile="x",
+            request_profile="y",
+            gate_name="g",
+            gate_notes="g",
+            launch_notes="l",
+            shakeout_notes="s",
+            n_rolls=1,
+        )
+
+        problems = driver.preflight(cfg, counting=False, identity={})
+
+        assert any(
+            "runtime-api filter drops analyzer_claims_refuted's marker line" in p for p in problems
+        ), problems
+
+    def test_a_collector_that_stops_reading_its_line_is_named(self, driver, monkeypatch):
+        """Bug this catches: the filter keeps the line and the collector no longer matches it
+        (an emitter reworded, a collector's literal edited), which reads exactly like a roll
+        where the mechanism never fired."""
+        real = driver.texture_from_logs
+
+        def reworded(logs):
+            out = real(logs)
+            out["refunded_rounds"] = []
+            return out
+
+        monkeypatch.setattr(driver, "texture_from_logs", reworded)
+
+        assert any(
+            "refunded_rounds's runtime-api sample survives the filter and feeds nothing" in p
+            for p in driver.marker_self_check_problems()
+        )
+
+    @pytest.mark.parametrize(
+        ("read", "samples", "aliases", "declared"),
+        [
+            (
+                "texture_from_logs",
+                "RUNTIME_MARKER_SAMPLES",
+                "RUNTIME_SAMPLE_ALIASES",
+                "RUNTIME_FIELDS_NOT_LOGGED_HERE",
+            ),
+            ("texture_from_agent_lines", "AGENT_MARKER_SAMPLES", "AGENT_SAMPLE_ALIASES", None),
+        ],
+    )
+    def test_every_log_derived_field_has_a_sample(self, driver, read, samples, aliases, declared):
+        """Bug this catches: a collector added without a sample, which the self-check then
+        cannot see — the gap moved rather than closed. Every field the window yields is
+        sampled, fed by another field's sample, or declared as never logged there, with why."""
+        fields = set(getattr(driver, read)([]))
+        covered = (
+            set(getattr(driver, samples))
+            | set(getattr(driver, aliases))
+            | set(getattr(driver, declared) if declared else ())
+        )
+        assert fields - covered == set()
+        assert covered - fields == set()
+
+    @pytest.mark.parametrize(
+        ("keys", "samples"),
+        [
+            ("_RUNTIME_LINE_KEYS", "RUNTIME_MARKER_SAMPLES"),
+            ("_AGENT_LINE_KEYS", "AGENT_MARKER_SAMPLES"),
+        ],
+    )
+    def test_every_filter_key_is_exercised_by_a_sample(self, driver, keys, samples):
+        """Bug this catches: a filter key no collector reads (a dead key keeps log noise and
+        hides that its reader went away), or a key whose reader has no sample."""
+        lines = [line for group in getattr(driver, samples).values() for line in group]
+        assert [k for k in getattr(driver, keys) if not any(k in line for line in lines)] == []
