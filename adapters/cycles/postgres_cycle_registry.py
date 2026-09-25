@@ -9,6 +9,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 from datetime import datetime
+from typing import Any
 
 import asyncpg
 
@@ -38,6 +39,7 @@ from squadops.cycles.pulse_models import PulseVerificationRecord
 from squadops.cycles.run_loop_summary import RunLoopSummary
 from squadops.cycles.verification_integrity import (
     CheckInspection,
+    Contest,
     FailedCheck,
     RunVerdict,
     RunVerificationSummary,
@@ -675,7 +677,17 @@ def _verification_summary_to_dict(summary: RunVerificationSummary) -> dict:
         "failed": list(summary.failed),
         # #500: failed entries disclose their reasons, same as unverified always has.
         "failed_detail": [
-            {"check_id": f.check_id, "reason": f.reason, "required": f.required}
+            {
+                "check_id": f.check_id,
+                "reason": f.reason,
+                "required": f.required,
+                # SIP-0096 §17a: a disputed failure says so, and by whom.
+                **(
+                    {"contested": {"by": f.contested.by, "reason": f.contested.reason}}
+                    if f.contested is not None
+                    else {}
+                ),
+            }
             for f in summary.failed_detail
         ],
         "unverified": [
@@ -711,6 +723,12 @@ def _verification_summary_to_dict(summary: RunVerificationSummary) -> dict:
     }
 
 
+def _contest_from_dict(d: Any) -> Contest | None:
+    if not isinstance(d, dict) or not d.get("reason"):
+        return None
+    return Contest(by=d.get("by"), reason=str(d["reason"]))
+
+
 def _verification_summary_from_dict(d: dict) -> RunVerificationSummary:
     """Reconstruct a RunVerificationSummary from its stored dict (inverse of _..to_dict).
 
@@ -721,7 +739,12 @@ def _verification_summary_from_dict(d: dict) -> RunVerificationSummary:
         verified=tuple(d.get("verified", [])),
         failed=tuple(d.get("failed", [])),
         failed_detail=tuple(
-            FailedCheck(check_id=f["check_id"], reason=f["reason"], required=bool(f["required"]))
+            FailedCheck(
+                check_id=f["check_id"],
+                reason=f["reason"],
+                required=bool(f["required"]),
+                contested=_contest_from_dict(f.get("contested")),
+            )
             for f in d.get("failed_detail", [])
         ),
         unverified=tuple(

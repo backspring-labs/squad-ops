@@ -38,6 +38,7 @@ from squadops.cycles.check_registry import (
 from squadops.cycles.verification_integrity import (
     CheckProvenance,
     CheckResult,
+    Contest,
     NotExecutedReason,
     ResultStatus,
 )
@@ -66,10 +67,14 @@ def normalize_task_checks(
     """
     results: list[CheckResult] = []
     validation = outputs.get("validation_result")
-    checks = validation.get("checks") if isinstance(validation, Mapping) else None
+    checks = _contested_rows(
+        validation.get("checks") if isinstance(validation, Mapping) else None,
+        outputs.get("disputed_checks"),
+    )
     test_result = outputs.get("test_result")
 
     stub_detected = False
+    tests_pass_contest: Contest | None = None
     for row in checks or ():
         if not isinstance(row, Mapping):
             continue
@@ -78,7 +83,9 @@ def normalize_task_checks(
             continue
         if cid == CHECK_TESTS_PASS:
             # Failure-only row; the real signal is synthesized from test_result
-            # below (richer + present on a passing run). Skip to avoid double-record.
+            # below (richer + present on a passing run). Skip to avoid double-record —
+            # but keep a dispute of it, which the synthesized result carries.
+            tests_pass_contest = _contest(row)
             continue
         if cid == CHECK_NO_STUB:
             # #1000: this row used to appear ONLY when stubs were found, so presence
@@ -122,6 +129,7 @@ def normalize_task_checks(
                     # evaluator_gap disclosure and contract-bound requiredness.
                     evidence_gap=bool(row.get("evidence_gap", False)),
                     provenance=_inspection_provenance(row),
+                    contested=_contest(row),
                 )
             )
         else:
@@ -130,7 +138,10 @@ def normalize_task_checks(
             results.append(_from_passed_row(cid, row))
 
     if isinstance(test_result, Mapping):
-        results.append(_tests_pass_from_result(test_result, is_stub=stub_detected))
+        tests_pass = _tests_pass_from_result(test_result, is_stub=stub_detected)
+        if tests_pass_contest is not None and tests_pass.status != ResultStatus.PASSED:
+            tests_pass = dataclasses.replace(tests_pass, contested=tests_pass_contest)
+        results.append(tests_pass)
 
     if subject is not None:
         results = [dataclasses.replace(r, subject=subject) for r in results]
@@ -187,6 +198,7 @@ def _from_passed_row(cid: str, row: Mapping[str, Any]) -> CheckResult:
         if status is ResultStatus.PASSED
         else (_str_or_none(row.get("reason")) or derived_failure_reason(row)),
         provenance=provenance,
+        contested=None if status is ResultStatus.PASSED else _contest(row),
     )
 
 
@@ -219,6 +231,10 @@ _STRUCTURAL_ROW_KEYS = frozenset(
         "runner",
         "exit_code",
         "suite_broken",
+        # SIP-0096 §17a: the producer's dispute of the failure, not evidence of it. A dict, which
+        # the renderer below skips today; named so a renderer that learns dicts cannot make a
+        # contested round sign differently from the same failure uncontested.
+        "contested",
     }
 )
 
@@ -371,6 +387,25 @@ def _not_executed_reason(tr: Mapping[str, Any]) -> str:
     if "not found" in err or "no module" in err or "command" in err:
         return NotExecutedReason.MISSING_TOOLING
     return NotExecutedReason.SUBJECT_MISSING
+
+
+def _contested_rows(checks: Any, disputes: Any) -> Any:
+    """SIP-0096 §17a: the producer's disputes mark the rows they name before any row is
+    classified, so a result carries its contest to the ledger and the roll-up."""
+    if not checks or not disputes:
+        return checks
+    from squadops.capabilities.disputed_checks import mark_contested
+
+    marked, _unmatched = mark_contested(checks, disputes)
+    return marked
+
+
+def _contest(row: Mapping[str, Any]) -> Contest | None:
+    """The dispute ``mark_contested`` put on a row (SIP-0096 §17a), as a result attribute."""
+    contest = row.get("contested")
+    if not isinstance(contest, Mapping) or not contest.get("reason"):
+        return None
+    return Contest(by=_str_or_none(contest.get("by")), reason=str(contest["reason"]))
 
 
 def _str_or_none(value: Any) -> str | None:

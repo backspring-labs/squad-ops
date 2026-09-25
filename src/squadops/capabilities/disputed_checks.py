@@ -84,6 +84,53 @@ def failing_row_identities(rows: Iterable[Any] | None) -> list[str]:
     return lines
 
 
+def dispute_names(dispute: Mapping[str, Any], row: Mapping[str, Any]) -> bool:
+    """Whether ``dispute`` names ``row``: the same check, with or without the ``acceptance:``
+    prefix, and the same file and criterion wherever the dispute gives them."""
+    if _bare(row.get("check")) != _bare(dispute.get("check")):
+        return False
+    if dispute.get("file") and str(_row_file(row) or "") != str(dispute["file"]):
+        return False
+    criterion = dispute.get("criterion_id")
+    return not criterion or str(row.get("criterion_id") or "") == str(criterion)
+
+
+def mark_contested(
+    rows: Iterable[Any] | None, disputes: Iterable[Any] | None
+) -> tuple[list[Any], list[dict[str, Any]]]:
+    """``rows`` with ``contested: {by, reason}`` on each blocking-failed row a dispute names,
+    and the disputes that named none (SIP-0096 §17a change 2).
+
+    Only a blocking failure can be contested: a row that passed, or failed only as advice,
+    has nothing to dispute, so a dispute naming only such rows is unmatched. A dispute
+    without file or criterion names every failing row of its check. Where two disputes name
+    one row, the first stands. Pure: the rows handed in are not changed.
+    """
+    marked = list(rows or ())
+    unmatched: list[dict[str, Any]] = []
+    for dispute in disputes or ():
+        if not isinstance(dispute, Mapping) or not dispute.get("reason"):
+            continue
+        named = False
+        for i, row in enumerate(marked):
+            if not isinstance(row, Mapping) or not row_is_blocking_failure(row):
+                continue
+            if not dispute_names(dispute, row):
+                continue
+            named = True
+            if not row.get("contested"):
+                contest = {"by": dispute.get("by"), "reason": str(dispute["reason"])}
+                marked[i] = {**row, "contested": contest}
+        if not named:
+            unmatched.append(dict(dispute))
+    return marked, unmatched
+
+
+def _bare(check: Any) -> str:
+    name = str(check or "")
+    return name.removeprefix(_TYPED_ROW_PREFIX)
+
+
 def _row_file(row: Mapping[str, Any]) -> str | None:
     params = row.get("params")
     return (params.get("file") if isinstance(params, Mapping) else None) or row.get("file")

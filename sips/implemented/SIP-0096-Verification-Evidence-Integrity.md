@@ -278,7 +278,7 @@ Acceptance of the SIP is all phases (SIP-0089/0090 precedent).
 
 ## 17. Post-implementation amendments
 
-### 17a. 2026-09-15 — a contested result: the producer's dispute becomes evidence (proposed; change 1 built; targeted for 1.8.2)
+### 17a. 2026-09-15 — a contested result: the producer's dispute becomes evidence (proposed; changes 1–2 built; targeted for 1.8.2)
 
 **Status.** Drafted on the owner's ask of 2026-09-15 and targeted for 1.8.1 by the owner's
 ruling of the same day; **re-targeted to 1.8.2 on 2026-09-17** by the owner's ruling on the
@@ -380,6 +380,31 @@ dispute names `file`, not `subject`. A row's `subject` is the plan-task id that 
 (`CheckResult.subject`, §6.3), which the producer does not see. It is implied by which task
 disputed, so matching (change 2) takes it from the task. `file` is what separates one check run
 on several files: a typed row carries it as `params.file`.
-`check` and `reason` are required; an entry without either disputes nothing and is logged. **Not
-yet built:** changes 2–5. Nothing reads `disputed_checks` yet, so this change credits nothing,
-blocks nothing and routes nothing.
+`check` and `reason` are required; an entry without either disputes nothing and is logged.
+
+**As built — change 2 (2026-09-24).** The handler executor stamps each dispute with the role
+that made it (`by`), because a failed result's outputs don't always carry the role elsewhere.
+`mark_contested` puts `contested: {by, reason}` on each **blocking-failed** row a dispute names:
+- the same check, with or without the `acceptance:` prefix
+- the same `params.file` and `criterion_id` wherever the dispute gives them
+
+A row that passed, or failed only as advice, has nothing to contest, so a dispute naming only
+such rows is `unmatched`. It marks at the two readers of a task's rows, over the same outputs:
+- **`normalize_task_checks`**, the §6.1 producer adapter. The result gains
+  `CheckResult.contested` and the roll-up `FailedCheck.contested`, stored with the summary
+  (`failed_detail[].contested`). A dispute of `tests_pass` rides the result synthesized from
+  `test_result`, since the row itself is skipped. The family and the verdict are unchanged,
+  and a test holds the verdict equal with and without a contest.
+- **`build_failure_evidence`**, where the analyzer reads. Contested rows are carried in their
+  own block, `contested_rows` (change 3's question is asked of it). Disputes that named no
+  failing row go in `unmatched_disputes`, recorded and read as nothing. `contested` is a
+  structural row key, so it never enters a derived reason or the correction signature.
+
+**A repair's dispute is carried to the next round.** Each round re-dispatches the failed task
+and runs its analyzer before its repair, so a repair's dispute (#1581's shape) is read in the
+next round or nowhere. The repair outcome collects the steps' disputes. The runner writes them
+to a run-lived `dispute_carry`, which the executor threads the way it threads `signature_state`
+(#435), and the next round marks them onto its evidence beside the task's own. A round reads its
+own predecessor's: the carry is replaced each round, not appended.
+
+**Not yet built:** changes 3–5. Nothing asks about `contested_rows` or routes on a contest yet.

@@ -2458,7 +2458,7 @@ class TestTheAcceptedRepairFactReachesTheCorrectionPolicy:
             metadata={"role": "dev"},
         )
 
-    async def _capture(self, executor, cycle, accepted: set[str]) -> dict:
+    async def _capture(self, executor, cycle, accepted: set[str], **threaded) -> dict:
         import contextlib
 
         from adapters.cycles.execution_errors import _ExecutionError
@@ -2497,8 +2497,20 @@ class TestTheAcceptedRepairFactReachesTheCorrectionPolicy:
                 patched_result_holder={},
                 interface_manifest=None,
                 accepted_repair_task_ids=accepted,
+                **threaded,
             )
         return seen
+
+    async def test_the_run_lived_dispute_carry_is_the_one_the_protocol_reads(self, executor, cycle):
+        """SIP-0096 §17a: a repair's disputes are read by the task's next round only through
+        this carry, so it must be the executor's run-lived object on every round. Bug caught:
+        the carry dropped on this hop — the runner reads and writes nothing, and a repair's
+        dispute (#1581's shape) is never adjudicated."""
+        carry = {
+            "task_dev_2": [{"check": "tests_pass", "reason": "the suite is wrong", "by": "dev"}]
+        }
+        seen = await self._capture(executor, cycle, set(), repair_dispute_carry=carry)
+        assert seen.get("dispute_carry") is carry
 
     async def test_a_task_with_an_accepted_repair_is_reported_as_such(self, executor, cycle):
         seen = await self._capture(executor, cycle, {"task_dev_2"})

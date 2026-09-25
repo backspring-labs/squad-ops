@@ -55,7 +55,11 @@ from squadops.cycles.correction_signature import (
     should_terminate_plan_defect,
 )
 from squadops.cycles.failure_attribution import TerminalKind
-from squadops.cycles.failure_evidence import build_failure_evidence, compose_failure_trigger
+from squadops.cycles.failure_evidence import (
+    build_failure_evidence,
+    compose_failure_trigger,
+    mark_contested_rows,
+)
 from squadops.cycles.models import ArtifactRef
 from squadops.cycles.plan_delta import PlanDelta
 from squadops.cycles.run_loop_summary import MovementRecord, RoundFailure, RunTerminalDecision
@@ -869,6 +873,7 @@ class CorrectionRunner:
         ledger: RunLedger | None = None,
         repair_rejections: list[str] | None = None,
         has_accepted_repair: bool = False,
+        dispute_carry: dict[str, list[dict[str, Any]]] | None = None,
     ) -> CorrectionProtocolResult:
         """Run the correction protocol: analyze → decide → act.
 
@@ -932,6 +937,7 @@ class CorrectionRunner:
             repair_rejections=repair_rejections,
             bound_record=bound_record,
             ledger=ledger,
+            repair_disputes=(dispute_carry or {}).get(envelope.task_id),
         )
 
         correction_path = self._resolve_correction_path(
@@ -972,6 +978,13 @@ class CorrectionRunner:
             budget_guard=budget_guard,
             bound_record=bound_record,
         )
+
+        # SIP-0096 §17a: this repair's disputes, for the next round of the same task — each
+        # round re-dispatches the failed task and diagnoses before it repairs, so a repair's
+        # dispute is read there or nowhere. Replaced, not appended: a round reads its own
+        # predecessor's.
+        if dispute_carry is not None:
+            dispute_carry[envelope.task_id] = list(repair.disputes)
 
         emission_empty = self._correction_repair.judge_emission(repair, correction_attempts)
 
@@ -1024,6 +1037,7 @@ class CorrectionRunner:
         repair_rejections: list[str] | None,
         bound_record: Any,
         ledger: RunLedger | None = None,
+        repair_disputes: list[dict[str, Any]] | None = None,
     ) -> _Diagnosis:
         """Step 1 — build the failure evidence and run the profile's declared steps.
 
@@ -1067,6 +1081,9 @@ class CorrectionRunner:
             repair_rejections=repair_rejections,
             stored_artifacts=stored_artifacts,
         )
+        # SIP-0096 §17a: the previous round's repair disputed checks this round's rows carry
+        # (#1581: a dev repair answering that the qa suite, not the app, was wrong).
+        mark_contested_rows(failure_evidence, repair_disputes)
         # SIP-0108 §4.2: the round's failure as its evidence classifies it — recorded before any
         # step dispatches, so a round the time budget ends at dispatch is still in the record.
         if ledger is not None:

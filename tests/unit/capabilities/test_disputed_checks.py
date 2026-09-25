@@ -224,7 +224,8 @@ async def test_an_answer_that_is_only_a_dispute_carries_it_and_stores_no_file(
     result = await _executor(response, sent).execute(_envelope(task_type, inputs))
 
     assert result.status == status, result.error
-    assert result.outputs[DISPUTED_CHECKS] == [_DISPUTED]
+    # Carried with the role that disputed (change 2 marks the contested row with it).
+    assert result.outputs[DISPUTED_CHECKS] == [{**_DISPUTED, "by": "dev"}]
     stored = result.outputs.get("artifacts") or []
     assert "backend/routes.py" not in {a["name"] for a in stored}
     assert not any("disputed_checks" in str(a.get("content")) for a in stored), stored

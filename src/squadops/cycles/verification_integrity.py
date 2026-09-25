@@ -190,6 +190,17 @@ class CheckProvenance:
 
 
 @dataclass(frozen=True)
+class Contest:
+    """A producer's dispute of a failed result (SIP-0096 §17a change 2): which role disputed
+    it and why. An attribute of the result, never a fourth family — it credits nothing, blocks
+    nothing on its own and never turns a failure into a pass. ``by`` is ``None`` when the
+    dispute did not say which role made it."""
+
+    by: str | None
+    reason: str
+
+
+@dataclass(frozen=True)
 class CheckResult:
     """Normalized verification result — the aggregation input (SIP-0096 §6.1).
 
@@ -225,6 +236,9 @@ class CheckResult:
     # (``criterion_id`` set), so a contract criterion can never be silently
     # unenforceable. False for benign skips and all executed results.
     evidence_gap: bool = False
+    # SIP-0096 §17a: the producer's dispute of this failed result, when one named it. The
+    # family is unchanged; the roll-up discloses it beside the failure it disputes.
+    contested: Contest | None = None
     # The producing subject's identity (§6.3) — the plan-task id that emitted this
     # result. DISTINCT from ``provenance.subject_ref`` (the *thing* under test — a
     # file-set hash/artifact/endpoint, which legitimately *differs* between a failed
@@ -258,6 +272,9 @@ class FailedCheck:
     check_id: str
     reason: str
     required: bool
+    # SIP-0096 §17a: the producer disputed this failure; carried so the run's terminal
+    # decision names a contested check as such.
+    contested: Contest | None = None
 
 
 @dataclass(frozen=True)
@@ -766,6 +783,7 @@ def aggregate_verification(
                     check_id=r.check_id,
                     reason=r.reason or "",
                     required=r.check_id in required,
+                    contested=r.contested,
                 )
             )
         else:  # NOT_EXECUTED — non-creditable, always disclosed

@@ -7386,3 +7386,73 @@ class TestFillRepairAlsoTargetsTheOwnAdditiveSuite(TestCorrectionRunnerStandalon
         assert [e.task_type for e in repairs] == ["qa.test_repair"], [e.task_type for e in repairs]
         assert repairs[0].inputs["expected_artifacts"] == [self._SHELL, self._SUITE]
         assert repairs[0].metadata["role"] == "qa"
+
+
+class TestARepairsDisputeIsCarriedToTheNextRound:
+    """SIP-0096 §17a change 2: a repair's disputes, carried to the round that can read them.
+    The standalone harness's helpers are borrowed, not inherited, so its tests do not run here
+    a second time."""
+
+    _make_runner = TestCorrectionRunnerStandalone._make_runner
+    _failed_envelope = TestCorrectionRunnerStandalone._failed_envelope
+
+    async def test_a_repairs_dispute_is_read_by_the_next_rounds_analyzer(self, cycle):
+        """SIP-0096 §17a, #1581's shape, entered at ``run_correction_protocol`` — the call the
+        executor makes each round — with the run-lived carry the executor threads. Round 1's
+        dev repair answers that the suite, not the app, is wrong; round 2 diagnoses the task's
+        next failure.
+
+        Bug this catches: a repair's dispute read nowhere. Each round re-dispatches the failed
+        task and its analyzer runs before its repair, so a dispute the runner does not carry
+        into the next round's evidence is never adjudicated."""
+        analyzed: list[dict] = []
+        dispute = {
+            "check": "tests_pass",
+            "reason": "the suite asserts `title`, which the PRD drops",
+            "by": "dev",
+        }
+
+        def responder(envelope):
+            if envelope.task_type == "data.analyze_failure":
+                analyzed.append(envelope.inputs["failure_evidence"])
+                outputs = {"classification": "work_product", "analysis_summary": "suite fails"}
+            elif envelope.task_type == "governance.correction_decision":
+                outputs = {
+                    "correction_path": "patch",
+                    "decision_rationale": "repair it",
+                    "affected_task_types": ["development.implement"],
+                }
+            else:
+                outputs = {"artifacts": [], "disputed_checks": [dispute]}
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs=outputs)
+
+        runner, *_ = self._make_runner(responder)
+        tests_row = {"check": "tests_pass", "passed": False, "reason": "1 failed"}
+        failed = TaskResult(
+            task_id="task_failed",
+            status="FAILED",
+            error="tests failed",
+            outputs={"validation_result": {"checks": [tests_row]}},
+        )
+        carry: dict = {}
+        for attempt in (0, 1):
+            await runner.run_correction_protocol(
+                run_id="run_001",
+                cycle=cycle,
+                envelope=self._failed_envelope(),
+                result=failed,
+                correction_attempts=attempt,
+                prior_outputs={},
+                all_artifact_refs=[],
+                stored_artifacts=[],
+                completed_task_ids=[],
+                plan_delta_refs=[],
+                dispute_carry=carry,
+            )
+
+        first, second = analyzed
+        assert "contested_rows" not in first, "round 1 has no repair behind it yet"
+        assert second["contested_rows"] == [
+            {**tests_row, "contested": {"by": "dev", "reason": dispute["reason"]}}
+        ]
+        assert carry == {"task_failed": [dispute]}

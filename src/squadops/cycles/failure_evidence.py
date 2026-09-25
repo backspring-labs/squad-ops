@@ -192,8 +192,33 @@ def build_failure_evidence(
     source_containment = result_outputs.get("source_containment")
     if isinstance(source_containment, list) and source_containment:
         evidence["source_containment"] = list(source_containment)
+    mark_contested_rows(evidence, result_outputs.get("disputed_checks"))
     evidence["failure_category"] = derive_failure_category(evidence)
     return evidence
+
+
+def mark_contested_rows(evidence: dict[str, Any], disputes: Any) -> None:
+    """SIP-0096 §17a changes 2–3: ``disputes`` mark the failing rows they name, and the
+    evidence carries the contested rows in their own block — the analyzer is asked one question
+    of each — and the disputes that named no failing row as ``unmatched_disputes``, which are
+    recorded and read as nothing.
+
+    Called for the failed task's own disputes here, and again by the correction runner for the
+    previous round's repair's, which a round only reads through its evidence. A row keeps the
+    first contest that named it.
+    """
+    if not disputes:
+        return
+    from squadops.capabilities.disputed_checks import mark_contested
+
+    validation = evidence["validation_result"]
+    checks, unmatched = mark_contested(validation.get("checks"), disputes)
+    validation["checks"] = checks
+    contested = [row for row in checks if isinstance(row, dict) and row.get("contested")]
+    if contested:
+        evidence["contested_rows"] = contested
+    if unmatched:
+        evidence["unmatched_disputes"] = [*evidence.get("unmatched_disputes", []), *unmatched]
 
 
 # Bounded: distinct failing probes usually share one root cause; three

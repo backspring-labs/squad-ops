@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -857,6 +857,12 @@ def _apply_emission_ownership_veto(
     return kept
 
 
+def _repair_step_disputes(repair_result: Any) -> list[dict[str, Any]]:
+    """The checks a repair step disputed (SIP-0096 §17a), as its handler carried them."""
+    disputes = (getattr(repair_result, "outputs", None) or {}).get("disputed_checks") or []
+    return [d for d in disputes if isinstance(d, dict)]
+
+
 def _repair_step_rows(repair_result: Any) -> list[dict[str, Any]]:
     """The ``repair_typed_checks`` a repair step banked on its outputs (#1229), as the
     protocol result carries them (#1256): one entry when the step evaluated any row,
@@ -884,6 +890,9 @@ class RepairOutcome:
     #: SIP-0107 §22: a repair step whose anchored edits were refused on its retry too. It
     #: emitted a repair that failed — not nothing — so its round is spent, never refunded.
     anchored_edits_refused: bool = False
+    #: SIP-0096 §17a: the checks the repair disputed, each with the role that disputed it.
+    #: The next round's evidence reads them, since its analyzer runs before its repair.
+    disputes: list[dict[str, Any]] = field(default_factory=list)
 
 
 class CorrectionRepair:
@@ -948,6 +957,7 @@ class CorrectionRepair:
         # the SUBJECT and would point a test re-author at app source files).
         repair_artifacts: list[dict[str, Any]] = []
         repair_typed_checks: list[dict[str, Any]] = []
+        repair_disputes: list[dict[str, Any]] = []
         anchored_edits_refused = False
         repair_steps_ran = False
         empty_signatures: list[str] = []
@@ -1101,6 +1111,7 @@ class CorrectionRepair:
                 # #1256: the rows this step evaluated on its own patch (rule B) ride the
                 # protocol result to the executor's verifier beside the files.
                 repair_typed_checks.extend(_repair_step_rows(repair_result))
+                repair_disputes.extend(_repair_step_disputes(repair_result))
                 # #998: the handler names what kind of nothing it emitted; keep it for
                 # the round's disclosure below.
                 empty_signatures.extend(_empty_emission_signature(repair_result))
@@ -1152,6 +1163,7 @@ class CorrectionRepair:
             steps_ran=repair_steps_ran,
             empty_signatures=empty_signatures,
             anchored_edits_refused=anchored_edits_refused,
+            disputes=repair_disputes,
         )
 
     def judge_emission(self, repair: RepairOutcome, correction_attempts: int) -> bool:
