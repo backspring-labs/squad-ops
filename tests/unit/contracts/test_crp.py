@@ -37,7 +37,7 @@ class TestCRPSchema:
         profile = CycleRequestProfile(
             name="full",
             description="A full test profile",
-            defaults={"build_strategy": "fresh"},
+            defaults={"max_self_eval_passes": 0, "build_strategy": "fresh"},
             prompts={
                 "build_strategy": PromptMeta(
                     label="Build Strategy",
@@ -55,7 +55,7 @@ class TestCRPSchema:
         with pytest.raises(ValueError, match="Unknown default keys"):
             CycleRequestProfile(
                 name="bad",
-                defaults={"totally_bogus_key": "nope"},
+                defaults={"max_self_eval_passes": 0, "totally_bogus_key": "nope"},
             )
 
     def test_known_default_keys_accepted(self):
@@ -63,6 +63,7 @@ class TestCRPSchema:
         profile = CycleRequestProfile(
             name="ok",
             defaults={
+                "max_self_eval_passes": 0,
                 "build_strategy": "incremental",
                 "execution_overrides": {"foo": "bar"},
                 "expected_artifact_types": ["code"],
@@ -234,3 +235,56 @@ class TestHashDeterminism:
         h1 = compute_config_hash(defaults, overrides)
         h2 = compute_config_hash({"a": 2, "z": 1}, {"m": 3})
         assert h1 == h2
+
+
+class TestTheSelfEvaluationDepthIsDeclared:
+    """SIP-0086 §12a change 1: the depth is the request profile's, required, never a constant.
+    It was read with a default of 1, and eleven of seventeen profiles never said how deep
+    their loop runs."""
+
+    @pytest.mark.parametrize("bad", [None, -1, True, "3"])
+    def test_a_profile_that_does_not_declare_a_depth_is_refused(self, bad):
+        defaults = {} if bad is None else {"max_self_eval_passes": bad}
+        with pytest.raises(ValueError, match="max_self_eval_passes"):
+            CycleRequestProfile(name="x", defaults=defaults)
+
+    def test_every_committed_profile_declares_one(self):
+        """The loader refuses a profile without it; this names the committed ones so a new
+        profile added without it fails here, not on its first cycle."""
+        from pathlib import Path
+
+        from squadops.contracts.cycle_request_profiles import load_profile
+
+        root = (
+            Path(__file__).resolve().parents[3]
+            / "src/squadops/contracts/cycle_request_profiles/profiles"
+        )
+        depths = {
+            p.stem: load_profile(p.stem).defaults["max_self_eval_passes"]
+            for p in root.glob("*.yaml")
+        }
+        assert depths["validated-fullstack"] == depths["validated-fullstack-solo"] == 3
+        assert all(isinstance(v, int) and v >= 0 for v in depths.values())
+
+
+class TestTheHandlerReadsTheDeclaredDepth:
+    async def test_a_self_evaluation_without_a_declared_depth_is_refused(self):
+        """Bug this catches: the handler's old default of 1 — a pass nobody declared."""
+        from unittest.mock import MagicMock
+
+        from squadops.capabilities.handlers.cycle.develop import DevelopmentDevelopHandler
+
+        with pytest.raises(ValueError, match="max_self_eval_passes is required"):
+            await DevelopmentDevelopHandler()._self_evaluate(
+                MagicMock(),
+                {"resolved_config": {"output_validation": True}},
+                validation=MagicMock(passed=False),
+                artifacts=[],
+                evidence_extra={},
+                typed_error_counts={},
+                transcript=("s", "u", "c"),
+                chat_kwargs={},
+                started=0.0,
+                rendered=None,
+                followup=MagicMock(),
+            )

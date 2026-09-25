@@ -1200,3 +1200,15 @@ measurement for the 1.8.1 set, not a change this amendment makes.
 the model it runs", and targeted for 1.8.1. The design is the implementer's, for review on
 the PR that builds it. **Re-targeted to 1.8.2 by the owner, 2026-09-17**, on the 1.8.1 plan's review
 (the status line above).
+
+**As built — change 1 (2026-09-25, 1.8.2 plan §3.2/§3.3).** `max_self_eval_passes` is required:
+`CycleRequestProfile`'s validator refuses a profile that does not declare it or declares
+anything but a non-negative integer (`_validate_self_eval_depth`), and the handler's
+self-evaluation loop refuses a resolved config without it instead of reading 1
+(`base.py` `_self_evaluate`). The five validated build profiles (`validated-fullstack`,
+`validated-fullstack-solo`, `implementation`, `validation`, `validation-multirole`) declare 3;
+`build` keeps its 1, which it already declared; the eleven profiles that run no output
+validation declare 0 (the loop only opens on a failed output validation, and
+`output_validation` defaults to false, so 0 changes none of them). **Not yet built:** the
+per-pass key in the usage ledger (it lands on the same `_llm_call` seam as 1.8.2 item 2, after
+it), and changes 2–4. This section says so until each lands.

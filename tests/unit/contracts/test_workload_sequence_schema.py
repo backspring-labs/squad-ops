@@ -19,6 +19,7 @@ class TestWorkloadSequenceKey:
         profile = CycleRequestProfile(
             name="test",
             defaults={
+                "max_self_eval_passes": 0,
                 "squad_profile_id": "full",
                 "workload_sequence": [
                     {"type": "framing", "gate": "progress_plan_review"},
@@ -31,7 +32,7 @@ class TestWorkloadSequenceKey:
     def test_without_workload_sequence_still_valid(self):
         profile = CycleRequestProfile(
             name="test",
-            defaults={"squad_profile_id": "full"},
+            defaults={"max_self_eval_passes": 0, "squad_profile_id": "full"},
         )
         assert "workload_sequence" not in profile.defaults
 
@@ -43,6 +44,7 @@ class TestAutoGateValue:
         profile = CycleRequestProfile(
             name="test",
             defaults={
+                "max_self_eval_passes": 0,
                 "workload_sequence": [
                     {"type": "framing", "gate": "progress_approval_required"},
                     {"type": "implementation", "gate": "auto"},
@@ -62,6 +64,7 @@ class TestGateNameValidation:
             CycleRequestProfile(
                 name="test",
                 defaults={
+                    "max_self_eval_passes": 0,
                     "workload_sequence": [
                         {"type": "framing", "gate": "my_custom_gate"},
                     ],
@@ -74,6 +77,7 @@ class TestGateNameValidation:
             CycleRequestProfile(
                 name="test",
                 defaults={
+                    "max_self_eval_passes": 0,
                     "workload_sequence": [
                         {"type": "framing", "gate": "Progress_plan_review"},
                     ],
@@ -86,6 +90,7 @@ class TestGateNameValidation:
             CycleRequestProfile(
                 name="test",
                 defaults={
+                    "max_self_eval_passes": 0,
                     "workload_sequence": [
                         {"type": "framing", "gate": "progress_plan_review"},
                         {"type": "implementation", "gate": "bad_gate"},

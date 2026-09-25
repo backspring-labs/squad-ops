@@ -36,9 +36,11 @@ class TestValidationProfile:
         """Distinct from `build` (max_self_eval_passes=1), the validation
         profile runs at implementation depth so typed checks fire enough
         per cycle to exercise the gate's `evaluator-error rate <5%` and
-        `≥5/10 cycles change an outcome` criteria."""
+        `≥5/10 cycles change an outcome` criteria. Three since SIP-0086 §12a
+        change 1 (the compile loop's depth for a one-hour build profile)."""
         profile = load_profile("validation")
-        assert profile.defaults["max_self_eval_passes"] == 2
+        assert profile.defaults["max_self_eval_passes"] == 3
+        assert load_profile("build").defaults["max_self_eval_passes"] == 1
 
     def test_implementation_depth_correction_attempts(self):
         """Gate's M2 → M3 `structural_plan_change_candidate` diagnostic
