@@ -608,6 +608,12 @@ class SetConfig:
     #: refused rather than admitted while the gate reloads the canonical one (#1645 review).
     source: str = ""
     source_path: str = ""
+    #: Why this set's config-hash or snapshot pin equals an earlier line's, when it does (1.8.2
+    #: plan §3.2 item 5). A pin carried verbatim from the previous line is how 1.8.1's first
+    #: counted roll was refused: #1614 had moved the resolved config and nobody re-read it
+    #: (1.8.1 pre-registration rev 5). A value that legitimately did not move is re-read from
+    #: the deploy and says so here; the test holds every line from 1.8.2 on to it.
+    pins_unmoved_because: str = ""
     #: The chain this set runs (``chain`` command), or None for a set that is not one.
     chain: ChainSpec | None = None
 
@@ -734,6 +740,7 @@ def load_set_config(path: Path) -> SetConfig:
         loaded_checks=tuple(checks),
         records_dir=records_dir,
         pre_registration=str(raw.get("pre_registration") or ""),
+        pins_unmoved_because=str(raw.get("pins_unmoved_because") or "").strip(),
         arm=str(raw.get("arm") or ""),
         compare_with=str(raw.get("compare_with") or ""),
         window_pairs=int(raw.get("window_pairs") or 0),
