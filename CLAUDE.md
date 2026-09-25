@@ -264,7 +264,7 @@ builder runs, because it globs that directory:
 
 ```bash
 python scripts/dev/capture_delivered_app.py --cycle <cyc> --run <IMPL run> --version X.Y.Z \
-    --seed-file examples/<prd>/screenshot_seed.json --id-from /runs --route '/:delivered-app-run-list' …
+    --seed-file examples/<prd>/screenshot_seed.json --id-from /runs --route '/runs:delivered-app-run-list' …
 python scripts/dev/capture_prefect_run.py --cycle <cyc> --version X.Y.Z \
     --label prefect-flow-run-<what-it-shows>
 ```
@@ -272,7 +272,9 @@ python scripts/dev/capture_prefect_run.py --cycle <cyc> --version X.Y.Z \
 The first rebuilds the delivered tree from the vault and boots it; the second photographs the
 flow-run timeline, which is the only view where a correction round is legible at a glance.
 Both refuse to produce something misleading — a run that has not finished, a seeded state the
-app rejected. Each filename becomes its caption on the page, so name them as captions. This
+app rejected. The first maps its seed and routes onto the run's own `interface_manifest.yaml`
+(each roll authors its field names, endpoints and client routes) and refuses a route the app
+does not declare or a page that rendered none of its view (#1665). Each filename becomes its caption on the page, so name them as captions. This
 was prose from 2026-08-10 and **v1.7.0 through v1.7.4 each shipped an empty `assets/`** — the
 #789/#1061 shape, which is why it is now two commands and rule 3 of
 `check_release_packages.py`.
