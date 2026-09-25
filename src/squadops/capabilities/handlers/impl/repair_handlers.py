@@ -193,6 +193,20 @@ def _decision_present(correction_decision: Any) -> bool:
     return bool(correction_decision)
 
 
+#: Which Correction Decision section a repair brief carried (#1661): the lead's decision, or
+#: the rule's statement that the protocol declared repair alone. Every repair carries one.
+DECISION_SECTION_LEAD = "lead"
+DECISION_SECTION_RULE = "rule"
+
+
+def decision_section_kind(correction_decision: Any) -> str:
+    """The section a repair renders for ``correction_decision`` — the one choice the renderer
+    path, the inline fallback and the recorded fact all read (#1661)."""
+    return (
+        DECISION_SECTION_LEAD if _decision_present(correction_decision) else DECISION_SECTION_RULE
+    )
+
+
 def _format_correction_decision(correction_decision: Any) -> str:
     """Render the lead's correction decision rationale for the prompt."""
     if isinstance(correction_decision, dict):
@@ -345,6 +359,7 @@ class _RepairPromptMixin:
             **inputs,
             "correction_decision_section": await self._render_decision_section(context, inputs),
         }
+        decision_section = decision_section_kind(inputs.get("correction_decision"))
         inputs = {**inputs, **(await self._render_output_form(context, inputs))}
         current = await self._render_current_files_section(context, inputs)
         if current:
@@ -358,7 +373,10 @@ class _RepairPromptMixin:
         # Every base file's size, not only the offered ones: a base file re-emitted whole that
         # the form never offered is still a whole-file response (§46p, #1583).
         self._record_revision_form(
-            offered, result, {path: len(content) for path, content in base.items()}
+            offered,
+            result,
+            {path: len(content) for path, content in base.items()},
+            decision_section=decision_section,
         )
         await self._after_emission(inputs, result)
         return result
@@ -368,9 +386,17 @@ class _RepairPromptMixin:
         offered: dict[str, int],
         result: HandlerResult,
         base_chars: dict[str, int] | None = None,
+        *,
+        decision_section: str,
     ) -> None:
         """One line per repair: the edit form it was offered, the form its response took, and
-        how much of each offered file it replaced (§46o).
+        how much of each offered file it replaced (§46o), and which Correction Decision section
+        its brief carried (#1661).
+
+        The decision section is recorded because the rendered prompt is not: LangFuse keeps the
+        first 10,000 characters of a generation's input and a repair brief's decision section
+        comes after them, so the 1.8.1 window's I2 (the squad's brief carries the lead's
+        decision) and H3's rule reading could not be asked on any roll.
 
         SIP-0107 §46a counts unauthorized whole-file responses per cell before the flip, and
         §39.8's N counts scoped transactions, so neither is readable unless every repair says
@@ -387,7 +413,10 @@ class _RepairPromptMixin:
         outputs = getattr(result, "outputs", None)
         if not isinstance(outputs, dict):
             return
-        reading = revision_form_reading(offered, outputs, base_chars)
+        reading = {
+            **revision_form_reading(offered, outputs, base_chars),
+            "decision_section": decision_section,
+        }
         outputs["revision_form"] = reading
         logger.info(
             "repair_revision_form %s",
@@ -411,7 +440,7 @@ class _RepairPromptMixin:
         if renderer is None:
             return ""
         decision = inputs.get("correction_decision")
-        if _decision_present(decision):
+        if decision_section_kind(decision) == DECISION_SECTION_LEAD:
             rendered = await renderer.render(
                 "request.cycle_repair_decision_lead",
                 {"correction_decision": _format_correction_decision(decision)},
@@ -1179,7 +1208,7 @@ class _RepairPromptMixin:
         parts.append("### Why the Prior Attempt Failed\n" + failure_summary)
 
         # Kept in step with request.cycle_repair_decision_{lead,rule} (the renderer path).
-        if _decision_present(inputs.get("correction_decision")):
+        if decision_section_kind(inputs.get("correction_decision")) == DECISION_SECTION_LEAD:
             decision = _format_correction_decision(inputs.get("correction_decision"))
             parts.append("### Correction Decision\n" + decision)
         else:

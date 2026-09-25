@@ -4006,6 +4006,9 @@ def _render_revision_forms(entries: list[dict]) -> str:
             detail.append("accepted" if e["accepted"] else f"refused ({e.get('refusals', 0)})")
         if e.get("fragment_anchors"):
             detail.append(f"{e['fragment_anchors']} fragment anchor(s)")
+        if e.get("decision_section"):
+            # #1661: which Correction Decision section the brief carried (I2, H3).
+            detail.append(f"decision section: {e['decision_section']}")
         for path, span in sorted((e.get("replaced") or {}).items()):
             pct = span.get("pct") if isinstance(span, dict) else None
             detail.append(f"replaced {pct if pct is not None else '?'}% {path}")
