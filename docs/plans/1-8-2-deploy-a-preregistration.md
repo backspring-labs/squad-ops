@@ -1,5 +1,8 @@
 # 1.8.2 deploy A — pre-registration (plan §4.1, §4.4)
 
+**Rev 2 (2026-09-25, after the first diagnostic): one owner ruling on a falsifier's wording
+and one instrument fix — §11. No pin, arm, fault or budget moved.**
+
 **Status: rev 1 (2026-09-25) — the rules, the arms, the diagnostics, the readouts and the pins,
 committed on deploy A before any launch. Nothing has launched.** Deploy A was built from `ccc9475d`
 at 00:36 ET (one rebuild: `runtime-api` and the nine agents). Every pin in §1 was read from the
@@ -103,7 +106,7 @@ launch of each arm confirms its hash against the server, and a mismatch refuses 
 | claim | method | falsified by | what a clean set proves |
 |---|---|---|---|
 | **Campaign readiness** (plan §4.1 `unattended-chain`) — per cycle a terminal state within its bound; zero ghost generations after the cancel; the crash a typed fact and the run leaving `running`; the hang ended at the declared wait as a typed `task_timeout` fact; a quiet box before every launch; an assessment on every cycle; zero manual actions besides the registered gate policy | the chain record (§3e) | any ghost generation, any run left `running`, a hang past its bound, or a manual step | that four cycles, three of them faulted, run back to back with no human action and leave nothing behind — on this deploy, this stack |
-| **The compile loop** (§12a) | `compile-loop` | a correction round, no pass, or a final compile failing | that a pass shown every type error and the file it edits compiles clean inside the task |
+| **The compile loop** (§12a) | `compile-loop` | a correction round, no pass, or a final compile failing — *rev 2: a correction round **caused by the compile failure** (§11a)* | that a pass shown every type error and the file it edits compiles clean inside the task |
 | **The contested result** (§17a) | `false-criterion` | a refund with no dispute, a dispute never read, a rejection, or the import degraded | that a false check is disputed, read and ruled on, and ends at the operator rather than as a lost round |
 | **All-attempt integrity** (§39.8, first reading) — carried verbatim from 1.8.1 §3b | the per-repair `repair_revision_form` and `anchored_edit_transaction` lines; `patch_candidate_identity`; the driver's `loop_texture.repair_revision_forms` and `candidate_identities` | one defect class on any transaction | that the contract holds where it was exercised |
 | **Success-path readiness** (§39.8, second reading) — at least **N = 6**, one per required cell (§3c) | the sum of §3c's counting rules over counted rolls and diagnostics | fewer than 6, **or any required cell at zero** | that a scoped repair can be produced on demand in every lane the flip will govern |
@@ -168,7 +171,7 @@ after its budget stops the set.**
 | `contentless-builder-all-attempts` | `builder_emission_contentless_all_attempts` | **F1** (#1374) | the re-derived required_files line | builder × React (declared) |
 | `dev-lane-fastapi-react` | `dev_join_response_omits_declared_fields` | **the dev lane** (SIP-0107 step 3) | the dev repair's revision form; the retest | **dev × React** |
 | `dev-lane-nextjs` | the same | the same on the App Router stack | as above | **dev × Next.js** |
-| **`compile-loop`** | `compile_loop_two_type_errors` (nextjs_ts) | **§12a** — the task compiles until clean | both errors repaired by the develop task's passes; the final compile clean; **zero correction rounds**; every pass in the usage ledger (`development.develop:self_eval`) | none |
+| **`compile-loop`** | `compile_loop_two_type_errors` (nextjs_ts) | **§12a** — the task compiles until clean | both errors repaired by the develop task's passes; the final compile clean; **zero correction rounds** (*for the compile failure — rev 2, §11a*); every pass in the usage ledger (`development.develop:self_eval`) | none |
 | **`false-criterion`** | `false_criterion_alias_import` (nextjs_ts) | **§17a** — the producer disputes, the framework reads it | the import unchanged; a typed dispute; the row `contested`; the analyzer **confirms**; the chain ends `contested_check`, the check named on the terminal decision | none |
 | **`redelivery`** | `qa_suite_own_frame_failure`, `qa_repair_process_killed` | **#1627's rule and #1626's containment** | a typed `FAILED` for the original task id; the queue drains; the handler not re-run; **the run leaves `running`**; with item 3 built, a child parse crash returns `None` and the parent survives — **not forced by this fault**, read only if one occurs, and UNASKABLE otherwise | none |
 | **`unattended-chain`** | K = 4 React cycles: a cancel (cycle 2, at `development.develop`), a `neo` crash (cycle 3), `handler_hang` (cycle 4) | **the line's claim** | §3b's campaign-readiness row, per cycle | none |
@@ -266,3 +269,87 @@ Records: `var/verification_sets/1-8-2-diagnostics/<diagnostic>/…`, `1-8-2-fast
 `1-8-2-nextjs/roll-0N-…` — on the Spark, in the main checkout's `var/` (item 8), attached to the
 Release at the cut after a credential scan (item 16). Every reading here is taken from the stored
 record, never from memory of the run. Times ET.
+
+### d1 — `compile-loop`, run 1 of 2: `cyc_eb4ed3bde52d` / implementation `run_c4d376ad26f2`, 08:13–09:12 ET
+
+Record `compile-loop/shakeout-20260925T131200Z.json`. Driver at `cc71ec54`.
+
+- **Outcome:** `accepted`; 17 of 17 criteria verified; boot audit PASS; no agent restarts; config
+  hash `91080ef9ce39` (the diagnostic's overrides, non-counting).
+- **The fault** applied to both develop tasks on their first attempts (`m000` 6,631 → 6,769 chars,
+  `m001` 10,313 → 10,451).
+- **The passes** — read from the develop agent's `self_eval_revision_form` lines (§11b):
+  - `m000`, pass 1: offered the edit form on four files; three edits refused, **nothing applied**
+    (one transaction, all or none — SIP-0107 §14).
+  - `m000`, pass 2: edits accepted on three files.
+  - `m001`, pass 1: an edit accepted on `app/page.tsx`.
+
+  Three passes in all, each booked under `development.develop:self_eval` (`calls: 3`,
+  `run_loop_summaries`).
+- **The final compile:** `frontend_compiles` 7 passed, 0 failed across the stored typed-check
+  evaluations.
+- **Correction rounds: 1**, and not the compile's. `builder.assemble`'s `assembly_notes.md` lacked
+  a `## How to Test` section (`regex_match`, `match_count_below_minimum`; correction decision
+  `art_4d21df2074a4`: `patch`).
+  - The builder repair answered with an anchored edit (22 of 67 characters, 33%).
+  - Patch verification passed, and its verified and persisted identities agree.
+- **The driver's seam readout: `reached: false`** — it counts every correction round. **Reading:
+  HELD, by the owner's ruling (§11a)**: no type error left its develop task.
+  - The literal NO stands in the record beside this reading.
+  - The second budgeted run was not spent.
+- **L1:** no contentless emission.
+- **N:** the builder's accepted edit falls in builder × Next.js — not a required cell (rule 4.4 #2);
+  nothing toward N's six.
+- **Harness note:** the sequencer launching the diagnostics misread the deploy-identity file as
+  this cycle's record, and was stopped before it relaunched `compile-loop`; no extra cycle ran.
+
+---
+
+## 11. Amendments after the first launch
+
+### 11a. `compile-loop`'s falsifier counts only a correction round caused by the compile failure — owner's ruling, 2026-09-25
+
+**What changed.** §3b's "falsified by a correction round" and §3d's "**zero correction rounds**"
+now read *a correction round caused by the compile failure*.
+
+**The evidence.** d1 (§10):
+- Both injected type-error pairs were repaired inside their develop tasks.
+- Every final compile was clean.
+- The run's one correction round came from `builder.assemble`'s documentation check on
+  `assembly_notes.md`, a task the fault never touched.
+
+The clause was written as a proxy for "the compile failure escaped the task". The proxy fired on a
+round that has nothing to do with it.
+
+**Who ruled.** The owner, on the evidence above. The alternatives offered were spending the
+second budgeted run, or reading the prediction as falsified and stopping the set.
+
+**What did not change.** The driver's `compile_loop_two_type_errors` readout still counts every
+round. Changing it would alter a reading mid-set (§8). The record keeps the literal NO, and §10
+states the reading beside it.
+
+### 11b. The driver collects the pass and re-take revision forms — an instrument gap, fixed before d2
+
+**The gap.** Several parts of this document read two lines no record held:
+- §3c counts a qa re-take by its `qa_retake_revision_form` line.
+- §3f registers `self_eval_revision_forms` as texture.
+- §3d′ reads §12a change 3 from both lines.
+- §3e says the record can hold them.
+
+The driver collected only `repair_revision_form`. Both lines were dropped at its agent-window
+filter, so N's qa cells, whose new supply on this deploy is the re-take (§3c), could not have been
+counted from any record.
+
+**The fix** (driver-only; it adds a registered reading and alters none):
+- Both lines are kept, and read into `loop_texture.self_eval_revision_forms` and
+  `loop_texture.qa_retake_revision_forms`.
+- Each is registered with the condition under which it is unaskable.
+- Each is rendered in the record.
+- Each is sampled for the #1632 marker self-check.
+
+From d2 on, the driver runs from the fix's merge commit. It changes `scripts/dev/`, `docs/` and
+`tests/` only, with zero drift under `src/` or `adapters/`. The counted rolls pin that commit at
+roll 1.
+
+**d1's forms** are not in its record. They were read from the containers before any rebuild and
+kept verbatim at `var/1-8-2-logs/compile-loop-1-revision-forms.log`. §10's d1 reading cites them.

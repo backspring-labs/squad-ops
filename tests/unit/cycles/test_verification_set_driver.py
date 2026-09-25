@@ -4220,6 +4220,111 @@ class TestRepairRevisionForms:
         assert out["repair_revision_forms"]["state"] == state
 
 
+class TestPassAndReTakeRevisionForms:
+    """1.8.2 deploy A (pre-registration §3c, §3f): a self-evaluation pass and a qa re-take log
+    their revision forms under their own markers (SIP-0086 §12a change 3). The driver read only
+    ``repair_revision_form`` until deploy A's first diagnostic showed it — so N's qa re-takes,
+    which §3c counts by their ``qa_retake_revision_form`` line, reached no record."""
+
+    # `compile-loop`, cyc_eb4ed3bde52d, 2026-09-25: the develop agent's three passes and the
+    # builder's one repair, as the containers logged them (JSON abridged to the fields read).
+    _BASE = "squadops.capabilities.handlers.cycle.base - INFO - self_eval_revision_form "
+    _WINDOW = [
+        f"2026-09-25 12:55:05,543 - {_BASE}"
+        '{"accepted": false, "edited": [], "form": "edits", "handler": '
+        '"development_develop_handler", "pass": 1, "refusals": 3}',
+        f"2026-09-25 12:56:47,424 - {_BASE}"
+        '{"accepted": true, "edited": ["app/api/runs/route.ts"], "form": "edits", "handler": '
+        '"development_develop_handler", "pass": 2, "refusals": 0}',
+        f"2026-09-25 13:02:42,173 - {_BASE}"
+        '{"accepted": true, "edited": ["app/page.tsx"], "form": "edits", "handler": '
+        '"development_develop_handler", "pass": 1, "refusals": 0}',
+        "2026-09-25 13:05:05,784 - squadops.capabilities.handlers.impl.repair_handlers - INFO - "
+        'repair_revision_form {"accepted": true, "edited": ["assembly_notes.md"], "form": '
+        '"edits", "handler": "builder_assemble_repair_handler"}',
+    ]
+
+    def test_each_form_is_read_into_its_own_field(self, driver):
+        """Bug caught: a pass's line filtered out of the agents' window (every pass reads as
+        absent), or read as a repair — §46a's per-cell repair count inflated by passes."""
+        kept = driver._agent_lines_of_interest([*self._WINDOW, "unrelated line"])
+        out = driver.texture_from_agent_lines(kept)
+
+        assert [(f["pass"], f["accepted"]) for f in out["self_eval_revision_forms"]] == [
+            (1, False),
+            (2, True),
+            (1, True),
+        ]
+        assert [f["handler"] for f in out["repair_revision_forms"]] == [
+            "builder_assemble_repair_handler"
+        ]
+        assert out["qa_retake_revision_forms"] == []
+
+    def test_the_driver_reads_the_line_a_qa_re_take_writes(self, driver, caplog):
+        """No re-take has run on a deploy carrying the line, so it is produced by the handler
+        itself, not typed here. Bug caught: the re-take's line and the driver's parse drifting
+        apart, so N's qa cells read no re-take however many ran."""
+        import logging
+        from types import SimpleNamespace
+
+        from squadops.capabilities.handlers.cycle.qa_test import QATestHandler, _WholeFileTests
+
+        suite = (
+            "def test_create_run(client):\n    assert client.post('/api/runs').status_code == 200\n"
+        )
+        edit = (
+            "```edit:tests/test_runs.py\n<<<<<<< SEARCH\n    assert client.post('/api/runs')"
+            ".status_code == 200\n=======\n    assert client.post('/api/runs').status_code == 201"
+            "\n>>>>>>> REPLACE\n```\n"
+        )
+        inputs = {
+            "retake_current_files": {"tests/test_runs.py": suite},
+            "expected_artifacts": ["tests/test_runs.py"],
+        }
+        handler = QATestHandler()
+        with caplog.at_level(logging.INFO):
+            handler._apply_retake_edits(
+                SimpleNamespace(task_id="task-1"),
+                edit,
+                inputs,
+                _WholeFileTests(handler, inputs),
+                {"tests/test_runs.py": 1},
+            )
+        (message,) = [
+            r.getMessage() for r in caplog.records if "qa_retake_revision_form" in r.getMessage()
+        ]
+        line = f"2026-09-25 14:00:00,000 - squadops.capabilities.handlers.cycle.qa_test - INFO - {message}"
+
+        out = driver.texture_from_agent_lines(driver._agent_lines_of_interest([line]))
+
+        (form,) = out["qa_retake_revision_forms"]
+        assert (form["handler"], form["form"], form["edited"]) == (
+            "qa_test_handler",
+            "edits",
+            ["tests/test_runs.py"],
+        )
+        assert out["repair_revision_forms"] == []
+        assert "pass" not in form
+        assert driver._render_revision_forms([form]).startswith("qa_test_handler edits (")
+
+    @pytest.mark.parametrize(
+        ("field", "condition"),
+        [
+            ("self_eval_revision_forms", "no_self_eval_revision_form_line"),
+            ("qa_retake_revision_forms", "no_qa_retake_revision_form_line"),
+        ],
+    )
+    def test_no_form_line_is_unaskable_never_zero(self, driver, field, condition):
+        """#1445. Bug caught: a roll with no pass offered the form, or an image predating the
+        line, reading `none (asked)` — as though passes ran and none took a form."""
+        out = driver.with_states(
+            "loop_texture", {field: []}, {"no_emission_shape_lines": False, condition: True}
+        )
+
+        assert out[field]["state"] == "unaskable"
+        assert "predates the instrument" in out[field]["reason"]
+
+
 class TestASeamIsReadOnlyWhenItsFaultApplied:
     """#1588: the 1.8.0 own-frame diagnostic's run 1 (cyc_eee9b62e6a4f) credited L4 on a
     refund the dev's prose answer had earned — in a cycle where the qa repair the fault

@@ -273,6 +273,19 @@ UNASKABLE_REASONS: dict[str, str] = {
         "repair (SIP-0107 §46a), so either no repair was dispatched or the deployed image "
         "predates the instrument"
     ),
+    # 1.8.2 deploy A (pre-registration §3c, §3f): a pass and a qa re-take log their form under
+    # their own markers, so neither counts as a repair in §46a's per-cell count.
+    "no_self_eval_revision_form_line": (
+        "no `self_eval_revision_form` line in the agents' windows — a self-evaluation pass logs "
+        "one when it is offered the edit form (SIP-0086 §12a change 3), so either no pass was "
+        "offered it (none ran, or the task's shape declines edits) or the deployed image "
+        "predates the instrument"
+    ),
+    "no_qa_retake_revision_form_line": (
+        "no `qa_retake_revision_form` line in the agents' windows — a qa re-take after a "
+        "refunded repair logs one when it is offered the edit form (SIP-0086 §12a change 3), so "
+        "either no re-take ran or the deployed image predates the instrument"
+    ),
 }
 
 #: The conditions common to every readout parsed off the runtime-api window's patch path.
@@ -345,6 +358,8 @@ EVIDENCE_FIELDS: dict[str, tuple[str, ...]] = {
         "no_correction_round",
         "no_repair_revision_form_line",
     ),
+    "loop_texture.self_eval_revision_forms": (*_AGENT_WINDOW, "no_self_eval_revision_form_line"),
+    "loop_texture.qa_retake_revision_forms": (*_AGENT_WINDOW, "no_qa_retake_revision_form_line"),
     # loop_texture: the Prefect server's window (its filter keeps only overrun lines, so an
     # empty window is a quiet one)
     "loop_texture.prefect_loop_overruns": (),
@@ -2335,6 +2350,10 @@ _AGENT_LINE_KEYS = (
     "emission retry feedback",
     # SIP-0107 §46a: one per repair — the edit form it was offered, the form its response took.
     "repair_revision_form ",
+    # SIP-0086 §12a change 3: a self-evaluation pass's form, and a qa re-take's — the re-take's
+    # line is its revision form in N's qa cells (1.8.2 deploy A pre-registration §3c).
+    "self_eval_revision_form ",
+    "qa_retake_revision_form ",
     # #1588: the fault hook's own trace — APPLIED to which attempt, or declared and out of
     # scope. A seam reading that does not know whether its fault applied credited L4 on a
     # refund the dev's prose answer earned, in a cycle where no qa repair ever ran.
@@ -2855,6 +2874,24 @@ AGENT_MARKER_SAMPLES: dict[str, tuple[str, ...]] = {
         '"failure_reason": null, "fills": 0, "form": "edits", "fragment_anchors": 0, '
         '"handler": "development_correction_repair_handler", "modes": ["anchor"]}',
     ),
+    # Real: deploy A's `compile-loop`, cyc_eb4ed3bde52d (neo), 2026-09-25.
+    "self_eval_revision_forms": (
+        "2026-09-25 13:02:42,173 - squadops.capabilities.handlers.cycle.base - INFO - "
+        'self_eval_revision_form {"accepted": true, "edited": ["app/page.tsx"], '
+        '"failure_reason": null, "fills": 0, "form": "edits", "fragment_anchors": 1, '
+        '"handler": "development_develop_handler", "modes": ["anchored"], "new_files": [], '
+        '"offered": {"app/page.tsx": 7}, "pass": 1, "refusals": 0, "task_type": '
+        '"development.develop"}',
+    ),
+    # Rendered: src/squadops/capabilities/handlers/cycle/qa_test.py, the re-take's own line — no
+    # re-take has run on a deploy carrying it yet.
+    "qa_retake_revision_forms": (
+        "2026-09-25 00:00:00,000 - squadops.capabilities.handlers.cycle.qa_test - INFO - "
+        'qa_retake_revision_form {"accepted": true, "edited": ["tests/e2e/runs.spec.ts"], '
+        '"failure_reason": null, "fills": 0, "form": "edits", "fragment_anchors": 0, '
+        '"handler": "qa_test_handler", "modes": ["anchored"], "new_files": [], '
+        '"offered": {"tests/e2e/runs.spec.ts": 4}, "refusals": 0, "task_type": "qa.test"}',
+    ),
     "placeholder_strips": (
         "2026-09-21 08:56:24,643 - squadops.capabilities.handlers.fenced_parser - WARNING - fence "
         "path placeholder: 'path/backend/tests/test_runs.py' emitted under the example's literal "
@@ -2973,6 +3010,8 @@ def loop_texture(
         "no_emission_shape_lines": out["emissions_logged"] == 0,
         "no_emission_retry_aimed": len(out["emission_retries"]) == 0,
         "no_repair_revision_form_line": len(out["repair_revision_forms"]) == 0,
+        "no_self_eval_revision_form_line": len(out["self_eval_revision_forms"]) == 0,
+        "no_qa_retake_revision_form_line": len(out["qa_retake_revision_forms"]) == 0,
         "no_correction_decision_stored": (correction_decisions or 0) == 0,
         "no_fill_merge_artifact": len(out["fill_merge_evidence"]) == 0,
         "no_test_report_stored": uncollected is None,
@@ -3618,6 +3657,8 @@ def texture_from_agent_lines(agent_lines: list[str]) -> dict:
     out = texture_from_emission_shapes(agent_lines)
     out.update(texture_from_retry_feedback(agent_lines))
     out["repair_revision_forms"] = repair_revision_forms(agent_lines)
+    out["self_eval_revision_forms"] = revision_forms(agent_lines, _SELF_EVAL_FORM_MARKER)
+    out["qa_retake_revision_forms"] = revision_forms(agent_lines, _QA_RETAKE_FORM_MARKER)
     # #1311: L8a — the model emitted under the placeholder and the extractor repaired it
     # (read from the agent's log, the only place it is visible).
     out["placeholder_strips"] = placeholder_strips(agent_lines)
@@ -3678,9 +3719,20 @@ def repair_revision_forms(agent_lines: list[str]) -> list[dict]:
     counted per cell before the flip. A line that does not parse is kept as ``unparsed`` rather
     than dropped, so a changed format cannot read as fewer repairs.
     """
+    return revision_forms(agent_lines, _REVISION_FORM_MARKER)
+
+
+_SELF_EVAL_FORM_MARKER = "self_eval_revision_form "
+_QA_RETAKE_FORM_MARKER = "qa_retake_revision_form "
+
+
+def revision_forms(agent_lines: list[str], form_marker: str) -> list[dict]:
+    """Every line carrying ``form_marker``'s JSON revision form, in order — pure. A repair, a
+    self-evaluation pass and a qa re-take each log under their own marker (SIP-0086 §12a change
+    3), and no marker contains another, so a pass never reads as a repair."""
     forms = []
     for line in agent_lines:
-        _, marker, payload = line.partition(_REVISION_FORM_MARKER)
+        _, marker, payload = line.partition(form_marker)
         if not marker:
             continue
         try:
@@ -4458,6 +4510,9 @@ def _render_revision_forms(entries: list[dict]) -> str:
             parts.append("UNPARSED line")
             continue
         detail = [f"offered {len(e.get('offered') or {})}"]
+        if e.get("pass") is not None:
+            # A self-evaluation pass's form carries which pass of its task it was.
+            detail.insert(0, f"pass {e['pass']}")
         if e.get("modes"):
             detail.insert(0, "/".join(e["modes"]))
         if e.get("whole_file_offered"):
@@ -4864,6 +4919,10 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         f"{_show_at(rec, 'loop_texture.candidate_identities', _render_candidate_identities)} |",
         "| repair responses by revision form — offered, and taken (SIP-0107 §46a) | "
         f"{_show_at(rec, 'loop_texture.repair_revision_forms', _render_revision_forms)} |",
+        "| self-evaluation passes by revision form (SIP-0086 §12a change 3) | "
+        f"{_show_at(rec, 'loop_texture.self_eval_revision_forms', _render_revision_forms)} |",
+        "| qa re-takes by revision form — N's qa cells (1.8.2 deploy A §3c) | "
+        f"{_show_at(rec, 'loop_texture.qa_retake_revision_forms', _render_revision_forms)} |",
         "| 1.7.4 R1 emission retries aimed / with fact / blind (#1372) | "
         f"{_show_at(rec, 'loop_texture.emission_retries', _count)} / "
         f"{_show_at(rec, 'loop_texture.retried_with_fact', _count)} / "
