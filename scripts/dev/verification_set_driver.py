@@ -234,6 +234,16 @@ UNASKABLE_REASONS: dict[str, str] = {
     "no_typed_check_evaluation_stored": (
         "no typed_check_evaluation_*.json stored for the run (#114)"
     ),
+    "every_retest_round_repeated": (
+        "every retested round's index was dispatched more than once (#1697), so no round's "
+        "retest could be joined to its own repair; the set-aside rounds are in "
+        "unjoinable_retest_rounds"
+    ),
+    "retest_round_index_repeated": (
+        "a repair or retest id was dispatched more than once in the run (#1697), so a round's "
+        "retest cannot be joined to its own repair by index; those rounds are listed in "
+        "unjoinable_retest_rounds and the run's totals are not reported partial"
+    ),
     "no_patch_retest_stored": (
         "no retest report joined to a repair was stored — the readout reads what a patch's "
         "retest ran, so a roll that never retested a patch cannot answer (1.8.2 item 1)"
@@ -372,17 +382,31 @@ EVIDENCE_FIELDS: dict[str, tuple[str, ...]] = {
     "loop_texture.fill_merge_evidence": ("no_implementation_run", "no_fill_merge_artifact"),
     "loop_texture.uncollected_suites": ("no_implementation_run", "no_test_report_stored"),
     # 1.8.2 item 1: where a retested patch still fails, read from the vault.
-    "loop_texture.retest_rounds": ("no_implementation_run", "no_patch_retest_stored"),
-    "loop_texture.retest_failures_in_edited_region": (
+    "loop_texture.retest_rounds": (
         "no_implementation_run",
+        "every_retest_round_repeated",
         "no_patch_retest_stored",
     ),
-    "loop_texture.retest_failures_outside": ("no_implementation_run", "no_patch_retest_stored"),
+    # #1697: a round whose index repeated is set aside, never joined; the run's totals would
+    # then be partial, and a partial total read as the whole is the defect this names.
+    "loop_texture.retest_failures_in_edited_region": (
+        "no_implementation_run",
+        "retest_round_index_repeated",
+        "no_patch_retest_stored",
+    ),
+    "loop_texture.retest_failures_outside": (
+        "no_implementation_run",
+        "retest_round_index_repeated",
+        "no_patch_retest_stored",
+    ),
     "loop_texture.retest_regressions": (
         "no_implementation_run",
+        "retest_round_index_repeated",
         "no_patch_retest_stored",
         "no_pre_patch_run_executed",
     ),
+    "loop_texture.unjoinable_retest_rounds": ("no_implementation_run",),
+    "loop_texture.repeated_round_ids": ("runtime_window_empty",),
     "loop_texture.stored_under_placeholder": ("no_implementation_run",),
     # typed_checks: the stored evaluation artifacts
     "typed_checks.by_check": _STORED_EVALUATIONS,
@@ -2305,6 +2329,10 @@ _RUNTIME_LINE_KEYS = (
     "patch_verification task=",
     "patch_retest task=",
     "Dispatched task task-",
+    # #1697: a repair's and a retest's own dispatch. An id dispatched twice is a round index
+    # that repeated, and the joins keyed on it must refuse the round rather than merge it.
+    "Dispatched task repair-",
+    "Dispatched task retest-",
     "plan_defect terminal",
     "evidence superseded",
     # 1.7.1 (plan §4): R2/R4's routing tokens ride correction_repair_locus lines; the
@@ -2691,6 +2719,18 @@ def correction_entered(logs: Sequence[str], correction_rounds: int | None) -> bo
 #: it passed while #1631 was live. Running the real filter and the real collector on the
 #: emitter's real line has none of those holes.
 RUNTIME_MARKER_SAMPLES: dict[str, tuple[str, ...]] = {
+    # Real: deploy A's `redelivery`, cyc_8176207ea2f3 — one id, two dispatches (#1697); and a
+    # retest's dispatch from deploy B″ (1.8.1, 2026-09-23), the other key's form.
+    "repeated_round_ids": (
+        "2026-09-25 16:46:44,393 INFO adapters.cycles.task_dispatcher: Dispatched task "
+        "repair-run_f10f98e6-00-qa.test_repair (qa.test_repair) to eve_comms, awaiting reply "
+        "on eve_replies",
+        "2026-09-25 16:53:53,744 INFO adapters.cycles.task_dispatcher: Dispatched task "
+        "repair-run_f10f98e6-00-qa.test_repair (qa.test_repair) to eve_comms, awaiting reply "
+        "on eve_replies",
+        "2026-09-23 13:45:11,223 INFO adapters.cycles.task_dispatcher: Dispatched task "
+        "retest-run_c2103c7f-00-qa.test (qa.test) to eve_comms, awaiting reply on eve_replies",
+    ),
     "narrowed_targets": (
         "2026-09-21 05:52:53,066 INFO adapters.cycles.correction_repair: correction_repair_target: "
         "narrowed to the slot(s) owning the failing probe(s) — backend/routes.py; the "
@@ -3003,7 +3043,12 @@ def loop_texture(
     uncollected = uncollected_suites(cfg, cycle_id, impl_run) if impl_run else None
     out["uncollected_suites"] = uncollected or []
     # 1.8.2 item 1: per retested patch, where the retest still fails against what it edited.
-    out.update(retest_texture(retest_readout(cfg, cycle_id, impl_run) if impl_run else []))
+    joinable, unjoinable = split_repeated_rounds(
+        retest_readout(cfg, cycle_id, impl_run) if impl_run else [],
+        out.get("repeated_round_ids") or [],
+    )
+    out.update(retest_texture(joinable))
+    out["unjoinable_retest_rounds"] = unjoinable
     # #1311: L8b — a stored name still carries the placeholder (read from the tree); L8a is
     # the agents' window, in texture_from_agent_lines.
     out["stored_under_placeholder"] = (
@@ -3024,7 +3069,11 @@ def loop_texture(
         "no_correction_decision_stored": (correction_decisions or 0) == 0,
         "no_fill_merge_artifact": len(out["fill_merge_evidence"]) == 0,
         "no_test_report_stored": uncollected is None,
-        "no_patch_retest_stored": not out["retest_rounds"],
+        # Stored at all, joinable or not: a set-aside round was retested (#1697).
+        "no_patch_retest_stored": not out["retest_rounds"] and not out["unjoinable_retest_rounds"],
+        "retest_round_index_repeated": bool(out["unjoinable_retest_rounds"]),
+        "every_retest_round_repeated": bool(out["unjoinable_retest_rounds"])
+        and not out["retest_rounds"],
         "no_pre_patch_run_executed": not any(r["before_executed"] for r in out["retest_rounds"]),
         "no_qa_scaffold_suite": rejections is None,
         "logged_in_the_agent_container": True,
@@ -3190,7 +3239,11 @@ SEAM_READOUTS: dict[str, tuple[str, tuple[str, ...], Callable[[dict], tuple[bool
     ),
     "repair_prose_only": (
         "L4: the prose-only repair was refunded rather than verified",
-        ("loop_texture.refunded_rounds", "loop_texture.faults_applied"),
+        (
+            "loop_texture.refunded_rounds",
+            "loop_texture.faults_applied",
+            "loop_texture.repeated_round_ids",
+        ),
         lambda rec: _repair_prose_only_reading(rec),
     ),
     # #1506: the contentless-builder sequence is two seams read on their own evidence. Since
@@ -3324,7 +3377,7 @@ def _qa_suite_absent_reading(rec: Mapping[str, Any]) -> tuple[bool, dict[str, An
     }
 
 
-def _repair_prose_only_reading(rec: Mapping[str, Any]) -> tuple[bool, list[str]]:
+def _repair_prose_only_reading(rec: Mapping[str, Any]) -> tuple[bool | None, list[str]]:
     """L4: the refund of the ROUND whose repair the fault stripped — the repair task id
     carries the round (``repair-run_x-00-…``) and the refund line the attempt (#1588). The
     own-frame diagnostic's run 1 carried a refund of the dev's prose answer in a cycle where
@@ -3335,6 +3388,10 @@ def _repair_prose_only_reading(rec: Mapping[str, Any]) -> tuple[bool, list[str]]
         for a in (_applied_attempts(rec, "repair_prose_only") or [])
         if (m := _REPAIR_ROUND.match(str(a.get("task") or ""))) is not None
     }
+    # #1697: a round index two dispatches share cannot say whose refund a line is — UNASKABLE,
+    # never a YES credited on the other repair's refund.
+    if rounds & repeated_round_indices(value_at(rec, "loop_texture.repeated_round_ids", [])):
+        return None, refunds
     if rounds:
         refunds = [
             r
@@ -4027,6 +4084,36 @@ def texture_from_logs(logs: list[str]) -> dict:
             for entry in (_field(line, "skips") or "").split(",")
             if entry and entry != "-"
         ),
+        "repeated_round_ids": repeated_round_ids(logs),
+    }
+
+
+#: A repair's or a retest's dispatch line, its id carrying the round index (#1697).
+_ROUND_DISPATCH = re.compile(r"Dispatched task (?P<id>(?:repair|retest)-\S+)")
+
+
+def repeated_round_ids(logs: list[str]) -> list[str]:
+    """Repair and retest ids dispatched more than once in the run's window — pure (#1697).
+
+    A repair's id is ``repair-<run>-<round:02d>-<type>`` and a retest's the same with
+    ``retest-``. The round is the run's correction counter, which a refunded round does not
+    advance, so two dispatches can share an id (deploy A's `redelivery`: two qa repairs, both
+    ``repair-run_f10f98e6-00-qa.test_repair``). Every join keyed on that index — the retest
+    readout (item 1), L4's refund — would merge the two rounds and not know it.
+    """
+    seen: dict[str, int] = {}
+    for line in logs:
+        if (m := _ROUND_DISPATCH.search(line)) is not None:
+            seen[m.group("id")] = seen.get(m.group("id"), 0) + 1
+    return sorted(task for task, n in seen.items() if n > 1)
+
+
+def repeated_round_indices(ids: Sequence[str]) -> set[int]:
+    """The round indices ``repeated_round_ids`` names."""
+    return {
+        int(m.group(1))
+        for task in ids or ()
+        if (m := _REPAIR_TASK.match(task) or _RETEST_TASK.match(task)) is not None
     }
 
 
@@ -4417,6 +4504,26 @@ def retest_readout(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[dict]:
     return out
 
 
+def split_repeated_rounds(
+    rounds: list[dict], repeated_ids: Sequence[str]
+) -> tuple[list[dict], list[dict]]:
+    """Retest rounds whose index a repeated dispatch shares are set aside, never joined
+    (#1697): the readout keys a round by its index, so two repairs at one index would merge
+    their edits and keep one retest, and the locus it reports would be of neither."""
+    repeated = repeated_round_indices(repeated_ids)
+    joinable = [r for r in rounds if r["round"] not in repeated]
+    unjoinable = [
+        {
+            "round": r["round"],
+            "ids": sorted(i for i in repeated_ids if r["round"] in repeated_round_indices([i])),
+            "reason": "round index repeated (#1697)",
+        }
+        for r in rounds
+        if r["round"] in repeated
+    ]
+    return joinable, unjoinable
+
+
 def retest_texture(rounds: list[dict]) -> dict:
     """The three readouts over every retested round, and the rounds themselves. Outside the
     edited region is a ``{locus: count}`` map: a failure in the edited file but below the
@@ -4437,9 +4544,14 @@ def _restated_retest_conditions(out: Mapping[str, Any]) -> dict[str, bool | None
     if rounds is None:
         return {"no_patch_retest_stored": None, "no_pre_patch_run_executed": None}
     stored = rounds.value_or([]) or []
+    unjoinable = evidence_at(out, "loop_texture.unjoinable_retest_rounds")
+    # A record from before #1697's readout carries no such list: not derivable.
+    set_aside = None if unjoinable is None else bool(unjoinable.value_or([]))
     return {
-        "no_patch_retest_stored": not stored,
+        "no_patch_retest_stored": not stored and not set_aside,
         "no_pre_patch_run_executed": not any(r.get("before_executed") for r in stored),
+        "retest_round_index_repeated": set_aside,
+        "every_retest_round_repeated": None if set_aside is None else set_aside and not stored,
     }
 
 
@@ -4970,6 +5082,8 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         f"{_show_at(rec, 'loop_texture.retest_failures_in_edited_region')} / "
         f"{_show_at(rec, 'loop_texture.retest_failures_outside', _render_by_reason)} / "
         f"{_show_at(rec, 'loop_texture.retest_regressions')} |",
+        "| repair/retest ids dispatched more than once — their rounds set aside (#1697) | "
+        f"{_show_at(rec, 'loop_texture.repeated_round_ids', ', '.join)} |",
         "| tasks failed at the declared per-task wait (1.8.2 item 15) | "
         f"{_show_at(rec, 'loop_texture.task_timeouts', _count)} |",
         "| disputed checks: confirmed / rejected / unruled / naming no failing row, by role "

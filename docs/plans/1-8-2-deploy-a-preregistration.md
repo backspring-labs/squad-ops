@@ -1,5 +1,7 @@
 # 1.8.2 deploy A — pre-registration (plan §4.1, §4.4)
 
+**Rev 4 (2026-09-25, after the third diagnostic): a seam finding, #1697, and the owner's ruling on
+it — §11d.**
 **Rev 3 (2026-09-25, after the second diagnostic): a second instrument fix — §11c.**
 **Rev 2 (2026-09-25, after the first diagnostic): one owner ruling on a falsifier's wording
 and one instrument fix — §11. No pin, arm, fault or budget moved.**
@@ -331,6 +333,46 @@ Record `false-criterion/shakeout-20260925T142214Z.json`. Driver at `a284f17c`.
 - **Evidence kept:** the fault and form lines, verbatim, at
   `var/1-8-2-logs/false-criterion-1-fault-and-forms.log`.
 
+### d2 — `false-criterion`, run 2 of 2: `cyc_db35b68f0a20` / implementation `run_af375b6b838c`, 10:35–11:54 ET
+
+Record `false-criterion/shakeout-20260925T155437Z.json`. Driver at `81847d25` (§11c's fix).
+
+- **Seam readout: `reached: true`.** The plant applied on all four evaluations of the develop
+  task's first attempt (`0→1 rows`).
+- **The dispute:** made by `dev` and **confirmed**.
+- **The run's end:** `RunTerminalDecision` is `correction_terminated` / **`contested_check`**,
+  naming `acceptance:declared_imports on app/api/runs/route.ts (vc-declared-imports-lib-alias)`.
+- **The import:** unchanged. The develop task's stored route file carries two `@/lib` imports and
+  no relative one.
+- **Reading: YES** — every falsifier in §3b absent. **`false-criterion` cleared.**
+- **Texture:**
+  - `self_eval_revision_forms` is in the record, from §11b's fix: three passes, `form: none`.
+  - One develop `:self_eval` pass is counted in `contentless_emissions` (273 characters, no
+    files): the dispute-only answer. L1 binds counted rolls only.
+
+### d3 — `redelivery`, run 1 of 2: `cyc_8176207ea2f3` / implementation `run_f10f98e6ef82`, 11:58–12:56 ET
+
+Record `redelivery/shakeout-20260925T165620Z.json`. Driver at `81847d25`.
+
+- **Outcome:** `accepted`; 21 of 21 criteria verified; boot audit PASS.
+- **The run had two qa suites** (`m005`, `m006`). The own-frame fault broke each on its first
+  attempt; each was routed to a qa repair; the process fault killed each repair's agent after its
+  model returned (exit 137; the qa agent restarted twice, by the fault).
+- **Each redelivery was refused** as a typed `FAILED` for the repair's id, not run again (#1627),
+  and the queue drained. The run completed — none was left `running`.
+- **Seam readouts:** `qa_suite_own_frame_failure` **YES**, `qa_repair_process_killed` **YES**.
+  **`redelivery` cleared.**
+- **Item 3's child-parse bound:** not forced by this fault, and no parse crash occurred —
+  UNASKABLE, as registered.
+- **The qa re-takes after the refused repairs were both edit requests, both accepted** — §3c's
+  prediction for the qa cells (`form=edits`) observed on both re-takes:
+  - `backend/tests/test_runs.py`: 122 of 6,416 characters (2%);
+  - `frontend/src/__tests__/run-detail.test.jsx`: 107 of 2,982 characters (4%).
+
+  Two qa × React candidates. Rule 4.4 #2 places a diagnostic's transaction in its cell; they are
+  tallied at the set's close against §3c's definition.
+- **Finding: #1697** — both repairs carried the id `repair-run_f10f98e6-00-qa.test_repair` (§11d).
+
 ---
 
 ## 11. Amendments after the first launch
@@ -402,3 +444,35 @@ UNASKABLE (#1588's rule), although the dispute it exists to produce was captured
 
 **d2's budget.** Run 1 read UNASKABLE, so run 2 of 2 runs on the fixed driver. That is the
 budget's own rule for a seam the record could not ask, and needs no ruling.
+
+### 11d. #1697 is a seam finding; the readouts refuse a repeated round index — owner's ruling, 2026-09-25
+
+**The finding.** A repair's id is `repair-{run}-{correction_attempts:02d}-{task_type}`
+(`adapters/cycles/correction_repair.py:1000`), and a retest's is the same with `retest-`
+(`correction_runner.py:1574`). A refunded round does not advance the counter, so two dispatches
+can share an id: d3's two qa repairs were both `repair-run_f10f98e6-00-qa.test_repair`.
+
+**Why it is a seam finding.** The id scheme predates this line (2026-09-10; #1627 is v1.8.1's), so
+it is not "a seam the pack touched". It is the other half of the definition
+(`verification-sets/README.md`): "**a prediction's readout that cannot see its own miss**".
+- Item 1's retest readout (§3d′, #1676 — this line's own) joins a retest to its repair **by the
+  round index in their ids**. Two repairs at one index would merge their edits and keep one
+  retest, and the locus it reports would be of neither.
+- L4's refund join (the own-frame diagnostics) keys on the same index.
+- Neither could tell.
+- No reading in this set was affected: no record so far holds a retest round, and d3's two
+  repairs were killed before they patched.
+
+**The ruling.** The owner, offered (a) a driver fix with the set continuing, or (b) §6 read
+literally — fix the ids under `adapters/`, rebuild, void this registration and rerun the
+thirteen — ruled **(a)**. The ground is that a readout's own blindness, fixed in the driver, does
+not move the deploy, as with §11b.
+
+**The fix** (driver-only). The dispatcher's `repair-` and `retest-` lines are kept, and
+`loop_texture.repeated_round_ids` names any id dispatched more than once.
+- Item 1's readout sets a round with a repeated index aside
+  (`loop_texture.unjoinable_retest_rounds`) rather than joining it.
+- The run's retest totals then read UNASKABLE, naming #1697, rather than partial.
+- L4 reads UNASKABLE on a refund whose round it cannot name.
+- The framework fix — a run-unique repair and retest id — is #1697's, and lands where the deploy
+  moves anyway (deploy B or 1.9).
