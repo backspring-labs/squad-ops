@@ -13,6 +13,7 @@ from squadops._version import resolve_git_sha
 from squadops.cycles.cycle_assessment import AssessorIdentity, CycleAssessment
 from squadops.ports.auth.authentication import AuthPort
 from squadops.ports.auth.authorization import AuthorizationPort
+from squadops.ports.comms.queue import QueuePort
 from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
 from squadops.ports.cycles.cycle_registry import CycleRegistryPort
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
@@ -61,6 +62,8 @@ _assignment_port: AssignmentPort | None = None
 _runtime_coordinator: RuntimeCoordinator | None = None
 _focus_lease_port: FocusLeasePort | None = None
 _activity_port: RuntimeActivityPort | None = None
+#: #1648: the queue a cancel's notice reaches the agents holding the run's tasks through.
+_cancel_queue_port: QueuePort | None = None
 
 
 def set_auth_ports(
@@ -313,6 +316,8 @@ def set_cancellation_ports(
     coordinator: RuntimeCoordinator | None,
     focus_lease: FocusLeasePort | None,
     activity: RuntimeActivityPort | None,
+    *,
+    queue: QueuePort | None,
 ) -> None:
     """Register the runtime ports a cancel has to tear down.
 
@@ -320,12 +325,15 @@ def set_cancellation_ports(
     activities the cancelled run holds have to be cleared by the route. The
     coordinator MUST be the composition root's single instance (D16) — the lease
     sweep returns agents to ambient through it, and a second mode-writer would
-    race the executor and the duty scheduler.
+    race the executor and the duty scheduler. ``queue`` carries the notice to the
+    agents already holding the run's tasks (#1648); it is required, because a
+    composition root that forgets it leaves every dispatched task running.
     """
-    global _runtime_coordinator, _focus_lease_port, _activity_port
+    global _runtime_coordinator, _focus_lease_port, _activity_port, _cancel_queue_port
     _runtime_coordinator = coordinator
     _focus_lease_port = focus_lease
     _activity_port = activity
+    _cancel_queue_port = queue
 
 
 def get_runtime_coordinator() -> RuntimeCoordinator | None:
@@ -340,6 +348,11 @@ def get_focus_lease_port() -> FocusLeasePort | None:
     succeed on a pool-less deployment, where there are no leases to release.
     """
     return _focus_lease_port
+
+
+def get_cancel_queue_port() -> QueuePort | None:
+    """Return the queue a cancel's notice goes out on, or None when none is wired (#1648)."""
+    return _cancel_queue_port
 
 
 def get_activity_port() -> RuntimeActivityPort | None:

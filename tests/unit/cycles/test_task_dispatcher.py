@@ -926,7 +926,48 @@ class TestTheDeclaredWaitTravelsWithTheTask:
         await dispatcher.dispatch_task(self._envelope(), "run_001")
 
         (call,) = [c for c in mock_queue.publish.await_args_list if c.args[0] == "neo_comms"]
-        assert json.loads(call.args[1])["payload"]["timeout"] == 5.0
+        payload = json.loads(call.args[1])["payload"]
+        assert payload["timeout"] == 5.0
+        # #1648: and its run, so the agent can drop it when that run is cancelled.
+        assert payload["metadata"]["run_id"] == "run_001"
+
+    async def test_the_agent_drops_the_task_this_side_published_once_its_run_is_cancelled(
+        self, dispatcher, mock_queue
+    ):
+        """#1648 wiring across the wire: the message this dispatcher publishes and the notice
+        the cancel route publishes, each delivered to the agent's own subscription callback.
+        Bug this catches: the run stamped under one key and read under another, or a notice
+        shape one side writes and the other does not read — each side's tests pass, and no
+        cancelled run's task is ever dropped."""
+        from squadops.agents.entrypoint import AgentRunner
+        from squadops.comms.queue_message import QueueMessage
+        from squadops.comms.run_cancellation import control_queue, run_cancelled_notice
+
+        await dispatcher.dispatch_task(self._envelope(), "run_001")
+        (published,) = [c for c in mock_queue.publish.await_args_list if c.args[0] == "neo_comms"]
+
+        with patch.object(AgentRunner, "__init__", lambda self, *a, **kw: None):
+            runner = AgentRunner.__new__(AgentRunner)
+        runner.agent_id = "neo"
+        runner._queue = AsyncMock()
+        runner.system = MagicMock()
+        runner.system.orchestrator = AsyncMock()
+
+        def delivered(queue_name, body):
+            return QueueMessage(
+                message_id="m",
+                queue_name=queue_name,
+                payload=body,
+                receipt_handle="r",
+                attributes={},
+            )
+
+        notice = json.dumps(run_cancelled_notice("cyc_001", ["run_001"]))
+        await runner._process_control_message(delivered(control_queue("neo"), notice))
+        await runner._process_comms_message(delivered("neo_comms", published.args[1]))
+
+        runner.system.orchestrator.submit_task.assert_not_awaited()
+        runner._queue.publish.assert_not_awaited()
 
     async def test_a_wait_that_runs_out_is_logged_as_the_bound_firing(
         self, dispatcher, reply_router, caplog

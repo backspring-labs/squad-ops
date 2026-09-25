@@ -131,8 +131,10 @@ async def test_queues_are_named_from_the_id_and_never_from_the_display_name(pers
     await runner._consume_tasks()
 
     queue.ensure_queue.assert_awaited_once_with(f"{persona['id']}_replies")
-    assert queue.subscribe.await_args.args[0] == f"{persona['id']}_comms"
-    names = [queue.ensure_queue.await_args.args[0], queue.subscribe.await_args.args[0]]
+    subscribed = [c.args[0] for c in queue.subscribe.await_args_list]
+    # The comms queue and (#1648) the control queue a cancel notice arrives on.
+    assert subscribed == [f"{persona['id']}_comms", f"{persona['id']}_control"]
+    names = [queue.ensure_queue.await_args.args[0], *subscribed]
     display = persona.get("display_name", "")
     if display and display != persona["id"]:
         assert all(display not in name for name in names)

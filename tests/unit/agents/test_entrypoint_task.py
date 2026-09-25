@@ -193,10 +193,13 @@ class TestConsumeTasksPushConsumer:
 
         await r._consume_tasks()
 
-        r._queue.subscribe.assert_awaited_once()
-        args, kwargs = r._queue.subscribe.await_args
-        assert args[0] == "neo_comms"
-        assert kwargs["on_message"] == r._process_comms_message
+        # The comms queue, and (#1648) the control queue a cancel notice arrives on — consumed
+        # beside it so a notice reaches the agent while the comms consumer is busy.
+        subscribed = {c.args[0]: c.kwargs["on_message"] for c in r._queue.subscribe.await_args_list}
+        assert subscribed == {
+            "neo_comms": r._process_comms_message,
+            "neo_control": r._process_control_message,
+        }
         r._queue.consume.assert_not_awaited()
 
     async def test_consumer_survives_until_shutdown_then_cancels_before_close(self) -> None:
@@ -220,8 +223,9 @@ class TestConsumeTasksPushConsumer:
         r._shutdown_event.set()
         await asyncio.wait_for(task, timeout=1)
 
-        handle.cancel.assert_awaited_once()
-        assert teardown_order == ["cancel", "close"]
+        # Both subscriptions cancelled, and both before the connection closes.
+        assert handle.cancel.await_count == 2
+        assert teardown_order == ["cancel", "cancel", "close"]
 
 
 class TestProcessCommsMessage:
@@ -477,3 +481,124 @@ class TestTheHandlerIsBoundedByTheDeclaredWait:
         published = json.loads(runner._queue.publish.call_args.args[1])
         assert published["payload"]["status"] == "FAILED"
         assert "carries no declared timeout" in published["payload"]["error"]
+
+
+class TestACancelledRunsTaskIsDropped:
+    """#1648 (1.8.2 item 10): the agent drops a task whose run was cancelled — before it runs if
+    the notice came first, mid-task if the notice arrives while it runs — acks it and replies
+    nothing, since nothing awaits a cancelled run's task."""
+
+    @pytest.fixture
+    def runner(self):
+        from squadops.agents.entrypoint import AgentRunner
+
+        with patch.object(AgentRunner, "__init__", lambda self, *a, **kw: None):
+            r = AgentRunner.__new__(AgentRunner)
+            r.agent_id = "neo"
+            r.role = "dev"
+            r._queue = AsyncMock()
+            r._config = MagicMock()
+            r.system = MagicMock()
+            r.system.ports.llm_observability = None
+            r.system.orchestrator = AsyncMock()
+            r.system.orchestrator.submit_task.return_value = TaskResult(
+                task_id="task_123", status="SUCCEEDED", outputs={}
+            )
+            return r
+
+    @staticmethod
+    def _payload(run_id: str = "run_ab12cd34ef56"):
+        import dataclasses
+
+        envelope = _sample_envelope()
+        envelope = dataclasses.replace(envelope, metadata={**envelope.metadata, "run_id": run_id})
+        return _make_envelope_payload(envelope)
+
+    @staticmethod
+    def _notice(*run_ids: str) -> QueueMessage:
+        return QueueMessage(
+            message_id="m",
+            queue_name="neo_control",
+            payload=json.dumps(
+                {
+                    "action": "comms.run_cancelled",
+                    "payload": {"cycle_id": "cyc", "run_ids": list(run_ids)},
+                }
+            ),
+            receipt_handle="r",
+            attributes={},
+        )
+
+    async def test_a_task_of_a_run_already_cancelled_never_runs(self, runner, caplog):
+        """Wiring, entered at the control callback and then the comms path. Bug this catches:
+        the #1648 ghost — a task consumed after its run was cancelled, run to completion."""
+        await runner._process_control_message(self._notice("run_ab12cd34ef56"))
+        payload = self._payload()
+
+        with caplog.at_level("INFO"):
+            await runner._handle_task_envelope(payload, payload["metadata"])
+
+        runner.system.orchestrator.submit_task.assert_not_awaited()
+        runner._queue.publish.assert_not_awaited()
+        assert "dropped before it ran (#1648)" in caplog.text
+
+    async def test_a_notice_mid_task_stops_it_and_nothing_is_replied(self, runner, caplog):
+        """Bug this catches: the notice recorded but the running task left to finish, which is
+        every ghost generation #1648 measured (5,709 tokens after the cancel)."""
+        started = asyncio.Event()
+        finished = asyncio.Event()
+
+        async def long_generation(envelope, timeout_seconds=None):
+            started.set()
+            await asyncio.sleep(3600)
+            finished.set()
+
+        runner.system.orchestrator.submit_task.side_effect = long_generation
+        payload = self._payload()
+        handling = asyncio.create_task(runner._handle_task_envelope(payload, payload["metadata"]))
+        await started.wait()
+
+        with caplog.at_level("INFO"):
+            await runner._process_control_message(self._notice("run_ab12cd34ef56"))
+            await asyncio.wait_for(handling, timeout=5)
+
+        assert not finished.is_set()
+        runner._queue.publish.assert_not_awaited()
+        assert "stopped mid-task (#1648)" in caplog.text
+
+    async def test_a_notice_for_another_run_leaves_the_task_alone(self, runner):
+        release = asyncio.Event()
+
+        async def generation(envelope, timeout_seconds=None):
+            await release.wait()
+            return TaskResult(task_id="task_123", status="SUCCEEDED", outputs={})
+
+        runner.system.orchestrator.submit_task.side_effect = generation
+        payload = self._payload()
+        handling = asyncio.create_task(runner._handle_task_envelope(payload, payload["metadata"]))
+        await asyncio.sleep(0)
+        await runner._process_control_message(self._notice("run_other0000"))
+        release.set()
+        await asyncio.wait_for(handling, timeout=5)
+
+        published = json.loads(runner._queue.publish.call_args.args[1])
+        assert published["payload"]["status"] == "SUCCEEDED"
+
+    async def test_a_malformed_control_message_is_dropped_not_raised(self, runner):
+        bad = QueueMessage(
+            message_id="m",
+            queue_name="neo_control",
+            payload="{not json",
+            receipt_handle="r",
+            attributes={},
+        )
+        await runner._process_control_message(bad)
+        assert not runner._cancelled_runs.is_cancelled("run_ab12cd34ef56")
+
+    def test_a_told_run_expires_so_the_set_never_grows_for_the_containers_life(self):
+        from squadops.agents.entrypoint import CancelledRuns
+
+        runs = CancelledRuns()
+        runs.add(["run_old"], now=0.0)
+        runs.add(["run_new"], now=CancelledRuns.TTL_SECONDS + 1)
+        assert not runs.is_cancelled("run_old") and runs.is_cancelled("run_new")

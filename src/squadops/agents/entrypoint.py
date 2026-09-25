@@ -23,7 +23,8 @@ import logging
 import os
 import signal
 import sys
-from typing import TYPE_CHECKING
+from collections.abc import Awaitable, Iterable
+from typing import TYPE_CHECKING, Any
 
 from squadops.tasks.models import TaskEnvelope, TaskResultStatus
 
@@ -80,6 +81,56 @@ def load_instance_config(agent_id: str) -> dict | None:
                 logger.warning(f"Failed to load instances from {instances_path}: {e}")
 
     return None
+
+
+class _RunCancelledSkip(Exception):
+    """A dispatched task this agent dropped because its run was cancelled (#1648)."""
+
+
+class CancelledRuns:
+    """The runs this agent has been told are cancelled, and the task it is running now (#1648).
+
+    A notice names runs; the agent drops a queued task of one before it starts, and cancels
+    the one it is running. Entries expire after a day: a run id never recurs, and the set
+    must not grow for the life of the container.
+    """
+
+    TTL_SECONDS = 24 * 60 * 60
+
+    def __init__(self) -> None:
+        self._told_at: dict[str, float] = {}
+        self._running: tuple[str, asyncio.Task] | None = None
+        self._stopped: set[asyncio.Task] = set()
+
+    def add(self, run_ids: Iterable[str], now: float) -> str | None:
+        """Record the notice; cancel the running task if it belongs to one of the runs, and
+        return that run's id."""
+        for run_id in run_ids:
+            self._told_at[run_id] = now
+        self._told_at = {r: t for r, t in self._told_at.items() if now - t < self.TTL_SECONDS}
+        if self._running is not None and self._running[0] in self._told_at:
+            run_id, task = self._running
+            self._stopped.add(task)
+            task.cancel()
+            return run_id
+        return None
+
+    def is_cancelled(self, run_id: str | None) -> bool:
+        return bool(run_id) and run_id in self._told_at
+
+    async def run(self, run_id: str | None, coro: Awaitable[Any]) -> Any:
+        """Run ``coro`` as the current task; raise ``_RunCancelledSkip`` if a notice stopped it."""
+        task = asyncio.ensure_future(coro)
+        self._running = (run_id, task) if run_id else None
+        try:
+            return await task
+        except asyncio.CancelledError:
+            if task in self._stopped:
+                raise _RunCancelledSkip from None
+            raise
+        finally:
+            self._running = None
+            self._stopped.discard(task)
 
 
 def declared_task_bound(envelope: TaskEnvelope) -> float:
@@ -591,17 +642,56 @@ class AgentRunner:
         subscription = await self._queue.subscribe(
             comms_queue, on_message=self._process_comms_message
         )
+        # #1648: the control queue, consumed beside the comms queue — a cancel notice must
+        # reach this agent while its comms consumer is busy with the task it cancels.
+        from squadops.comms.run_cancellation import control_queue
+
+        control = await self._queue.subscribe(
+            control_queue(self.agent_id), on_message=self._process_control_message
+        )
 
         try:
             await self._shutdown_event.wait()
         finally:
             # Cancel the consumer before closing the connection, so the
             # subscription's resubscribe loop can't race the teardown.
+            await control.cancel()
             await subscription.cancel()
             if self._queue:
                 await self._queue.close()
 
         logger.info("Task consumer stopped")
+
+    @property
+    def _cancelled_runs(self) -> CancelledRuns:
+        # Lazily, so a runner built without __init__ (the tests' fixtures) still has one.
+        state = self.__dict__.get("_cancelled_runs_state")
+        if state is None:
+            state = self.__dict__["_cancelled_runs_state"] = CancelledRuns()
+        return state
+
+    async def _process_control_message(self, message: QueueMessage) -> None:
+        """A cancel notice for runs this agent may hold (#1648). Never raises, like the comms
+        callback: a malformed control message is logged and acked."""
+        import json
+        import time
+
+        from squadops.comms.run_cancellation import cancelled_run_ids
+
+        try:
+            run_ids = cancelled_run_ids(json.loads(message.payload))
+        except (ValueError, TypeError):
+            logger.warning("control: malformed message dropped", extra={"agent_id": self.agent_id})
+            return
+        if not run_ids:
+            return
+        stopped = self._cancelled_runs.add(run_ids, time.monotonic())
+        logger.info(
+            "run_cancelled notice: runs=%s%s (#1648)",
+            ",".join(sorted(run_ids)),
+            f" — stopping the running task of {stopped}" if stopped else "",
+            extra={"agent_id": self.agent_id},
+        )
 
     async def _process_comms_message(self, message: QueueMessage) -> None:
         """Route one comms delivery to its action handler.
@@ -908,6 +998,20 @@ class AgentRunner:
             },
         )
 
+        # #1648: a task of a run already cancelled is dropped before it runs. Acked (the
+        # subscription acks after this returns), never replied to: nothing awaits it.
+        from squadops.comms.run_cancellation import RUN_ID_METADATA_KEY
+
+        run_id = (envelope.metadata or {}).get(RUN_ID_METADATA_KEY)
+        if self._cancelled_runs.is_cancelled(run_id):
+            logger.info(
+                "task_skipped: run cancelled task=%s run=%s — dropped before it ran (#1648)",
+                envelope.task_id,
+                run_id,
+                extra={"agent_id": self.agent_id},
+            )
+            return
+
         # Build correlation context for LLM-observability tracing and
         # task-scoped log forwarding (SIP-0087).
         from squadops.telemetry.context import use_correlation_context, use_run_ids
@@ -932,19 +1036,31 @@ class AgentRunner:
         flow_run_id = envelope.flow_run_id or None
         task_run_id = envelope.task_run_id or None
 
+        skipped = False
         try:
             if not self.system:
                 raise RuntimeError("AgentRunner.system not initialized")
+            orchestrator = self.system.orchestrator
+            bound = declared_task_bound(envelope)
             with use_correlation_context(ctx):
+                # #1648: run as the current task, so a cancel notice for its run stops it here.
                 if flow_run_id is not None or task_run_id is not None:
                     with use_run_ids(flow_run_id=flow_run_id, task_run_id=task_run_id):
-                        result = await self.system.orchestrator.submit_task(
-                            envelope, timeout_seconds=declared_task_bound(envelope)
+                        result = await self._cancelled_runs.run(
+                            run_id, orchestrator.submit_task(envelope, timeout_seconds=bound)
                         )
                 else:
-                    result = await self.system.orchestrator.submit_task(
-                        envelope, timeout_seconds=declared_task_bound(envelope)
+                    result = await self._cancelled_runs.run(
+                        run_id, orchestrator.submit_task(envelope, timeout_seconds=bound)
                     )
+        except _RunCancelledSkip:
+            skipped = True
+            logger.info(
+                "task_skipped: run cancelled task=%s run=%s — stopped mid-task (#1648)",
+                envelope.task_id,
+                run_id,
+                extra={"agent_id": self.agent_id},
+            )
         except Exception as e:
             logger.error(f"Task execution failed: {e}", extra={"task_id": envelope.task_id})
             result = TaskResult(
@@ -959,6 +1075,9 @@ class AgentRunner:
                 llm_obs.end_task_span(ctx)
                 llm_obs.end_cycle_trace(ctx)
                 llm_obs.flush()
+
+        if skipped:
+            return
 
         # Publish result to reply queue
         if reply_queue:

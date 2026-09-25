@@ -440,3 +440,73 @@ class TestGateDecision:
 
         assert resp.status_code == 200
         mock_artifact_vault.promote_artifact.assert_not_awaited()
+
+
+class TestACancelReachesTheAgentsHoldingTheRunsTasks:
+    """#1648 (1.8.2 item 10): cancel stopped the flow run, the leases and the activity rows, and
+    the agent that had consumed the run's task ran it to completion on the GPU anyway."""
+
+    def test_the_agents_are_told_before_the_rows_that_name_them_are_cleared(
+        self, client, monkeypatch
+    ):
+        """Wiring, entered at the cancel route. Bug this catches: the notice sent after the
+        activities are ended and the leases released, when nothing names the agents any more,
+        so nobody is told."""
+        import json
+
+        import squadops.api.runtime.deps as deps_mod
+
+        events: list[str] = []
+        open_row = SimpleNamespace(runtime_activity_id="act-1", agent_id="neo", cycle_id="cyc_001")
+        activity_port = AsyncMock()
+        activity_port.list_active_activities.side_effect = lambda **_: (
+            [] if "abort" in events else [open_row]
+        )
+        activity_port.abort_activity.side_effect = lambda *a: events.append("abort") or open_row
+        lease_port = AsyncMock()
+        lease_port.list_active_leases.side_effect = lambda **_: (
+            [] if "release" in events else [_focus_lease("data", "run_001")]
+        )
+        queue = AsyncMock()
+        queue.publish.side_effect = lambda name, body: events.append(f"publish:{name}")
+        coordinator = AsyncMock()
+        monkeypatch.setattr(deps_mod, "_activity_port", activity_port)
+        monkeypatch.setattr(deps_mod, "_focus_lease_port", lease_port)
+        monkeypatch.setattr(deps_mod, "_runtime_coordinator", coordinator)
+        monkeypatch.setattr(deps_mod, "_cancel_queue_port", queue)
+        monkeypatch.setattr(
+            "squadops.runtime.focus_reaper._return_to_ambient",
+            AsyncMock(side_effect=lambda *a: events.append("release") or True),
+        )
+
+        resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs/run_001/cancel")
+
+        assert resp.status_code == 200
+        assert resp.json()["agents_notified"] == 2
+        assert events[:2] == ["publish:data_control", "publish:neo_control"]
+        assert json.loads(queue.publish.await_args_list[0].args[1]) == {
+            "action": "comms.run_cancelled",
+            "payload": {"cycle_id": "cyc_001", "run_ids": ["run_001"]},
+        }
+
+    def test_a_failed_notice_never_fails_the_cancel(self, client, monkeypatch):
+        import squadops.api.runtime.deps as deps_mod
+
+        activity_port = AsyncMock()
+        activity_port.list_active_activities.return_value = [
+            SimpleNamespace(runtime_activity_id="a", agent_id="neo", cycle_id="cyc_001"),
+            SimpleNamespace(runtime_activity_id="b", agent_id="eve", cycle_id="cyc_001"),
+        ]
+        activity_port.abort_activity.return_value = None
+        queue = AsyncMock()
+        queue.publish.side_effect = lambda name, body: (
+            (_ for _ in ()).throw(RuntimeError("broker down")) if name == "eve_control" else None
+        )
+        monkeypatch.setattr(deps_mod, "_activity_port", activity_port)
+        monkeypatch.setattr(deps_mod, "_cancel_queue_port", queue)
+
+        resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs/run_001/cancel")
+
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "cancelled"
+        assert resp.json()["agents_notified"] == 1
