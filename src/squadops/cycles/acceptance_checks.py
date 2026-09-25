@@ -1822,6 +1822,52 @@ class CountAtLeastCheck(BaseCheck):
         return CheckOutcome.failed(reason="count_below_minimum", count=count, min_count=min_count)
 
 
+#: SIP-0086 §12a change 2: a failed frontend build's evidence carries every type error, not the
+#: first — ``next build`` stops at one, and a pass that fixes it meets the next one blind (the
+#: 2026-09-15 readiness probe: six of six trials). Bounded so a broken tree cannot flood a prompt.
+FRONTEND_DIAGNOSTICS_MAX = 50
+FRONTEND_DIAGNOSTIC_CHARS = 300
+#: ...and the build's own stderr tail, raised from 1,024 to carry what the diagnostics omit.
+FRONTEND_BUILD_TAIL_CHARS = 4096
+#: A terminal colour or cursor escape. ``next build`` colours its code frame even under the
+#: restricted env: a stored tail from cyc_38f95b29cf79 spent 554 of its 1,015 characters on them.
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def type_diagnostics(output: str) -> list[str]:
+    """Every tsc error in ``output``, one entry each, a message's continuation lines folded in
+    — pure. ``--pretty false`` prints ``path(line,col): error TScode: message`` per error."""
+    diagnostics: list[str] = []
+    for line in output.splitlines():
+        if _TSC_DIAGNOSTIC.match(line.strip()):
+            diagnostics.append(line.strip())
+        elif diagnostics and line.startswith(" ") and line.strip():
+            diagnostics[-1] = f"{diagnostics[-1]} {line.strip()}"
+    return diagnostics
+
+
+async def _frontend_type_errors(frontend_dir: Path) -> dict[str, Any]:
+    """Every type error in a TypeScript project, for a failed build's evidence (§12a change 2),
+    or why there are none to give. The project's own ``tsc`` comes first — the one its build
+    runs — and PATH's second."""
+    if not (frontend_dir / "tsconfig.json").is_file():
+        return {"diagnostics_unavailable": "no_tsconfig"}
+    local = frontend_dir / "node_modules" / ".bin" / "tsc"
+    tsc = str(local) if local.is_file() else shutil.which("tsc")
+    if tsc is None:
+        return {"diagnostics_unavailable": "tsc_not_installed"}
+    rc, stdout, stderr = await _run_argv(
+        [tsc, "--noEmit", "-p", ".", "--pretty", "false"], frontend_dir, TSC_TIMEOUT_S
+    )
+    if rc is None:
+        return {"diagnostics_unavailable": "tsc_timeout"}
+    found = type_diagnostics(f"{stdout}\n{stderr}")
+    return {
+        "diagnostics": [d[:FRONTEND_DIAGNOSTIC_CHARS] for d in found[:FRONTEND_DIAGNOSTICS_MAX]],
+        "diagnostic_count": len(found),
+    }
+
+
 def _tail(text: str, max_chars: int = 1024) -> str:
     """Return the last `max_chars` characters of text, for compact evidence."""
     if len(text) <= max_chars:
@@ -2068,7 +2114,9 @@ class FrontendCompilesCheck(BaseCheck):
             return CheckOutcome.failed(
                 reason="frontend_build_failed",
                 file=str(params["file"]),
-                stderr_tail=_tail(stderr),
+                stderr_tail=_tail(_ANSI_ESCAPE.sub("", stderr), FRONTEND_BUILD_TAIL_CHARS),
+                # SIP-0086 §12a change 2: every type error beside the one the build stopped at.
+                **(await _frontend_type_errors(frontend_dir)),
             )
         return CheckOutcome.passed(file=str(params["file"]))
 
