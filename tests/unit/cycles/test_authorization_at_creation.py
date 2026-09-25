@@ -142,6 +142,7 @@ def executor(reply_router):
     registry = AsyncMock()
     registry.get_latest_checkpoint.return_value = None
     ex = DispatchedFlowExecutor(
+        task_timeout=300.0,
         cycle_registry=registry,
         artifact_vault=AsyncMock(),
         queue=reply_router.bind(AsyncMock()),

@@ -212,9 +212,9 @@ services:
       # #560: audit records (SIP-0062) leave the application stream for their own rotating
       # JSONL sink on the mounted ./data/audit; unset, they share stdout as before.
       SQUADOPS_AUDIT_LOG_PATH: /app/data/audit/runtime-api.jsonl
-      # #1147: the orchestrator's per-task wait, apart from the request timeout above;
-      # unset (empty) follows SQUADOPS__LLM__TIMEOUT.
-      SQUADOPS__DISPATCH__TASK_TIMEOUT: ${SQUADOPS__DISPATCH__TASK_TIMEOUT:-}
+      # #1147: the orchestrator's per-task wait, apart from the request timeout above. Required,
+      # never defaulted and never inherited from SQUADOPS__LLM__TIMEOUT (1.8.2 item 15).
+      SQUADOPS__DISPATCH__TASK_TIMEOUT: ${SQUADOPS__DISPATCH__TASK_TIMEOUT:?set it in .env (see .env.example) — required, never defaulted (1.8.2 item 15)}
       SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
       SQUADOPS__COMMS__QUEUE__PROVIDER: rabbitmq  # required, never defaulted (#301)
       SQUADOPS__COMMS__A2A__PROVIDER: http  # required, never defaulted (#301)

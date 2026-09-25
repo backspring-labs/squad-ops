@@ -1023,6 +1023,7 @@ class TestRunCompletionActivityWiring:
         focus_lease_port = AsyncMock()
         executor = create_flow_executor(
             "dispatched",
+            task_timeout=300.0,
             cycle_registry=mock_registry,
             artifact_vault=mock_vault,
             focus_lease_port=focus_lease_port,

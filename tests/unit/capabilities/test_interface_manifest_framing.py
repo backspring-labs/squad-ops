@@ -185,7 +185,7 @@ def _executor_for(manifest_yaml: str | None) -> tuple[DispatchedFlowExecutor, An
 
     vault.retrieve.side_effect = _retrieve
 
-    executor = DispatchedFlowExecutor(artifact_vault=vault)
+    executor = DispatchedFlowExecutor(task_timeout=300.0, artifact_vault=vault)
     run = MagicMock()
     run.artifact_refs = refs
     cycle = MagicMock()
@@ -252,7 +252,7 @@ def _promoted(artifact_id: str, artifact_type: str) -> Any:
 async def _forwarded(*artifacts: Any) -> dict[str, Any]:
     vault = AsyncMock()
     vault.list_artifacts.return_value = list(artifacts)
-    executor = DispatchedFlowExecutor(artifact_vault=vault)
+    executor = DispatchedFlowExecutor(task_timeout=300.0, artifact_vault=vault)
 
     cycle = MagicMock()
     cycle.execution_overrides = {}

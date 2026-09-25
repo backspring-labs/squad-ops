@@ -57,6 +57,7 @@ async def test_new_enrichment_is_a_registry_edit_only(reply_router, monkeypatch)
     vault = AsyncMock()
     vault.retrieve = AsyncMock(return_value=(stored_ref, b"research body"))
     executor = DispatchedFlowExecutor(
+        task_timeout=300.0,
         cycle_registry=AsyncMock(),
         artifact_vault=vault,
         queue=reply_router.bind(AsyncMock()),
@@ -190,6 +191,7 @@ def _executor_with(reply_router, universe):
 
     vault.retrieve = AsyncMock(side_effect=retrieve)
     return DispatchedFlowExecutor(
+        task_timeout=300.0,
         cycle_registry=AsyncMock(),
         artifact_vault=vault,
         queue=reply_router.bind(AsyncMock()),

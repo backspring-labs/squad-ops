@@ -65,6 +65,7 @@ def executor(reply_router):
     registry.save_checkpoint.return_value = None
 
     ex = DispatchedFlowExecutor(
+        task_timeout=300.0,
         cycle_registry=registry,
         artifact_vault=vault,
         queue=queue,
@@ -498,6 +499,7 @@ class TestBuildOnlyValidation:
         )
 
         ex = DispatchedFlowExecutor(
+            task_timeout=300.0,
             cycle_registry=registry,
             artifact_vault=AsyncMock(),
             queue=reply_router.bind(AsyncMock()),
@@ -646,6 +648,7 @@ class TestBuildOnlySeeding:
         )
 
         ex = DispatchedFlowExecutor(
+            task_timeout=300.0,
             cycle_registry=registry,
             artifact_vault=vault,
             queue=reply_router.bind(AsyncMock()),
@@ -787,6 +790,7 @@ class TestBuilderDeliverableCompleteness:
         )
 
         ex = DispatchedFlowExecutor(
+            task_timeout=300.0,
             cycle_registry=registry,
             artifact_vault=vault,
             queue=reply_router.bind(AsyncMock()),
@@ -837,6 +841,7 @@ class TestBuilderDeliverableCompleteness:
         )
 
         ex = DispatchedFlowExecutor(
+            task_timeout=300.0,
             cycle_registry=registry,
             artifact_vault=vault,
             queue=reply_router.bind(AsyncMock()),
@@ -949,6 +954,7 @@ class TestPlanOnlyCyclesUnaffected:
         )
 
         ex = DispatchedFlowExecutor(
+            task_timeout=300.0,
             cycle_registry=registry,
             artifact_vault=vault,
             queue=reply_router.bind(AsyncMock()),
@@ -1289,6 +1295,7 @@ class TestThePatchAcceptanceCollaboratorIsBuiltWhereItIsCalled:
         from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
         return DispatchedFlowExecutor(
+            task_timeout=300.0,
             cycle_registry=AsyncMock(),
             artifact_vault=AsyncMock(),
             queue=reply_router.bind(AsyncMock()),
@@ -1376,6 +1383,7 @@ class TestTheCorrectionRepairCollaboratorIsBuiltWhereItIsCalled:
         from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
         return DispatchedFlowExecutor(
+            task_timeout=300.0,
             cycle_registry=AsyncMock(),
             artifact_vault=AsyncMock(),
             queue=reply_router.bind(AsyncMock()),
