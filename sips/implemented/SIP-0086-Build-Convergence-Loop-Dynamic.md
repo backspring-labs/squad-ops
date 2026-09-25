@@ -1137,7 +1137,7 @@ If staging is necessary, the cleanest delivery path is A → B → C. Stage A al
 
 ## 12. Post-implementation amendments
 
-### 12a. 2026-09-15 — the self-evaluation pass becomes the model's compile loop (proposed; changes 1–3 built, 4 not yet; targeted for 1.8.2)
+### 12a. 2026-09-15 — the self-evaluation pass becomes the model's compile loop (proposed; changes 1–3 built, 4 held for the owner; targeted for 1.8.2)
 
 **Status.** Drafted on the owner's ask of 2026-09-15 and targeted for 1.8.1 by the owner's
 ruling of the same day; **re-targeted to 1.8.2 on 2026-09-17** by the owner's ruling on the
@@ -1288,4 +1288,13 @@ scoped qa transactions in five runs on the App Router stack (1.8.1 set record §
 - **The record.** Every re-take offered the form records the form it took on a
   `qa_retake_revision_form` line: an edit, or a whole-suite re-emission, deploy A's shape.
 
-**Not yet built:** change 4. This section says so until it lands.
+**Change 4 — held for the owner (2026-09-25).** Its text rests on a premise the code does not
+bear out: "the repair handlers evaluate the failed task's criteria a second time after the loop".
+The repair handlers have no loop. They run the generic `base.handle`, which never validates, and
+evaluate the failed task's criteria **once**, after they emit (`_after_emission` →
+`_attach_typed_checks`, #1229), on the base-plus-patch tree the verifier builds. Only `develop`
+and `qa.test` self-evaluate, and their passes are already evaluated once each, on the workspace
+tree. So building change 4 as intended means **giving the repairs a self-evaluation loop**: new
+model calls inside every repair, beside the §22 refusal retry, with a depth to choose. That is a
+behavioural change the plan (§3.3) doesn't settle, so it waits for the owner's ruling rather than
+being read into the text.
