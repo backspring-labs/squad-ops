@@ -4090,7 +4090,9 @@ class TestRepairRevisionForms:
 
         result = SimpleNamespace(success=True, outputs=outputs)
         with caplog.at_level(logging.INFO):
-            DevelopmentCorrectionRepairHandler()._record_revision_form(offered, result, base_chars)
+            DevelopmentCorrectionRepairHandler()._record_revision_form(
+                offered, result, base_chars, decision_section="rule"
+            )
         (message,) = [
             r.getMessage() for r in caplog.records if "repair_revision_form" in r.getMessage()
         ]
@@ -4119,9 +4121,12 @@ class TestRepairRevisionForms:
         assert form["replaced"] == {
             "app/runs/[run_id]/page.tsx": {"chars": 5785, "of": 5785, "pct": 100}
         }
+        # #1661: the decision section the brief carried rides the same line into the record.
+        assert form["decision_section"] == "rule"
         assert driver._render_revision_forms([form]) == (
             "development_correction_repair_handler whole_file "
-            "(app/runs/[run_id]/page.tsx; offered 1; replaced 100% app/runs/[run_id]/page.tsx)"
+            "(app/runs/[run_id]/page.tsx; offered 1; decision section: rule; "
+            "replaced 100% app/runs/[run_id]/page.tsx)"
         )
 
     def test_a_scoped_repair_names_its_modes_and_its_result(self, driver):

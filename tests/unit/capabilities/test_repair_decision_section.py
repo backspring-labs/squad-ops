@@ -113,3 +113,40 @@ def test_a_decision_is_present_only_when_it_says_something():
     assert _decision_present({"correction_path": "patch"}) is True
     assert _decision_present({"decision_rationale": "because"}) is True
     assert _decision_present("patch — the analyzer named the handler") is True
+
+
+async def test_the_repair_records_which_decision_section_its_brief_carried(caplog):
+    """#1661, wiring at ``handle`` through the real renderer and templates, on both arms'
+    shapes. The rendered prompt is stored only as LangFuse's first 10,000 characters and the
+    decision section comes after them, so the 1.8.1 window's I2 and H3 rule reading could not
+    be asked on any roll. Bug this catches: the fact recorded from something other than the
+    section that rendered (a lead's rationale briefed while the record says "rule")."""
+    import logging
+
+    for decision, kind, phrase in (
+        ({}, "rule", "patch by rule"),
+        (
+            {"correction_path": "patch", "decision_rationale": "drops a field"},
+            "lead",
+            "The lead reviewed",
+        ),
+    ):
+        ctx = _context(_EDIT)
+        caplog.clear()
+        with caplog.at_level(logging.INFO):
+            result = await DevelopmentCorrectionRepairHandler().handle(ctx, _inputs(decision))
+        assert phrase in _user_prompt(ctx)
+        assert result.outputs["revision_form"]["decision_section"] == kind
+        (line,) = [
+            r.getMessage() for r in caplog.records if "repair_revision_form" in r.getMessage()
+        ]
+        assert f'"decision_section": "{kind}"' in line
+
+
+def test_the_record_requires_the_decision_section():
+    """Require, don't default (2026-09-14): a caller that forgets the fact must fail, not
+    record a guess."""
+    import pytest
+
+    with pytest.raises(TypeError):
+        DevelopmentCorrectionRepairHandler()._record_revision_form({}, MagicMock(outputs={}))
