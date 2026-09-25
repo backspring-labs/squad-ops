@@ -1278,14 +1278,6 @@ class _CycleTaskHandler(CapabilityHandler):
                 if retried
                 else await self._cap_exhausted_fact(context, response, content, chat_kwargs, label)
             )
-            # 1.8.2 item 15: a declared hold stops answering here, after the model returned.
-            await hold_fault(
-                content,
-                handler_name=self._handler_name,
-                task_id=context.task_id,
-                resolved_config=fault_config,
-                inputs=inputs,
-            )
 
             # #1251: a declared fault transforms the emission HERE, before the shape is
             # logged, so every readout downstream reads one consistent emission and the log
@@ -1295,6 +1287,14 @@ class _CycleTaskHandler(CapabilityHandler):
             # discarded cap-exhausted emission is not the one the handler gets.
             if apply_fault and retry_fact is None:
                 content = inject_fault(
+                    content,
+                    handler_name=self._handler_name,
+                    task_id=context.task_id,
+                    resolved_config=fault_config,
+                    inputs=inputs,
+                )
+                # 1.8.2 item 15: a declared hold stops answering here, after the model returned.
+                await hold_fault(
                     content,
                     handler_name=self._handler_name,
                     task_id=context.task_id,
