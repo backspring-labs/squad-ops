@@ -5877,10 +5877,10 @@ ReferenceError: title is not defined
             )
         )
 
-    def _loop_texture(self, driver, monkeypatch, tree):
+    def _loop_texture(self, driver, monkeypatch, tree, runtime_lines=()):
         monkeypatch.setattr(driver, "artifact_dirs", lambda *a, **k: sorted(tree.glob("art_*")))
         monkeypatch.setattr(driver, "main_checkout", lambda: tree)
-        monkeypatch.setattr(driver, "docker_logs", lambda c, s, u=None: [])
+        monkeypatch.setattr(driver, "docker_logs", lambda c, s, u=None: list(runtime_lines))
         monkeypatch.setattr(driver, "_fill_rejections", lambda *a: [])
         monkeypatch.setattr(driver, "fill_merge_evidence", lambda *a: [])
         monkeypatch.setattr(driver, "_decision_inherited_claims", lambda *a: [])
@@ -5921,6 +5921,94 @@ ReferenceError: title is not defined
             }
         ]
         assert rnd["regressions"] == ["__tests__/api.test.ts > POST /api/runs > creates a run"]
+
+    #: Deploy A's `redelivery` (cyc_8176207ea2f3): one repair id, dispatched twice (#1697).
+    _TWICE = [
+        f"2026-09-25 16:{mm},000 INFO adapters.cycles.task_dispatcher: Dispatched task "
+        "repair-run_ab12cd34-00-development.correction_repair "
+        "(development.correction_repair) to neo_comms, awaiting reply on neo_replies"
+        for mm in ("46:44", "53:53")
+    ]
+
+    def test_two_repairs_sharing_a_round_index_are_set_aside_not_merged(
+        self, driver, monkeypatch, tmp_path
+    ):
+        """Wiring, entered at ``loop_texture`` (#1697). Two repairs dispatched under one id —
+        the round counter did not advance past a refunded round — each patched and retested.
+        Bug this catches: the readout keyed the round by its index, merged both repairs'
+        edits and kept the last retest, and reported a locus that belongs to neither, with
+        nothing on the record to say so."""
+        tree = tmp_path / "vault"
+        route, other = "app/api/runs/route.ts", "app/api/runs/[run_id]/route.ts"
+        dev = "task-run_ab12cd34-m000-development.develop"
+        self._store(tree, 1, route, dev, "t1", self._ROUTE_V1)
+        self._store(tree, 2, other, dev, "t1", self._ROUTE_V1)
+        self._store(tree, 3, "test_report.md", "task-run_ab12cd34-m004-qa.test", "t2", self._BEFORE)
+        repair = "repair-run_ab12cd34-00-development.correction_repair"
+        retest = "retest-run_ab12cd34-00-qa.test"
+        self._store(tree, 4, route, repair, "t3", self._ROUTE_V2)
+        self._store(tree, 5, "test_report.md", retest, "t4", self._AFTER)
+        self._store(tree, 6, other, repair, "t5", self._ROUTE_V2)
+        self._store(tree, 7, "test_report.md", retest, "t6", self._BEFORE)
+
+        out = self._loop_texture(driver, monkeypatch, tree, self._TWICE)
+
+        assert out["repeated_round_ids"]["value"] == [repair]
+        assert out["unjoinable_retest_rounds"]["value"] == [
+            {"round": 0, "ids": [repair], "reason": "round index repeated (#1697)"}
+        ]
+        for field in (
+            "retest_failures_in_edited_region",
+            "retest_failures_outside",
+            "retest_regressions",
+            "retest_rounds",
+        ):
+            assert out[field]["state"] == "unaskable", field
+            assert "#1697" in out[field]["reason"], field
+
+    def test_one_dispatch_per_id_joins_as_before(self, driver, monkeypatch, tmp_path):
+        """The control: a single dispatch of the id is not a repeat. Bug this catches: every
+        round set aside once the dispatcher's lines reach the window."""
+        tree = tmp_path / "vault"
+        route = "app/api/runs/route.ts"
+        self._store(
+            tree, 1, route, "task-run_ab12cd34-m000-development.develop", "t1", self._ROUTE_V1
+        )
+        self._store(tree, 2, "test_report.md", "task-run_ab12cd34-m004-qa.test", "t2", self._BEFORE)
+        repair = "repair-run_ab12cd34-00-development.correction_repair"
+        self._store(tree, 3, route, repair, "t3", self._ROUTE_V2)
+        self._store(tree, 4, "test_report.md", "retest-run_ab12cd34-00-qa.test", "t4", self._AFTER)
+
+        out = self._loop_texture(driver, monkeypatch, tree, self._TWICE[:1])
+
+        assert out["repeated_round_ids"] == {"state": "asked_none", "value": []}
+        assert out["retest_regressions"]["value"] == 1
+        assert out["unjoinable_retest_rounds"]["value"] == []
+
+    @pytest.mark.parametrize(
+        ("repeated", "reached"),
+        [([], True), (["repair-run_ab12cd34-00-qa.test_repair"], None)],
+        ids=["distinct rounds", "the round index repeated"],
+    )
+    def test_l4_does_not_credit_a_refund_its_round_cannot_name(self, driver, repeated, reached):
+        """#1697 at L4's join: the refund line carries the attempt, the faulted repair's id the
+        round. Bug this catches: two repairs at round 00, and L4 credited on the refund of the
+        one the fault never touched."""
+        _, _, read = driver.SEAM_READOUTS["repair_prose_only"]
+        rec = {
+            "loop_texture": {
+                "refunded_rounds": ["correction attempt 0 refunded: the repair emitted prose"],
+                "faults_applied": {
+                    "repair_prose_only": {
+                        "applied": [{"task": "repair-run_ab12cd34-00-qa.test_repair"}],
+                        "out_of_scope": [],
+                    }
+                },
+                "repeated_round_ids": repeated,
+            }
+        }
+
+        assert read(rec)[0] is reached
 
     def test_a_roll_that_never_retested_a_patch_is_unasked_not_zero(
         self, driver, monkeypatch, tmp_path
