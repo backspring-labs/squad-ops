@@ -1582,7 +1582,7 @@ class TestFillMergeEvidenceIsReadFromTheTree:
             ],
         )
         monkeypatch.setattr(driver, "artifact_dirs", lambda *a, **k: sorted(tree.glob("art_*")))
-        monkeypatch.setattr(driver, "REPO", tree)
+        monkeypatch.setattr(driver, "main_checkout", lambda: tree)
         out = driver.fill_merge_evidence(None, "cyc", "run")
         assert [e["task_id"] for e in out] == ["task-m006-qa.test", "task-m007-qa.test"]
         assert out[0]["assertion_strength"] == {"store_touching": 2, "expect_lines": 16}
@@ -1597,7 +1597,7 @@ class TestFillMergeEvidenceIsReadFromTheTree:
         produced it. No artifact → an empty list, so the record shows the gap."""
         tree = self._tree(tmp_path, [])
         monkeypatch.setattr(driver, "artifact_dirs", lambda *a, **k: sorted(tree.glob("art_*")))
-        monkeypatch.setattr(driver, "REPO", tree)
+        monkeypatch.setattr(driver, "main_checkout", lambda: tree)
         assert driver.fill_merge_evidence(None, "cyc", "run") == []
 
 
@@ -1695,7 +1695,7 @@ class TestUncollectedSuitesAreReadFromTheStoredReports:
 
     def _read(self, driver, monkeypatch, tree):
         monkeypatch.setattr(driver, "artifact_dirs", lambda *a, **k: sorted(tree.glob("art_*")))
-        monkeypatch.setattr(driver, "REPO", tree)
+        monkeypatch.setattr(driver, "main_checkout", lambda: tree)
         return driver.uncollected_suites(None, "cyc", "run")
 
     def test_each_report_naming_uncollected_suites_is_read(self, driver, monkeypatch, tmp_path):
@@ -1736,7 +1736,7 @@ class TestUncollectedSuitesAreReadFromTheStoredReports:
         "0 uncollected". Entered through ``loop_texture``, the collector's live caller."""
         tree = self._tree(tmp_path, reports)
         monkeypatch.setattr(driver, "artifact_dirs", lambda *a, **k: sorted(tree.glob("art_*")))
-        monkeypatch.setattr(driver, "REPO", tree)
+        monkeypatch.setattr(driver, "main_checkout", lambda: tree)
         monkeypatch.setattr(driver, "docker_logs", lambda c, s, u=None: [])
         monkeypatch.setattr(driver, "_fill_rejections", lambda *a: [])
         monkeypatch.setattr(driver, "fill_merge_evidence", lambda *a: [])
@@ -1905,7 +1905,7 @@ class TestB1IsAFieldNotAGrep:
                     }
                 )
             )
-        monkeypatch.setattr(driver, "REPO", tmp_path)
+        monkeypatch.setattr(driver, "main_checkout", lambda: tmp_path)
         cfg = types.SimpleNamespace(project="p")
         assert driver._stored_qa_suites(cfg, "cyc_1", "run_1") == [
             ("backend/tests/test_runs.py", "v1"),
@@ -2126,7 +2126,7 @@ class TestTheNewFaultsAreReadBySeams:
                     {"filename": filename, "vault_uri": str((d / "body").relative_to(tmp_path))}
                 )
             )
-        monkeypatch.setattr(driver, "REPO", tmp_path)
+        monkeypatch.setattr(driver, "main_checkout", lambda: tmp_path)
         out = driver._decision_inherited_claims(
             types.SimpleNamespace(project="p"), "cyc_1", "run_1"
         )
@@ -3702,7 +3702,7 @@ class TestASoloRollProvesTheAbsences:
             (d / "metadata.json").write_text(
                 json.dumps({"filename": filename, "metadata": {"producing_task_type": producing}})
             )
-        monkeypatch.setattr(driver, "REPO", tmp_path)
+        monkeypatch.setattr(driver, "main_checkout", lambda: tmp_path)
 
         problems = driver.solo_absence_problems(
             types.SimpleNamespace(project="p"), "cyc_1", "run_1"
@@ -3789,7 +3789,7 @@ class TestASoloRollProvesTheAbsences:
         (d / "metadata.json").write_text(
             json.dumps({"filename": filename, "metadata": {"producing_task_type": producing}})
         )
-        monkeypatch.setattr(driver, "REPO", tmp_path)
+        monkeypatch.setattr(driver, "main_checkout", lambda: tmp_path)
 
         assert (
             driver.solo_absence_problems(types.SimpleNamespace(project="p"), "cyc_1", "run_1") == []
@@ -4534,6 +4534,11 @@ class TestTheWindowRunsAsPairs:
     is observed until the exact registered pair and its frozen parameters have passed the gate.
     """
 
+    @pytest.fixture(autouse=True)
+    def _records_under_tmp(self, driver, tmp_path, monkeypatch):
+        # Records resolve under the main checkout (1.8.2 item 8); this class's go under tmp_path.
+        monkeypatch.setattr(driver, "main_checkout", lambda: tmp_path)
+
     def _cfg(self, driver, tmp_path, name, arm, *, pairs=2, attempts=3, **overrides):
         import yaml
 
@@ -4550,7 +4555,7 @@ class TestTheWindowRunsAsPairs:
             "arm": arm,
             "window_pairs": pairs,
             "window_max_attempts": attempts,
-            "records_dir": str(tmp_path / f"records-{name}"),
+            "records_dir": f"var/verification_sets/records-{name}",
         }
         base.update(overrides)
         p = tmp_path / f"{name}.yaml"
@@ -5007,3 +5012,156 @@ class TestASetThatNamesTheSoloServiceIsReadAndRequiredUp:
         assert any("runtime topology" in p and "han" in p for p in problems)
         monkeypatch.setattr(driver, "image_id", lambda service: "up")
         assert not [p for p in driver.comparison_problems(solo) if "runtime topology" in p]
+
+
+class TestRecordsHaveOneHome:
+    """1.8.2 plan §3.2 item 8. A driver launched from a worktree wrote its records into that
+    worktree's gitignored ``var/`` and read the deploy's artifacts from a ``data/`` that was not
+    there; the 2026-09-24 cleanup found the only copies of the 1.7.4 and 1.7.5 records inside two
+    driver worktrees. The main checkout is the one home, whichever checkout runs the driver."""
+
+    @staticmethod
+    def _git(*args, cwd):
+        import subprocess
+
+        subprocess.run(
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+            cwd=cwd,
+            check=True,
+            capture_output=True,
+        )
+
+    def _worktree(self, tmp_path):
+        """A real repository and a worktree of it — the shape the driver ran from."""
+        main = tmp_path / "main"
+        main.mkdir()
+        self._git("init", "-q", cwd=main)
+        self._git("commit", "-q", "--allow-empty", "-m", "init", cwd=main)
+        self._git("worktree", "add", "-q", str(tmp_path / "wt"), cwd=main)
+        return main.resolve(), (tmp_path / "wt").resolve()
+
+    @staticmethod
+    def _config(driver, tmp_path, **extra):
+        base = {
+            "name": "set-x",
+            "project": "p",
+            "squad_profile": "full-38",
+            "request_profile": "validated-fullstack",
+            "gate_name": "g",
+            "gate_notes": "g",
+            "launch_notes": "r {roll}/{n}",
+            "shakeout_notes": "s",
+            "n_rolls": 1,
+            **extra,
+        }
+        p = tmp_path / "set-x.yaml"
+        p.write_text(yaml.safe_dump(base))
+        return driver.load_set_config(p)
+
+    @pytest.mark.parametrize(
+        ("records_dir", "lands_in"),
+        [
+            (None, "var/verification_sets/set-x"),
+            (
+                "var/verification_sets/1-8-2-diagnostics/x",
+                "var/verification_sets/1-8-2-diagnostics/x",
+            ),
+        ],
+    )
+    def test_a_worktree_launch_writes_its_record_into_the_main_checkout(
+        self, driver, tmp_path, monkeypatch, records_dir, lands_in
+    ):
+        """Wiring, entered at ``_run_cycle``, the call that drives a cycle and writes its record,
+        with the real ``_write_record`` and the real git lookup. Bug this catches: records
+        resolved against the checkout the script sits in (the 1.7.4/1.7.5 strand) or, for a
+        config's relative ``records_dir``, against the process's working directory."""
+        main, wt = self._worktree(tmp_path)
+        cfg = self._config(
+            driver, tmp_path, **({"records_dir": records_dir} if records_dir else {})
+        )
+        monkeypatch.setattr(driver, "REPO", wt)
+        monkeypatch.chdir(wt)
+        monkeypatch.setattr(driver, "log_since", lambda *_a, **_k: "t0")
+        monkeypatch.setattr(driver, "launch", lambda *a, **k: ("cyc_1", "run_1", "hash"))
+        monkeypatch.setattr(driver, "drive", lambda *a, **k: None)
+        monkeypatch.setattr(
+            driver,
+            "collect",
+            lambda *a, **k: {"impl_run_id": "run_1", "squad_profile_snapshot_ref": "s"},
+        )
+        monkeypatch.setattr(driver, "completed_framing_run", lambda *a, **k: None)
+        for name in ("static_checks", "ledger_checks", "loop_texture", "typed_checks_by_check"):
+            monkeypatch.setattr(driver, name, lambda *a, **k: {})
+        monkeypatch.setattr(driver, "loaded_check_evidence", lambda *a, **k: {})
+        monkeypatch.setattr(driver, "boot_audit", lambda *a, **k: {"ran": False})
+        monkeypatch.setattr(driver, "cycle_log_until", lambda *a, **k: "t1")
+        monkeypatch.setattr(driver, "render", lambda *a, **k: "md")
+
+        driver._run_cycle(
+            cfg, "nextjs_ts", "notes", title="t", stem="shakeout", assert_hash=False, identity={}
+        )
+
+        written = sorted((main / lands_in).glob("shakeout-*.json"))
+        assert len(written) == 1
+        assert json.loads(written[0].read_text())["launched_from"] == str(wt)
+        assert not (wt / "var").exists()
+
+    def test_a_worktree_reads_the_deploys_artifacts_from_the_main_checkout(
+        self, driver, tmp_path, monkeypatch
+    ):
+        """Bug this catches: artifact reads resolved in the worktree, which has no ``data/``, so
+        every read came back None and the record's texture read as absent rather than failing."""
+        main, wt = self._worktree(tmp_path)
+        art = main / "data" / "artifacts" / "p" / "cyc_1" / "run_1" / "art_1"
+        art.mkdir(parents=True)
+        (art / "body").write_text("the report")
+        (art / "metadata.json").write_text(
+            json.dumps(
+                {"filename": "test_report.md", "vault_uri": str((art / "body").relative_to(main))}
+            )
+        )
+        monkeypatch.setattr(driver, "REPO", wt)
+        cfg = self._config(driver, tmp_path)
+
+        assert driver.artifact_text(cfg, "cyc_1", "run_1", "test_report.md") == "the report"
+
+    @pytest.mark.parametrize(
+        "records_dir",
+        [
+            "/tmp/records",
+            "var/verification_sets/../../elsewhere",
+            "data/verification_sets/x",
+            "var/verification_sets",
+        ],
+    )
+    def test_a_records_dir_outside_the_home_is_refused_at_load(self, driver, tmp_path, records_dir):
+        """Bug this catches: a config that writes records somewhere the hygiene sweep and the
+        Release attachment never look. Refused at load, before any cycle launches."""
+        with pytest.raises(SystemExit, match="not under var/verification_sets/"):
+            self._config(driver, tmp_path, records_dir=records_dir)
+
+    def test_outside_a_git_checkout_nothing_is_written(self, driver, tmp_path):
+        """Bug this catches: a failed lookup falling back to the running checkout, which is
+        the strand this item removes."""
+        with pytest.raises(SystemExit, match="cannot find the main checkout"):
+            driver._main_checkout_of(tmp_path)
+
+    def test_the_rendered_deploy_names_the_checkout(self, driver):
+        """Bug this catches: the checkout stored but never shown, so a worktree launch reads
+        exactly like a main-checkout one on the page a reviewer reads."""
+        cfg = driver.SetConfig(
+            name="s",
+            project="p",
+            squad_profile="x",
+            request_profile="y",
+            gate_name="g",
+            gate_notes="g",
+            launch_notes="l",
+            shakeout_notes="s",
+            n_rolls=1,
+        )
+        rec = {"deploy": {"head": "abc123", "max": "img"}, "launched_from": "/wt/driver"}
+        old = {"deploy": {"head": "abc123", "max": "img"}}
+
+        assert "- driver HEAD `abc123`, checkout `/wt/driver`" in driver._render_deploy(cfg, rec)
+        assert "- driver HEAD `abc123`, checkout not recorded" in driver._render_deploy(cfg, old)
