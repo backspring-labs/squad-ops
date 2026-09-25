@@ -18,7 +18,10 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from squadops.capabilities.anchored_edits import editable_file_lines, verbatim_block
-from squadops.capabilities.context_assembly import REPAIR_FAILED_ARTIFACTS_KEY
+from squadops.capabilities.context_assembly import (
+    REPAIR_FAILED_ARTIFACTS_KEY,
+    scaffold_shell_paths,
+)
 from squadops.capabilities.disputed_checks import failing_row_identities
 from squadops.capabilities.handlers.cycle_tasks import _classify_file, _CycleTaskHandler
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
@@ -537,23 +540,8 @@ class _RepairPromptMixin:
 
     @staticmethod
     def _scaffold_shell_paths(inputs: dict[str, Any]) -> set[str]:
-        """The scaffold's shells, by path — the files a fill-mode repair fills by slot (§9.3) and
-        never edits or re-emits. Read from the scaffold input the runner threads (its pristine
-        ``files`` and the task's ``current_files``); no scaffold, no shells."""
-        scaffold = inputs.get("verification_scaffold")
-        if not isinstance(scaffold, dict):
-            return set()
-        from squadops.cycles.write_authorization import normalize_ws_path
-
-        shells: set[str] = set()
-        for key in ("files", "current_files"):
-            for entry in scaffold.get(key) or []:
-                name = (
-                    entry.get("name") if isinstance(entry, dict) else getattr(entry, "path", None)
-                )
-                if name:
-                    shells.add(normalize_ws_path(str(name)))
-        return {path for path in shells if path}
+        """The scaffold's shells, by path — the files a fill-mode repair fills by slot (§9.3)."""
+        return scaffold_shell_paths(inputs)
 
     def _anchorable_files(self, inputs: dict[str, Any]) -> list[str]:
         """The named files a repair may revise by anchored edit: those it may emit that already

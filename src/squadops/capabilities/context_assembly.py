@@ -442,6 +442,41 @@ REPAIR_PRESENCE_KEYS: tuple[str, ...] = (
 #: (cyc_4ec4ad5e2ca1: six executed failures about a file the patch never touched, twice).
 REPAIR_FAILED_ARTIFACTS_KEY = "failed_task_artifacts"
 
+#: SIP-0086 §12a change 3 (1.8.2 plan §3.3): a qa suite's re-take after its round's repair was
+#: refunded is an edit request on the suite it already wrote. The executor sets it where it
+#: refunds the round, from the failed result's suite files (``{path: content}``), for exactly one
+#: dispatch; the qa handler shows those files and applies the edits the re-take makes to them.
+#: On deploy A every such re-take re-emitted the suite whole — zero scoped qa transactions in five
+#: runs on the App Router stack (1.8.1 set record, §10b).
+RETAKE_CURRENT_FILES_KEY = "retake_current_files"
+
+
+def retake_suite_files(result_outputs: Mapping[str, Any] | None) -> dict[str, str]:
+    """``{path: content}`` for the suite files a failed qa result emitted — the re-take's base."""
+    return {
+        str(a["name"]): str(a.get("content") or "")
+        for a in (result_outputs or {}).get("artifacts") or ()
+        if isinstance(a, Mapping) and a.get("type") == "test" and a.get("name")
+    }
+
+
+def scaffold_shell_paths(inputs: Mapping[str, Any]) -> set[str]:
+    """The scaffold's shells, by path — the files a fill-mode task fills by slot (§9.3) and never
+    edits or re-emits. Read from the scaffold input the runner threads (its pristine ``files`` and
+    the task's ``current_files``); no scaffold, no shells."""
+    scaffold = inputs.get("verification_scaffold")
+    if not isinstance(scaffold, Mapping):
+        return set()
+    from squadops.cycles.write_authorization import normalize_ws_path
+
+    shells: set[str] = set()
+    for key in ("files", "current_files"):
+        for entry in scaffold.get(key) or []:
+            name = entry.get("name") if isinstance(entry, Mapping) else getattr(entry, "path", None)
+            if name:
+                shells.add(normalize_ws_path(str(name)))
+    return {path for path in shells if path}
+
 
 def forwarded_failed_artifacts(result_outputs: Mapping[str, Any] | None) -> dict[str, Any]:
     """``{REPAIR_FAILED_ARTIFACTS_KEY: [...]}`` when the failed result emitted files, else
