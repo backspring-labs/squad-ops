@@ -92,3 +92,65 @@ class TestAnchoredWrite:
         mod, _, _ = sandbox
         assert mod.write() == 0
         assert mod.check() == 0
+
+
+def test_a_stored_hash_that_prefixes_another_entrys_updates_only_its_own_entry(
+    tmp_path, monkeypatch
+):
+    """#1639. Bug this catches: the rewrite matched ``sha256: <stored>`` as text, so a
+    placeholder ``'0'`` hit an EARLIER entry whose hash starts with ``0`` and rewrote that one,
+    leaving the file inconsistent while ``manifest_hash`` matched it. The qa and generalist
+    identity entries were in exactly this order when the generalist fragment was registered."""
+    frag_dir = tmp_path / "fragments"
+    (frag_dir / "roles").mkdir(parents=True)
+    early = frag_dir / "roles" / "qa.md"
+    early.write_text("---\nfragment_id: identity\n---\nQA.\n")
+    late = frag_dir / "roles" / "generalist.md"
+    late.write_text("---\nfragment_id: identity\n---\nGeneralist.\n")
+    mod = _load_script()
+    from adapters.prompts.filesystem import FileSystemPromptRepository
+
+    early_hash = FileSystemPromptRepository.hash_fragment_file(early)
+    # The earlier entry's stored hash is current and begins with the placeholder's digit.
+    early_stored = "0" + early_hash[1:]
+    manifest = frag_dir / "manifest.yaml"
+    manifest.write_text(
+        "version: 0.9.99\n"
+        "fragments:\n"
+        "- fragment_id: identity\n"
+        "  path: roles/qa.md\n"
+        "  layer: identity\n"
+        "  roles:\n"
+        "  - qa\n"
+        f"  sha256: {early_stored}\n"
+        "- fragment_id: identity\n"
+        "  path: roles/generalist.md\n"
+        "  layer: identity\n"
+        "  roles:\n"
+        "  - generalist\n"
+        "  sha256: '0'\n"
+        "manifest_hash: placeholder\n"
+    )
+    monkeypatch.setattr(mod, "FRAGMENTS_DIR", frag_dir)
+    monkeypatch.setattr(mod, "MANIFEST_PATH", manifest)
+    monkeypatch.setattr(
+        FileSystemPromptRepository,
+        "hash_fragment_file",
+        staticmethod(lambda p: early_stored if p.name == "qa.md" else "f" * 64),
+    )
+
+    assert mod.write() == 0
+
+    raw = manifest.read_text()
+    assert f"sha256: {early_stored}\n" in raw
+    assert f"sha256: {'f' * 64}\n" in raw
+    assert "sha256: '0'" not in raw
+    assert mod.check() == 0
+
+
+def test_an_entry_with_no_sha256_line_is_refused():
+    """Bug this catches: a drifted entry the rewrite cannot place reported as updated."""
+    mod = _load_script()
+    raw = "fragments:\n- fragment_id: x\n  path: a.md\n  layer: identity\n"
+    assert mod._rewrite_entry_hash(raw, "a.md", "f" * 64) is None
+    assert mod._rewrite_entry_hash(raw, "b.md", "f" * 64) is None

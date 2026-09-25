@@ -31,4 +31,7 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
           # #1151: a release/* PR must carry a `SIP sweep:` line (cut step 5).
           PR_HEAD_REF: ${{ github.head_ref }}
+          # #1621: the squash merge closes what the title and commit messages say too.
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: printf '%s' "$PR_BODY" | scripts/dev/check_pr_closure.sh

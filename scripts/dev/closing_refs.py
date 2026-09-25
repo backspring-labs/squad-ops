@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+from pathlib import Path
 
 #: Fenced blocks, HTML comments, then inline spans — in that order, because a fence may
 #: contain backticks that would otherwise be paired across its boundary. Non-greedy so
@@ -78,15 +79,66 @@ def quoted_refs(body: str) -> list[int]:
     return sorted(everywhere - set(closing_refs(body)))
 
 
+def raw_closing_refs(text: str) -> list[int]:
+    """Closing references in text GitHub reads unrendered: a commit message or a PR title.
+
+    Nothing is stripped. Markdown quoting protects a body, which is rendered; a commit message
+    and the title become the squash merge commit's text, and GitHub closes on that.
+    """
+    return sorted({int(n) for n in _CLOSING.findall(text or "")})
+
+
+def merge_contradictions(body: str, title: str, commits: str) -> list[str]:
+    """Why a squash merge of this PR would close an issue its body does not close.
+
+    GitHub's squash merge makes the title the commit's subject and the PR's commit messages its
+    body, and a closing keyword in either closes the issue whatever the PR body says. #1620's
+    body said ``Refs #1619 — remaining: …`` and passed the guard; a ``Closes #1619`` trailer
+    left in a revision commit closed #1619 on merge (#1621). A closed issue stops being read,
+    so an issue closed too early is the more dangerous direction.
+
+    The title may never carry a closing keyword, however negated ("does not close #N" closes
+    #N): a title has no room for ``remaining:`` (1.8.2 plan §3.8). A commit may close only
+    what the body closes; a commit that agrees with the body is fine.
+    """
+    problems = [
+        f"the PR title closes #{n}: the squash merge's subject is the title, so #{n} closes "
+        "whatever the body says; take the number out of the title (1.8.2 plan §3.8)"
+        for n in raw_closing_refs(title)
+    ]
+    body_closes = set(closing_refs(body))
+    problems += [
+        f"a commit message closes #{n} but the PR body does not: the squash merge carries the "
+        f"commit messages and closes #{n} anyway (#1621); reword the commit, or close #{n} in "
+        "the body"
+        for n in raw_closing_refs(commits)
+        if n not in body_closes
+    ]
+    return problems
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     mode = ap.add_mutually_exclusive_group(required=True)
     mode.add_argument("--refs", action="store_true", help="print closing numbers, one per line")
     mode.add_argument("--strip", action="store_true", help="print the body without quoted regions")
+    mode.add_argument(
+        "--contradictions",
+        action="store_true",
+        help="print what a squash merge would close that the body does not, one per line",
+    )
+    ap.add_argument("--title", default="", help="with --contradictions: the PR title")
+    ap.add_argument(
+        "--commits-file", help="with --contradictions: the PR's commit messages, concatenated"
+    )
     args = ap.parse_args()
     body = sys.stdin.read()
     if args.strip:
         sys.stdout.write(strip_quoted(body))
+    elif args.contradictions:
+        commits = Path(args.commits_file).read_text() if args.commits_file else ""
+        for problem in merge_contradictions(body, args.title, commits):
+            print(problem)
     else:
         print("\n".join(str(n) for n in closing_refs(body)))
     return 0
