@@ -13,8 +13,15 @@
 #   No issue: …                          (deliberately no issue behind the PR)
 #
 # Quoting the syntax in prose is safe inside backticks or a fenced block.
-# Local use:  gh pr view 1234 --json body -q .body | scripts/dev/check_pr_closure.sh
-# CI use:     .github/workflows/pr-closure.yml pipes the event body in.
+#
+# #1621: a squash merge closes what its TITLE and COMMIT MESSAGES say too, whatever the body
+# says. With PR_TITLE and PR_NUMBER set, the check also fails on a title that carries a
+# closing keyword (however negated) and on a commit that closes an issue the body does not.
+#
+# Local use:  gh pr view 1234 --json body -q .body \
+#               | PR_NUMBER=1234 PR_TITLE="$(gh pr view 1234 --json title -q .title)" \
+#                 scripts/dev/check_pr_closure.sh
+# CI use:     .github/workflows/pr-closure.yml pipes the event body in and sets both.
 # Needs `gh` authenticated (GH_TOKEN in CI) and GH_REPO or a git remote.
 set -euo pipefail
 
@@ -50,6 +57,26 @@ pr-closure: FAIL — a release PR must record cut step 5 in its body:
   SIP sweep: <what was promoted to implemented, or "nothing — <why>">
   (CLAUDE.md "Release cut", step 5; the sweep is the unguarded step this line enforces — #1151)
 MSG
+  exit 1
+fi
+
+# #1621: what the squash merge itself will close. The commit messages are fetched only for a
+# numbered PR; a failed read refuses, because the merge closes what they say either way.
+commits_file="$(mktemp)"
+trap 'rm -f "$commits_file"' EXIT
+if [ -n "${PR_NUMBER:-}" ]; then
+  if ! gh api "repos/${repo}/pulls/${PR_NUMBER}/commits" --paginate -q '.[].commit.message' \
+      > "$commits_file"; then
+    echo "pr-closure: FAIL — could not read PR #${PR_NUMBER}'s commit messages; the squash merge closes what they say (#1621)" >&2
+    exit 1
+  fi
+fi
+contradictions="$(
+  printf '%s' "$raw" \
+    | python3 "$here/closing_refs.py" --contradictions --title "${PR_TITLE:-}" --commits-file "$commits_file"
+)"
+if [ -n "$contradictions" ]; then
+  printf '%s\n' "$contradictions" | sed 's/^/pr-closure: FAIL — /' >&2
   exit 1
 fi
 

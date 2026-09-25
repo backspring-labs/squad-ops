@@ -107,6 +107,32 @@ def check() -> int:
     return rc
 
 
+def _rewrite_entry_hash(raw: str, path: str, computed: str) -> str | None:
+    """``raw`` with the ``sha256`` line of the entry whose ``path`` is ``path`` set to
+    ``computed``, or None when that entry has no such line.
+
+    Anchored to the ENTRY, by its path, which is unique in the manifest. Matching the stored
+    value, even as a whole ``sha256: <stored>`` line, cannot tell two entries apart when one
+    stored value is a prefix of another's: a placeholder ``'0'`` matched the qa entry's
+    ``sha256: 00e5e410…`` first and rewrote the wrong one (#1639), as a bare global replace
+    once rewrote every zero in the file (#451).
+    """
+    lines = raw.splitlines(keepends=True)
+    current: str | None = None
+    for i, line in enumerate(lines):
+        if line.startswith("- "):
+            current = None
+        key, _, value = line.strip().removeprefix("- ").partition(":")
+        if key == "path":
+            current = value.strip().strip("'\"")
+        elif key == "sha256" and current == path:
+            indent = line[: len(line) - len(line.lstrip())]
+            ending = "\n" if line.endswith("\n") else ""
+            lines[i] = f"{indent}sha256: {computed}{ending}"
+            return "".join(lines)
+    return None
+
+
 def write() -> int:
     drift = _drift()
     missing = [d for d in drift if d[3] == _FILE_MISSING]
@@ -115,23 +141,14 @@ def write() -> int:
             print(f"ERROR: fragment file missing for {fid} ({path})", file=sys.stderr)
         return 1
     if drift:
-        # Minimal edit, ANCHORED to the sha256 line (#451): a bare global
-        # replace of the stored value corrupts the whole file when the stale
-        # hash is degenerate (a placeholder like '0' matched every zero in
-        # every other hash, the version, and the timestamp). Replace exactly
-        # one `sha256: <stored>` occurrence per drift entry; tolerate quoted
-        # placeholder forms.
+        # Minimal edit, anchored to each drifted ENTRY by its path (#451, #1639).
         raw = MANIFEST_PATH.read_text(encoding="utf-8")
-        for fid, path, stored, computed in drift:
-            replaced = False
-            for old_line in (f"sha256: {stored}", f"sha256: '{stored}'", f'sha256: "{stored}"'):
-                if old_line in raw:
-                    raw = raw.replace(old_line, f"sha256: {computed}", 1)
-                    replaced = True
-                    break
-            if not replaced:
+        for fid, path, _stored, computed in drift:
+            rewritten = _rewrite_entry_hash(raw, path, computed)
+            if rewritten is None:
                 print(f"ERROR: could not locate sha256 line for {fid} ({path})", file=sys.stderr)
                 return 1
+            raw = rewritten
             print(f"updated {fid} ({path})")
         MANIFEST_PATH.write_text(raw, encoding="utf-8")
         print(f"wrote {len(drift)} fragment hash(es) to {MANIFEST_PATH}")
