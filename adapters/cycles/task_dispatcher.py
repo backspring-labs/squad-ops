@@ -99,7 +99,9 @@ class TaskDispatcher:
         workflow_tracker: WorkflowTrackerPort | None = None,
         activity_port: RuntimeActivityPort | None = None,
         event_bus: CycleEventBusPort | None = None,
-        task_timeout: float = 300.0,
+        *,
+        # 1.8.2 item 15: declared by whoever composes the dispatcher, never defaulted here.
+        task_timeout: float,
         is_cancelled: Callable[[str], Awaitable[bool]] | None = None,
     ) -> None:
         self._queue = queue

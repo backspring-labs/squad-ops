@@ -22,8 +22,21 @@ def test_provider_key_resolves_to_expected_executor(provider, expected):
     """Bug class: a regression in the factory's provider routing would send a
     valid key to the wrong executor (or fail to construct), breaking cycle
     execution wiring."""
-    executor = create_flow_executor(provider)
+    executor = create_flow_executor(provider, task_timeout=300.0)
     assert type(executor).__name__ == expected
+
+
+def test_the_dispatched_executor_is_refused_without_a_declared_task_timeout():
+    """1.8.2 item 15. Bug this catches: the factory's old ``kwargs.get("task_timeout", 300.0)``
+    — a hung-agent detector nobody chose, set by whichever composition root forgot it."""
+    with pytest.raises(ValueError, match="requires task_timeout"):
+        create_flow_executor("dispatched")
+
+
+def test_the_declared_task_timeout_reaches_the_dispatcher():
+    """Wiring: the value the composition root declares is the one the dispatcher waits on."""
+    executor = create_flow_executor("dispatched", task_timeout=1234.0)
+    assert executor._task_dispatcher._task_timeout == 1234.0
 
 
 def test_unknown_provider_raises():
@@ -42,13 +55,15 @@ class TestDispatchedWorkflowTrackerWiring:
         executor (the routing actually constructs the adapter)."""
         from adapters.cycles.prefect_workflow_tracker import PrefectWorkflowTracker
 
-        executor = create_flow_executor("dispatched", prefect_api_url="http://prefect:4200/api")
+        executor = create_flow_executor(
+            "dispatched", task_timeout=300.0, prefect_api_url="http://prefect:4200/api"
+        )
         assert isinstance(executor._workflow_tracker, PrefectWorkflowTracker)
 
     def test_no_prefect_url_leaves_tracker_none(self):
         """Behavior preserved: with no URL and no explicit tracker, the executor
         gets ``None`` (NOT a NoOp) — exactly as before the refactor."""
-        executor = create_flow_executor("dispatched")
+        executor = create_flow_executor("dispatched", task_timeout=300.0)
         assert executor._workflow_tracker is None
 
     def test_prefect_construction_failure_falls_back_to_noop(self, monkeypatch):
@@ -63,7 +78,9 @@ class TestDispatchedWorkflowTrackerWiring:
             raise RuntimeError("prefect unreachable at construction")
 
         monkeypatch.setattr(pwt, "PrefectWorkflowTracker", _boom)
-        executor = create_flow_executor("dispatched", prefect_api_url="http://prefect:4200/api")
+        executor = create_flow_executor(
+            "dispatched", task_timeout=300.0, prefect_api_url="http://prefect:4200/api"
+        )
         assert isinstance(executor._workflow_tracker, NoOpWorkflowTracker)
 
     def test_explicit_tracker_takes_precedence_over_url(self):
@@ -74,6 +91,7 @@ class TestDispatchedWorkflowTrackerWiring:
         sentinel = NoOpWorkflowTracker()
         executor = create_flow_executor(
             "dispatched",
+            task_timeout=300.0,
             workflow_tracker=sentinel,
             prefect_api_url="http://prefect:4200/api",
         )

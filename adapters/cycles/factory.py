@@ -106,13 +106,18 @@ def create_flow_executor(
                 PrefectConfig(api_url=kwargs["prefect_api_url"])
             )
 
+        if "task_timeout" not in kwargs:
+            raise ValueError(
+                "create_flow_executor('dispatched') requires task_timeout: the orchestrator's "
+                "per-task wait is declared, never defaulted (1.8.2 plan §3.2 item 15)"
+            )
         return DispatchedFlowExecutor(
             cycle_registry=cycle_registry,
             artifact_vault=artifact_vault,
             queue=kwargs.get("queue"),
             squad_profile=squad_profile,
             project_registry=project_registry,
-            task_timeout=kwargs.get("task_timeout", 300.0),
+            task_timeout=kwargs["task_timeout"],
             llm_observability=kwargs.get("llm_observability"),
             workflow_tracker=workflow_tracker,
             event_bus=kwargs.get("event_bus"),

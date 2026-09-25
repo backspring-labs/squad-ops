@@ -121,6 +121,7 @@ def executor(reply_router):
 
     vault.retrieve = AsyncMock(side_effect=retrieve)
     ex = DispatchedFlowExecutor(
+        task_timeout=300.0,
         cycle_registry=AsyncMock(),
         artifact_vault=vault,
         queue=reply_router.bind(AsyncMock()),

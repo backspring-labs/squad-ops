@@ -86,7 +86,7 @@ def _cycle(**overrides: Any) -> Any:
 def _executor_with_manifest() -> tuple[Any, list[tuple[str, Any]], Any]:
     manifest_ref = _ref("art_manifest", "interface_manifest.yaml", MANIFEST_ARTIFACT_TYPE)
     contents = {"art_manifest": (manifest_ref, _MANIFEST.encode())}
-    executor = DispatchedFlowExecutor(artifact_vault=_vault(contents))
+    executor = DispatchedFlowExecutor(task_timeout=300.0, artifact_vault=_vault(contents))
     executor._cycle_registry = AsyncMock()
     return executor, [("art_manifest", manifest_ref)], contents
 
@@ -161,7 +161,7 @@ async def test_an_underivable_manifest_leaves_the_rejection_to_the_gate():
     which M6 attributes to infrastructure rather than to the author."""
     bad = _ref("art_bad", "interface_manifest.yaml", MANIFEST_ARTIFACT_TYPE)
     executor = DispatchedFlowExecutor(
-        artifact_vault=_vault({"art_bad": (bad, b"::: not yaml :::")})
+        task_timeout=300.0, artifact_vault=_vault({"art_bad": (bad, b"::: not yaml :::")})
     )
     executor._cycle_registry = AsyncMock()
 
@@ -204,7 +204,7 @@ def _envelope(task_type: str) -> TaskEnvelope:
 
 
 async def _enriched(task_type: str, contract: Any, manifest: Any) -> dict[str, Any]:
-    executor = DispatchedFlowExecutor(artifact_vault=AsyncMock())
+    executor = DispatchedFlowExecutor(task_timeout=300.0, artifact_vault=AsyncMock())
     envelope = _envelope(task_type)
     enriched = await executor._enrich_envelope(
         envelope,
@@ -300,7 +300,7 @@ def _gate_executor(with_contract: bool) -> tuple[Any, Any, Any]:
         contents["art_contract"] = (contract_ref, derive_contract_bytes(_MANIFEST))
         refs.append("art_contract")
 
-    executor = DispatchedFlowExecutor(artifact_vault=_vault(contents))
+    executor = DispatchedFlowExecutor(task_timeout=300.0, artifact_vault=_vault(contents))
     run = MagicMock()
     run.run_id = "run_1"
     run.artifact_refs = refs
@@ -403,7 +403,7 @@ def test_the_v4_plan_is_the_fixture_the_bug_report_described():
 async def _forwarded(cycle: Any, *promoted: Any) -> dict[str, Any]:
     vault = AsyncMock()
     vault.list_artifacts.return_value = list(promoted)
-    executor = DispatchedFlowExecutor(artifact_vault=vault)
+    executor = DispatchedFlowExecutor(task_timeout=300.0, artifact_vault=vault)
     completed = MagicMock()
     completed.run_id = "run_framing"
     completed.workload_type = "framing"

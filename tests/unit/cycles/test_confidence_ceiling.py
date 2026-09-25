@@ -143,7 +143,7 @@ class TestExecutorWrapupInjection:
         cycle.execution_overrides = {}
         registry.get_cycle.return_value = cycle
         registry.list_runs.return_value = []
-        return DispatchedFlowExecutor(cycle_registry=registry)
+        return DispatchedFlowExecutor(task_timeout=300.0, cycle_registry=registry)
 
     async def test_wrapup_plan_gets_evidence(self):
         from unittest.mock import MagicMock
@@ -179,7 +179,7 @@ class TestExecutorWrapupInjection:
 
         registry = AsyncMock()
         registry.list_run_verification_summaries.side_effect = RuntimeError("db down")
-        executor = DispatchedFlowExecutor(cycle_registry=registry)
+        executor = DispatchedFlowExecutor(task_timeout=300.0, cycle_registry=registry)
         prior: dict = {}
         cycle = MagicMock()
         cycle.cycle_id = "cyc_1"

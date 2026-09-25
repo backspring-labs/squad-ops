@@ -387,7 +387,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         queue: QueuePort | None = None,
         squad_profile: SquadProfilePort | None = None,
         project_registry: ProjectRegistryPort | None = None,
-        task_timeout: float = 300.0,
+        *,
+        # 1.8.2 item 15: the per-task wait is declared by the composition root, never
+        # defaulted here — a default is the hung-agent detector nobody chose.
+        task_timeout: float,
         llm_observability: LLMObservabilityPort | None = None,
         workflow_tracker: WorkflowTrackerPort | None = None,
         event_bus: CycleEventBusPort | None = None,

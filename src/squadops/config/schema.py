@@ -567,9 +567,14 @@ class DispatchConfig(BaseModel):
     ``task_timeout`` is how long a task may run before the orchestrator calls the agent
     hung — several LLM calls, file I/O, a whole test-suite execution. It is a different
     quantity from ``llm.timeout``, which bounds one HTTP call to the model, and until
-    #1147 both were read from ``SQUADOPS__LLM__TIMEOUT``: raising the request timeout for
-    a long qa emission raised the hung-agent detector with it. Unset, it follows
-    ``llm.timeout`` so an existing deploy keeps behaving; set, the two move apart.
+    #1147 both were read from ``SQUADOPS__LLM__TIMEOUT``.
+
+    **Required where tasks are dispatched, never inherited (1.8.2 plan §3.2 item 15).** Until
+    1.8.2 an unset value followed ``llm.timeout``, so raising the model-call timeout for a
+    long emission silently raised the hung-agent detector with it; deploy B″ ran that way at
+    1,800 s. The value is absent in a process that dispatches nothing (every agent), and
+    ``AppConfig.task_timeout_seconds`` refuses where it is read. Compose refuses to start the
+    runtime API without it.
     """
 
     task_timeout: int | None = Field(
@@ -577,16 +582,10 @@ class DispatchConfig(BaseModel):
         ge=1,
         description=(
             "Seconds the orchestrator waits for a dispatched task before calling the agent "
-            "hung (SQUADOPS__DISPATCH__TASK_TIMEOUT). None = follow llm.timeout."
+            "hung (SQUADOPS__DISPATCH__TASK_TIMEOUT). Required by the runtime API, which "
+            "dispatches; absent in processes that do not. Never follows llm.timeout."
         ),
     )
-
-    @field_validator("task_timeout", mode="before")
-    @classmethod
-    def _empty_means_unset(cls, value: Any) -> Any:
-        # A compose passthrough of an unset variable arrives as "" — that is "unset",
-        # not a value to coerce.
-        return None if isinstance(value, str) and not value.strip() else value
 
 
 class PrefectConfig(BaseModel):
@@ -860,9 +859,15 @@ class AppConfig(BaseModel):
     )
 
     def task_timeout_seconds(self) -> float:
-        """The orchestrator's per-task wait: ``dispatch.task_timeout`` when set, else
-        ``llm.timeout`` — the one place the two are joined (#1147)."""
-        return float(self.dispatch.task_timeout or self.llm.timeout)
+        """The orchestrator's per-task wait: ``dispatch.task_timeout``, required here, at the
+        one place it is read (1.8.2 plan §3.2 item 15; #1147 separated it from llm.timeout)."""
+        if self.dispatch.task_timeout is None:
+            raise ValueError(
+                "dispatch.task_timeout is required where tasks are dispatched: set "
+                "SQUADOPS__DISPATCH__TASK_TIMEOUT (seconds). It no longer follows llm.timeout "
+                "(1.8.2 plan §3.2 item 15)."
+            )
+        return float(self.dispatch.task_timeout)
 
     # Prompts (SIP-0084)
     prompts: PromptsConfig = Field(
