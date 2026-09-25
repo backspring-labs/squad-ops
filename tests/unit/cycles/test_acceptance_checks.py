@@ -1434,6 +1434,116 @@ class TestFrontendCompiles:
         assert outcome.reason == "frontend_build_failed"
         assert "RollupError" in outcome.actual["stderr_tail"]
 
+    #: What ``tsc --pretty false`` prints (the ``_TSC_DIAGNOSTIC`` shape, measured in the qa
+    #: image): one error per line, a message chain continuing on indented lines.
+    _TSC_OUT = (
+        "app/runs/[run_id]/page.tsx(128,10): error TS18047: 'run' is possibly 'null'.\n"
+        "app/runs/new/page.tsx(40,7): error TS2322: Type 'string' is not assignable to type "
+        "'number'.\n"
+        "lib/store.ts(12,3): error TS2345: Argument of type '\"run_store\"' is not assignable "
+        "to parameter of type 'Table'.\n"
+        "  Type '\"run_store\"' is not assignable to type '\"runs\"'.\n"
+    )
+    #: The head of a stored build tail (cyc_38f95b29cf79), colour escapes and all.
+    _COLOURED = (
+        "Failed to compile.\n\n./app/runs/[run_id]/page.tsx:128:10\n"
+        "Type error: 'run' is possibly 'null'.\n\n"
+        "\x1b[0m \x1b[90m 126 |\x1b[39m     \x1b[33m<\x1b[39m\x1b[33mdiv\x1b[39m data"
+    )
+
+    def _typescript_tree(self, tmp_path, *, tsconfig=True, local_tsc=True):
+        ws = self._workspace(tmp_path)
+        frontend = ws / "frontend"
+        (frontend / "node_modules" / ".bin").mkdir(parents=True)
+        if tsconfig:
+            (frontend / "tsconfig.json").write_text("{}")
+        if local_tsc:
+            (frontend / "node_modules" / ".bin" / "tsc").write_text("")
+        return ws, frontend
+
+    async def _failed_build(self, ws, monkeypatch, tsc_result, *, which=None):
+        from squadops.cycles import acceptance_checks as ac
+        from squadops.cycles.acceptance_checks import FrontendCompilesCheck
+
+        monkeypatch.setattr(ac.shutil, "which", which or (lambda _: "/usr/bin/npm"))
+        ran: list = []
+
+        async def _build(argv, cwd, timeout_s):
+            return 1, "", self._COLOURED
+
+        async def _tsc(argv, cwd, timeout_s):
+            ran.append((argv, cwd))
+            return tsc_result
+
+        monkeypatch.setattr(FrontendCompilesCheck, "_run", staticmethod(_build))
+        monkeypatch.setattr(ac, "_run_argv", _tsc)
+        outcome = await get_check("frontend_compiles").evaluate(
+            {"file": "frontend/src/views/RunsListView.jsx"}, ws
+        )
+        return outcome, ran
+
+    async def test_a_failed_typescript_build_carries_every_type_error(self, tmp_path, monkeypatch):
+        """SIP-0086 §12a change 2. Bug caught: the evidence stopping at the one type error
+        ``next build`` stops at — a pass that fixes it meets the next one blind (the 2026-09-15
+        probe, six of six trials) — or the tail spent on colour escapes."""
+        ws, frontend = self._typescript_tree(tmp_path)
+
+        outcome, ran = await self._failed_build(ws, monkeypatch, (2, self._TSC_OUT, ""))
+
+        assert outcome.reason == "frontend_build_failed"
+        tsc = str(frontend / "node_modules" / ".bin" / "tsc")
+        assert ran == [([tsc, "--noEmit", "-p", ".", "--pretty", "false"], frontend)]
+        assert outcome.actual["diagnostic_count"] == 3
+        assert outcome.actual["diagnostics"][0] == (
+            "app/runs/[run_id]/page.tsx(128,10): error TS18047: 'run' is possibly 'null'."
+        )
+        assert outcome.actual["diagnostics"][2].endswith(
+            "type 'Table'. Type '\"run_store\"' is not assignable to type '\"runs\"'."
+        ), "a message chain's continuation is folded into its error"
+        assert "\x1b" not in outcome.actual["stderr_tail"]
+        assert "Type error: 'run' is possibly 'null'." in outcome.actual["stderr_tail"]
+
+    @pytest.mark.parametrize(
+        ("tree", "which", "tsc_result", "unavailable"),
+        [
+            ({"tsconfig": False}, None, (2, "", ""), "no_tsconfig"),
+            (
+                {"local_tsc": False},
+                lambda name: "/usr/bin/npm" if name == "npm" else None,
+                (2, "", ""),
+                "tsc_not_installed",
+            ),
+            ({}, None, (None, "", ""), "tsc_timeout"),
+        ],
+        ids=["a JavaScript project", "no tsc anywhere", "tsc timed out"],
+    )
+    async def test_a_build_whose_type_errors_cannot_be_read_says_why(
+        self, tmp_path, monkeypatch, tree, which, tsc_result, unavailable
+    ):
+        """The React stack builds plain JSX; a tree may lack typescript. Bug caught: an absent
+        list read as "no type errors" — the fail stands on the build, and the evidence says why
+        the list is missing."""
+        ws, _frontend = self._typescript_tree(tmp_path, **tree)
+
+        outcome, _ran = await self._failed_build(ws, monkeypatch, tsc_result, which=which)
+
+        assert outcome.reason == "frontend_build_failed"
+        assert outcome.actual["diagnostics_unavailable"] == unavailable
+        assert "diagnostics" not in outcome.actual
+
+    async def test_the_list_is_bounded_and_its_count_is_not(self, tmp_path, monkeypatch):
+        """A tree broken everywhere cannot flood the prompt, and the count still says how
+        broken it is."""
+        from squadops.cycles.acceptance_checks import FRONTEND_DIAGNOSTICS_MAX
+
+        ws, _frontend = self._typescript_tree(tmp_path)
+        many = "".join(f"a.ts({n},1): error TS2304: Cannot find name 'x{n}'.\n" for n in range(80))
+
+        outcome, _ran = await self._failed_build(ws, monkeypatch, (2, many, ""))
+
+        assert len(outcome.actual["diagnostics"]) == FRONTEND_DIAGNOSTICS_MAX
+        assert outcome.actual["diagnostic_count"] == 80
+
     async def test_clean_build_passes_and_installs_when_needed(self, tmp_path, monkeypatch):
         from squadops.cycles import acceptance_checks as ac
         from squadops.cycles.acceptance_checks import FrontendCompilesCheck

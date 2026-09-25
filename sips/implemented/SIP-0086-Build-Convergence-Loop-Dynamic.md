@@ -1137,7 +1137,7 @@ If staging is necessary, the cleanest delivery path is A → B → C. Stage A al
 
 ## 12. Post-implementation amendments
 
-### 12a. 2026-09-15 — the self-evaluation pass becomes the model's compile loop (proposed; change 1 built; targeted for 1.8.2)
+### 12a. 2026-09-15 — the self-evaluation pass becomes the model's compile loop (proposed; changes 1–2 built; targeted for 1.8.2)
 
 **Status.** Drafted on the owner's ask of 2026-09-15 and targeted for 1.8.1 by the owner's
 ruling of the same day; **re-targeted to 1.8.2 on 2026-09-17** by the owner's ruling on the
@@ -1220,4 +1220,22 @@ assessment's `tokens_by_task_type` shows a pass's cost beside its task's. A repo
 exceed their task's totals is booked whole under the task type, never as a negative count. (This
 paragraph's date first read 2026-09-25, the UTC date; it's 2026-09-24 ET.)
 
-**Not yet built:** changes 2–4. This section says so until each lands.
+**As built — change 2 (2026-09-24).** When `frontend_compiles`' build fails on a TypeScript
+project (a `tsconfig.json` in the project directory), the check also runs the project's own
+`tsc`, falling back to one on PATH: `tsc --noEmit -p . --pretty false`. Its failed row carries
+every type error as `diagnostics`, one entry per error with a message chain's continuation lines
+folded in, plus `diagnostic_count`. The list is bounded at 50 entries of 300 characters, and
+the count isn't bounded. A tree whose errors can't be read says why in `diagnostics_unavailable`
+(`no_tsconfig` for the React stack's plain JSX, `tsc_not_installed`, `tsc_timeout`), and the
+build's failure stands either way. The build's own stderr tail is raised from 1,024 to 4,096
+characters, with terminal escapes stripped. A stored tail from cyc_38f95b29cf79 spent 554 of
+its 1,015 characters on colour codes around the one type error `next build` stopped at. The row's
+fields ride `validation_result.checks` into a correction round's failure evidence unchanged, so
+the round carries the same list.
+
+The Python half ("every failing row, not the first") is the follow-up prompt's to show, and
+change 3 builds it: no Python check truncates to its first failing row. The qa container's
+framework `frontend_build` check (`test_runner.run_frontend_build`) is a separate producer and
+isn't changed here.
+
+**Not yet built:** changes 3–4. This section says so until each lands.
