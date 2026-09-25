@@ -1341,9 +1341,16 @@ class _CycleTaskHandler(CapabilityHandler):
             call_messages = [*messages, ChatMessage(role="user", content=retry_fact)]
 
     @staticmethod
-    async def _disputed_checks_section(renderer: Any) -> str:
-        """How a build or repair task disputes a check (SIP-0096 §17a), from its one asset."""
-        return (await renderer.render("request.disputed_checks_appendix", {})).content
+    async def _disputed_checks_section(renderer: Any, checks: list[str]) -> str:
+        """How a build or repair task disputes one of ``checks`` (SIP-0096 §17a), from its one
+        asset — or "" for a task judged by no check it could name, which has nothing to dispute.
+        """
+        if renderer is None or not checks:
+            return ""
+        rendered = await renderer.render(
+            "request.disputed_checks_appendix", {"checks": "\n".join(checks)}
+        )
+        return rendered.content
 
     async def _cap_exhausted_fact(
         self,

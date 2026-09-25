@@ -17,7 +17,12 @@ import pytest
 from adapters.prompts.filesystem_asset_adapter import FilesystemPromptAssetAdapter
 from squadops.agents.base import PortsBundle
 from squadops.bootstrap.handlers import create_handler_registry
-from squadops.capabilities.disputed_checks import DISPUTED_CHECKS, split_disputed_checks
+from squadops.capabilities.disputed_checks import (
+    DISPUTED_CHECKS,
+    criterion_identities,
+    failing_row_identities,
+    split_disputed_checks,
+)
 from squadops.capabilities.handlers.cycle.builder import BuilderAssembleHandler
 from squadops.capabilities.handlers.cycle.develop import DevelopmentDevelopHandler
 from squadops.capabilities.handlers.cycle.qa_test import QATestHandler
@@ -74,6 +79,62 @@ def test_the_block_is_taken_out_whole_and_only_a_well_formed_entry_disputes(
     assert split_disputed_checks(response) == (kept, disputes)
 
 
+#: The typed criterion the build tasks here are judged by, in the resolved form a plan hands them,
+#: and the failing row its evaluation produced — the shape a repair's evidence carries.
+_CRITERION = {
+    "check": "declared_imports",
+    "params": {"file": "frontend/src/views/RunList.jsx"},
+    "id": "vc-view-compiles-run-list",
+}
+_FAILING_ROW = {
+    "check": "acceptance:declared_imports",
+    "severity": "error",
+    "params": {"file": "frontend/src/views/RunList.jsx"},
+    "status": "failed",
+    "passed": False,
+    "reason": "unresolved import '@/lib/api'",
+    "criterion_id": "vc-view-compiles-run-list",
+}
+_IDENTITY = (
+    "- check: `acceptance:declared_imports`, file: `frontend/src/views/RunList.jsx`, "
+    "criterion_id: `vc-view-compiles-run-list`"
+)
+
+
+@pytest.mark.parametrize(
+    ("reader", "entries", "lines"),
+    [
+        (criterion_identities, [_CRITERION, "the list shows every run"], [_IDENTITY]),
+        (
+            criterion_identities,
+            [{"check": "command_exit_zero", "argv": ["npm", "test"]}],
+            ["- check: `acceptance:command_exit_zero`"],
+        ),
+        (
+            failing_row_identities,
+            [_FAILING_ROW],
+            [_IDENTITY + " — failed: unresolved import '@/lib/api'"],
+        ),
+        (
+            failing_row_identities,
+            [
+                {**_FAILING_ROW, "status": "passed", "passed": True},
+                # A warning-severity failure: advice, which the loop never acts on (#598).
+                {**_FAILING_ROW, "severity": "warning", "passed": True},
+                {"check": "tests_pass", "passed": False, "file": "tests/test_runs.py"},
+            ],
+            ["- check: `tests_pass`, file: `tests/test_runs.py`"],
+        ),
+    ],
+    ids=["criterion", "flat criterion, no file", "failing row", "only blocking failures"],
+)
+def test_each_check_is_named_as_its_row_will_be(reader, entries, lines):
+    """Bug caught: a criterion listed under its bare name while its row says ``acceptance:``,
+    so the quoted name matches nothing; prose listed as a check; a passing or advisory row
+    offered for dispute."""
+    assert reader(entries) == lines
+
+
 def _renderer() -> RequestTemplateRenderer:
     return RequestTemplateRenderer(
         FilesystemPromptAssetAdapter(_PROMPTS / "fragments", _PROMPTS / "request_templates")
@@ -84,7 +145,7 @@ def _repair_inputs() -> dict:
     return {
         "prd": "Runs API",
         "failed_task_type": "development.develop",
-        "failure_evidence": {},
+        "failure_evidence": {"validation_result": {"checks": [_FAILING_ROW]}},
         "correction_decision": {},
         "expected_artifacts": ["backend/routes.py"],
         "acceptance_workspace_files": {"backend/routes.py": _ROUTES},
@@ -133,6 +194,7 @@ def _envelope(task_type: str, inputs: dict) -> TaskEnvelope:
 
 _DEVELOP_INPUTS = {
     "prd": "Runs API",
+    "acceptance_criteria": [_CRITERION],
     "artifact_contents": {"implementation_plan.md": "1. The runs routes"},
     "subtask_focus": "the runs routes",
     "expected_artifacts": ["backend/routes.py"],
@@ -207,13 +269,23 @@ _SOURCES = {"my_app/main.py": "def main():\n    print('hello')\n"}
     [
         (DevelopmentCorrectionRepairHandler, _repair_inputs()),
         (DevelopmentDevelopHandler, _DEVELOP_INPUTS),
-        (QATestHandler, {"prd": "Runs API", "artifact_contents": _SOURCES}),
+        (
+            QATestHandler,
+            {
+                "prd": "Runs API",
+                "artifact_contents": _SOURCES,
+                "subtask_focus": "the runs suite",
+                "expected_artifacts": ["tests/test_runs.py"],
+                "acceptance_criteria": [_CRITERION],
+            },
+        ),
         (
             BuilderAssembleHandler,
             {
                 "prd": "Runs API",
                 "resolved_config": {"build_profile": "python_cli_builder"},
                 "artifact_contents": _SOURCES,
+                "acceptance_criteria": [_CRITERION],
             },
         ),
     ],
@@ -222,9 +294,10 @@ _SOURCES = {"my_app/main.py": "def main():\n    print('hello')\n"}
 async def test_every_build_and_repair_prompt_says_how_to_dispute_a_check(
     handler, inputs, monkeypatch
 ):
-    """Through each handler's own render, on the real templates. Bug caught: the section
-    declared by a template and never passed by its handler — it renders empty, and the task is
-    judged by checks it was never told it could contest (#1289 is the same gap)."""
+    """Through each handler's own render, on the real templates, on the path a plan-driven task
+    takes. Bug caught: the section declared by a template and never passed by its handler — it
+    renders empty (#1289 is the same gap) — or passed without the checks, so the task is told it
+    may dispute and never told what it is judged by."""
     monkeypatch.setattr(
         "squadops.capabilities.handlers.test_runner.run_generated_tests",
         AsyncMock(return_value=RunTestsResult(executed=True, exit_code=0, stdout="1 passed")),
@@ -234,5 +307,16 @@ async def test_every_build_and_repair_prompt_says_how_to_dispute_a_check(
     await handler().handle(_context(sent), inputs)
 
     prompt = "\n".join(str(m.content) for m in sent[0])
-    assert "If a check you were given is wrong" in prompt
-    assert "```disputed_checks" in prompt
+    assert "If a check you are judged by is wrong" in prompt
+    assert _IDENTITY in prompt
+
+
+async def test_a_task_judged_by_no_named_check_is_not_offered_a_dispute():
+    """The control: a build task whose criteria are all prose has nothing a dispute could name,
+    and is not told how to dispute."""
+    sent: list = []
+    inputs = {**_DEVELOP_INPUTS, "acceptance_criteria": ["the list shows every run"]}
+
+    await DevelopmentDevelopHandler().handle(_context(sent), inputs)
+
+    assert "disputed_checks" not in "\n".join(str(m.content) for m in sent[0])

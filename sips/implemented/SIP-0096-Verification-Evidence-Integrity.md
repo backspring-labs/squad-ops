@@ -354,14 +354,32 @@ entries on the task's `ExecutionContext`. The strip has to come first: the fence
 on a task expecting one file the single-expected-file fallback (`fenced_parser.py`, #566) would
 store the block as that file. The handler executor carries the entries on the task's outputs as
 `disputed_checks` on every result a handler reached, the failed one included, and adds no key
-when there is no dispute. Develop, qa test, builder assemble and the three correction repairs
-(dev, builder, qa) are told how to dispute through one asset (`request.disputed_checks_appendix`),
-rendered into each template's `disputed_checks_section`. The repair template's "say why in one
-line" sentence, which nothing read, now points at the block instead. The pulse-check repair
-chain's `development.repair` (`request.repair_task_base`) is not told yet: whether a pulse check
-can be contested is decided with change 2. **Diverges from the text above:** the
-dispute names `file`, not `subject`. A typed row carries its subject as `params.file`, and the
-producer sees file paths, so matching (change 2) keys on `(check, params.file, criterion_id)`.
+when there is no dispute.
+
+**The section names what it offers.** A dispute has to name its check, and no prompt named one.
+A build task's expectation lines say what each criterion requires but never its check or
+criterion id (`contract_expectations.expectation_line`). A repair and a self-evaluation pass see
+only "Typed checks failed: N of M" (`develop.py`, `qa_test.py`), plus the analyzer's prose. So
+the section, rendered from one asset (`request.disputed_checks_appendix`), lists the checks the
+task may dispute, each as `check`, `file` and `criterion_id`:
+- a build task gets its typed criteria, under the `acceptance:` name their rows will carry
+  (`criterion_identities`)
+- a repair gets the blocking-failed rows of its failure evidence, each with its reason
+  (`failing_row_identities`)
+
+A task judged by no named check gets no section. The paths that carry typed criteria render it:
+develop and qa test on the plan-driven path (the path every manifest-driven task takes),
+builder assemble, and the three correction repairs (dev, builder, qa). The legacy monolithic
+paths carry no typed criteria, so they have nothing to offer. The repair template's "say why in
+one line" sentence, which nothing read, now points at the block instead. The pulse-check repair
+chain's `development.repair` (`request.repair_task_base`) is not given the section yet: whether a
+pulse check can be contested is decided with change 2. The self-evaluation follow-up
+(`_build_self_eval_prompt`) names no check either. SIP-0086 §12a change 3 rewrites that prompt,
+and it gets the section then. **Diverges from the text above:** the
+dispute names `file`, not `subject`. A row's `subject` is the plan-task id that produced it
+(`CheckResult.subject`, §6.3), which the producer does not see. It is implied by which task
+disputed, so matching (change 2) takes it from the task. `file` is what separates one check run
+on several files: a typed row carries it as `params.file`.
 `check` and `reason` are required; an entry without either disputes nothing and is logged. **Not
 yet built:** changes 2–5. Nothing reads `disputed_checks` yet, so this change credits nothing,
 blocks nothing and routes nothing.

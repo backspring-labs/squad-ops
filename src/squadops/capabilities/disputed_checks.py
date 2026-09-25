@@ -25,9 +25,13 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 import yaml
+
+from squadops.cycles.contract_expectations import typed_check_and_params
+from squadops.cycles.verification_normalize import row_is_blocking_failure
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +46,56 @@ _BLOCK = re.compile(
 #: What a dispute is keyed by, and what it must say. ``check`` names the row; ``file`` and
 #: ``criterion_id`` narrow it when the same check ran on several files or criteria.
 _FIELDS = ("check", "file", "criterion_id", "reason")
+
+
+#: The prefix the typed-acceptance seam gives a criterion's row (``handlers/cycle/base.py``). A
+#: criterion is listed under its row's name, so the name a dispute quotes is the one it matches.
+_TYPED_ROW_PREFIX = "acceptance:"
+
+
+def criterion_identities(criteria: Iterable[Any] | None) -> list[str]:
+    """One line per typed criterion a build task is judged by: the check as its row will be
+    named, its file and its criterion id. Prose criteria are not checks and are not listed.
+
+    The expectation lines a build task reads say what each criterion requires and never name
+    it, so without these a dispute could only paraphrase the check it means.
+    """
+    lines = []
+    for entry in criteria or ():
+        typed = typed_check_and_params(entry)
+        if typed is None:
+            continue
+        check, params = typed
+        criterion_id = entry.get("id") if isinstance(entry, Mapping) else getattr(entry, "id", None)
+        lines.append(_identity(f"{_TYPED_ROW_PREFIX}{check}", params.get("file"), criterion_id))
+    return lines
+
+
+def failing_row_identities(rows: Iterable[Any] | None) -> list[str]:
+    """One line per failing row a repair is aimed at — its check, file, criterion id and the
+    reason it failed. A row that passed, or failed only as advice, is nothing to dispute."""
+    lines = []
+    for row in rows or ():
+        if not isinstance(row, Mapping) or not row.get("check") or not row_is_blocking_failure(row):
+            continue
+        line = _identity(str(row["check"]), _row_file(row), row.get("criterion_id"))
+        reason = str(row.get("reason") or "").strip()
+        lines.append(f"{line} — failed: {reason}" if reason else line)
+    return lines
+
+
+def _row_file(row: Mapping[str, Any]) -> str | None:
+    params = row.get("params")
+    return (params.get("file") if isinstance(params, Mapping) else None) or row.get("file")
+
+
+def _identity(check: str, file: Any, criterion_id: Any) -> str:
+    line = f"- check: `{check}`"
+    if file:
+        line += f", file: `{file}`"
+    if criterion_id:
+        line += f", criterion_id: `{criterion_id}`"
+    return line
 
 
 def split_disputed_checks(content: str) -> tuple[str, list[dict[str, str]]]:

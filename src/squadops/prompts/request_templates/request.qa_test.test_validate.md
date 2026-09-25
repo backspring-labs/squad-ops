@@ -1,6 +1,6 @@
 ---
 template_id: request.qa_test.test_validate
-version: "4"
+version: "3"
 required_variables:
   - prd
   - test_supplement
@@ -8,7 +8,6 @@ optional_variables:
   - validation_plan
   - source_files
   - prior_outputs
-  - disputed_checks_section
 ---
 ## Product Requirements Document
 
@@ -33,5 +32,3 @@ own reset fixture and do not call `reset()` yourself: assert the state your case
 
 {{test_supplement}}
 {{prior_outputs}}
-
-{{disputed_checks_section}}

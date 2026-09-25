@@ -8,6 +8,7 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
+from squadops.capabilities.disputed_checks import criterion_identities
 from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
@@ -179,7 +180,11 @@ class BuilderAssembleHandler(_CycleTaskHandler):
                 for tag_key, tag_value in sorted(task_tags.items()):
                     tag_parts.append(f"- **{tag_key}**: {tag_value}")
                 variables["task_tags"] = "\n".join(tag_parts)
-            variables["disputed_checks_section"] = await self._disputed_checks_section(renderer)
+            disputes = await self._disputed_checks_section(
+                renderer, criterion_identities(inputs.get("acceptance_criteria"))
+            )
+            if disputes:
+                variables["disputed_checks_section"] = disputes
             rendered = await renderer.render(
                 "request.builder_assemble.build_assemble",
                 variables,

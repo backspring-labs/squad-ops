@@ -36,6 +36,12 @@ def _check_and_params(entry: Any) -> tuple[str, dict] | None:
     return None
 
 
+def typed_check_and_params(entry: Any) -> tuple[str, dict] | None:
+    """A typed criterion's check name and params, whichever of the three shapes it travels
+    in; None for prose. The one reading of a criterion's identity outside this module."""
+    return _check_and_params(entry)
+
+
 def is_typed_criterion(entry: Any) -> bool:
     return _check_and_params(entry) is not None
 

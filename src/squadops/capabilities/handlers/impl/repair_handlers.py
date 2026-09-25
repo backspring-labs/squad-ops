@@ -19,6 +19,7 @@ import re
 from typing import TYPE_CHECKING, Any
 
 from squadops.capabilities.context_assembly import REPAIR_FAILED_ARTIFACTS_KEY
+from squadops.capabilities.disputed_checks import failing_row_identities
 from squadops.capabilities.handlers.cycle_tasks import _classify_file, _CycleTaskHandler
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
 from squadops.cycles.failure_evidence import failing_case_lines, failing_cases_from_evidence
@@ -404,7 +405,7 @@ class _RepairPromptMixin:
             inputs = {**inputs, "anchored_edit_section": anchored}
         inputs = {
             **inputs,
-            "disputed_checks_section": await self._render_disputed_checks_section(context),
+            "disputed_checks_section": await self._render_disputed_checks_section(context, inputs),
         }
         result = await super().handle(context, inputs)
         result = await self._retry_refused_anchored_edits(context, inputs, result)
@@ -818,11 +819,17 @@ class _RepairPromptMixin:
             or "-",
         )
 
-    async def _render_disputed_checks_section(self, context: ExecutionContext) -> str:
-        """How to dispute a check (SIP-0096 §17a) — a repair aimed at a false positive is the
-        case the section exists for (#1581) — or "" without a renderer."""
-        renderer = getattr(context.ports, "request_renderer", None)
-        return "" if renderer is None else await self._disputed_checks_section(renderer)
+    async def _render_disputed_checks_section(
+        self, context: ExecutionContext, inputs: dict[str, Any]
+    ) -> str:
+        """How to dispute one of the failing rows this repair is aimed at (SIP-0096 §17a) — a
+        repair aimed at a false positive is the case the section exists for (#1581)."""
+        evidence = inputs.get("failure_evidence")
+        validation = evidence.get("validation_result") if isinstance(evidence, dict) else None
+        rows = validation.get("checks") if isinstance(validation, dict) else None
+        return await self._disputed_checks_section(
+            getattr(context.ports, "request_renderer", None), failing_row_identities(rows)
+        )
 
     async def _render_qa_fill_mode_section(
         self, context: ExecutionContext, inputs: dict[str, Any]
