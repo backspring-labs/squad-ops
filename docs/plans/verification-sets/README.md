@@ -118,9 +118,13 @@ the driver's `render` of what it collected, and what it collected is listed in t
 - **A rebuild over a running cycle leaves its run `running`** in the registry and every later
   preflight refuses. Cancel it through the CLI (`squadops runs cancel <project> <cycle>
   <run>`), never by hand in the database; killing the driver alone does not cancel the run.
-- **Records** land in `var/verification_sets/<set>/` under the checkout the driver ran from;
-  a docs worktree needs `.venv` and `data` linked (and excluded) for the driver to find the
-  CLI and the artifact vault. Counted rolls launch from `main` (owner's ruling, 2026-08-27).
+- **Records** land in `var/verification_sets/<set>/` under the **main checkout**, whichever
+  checkout the driver runs from, and the artifact vault is read from the main checkout's
+  `data/` (1.8.2 plan §3.2 item 8). A config's `records_dir` must sit under
+  `var/verification_sets/` or the config is refused at load. Each record names the checkout
+  it launched from (`launched_from`). A worktree still needs `.venv` linked (and excluded)
+  for the driver to find the CLI. Counted rolls launch from `main` (owner's ruling,
+  2026-08-27).
 
 ### The comparison window (SIP-0108 §4.4)
 

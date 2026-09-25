@@ -48,6 +48,7 @@ must be, how a launch survives the session, how a dead driver is re-attached —
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import os
 import re
@@ -58,12 +59,15 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import yaml
 
 REPO = Path(__file__).resolve().parents[2]
+#: Where a set's records go, relative to the main checkout (``main_checkout``). A config's
+#: ``records_dir`` must sit under it.
+RECORDS_ROOT = PurePosixPath("var", "verification_sets")
 #: Where every set config lives, and where a config's ``compare_with`` names its pair.
 SET_CONFIG_DIR = REPO / "docs" / "plans" / "verification-sets"
 SQUADOPS = str(REPO / ".venv" / "bin" / "squadops")
@@ -572,12 +576,10 @@ class SetConfig:
     @property
     def records_path(self) -> Path:
         # var/ is gitignored and user-writable; data/ is the docker volume, owned by root —
-        # the first launch died on mkdir there before it created anything.
-        return (
-            Path(self.records_dir)
-            if self.records_dir
-            else REPO / "var" / "verification_sets" / self.name
-        )
+        # the first launch died on mkdir there before it created anything. Always the MAIN
+        # checkout's var/, never the running checkout's (``main_checkout``); ``load_set_config``
+        # has already refused a ``records_dir`` outside it.
+        return main_checkout() / (self.records_dir or str(RECORDS_ROOT / self.name))
 
     @property
     def head_pin(self) -> Path:
@@ -597,11 +599,31 @@ _REQUIRED = (
 )
 
 
+def records_dir_problem(records_dir: str) -> str | None:
+    """Why ``records_dir`` is not a place records may go, or None when it is.
+
+    A relative path strictly under ``var/verification_sets/``, resolved against the main
+    checkout. An absolute path, a ``..`` or anywhere else is refused at load, before any
+    cycle launches: a record written outside that one home is a record the hygiene sweep
+    and the Release attachment never see.
+    """
+    p = PurePosixPath(records_dir)
+    if p.is_absolute() or ".." in p.parts or p.parts[:2] != RECORDS_ROOT.parts or len(p.parts) < 3:
+        return (
+            f"records_dir {records_dir!r} is not under {RECORDS_ROOT}/ — records are written "
+            "only under the main checkout's var/verification_sets/ (1.8.2 plan §3.2 item 8)"
+        )
+    return None
+
+
 def load_set_config(path: Path) -> SetConfig:
     raw = yaml.safe_load(path.read_text()) or {}
     missing = [k for k in _REQUIRED if k not in raw]
     if missing:
         raise SystemExit(f"{path}: set config is missing {', '.join(missing)}")
+    records_dir = str(raw.get("records_dir") or "")
+    if records_dir and (problem := records_dir_problem(records_dir)):
+        raise SystemExit(f"{path}: {problem}")
     # A list stays a readable list in the YAML and is carried as the comma form the CLI's
     # `--set` can express (#1298); `str(["a"])` produced `"['a']"`, which the framework's
     # guard then refused at cycle create.
@@ -646,7 +668,7 @@ def load_set_config(path: Path) -> SetConfig:
         frozen_deploy_commit=str(raw.get("frozen_deploy_commit") or ""),
         frozen_image_ids=image_ids,
         loaded_checks=tuple(checks),
-        records_dir=str(raw.get("records_dir") or ""),
+        records_dir=records_dir,
         pre_registration=str(raw.get("pre_registration") or ""),
         arm=str(raw.get("arm") or ""),
         compare_with=str(raw.get("compare_with") or ""),
@@ -697,6 +719,38 @@ def sh(cmd: str, check: bool = True) -> str:
     if check and proc.returncode != 0:
         raise SystemExit(f"FAILED: {cmd}\n{proc.stdout}\n{proc.stderr}")
     return proc.stdout.strip()
+
+
+def main_checkout() -> Path:
+    """The main checkout of this repository: ``REPO`` itself, or the one a worktree hangs off.
+
+    The deploy's state lives there whichever checkout runs the driver: its ``data/`` volume
+    (``rebuild_and_deploy.sh`` composes from the main checkout) and every set's records. A
+    driver launched from a worktree used to write its records into that worktree's ``var/``
+    (gitignored, invisible to ``git status``, in a directory that looks disposable) and left
+    the only copies of the 1.7.4 and 1.7.5 records inside two driver worktrees. It read the
+    deploy's artifacts from the worktree too, where there are none unless someone symlinked
+    ``data/``, so every artifact read came back empty rather than failing (1.8.2 plan §3.2
+    item 8).
+    """
+    return _main_checkout_of(REPO)
+
+
+@functools.cache
+def _main_checkout_of(repo: Path) -> Path:
+    proc = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+        capture_output=True,
+        text=True,
+    )
+    common = Path(proc.stdout.strip()) if proc.returncode == 0 else None
+    if common is None or common.name != ".git":
+        raise SystemExit(
+            f"{repo}: cannot find the main checkout "
+            f"(git rev-parse --git-common-dir: {(proc.stderr or proc.stdout).strip()}) — "
+            "records are written there and nowhere else"
+        )
+    return common.parent
 
 
 def docker_logs(container: str, since: str, until: str | None = None) -> list[str]:
@@ -1442,7 +1496,7 @@ def drive(cfg: SetConfig, cycle_id: str) -> str | None:
 
 
 def artifact_dirs(cfg: SetConfig, cycle_id: str, run_id: str) -> list[Path]:
-    root = REPO / "data" / "artifacts" / cfg.project / cycle_id / run_id
+    root = main_checkout() / "data" / "artifacts" / cfg.project / cycle_id / run_id
     return sorted(root.glob("art_*")) if root.exists() else []
 
 
@@ -1473,7 +1527,7 @@ def artifact_text(
         ):
             continue
         try:
-            return (REPO / m["vault_uri"]).read_text()
+            return (main_checkout() / m["vault_uri"]).read_text()
         except (OSError, KeyError):
             return None
     return None
@@ -1526,7 +1580,7 @@ def _stored_qa_suites(cfg: SetConfig, cycle_id: str, run_id: str) -> list[tuple[
         if not _is_suite_name(name):
             continue
         try:
-            out.append((name, (REPO / m["vault_uri"]).read_text()))
+            out.append((name, (main_checkout() / m["vault_uri"]).read_text()))
         except (OSError, KeyError):
             continue
     return out
@@ -2091,7 +2145,7 @@ def _report_scan(cfg: SetConfig, cycle_id: str, impl_run: str, needle: str) -> l
         if not m or str(m.get("filename", "")) != "test_report.md":
             continue
         try:
-            text = (REPO / m["vault_uri"]).read_text()
+            text = (main_checkout() / m["vault_uri"]).read_text()
         except (OSError, KeyError):
             continue
         if needle in text:
@@ -2374,7 +2428,7 @@ def _decision_inherited_claims(
         if not m or m.get("filename") != "correction_decision.md":
             continue
         try:
-            text = (REPO / m["vault_uri"]).read_text()
+            text = (main_checkout() / m["vault_uri"]).read_text()
         except (OSError, KeyError):
             continue
         # Each decision is joined ONLY to the refutation told to its own step. The
@@ -3543,7 +3597,7 @@ def fill_merge_evidence(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[di
         if not m or m.get("filename") != "fill_merge_evidence.json":
             continue
         try:
-            payload = json.loads((REPO / m["vault_uri"]).read_text())
+            payload = json.loads((main_checkout() / m["vault_uri"]).read_text())
         except (OSError, KeyError, ValueError):
             continue
         fill = payload.get("fill_merge") or {}
@@ -3578,7 +3632,7 @@ def uncollected_suites(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[dic
         if not m or m.get("filename") != "test_report.md":
             continue
         try:
-            text = (REPO / m["vault_uri"]).read_text()
+            text = (main_checkout() / m["vault_uri"]).read_text()
         except (OSError, KeyError):
             continue
         reports += 1
@@ -3661,7 +3715,7 @@ def _fill_rejections(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[str] 
         if (m.get("metadata") or {}).get("role") != "qa":
             continue
         try:
-            text = (REPO / m["vault_uri"]).read_text()
+            text = (main_checkout() / m["vault_uri"]).read_text()
         except (OSError, KeyError):
             continue
         suites_read += 1
@@ -3760,7 +3814,8 @@ def _render_deploy(cfg: SetConfig, rec: dict) -> list[str]:
     lines = [
         "## Deploy — observed at launch, not asserted here",
         "",
-        f"- driver HEAD `{ident.get('head', '?')}`",
+        f"- driver HEAD `{ident.get('head', '?')}`, checkout "
+        + (f"`{rec['launched_from']}`" if rec.get("launched_from") else "not recorded"),
         f"- set config `frozen_deploy_commit`: "
         f"{f'`{cfg.frozen_deploy_commit}`' if cfg.frozen_deploy_commit else '**unset** (typed, not measured)'}",
         "",
@@ -4150,6 +4205,9 @@ def _run_cycle(
     # written, because nothing ever put a `deploy` key here — so a shakeout, the one cycle
     # whose deploy is by definition unpinned, printed `deploy ?`.
     rec["deploy"] = dict(identity)
+    # The checkout the driver ran from (its code and HEAD); the record itself is always under
+    # the main checkout, so without this a worktree launch is indistinguishable (item 8).
+    rec["launched_from"] = str(REPO)
     rec["ended_without_implementation"] = ended_early
     rec["stack"] = stack
     rec["config_hash"] = chash
