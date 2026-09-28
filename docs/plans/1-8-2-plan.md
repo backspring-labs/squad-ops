@@ -427,6 +427,56 @@ cut record with the item's new home:
 If any of these cannot land, the line does not claim campaign readiness. It reports the part it
 measured, and the claim moves to 1.9.
 
+### 3.10 Whether a 1.8.3 opens: decided by deploy A′'s counted rolls, registered before roll 1
+
+**Why the question exists.** Deploy A and A′'s diagnostics left items that 1.9 would otherwise
+inherit (pre-registration §10, §11):
+- **#1697:** a repeated repair id after a refunded round. It has already cost two readings (§11d,
+  §11f).
+- **A qa task that ran into the 1,800 s bound in a cycle with no fault** (A′ chain c1). After a
+  refunded repair, its re-take's self-evaluation passes each spent the full 12,288-token cap and
+  wrote nothing.
+
+That second one is this line's own mechanics compounding: §12a change 1's loop depth of 3, item 2's
+cap-exhausted retry and item 15's bound. **A regression a line introduces is fixed in a patch, never
+held for the odd minor** (CLAUDE.md, *Versioning*). But one timeout in one diagnostic cycle is not
+yet a regression. The rule below lets the counted rolls say which it is.
+
+**The rule, owner-approved 2026-09-28.** It is read on the six counted rolls of deploy A′
+(pre-registration §4, §5) — never on a diagnostic, whose faults manufacture their failures — from
+each roll's stored record.
+
+**1.8.3 opens if either holds on any counted roll:**
+
+| trigger | read from |
+|---|---|
+| **T1** — a `qa.test` task failed by the declared wait | `loop_texture.task_timeouts` naming a `qa.test` task |
+| **T2** — L1 breached: a contentless emission not recovered | the bar's own field, `loop_texture.contentless_emissions`, beside its recovered flag |
+
+**If a trigger holds, 1.8.3 carries, each with its own pre-registered prediction:**
+- **the self-evaluation loop's stopping rule** — a pass loop ends when a pass produces nothing and
+  a retry of it produces nothing;
+- **the per-task bound covering the loop's worst case**, stated as arithmetic over the declared
+  depth, the cap and item 2's retry, not tuned by eye;
+- **#1697** (a run-unique repair and retest id);
+- **§12a change 4** (a self-evaluation loop for the repairs), if the owner rules it in.
+
+**If neither holds, no 1.8.3:**
+- **#1697 is 1.9's first item**, landed before #1507's completion-boundary extraction, so that
+  refactor's verification sets read clean per-round evidence.
+- **#1701 and #1696** ride 1.9.
+- The qa exhaustion is reported in the set's record as texture, with the readings below.
+
+**Reported on every counted roll, whichever way the rule goes** — the mechanism, not a rate (1.8.1
+§3b's lesson):
+- `qa_test_handler:self_eval:cap_exhausted` emission shapes, by roll;
+- `qa.test:self_eval` completion and reasoning tokens, from the usage ledger;
+- whether the qa cells' scoped transactions came from counted rolls or only from diagnostics.
+
+**One constraint on either path.** #1697 never lands on deploy B beside the flip. Both change the
+correction path, and a window carrying two correction-path changes cannot attribute a regression
+to either (the odd-minor quarantine argument, at deploy scale).
+
 ---
 
 ## 4. The verification sets
@@ -489,11 +539,18 @@ carries `arm` empty, and Solo stays declared but unused (SIP-0108 §10o).
   #1176 is read beside item 2.
 - **Read at the cut, stays open by design (1):** #1469.
 - **1.9, unchanged (7):** #1507, #567, #353, #1031, #1448, #1522, #414.
+- **Opened during the line, placed at rev 4 (6):**
+  - #1699 — in this release: fixed by #1700, deploy A′.
+  - #1697 and #1701 — by §3.10's rule: 1.8.3 if it opens, otherwise 1.9 (#1697 first).
+  - #1696 — 1.9, the driver.
+  - #1691 — 1.9, the deploy script. Its restarts are expected texture on any rebuild that adds a
+    prompt asset, deploy B's included.
+  - #1692 — 2.0, with Campaign (an amendment to its SIP).
 - **2.0, with Campaign (1):** #316.
 - **At design review (4):** #949, #950, #194, #557.
 - **Not scheduled (1):** #1122.
 
-That is 9 + 5 + 1 + 7 + 1 + 4 + 1 = **28**, each placed once. (Rev 0 counted 24: the four since
+That is 9 + 5 + 1 + 7 + 1 + 4 + 1 = **28**, each placed once — **34** with rev 4's six. (Rev 0 counted 24: the four since
 are #1639, #1648, #1661 and #1665, all placed here.)
 
 ---
@@ -590,3 +647,7 @@ are #1639, #1648, #1661 and #1665, all placed here.)
   the flip conditional on N and second to drop. Decision 7: attach records to the Release after a
   credential scan (new item 16). Decisions 2–6 and 8 adopted at merge. §2.3, §3.5, §3.7, §3.9,
   §4.1, §4.2, §6 and §7 rewritten to match.
+- **Rev 4 (2026-09-28):** during deploy A′'s diagnostics.
+  - **§3.10:** whether a 1.8.3 opens, decided by triggers read on A′'s counted rolls. It was
+    registered before roll 1, on the owner's approval.
+  - **§5:** the six issues opened during the line, placed.
