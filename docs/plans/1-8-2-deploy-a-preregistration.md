@@ -569,6 +569,51 @@ Record `own-frame-then-prose-repair/shakeout-20260928T134909Z.json`.
   **Held by the owner's ruling (§11f)**; the literal UNASKABLE stands in the record. Evidence:
   `var/1-8-2-logs/Aprime-own-frame-react-1-l4-evidence.log`.
 
+#### A′ d7 — `dev-lane-fastapi-react`: runs 1 and 2, 10:35–13:40 ET — **not reached after two runs; ruled unreachable on A′ by construction (§11h)**
+
+- **Run 1**, `cyc_25a7a6ad8ebd` / `run_d2b1a457283c`, 10:35–11:31 ET. Record
+  `dev-lane-fastapi-react/shakeout-20260928T153113Z.json`.
+  - **Outcome:** `accepted`, 20 of 20; zero correction rounds.
+  - **The fault** bit no develop task: all four logged `DID NOT BITE` (the emission returned
+    unchanged), so the seam read **UNASKABLE**.
+  - **Instrument nit:** the record's reason reads "no attempt of its target task ran". Four ran.
+    The driver parses `APPLIED` and out-of-scope lines (`verification_set_driver.py:2650-2671`),
+    never `DID NOT BITE`. The state is right and the reason is wrong.
+- **A run lost to the box**, `cyc_0716b8d637c2` / implementation `run_358dfb8cf945`, from 11:35 ET.
+  - The Spark halted at 12:15:23 ET, ten minutes into implementation. The fault had applied to
+    `m000` at 12:08:35.
+  - No record exists. The run was cancelled through the CLI at 12:34:18.
+  - Its log is kept as `var/1-8-2-logs/dev-lane-fastapi-react-2-lost-to-halt-20260928T161523Z.log`.
+  - **It did not spend the budget (§11g).**
+- **Run 2**, `cyc_18608cb78207` / `run_69ed3e528311`, 12:36–13:40 ET. Record
+  `dev-lane-fastapi-react/shakeout-20260928T174010Z.json`.
+  - **Outcome:** `accepted`, 21 of 21; one correction round.
+  - **The fault applied** to `m000` at 13:09:18 ET (3,157 → 3,261 chars). The join handler's
+    `return run` became `return {"id": getattr(run, "id", None)}`, with the transform's comment
+    `# #1251 injected fault: …`.
+  - **`m000`'s own self-evaluation pass 1** edited `backend/routes.py` at 13:09:30 and was
+    accepted (anchored edits, 270 of 3,229 characters, 8%). The file stored that second ends the
+    join handler with `return run` again, and carries no marker.
+  - No check failed. The one correction round repaired an unrelated frontend qa test
+    (`RunDetailView.jsx`, 7%). `narrowed_to_join_slot` is empty, so the seam read **NO**.
+  - **The reversion is established by elimination.** The pass is the only writer between the
+    fault and the stored file. The edit's text is not stored; its logged head opens on the
+    runs-list handler.
+- **The set stopped at 13:40 ET** under §3d's rule, "a seam not reached after its budget stops the
+  set". Nothing was in flight.
+- **The contrast:** in 1.8.0's and 1.8.1's diagnostic sets, this fault reached the seam in all
+  eight runs, both stacks, with no self-evaluation revision form recorded. Filed as #1716.
+- **N:** dev × React takes nothing from this diagnostic.
+
+#### A′ d8 — `dev-lane-nextjs`: **not run (§11h)**
+
+The TypeScript form of the fault carries the same comment (`fault_injection.py:279`), and the
+Next.js develop tasks run the same loop (A′ d1's `development.develop:self_eval` calls). The skip
+rests on a prediction, never observed: that the loop reverts the fault here too. dev × Next.js takes
+nothing from a diagnostic on this line.
+
+The sequencer resumed at `absent-suite`, 13:49 ET.
+
 ---
 
 ## 11. Amendments after the first launch
@@ -713,3 +758,61 @@ apart by time — each dispatch, its fault's `APPLIED` line, and its refund foll
 
 **What did not change.** §11d's guard, and every other reading. #1697's run-unique id, on deploy B,
 removes the shape.
+
+### 11g. A run lost to a box halt does not spend the budget — owner's ruling, 2026-09-28
+
+**What changed.** `dev-lane-fastapi-react`'s second budgeted run was spent again, after the Spark
+halted under the first attempt at it. §3d's two-run budget says nothing about a run lost to the
+box.
+
+**The evidence.**
+- The previous boot's journal stops mid-stream at 12:15:23 ET, with no kernel, memory or shutdown
+  line. It is the same signature as the box's four earlier hard halts. The box was back at
+  12:27:10.
+- Every container restarted on its own. The image ids re-read after it equal §1's.
+- The run (`run_358dfb8cf945`) was ten minutes into implementation. Its fault had applied at
+  12:08:35. It had not reached verification, so nothing was read.
+
+**Who ruled.** The owner, offered two readings:
+1. **The halt does not count; re-run it as run 2 of 2** — the one chosen.
+2. The run counts as spent. The literal stop rule would not fire, since the seam was reached; the
+   ruling would have been on a question never asked.
+
+**What did not move.** The budget stayed two. The re-run was launched as attempt 2 only
+(`sequencer-state.jsonl`, 16:36:10Z), and a seam not reached on it stops the set, as it did (§11h).
+
+### 11h. The dev lane's seam is unreachable on A′ by construction; `dev-lane-nextjs` is skipped — owner's ruling, 2026-09-28
+
+**What changed.**
+- A′ d7 closes as **not reached after two runs**, read as unreachable by construction rather than
+  as a falsified prediction.
+- A′ d8 (`dev-lane-nextjs`) is not run.
+- The set resumed at `absent-suite`.
+
+**The evidence (§10 A′ d7).**
+- The fault transforms the develop task's first emission (`cycle/base.py:1531`). The §12a
+  self-evaluation passes that follow are not fault-wired (`apply_fault` defaults to `False`,
+  `:1444`).
+- Run 2's first pass reverted the join handler twelve seconds after the fault applied, before any
+  probe.
+- The transform's own comment announces the defect to the pass that reviews it.
+- In 1.8.0 and 1.8.1, before the loop, the seam was reached eight times in eight.
+- This is the shape of 1.7.5's contentless-builder diagnostic, whose seam a new upstream recovery
+  made unreachable.
+
+**Who ruled.** The owner, offered three options:
+1. **Rule it unreachable, skip `dev-lane-nextjs` on the prediction, resume, and file the fault's
+   redesign (#1716)** — the one chosen.
+2. Run `dev-lane-nextjs` to test the prediction: about 50 minutes, or about 105 with its second
+   run, and the set stops again if the loop reverts it.
+3. Fix the fault now. That rebuilds the agents, which is a new deploy.
+
+**What it costs.** The dev × React and dev × Next.js cells lose the one to two transactions each
+that §3c expected from these diagnostics. They rest on the counted rolls' expectation: about one
+across React's four rolls, about none across Next.js's two.
+
+**What did not move.** The rule, the other eleven diagnostics' budgets, N's definition and target,
+and every pin.
+
+**Texture, not a finding:** the loop caught and fixed a response-contract defect on its first pass,
+in twelve seconds, which is what §12a exists to do.
