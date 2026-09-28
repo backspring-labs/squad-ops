@@ -5479,6 +5479,35 @@ class TestTheChainRunsUnattended:
         assert "neo is mid-task" in state["stopped"]
         assert state["quiet_at_start"]["waited_seconds"] >= 2400
 
+    @pytest.mark.parametrize(
+        ("unfinished", "expected"),
+        [
+            ("0", []),
+            (
+                "1",
+                [
+                    "§4.3 run-state isolation: 1 run(s) ended in the registry whose executor has "
+                    "not finished (no loop summary) — a live wait may still act on them (#1699)"
+                ],
+            ),
+        ],
+        ids=["every ended run finalized", "a cancelled run's executor still waiting"],
+    )
+    def test_an_ended_run_whose_executor_is_alive_is_not_quiet(
+        self, driver, monkeypatch, unfinished, expected
+    ):
+        """#1699 (deploy A's chain, cycle 2). Bug this catches: the box called quiet 23 s after
+        a cancel while the runtime still waited on the cancelled run's reply, and 30 minutes
+        later retried and finalized it during the next cycle. Run state said cancelled; the
+        missing loop summary is the executor's own "not done yet"."""
+
+        def psql(query: str) -> str:
+            return unfinished if "run_loop_summaries" in query else "0"
+
+        monkeypatch.setattr(driver, "psql", psql)
+
+        assert driver.run_state_isolation_problems(None) == expected
+
     def test_quiet_is_read_from_the_agents_queues_not_only_run_state(self, driver, monkeypatch):
         """Bug this catches: a box called quiet from run state and leases alone. A cancel
         closes the run and the activity rows while the agent keeps generating (#1648), and

@@ -72,6 +72,12 @@ logger = logging.getLogger(__name__)
 _HEARTBEAT_MILESTONES = (60.0, 300.0, 600.0)
 _HEARTBEAT_PERIOD = 600.0
 
+#: How often an open reply wait asks whether its run was cancelled (#1699). A cancel tells the
+#: agent to drop the task and nothing replies (#1648), so without this the wait ran on to the
+#: declared bound — 1,800 s on deploy A — and then retried and finalized the cancelled run
+#: while the next cycle ran. One registry read per in-flight task per interval.
+CANCEL_PROBE_SECONDS = 10.0
+
 
 def heartbeat_milestones(interval: float):
     """Elapsed seconds at which the stdout heartbeat logs: 60, 300, 600, 1200, 1800, …
@@ -428,7 +434,12 @@ class TaskDispatcher:
         )
 
         try:
-            return await asyncio.wait_for(fut, timeout=self._task_timeout)
+            return await self._await_reply(fut, envelope, run_id)
+        except _CancellationError:
+            # #1699: the run was cancelled while its task was out. Nothing will reply, and
+            # the executor ends the run as cancelled — no timeout, no retry.
+            self._reply_router.cancel(envelope.task_id)
+            raise
         except asyncio.CancelledError:
             self._reply_router.cancel(envelope.task_id)
             raise
@@ -478,6 +489,46 @@ class TaskDispatcher:
                 status=TaskResultStatus.FAILED,
                 error=f"Reply wait for agent {envelope.agent_id} failed: {exc}",
             )
+
+    async def _await_reply(self, fut, envelope: TaskEnvelope, run_id: str) -> TaskResult:
+        """The reply, or ``TimeoutError`` at the declared wait — asking every
+        ``CANCEL_PROBE_SECONDS`` whether the run was cancelled meanwhile (#1699).
+
+        The future is shielded so a probe slice ending never cancels it: a reply that lands
+        between slices is still read. A probe that errors mid-wait is logged and the wait goes
+        on — unlike the pre-dispatch probe, which is fail-closed (#586), because here an agent
+        may be working the task, and a registry blip must not abandon it.
+        """
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + self._task_timeout
+        while True:
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                raise TimeoutError
+            try:
+                return await asyncio.wait_for(
+                    asyncio.shield(fut), timeout=min(remaining, CANCEL_PROBE_SECONDS)
+                )
+            except TimeoutError:
+                if self._is_cancelled is None or loop.time() >= deadline:
+                    continue
+            try:
+                cancelled = await self._is_cancelled(run_id)
+            except Exception:
+                logger.warning(
+                    "cancel probe failed while task %s awaited its reply; still waiting",
+                    envelope.task_id,
+                    exc_info=True,
+                )
+                continue
+            if cancelled:
+                logger.info(
+                    "dispatch_wait_ended_by_cancel task=%s run=%s — the run was cancelled while "
+                    "its task awaited a reply (#1699)",
+                    envelope.task_id,
+                    run_id,
+                )
+                raise _CancellationError(run_id)
 
     async def dispatch_with_retry(
         self,
