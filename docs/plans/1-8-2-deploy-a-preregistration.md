@@ -1,5 +1,8 @@
 # 1.8.2 deploy A — pre-registration (plan §4.1, §4.4)
 
+**Rev 5 (2026-09-27): deploy A is void — the chain found #1699, and the owner ruled void and
+rebuild. The set is re-made on deploy A′ (§0); deploy A's readings stay in §10 as history, and none
+counts.**
 **Rev 4 (2026-09-25, after the third diagnostic): a seam finding, #1697, and the owner's ruling on
 it — §11d.**
 **Rev 3 (2026-09-25, after the second diagnostic): a second instrument fix — §11c.**
@@ -25,6 +28,60 @@ deploy moves after it, it is void and re-made, and nothing from the superseded d
 
 ---
 
+## 0. Deploy A′ — the re-registration (rev 5, 2026-09-27)
+
+**Why.** The `unattended-chain` diagnostic's cancel left the runtime's reply wait open for the
+task's whole bound. Thirty minutes later the executor retried and finalized the cancelled run
+while the next cycle ran, and the quiet check could not see it (#1699; §10 d4). That is a seam
+finding on the line's own claim. The owner ruled **void and rebuild** (§11e).
+
+**The fix** is #1700 (`8e2c2e87`):
+- The reply wait asks the dispatcher's cancel probe every 10 s, and ends as a typed cancellation,
+  with no timeout and no retry.
+- The driver's run-state isolation refuses while a run has ended without its loop summary. That
+  is the executor's last act, so an executor still alive on an ended run is never called quiet.
+
+**Deploy A′** was built from `8e2c2e87` at 22:49 ET — one rebuild, the `runtime-api` only, since
+the fix is runtime-side.
+- `runtime-api` is now **`793d9fd6dc1a`** (deploy A: `f22b70abcd73`).
+- The six agents, and `joi` and `han`, are the same images as deploy A.
+- The fix was verified loaded in the running container: `CANCEL_PROBE_SECONDS` is 10.0, and
+  `TaskDispatcher._await_reply` carries the cancel line.
+
+**The pins, re-read on A′** — no cycle was launched to read one:
+
+| pin | value | how read |
+|---|---|---|
+| config hashes | unchanged: `a79f58658cd8` / `8e730c8ea169` | recomputed by the CLI's `compute_config_hash`. Only `adapters/cycles/task_dispatcher.py` moved under `src/`, `adapters/` and `config/` |
+| squad snapshot | unchanged: `2d8d4feb3519a7ec` | `live_squad_snapshot("full-38")` |
+| image ids | runtime-api moved; the six agents unchanged | `deploy_identity` |
+
+**Carries unchanged:**
+- §1's parameters, except the deploy rows.
+- §3's bar, predictions, N = 6 and its counting rules, the thirteen diagnostics, their faults and
+  budgets.
+- §11a–§11d's rulings, and the driver fixes they made — they are the driver A′ runs.
+
+**Does not carry:** every reading and transaction from deploy A. They stay in §10 under *Deploy A
+(superseded)*, their records moved aside to `var/verification_sets/1-8-2-diagnostics-deploy-A/`,
+and **nothing from them counts toward N** (§6).
+
+**Added on A′.** The chain's `runtime-api` loaded check asserts `CANCEL_PROBE_SECONDS`, so the
+chain cannot run on a deploy without the fix.
+
+**Shakeout: round 2** of the three budgeted (§6).
+
+**Not in A′, stated so silence cannot read as shipped:**
+- **#1697** (a repeated repair id). Its fix changes the correction round counter, which the
+  budget, the refund lines and the driver's joins all share. It goes to deploy B (§11d); #1698's
+  guard makes a repeat visible meanwhile.
+- **#1701** (a duplicate-transition warning on every cancel): log noise only.
+
+**The driver** runs from its worktree at this revision's merge commit; the counted rolls pin that
+commit at roll 1.
+
+---
+
 ## 1. Fixed parameters
 
 | Parameter | Value |
@@ -36,8 +93,8 @@ deploy moves after it, it is void and re-made, and nothing from the superseded d
 | Overrides | FastAPI+React: none. Next.js+TS: `build_profile=nextjs_ts`, `development_profile=nextjs_ts` |
 | `resolved_config_hash` | FastAPI+React **`a79f58658cd8`**, Next.js+TS **`8e730c8ea169`** — computed by the CLI's own `compute_config_hash(crp.defaults, overrides)` on the deploy's tree and **confirmed by each arm's first launch**, never by a launch-and-cancel (plan §4.4 rule 4, #1648). **Moved** from 1.8.1's `58eed2c52e1f` / `fff4a6435c97` because SIP-0086 §12a change 1 (#1682) added `max_self_eval_passes: 3` to `validated-fullstack` — drift the record declares (§9) |
 | `squad_profile_snapshot_ref` | **`2d8d4feb3519a7ec`** — read from deploy A by the driver's own `live_squad_snapshot("full-38")`, not assumed. **Unchanged from 1.8.1**: no 1.8.2 change touched `full-38` |
-| Deploy — commit | **`ccc9475d`** — main after #1689, every prelude merge of §2 with main's full CI read green before the next. **A label, not an assertion** (#1296): the image ids are the assertion |
-| Deploy — image ids | `runtime-api f22b70abcd73`, `max 028cbd461ea1`, `neo 2c97c2d6946e`, `nat 990a45dbae9b`, `bob d894a556280a`, `eve f3b72d5d754d`, `data b60aa428274d` — **all seven changed** from deploy B″ (§9), each read by `docker inspect` after the rebuild. `joi 89ec34c9f0b0` and `han 1c891e9cd081` were rebuilt with them so no container serves older code; neither is in the set's identity assertion |
+| Deploy — commit | **A′: `8e2c2e87`** (§0; #1700 on top of deploy A's tree). *(Deploy A, superseded: `ccc9475d`.)* Deploy A's was **`ccc9475d`** — main after #1689, every prelude merge of §2 with main's full CI read green before the next. **A label, not an assertion** (#1296): the image ids are the assertion |
+| Deploy — image ids | **A′: `runtime-api 793d9fd6dc1a`**, the rest as deploy A's. *(Deploy A, superseded: `runtime-api f22b70abcd73`.)* Deploy A's: `runtime-api f22b70abcd73`, `max 028cbd461ea1`, `neo 2c97c2d6946e`, `nat 990a45dbae9b`, `bob d894a556280a`, `eve f3b72d5d754d`, `data b60aa428274d` — **all seven changed** from deploy B″ (§9), each read by `docker inspect` after the rebuild. `joi 89ec34c9f0b0` and `han 1c891e9cd081` were rebuilt with them so no container serves older code; neither is in the set's identity assertion |
 | Loaded, not built | Verified per container as a live call with its paired control, never a symbol import (#522, #1425): the 1.8.2 prelude surfaces appended to the counted configs' `runtime-api`, `neo` and `eve` blocks (§3d′), and each diagnostic's own rows |
 | Per-task wait | `SQUADOPS__DISPATCH__TASK_TIMEOUT=1800` in `.env`, **required** (item 15, #1675): the compose line refuses to start without it, and both sides of the hang bound read it (#1678) |
 | Gate policy | 1.6.3 §6 constant, verbatim in each set config's `gate_notes`; `--as-agent`; the decider recorded per roll |
@@ -237,6 +294,15 @@ the deploy moves, this registration is void and re-made on the new deploy, and n
 the superseded deploy counts toward N. **Budget: three rounds**; the record reports how many it
 took. Every readout counts non-execution (skips, by reason) beside failure (#1261).
 
+**Round 1 — deploy A (`ccc9475d`), 2026-09-25:**
+- Four of the thirteen ran: compile-loop, false-criterion, redelivery and the chain.
+- They found three instrument gaps, each fixed in the driver: §11b, §11c and §11d, the last of
+  them #1697.
+- They found one seam finding in the framework: #1699, from the chain.
+- The deploy moved (§0, §11e).
+
+**Round 2 — deploy A′ (`8e2c2e87`)**, from 2026-09-27.
+
 ## 7. Gate constant
 
 The 1.6.3 §6 constant, verbatim in each set config's `gate_notes`. `--as-agent`. Gates never
@@ -272,6 +338,11 @@ Records: `var/verification_sets/1-8-2-diagnostics/<diagnostic>/…`, `1-8-2-fast
 `1-8-2-nextjs/roll-0N-…` — on the Spark, in the main checkout's `var/` (item 8), attached to the
 Release at the cut after a credential scan (item 16). Every reading here is taken from the stored
 record, never from memory of the run. Times ET.
+
+### Deploy A (superseded 2026-09-27) — kept as history; nothing here counts toward N
+
+Records moved to `var/verification_sets/1-8-2-diagnostics-deploy-A/<diagnostic>/…` (§0). The
+reading paths below are relative to that directory.
 
 ### d1 — `compile-loop`, run 1 of 2: `cyc_eb4ed3bde52d` / implementation `run_c4d376ad26f2`, 08:13–09:12 ET
 
@@ -372,6 +443,41 @@ Record `redelivery/shakeout-20260925T165620Z.json`. Driver at `81847d25`.
   Two qa × React candidates. Rule 4.4 #2 places a diagnostic's transaction in its cell; they are
   tallied at the set's close against §3c's definition.
 - **Finding: #1697** — both repairs carried the id `repair-run_f10f98e6-00-qa.test_repair` (§11d).
+
+### d4 — `unattended-chain`, run once: 12:58–18:21 ET
+
+Records `unattended-chain/chain-20260925T222127Z.json` and `cycle-0N-…`.
+- **Driver:** `81847d25`. The chain runs its cycles inside one process, so the worktree's move to
+  `0dc40e63` mid-chain was never read by it.
+- **The run:** four cycles back to back; `resumes 0`; gates by the registered policy; every cycle
+  assessed; exit 0.
+
+| cycle | fault | result |
+|---|---|---|
+| c1 `cyc_6eb0f6a5c519` | none | accepted (two correction rounds) |
+| c2 `cyc_6ba758cd448c` | cancel at `development.develop`, 14:38:36 | implementation run `cancelled`; ghost readings **0 emissions, 0 late replies** (14:38:36–14:38:59); quiet after 1 s |
+| c3 `cyc_4d7272311706` | `neo` killed while it ran the develop task, 15:12:40 | redelivery refused as typed (`task-run_8e4282d5-m000-development.develop`); accepted |
+| c4 `cyc_505ad15d0f5d` | `handler_hang` | seam **YES**: develop tasks `m000` and `m001` each failed at 1,800.0 s as a typed `task_timeout`; accepted |
+
+- **Finding: #1699.** c2's cancel left the runtime's reply wait open.
+  - It logged heartbeats at 60, 300, 600 and 1,200 s.
+  - At 15:08:26, during c3, it logged a `task_timeout` for the cancelled run's task, then a retry,
+    `Dispatch cancelled`, a refused re-transition, and **a run report stored into the cancelled
+    run**.
+  - The quiet check had read quiet 23 s after the cancel, because an in-process wait is invisible
+    to run state, activities and queue depths.
+  - c3's record also counts c2's timeout in its own `task_timeouts`, because it attributes by time
+    window.
+  - Evidence: `var/1-8-2-logs/chain-cycle-2-cancel-lingering-wait.log`.
+- **Reading:** §3b's literal falsifiers were absent — no ghost generation, no run left `running`,
+  the hang ended at its bound, no manual step. But the claim a clean chain proves, **"leave nothing
+  behind"**, was false on this deploy. The owner ruled it a seam finding: **void and rebuild**
+  (§11e).
+
+### Deploy A′ (from 2026-09-27)
+
+*(Readings appended here as they land. Records: `var/verification_sets/1-8-2-diagnostics/<diagnostic>/…`
+and the counted sets' directories, fresh on A′.)*
 
 ---
 
@@ -476,3 +582,25 @@ not move the deploy, as with §11b.
 - L4 reads UNASKABLE on a refund whose round it cannot name.
 - The framework fix — a run-unique repair and retest id — is #1697's, and lands where the deploy
   moves anyway (deploy B or 1.9).
+
+### 11e. Deploy A is void; the set is re-made on deploy A′ — owner's ruling, 2026-09-27
+
+**What changed.** This registration moved from deploy A (`ccc9475d`) to deploy A′ (`8e2c2e87`), and
+every reading and transaction from deploy A stopped counting (§0).
+
+**The evidence.** The chain's c2 left the runtime's reply wait open for 30 minutes after its
+cancel (§10 d4, #1699). It is a seam finding on both halves of the definition:
+- **a seam the pack touched:** item 10's cancel is why nothing replies, and item 15's bound is why
+  the wait ran 1,800 s;
+- **a readout that cannot see its own miss:** item 14's quiet check.
+
+**Who ruled, and on what.** The owner, 2026-09-27, chose among three options:
+1. **Void and rebuild, rerunning all thirteen** — the one chosen.
+2. Rebuild and rerun narrowly, keeping compile-loop and false-criterion as superseded-deploy
+   readings.
+3. Continue on deploy A and narrow the headline claim.
+
+**What did not move:**
+- No rule, prediction, budget or N.
+- §11a–§11d's rulings, and the driver fixes they made.
+- The config hash and squad-snapshot pins, re-read on A′ and unchanged.
