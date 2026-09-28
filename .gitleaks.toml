@@ -1,0 +1,61 @@
+# Secret scanning for this repository (gitleaks v8.30.1), run by .github/workflows/secret-scan.yml
+# on every pull request's commits and every push to main.
+#
+# The default rules catch provider token formats. The custom rules below name this project's own
+# secret shapes, which the defaults miss: the 2026-09-28 baseline of the full history found no
+# LangFuse rule and no flag on any deploy password.
+#
+# An allowlist entry is narrow (a path AND a pattern, or one commit) and says why. A finding is fixed
+# by removing the value and ROTATING it — rewriting a public repository's history un-leaks nothing.
+
+title = "squad-ops secret scan"
+
+[extend]
+useDefault = true
+
+# LangFuse keys are `sk-lf-` / `pk-lf-` plus a UUID (the deploy's are exactly that shape). The secret
+# key authenticates as the project; the public key identifies it.
+[[rules]]
+id = "langfuse-key"
+description = "A LangFuse API key (sk-lf- secret or pk-lf- public), UUID-shaped"
+regex = '''\b(?:sk|pk)-lf-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b'''
+keywords = ["-lf-"]
+
+# A literal value assigned to a SquadOps secret setting — a filled .env, a compose override or a doc
+# that pasted one. The name must END in a secret suffix (SQUADOPS__SECRETS__PROVIDER is a provider
+# name, not a secret), and the value must be made of key characters: a `secret://` reference, a
+# `${…}` interpolation or a shell expression is a pointer to a secret, never one.
+[[rules]]
+id = "squadops-secret-setting"
+description = "A literal value assigned to a SQUADOPS__*SECRET/SECRET_KEY/PASSWORD/TOKEN/API_KEY setting"
+regex = '''SQUADOPS__[A-Z0-9_]*(?:SECRET|SECRET_KEY|PASSWORD|TOKEN|API_KEY)\s*[:=]\s*["']?([A-Za-z0-9_+/=-]{8,})(?:["'\s]|$)'''
+secretGroup = 1
+keywords = ["squadops__"]
+[[rules.allowlists]]
+description = "placeholder values in examples and docs (changeme, your-…, example…), never a real value"
+regexTarget = "secret"
+regexes = ['''(?i)^(?:changeme|change-me|your[-_]|example|placeholder|dummy|test[-_]|fake|redacted|xxxx)''']
+[[rules.allowlists]]
+description = "the committed DEV admin credential, seeded in infra/auth/squadops-realm-local.json by design (CLAUDE.md, bootstrap). Deliberately public; a deploy must not rely on it"
+regexTarget = "secret"
+regexes = ['''^admin123$''']
+
+# --- allowlists: each a known, inspected false positive of the 2026-09-28 baseline ---
+
+[[allowlists]]
+description = "golden sha256 content hashes keyed by profile name in the narratives test, not keys"
+condition = "AND"
+paths = ['''^tests/unit/capabilities/test_profile_narratives\.py$''']
+regexTarget = "line"
+regexes = ['''^\s*"[a-z0-9_-]+":\s*"[0-9a-f]{64}",?\s*$''']
+
+[[allowlists]]
+description = "the records scanner's own test fixture: a hand-made JWT (payload only `sub`, 20-char signature)"
+condition = "AND"
+paths = ['''^tests/unit/maintainer/test_attach_release_records\.py$''']
+regexTarget = "line"
+regexes = ['''^\s*\("token eyJ[A-Za-z0-9_.-]+", "jwt"\),?\s*$''']
+
+[[allowlists]]
+description = "SIP-0061's redaction test (2026-02-07) carried a fake 20-char LangFuse public key; it matches neither deploy key"
+commits = ["a8c7350cad1927a72d6be0c2371d6ecfc8a825f9"]
