@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -242,18 +243,42 @@ def _absent(cycle_id: str, reason: str, role: str | None = None) -> dict:
 
 
 def _bearer_token() -> str:
-    """The CLI's cached access token, or "" — the API requires one (#1076).
+    """A current access token for the runtime API, or "" — the API requires one (#1076).
 
-    Read from the same store `squadops login` writes, so a maintainer who can drive
-    the CLI can capture a package without a second credential path.
+    The CLI's own resolution first: `resolve_token` takes `SQUADOPS_TOKEN`, then the cached
+    token, refreshing it when it has expired. This function used to read the cache raw and
+    skip the refresh, so a capture an hour after `squadops login` wrote every row "Not
+    captured — Invalid or expired token" (the 1.7.5 cut). When nothing resolves — no cache,
+    or a refresh token that has expired too — it logs in once, non-interactively, the way
+    the verification-set driver does, and resolves again.
     """
     try:
-        from squadops.cli.auth import load_cached_token
+        from squadops.cli.config import load_config, resolve_token
 
-        cached = load_cached_token()
-        return cached.access_token if cached else ""
+        config = load_config()
+        token = resolve_token(config)
+        if token:
+            return token
+        _login()
+        return resolve_token(config) or ""
     except Exception:  # noqa: BLE001 - capture must degrade to a disclosed absence
         return ""
+
+
+def _login() -> None:
+    """Log the CLI in without a prompt, with the driver's credentials and defaults
+    (`scripts/dev/verification_set_driver.py` `login()`): the dev realm's seeded admin.
+
+    The console script beside this interpreter, so the login lands in the same token store
+    `resolve_token` reads. Never `--keycloak-url`: the override logs in at Keycloak and then
+    401s on every API call.
+    """
+    cli = Path(sys.executable).with_name("squadops")
+    if not cli.exists():
+        return
+    user = os.environ.get("SQUADOPS_DRIVER_USER", "squadops-admin")
+    password = os.environ.get("SQUADOPS_DRIVER_PASSWORD", "admin123")
+    run(str(cli), "login", "-u", user, "-p", password, check=False)
 
 
 #: What a captured cycle WAS to the release — the page must say it, or a fault-injected
@@ -349,7 +374,12 @@ def cycle_evidence(
                     cycle_id,
                     f"runtime API at {api} returned no cycle roll-up"
                     + (f" ({detail})" if detail else "")
-                    + (" — no cached CLI token; run `squadops login`" if not token else ""),
+                    + (
+                        " — no token: the CLI's cache, its refresh and a non-interactive login"
+                        " all failed"
+                        if not token
+                        else ""
+                    ),
                     role,
                 )
             )

@@ -288,9 +288,9 @@ cycles and shows one, and which one is a judgement that changes per release. The
 run" reliably resolves to a clean one picked by somebody with an interest in the release
 looking good.
 
-**Read step 7's preview before writing it.** The capture needs a running runtime API, a
-current `squadops login`, and the right `--project`; when any is missing the package can
-still be written. At the 1.6.2 cut it reported `1 cycles` and wrote a roll-up of nulls —
+**Read step 7's preview before writing it.** The capture needs a running runtime API and the
+right `--project` (it obtains its own token: the CLI's refresh, then a non-interactive login);
+when either is missing the package can still be written. At the 1.6.2 cut it reported `1 cycles` and wrote a roll-up of nulls —
 four silent defects behind a guard that treated `{"detail": "Not Found"}` as success,
 because valid JSON is valid JSON (#1076). A hollow capture is worse than none: it looks
 like the evidence was taken, and the deploy it came from is gone by the time anyone
