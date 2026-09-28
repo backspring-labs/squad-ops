@@ -36,9 +36,9 @@ log line to a file and line in `adapters/`:
 - #1697 — a repeated repair id;
 - the three instrument gaps of the deploy A pre-registration's §11b–§11d.
 
-Nostromo's own operating model — `crew-operating-model.md` in the private `nostromo` repository —
-holds that archetype for its frontier roles (§44.1, "cross-layer tracing", "recovery-path
-semantics"). The Nostromo section numbers below refer to that document.
+Nostromo's own operating model — `crew-operating-model.md` in the `nostromo` repository
+(backspring-labs/nostromo) — holds that archetype for its frontier roles (§44.1, "cross-layer
+tracing", "recovery-path semantics"). The Nostromo section numbers below refer to that document.
 
 App work is where the squad already delivers: 7–9 of 9 functional yield on the standing workload, and
 scoped edits landing — every qa re-take read so far on deploy A′'s redelivery and own-frame
