@@ -391,11 +391,13 @@ expected_squad_snapshot_prefix: "2d8d4feb3519a7ec"
 # Item 5 (#1673): a pin equal to an earlier line's must say why it did not move.
 pins_unmoved_because: >-
   expected_squad_snapshot_prefix 2d8d4feb3519a7ec equals 1.8.1's because no 1.8.2 change
-  touched the full-38 profile; it was re-read from deploy A (ccc9475d) with the driver's
-  live_squad_snapshot("full-38") on 2026-09-25, not carried.
-frozen_deploy_commit: "ccc9475d"
+  touched the full-38 profile; it was re-read from deploy A' (8e2c2e87) with the driver's
+  live_squad_snapshot("full-38") on 2026-09-27, not carried.
+# Deploy A' (pre-registration rev 5, #1699): only the runtime-api moved. Deploy A was
+# ccc9475d with runtime-api f22b70abcd73; the six agents are the same images.
+frozen_deploy_commit: "8e2c2e87"
 frozen_image_ids:
-  runtime-api: "f22b70abcd73"
+  runtime-api: "793d9fd6dc1a"
   max: "028cbd461ea1"
   neo: "2c97c2d6946e"
   nat: "990a45dbae9b"

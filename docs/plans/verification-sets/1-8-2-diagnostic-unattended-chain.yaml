@@ -52,11 +52,13 @@ chain:
 loaded_checks:
   runtime-api: |-
     from squadops.comms.run_cancellation import control_queue, run_cancelled_notice
-    from adapters.cycles.task_dispatcher import TaskDispatcher
+    from adapters.cycles.task_dispatcher import CANCEL_PROBE_SECONDS, TaskDispatcher
     import inspect
-    # item 10: the cancel's notice goes on the agent's control queue; item 15: the wait is declared.
+    # item 10: the cancel's notice goes on the agent's control queue; item 15: the wait is declared;
+    # #1699 (rev 5): an open reply wait asks about the cancel, well inside the per-task bound.
     print("chain-runtime", control_queue("neo"), run_cancelled_notice("c", ["r"])["action"],
-          inspect.signature(TaskDispatcher.__init__).parameters["task_timeout"].default is inspect.Parameter.empty)
+          inspect.signature(TaskDispatcher.__init__).parameters["task_timeout"].default is inspect.Parameter.empty,
+          0 < CANCEL_PROBE_SECONDS < 60)
   neo: |-
     from squadops.agents.entrypoint import CancelledRuns, declared_task_bound
     from squadops.capabilities.handlers.fault_injection import FAULTS, HANG_SECONDS
