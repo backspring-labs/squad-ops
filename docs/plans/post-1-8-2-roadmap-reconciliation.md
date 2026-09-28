@@ -5,6 +5,11 @@ note records that direction, why it was given, and what it changes in 2.0's shap
 v2.0 row cites it. The Campaign SIP's revision, which turns it into design, follows the 1.8.2 set's
 close.
 
+**Revised:** 2026-09-28, the same day, on the owner's further direction. The squad takes the first pass
+at what went wrong in a campaign. Frontier triage is a bounded session between campaigns that reads
+through the `squadops` CLI, never container logs, and spends frontier models on judgement, not on
+reading.
+
 ## The direction
 
 What the owner wants from 2.0: **a campaign that runs for about ten hours, in which the squad improves the
@@ -16,7 +21,7 @@ The two loops, and who owns each:
 | Loop | What evolves | Who evolves it | What it is |
 |---|---|---|---|
 | **Inner** | the app's scope | the squad — `strat` proposes the next increment, the squad builds it | a SquadOps feature: Campaign |
-| **Outer** | the SquadOps framework | frontier models — today the owner with Claude Code sessions; Nostromo's cloud roles as the crew commissions | a process: campaign evidence → triage → fix PR → redeploy → the next campaign |
+| **Outer** | the SquadOps framework | frontier models — today the owner with Claude Code sessions; Nostromo's cloud roles as the crew commissions | a process: campaign evidence → the squad's first pass → frontier triage → fix PR → redeploy → the next campaign |
 
 **The squad does not recommend framework improvements yet.** The owner trusts it with an app's scope,
 not with the framework's, and wants faster framework progress by leaning on frontier models. The
@@ -55,7 +60,7 @@ Each is an issue, placed on 2.0, and each goes into the Campaign SIP's revision:
 | **Accumulated acceptance** — a cycle is accepted only if earlier increments still pass | #1707 |
 | A **gate policy for unattended cycles** — auto within scope, escalation queues, no unbounded wait. The 1.8.2 plan §8 left this to Campaign | #1708 |
 | A **fixed calibration cycle** opening every campaign — see below | #1709 |
-| A **durable, frontier-readable evidence package** and a morning digest | #1710 |
+| A **durable, frontier-readable evidence package** and a morning digest, opening with **the squad's first pass** at what went wrong | #1710 |
 | A **prior-cycle brief** for a repair or retry cycle | #1692 |
 
 **Two of these exist because of the outer loop, and deserve the most care:**
@@ -66,7 +71,12 @@ Each is an issue, placed on 2.0, and each goes into the Campaign SIP's revision:
   yardstick.
 - **The evidence package (#1710).** The outer loop's throughput is how fast a frontier reader gets
   from a campaign to a finding. On 1.8.2 that was hand-reading container logs that die on the next
-  rebuild.
+  rebuild. In a campaign, **the squad takes the first pass**: what went wrong, cycle by cycle, each
+  claim citing the run, cycle and artifact ids and the log excerpt it rests on. That pass is a lead,
+  not a finding — the models that went off the rails wrote it — so the citations are what make it
+  checkable. The package is read through the `squadops` CLI. A log line a finding needs and the CLI
+  cannot show is a gap in the package, filed as 1.8.2 filed its instrument gaps, not a reason to read
+  the container.
 
 ## The outer loop — a process, written close to the first campaign
 
@@ -78,10 +88,24 @@ Each is an issue, placed on 2.0, and each goes into the Campaign SIP's revision:
 - **full pre-registered sets** kept for release cuts and headline claims. That discipline caught
   #1699 before it shipped.
 
-**Nostromo's part.** Its cloud roles can triage **during** a campaign, since their models do not load
-the Spark. They land fixes only **between** campaigns, when the deploy may move.
-- Nostromo's §36 forbids crew local inference beside SquadOps execution on the Spark. So Mother, on a
-  local model, cannot orchestrate during a campaign unless she moves to a cloud model.
+**And one rule on where frontier models are spent: on judgement, not on reading.** The frontier reader
+starts from the squad's first pass and decides what the squad cannot: whether the diagnosis is right,
+and whether the cause is the app (the next cycle's business), the framework (an issue and a fix PR) or
+model variance (the calibration cycle's reading says which). It does not scrape logs; the squad and
+the evidence package do the reading.
+
+**Nostromo's part.** Its cloud roles triage in a **bounded session between campaigns**, not through the
+night, and land fixes in the same window, while the deploy may move. Triage and cross-layer tracing sit
+with Ripley, Parker and Dallas (§44.1).
+- **The crew reads through the `squadops` CLI, with read-only scope.** The API already separates
+  `cycles:read` from `cycles:write`. A crew client holding only the first can read runs, cycles and
+  artifacts, and cannot decide a gate, cancel, retry or resume a run, or create a cycle — a boundary
+  the API enforces, not a prompt. Crew accounts on the Spark have no docker access, by design, and
+  gain none.
+- **While the squad runs cycles, only cloud roles are used.** Nostromo's §36 forbids crew local
+  inference beside SquadOps execution on the Spark, so Mother and Brett, both on local models, sit a
+  campaign out; enforcing that is Nostromo's to build (§36.3). With triage between campaigns, nothing
+  needs orchestrating during one.
 - The crew authors, at most, a campaign's **objective and backlog**, never the per-cycle scope inside
   a running campaign. Its constitution: the crew "is never a squad".
 - The crew is pre-commissioning: its §43 gate is unmet, and its one squad-ops PR is the WP-1 probe,
@@ -103,4 +127,7 @@ the Spark. They land fixes only **between** campaigns, when the deploy may move.
 - Whether `strat`'s proposals need approval before a cycle builds them, or run automatically within
   the allowed scope (#1706, #1708).
 - The runbook's details (#1711).
+- Who in the squad writes the first pass, and in what form — including whether `squadops cycles
+  assess` is its seed (#1710).
+- How the crew's read-only client is provisioned in Keycloak.
 - Nostromo's commissioning order, which is the crew's operating model to settle.
