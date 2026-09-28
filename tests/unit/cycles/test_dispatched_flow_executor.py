@@ -848,6 +848,56 @@ class TestCancellationProbeWiring:
 
         assert await executor._task_dispatcher._is_cancelled("run_001") is True
 
+    async def test_a_registry_cancel_ends_a_wait_already_open(
+        self, mock_vault, mock_queue, mock_squad_profile, reply_router, run, monkeypatch
+    ) -> None:
+        """#1699 wiring, entered where the live cancel lands: ``registry.cancel_run`` — the API
+        route's call (``routes/cycles/runs.py``) — against the executor's own composed
+        dispatcher, whose probe reads that registry. Bug caught: the probe asked only before
+        publishing, so a wait already open on a cancelled run ran to its task bound (deploy A's
+        chain: 30 minutes, then a retry and a finalization while the next cycle ran)."""
+        import asyncio
+
+        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+        from adapters.cycles.execution_errors import _CancellationError
+        from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
+        from squadops.tasks.models import TaskEnvelope
+
+        monkeypatch.setattr("adapters.cycles.task_dispatcher.CANCEL_PROBE_SECONDS", 0.01)
+        registry = MemoryCycleRegistry()
+        await registry.create_run(run)
+        executor = DispatchedFlowExecutor(
+            cycle_registry=registry,
+            artifact_vault=mock_vault,
+            queue=mock_queue,
+            squad_profile=mock_squad_profile,
+            task_timeout=5.0,
+            reply_router=reply_router,
+        )
+        envelope = TaskEnvelope(
+            task_id="task-run_001-m000-development.develop",
+            agent_id="neo",
+            cycle_id="cyc_001",
+            pulse_id="p1",
+            project_id="proj_001",
+            task_type="development.develop",
+            correlation_id="corr",
+            causation_id="cause",
+            trace_id="trace",
+            span_id="span",
+            metadata={"role": "dev"},
+        )
+        reply_router.suppress.add(envelope.task_id)  # the agent dropped it: nothing replies
+
+        wait = asyncio.create_task(executor._task_dispatcher.dispatch_task(envelope, "run_001"))
+        await asyncio.sleep(0.05)
+        assert not wait.done(), "the task is out and its wait is open"
+        await registry.cancel_run("run_001")
+
+        with pytest.raises(_CancellationError):
+            await asyncio.wait_for(wait, timeout=1.0)
+        mock_queue.publish.assert_awaited_once()
+
 
 # ---------------------------------------------------------------------------
 # Error-seam threading onto dev envelopes (#588)

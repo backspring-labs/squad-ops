@@ -1318,6 +1318,21 @@ def run_state_isolation_problems(cfg: SetConfig) -> list[str]:
             f"§4.3 run-state isolation: {leases} unreleased focus lease(s) — the previous "
             "roll's state is still live"
         )
+    # #1699: a run can leave `running` while its executor is still alive — the cancel route
+    # marks it cancelled at once, and deploy A's executor then waited 30 minutes on a reply
+    # nobody would send. The executor's last act is the run's loop summary (run_completion),
+    # so an ended run without one still has live work. Bounded to a day: rows older than the
+    # summary table have none, and no executor outlives its tasks' bounds by that much.
+    unfinished = psql(
+        "select count(*) from cycle_runs r where r.status in ('completed','failed','cancelled') "
+        "and r.started_at > now() - interval '1 day' and not exists "
+        "(select 1 from run_loop_summaries s where s.run_id = r.run_id);"
+    )
+    if unfinished != "0":
+        problems.append(
+            f"§4.3 run-state isolation: {unfinished} run(s) ended in the registry whose executor "
+            "has not finished (no loop summary) — a live wait may still act on them (#1699)"
+        )
     return problems
 
 

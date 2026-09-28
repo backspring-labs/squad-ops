@@ -763,6 +763,61 @@ class TestCancellationProbe:
 
         mock_queue.publish.assert_not_awaited()
 
+    async def test_a_run_cancelled_while_its_task_is_out_ends_the_wait(
+        self, mock_queue, reply_router, monkeypatch, caplog
+    ) -> None:
+        """#1699 (deploy A's chain, cycle 2): the cancel told the agent to drop the task,
+        nothing replied, and the wait ran its whole 1,800 s bound — then logged a timeout,
+        retried, and finalized the cancelled run while the next cycle ran. Bug caught: a
+        wait that asks about the cancel only before publishing."""
+        monkeypatch.setattr("adapters.cycles.task_dispatcher.CANCEL_PROBE_SECONDS", 0.01)
+        reply_router.suppress.add("task_repair")  # the agent dropped it: nothing replies
+        dispatcher = TaskDispatcher(
+            queue=mock_queue,
+            reply_router=reply_router,
+            task_timeout=5.0,
+            is_cancelled=AsyncMock(side_effect=[False, False, True]),
+        )
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+
+        with caplog.at_level("INFO"), pytest.raises(_CancellationError):
+            await dispatcher.dispatch_task(self._envelope(), "run_001")
+
+        assert loop.time() - started < 1.0, "ended by the cancel, not the 5 s bound"
+        assert "task_repair" not in reply_router._futures, "no pending future left behind"
+        assert "dispatch_wait_ended_by_cancel task=task_repair run=run_001" in caplog.text
+        assert "task_timeout" not in caplog.text
+
+    async def test_a_probe_error_mid_wait_keeps_waiting_for_the_reply(
+        self, mock_queue, reply_router, monkeypatch
+    ) -> None:
+        """Bug caught: a registry blip during a long wait abandoning a task its agent is still
+        working. The wait's probe is not the fail-closed pre-dispatch one (#586)."""
+        monkeypatch.setattr("adapters.cycles.task_dispatcher.CANCEL_PROBE_SECONDS", 0.01)
+        reply_router.suppress.add("task_repair")
+        calls = 0
+
+        async def probe(run_id: str) -> bool:
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise RuntimeError("registry blip")
+            if calls == 3:  # the agent answers after the blip
+                reply_router._futures["task_repair"].set_result(
+                    TaskResult(task_id="task_repair", status="SUCCEEDED", outputs={})
+                )
+            return False
+
+        dispatcher = TaskDispatcher(
+            queue=mock_queue, reply_router=reply_router, task_timeout=5.0, is_cancelled=probe
+        )
+
+        result = await dispatcher.dispatch_task(self._envelope(), "run_001")
+
+        assert result.status == "SUCCEEDED"
+        assert calls == 3
+
     async def test_unwired_probe_dispatches(self, mock_queue, reply_router) -> None:
         """Bug caught: making the probe mandatory breaks the standalone and
         in-memory compositions that construct a dispatcher without one."""
