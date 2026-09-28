@@ -1,5 +1,7 @@
 # 1.8.2 deploy A — pre-registration (plan §4.1, §4.4)
 
+**Rev 6 (2026-09-28): deploy A′'s first six readings (§10), and an owner ruling on own-frame
+React's L4 (§11f).**
 **Rev 5 (2026-09-27): deploy A is void — the chain found #1699, and the owner ruled void and
 rebuild. The set is re-made on deploy A′ (§0); deploy A's readings stay in §10 as history, and none
 counts.**
@@ -479,6 +481,94 @@ Records `unattended-chain/chain-20260925T222127Z.json` and `cycle-0N-…`.
 *(Readings appended here as they land. Records: `var/verification_sets/1-8-2-diagnostics/<diagnostic>/…`
 and the counted sets' directories, fresh on A′.)*
 
+Driver at `53c6b608` throughout. **L5** (#1260 — a re-dispatched suite carries every case the failed
+report named) is read by hand from the stored suites, by case title, at the set's close; it is **not
+yet read** for any reading below.
+
+#### A′ d1 — `compile-loop`: `cyc_55d4ced0cffa` / `run_1e1e447be6fc`, 09-27 22:59–23:56 ET — **cleared**
+
+Record `compile-loop/shakeout-20260928T035601Z.json`.
+- **Outcome:** `accepted`, 15 of 15; **zero correction rounds**.
+- **The fault** applied to six develop tasks (`m000`–`m005`). Each fixed its type errors in **one
+  pass**, an accepted edit.
+- **The compile:** `frontend_compiles` 6 of 6 passed.
+- **The ledger:** `development.develop:self_eval` shows `calls: 6`.
+- **Reading: YES** on §3b's own terms — no §11a question arises.
+
+#### A′ d2 — `false-criterion`: `cyc_959b9e726a4e` / `run_1aaa4647d4fb`, 00:00–00:46 ET — **cleared, run 1**
+
+Record `false-criterion/shakeout-20260928T044642Z.json`.
+- **The fault:** the plant applied on four evaluations.
+- **The dispute:** made by `dev` and **confirmed**.
+- **The run's end:** `RunTerminalDecision` is `contested_check`, naming
+  `acceptance:declared_imports on app/api/runs/route.ts (vc-declared-imports-lib-alias)`.
+- **The import:** the develop task's route file keeps two `@/lib` imports and no relative one.
+- **Reading: YES.**
+
+#### A′ d3 — `redelivery`: `cyc_40887327dda6` / `run_97f19dba9f0c`, 00:50–01:47 ET — **cleared**
+
+Record `redelivery/shakeout-20260928T054724Z.json`.
+- **Outcome:** `accepted`, 21 of 21.
+- **The kills:** two suites, two faulted repairs killed, each redelivery refused as a typed
+  `FAILED`; no run left `running`.
+- **The qa re-takes:** both **accepted edits** — `backend/tests/test_runs.py` 122 of 7,884
+  characters (2%), and `frontend/src/__tests__/views.test.jsx` 67 of 5,234 (1%). Two qa × React
+  candidates.
+- **The collision:** `repeated_round_ids` names `repair-run_97f19dba-00-qa.test_repair` (#1697,
+  caught by §11d's guard). No retest round was set aside.
+
+#### A′ d4 — `unattended-chain`, run once: 01:51–07:32 ET — **YES on every row of §3b's campaign-readiness claim**
+
+Records `unattended-chain/chain-20260928T113257Z.json` and `cycle-0N-…`. `resumes 0`; every cycle
+assessed; no manual step.
+
+| cycle | fault | result |
+|---|---|---|
+| c1 `cyc_3cd308de2690` | none | accepted (one correction round) |
+| c2 `cyc_c2f4e5a01334` | cancel at develop, 04:16:24 | **the wait ended at 04:16:30** (`dispatch_wait_ended_by_cancel`, 6 s); no heartbeat, `task_timeout` or retry after it; run report and loop summary at 04:16:30.7; ghosts **0 emissions, 0 late replies**; quiet 22 s after, by the check that now includes an unfinished executor (#1700) |
+| c3 `cyc_38b52cc68c19` | `neo` killed while it ran the develop task, 04:52:57 | redelivery refused as typed; accepted |
+| c4 `cyc_3aff012fd86a` | `handler_hang` | seam **YES**: three develop tasks each failed at 1,800.0 s as a typed `task_timeout`; accepted |
+
+- **#1699's fix is verified on the live path:** deploy A's same cancel held the wait for 30 minutes.
+- **Texture — c1's `qa.test` re-take hit the 1,800 s bound in a cycle with no fault.**
+  - After a refunded repair, its self-evaluation passes each spent the full 12,288-token cap on
+    reasoning and wrote nothing (`cap_exhausted`; item 2 retried once), about 6.5 minutes a call.
+  - The bound fired on both sides together, as item 15 designs, and the next attempt succeeded.
+  - Judged not a seam finding: the bound did its job on a task that was producing nothing. It is
+    registered here because §12a's depth of 3, item 2's retry and item 15's bound compound on the
+    counted rolls' qa tasks.
+  - Evidence: `var/1-8-2-logs/Aprime-chain-c1-qa-task-timeout.log`.
+
+#### A′ d5 — `own-frame-then-prose-repair-nextjs`: `cyc_96656c0e48be` / `run_2ca191a10dad`, 07:35–08:39 ET — **cleared, run 1**
+
+Record `own-frame-then-prose-repair-nextjs/shakeout-20260928T123920Z.json`.
+- **Outcome:** `accepted`, 18 of 18.
+- **L7 YES:** `own_artifact`, analyzer and decision unanimous.
+- **L4 YES:** the prose-only repair refunded (refund 1 of 3).
+- **The qa re-take:** an **accepted edit**, `__tests__/runs-api.test.ts` 67 of 6,557 characters
+  (1%) — §3c's prediction for the qa cells (`form=edits`) observed on the App Router stack.
+- **N:** a qa × Next.js candidate, the cell 1.8.0 and 1.8.1 left empty.
+- **Texture:** `fill_merge_evidence` shows 8 filled slots.
+
+#### A′ d6 — `own-frame-then-prose-repair`: `cyc_2aa540e76e80` / `run_99242d1e947f`, 08:43–09:49 ET — **cleared, run 1, by the owner's ruling on L4 (§11f)**
+
+Record `own-frame-then-prose-repair/shakeout-20260928T134909Z.json`.
+- **Outcome:** `accepted`, 21 of 21.
+- **L7 YES:** each suite's own-frame failure was routed to its own suite.
+- **The qa re-takes:** both **accepted edits** — `backend/tests/test_runs.py` 1,096 of 7,871
+  characters (14%), and `frontend/src/__tests__/runs.test.jsx` 793 of 4,661 (17%). Two qa × React
+  candidates.
+- **L4: the driver reads UNASKABLE.** Two suites meant two faulted prose-only repairs under one id,
+  `repair-run_99242d1e-00-qa.test_repair` (#1697). Both refunds read "correction attempt 0", so
+  §11d's guard could not name whose refund is whose.
+- **The logs name it, by time order:**
+  - dispatch 09:35:36 → fault applied 09:36:03.92 → refunded 09:36:04.02;
+  - dispatch 09:44:12 → fault applied 09:44:56.66 → refunded 09:44:56.73.
+
+  Every dispatch under that id was faulted and refunded, and no unfaulted dispatch shares the index.
+  **Held by the owner's ruling (§11f)**; the literal UNASKABLE stands in the record. Evidence:
+  `var/1-8-2-logs/Aprime-own-frame-react-1-l4-evidence.log`.
+
 ---
 
 ## 11. Amendments after the first launch
@@ -604,3 +694,22 @@ cancel (§10 d4, #1699). It is a seam finding on both halves of the definition:
 - No rule, prediction, budget or N.
 - §11a–§11d's rulings, and the driver fixes they made.
 - The config hash and squad-snapshot pins, re-read on A′ and unchanged.
+
+### 11f. Own-frame React's L4 is held on the logs where the record cannot name the refund — owner's ruling, 2026-09-28
+
+**What changed.** A′ d6's L4 reads **held**, beside the driver's literal UNASKABLE.
+
+**The evidence.** On React the diagnostic faults two suites, so its two prose-only repairs share an id
+while #1697 stands. §11d's guard then refuses the refund join, which is correct by design: two
+refunds at one index cannot be told apart from the record. The runtime and qa-agent logs tell them
+apart by time — each dispatch, its fault's `APPLIED` line, and its refund follow in order within
+0.1 s (§10 A′ d6).
+
+**Who ruled.** The owner, offered three options:
+1. **Rule it held on the logs, with no driver change** — the one chosen.
+2. Spend the second budgeted run, which the same two-suite shape would very likely read the same way,
+   ending the set on "not reached after two runs".
+3. Loosen the guard mid-set.
+
+**What did not change.** §11d's guard, and every other reading. #1697's run-unique id, on deploy B,
+removes the shape.
