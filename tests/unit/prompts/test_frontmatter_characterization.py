@@ -41,6 +41,7 @@ import pytest
 from adapters.prompts.filesystem import FileSystemPromptRepository
 from adapters.prompts.filesystem_asset_adapter import FilesystemPromptAssetAdapter
 from squadops.capabilities.handlers.wrapup_tasks import _parse_frontmatter
+from squadops.prompts.fragment_stamp import fragment_body
 from squadops.prompts.renderer import _parse_template_contract
 
 pytestmark = [pytest.mark.domain_contracts]
@@ -92,7 +93,7 @@ def _repository_reading(repo: FileSystemPromptRepository, path: Path) -> dict[st
         }
 
     return {
-        "extract_content_sha": _sha(FileSystemPromptRepository.extract_content(path.read_text())),
+        "extract_content_sha": _sha(fragment_body(path.read_text())),
         "parse_fragment": _outcome(read),
     }
 
