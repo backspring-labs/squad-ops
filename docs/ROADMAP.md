@@ -23,7 +23,36 @@ Each even-minor consumer sits strictly behind the release that earns its trust: 
 
 ## Release Timeline
 
-### v1.8.1 (2026-09-24) — Current — the comparison release
+### v1.8.2 (2026-09-29) — Current — the unattended release
+
+**v1.8.2 — the unattended release**: a cycle you can leave running. On deploy A′ (`8e2c2e87`), the
+`unattended-chain` diagnostic ran four React cycles back to back, with an injected cancel, a killed
+agent and a hung handler, and read **YES on every row**:
+- every run terminal within its bound;
+- the cancel ended its wait in 6 s (#1699; deploy A held it 30 minutes and was voided);
+- the crash contained and the hang ended as typed facts;
+- a quiet box before each launch.
+
+**All six counted rolls were accepted, with L1 held,** and **no 1.8.3 opens** (plan §3.10).
+
+The seams:
+- a cancel reaches the agent holding the task (#1683);
+- the per-task wait is declared on both sides (#1675, #1678);
+- a native parse fault is contained in a worker (#1679);
+- a budget-exhausting call is asked again with the fact (#1681).
+
+Capability: the self-evaluation compile loop (SIP-0086 §12a changes 1–3) and the contested result
+(SIP-0096 §17a, #1581). Evidence infrastructure: records in one home, worktree hygiene, records
+attached to the Release, a secret scan over every change.
+
+**Not landed, stated:**
+- **SIP-0107's flip:** N unmet a third time, with dev × Next.js empty (§46q); step 7 is a 2.0
+  decision.
+- **To 1.9:** item 12 (the convergence replay), #1039 and the ops rider.
+
+Record: `docs/plans/1-8-2-deploy-a-preregistration.md` §10 (cut record included).
+
+### v1.8.1 (2026-09-24) — the comparison release
 
 **v1.8.1 — the comparison release**: SIP-0108 (d), the squad against **Solo** (one generalist
 process, "Han", serving every role on the same deterministic substrate), measured as six
@@ -711,7 +740,7 @@ The following areas are identified for future work but do not block 1.0 readines
 
 *As of 2026-09-24 (v1.8.1):*
 
-- **Framework version**: 1.8.1
+- **Framework version**: 1.8.2
 - **SIPs**: 67 implemented, 10 accepted (SIP-0088, 0090–0093, 0101, 0102, 0104, 0105, 0107), 20 deprecated (registry)
 - **Tests**: 10,000+ passing in the regression suite (all of `tests/unit`, #1316)
 - **Python source**: ~109,000 lines measured 2026-09-17 (`src/` ~84,000 + `adapters/` ~25,000; ~168,000 test lines; ~144,000 lines of Markdown under `docs/` and `sips/`)
