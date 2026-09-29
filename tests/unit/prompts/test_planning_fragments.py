@@ -3,7 +3,6 @@
 Verifies that all 7 planning/refinement prompt fragments:
 - Exist at the expected filesystem paths
 - Have valid YAML frontmatter with correct fragment_id, layer, roles
-- Content hashes match manifest entries
 - Assembler can resolve them via task_type parameter
 """
 
@@ -12,7 +11,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-from adapters.prompts.filesystem import FileSystemPromptRepository
 from squadops.prompts.frontmatter import split_frontmatter
 
 pytestmark = [pytest.mark.domain_capabilities]
@@ -161,38 +159,6 @@ class TestPlanningFragmentsManifest:
         assert len(entries) == 1, (
             f"Expected exactly 1 manifest entry for {spec['fragment_id']}, found {len(entries)}"
         )
-
-    @pytest.mark.parametrize(
-        "spec",
-        PLANNING_FRAGMENTS,
-        ids=[s["fragment_id"] for s in PLANNING_FRAGMENTS],
-    )
-    def test_content_hash_matches_manifest(self, spec):
-        """Manifest sha256 matches the hash the runtime computes for the
-        fragment body. Uses the same hasher the repository's integrity check
-        and the regen script use, so a drift here is the exact failure the
-        assembler would raise at runtime (HashMismatchError) — see issue #195."""
-        actual_hash = FileSystemPromptRepository.hash_fragment_file(FRAGMENTS_DIR / spec["path"])
-
-        manifest = _load_manifest()
-        entry = next(
-            f
-            for f in manifest["fragments"]
-            if f["fragment_id"] == spec["fragment_id"] and f["path"] == spec["path"]
-        )
-        assert actual_hash == entry["sha256"], (
-            f"Hash mismatch for {spec['fragment_id']}: "
-            f"computed={actual_hash}, manifest={entry['sha256']}"
-        )
-
-    def test_full_manifest_integrity(self):
-        """Every manifest sha256 matches its fragment body across ALL fragments,
-        not just the planning ones parametrized above — catches drift in
-        identity/constraints/etc. that the per-fragment cases miss (e.g. the
-        comms identity hash, #195). Reuses the repository's own integrity sweep
-        so the test and the runtime check can't diverge."""
-        repo = FileSystemPromptRepository(base_path=FRAGMENTS_DIR)
-        assert repo.validate_integrity() is True
 
 
 class TestPlanningFragmentsContent:

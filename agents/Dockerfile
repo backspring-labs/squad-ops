@@ -109,6 +109,10 @@ COPY adapters/ ./adapters/
 # Install package in editable mode (fast - just creates .egg-info)
 RUN --mount=type=cache,target=/root/.cache/pip pip install -e .
 
+# #353: stamp the prompt pack as it ships: the fragment hashes the prompt repository
+# verifies against at runtime. After the last COPY of src/, so it describes this image.
+RUN python -m squadops.prompts.fragment_stamp
+
 # Create required directories
 RUN mkdir -p /app/logs /app/data/memory_db
 

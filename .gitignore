@@ -24,6 +24,8 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+# #353: the prompt pack's build stamp; the image build writes it, a checkout needs none
+src/squadops/prompts/fragments/manifest.stamp.json
 
 # Testing
 .pytest_cache/

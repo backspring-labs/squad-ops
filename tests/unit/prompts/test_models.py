@@ -140,7 +140,6 @@ class TestPromptManifest:
             version="0.8.5",
             updated_at="2026-01-24T00:00:00Z",
             fragments=(),
-            manifest_hash="abc123",
         )
 
         with pytest.raises(AttributeError):
@@ -153,14 +152,12 @@ class TestPromptManifest:
             path="shared/identity/identity.md",
             layer="identity",
             roles=("*",),
-            sha256="abc123",
         )
 
         manifest = PromptManifest(
             version="0.8.5",
             updated_at="2026-01-24T00:00:00Z",
             fragments=(frag,),
-            manifest_hash="def456",
         )
 
         result = manifest.get_fragment_meta("identity")
@@ -173,7 +170,6 @@ class TestPromptManifest:
             version="0.8.5",
             updated_at="2026-01-24T00:00:00Z",
             fragments=(),
-            manifest_hash="def456",
         )
 
         result = manifest.get_fragment_meta("nonexistent")
@@ -182,12 +178,12 @@ class TestPromptManifest:
     def test_get_fragments_by_layer(self):
         """Should filter fragments by layer."""
         frags = (
-            ManifestFragment("id1", "p1", "identity", ("*",), "h1"),
-            ManifestFragment("id2", "p2", "constraints", ("*",), "h2"),
-            ManifestFragment("id3", "p3", "identity", ("*",), "h3"),
+            ManifestFragment("id1", "p1", "identity", ("*",)),
+            ManifestFragment("id2", "p2", "constraints", ("*",)),
+            ManifestFragment("id3", "p3", "identity", ("*",)),
         )
 
-        manifest = PromptManifest("0.8.5", "", frags, "")
+        manifest = PromptManifest("0.8.5", "", frags)
 
         identity_frags = manifest.get_fragments_by_layer("identity")
         assert len(identity_frags) == 2
@@ -196,24 +192,12 @@ class TestPromptManifest:
     def test_get_fragments_by_role(self):
         """Should filter fragments by role, including shared."""
         frags = (
-            ManifestFragment("id1", "p1", "identity", ("*",), "h1"),  # shared
-            ManifestFragment("id2", "p2", "identity", ("lead",), "h2"),  # lead only
-            ManifestFragment("id3", "p3", "identity", ("dev",), "h3"),  # dev only
+            ManifestFragment("id1", "p1", "identity", ("*",)),  # shared
+            ManifestFragment("id2", "p2", "identity", ("lead",)),  # lead only
+            ManifestFragment("id3", "p3", "identity", ("dev",)),  # dev only
         )
 
-        manifest = PromptManifest("0.8.5", "", frags, "")
+        manifest = PromptManifest("0.8.5", "", frags)
 
         lead_frags = manifest.get_fragments_by_role("lead")
         assert len(lead_frags) == 2  # shared + lead-specific
-
-    def test_manifest_hash_deterministic(self):
-        """Manifest hash should be deterministic given same inputs."""
-        frags = (
-            ManifestFragment("id1", "p1", "identity", ("*",), "hash1"),
-            ManifestFragment("id2", "p2", "constraints", ("*",), "hash2"),
-        )
-
-        hash1 = PromptManifest.compute_manifest_hash("0.8.5", frags)
-        hash2 = PromptManifest.compute_manifest_hash("0.8.5", frags)
-
-        assert hash1 == hash2

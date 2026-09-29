@@ -98,10 +98,6 @@ jobs:
         if: needs.changes.outputs.code == 'true'
         run: npm install -g --no-audit --no-fund $(grep -vE '^\s*#|^\s*$' agents/instances/qa/npm-global-packages.txt)
 
-      - name: Prompt-fragment manifest is in sync
-        if: needs.changes.outputs.code == 'true'
-        run: python scripts/dev/regen_fragment_manifest.py --check
-
       # Runs `ruff check .` + `ruff format --check .` (lint + format, fail-stop) +
       # the test-quality lint + the full unit regression suite. The repo-wide
       # format sweep landed in #196, so the format check is now gated here.

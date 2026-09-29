@@ -37,13 +37,11 @@ def fragments_dir(tmp_path):
     (base / "manifest.yaml").write_text(
         "version: '0.9.18'\n"
         "updated_at: '2026-01-01T00:00:00'\n"
-        "manifest_hash: ''\n"
         "fragments:\n"
         "  - fragment_id: identity\n"
         "    path: shared/identity/identity.md\n"
         "    layer: identity\n"
-        "    roles: ['*']\n"
-        "    sha256: placeholder\n",
+        "    roles: ['*']\n",
         encoding="utf-8",
     )
     return base

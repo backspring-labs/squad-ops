@@ -23,3 +23,5 @@ dist/
 secrets/
 *.egg-info/
 
+# #353: the prompt pack's build stamp is written inside the image, never taken from the tree
+src/squadops/prompts/fragments/manifest.stamp.json
