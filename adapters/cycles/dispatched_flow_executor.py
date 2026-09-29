@@ -4959,7 +4959,21 @@ class DispatchedFlowExecutor(FlowExecutionPort):
     async def _safe_transition(
         self, run_id: str, status: RunStatus, *, failure_reason: str | None = None
     ) -> None:
-        """Attempt status transition, logging but not raising on failure."""
+        """Attempt status transition, logging but not raising on failure.
+
+        #1701: a run already in ``status`` is left as it is. The cancel route marks the run
+        cancelled before the executor's own cancellation path ends it, and the registry refuses
+        the same-state write — which logged "Failed to transition" on every API cancel, a
+        warning that meant nothing on the path where #1699's real one was. An unreadable status
+        falls through to the write, as before.
+        """
+        try:
+            current = (await self._cycle_registry.get_run(run_id)).status
+        except Exception:
+            current = None
+        if isinstance(current, str) and current == status:
+            logger.debug("Run %s is already %s; no transition needed", run_id, status.value)
+            return
         try:
             await self._cycle_registry.update_run_status(
                 run_id, status, failure_reason=failure_reason
