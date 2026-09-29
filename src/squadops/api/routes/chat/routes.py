@@ -36,27 +36,37 @@ agents_router = APIRouter(prefix="/api/v1/agents", tags=["chat"])
 
 
 # =============================================================================
-# Dependency accessors (module-level singletons, set at startup)
+# Dependency accessors — the app's own ports (#1448), assigned at startup
 # =============================================================================
 
-# These are set by set_chat_ports() in deps.py
-_chat_repo = None
-_chat_cache = None
-_a2a_client = None
-_all_agents: dict = {}  # agent_id → instance config dict (all agents)
-_messaging_agents: dict = {}  # agent_id → instance config dict (messaging-enabled only)
 
-
-def _get_chat_repo():
-    if _chat_repo is None:
+def _get_chat_repo(request: Request):
+    chat_repo = request.app.state.chat_repo
+    if chat_repo is None:
         raise RuntimeError("ChatRepository not configured")
-    return _chat_repo
+    return chat_repo
 
 
-def _get_a2a_client():
-    if _a2a_client is None:
+def _get_a2a_client(request: Request):
+    a2a_client = request.app.state.a2a_client
+    if a2a_client is None:
         raise RuntimeError("A2AClientAdapter not configured")
-    return _a2a_client
+    return a2a_client
+
+
+def _chat_cache_of(request: Request):
+    """The best-effort Redis cache, or None."""
+    return request.app.state.chat_cache
+
+
+def _all_agents(request: Request) -> dict:
+    """agent_id → instance config dict, for every agent."""
+    return request.app.state.all_agents or {}
+
+
+def _messaging_agents(request: Request) -> dict:
+    """agent_id → instance config dict, messaging-enabled agents only."""
+    return request.app.state.messaging_agents or {}
 
 
 def _get_user_id(request: Request) -> str:
@@ -72,7 +82,7 @@ def _get_user_id(request: Request) -> str:
     return "anonymous"
 
 
-def _resolve_agent(agent_id: str) -> dict:
+def _resolve_agent(request: Request, agent_id: str) -> dict:
     """Resolve agent config and validate messaging is enabled.
 
     Uses _all_agents for existence check and _messaging_agents for
@@ -82,11 +92,12 @@ def _resolve_agent(agent_id: str) -> dict:
         AgentNotFoundError: Agent not found in instances config.
         AgentNotMessagingEnabledError: Agent exists but messaging not enabled.
     """
-    if agent_id not in _all_agents:
+    messaging_agents = _messaging_agents(request)
+    if agent_id not in _all_agents(request):
         raise AgentNotFoundError(f"Agent not found: {agent_id}")
-    if agent_id not in _messaging_agents:
+    if agent_id not in messaging_agents:
         raise AgentNotMessagingEnabledError(f"Agent '{agent_id}' does not have messaging enabled")
-    return _messaging_agents[agent_id]
+    return messaging_agents[agent_id]
 
 
 # =============================================================================
@@ -109,11 +120,12 @@ async def send_chat_message(
     5. Returns StreamingResponse relaying agent chunks
     6. On stream completion, persists agent response
     """
-    agent_config = _resolve_agent(agent_id)
+    agent_config = _resolve_agent(request, agent_id)
 
     user_id = _get_user_id(request)
-    chat_repo = _get_chat_repo()
-    a2a_client = _get_a2a_client()
+    chat_repo = _get_chat_repo(request)
+    a2a_client = _get_a2a_client(request)
+    chat_cache = _chat_cache_of(request)
 
     # Resolve or create session
     now = datetime.now(UTC)
@@ -149,8 +161,8 @@ async def send_chat_message(
     await chat_repo.store_message(user_msg)
 
     # Best-effort Redis cache
-    if _chat_cache is not None:
-        await _chat_cache.cache_message(user_msg)
+    if chat_cache is not None:
+        await chat_cache.cache_message(user_msg)
 
     # Build agent A2A URL — fields are required in validated instance config
     a2a_port = agent_config["a2a_port"]
@@ -183,8 +195,8 @@ async def send_chat_message(
                 )
                 try:
                     await chat_repo.store_message(assistant_msg)
-                    if _chat_cache is not None:
-                        await _chat_cache.cache_message(assistant_msg)
+                    if chat_cache is not None:
+                        await chat_cache.cache_message(assistant_msg)
                 except Exception:
                     logger.error(
                         "chat_persistence_failed",
@@ -213,9 +225,9 @@ async def send_chat_message(
 
 
 @router.get("/sessions/{session_id}/messages")
-async def get_session_messages(session_id: str):
+async def get_session_messages(session_id: str, request: Request):
     """Get message history for a session, ordered chronologically."""
-    chat_repo = _get_chat_repo()
+    chat_repo = _get_chat_repo(request)
 
     try:
         await chat_repo.get_session(session_id)
@@ -238,10 +250,10 @@ async def get_session_messages(session_id: str):
 @router.get("/{agent_id}/sessions")
 async def list_agent_sessions(agent_id: str, request: Request):
     """List chat sessions for an agent+user pair."""
-    _resolve_agent(agent_id)
+    _resolve_agent(request, agent_id)
 
     user_id = _get_user_id(request)
-    chat_repo = _get_chat_repo()
+    chat_repo = _get_chat_repo(request)
     sessions = await chat_repo.list_sessions(agent_id, user_id)
 
     return [
@@ -257,7 +269,7 @@ async def list_agent_sessions(agent_id: str, request: Request):
 
 
 @agents_router.get("/messaging")
-async def list_messaging_agents():
+async def list_messaging_agents(request: Request):
     """List all agents with messaging enabled."""
     return [
         MessagingAgentDTO(
@@ -266,7 +278,7 @@ async def list_messaging_agents():
             description=cfg["description"],
             a2a_port=cfg["a2a_port"],
         )
-        for cfg in _messaging_agents.values()
+        for cfg in _messaging_agents(request).values()
     ]
 
 
@@ -275,27 +287,28 @@ async def list_messaging_agents():
 # =============================================================================
 
 
-async def _load_history(session_id: str) -> list[dict]:
+async def _load_history(request: Request, session_id: str) -> list[dict]:
     """Load conversation history: Redis first, Postgres fallback.
 
     Returns list of {role, content} dicts for context assembly.
     Also repopulates Redis cache on miss (best-effort).
     """
+    chat_cache = _chat_cache_of(request)
     # Try Redis cache first
-    if _chat_cache is not None:
-        cached = await _chat_cache.get_messages(session_id)
+    if chat_cache is not None:
+        cached = await chat_cache.get_messages(session_id)
         if cached is not None:
             return [{"role": m["role"], "content": m["content"]} for m in cached]
 
     # Postgres fallback
-    chat_repo = _get_chat_repo()
+    chat_repo = _get_chat_repo(request)
     messages = await chat_repo.get_session_messages(session_id)
 
     history = [{"role": m.role, "content": m.content} for m in messages]
 
     # Repopulate Redis cache (best-effort)
-    if _chat_cache is not None and messages:
+    if chat_cache is not None and messages:
         for m in messages:
-            await _chat_cache.cache_message(m)
+            await chat_cache.cache_message(m)
 
     return history

@@ -6,7 +6,7 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 
 from squadops import __version__ as SQUADOPS_VERSION
 from squadops._version import resolve_git_sha
@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/projects/{project_id}/cycles", tags=["cycles"])
 
 
-async def _pulled_model_names() -> list[str] | None:
+async def _pulled_model_names(request: Request) -> list[str] | None:
     """Best-effort list of the LLM backend's pulled-model names, or ``None``.
 
     ``None`` (backend not configured / provider declares no listing / unreachable) makes
@@ -66,7 +66,7 @@ async def _pulled_model_names() -> list[str] | None:
     from squadops.ports.llm.provider import LLMCapability
 
     try:
-        port = get_llm_port()
+        port = get_llm_port(request)
         if not port.supports(LLMCapability.MODEL_LISTING):
             return None
         raw = await port.list_available_models()
@@ -118,7 +118,9 @@ async def _sandbox_preflight_decision() -> PreflightDecision:
     )
 
 
-async def _run_create_preflight(profile: SquadProfile, config: dict) -> tuple[Finding, ...]:
+async def _run_create_preflight(
+    request: Request, profile: SquadProfile, config: dict
+) -> tuple[Finding, ...]:
     """SIP-0095 create-time preflight: fail fast BEFORE persist/dispatch.
 
     Blocks (HTTP 422) when the squad can't satisfy the requested workloads' required
@@ -142,7 +144,7 @@ async def _run_create_preflight(profile: SquadProfile, config: dict) -> tuple[Fi
         # emission outside the fill slots, surfacing as "the plan claims nothing" a full
         # framing workload later.
         stack_development_profile_decision(config),
-        model_availability_decision(profile, await _pulled_model_names()),
+        model_availability_decision(profile, await _pulled_model_names(request)),
         # #1145: pulled is not the same as registered. A model the backend serves but
         # MODEL_SPECS does not know runs with the overflow guard disabled and a
         # different completion budget than a registered model on the same capability —
@@ -171,7 +173,9 @@ async def _run_create_preflight(profile: SquadProfile, config: dict) -> tuple[Fi
     return decision.warnings
 
 
-async def _seed_derived_contract(body: CycleCreateRequest, project_id: str) -> str | None:
+async def _seed_derived_contract(
+    request: Request, body: CycleCreateRequest, project_id: str
+) -> str | None:
     """Derive a verification contract from a seeded manifest (#779, M0b).
 
     Fires only when the cycle supplies an interface manifest but **no**
@@ -207,7 +211,7 @@ async def _seed_derived_contract(body: CycleCreateRequest, project_id: str) -> s
         # cycle that never had a manifest does not depend on vault wiring at all.
         return None
 
-    vault = get_artifact_vault()
+    vault = get_artifact_vault(request)
     manifest_content = await load_seeded_manifest_content(
         vault, overrides.get("plan_artifact_refs")
     )
@@ -288,7 +292,7 @@ async def _validate_replay_declaration(
 
 @router.post("", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
 async def create_cycle(
-    project_id: str, body: CycleCreateRequest, background_tasks: BackgroundTasks
+    request: Request, project_id: str, body: CycleCreateRequest, background_tasks: BackgroundTasks
 ):
     """Create a Cycle + first Run (T17: atomic).
 
@@ -301,11 +305,11 @@ async def create_cycle(
         get_squad_profile_port,
     )
 
-    project_registry = get_project_registry()
+    project_registry = get_project_registry(request)
     await project_registry.get_project(project_id)
 
     # Resolve squad profile snapshot
-    profile_port = get_squad_profile_port()
+    profile_port = get_squad_profile_port(request)
     profile, snapshot_hash = await profile_port.resolve_snapshot(body.squad_profile_id)
 
     # Build domain objects
@@ -330,17 +334,17 @@ async def create_cycle(
     effective_config = resolve_config(applied_defaults, body.execution_overrides or {})
 
     # SIP-0095: create-time preflight — fail fast (422) before persist/dispatch.
-    preflight_warnings = await _run_create_preflight(profile, effective_config)
+    preflight_warnings = await _run_create_preflight(request, profile, effective_config)
 
     # SIP-0101 Slice 3: replay declaration validated + interim compatibility
     # gate, same fail-fast point (moves into the SIP-0095 preflight in Slice 4).
-    await _validate_replay_declaration(get_cycle_registry(), body, applied_defaults)
+    await _validate_replay_declaration(get_cycle_registry(request), body, applied_defaults)
 
     # #779 (M0b): a seeded manifest with no contract_ref would run UNBOUND. Derive
     # the contract it implies and pin it as an artifact, so bind mode engages
     # exactly as it does for an operator who ingested one by hand. After this the
     # effective config must be recomputed — the new ref is part of it.
-    derived_ref = await _seed_derived_contract(body, project_id)
+    derived_ref = await _seed_derived_contract(request, body, project_id)
     if derived_ref is not None:
         body.execution_overrides = {
             **(body.execution_overrides or {}),
@@ -392,7 +396,7 @@ async def create_cycle(
     )
 
     # Persist atomically (T17)
-    cycle_registry = get_cycle_registry()
+    cycle_registry = get_cycle_registry(request)
     await cycle_registry.create_cycle(cycle)
     await cycle_registry.create_run(run)
 
@@ -400,7 +404,7 @@ async def create_cycle(
     from squadops.api.runtime.deps import get_cycle_event_bus
     from squadops.events.types import EventType
 
-    get_cycle_event_bus().emit(
+    get_cycle_event_bus(request).emit(
         EventType.CYCLE_CREATED,
         entity_type="cycle",
         entity_id=cycle.cycle_id,
@@ -414,7 +418,7 @@ async def create_cycle(
     )
 
     # SIP-0083: Enqueue cycle execution (wraps execute_run for multi-workload)
-    flow_executor = get_flow_executor()
+    flow_executor = get_flow_executor(request)
     background_tasks.add_task(
         flow_executor.execute_cycle,
         cycle.cycle_id,
@@ -438,10 +442,10 @@ async def create_cycle(
 
 
 @router.get("", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
-async def list_cycles(project_id: str, status: CycleStatus | None = None):
+async def list_cycles(request: Request, project_id: str, status: CycleStatus | None = None):
     from squadops.api.runtime.deps import get_cycle_registry
 
-    registry = get_cycle_registry()
+    registry = get_cycle_registry(request)
     cycles = await registry.list_cycles(project_id, status=status)
     results = []
     for c in cycles:
@@ -451,10 +455,10 @@ async def list_cycles(project_id: str, status: CycleStatus | None = None):
 
 
 @router.get("/{cycle_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
-async def get_cycle(project_id: str, cycle_id: str):
+async def get_cycle(request: Request, project_id: str, cycle_id: str):
     from squadops.api.runtime.deps import get_cycle_registry
 
-    registry = get_cycle_registry()
+    registry = get_cycle_registry(request)
     cycle = await registry.get_cycle(cycle_id)
     runs = await registry.list_runs(cycle_id)
     # SIP-0096 §10: derive the verification roll-up on read (detail GET only —
@@ -465,7 +469,9 @@ async def get_cycle(project_id: str, cycle_id: str):
 
 
 @router.get("/{cycle_id}/assessment", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
-async def get_cycle_assessment(project_id: str, cycle_id: str) -> CycleAssessmentResponse:
+async def get_cycle_assessment(
+    request: Request, project_id: str, cycle_id: str
+) -> CycleAssessmentResponse:
     """The cycle's assessment, computed on read (SIP-0108 §4.1 (a)).
 
     The 1.8.0 cut could only recompute this by hand: the stores carried the assessment's
@@ -479,21 +485,21 @@ async def get_cycle_assessment(project_id: str, cycle_id: str) -> CycleAssessmen
     """
     from squadops.api.runtime.deps import assess_cycle_from_stores
 
-    return assessment_to_response(await assess_cycle_from_stores(cycle_id))
+    return assessment_to_response(await assess_cycle_from_stores(request, cycle_id))
 
 
 @router.post("/{cycle_id}/cancel", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
-async def cancel_cycle(project_id: str, cycle_id: str):
+async def cancel_cycle(request: Request, project_id: str, cycle_id: str):
     from squadops.api.runtime.deps import get_cycle_registry
 
-    registry = get_cycle_registry()
+    registry = get_cycle_registry(request)
     await registry.cancel_cycle(cycle_id)
 
     # SIP-0077: cycle.cancelled
     from squadops.api.runtime.deps import get_cycle_event_bus
     from squadops.events.types import EventType
 
-    get_cycle_event_bus().emit(
+    get_cycle_event_bus(request).emit(
         EventType.CYCLE_CANCELLED,
         entity_type="cycle",
         entity_id=cycle_id,
@@ -513,8 +519,8 @@ async def cancel_cycle(project_id: str, cycle_id: str):
     runs = await registry.list_runs(cycle_id)
     run_ids = [run.run_id for run in runs]
     # #1648: first, while the activities and leases still say who holds the runs' tasks.
-    agents_notified = await notify_agents_of_cancel(cycle_id, run_ids)
-    cancelled = await cancel_orphaned_flow_runs(project_id, cycle_id, run_ids)
+    agents_notified = await notify_agents_of_cancel(request, cycle_id, run_ids)
+    cancelled = await cancel_orphaned_flow_runs(request, project_id, cycle_id, run_ids)
 
     # #529: `cancel_cycle` writes only the cycle's `cancelled` flag, so an
     # in-flight run stays `running` forever — a stale status, and one that
@@ -531,12 +537,12 @@ async def cancel_cycle(project_id: str, cycle_id: str):
     # #529: release the focus leases those runs hold. Swept across every run,
     # not just the in-flight ones — a lease stranded under an already-terminal
     # run is exactly #373's case and blocks recruitment just as hard.
-    leases_released = await release_cancelled_run_leases(cycle_id, run_ids)
+    leases_released = await release_cancelled_run_leases(request, cycle_id, run_ids)
 
     # #561: and end the cycle's open activity rows. One left active trips the
     # one-active-per-agent index on every later dispatch, silently ending
     # that agent's activity tracking.
-    activities_ended = await abort_cancelled_cycle_activities(cycle_id)
+    activities_ended = await abort_cancelled_cycle_activities(request, cycle_id)
 
     return {
         "status": "cancelled",

@@ -68,7 +68,7 @@ def _test_config():
     )
 
 
-def _wire_cycle_ports():
+def _wire_cycle_ports(app):
     """Wire in-memory cycle adapters into the DI container.
 
     Replaces the startup_event() wiring which requires Postgres/RabbitMQ.
@@ -79,19 +79,17 @@ def _wire_cycle_ports():
         create_project_registry,
         create_squad_profile_port,
     )
-    from squadops.api.runtime.deps import set_cycle_ports
 
     project_registry = create_project_registry("config")
     cycle_registry = create_cycle_registry("memory")
     squad_profile = create_squad_profile_port("config")
     artifact_vault = create_artifact_vault("filesystem")
 
-    set_cycle_ports(
-        project_registry=project_registry,
-        cycle_registry=cycle_registry,
-        squad_profile=squad_profile,
-        artifact_vault=artifact_vault,
-    )
+    # #1448: the app's own ports, on its state.
+    app.state.project_registry = project_registry
+    app.state.cycle_registry = cycle_registry
+    app.state.squad_profile = squad_profile
+    app.state.artifact_vault = artifact_vault
 
 
 # ---------------------------------------------------------------------------
@@ -105,7 +103,7 @@ def fastapi_app():
     from squadops.api.runtime.main import create_app
 
     fa_app = create_app(_test_config())
-    _wire_cycle_ports()
+    _wire_cycle_ports(fa_app)
     return fa_app
 
 

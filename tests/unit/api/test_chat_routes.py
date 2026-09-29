@@ -48,36 +48,31 @@ def _setup_app(
     app.include_router(agents_router)
     register_domain_error_handlers(app)  # as the runtime does (#576)
 
-    # Store original values for cleanup
-    orig_repo = chat_routes_mod._chat_repo
-    orig_cache = chat_routes_mod._chat_cache
-    orig_client = chat_routes_mod._a2a_client
-    orig_all = chat_routes_mod._all_agents
-    orig_msg = chat_routes_mod._messaging_agents
-
-    # Set mock deps
-    chat_routes_mod._chat_repo = chat_repo or _make_chat_repo()
-    chat_routes_mod._chat_cache = chat_cache
-    chat_routes_mod._a2a_client = a2a_client or _make_a2a_client()
+    # #1448: the chat ports are the app's own, on its state — nothing process-wide to restore.
+    app.state.chat_repo = chat_repo or _make_chat_repo()
+    app.state.chat_cache = chat_cache
+    app.state.a2a_client = a2a_client or _make_a2a_client()
 
     default_all = {"comms-agent": _DEFAULT_AGENT}
     default_msg = {"comms-agent": _DEFAULT_AGENT}
 
-    chat_routes_mod._all_agents = all_agents if all_agents is not None else default_all
-    chat_routes_mod._messaging_agents = (
-        messaging_agents if messaging_agents is not None else default_msg
-    )
+    app.state.all_agents = all_agents if all_agents is not None else default_all
+    app.state.messaging_agents = messaging_agents if messaging_agents is not None else default_msg
 
-    return app, (orig_repo, orig_cache, orig_client, orig_all, orig_msg)
+    return app, ()
 
 
 def _teardown(originals):
-    """Restore original module-level state."""
-    chat_routes_mod._chat_repo = originals[0]
-    chat_routes_mod._chat_cache = originals[1]
-    chat_routes_mod._a2a_client = originals[2]
-    chat_routes_mod._all_agents = originals[3]
-    chat_routes_mod._messaging_agents = originals[4]
+    """Nothing to restore: the ports lived on the test's own app (#1448)."""
+
+
+def _history_request(*, chat_cache, chat_repo):
+    """A request whose app holds the chat ports ``_load_history`` reads (#1448)."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        app=SimpleNamespace(state=SimpleNamespace(chat_cache=chat_cache, chat_repo=chat_repo))
+    )
 
 
 def _make_chat_repo():
@@ -501,24 +496,18 @@ class TestPortGuards:
     """_get_chat_repo() and _get_a2a_client() guard against unconfigured ports."""
 
     def test_chat_repo_raises_when_not_configured(self):
-        """RuntimeError raised when ChatRepository not set."""
-        orig = chat_routes_mod._chat_repo
-        try:
-            chat_routes_mod._chat_repo = None
-            with pytest.raises(RuntimeError, match="ChatRepository not configured"):
-                chat_routes_mod._get_chat_repo()
-        finally:
-            chat_routes_mod._chat_repo = orig
+        """RuntimeError raised when the app's ChatRepository slot is unset."""
+        request = _history_request(chat_cache=None, chat_repo=None)
+        with pytest.raises(RuntimeError, match="ChatRepository not configured"):
+            chat_routes_mod._get_chat_repo(request)
 
     def test_a2a_client_raises_when_not_configured(self):
-        """RuntimeError raised when A2AClientAdapter not set."""
-        orig = chat_routes_mod._a2a_client
-        try:
-            chat_routes_mod._a2a_client = None
-            with pytest.raises(RuntimeError, match="A2AClientAdapter not configured"):
-                chat_routes_mod._get_a2a_client()
-        finally:
-            chat_routes_mod._a2a_client = orig
+        """RuntimeError raised when the app's A2AClientAdapter slot is unset."""
+        from types import SimpleNamespace
+
+        request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(a2a_client=None)))
+        with pytest.raises(RuntimeError, match="A2AClientAdapter not configured"):
+            chat_routes_mod._get_a2a_client(request)
 
 
 class TestLoadHistory:
@@ -545,22 +534,15 @@ class TestLoadHistory:
         )
         repo = _make_chat_repo()
 
-        orig_cache = chat_routes_mod._chat_cache
-        orig_repo = chat_routes_mod._chat_repo
-        try:
-            chat_routes_mod._chat_cache = cache
-            chat_routes_mod._chat_repo = repo
+        request = _history_request(chat_cache=cache, chat_repo=repo)
 
-            history = await chat_routes_mod._load_history("s1")
+        history = await chat_routes_mod._load_history(request, "s1")
 
-            assert len(history) == 2
-            assert history[0] == {"role": "user", "content": "hi"}
-            assert history[1] == {"role": "assistant", "content": "hello"}
-            # Postgres should NOT have been called
-            repo.get_session_messages.assert_not_called()
-        finally:
-            chat_routes_mod._chat_cache = orig_cache
-            chat_routes_mod._chat_repo = orig_repo
+        assert len(history) == 2
+        assert history[0] == {"role": "user", "content": "hi"}
+        assert history[1] == {"role": "assistant", "content": "hello"}
+        # Postgres should NOT have been called
+        repo.get_session_messages.assert_not_called()
 
     async def test_falls_back_to_postgres_on_cache_miss(self):
         """Redis cache miss loads from Postgres and repopulates cache."""
@@ -581,42 +563,28 @@ class TestLoadHistory:
             ]
         )
 
-        orig_cache = chat_routes_mod._chat_cache
-        orig_repo = chat_routes_mod._chat_repo
-        try:
-            chat_routes_mod._chat_cache = cache
-            chat_routes_mod._chat_repo = repo
+        request = _history_request(chat_cache=cache, chat_repo=repo)
 
-            history = await chat_routes_mod._load_history("s1")
+        history = await chat_routes_mod._load_history(request, "s1")
 
-            assert len(history) == 1
-            assert history[0] == {"role": "user", "content": "hello"}
-            # Postgres was called
-            repo.get_session_messages.assert_called_once_with("s1")
-            # Redis was repopulated
-            cache.cache_message.assert_called_once()
-        finally:
-            chat_routes_mod._chat_cache = orig_cache
-            chat_routes_mod._chat_repo = orig_repo
+        assert len(history) == 1
+        assert history[0] == {"role": "user", "content": "hello"}
+        # Postgres was called
+        repo.get_session_messages.assert_called_once_with("s1")
+        # Redis was repopulated
+        cache.cache_message.assert_called_once()
 
     async def test_works_without_cache(self):
         """When no cache is configured, loads directly from Postgres."""
         repo = _make_chat_repo()
         repo.get_session_messages = AsyncMock(return_value=[])
 
-        orig_cache = chat_routes_mod._chat_cache
-        orig_repo = chat_routes_mod._chat_repo
-        try:
-            chat_routes_mod._chat_cache = None
-            chat_routes_mod._chat_repo = repo
+        request = _history_request(chat_cache=None, chat_repo=repo)
 
-            history = await chat_routes_mod._load_history("s1")
+        history = await chat_routes_mod._load_history(request, "s1")
 
-            assert history == []
-            repo.get_session_messages.assert_called_once_with("s1")
-        finally:
-            chat_routes_mod._chat_cache = orig_cache
-            chat_routes_mod._chat_repo = orig_repo
+        assert history == []
+        repo.get_session_messages.assert_called_once_with("s1")
 
 
 class TestChatErrors:

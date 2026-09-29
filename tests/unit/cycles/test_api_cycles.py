@@ -95,12 +95,11 @@ def client(
     app = FastAPI()
     app.include_router(router)
     register_domain_error_handlers(app)  # as the runtime does (#576)
-    import squadops.api.runtime.deps as deps_mod
 
-    monkeypatch.setattr(deps_mod, "_project_registry", mock_project_registry)
-    monkeypatch.setattr(deps_mod, "_cycle_registry", mock_cycle_registry)
-    monkeypatch.setattr(deps_mod, "_squad_profile", mock_squad_profile)
-    monkeypatch.setattr(deps_mod, "_flow_executor", mock_flow_executor)
+    app.state.project_registry = mock_project_registry
+    app.state.cycle_registry = mock_cycle_registry
+    app.state.squad_profile = mock_squad_profile
+    app.state.flow_executor = mock_flow_executor
     # #1568: the create-time sandbox preflight reads the provider from the process env, and
     # the provider is required; compose sets it on the runtime API.
     monkeypatch.setenv("SQUADOPS__SANDBOX__PROVIDER", "noop")
@@ -301,7 +300,6 @@ class TestCancelCycle:
     def test_cancel_propagates_to_prefect(self, client, mock_cycle_registry, monkeypatch):
         """#77: cancelling a cycle transitions its still-running Prefect flow
         run(s) to CANCELLED so workers stop executing the orphaned cycle."""
-        import squadops.api.runtime.deps as deps_mod
         from squadops.cycles.models import Run
 
         mock_cycle_registry.cancel_cycle.return_value = None
@@ -317,7 +315,7 @@ class TestCancelCycle:
         ]
         fake_tracker = AsyncMock()
         fake_tracker.find_active_flow_run_ids.return_value = ["flowrun-xyz"]
-        monkeypatch.setattr(deps_mod, "_workflow_tracker", fake_tracker)
+        client.app.state.workflow_tracker = fake_tracker
 
         resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/cancel")
 
@@ -333,7 +331,6 @@ class TestCancelCycle:
     def test_cancel_survives_prefect_failure(self, client, mock_cycle_registry, monkeypatch):
         """Registry cancellation is the source of truth: if Prefect propagation
         fails, the cycle is still reported cancelled (best-effort, #77)."""
-        import squadops.api.runtime.deps as deps_mod
         from squadops.cycles.models import Run
 
         mock_cycle_registry.cancel_cycle.return_value = None
@@ -349,7 +346,7 @@ class TestCancelCycle:
         ]
         fake_tracker = AsyncMock()
         fake_tracker.find_active_flow_run_ids.side_effect = RuntimeError("prefect down")
-        monkeypatch.setattr(deps_mod, "_workflow_tracker", fake_tracker)
+        client.app.state.workflow_tracker = fake_tracker
 
         resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/cancel")
 
@@ -396,7 +393,6 @@ class TestCancelCycle:
         """#373/#529: a lease stranded under an *already-terminal* run blocks
         recruitment just as hard as one under the run being cancelled, so the
         sweep covers the cycle's whole run list."""
-        import squadops.api.runtime.deps as deps_mod
         from squadops.cycles.models import Run
         from squadops.runtime.models import FocusLease
 
@@ -434,8 +430,8 @@ class TestCancelCycle:
             owner_ref
         ]
         lease_port.get_current_lease.return_value = None
-        monkeypatch.setattr(deps_mod, "_focus_lease_port", lease_port)
-        monkeypatch.setattr(deps_mod, "_runtime_coordinator", AsyncMock())
+        client.app.state.focus_lease_port = lease_port
+        client.app.state.runtime_coordinator = AsyncMock()
 
         resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/cancel")
 
@@ -445,7 +441,6 @@ class TestCancelCycle:
     def test_cancel_ends_the_cycles_open_activities(self, client, mock_cycle_registry, monkeypatch):
         """#561: cancel bypasses `RunCompletion.finalize`, leaving one active row
         per recruited agent to trip the one-active-per-agent index forever."""
-        import squadops.api.runtime.deps as deps_mod
         from squadops.runtime import reasons
 
         mock_cycle_registry.cancel_cycle.return_value = None
@@ -462,7 +457,7 @@ class TestCancelCycle:
         activity_port = AsyncMock()
         activity_port.list_active_activities.return_value = rows
         activity_port.abort_activity.side_effect = list(rows)
-        monkeypatch.setattr(deps_mod, "_activity_port", activity_port)
+        client.app.state.activity_port = activity_port
 
         resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/cancel")
 

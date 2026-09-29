@@ -17,6 +17,7 @@ import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
+from typing import Any
 from urllib.parse import urlparse
 
 import aio_pika
@@ -46,12 +47,7 @@ from squadops.bootstrap.secrets import secret_provider_for
 from squadops.config import config_fingerprint, load_config, redact_config
 from squadops.config.schema import AppConfig
 
-from .deps import (
-    set_audit_port,
-    set_auth_ports,
-    set_cycle_ports,
-    set_health_checker,
-)
+from .deps import PORT_SLOTS
 from .logging_setup import configure_logging
 
 # #427: configure application logging before any module-level log fires. uvicorn
@@ -141,10 +137,9 @@ def create_app(config: AppConfig) -> FastAPI:
     """Pure composition: the app, its handlers, middleware, routers and lifecycle hooks, from a
     config VALUE. Reads nothing from the environment (#286, §6.5).
 
-    What this does not fix, stated so it is not claimed: the routes read their ports from
-    ``deps.py``'s process-wide registry, which ``_startup`` populates — two apps in one
-    process share it and the second overwrites the first. #1448 is the follow-on; until it
-    lands, "one process, one runtime app" is a stated constraint.
+    The ports the routes read are app-owned too (#1448): ``_startup`` assigns them to this app's
+    ``state`` slots, and ``deps.py``'s getters read them from the request's app, so two apps in
+    one process each resolve their own.
     """
     app = FastAPI(
         title="SquadOps Runtime API",
@@ -161,7 +156,9 @@ def create_app(config: AppConfig) -> FastAPI:
     _add_middleware(app, config.auth)
     _include_routers(app)
     app.state.config = config
-    for slot in _STATE_SLOTS:
+    # #1448: the ports the routes read live here too, beside the connections — never in a
+    # process-wide registry — so two apps in one process each resolve their own.
+    for slot in (*_STATE_SLOTS, *PORT_SLOTS):
         setattr(app.state, slot, None)
     app.add_api_route("/health", health_check, methods=["GET"])
     return app
@@ -178,7 +175,7 @@ def build_app() -> FastAPI:
     return create_app(config)
 
 
-async def _init_auth_subsystem(config) -> None:
+async def _init_auth_subsystem(state, config) -> None:
     """Initialize auth, audit, and service token adapters (SIP-0062)."""
     try:
         auth_config = config.auth
@@ -201,7 +198,7 @@ async def _init_auth_subsystem(config) -> None:
                 roles_mode=auth_config.roles_mode,
                 roles_client_id=auth_config.roles_client_id,
             )
-            set_auth_ports(auth=auth_port, authz=authz_port)
+            state.auth_port, state.authz_port = auth_port, authz_port
             logger.info("Auth adapters initialized (provider=%s)", auth_config.provider)
         elif auth_config.enabled and auth_config.provider == "disabled":
             logger.info("Auth enabled but provider=disabled — protected endpoints return 503")
@@ -214,7 +211,7 @@ async def _init_auth_subsystem(config) -> None:
         from adapters.audit.factory import create_audit_provider
 
         audit = create_audit_provider("logging")
-        set_audit_port(audit)
+        state.audit_port = audit
         logger.info("Audit adapter initialized")
     except Exception as e:
         logger.error(f"Failed to initialize audit adapter during startup: {e}")
@@ -234,6 +231,27 @@ async def _init_auth_subsystem(config) -> None:
                 logger.info("Service token client initialized: %s", svc_name)
     except Exception as e:
         logger.error(f"Failed to initialize service token clients: {e}")
+
+
+def _bind_cancellation_ports(
+    state: Any,
+    focus_lease: Any,
+    activity: Any,
+    *,
+    queue: Any,
+) -> None:
+    """Bind the runtime ports a cancel has to tear down (#373/#529/#561), onto the app.
+
+    Cancellation never reaches the executor's finalize path, so the leases and activities the
+    cancelled run holds are cleared by the route; the coordinator it uses is the app's single
+    instance (D16), already on ``state``. ``queue`` carries the notice to the agents holding the
+    run's tasks (#1648). It is required, keyword-only, because a composition root that forgets it
+    leaves every dispatched task running — the guarantee the retired ``set_cancellation_ports``
+    gave, kept (#1448).
+    """
+    state.focus_lease_port = focus_lease
+    state.activity_port = activity
+    state.cancel_queue_port = queue
 
 
 async def _init_migrations(config, pool) -> None:
@@ -336,12 +354,8 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     state.workflow_tracker = create_workflow_tracker(config.prefect)
     # #77: expose the tracker to the cancel routes so cancelling a cycle/run
     # propagates to Prefect (stops the orphaned flow run).
-    from squadops.api.runtime.deps import set_workflow_tracker
-
-    set_workflow_tracker(state.workflow_tracker)
 
     from adapters.events.factory import create_cycle_event_bus
-    from squadops.api.runtime.deps import set_cycle_event_bus
 
     # Bridges are subscribed inside the factory so the composition root
     # never names ``LLMObservabilityBridge`` / ``WorkflowTrackerBridge``
@@ -353,7 +367,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         llm_observability=llm_obs,
         workflow_tracker=state.workflow_tracker,
     )
-    set_cycle_event_bus(event_bus)
+    state.cycle_event_bus = event_bus
 
     # SIP-0089 §2.5: wire the reserve-buffer guard live when a Postgres pool
     # is available (the agent_assignments table lives there, migration 1110).
@@ -367,11 +381,10 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         from adapters.persistence.runtime.assignments_postgres import PostgresAssignment
         from adapters.persistence.runtime.focus_lease_postgres import PostgresFocusLease
         from adapters.persistence.runtime.state_postgres import PostgresRuntimeState
-        from squadops.api.runtime.deps import set_assignment_port
 
         assignment_port = PostgresAssignment(pool)
         # SIP-0089 §2.7: same adapter backs the assignment REST surface.
-        set_assignment_port(assignment_port)
+        state.assignment_port = assignment_port
         # SIP-0089 §4.4: executor-side task-activity instrumentation. The
         # runtime-api process owns the asyncpg pool, so RuntimeActivity is
         # written here (not in agents) as each task is dispatched/replied.
@@ -396,11 +409,8 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     # #373/#529/#561: share the runtime ports with the cancel routes, which
     # bypass the executor's finalize path and so have to release the leases
     # and end the activities the cancelled run leaves behind.
-    from squadops.api.runtime.deps import set_cancellation_ports
 
-    set_cancellation_ports(
-        state.runtime_coordinator, focus_lease_port, activity_port, queue=queue_adapter
-    )
+    _bind_cancellation_ports(state, focus_lease_port, activity_port, queue=queue_adapter)
 
     # Startup hygiene: clear runtime state a dead process left active, before
     # anything recruits against it. Each sweep is best-effort and owns its own
@@ -441,13 +451,11 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         focus_lease_port=focus_lease_port,
     )
 
-    set_cycle_ports(
-        project_registry=project_registry,
-        cycle_registry=cycle_registry,
-        squad_profile=squad_profile,
-        artifact_vault=artifact_vault,
-        flow_executor=flow_executor,
-    )
+    state.project_registry = project_registry
+    state.cycle_registry = cycle_registry
+    state.squad_profile = squad_profile
+    state.artifact_vault = artifact_vault
+    state.flow_executor = flow_executor
     logger.info("SIP-0064 cycle ports + SIP-0066 orchestrator initialized")
 
     # #1157 (the LLM half of #301): the configured provider through the factory, never
@@ -464,9 +472,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         api_key=config.llm.api_key,
     )
     try:
-        from squadops.api.runtime.deps import set_llm_port
-
-        set_llm_port(llm_adapter)
+        state.llm_port = llm_adapter
         logger.info("LLM port registered for model management (provider=%s)", config.llm.provider)
     except Exception as e:
         logger.warning("LLM port not registered (non-fatal): %s", e)
@@ -491,7 +497,6 @@ async def _init_monitoring(state, config, pool) -> None:
             activity=PostgresRuntimeActivity(pool),
         )
         await state.health_checker.init_connections()
-        set_health_checker(state.health_checker)
         state.reconciliation_task = asyncio.create_task(state.health_checker.reconciliation_loop())
         logger.info("Platform health checker initialized")
     except Exception as e:
@@ -502,7 +507,6 @@ async def _init_monitoring(state, config, pool) -> None:
 
         from adapters.comms.factory import create_a2a_client
         from adapters.persistence.chat_repository import ChatRepository
-        from squadops.api.runtime.deps import set_chat_ports
 
         chat_repo = ChatRepository(pool=pool)
         a2a_client = create_a2a_client(config.comms)  # #301 (§6.3)
@@ -529,13 +533,8 @@ async def _init_monitoring(state, config, pool) -> None:
 
             chat_cache = ChatSessionCache(redis=state.redis_client)
 
-        set_chat_ports(
-            chat_repo=chat_repo,
-            chat_cache=chat_cache,
-            a2a_client=a2a_client,
-            all_agents=all_agents,
-            messaging_agents=messaging_agents,
-        )
+        state.chat_repo, state.chat_cache, state.a2a_client = chat_repo, chat_cache, a2a_client
+        state.all_agents, state.messaging_agents = all_agents, messaging_agents
         logger.info(
             "SIP-0085 chat ports initialized",
             extra={"messaging_agents": list(messaging_agents.keys())},
@@ -591,7 +590,7 @@ async def _startup(app: FastAPI) -> None:
         # Log error but don't fail startup - connection will be retried on first use
         logger.error(f"Failed to initialize RabbitMQ connection during startup: {e}", exc_info=True)
 
-    await _init_auth_subsystem(config)
+    await _init_auth_subsystem(state, config)
     await _init_migrations(config, state.pool)
     await _init_log_forwarding(state, config)
     await _init_cycle_subsystem(state, config, state.pool)
