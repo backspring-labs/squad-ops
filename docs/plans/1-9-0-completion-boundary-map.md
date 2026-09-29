@@ -101,6 +101,16 @@ Three collaborators, and what's left is the run's spine:
   one `release(run_id, recruited)` method, so what admits a participant also lets it go.
 - **What's left in `execute_run`:** observability, dispatch within the correlation scope, the
   `except` (already delegating to `resolve_terminal_outcome`), and `RunCompletion.finalize`.
+- **As built (2026-09-29).**
+  - **The partial-state rule:** provisioning is two calls around admission, `prepare` and
+    `seed`, because admission runs between planning and seeding. `execute_run`'s `finally` hands
+    finalization whatever cycle, plan and contract the run had reached, so each is recorded on a
+    mutable `RunInProgress` on the line after the one that establishes it (register §58). A
+    failing-plan run still finalizes with its loaded contract.
+  - **Borrowing is by an explicit list of names** (`RunProvisioning.BORROWED`,
+    `RunAdmission.BORROWED`), so the moved bodies are token-identical.
+  - **One test followed its patch:** `test_correction_runner.py` patched `generate_task_plan` on
+    the executor module, where it is no longer looked up.
 
 ### Step 3: `execute_cycle`, and the named completion boundary
 

@@ -309,6 +309,48 @@ class TestSequentialHappyPath:
 # ---------------------------------------------------------------------------
 
 
+class TestAFailedRunFinalizesWithTheStateItReached:
+    """#1507 step 2 moved provisioning out of ``execute_run``. Its ``finally`` hands
+    ``RunCompletion.finalize`` the cycle, the plan and the contract, and a run that fails partway
+    finalizes with whichever it had reached. Entered at ``execute_run``, failing at two points
+    past the contract's load. Bug this catches: provisioning returning its results only at the
+    end, so a failed run finalizes with ``None`` where the contract was already loaded."""
+
+    @pytest.mark.parametrize(
+        ("fails_at", "plan_recorded"),
+        [("plan generation", False), ("seeding", True)],
+        ids=["the plan fails to generate", "seeding fails after the plan"],
+    )
+    async def test_finalize_receives_what_was_established_before_the_failure(
+        self, executor, cycle, fails_at, plan_recorded
+    ) -> None:
+        contract = object()
+        executor._load_contract_for_run = AsyncMock(return_value=contract)
+        executor._seeded_manifest_for_authoring = AsyncMock(return_value=None)
+        executor._run_completion.finalize = AsyncMock()
+        generated = []
+        if fails_at == "plan generation":
+            plan_patch = patch(
+                "adapters.cycles.run_provisioning.generate_task_plan",
+                side_effect=RuntimeError("plan generation failed"),
+            )
+        else:
+            plan_patch = patch(
+                "adapters.cycles.run_provisioning.generate_task_plan", return_value=generated
+            )
+            executor._load_interface_manifest_for_run = AsyncMock(
+                side_effect=RuntimeError("seeding failed")
+            )
+
+        with plan_patch:
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        kwargs = executor._run_completion.finalize.await_args.kwargs
+        assert kwargs["cycle"] is cycle
+        assert kwargs["contract"] is contract
+        assert kwargs["plan"] is (generated if plan_recorded else None)
+
+
 class TestFailFast:
     """Outcome routing: persistent failures retry, trigger correction, then abort."""
 

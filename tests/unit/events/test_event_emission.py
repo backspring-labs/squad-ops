@@ -54,8 +54,10 @@ def _find_event_type_refs_in_file(filepath: Path) -> set[str]:
 # collapsed handler emits what the mapping decides. Slice 3 moved the
 # correction protocol, and its emit sites, to the CorrectionRunner module;
 # slice 4 did the same for the pulse path and the PulseBoundaryRunner;
-# slice 5 moved the retry loop's per-attempt TASK_* emits to TaskDispatcher.)
+# slice 5 moved the retry loop's per-attempt TASK_* emits to TaskDispatcher;
+# #1507 step 2 moved the run's RUN_STARTED/RUN_RESUMED announcement to RunProvisioning.)
 _EXECUTOR_PATH = Path("adapters/cycles/dispatched_flow_executor.py")
+_RUN_PROVISIONING_PATH = Path("adapters/cycles/run_provisioning.py")
 _RUN_COMPLETION_PATH = Path("adapters/cycles/run_completion.py")
 _CORRECTION_RUNNER_PATH = Path("adapters/cycles/correction_runner.py")
 _PULSE_BOUNDARY_RUNNER_PATH = Path("adapters/cycles/pulse_boundary_runner.py")
@@ -70,6 +72,7 @@ _ALL_EMISSION_FILES = [
     _CORRECTION_RUNNER_PATH,
     _PULSE_BOUNDARY_RUNNER_PATH,
     _TASK_DISPATCHER_PATH,
+    _RUN_PROVISIONING_PATH,
     _CYCLES_ROUTE,
     _RUNS_ROUTE,
     _ARTIFACTS_ROUTE,
@@ -117,7 +120,6 @@ class TestExecutorEmissionPoints:
     @pytest.mark.parametrize(
         "attr",
         [
-            "RUN_STARTED",
             "RUN_COMPLETED",
             "RUN_PAUSED",
             "RUN_RESUMED",
@@ -136,7 +138,7 @@ class TestExecutorEmissionPoints:
     def test_executor_emits(self, attr: str, executor_refs: set[str]) -> None:
         assert attr in executor_refs
 
-    def test_executor_has_14_types(self, executor_refs: set[str]) -> None:
+    def test_executor_has_13_types(self, executor_refs: set[str]) -> None:
         """13 = the post-slice-5 twelve plus GATE_DECIDED (#473): the
         inter-workload pre-gate validation records a system REJECTED gate
         decision and emits GATE_DECIDED, so a mechanically rejected plan is
@@ -155,8 +157,24 @@ class TestExecutorEmissionPoints:
 
         SIP-0100 3.3 added ARTIFACT_OWNERSHIP_ENFORCED (the scaffold-integrity
         enforcement event), emitted by _emit_scaffold_integrity_evidence — 13 → 14.
+
+        #1507 step 2 moved the run's start announcement to RunProvisioning — 14 → 13. RUN_RESUMED
+        stays: the executor still references it outside provisioning.
         """
-        assert len(executor_refs) == 14
+        assert len(executor_refs) == 13
+
+
+class TestRunProvisioningEmissionPoints:
+    """A run announces its start or its resume from provisioning (#1507 step 2), once its
+    checkpoint is read — the same two events, from the same point in the run."""
+
+    @pytest.fixture(scope="class")
+    def run_provisioning_refs(self) -> set[str]:
+        return _find_event_type_refs_in_file(_RUN_PROVISIONING_PATH)
+
+    @pytest.mark.parametrize("attr", ["RUN_STARTED", "RUN_RESUMED"])
+    def test_provisioning_announces(self, attr: str, run_provisioning_refs: set[str]) -> None:
+        assert attr in run_provisioning_refs
 
 
 class TestRunCompletionEmissionPoints:
@@ -335,7 +353,7 @@ class TestEmitCallSitePayloadFields:
         assert with_payload >= 35
 
     def test_total_emit_call_count(self) -> None:
-        """Sanity check: 22 executor + 9 correction-runner +
+        """Sanity check: 20 executor + 2 run-provisioning + 9 correction-runner +
         8 pulse-boundary-runner + 2 task-dispatcher + 7 route = 48 total
         emit calls (#811 added the operator-revision WORKLOAD_ADVANCED emit,
         47 -> 48; #807 added M4's question-gate GATE_DECIDED emit for a
@@ -354,7 +372,8 @@ class TestEmitCallSitePayloadFields:
         emits into _dispatch_protocol_step (44 → 41). Slice 4 moved the
         pulse path's 8 emit sites to the PulseBoundaryRunner; slice 5 moved
         the retry loop's 2 per-attempt TASK_* emits to the TaskDispatcher —
-        same events at runtime, same total."""
+        same events at runtime, same total. #1507 step 2 moved the run's two start/resume emits
+        to RunProvisioning — same total."""
         total = 0
         for path in _ALL_EMISSION_FILES:
             total += len(self._extract_emit_calls(path))
