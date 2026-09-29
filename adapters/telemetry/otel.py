@@ -19,6 +19,22 @@ if TYPE_CHECKING:
     from opentelemetry.sdk.trace.export import SpanExporter
 
 
+def resource_attributes(service_name: str) -> dict[str, str]:
+    """The resource every span and metric carries (#1720): the service, the release it runs and
+    the commit its image was built from.
+
+    The revision is left out when the build recorded none. An absent attribute says "not
+    known"; a placeholder value would read as a commit.
+    """
+    from squadops._version import resolve_git_sha, resolve_version
+
+    attributes = {"service.name": service_name, "service.version": resolve_version()}
+    revision = resolve_git_sha()
+    if revision:
+        attributes["vcs.ref.head.revision"] = revision
+    return attributes
+
+
 class OTelAdapter(MetricsPort, EventPort):
     """OpenTelemetry adapter with injectable exporters for testing.
 
@@ -73,7 +89,7 @@ class OTelAdapter(MetricsPort, EventPort):
                 ConsoleSpanExporter,
             )
 
-            resource = Resource.create({"service.name": self._service_name})
+            resource = Resource.create(resource_attributes(self._service_name))
 
             # Set up tracing
             span_exporter = self._span_exporter or ConsoleSpanExporter()

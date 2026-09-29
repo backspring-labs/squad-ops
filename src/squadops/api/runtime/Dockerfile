@@ -44,6 +44,8 @@ ARG SOURCE_HASH=unknown
 # #80: the same value, readable at runtime, so every cycle records the commit it was created
 # on. Without it the commit an image was built from was not recoverable from the image.
 ENV SQUADOPS_GIT_SHA=${SOURCE_HASH}
+# #1720: the same value as an OCI label, readable without starting the container.
+LABEL org.opencontainers.image.revision="${SOURCE_HASH}"
 
 # Copy source code (changes frequently, but doesn't invalidate deps layer)
 COPY src/ ./src/

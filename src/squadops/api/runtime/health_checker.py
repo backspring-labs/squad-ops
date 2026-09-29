@@ -177,7 +177,7 @@ class HealthChecker:
                 # (mode) and the canonical health signal (runtime_status). Both
                 # are NULL for an agent with no runtime-state row yet (#230).
                 rows = await conn.fetch(
-                    "SELECT s.agent_id, s.lifecycle_state, s.version, s.tps, "
+                    "SELECT s.agent_id, s.lifecycle_state, s.version, s.revision, s.tps, "
                     "s.memory_count, s.last_heartbeat, s.current_task_id, "
                     "r.mode, r.runtime_status "
                     "FROM agent_status s "
@@ -207,6 +207,8 @@ class HealthChecker:
                     "mode": row["mode"],
                     "runtime_status": row["runtime_status"],
                     "version": row["version"] or "0.0.0",
+                    # #1720: None when the agent's build recorded no commit — never a guess.
+                    "revision": row["revision"],
                     "tps": row["tps"],
                     "memory_count": row["memory_count"] if row["memory_count"] is not None else 0,
                     "last_seen": (
@@ -236,6 +238,7 @@ class HealthChecker:
                     "mode": None,
                     "runtime_status": None,
                     "version": "0.0.0",
+                    "revision": None,
                     "tps": 0,
                     "memory_count": 0,
                     "last_seen": None,
@@ -251,12 +254,12 @@ class HealthChecker:
             await conn.execute(
                 """
                 INSERT INTO agent_status
-                (agent_id, lifecycle_state, last_heartbeat, current_task_id, version, tps, memory_count, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                (agent_id, lifecycle_state, last_heartbeat, current_task_id, version, tps, memory_count, updated_at, revision)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 ON CONFLICT (agent_id)
                 DO UPDATE SET
                     lifecycle_state = $2, last_heartbeat = $3, current_task_id = $4,
-                    version = $5, tps = $6, memory_count = $7, updated_at = $8
+                    version = $5, tps = $6, memory_count = $7, updated_at = $8, revision = $9
                 """,
                 agent_status["agent_id"],
                 agent_status["lifecycle_state"],
@@ -266,6 +269,7 @@ class HealthChecker:
                 agent_status.get("tps", 0),
                 agent_status.get("memory_count", 0) or 0,
                 now,
+                agent_status.get("revision"),
             )
         await self._update_runtime_state_heartbeat(
             agent_status["agent_id"], agent_status["lifecycle_state"]

@@ -62,7 +62,7 @@ async def get_agent_status_by_id(request: Request, agent_id: str):
             # parity with GET /health/agents (#230). Health is runtime_status; the
             # legacy network_status field is gone (#305 Part B).
             row = await conn.fetchrow(
-                "SELECT s.agent_id, s.lifecycle_state, s.version, s.tps, "
+                "SELECT s.agent_id, s.lifecycle_state, s.version, s.revision, s.tps, "
                 "s.memory_count, s.last_heartbeat, s.current_task_id, "
                 "r.mode, r.runtime_status "
                 "FROM agent_status s "
@@ -93,6 +93,7 @@ async def get_agent_status_by_id(request: Request, agent_id: str):
             "runtime_status": row["runtime_status"],
             "lifecycle_state": lifecycle_state,
             "version": row["version"],
+            "revision": row["revision"],
             "tps": row["tps"],
             "memory_count": row.get("memory_count", 0) or 0,
             "last_seen": (

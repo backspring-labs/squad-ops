@@ -22,6 +22,7 @@ class AgentHeartbeatReporter(ABC):
         lifecycle_state: str,
         current_task_id: str | None = None,
         version: str | None = None,
+        revision: str | None = None,
         tps: float | None = None,
         memory_count: int | None = None,
     ) -> None:
@@ -33,6 +34,8 @@ class AgentHeartbeatReporter(ABC):
             lifecycle_state: Canonical lifecycle state (STARTING/READY/WORKING/BLOCKED/CRASHED/STOPPING).
             current_task_id: Optional current task id.
             version: Optional agent/framework version string.
+            revision: The commit the agent's image was built from, or None when the
+                build did not record one (#1720) — never a guess.
             tps: Optional throughput estimate.
             memory_count: Optional memory count metric.
         """

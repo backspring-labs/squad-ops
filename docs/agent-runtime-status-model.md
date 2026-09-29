@@ -11,7 +11,7 @@ renaming the accessors) is tracked in #231.
 
 | Table | Owns | Written by |
 |-------|------|-----------|
-| `agent_status` | heartbeat **telemetry**: `lifecycle_state`, `last_heartbeat`, `network_status`, `tps`, `memory_count`, `current_task_id` | the agent heartbeat flow (`update_agent_status_in_db`) |
+| `agent_status` | heartbeat **telemetry**: `lifecycle_state`, `last_heartbeat`, `version`, `revision` (the commit the agent's image was built from, `NULL` when unknown, #1720), `tps`, `memory_count`, `current_task_id`. `network_status` is computed from heartbeat age, never stored (the column was dropped in migration `1150`) | the agent heartbeat flow (`update_agent_status_in_db`) |
 | `agent_runtime_state` (SIP-0089) | **runtime posture + health**: `mode`, `runtime_status`, `focus`, `current_runtime_activity_id`, `interruptibility`, `current_assignment_ref` | the `RuntimeCoordinator` only (D16) — the single mode-writer |
 
 They are intentionally separate (D17: the heartbeat is **non-authoritative** for

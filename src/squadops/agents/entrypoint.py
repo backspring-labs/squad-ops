@@ -1136,11 +1136,14 @@ class AgentRunner:
             return
 
         from squadops import __version__ as SQUADOPS_VERSION
+        from squadops._version import resolve_git_sha
 
         await self._heartbeat_reporter.send_status(
             agent_id=self.agent_id,
             lifecycle_state=self._lifecycle_state,
             version=SQUADOPS_VERSION,
+            # #1720: the version names the release; the revision names the code the agent runs.
+            revision=resolve_git_sha(),
         )
         logger.debug(
             "Heartbeat sent", extra={"agent_id": self.agent_id, "state": self._lifecycle_state}

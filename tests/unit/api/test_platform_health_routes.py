@@ -107,6 +107,7 @@ class TestAgentStatusById:
             "agent_id": "max",
             "lifecycle_state": "READY",
             "version": "0.9.7",
+            "revision": None,
             "tps": 5,
             "memory_count": 10,
             "last_heartbeat": datetime(2026, 2, 16, 12, 0, 0),

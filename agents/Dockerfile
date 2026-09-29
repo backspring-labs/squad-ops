@@ -101,6 +101,12 @@ RUN npm_pkgs="agents/instances/${AGENT_ROLE}/npm-global-packages.txt"; \
 
 # Cache-bust: when SOURCE_HASH changes, Docker invalidates this layer and below
 ARG SOURCE_HASH=unknown
+# #1720: the commit the image was built from (#80's source hash, `-dirty` from a modified
+# tree). The label is readable with `docker inspect` without starting the container; the
+# variable is what the running agent reports on its heartbeat. Before this, only the
+# runtime-api image carried it, and no agent could say which commit it ran.
+LABEL org.opencontainers.image.revision="${SOURCE_HASH}"
+ENV SQUADOPS_GIT_SHA=${SOURCE_HASH}
 
 # Copy source code (changes frequently, but doesn't invalidate deps layer)
 COPY src/ ./src/
