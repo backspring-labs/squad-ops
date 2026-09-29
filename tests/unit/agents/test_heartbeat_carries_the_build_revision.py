@@ -17,6 +17,7 @@ import pytest
 from fastapi import FastAPI
 
 import squadops
+from adapters.cycles.memory_deploy_registry import MemoryDeployRegistry
 from adapters.observability.healthcheck_http import HealthCheckHttpReporter
 from adapters.telemetry.otel import resource_attributes
 from squadops._version import GIT_SHA_ENV
@@ -67,7 +68,9 @@ async def test_the_agents_build_revision_reaches_its_status_row(monkeypatch, bui
     else:
         monkeypatch.setenv(GIT_SHA_ENV, built_from)
     pool, conn = _recording_pool()
-    checker = HealthChecker(pg_pool=pool, config=MagicMock())
+    checker = HealthChecker(
+        pg_pool=pool, config=MagicMock(), deploy_registry=MemoryDeployRegistry()
+    )
     checker._update_runtime_state_heartbeat = AsyncMock()
     app = FastAPI()
     app.include_router(agent_status.router)

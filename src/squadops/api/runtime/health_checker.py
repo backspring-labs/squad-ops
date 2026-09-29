@@ -20,6 +20,8 @@ import httpx
 import yaml
 
 from squadops.api.runtime.agent_labels import get_role_label
+from squadops.cycles.deploy_record import revision_matches_deploy
+from squadops.ports.cycles.deploy_registry import DeployRegistryPort
 from squadops.ports.runtime.activity import RuntimeActivityPort
 from squadops.ports.runtime.state import RuntimeStatePort
 from squadops.runtime.lifecycle_status import runtime_status_from_lifecycle
@@ -62,8 +64,11 @@ class HealthChecker:
         config: Any,
         runtime_state: RuntimeStatePort | None = None,
         activity: RuntimeActivityPort | None = None,
+        deploy_registry: DeployRegistryPort,
     ) -> None:
         self.pg_pool = pg_pool
+        # #1720: what the deploy recorded, beside what each agent reports on its heartbeat.
+        self._deploy_registry = deploy_registry
         self.redis_client = redis_client
         self._config = config
         self._runtime_state = runtime_state
@@ -169,9 +174,16 @@ class HealthChecker:
 
     # ── Agent status from DB ────────────────────────────────────────────
 
+    async def deployed_revisions(self) -> dict[str, str | None] | None:
+        """Each service's revision as the latest deploy recorded it (#1720), or ``None`` when no
+        deploy has been recorded. An agent's compose service is named for its agent id."""
+        record = await self._deploy_registry.latest()
+        return None if record is None else {s.service: s.revision for s in record.services}
+
     async def get_agent_status(self) -> list[dict[str, Any]]:
         """Return agent status list, merging DB rows with instances.yaml metadata."""
         try:
+            deployed = await self.deployed_revisions()
             async with self.pg_pool.acquire() as conn:
                 # LEFT JOIN the SIP-0089 runtime row so the list carries posture
                 # (mode) and the canonical health signal (runtime_status). Both
@@ -209,6 +221,12 @@ class HealthChecker:
                     "version": row["version"] or "0.0.0",
                     # #1720: None when the agent's build recorded no commit — never a guess.
                     "revision": row["revision"],
+                    # #1720: what the latest deploy recorded for this agent's service, and
+                    # whether the agent still runs it — False: changed since the record.
+                    "deployed_revision": (deployed or {}).get(agent_id),
+                    "revision_matches_deploy": revision_matches_deploy(
+                        row["revision"], (deployed or {}).get(agent_id)
+                    ),
                     "tps": row["tps"],
                     "memory_count": row["memory_count"] if row["memory_count"] is not None else 0,
                     "last_seen": (
@@ -239,6 +257,8 @@ class HealthChecker:
                     "runtime_status": None,
                     "version": "0.0.0",
                     "revision": None,
+                    "deployed_revision": None,
+                    "revision_matches_deploy": None,
                     "tps": 0,
                     "memory_count": 0,
                     "last_seen": None,

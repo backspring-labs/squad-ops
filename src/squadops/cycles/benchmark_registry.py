@@ -19,9 +19,12 @@ whose cycle was not launched as that counted roll is refused, so a transcription
 grade a shakeout as a count. The note is the driver's rendered template, not authored prose, and
 it is read only to check the declaration, never to decide membership.
 
-**Lineage.** Two sources, in order:
-1. #80's fields, where the cycle carries a commit.
-2. Otherwise, the set's pinned deploy commit and image ids, from its pre-registration.
+**Lineage.** Three sources, in order:
+1. The cycle's deploy record (#1720): every service's image and revision, and the digest of each
+   model the profiles name, as the deploy step recorded them. It names the agents' code and the
+   weights, where #80's commit names only the runtime API's.
+2. #80's fields, where the cycle carries a commit.
+3. Otherwise, the set's pinned deploy commit and image ids, from its pre-registration.
 
 Neither is guessed. A void roll ran on a deploy its set's pins do not describe (the set was
 restarted on a rebuilt one), so it carries no pins, and a row with neither source has no lineage.
@@ -49,10 +52,14 @@ if TYPE_CHECKING:
         CycleEvidence,
         EvidenceRef,
     )
+    from squadops.cycles.deploy_record import DeployRecord
     from squadops.cycles.lineage import SeriesKey
     from squadops.cycles.models import Cycle
 
-BENCHMARK_REGISTRY_VERSION = 1
+#: 2 (#1720): a row's lineage can come from the cycle's deploy record, and names it — the record's
+#: id, each service's image and revision, each model's digest. The version names the writer: a
+#: capture taken under 1 keeps 1.
+BENCHMARK_REGISTRY_VERSION = 2
 
 #: The driver's launch-note template for a counted roll, as every set config since 1.6.3 renders
 #: it (``launch_notes``: ``… COUNTED roll {roll} of {n} …``).
@@ -80,6 +87,7 @@ class PreflightRefusal(StrEnum):
 
 
 class LineageSource(StrEnum):
+    DEPLOY_RECORD = "deploy_record"
     CYCLE_RECORD = "cycle_record"
     SET_PINS = "set_pins"
 
@@ -116,6 +124,8 @@ class CodeLineage:
     framework_version: str | None = None
     framework_git_sha: str | None = None
     pins: PinnedDeploy | None = None
+    #: #1720: the deploy record the cycle references, when the registry holds it.
+    deploy: DeployRecord | None = None
 
 
 @dataclass(frozen=True)
@@ -254,12 +264,24 @@ def preflight(
     return Preflight(tuple(refusals), tuple(detail))
 
 
-def lineage_for(roll: BenchmarkRoll, cycle: Cycle) -> CodeLineage | None:
-    """#80's fields where the cycle carries a commit, else the set's pins, else ``None``.
+def lineage_for(
+    roll: BenchmarkRoll, cycle: Cycle, deploy: DeployRecord | None
+) -> CodeLineage | None:
+    """The cycle's deploy record where the caller found it, else #80's fields where the cycle
+    carries a commit, else the set's pins, else ``None``.
 
-    A framework version without a commit does not name the code, so it does not win over pins;
-    it is carried beside them.
+    ``deploy`` is the record ``cycle.deploy_id`` names, or ``None`` when the cycle names none or
+    the store does not hold it. A framework version without a commit does not name the code, so
+    it does not win over pins; it is carried beside them.
     """
+    if deploy is not None:
+        return CodeLineage(
+            LineageSource.DEPLOY_RECORD,
+            cycle.framework_version,
+            cycle.framework_git_sha,
+            roll.pins,
+            deploy,
+        )
     if cycle.framework_git_sha:
         return CodeLineage(
             LineageSource.CYCLE_RECORD, cycle.framework_version, cycle.framework_git_sha, roll.pins
@@ -282,6 +304,16 @@ def _jsonable(value: Any) -> Any:
     if isinstance(value, (list, tuple, set, frozenset)):
         return [_jsonable(v) for v in value]
     return value
+
+
+def _deploy_lineage(deploy: DeployRecord | None) -> dict[str, Any]:
+    if deploy is None:
+        return {"deploy_id": None, "services": None, "models": None}
+    return {
+        "deploy_id": deploy.deploy_id,
+        "services": {s.service: [s.image_id, s.revision] for s in deploy.services},
+        "models": {m.model: m.digest for m in deploy.models},
+    }
 
 
 def _assessment_record(assessment: CycleAssessment) -> dict[str, Any]:
@@ -353,6 +385,8 @@ def row_record(row: BenchmarkRow) -> dict[str, Any]:
             "framework_version": lineage.framework_version,
             "framework_git_sha": lineage.framework_git_sha,
             "deploy_commit": lineage.pins.deploy_commit if lineage.pins else None,
+            # #1720 (version 2): the deploy record, when the lineage came from one.
+            **_deploy_lineage(lineage.deploy),
         }
     )
     if row.assessment is not None:

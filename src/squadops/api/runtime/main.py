@@ -502,6 +502,8 @@ async def _init_monitoring(state, config, pool) -> None:
             runtime_state=PostgresRuntimeState(pool),
             # SIP-0089 §4.7: backs GET /health/agents/{id}/activity.
             activity=PostgresRuntimeActivity(pool),
+            # #1720: set by _init_cycle_subsystem, which runs first.
+            deploy_registry=state.deploy_registry,
         )
         await state.health_checker.init_connections()
         state.reconciliation_task = asyncio.create_task(state.health_checker.reconciliation_loop())

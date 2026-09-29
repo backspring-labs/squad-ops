@@ -42,7 +42,9 @@ sys.path.insert(0, str(REPO_ROOT / "scripts" / "dev"))
 from read_only_vault import ReadOnlyVault  # noqa: E402
 
 from adapters.cycles.benchmark_regrade import regrade  # noqa: E402
+from adapters.cycles.memory_deploy_registry import MemoryDeployRegistry  # noqa: E402
 from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry  # noqa: E402
+from adapters.cycles.postgres_deploy_registry import PostgresDeployRegistry  # noqa: E402
 from adapters.persistence.pool import create_pool  # noqa: E402
 from squadops._version import resolve_version  # noqa: E402
 from squadops.cycles.benchmark_registry import (  # noqa: E402
@@ -60,6 +62,9 @@ DSN_ENV = "SQUADOPS__DB__URL"
 #: The code that grades: a capture names it, so it refuses uncommitted changes here.
 GRADING_PATHS = ("src", "adapters", "docs/benchmark/rolls.yaml")
 NO_RUN_SUMMARY_TABLE = "run_loop_summaries absent: migration 1500 is not applied on this deploy"
+#: #1720: a store from before migration 1050 holds no deploy records; lineage then reads #80's
+#: fields and the sets' pins, as it did before.
+NO_DEPLOY_RECORD_TABLE = "deploy_records absent: migration 1050 is not applied on this deploy"
 
 
 class RegistryWithoutRunSummaries(PostgresCycleRegistry):
@@ -106,9 +111,15 @@ async def _read_only_registry(dsn: str):
             await pool.close()
             raise SystemExit("the session accepted a write; refusing to read through it")
         has_run_summaries = await conn.fetchval("SELECT to_regclass('run_loop_summaries')")
+        has_deploy_records = await conn.fetchval("SELECT to_regclass('deploy_records')")
+    notes: list[str] = []
+    if has_deploy_records is None:
+        deploys, notes = MemoryDeployRegistry(), [NO_DEPLOY_RECORD_TABLE]
+    else:
+        deploys = PostgresDeployRegistry(pool)
     if has_run_summaries is None:
-        return pool, RegistryWithoutRunSummaries(pool), [NO_RUN_SUMMARY_TABLE]
-    return pool, PostgresCycleRegistry(pool), []
+        return pool, RegistryWithoutRunSummaries(pool), deploys, [NO_RUN_SUMMARY_TABLE, *notes]
+    return pool, PostgresCycleRegistry(pool), deploys, notes
 
 
 def _line(record: dict) -> str:
@@ -143,9 +154,11 @@ async def main() -> int:
         raise SystemExit("refusing --write: the grading code has uncommitted changes")
 
     rolls = load_rolls()
-    pool, registry, store_notes = await _read_only_registry(dsn)
+    pool, registry, deploys, store_notes = await _read_only_registry(dsn)
     try:
-        rows = await regrade(registry, ReadOnlyVault(args.vault), rolls, assessor=assessor)
+        rows = await regrade(
+            registry, ReadOnlyVault(args.vault), rolls, assessor=assessor, deploys=deploys
+        )
     finally:
         await pool.close()
 
