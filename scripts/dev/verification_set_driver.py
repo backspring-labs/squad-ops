@@ -2926,6 +2926,11 @@ RUNTIME_MARKER_SAMPLES: dict[str, tuple[str, ...]] = {
         "2026-09-21 02:35:02,717 WARNING adapters.cycles.dispatched_flow_executor: correction "
         "attempt 0 refunded: the repair emitted no content (signature unreported), so the round "
         "is re-taken rather than spent (refund 1 of 3, #1053/#998)",
+        # Real: the #1697 verification's `redelivery` re-run, cyc_cfc00ce6ebd8 — the form every
+        # refund takes since #1697, which this collector read as none until it was sampled.
+        "2026-09-29 18:32:11,452 WARNING adapters.cycles.dispatched_flow_executor: correction "
+        "attempt 0 refunded (round s01): the repair emitted no content (signature unreported), "
+        "so the round is re-taken rather than spent (refund 2 of 3, #1053/#998)",
     ),
     "evidence_superseded": (
         "2026-09-23 13:45:20,213 INFO adapters.cycles.patch_acceptance: patch "
@@ -4309,6 +4314,12 @@ def emission_tokens_by_handler(shapes: list[dict]) -> dict[str, dict]:
     return dict(sorted(out.items()))
 
 
+#: A refund's own line, in both forms: ``… refunded: the repair emitted no content`` and, since
+#: #1697, ``… refunded (round s01): the repair emitted no content``. The collector matched the
+#: first literally, so on the first deploy carrying #1697 every refund read as none.
+_REFUND_LINE = re.compile(r"refunded(?: \(round s\d+\))?: the repair emitted no content")
+
+
 def texture_from_logs(logs: list[str]) -> dict:
     """The loop's readouts from the runtime-api log window — pure, so the parse is testable.
 
@@ -4446,9 +4457,7 @@ def texture_from_logs(logs: list[str]) -> dict:
         # refunded round 0 exactly as predicted and the readout, wired to the wrong field,
         # read L4 as not reached.
         "refunded_rounds": [
-            _fact(line, "correction attempt")
-            for line in logs
-            if "refunded: the repair emitted no content" in line
+            _fact(line, "correction attempt") for line in logs if _REFUND_LINE.search(line)
         ],
         "evidence_superseded": [
             _fact(line, "patch_retest task=") for line in logs if "evidence superseded" in line
