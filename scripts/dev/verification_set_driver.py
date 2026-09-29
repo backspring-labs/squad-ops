@@ -2799,9 +2799,25 @@ def correction_entered(logs: Sequence[str], correction_rounds: int | None) -> bo
 #: be sound (delegating helpers, regex markers, implicit concatenation, format substitution):
 #: it passed while #1631 was live. Running the real filter and the real collector on the
 #: emitter's real line has none of those holes.
+class FilterOnly(str):
+    """A marker sample kept so its window's filter key is exercised, whose effect on its field
+    is a join the sample set cannot show on its own — declared with the reason, and exempt
+    from #1696's every-line-counts check. The exemption is visible where the line is, the way
+    ``RUNTIME_FIELDS_NOT_LOGGED_HERE`` declares a field no line can feed."""
+
+    why: str
+
+    def __new__(cls, line: str, *, why: str) -> FilterOnly:
+        sample = super().__new__(cls, line)
+        sample.why = why
+        return sample
+
+
 RUNTIME_MARKER_SAMPLES: dict[str, tuple[str, ...]] = {
     # Real: deploy A's `redelivery`, cyc_8176207ea2f3 — one id, two dispatches (#1697); and a
-    # retest's dispatch from deploy B″ (1.8.1, 2026-09-23), the other key's form.
+    # retest's dispatch from deploy B″ (1.8.1, 2026-09-23), the other key's form. The retest
+    # form's second dispatch is rendered: one dispatch is never a repeat, so a lone retest line
+    # could not show the form is read (#1696).
     "repeated_round_ids": (
         "2026-09-25 16:46:44,393 INFO adapters.cycles.task_dispatcher: Dispatched task "
         "repair-run_f10f98e6-00-qa.test_repair (qa.test_repair) to eve_comms, awaiting reply "
@@ -2810,6 +2826,8 @@ RUNTIME_MARKER_SAMPLES: dict[str, tuple[str, ...]] = {
         "repair-run_f10f98e6-00-qa.test_repair (qa.test_repair) to eve_comms, awaiting reply "
         "on eve_replies",
         "2026-09-23 13:45:11,223 INFO adapters.cycles.task_dispatcher: Dispatched task "
+        "retest-run_c2103c7f-00-qa.test (qa.test) to eve_comms, awaiting reply on eve_replies",
+        "2026-09-23 13:52:40,000 INFO adapters.cycles.task_dispatcher: Dispatched task "
         "retest-run_c2103c7f-00-qa.test (qa.test) to eve_comms, awaiting reply on eve_replies",
     ),
     "narrowed_targets": (
@@ -2838,9 +2856,14 @@ RUNTIME_MARKER_SAMPLES: dict[str, tuple[str, ...]] = {
         "task=task-run_3aff38c4-m004-development.develop task_type=development.develop "
         "status=unverifiable reason=no_executed_blocking_checks checks=0 failed=- "
         "decided_by_agent=0 agent_rows=0 agent_executed=0 skips=missing_tooling:2",
-        "2026-09-23 12:47:34,637 INFO adapters.cycles.task_dispatcher: Dispatched task "
-        "task-run_3aff38c4-m004-development.develop (development.develop) to neo_comms, "
-        "awaiting reply on neo_replies",
+        FilterOnly(
+            "2026-09-23 12:47:34,637 INFO adapters.cycles.task_dispatcher: Dispatched task "
+            "task-run_3aff38c4-m004-development.develop (development.develop) to neo_comms, "
+            "awaiting reply on neo_replies",
+            why="the re-dispatch refuses an unverifiable patch at once, but one no retest "
+            "claims is refused at the window's end either way — the line changes this reading "
+            "only when a retest of the same task follows it",
+        ),
     ),
     "patch_verifications": (
         "2026-09-23 13:45:11,184 INFO adapters.cycles.patch_acceptance: patch_verification "
@@ -2899,9 +2922,6 @@ RUNTIME_MARKER_SAMPLES: dict[str, tuple[str, ...]] = {
         "task=task-run_c2103c7f-m006-qa.test failed-attempt evidence superseded: "
         "replaced=test_report.md dropped=typed_check_evaluation_task_6.json (retest=yes) "
         "(#1111/#1318)",
-        "2026-09-23 13:45:20,213 INFO adapters.cycles.patch_acceptance: patch_retest "
-        "task=task-run_c2103c7f-m006-qa.test status=SUCCEEDED passed=True reason=Repaired suite "
-        "passed",
     ),
     "qa_owned_routed": (
         "2026-09-23 20:46:40,636 INFO adapters.cycles.correction_repair: correction_repair_locus: "
@@ -3083,11 +3103,30 @@ def marker_self_check_problems() -> list[str]:
                     f"#1632: the {window} filter drops {name}'s marker line — the field can "
                     f"never read YES: {dropped[0][:140]!r}"
                 )
-            elif read(kept).get(name) == empty.get(name):
+                continue
+            full = read(kept).get(name)
+            if full == empty.get(name):
                 problems.append(
                     f"#1632: {name}'s {window} sample survives the filter and feeds nothing — "
                     "the collector no longer reads the line its emitter writes"
                 )
+                continue
+            # #1696: every line must count. Read together, one line's reading hid another's
+            # unread form — `faults_applied`'s `rows` line went unparsed while its `chars`
+            # line kept the field fed, and this check passed. Leave-one-out rather than each
+            # line alone, because some fields are joins (a repeated id needs both dispatches).
+            # An alias reads samples written for its source field, so only the source is held
+            # to this.
+            if name != source:
+                continue
+            for i, line in enumerate(lines):
+                if isinstance(line, FilterOnly):
+                    continue
+                if read(keep(lines[:i] + lines[i + 1 :])).get(name) == full:
+                    problems.append(
+                        f"#1696: {name}'s {window} sample line adds nothing to the reading — an "
+                        f"unread form or a dead sample: {line[:140]!r}"
+                    )
     for marker in _CORRECTION_MARKERS:
         lines = [line for sample in RUNTIME_MARKER_SAMPLES.values() for line in sample]
         carrying = [line for line in _runtime_lines_of_interest(lines) if marker in line]
