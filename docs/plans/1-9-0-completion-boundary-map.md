@@ -139,6 +139,25 @@ Three collaborators, and what's left is the run's spine:
   - a questions stop.
 
   Each must produce exactly one `CycleEnd`, with the reason named.
+- **As built (2026-09-29).**
+  - **`CycleStopReason`** has eight members, one per ending: the seven paths above, split so a
+    failed run and a cancelled run each name themselves, plus the single-workload fast path, whose
+    run's status says how it ended.
+  - **`CycleEnd` carries no separate assessment field.** The cycle's `CycleAssessment` is read by
+    its `cycle_id` (`cycle_evidence.assess_cycle`) and isn't stored, so the reference is the id the
+    view already carries. The last run's `RunTerminalDecision` is read from its stored loop
+    summary (`get_run_loop_summary`), never recomputed.
+  - **`execute_cycle` keeps the port's `None` return.** Changing `FlowExecutionPort` inside an
+    extraction is out. The view is observed at `CycleCompletion.end`, where 2.0's continuation
+    enters.
+  - **`WorkloadGate` returns the loop's control flow typed** (`PROCEED` / `RE_EXECUTE` / `STOP`
+    with its reason), carrying the loop state the gate body may change. The body is verbatim
+    apart from its six exits and the formatter's re-wrapping.
+  - **Found while extracting, not fixed here (§5):** the loop stops only on a `FAILED` or
+    `CANCELLED` run. A run *paused* by admission (a duty-window deferral, SIP-0089) returns
+    normally. It is announced `WORKLOAD_COMPLETED` as `completed`, and its gate runs, rejects the
+    empty plan and re-rolls framing, cancelling the paused run. The fix changes behaviour, so it
+    belongs in its own PR (issue pending the owner's placement).
 
 ## 5. The forbidden change
 

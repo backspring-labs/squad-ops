@@ -27,6 +27,7 @@ from uuid import uuid4
 
 from adapters.cycles.correction_repair import CorrectionRepair
 from adapters.cycles.correction_runner import CorrectionRunner
+from adapters.cycles.cycle_completion import CycleCompletion
 from adapters.cycles.execution_errors import (
     _CancellationError,
     _ExecutionError,
@@ -40,6 +41,7 @@ from adapters.cycles.run_completion import RunCompletion, resolve_terminal_outco
 from adapters.cycles.run_provisioning import RunInProgress, RunProvisioning
 from adapters.cycles.task_dispatcher import TaskDispatcher
 from adapters.cycles.task_naming import build_task_name
+from adapters.cycles.workload_gate import GateOutcome, WorkloadGate
 from squadops.capabilities.context_assembly import (
     ACCEPTANCE_WORKSPACE_FILTER,
     LANDING_PRIOR_OUTPUTS,
@@ -59,6 +61,7 @@ from squadops.cycles.contract_derivation import (
     is_interface_manifest,
 )
 from squadops.cycles.correction_signature import REPAIR_EMPTY_MARKER
+from squadops.cycles.cycle_end import CycleStopReason
 from squadops.cycles.emission_integrity import EMISSION_FAILURE_KEY, EMISSION_STATUS_FAILED
 from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.failure_evidence import failing_cases_from_evidence
@@ -763,6 +766,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # Single-workload fast path (D7)
         if len(workload_sequence) <= 1:
             await self.execute_run(cycle_id, first_run_id, profile_id)
+            await self._cycle_completion.end(
+                cycle_id,
+                await self._cycle_registry.get_run(first_run_id),
+                CycleStopReason.SINGLE_WORKLOAD_ENDED,
+            )
             return
 
         # #257: support resuming mid-sequence. first_run_id may be a later
@@ -804,6 +812,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         framing_revisions = 0
         max_framing_revisions = int(cycle.resolved_config().get("manifest_max_attempts", 2))
         i = start_index
+        # #1507 step 3: every way the loop ends names why, and meets CycleCompletion after it.
+        run = None
+        stopped_because = CycleStopReason.SEQUENCE_COMPLETED
         while i < len(workload_sequence):
             workload_entry = workload_sequence[i]
             await self.execute_run(
@@ -826,6 +837,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         "terminal_status": run.status,
                     },
                 )
+                stopped_because = (
+                    CycleStopReason.RUN_FAILED
+                    if run.status == RunStatus.FAILED.value
+                    else CycleStopReason.RUN_CANCELLED
+                )
                 break
 
             self._cycle_event_bus.emit(
@@ -841,273 +857,35 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
             # Last workload — done
             if i >= len(workload_sequence) - 1:
+                stopped_because = CycleStopReason.SEQUENCE_COMPLETED
                 break
 
             # Inter-workload gate
             gate_name = workload_entry.get("gate")
             if gate_name and gate_name != "auto":
-                # #464: the inter-workload gate is the plan gate our cycle
-                # shapes actually traverse (the mid-run _handle_gate path only
-                # fires for task_flow_policy gates) — validate the authored
-                # plan BEFORE asking the operator to review it. A doomed plan
-                # gets a rejection, not a review request.
-                #
-                # #473: mechanical rejection is congruent with a human
-                # --reject: a REJECTED gate decision is recorded (visible in
-                # `runs show` / gate_decisions), GATE_DECIDED is emitted, and
-                # the sequence stops cleanly — never a silent orchestrator
-                # death the operator can only diagnose by re-reviewing the
-                # manifest by hand (the 3.13 stall).
-                plan_errors = await self._reject_invalid_plan_before_workload_gate(
-                    run, cycle, gate_name
+                gate = await self._workload_gate.decide(
+                    cycle=cycle,
+                    cycle_id=cycle_id,
+                    run=run,
+                    workload_entry=workload_entry,
+                    gate_name=gate_name,
+                    current_run_id=current_run_id,
+                    forwarding_overrides=forwarding_overrides,
+                    framing_rerolls=framing_rerolls,
+                    framing_revisions=framing_revisions,
+                    max_framing_rerolls=max_framing_rerolls,
+                    max_framing_revisions=max_framing_revisions,
                 )
-                if plan_errors:
-                    rejection = GateDecision(
-                        gate_name=gate_name,
-                        decision=GateDecisionValue.REJECTED.value,
-                        decided_by="system:plan_validation",
-                        decided_at=datetime.now(UTC),
-                        notes="; ".join(plan_errors),
-                    )
-                    await self._cycle_registry.record_gate_decision(current_run_id, rejection)
-                    self._cycle_event_bus.emit(
-                        EventType.GATE_DECIDED,
-                        entity_type="run",
-                        entity_id=current_run_id,
-                        context={"cycle_id": cycle_id, "run_id": current_run_id},
-                        payload={
-                            "gate_name": gate_name,
-                            "decision": GateDecisionValue.REJECTED.value,
-                            "decided_by": "system:plan_validation",
-                        },
-                    )
-                    logger.error(
-                        "Plan auto-rejected at gate %r on run %s: %s",
-                        gate_name,
-                        current_run_id,
-                        "; ".join(plan_errors),
-                    )
-                    # #522: a *system* plan-validation rejection is a stochastic
-                    # framing fault (the rule the model tripped is already in its
-                    # prompt), not an operator's verdict — the retry a human would
-                    # grant instantly. Re-roll framing, bounded by
-                    # ``framing_max_rerolls``, rather than killing the cycle. The
-                    # rejection stays in gate_decisions (evidence, #473); the
-                    # superseded framing run is CANCELLED so the positional
-                    # run↔workload invariant (#257/D14) holds — exactly one
-                    # non-cancelled run per position. A human --reject is a
-                    # different decided_by and never reaches this branch.
-                    if (
-                        workload_entry.get("type") == "framing"
-                        and framing_rerolls < max_framing_rerolls
-                    ):
-                        framing_rerolls += 1
-                        await self._cycle_registry.cancel_run(current_run_id)
-                        # #669: the re-roll must revise, not re-dice — thread
-                        # what died and why into the new framing's authoring
-                        # prompts on the §6.6 forwarding rail. The rail is
-                        # rebuilt at the next workload advance, so the context
-                        # never leaks past framing; a second re-roll replaces
-                        # the first's context with the latest rejection.
-                        rejected_plan_yaml = await self._load_rejected_plan_yaml(run)
-                        rejection_context: dict[str, Any] = {"rejection_reasons": list(plan_errors)}
-                        if rejected_plan_yaml:
-                            rejection_context["rejected_plan_yaml"] = rejected_plan_yaml
-                        forwarding_overrides = {
-                            **(forwarding_overrides or {}),
-                            "framing_rejection_context": rejection_context,
-                        }
-                        reroll_run = await self._create_next_workload_run(
-                            cycle,
-                            run,
-                            workload_entry,
-                            config_hash=run.resolved_config_hash,
-                        )
-                        current_run_id = reroll_run.run_id
-                        self._cycle_event_bus.emit(
-                            EventType.WORKLOAD_ADVANCED,
-                            entity_type="workload",
-                            entity_id=current_run_id,
-                            context={"cycle_id": cycle_id, "run_id": current_run_id},
-                            payload={
-                                "workload_type": "framing",
-                                "reason": "framing_reroll_on_system_rejection",
-                                "reroll": framing_rerolls,
-                            },
-                        )
-                        logger.info(
-                            "Framing re-roll %d/%d on cycle %s: new framing run %s",
-                            framing_rerolls,
-                            max_framing_rerolls,
-                            cycle_id,
-                            current_run_id,
-                        )
-                        continue  # same index — re-execute framing
+                current_run_id, forwarding_overrides = (
+                    gate.current_run_id,
+                    gate.forwarding_overrides,
+                )
+                framing_rerolls, framing_revisions = gate.framing_rerolls, gate.framing_revisions
+                if gate.outcome is GateOutcome.RE_EXECUTE:
+                    continue  # same index — re-execute framing
+                if gate.outcome is GateOutcome.STOP:
+                    stopped_because = gate.stopped_because
                     break
-                # M4 (#807): the gate stops only when the DESIGN asks a question. A
-                # manifest that declares no unresolved decision has already been approved by
-                # the deterministic gates, and a review that adds nothing is worse than no
-                # review — it manufactures the appearance of one. Keyed on the design, never
-                # on who wrote it (Guard 1a).
-                questions = await self._design_questions_for_gate(run, cycle)
-                if questions is not None and not questions:
-                    # Synthesized, not short-circuited: the decision runs through the SAME
-                    # exhaustive dispatch below that a human's answer does, so a
-                    # pass-through cannot reach a path an approval would not.
-                    decision = await self._approve_gate_without_questions(
-                        current_run_id, cycle_id, gate_name
-                    )
-                else:
-                    self._cycle_event_bus.emit(
-                        EventType.WORKLOAD_GATE_AWAITING,
-                        entity_type="workload",
-                        entity_id=current_run_id,
-                        context={"cycle_id": cycle_id, "run_id": current_run_id},
-                        # The questions ARE the review request (§5c.10): an operator shown
-                        # "approve?" reviews nothing; one shown "the PRD does not define the
-                        # expansion checkpoint — which is it?" answers what only they know.
-                        payload={
-                            "gate_name": gate_name,
-                            "open_questions": list(questions or ()),
-                        },
-                    )
-                    if questions:
-                        logger.info(
-                            "Gate %r on run %s is waiting on %d design question(s): %s",
-                            gate_name,
-                            current_run_id,
-                            len(questions),
-                            "; ".join(questions),
-                        )
-                    decision = await self._poll_inter_workload_gate(
-                        current_run_id,
-                        cycle,
-                        gate_name,
-                    )
-
-                if decision.decision == GateDecisionValue.REJECTED:
-                    break  # Run stays COMPLETED; rejection in gate_decisions
-
-                if decision.decision == GateDecisionValue.RETURNED_FOR_REVISION:
-                    # #466: revision is NOT an approval — the sequence must never advance
-                    # with the un-revised plan (the 3.10 false-approve). #811 makes the
-                    # revision actually happen instead of stopping: without it the gate could
-                    # ask a design question and then do nothing with the answer, which is the
-                    # rubber stamp it replaced wearing a better costume.
-                    #
-                    # Deliberately the SAME path a system rejection takes (#522/#669), driven
-                    # by a different trigger — a second re-execution loop beside a proven one
-                    # is how they drift.
-                    if (
-                        workload_entry.get("type") == "framing"
-                        and framing_revisions < max_framing_revisions
-                    ):
-                        framing_revisions += 1
-                        # Cancel FIRST: the positional run↔workload invariant (#257/D14) is
-                        # exactly one non-cancelled run per position, and the superseded run
-                        # still occupies this one.
-                        await self._cycle_registry.cancel_run(current_run_id)
-                        revision_context: dict[str, Any] = {
-                            "rejection_reasons": [
-                                decision.notes.strip()
-                                or "The reviewer returned this design for revision."
-                            ]
-                        }
-                        # §5c.6's "revise, don't re-roll": without the prior manifest the new
-                        # framing re-authors from scratch with a hint attached, which is the
-                        # fay-6 new-dice failure in disguise.
-                        prior_manifest = await self._run_manifest_content(run, cycle)
-                        if prior_manifest:
-                            revision_context["prior_manifest_yaml"] = prior_manifest
-                        forwarding_overrides = {
-                            **(forwarding_overrides or {}),
-                            "framing_rejection_context": revision_context,
-                            # #811: the superseded run whose completed prefix the revision
-                            # restores instead of re-earning.
-                            "framing_revision_source": run.run_id,
-                        }
-                        revision_run = await self._create_next_workload_run(
-                            cycle,
-                            run,
-                            workload_entry,
-                            config_hash=run.resolved_config_hash,
-                        )
-                        current_run_id = revision_run.run_id
-                        self._cycle_event_bus.emit(
-                            EventType.WORKLOAD_ADVANCED,
-                            entity_type="workload",
-                            entity_id=current_run_id,
-                            context={"cycle_id": cycle_id, "run_id": current_run_id},
-                            payload={
-                                "workload_type": "framing",
-                                "reason": "framing_revision_on_operator_request",
-                                "revision": framing_revisions,
-                            },
-                        )
-                        logger.info(
-                            "Gate %r returned_for_revision on run %s: revising (%d/%d) in "
-                            "new framing run %s with the reviewer's notes as authoring "
-                            "context",
-                            gate_name,
-                            run.run_id,
-                            framing_revisions,
-                            max_framing_revisions,
-                            current_run_id,
-                        )
-                        continue  # same index — re-execute framing, revised
-                    logger.info(
-                        "Gate %r returned_for_revision on run %s: stopping the workload "
-                        "sequence — %s",
-                        gate_name,
-                        current_run_id,
-                        (
-                            f"the revision budget is spent ({framing_revisions}/"
-                            f"{max_framing_revisions})"
-                            if workload_entry.get("type") == "framing"
-                            else "only a framing workload can be revised"
-                        ),
-                    )
-                    break
-
-                if decision.decision not in (
-                    GateDecisionValue.APPROVED,
-                    GateDecisionValue.APPROVED_WITH_REFINEMENTS,
-                ):
-                    # #466: exhaustive dispatch — an unknown/future decision
-                    # value must never silently act as an approval.
-                    logger.warning(
-                        "Gate %r on run %s carries unrecognized decision %r: "
-                        "stopping the workload sequence",
-                        gate_name,
-                        current_run_id,
-                        decision.decision,
-                    )
-                    break
-
-                # Write refinement notes as artifact (D10)
-                if (
-                    decision.decision == GateDecisionValue.APPROVED_WITH_REFINEMENTS
-                    and decision.notes
-                ):
-                    artifact_content = f"# Refinement Notes\n\n{decision.notes}\n"
-                    content_bytes = artifact_content.encode()
-                    refinement_ref = ArtifactRef(
-                        artifact_id=f"art_{uuid4().hex[:12]}",
-                        project_id=cycle.project_id,
-                        cycle_id=cycle.cycle_id,
-                        run_id=current_run_id,
-                        artifact_type="document",
-                        filename="refinement_notes.md",
-                        content_hash=sha256(content_bytes).hexdigest(),
-                        size_bytes=len(content_bytes),
-                        media_type="text/markdown",
-                        created_at=datetime.now(UTC),
-                        metadata={"producing_task_type": "gate.refinement_notes"},
-                    )
-                    await self._artifact_vault.store(refinement_ref, content_bytes)
-                    await self._cycle_registry.append_artifact_refs(
-                        current_run_id, (refinement_ref.artifact_id,)
-                    )
 
             # Positional duplicate guard (D14).
             # Assumes runs are created in sequence order by this orchestration
@@ -1144,6 +922,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 payload={"workload_type": next_workload.get("type")},
             )
             i += 1
+
+        # #1507 step 3: the completion boundary — one CycleEnd for every way the cycle ended.
+        if run is not None:
+            await self._cycle_completion.end(cycle_id, run, stopped_because)
 
     @staticmethod
     def _typed_workload_position(run, workload_sequence, non_cancelled) -> int | None:
@@ -3990,6 +3772,16 @@ class DispatchedFlowExecutor(FlowExecutionPort):
     def _run_admission(self) -> RunAdmission:
         """#1507 step 2: the run's admission and its release (§38, as above)."""
         return RunAdmission(executor=lambda: self)
+
+    @functools.cached_property
+    def _workload_gate(self) -> WorkloadGate:
+        """#1507 step 3: the inter-workload gate. Built on first use, borrowing late (§38)."""
+        return WorkloadGate(executor=lambda: self)
+
+    @functools.cached_property
+    def _cycle_completion(self) -> CycleCompletion:
+        """#1507 step 3: the one place a cycle ends (the completion boundary)."""
+        return CycleCompletion(executor=lambda: self)
 
     @functools.cached_property
     def _framing_gate_check(self) -> FramingGateCheck:
