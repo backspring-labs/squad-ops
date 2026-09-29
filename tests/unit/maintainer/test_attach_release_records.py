@@ -58,6 +58,14 @@ def _run(box, tmp_path, *args, deploy=()):
     return attach.main(["1.8.1", "--out-dir", str(tmp_path), *args], deploy_pairs=list(deploy))
 
 
+def _approved(box, tmp_path, monkeypatch) -> str:
+    """The preview's checksum, as the operator reads it before approving the upload."""
+    with monkeypatch.context() as m:
+        m.setattr(attach.subprocess, "run", lambda *a, **k: pytest.fail("preview acted"))
+        assert _run(box, tmp_path) == 0
+    return hashlib.sha256((tmp_path / "squadops-1.8.1-records.tar.gz").read_bytes()).hexdigest()
+
+
 @pytest.mark.parametrize(
     ("line", "kind"),
     [
@@ -86,6 +94,8 @@ def test_a_credential_in_any_record_refuses_the_upload(
         box,
         tmp_path,
         "--upload",
+        "--expect-sha256",
+        "any",
         deploy=[("SQUADOPS__AUTH__CLIENT_SECRET", "deploy-only-secret-9")],
     )
 
@@ -104,9 +114,10 @@ def test_a_clean_line_is_uploaded_and_recorded_in_its_package(box, tmp_path, mon
         calls.append(cmd)
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
+    approved = _approved(box, tmp_path, monkeypatch)
     monkeypatch.setattr(attach.subprocess, "run", fake_run)
 
-    assert _run(box, tmp_path, "--upload") == 0
+    assert _run(box, tmp_path, "--upload", "--expect-sha256", approved) == 0
 
     tarball = tmp_path / "squadops-1.8.1-records.tar.gz"
     assert calls == [["gh", "release", "upload", "v1.8.1", str(tarball)]]
@@ -127,14 +138,61 @@ def test_a_failed_upload_leaves_the_package_untouched(box, tmp_path, monkeypatch
     """Bug this catches: a package that names an asset the Release never received."""
     package = box / "site/content/releases/v1.8.1/package.yaml"
     before = package.read_text()
+    approved = _approved(box, tmp_path, monkeypatch)
     monkeypatch.setattr(
         attach.subprocess,
         "run",
         lambda cmd, **k: subprocess.CompletedProcess(cmd, 1, stdout="", stderr="release not found"),
     )
 
-    assert _run(box, tmp_path, "--upload") == 1
+    assert _run(box, tmp_path, "--upload", "--expect-sha256", approved) == 1
     assert package.read_text() == before
+
+
+def test_two_builds_of_the_same_records_are_the_same_bytes(box, tmp_path, monkeypatch):
+    """#1732 (the 1.8.2 cut: approved 9edda486…, uploaded 791ad261…, every member identical).
+    Bug this catches: the gzip header stamping the build time, so the preview the owner approved
+    and the upload's rebuild are never the same file. The clock moves between the builds."""
+    import gzip
+
+    members = attach.collect_records(box, "1-8-1", None)
+    first = attach.build_tarball(members, tmp_path / "a.tar.gz", "top")
+    monkeypatch.setattr(gzip.time, "time", lambda: 2_000_000_000.0)
+    second = attach.build_tarball(members, tmp_path / "b.tar.gz", "top")
+
+    assert first == second
+    assert (tmp_path / "a.tar.gz").read_bytes() == (tmp_path / "b.tar.gz").read_bytes()
+
+
+def test_an_upload_whose_rebuild_differs_from_the_approved_preview_uploads_nothing(
+    box, tmp_path, monkeypatch, capsys
+):
+    """Bug this catches: records changed between the owner's approval and the upload, and the
+    changed tarball published anyway — the approval was of other bytes."""
+    package = box / "site/content/releases/v1.8.1/package.yaml"
+    before = package.read_text()
+    approved = _approved(box, tmp_path, monkeypatch)
+    _write(box / "var/verification_sets/1-8-1-fastapi-react/roll-02.json", "{}\n")
+    monkeypatch.setattr(
+        attach.subprocess, "run", lambda *a, **k: pytest.fail("uploaded a different tarball")
+    )
+
+    assert _run(box, tmp_path, "--upload", "--expect-sha256", approved) == 1
+
+    assert f"not the approved {approved}" in capsys.readouterr().out
+    assert package.read_text() == before
+
+
+def test_an_upload_without_the_approved_checksum_is_refused(box, tmp_path, monkeypatch, capsys):
+    """Require, don't default: an upload that names no approved checksum has nothing to be
+    checked against, so it is the pre-#1732 shape by another route."""
+    monkeypatch.setattr(attach.subprocess, "run", lambda *a, **k: pytest.fail("uploaded"))
+
+    with pytest.raises(SystemExit) as exit_:
+        _run(box, tmp_path, "--upload")
+
+    assert exit_.value.code == 2
+    assert "--upload requires --expect-sha256" in capsys.readouterr().err
 
 
 def test_the_preview_uploads_nothing_and_names_a_secret_too_short_to_scan(
