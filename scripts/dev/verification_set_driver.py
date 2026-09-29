@@ -1323,17 +1323,58 @@ def run_state_isolation_problems(cfg: SetConfig) -> list[str]:
     # nobody would send. The executor's last act is the run's loop summary (run_completion),
     # so an ended run without one still has live work. Bounded to a day: rows older than the
     # summary table have none, and no executor outlives its tasks' bounds by that much.
-    unfinished = psql(
-        "select count(*) from cycle_runs r where r.status in ('completed','failed','cancelled') "
+    #
+    # #1714: the executor lives in the runtime-api process, so a run that started before that
+    # process did (a box halt, a rebuild over a running cycle) has no executor left to act on
+    # it and never will have a summary. It is excused, and said to be; only a run that started
+    # under the current process can be #1699's live wait. An unreadable start fails closed.
+    boot = runtime_api_started_at()
+    live = "true" if boot is None else f"r.started_at >= '{boot}'::timestamptz"
+    counts = psql(
+        f"select count(*) filter (where {live}), count(*) filter (where not ({live})) "
+        "from cycle_runs r where r.status in ('completed','failed','cancelled') "
         "and r.started_at > now() - interval '1 day' and not exists "
         "(select 1 from run_loop_summaries s where s.run_id = r.run_id);"
     )
+    unfinished, _, excused = counts.partition("|")
+    if excused and excused != "0":
+        log(
+            f"#1714: {excused} ended run(s) without a loop summary excused — they started before "
+            f"the runtime-api's current process ({boot}), so no executor is left to act on them"
+        )
     if unfinished != "0":
+        bound = (
+            f"started under the runtime-api's current process ({boot})"
+            if boot
+            else "the runtime-api's start could not be read, so none is excused (#1714)"
+        )
+        if excused and excused != "0":
+            bound += f"; {excused} earlier one(s) excused (#1714)"
         problems.append(
             f"§4.3 run-state isolation: {unfinished} run(s) ended in the registry whose executor "
-            "has not finished (no loop summary) — a live wait may still act on them (#1699)"
+            f"has not finished (no loop summary) — a live wait may still act on them (#1699); "
+            f"{bound}"
         )
     return problems
+
+
+def runtime_api_started_at() -> str | None:
+    """When the runtime-api's current process started — its container's ``State.StartedAt`` —
+    or None when docker cannot say (#1714).
+
+    That process holds every executor (``create_flow_executor`` builds the
+    ``DispatchedFlowExecutor`` in it), so no run that started before it can have a live wait.
+    Anything but a well-formed, real timestamp is None: the zero time of a container that
+    never started would excuse nothing, and a malformed one must not reach the query.
+    """
+    raw = sh(
+        f"docker inspect --format={{{{.State.StartedAt}}}} {RUNTIME_API_CONTAINER}", check=False
+    )
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z", raw) or raw.startswith(
+        "0001-"
+    ):
+        return None
+    return raw
 
 
 def arm_substrate_problems(one: SetConfig, other: SetConfig) -> list[str]:
