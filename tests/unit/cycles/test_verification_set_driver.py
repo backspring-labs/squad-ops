@@ -12,6 +12,7 @@ from __future__ import annotations
 import dataclasses
 import importlib.util
 import json
+import re
 import sys
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
@@ -5518,7 +5519,8 @@ class TestTheChainRunsUnattended:
                 "1",
                 [
                     "§4.3 run-state isolation: 1 run(s) ended in the registry whose executor has "
-                    "not finished (no loop summary) — a live wait may still act on them (#1699)"
+                    "not finished (no loop summary) — a live wait may still act on them (#1699); "
+                    "started under the runtime-api's current process (2026-09-28T16:28:01Z)"
                 ],
             ),
         ],
@@ -5533,11 +5535,107 @@ class TestTheChainRunsUnattended:
         missing loop summary is the executor's own "not done yet"."""
 
         def psql(query: str) -> str:
-            return unfinished if "run_loop_summaries" in query else "0"
+            return f"{unfinished}|0" if "run_loop_summaries" in query else "0"
 
         monkeypatch.setattr(driver, "psql", psql)
+        monkeypatch.setattr(driver, "runtime_api_started_at", lambda: "2026-09-28T16:28:01Z")
 
         assert driver.run_state_isolation_problems(None) == expected
+
+    @pytest.mark.parametrize(
+        ("boot", "runs", "expected"),
+        [
+            ("2026-09-28T16:28:01.348280198Z", ["2026-09-28T16:05:52+00:00"], []),
+            (
+                "2026-09-28T16:28:01.348280198Z",
+                ["2026-09-28T16:05:52+00:00", "2026-09-28T16:40:00+00:00"],
+                [
+                    "§4.3 run-state isolation: 1 run(s) ended in the registry whose executor has "
+                    "not finished (no loop summary) — a live wait may still act on them (#1699); "
+                    "started under the runtime-api's current process "
+                    "(2026-09-28T16:28:01.348280198Z); 1 earlier one(s) excused (#1714)"
+                ],
+            ),
+            (
+                None,
+                ["2026-09-28T16:05:52+00:00"],
+                [
+                    "§4.3 run-state isolation: 1 run(s) ended in the registry whose executor has "
+                    "not finished (no loop summary) — a live wait may still act on them (#1699); "
+                    "the runtime-api's start could not be read, so none is excused (#1714)"
+                ],
+            ),
+        ],
+        ids=[
+            "halted before the restart: excused",
+            "one each side: only the later refuses",
+            "start unreadable: fails closed",
+        ],
+    )
+    def test_quiet_excuses_a_run_that_started_before_the_runtime_api_process(
+        self, driver, monkeypatch, capsys, boot, runs, expected
+    ):
+        """#1714 (1.8.2 A′ `dev-lane-fastapi-react` run 2: `run_358dfb8cf945` started 16:05:52Z,
+        the Spark halted, the runtime-api restarted 16:28:01Z). Bug this catches: the chain's
+        quiet check refusing for a day over a run whose executor died with the process — or,
+        the other way, excusing #1699's live wait because it too has no summary. Enters where
+        the chain does; the stub registry evaluates the bound the query actually carries."""
+        cfg = driver.SetConfig(
+            name="s",
+            project="p",
+            squad_profile="x",
+            request_profile="y",
+            gate_name="g",
+            gate_notes="g",
+            launch_notes="l",
+            shakeout_notes="s",
+            n_rolls=1,
+        )
+
+        def psql(query: str) -> str:
+            if "run_loop_summaries" not in query:
+                return "0"
+            bound = re.search(r"r\.started_at >= '([^']+)'::timestamptz", query)
+            if bound is None:
+                assert "filter (where true)" in query
+                return f"{len(runs)}|0"
+            # Python's parser takes microseconds, as Postgres does; the query keeps the nanos.
+            at = datetime.fromisoformat(re.sub(r"(\.\d{6})\d+", r"\1", bound[1]))
+            live = sum(datetime.fromisoformat(s) >= at for s in runs)
+            return f"{live}|{len(runs) - live}"
+
+        monkeypatch.setattr(driver, "psql", psql)
+        monkeypatch.setattr(driver, "runtime_api_started_at", lambda: boot)
+        monkeypatch.setattr(driver, "active_activities", lambda cycle_id=None: [])
+        monkeypatch.setattr(
+            driver, "queue_depths", lambda: {f"{a}_comms": (0, 0) for a in driver.AGENT_SERVICES}
+        )
+
+        assert driver.quiet_box_problems(cfg) == expected
+        excused_logged = (
+            "#1714: 1 ended run(s) without a loop summary excused" in capsys.readouterr().out
+        )
+        assert excused_logged is (boot is not None)
+
+    @pytest.mark.parametrize(
+        ("inspected", "expected"),
+        [
+            ("2026-09-29T17:36:46.348280198Z", "2026-09-29T17:36:46.348280198Z"),
+            ("0001-01-01T00:00:00Z", None),
+            ("", None),
+            ("2026-09-29T17:36:46Z' or true --", None),
+        ],
+        ids=["a real start", "never started", "no such container", "malformed"],
+    )
+    def test_the_runtime_api_start_is_read_or_refused(
+        self, driver, monkeypatch, inspected, expected
+    ):
+        """#1714. Bug this catches: a zero time (a container that never started) or a malformed
+        reading reaching the guard's query as the bound — the first would silently excuse
+        nothing, the second would put docker's output into SQL."""
+        monkeypatch.setattr(driver, "sh", lambda cmd, check=True: inspected)
+
+        assert driver.runtime_api_started_at() == expected
 
     def test_quiet_is_read_from_the_agents_queues_not_only_run_state(self, driver, monkeypatch):
         """Bug this catches: a box called quiet from run state and leases alone. A cancel
