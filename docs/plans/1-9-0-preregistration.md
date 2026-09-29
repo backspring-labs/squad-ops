@@ -1,14 +1,17 @@
 # 1.9.0 — pre-registration (plan §4, §3.6)
 
-**Status: rev 1 (2026-09-29), awaiting the owner. Nothing in the set has launched.** The rules, the
+**Status: rev 1 (2026-09-29). Merged unreviewed: no crew review** (plan §7 decision 7). The owner
+said "I don't have crew budget for the review — I think we need to fly solo". Decision 6's fallback
+applies: the record says so here, at the revision. **Nothing in the set had launched at merge.** The rules, the
 diagnostics, the predictions, the readouts and the pins are committed here on the 1.9 deploy before
 any launch (plan §6 step 6: the owner reads this before the first diagnostic).
 - **Pins.** Every pin in §1 was read from the deploy, or computed by the CLI's own code on its tree.
   None is carried from 1.8.2 without being re-read.
 - **Once this merges, the cut criteria do not move.** Only readings are appended (§10). If the deploy
   moves, this registration is void and re-made, and nothing from the superseded deploy counts.
-- **Crew review** (plan §7 decision 7): the owner's call at this point. The PR runs `nostromo crew
-  checks` as every PR does.
+- **Crew review** (plan §7 decision 7): none, as stated above. No second reader has seen these
+  rules or the configs. The PR ran `nostromo crew checks` as every PR does; that is a CI check, not a
+  review.
 
 **What this set measures.** These are the plan's experimental gate (§3.6), in its order:
 1. **Behaviour held equal across the extraction** (#1507). The executor's completion boundary moved
@@ -40,7 +43,7 @@ any launch (plan §6 step 6: the owner reads this before the first diagnostic).
 | Gate policy | The 1.6.3 §6 constant, verbatim in each config's `gate_notes`; `--as-agent`; the decider recorded per roll |
 | Driver | `verification_set_driver.py roll --set docs/plans/verification-sets/1-9-0-<arm>.yaml --roll N`; diagnostics via `shakeout --set …-diagnostic-*.yaml`; the chain via `chain --set …-diagnostic-unattended-chain.yaml`. The driver runs from its own checkout at this registration's merge commit (§8) |
 | Preflight at registration | **All ten configs clean** on 2026-09-29, the two counted arms with `--counting` (the frozen images match, no framework drift). Nothing was launched to read a pin (#1648) |
-| Order | **The eight diagnostics first**, which are the shakeout (§6): two runs each, the chain once. Then FastAPI+React rolls 1–4, then Next.js+TS rolls 1–2 |
+| Order | **The eight diagnostics first**, which are the shakeout (§6), in 1.8.2's order: `compile-loop`, `false-criterion`, `redelivery`, `unattended-chain`, `own-frame-then-prose-repair-nextjs`, `own-frame-then-prose-repair`, `dev-lane-fastapi-react`, `dev-lane-nextjs`. Two runs each, the chain once, run by `var/1-9-0-logs/run_1_9_0_diagnostics.py` (1.8.2's sequencer, carried). Then FastAPI+React rolls 1–4, then Next.js+TS rolls 1–2 |
 
 ---
 
