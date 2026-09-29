@@ -984,7 +984,9 @@ class TestTheDevLaneFaultRewritesOnlyTheJoinResponse:
         added = [line[2:] for line in diff if line.startswith("+ ")]
         assert len(removed) == 1 and len(added) == 1
         assert removed[0].strip() in ("return run", "return Response.json(result);")
-        assert "injected fault" in added[0]
+        # #1716: nothing in the code announces the defect — the task's own self-evaluation
+        # reads this line, and a comment naming the fault is an instruction to remove it.
+        assert "injected fault" not in added[0] and "#1251" not in added[0]
         assert (
             '{"id": getattr(run, "id", None)}' in added[0] or "{ id: (result as unknown" in added[0]
         )
@@ -1026,6 +1028,44 @@ class TestTheDevLaneFaultRewritesOnlyTheJoinResponse:
     def test_an_emission_without_a_join_route_is_returned_unchanged(self, emission):
         assert self._FAULT.transform(emission) == emission
 
+    #: An idempotent join, each language: an early branch returns the run unchanged. Once the
+    #: final return is faulted it no longer matches, so the early one is the next candidate.
+    _EARLY_BRANCH = {
+        "python": (
+            "```python:backend/routes.py\n"
+            '@router.post("/runs/{run_id}/join", response_model=Run, status_code=200)\n'
+            "def post_runs_run_id_join(run_id: str, payload: JoinRequest):\n"
+            "    run = run_store[run_id]\n"
+            "    if payload.name in run.participants:\n"
+            "        return run\n"
+            "    run.participants.append(payload.name)\n"
+            "    return run\n"
+            "```\n"
+        ),
+        "typescript": (
+            "```ts:app/api/runs/[run_id]/join/route.ts\n"
+            "export async function POST(req: Request) {\n"
+            "  const run = runs.get(id)\n"
+            "  if (run.participants.includes(name)) return Response.json(run);\n"
+            "  run.participants.push(name)\n"
+            "  return Response.json(run);\n"
+            "}\n```\n"
+        ),
+    }
+
+    @pytest.mark.parametrize(
+        "emission",
+        [*(_DEVELOP_EMISSIONS[k] for k in sorted(_DEVELOP_EMISSIONS)), *_EARLY_BRANCH.values()],
+        ids=[*sorted(_DEVELOP_EMISSIONS), *(f"early branch ({k})" for k in _EARLY_BRANCH)],
+    )
+    def test_re_applying_to_a_faulted_handler_changes_nothing(self, emission):
+        """#1716: the hold re-applies after every pass. Bug caught: a second application on an
+        already-faulted handler rewriting its EARLIER return — the idempotent join's early
+        branch — so the defect moves off the path the probe takes."""
+        once = self._FAULT.transform(emission)
+        assert once != emission
+        assert self._FAULT.transform(once) == once
+
     def test_it_is_scoped_to_the_first_develop_attempt(self):
         from squadops.tasks.task_types import TaskType
 
@@ -1033,6 +1073,140 @@ class TestTheDevLaneFaultRewritesOnlyTheJoinResponse:
             TaskType.DEVELOPMENT_DEVELOP,
             FaultScope.FIRST_ATTEMPT,
         )
+
+
+class TestTheDevLaneFaultSurvivesTheTasksOwnSelfEvaluation:
+    """#1716 (1.8.2 A′ `dev-lane-fastapi-react` run 2, `run_69ed3e528311`): the develop task's
+    first self-evaluation pass edited the faulted join handler back to ``return run``, and the
+    diagnostic's seam became unreachable by construction. Entered at ``HandlerExecutor.execute``
+    on the real develop handler and templates, with a model whose pass reverts the join — in an
+    edit (A′'s shape) or by re-emitting the file whole — and a failing check that makes the pass
+    run. A test of the transform alone passed while the diagnostic could not reach its seam."""
+
+    _ROUTES = (
+        "from fastapi import APIRouter\nfrom pydantic import BaseModel\n\n"
+        "router = APIRouter()\nrun_store: dict = {}\n\n\n"
+        "class Run(BaseModel):\n    id: str\n\n\n"
+        "class JoinRequest(BaseModel):\n    name: str\n\n\n"
+        '@router.post("/runs/{run_id}/join", response_model=Run, status_code=200)\n'
+        "def post_runs_run_id_join(run_id: str, payload: JoinRequest):\n"
+        "    run = run_store[run_id]\n"
+        "    run.participants.append(payload.name)\n"
+        "    return run\n"
+    )
+    _FAULTED = '    return {"id": getattr(run, "id", None)}'
+    #: The pass fixes the failing check (a missing module import) and, as A′'s did, the join.
+    _EDIT = (
+        "```edit:backend/routes.py\n<<<<<<< SEARCH\nfrom fastapi import APIRouter\n=======\n"
+        "import typing\nfrom fastapi import APIRouter\n>>>>>>> REPLACE\n"
+        '<<<<<<< SEARCH\n    return {"id": getattr(run, "id", None)}\n=======\n'
+        "    return run\n>>>>>>> REPLACE\n```\n"
+    )
+    _WHOLE = "```python:backend/routes.py\nimport typing\n" + _ROUTES + "```\n"
+
+    async def _develop(self, pass_answer, declaration):
+        from unittest.mock import MagicMock
+
+        from adapters.prompts.filesystem_asset_adapter import FilesystemPromptAssetAdapter
+        from squadops.agents.base import PortsBundle
+        from squadops.bootstrap.handlers import create_handler_registry
+        from squadops.llm.models import ChatMessage
+        from squadops.orchestration.handler_executor import HandlerExecutor
+        from squadops.prompts.renderer import RequestTemplateRenderer
+        from squadops.tasks.models import TaskEnvelope
+
+        prompts = _SRC / "prompts"
+        answers = iter([f"```python:backend/routes.py\n{self._ROUTES}```\n", pass_answer])
+        sent: list = []
+
+        async def _chat(messages, **kwargs):
+            sent.append(messages)
+            return ChatMessage(role="assistant", content=next(answers), completion_tokens=40)
+
+        llm = MagicMock()
+        llm.default_model = "qwen3.8:27b"
+        llm.chat_stream_with_usage = _chat
+        prompt_service = MagicMock()
+        prompt_service.assemble.return_value = MagicMock(content="system", assembly_hash="h")
+        ports = PortsBundle(
+            llm=llm,
+            memory=MagicMock(),
+            prompt_service=prompt_service,
+            queue=MagicMock(),
+            metrics=MagicMock(),
+            events=MagicMock(),
+            filesystem=MagicMock(),
+            request_renderer=RequestTemplateRenderer(
+                FilesystemPromptAssetAdapter(prompts / "fragments", prompts / "request_templates")
+            ),
+        )
+        envelope = TaskEnvelope(
+            task_id="task-run_69ed3e52-m000-development.develop",
+            agent_id="neo",
+            cycle_id="cyc",
+            pulse_id="p",
+            project_id="group_run",
+            task_type="development.develop",
+            correlation_id="c",
+            causation_id="c",
+            trace_id="t",
+            span_id="s",
+            inputs={
+                "prd": "Runs API",
+                "artifact_contents": {"implementation_plan.md": "1. routes"},
+                "subtask_focus": "the join route",
+                "expected_artifacts": ["backend/routes.py"],
+                "acceptance_criteria": [
+                    {
+                        "check": "import_present",
+                        "params": {"file": "backend/routes.py", "module": "typing"},
+                        "id": "vc-routes-import-typing",
+                    }
+                ],
+                "resolved_config": {
+                    "output_validation": True,
+                    "max_self_eval_passes": 1,
+                    **declaration,
+                },
+            },
+            metadata={"role": "dev"},
+        )
+        executor = HandlerExecutor("neo", create_handler_registry(roles=["dev"]), ports, role="dev")
+        result = await executor.execute(envelope)
+        stored = {a["name"]: a["content"] for a in (result.outputs or {}).get("artifacts", [])}
+        return result, sent, stored["backend/routes.py"]
+
+    @pytest.mark.parametrize("pass_answer", [_EDIT, _WHOLE], ids=["an edit (A′)", "whole file"])
+    async def test_a_pass_that_repairs_the_join_hands_on_the_declared_defect(
+        self, pass_answer, caplog
+    ):
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            result, sent, routes = await self._develop(
+                pass_answer, {DECLARATION_KEY: ["dev_join_response_omits_declared_fields"]}
+            )
+
+        assert result.status == "SUCCEEDED", result.error
+        assert self._FAULTED in routes.splitlines(), "the handed-on join is the declared defect"
+        assert routes.startswith("import typing\n"), "the pass's own fix is kept"
+        shown = sent[1][-1].content
+        assert "#1251" not in shown and "injected fault" not in shown, "nothing announces it"
+        held = [
+            r.getMessage()
+            for r in caplog.records
+            if "held through self-evaluation pass 1" in r.getMessage()
+        ]
+        assert len(held) == 1 and "APPLIED dev_join_response_omits_declared_fields" in held[0]
+
+    async def test_without_the_declaration_the_passs_file_stands(self):
+        """The paired control: the same model and pass, no declaration — the hold is a no-op for
+        every cycle that declares nothing. (The whole-file answer: the edit's second hunk
+        searches for the faulted line, which an unfaulted emission never has.)"""
+        result, _, routes = await self._develop(self._WHOLE, {})
+
+        assert result.status == "SUCCEEDED", result.error
+        assert routes.splitlines()[-1] == "    return run"
 
 
 class TestTheHangIsEndedByTheDeclaredBound:

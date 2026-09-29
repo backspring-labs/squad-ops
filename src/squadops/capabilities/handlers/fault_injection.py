@@ -230,7 +230,12 @@ _PY_RETURN = re.compile(r"^(?P<indent>[ \t]+)return (?P<expr>[\w.\[\]\"']+)[ \t]
 _TS_JSON_RETURN = re.compile(
     r"return (?P<ctor>Response|NextResponse)\.json\((?P<expr>[\w.]+)(?P<rest>\s*,[^()]*)?\)(?P<semi>;?)"
 )
-_INJECTED_JOIN_NOTE = "#1251 injected fault: the join response omits the run's declared fields"
+#: The faulted returns, so re-applying to a handler that already carries one is a no-op (#1716). No
+#: comment marks the line: the model reviews this code in its own self-evaluation passes, and a
+#: comment announcing the defect is an instruction to remove it. Provenance is the ``APPLIED``
+#: line and the record's ``faults_applied``.
+_PY_FAULTED_RETURN = 'return {"id": getattr('
+_TS_FAULTED_CAST = "as unknown as { id?: unknown }).id }"
 
 
 def _python_join_without_fields(body: str) -> str:
@@ -251,13 +256,14 @@ def _python_join_without_fields(body: str) -> str:
     after_def = body.find("\n", signature.end()) + 1
     following = _PY_TOP_LEVEL.search(body, after_def)
     end = following.start() if following else len(body)
+    if _PY_FAULTED_RETURN in body[after_def:end]:
+        return body
     returns = list(_PY_RETURN.finditer(body, after_def, end))
     if not returns:
         return body
     last = returns[-1]
     replacement = (
         f'{last.group("indent")}return {{"id": getattr({last.group("expr")}, "id", None)}}'
-        f"  # {_INJECTED_JOIN_NOTE}"
     )
     return body[: last.start()] + replacement + body[last.end() :]
 
@@ -269,16 +275,27 @@ def _typescript_join_without_fields(body: str) -> str:
     qa fill runs, so the probe fails on the missing fields. The cast keeps ``next build``'s
     type check clean, so the defect reaches the probe rather than stopping at the build.
     """
+    if _TS_FAULTED_CAST in body:
+        return body
     returns = list(_TS_JSON_RETURN.finditer(body))
     if not returns:
         return body
     last = returns[-1]
     replacement = (
         f"return {last.group('ctor')}.json({{ id: ({last.group('expr')} as unknown as "
-        f"{{ id?: unknown }}).id }}{last.group('rest') or ''}){last.group('semi')} "
-        f"// {_INJECTED_JOIN_NOTE}"
+        f"{{ id?: unknown }}).id }}{last.group('rest') or ''}){last.group('semi')}"
     )
     return body[: last.start()] + replacement + body[last.end() :]
+
+
+def _join_file_without_fields(path: str, body: str) -> str:
+    """One file's join handler, faulted by its language; any other file unchanged. The unit both
+    the emission transform and the hold through self-evaluation apply (#1716)."""
+    if path.endswith(".py"):
+        return _python_join_without_fields(body)
+    if path.endswith("join/route.ts"):
+        return _typescript_join_without_fields(body)
+    return body
 
 
 def _join_response_omits_declared_fields(content: str) -> str:
@@ -299,14 +316,8 @@ def _join_response_omits_declared_fields(content: str) -> str:
     """
 
     def rewrite(match: re.Match[str]) -> str:
-        info, body = match.group("info"), match.group("body")
-        path = info.partition(":")[2]
-        if path.endswith(".py"):
-            new_body = _python_join_without_fields(body)
-        elif path.endswith("join/route.ts"):
-            new_body = _typescript_join_without_fields(body)
-        else:
-            return match.group(0)
+        path = match.group("info").partition(":")[2]
+        new_body = _join_file_without_fields(path, match.group("body"))
         return match.group("open") + new_body + match.group("close")
 
     return _ADDRESSED_BLOCK.sub(rewrite, content)
@@ -424,6 +435,12 @@ class Fault:
     #: The stacks whose emissions carry the file shape the fault is about; empty for any. A
     #: declaration on another stack's cycle is refused, since the fault could not bite there.
     stacks: frozenset[str] = frozenset()
+    #: #1716: the same defect as ``transform``, applied to one file by its path. Set for a fault
+    #: whose task self-evaluates (SIP-0086 §12a) and whose seam lies downstream of it: after
+    #: each pass merges, the handed-on files are re-faulted, so a pass cannot deliver a
+    #: repaired file while the diagnostic asks about what the task hands on. The loop still
+    #: runs, and its texture is still read from it.
+    file_transform: Callable[[str, str], str] | None = None
 
     @property
     def transforms_emission(self) -> bool:
@@ -494,11 +511,14 @@ FAULTS: dict[str, Fault] = {
     ),
     # 1.8.0 plan §4.1: the dev lane had no fault, so no diagnostic could force a development
     # repair and Scoped Code Revision's dev grant (SIP-0107 §38 step 3) had nothing to prove
-    # itself on. First attempt only: the develop task's emission takes it, the qa task's
-    # probes reject the app, and the development repair that follows runs clean.
+    # itself on. First attempt only: the develop task hands the faulted join on, the qa task's
+    # probes reject the app, and the development repair that follows runs clean. #1716: "the
+    # emission takes it" stopped being enough when the develop task began self-evaluating
+    # (1.8.2) — a pass reverted it on A′ — so it is held through each pass's merge.
     "dev_join_response_omits_declared_fields": Fault(
         task=TaskType.DEVELOPMENT_DEVELOP,
         transform=_join_response_omits_declared_fields,
+        file_transform=_join_file_without_fields,
         found_in="#1029's response floor — 1.6.3 Next.js set record §6: rolls 1, 4 and 5 rejected, "
         "correctly, on a join response that failed the frozen floor every round",
         exercises="the dev lane: a probe failure on a developer-owned route is repaired by a "
@@ -763,6 +783,63 @@ HANG_SECONDS = 24 * 60 * 60
 CRASH_EXIT_CODE = 137
 #: The process exit, bound here so a test can observe a crash without being killed by it.
 _exit = os._exit
+
+
+def held_through_pass(
+    artifacts: list[dict[str, Any]],
+    *,
+    handler_name: str,
+    task_id: str,
+    resolved_config: Mapping[str, Any] | None,
+    inputs: Mapping[str, Any] | None = None,
+    pass_index: int,
+) -> list[dict[str, Any]]:
+    """The files a self-evaluation pass merged, with each declared fault that must survive the
+    task's own loop re-applied to them (#1716) — the files unchanged for a cycle with none.
+
+    On A′'s ``dev-lane-fastapi-react`` run 2 the develop task's first pass edited the faulted
+    join handler back to ``return run``, and the diagnostic's seam became unreachable by
+    construction. Re-applying after each merge means every validation — the recorded one
+    included — reads the tree the task will hand on. A re-application is logged in ``APPLIED``
+    form, so the record's ``faults_applied`` counts the attempt the seam is read against.
+    """
+    holding = [
+        (name, fault)
+        for name in declared_faults(resolved_config)
+        if (fault := FAULTS.get(name)) is not None
+        and fault.file_transform is not None
+        and task_id.endswith(fault.task)
+        and _applies(fault, task_id, inputs)
+    ]
+    if not holding:
+        return artifacts  # the same list: a cycle that declares none is untouched
+    held = [dict(a) for a in artifacts]
+    for name, fault in holding:
+        before = after = 0
+        for artifact in held:
+            content, path = artifact.get("content"), str(artifact.get("name") or "")
+            if not isinstance(content, str) or not path:
+                continue
+            faulted = fault.file_transform(path, content)
+            if faulted != content:
+                before, after = before + len(content), after + len(faulted)
+                artifact["content"] = faulted
+        if before:
+            logger.warning(
+                "fault_injection: APPLIED %s to task=%s handler=%s chars %d -> %d scope=%s "
+                "(held through self-evaluation pass %d, whose files carried it unfaulted, #1716; "
+                "found_in=%s exercises=%s) — this cycle is a DIAGNOSTIC and must not be counted",
+                name,
+                task_id,
+                handler_name,
+                before,
+                after,
+                fault.scope.value,
+                pass_index,
+                fault.found_in,
+                fault.exercises,
+            )
+    return held
 
 
 def planted_rows(
