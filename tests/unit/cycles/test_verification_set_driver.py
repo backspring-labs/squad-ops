@@ -6594,6 +6594,64 @@ FAILED backend/tests/test_runs.py::test_post_dev_seed_returns_200 - pydantic_...
             f"{suite}::test_new": "no_repo_frame",
         }
 
+    def test_a_refunded_round_and_its_re_take_are_two_rounds_not_one(
+        self, driver, monkeypatch, tmp_path
+    ):
+        """#1697, the join's side: since ids carry the run's round sequence, a refunded round
+        (``-00-s00-``) and the round that re-takes the index (``-00-s01-``) no longer repeat an
+        id, so #1698's guard no longer sets them aside. Bug this catches: the join still keyed by
+        index alone — both repairs merged into one round, and the refunded repair's earlier time
+        choosing the report from before the first failure as "before", instead of the re-take's."""
+        tree = tmp_path / "vault"
+        suite = "backend/tests/test_runs.py"
+        first_failure = "```\nFAILED backend/tests/test_runs.py::test_a - boom\n1 failed\n```"
+        re_take = (
+            "```\nFAILED backend/tests/test_runs.py::test_b - boom\n1 failed, 1 passed in 0.1s\n```"
+        )
+        after = "```\nFAILED backend/tests/test_runs.py::test_a - boom\n1 failed\n```"
+        self._store(tree, 1, suite, "task-run_ab12cd34-m005-qa.test", "t1", "def test_a(): ...\n")
+        self._store(
+            tree, 2, "test_report.md", "task-run_ab12cd34-m005-qa.test", "t2", first_failure
+        )
+        # The refunded repair stored only its prose; the re-take then reported again.
+        self._store(
+            tree,
+            3,
+            "build_warnings.md",
+            "repair-run_ab12cd34-00-s00-qa.test_repair",
+            "t3",
+            "I'll look.",
+        )
+        self._store(tree, 4, "test_report.md", "task-run_ab12cd34-m005-qa.test", "t4", re_take)
+        self._store(
+            tree, 5, suite, "repair-run_ab12cd34-00-s01-qa.test_repair", "t5", "def test_a(): 1\n"
+        )
+        self._store(tree, 6, "test_report.md", "retest-run_ab12cd34-00-s01-qa.test", "t6", after)
+        monkeypatch.setattr(driver, "artifact_dirs", lambda *a, **k: sorted(tree.glob("art_*")))
+        monkeypatch.setattr(driver, "main_checkout", lambda: tree)
+
+        (rnd,) = driver.retest_readout(
+            driver.SetConfig(
+                name="s",
+                project="p",
+                squad_profile="x",
+                request_profile="y",
+                gate_name="g",
+                gate_notes="g",
+                launch_notes="l",
+                shakeout_notes="s",
+                n_rolls=1,
+            ),
+            "cyc",
+            "run",
+        )
+
+        assert (rnd["round"], rnd["seq"]) == (0, 1)
+        assert rnd["repair"] == ["qa.test_repair"]
+        # "before" is the re-take's report: test_a passed there, so failing now is a regression.
+        assert rnd["before_failures"] == 1
+        assert rnd["regressions"] == [f"{suite}::test_a"]
+
     def test_a_round_whose_pre_patch_report_ran_nothing_cannot_read_regressions(
         self, driver, monkeypatch, tmp_path
     ):

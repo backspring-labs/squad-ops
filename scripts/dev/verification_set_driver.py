@@ -4728,9 +4728,18 @@ def _stale_evaluations(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[dic
 # The retest readout (1.8.2 plan §3.2 item 1): where a retested patch still fails
 # ---------------------------------------------------------------------------
 
-#: A retest's own report and a repair's own artifacts, joined by the round index they carry.
-_RETEST_TASK = re.compile(r"^retest-run_[0-9a-f]+-(\d+)-")
-_REPAIR_TASK = re.compile(r"^repair-run_[0-9a-f]+-(\d+)-")
+#: A retest's own report and a repair's own artifacts, joined by the round they carry: the index,
+#: and since #1697 the run's round sequence (``-00-s01-``). Rounds that share an index — a refunded
+#: round and the one that re-takes it — are distinct rounds; an id without a sequence reads as before.
+_RETEST_TASK = re.compile(r"^retest-run_[0-9a-f]+-(\d+)-(?:s(\d+)-)?")
+_REPAIR_TASK = re.compile(r"^repair-run_[0-9a-f]+-(\d+)-(?:s(\d+)-)?")
+
+
+def _round_key(match: re.Match[str]) -> tuple[int, int | None]:
+    """A round's identity off its task id: ``(index, sequence)``, the sequence None before #1697."""
+    return int(match.group(1)), int(match.group(2)) if match.group(2) else None
+
+
 #: pytest --tb=short: a failure block's header, a repo frame (relative, so site-packages and
 #: the interpreter's own frames never count), and the short summary's node id.
 _PYTEST_HEADER = re.compile(r"^_{3,} (?:ERROR collecting )?(\S.*?) _{3,}$")
@@ -4914,14 +4923,17 @@ def retest_readout(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[dict]:
     region is the diff of each repaired file against its last stored version.
     """
     versions = _vault_versions(cfg, cycle_id, impl_run)
-    rounds: dict[int, dict] = {}
+    # #1697: keyed by the round's identity, not its index alone. A refunded round and the round
+    # that re-takes it share an index; keyed by index their repairs merged, and the earlier
+    # (refunded) repair's time chose the "before" report.
+    rounds: dict[tuple[int, int | None], dict] = {}
     for v in versions:
         if (m := _RETEST_TASK.match(v["task_id"])) and v["filename"] == "test_report.md":
-            rounds.setdefault(int(m.group(1)), {})["retest"] = v
+            rounds.setdefault(_round_key(m), {})["retest"] = v
         elif m := _REPAIR_TASK.match(v["task_id"]):
-            rounds.setdefault(int(m.group(1)), {}).setdefault("repair", []).append(v)
+            rounds.setdefault(_round_key(m), {}).setdefault("repair", []).append(v)
     out = []
-    for index, parts in sorted(rounds.items()):
+    for (index, seq), parts in sorted(rounds.items(), key=lambda kv: (kv[0][0], kv[0][1] or -1)):
         retest, repair = parts.get("retest"), parts.get("repair") or []
         if retest is None or not repair:
             continue
@@ -4956,6 +4968,7 @@ def retest_readout(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[dict]:
         out.append(
             {
                 "round": index,
+                "seq": seq,
                 "repair": sorted({_REPAIR_TASK.sub("", v["task_id"]) for v in repair}),
                 "edited": {f: [list(r) for r in ranges] for f, ranges in edited.items()},
                 "retest_executed": after["executed"],
