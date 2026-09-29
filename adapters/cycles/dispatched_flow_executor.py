@@ -61,7 +61,7 @@ from squadops.cycles.contract_derivation import (
     is_interface_manifest,
 )
 from squadops.cycles.correction_signature import REPAIR_EMPTY_MARKER
-from squadops.cycles.cycle_end import CycleStopReason
+from squadops.cycles.cycle_end import STOP_REASON_FOR_UNCOMPLETED_RUN, CycleStopReason
 from squadops.cycles.emission_integrity import EMISSION_FAILURE_KEY, EMISSION_STATUS_FAILED
 from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.failure_evidence import failing_cases_from_evidence
@@ -756,9 +756,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
     ) -> None:
         """Execute a full cycle by iterating over workload_sequence.
 
-        Assumes execute_run() returns only after the run reaches a terminal
-        state (completed, failed, cancelled). Decision semantics for inter-
-        workload gates are interpreted here, not in the polling helper.
+        execute_run() returns once the run has ended or been deferred: completed, failed,
+        cancelled, or paused (#1754). Only a completed run advances the sequence; any other
+        status stops it, with the reason ``STOP_REASON_FOR_UNCOMPLETED_RUN`` names. Decision
+        semantics for inter-workload gates are interpreted here, not in the polling helper.
         """
         cycle = await self._cycle_registry.get_cycle(cycle_id)
         workload_sequence = cycle.resolved_config().get("workload_sequence", [])
@@ -824,9 +825,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 forwarding_overrides=forwarding_overrides,
             )
 
-            # Check terminal status (compare persisted string values)
+            # Check terminal status (compare persisted string values). #1754: anything but a
+            # completed run stops the sequence. A paused run read as completed was gated, its
+            # empty plan rejected, and each framing re-roll cancelled it.
             run = await self._cycle_registry.get_run(current_run_id)
-            if run.status in (RunStatus.FAILED.value, RunStatus.CANCELLED.value):
+            if run.status != RunStatus.COMPLETED.value:
                 self._cycle_event_bus.emit(
                     EventType.WORKLOAD_COMPLETED,
                     entity_type="workload",
@@ -837,11 +840,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         "terminal_status": run.status,
                     },
                 )
-                stopped_because = (
-                    CycleStopReason.RUN_FAILED
-                    if run.status == RunStatus.FAILED.value
-                    else CycleStopReason.RUN_CANCELLED
-                )
+                stopped_because = STOP_REASON_FOR_UNCOMPLETED_RUN[RunStatus(run.status)]
                 break
 
             self._cycle_event_bus.emit(

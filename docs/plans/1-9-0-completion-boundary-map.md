@@ -157,7 +157,9 @@ Three collaborators, and what's left is the run's spine:
     `CANCELLED` run. A run *paused* by admission (a duty-window deferral, SIP-0089) returns
     normally. It is announced `WORKLOAD_COMPLETED` as `completed`, and its gate runs, rejects the
     empty plan and re-rolls framing, cancelling the paused run. The fix changes behaviour, so it
-    belongs in its own PR (issue pending the owner's placement).
+    belongs in its own PR: **#1754, fixed before the deploy** (the plan's §7a item 6). Any run that
+    did not complete now stops the sequence, with `run_paused` or `run_not_terminal` beside the
+    two reasons above (`STOP_REASON_FOR_UNCOMPLETED_RUN`, `src/squadops/cycles/cycle_end.py`).
 
 ## 5. The forbidden change
 

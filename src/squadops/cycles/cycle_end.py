@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
+from squadops.cycles.models import RunStatus
 from squadops.cycles.run_loop_summary import RunTerminalDecision
 
 
@@ -23,6 +24,13 @@ class CycleStopReason(StrEnum):
     SINGLE_WORKLOAD_ENDED = "single_workload_ended"
     RUN_FAILED = "run_failed"
     RUN_CANCELLED = "run_cancelled"
+    #: #1754: the run was deferred — admission paused it (a duty window or a focus-lease
+    #: conflict, SIP-0089 §2.5) or a task's BLOCKED outcome did. It stays resumable: ``runs
+    #: resume`` re-enters the sequence at it (#257).
+    RUN_PAUSED = "run_paused"
+    #: #1754: ``execute_run`` returned with the run still queued or running, which its contract
+    #: excludes. Recorded as what it is rather than read as completed.
+    RUN_NOT_TERMINAL = "run_not_terminal"
     #: The gate's plan check rejected the plan and no framing re-roll was left (#473, #522).
     PLAN_REJECTED = "plan_rejected"
     #: The gate's decision was a rejection.
@@ -31,6 +39,17 @@ class CycleStopReason(StrEnum):
     REVISION_UNAVAILABLE = "revision_unavailable"
     #: A decision value the dispatch doesn't know — never read as an approval (#466).
     GATE_DECISION_UNRECOGNIZED = "gate_decision_unrecognized"
+
+
+#: Why the sequence stops on a run that did not complete — every ``RunStatus`` but ``COMPLETED``
+#: (#1754). The loop used to stop only on the first two, and read the rest as completed.
+STOP_REASON_FOR_UNCOMPLETED_RUN: dict[RunStatus, CycleStopReason] = {
+    RunStatus.FAILED: CycleStopReason.RUN_FAILED,
+    RunStatus.CANCELLED: CycleStopReason.RUN_CANCELLED,
+    RunStatus.PAUSED: CycleStopReason.RUN_PAUSED,
+    RunStatus.QUEUED: CycleStopReason.RUN_NOT_TERMINAL,
+    RunStatus.RUNNING: CycleStopReason.RUN_NOT_TERMINAL,
+}
 
 
 @dataclass(frozen=True)
