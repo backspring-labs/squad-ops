@@ -92,6 +92,9 @@ class ModelInfo:
     name: str
     size_bytes: int | None = None
     modified_at: str | None = None
+    #: #1720: the content digest of the weights served under ``name``. A model re-pulled under
+    #: the same tag keeps its name and changes this; ``None`` when the provider reports none.
+    digest: str | None = None
 
 
 @dataclass(frozen=True)

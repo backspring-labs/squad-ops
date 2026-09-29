@@ -2,7 +2,7 @@
 Tests for SIP-0064 cycle API routes.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -10,8 +10,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from adapters.cycles.memory_deploy_registry import MemoryDeployRegistry
 from squadops.api.error_handlers import register_domain_error_handlers
 from squadops.api.routes.cycles.cycles import router
+from squadops.cycles.deploy_record import DeployRecord, ModelWeights, ServiceImage
 from squadops.cycles.models import (
     AgentProfileEntry,
     Cycle,
@@ -98,6 +100,7 @@ def client(
 
     app.state.project_registry = mock_project_registry
     app.state.cycle_registry = mock_cycle_registry
+    app.state.deploy_registry = MemoryDeployRegistry()  # #1720: no deploy recorded yet
     app.state.squad_profile = mock_squad_profile
     app.state.flow_executor = mock_flow_executor
     # #1568: the create-time sandbox preflight reads the provider from the process env, and
@@ -249,6 +252,75 @@ class TestCreateCycleCodeLineage:
             "1.7.5",
             "072672ef-dirty",
         )
+
+
+class TestCreateCycleDeployLineage:
+    """#1720: the deploy a cycle was created on, referenced at the create route.
+
+    Enters at ``POST /api/v1/projects/{project}/cycles`` with the deploy registry holding what the
+    deploy step wrote, and asserts what reaches the cycle registry and what the detail returns.
+    Bug caught: the record written at every deploy while the route never references it, so a
+    cycle still names only the runtime's commit — deploy A′'s case, where the agents ran another
+    commit's images."""
+
+    @staticmethod
+    def _record(deploy_id: str, hours: int, neo_revision: str | None) -> DeployRecord:
+        return DeployRecord(
+            deploy_id=deploy_id,
+            recorded_at=NOW + timedelta(hours=hours),
+            recorded_by="rebuild_and_deploy.sh all",
+            source_revision="7acc2bc1",
+            services=(
+                ServiceImage("neo", "sha256:neo", neo_revision),
+                ServiceImage("runtime-api", "sha256:api", "7acc2bc1"),
+            ),
+            models=(ModelWeights("qwen3.8:27b", "22130167c4c2"),),
+        )
+
+    async def test_the_cycle_references_the_latest_deploy(self, client, mock_cycle_registry):
+        deploys = client.app.state.deploy_registry
+        await deploys.record(self._record("dep_earlier", 0, "ccc9475d"))
+        await deploys.record(self._record("dep_latest", 2, "7acc2bc1"))
+
+        resp = client.post(
+            "/api/v1/projects/hello_squad/cycles",
+            json={"squad_profile_id": "full", "request_profile": "selftest"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        (cycle,) = mock_cycle_registry.create_cycle.call_args[0]
+        assert cycle.deploy_id == "dep_latest"
+        record = await deploys.get(cycle.deploy_id)
+        assert record.service("neo").revision == "7acc2bc1"
+
+    def test_with_no_deploy_recorded_the_cycle_says_unknown(self, client, mock_cycle_registry):
+        resp = client.post(
+            "/api/v1/projects/hello_squad/cycles",
+            json={"squad_profile_id": "full", "request_profile": "selftest"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        (cycle,) = mock_cycle_registry.create_cycle.call_args[0]
+        assert cycle.deploy_id is None
+
+    def test_the_detail_response_carries_the_deploy(self, client, mock_cycle_registry):
+        mock_cycle_registry.get_cycle.return_value = Cycle(
+            cycle_id="cyc_001",
+            project_id="hello_squad",
+            created_at=NOW,
+            created_by="system",
+            prd_ref=None,
+            squad_profile_id="full",
+            squad_profile_snapshot_ref="sha256:abc",
+            task_flow_policy=TaskFlowPolicy(mode="sequential"),
+            build_strategy="fresh",
+            deploy_id="dep_latest",
+        )
+        mock_cycle_registry.list_runs.return_value = []
+
+        body = client.get("/api/v1/projects/hello_squad/cycles/cyc_001").json()
+
+        assert body["deploy_id"] == "dep_latest"
 
 
 class TestListCycles:

@@ -304,6 +304,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     from adapters.cycles.factory import (
         create_artifact_vault,
         create_cycle_registry,
+        create_deploy_registry,
         create_flow_executor,
         create_project_registry,
         create_squad_profile_port,
@@ -312,6 +313,11 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
 
     project_registry = create_project_registry("config")
     cycle_registry = create_cycle_registry(
+        config.cycles.registry_provider,
+        **({"pool": pool} if config.cycles.registry_provider == "postgres" else {}),
+    )
+    # #1720: the deploy records live beside the cycles, chosen by the same selector.
+    deploy_registry = create_deploy_registry(
         config.cycles.registry_provider,
         **({"pool": pool} if config.cycles.registry_provider == "postgres" else {}),
     )
@@ -453,6 +459,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
 
     state.project_registry = project_registry
     state.cycle_registry = cycle_registry
+    state.deploy_registry = deploy_registry
     state.squad_profile = squad_profile
     state.artifact_vault = artifact_vault
     state.flow_executor = flow_executor

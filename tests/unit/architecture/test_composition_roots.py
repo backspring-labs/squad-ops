@@ -205,13 +205,18 @@ def test_every_named_exception_is_still_real():
 #: standard rather than from grep, so a binding that vanishes fails as surely as one that
 #: bypasses its factory.
 _EXPECTED_FACTORY_CALLS: dict[str, dict[str, int]] = {
+    # #1720: ``record_deploy`` is this root's second process — the deploy step's one-off — and
+    # binds the deploy registry, the squad profile and the LLM through the same factories and
+    # selectors as ``main``. Hence the second LLM call, the third squad-profile call (``main``'s
+    # two are an if/else over one selector) and the two deploy-registry calls.
     "squadops.api.runtime": {
-        "create_llm_provider": 1,
+        "create_llm_provider": 2,
         "create_queue_adapter": 1,
         "create_a2a_client": 1,
         "create_project_registry": 1,
         "create_cycle_registry": 1,
-        "create_squad_profile_port": 2,
+        "create_deploy_registry": 2,
+        "create_squad_profile_port": 3,
         "create_artifact_vault": 1,
         "create_workflow_tracker": 1,
         "create_cycle_event_bus": 1,

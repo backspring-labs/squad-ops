@@ -208,12 +208,17 @@ class TestCodeLineageRoundTrip:
         ids=["stamped", "unstamped"],
     )
     async def test_the_lineage_round_trips(self, registry, version, sha):
-        cycle = _make_cycle(framework_version=version, framework_git_sha=sha)
+        deploy_id = "dep_0123456789ab" if sha else None  # #1720, migration 1051
+        cycle = _make_cycle(framework_version=version, framework_git_sha=sha, deploy_id=deploy_id)
         await registry.create_cycle(cycle)
 
         fetched = await registry.get_cycle(cycle.cycle_id)
 
-        assert (fetched.framework_version, fetched.framework_git_sha) == (version, sha)
+        assert (fetched.framework_version, fetched.framework_git_sha, fetched.deploy_id) == (
+            version,
+            sha,
+            deploy_id,
+        )
 
 
 class TestRunLoopSummaryRoundTrip:

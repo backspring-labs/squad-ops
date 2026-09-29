@@ -290,6 +290,12 @@ async def _validate_replay_declaration(
         raise PreflightRejectedError("; ".join(errors))
 
 
+async def _current_deploy_id(registry) -> str | None:
+    """The latest deploy record's id (#1720), or None when no deploy has been recorded."""
+    latest = await registry.latest()
+    return latest.deploy_id if latest else None
+
+
 @router.post("", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
 async def create_cycle(
     request: Request, project_id: str, body: CycleCreateRequest, background_tasks: BackgroundTasks
@@ -300,6 +306,7 @@ async def create_cycle(
     """
     from squadops.api.runtime.deps import (
         get_cycle_registry,
+        get_deploy_registry,
         get_flow_executor,
         get_project_registry,
         get_squad_profile_port,
@@ -377,6 +384,9 @@ async def create_cycle(
         # carries the deploy that actually served the request.
         framework_version=SQUADOPS_VERSION,
         framework_git_sha=resolve_git_sha(),
+        # #1720: and which deploy — every service's image and the models' weights, recorded by
+        # the deploy step. None when no deploy has been recorded: unknown, never a guess.
+        deploy_id=await _current_deploy_id(get_deploy_registry(request)),
         notes=body.notes,
     )
 

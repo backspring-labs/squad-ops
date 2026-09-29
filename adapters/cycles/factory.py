@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
 from squadops.ports.cycles.cycle_registry import CycleRegistryPort
+from squadops.ports.cycles.deploy_registry import DeployRegistryPort
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
 from squadops.ports.cycles.project_registry import ProjectRegistryPort
 from squadops.ports.cycles.squad_profile import SquadProfilePort
@@ -39,6 +40,23 @@ def create_cycle_registry(provider: str, **kwargs) -> CycleRegistryPort:
 
         return PostgresCycleRegistry(pool=pool)
     raise ValueError(f"Unknown cycle registry provider: {provider}")
+
+
+def create_deploy_registry(provider: str, **kwargs) -> DeployRegistryPort:
+    """Create a DeployRegistryPort adapter (#1720). The same store as the cycle registry, so the
+    same selector (``cycles.registry_provider``) chooses it."""
+    if provider == "memory":
+        from adapters.cycles.memory_deploy_registry import MemoryDeployRegistry
+
+        return MemoryDeployRegistry()
+    elif provider == "postgres":
+        pool = kwargs.get("pool")
+        if pool is None:
+            raise ValueError("pool is required for postgres deploy registry provider")
+        from adapters.cycles.postgres_deploy_registry import PostgresDeployRegistry
+
+        return PostgresDeployRegistry(pool=pool)
+    raise ValueError(f"Unknown deploy registry provider: {provider}")
 
 
 def create_squad_profile_port(provider: str, **kwargs) -> SquadProfilePort:
