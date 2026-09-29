@@ -370,6 +370,10 @@ EVIDENCE_FIELDS: dict[str, tuple[str, ...]] = {
     ),
     "loop_texture.self_eval_revision_forms": (*_AGENT_WINDOW, "no_self_eval_revision_form_line"),
     "loop_texture.qa_retake_revision_forms": (*_AGENT_WINDOW, "no_qa_retake_revision_form_line"),
+    # #1724: a re-take's verification (its suite line and its stored evaluation), and each
+    # self-evaluation pass that wrote a whole file.
+    "loop_texture.retake_verifications": (*_AGENT_WINDOW, "no_qa_retake_revision_form_line"),
+    "loop_texture.self_eval_file_emissions": _AGENT_WINDOW,
     # loop_texture: the Prefect server's window (its filter keeps only overrun lines, so an
     # empty window is a quiet one)
     "loop_texture.prefect_loop_overruns": (),
@@ -2438,6 +2442,12 @@ _AGENT_LINE_KEYS = (
     # line is its revision form in N's qa cells (1.8.2 deploy A pre-registration §3c).
     "self_eval_revision_form ",
     "qa_retake_revision_form ",
+    # #1724: a qa re-take's verification, read in the qa container's own order — its typed
+    # checks (their index names the stored evaluation), the self-evaluation trigger, and the
+    # suite run that verified the tree.
+    "typed_acceptance_check subtask=",
+    "self_eval trigger: ",
+    " suite: framework=",
     # #1588: the fault hook's own trace — APPLIED to which attempt, or declared and out of
     # scope. A seam reading that does not know whether its fault applied credited L4 on a
     # refund the dev's prose answer earned, in a cycle where no qa repair ever ran.
@@ -3042,6 +3052,45 @@ AGENT_MARKER_SAMPLES: dict[str, tuple[str, ...]] = {
         "path placeholder: 'path/backend/tests/test_runs.py' emitted under the example's literal "
         "'path/' segment; stripped to 'backend/tests/test_runs.py', which the task expects (#1272)",
     ),
+    # Real: A′'s `own-frame-then-prose-repair-nextjs`, cyc_96656c0e48be (eve), 2026-09-28 — the
+    # re-take, the two checks that failed on it, the pass they triggered (it re-emitted the
+    # offered, unedited suite), and the suite run that verified the tree (#1724).
+    "retake_verifications": (
+        "2026-09-28 12:36:47,305 - squadops.capabilities.handlers.cycle.qa_test - INFO - qa_retak"
+        'e_revision_form {"accepted": true, "edited": ["__tests__/runs-api.test.ts"], "failure_re'
+        'ason": null, "fills": 0, "form": "edits", "fragment_anchors": 0, "handler": "qa_test_han'
+        'dler", "modes": ["anchored"], "new_files": [], "offered": {"__tests__/participants.test.'
+        'ts": 9, "__tests__/runs-api.test.ts": 7}, "refusals": 0, "replaced": {"__tests__/runs-ap'
+        'i.test.ts": {"chars": 67, "of": 6557, "pct": 1}}, "retried": false, "task_type": "qa.tes'
+        't", "whole_file_offered": [], "whole_file_unoffered": []}',
+        "2026-09-28 12:36:47,316 - squadops.capabilities.handlers.cycle.base - INFO - typed_accep"
+        "tance_check subtask=4 check=assertion_kinds_match severity=error status=failed blocking="
+        "True reason=file_not_found",
+        "2026-09-28 12:36:47,317 - squadops.capabilities.handlers.cycle.base - INFO - typed_accep"
+        "tance_check subtask=4 check=dom_anchor_queries severity=error status=failed blocking=Tru"
+        "e reason=file_not_found",
+        "2026-09-28 12:36:48,081 - squadops.capabilities.handlers.cycle.qa_test - INFO - qa_test_"
+        "handler self_eval trigger: failing_checks=['expected_artifacts', 'acceptance:assertion_k"
+        "inds_match', 'acceptance:dom_anchor_queries'] missing=['file:__tests__/participants.test"
+        ".ts', 'acceptance:assertion_kinds_match', 'acceptance:dom_anchor_queries'] summary='Miss"
+        "ing: file:__tests__/participants.test.ts, acceptance:assertion_kinds_match, acceptance:d"
+        "om_anchor_queries; Typed checks failed: 2 of 40'",
+        "2026-09-28 12:37:53,271 - squadops.capabilities.handlers.emission_log - INFO - qa_test_h"
+        "andler:self_eval emission shape: chars=6972 completion_tokens=2115 reasoning_chars=743 f"
+        "ences={'fill': 0, 'path': 1, 'plain': 0} head=\"```typescript:__tests__/participants.test"
+        ".ts import { beforeEach, describe, expect, it } from 'vitest' import { reset, all, TABLE"
+        "S } from '@/lib/store' import *\"",
+        "2026-09-28 12:38:11,749 - squadops.capabilities.handlers.cycle.qa_test - INFO - qa_test_"
+        "handler suite: framework=vitest executed=True exit_code=0 tests_passed=True test_files=1"
+        "0 source_files=17 uncollected=[] error=''",
+    ),
+    "self_eval_file_emissions": (
+        "2026-09-28 12:37:53,271 - squadops.capabilities.handlers.emission_log - INFO - qa_test_h"
+        "andler:self_eval emission shape: chars=6972 completion_tokens=2115 reasoning_chars=743 f"
+        "ences={'fill': 0, 'path': 1, 'plain': 0} head=\"```typescript:__tests__/participants.test"
+        ".ts import { beforeEach, describe, expect, it } from 'vitest' import { reset, all, TABLE"
+        "S } from '@/lib/store' import *\"",
+    ),
     "faults_applied": (
         "2026-09-21 05:41:41,684 - squadops.capabilities.handlers.fault_injection - WARNING - "
         "fault_injection: APPLIED dev_join_response_omits_declared_fields to "
@@ -3168,6 +3217,11 @@ def loop_texture(
     out["fill_rejections"] = rejections or []
     # #999: the qa task's fill-merge evidence, persisted as an artifact and read from it.
     out["fill_merge_evidence"] = fill_merge_evidence(cfg, cycle_id, impl_run) if impl_run else []
+    # #1724: each re-take joined to the evaluation its task stored after it.
+    out["retake_verifications"] = join_retake_evaluations(
+        index_retakes_by_dispatch(out["retake_verifications"], logs),
+        stored_task_evaluations(cfg, cycle_id, impl_run) if impl_run else {},
+    )
     # #1540: suites the runner never collected — non-execution with no row anywhere else.
     uncollected = uncollected_suites(cfg, cycle_id, impl_run) if impl_run else None
     out["uncollected_suites"] = uncollected or []
@@ -3900,6 +3954,9 @@ def texture_from_agent_lines(agent_lines: list[str]) -> dict:
     out["repair_revision_forms"] = repair_revision_forms(agent_lines)
     out["self_eval_revision_forms"] = revision_forms(agent_lines, _SELF_EVAL_FORM_MARKER)
     out["qa_retake_revision_forms"] = revision_forms(agent_lines, _QA_RETAKE_FORM_MARKER)
+    # #1724: each re-take's verification, and each pass that wrote a whole file.
+    out["retake_verifications"] = retake_verifications(agent_lines)
+    out["self_eval_file_emissions"] = self_eval_file_emissions(agent_lines)
     # #1311: L8a — the model emitted under the placeholder and the extractor repaired it
     # (read from the agent's log, the only place it is visible).
     out["placeholder_strips"] = placeholder_strips(agent_lines)
@@ -3981,6 +4038,235 @@ def revision_forms(agent_lines: list[str], form_marker: str) -> list[dict]:
         except ValueError:
             forms.append({"unparsed": line.strip()})
     return forms
+
+
+_SELF_EVAL_TRIGGER = re.compile(r"self_eval trigger: failing_checks=\[(?P<checks>[^\]]*)\]")
+_SUITE_RUN = re.compile(
+    r"(?P<handler>\w+) suite: framework=(?P<framework>\S+) executed=(?P<executed>\w+) "
+    r"exit_code=(?P<exit_code>\S+) tests_passed=(?P<tests_passed>\w+)"
+)
+#: The first path a whole-file emission names, off its shape line's ``head`` (a path fence
+#: opens ```` ```<lang>:<path> ````).
+_HEAD_FENCE_PATH = re.compile(r'head="```[\w+#.-]*:(?P<path>[^\s"]+)')
+
+
+def _agent_line_time(line: str) -> str | None:
+    """An agent log line's own timestamp, as UTC ISO (the containers log UTC)."""
+    match = re.match(r"(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}),(\d{3})", line)
+    return f"{match[1]}T{match[2]}.{match[3]}+00:00" if match else None
+
+
+def _whole_file_emission(line: str) -> dict | None:
+    """A self-evaluation pass's emission, when it writes whole files (path or plain fences)."""
+    shapes = emission_shapes([line]) if _SELF_EVAL_SHAPE.search(line) else []
+    if not shapes:
+        return None
+    fences = shapes[0]["fences"]
+    if not (fences.get("path", 0) or fences.get("plain", 0)):
+        return None
+    head = _HEAD_FENCE_PATH.search(line)
+    return {
+        "handler": shapes[0]["handler"].removesuffix(":self_eval"),
+        "at": _agent_line_time(line),
+        "chars": shapes[0]["chars"],
+        "path_fences": fences.get("path", 0),
+        "plain_fences": fences.get("plain", 0),
+        "first_path": head.group("path") if head else None,
+    }
+
+
+def self_eval_file_emissions(agent_lines: list[str]) -> list[dict]:
+    """Every self-evaluation pass whose emission adds or re-emits whole files — pure (#1724).
+
+    A pass offered the edit form logs a ``self_eval_revision_form``; a pass that writes a file
+    logged nothing but its emission shape, so a record could not show that a verified tree was
+    a task's own emission plus a file a pass supplied. The shape names the fences it carried and
+    its head names the first path; which files beyond the first is not logged anywhere.
+    """
+    return [e for line in agent_lines if (e := _whole_file_emission(line)) is not None]
+
+
+def retake_verifications(agent_lines: list[str]) -> list[dict]:
+    """Each qa re-take and what verified it, read in the qa container's own order — pure (#1724).
+
+    The re-take's revision form was recorded and its verification was not: it completes on the
+    ordinary task path, where no patch verification or identity line is written. So each
+    ``qa_retake_revision_form`` line opens an episode that collects what followed it in that
+    container: the typed checks that failed on the re-take (their ``subtask`` is the task index
+    its stored evaluation is filed under), the self-evaluation pass they triggered and any file
+    it wrote, and the suite run. The suite line closes the episode; the next task's emission, or
+    another re-take, closes it without one, and ``suite`` stays None — a re-take whose suite
+    never ran is a reading, not a gap. The stored evaluation is joined in ``loop_texture``.
+    """
+    episodes: list[dict] = []
+    current: dict | None = None
+    for line in agent_lines:
+        _, marker, payload = line.partition(_QA_RETAKE_FORM_MARKER)
+        if marker:
+            if current is not None:
+                episodes.append(current)
+            current = _open_retake(line, payload)
+        elif current is not None and _fold_into_retake(current, line):
+            episodes.append(current)
+            current = None
+    if current is not None:
+        episodes.append(current)
+    return episodes
+
+
+def _open_retake(line: str, payload: str) -> dict:
+    try:
+        form = json.loads(payload)
+    except ValueError:
+        form = {"unparsed": line.strip()}
+    return {
+        "at": _agent_line_time(line),
+        "task_type": form.get("task_type"),
+        "form": form.get("form"),
+        "accepted": form.get("accepted"),
+        "edited": list(form.get("edited") or []),
+        "new_files": list(form.get("new_files") or []),
+        "offered": sorted(form.get("offered") or {}),
+        "task_index": None,
+        "task_index_from": None,
+        "failed_on_retake": [],
+        "self_eval_trigger": None,
+        "self_eval_emissions": [],
+        "suite": None,
+    }
+
+
+def _fold_into_retake(episode: dict, line: str) -> bool:
+    """One qa-container line into an open re-take; True when the line closes it — its suite
+    run, or the next task's emission (no suite ran for this one)."""
+    if _EMISSION_SHAPE.search(line) and not _SELF_EVAL_SHAPE.search(line):
+        return True
+    if "typed_acceptance_check subtask=" in line:
+        if episode["task_index"] is None:
+            episode["task_index"] = _int_or_none(_field(line, "subtask"))
+            episode["task_index_from"] = "typed_check_line"
+        if episode["self_eval_trigger"] is None and _field(line, "status") == "failed":
+            episode["failed_on_retake"].append(_field(line, "check"))
+    elif (m := _SELF_EVAL_TRIGGER.search(line)) is not None:
+        episode["self_eval_trigger"] = re.findall(r"'([^']+)'", m.group("checks"))
+    elif (emission := _whole_file_emission(line)) is not None:
+        path = emission["first_path"]
+        emission["re_emits_offered"] = None if path is None else path in episode["offered"]
+        episode["self_eval_emissions"].append(emission)
+    elif (m := _SUITE_RUN.search(line)) is not None:
+        episode["suite"] = {
+            "framework": m.group("framework"),
+            "executed": m.group("executed") == "True",
+            "exit_code": _int_or_none(m.group("exit_code")),
+            "tests_passed": m.group("tests_passed") == "True",
+        }
+        return True
+    return False
+
+
+#: A plan task's dispatch in the runtime-api window: its index and type off the id.
+_TASK_DISPATCH = re.compile(r"Dispatched task task-run_[0-9a-f]+-m(?P<index>\d+)-(?P<type>\S+) ")
+
+
+def index_retakes_by_dispatch(episodes: list[dict], runtime_logs: list[str]) -> list[dict]:
+    """A re-take's task index, read from its own dispatch when its typed-check lines named none.
+
+    The agent logs a ``typed_acceptance_check`` line only for a check that did not pass, so a
+    re-take whose checks all passed names no index — on A′, four of six. The re-take is the
+    re-dispatch of its task, and the executor dispatches plan tasks one at a time, so the last
+    dispatch of the re-take's own task type before its form line is its dispatch.
+    """
+    dispatches = [
+        (_as_utc(_agent_line_time(line)), int(m.group("index")), m.group("type"))
+        for line in runtime_logs
+        if (m := _TASK_DISPATCH.search(line)) is not None
+    ]
+    indexed = []
+    for episode in episodes:
+        episode = dict(episode)
+        at = _as_utc(episode.get("at"))
+        if episode.get("task_index") is None and at is not None:
+            before = [
+                index
+                for when, index, task_type in dispatches
+                if when is not None and when <= at and task_type == episode.get("task_type")
+            ]
+            if before:
+                episode["task_index"] = before[-1]
+                episode["task_index_from"] = "dispatch"
+        indexed.append(episode)
+    return indexed
+
+
+def stored_task_evaluations(cfg: SetConfig, cycle_id: str, run_id: str) -> dict[int, list[dict]]:
+    """Every stored typed-check evaluation, by task index, oldest first (#1724).
+
+    A task evaluated twice (a failed attempt, then its re-take) stores two
+    ``typed_check_evaluation_task_<N>.json`` artifacts; ``created_at`` orders them.
+    ``workspace_revision_id`` is the ACCEPTED WORKSPACE the task started from — the executor
+    cuts it at dispatch (``dispatched_flow_executor``, #734 Slice A) — so both attempts carry
+    the same id, and the tree the checks actually ran on is that revision plus the task's own
+    emission. Whether what was verified is what persisted is #1727's question, not this id's.
+    """
+    by_index: dict[int, list[dict]] = {}
+    for art in artifact_dirs(cfg, cycle_id, run_id):
+        meta = _metadata(art) or {}
+        for path in art.glob("typed_check_evaluation_*.json"):
+            try:
+                doc = json.loads(path.read_text())
+            except (OSError, ValueError):
+                continue
+            index = _int_or_none(doc.get("task_index"))
+            if index is None:
+                continue
+            rows = doc.get("evaluations") or []
+            by_index.setdefault(index, []).append(
+                {
+                    "artifact_id": meta.get("artifact_id") or art.name,
+                    "created_at": str(meta.get("created_at") or ""),
+                    "workspace_revision_id": doc.get("workspace_revision_id"),
+                    "statuses": _count_by(str(r.get("status") or "?") for r in rows),
+                    "failed_checks": sorted(
+                        str(r.get("check")) for r in rows if r.get("status") == "failed"
+                    ),
+                }
+            )
+    for evaluations in by_index.values():
+        evaluations.sort(key=lambda e: _as_utc(e["created_at"]) or datetime.min.replace(tzinfo=UTC))
+    return by_index
+
+
+def _as_utc(stamp: str | None) -> datetime | None:
+    try:
+        return datetime.fromisoformat(stamp) if stamp else None
+    except ValueError:
+        return None
+
+
+def join_retake_evaluations(
+    episodes: list[dict], evaluations: Mapping[int, list[dict]]
+) -> list[dict]:
+    """Each re-take with the first evaluation of its task stored after it — its final one
+    (#1724). The reason is named when there is none, so a missing verification reads as a
+    fact about the run rather than an empty field."""
+    joined = []
+    for episode in episodes:
+        episode = dict(episode)
+        index, at = episode.get("task_index"), _as_utc(episode.get("at"))
+        after = [
+            e
+            for e in evaluations.get(index, [])
+            if at is None or (_as_utc(e["created_at"]) or at) >= at
+        ]
+        episode["final_evaluation"] = after[0] if after else None
+        if not after:
+            episode["final_evaluation_reason"] = (
+                "neither a typed-check line nor a dispatch named the re-take's task index"
+                if index is None
+                else f"no evaluation of task {index} was stored after the re-take"
+            )
+        joined.append(episode)
+    return joined
 
 
 def _int_or_none(value) -> int | None:

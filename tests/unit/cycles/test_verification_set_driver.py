@@ -4357,6 +4357,201 @@ class TestPassAndReTakeRevisionForms:
         assert "predates the instrument" in out[field]["reason"]
 
 
+class TestAReTakesVerificationIsRecorded:
+    """#1724: a qa re-take completes on the ordinary task path, where no patch verification or
+    identity line is written, so the record carried its revision form and nothing that
+    verified it — and a self-evaluation pass that wrote a file left no form at all. Read here
+    from A′'s Next.js re-take (cyc_96656c0e48be, eve), whose lines are the registry's sample."""
+
+    _NEXT_TASK = (
+        "2026-09-28 12:40:02,110 - squadops.capabilities.handlers.emission_log - INFO - "
+        "qa_test_handler emission shape: chars=5120 completion_tokens=2900 reasoning_chars=100 "
+        "fences={'fill': 0, 'path': 2, 'plain': 0} head=\"```typescript:__tests__/x.test.ts\""
+    )
+
+    def _window(self, driver, monkeypatch, eve_lines):
+        monkeypatch.setattr(
+            driver,
+            "docker_logs",
+            lambda container, since, until=None: (
+                ["noise", *eve_lines] if container == "squadops-eve" else ["noise"]
+            ),
+        )
+        return driver.texture_from_agent_lines(driver.agent_log_window("2026-09-28T12:30:00Z"))
+
+    @pytest.mark.parametrize(
+        ("suite_line", "expected_suite"),
+        [
+            (
+                None,
+                {"framework": "vitest", "executed": True, "exit_code": 0, "tests_passed": True},
+            ),
+            (
+                "2026-09-28 12:38:11,749 - squadops.capabilities.handlers.cycle.qa_test - INFO - "
+                "qa_test_handler suite: framework=vitest executed=True exit_code=1 "
+                "tests_passed=False test_files=10 source_files=17 uncollected=[] error=''",
+                {"framework": "vitest", "executed": True, "exit_code": 1, "tests_passed": False},
+            ),
+            (_NEXT_TASK, None),
+        ],
+        ids=["verified: suite passed (A′ d5)", "suite ran and failed", "next task, no suite"],
+    )
+    def test_a_retake_and_what_verified_it_reach_the_record(
+        self, driver, monkeypatch, suite_line, expected_suite
+    ):
+        """Wiring: raw container lines through the agent filter into the texture the record is
+        built from. Bug this catches: the filter dropping the typed-check, trigger or suite line
+        (each needs its own key), a re-take's episode running on into the next task, or a suite
+        that failed reading as no verification at all."""
+        lines = list(driver.AGENT_MARKER_SAMPLES["retake_verifications"])
+        if suite_line is not None:
+            lines[-1] = suite_line
+
+        (episode,) = self._window(driver, monkeypatch, lines)["retake_verifications"]
+
+        assert episode["task_index"] == 4
+        assert episode["edited"] == ["__tests__/runs-api.test.ts"]
+        assert episode["failed_on_retake"] == ["assertion_kinds_match", "dom_anchor_queries"]
+        assert episode["self_eval_trigger"] == [
+            "expected_artifacts",
+            "acceptance:assertion_kinds_match",
+            "acceptance:dom_anchor_queries",
+        ]
+        assert [
+            (e["first_path"], e["re_emits_offered"], e["chars"])
+            for e in episode["self_eval_emissions"]
+        ] == [("__tests__/participants.test.ts", True, 6972)]
+        assert episode["suite"] == expected_suite
+
+    def test_a_pass_that_writes_a_file_is_recorded_and_a_fill_only_pass_is_not(
+        self, driver, monkeypatch
+    ):
+        """#1724 item 2. Bug this catches: a pass that wrote a whole file reading as no pass
+        (it logs no revision form), or a fill-only pass — which merges into slots and writes
+        no file — counted as one that did."""
+        (pass_line,) = driver.AGENT_MARKER_SAMPLES["self_eval_file_emissions"]
+        fill_only = pass_line.replace("'fill': 0, 'path': 1", "'fill': 3, 'path': 0")
+
+        out = self._window(driver, monkeypatch, [pass_line, fill_only])
+
+        assert out["self_eval_file_emissions"] == [
+            {
+                "handler": "qa_test_handler",
+                "at": "2026-09-28T12:37:53.271+00:00",
+                "chars": 6972,
+                "path_fences": 1,
+                "plain_fences": 0,
+                "first_path": "__tests__/participants.test.ts",
+            }
+        ]
+
+    # Real: A′'s `own-frame-then-prose-repair` (React), run_99242d1e947f — m005's first dispatch,
+    # its re-dispatch for the re-take, then m006's (the saved runtime-api log, 2026-09-28).
+    _DISPATCHES = [
+        "2026-09-28 13:30:20,315 INFO adapters.cycles.task_dispatcher: Dispatched task "
+        "task-run_99242d1e-m005-qa.test (qa.test) to eve_comms, awaiting reply on eve_replies",
+        "2026-09-28 13:36:04,038 INFO adapters.cycles.task_dispatcher: Dispatched task "
+        "task-run_99242d1e-m005-qa.test (qa.test) to eve_comms, awaiting reply on eve_replies",
+        "2026-09-28 13:38:40,000 INFO adapters.cycles.task_dispatcher: Dispatched task "
+        "task-run_99242d1e-m004-builder.assemble (builder.assemble) to bob_comms, awaiting reply",
+        "2026-09-28 13:38:53,927 INFO adapters.cycles.task_dispatcher: Dispatched task "
+        "task-run_99242d1e-m006-qa.test (qa.test) to eve_comms, awaiting reply on eve_replies",
+    ]
+
+    @pytest.mark.parametrize(
+        ("at", "task_index", "task_index_from"),
+        [
+            ("2026-09-28T13:38:49.000+00:00", 5, "dispatch"),
+            ("2026-09-28T13:48:20.000+00:00", 6, "dispatch"),
+            ("2026-09-28T13:29:00.000+00:00", None, None),
+        ],
+        ids=[
+            "m005's re-take (a later m006 dispatch and another type ignored)",
+            "m006's re-take",
+            "no dispatch before it",
+        ],
+    )
+    def test_a_retake_whose_checks_all_passed_is_indexed_by_its_dispatch(
+        self, driver, at, task_index, task_index_from
+    ):
+        """Bug this catches: a re-take whose checks all passed — which logs no typed-check line,
+        four of A′'s six — left without an index, so its stored evaluation never joined; or
+        indexed by a later dispatch, or another task type's."""
+        episodes = [{"at": at, "task_type": "qa.test", "task_index": None}]
+
+        (indexed,) = driver.index_retakes_by_dispatch(episodes, self._DISPATCHES)
+
+        assert (indexed["task_index"], indexed.get("task_index_from")) == (
+            task_index,
+            task_index_from,
+        )
+        (joined,) = driver.join_retake_evaluations([indexed], {})
+        if task_index is None:
+            assert joined["final_evaluation_reason"] == (
+                "neither a typed-check line nor a dispatch named the re-take's task index"
+            )
+
+    def _store(self, root, art, created_at, statuses):
+        d = root / "data" / "artifacts" / "p" / "cyc_1" / "run_1" / art
+        d.mkdir(parents=True)
+        (d / "metadata.json").write_text(json.dumps({"artifact_id": art, "created_at": created_at}))
+        (d / "typed_check_evaluation_task_4.json").write_text(
+            json.dumps(
+                {
+                    "task_index": 4,
+                    "workspace_revision_id": "3da2d267",
+                    "evaluations": [
+                        {"check": f"c{i}", "status": status} for i, status in enumerate(statuses)
+                    ],
+                }
+            )
+        )
+
+    @pytest.mark.parametrize(
+        ("stored", "expected_artifact", "reason"),
+        [
+            (
+                [
+                    ("art_first", "2026-09-28 12:29:13.721481+00:00", ["passed", "failed"]),
+                    ("art_retake", "2026-09-28 12:38:24.224435+00:00", ["passed", "passed"]),
+                ],
+                "art_retake",
+                None,
+            ),
+            (
+                [("art_first", "2026-09-28 12:29:13.721481+00:00", ["passed", "failed"])],
+                None,
+                "no evaluation of task 4 was stored after the re-take",
+            ),
+        ],
+        ids=["the evaluation after the re-take", "only the failed attempt's"],
+    )
+    def test_the_retake_is_joined_to_the_evaluation_its_task_stored_after_it(
+        self, driver, monkeypatch, tmp_path, stored, expected_artifact, reason
+    ):
+        """Bug this catches: the failed first attempt's evaluation — same task, same workspace
+        revision — credited as the re-take's verification, which is the one reading the join
+        exists to rule out."""
+        import types
+
+        for art, created_at, statuses in stored:
+            self._store(tmp_path, art, created_at, statuses)
+        monkeypatch.setattr(driver, "main_checkout", lambda: tmp_path)
+        episodes = [{"at": "2026-09-28T12:36:47.305+00:00", "task_index": 4}]
+
+        (joined,) = driver.join_retake_evaluations(
+            episodes,
+            driver.stored_task_evaluations(types.SimpleNamespace(project="p"), "cyc_1", "run_1"),
+        )
+
+        final = joined["final_evaluation"]
+        assert (final or {}).get("artifact_id") == expected_artifact
+        assert joined.get("final_evaluation_reason") == reason
+        if final:
+            assert final["statuses"] == {"passed": 2}
+            assert final["workspace_revision_id"] == "3da2d267"
+
+
 class TestASeamIsReadOnlyWhenItsFaultApplied:
     """#1588: the 1.8.0 own-frame diagnostic's run 1 (cyc_eee9b62e6a4f) credited L4 on a
     refund the dev's prose answer had earned — in a cycle where the qa repair the fault
