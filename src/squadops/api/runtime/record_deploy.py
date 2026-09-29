@@ -90,9 +90,13 @@ async def _compose_and_record(facts: Mapping[str, Any]) -> DeployRecord:
     from adapters.cycles.factory import create_deploy_registry, create_squad_profile_port
     from adapters.llm.factory import create_llm_provider
     from adapters.persistence.pool import create_pool
+    from squadops.bootstrap.secrets import secret_provider_for
     from squadops.config import load_config
 
-    config = load_config()
+    # As main.build_app and the agent entrypoint load it: the deploy's configuration carries
+    # secret:// references, which only a secret provider resolves (the 1.9 deploy's first
+    # record failed on exactly this).
+    config = load_config(secret_provider_factory=secret_provider_for)
     pool = await create_pool(config.db.url, min_size=1, max_size=2)
     try:
         selector = config.cycles.registry_provider

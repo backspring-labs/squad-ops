@@ -144,3 +144,37 @@ def test_the_command_exits_non_zero_so_the_deploy_reports_the_record_failed(
 
     assert recorder.main() == expected_exit
     assert "record_deploy: refused" in capsys.readouterr().err
+
+
+async def test_the_one_off_loads_the_deploys_config_as_the_runtime_does(monkeypatch):
+    """Wiring, entered at ``_compose_and_record``, the command's own composition. Bug caught: the
+    config loaded without the secret provider every root passes, so on a real deploy — whose
+    configuration carries ``secret://`` references — the record failed before it began (the
+    1.9 deploy's first record, ``ConfigValidationError``)."""
+    from squadops.bootstrap.secrets import secret_provider_for
+
+    seen = {}
+
+    def load_config(**kwargs):
+        seen.update(kwargs)
+        return SimpleNamespace(
+            db=SimpleNamespace(url="postgresql://unused"),
+            cycles=SimpleNamespace(registry_provider="memory", squad_profile_provider="config"),
+            llm=SimpleNamespace(
+                provider="ollama", url="http://ollama:11434", timeout=5, api_key=None, model=None
+            ),
+        )
+
+    pool = AsyncMock()
+    monkeypatch.setattr("squadops.config.load_config", load_config)
+    monkeypatch.setattr("adapters.persistence.pool.create_pool", AsyncMock(return_value=pool))
+    monkeypatch.setattr(
+        "adapters.cycles.factory.create_squad_profile_port", lambda *a, **k: _profiles([])
+    )
+    monkeypatch.setattr("adapters.llm.factory.create_llm_provider", lambda **k: _llm([]))
+
+    record = await recorder._compose_and_record(FACTS)
+
+    assert seen.get("secret_provider_factory") is secret_provider_for
+    assert len(record.services) == 4
+    pool.close.assert_awaited_once()

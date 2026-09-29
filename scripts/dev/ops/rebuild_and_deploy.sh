@@ -7,7 +7,7 @@
 #   ./scripts/dev/ops/rebuild_and_deploy.sh                           # Rebuild everything (default)
 #   ./scripts/dev/ops/rebuild_and_deploy.sh all                       # Rebuild everything
 #   ./scripts/dev/ops/rebuild_and_deploy.sh console                   # Rebuild only console service
-#   ./scripts/dev/ops/rebuild_and_deploy.sh agents                    # Rebuild default 7 core agents (max, nat, neo, eve, bob, data, joi)
+#   ./scripts/dev/ops/rebuild_and_deploy.sh agents                    # Rebuild every agent service the compose file defines
 #   ./scripts/dev/ops/rebuild_and_deploy.sh agents max neo            # Rebuild only specified agents
 #   ./scripts/dev/ops/rebuild_and_deploy.sh agents max nat neo eve data glyph  # Rebuild specified agents
 #   ./scripts/dev/ops/rebuild_and_deploy.sh runtime-api agents        # Rebuild runtime-api and default agents
@@ -89,7 +89,7 @@ if [ $# -gt 0 ]; then
                 echo "Usage: $0 [console] [agents [agent1 agent2 ...]] [runtime-api] [all]"
                 echo "  Examples:"
                 echo "    $0 console                   # Build only console"
-                echo "    $0 agents                    # Build default 7 core agents (max, nat, neo, eve, bob, data, joi)"
+                echo "    $0 agents                    # Build every agent service the compose file defines"
                 echo "    $0 agents max neo            # Build only max and neo"
                 echo "    $0 runtime-api console       # Build runtime-api and console"
                 exit 1
@@ -309,9 +309,17 @@ get_agent_role() {
 if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
     # Determine which agents to build
     if [ ${#AGENT_LIST[@]} -eq 0 ]; then
-        # No agents specified, use default 6 core agents
-        AGENTS=$(docker compose config --services | grep -E "^(max|nat|neo|eve|bob|data|joi)$" || echo "max nat neo eve bob data joi")
-        echo -e "${BLUE}   No agents specified, using default core agents: max, nat, neo, eve, bob, data, joi${NC}"
+        # No agents specified: every service the compose file builds from the agent image. The
+        # literal list this replaced named seven agents and left han (the Solo arm, 1.8.1) on
+        # whatever image it last had after every `all` — found by the 1.9 deploy's record (#1720).
+        AGENTS=$(docker compose config --format json | python3 -c 'import json, sys
+services = json.load(sys.stdin)["services"]
+print(" ".join(sorted(n for n, v in services.items() if (v.get("build") or {}).get("dockerfile") == "agents/Dockerfile")))')
+        if [ -z "$AGENTS" ]; then
+            echo -e "${RED}❌ No agent services found in the compose file${NC}"
+            AGENTS_RESTART_FAILED=1
+        fi
+        echo -e "${BLUE}   No agents specified, using every agent service in the compose file: ${AGENTS}${NC}"
     else
         # Use specified agents, validate they exist in docker compose
         AGENTS=""
