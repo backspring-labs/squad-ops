@@ -79,6 +79,7 @@ def _wire_cycle_ports(app):
         create_project_registry,
         create_squad_profile_port,
     )
+
     project_registry = create_project_registry("config")
     cycle_registry = create_cycle_registry("memory")
     squad_profile = create_squad_profile_port("config")

@@ -447,7 +447,6 @@ class TestACancelReachesTheAgentsHoldingTheRunsTasks:
         so nobody is told."""
         import json
 
-
         events: list[str] = []
         open_row = SimpleNamespace(runtime_activity_id="act-1", agent_id="neo", cycle_id="cyc_001")
         activity_port = AsyncMock()
