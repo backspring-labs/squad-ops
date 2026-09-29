@@ -18,7 +18,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, model_validator
 
 from squadops.runtime.models import (
@@ -35,10 +35,10 @@ from squadops.runtime.models import (
 router = APIRouter(prefix="/api/v1", tags=["assignments"])
 
 
-def _get_assignment_port():
+def _get_assignment_port(request: Request):
     from squadops.api.runtime.deps import get_assignment_port
 
-    return get_assignment_port()
+    return get_assignment_port(request)
 
 
 def _not_found(assignment_id: str) -> HTTPException:
@@ -184,17 +184,17 @@ class AssignmentCreate(BaseModel):
 
 
 @router.get("/agents/{agent_id}/assignments", response_model=list[AssignmentResponse])
-async def list_agent_assignments(agent_id: str) -> list[AssignmentResponse]:
+async def list_agent_assignments(request: Request, agent_id: str) -> list[AssignmentResponse]:
     """List every assignment held by an agent (active and inactive), window-start order."""
-    port = _get_assignment_port()
+    port = _get_assignment_port(request)
     assignments = await port.list_assignments_for_agent(agent_id)
     return [AssignmentResponse.from_domain(a) for a in assignments]
 
 
 @router.get("/assignments/{assignment_id}", response_model=AssignmentResponse)
-async def get_assignment(assignment_id: str) -> AssignmentResponse:
+async def get_assignment(request: Request, assignment_id: str) -> AssignmentResponse:
     """Show one assignment by id; 404 if no row exists."""
-    port = _get_assignment_port()
+    port = _get_assignment_port(request)
     assignment = await port.get_assignment(assignment_id)
     if assignment is None:
         raise _not_found(assignment_id)
@@ -202,11 +202,11 @@ async def get_assignment(assignment_id: str) -> AssignmentResponse:
 
 
 @router.post("/assignments", response_model=AssignmentResponse, status_code=201)
-async def create_assignment(body: AssignmentCreate) -> AssignmentResponse:
+async def create_assignment(request: Request, body: AssignmentCreate) -> AssignmentResponse:
     """Create (upsert) an assignment. EXPERIMENTAL/INTERNAL in v1.1 — not a
     public operator command. Applies the D7/§11.4 reserve-buffer defaults when
     the reserve fields are omitted, then persists via the AssignmentPort.
     """
-    port = _get_assignment_port()
+    port = _get_assignment_port(request)
     saved = await port.upsert_assignment(body.to_domain())
     return AssignmentResponse.from_domain(saved)

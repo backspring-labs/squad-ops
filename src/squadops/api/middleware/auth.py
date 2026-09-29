@@ -96,7 +96,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             try:
                 from squadops.api.runtime.deps import get_audit_port
 
-                audit_port = get_audit_port()
+                audit_port = get_audit_port(request)
             except Exception:
                 pass
         if audit_port is None:
@@ -184,7 +184,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if auth_port is None:
             from squadops.api.runtime.deps import get_auth_port
 
-            auth_port = get_auth_port()
+            auth_port = get_auth_port(request)
 
         if auth_port is None:
             self._emit_audit(
@@ -243,7 +243,7 @@ def require_auth(auth_port_getter=None):
         else:
             from squadops.api.runtime.deps import get_auth_port
 
-            auth_port = get_auth_port()
+            auth_port = get_auth_port(request)
         if auth_port is None:
             raise HTTPException(503, "Authentication service unavailable")
         try:
@@ -271,7 +271,7 @@ async def _enforce_access(
     # Import here to avoid circular imports at module level
     from squadops.api.runtime.deps import get_authz_port
 
-    authz = get_authz_port()
+    authz = get_authz_port(request)
     if authz is None:
         return getattr(request.state, "identity", None)
 

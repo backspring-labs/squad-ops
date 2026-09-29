@@ -8,7 +8,7 @@ import logging
 from dataclasses import replace
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 from squadops.api.cycle_schemas import (
     ProfileCloneRequest,
@@ -68,7 +68,9 @@ def _validate_agent_request(agents_data: list) -> tuple[AgentProfileEntry, ...]:
     )
 
 
-async def _check_model_availability(agents: tuple[AgentProfileEntry, ...]) -> list[str]:
+async def _check_model_availability(
+    request: Request, agents: tuple[AgentProfileEntry, ...]
+) -> list[str]:
     """Generate warnings for models not currently pulled in Ollama.
 
     If Ollama is unreachable, skip model validation entirely and log it.
@@ -77,7 +79,7 @@ async def _check_model_availability(agents: tuple[AgentProfileEntry, ...]) -> li
     try:
         from squadops.api.runtime.deps import get_llm_port
 
-        llm = get_llm_port()
+        llm = get_llm_port(request)
     except RuntimeError:
         logger.debug("LLM port not configured — skipping model availability check")
         return []
@@ -96,35 +98,35 @@ async def _check_model_availability(agents: tuple[AgentProfileEntry, ...]) -> li
 
 
 @router.get("", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
-async def list_profiles():
+async def list_profiles(request: Request):
     from squadops.api.runtime.deps import get_squad_profile_port
 
-    port = get_squad_profile_port()
+    port = get_squad_profile_port(request)
     profiles = await port.list_profiles()
     active_id = await port.get_active_profile_id()
     return [profile_to_response(p, is_active=(p.profile_id == active_id)) for p in profiles]
 
 
 @router.get("/active", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
-async def get_active_profile():
+async def get_active_profile(request: Request):
     from squadops.api.runtime.deps import get_squad_profile_port
 
-    port = get_squad_profile_port()
+    port = get_squad_profile_port(request)
     profile = await port.get_active_profile()
     return profile_to_response(profile, is_active=True)
 
 
 @router.post("/active", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
-async def set_active_profile(body: SetActiveProfileRequest):
+async def set_active_profile(request: Request, body: SetActiveProfileRequest):
     from squadops.api.runtime.deps import get_squad_profile_port
 
-    port = get_squad_profile_port()
+    port = get_squad_profile_port(request)
     await port.set_active_profile(body.profile_id)
     return {"status": "ok", "active_profile_id": body.profile_id}
 
 
 @router.post("", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
-async def create_profile(body: ProfileCreateRequest):
+async def create_profile(request: Request, body: ProfileCreateRequest):
     from squadops.api.runtime.deps import get_squad_profile_port
 
     agents = _validate_agent_request(body.agents)
@@ -139,21 +141,21 @@ async def create_profile(body: ProfileCreateRequest):
         created_at=datetime.now(UTC),
     )
 
-    port = get_squad_profile_port()
+    port = get_squad_profile_port(request)
     created = await port.create_profile(profile)
-    warnings = await _check_model_availability(agents)
+    warnings = await _check_model_availability(request, agents)
     return profile_to_response(created, warnings=warnings)
 
 
 @router.put("/{profile_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
-async def update_profile(profile_id: str, body: ProfileUpdateRequest):
+async def update_profile(request: Request, profile_id: str, body: ProfileUpdateRequest):
     from squadops.api.runtime.deps import get_squad_profile_port
 
     agents = None
     if body.agents is not None:
         agents = _validate_agent_request(body.agents)
 
-    port = get_squad_profile_port()
+    port = get_squad_profile_port(request)
     updated = await port.update_profile(
         profile_id,
         name=body.name,
@@ -163,17 +165,17 @@ async def update_profile(profile_id: str, body: ProfileUpdateRequest):
     active_id = await port.get_active_profile_id()
     warnings = []
     if body.agents is not None:
-        warnings = await _check_model_availability(agents)
+        warnings = await _check_model_availability(request, agents)
     return profile_to_response(
         updated, is_active=(updated.profile_id == active_id), warnings=warnings
     )
 
 
 @router.post("/{profile_id}/clone", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
-async def clone_profile(profile_id: str, body: ProfileCloneRequest):
+async def clone_profile(request: Request, profile_id: str, body: ProfileCloneRequest):
     from squadops.api.runtime.deps import get_squad_profile_port
 
-    port = get_squad_profile_port()
+    port = get_squad_profile_port(request)
     source = await port.get_profile(profile_id)
     new_id = slugify_profile_name(body.name)
 
@@ -185,33 +187,33 @@ async def clone_profile(profile_id: str, body: ProfileCloneRequest):
         created_at=datetime.now(UTC),
     )
     created = await port.create_profile(cloned)
-    warnings = await _check_model_availability(cloned.agents)
+    warnings = await _check_model_availability(request, cloned.agents)
     return profile_to_response(created, warnings=warnings)
 
 
 @router.delete("/{profile_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
-async def delete_profile(profile_id: str):
+async def delete_profile(request: Request, profile_id: str):
     from squadops.api.runtime.deps import get_squad_profile_port
 
-    port = get_squad_profile_port()
+    port = get_squad_profile_port(request)
     await port.delete_profile(profile_id)
     return {"status": "deleted", "profile_id": profile_id}
 
 
 @router.post("/{profile_id}/activate", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
-async def activate_profile(profile_id: str):
+async def activate_profile(request: Request, profile_id: str):
     from squadops.api.runtime.deps import get_squad_profile_port
 
-    port = get_squad_profile_port()
+    port = get_squad_profile_port(request)
     profile = await port.activate_profile(profile_id)
     return profile_to_response(profile, is_active=True)
 
 
 @router.get("/{profile_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
-async def get_profile(profile_id: str):
+async def get_profile(request: Request, profile_id: str):
     from squadops.api.runtime.deps import get_squad_profile_port
 
-    port = get_squad_profile_port()
+    port = get_squad_profile_port(request)
     profile = await port.get_profile(profile_id)
     active_id = await port.get_active_profile_id()
     return profile_to_response(profile, is_active=(profile.profile_id == active_id))

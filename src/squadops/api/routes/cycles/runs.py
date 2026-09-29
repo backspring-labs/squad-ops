@@ -82,6 +82,7 @@ def _resolve_retry_workload_type(cycle: Cycle, existing_runs: list[Run]) -> str 
 
 @router.post("", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
 async def create_run(
+    request: Request,
     project_id: str,
     cycle_id: str,
     background_tasks: BackgroundTasks,
@@ -95,7 +96,7 @@ async def create_run(
     from squadops.api.runtime.deps import get_cycle_registry
 
     validated_wt = validate_workload_type(workload_type)
-    registry = get_cycle_registry()
+    registry = get_cycle_registry(request)
     cycle = await registry.get_cycle(cycle_id)
     existing_runs = await registry.list_runs(cycle_id)
     run_number = len(existing_runs) + 1
@@ -120,7 +121,7 @@ async def create_run(
     from squadops.api.runtime.deps import get_cycle_event_bus
     from squadops.events.types import EventType
 
-    get_cycle_event_bus().emit(
+    get_cycle_event_bus(request).emit(
         EventType.RUN_CREATED,
         entity_type="run",
         entity_id=created.run_id,
@@ -143,7 +144,7 @@ async def create_run(
     from squadops.api.runtime.deps import get_flow_executor
 
     background_tasks.add_task(
-        get_flow_executor().execute_cycle,
+        get_flow_executor(request).execute_cycle,
         cycle_id,
         created.run_id,
         cycle.squad_profile_id,
@@ -153,28 +154,30 @@ async def create_run(
 
 
 @router.get("", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
-async def list_runs(project_id: str, cycle_id: str, workload_type: str | None = None):
+async def list_runs(
+    request: Request, project_id: str, cycle_id: str, workload_type: str | None = None
+):
     from squadops.api.runtime.deps import get_cycle_registry
 
-    registry = get_cycle_registry()
+    registry = get_cycle_registry(request)
     runs = await registry.list_runs(cycle_id, workload_type=workload_type)
     return [run_to_response(r) for r in runs]
 
 
 @router.get("/{run_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
-async def get_run(project_id: str, cycle_id: str, run_id: str):
+async def get_run(request: Request, project_id: str, cycle_id: str, run_id: str):
     from squadops.api.runtime.deps import get_cycle_registry
 
-    registry = get_cycle_registry()
+    registry = get_cycle_registry(request)
     run = await registry.get_run(run_id)
     return run_to_response(run)
 
 
 @router.post("/{run_id}/cancel", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
-async def cancel_run(project_id: str, cycle_id: str, run_id: str):
+async def cancel_run(request: Request, project_id: str, cycle_id: str, run_id: str):
     from squadops.api.runtime.deps import get_cycle_registry
 
-    registry = get_cycle_registry()
+    registry = get_cycle_registry(request)
     # The run state machine gained a COMPLETED -> CANCELLED edge so the executor can
     # supersede a framing run whose plan was auto-rejected (#522). That edge is for
     # the orchestrator, not for operators: cancelling a run that already finished is
@@ -199,10 +202,10 @@ async def cancel_run(project_id: str, cycle_id: str, run_id: str):
     )
 
     # #1648: first, while the activities and leases still say who holds the run's tasks.
-    agents_notified = await notify_agents_of_cancel(cycle_id, [run_id])
-    cancelled = await cancel_orphaned_flow_runs(project_id, cycle_id, [run_id])
-    leases_released = await release_cancelled_run_leases(cycle_id, [run_id])
-    activities_ended = await abort_cancelled_cycle_activities(cycle_id)
+    agents_notified = await notify_agents_of_cancel(request, cycle_id, [run_id])
+    cancelled = await cancel_orphaned_flow_runs(request, project_id, cycle_id, [run_id])
+    leases_released = await release_cancelled_run_leases(request, cycle_id, [run_id])
+    activities_ended = await abort_cancelled_cycle_activities(request, cycle_id)
 
     return {
         "status": "cancelled",
@@ -227,7 +230,7 @@ async def gate_decision(
 ):
     from squadops.api.runtime.deps import get_cycle_registry
 
-    registry = get_cycle_registry()
+    registry = get_cycle_registry(request)
 
     # SIP-0096 §6.5 (#682): accept-with-waiver is explicit, reasoned, and
     # validated against the run's own unverified disclosure — a waiver
@@ -264,13 +267,13 @@ async def gate_decision(
     # prior_workload_artifact_refs. Without this the manifest stays
     # at "working" status and the impl workload gets no inputs.
     if body.decision == GateDecisionValue.APPROVED.value:
-        await _promote_run_artifacts(run_id)
+        await _promote_run_artifacts(request, run_id)
 
     # SIP-0077: gate.decided
     from squadops.api.runtime.deps import get_cycle_event_bus
     from squadops.events.types import EventType
 
-    get_cycle_event_bus().emit(
+    get_cycle_event_bus(request).emit(
         EventType.GATE_DECIDED,
         entity_type="gate",
         entity_id=gate_name,
@@ -293,6 +296,7 @@ async def gate_decision(
 
 @router.post("/{run_id}/resume", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
 async def resume_run(
+    request: Request,
     project_id: str,
     cycle_id: str,
     run_id: str,
@@ -308,7 +312,7 @@ async def resume_run(
     """
     from squadops.api.runtime.deps import get_cycle_registry
 
-    registry = get_cycle_registry()
+    registry = get_cycle_registry(request)
 
     # 1. Fetch run — validates existence
     run = await registry.get_run(run_id)
@@ -345,7 +349,7 @@ async def resume_run(
     from squadops.events.types import EventType
 
     resume_reason = body.resume_reason if body else None
-    get_cycle_event_bus().emit(
+    get_cycle_event_bus(request).emit(
         EventType.RUN_RESUMED,
         entity_type="run",
         entity_id=run_id,
@@ -368,7 +372,7 @@ async def resume_run(
     from squadops.api.runtime.deps import get_flow_executor
 
     background_tasks.add_task(
-        get_flow_executor().execute_cycle,
+        get_flow_executor(request).execute_cycle,
         cycle_id,
         run_id,
         cycle.squad_profile_id,
@@ -378,11 +382,11 @@ async def resume_run(
 
 
 @router.get("/{run_id}/checkpoints", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
-async def list_checkpoints(project_id: str, cycle_id: str, run_id: str):
+async def list_checkpoints(request: Request, project_id: str, cycle_id: str, run_id: str):
     """List checkpoints for a run (SIP-0079)."""
     from squadops.api.runtime.deps import get_cycle_registry
 
-    registry = get_cycle_registry()
+    registry = get_cycle_registry(request)
     checkpoints = await registry.list_checkpoints(run_id)
     return [
         CheckpointSummaryResponse(
@@ -395,7 +399,7 @@ async def list_checkpoints(project_id: str, cycle_id: str, run_id: str):
     ]
 
 
-async def _promote_run_artifacts(run_id: str) -> None:
+async def _promote_run_artifacts(request: Request, run_id: str) -> None:
     """Promote the run's artifacts on gate approval (SIP-0086).
 
     Thin delegate: the operation moved to ``cycles.gate_promotion`` at #854 because it was
@@ -406,7 +410,7 @@ async def _promote_run_artifacts(run_id: str) -> None:
     from squadops.cycles.gate_promotion import promote_run_artifacts
 
     try:
-        vault = get_artifact_vault()
+        vault = get_artifact_vault(request)
     except Exception:
         logger.warning("artifact_vault unavailable; skipping promotion for run %s", run_id)
         return
