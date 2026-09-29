@@ -348,6 +348,12 @@ class TestFailFast:
 # ---------------------------------------------------------------------------
 
 
+def _refuse_same_state(status, current: str) -> None:
+    """The registry's rule the #1701 warning came from: a run is never moved to its own state."""
+    if status == current:
+        raise ValueError(f"illegal transition {current} -> {status}")
+
+
 class TestCancellation:
     """Run cancellation via local set and registry polling."""
 
@@ -356,8 +362,14 @@ class TestCancellation:
         assert "run_001" in executor._cancelled
         mock_registry.cancel_run.assert_awaited_once_with("run_001")
 
-    async def test_cancel_before_first_task(self, executor, mock_registry, mock_queue) -> None:
-        """If registry returns cancelled, no tasks published."""
+    async def test_cancel_before_first_task(
+        self, executor, mock_registry, mock_queue, caplog
+    ) -> None:
+        """A run the cancel route already cancelled ends cancelled with no task published —
+        and, #1701, without a second CANCELLED write the registry would refuse. That refusal
+        logged "Failed to transition … cancelled" on every API cancel."""
+        import logging
+
         mock_registry.get_run.return_value = Run(
             run_id="run_001",
             cycle_id="cyc_001",
@@ -366,13 +378,54 @@ class TestCancellation:
             initiated_by="api",
             resolved_config_hash="hash",
         )
+        mock_registry.update_run_status.side_effect = lambda run_id, status, **k: (
+            _refuse_same_state(status, "cancelled")
+        )
 
-        await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+        with caplog.at_level(logging.WARNING):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
 
         mock_queue.publish.assert_not_awaited()
-        status_calls = mock_registry.update_run_status.call_args_list
-        terminal_statuses = [c.args[1] for c in status_calls]
-        assert RunStatus.CANCELLED in terminal_statuses
+        written = [c.args[1] for c in mock_registry.update_run_status.call_args_list]
+        assert RunStatus.CANCELLED not in written
+        assert not [r for r in caplog.records if "Failed to transition" in r.getMessage()]
+
+    @pytest.mark.parametrize(
+        ("current", "read_fails", "writes", "warns"),
+        [
+            ("running", False, True, True),
+            (None, True, True, False),
+        ],
+        ids=["a real refusal still warns", "an unreadable status still writes"],
+    )
+    async def test_only_a_same_state_transition_is_skipped(
+        self, executor, mock_registry, caplog, current, read_fails, writes, warns
+    ) -> None:
+        """#1701's edge. Bug this catches: the read-before-write hiding a transition the
+        registry really refused (running → failed on a row something else closed), or a
+        status read that failed skipping the write altogether."""
+        import logging
+
+        if read_fails:
+            mock_registry.get_run.side_effect = RuntimeError("registry unavailable")
+            mock_registry.update_run_status.side_effect = None
+        else:
+            mock_registry.get_run.return_value = Run(
+                run_id="run_001",
+                cycle_id="cyc_001",
+                run_number=1,
+                status=current,
+                initiated_by="api",
+                resolved_config_hash="hash",
+            )
+            mock_registry.update_run_status.side_effect = RuntimeError("illegal transition")
+
+        with caplog.at_level(logging.WARNING):
+            await executor._safe_transition("run_001", RunStatus.FAILED, failure_reason="x")
+
+        assert mock_registry.update_run_status.await_count == (1 if writes else 0)
+        warned = [r for r in caplog.records if "Failed to transition" in r.getMessage()]
+        assert bool(warned) is warns
 
 
 # ---------------------------------------------------------------------------
