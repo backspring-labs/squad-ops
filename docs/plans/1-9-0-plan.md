@@ -1,6 +1,6 @@
 # 1.9.0 plan — the close of the 1.x line
 
-**Status:** draft, rev 2 (2026-09-29), for the owner's review. Written on the owner's word at the
+**Status:** adopted, rev 3 (2026-09-29), for the owner's review. Written on the owner's word at the
 1.8.2 cut ("let's cut 1.8.2 and write 1.9.0 plan"). The 1.8.2 counted rolls answered the question
 this plan was held for: **no 1.8.3 opens** (the 1.8.2 plan §3.10; the pre-registration §10, deploy
 A′).
@@ -186,40 +186,40 @@ PRs*). This is the guard against #80's failure, where named follow-ons lived onl
 issue's prose and were never filed. Applied here: #1724 and #1722 were narrowed to their 1.9 scope,
 and their 2.0 halves filed as #1727 and #1728.
 
-**42 issues on 2026-09-29, each placed once:** the 40 open that morning, plus #1727 and #1728 split
-from them.
+**43 issues on 2026-09-29, each placed once:** the 40 open that morning, plus #1727 and #1728 split
+from them, plus #1732 filed at the 1.8.2 cut. **After rev 3, every open issue sits on 1.9 or 2.0.**
 
-- **In this release (24), each closable in 1.9:**
-  - **firm closes (12),** planned with no drop path:
+- **In this release (26), each closable in 1.9:**
+  - **firm closes (13),** planned with no drop path:
     - the line's claim (§3.8): #1697, #1507, #1714, #1718, #1724;
-    - also planned: #1696, #1716, #353, #1031, #1448, #1701, #1691;
-  - **conditional closes (12),** each on a decision in §7 or the drop order in §3.8:
+    - also planned: #1696, #1716, #353, #1031, #1448, #1701, #1691, #1732 (the records tarball's
+      checksum is stable across builds, which 1.9's own cut needs);
+  - **conditional closes (13),** each on a decision in §7, the drop order in §3.8, or a
+    precondition:
     - #1720 and #1722, decision 1;
     - #567, decision 2 (third to drop);
     - #1522 and #414, decision 3 (fourth to drop);
     - #1039, second to drop;
     - the ops rider (#1177, #176, #1176, #1408, #1412), decision 4 (first to drop). These close
       either way: a recipe run once is a terminal result, and a retired one closes as not planned;
-    - #1723, which closes when the investigation answers it; a code change it calls for is a new
-      issue.
-- **Closes at the 1.8.2 cut (1):** #1626. The 1.8.2 plan's decision 4 reads "#1626 closes on the
-  `redelivery` diagnostic", and A′ d3 read as predicted: two kills, two typed refusals, no run left
-  running.
-- **2.0 (12):**
+    - #1723, which closes when the investigation answers it;
+    - #1469, re-read at 1.9's cut. It closes only if its corpus has arrived and the parser lands.
+- **2.0 (14):**
   - with Campaign: #1705, #1706, #1707, #1708, #1709, #1710, #1711, #1692, #316;
-  - #949, as an input to #1708's gate policy (the owner's ruling, 2026-09-29): the fallback if an
-    answered design question must reach the plan through a revision;
+  - #949, an input to #1708's gate policy: the fallback if an answered design question must reach
+    the plan through a revision;
+  - #950 and #557, inputs to the Campaign SIP's revision: the gate's review packet, and the lead's
+    per-repair acceptance review;
   - #1727, with the decision on SIP-0107 step 7 (§20 on the re-take path, and the re-take
     transaction);
   - #1728, the `campaign:` and `deploy:` tags, with Campaign and #1720.
-- **At design review (2):** #950, #557. Both are inputs to the Campaign SIP's revision: #557 is the
-  per-repair acceptance review, and #950 the gate's review packet.
-- **Read at the cut, open by design (1):** #1469.
-- **Not scheduled (1):** #1122.
-- **Closed as not planned (1):** #194. Only `validation-multirole` uses parallel proposers, and no
-  counted roll uses that profile (the owner's ruling, 2026-09-29).
+- **Closed (3):**
+  - #1626, at the 1.8.2 cut (that plan's decision 4, on the `redelivery` reading);
+  - #194, not planned: only `validation-multirole` uses parallel proposers;
+  - #1122, not planned: #1123 delivered targeted qa repair on this stack, and qa × React supplied
+    5 scoped transactions on 1.8.2 without fill slots.
 
-That is 24 + 1 + 12 + 2 + 1 + 1 + 1 = **42**.
+That is 26 + 14 + 3 = **43**, and 40 open.
 
 **Not an issue, named so it is not lost:**
 - SIP-0107 §38 step 7, a 2.0 decision (§46q);
@@ -242,7 +242,9 @@ That is 24 + 1 + 12 + 2 + 1 + 1 + 1 = **42**.
 
 ---
 
-## 7. Decisions for the owner
+## 7. Decisions: adopted at merge (the owner's word, 2026-09-29: "Merge the 1.9.0 plan and get started")
+
+Each decision below was adopted as recommended. Decision 6 is recorded in SIP-0086 §12a.
 
 1. **#1720 (lineage) and #1722 (Prefect tags): 1.9 or 2.0?**
    - **Recommendation: #1720 in 1.9.** It is #80's promised follow-ons, which makes it debt. Without
@@ -285,3 +287,8 @@ That is 24 + 1 + 12 + 2 + 1 + 1 + 1 = **42**.
 - **Rev 2 (2026-09-29):** §5 places whole issues. #1724 and #1722 are narrowed to their 1.9
   scope, with their 2.0 halves filed as #1727 and #1728. The in-release list is split into firm and
   conditional closes; #1626 closes at the 1.8.2 cut. The total is 42.
+- **Rev 3 (2026-09-29), merged:**
+  - every open issue on a release line: #1732 is a firm close; #950 and #557 go to 2.0; #1469 to 1.9;
+    #1122 is closed as not planned; #1626 closed at the cut;
+  - §7's decisions adopted at merge, and decision 6 recorded in SIP-0086 §12a;
+  - 43 issues, 40 of them open.

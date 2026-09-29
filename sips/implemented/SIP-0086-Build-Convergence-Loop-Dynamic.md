@@ -1137,7 +1137,7 @@ If staging is necessary, the cleanest delivery path is A → B → C. Stage A al
 
 ## 12. Post-implementation amendments
 
-### 12a. 2026-09-15 — the self-evaluation pass becomes the model's compile loop (changes 1–3 built and shipped in 1.8.2; change 4 held for the owner)
+### 12a. 2026-09-15 — the self-evaluation pass becomes the model's compile loop (changes 1–3 built and shipped in 1.8.2; change 4 not built, ruled 2026-09-29)
 
 **Status.** Drafted on the owner's ask of 2026-09-15 and targeted for 1.8.1 by the owner's
 ruling of the same day; **re-targeted to 1.8.2 on 2026-09-17** by the owner's ruling on the
@@ -1288,7 +1288,7 @@ scoped qa transactions in five runs on the App Router stack (1.8.1 set record §
 - **The record.** Every re-take offered the form records the form it took on a
   `qa_retake_revision_form` line: an edit, or a whole-suite re-emission, deploy A's shape.
 
-**Change 4 — held for the owner (2026-09-25).** Its text rests on a premise the code does not
+**Change 4 — not built (ruled 2026-09-29, the 1.9.0 plan's decision 6; held for the owner from 2026-09-25).** The premise below does not hold, so the change is closed rather than carried; the repairs' evaluation stays as §6.5 builds it. Its text rests on a premise the code does not
 bear out: "the repair handlers evaluate the failed task's criteria a second time after the loop".
 The repair handlers have no loop. They run the generic `base.handle`, which never validates, and
 evaluate the failed task's criteria **once**, after they emit (`_after_emission` →
