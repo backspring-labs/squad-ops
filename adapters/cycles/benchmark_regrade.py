@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from squadops.cycles.cycle_assessment import AssessorIdentity
     from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
     from squadops.ports.cycles.cycle_registry import CycleRegistryPort
+    from squadops.ports.cycles.deploy_registry import DeployRegistryPort
 
 
 async def regrade_roll(
@@ -38,6 +39,7 @@ async def regrade_roll(
     roll: BenchmarkRoll,
     *,
     assessor: AssessorIdentity,
+    deploys: DeployRegistryPort,
 ) -> BenchmarkRow:
     try:
         cycle = await registry.get_cycle(roll.cycle_id)
@@ -49,7 +51,10 @@ async def regrade_roll(
         roll=roll,
         preflight=reading,
         series=series_for(cycle),
-        lineage=lineage_for(roll, cycle),
+        # #1720: the deploy record the cycle names, read from the deploy registry.
+        lineage=lineage_for(
+            roll, cycle, await deploys.get(cycle.deploy_id) if cycle.deploy_id else None
+        ),
     )
     if not reading.gradeable:
         return row
@@ -72,6 +77,9 @@ async def regrade(
     rolls: Iterable[BenchmarkRoll],
     *,
     assessor: AssessorIdentity,
+    deploys: DeployRegistryPort,
 ) -> tuple[BenchmarkRow, ...]:
     """Every declared roll's row, in declaration order."""
-    return tuple([await regrade_roll(registry, vault, r, assessor=assessor) for r in rolls])
+    return tuple(
+        [await regrade_roll(registry, vault, r, assessor=assessor, deploys=deploys) for r in rolls]
+    )

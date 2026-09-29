@@ -16,6 +16,7 @@ import asyncio
 from fastapi import APIRouter, HTTPException, Request
 
 from squadops.api.runtime.agent_labels import get_role_label
+from squadops.cycles.deploy_record import revision_matches_deploy
 
 router = APIRouter(prefix="/health", tags=["platform-health"])
 
@@ -83,6 +84,7 @@ async def get_agent_status_by_id(request: Request, agent_id: str):
         info = instances.get(row["agent_id"], {})
         role = info.get("role", "unknown")
 
+        deployed = (await hc.deployed_revisions() or {}).get(row["agent_id"])
         return {
             "agent_id": row["agent_id"],
             "agent_name": hc._get_display_name(row["agent_id"]),
@@ -94,6 +96,10 @@ async def get_agent_status_by_id(request: Request, agent_id: str):
             "lifecycle_state": lifecycle_state,
             "version": row["version"],
             "revision": row["revision"],
+            # #1720: the latest deploy record's revision for this agent's service, and whether
+            # the agent still runs it.
+            "deployed_revision": deployed,
+            "revision_matches_deploy": revision_matches_deploy(row["revision"], deployed),
             "tps": row["tps"],
             "memory_count": row.get("memory_count", 0) or 0,
             "last_seen": (

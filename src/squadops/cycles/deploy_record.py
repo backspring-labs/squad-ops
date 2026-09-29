@@ -92,3 +92,20 @@ def services_from_facts(facts: Mapping[str, Any]) -> tuple[ServiceImage, ...]:
 def model_weights(named: set[str], digests: Mapping[str, str | None]) -> tuple[ModelWeights, ...]:
     """Each model a profile names, with the digest the provider reported for it, if any."""
     return tuple(ModelWeights(model=m, digest=digests.get(m)) for m in sorted(named))
+
+
+def revision_matches_deploy(reported: str | None, deployed: str | None) -> bool | None:
+    """Whether a running service reports the revision the latest deploy record holds for it
+    (#1720).
+
+    The record reads the image each container actually runs, so an agent a deploy failed to
+    replace (#370's class) is visible in the record itself, at its old revision beside the rest.
+    This comparison catches what changed after the record: ``False`` is a service rebuilt or
+    recreated since, without a new record, so cycles created now would reference a deploy that
+    no longer describes it. ``None`` when either side is unknown — an image with no revision
+    label, no deploy recorded, or a service the record does not name — because an unknown
+    compared with anything is not a finding.
+    """
+    if reported is None or deployed is None:
+        return None
+    return reported == deployed
