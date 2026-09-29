@@ -550,3 +550,50 @@ plan validation either; the gate logs every tolerated violation, including the d
 notes (#1254), so the pass is never silent. The rule is taught in the vocabulary and enforced by
 the dispatch strip, and a framing re-roll for a row dispatch would drop costs half an hour for
 nothing.
+
+## 53. A resumed run is not marked running again
+
+A run is moved to `running` only if it isn't already: the resume and retry routes mark it before
+enqueuing it (#222/#256), and a `running → running` transition is illegal on a lifecycle-enforcing
+registry, which made every resumed run fail instantly (#342). *Lives in:* `RunProvisioning.prepare`.
+
+## 54. A run's plan, contract and manifest are loaded before its first dispatch
+
+The implementation plan (SIP-0086/SIP-0092) and a bind-mode contract (SIP-0098 98.3) are loaded
+together, before any task goes out, so the task plan is fully materialized and the executor stays
+deterministic. The criteria proposer reads the operator-seeded manifest, never a framing run's own:
+a framing run must not carry skeleton files (#496), a prompt describing the interface materializes
+nothing, and bind mode already requires the seeded one (#494). Without it the proposer writes checks
+against an invented interior of the frozen files (pf-42). *Lives in:* `RunProvisioning.prepare`.
+
+## 55. Admission defers a run; it never fails one
+
+A participant committed to, or about to start, a hard duty window (SIP-0089 §2.5), or holding a
+conflicting focus lease (§3.5), pauses the run (`RUN_PAUSED`, resumable) rather than failing it, and
+admission rolls back any agents it already recruited before deferring, so a paused run strands no
+one in cycle mode. Both guards are opt-in: no assignment port, no guard; no coordinator, no
+recruitment. *Lives in:* `RunAdmission.admit`.
+
+## 56. What admits a participant releases it, whatever the run's outcome
+
+The release runs in the run's `finally`, before anything that can raise, isolated per agent: a
+stranded cycle lease blocks all of that agent's future recruitment (#233). A sweep then releases
+anything still held under the run's `owner_ref`, because a recruitment replayed on resume (#288's
+idempotent skip) leaves leases this admission never recorded (#373). *Lives in:*
+`RunAdmission.release`.
+
+## 57. The skeleton is seeded on a fresh run only, and the scaffold only on top of it
+
+A resumed run's checkpoint already carries the original seed set; seeding again stores new ids that
+land after the restored state, and last-writer-wins per filename hands every fill slot back to a
+stub (#881). The test scaffold (SIP-0104) rides the same seed act and only on a seeded skeleton,
+since its shells import against that tree. *Lives in:* `RunProvisioning.seed`.
+
+## 58. A failed run finalizes with the state it reached
+
+`RunInProgress` is mutable, unlike the cycle models: it is the running record of how far a run
+got. `RunCompletion.finalize` receives the cycle, the plan and the contract a run had established
+when it failed, and provisioning records each on the line after the line that establishes it. A
+provisioning step that returned its results only at the end would hand finalization `None` where
+the contract was already loaded — a behaviour change an extraction would hide (#1507 step 2).
+*Lives in:* `RunProvisioning`, `RunAdmission`, and `execute_run`'s `finally`.
