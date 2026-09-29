@@ -594,7 +594,12 @@ class OllamaAdapter(LLMPort):
             raise LLMConnectionError(f"Failed to connect to Ollama at {self._base_url}") from e
 
         return [
-            ModelInfo(name=name, size_bytes=m.get("size"), modified_at=m.get("modified_at"))
+            ModelInfo(
+                name=name,
+                size_bytes=m.get("size"),
+                modified_at=m.get("modified_at"),
+                digest=m.get("digest") or None,
+            )
             for m in data.get("models", [])
             if (name := m.get("name"))
         ]

@@ -26,6 +26,7 @@ from squadops.ports.auth.authorization import AuthorizationPort
 from squadops.ports.comms.queue import QueuePort
 from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
 from squadops.ports.cycles.cycle_registry import CycleRegistryPort
+from squadops.ports.cycles.deploy_registry import DeployRegistryPort
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
 from squadops.ports.cycles.project_registry import ProjectRegistryPort
 from squadops.ports.cycles.squad_profile import SquadProfilePort
@@ -50,6 +51,7 @@ PORT_SLOTS = (
     "audit_port",  # SIP-0062 Phase 3b
     "project_registry",  # SIP-0064
     "cycle_registry",
+    "deploy_registry",  # #1720
     "squad_profile",
     "artifact_vault",
     "flow_executor",
@@ -111,6 +113,11 @@ def get_project_registry(request: Request) -> ProjectRegistryPort:
 def get_cycle_registry(request: Request) -> CycleRegistryPort:
     """Return the CycleRegistryPort (T14: never None at call sites)."""
     return _required(request, "cycle_registry", "CycleRegistryPort")
+
+
+def get_deploy_registry(request: Request) -> DeployRegistryPort:
+    """Return the DeployRegistryPort (#1720): what each deploy put in service."""
+    return _required(request, "deploy_registry", "DeployRegistryPort")
 
 
 def get_squad_profile_port(request: Request) -> SquadProfilePort:

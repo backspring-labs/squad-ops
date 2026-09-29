@@ -38,3 +38,15 @@ def test_the_agent_health_check_reads_the_agents_own_mark_not_a_module_import():
 
     assert check.startswith("python -m squadops.agents.readiness")
     assert "import" not in check
+
+
+def test_the_deploy_is_recorded_after_the_agents_restart_and_an_unrecorded_one_fails():
+    """#1720: a record taken before the restart would name the images being replaced, and a
+    deploy that exited 0 unrecorded would leave every new cycle referencing the previous deploy."""
+    text = SCRIPT.read_text()
+    restart = text.index("docker compose up -d --wait $agent")
+    record = text.index('"$REPO_ROOT/scripts/dev/ops/record_deploy.sh"')
+
+    assert restart < record
+    assert text.index("DEPLOY_RECORD_FAILED=1") > record
+    assert '[ "${DEPLOY_RECORD_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1' in text

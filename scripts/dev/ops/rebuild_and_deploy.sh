@@ -31,6 +31,9 @@ cd "$REPO_ROOT"
 SOURCE_HASH=$("$REPO_ROOT/scripts/dev/ops/source_hash.sh")
 export SOURCE_HASH
 
+# #1720: what the deploy record names as its writer.
+DEPLOY_INVOCATION="rebuild_and_deploy.sh ${*:-all}"
+
 # Shared secret-provisioning helpers (agent client secret, #326/#371).
 source "$REPO_ROOT/scripts/dev/ops/secrets.sh"
 
@@ -462,6 +465,17 @@ echo ""
 echo -e "${BLUE}✅ Step 6: Verifying deployment...${NC}"
 docker compose ps
 
+# #1720: record what this deploy put in service — every service's image and revision label, and
+# the models' digests — so each cycle created from now on references it. Last, so it describes
+# the images the steps above left running, including a partial deploy's.
+echo ""
+echo -e "${BLUE}🧾 Recording the deploy (#1720)...${NC}"
+if "$REPO_ROOT/scripts/dev/ops/record_deploy.sh" "$DEPLOY_INVOCATION"; then
+    DEPLOY_RECORD_FAILED=0
+else
+    DEPLOY_RECORD_FAILED=1
+fi
+
 echo ""
 # Honest completion banner + exit code (#370): a swallowed agent restart
 # failure used to print the success banner and exit 0, leaving stale agents.
@@ -470,6 +484,7 @@ DEPLOY_FAILED=0
 [ "${CONSOLE_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
 [ "${AGENTS_RESTART_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
 [ "${PROMPT_SYNC_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
+[ "${DEPLOY_RECORD_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
 if [ "$DEPLOY_FAILED" = "1" ]; then
     echo -e "${RED}⚠️  Rebuild and deploy completed WITH FAILURES (details below).${NC}"
 else
@@ -515,6 +530,12 @@ if [ "${AGENTS_RESTART_FAILED:-0}" = "1" ]; then
     echo -e "${RED}❌ Agent restart failed for:${FAILED_AGENTS}${NC}"
     echo -e "${RED}   These agents keep running their previous image (stale code).${NC}"
     echo -e "${YELLOW}   Retry: ./scripts/dev/ops/rebuild_and_deploy.sh agents${FAILED_AGENTS}${NC}"
+fi
+if [ "${DEPLOY_RECORD_FAILED:-0}" = "1" ]; then
+    echo ""
+    echo -e "${RED}❌ The deploy was not recorded (#1720): cycles created now reference the previous${NC}"
+    echo -e "${RED}   deploy record, which does not describe what is running. Record it once fixed:${NC}"
+    echo -e "${YELLOW}   ./scripts/dev/ops/record_deploy.sh${NC}"
 fi
 if [ "$DEPLOY_FAILED" = "1" ]; then
     exit 1

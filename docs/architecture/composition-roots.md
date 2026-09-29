@@ -50,7 +50,7 @@ with the reason each wires infrastructure (#154):
 
 | root | wires |
 |---|---|
-| `squadops.api.runtime` (`main`, `deps`, `scheduler_bootstrap`) | the runtime API: pool, queue, LLM, registries, vault, telemetry, tracker, events, executor, auth |
+| `squadops.api.runtime` (`main`, `deps`, `scheduler_bootstrap`, `record_deploy`) | the runtime API: pool, queue, LLM, registries, vault, telemetry, tracker, events, executor, auth. `record_deploy` is its second process, the deploy step's one-off (#1720): the pool, the deploy registry, the squad profile and the LLM, through the same factories and selectors |
 | `squadops.agents.entrypoint` | the agent container: queue, LLM, memory, prompts, telemetry, filesystem, messaging |
 | `squadops.sandbox.main` | the sandbox service |
 | `squadops.bootstrap` | system composition, the doctor's checks, the secrets provider |
@@ -286,8 +286,9 @@ construction" also passes when a binding is deleted outright:
    is a deliberate decision recorded in the table**, the `COMPOSITION_ROOTS` precedent.
 3. **Expected bindings are present and enter through their factory (R1, positive):** a table
    in the test declares, per root, the provider-selected bindings it is expected to perform —
-   the runtime API: LLM, queue, A2A client, project registry, cycle registry, squad profile,
-   artifact vault, workflow tracker, event bus, LLM observability, flow executor, auth; the
+   the runtime API: LLM, queue, A2A client, project registry, cycle registry, deploy registry
+   (#1720), squad profile, artifact vault, workflow tracker, event bus, LLM observability, flow
+   executor, auth — with `record_deploy`'s own LLM, squad profile and deploy registry; the
    agent entrypoint: LLM, queue, filesystem, memory, prompt repository, prompt asset source,
    telemetry, LLM observability, and the A2A server behind its switch; the sandbox: the
    service; bootstrap: secrets — and asserts **exactly one factory call per expected
