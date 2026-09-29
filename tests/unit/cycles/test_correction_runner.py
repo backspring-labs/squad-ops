@@ -2141,7 +2141,7 @@ class TestCorrectionRunnerStandalone:
         assert protocol_result.repair_artifacts == [
             {
                 **repaired,
-                "producer_task_id": "repair-run_001-00-builder.assemble_repair",
+                "producer_task_id": "repair-run_001-00-s00-builder.assemble_repair",
                 "producer_task_type": "builder.assemble_repair",
             }
         ]
@@ -2990,7 +2990,7 @@ class TestReexecuteRepairedSuite:
         (env,) = dispatcher.dispatched
         assert env.task_type == "qa.test"
         assert env.agent_id == "eve"
-        assert env.task_id == "retest-run_001-01-qa.test"
+        assert env.task_id == "retest-run_001-01-s00-qa.test"
         assert env.causation_id == "task-run_001-m004-qa.test"
         assert env.metadata["retest"] is True
 
@@ -7719,3 +7719,99 @@ class TestARefundedQaRoundIsReTakenAsAnEditRequest:
         executor._carry_facts_to_the_next_attempt(self._failed(envelope), envelope, None)
 
         assert "retake_current_files" not in envelope.inputs
+
+
+class TestRoundIdsAreUniqueAcrossARefund:
+    """#1697: a refunded round re-takes its attempt index (#1053), and the round's task ids were
+    keyed on that index alone. On 1.8.2 deploy A′, two repairs of two different suites both
+    carried ``repair-run_99242d1e-00-qa.test_repair`` (d6), and #1698's guard had to set the L4
+    reading aside, because the record could not say whose refund was whose."""
+
+    async def test_two_rounds_around_a_refund_get_distinct_ids(self, executor, cycle):
+        """Wiring, entered at ``_dispatch_correction_protocol`` (block 3), which assigns the round,
+        and ``_route_correction_path`` (block 4), which grants the refund: the path a live run
+        takes. Bug caught: the second round reusing the first round's ids after the refund."""
+        from adapters.cycles.correction_ids import correction_task_id
+        from adapters.cycles.correction_runner import CorrectionProtocolResult
+        from squadops.tasks.models import TaskResult
+
+        seen: list[tuple[int, int]] = []
+
+        async def _protocol(*args, correction_attempts, round_seq, **kwargs):
+            seen.append((correction_attempts, round_seq))
+            return CorrectionProtocolResult(
+                correction_path="continue",
+                emission_empty=True,
+                empty_emission_signatures=("prose_only",),
+            )
+
+        executor._correction_runner.run_correction_protocol = _protocol
+        counter: dict[str, int] = {"n": 0, "empty_refunds": 0}
+        envelope = TestProgressAwareTermination._envelope()
+        failed = TaskResult(task_id=envelope.task_id, status="FAILED", error="suite failed")
+        common = dict(
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+            profile=None,
+            flow_run_id=None,
+            enriched_envelope=None,
+            interface_manifest=None,
+            budget_guard=None,
+            repair_rejection_carry=None,
+        )
+        for _ in range(2):
+            round_ = await executor._dispatch_correction_protocol(
+                failed,
+                envelope,
+                cycle,
+                "run_99242d1e947f",
+                correction_counter=counter,
+                correction_signature_state={},
+                scaffold_enforcement_carry=[],
+                accepted_repair_task_ids=None,
+                **common,
+            )
+            await executor._route_correction_path(
+                round_,
+                failed,
+                envelope,
+                "run_99242d1e947f",
+                cycle=cycle,
+                correction_counter=counter,
+                patched_result_holder=None,
+                bound_record=None,
+                compliance_counter=None,
+                **common,
+            )
+
+        # The refund re-took the index; the sequence did not.
+        assert seen == [(0, 0), (0, 1)]
+        ids = {
+            correction_task_id("repair", "run_99242d1e947f", a, s, "qa.test_repair")
+            for a, s in seen
+        }
+        assert ids == {
+            "repair-run_99242d1e-00-s00-qa.test_repair",
+            "repair-run_99242d1e-00-s01-qa.test_repair",
+        }
+
+
+@pytest.mark.parametrize(
+    ("task_id", "first_attempt"),
+    [
+        ("repair-run_99242d1e-00-s01-qa.test_repair", True),
+        ("repair-run_99242d1e-01-s00-qa.test_repair", False),
+        ("corr-run_99242d1e-00-s03-data.analyze_failure", True),
+        ("repair-run_99242d1e-00-qa.test_repair", True),
+    ],
+)
+def test_the_fault_hook_reads_the_round_index_not_the_sequence(task_id, first_attempt):
+    """Bug caught: a sequence placed where the fault hook reads the attempt (the first ``-NN-``)
+    would make a second round look like a first attempt, or the reverse, and re-apply or skip a
+    registered fault. The sequence sits after the index, behind an ``s``."""
+    from squadops.capabilities.handlers.fault_injection import _is_first_attempt
+
+    assert _is_first_attempt(task_id, {}) is first_attempt

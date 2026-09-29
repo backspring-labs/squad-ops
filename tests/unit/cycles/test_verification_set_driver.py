@@ -1461,6 +1461,37 @@ class TestADiagnosticIsReadByTheSeamItReached:
             is False
         )
 
+    @pytest.mark.parametrize(
+        ("refunds", "reached"),
+        [
+            (
+                [
+                    "correction attempt 0 refunded (round s00): the repair emitted no content",
+                    "correction attempt 0 refunded (round s01): the repair emitted no content",
+                ],
+                True,
+            ),
+            (["correction attempt 0 refunded (round s07): the repair emitted no content"], False),
+        ],
+    )
+    def test_l4_joins_each_refund_to_its_own_round_by_sequence(self, driver, refunds, reached):
+        """#1697. Bug caught: two faulted prose repairs at one round index (a refund re-takes the
+        index). Before the round sequence, their ids were identical, and #1698's guard set L4
+        aside (A′ d6, §11f). With the sequence, each refund joins its own round. A refund of
+        some other round (``s07``) is not credited to the faulted ones."""
+        applied = {
+            "repair_prose_only": {
+                "applied": [
+                    {"task": "repair-run_99242d1e-00-s00-qa.test_repair"},
+                    {"task": "repair-run_99242d1e-00-s01-qa.test_repair"},
+                ],
+                "out_of_scope": [],
+            }
+        }
+        rec = self._rec(faults_applied=applied, refunded_rounds=refunds, repeated_round_ids=[])
+        out = driver.seam_readouts(("repair_prose_only",), rec)["repair_prose_only"]
+        assert out["reached"] is reached
+
     def test_a_fault_with_no_readout_is_named_not_skipped(self, driver):
         out = driver.seam_readouts(("some_new_fault",), self._rec())
         assert out["some_new_fault"] == {

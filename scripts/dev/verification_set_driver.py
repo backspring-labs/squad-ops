@@ -3376,8 +3376,13 @@ def _lines_naming_applied_tasks(lines: list[str], rec: Mapping[str, Any], fault:
     return [line for line in lines if any(task in line for task in ids)]
 
 
-_REPAIR_ROUND = re.compile(r"^repair-run_[0-9a-f]+-(?P<round>\d+)-")
-_REFUND_ATTEMPT = re.compile(r"correction attempt (?P<attempt>\d+) refunded")
+#: #1697: a repair id carries the round index and, from 1.9, the run's round sequence
+#: (``repair-run_x-00-s01-…``); a refund line carries both (``… refunded (round s01)``). Records
+#: from before it carry the index alone, and are read as they always were.
+_REPAIR_ROUND = re.compile(r"^repair-run_[0-9a-f]+-(?P<round>\d+)-(?:s(?P<seq>\d+)-)?")
+_REFUND_ATTEMPT = re.compile(
+    r"correction attempt (?P<attempt>\d+) refunded(?: \(round s(?P<seq>\d+)\))?"
+)
 
 
 def _qa_suite_absent_reading(rec: Mapping[str, Any]) -> tuple[bool, dict[str, Any]]:
@@ -3398,11 +3403,24 @@ def _repair_prose_only_reading(rec: Mapping[str, Any]) -> tuple[bool | None, lis
     own-frame diagnostic's run 1 carried a refund of the dev's prose answer in a cycle where
     the fault's target never ran; read without the join, that was L4 reached."""
     refunds = list(value_at(rec, "loop_texture.refunded_rounds", []) or [])
-    rounds = {
-        int(m.group("round"))
+    matches = [
+        m
         for a in (_applied_attempts(rec, "repair_prose_only") or [])
         if (m := _REPAIR_ROUND.match(str(a.get("task") or ""))) is not None
-    }
+    ]
+    # #1697, from 1.9: the faulted repairs carry the run's round sequence, so each refund joins
+    # its own round exactly — (index, sequence) — even where a refund re-took the index.
+    if matches and all(m.group("seq") is not None for m in matches):
+        keyed = {(int(m.group("round")), int(m.group("seq"))) for m in matches}
+        refunds = [
+            r
+            for r in refunds
+            if (m := _REFUND_ATTEMPT.search(r)) is not None
+            and m.group("seq") is not None
+            and (int(m.group("attempt")), int(m.group("seq"))) in keyed
+        ]
+        return bool(refunds), refunds
+    rounds = {int(m.group("round")) for m in matches}
     # #1697: a round index two dispatches share cannot say whose refund a line is — UNASKABLE,
     # never a YES credited on the other repair's refund.
     if rounds & repeated_round_indices(value_at(rec, "loop_texture.repeated_round_ids", [])):
