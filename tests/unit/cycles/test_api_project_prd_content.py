@@ -28,9 +28,8 @@ def client(mock_project_registry, monkeypatch):
     app = FastAPI()
     app.include_router(router)
     register_domain_error_handlers(app)  # as the runtime does (#576)
-    import squadops.api.runtime.deps as deps_mod
 
-    monkeypatch.setattr(deps_mod, "_project_registry", mock_project_registry)
+    app.state.project_registry = mock_project_registry
     return TestClient(app)
 
 

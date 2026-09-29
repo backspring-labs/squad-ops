@@ -95,11 +95,10 @@ def client(mock_cycle_registry, mock_artifact_vault, mock_flow_executor, monkeyp
     app = FastAPI()
     app.include_router(router)
     register_domain_error_handlers(app)  # as the runtime does (#576)
-    import squadops.api.runtime.deps as deps_mod
 
-    monkeypatch.setattr(deps_mod, "_cycle_registry", mock_cycle_registry)
-    monkeypatch.setattr(deps_mod, "_artifact_vault", mock_artifact_vault)
-    monkeypatch.setattr(deps_mod, "_flow_executor", mock_flow_executor)
+    app.state.cycle_registry = mock_cycle_registry
+    app.state.artifact_vault = mock_artifact_vault
+    app.state.flow_executor = mock_flow_executor
     return TestClient(app)
 
 
@@ -153,11 +152,10 @@ class TestCancelRun:
     def test_cancel_propagates_to_prefect(self, client, monkeypatch):
         """#77: cancelling a single run transitions its still-running Prefect
         flow run to CANCELLED."""
-        import squadops.api.runtime.deps as deps_mod
 
         fake_tracker = AsyncMock()
         fake_tracker.find_active_flow_run_ids.return_value = ["flowrun-abc"]
-        monkeypatch.setattr(deps_mod, "_workflow_tracker", fake_tracker)
+        client.app.state.workflow_tracker = fake_tracker
 
         resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs/run_001/cancel")
 
@@ -172,15 +170,14 @@ class TestCancelRun:
         """#529: cancellation bypasses the executor's finalize path, so without
         this sweep the run's cycle leases stay held and the next cycle recruiting
         any of those agents deadlocks on focus_lease_conflict."""
-        import squadops.api.runtime.deps as deps_mod
 
         held = _focus_lease("data", "run_001")
         lease_port = AsyncMock()
         lease_port.list_active_leases.return_value = (held,)
         lease_port.get_current_lease.return_value = None  # the transition cleared it
         coordinator = AsyncMock()
-        monkeypatch.setattr(deps_mod, "_focus_lease_port", lease_port)
-        monkeypatch.setattr(deps_mod, "_runtime_coordinator", coordinator)
+        client.app.state.focus_lease_port = lease_port
+        client.app.state.runtime_coordinator = coordinator
 
         resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs/run_001/cancel")
 
@@ -195,12 +192,11 @@ class TestCancelRun:
     def test_cancel_survives_a_lease_sweep_failure(self, client, monkeypatch):
         """Registry cancellation is the source of truth (the #77 contract): a
         lease-release failure must not turn a cancel into a 500."""
-        import squadops.api.runtime.deps as deps_mod
 
         lease_port = AsyncMock()
         lease_port.list_active_leases.side_effect = RuntimeError("db down")
-        monkeypatch.setattr(deps_mod, "_focus_lease_port", lease_port)
-        monkeypatch.setattr(deps_mod, "_runtime_coordinator", AsyncMock())
+        client.app.state.focus_lease_port = lease_port
+        client.app.state.runtime_coordinator = AsyncMock()
 
         resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs/run_001/cancel")
 
@@ -210,10 +206,9 @@ class TestCancelRun:
 
     def test_cancel_without_lease_wiring_still_succeeds(self, client, monkeypatch):
         """A pool-less deployment has no leases to release; cancel must not 500."""
-        import squadops.api.runtime.deps as deps_mod
 
-        monkeypatch.setattr(deps_mod, "_focus_lease_port", None)
-        monkeypatch.setattr(deps_mod, "_runtime_coordinator", None)
+        client.app.state.focus_lease_port = None
+        client.app.state.runtime_coordinator = None
 
         resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs/run_001/cancel")
 
@@ -224,7 +219,6 @@ class TestCancelRun:
         """#561: cancel bypasses `RunCompletion.finalize`, so each recruited
         agent kept an active row that trips the one-active-per-agent index on
         every later dispatch — silently ending that agent's activity tracking."""
-        import squadops.api.runtime.deps as deps_mod
 
         open_row = SimpleNamespace(
             runtime_activity_id="act-1",
@@ -235,7 +229,7 @@ class TestCancelRun:
         activity_port = AsyncMock()
         activity_port.list_active_activities.return_value = (open_row,)
         activity_port.abort_activity.return_value = open_row
-        monkeypatch.setattr(deps_mod, "_activity_port", activity_port)
+        client.app.state.activity_port = activity_port
 
         resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs/run_001/cancel")
 
@@ -247,11 +241,10 @@ class TestCancelRun:
         )
 
     def test_cancel_survives_an_activity_teardown_failure(self, client, monkeypatch):
-        import squadops.api.runtime.deps as deps_mod
 
         activity_port = AsyncMock()
         activity_port.list_active_activities.side_effect = RuntimeError("db down")
-        monkeypatch.setattr(deps_mod, "_activity_port", activity_port)
+        client.app.state.activity_port = activity_port
 
         resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs/run_001/cancel")
 
@@ -454,7 +447,6 @@ class TestACancelReachesTheAgentsHoldingTheRunsTasks:
         so nobody is told."""
         import json
 
-        import squadops.api.runtime.deps as deps_mod
 
         events: list[str] = []
         open_row = SimpleNamespace(runtime_activity_id="act-1", agent_id="neo", cycle_id="cyc_001")
@@ -470,10 +462,10 @@ class TestACancelReachesTheAgentsHoldingTheRunsTasks:
         queue = AsyncMock()
         queue.publish.side_effect = lambda name, body: events.append(f"publish:{name}")
         coordinator = AsyncMock()
-        monkeypatch.setattr(deps_mod, "_activity_port", activity_port)
-        monkeypatch.setattr(deps_mod, "_focus_lease_port", lease_port)
-        monkeypatch.setattr(deps_mod, "_runtime_coordinator", coordinator)
-        monkeypatch.setattr(deps_mod, "_cancel_queue_port", queue)
+        client.app.state.activity_port = activity_port
+        client.app.state.focus_lease_port = lease_port
+        client.app.state.runtime_coordinator = coordinator
+        client.app.state.cancel_queue_port = queue
         monkeypatch.setattr(
             "squadops.runtime.focus_reaper._return_to_ambient",
             AsyncMock(side_effect=lambda *a: events.append("release") or True),
@@ -490,7 +482,6 @@ class TestACancelReachesTheAgentsHoldingTheRunsTasks:
         }
 
     def test_a_failed_notice_never_fails_the_cancel(self, client, monkeypatch):
-        import squadops.api.runtime.deps as deps_mod
 
         activity_port = AsyncMock()
         activity_port.list_active_activities.return_value = [
@@ -502,8 +493,8 @@ class TestACancelReachesTheAgentsHoldingTheRunsTasks:
         queue.publish.side_effect = lambda name, body: (
             (_ for _ in ()).throw(RuntimeError("broker down")) if name == "eve_control" else None
         )
-        monkeypatch.setattr(deps_mod, "_activity_port", activity_port)
-        monkeypatch.setattr(deps_mod, "_cancel_queue_port", queue)
+        client.app.state.activity_port = activity_port
+        client.app.state.cancel_queue_port = queue
 
         resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs/run_001/cancel")
 

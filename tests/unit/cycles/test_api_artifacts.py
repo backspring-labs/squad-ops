@@ -71,10 +71,9 @@ def client(mock_artifact_vault, mock_cycle_registry, monkeypatch):
     app = FastAPI()
     app.include_router(router)
     register_domain_error_handlers(app)  # as the runtime does (#576)
-    import squadops.api.runtime.deps as deps_mod
 
-    monkeypatch.setattr(deps_mod, "_artifact_vault", mock_artifact_vault)
-    monkeypatch.setattr(deps_mod, "_cycle_registry", mock_cycle_registry)
+    app.state.artifact_vault = mock_artifact_vault
+    app.state.cycle_registry = mock_cycle_registry
     return TestClient(app)
 
 
@@ -187,9 +186,7 @@ class TestBaselinePromotion:
             promotion_status="promoted",
         )
 
-        import squadops.api.runtime.deps as deps_mod
-
-        deps_mod._artifact_vault.get_metadata.return_value = art_with_cycle
+        client.app.state.artifact_vault.get_metadata.return_value = art_with_cycle
 
         resp = client.post(
             "/api/v1/projects/hello_squad/baseline/prd",

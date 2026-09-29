@@ -7,10 +7,11 @@ was never caught before dispatch.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from squadops.api.routes.cycles.cycles import _pulled_model_names
-from squadops.api.runtime import deps
 from squadops.llm.models import ModelInfo
 from squadops.ports.llm.provider import LLMCapability
 
@@ -30,26 +31,20 @@ class _Port:
         return self._models
 
 
-@pytest.fixture(autouse=True)
-def _restore_port():
-    before = deps._llm_port
-    yield
-    deps._llm_port = before
+def _request(port):
+    """A request whose app holds ``port`` — the app's own port (#1448), not a process global."""
+    return SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(llm_port=port)))
 
 
 async def test_any_provider_declaring_listing_is_verified():
-    deps.set_llm_port(
-        _Port(listing=True, models=[ModelInfo(name="qwen3.8:27b"), ModelInfo(name="")])
-    )
-    assert await _pulled_model_names() == ["qwen3.8:27b"]
+    port = _Port(listing=True, models=[ModelInfo(name="qwen3.8:27b"), ModelInfo(name="")])
+    assert await _pulled_model_names(_request(port)) == ["qwen3.8:27b"]
 
 
 async def test_a_provider_without_listing_is_unverifiable_not_empty():
     """``None`` warns-and-allows; ``[]`` would read as *no models present* and block."""
-    deps.set_llm_port(_Port(listing=False))
-    assert await _pulled_model_names() is None
+    assert await _pulled_model_names(_request(_Port(listing=False))) is None
 
 
 async def test_an_unreachable_backend_is_unverifiable():
-    deps.set_llm_port(_Port(listing=True, fail=True))
-    assert await _pulled_model_names() is None
+    assert await _pulled_model_names(_request(_Port(listing=True, fail=True))) is None

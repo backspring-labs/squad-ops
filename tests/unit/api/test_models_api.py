@@ -74,10 +74,9 @@ def mock_squad_profile():
 def _client_for(port, mock_squad_profile, monkeypatch):
     app = FastAPI()
     app.include_router(router)
-    import squadops.api.runtime.deps as deps_mod
 
-    monkeypatch.setattr(deps_mod, "_llm_port", port)
-    monkeypatch.setattr(deps_mod, "_squad_profile", mock_squad_profile)
+    app.state.llm_port = port
+    app.state.squad_profile = mock_squad_profile
     return TestClient(app)
 
 
