@@ -388,28 +388,16 @@ if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
         fi
     fi
 
-    # Step 4: Restart all agent containers
-    echo ""
-    echo -e "${BLUE}🔄 Step 4: Restarting agent containers...${NC}"
-    for agent in $AGENTS; do
-        if docker compose config --services | grep -q "^${agent}$"; then
-            echo -e "  🔄 Restarting ${agent}..."
-            if ! docker compose up -d --wait $agent; then
-                echo -e "${RED}  ⚠️  Restart failed for ${agent}${NC}"
-                AGENTS_RESTART_FAILED=1
-                FAILED_AGENTS="${FAILED_AGENTS} ${agent}"
-            fi
-        fi
-    done
-
-    # Step 4b (#327): re-sync governed prompt assets to LangFuse. Agents
-    # resolve prompts from the registry when
-    # SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER=langfuse — a rebuild that ships
-    # new/changed templates without re-uploading them fails cycles at runtime
-    # with "Prompt asset not found" (the #327 drift). Deploy = sync.
+    # Step 4 (#327, #1691): sync the governed prompt assets to LangFuse BEFORE the agents
+    # restart. Agents resolve prompts from the registry when
+    # SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER=langfuse, and since #352 an agent refuses to boot
+    # against a registry missing an asset its image ships. The sync used to run after the
+    # restart, so a release that added an asset restart-looped every agent until it landed —
+    # and a skipped or failed sync left them looping, reported healthy. Deploy = sync, first.
+    PROMPT_SYNC_FAILED=0
     if grep -q "^SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER=langfuse" .env 2>/dev/null; then
         echo ""
-        echo -e "${BLUE}📤 Step 4b: Syncing prompt assets to LangFuse (#327)...${NC}"
+        echo -e "${BLUE}📤 Step 4: Syncing prompt assets to LangFuse before the agents restart (#327, #1691)...${NC}"
         LF_PUBLIC=$(grep "^SQUADOPS__LANGFUSE__PUBLIC_KEY=" .env | cut -d= -f2-)
         LF_SECRET=$(grep "^SQUADOPS__LANGFUSE__SECRET_KEY=" .env | cut -d= -f2-)
         # .env's SQUADOPS__LANGFUSE__HOST is the container-side address
@@ -421,15 +409,19 @@ if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
         # multi-line IPv4+IPv6 output, pinned interfaces) live in the
         # unit-tested helper.
         source "$REPO_ROOT/scripts/dev/ops/derive_binding.sh"
-        LF_HOSTPORT=$(derive_binding "$(docker compose port langfuse 3000 2>/dev/null)") || LF_HOSTPORT=""
-        LF_ADDR="${LF_HOSTPORT% *}"
-        LF_PORT="${LF_HOSTPORT#* }"
         PROMPT_SYNC_PY="$REPO_ROOT/.venv/bin/python3"
         [ -x "$PROMPT_SYNC_PY" ] || PROMPT_SYNC_PY=python3
+        LF_HOSTPORT=""
+        if docker compose up -d --wait langfuse > /tmp/prompt_sync.log 2>&1; then
+            LF_HOSTPORT=$(derive_binding "$(docker compose port langfuse 3000 2>/dev/null)") || LF_HOSTPORT=""
+        fi
+        LF_ADDR="${LF_HOSTPORT% *}"
+        LF_PORT="${LF_HOSTPORT#* }"
         # Agents request assets with the "production" label (adapter default) —
         # the upload label must match or resolution misses.
         if [ -z "$LF_HOSTPORT" ]; then
-            echo -e "${RED}  ⚠️  Prompt sync SKIPPED — no derivable langfuse port binding (is the service up?). Agents may hit 'Prompt asset not found' at runtime.${NC}"
+            echo -e "${RED}  ❌ Prompt sync SKIPPED — LangFuse is not up or has no derivable port binding (see /tmp/prompt_sync.log)${NC}"
+            PROMPT_SYNC_FAILED=1
         elif SQUADOPS_MAINTAINER=1 "$PROMPT_SYNC_PY" scripts/maintainer/upload_prompts_to_langfuse.py \
             --environment production \
             --host "http://${LF_ADDR}:${LF_PORT}" \
@@ -437,13 +429,32 @@ if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
             > /tmp/prompt_sync.log 2>&1; then
             echo -e "     ${GREEN}✅ Prompt assets synced${NC} ($(grep -c '^  OK' /tmp/prompt_sync.log) assets)"
         else
-            echo -e "${RED}  ⚠️  Prompt sync FAILED — agents may hit 'Prompt asset not found' at runtime (see /tmp/prompt_sync.log)${NC}"
+            echo -e "${RED}  ❌ Prompt sync FAILED (see /tmp/prompt_sync.log)${NC}"
+            PROMPT_SYNC_FAILED=1
         fi
     fi
 
-    # Step 5: Wait for agents to be healthy
+    # Step 5: Restart the agents — only against a synced registry. Each `--wait` returns on the
+    # agent's own readiness mark (squadops.agents.readiness, #1691), not on a module import.
     echo ""
-    echo -e "${BLUE}✅ Step 5: Agents reported healthy (compose --wait, #581)${NC}"
+    if [ "$PROMPT_SYNC_FAILED" = "1" ]; then
+        echo -e "${RED}⏭  Step 5: Agents NOT restarted — they would refuse to boot against an unsynced registry (#352) and restart-loop; they keep their previous image${NC}"
+    else
+        echo -e "${BLUE}🔄 Step 5: Restarting agent containers...${NC}"
+        for agent in $AGENTS; do
+            if docker compose config --services | grep -q "^${agent}$"; then
+                echo -e "  🔄 Restarting ${agent}..."
+                if ! docker compose up -d --wait $agent; then
+                    echo -e "${RED}  ⚠️  Restart failed for ${agent}${NC}"
+                    AGENTS_RESTART_FAILED=1
+                    FAILED_AGENTS="${FAILED_AGENTS} ${agent}"
+                fi
+            fi
+        done
+        if [ "$AGENTS_RESTART_FAILED" = "0" ]; then
+            echo -e "  ${GREEN}✅ Agents ready (compose --wait on each agent's readiness mark, #581, #1691)${NC}"
+        fi
+    fi
 fi
 
 # Step 6: Verify deployment
@@ -458,6 +469,7 @@ DEPLOY_FAILED=0
 [ "${RUNTIME_API_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
 [ "${CONSOLE_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
 [ "${AGENTS_RESTART_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
+[ "${PROMPT_SYNC_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
 if [ "$DEPLOY_FAILED" = "1" ]; then
     echo -e "${RED}⚠️  Rebuild and deploy completed WITH FAILURES (details below).${NC}"
 else
@@ -491,6 +503,12 @@ if [ "${CONSOLE_FAILED:-0}" = "1" ]; then
     echo ""
     echo -e "${RED}❌ Console build failed. Fix the Svelte error and rebuild:${NC}"
     echo -e "${YELLOW}   ./scripts/dev/ops/rebuild_and_deploy.sh console${NC}"
+fi
+if [ "${PROMPT_SYNC_FAILED:-0}" = "1" ]; then
+    echo ""
+    echo -e "${RED}❌ Prompt sync to LangFuse failed, so the agents were not restarted (#1691).${NC}"
+    echo -e "${RED}   They keep running their previous image. Bring LangFuse up, then rebuild:${NC}"
+    echo -e "${YELLOW}   ./scripts/dev/ops/rebuild_and_deploy.sh agents${NC}"
 fi
 if [ "${AGENTS_RESTART_FAILED:-0}" = "1" ]; then
     echo ""
