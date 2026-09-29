@@ -2306,3 +2306,30 @@ handler test fails); unoffered whole files read as new (three tests fail).
 
 **Ruled by.** The owner, 2026-09-15 ("fix 1583 and plan for deploy E"); the implementer on the
 shape.
+
+## 46q. 2026-09-29 — N read a third time, unmet: step 7 is not built, and becomes a 2.0 decision
+
+**What changed.** Nothing in the SIP's design. Its disposition is recorded, so that silence cannot
+read as shipped: **§38 step 7 (the flip) is not built.** N, its precondition (§39.8), was unmet on
+all three lines that read it:
+
+| line | N read | against | why unmet |
+|---|---|---|---|
+| 1.8.0 | 5 | 6 | qa × Next.js empty (1.8.1 plan §1) |
+| 1.8.1 | 4 | 6 | qa × Next.js empty (1.8.2 plan §1) |
+| 1.8.2, deploy A′ | 8 (4 without the qa re-takes, #1724) | 6 | dev × Next.js empty |
+
+**The evidence.** 1.8.2's reading is its pre-registration §10 (deploy A′, "N, as registered"). A
+required cell at zero fails the reading regardless of the total (§3c). dev × Next.js had one
+registered supplier, the `dev-lane-nextjs` diagnostic. It was skipped by the owner's ruling once
+the React dev lane showed the fault is reverted by the task's own self-evaluation (§11h, #1716).
+Neither Next.js counted roll produced a dev repair, as expected.
+
+**Who ruled, and what follows.** The 1.8.2 plan, owner-ruled (§2.3, §3.7): with N short a third
+time, nothing is spent past the reading.
+- This SIP stays `accepted`.
+- The 1.9 plan names step 7 as a **2.0 decision**.
+- Two things the decision will need are open:
+  - a supplier for dev × Next.js that survives §12a's self-evaluation (#1716);
+  - a readable re-take count (#1724).
+
