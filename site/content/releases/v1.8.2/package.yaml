@@ -1422,3 +1422,16 @@ showcase:
     Chosen because that recovery is what this release adds, not because the roll is
     typical: 2 of the 6 counted rolls corrected.'
   role: counted
+records:
+  asset: squadops-1.8.2-records.tar.gz
+  sha256: 791ad2618c576d48d85818c46f39022bdaf6aef9a265829a94cc498c29c43a1e
+  files: 84
+  bytes: 233013
+  attached_at: '2026-09-29T12:07:47Z'
+  scanned:
+    secret_values: 55
+    patterns:
+    - langfuse key
+    - api key (sk-)
+    - jwt
+    - private key
