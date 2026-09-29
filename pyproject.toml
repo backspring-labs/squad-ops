@@ -131,6 +131,9 @@ max-complexity = 12
 # than blocking the gate. Newly added code in any file (including these)
 # is still gated.
 "adapters/cycles/dispatched_flow_executor.py" = ["C901"]
+# (#1507 step 1: the framing gate's plan check moved out of the executor as found — an
+# extraction changes no code; the exemption follows it, decomposition still deferred)
+"adapters/cycles/framing_gate_check.py" = ["C901"]
 # (#152 split: the exempted handle() functions moved from cycle_tasks.py
 # into the cycle/ package; exemption follows them, decomposition still deferred)
 "src/squadops/capabilities/handlers/cycle/develop.py" = ["C901"]
