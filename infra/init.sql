@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS agent_status (
     last_heartbeat TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     current_task_id TEXT,
     version TEXT,
+    revision TEXT,  -- #1720: the commit the agent's image was built from (1160)
     tps INTEGER DEFAULT 0,
     memory_count INTEGER DEFAULT 0,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

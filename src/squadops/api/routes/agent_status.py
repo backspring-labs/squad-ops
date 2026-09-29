@@ -25,6 +25,8 @@ class AgentStatusCreate(BaseModel):
     lifecycle_state: str
     current_task_id: str | None = None
     version: str | None = None
+    # #1720: the commit the agent's image was built from (None when the build recorded none).
+    revision: str | None = None
     tps: int = 0
     memory_count: int | None = None
     # Deprecated fields (ignored if present)
@@ -73,6 +75,7 @@ async def create_or_update_agent_status(request: Request, agent_status: AgentSta
                 "lifecycle_state": agent_status.lifecycle_state,
                 "current_task_id": agent_status.current_task_id,
                 "version": agent_status.version,
+                "revision": agent_status.revision,
                 "tps": agent_status.tps,
                 "memory_count": agent_status.memory_count,
             }

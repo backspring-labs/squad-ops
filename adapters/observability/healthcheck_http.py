@@ -55,6 +55,7 @@ class HealthCheckHttpReporter(AgentHeartbeatReporter):
         lifecycle_state: str,
         current_task_id: str | None = None,
         version: str | None = None,
+        revision: str | None = None,
         tps: float | None = None,
         memory_count: int | None = None,
     ) -> None:
@@ -64,6 +65,7 @@ class HealthCheckHttpReporter(AgentHeartbeatReporter):
             "lifecycle_state": lifecycle_state,
             "current_task_id": current_task_id,
             "version": version,
+            "revision": revision,
             "tps": int(tps) if tps is not None else 0,
             "memory_count": memory_count,
         }
