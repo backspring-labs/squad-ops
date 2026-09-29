@@ -2696,11 +2696,24 @@ _FAULT_OUT_OF_SCOPE = re.compile(
     r"fault_injection: (?P<fault>\w+) declared for (?P<task>\S+) but this attempt is outside "
     r"its scope \((?P<scope>\w+)\)"
 )
+# #1718: the hook's third outcome — the fault ran on its target and had nothing to change. Two
+# forms (``fault_injection.inject``): the transform returned the emission unchanged, or no
+# artifact carries the shape a planted row is about.
+_FAULT_DID_NOT_BITE = re.compile(
+    r"fault_injection: DID NOT BITE (?P<fault>\w+) on task=(?P<task>\S+) handler=(?P<handler>\S+) "
+    r"— (?P<why>the emission was returned unchanged|no artifact carries the shape)"
+)
+_DID_NOT_BITE_FORM = {
+    "the emission was returned unchanged": "emission_unchanged",
+    "no artifact carries the shape": "no_shape_to_plant",
+}
+_FAULT_BUCKETS = ("applied", "out_of_scope", "did_not_bite")
 
 
 def faults_applied(lines: list[str]) -> dict[str, dict[str, list[dict]]]:
-    """Per declared fault, the attempts it was APPLIED to and the attempts it was declared
-    for but out of scope — read from the fault hook's own lines in the agents' logs (#1588).
+    """Per declared fault, the attempts it was APPLIED to, the attempts it was declared for
+    but out of scope, and the attempts it ran on and DID NOT BITE (#1718) — read from the
+    fault hook's own lines in the agents' logs (#1588).
 
     A seam reading is a claim about what the fault's application caused. Without this fact
     the own-frame diagnostic's record credited L4 on a refund that the dev's prose refusal
@@ -2708,13 +2721,17 @@ def faults_applied(lines: list[str]) -> dict[str, dict[str, list[dict]]]:
     never applied and the seam was never exercised. Pure; ``seam_readouts`` reads it.
     """
     out: dict[str, dict[str, list[dict]]] = {}
+
+    def bucket(fault: str, name: str) -> list[dict]:
+        return out.setdefault(fault, {b: [] for b in _FAULT_BUCKETS})[name]
+
     for line in lines:
         if (m := _FAULT_APPLIED.search(line)) is not None:
             # A transform reports the emission's characters; a planted row (`false-criterion`)
             # reports the evaluation's rows — `rows 0 -> 1`, which read as never applied until
             # deploy A's d2 (pre-registration §11c).
             unit = m.group("unit")
-            out.setdefault(m.group("fault"), {"applied": [], "out_of_scope": []})["applied"].append(
+            bucket(m.group("fault"), "applied").append(
                 {
                     "task": m.group("task"),
                     "handler": m.group("handler"),
@@ -2724,9 +2741,17 @@ def faults_applied(lines: list[str]) -> dict[str, dict[str, list[dict]]]:
                 }
             )
         elif (m := _FAULT_OUT_OF_SCOPE.search(line)) is not None:
-            out.setdefault(m.group("fault"), {"applied": [], "out_of_scope": []})[
-                "out_of_scope"
-            ].append({"task": m.group("task"), "scope": m.group("scope")})
+            bucket(m.group("fault"), "out_of_scope").append(
+                {"task": m.group("task"), "scope": m.group("scope")}
+            )
+        elif (m := _FAULT_DID_NOT_BITE.search(line)) is not None:
+            bucket(m.group("fault"), "did_not_bite").append(
+                {
+                    "task": m.group("task"),
+                    "handler": m.group("handler"),
+                    "form": _DID_NOT_BITE_FORM[m.group("why")],
+                }
+            )
     return out
 
 
@@ -3007,6 +3032,15 @@ AGENT_MARKER_SAMPLES: dict[str, tuple[str, ...]] = {
         "fault_injection: APPLIED false_criterion_alias_import to "
         "task=task-run_27462d5a-m000-development.develop handler=development_develop_handler "
         "rows 0 -> 1 scope=first_attempt (found_in=#1580)",
+        # Real: A′'s `dev-lane-fastapi-react` run 1, cyc_25a7a6ad8ebd (neo) — the unbitten form
+        # the driver dropped until #1718.
+        "2026-09-28 15:12:03,429 - squadops.capabilities.handlers.fault_injection - WARNING - "
+        "fault_injection: DID NOT BITE dev_join_response_omits_declared_fields on "
+        "task=task-run_d2b1a457-m000-development.develop handler=development_develop_handler — "
+        "the emission was returned unchanged (3688 chars), so the downstream path runs as if no "
+        "fault were declared. THIS DIAGNOSTIC PROVES NOTHING about the dev lane: a probe failure "
+        "on a developer-owned route is repaired by a development repair aimed at the probe-owned "
+        "slot, verified and applied.",
     ),
 }
 AGENT_SAMPLE_ALIASES: dict[str, str] = {
@@ -3407,6 +3441,36 @@ def _out_of_scope_attempts(rec: Mapping[str, Any], fault: str) -> list[dict]:
     return list((by_fault.get(fault) or {}).get("out_of_scope") or [])
 
 
+def _unbitten_attempts(rec: Mapping[str, Any], fault: str) -> list[dict]:
+    """The attempts ``fault`` ran on and could not change (#1718); empty for a record that
+    predates the bucket, which then reads as it always did."""
+    by_fault = value_at(rec, "loop_texture.faults_applied", {}) or {}
+    return list((by_fault.get(fault) or {}).get("did_not_bite") or [])
+
+
+def _never_applied_reason(rec: Mapping[str, Any], fault: str) -> str:
+    """Why a declared fault exercised nothing, in the terms that decide the next step (#1718).
+
+    "It ran and had nothing to change" points at the transform against this model's output;
+    "outside its scope" at the scope rule; "no attempt ran" at scheduling. They were one
+    sentence until A′'s dev-lane run 1 spent its second run on the wrong question.
+    """
+
+    def tasks(attempts: list[dict]) -> str:
+        return ", ".join(sorted({str(a.get("task")) for a in attempts}))
+
+    parts = []
+    if unbitten := _unbitten_attempts(rec, fault):
+        forms = sorted({str(a.get("form")) for a in unbitten})
+        parts.append(
+            f"declared for {tasks(unbitten)}, each attempt ran, and the fault found nothing to "
+            f"change (DID NOT BITE: {', '.join(forms)})"
+        )
+    if out_of_scope := _out_of_scope_attempts(rec, fault):
+        parts.append(f"declared for {tasks(out_of_scope)} but every attempt was outside its scope")
+    return "; ".join(parts) or "no attempt of its target task ran"
+
+
 def _lines_naming_applied_tasks(lines: list[str], rec: Mapping[str, Any], fault: str) -> list[str]:
     """The lines about a task the fault was applied to. When the record cannot say which
     (it predates the field, or the fault never applied) every line is kept — the applied
@@ -3512,17 +3576,9 @@ def seam_readouts(faults, rec: dict) -> dict[str, dict]:
                 "stands on the seam's evidence alone"
             )
         elif not applied:
-            out_of_scope = _out_of_scope_attempts(rec, name)
             unaskable["loop_texture.faults_applied"] = (
-                "the fault never applied — "
-                + (
-                    "declared for "
-                    + ", ".join(sorted({str(a.get("task")) for a in out_of_scope}))
-                    + " but every attempt was outside its scope"
-                    if out_of_scope
-                    else "no attempt of its target task ran"
-                )
-                + "; the seam was not exercised, so this is neither YES nor NO (#1588)"
+                f"the fault never applied — {_never_applied_reason(rec, name)}; the seam was "
+                "not exercised, so this is neither YES nor NO (#1588)"
             )
             state = None
         out[name] = {
