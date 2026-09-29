@@ -502,3 +502,51 @@ rejected on the first attempt's six failed rows while the re-authored suite pass
 because the ledger supersedes per `(check_id, subject)` and a check that only ever appears when
 it fails can never be superseded by its own later pass. One helper now attaches it for both
 handlers, so the two cannot diverge a third time. *Lives in:* `_CycleTaskHandler._attach_outcome`.
+
+## 47. The framing gate returns its plan errors; the caller records the rejection
+
+`_reject_invalid_plan_before_workload_gate` returns a list, and the sequencing loop records a
+system `REJECTED` gate decision from it, which re-rolls framing for free (#464, #473). It used to
+raise, and the orchestrator died silently mid-sequence (the 3.13 stall). A validator added here
+adds a rejection reason; it never raises. *Lives in:* the framing gate's plan check (#1507 step 1).
+
+## 48. Two plan nets, two error channels: pick the net by where the rejection must land
+
+The inter-workload gate's check **returns** (a recorded re-roll), and the dispatch-time net in
+`generate_task_plan` / `_reject_unsatisfiable_plan_at_gate` **raises** (a run failure). They are
+separate on purpose (#663 D5): merging them would conflate #473's returns-vs-raises semantics.
+A new rule goes on the net whose landing it needs, and on both when both apply; landing it on one
+when both apply is the #718/#719 scar. `test_plan_gate_seams.py` pins both call sites.
+
+## 49. A missing plan is rejected at the gate; an unreadable one defers
+
+With `implementation_plan` on, a completed framing run with no plan artifact means plan authoring
+collapsed, and approving it spends a whole implementation run before the SIP-0096 throttle catches
+it at the end (#424). An artifact that exists but doesn't parse is different: the dispatch-time
+net gives it a full diagnosis, so the gate defers. Exists-but-unreadable is not absent.
+
+## 50. Whatever is provably unwinnable from the plan and manifest is rejected at the gate
+
+Each validator the gate runs proves, in milliseconds, that a roll cannot pass on any content: an
+unexecutable command check or directory-shaped artifact (#645), a dual-claimed artifact (#673), a
+qa task that can never satisfy `tests_pass` (#715), a builder with no build profile (#426) or under
+its required files (roll 15), a suite outside qa's namespace (#1587), a module the scaffold can't
+provide (#671), a failing check on a frozen file (pf-42), a manifest the plan contradicts (#1013).
+At the gate a re-roll costs minutes; the same defect found later costs a roll's correction budget.
+The check only ever adds an earlier rejection, never a pass.
+
+## 51. Bind mode binds the contract's criteria before validating the plan
+
+In bind mode the contract's covered-file criteria are bound by id before the plan is validated
+(#509), and dispatch applies the same normalization, so the validated plan and the executed plan
+cannot drift. Bind mode requires an interface manifest, seeded or framing-emitted and hash-checked
+(#494, #496), and a seeded contract that won't parse is a hard rejection, never a fall-through to
+author mode (SIP-0098 §10).
+
+## 52. Soft plan violations are logged at the gate, never fatal
+
+A warning- or info-severity criterion can't block a build (RC-9), so it must not kill a cycle at
+plan validation either; the gate logs every tolerated violation, including the derived-criteria
+notes (#1254), so the pass is never silent. The rule is taught in the vocabulary and enforced by
+the dispatch strip, and a framing re-roll for a row dispatch would drop costs half an hour for
+nothing.
