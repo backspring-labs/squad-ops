@@ -92,6 +92,20 @@ def driver():
     return module
 
 
+@pytest.fixture(autouse=True)
+def _the_deploys_containers_are_not_read(request, monkeypatch):
+    """Every test reads a stubbed window, never the live deploy's containers: the Prefect
+    fallback asks docker when each container was created, and an unstubbed ask read this box's
+    real rebuild times. A test of that check itself sets ``reads_container_creation``."""
+    if (
+        getattr(request.cls, "reads_container_creation", False)
+        or "driver" not in request.fixturenames
+    ):
+        return
+    driver = request.getfixturevalue("driver")
+    monkeypatch.setattr(driver, "container_recreated_since", lambda container, since: False)
+
+
 class TestLogWindow:
     def test_a_naive_utc_moment_gets_an_explicit_zone(self, driver):
         assert driver.log_since(datetime(2026, 8, 26, 4, 19, 13)) == "2026-08-26T04:19:13Z"
@@ -6698,6 +6712,130 @@ FAILED backend/tests/test_runs.py::test_post_dev_seed_returns_200 - pydantic_...
         assert rounds[0]["regressions"] is None and rounds[0]["before_executed"] is False
         texture = driver.retest_texture(rounds)
         assert texture["retest_regressions"] == 0
+
+
+class TestALostWindowIsReadFromPrefectsStoredLog:
+    """1.9.0 plan §3.3: a rebuild recreates a container and ``docker logs`` loses the window, and
+    with it every texture field a record had not already taken. The driver now reads such a
+    window from Prefect's stored log, and names the two kinds of line that never reach it."""
+
+    reads_container_creation = True
+    #: Prefect's ``log`` rows, as the driver's query returns them (real messages, the #1697
+    #: verification's redelivery re-run, cyc_cfc00ce6ebd8).
+    _ROWS = [
+        {
+            "t": "2026-09-29 18:24:28,785",
+            "n": "adapters.cycles.dispatched_flow_executor",
+            "l": 30,
+            "m": "correction attempt 0 refunded (round s00): the repair emitted no content "
+            "(signature unreported), so the round is re-taken rather than spent (refund 1 of 3, "
+            "#1053/#998)",
+        },
+        {
+            "t": "2026-09-29 18:28:39,991",
+            "n": "squadops.capabilities.handlers.emission_log",
+            "l": 20,
+            "m": "qa_test_handler emission shape: chars=2056 completion_tokens=3412 "
+            "reasoning_chars=8979 fences={'fill': 0, 'path': 1, 'plain': 0} head=\"```python:"
+            'backend/tests/test_runs.py"',
+        },
+        {
+            "t": "2026-09-29 18:28:40,002",
+            "n": "squadops.capabilities.handlers.cycle.qa_test",
+            "l": 20,
+            "m": 'qa_retake_revision_form {"accepted": true, "edited": ["backend/tests/'
+            'test_runs.py"], "form": "edits", "handler": "qa_test_handler", "new_files": [], '
+            '"offered": {"backend/tests/test_runs.py": 5}, "task_type": "qa.test"}',
+        },
+    ]
+
+    @staticmethod
+    def _cfg(driver, faults):
+        return dataclasses.replace(
+            driver.load_set_config(_SETS / "1-8-1-nextjs.yaml"),
+            overrides={"fault_injection": list(faults)} if faults else {},
+        )
+
+    def _loop_texture(self, driver, monkeypatch, recreated, faults=()):
+        monkeypatch.setattr(driver, "artifact_dirs", lambda *a, **k: [])
+        monkeypatch.setattr(driver, "_fill_rejections", lambda *a: [])
+        monkeypatch.setattr(driver, "fill_merge_evidence", lambda *a: [])
+        monkeypatch.setattr(driver, "_decision_inherited_claims", lambda *a: [])
+        monkeypatch.setattr(driver, "docker_logs", lambda c, s, u=None: [])
+        monkeypatch.setattr(
+            driver,
+            "container_recreated_since",
+            lambda container, since: container in recreated,
+        )
+        monkeypatch.setattr(
+            driver, "psql", lambda q: json.dumps(self._ROWS) if "from log l" in q else ""
+        )
+        return driver.loop_texture(
+            self._cfg(driver, faults), "cyc_cfc00ce6ebd8", "run", "2026-09-29T17:37:20Z"
+        )
+
+    def test_a_rebuilt_runtime_reads_its_window_from_prefect_and_says_so(self, driver, monkeypatch):
+        """Wiring, entered at ``loop_texture``, the record's live caller. Bug this catches: a
+        rebuilt runtime-api's refunds read as none (docker's window is empty after it), or the
+        record not saying which source a window came from."""
+        out = self._loop_texture(driver, monkeypatch, recreated={"squadops-runtime-api"})
+
+        assert out["log_sources"] == {"runtime-api": "prefect", "agents": "docker"}
+        (refund,) = out["refunded_rounds"]["value"]
+        assert refund.startswith("correction attempt 0 refunded (round s00)")
+        # The agents' containers held their window: docker's (here empty) is what was read.
+        assert out["qa_retake_revision_forms"]["state"] == "unaskable"
+
+    @pytest.mark.parametrize(
+        ("faults", "fault_state"),
+        [((), "observed"), (("qa_repair_process_killed",), "unaskable")],
+        ids=["no process-death fault", "a process-death fault declared"],
+    )
+    def test_agents_read_from_prefect_name_what_prefect_never_carries(
+        self, driver, monkeypatch, faults, fault_state
+    ):
+        """Bug this catches: the redelivery refusals Prefect never holds read as "none refused",
+        and a fault that killed its process read as never applied — both answers the log cannot
+        give, measured on the redelivery re-run (44 of 46 fields equal, these two not)."""
+        out = self._loop_texture(driver, monkeypatch, recreated={"squadops-eve"}, faults=faults)
+
+        assert out["log_sources"]["agents"] == "prefect"
+        (form,) = out["qa_retake_revision_forms"]["value"]
+        assert form["edited"] == ["backend/tests/test_runs.py"]
+        assert out["redelivered_refusals"]["state"] == "unaskable"
+        assert "outside any task" in out["redelivered_refusals"]["reason"]
+        assert out["faults_applied"]["state"] == (
+            "asked_none" if fault_state == "observed" else "unaskable"
+        )
+
+    @pytest.mark.parametrize(
+        ("created", "recreated"),
+        [
+            ("2026-09-29T17:36:46.348280198Z", False),
+            ("2026-09-29T18:40:00.123456789Z", True),
+            ("", False),
+        ],
+        ids=["created before the cycle", "created after: a rebuild", "unreadable"],
+    )
+    def test_a_container_created_after_the_window_opened_lost_it(
+        self, driver, monkeypatch, created, recreated
+    ):
+        monkeypatch.setattr(driver, "sh", lambda cmd, check=True: created)
+
+        assert (
+            driver.container_recreated_since("squadops-runtime-api", "2026-09-29T17:37:20Z")
+            is recreated
+        )
+
+    def test_the_process_death_faults_are_the_registrys_crash_faults(self, driver):
+        """The driver names the faults whose APPLIED line dies with the process; the registry
+        is where a fault is declared a crash. Bug this catches: a new crash fault read from
+        Prefect as never applied because this list was not told."""
+        from squadops.capabilities.handlers.fault_injection import FAULTS
+
+        assert set(driver.FAULTS_LOGGED_AT_PROCESS_DEATH) == {
+            name for name, f in FAULTS.items() if f.crash
+        }
 
 
 class TestTheHangBoundIsReadFromTheLineTheDispatcherWrites:

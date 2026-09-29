@@ -219,6 +219,19 @@ UNASKABLE_REASONS: dict[str, str] = {
         "no emission retry was aimed in the window (#1372) — the appendix question presupposes "
         "a retry"
     ),
+    # The Prefect fallback (1.9.0 plan §3.3): the agents' window was read from Prefect's stored
+    # log because a rebuild had recreated a container since the cycle ran. Two kinds of line
+    # never reach that log, measured against docker on the #1697 verification's redelivery re-run.
+    "agent_lines_from_prefect": (
+        "the agents' window was read from Prefect's stored log (a container was recreated since "
+        "the cycle ran), which never carries the entrypoint's redelivery refusal — it is logged "
+        "outside any task, so the forwarder has no run to attach it to"
+    ),
+    "process_death_fault_from_prefect": (
+        "the agents' window was read from Prefect's stored log, and a declared fault ends its "
+        "process as it logs (`qa_repair_process_killed`): its APPLIED line is written as the "
+        "process dies, before the forwarder flushes, so the log holds no record of it"
+    ),
     "no_correction_decision_stored": (
         "no correction_decision.md stored — the claim is read from the decision itself (#968)"
     ),
@@ -357,10 +370,10 @@ EVIDENCE_FIELDS: dict[str, tuple[str, ...]] = {
     "loop_texture.empty_repair_emissions": _AGENT_WINDOW,
     "loop_texture.emission_tokens_by_handler": _AGENT_WINDOW,
     "loop_texture.placeholder_strips": _AGENT_WINDOW,
-    "loop_texture.faults_applied": _AGENT_WINDOW,
+    "loop_texture.faults_applied": (*_AGENT_WINDOW, "process_death_fault_from_prefect"),
     # 1.8.2 plan §4.1: `compile-loop`'s passes and `redelivery`'s refusal, in the agents' logs.
     "loop_texture.self_eval_passes": _AGENT_WINDOW,
-    "loop_texture.redelivered_refusals": _AGENT_WINDOW,
+    "loop_texture.redelivered_refusals": (*_AGENT_WINDOW, "agent_lines_from_prefect"),
     "loop_texture.retried_with_fact": (*_AGENT_WINDOW, "no_emission_retry_aimed"),
     "loop_texture.retried_blind": (*_AGENT_WINDOW, "no_emission_retry_aimed"),
     "loop_texture.repair_revision_forms": (
@@ -453,7 +466,7 @@ EVIDENCE_FIELDS: dict[str, tuple[str, ...]] = {
 #: member of these is registered and every registered field of these is produced.
 EVIDENCE_GROUPS = ("loop_texture", "typed_checks", "loaded_checks", "lineage")
 #: Record metadata that lives beside evidence fields without being one.
-_NOT_EVIDENCE = {"loop_texture.log_window"}
+_NOT_EVIDENCE = {"loop_texture.log_window", "loop_texture.log_sources"}
 
 
 def unaskable_reason(condition: str) -> str:
@@ -2379,6 +2392,61 @@ def runtime_log_window(since: str, until: str | None = None) -> list[str]:
     return _runtime_lines_of_interest(docker_logs(RUNTIME_API_CONTAINER, since, until))
 
 
+#: Where a window's lines were read from (``loop_texture.log_sources``).
+LOG_SOURCE_DOCKER = "docker"
+LOG_SOURCE_PREFECT = "prefect"
+#: The faults whose APPLIED line is written as the process dies, so Prefect's stored log never
+#: holds it. Guarded against the registry's ``crash`` flag by the test.
+FAULTS_LOGGED_AT_PROCESS_DEATH = ("qa_repair_process_killed",)
+_PREFECT_LEVELS = {10: "DEBUG", 20: "INFO", 30: "WARNING", 40: "ERROR", 50: "CRITICAL"}
+
+
+def container_recreated_since(container: str, since: str) -> bool:
+    """Whether ``container`` was created after ``since`` — a rebuild recreates it, and its
+    ``docker logs`` then hold nothing from before. A restart keeps the container and its logs.
+    An unreadable creation time reads as not recreated: docker's window is then read as before."""
+    created = sh(f"docker inspect --format={{{{.Created}}}} {container}", check=False)
+    started = _as_utc_moment(since)
+    made = _as_utc_moment(created)
+    return bool(started and made and made > started)
+
+
+def _as_utc_moment(stamp: str) -> datetime | None:
+    # docker writes nanoseconds; Python parses microseconds.
+    text = re.sub(r"(\.\d{6})\d+", r"\1", (stamp or "").strip())
+    try:
+        moment = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
+
+
+def prefect_log_lines(cycle_id: str) -> list[str]:
+    """Every line Prefect stored for the cycle's flow runs, oldest first, in the shape the
+    agents' containers write (``<time> - <logger> - <LEVEL> - <message>``), so the same filters
+    and collectors read them (1.9.0 plan §3.3).
+
+    Prefect's log is durable where ``docker logs`` is not: a rebuild recreates a container and
+    its window is gone, and until now so was every texture field a record had not already taken.
+    Measured on the #1697 verification's redelivery re-run (``cyc_cfc00ce6ebd8``): 44 of 46
+    texture fields read identically from here; the two that differ are the conditions
+    ``agent_lines_from_prefect`` and ``process_death_fault_from_prefect`` name.
+    """
+    rows = psql(
+        "select coalesce(json_agg(json_build_object('t', to_char(l.timestamp at time zone 'UTC', "
+        "'YYYY-MM-DD HH24:MI:SS,MS'), 'n', l.name, 'l', l.level, 'm', l.message) "
+        "order by l.timestamp), '[]') from log l join flow_run f on f.id = l.flow_run_id "
+        f"where f.parameters->>'cycle_id' = '{cycle_id}';"
+    )
+    try:
+        stored = json.loads(rows or "[]")
+    except ValueError:
+        return []
+    return [
+        f"{r['t']} - {r['n']} - {_PREFECT_LEVELS.get(r['l'], r['l'])} - {r['m']}" for r in stored
+    ]
+
+
 #: The runtime-api lines the loop's collectors read. Every key is exercised by a sample in
 #: ``RUNTIME_MARKER_SAMPLES`` and every collector field is fed by one (#1632).
 _RUNTIME_LINE_KEYS = (
@@ -3202,10 +3270,34 @@ def loop_texture(
     correction_rounds: int | None = None,
     correction_decisions: int | None = None,
 ) -> dict:
-    raw = docker_logs(RUNTIME_API_CONTAINER, since, until)
+    # 1.9.0 plan §3.3: a window a rebuild took is read from Prefect's stored log instead — docker
+    # first while its container still holds the window, because two kinds of line never reach
+    # Prefect (the conditions say which).
+    services = set_agent_services(cfg)
+    sources = {
+        "runtime-api": LOG_SOURCE_PREFECT
+        if container_recreated_since(RUNTIME_API_CONTAINER, since)
+        else LOG_SOURCE_DOCKER,
+        "agents": LOG_SOURCE_PREFECT
+        if any(container_recreated_since(f"squadops-{s}", since) for s in services)
+        else LOG_SOURCE_DOCKER,
+    }
+    stored = prefect_log_lines(cycle_id) if LOG_SOURCE_PREFECT in sources.values() else []
+    raw = (
+        stored
+        if sources["runtime-api"] == LOG_SOURCE_PREFECT
+        else docker_logs(RUNTIME_API_CONTAINER, since, until)
+    )
     logs = _runtime_lines_of_interest(raw)
     out = texture_from_logs(logs)
-    out.update(texture_from_agent_lines(agent_log_window(since, until, set_agent_services(cfg))))
+    out.update(
+        texture_from_agent_lines(
+            _agent_lines_of_interest(stored)
+            if sources["agents"] == LOG_SOURCE_PREFECT
+            else agent_log_window(since, until, services)
+        )
+    )
+    out["log_sources"] = sources
     # #330: the Prefect server's loop-service overruns in this cycle's window.
     out["prefect_loop_overruns"] = prefect_loop_overruns(prefect_log_window(since, until))
     out["log_window"] = {"since": since, "until": until}
@@ -3250,6 +3342,9 @@ def loop_texture(
         "runtime_window_empty": len(raw) == 0,
         "no_correction_round": not correction_entered(logs, correction_rounds),
         "no_emission_shape_lines": out["emissions_logged"] == 0,
+        "agent_lines_from_prefect": sources["agents"] == LOG_SOURCE_PREFECT,
+        "process_death_fault_from_prefect": sources["agents"] == LOG_SOURCE_PREFECT
+        and any(f in FAULTS_LOGGED_AT_PROCESS_DEATH for f in declared_fault_names(cfg.overrides)),
         "no_emission_retry_aimed": len(out["emission_retries"]) == 0,
         "no_repair_revision_form_line": len(out["repair_revision_forms"]) == 0,
         "no_self_eval_revision_form_line": len(out["self_eval_revision_forms"]) == 0,
@@ -5374,6 +5469,12 @@ def restate(rec: dict) -> tuple[dict, list[str]]:
             correction,
         ),
         "no_emission_shape_lines": (value_at(out, "loop_texture.emissions_logged", 0) or 0) == 0,
+        # A record written before the Prefect fallback read docker throughout.
+        "agent_lines_from_prefect": (
+            ((out.get("loop_texture") or {}).get("log_sources") or {}).get("agents")
+            == LOG_SOURCE_PREFECT
+        ),
+        "process_death_fault_from_prefect": False,
         "no_emission_retry_aimed": not value_at(out, "loop_texture.emission_retries", []),
         # A record written before #1653 counted rounds BY decisions, so its round count is
         # its decision count; a newer one carries the decisions separately.
