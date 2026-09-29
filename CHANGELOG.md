@@ -5,6 +5,69 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.8.2] — 2026-09-29
+
+**The unattended release: a cycle you can leave running.** Plan: `docs/plans/1-8-2-plan.md`
+(rev 4). Record: `docs/plans/1-8-2-deploy-a-preregistration.md` §10, deploy A′, with the cut record
+there.
+
+**The claim, measured on deploy A′ (`8e2c2e87`).** A cycle is safe to leave running when four
+things hold:
+- it reaches a terminal state within a bound;
+- a cancel leaves nothing running;
+- a crash or a hang is contained and recorded as a typed fact;
+- the next cycle starts on a quiet box.
+
+The `unattended-chain` diagnostic ran four React cycles back to back, with an injected cancel, a
+killed agent and a hung handler, and read **YES on every row**. The cancel ended its wait in 6 s,
+where deploy A held it for 30 minutes (#1699). Every cycle was assessed, and no step was manual.
+
+The counted set: **six of six rolls accepted** (React 21/21 ×4, Next.js 18/18 and 17/17), with L1
+held on every one. **No 1.8.3 opens** (plan §3.10): no qa task failed by its declared wait, and
+no contentless emission went unrecovered.
+
+**The unattended seams.**
+- A run's cancel reaches the agent already holding its task (#1683).
+- A cancel ends the run's open reply wait, and the quiet check sees an unfinished executor (#1700).
+- The per-task wait is declared, never inherited, and is the same bound on both sides (#1675,
+  #1678).
+- The JSX parse runs in a worker process, so a native fault kills the worker and not the agent
+  (#1679).
+- The repair records which correction-decision section its brief carried (#1674).
+- A call that spent its whole token budget and wrote nothing is asked again once, with the fact
+  (#1681).
+
+**Capability.**
+- **The self-evaluation pass becomes the model's compile loop** (SIP-0086 §12a changes 1–3):
+  - the loop's depth is declared by the request profile (#1682), and each pass is booked under its
+    own usage key (#1686);
+  - a failed TypeScript build carries every type error, not the first (#1687);
+  - a pass, and a qa re-take, see what they edit (#1688).
+- **A producer's dispute of a check is captured, marked, routed and read** (SIP-0096 §17a, #1684,
+  #1685; closes #1581).
+- **The qa repair brief shows the line each failing case failed on** (#1680).
+
+**Evidence that survives an unattended line.**
+- Records have one home, the main checkout's `var/` (#1666).
+- `worktree_hygiene.py` and cut step 8 (#1667).
+- A line's records are attached to its Release after a credential scan (#1670).
+- The chain command runs K cycles back to back (#1668).
+- A marker self-check at preflight (#1672).
+- The retest readout (#1676).
+- The delivered-app capture reads the run's own interface (#1671).
+- The closure guard reads the title and the commits (#1669).
+- A secret scan over every change (#1713).
+- The release-package capture obtains its own token (#1721).
+
+**Not landed, stated.**
+- **SIP-0107's flip.** N was unmet a third time: the total was 8 against 6, but dev × Next.js was
+  at zero (SIP-0107 §46q). Step 7 is now a 2.0 decision.
+- **The convergence replay (item 12), #1039 and the ops rider** move to 1.9 (plan §3.9).
+- **SIP-0086 §12a change 4** is held for the owner.
+- **Two diagnostic seams unreached on A′, each by the owner's ruling:** the dev lane, whose fault
+  the task's own self-evaluation reverts (#1716), and F1's rewind path (#1723).
+- **Deploy A was voided** for #1699, and the set re-made on A′.
+
 ## [1.8.1] — 2026-09-24
 
 **The comparison release: the squad against one generalist, measured.** Plan:
