@@ -7,7 +7,8 @@ evidence, and until now their only copy lived on one box. The 1.7.4 and 1.7.5 re
 only because someone checked two worktrees before removing them.
 
     attach_release_records.py 1.8.1                  # build, scan, preview; nothing leaves
-    attach_release_records.py 1.8.1 --upload         # the same, then upload and record it
+    attach_release_records.py 1.8.1 --upload --expect-sha256 <the preview's>
+                                                     # rebuild; upload only the approved bytes
 
 It does three things:
 
@@ -24,7 +25,9 @@ It does three things:
    value. A secret too short to search for without false hits is named as unscanned.
 3. **Upload** (``--upload`` only) with ``gh release upload``, then write the asset's name,
    sha256, file count and size into the release package, so the page names what the Release
-   carries.
+   carries. The upload requires ``--expect-sha256``, the checksum the preview printed and the
+   owner approved, and refuses a rebuild that differs: the tarball is byte-stable (#1732), so
+   a difference means the records changed since the preview.
 
 The repository is public, so the Release is too. The package pages already publish each
 cycle's id, verdict and checks; the tarball adds the log-derived texture and the deploy
@@ -34,6 +37,7 @@ identities, and must never add a secret.
 from __future__ import annotations
 
 import argparse
+import gzip
 import hashlib
 import io
 import json
@@ -176,10 +180,15 @@ def scan(members: Sequence[tuple[str, Path]], secrets: Sequence[Secret]) -> list
 
 
 def build_tarball(members: Sequence[tuple[str, Path]], out: Path, top: str) -> str:
-    """Write the tarball; return its sha256. Owners are normalised, mtimes kept (they are
-    evidence of when each record was written)."""
+    """Write the tarball; return its sha256. Owners are normalised, the members' mtimes kept
+    (they are evidence of when each record was written), and the gzip header's own time pinned
+    to 0 (#1732): it stamped the build time, so the preview the owner approved and the upload's
+    rebuild were never the same bytes. The same records now build the same file."""
     buf = io.BytesIO()
-    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+    with (
+        gzip.GzipFile(fileobj=buf, mode="wb", mtime=0) as gz,
+        tarfile.open(fileobj=gz, mode="w") as tar,
+    ):
         for name, path in members:
             info = tar.gettarinfo(str(path), arcname=f"{top}/{name}")
             info.uid = info.gid = 0
@@ -207,7 +216,16 @@ def main(argv: Sequence[str] | None = None, *, deploy_pairs: Sequence | None = N
     )
     ap.add_argument("--out-dir", type=Path, help="where the tarball is written (default: /tmp)")
     ap.add_argument("--upload", action="store_true", help="upload to the Release and record it")
+    ap.add_argument(
+        "--expect-sha256",
+        help="required with --upload: the preview's checksum, which the rebuild must match",
+    )
     args = ap.parse_args(argv)
+    if args.upload and not args.expect_sha256:
+        ap.error(
+            "--upload requires --expect-sha256: run the preview, read it, and pass the sha256 it "
+            "printed, so what is uploaded is what was approved (#1732)"
+        )
 
     line = line_of(args.version)
     tag = f"v{args.version}"
@@ -240,6 +258,12 @@ def main(argv: Sequence[str] | None = None, *, deploy_pairs: Sequence | None = N
     if not args.upload:
         print(f"\npreview only; --upload attaches it to {tag} and records it in {package}")
         return 0
+    if digest != args.expect_sha256:
+        print(
+            f"\nREFUSED — the rebuild is sha256 {digest}, not the approved {args.expect_sha256}; "
+            "the records changed since the preview. Nothing uploaded: preview again and re-read."
+        )
+        return 1
     if not package.is_file():
         raise SystemExit(
             f"{package} does not exist; capture the release package first (cut step 7)"
