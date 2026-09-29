@@ -1,6 +1,6 @@
 # 1.9.0 plan — the close of the 1.x line
 
-**Status:** adopted, rev 3 (2026-09-29), for the owner's review. Written on the owner's word at the
+**Status:** adopted, rev 4 (2026-09-29): rev 3 adopted at merge, with the rulings made after adoption in §7a. Written on the owner's word at the
 1.8.2 cut ("let's cut 1.8.2 and write 1.9.0 plan"). The 1.8.2 counted rolls answered the question
 this plan was held for: **no 1.8.3 opens** (the 1.8.2 plan §3.10; the pre-registration §10, deploy
 A′).
@@ -23,7 +23,7 @@ closes the 1.x line. Its exit criterion is 2.0's entry condition (`docs/ROADMAP.
 | **N unmet a third time,** with dev × Next.js empty | SIP-0107 §46q | the flip (step 7) is a **2.0 decision**. 1.9 builds nothing for it, but repairs what the next count needs (#1716, #1724) |
 | **Two diagnostic seams unreached on A′, by the owner's rulings:** the dev lane, whose fault the task's own self-evaluation reverts, and F1's designed rewind | §11h, §11i; #1716, #1723 | an **instrument line**: the diagnostics must reach their seams on a deploy carrying §12a's loop |
 | **The driver's record has blind spots:** a dead executor read as live (#1714); a fault that did not bite recorded as "never ran" (#1718); a re-take's verification and identity absent (#1724); a self-evaluation pass that writes a new file leaves no revision form (#1724) | the issues, each with its trace | the driver is hardened **before** 1.9's set, so the set that proves the extraction reads cleanly |
-| **Readouts depend on container logs, which a rebuild wipes.** Prefect holds the same marker lines durably, one for one, back to 2026-04-25. | #1719 discussion (the evidence comment) | the driver reads Prefect's stored logs. That is hardening, with no new API surface |
+| **Readouts depend on container logs, which a rebuild wipes.** Prefect holds the marker lines durably, back to 2026-04-25, but not one for one (measured, §7a item 2). | #1719 discussion (the evidence comment); #1745 | the driver reads Prefect's stored logs where a rebuild has replaced the container. That is hardening, with no new API surface |
 | **A cycle's lineage names only the runtime's commit.** On A′, every cycle recorded `8e2c2e87` while the agents ran `ccc9475d`'s images. | #1720 | #80's named follow-ons are debt. The placement is decision 1 |
 | **Dropped from 1.8.2 by its §3.9:** item 12 (the convergence replay), #1039 and the ops rider | the cut record | re-placed here by name (§5) |
 
@@ -120,8 +120,11 @@ Driver-side, with the exception of #1716. They land before 1.9's deploy, so its 
   typed-check evaluation, with its `workspace_revision_id`), and each self-evaluation pass that adds
   or re-emits a file.
 - **#1696:** the marker self-check checks each sample line.
-- **The driver reads Prefect's stored logs** for its loop texture, falling back to `docker logs`.
-  That ends "a rebuild destroys the texture" (#1719 discussion).
+- **The driver reads `docker logs` for its loop texture, and Prefect's stored logs when a rebuild
+  has replaced the container since the cycle's window** (#1745; corrected by §7a item 2 from
+  "Prefect first"). Prefect is a fallback, not a copy: it misses the lines a process logs as it
+  dies and the redelivery refusal, and the record names those holes rather than reading them as
+  absent. That ends "a rebuild destroys the texture" (#1719 discussion).
 - **#1716:** the dev-lane fault survives the task's own self-evaluation. It is applied to what the
   task hands on, and the marker comment is taken out of the code the model reads.
   - This is a diagnostic change in `src/squadops/capabilities/handlers/fault_injection.py`, and
@@ -131,12 +134,16 @@ Driver-side, with the exception of #1716. They land before 1.9's deploy, so its 
   request on both lines, and says whether the rewind is variance or a change in what the analyzer
   sees. A change to the correction path's behaviour is out of 1.9 (§2); if one is indicated, it is
   a 2.0 item.
+  - **Answered and closed:** variance in the correction decision on equivalent input. Its two
+    design questions are #1757 (2.0), and the reason the requests could not be compared, the
+    framework's own 10,000-character cap on stored generation text, is #1756 (§7a item 10).
 
 ### 3.4 The named debts
 
 Each is one PR, with its own test, behaviour-neutral unless it says otherwise:
 - **#353:** the prompt manifest hashes are stamped at build, not hand-maintained.
-- **#1031:** the manifest-authoring design primer.
+- ~~**#1031:** the manifest-authoring design primer.~~ **Moved to 2.0** (§7a item 8): it is not
+  behaviour-neutral, since it changes what the framing sequence authors.
 - **#1448:** the routes stop reading their ports from a process-global registry.
 - **#1522:** a repair whose retest reduces failures without passing is not discarded wholesale. This
   is a correction-path behaviour change, so it lands **after** the extraction's set reads, or moves
@@ -144,7 +151,12 @@ Each is one PR, with its own test, behaviour-neutral unless it says otherwise:
 - **#414:** the correction budget's allocation is severity-aware. Also a behaviour change, with the
   same rule as #1522.
 - **#567:** the fenced parser's CommonMark recognition engine. Its precondition was "after Scoped
-  Code Revision settles what a repair emits" (decision 2).
+  Code Revision settles what a repair emits" (decision 2). **Gated on a replay** (§7a item 9): the
+  new engine over every stored real emission. Identical recognition lands it before the deploy, as
+  neutral in effect; any difference makes it a behaviour change, and it moves to 2.0.
+- **#1754** (filed 2026-09-29, §7a item 6): a run paused by admission is read as completed, and the
+  re-rolls cancel it. Fixed **before the deploy**: it is a defect in the boundary §3.2 names, and
+  not on the correction path.
 - **#1701:** the duplicate "Failed to transition … cancelled" warning.
 - **#1691:** `rebuild_and_deploy` syncs prompts before it starts agents.
 
@@ -155,7 +167,9 @@ Each is one PR, with its own test, behaviour-neutral unless it says otherwise:
   before it runs. Its reading informs 2.0's flip decision.
 - **#1039,** the docs site design pass: prose and assets, never a cut blocker.
 - **The ops rider:** #1177, #176 recipe 2, #1176, #1408 and #1412. This is its fifth plan, and
-  decision 4 asks whether to run it or retire it.
+  decision 4 asks whether to run it or retire it. **Ruled (§7a items 3–5):** #176 recipe 2 is the
+  first cycle on the 1.9 deploy; #1176's accept-rate replay runs on the idle box before the deploy;
+  #1177, #1408 and #1412 are retired as not scheduled.
 
 ### 3.6 The cut criterion: three gates
 
@@ -302,6 +316,44 @@ Each decision below was adopted as recommended. Decision 6 is recorded in SIP-00
 7. **Crew review of this plan and 1.9's pre-registration,** the 1.8.2 plan's decision 6, carried.
    **Recommendation:** the same rule, stating it when the budget does not allow.
 
+### 7a. Rulings after adoption (the owner's word, 2026-09-29: "ok good with all recommendations - go")
+
+Ten questions reached the owner after rev 3 merged. Each was ruled as recommended:
+
+1. **#1720's deploy record is written by a one-off command in the runtime image.**
+   `rebuild_and_deploy.sh` runs `docker compose run --rm runtime-api python -m squadops.deploys.record`,
+   which writes through a new port's Postgres adapter. That is the migrations' trust boundary, with
+   no credential and no new route. The first half, image revisions and the heartbeat's `revision`,
+   merged as #1753.
+2. **The driver reads `docker logs` first, and Prefect's stored logs as the fallback** (#1745).
+   - Measured: Prefect held 44 of 46 fields on the `redelivery` re-run. It missed the
+     redelivered-refusal line, a fault logged as the process died, and one dispatch.
+   - It held 56 of 56 on A′'s d3 after the rebuild.
+   - §3.3's "Prefect first" is corrected to match.
+3. **#176 recipe 2** is the first cycle on the 1.9 deploy: the `smoke` squad, `hello_squad` and
+   `selftest`. It doubles as the deploy-alive smoke, and #176 closes with its result.
+4. **#1176:** step 1 is measured on the issue. `qwen3.8:27b`'s renderer keeps a prior turn's
+   thinking; `qwen3.6:27b`'s drops it. Step 3, the accept-rate replay with and without the carried
+   trace, runs on the idle box before the deploy. Its mechanism prediction is registered first.
+5. **#1177, #1408 and #1412 are retired as not scheduled.** Their blocker is the box, not an Atlas
+   endpoint: each needs Ollama stopped and the Spark to itself, which the deploy and the set need.
+   SIP-0106 §1.2e keeps the record.
+6. **#1754, the paused-run defect, is filed and fixed before the deploy.** It is a defect in the
+   boundary 1.9 names as its exit criterion. No diagnostic exercises a duty-window deferral or a
+   focus-lease conflict, so it cannot confound the set's reading of the extraction.
+7. **#1755, the qa re-take defect,** goes to 2.0 with #1727. It is a correction-path change.
+8. **#1031 moves to 2.0.** It is not behaviour-neutral: it changes the persona, adds a conventions
+   fragment, and changes the schema gate's findings.
+9. **#567 is gated on the replay** described in §3.4.
+10. **#1723 is closed** with its answer. Its two design questions are #1757 (2.0). The 10,000-character
+    cap on stored generation text is #1756: the framework's own cap, not LangFuse's, and not placed.
+
+**What this does to §5's accounting.**
+- **In the release:** #1031 leaves for 2.0, and #1754 joins.
+- **Closed:** #1723 (answered); #1177, #1408 and #1412 (not planned).
+- **2.0:** #1031, #1755 and #1757 join.
+- **Unplaced:** #1756, proposed for 2.0's instruments.
+
 ## 8. What this plan does not decide
 
 - **The Campaign SIP's revision** (after this plan; `post-1-8-2-roadmap-reconciliation.md`), and
@@ -323,3 +375,6 @@ Each decision below was adopted as recommended. Decision 6 is recorded in SIP-00
     #1122 is closed as not planned; #1626 closed at the cut;
   - §7's decisions adopted at merge, and decision 6 recorded in SIP-0086 §12a;
   - 43 issues, 40 of them open.
+- **Rev 4 (2026-09-29):** §7a records the ten rulings made after adoption. §1, §3.3, §3.4 and §3.5
+  are corrected to match: the log order, #1031's move, the #567 gate, #1754, the ops rider and
+  #1723.
