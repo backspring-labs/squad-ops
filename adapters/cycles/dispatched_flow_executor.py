@@ -244,6 +244,9 @@ class _CorrectionRound:
     protocol: Any
     attempt: int
     max_attempts: int
+    #: #1697: the run's round sequence. Unlike ``attempt``, a refund never resets it, so the
+    #: round's task ids stay unique (adapters/cycles/correction_ids.py).
+    round_seq: int = 0
 
 
 #: The run's own mutable execution state, named (1.7.5 recovery extraction map §4 step 6).
@@ -3464,6 +3467,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # corr-/plan_delta- id. The pre-increment value keys those deterministic ids.
         attempt = correction_counter["n"]
         correction_counter["n"] = attempt + 1
+        # #1697: the round sequence advances on EVERY round, refunded or not, so two rounds that
+        # share ``attempt`` (a refund re-takes the index, #1053) never share a task id.
+        round_seq = correction_counter.get("round_seq", 0)
+        correction_counter["round_seq"] = round_seq + 1
 
         # The DISPATCHED envelope, as the retest hand-off below already passes: the
         # correction runner forwards the failed task's typed-acceptance workspace to the
@@ -3479,6 +3486,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             envelope=enriched_envelope if enriched_envelope is not None else envelope,
             result=result,
             correction_attempts=attempt,
+            round_seq=round_seq,
             prior_outputs=prior_outputs,
             all_artifact_refs=all_artifact_refs,
             stored_artifacts=stored_artifacts,
@@ -3517,7 +3525,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 )
             ),
         )
-        return _CorrectionRound(protocol=protocol, attempt=attempt, max_attempts=max_corrections)
+        return _CorrectionRound(
+            protocol=protocol, attempt=attempt, max_attempts=max_corrections, round_seq=round_seq
+        )
 
     async def _route_correction_path(
         self,
@@ -3553,6 +3563,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         """
         protocol = round_.protocol
         attempt = round_.attempt
+        round_seq = round_.round_seq
         max_corrections = round_.max_attempts
         correction_path = protocol.correction_path
         # #1053: an emission containing nothing is not an attempt at the fix. Arm B of
@@ -3587,9 +3598,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         )
                     )
                 logger.warning(
-                    "correction attempt %d refunded: the repair emitted no content (%s), so "
-                    "the round is re-taken rather than spent (refund %d of %d, #1053/#998)",
+                    "correction attempt %d refunded (round s%02d): the repair emitted no content "
+                    "(%s), so the round is re-taken rather than spent (refund %d of %d, #1053/#998)",
                     attempt,
+                    round_seq,
                     ", ".join(protocol.empty_emission_signatures) or "signature unreported",
                     correction_counter["empty_refunds"],
                     max_corrections,
@@ -3647,6 +3659,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 run_id=run_id,
                 cycle=cycle,
                 correction_attempts=attempt,
+                round_seq=round_seq,
                 enriched_envelope=enriched_envelope,
                 prior_outputs=prior_outputs,
                 all_artifact_refs=all_artifact_refs,
