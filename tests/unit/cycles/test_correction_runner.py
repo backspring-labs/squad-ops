@@ -1639,7 +1639,8 @@ class TestCorrectionModelResolution:
         # Wrap generate_task_plan so the failed task carries a real plan
         # contract. (The static plan generator only sets these when an
         # ImplementationPlan is supplied — the path under test here.)
-        import adapters.cycles.dispatched_flow_executor as exec_mod
+        # #1507 step 2: the plan is generated in run provisioning now; patched where it is looked up.
+        import adapters.cycles.run_provisioning as exec_mod
         from squadops.cycles.task_plan import generate_task_plan as real_gen
 
         def _gen_with_contract(*args, **kwargs):

@@ -31,12 +31,13 @@ from adapters.cycles.execution_errors import (
     _CancellationError,
     _ExecutionError,
     _PausedError,
-    _RecruitmentRejectedError,
 )
 from adapters.cycles.framing_gate_check import FramingGateCheck
 from adapters.cycles.patch_acceptance import PatchAcceptance, _record_repair_rejection
 from adapters.cycles.pulse_boundary_runner import PulseBoundaryRunner
+from adapters.cycles.run_admission import RunAdmission
 from adapters.cycles.run_completion import RunCompletion, resolve_terminal_outcome
+from adapters.cycles.run_provisioning import RunInProgress, RunProvisioning
 from adapters.cycles.task_dispatcher import TaskDispatcher
 from adapters.cycles.task_naming import build_task_name
 from squadops.capabilities.context_assembly import (
@@ -90,14 +91,10 @@ from squadops.cycles.scaffold_integrity_evidence import (
     STAGE_FAILED_EMISSION,
 )
 from squadops.cycles.task_outcome import CorrectionTerminationReason, TaskOutcome
-from squadops.cycles.task_plan import generate_task_plan, inject_contract_inputs
+from squadops.cycles.task_plan import inject_contract_inputs
 from squadops.cycles.verification_normalize import normalize_task_checks
 from squadops.events.types import EventType
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
-from squadops.runtime import reasons
-from squadops.runtime.admission import admit_participants, release_participants
-from squadops.runtime.focus_reaper import release_owner_leases
-from squadops.runtime.recruitment import reserve_buffer_decision
 from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
 from squadops.tasks.task_types import (
     TaskType,
@@ -601,172 +598,22 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # replaces this with the decision the raise site declared.
         terminal = RunTerminalDecision(kind=TerminalKind.COMPLETED)
         ledger = RunLedger()
-        cycle = None
-        plan = None
-        verification_contract = None
-        # SIP-0089 §3.5 (#233): agents this run transitioned ambient→cycle, to be
-        # returned to ambient (releasing their cycle lease) in the finally. Stays
-        # empty when recruitment defers (admission rolls its own recruits back) or
-        # when no coordinator is wired.
-        recruited_agent_ids: tuple[str, ...] = ()
+        # #1507 step 2: what the finally reads, recorded by provisioning and admission the moment
+        # each is known, so a run that fails partway finalizes with exactly the state it reached.
+        # recruited_agent_ids (SIP-0089 §3.5, #233) stays empty when recruitment defers or no
+        # coordinator is wired.
+        state = RunInProgress()
 
         try:
-            cycle, run_root = await self._prepare_cycle_for_run(
-                cycle_id, run_id, forwarding_overrides=forwarding_overrides
+            provisioned = await self._run_provisioning.prepare(
+                state, cycle_id, run_id, profile_id, forwarding_overrides=forwarding_overrides
             )
-            run = await self._cycle_registry.get_run(run_id)
-            profile, _ = await self._squad_profile.resolve_snapshot(profile_id)
-
-            # queued/failed/paused -> running. Skipped when already RUNNING:
-            # the resume/retry routes flip the run to RUNNING before enqueuing
-            # execution (#222/#256), and RUNNING -> RUNNING is an illegal
-            # transition — the unconditional call instantly failed every
-            # resumed run on a lifecycle-enforcing registry (#342).
-            if run.status != RunStatus.RUNNING.value:
-                await self._cycle_registry.update_run_status(run_id, RunStatus.RUNNING)
-
-            # SIP-0079: Check if resuming from checkpoint
-            existing_checkpoint = await self._cycle_registry.get_latest_checkpoint(run_id)
-            if existing_checkpoint:
-                self._cycle_event_bus.emit(
-                    EventType.RUN_RESUMED,
-                    entity_type="run",
-                    entity_id=run_id,
-                    context={
-                        "cycle_id": cycle_id,
-                        "run_id": run_id,
-                        "project_id": cycle.project_id,
-                    },
-                    payload={"checkpoint_index": existing_checkpoint.checkpoint_index},
-                )
-            else:
-                self._cycle_event_bus.emit(
-                    EventType.RUN_STARTED,
-                    entity_type="run",
-                    entity_id=run_id,
-                    context={
-                        "cycle_id": cycle_id,
-                        "run_id": run_id,
-                        "project_id": cycle.project_id,
-                    },
-                )
-
-            # SIP-0086 / SIP-0092: Load implementation plan for implementation
-            # workloads. The plan is produced by the planning workload and
-            # forwarded via plan_artifact_refs. Loading it here (not mid-loop)
-            # keeps the executor deterministic — the plan is fully materialized
-            # before task dispatch begins.
-            implementation_plan = await self._load_plan_for_run(cycle, run)
-
-            # SIP-0098 98.3: a seeded contract_ref switches the cycle to bind mode.
-            # Loaded here (alongside the plan) so net-a inside generate_task_plan can
-            # validate the plan's criteria_refs and dispatch can resolve them into
-            # TypedChecks. Absent contract = author mode = today's behavior.
-            verification_contract = await self._load_contract_for_run(cycle, run)
-
-            # pf-42: the proposer binds criteria for the fill slots but is told nothing
-            # about the frozen files, so a check it wants on one is written against an
-            # invented interior. The manifest is what those files expand from, so it is
-            # the authority on their contents.
-            #
-            # Read from the OPERATOR-SEEDED rail, not `_load_interface_manifest_for_run`
-            # — that one returns None for a framing run by design (#496), and framing is
-            # exactly when the proposer needs this. The #496 rule is that a framing run
-            # must not expand or carry skeleton FILES; describing the interface in a
-            # prompt materializes nothing, so it stays inside that rule. Bind mode
-            # already requires a seeded manifest (#494), so this is the same document
-            # the gate hash-checks and the skeleton later expands from.
-            interface_manifest = None
-            if verification_contract is not None:
-                interface_manifest = await self._seeded_manifest_for_authoring(cycle)
-
-            plan = generate_task_plan(
-                cycle,
-                run,
-                profile,
-                plan=implementation_plan,
-                contract=verification_contract,
-                interface_manifest=interface_manifest,
+            await self._run_admission.admit(state, provisioned.participating_agent_ids, run_id)
+            seed_artifact_refs, interface_manifest = await self._run_provisioning.seed(
+                state, provisioned, run_id
             )
-            participating_agent_ids = {e.agent_id for e in plan}
-
-            # SIP-0089 §2.5: reserve-buffer guard. The plan now names every
-            # agent this run would recruit. If one is committed to — or about to
-            # start — a hard duty window (§11.4), defer the run rather than pull
-            # the agent into cycle work. Opt-in: skipped when no AssignmentPort
-            # is wired. Decision is pure (time-injected) and lives in the runtime
-            # domain; we only enforce it here.
-            if self._assignment_port is not None:
-                guard_now = datetime.now(UTC)
-                active_assignments = await self._assignment_port.list_active_assignments(guard_now)
-                decision = reserve_buffer_decision(
-                    active_assignments,
-                    participating_agent_ids,
-                    guard_now,
-                )
-                if not decision.allowed:
-                    raise _RecruitmentRejectedError(decision.blocking_agent_id, decision.reason)
-
-            # SIP-0089 §3.5 (#233): having cleared the reserve-buffer guard, route
-            # recruitment through the coordinator — each participant transitions
-            # ambient→cycle, acquiring its cycle FocusLease (§3.4). A lease
-            # conflict is a deferral, not a failure: it rides the same
-            # _RecruitmentRejectedError → RUN_PAUSED path with a typed focus_lease_*
-            # reason (no new EventType). admission rolls back any agents it already
-            # recruited before deferring, so a paused run strands no one in cycle.
-            # Opt-in: skipped when no coordinator is wired (§2.5-only fallback).
-            if self._coordinator is not None:
-                admission = await admit_participants(
-                    self._coordinator,
-                    participating_agent_ids,
-                    owner_ref=run_id,
-                )
-                if not admission.admitted:
-                    raise _RecruitmentRejectedError(admission.blocking_agent_id, admission.reason)
-                recruited_agent_ids = admission.recruited_agent_ids
-
-            # Build-only validation (D6): require plan_artifact_refs
-            include_plan = bool(cycle.resolved_config().get("plan_tasks", True))
-            include_build = bool(cycle.resolved_config().get("build_tasks"))
-            seed_artifact_refs: list[str] = []
-            if include_build and not include_plan:
-                # Legacy build-only run: plan_artifact_refs are mandatory
-                plan_refs = cycle.execution_overrides.get("plan_artifact_refs")
-                if not plan_refs:
-                    raise _ExecutionError("plan_artifact_refs required for build-only cycle")
-                seed_artifact_refs = list(plan_refs)
-            elif run.workload_type is not None:
-                # Multi-workload run: seed from forwarded planning artifacts
-                plan_refs = cycle.execution_overrides.get("plan_artifact_refs")
-                if plan_refs:
-                    seed_artifact_refs = list(plan_refs)
-
-            # SIP-0099 99.3: if framing forwarded an interface manifest, expand it into a
-            # walking skeleton and seed those files so develop fills the fixed slots.
-            # Data-driven: no manifest -> seed_artifact_refs unchanged = byte-identical to
-            # today (the manifest itself is already among plan_artifact_refs; this ADDS the
-            # expanded skeleton). Logic lives in helpers (#290 god-file rule).
-            # #881: never on resume. The checkpoint's artifact_refs already carry the
-            # original seed set, and a fresh set stores NEW artifact ids that
-            # _seed_prior_artifacts appends AFTER the restored state — last-writer-wins
-            # per filename then hands every fill slot back to a stub that throws by
-            # design, so the resumed run tests the skeleton instead of the app.
-            interface_manifest = await self._load_interface_manifest_for_run(cycle, run)
-            if interface_manifest is not None and existing_checkpoint is None:
-                skeleton_refs = await self._seed_skeleton_artifacts(
-                    interface_manifest, cycle, run_id
-                )
-                seed_artifact_refs.extend(skeleton_refs)
-                # SIP-0104: the deterministic test scaffold rides the same seed act, and
-                # only on top of an actually-seeded skeleton — the tree its shells'
-                # imports resolve against is the tree this run carries. Same #881
-                # no-resume rule by construction (this whole branch is seed-time only).
-                if skeleton_refs:
-                    seed_artifact_refs.extend(
-                        await self._seed_verification_scaffold_artifacts(
-                            interface_manifest, cycle, run_id
-                        )
-                    )
+            cycle, plan = state.cycle, state.plan
+            profile, run_root = provisioned.profile, provisioned.run_root
 
             # LangFuse + Prefect observability setup
             obs_ctx, flow_run_id = await self._init_run_observability(
@@ -874,39 +721,17 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 logger.info(outcome.log_message)
 
         finally:
-            # SIP-0089 §3.5 (#233): release the cycle leases this run acquired,
-            # whatever the outcome (completed/failed/paused/cancelled). Best-effort
-            # and isolated per agent — a stranded cycle lease would block all of an
-            # agent's future recruitment, so this must run before anything that can
-            # raise. Empty (and skipped) when the run recruited no one.
-            if self._coordinator is not None and recruited_agent_ids:
-                await release_participants(self._coordinator, recruited_agent_ids, owner_ref=run_id)
-            # #373: then sweep anything still held under this run's owner_ref.
-            # `recruited_agent_ids` records only the agents *this* admission call
-            # transitioned; a recruitment replay (#288 idempotent-skip on a
-            # resumed run) leaves leases owned by this run that the release above
-            # cannot see. Best-effort — a sweep failure must not mask the run's
-            # own outcome.
-            if self._coordinator is not None and self._focus_lease_port is not None:
-                try:
-                    await release_owner_leases(
-                        self._coordinator,
-                        self._focus_lease_port,
-                        run_id,
-                        reason_code=reasons.LEASE_STRANDED_AT_RUN_FINALIZE,
-                    )
-                except Exception:
-                    logger.warning("Stranded-lease sweep failed for run %s", run_id, exc_info=True)
+            await self._run_admission.release(run_id, state.recruited_agent_ids)
             await self._run_completion.finalize(
                 cycle_id,
                 run_id,
                 run_status,
                 obs_ctx,
                 flow_run_id,
-                cycle=cycle,
-                plan=plan,
+                cycle=state.cycle,
+                plan=state.plan,
                 ledger=ledger,
-                contract=verification_contract,
+                contract=state.verification_contract,
                 usage=self._task_dispatcher.take_run_usage(run_id),
                 terminal=terminal,
             )
@@ -4154,6 +3979,17 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                             )
 
             await asyncio.sleep(poll_interval)
+
+    @functools.cached_property
+    def _run_provisioning(self) -> RunProvisioning:
+        """#1507 step 2: what a run does before dispatch, bar admission. Built on first use, as
+        ``_framing_gate_check`` is, and borrowing late (§38)."""
+        return RunProvisioning(executor=lambda: self)
+
+    @functools.cached_property
+    def _run_admission(self) -> RunAdmission:
+        """#1507 step 2: the run's admission and its release (§38, as above)."""
+        return RunAdmission(executor=lambda: self)
 
     @functools.cached_property
     def _framing_gate_check(self) -> FramingGateCheck:
