@@ -311,6 +311,46 @@ class TestPrefectFlowRun:
         assert terminal_call.args[1] == RunStatus.COMPLETED
 
 
+class TestPrefectFlowRunTags:
+    """#1722: Prefect flow runs carried no tags, so a campaign's runs could not be filtered nor
+    a replay told from any other run. Entered at ``_init_run_observability``, where a real run
+    creates its flow run, with the cycle the executor holds."""
+
+    @pytest.mark.parametrize(
+        ("changes", "tags"),
+        [
+            (
+                {"framework_git_sha": "0739af1d"},
+                ["project:hello_squad", "framework:0739af1d"],
+            ),
+            (
+                {
+                    "framework_git_sha": "0739af1d",
+                    "execution_overrides": {
+                        "execution_mode": "replay",
+                        "replay": {"source_run_id": "run_99242d1e947f", "boundary_index": 6},
+                    },
+                },
+                ["project:hello_squad", "framework:0739af1d", "replay-of:run_99242d1e947f"],
+            ),
+            ({"framework_git_sha": None}, ["project:hello_squad"]),
+        ],
+        ids=["a normal cycle", "a replay", "no framework commit stamped: no framework tag"],
+    )
+    async def test_the_tags_that_reach_the_flow_run(
+        self, executor, mock_prefect, cycle, changes, tags
+    ):
+        """Bug this catches: tags built and never passed; a ``framework:None`` a filter must
+        know to exclude; a replay indistinguishable from the run it replays."""
+        import dataclasses
+
+        await executor._init_run_observability(
+            "cyc_001", "run_001", dataclasses.replace(cycle, **changes), []
+        )
+
+        assert mock_prefect.create_flow_run.await_args.kwargs["tags"] == tags
+
+
 class TestPrefectTaskRuns:
     """Verify task lifecycle handled in executor (SIP-0087: task_run_id needed
     before dispatch for log-streaming correlation context)."""

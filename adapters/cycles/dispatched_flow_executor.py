@@ -74,7 +74,7 @@ from squadops.cycles.models import (
     Run,
     RunStatus,
 )
-from squadops.cycles.naming import flow_run_name
+from squadops.cycles.naming import flow_run_name, flow_run_tags
 from squadops.cycles.patch_verification import storage_altered_accepted_patch
 from squadops.cycles.rejection_baseline import (
     REJECTION_ARTIFACT_TYPE,
@@ -401,6 +401,23 @@ class RunState:
     #: authoring stage lands a manifest; every task dispatched after that binds to it.
     #: Empty for seeded runs, whose contract was pinned at creation.
     authored: tuple[Any, Any] = (None, None)
+
+
+def _flow_run_tags_for(cycle: Cycle) -> list[str]:
+    """#1722: the cycle's Prefect tags, from what the cycle already holds. A replay declaration
+    is validated at create; one that no longer parses is left untagged rather than failing the
+    flow run's creation."""
+    from squadops.cycles.replay import parse_replay_declaration
+
+    try:
+        replay = parse_replay_declaration(cycle.execution_overrides or {})
+    except ValueError:
+        replay = None
+    return flow_run_tags(
+        project_id=cycle.project_id,
+        framework_git_sha=cycle.framework_git_sha,
+        replay_of=replay.source_run_id if replay else None,
+    )
 
 
 class DispatchedFlowExecutor(FlowExecutionPort):
@@ -4000,6 +4017,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         "run_id": run_id,
                         "project_id": cycle.project_id,
                     },
+                    tags=_flow_run_tags_for(cycle),
                 )
                 await self._workflow_tracker.set_flow_run_state(flow_run_id, RunStatus.RUNNING)
             except Exception:
