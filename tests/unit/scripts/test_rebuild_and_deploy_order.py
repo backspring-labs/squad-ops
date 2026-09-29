@@ -50,3 +50,35 @@ def test_the_deploy_is_recorded_after_the_agents_restart_and_an_unrecorded_one_f
     assert restart < record
     assert text.index("DEPLOY_RECORD_FAILED=1") > record
     assert '[ "${DEPLOY_RECORD_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1' in text
+
+
+def test_the_default_rebuild_takes_every_agent_service_the_compose_file_defines():
+    """The 1.9 deploy's record (#1720) showed han still on a 1.8 image after `all`: the default was
+    a literal list of seven agents, and han (the Solo arm, 1.8.1) was never added. The selector is
+    run here, as the script runs it, over the compose file's services."""
+    import json
+    import subprocess
+    import sys
+
+    import yaml
+
+    text = SCRIPT.read_text()
+    selector = re.search(r"python3 -c '(import json, sys\n.*?)'\)", text, re.S).group(1)
+    compose = yaml.safe_load((SCRIPT.parents[3] / "docker-compose.yml").read_text())
+    agent_services = sorted(
+        name
+        for name, svc in compose["services"].items()
+        if (svc.get("build") or {}).get("dockerfile") == "agents/Dockerfile"
+    )
+
+    selected = subprocess.run(
+        [sys.executable, "-c", selector],
+        input=json.dumps({"services": compose["services"]}),
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
+
+    assert selected == agent_services
+    assert "han" in selected
+    assert 'grep -E "^(max|nat|neo|eve|bob|data|joi)$"' not in text
