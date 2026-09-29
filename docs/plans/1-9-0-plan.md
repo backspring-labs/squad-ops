@@ -195,12 +195,17 @@ carries 1.8.2's rules and adds the extraction's predictions before the first lau
 - **Closed at the 1.8.2 cut (proposed):** #1626. The 1.8.2 plan's decision 4 reads "#1626 closes on
   the `redelivery` diagnostic", and A′ d3 read as predicted: two kills, two typed refusals, no run
   left running. **If it is closed at the cut, the in-release count is 24.**
-- **2.0, with Campaign (9):** #1705, #1706, #1707, #1708, #1709, #1710, #1711, #1692, #316.
-- **At design review (4):** #949, #950, #194, #557.
+- **2.0, with Campaign (10):** #1705, #1706, #1707, #1708, #1709, #1710, #1711, #1692, #316, and
+  #949 as an input to #1708's gate policy (the owner's ruling, 2026-09-29): the fallback if an
+  answered design question must reach the plan through a revision.
+- **At design review (2):** #950, #557. Both are inputs to the Campaign SIP's revision: #557 is
+  the per-repair acceptance review, and #950 the gate's review packet.
+- **Closed as not planned (1):** #194. Only `validation-multirole` uses parallel proposers, and
+  no counted roll uses that profile (the owner's ruling, 2026-09-29).
 - **Read at the cut, open by design (1):** #1469.
 - **Not scheduled (1):** #1122.
 
-That is 25 + 9 + 4 + 1 + 1 = **40**.
+That is 25 + 10 + 2 + 1 + 1 + 1 = **40**.
 
 **Not an issue, named so it is not lost:**
 - SIP-0107 §38 step 7, a 2.0 decision (§46q);
@@ -260,4 +265,5 @@ That is 25 + 9 + 4 + 1 + 1 = **40**.
 
 ## 9. Revision history
 
-- **Rev 1 (2026-09-29):** the first draft, written at the 1.8.2 cut on the owner's word.
+- **Rev 1 (2026-09-29):** the first draft, written at the 1.8.2 cut on the owner's word. The same
+  day: #194 closed as not planned, and #949 placed on 2.0 as an input to #1708.
