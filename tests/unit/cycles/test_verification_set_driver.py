@@ -4445,6 +4445,52 @@ class TestAReTakesVerificationIsRecorded:
             }
         ]
 
+    # Real: A′'s `own-frame-then-prose-repair` (React), run_99242d1e947f — m005's first dispatch,
+    # its re-dispatch for the re-take, then m006's (the saved runtime-api log, 2026-09-28).
+    _DISPATCHES = [
+        "2026-09-28 13:30:20,315 INFO adapters.cycles.task_dispatcher: Dispatched task "
+        "task-run_99242d1e-m005-qa.test (qa.test) to eve_comms, awaiting reply on eve_replies",
+        "2026-09-28 13:36:04,038 INFO adapters.cycles.task_dispatcher: Dispatched task "
+        "task-run_99242d1e-m005-qa.test (qa.test) to eve_comms, awaiting reply on eve_replies",
+        "2026-09-28 13:38:40,000 INFO adapters.cycles.task_dispatcher: Dispatched task "
+        "task-run_99242d1e-m004-builder.assemble (builder.assemble) to bob_comms, awaiting reply",
+        "2026-09-28 13:38:53,927 INFO adapters.cycles.task_dispatcher: Dispatched task "
+        "task-run_99242d1e-m006-qa.test (qa.test) to eve_comms, awaiting reply on eve_replies",
+    ]
+
+    @pytest.mark.parametrize(
+        ("at", "task_index", "task_index_from"),
+        [
+            ("2026-09-28T13:38:49.000+00:00", 5, "dispatch"),
+            ("2026-09-28T13:48:20.000+00:00", 6, "dispatch"),
+            ("2026-09-28T13:29:00.000+00:00", None, None),
+        ],
+        ids=[
+            "m005's re-take (a later m006 dispatch and another type ignored)",
+            "m006's re-take",
+            "no dispatch before it",
+        ],
+    )
+    def test_a_retake_whose_checks_all_passed_is_indexed_by_its_dispatch(
+        self, driver, at, task_index, task_index_from
+    ):
+        """Bug this catches: a re-take whose checks all passed — which logs no typed-check line,
+        four of A′'s six — left without an index, so its stored evaluation never joined; or
+        indexed by a later dispatch, or another task type's."""
+        episodes = [{"at": at, "task_type": "qa.test", "task_index": None}]
+
+        (indexed,) = driver.index_retakes_by_dispatch(episodes, self._DISPATCHES)
+
+        assert (indexed["task_index"], indexed.get("task_index_from")) == (
+            task_index,
+            task_index_from,
+        )
+        (joined,) = driver.join_retake_evaluations([indexed], {})
+        if task_index is None:
+            assert joined["final_evaluation_reason"] == (
+                "neither a typed-check line nor a dispatch named the re-take's task index"
+            )
+
     def _store(self, root, art, created_at, statuses):
         d = root / "data" / "artifacts" / "p" / "cyc_1" / "run_1" / art
         d.mkdir(parents=True)

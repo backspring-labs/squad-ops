@@ -3146,7 +3146,7 @@ def loop_texture(
     out["fill_merge_evidence"] = fill_merge_evidence(cfg, cycle_id, impl_run) if impl_run else []
     # #1724: each re-take joined to the evaluation its task stored after it.
     out["retake_verifications"] = join_retake_evaluations(
-        out["retake_verifications"],
+        index_retakes_by_dispatch(out["retake_verifications"], logs),
         stored_task_evaluations(cfg, cycle_id, impl_run) if impl_run else {},
     )
     # #1540: suites the runner never collected — non-execution with no row anywhere else.
@@ -4026,12 +4026,14 @@ def _open_retake(line: str, payload: str) -> dict:
         form = {"unparsed": line.strip()}
     return {
         "at": _agent_line_time(line),
+        "task_type": form.get("task_type"),
         "form": form.get("form"),
         "accepted": form.get("accepted"),
         "edited": list(form.get("edited") or []),
         "new_files": list(form.get("new_files") or []),
         "offered": sorted(form.get("offered") or {}),
         "task_index": None,
+        "task_index_from": None,
         "failed_on_retake": [],
         "self_eval_trigger": None,
         "self_eval_emissions": [],
@@ -4047,6 +4049,7 @@ def _fold_into_retake(episode: dict, line: str) -> bool:
     if "typed_acceptance_check subtask=" in line:
         if episode["task_index"] is None:
             episode["task_index"] = _int_or_none(_field(line, "subtask"))
+            episode["task_index_from"] = "typed_check_line"
         if episode["self_eval_trigger"] is None and _field(line, "status") == "failed":
             episode["failed_on_retake"].append(_field(line, "check"))
     elif (m := _SELF_EVAL_TRIGGER.search(line)) is not None:
@@ -4064,6 +4067,40 @@ def _fold_into_retake(episode: dict, line: str) -> bool:
         }
         return True
     return False
+
+
+#: A plan task's dispatch in the runtime-api window: its index and type off the id.
+_TASK_DISPATCH = re.compile(r"Dispatched task task-run_[0-9a-f]+-m(?P<index>\d+)-(?P<type>\S+) ")
+
+
+def index_retakes_by_dispatch(episodes: list[dict], runtime_logs: list[str]) -> list[dict]:
+    """A re-take's task index, read from its own dispatch when its typed-check lines named none.
+
+    The agent logs a ``typed_acceptance_check`` line only for a check that did not pass, so a
+    re-take whose checks all passed names no index — on A′, four of six. The re-take is the
+    re-dispatch of its task, and the executor dispatches plan tasks one at a time, so the last
+    dispatch of the re-take's own task type before its form line is its dispatch.
+    """
+    dispatches = [
+        (_as_utc(_agent_line_time(line)), int(m.group("index")), m.group("type"))
+        for line in runtime_logs
+        if (m := _TASK_DISPATCH.search(line)) is not None
+    ]
+    indexed = []
+    for episode in episodes:
+        episode = dict(episode)
+        at = _as_utc(episode.get("at"))
+        if episode.get("task_index") is None and at is not None:
+            before = [
+                index
+                for when, index, task_type in dispatches
+                if when is not None and when <= at and task_type == episode.get("task_type")
+            ]
+            if before:
+                episode["task_index"] = before[-1]
+                episode["task_index_from"] = "dispatch"
+        indexed.append(episode)
+    return indexed
 
 
 def stored_task_evaluations(cfg: SetConfig, cycle_id: str, run_id: str) -> dict[int, list[dict]]:
@@ -4129,7 +4166,7 @@ def join_retake_evaluations(
         episode["final_evaluation"] = after[0] if after else None
         if not after:
             episode["final_evaluation_reason"] = (
-                "no typed-check line named the re-take's task index"
+                "neither a typed-check line nor a dispatch named the re-take's task index"
                 if index is None
                 else f"no evaluation of task {index} was stored after the re-take"
             )
