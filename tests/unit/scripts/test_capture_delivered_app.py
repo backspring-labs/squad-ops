@@ -155,3 +155,79 @@ def test_a_screenshot_is_written_only_when_its_view_rendered(
         with pytest.raises(SystemExit, match="rendered none of its view's test ids"):
             capture.shoot(5199, routes, assets, 1180, {"/runs": ["runs-view"]})
         assert not (assets / "delivered-app-run-list.png").exists()
+
+
+BEHIND_API = {**SQUAD, "api": {**SQUAD["api"], "base_path": "/api"}}
+
+
+def test_the_committed_seed_maps_onto_an_interface_behind_a_base_path():
+    """Bug this catches: the committed seed names ``POST /runs``; an interface declaring
+    ``base_path: /api`` keys its endpoints ``POST /api/runs``, so the seed matched nothing and the
+    1.8.2 cut's capture refused before it booted."""
+    requests, _ = capture.plan_seed(BEHIND_API, SEED)
+    paths = {r["path"] for r in requests}
+    assert paths == {"/api/runs", "/api/runs/{id}/participants"}
+
+
+def test_seed_requests_reach_the_ui_port_with_the_client_facing_path(monkeypatch, tmp_path):
+    """Wiring, entered at ``main``. Bug this catches: seed requests went straight to the backend
+    port with ``/api/runs``, which the backend does not serve — the dev proxy strips ``/api`` — so
+    the 1.8.2 cut's capture failed with a 404 halfway through seeding."""
+    seen: list[str] = []
+
+    class _Resp:
+        status = 201
+
+        def __init__(self, payload: bytes):
+            self._payload = payload
+
+        def read(self):
+            return self._payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def _urlopen(req, timeout=0):
+        url = req if isinstance(req, str) else req.full_url
+        seen.append(url)
+        return _Resp(b'[{"id": "run-1"}]')
+
+    monkeypatch.setattr(capture, "load_manifest", lambda project, cycle: BEHIND_API)
+    monkeypatch.setattr(capture, "reconstruct", lambda *a: 0)
+    monkeypatch.setattr(capture, "boot", lambda *a: None)
+    monkeypatch.setattr(capture, "shoot", lambda *a, **k: [])
+    monkeypatch.setattr(capture, "sh", lambda *a, **k: "")
+    monkeypatch.setattr(capture.urllib.request, "urlopen", _urlopen)
+    monkeypatch.setattr(capture.Path, "home", lambda: tmp_path)
+    seed_file = REPO_ROOT / "examples" / "03_group_run" / "screenshot_seed.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "capture",
+            "--cycle",
+            "c",
+            "--run",
+            "r",
+            "--version",
+            "1.8.2",
+            "--seed-file",
+            str(seed_file),
+            "--id-from",
+            "/api/runs",
+            "--route",
+            "/runs/{id}:detail",
+            "--ui-port",
+            "5199",
+            "--api-port",
+            "8099",
+        ],
+    )
+
+    assert capture.main() == 0
+    assert seen, "nothing was seeded"
+    assert all(u.startswith("http://localhost:5199/api/runs") for u in seen), seen
+    assert not any(":8099" in u for u in seen)

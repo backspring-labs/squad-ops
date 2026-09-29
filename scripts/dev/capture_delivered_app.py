@@ -192,6 +192,20 @@ def _body(
     return body, used
 
 
+def _under_base(candidates: list[str], base: str) -> list[str]:
+    """The seed names endpoints without a base path (``POST /runs``); an interface declares its
+    endpoints under one (``base_path: /api``, so ``POST /api/runs``). Each candidate is also tried
+    under the base, the form the app's own client uses — the 1.8.2 cut found the committed seed
+    matching nothing on an app behind ``/api``."""
+    if not base:
+        return candidates
+    under = []
+    for c in candidates:
+        method, _, path = c.partition(" ")
+        under.append(c if path == base or path.startswith(base + "/") else f"{method} {base}{path}")
+    return list(dict.fromkeys(candidates + under))
+
+
 def plan_seed(manifest: dict, seed: dict) -> tuple[list[dict], list[str]]:
     """The seed as requests against THIS run's declared interface, and notes on what did not
     carry over. Refuses a seed the interface cannot take rather than sending a request that
@@ -204,7 +218,8 @@ def plan_seed(manifest: dict, seed: dict) -> tuple[list[dict], list[str]]:
     endpoints = _endpoints(manifest)
     shapes = (manifest.get("api") or {}).get("request_shapes") or {}
     aliases = seed.get("field_aliases") or {}
-    create_key, create = _pick(seed["create"], endpoints, "create")
+    base = (manifest.get("api") or {}).get("base_path") or ""
+    create_key, create = _pick(_under_base(seed["create"], base), endpoints, "create")
     create_shape = shapes.get(create.get("request") or "", {})
     requests: list[dict] = []
     notes: list[str] = []
@@ -217,7 +232,7 @@ def plan_seed(manifest: dict, seed: dict) -> tuple[list[dict], list[str]]:
         requests.append({"method": "POST", "path": create_key.partition(" ")[2], "body": body})
     member = seed.get("member_action")
     if member:
-        key, endpoint = _pick(member["endpoints"], endpoints, "member action")
+        key, endpoint = _pick(_under_base(member["endpoints"], base), endpoints, "member action")
         shape = shapes.get(endpoint.get("request") or "", {})
         for j, record in enumerate(member["bodies"], start=1):
             body, _ = _body(record, shape, aliases, f"member action {j}")
@@ -299,7 +314,7 @@ def boot(app: Path, ui_port: int, api_port: int, wait_s: int) -> None:
     raise SystemExit(f"app did not come up within {wait_s}s")
 
 
-def seed(api_port: int, requests: list[dict], id_from: str) -> None:
+def seed(port: int, requests: list[dict], id_from: str) -> None:
     """Drive the app through its own API. A non-2xx is fatal: a screenshot of a state the
     app refused to enter would be a picture of something that never happened.
 
@@ -316,11 +331,11 @@ def seed(api_port: int, requests: list[dict], id_from: str) -> None:
             if not ident:
                 if not id_from:
                     raise SystemExit(f"seed {path} needs --id-from to resolve {{id}}")
-                ident = first_id(api_port, id_from)
+                ident = first_id(port, id_from)
             path = path.replace("{id}", ident)
         body = json.dumps(spec.get("body") or {}).encode()
         req = urllib.request.Request(
-            f"http://localhost:{api_port}{path}",
+            f"http://localhost:{port}{path}",
             data=body if spec.get("method", "POST") != "GET" else None,
             method=spec.get("method", "POST"),
             headers={"Content-Type": "application/json"},
@@ -330,8 +345,8 @@ def seed(api_port: int, requests: list[dict], id_from: str) -> None:
                 raise SystemExit(f"seed {path} returned {resp.status}")
 
 
-def first_id(api_port: int, path: str) -> str:
-    with urllib.request.urlopen(f"http://localhost:{api_port}{path}", timeout=20) as resp:
+def first_id(port: int, path: str) -> str:
+    with urllib.request.urlopen(f"http://localhost:{port}{path}", timeout=20) as resp:
         rows = json.load(resp)
     if not rows:
         raise SystemExit(f"--id-from {path} returned nothing to photograph")
@@ -451,11 +466,15 @@ def main() -> int:
     boot(app, args.ui_port, args.api_port, args.wait)
     print(f"app up — ui :{args.ui_port}, api :{args.api_port}")
     try:
+        # Through the UI port, with the interface's client-facing paths: the app's own client
+        # calls its API that way, and the dev proxy strips the base path the backend does not
+        # serve (the 1.8.2 cut's React app: base_path /api, the router at the root — a request
+        # sent straight to the backend's /api/runs was a 404).
         if requests:
-            seed(args.api_port, requests, args.id_from)
+            seed(args.ui_port, requests, args.id_from)
             print(f"seeded {len(requests)} request(s) through the app's own API")
         if args.id_from:
-            ident = first_id(args.api_port, args.id_from)
+            ident = first_id(args.ui_port, args.id_from)
             route_testids = {r.replace("{id}", ident): t for r, t in route_testids.items()}
             routes = [(r.replace("{id}", ident), label) for r, label in routes]
         assets = RELEASES / f"v{args.version}" / "assets"
