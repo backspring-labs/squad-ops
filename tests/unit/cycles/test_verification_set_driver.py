@@ -5725,6 +5725,41 @@ class TestEveryCollectorMarkerSurvivesItsFilter:
             for p in driver.marker_self_check_problems()
         )
 
+    def test_one_unread_form_is_named_though_another_form_feeds_the_field(
+        self, driver, monkeypatch
+    ):
+        """#1696, recreating #1695: ``faults_applied`` parsing only the ``chars`` form. Bug this
+        catches: the check reading a field's samples together, so the ``chars`` line kept the
+        field fed and the unparsed ``rows`` form (a planted row) passed the self-check."""
+        real = driver.faults_applied
+        monkeypatch.setattr(
+            driver, "faults_applied", lambda lines: real([ln for ln in lines if " rows " not in ln])
+        )
+
+        problems = driver.marker_self_check_problems()
+
+        assert problems == [
+            "#1696: faults_applied's agent sample line adds nothing to the reading — an unread "
+            "form or a dead sample: " + repr(driver.AGENT_MARKER_SAMPLES["faults_applied"][1][:140])
+        ]
+
+    def test_a_join_needs_every_line_and_a_dead_line_is_named(self, driver, monkeypatch):
+        """#1696. Bug this catches, both ways: a per-line check that refuses a join field (one
+        dispatch of an id is never a repeat, so each line alone reads nothing), and a sample
+        that survives the filter and changes nothing, kept as if it proved a form."""
+        dead = (
+            "2026-09-23 12:47:34,637 INFO adapters.cycles.task_dispatcher: Dispatched task "
+            "task-run_3aff38c4-m004-development.develop (development.develop) to neo_comms"
+        )
+        samples = dict(driver.RUNTIME_MARKER_SAMPLES)
+        samples["repeated_round_ids"] = (*samples["repeated_round_ids"], dead)
+        monkeypatch.setattr(driver, "RUNTIME_MARKER_SAMPLES", samples)
+
+        assert driver.marker_self_check_problems() == [
+            "#1696: repeated_round_ids's runtime-api sample line adds nothing to the reading — "
+            f"an unread form or a dead sample: {dead[:140]!r}"
+        ]
+
     @pytest.mark.parametrize(
         ("read", "samples", "aliases", "declared"),
         [
