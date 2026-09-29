@@ -58,6 +58,37 @@ refund lines and the driver's joins, which is why 1.8.2 kept it off deploy A′.
   A′ d3 (`repair-run_97f19dba-00-qa.test_repair`) and d6 (`repair-run_99242d1e-00-qa.test_repair`).
   Each must now read distinct ids, with the refund joined to its own dispatch.
 
+#### Result (2026-09-29): read on both; #1507 may start
+
+#1697 merged as PR #1733 (`0739af1d`). The runtime API was rebuilt from it, and only that image
+changed; the agents kept A′'s images, whose fault hook reads the round index unchanged.
+
+**Re-run, not replayed.** SIP-0101's replay could restore only checkpoint 6: every later
+checkpoint lists `corr-`/`repair-` ids, which the replay's id translation refuses by design. That
+skips about 9 minutes of a 66-minute run, since framing still runs live. The driver can neither
+launch a replay nor read one. So both diagnostics were re-run through the driver on 1.8.2's
+configs, with only their name, records directory and pre-registration changed
+(`var/1-9-0-logs/1-9-0-1697-*.yaml`). The records are under `var/verification_sets/1-9-0-1697/`.
+
+| run | outcome | the prediction |
+|---|---|---|
+| `redelivery`, `cyc_cfc00ce6ebd8` | accepted, 20/20 | its two rounds are `-00-s00-` and `-00-s01-`; `repeated_round_ids` is empty; the two refusals name two distinct ids (A′: one id, twice) |
+| `own-frame-then-prose-repair`, `cyc_b39af3354b8b` | accepted, 21/21 | `-00-s00-` and `-00-s01-` for diagnosis and repair; each refund names its round; **L4 reads YES** (A′ d6 read UNASKABLE, and was held only by the owner's ruling, §11f of 1.8.2); L7 reads YES |
+
+**It found two defects of #1733's own, both in the driver, both fixed before this reading:**
+- **#1742:** the `refunded_rounds` collector matched the old refund line literally, so the
+  redelivery record read two logged refunds as none. The own-frame run's launching driver was
+  stopped in framing, before its gate or any record, and the fixed driver re-attached by the
+  reference recipe. Its record carries a `reattached` block.
+- **#1744:** the retest readout joined rounds by index alone. Since the ids carry a sequence,
+  #1698's guard no longer set same-index rounds aside, so a refunded round and its re-take merged
+  and read regressions against the wrong baseline. It didn't touch these two runs: neither
+  retested a patch.
+
+**The instruments read live on the same runs:** #1724's re-take verifications (each re-take
+indexed by its own dispatch and joined to its final evaluation), and #1718's DID NOT BITE form in
+the marker samples.
+
 ### 3.2 The headline: #1507 — the executor's completion boundary
 
 It is extracted under the 1.7.5 map's rules (`docs/plans/1-7-5-recovery-extraction-map.md`): one
