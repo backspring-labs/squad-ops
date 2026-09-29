@@ -18,6 +18,7 @@ transport errors and log warnings rather than raising.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from typing import Any
 
 from squadops.cycles.models import RunStatus
@@ -42,8 +43,11 @@ class WorkflowTrackerPort(ABC):
         flow_id: str,
         run_name: str,
         parameters: dict[str, Any] | None = None,
+        tags: Sequence[str] = (),
     ) -> str:
-        """Create a flow run inside the given flow. Returns ``flow_run_id``."""
+        """Create a flow run inside the given flow. Returns ``flow_run_id``. ``tags`` are the
+        run's filterable view (``naming.flow_run_tags``, #1722); a tracker without tags ignores
+        them."""
 
     @abstractmethod
     async def create_task_run(
