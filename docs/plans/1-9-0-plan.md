@@ -1,6 +1,6 @@
 # 1.9.0 plan — the close of the 1.x line
 
-**Status:** adopted, rev 4 (2026-09-29): rev 3 adopted at merge, with the rulings made after adoption in §7a. Written on the owner's word at the
+**Status:** adopted, rev 5 (2026-09-29): rev 3 adopted at merge, with the rulings made after adoption in §7a. Written on the owner's word at the
 1.8.2 cut ("let's cut 1.8.2 and write 1.9.0 plan"). The 1.8.2 counted rolls answered the question
 this plan was held for: **no 1.8.3 opens** (the 1.8.2 plan §3.10; the pre-registration §10, deploy
 A′).
@@ -154,6 +154,9 @@ Each is one PR, with its own test, behaviour-neutral unless it says otherwise:
   Code Revision settles what a repair emits" (decision 2). **Gated on a replay** (§7a item 9): the
   new engine over every stored real emission. Identical recognition lands it before the deploy, as
   neutral in effect; any difference makes it a behaviour change, and it moves to 2.0.
+  **Outcome (2026-09-29): the gate cannot run, so #567 moves to 2.0.** No complete model emission
+  is stored anywhere: the vault keeps extracted files, and LangFuse cuts each generation at 10,000
+  characters (#1756). The reasoning is on #567.
 - **#1754** (filed 2026-09-29, §7a item 6): a run paused by admission is read as completed, and the
   re-rolls cancel it. Fixed **before the deploy**: it is a defect in the boundary §3.2 names, and
   not on the correction path.
@@ -169,7 +172,10 @@ Each is one PR, with its own test, behaviour-neutral unless it says otherwise:
 - **The ops rider:** #1177, #176 recipe 2, #1176, #1408 and #1412. This is its fifth plan, and
   decision 4 asks whether to run it or retire it. **Ruled (§7a items 3–5):** #176 recipe 2 is the
   first cycle on the 1.9 deploy; #1176's accept-rate replay runs on the idle box before the deploy;
-  #1177, #1408 and #1412 are retired as not scheduled.
+  #1177, #1408 and #1412 are retired as not scheduled. **Outcome (2026-09-29):** #1176 closed with
+  its reading (on `qwen3.8:27b` a carried trace reached the model and cut a repair's re-reasoning to
+  0.07–0.17 of the attempt it repaired, against 0.30–0.46 without; every repair was accepted in both
+  arms). #176 closed: the 1.9 deploy's first cycle, `cyc_3d28edb8333e`, completed.
 
 ### 3.6 The cut criterion: three gates
 
@@ -375,6 +381,8 @@ Ten questions reached the owner after rev 3 merged. Each was ruled as recommende
     #1122 is closed as not planned; #1626 closed at the cut;
   - §7's decisions adopted at merge, and decision 6 recorded in SIP-0086 §12a;
   - 43 issues, 40 of them open.
+- **Rev 5 (2026-09-29):** the outcomes of §7a items 3, 4 and 9 (#176, #1176, #567), with the
+  pre-registration (`1-9-0-preregistration.md`).
 - **Rev 4 (2026-09-29):** §7a records the ten rulings made after adoption. §1, §3.3, §3.4 and §3.5
   are corrected to match: the log order, #1031's move, the #567 gate, #1754, the ops rider and
   #1723.
