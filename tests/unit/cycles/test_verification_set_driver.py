@@ -4404,6 +4404,7 @@ class TestASeamIsReadOnlyWhenItsFaultApplied:
                 "out_of_scope": [
                     {"task": "task-run_57e2c248-m005-qa.test", "scope": "first_attempt"}
                 ],
+                "did_not_bite": [],
             }
         }
         assert driver.faults_applied([]) == {}
@@ -4420,6 +4421,78 @@ class TestASeamIsReadOnlyWhenItsFaultApplied:
         assert len(driver.faults_applied(lines)["repair_prose_only"]["applied"]) == len(
             driver.AGENT_SERVICES
         )
+
+    # Real: A′'s `dev-lane-fastapi-react` run 1, cyc_25a7a6ad8ebd (neo), 2026-09-28 (#1718).
+    _DID_NOT_BITE = (
+        "2026-09-28 15:12:03,429 - squadops.capabilities.handlers.fault_injection - WARNING - "
+        "fault_injection: DID NOT BITE dev_join_response_omits_declared_fields on "
+        "task=task-run_d2b1a457-{}-development.develop handler=development_develop_handler — "
+        "the emission was returned unchanged (3688 chars), so the downstream path runs as if no "
+        "fault were declared. THIS DIAGNOSTIC PROVES NOTHING about the dev lane: a probe failure "
+        "on a developer-owned route is repaired by a development repair aimed at the probe-owned "
+        "slot, verified and applied."
+    )
+    # The planted-row form, as ``fault_injection.inject`` writes it (no real one yet).
+    _NO_SHAPE = (
+        "2026-09-25 14:14:19,403 - squadops.capabilities.handlers.fault_injection - WARNING - "
+        "fault_injection: DID NOT BITE false_criterion_alias_import on "
+        "task=task-run_27462d5a-m000-development.develop handler=development_develop_handler — "
+        "no artifact carries the shape its row is about. THIS DIAGNOSTIC PROVES NOTHING about L3."
+    )
+
+    @pytest.mark.parametrize(
+        ("neo_lines", "fault", "reason"),
+        [
+            (
+                list(map(_DID_NOT_BITE.format, ("m000", "m001", "m002", "m003"))),
+                "dev_join_response_omits_declared_fields",
+                "the fault never applied — declared for "
+                "task-run_d2b1a457-m000-development.develop, "
+                "task-run_d2b1a457-m001-development.develop, "
+                "task-run_d2b1a457-m002-development.develop, "
+                "task-run_d2b1a457-m003-development.develop, each attempt ran, and the fault "
+                "found nothing to change (DID NOT BITE: emission_unchanged); the seam was not "
+                "exercised, so this is neither YES nor NO (#1588)",
+            ),
+            (
+                [_NO_SHAPE],
+                "false_criterion_alias_import",
+                "the fault never applied — declared for "
+                "task-run_27462d5a-m000-development.develop, each attempt ran, and the fault "
+                "found nothing to change (DID NOT BITE: no_shape_to_plant); the seam was not "
+                "exercised, so this is neither YES nor NO (#1588)",
+            ),
+            (
+                [],
+                "dev_join_response_omits_declared_fields",
+                "the fault never applied — no attempt of its target task ran; the seam was not "
+                "exercised, so this is neither YES nor NO (#1588)",
+            ),
+        ],
+        ids=["ran and unchanged (A′ d7 run 1)", "ran with no shape to plant", "never ran"],
+    )
+    def test_an_unbitten_fault_is_named_as_ran_not_as_never_ran(
+        self, driver, monkeypatch, neo_lines, fault, reason
+    ):
+        """#1718. Bug this catches: the hook's DID NOT BITE lines kept by the agent filter and
+        dropped by the parser, so four develop attempts that ran read as "no attempt of its
+        target task ran" — and A′'s dev-lane spent its second run on the wrong question.
+        Wiring: raw container lines through the agent window, the texture the record is built
+        from, and the seam reading; a prepared ``faults_applied`` would pass without the fix."""
+        monkeypatch.setattr(
+            driver,
+            "docker_logs",
+            lambda container, since, until=None: (
+                ["noise", *neo_lines] if container == "squadops-neo" else ["noise"]
+            ),
+        )
+        texture = driver.texture_from_agent_lines(driver.agent_log_window("2026-09-28T15:00:00Z"))
+        rec = {"correction_rounds": 0, "loop_texture": texture}
+
+        reading = driver.seam_readouts((fault,), rec)[fault]
+
+        assert reading["reached"] is None
+        assert reading["unaskable"]["loop_texture.faults_applied"] == reason
 
     @staticmethod
     def _rec(faults_applied=None, **texture):
