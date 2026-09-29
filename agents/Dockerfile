@@ -116,8 +116,10 @@ RUN mkdir -p /app/logs /app/data/memory_db
 EXPOSE 8000
 
 # Health check
+# #1691: the running agent's own mark (squadops.agents.readiness), not a module import — an
+# import passed while every agent restart-looped on the #352 startup guard.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD python -c "from squadops.agents.entrypoint import AgentRunner; print('Agent healthy')" || exit 1
+    CMD python -m squadops.agents.readiness || exit 1
 
 # Run the agent entry point
 CMD ["python", "-m", "squadops.agents.entrypoint"]

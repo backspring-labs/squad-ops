@@ -238,8 +238,13 @@ class AgentRunner:
 
         Bootstraps the system, connects to queue, and starts consuming tasks.
         """
+        from squadops.agents import readiness
         from squadops.bootstrap.secrets import secret_provider_for
         from squadops.config import load_config
+
+        # #1691: a restarted process never inherits its predecessor's readiness mark — the
+        # health check reads this agent as ready only once its own heartbeat loop marks it.
+        readiness.clear()
 
         # Single config load — reused by log-forwarder install and _create_system.
         self._config = load_config(secret_provider_factory=secret_provider_for)
@@ -1098,11 +1103,16 @@ class AgentRunner:
 
         Reports agent status to the health dashboard.
         """
+        from squadops.agents import readiness
+
         # Operational default (see the LOG_LEVEL note) — intentional tuning knob,
-        # not masked required config (#333).
-        heartbeat_interval = int(os.getenv("HEARTBEAT_INTERVAL", "30"))
+        # not masked required config (#333). Read where the health check ages the mark.
+        heartbeat_interval = readiness.heartbeat_interval_seconds()
 
         while not self._shutdown_event.is_set():
+            # #1691: the container's health check reads this mark. The loop starts only after
+            # the system bootstrapped, so an agent the #352 guard refused never marks itself.
+            readiness.mark()
             try:
                 await self._send_heartbeat()
             except Exception as e:
