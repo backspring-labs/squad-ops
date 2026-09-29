@@ -2288,3 +2288,63 @@ class TestEveryWayACycleEndsMeetsCycleCompletion:
         assert (end.stopped_because, end.last_run_id) == (reason, last_run)
         assert end.last_run_status == runs[last_run].status
         assert end.last_run_terminal == "the terminal"
+
+
+class TestARunThatDidNotCompleteEndsTheSequence:
+    """#1754: the loop stopped only on a failed or cancelled run. A run that ``execute_run``
+    returned *paused* — admission deferred it (a duty window or a focus-lease conflict, SIP-0089
+    §2.5), or a task's BLOCKED outcome paused it — was read as completed. It was announced
+    ``completed`` and gated; its empty plan was rejected, and each framing re-roll cancelled it,
+    so ``runs resume`` had nothing left to resume. Entered at ``execute_cycle``, with the gated
+    two-workload sequence and the default re-rolls left."""
+
+    _STOPPED_BECAUSE = {
+        RunStatus.FAILED: "run_failed",
+        RunStatus.CANCELLED: "run_cancelled",
+        RunStatus.PAUSED: "run_paused",
+        RunStatus.QUEUED: "run_not_terminal",
+        RunStatus.RUNNING: "run_not_terminal",
+    }
+
+    @pytest.mark.parametrize(
+        "status", [s for s in RunStatus if s is not RunStatus.COMPLETED], ids=str
+    )
+    async def test_it_stops_the_sequence_ungated_and_uncancelled(
+        self, executor, mock_registry, mock_event_bus, status
+    ):
+        run = _make_run("run_001", 1, status.value, "framing")
+        mock_registry.get_cycle.return_value = _make_cycle(
+            workload_sequence=[
+                {"type": "framing", "gate": "progress_plan_review"},
+                {"type": "implementation"},
+            ]
+        )
+        mock_registry.get_run.return_value = run
+        mock_registry.list_runs.return_value = [run]
+        mock_registry.get_run_loop_summary.return_value = None
+        executor._reject_invalid_plan_before_workload_gate = AsyncMock(
+            return_value=["plan_authoring_collapsed"]
+        )
+        ends = []
+        real_end = executor._cycle_completion.end
+
+        async def recording_end(*args, **kwargs):
+            ends.append(await real_end(*args, **kwargs))
+            return ends[-1]
+
+        executor._cycle_completion.end = recording_end
+
+        await executor.execute_cycle("cyc_001", "run_001")
+
+        (end,) = ends
+        assert (end.stopped_because, end.last_run_id) == (self._STOPPED_BECAUSE[status], "run_001")
+        mock_registry.cancel_run.assert_not_awaited()
+        executor._reject_invalid_plan_before_workload_gate.assert_not_awaited()
+        assert executor.execute_run.await_count == 1
+        completed = [
+            c[1]["payload"]["terminal_status"]
+            for c in mock_event_bus.emit.call_args_list
+            if c[0][0] == EventType.WORKLOAD_COMPLETED
+        ]
+        assert completed == [status.value]
+        assert EventType.WORKLOAD_ADVANCED not in _emit_types(mock_event_bus)

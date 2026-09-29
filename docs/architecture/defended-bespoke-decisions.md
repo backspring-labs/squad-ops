@@ -635,8 +635,14 @@ is never read as an approval (#466). *Lives in:* `WorkloadGate.decide`.
 
 ## 64. Every way a cycle ends meets one completion boundary
 
-`execute_cycle`'s endings — the single-workload fast path, a failed or cancelled run, the last
+`execute_cycle`'s endings — the single-workload fast path, a run that did not complete, the last
 workload, and each way the gate stops the sequence — all reach `CycleCompletion.end`, which
 produces one read-only `CycleEnd` naming why. It is the seam 2.0's continuation request enters
 (the Campaign SIP's Appendix A). `execute_cycle` keeps the port's `None` return: changing a port
 inside an extraction is out, and the view is observed at the boundary itself (#1507 step 3).
+
+"A run that did not complete" is every status but `completed` (#1754). The loop once stopped only on
+a failed or cancelled run, and read a paused one as completed: it gated it, rejected its empty plan
+and cancelled it with each framing re-roll, so `runs resume` had nothing to re-enter. A paused run
+now ends the sequence uncancelled, as `run_paused`. *Lives in:* `STOP_REASON_FOR_UNCOMPLETED_RUN`
+(`src/squadops/cycles/cycle_end.py`).
