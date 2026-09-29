@@ -1,6 +1,6 @@
 # 1.9.0 plan — the close of the 1.x line
 
-**Status:** draft, rev 1 (2026-09-29), for the owner's review. Written on the owner's word at the
+**Status:** draft, rev 2 (2026-09-29), for the owner's review. Written on the owner's word at the
 1.8.2 cut ("let's cut 1.8.2 and write 1.9.0 plan"). The 1.8.2 counted rolls answered the question
 this plan was held for: **no 1.8.3 opens** (the 1.8.2 plan §3.10; the pre-registration §10, deploy
 A′).
@@ -85,7 +85,7 @@ path through it are written into the plan's cut record.
 Driver-side, with the exception of #1716. They land before 1.9's deploy, so its set reads cleanly:
 - **#1714:** the #1699 guard excuses a run that started before the runtime's current process.
 - **#1718:** the fault hook's DID-NOT-BITE lines are parsed, with the correct unaskable reason.
-- **#1724, items 1–2:** the record carries each re-take's verification (the suite line and the final
+- **#1724** (narrowed to the driver's part; §20 and the counting rule are #1727): the record carries each re-take's verification (the suite line and the final
   typed-check evaluation, with its `workspace_revision_id`), and each self-evaluation pass that adds
   or re-emits a file.
 - **#1696:** the marker self-check checks each sample line.
@@ -152,7 +152,7 @@ When the line runs long, it sheds in this order, and each drop is recorded in th
 5. the convergence replay (item 12) → 2.0, stated as the flip decision's missing input
 
 **What cannot drop, because it is the line's claim:** #1697; the three #1507 slices and the named
-completion boundary; the instruments §3.3 needs for the set to read (#1714, #1718, #1724 items 1–2,
+completion boundary; the instruments §3.3 needs for the set to read (#1714, #1718, #1724,
 the Prefect log reading); and the set itself.
 
 ---
@@ -180,32 +180,46 @@ carries 1.8.2's rules and adds the extraction's predictions before the first lau
 
 ## 5. Re-placements by name: nothing silently carried
 
-**40 open issues on 2026-09-29, each placed once.**
+**A plan places whole issues. An issue the plan would only partly address is split when it is
+placed,** so each placed issue closes in the release that owns it (CLAUDE.md, *Close issues from
+PRs*). This is the guard against #80's failure, where named follow-ons lived only in a closed
+issue's prose and were never filed. Applied here: #1724 and #1722 were narrowed to their 1.9 scope,
+and their 2.0 halves filed as #1727 and #1728.
 
-- **In this release (25):**
-  - first: #1697;
-  - the headline: #1507;
-  - instruments (§3.3): #1714, #1718, #1724 (items 1–2; items 3–4 go with 2.0's flip decision),
-    #1696, #1716, #1723 (investigated);
-  - debts (§3.4): #353, #1031, #1448, #1522, #414, #567, #1701, #1691;
-  - from 1.8.2's drops (§3.5): #1039, #1177, #176, #1176, #1408, #1412;
-  - by decision 1: #1720, #1722 (its available-now tags; `campaign:` and `deploy:` follow Campaign
-    and #1720);
-  - read on 1.9's set: #1626.
-- **Closed at the 1.8.2 cut (proposed):** #1626. The 1.8.2 plan's decision 4 reads "#1626 closes on
-  the `redelivery` diagnostic", and A′ d3 read as predicted: two kills, two typed refusals, no run
-  left running. **If it is closed at the cut, the in-release count is 24.**
-- **2.0, with Campaign (10):** #1705, #1706, #1707, #1708, #1709, #1710, #1711, #1692, #316, and
-  #949 as an input to #1708's gate policy (the owner's ruling, 2026-09-29): the fallback if an
-  answered design question must reach the plan through a revision.
-- **At design review (2):** #950, #557. Both are inputs to the Campaign SIP's revision: #557 is
-  the per-repair acceptance review, and #950 the gate's review packet.
-- **Closed as not planned (1):** #194. Only `validation-multirole` uses parallel proposers, and
-  no counted roll uses that profile (the owner's ruling, 2026-09-29).
+**42 issues on 2026-09-29, each placed once:** the 40 open that morning, plus #1727 and #1728 split
+from them.
+
+- **In this release (24), each closable in 1.9:**
+  - **firm closes (12),** planned with no drop path:
+    - the line's claim (§3.8): #1697, #1507, #1714, #1718, #1724;
+    - also planned: #1696, #1716, #353, #1031, #1448, #1701, #1691;
+  - **conditional closes (12),** each on a decision in §7 or the drop order in §3.8:
+    - #1720 and #1722, decision 1;
+    - #567, decision 2 (third to drop);
+    - #1522 and #414, decision 3 (fourth to drop);
+    - #1039, second to drop;
+    - the ops rider (#1177, #176, #1176, #1408, #1412), decision 4 (first to drop). These close
+      either way: a recipe run once is a terminal result, and a retired one closes as not planned;
+    - #1723, which closes when the investigation answers it; a code change it calls for is a new
+      issue.
+- **Closes at the 1.8.2 cut (1):** #1626. The 1.8.2 plan's decision 4 reads "#1626 closes on the
+  `redelivery` diagnostic", and A′ d3 read as predicted: two kills, two typed refusals, no run left
+  running.
+- **2.0 (12):**
+  - with Campaign: #1705, #1706, #1707, #1708, #1709, #1710, #1711, #1692, #316;
+  - #949, as an input to #1708's gate policy (the owner's ruling, 2026-09-29): the fallback if an
+    answered design question must reach the plan through a revision;
+  - #1727, with the decision on SIP-0107 step 7 (§20 on the re-take path, and the re-take
+    transaction);
+  - #1728, the `campaign:` and `deploy:` tags, with Campaign and #1720.
+- **At design review (2):** #950, #557. Both are inputs to the Campaign SIP's revision: #557 is the
+  per-repair acceptance review, and #950 the gate's review packet.
 - **Read at the cut, open by design (1):** #1469.
 - **Not scheduled (1):** #1122.
+- **Closed as not planned (1):** #194. Only `validation-multirole` uses parallel proposers, and no
+  counted roll uses that profile (the owner's ruling, 2026-09-29).
 
-That is 25 + 10 + 2 + 1 + 1 + 1 = **40**.
+That is 24 + 1 + 12 + 2 + 1 + 1 + 1 = **42**.
 
 **Not an issue, named so it is not lost:**
 - SIP-0107 §38 step 7, a 2.0 decision (§46q);
@@ -234,8 +248,9 @@ That is 25 + 10 + 2 + 1 + 1 + 1 = **40**.
    - **Recommendation: #1720 in 1.9.** It is #80's promised follow-ons, which makes it debt. Without
      it, 1.9's own set cannot tell an agent-only rebuild from a clean one, and SIP-0108's lineage
      overclaims today.
-   - **Recommendation for #1722:** its `project:`, `framework:` and `replay-of:` tags in 1.9, since
-     they are small and additive; `campaign:` and `deploy:` with Campaign and #1720.
+   - **Recommendation for #1722** (now narrowed to these): its `project:`, `framework:` and
+     `replay-of:` tags in 1.9, since they are small and additive. `campaign:` and `deploy:` are
+     #1728 (2.0).
 2. **#567's precondition,** "after Scoped Code Revision settles what a repair emits". The emission
    forms (anchored edits, fills, whole-file) are settled and recorded (SIP-0107 §46k–§46p). Only
    the flip's refusal is open. **Recommendation:** treat the precondition as met, and let #567 land
@@ -267,3 +282,6 @@ That is 25 + 10 + 2 + 1 + 1 + 1 = **40**.
 
 - **Rev 1 (2026-09-29):** the first draft, written at the 1.8.2 cut on the owner's word. The same
   day: #194 closed as not planned, and #949 placed on 2.0 as an input to #1708.
+- **Rev 2 (2026-09-29):** §5 places whole issues. #1724 and #1722 are narrowed to their 1.9
+  scope, with their 2.0 halves filed as #1727 and #1728. The in-release list is split into firm and
+  conditional closes; #1626 closes at the 1.8.2 cut. The total is 42.
