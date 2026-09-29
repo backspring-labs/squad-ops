@@ -55,9 +55,11 @@ def _find_event_type_refs_in_file(filepath: Path) -> set[str]:
 # correction protocol, and its emit sites, to the CorrectionRunner module;
 # slice 4 did the same for the pulse path and the PulseBoundaryRunner;
 # slice 5 moved the retry loop's per-attempt TASK_* emits to TaskDispatcher;
-# #1507 step 2 moved the run's RUN_STARTED/RUN_RESUMED announcement to RunProvisioning.)
+# #1507 step 2 moved the run's RUN_STARTED/RUN_RESUMED announcement to RunProvisioning;
+# #1507 step 3 moved the inter-workload gate's emits to WorkloadGate.)
 _EXECUTOR_PATH = Path("adapters/cycles/dispatched_flow_executor.py")
 _RUN_PROVISIONING_PATH = Path("adapters/cycles/run_provisioning.py")
+_WORKLOAD_GATE_PATH = Path("adapters/cycles/workload_gate.py")
 _RUN_COMPLETION_PATH = Path("adapters/cycles/run_completion.py")
 _CORRECTION_RUNNER_PATH = Path("adapters/cycles/correction_runner.py")
 _PULSE_BOUNDARY_RUNNER_PATH = Path("adapters/cycles/pulse_boundary_runner.py")
@@ -73,6 +75,7 @@ _ALL_EMISSION_FILES = [
     _PULSE_BOUNDARY_RUNNER_PATH,
     _TASK_DISPATCHER_PATH,
     _RUN_PROVISIONING_PATH,
+    _WORKLOAD_GATE_PATH,
     _CYCLES_ROUTE,
     _RUNS_ROUTE,
     _ARTIFACTS_ROUTE,
@@ -129,7 +132,6 @@ class TestExecutorEmissionPoints:
             "CHECKPOINT_CREATED",
             "CHECKPOINT_RESTORED",
             "WORKLOAD_COMPLETED",
-            "WORKLOAD_GATE_AWAITING",
             "WORKLOAD_ADVANCED",
             "GATE_DECIDED",
             "ARTIFACT_OWNERSHIP_ENFORCED",
@@ -138,7 +140,7 @@ class TestExecutorEmissionPoints:
     def test_executor_emits(self, attr: str, executor_refs: set[str]) -> None:
         assert attr in executor_refs
 
-    def test_executor_has_13_types(self, executor_refs: set[str]) -> None:
+    def test_executor_has_12_types(self, executor_refs: set[str]) -> None:
         """13 = the post-slice-5 twelve plus GATE_DECIDED (#473): the
         inter-workload pre-gate validation records a system REJECTED gate
         decision and emits GATE_DECIDED, so a mechanically rejected plan is
@@ -160,8 +162,27 @@ class TestExecutorEmissionPoints:
 
         #1507 step 2 moved the run's start announcement to RunProvisioning — 14 → 13. RUN_RESUMED
         stays: the executor still references it outside provisioning.
+
+        #1507 step 3 moved the inter-workload gate to WorkloadGate — 13 → 12: WORKLOAD_GATE_AWAITING
+        left with it; GATE_DECIDED and WORKLOAD_ADVANCED stay (the question-free approval and the
+        loop's advance still emit them here).
         """
-        assert len(executor_refs) == 13
+        assert len(executor_refs) == 12
+
+
+class TestWorkloadGateEmissionPoints:
+    """The inter-workload gate's events come from WorkloadGate (#1507 step 3): the plan check's
+    system rejection, the review request, and a framing re-roll's or revision's advance."""
+
+    @pytest.fixture(scope="class")
+    def workload_gate_refs(self) -> set[str]:
+        return _find_event_type_refs_in_file(_WORKLOAD_GATE_PATH)
+
+    @pytest.mark.parametrize(
+        "attr", ["GATE_DECIDED", "WORKLOAD_GATE_AWAITING", "WORKLOAD_ADVANCED"]
+    )
+    def test_the_gate_emits(self, attr: str, workload_gate_refs: set[str]) -> None:
+        assert attr in workload_gate_refs
 
 
 class TestRunProvisioningEmissionPoints:
@@ -353,7 +374,7 @@ class TestEmitCallSitePayloadFields:
         assert with_payload >= 35
 
     def test_total_emit_call_count(self) -> None:
-        """Sanity check: 20 executor + 2 run-provisioning + 9 correction-runner +
+        """Sanity check: 16 executor + 2 run-provisioning + 4 workload-gate + 9 correction-runner +
         8 pulse-boundary-runner + 2 task-dispatcher + 7 route = 48 total
         emit calls (#811 added the operator-revision WORKLOAD_ADVANCED emit,
         47 -> 48; #807 added M4's question-gate GATE_DECIDED emit for a
@@ -373,7 +394,7 @@ class TestEmitCallSitePayloadFields:
         pulse path's 8 emit sites to the PulseBoundaryRunner; slice 5 moved
         the retry loop's 2 per-attempt TASK_* emits to the TaskDispatcher —
         same events at runtime, same total. #1507 step 2 moved the run's two start/resume emits
-        to RunProvisioning — same total."""
+        to RunProvisioning — same total; step 3 moved the gate's four to WorkloadGate — same total."""
         total = 0
         for path in _ALL_EMISSION_FILES:
             total += len(self._extract_emit_calls(path))

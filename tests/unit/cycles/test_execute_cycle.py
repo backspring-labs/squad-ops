@@ -2200,3 +2200,91 @@ class TestFramingReroll:
 
         assert executor.execute_run.await_count == 1
         mock_registry.cancel_run.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# #1507 step 3: the completion boundary
+# ---------------------------------------------------------------------------
+
+
+class TestEveryWayACycleEndsMeetsCycleCompletion:
+    """The map's step-3 wiring test (CLAUDE.md, *A changed seam needs a wiring test*): entered at
+    ``execute_cycle``, every way a cycle ends reaches ``CycleCompletion`` exactly once, with the
+    reason named and the last run it ended on. Bug this catches: an exit path added or kept that
+    bypasses the boundary — the seam 2.0's continuation enters — so a cycle ends and nothing
+    downstream hears how."""
+
+    _GATED = [{"type": "framing", "gate": "progress_plan_review"}, {"type": "implementation"}]
+    _PLAIN = [{"type": "framing"}, {"type": "implementation"}]
+
+    def _drive(self, executor, mock_registry, *, sequence, runs, defaults=None):
+        mock_registry.get_cycle.return_value = _make_cycle(
+            workload_sequence=sequence, applied_defaults_extra=defaults
+        )
+        mock_registry.get_run.side_effect = lambda run_id: runs[run_id]
+        mock_registry.list_runs.return_value = [runs["run_001"]]
+        mock_registry.get_run_loop_summary.return_value = MagicMock(terminal="the terminal")
+        executor._create_next_workload_run = AsyncMock(return_value=runs.get("run_002"))
+        executor._build_forwarding_overrides = AsyncMock(return_value={})
+        executor._reject_invalid_plan_before_workload_gate = AsyncMock(return_value=[])
+        executor._design_questions_for_gate = AsyncMock(return_value=["which checkpoint?"])
+        ends = []
+        real_end = executor._cycle_completion.end
+
+        async def recording_end(*args, **kwargs):
+            end = await real_end(*args, **kwargs)
+            ends.append(end)
+            return end
+
+        executor._cycle_completion.end = recording_end
+        return ends
+
+    @pytest.mark.parametrize(
+        ("case", "reason", "last_run"),
+        [
+            ("single workload", "single_workload_ended", "run_001"),
+            ("sequence completed", "sequence_completed", "run_002"),
+            ("run failed", "run_failed", "run_001"),
+            ("run cancelled", "run_cancelled", "run_001"),
+            ("plan rejected, no re-roll left", "plan_rejected", "run_001"),
+            ("gate rejected", "gate_rejected", "run_001"),
+            ("revision unavailable", "revision_unavailable", "run_001"),
+            ("decision unrecognized", "gate_decision_unrecognized", "run_001"),
+        ],
+    )
+    async def test_the_cycle_ends_once_at_the_boundary_with_its_reason(
+        self, executor, mock_registry, case, reason, last_run
+    ):
+        status = {"run failed": "failed", "run cancelled": "cancelled"}.get(case, "completed")
+        runs = {
+            "run_001": _make_run("run_001", 1, status, "framing"),
+            "run_002": _make_run("run_002", 2, "completed", "implementation"),
+        }
+        sequence = {"single workload": [{"type": "framing"}], "sequence completed": self._PLAIN}
+        ends = self._drive(
+            executor,
+            mock_registry,
+            sequence=sequence.get(case, self._GATED),
+            runs=runs,
+            defaults={"framing_max_rerolls": 0, "manifest_max_attempts": 0},
+        )
+        decision = {
+            "gate rejected": "rejected",
+            "revision unavailable": "returned_for_revision",
+            "decision unrecognized": "deferred_by_a_future_policy",
+        }.get(case)
+        if decision:
+            executor._poll_inter_workload_gate = AsyncMock(
+                return_value=_gate_decision("progress_plan_review", decision)
+            )
+        if case == "plan rejected, no re-roll left":
+            executor._reject_invalid_plan_before_workload_gate = AsyncMock(
+                return_value=["the plan declares no qa suite"]
+            )
+
+        await executor.execute_cycle("cyc_001", "run_001")
+
+        (end,) = ends
+        assert (end.stopped_because, end.last_run_id) == (reason, last_run)
+        assert end.last_run_status == runs[last_run].status
+        assert end.last_run_terminal == "the terminal"

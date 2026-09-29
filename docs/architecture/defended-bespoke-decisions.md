@@ -597,3 +597,46 @@ when it failed, and provisioning records each on the line after the line that es
 provisioning step that returned its results only at the end would hand finalization `None` where
 the contract was already loaded — a behaviour change an extraction would hide (#1507 step 2).
 *Lives in:* `RunProvisioning`, `RunAdmission`, and `execute_run`'s `finally`.
+
+## 59. A system plan rejection re-rolls framing, and the re-roll revises
+
+A plan the gate's check rejects is a stochastic framing fault — the rule the model tripped is in its
+prompt already — so framing re-runs, bounded by `framing_max_rerolls`, rather than the cycle dying
+(#522). The default is 2: it shipped as 0, which made the machinery dead code until a correct
+refusal dead-ended a cycle (#1030). The re-roll carries what died and why into the new framing's
+authoring prompts (#669): revise, don't re-dice. The rejection stays in `gate_decisions` as evidence
+(#473). *Lives in:* `WorkloadGate.decide`.
+
+## 60. The gate stops only when the design asks a question
+
+A manifest that declares no unresolved decision has already passed the deterministic gates, and a
+review that adds nothing manufactures the appearance of one (M4, #807). The question-free approval
+is synthesized and runs through the same exhaustive dispatch a human's answer does, so a
+pass-through cannot reach a path an approval would not; the questions themselves are the review
+request (§5c.10). *Lives in:* `WorkloadGate.decide`.
+
+## 61. Returned-for-revision revises, on the re-roll's own path
+
+Revision is not approval: the sequence never advances on the un-revised plan (#466, the 3.10
+false-approve). The revision runs on the same re-execution path a system re-roll takes (#811) — a
+second loop beside a proven one is how they drift — with its own counter, bounded by
+`manifest_max_attempts`, because a human's instruction is not a stochastic fault. It carries the
+prior manifest (§5c.6's "revise, don't re-roll") and the superseded run whose prefix it restores.
+
+## 62. The superseded run is cancelled first
+
+A re-roll or a revision cancels the run it supersedes before creating the next, because the
+positional run↔workload invariant is exactly one non-cancelled run per position (#257, D14).
+
+## 63. An unrecognized gate decision stops the sequence
+
+The dispatch over gate decisions is exhaustive: a value it doesn't know — a future policy, a typo —
+is never read as an approval (#466). *Lives in:* `WorkloadGate.decide`.
+
+## 64. Every way a cycle ends meets one completion boundary
+
+`execute_cycle`'s endings — the single-workload fast path, a failed or cancelled run, the last
+workload, and each way the gate stops the sequence — all reach `CycleCompletion.end`, which
+produces one read-only `CycleEnd` naming why. It is the seam 2.0's continuation request enters
+(the Campaign SIP's Appendix A). `execute_cycle` keeps the port's `None` return: changing a port
+inside an extraction is out, and the view is observed at the boundary itself (#1507 step 3).
