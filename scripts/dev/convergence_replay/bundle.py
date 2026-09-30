@@ -43,6 +43,9 @@ class Bundle:
     prd: str
     agents: dict[str, dict[str, Any]]
     resolved_config: dict[str, Any]
+    cycle: dict[str, Any]
+    profile: dict[str, Any]
+    interface_manifest_yaml: str | None
     envelope: dict[str, Any]
     failed_artifacts: list[dict[str, str]]
     analysis: dict[str, Any]
@@ -57,6 +60,9 @@ class Bundle:
                 "prd": self.prd,
                 "agents": self.agents,
                 "resolved_config": self.resolved_config,
+                "cycle": self.cycle,
+                "profile": self.profile,
+                "interface_manifest_yaml": self.interface_manifest_yaml,
                 "envelope": self.envelope,
                 "failed_artifacts": self.failed_artifacts,
                 "analysis": self.analysis,
@@ -71,6 +77,21 @@ class Bundle:
 def find_envelope(envelopes: list[Any], task_id: str) -> Any | None:
     """The regenerated envelope whose id is the failed task's, or None."""
     return next((e for e in envelopes if e.task_id == task_id), None)
+
+
+async def _manifest_source(cycle: Any, run: Any, vault: Any) -> str | None:
+    """The manifest's YAML, found as ``_load_interface_manifest_for_run`` finds it: the first
+    forwarded plan ref that is the seeded manifest. The model has no serializer; its source does."""
+    from squadops.cycles.contract_derivation import SEEDED_MANIFEST_FILENAME
+    from squadops.cycles.manifest_authoring import MANIFEST_ARTIFACT_TYPE
+
+    for ref_id in cycle.execution_overrides.get("plan_artifact_refs", []):
+        ref, content = await vault.retrieve(ref_id)
+        if ref.filename == SEEDED_MANIFEST_FILENAME or (
+            getattr(ref, "artifact_type", None) == MANIFEST_ARTIFACT_TYPE
+        ):
+            return content.decode(errors="replace")
+    return None
 
 
 async def build_bundle(
@@ -107,6 +128,7 @@ async def build_bundle(
     plan = await executor._load_plan_for_run(cycle, run)
     contract = await executor._load_contract_for_run(cycle, run)
     manifest = await executor._load_interface_manifest_for_run(cycle, run)
+    manifest_yaml = await _manifest_source(cycle, run, vault) if manifest is not None else None
     envelopes = generate_task_plan(
         cycle, run, profile, plan=plan, contract=contract, interface_manifest=manifest
     )
@@ -158,6 +180,9 @@ async def build_bundle(
         prd=prd or "",
         agents=agents,
         resolved_config=cycle.resolved_config(),
+        cycle=dataclasses.asdict(cycle),
+        profile=dataclasses.asdict(profile),
+        interface_manifest_yaml=manifest_yaml,
         envelope=enriched.to_dict(),
         failed_artifacts=failed_artifacts,
         analysis=analysis,
