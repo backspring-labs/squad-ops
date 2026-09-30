@@ -390,6 +390,132 @@ class TestCorrectionPatch:
         terminal_statuses = [c.args[1] for c in status_calls]
         assert RunStatus.COMPLETED in terminal_statuses
 
+    async def test_kept_progress_is_what_the_next_round_repairs(
+        self, executor, mock_queue, mock_registry, mock_vault
+    ):
+        """#1522, entered at ``execute_run``. Bugs caught: the kept repair not stored as accepted
+        state; the task re-dispatched (re-authored from scratch) instead of the next round
+        starting from the retest; the next round's verification run against the workspace the
+        kept repair improved on, which the envelope held from before the task's first attempt.
+        Acceptance itself is stubbed here and proven in ``test_outcome_routing``."""
+        import dataclasses
+        from collections import Counter
+
+        from adapters.cycles.patch_acceptance import (
+            KEEP_PROGRESS,
+            KEPT_ARTIFACTS_KEY,
+            KEPT_NEXT_FAILURE_KEY,
+            KEPT_OUTPUTS_KEY,
+        )
+        from squadops.cycles.patch_verification import candidate_revision_id
+
+        mock_registry.get_cycle.return_value = dataclasses.replace(
+            mock_registry.get_cycle.return_value,
+            applied_defaults={
+                # The build steps after the framing ones: `development.develop`'s contract
+                # carries the acceptance workspace the next round verifies against.
+                "build_tasks": ["development.develop", "qa.test"],
+                "max_correction_attempts": 3,
+                "correction_steps": ["analyze", "decide", "repair"],
+            },
+        )
+        decision = {
+            "summary": "patch",
+            "role": "lead",
+            "correction_path": "patch",
+            "decision_rationale": "Fix is localized",
+            "affected_task_types": ["development.develop"],
+            "classification": "work_product",
+            "analysis_summary": "Output quality issue",
+        }
+        kept = {"name": "src/app_fix.py", "content": "fixed = True\n", "type": "source"}
+        # A vault that returns what it stored: the workspace is re-derived by reading it back.
+        blobs: dict = {}
+
+        def _store(ref, content):
+            blobs[ref.artifact_id] = (ref, content)
+            return ref
+
+        mock_vault.store.side_effect = _store
+        mock_vault.retrieve.side_effect = lambda artifact_id: blobs[artifact_id]
+        dispatched: Counter = Counter()
+        failed_task: dict = {}
+
+        def responder(env):
+            tid = env["task_id"]
+            dispatched[tid] += 1
+            if "correction_decision" in tid:
+                return TaskResult(task_id=tid, status="SUCCEEDED", outputs=decision)
+            if tid.startswith("corr-"):
+                return TaskResult(
+                    task_id=tid,
+                    status="SUCCEEDED",
+                    outputs={"summary": "ok", "role": "data", "classification": "work_product"},
+                )
+            if tid.startswith("repair-"):
+                # A repair with content: an empty one is refunded before acceptance is asked.
+                return TaskResult(
+                    task_id=tid,
+                    status="SUCCEEDED",
+                    outputs={"summary": "repaired", "role": "dev", "artifacts": [dict(kept)]},
+                )
+            if env["task_type"] == "development.develop" and not failed_task:
+                failed_task["id"] = tid
+                return TaskResult(
+                    task_id=tid,
+                    status="FAILED",
+                    outputs={"outcome_class": TaskOutcome.SEMANTIC_FAILURE, "role": "dev"},
+                    error="suite fails",
+                )
+            return TaskResult(task_id=tid, status="SUCCEEDED", outputs={"summary": "ok"})
+
+        mock_queue.reply_router.responder = responder
+        calls: list[dict] = []
+
+        async def accept(envelope, result, repair_artifacts, holder, **kwargs):
+            calls.append({"result": result, **kwargs})
+            if len(calls) == 1:
+                holder[KEPT_ARTIFACTS_KEY] = [kept]
+                holder[KEPT_OUTPUTS_KEY] = {
+                    "artifacts": [kept],
+                    "validation_result": {
+                        "persisted_revision_id": candidate_revision_id(None, [kept])
+                    },
+                }
+                holder[KEPT_NEXT_FAILURE_KEY] = TaskResult(
+                    task_id=envelope.task_id,
+                    status="FAILED",
+                    outputs={"outcome_class": TaskOutcome.SEMANTIC_FAILURE, "role": "qa"},
+                    error="Repaired suite still fails (exit 1)",
+                )
+                return KEEP_PROGRESS
+            holder["patched_result"] = TaskResult(
+                task_id=envelope.task_id, status="SUCCEEDED", outputs={"summary": "repaired"}
+            )
+            return "accept_patch"
+
+        with (
+            patch.object(executor, "_try_accept_patch", new=accept),
+            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        assert len(calls) == 2
+        # The next round repaired the retest's failure, and the task was never re-dispatched.
+        assert calls[1]["result"].error == "Repaired suite still fails (exit 1)"
+        assert dispatched[failed_task["id"]] == 1
+        # The kept repair is accepted state, stored under the failed task's type...
+        stored = [
+            (c.args[0].filename, c.args[0].metadata.get("producing_task_type"))
+            for c in mock_vault.store.call_args_list
+        ]
+        assert ("src/app_fix.py", "development.develop") in stored
+        # ...and the next round verified against the tree that includes it.
+        workspace = calls[1]["enriched_envelope"].inputs["acceptance_workspace_files"]
+        assert workspace["src/app_fix.py"] == "fixed = True\n"
+        terminal = [c.args[1] for c in mock_registry.update_run_status.call_args_list]
+        assert terminal[-1] == RunStatus.COMPLETED
+
     async def test_patch_rerun_never_converges_fails_run(self, executor, mock_queue, mock_registry):
         """#374: a patch whose re-run never passes must FAIL the run, not false-complete.
 

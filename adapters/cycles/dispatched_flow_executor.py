@@ -34,7 +34,14 @@ from adapters.cycles.execution_errors import (
     _PausedError,
 )
 from adapters.cycles.framing_gate_check import FramingGateCheck
-from adapters.cycles.patch_acceptance import PatchAcceptance, _record_repair_rejection
+from adapters.cycles.patch_acceptance import (
+    KEEP_PROGRESS,
+    KEPT_ARTIFACTS_KEY,
+    KEPT_NEXT_FAILURE_KEY,
+    KEPT_OUTPUTS_KEY,
+    PatchAcceptance,
+    _record_repair_rejection,
+)
 from adapters.cycles.pulse_boundary_runner import PulseBoundaryRunner
 from adapters.cycles.run_admission import RunAdmission
 from adapters.cycles.run_completion import RunCompletion, resolve_terminal_outcome
@@ -228,6 +235,18 @@ def record_task_evidence(ledger: RunLedger, task_result, task_id: str) -> None:
 #: A set rather than a branch, so adding the repair later is a row here plus its renderer
 #: (CLAUDE.md: tables over chains).
 _ASSEMBLY_NOTES_READERS: frozenset[str] = frozenset({TaskType.QA_TEST})
+
+#: #1522: the inputs ``_enrich_envelope`` derives from the run's stored artifacts. When a repair
+#: is kept mid-loop (#1522), these are re-derived onto the envelope the retry loop
+#: re-dispatches, so the re-run sees the kept set. Every other input rides unchanged: the
+#: attempt carry (``_carry_facts_to_the_next_attempt``) lives on the same dict.
+_STORE_DERIVED_INPUTS: tuple[str, ...] = (
+    "artifact_refs",
+    "artifact_contents",
+    "assembly_notes",
+    "acceptance_workspace_files",
+    "workspace_revision_id",
+)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1605,31 +1624,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # must survive, or a failed run reads as "0 verified" instead of red.
         _last_failed_result: dict[str, Any] = {}
 
-        async def _route_outcome(
-            result,
-            _envelope=envelope,
-            _enriched=enriched,
-            _consecutive_failures=state.routing.consecutive_failures,
-            _holder=_last_failed_result,
-        ):
-            # #1323: authorize BEFORE holding. The held result is the base the repair
-            # overlay is built from (``_try_accept_patch``) and the source the triage
-            # bank stores (#971) — both must see the same authorized set, or a path
-            # the producer may not write is admitted here and the repair that fixes
-            # it is refused at storage for touching it.
-            result = await self._admit_failed_emission(
-                result,
-                _envelope,
-                cycle,
-                run_id,
-                state.produced.all_artifact_refs,
-                bound_record=state.ownership.bound_record,
-                compliance_counter=state.ownership.compliance_counter,
-            )
-            _holder["result"] = result
-            if ledger is not None:
-                record_absent_emission(ledger, result, _envelope)
-            action = await self._handle_task_outcome(
+        async def _next_action(result, _envelope, _enriched, _consecutive_failures, _holder):
+            return await self._handle_task_outcome(
                 result=result,
                 envelope=_envelope,
                 enriched_envelope=_enriched,
@@ -1657,6 +1653,55 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 accepted_repair_task_ids=state.correction.accepted_repair_task_ids,
                 ledger=ledger,
             )
+
+        async def _route_outcome(
+            result,
+            _envelope=envelope,
+            _enriched=enriched,
+            _consecutive_failures=state.routing.consecutive_failures,
+            _holder=_last_failed_result,
+        ):
+            # #1323: authorize BEFORE holding. The held result is the base the repair
+            # overlay is built from (``_try_accept_patch``) and the source the triage
+            # bank stores (#971) — both must see the same authorized set, or a path
+            # the producer may not write is admitted here and the repair that fixes
+            # it is refused at storage for touching it.
+            result = await self._admit_failed_emission(
+                result,
+                _envelope,
+                cycle,
+                run_id,
+                state.produced.all_artifact_refs,
+                bound_record=state.ownership.bound_record,
+                compliance_counter=state.ownership.compliance_counter,
+            )
+            _holder["result"] = result
+            if ledger is not None:
+                record_absent_emission(ledger, result, _envelope)
+            action = await _next_action(
+                result, _envelope, _enriched, _consecutive_failures, _holder
+            )
+            while action == KEEP_PROGRESS:
+                # #1522: the repair cleared some of the round's failures and added none. It
+                # becomes accepted state, and the retest's failure (the task run on the kept
+                # tree) is routed as the next round's: nothing is re-dispatched. Every round
+                # draws on the correction budget, so this ends when a round accepts, discards,
+                # or the budget is spent. The round's failed attempt is recorded first, as a
+                # re-dispatched one is below (#379).
+                _record_task_evidence(result)
+                result = await self._store_kept_progress(
+                    _holder,
+                    _envelope,
+                    _enriched,
+                    cycle,
+                    run_id,
+                    state,
+                    interface_manifest=interface_manifest,
+                )
+                _holder["result"] = result
+                action = await _next_action(
+                    result, _envelope, _enriched, _consecutive_failures, _holder
+                )
             if action == "accept_patch":
                 # #994: remember that THIS task now has accepted, stored repaired
                 # state. A later round's rewind re-authors from the checkpoint and
@@ -2754,6 +2799,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 re-rolls its artifacts and clobbers the repair).
             "break_correction" — correction handled without re-run (governance
                 "continue": advance without repair), advance to next task.
+            ``KEEP_PROGRESS`` — (#1522) a ``patch`` correction whose retest cleared some of
+                the round's failures and added none; ``_route_outcome`` stores the kept
+                repair and routes the retest's failure as the next round's, so the
+                dispatcher never sees this token.
 
         Raises:
             _PausedError — task is blocked
@@ -3389,47 +3438,17 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         retain_checkpoint: bool = False,
     ) -> None:
         """Collect artifacts from a successful task and save a checkpoint."""
-        # Collect artifacts (with producing_task_type metadata)
-        artifacts = (result.outputs or {}).get("artifacts", [])
-        # SIP-0100 2.4: on a scaffold-bound run, a producer's emission of a scaffold-frozen path
-        # has its content restored to the bound scaffold bytes (D2 authority) — the producer
-        # cannot overwrite a frozen file (pf-26). Recorded, not silent; no-op when unbound.
-        # 3.3: enforcement returns structured evidence; emit it (event + log) before storage.
-        if bound_record is not None and artifacts:
-            enforced, integrity_evidence = self._enforce_frozen_ownership(
-                artifacts, bound_record, envelope
-            )
-            for record in integrity_evidence:
-                self._emit_scaffold_integrity_evidence(record, envelope)
-            # SIP-0107 §5.5: an accepted patch is stored as the candidate it was verified as.
-            altered = storage_altered_accepted_patch(result.outputs, artifacts, enforced)
-            if altered is not None:
-                raise _ExecutionError(
-                    f"artifact storage task={envelope.task_id}: ownership enforcement changed an "
-                    f"accepted patch's set (before={altered[0]}, after={altered[1]}) — the stored "
-                    "state would not be the verified candidate (SIP-0107 §5.5)"
-                )
-            artifacts = enforced
-            # 3.4a: circuit-breaker — raises CONTRACT_COMPLIANCE past the bound (before storage).
-            if compliance_counter is not None:
-                self._enforce_compliance_budget(
-                    integrity_evidence, cycle, envelope, compliance_counter
-                )
-        new_refs: list[str] = []
-        for art in artifacts:
-            ref = await self._store_artifact(
-                art,
-                cycle,
-                run_id,
-                envelope,
-                producing_task_type=envelope.task_type,
-            )
-            new_refs.append(ref.artifact_id)
-            all_artifact_refs.append(ref.artifact_id)
-            stored_artifacts.append((ref.artifact_id, ref))
-
-        if new_refs:
-            await self._cycle_registry.append_artifact_refs(run_id, tuple(new_refs))
+        await self._store_accepted_artifacts(
+            (result.outputs or {}).get("artifacts", []),
+            result.outputs,
+            envelope,
+            cycle,
+            run_id,
+            all_artifact_refs,
+            stored_artifacts,
+            bound_record=bound_record,
+            compliance_counter=compliance_counter,
+        )
 
         # Chain outputs by role
         role = envelope.metadata.get("role", "unknown")
@@ -3458,6 +3477,123 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 "completed_task_id": envelope.task_id,
             },
         )
+
+    async def _store_accepted_artifacts(
+        self,
+        artifacts: list[dict],
+        outputs: dict[str, Any] | None,
+        envelope: TaskEnvelope,
+        cycle: Cycle,
+        run_id: str,
+        all_artifact_refs: list[str],
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+        *,
+        bound_record: Any = None,
+        compliance_counter: dict[str, int] | None = None,
+    ) -> None:
+        """Store a task's artifacts as the run's accepted state (producing_task_type metadata).
+
+        Two callers: a task that succeeded (``_collect_artifacts_and_checkpoint``), and a repair
+        kept mid-loop (#1522), which stores without completing the task or
+        checkpointing. ``outputs`` is what the §5.5 guard reads: a set carrying
+        ``persisted_revision_id`` is a verified candidate, and enforcement may not change it.
+        """
+        # SIP-0100 2.4: on a scaffold-bound run, a producer's emission of a scaffold-frozen path
+        # has its content restored to the bound scaffold bytes (D2 authority) — the producer
+        # cannot overwrite a frozen file (pf-26). Recorded, not silent; no-op when unbound.
+        # 3.3: enforcement returns structured evidence; emit it (event + log) before storage.
+        if bound_record is not None and artifacts:
+            enforced, integrity_evidence = self._enforce_frozen_ownership(
+                artifacts, bound_record, envelope
+            )
+            for record in integrity_evidence:
+                self._emit_scaffold_integrity_evidence(record, envelope)
+            # SIP-0107 §5.5: an accepted patch is stored as the candidate it was verified as.
+            altered = storage_altered_accepted_patch(outputs, artifacts, enforced)
+            if altered is not None:
+                raise _ExecutionError(
+                    f"artifact storage task={envelope.task_id}: ownership enforcement changed an "
+                    f"accepted patch's set (before={altered[0]}, after={altered[1]}) — the stored "
+                    "state would not be the verified candidate (SIP-0107 §5.5)"
+                )
+            artifacts = enforced
+            # 3.4a: circuit-breaker — raises CONTRACT_COMPLIANCE past the bound (before storage).
+            if compliance_counter is not None:
+                self._enforce_compliance_budget(
+                    integrity_evidence, cycle, envelope, compliance_counter
+                )
+        new_refs: list[str] = []
+        for art in artifacts:
+            ref = await self._store_artifact(
+                art,
+                cycle,
+                run_id,
+                envelope,
+                producing_task_type=envelope.task_type,
+            )
+            new_refs.append(ref.artifact_id)
+            all_artifact_refs.append(ref.artifact_id)
+            stored_artifacts.append((ref.artifact_id, ref))
+
+        if new_refs:
+            await self._cycle_registry.append_artifact_refs(run_id, tuple(new_refs))
+
+    async def _store_kept_progress(
+        self,
+        holder: dict[str, Any],
+        envelope: TaskEnvelope,
+        enriched: TaskEnvelope,
+        cycle: Cycle,
+        run_id: str,
+        state: RunState,
+        *,
+        interface_manifest: Any,
+    ) -> TaskResult:
+        """#1522: store a kept repair as accepted state; return the next round's failure.
+
+        The next round's failure is the kept repair's own retest, the task run on the kept tree.
+        The task's envelope was enriched before its first attempt, and the next round verifies
+        and retests against that envelope's workspace, so the inputs derived from the stored
+        artifacts are re-derived here. Without that, the next repair would be verified against
+        the tree this one improved on. If the task is later re-dispatched (a retry, or a
+        decision to re-run it), the same refresh is what it sees.
+        The task is not completed and no checkpoint is written: it still fails until a run of
+        it passes. The kept set is recorded for #994's rewind guard, as an accepted patch is,
+        since a rewind re-authors from the checkpoint and cannot preserve it.
+        """
+        await self._store_accepted_artifacts(
+            holder.pop(KEPT_ARTIFACTS_KEY),
+            holder.pop(KEPT_OUTPUTS_KEY),
+            envelope,
+            cycle,
+            run_id,
+            state.produced.all_artifact_refs,
+            state.produced.stored_artifacts,
+            bound_record=state.ownership.bound_record,
+            compliance_counter=state.ownership.compliance_counter,
+        )
+        state.correction.accepted_repair_task_ids.add(envelope.task_id)
+        authored_contract, authored_manifest = state.authored
+        fresh = await self._enrich_envelope(
+            envelope,
+            state.produced.prior_outputs,
+            state.produced.all_artifact_refs,
+            state.produced.stored_artifacts,
+            interface_manifest=interface_manifest or authored_manifest,
+            run_derived_contract=authored_contract,
+        )
+        for key in _STORE_DERIVED_INPUTS:
+            if key in fresh.inputs:
+                enriched.inputs[key] = fresh.inputs[key]
+            else:
+                enriched.inputs.pop(key, None)
+        logger.info(
+            "progress_kept task=%s kept as accepted state; the next round starts from its "
+            "retest on workspace_revision_id=%s (#1522)",
+            envelope.task_id,
+            enriched.inputs.get("workspace_revision_id", "-"),
+        )
+        return holder.pop(KEPT_NEXT_FAILURE_KEY)
 
     # ------------------------------------------------------------------
     # Extracted helpers for execute_run
