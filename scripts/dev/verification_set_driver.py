@@ -346,6 +346,7 @@ EVIDENCE_FIELDS: dict[str, tuple[str, ...]] = {
     "loop_texture.unjoinable_refutations": _PATCH_PATH,
     "loop_texture.refunded_rounds": _PATCH_PATH,
     "loop_texture.evidence_superseded": _PATCH_PATH,
+    "loop_texture.progress_kept": _PATCH_PATH,
     # 1.8.2 item 15: any roll can hit the bound, so only an empty window leaves it unasked.
     "loop_texture.task_timeouts": ("runtime_window_empty",),
     # SIP-0096 §17a change 5: a dispute is adjudicated inside a correction round.
@@ -2487,6 +2488,8 @@ _RUNTIME_LINE_KEYS = (
     "task_timeout task=",
     # SIP-0096 §17a change 5: each round's disputes as the analyzer ruled them.
     "contested_rows task=",
+    # #1522: a repair kept, its retest having cleared some failures and added none.
+    "progress_kept task=",
 )
 
 
@@ -2999,6 +3002,17 @@ RUNTIME_MARKER_SAMPLES: dict[str, tuple[str, ...]] = {
         "2026-09-29 18:32:11,452 WARNING adapters.cycles.dispatched_flow_executor: correction "
         "attempt 0 refunded (round s01): the repair emitted no content (signature unreported), "
         "so the round is re-taken rather than spent (refund 2 of 3, #1053/#998)",
+    ),
+    # Rendered: #1522 is new, so no deploy has emitted it. The line is the format string in
+    # `PatchAcceptance._keep_progress`, filled by the real `retest_reduction` and
+    # `render_signature` over a three-to-one reduction.
+    "progress_kept": (
+        "2026-09-30 09:00:00,000 INFO adapters.cycles.patch_acceptance: progress_kept task=task"
+        "-run_b6a8121c-m006-qa.test round=0 failing_before=3 failing_after=1 cleared=tests_pass"
+        "|frontend/src/__tests__/runViews.test.jsx|failed;runner=vitest;exit=1;test=renders the"
+        " list; tests_pass|frontend/src/__tests__/runViews.test.jsx|failed;runner=vitest;exit=1"
+        ";test=shows the join error persisted_revision_id=57ed944cf457ad772da339b65a9404e42a0c5"
+        "cb4ed2e4dd7f2d34cad73bfd4a1 (#1522)",
     ),
     "evidence_superseded": (
         "2026-09-23 13:45:20,213 INFO adapters.cycles.patch_acceptance: patch "
@@ -4556,6 +4570,14 @@ def texture_from_logs(logs: list[str]) -> dict:
         ],
         "evidence_superseded": [
             _fact(line, "patch_retest task=") for line in logs if "evidence superseded" in line
+        ],
+        # #1522: every repair kept, with the round's failure count before and its
+        # retest's after, and what it cleared. The executor's own line for the same keep (the
+        # re-derived workspace) carries no counts and is not a second keep.
+        "progress_kept": [
+            _fact(line, "progress_kept task=")
+            for line in logs
+            if "progress_kept task=" in line and " failing_before=" in line
         ],
         # 1.8.2 item 15: every task the orchestrator failed because its declared wait ran out.
         "task_timeouts": [
