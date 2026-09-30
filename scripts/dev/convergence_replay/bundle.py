@@ -151,7 +151,11 @@ async def build_bundle(
     for aid in row["failed_artifact_ids"]:
         ref, content = await vault.retrieve(aid)
         failed_artifacts.append(
-            {"name": ref.filename, "content": content.decode("utf-8", "replace")}
+            {
+                "name": ref.filename,
+                "content": content.decode("utf-8", "replace"),
+                "type": getattr(ref, "artifact_type", None) or "source",
+            }
         )
     analysis = json.loads((await vault.retrieve(row["analysis_id"]))[1])
     decision = json.loads((await vault.retrieve(row["decision_id"]))[1])
