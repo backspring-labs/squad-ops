@@ -1,5 +1,7 @@
 # 1.9.0 — pre-registration (plan §4, §3.6)
 
+**Rev 4 (2026-09-30): d3 read (§10).**
+
 **Rev 3 (2026-09-30): d2 read (§10). §11a's checkout move is re-timed to after the eighth diagnostic
 (§11b).**
 
@@ -299,6 +301,39 @@ Record `false-criterion/shakeout-20260930T020336Z.json`.
   characters with no fence (`development_develop_handler:self_eval`), one of the three `form: none`
   answers. A pass that finds nothing to change has no fence to carry. This is a diagnostic, not a
   counted roll, so L1 does not read it.
+
+### d3: `redelivery`, run 1 of 2. `cyc_9ee4b3bb2d19` / implementation `run_b6a8121ca0b9`, 22:07–23:08 ET. **Cleared.**
+
+Record `redelivery/shakeout-20260930T030822Z.json`.
+- **Outcome:** `accepted`, 21 of 21, as on A′.
+- **The kills:** both faults applied. The own-frame fault landed on the two suites (`m005`, `m006`)
+  and was routed to the qa repair (L7). Both faulted repairs were killed, and each redelivery was
+  refused as a typed `FAILED` for the repair's own id, not run again (#1627). Both runs completed,
+  and none was left `running`.
+- **Round identity (#1697), on the case that collided on A′.** A′'s two repairs shared one id,
+  `repair-run_97f19dba-00-qa.test_repair` (1.8.2 §11d). Here every task of the two rounds has its
+  own id:
+  - `corr-run_b6a8121c-00-s00-data.analyze_failure`
+  - `corr-run_b6a8121c-00-s00-governance.correction_decision`
+  - `repair-run_b6a8121c-00-s00-qa.test_repair`
+  - the same three at `-s01-`.
+
+  Each refund names its own round ("refunded (round s00)", "(round s01)"), and
+  `repeated_round_ids` was asked and returned none. **§3b's round-identity row holds here.**
+- **The qa re-takes:** both are accepted edits.
+  - `backend/tests/test_runs.py`: 1,277 of 8,430 characters (15%), `structural`.
+  - `frontend/src/__tests__/runViews.test.jsx`: 189 of 6,867 (3%), `anchored`.
+
+  **#1724 recorded each re-take's verification:** the suite executed with exit 0, 7 of 7 checks
+  passed, and there were no failed checks. So both are countable qa × React candidates under §3c's
+  rules, where A′'s were read by hand.
+- **The child parse crash** (item 3): not forced, none occurred. **UNASKABLE.**
+- **Reading: YES.**
+- **1.9 mechanisms:**
+  - `deploy_id: dep_d413c36959ab` (#1720);
+  - `log_sources` is `docker` for both (#1745);
+  - no contentless emission, and no task timeout;
+  - heartbeats read at 23:09 ET, before d4: eight `online` at `1abe3666`, all matching (#1753).
 
 ## 11. Amendments after the first launch
 
