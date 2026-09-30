@@ -530,7 +530,10 @@ def render(version: str, tag: str, package: dict) -> str:
         show = package.get("showcase") or {}
         if show.get("cycle_id"):
             role = f" ({show['role']})" if show.get("role") else ""
-            out += [f"Of cycle `{show['cycle_id']}`{role} — {show['reason']}.", ""]
+            # One period: a reason written as a sentence already ends with one (v1.8.2's
+            # page read "corrected..").
+            reason = str(show["reason"]).rstrip().rstrip(".")
+            out += [f"Of cycle `{show['cycle_id']}`{role} — {reason}.", ""]
         for shot in shots:
             caption = Path(shot).stem.replace("-", " ").replace("_", " ")
             out += [f"![{caption}](assets/{Path(shot).name})", f"*{caption}*", ""]
