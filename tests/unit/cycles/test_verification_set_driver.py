@@ -53,6 +53,9 @@ _COUNTING_SETS: dict[str, dict[str, int]] = {
     # 1.8.2 plan §4.1: 4 + 2, as in 1.8.1 — the regression bar and N's margin. Pinned at the
     # deploy A pre-registration (rev 1), before any launch.
     "1-8-2": {"nextjs": 2, "fastapi-react": 4},
+    # 1.9.0 plan §4: 4 + 2, as 1.8.2 — behaviour held equal across the extraction. Pinned at the
+    # pre-registration (rev 1) on the 1.9 deploy (1abe3666), before any launch.
+    "1-9-0": {"nextjs": 2, "fastapi-react": 4},
 }
 _ARM_STACK = {
     "nextjs": "nextjs_ts",
