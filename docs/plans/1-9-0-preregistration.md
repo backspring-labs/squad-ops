@@ -1,5 +1,7 @@
 # 1.9.0 — pre-registration (plan §4, §3.6)
 
+**Rev 6 (2026-09-30): d5 and d6 read (§10).**
+
 **Rev 5 (2026-09-30): d4 read (§10).**
 
 **Rev 4 (2026-09-30): d3 read (§10).**
@@ -362,6 +364,70 @@ set's gate notes.
   emission in any cycle.
 - **Heartbeats** read at 04:38 ET, before d5: eight `online` at `1abe3666`, all matching. That
   includes `neo`, restarted by c3's fault.
+
+### d5: `own-frame-then-prose-repair-nextjs`. **Cleared on run 2**, where A′ cleared on run 1.
+
+**Run 1:** `cyc_1d359f7fa22c` / `run_8523f2ba1395`, 04:41–05:53 ET. **Seam not reached.**
+- The own-frame fault applied to `m006`'s suite, on its first attempt.
+- The round's analysis named `lib/store.ts`, a file the workspace does not have. It was refuted
+  and told to the decision (#968).
+- The decision routed the round to the **dev** repair, narrowed to `app/api/runs/[run_id]/route.ts`.
+  The dev repair's retest failed. The cycle was accepted later, 16 of 16.
+- L7 was unreached because of the analyzer's diagnosis, not the router. On this stack the own-frame
+  route is taken on analyzer–decision unanimity (#1581). That is A′'s route too, and here the
+  analyzer did not implicate the suite. The runner's own-frame stamp (`qa_owned_routed`) did not
+  fire on this stack in either run, nor was it A′'s route.
+
+**Run 2:** `cyc_359759afe0af` / `run_34c19ad936a9`, 05:57–07:08 ET. **Cleared.**
+- **Outcome:** `accepted`, 19 of 19.
+- **L7 YES:** the faults applied to both suites (`m006`, `m007`). Each round was routed `own_artifact`
+  on analyzer–decision unanimity, to its own suite.
+- **L4 YES:** both prose-only repairs (48 characters each) were refunded, "round s00" and "round
+  s01", with distinct ids. `repeated_round_ids` was asked and returned none.
+- **The qa re-takes:** both accepted edits (anchored, about 1% each):
+  `__tests__/test_runs_happy.test.ts`, and `__tests__/test_runs_errors.test.ts`. **#1724 recorded
+  each re-take's verification:** vitest executed, exit 0, and no failed checks. That makes **two
+  qa × Next.js candidates**, where §3c expected 1–2.
+
+**The judgment.** I read this as the same reading as A′'s, within the two-run budget the
+registration gives every diagnostic. The mechanism both runs took is A′'s. Run 1's miss is the
+analyzer's call on a round the fault had set up. The extraction did not move that seam.
+- It stands as texture, not as a falsification of §3b's first row.
+- A reviewer who reads "cleared on run 2" as "reading otherwise than on A′" has the record to say
+  so.
+
+**Texture:** the two contentless emissions are the planted prose-only repairs, both refunded. This
+is a diagnostic, so L1 does not read it.
+
+### d6: `own-frame-then-prose-repair`, run 1. `cyc_a045fa94c30f` / `run_8b0b06683639`, 07:12–08:08 ET. **Cleared, on its own terms.**
+
+Record `own-frame-then-prose-repair/shakeout-20260930T120814Z.json`.
+- **Outcome:** `accepted`, 21 of 21.
+- **L7 YES:** each suite's own-frame failure was routed to its own suite by the runner's stamp
+  (`qa_owned_routed`, #1130):
+  - `backend/tests/test_runs.py` (a `TypeError` at `test_create_run_success:24`);
+  - `frontend/src/__tests__/views.test.jsx`.
+- **L4 YES, read directly.** On A′ this row read UNASKABLE: the two faulted repairs shared one id
+  (`repair-run_99242d1e-00-qa.test_repair`), and it cleared only by the owner's ruling (1.8.2
+  §11f). Here each repair has its own:
+  - `repair-run_8b0b0668-00-s00-qa.test_repair`;
+  - `…-00-s01-…`.
+
+  The refunds name "round s00" and "round s01". **This is #1697's prediction on the diagnostic that
+  was its shape** (plan §4). No ruling is needed.
+- **The qa re-takes:** both accepted edits:
+  - `backend/tests/test_runs.py`, 181 of 6,939 characters (3%);
+  - `frontend/src/__tests__/views.test.jsx`, 138 of 4,181 (3%).
+
+  Each has a recorded verification: the suite executed, exit 0, 6 and 7 passed, and no failed
+  checks. That makes **two qa × React candidates.**
+- **Heartbeats** read at 07:09 ET before d6, and at 08:08 ET before d7: all eight `online` and
+  matching.
+
+**N so far, as texture (§3c):**
+- qa × React: 4 (d3's two and d6's two);
+- qa × Next.js: 2 (d5);
+- dev × React and dev × Next.js: their diagnostics are next.
 
 ## 11. Amendments after the first launch
 
