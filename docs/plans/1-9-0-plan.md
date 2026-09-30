@@ -1,6 +1,6 @@
 # 1.9.0 plan — the close of the 1.x line
 
-**Status:** adopted, rev 5 (2026-09-29): rev 3 adopted at merge, with the rulings made after adoption in §7a. Written on the owner's word at the
+**Status:** adopted, rev 6 (2026-09-30): rev 3 adopted at merge, with the rulings made after adoption in §7a and during the set in §7b. Written on the owner's word at the
 1.8.2 cut ("let's cut 1.8.2 and write 1.9.0 plan"). The 1.8.2 counted rolls answered the question
 this plan was held for: **no 1.8.3 opens** (the 1.8.2 plan §3.10; the pre-registration §10, deploy
 A′).
@@ -148,8 +148,9 @@ Each is one PR, with its own test, behaviour-neutral unless it says otherwise:
 - **#1522:** a repair whose retest reduces failures without passing is not discarded wholesale. This
   is a correction-path behaviour change, so it lands **after** the extraction's set reads, or moves
   to 2.0 (decision 3).
-- **#414:** the correction budget's allocation is severity-aware. Also a behaviour change, with the
-  same rule as #1522.
+- ~~**#414:** the correction budget's allocation is severity-aware. Also a behaviour change, with the
+  same rule as #1522.~~ **Moved to 2.0** (§7b item 1): the gate it was held on, measured, does not
+  support the reserve, and what the one instance needed is a verdict-path rule.
 - **#567:** the fenced parser's CommonMark recognition engine. Its precondition was "after Scoped
   Code Revision settles what a repair emits" (decision 2). **Gated on a replay** (§7a item 9): the
   new engine over every stored real emission. Identical recognition lands it before the deploy, as
@@ -189,8 +190,8 @@ Each is one PR, with its own test, behaviour-neutral unless it says otherwise:
 
 - **One reason to change per PR.** Each #1507 slice is a merge with its tests, and main is read green
   after it.
-- **No correction-path behaviour change merges between #1697 and the set's reading.** #1522 and #414
-  wait, by §3.4.
+- **No correction-path behaviour change merges between #1697 and the set's reading.** #1522 waits, by
+  §3.4 (#414 moved to 2.0, §7b).
 - **Nothing merges between opening the release PR and merging it** (CLAUDE.md, *Release cut*).
 
 ### 3.8 Capacity: what drops first, and what cannot
@@ -199,7 +200,7 @@ When the line runs long, it sheds in this order, and each drop is recorded in th
 1. the ops rider → retired or 2.0 (decision 4)
 2. #1039 → 2.0's idle-box time
 3. #567 → 2.0
-4. #1522, #414 → 2.0 (they are behaviour changes; §3.4)
+4. #1522 → 2.0 (a behaviour change; §3.4). #414 has already moved (§7b).
 5. the convergence replay (item 12) → 2.0, stated as the flip decision's missing input
 
 **What cannot drop, because it is the line's claim:** #1697; the three #1507 slices and the named
@@ -249,7 +250,7 @@ from them, plus #1732 filed at the 1.8.2 cut. **After rev 3, every open issue si
     precondition:
     - #1720 and #1722, decision 1;
     - #567, decision 2 (third to drop);
-    - #1522 and #414, decision 3 (fourth to drop);
+    - #1522, decision 3 (fourth to drop). #414 moved to 2.0 (§7b);
     - #1039, second to drop;
     - the ops rider (#1177, #176, #1176, #1408, #1412), decision 4 (first to drop). These close
       either way: a recipe run once is a terminal result, and a retired one closes as not planned;
@@ -288,7 +289,7 @@ That is 26 + 14 + 3 = **43**, and 40 open.
 5. The named debts that are behaviour-neutral (§3.4), between slices where they touch no slice's
    file.
 6. The deploy; the pre-registration (**stop for the owner**); the diagnostics; the counted set.
-7. #1522 and #414, if decision 3 keeps them, after the set has read.
+7. #1522 (decision 3), after the set and the convergence replay have read. #414 moved to 2.0 (§7b).
 8. The cut.
 
 ---
@@ -360,6 +361,24 @@ Ten questions reached the owner after rev 3 merged. Each was ruled as recommende
 - **2.0:** #1031, #1755 and #1757 join.
 - **Unplaced:** #1756, proposed for 2.0's instruments.
 
+### 7b. Rulings during the set (the owner's word)
+
+1. **#414 moves to 2.0** (2026-09-30: "I'm good to move 414 to 2.0"). Its deferral's trigger is
+   met: `validated-fullstack` declares `required_checks`. But the gate it was held on, measured over
+   the 1.8.x corpus (84 correction rounds in 57 runs, #414's comment of 2026-09-30), does not
+   support the reserve it recommends.
+   - The allocation problem it describes did not occur.
+   - The one starvation shape, 1.8.0 React roll 5 (`cyc_7998e63be37f`), spent three rounds on a
+     non-required builder check and ended `plan_defect` on the repeat rule. Its required checks sat
+     on tasks it never reached, so a reserved attempt had nothing to attempt.
+   - What it needed is a sequencing rule: an unrepaired non-required failure does not stop the run
+     from reaching its required checks. That is a verdict-path change, not an allocation, and it is
+     2.0's to design.
+
+**What this does to §5's accounting.**
+- **In the release:** #414 leaves.
+- **2.0:** #414 joins, reframed as the sequencing rule.
+
 ## 8. What this plan does not decide
 
 - **The Campaign SIP's revision** (after this plan; `post-1-8-2-roadmap-reconciliation.md`), and
@@ -381,6 +400,8 @@ Ten questions reached the owner after rev 3 merged. Each was ruled as recommende
     #1122 is closed as not planned; #1626 closed at the cut;
   - §7's decisions adopted at merge, and decision 6 recorded in SIP-0086 §12a;
   - 43 issues, 40 of them open.
+- **Rev 6 (2026-09-30):** §7b records #414's move to 2.0. §3.4, §3.7, §3.8, §5 and §6 are
+  corrected to match.
 - **Rev 5 (2026-09-29):** the outcomes of §7a items 3, 4 and 9 (#176, #1176, #567), with the
   pre-registration (`1-9-0-preregistration.md`).
 - **Rev 4 (2026-09-29):** §7a records the ten rulings made after adoption. §1, §3.3, §3.4 and §3.5
