@@ -283,11 +283,18 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--samples", type=int, default=3)
     r.add_argument("--out", type=Path, required=True, help="JSON lines, appended")
     r.add_argument("--stub-llm", action="store_true", help="plumbing test: no model call")
+    r.add_argument("--only", nargs="*", help="bundle file names to replay (the registered sample)")
     args = ap.parse_args(argv)
     if args.command == "replay":
         tally = asyncio.run(
             _replay_all(
-                args.bundles, args.admission, args.arm, args.samples, args.out, args.stub_llm
+                args.bundles,
+                args.admission,
+                args.arm,
+                args.samples,
+                args.out,
+                args.stub_llm,
+                set(args.only) if args.only else None,
             )
         )
     else:
@@ -599,10 +606,14 @@ def _canned_unchanged(bundle: dict[str, Any]) -> str:
 
 
 async def _replay_all(
-    bundles: Path, admission: Path, arm: str, samples: int, out: Path, stub: bool
+    bundles: Path,
+    admission: Path,
+    arm: str,
+    samples: int,
+    out: Path,
+    stub: bool,
+    only: set[str] | None = None,
 ) -> dict[str, int]:
-    from adapters.llm.factory import create_llm_provider  # noqa: F401 - the real adapter, wrapped
-
     use_arm(arm)
     admitted = {
         json.loads(line)["bundle"]
@@ -612,7 +623,7 @@ async def _replay_all(
     tally: dict[str, int] = {}
     with out.open("a") as sink:
         for path in sorted(bundles.glob("*.json")):
-            if path.name not in admitted:
+            if path.name not in admitted or (only and path.name not in only):
                 continue
             bundle = json.loads(path.read_text())
             systems: dict[str, Any] = {}
