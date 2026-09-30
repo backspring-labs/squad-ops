@@ -1,5 +1,8 @@
 # 1.9.0 — pre-registration (plan §4, §3.6)
 
+**Rev 3 (2026-09-30): d2 read (§10). §11a's checkout move is re-timed to after the eighth diagnostic
+(§11b).**
+
 **Rev 2 (2026-09-30): d1 read (§10). The diagnostics' records directory is corrected (§11a).**
 
 **Status: rev 1 (2026-09-29). Merged unreviewed: no crew review** (plan §7 decision 7). The owner
@@ -259,7 +262,43 @@ self-approve, and the decider is recorded per roll.
 - **Against the registration:** this reads as 1.8.2's A′ d1 read, so on this diagnostic the
   behaviour held equal across the extraction (§3b, first row).
 - **Records location:** the record was written under `1-8-2-diagnostics/`, by §11a's defect, and
-  is moved to `1-9-0-diagnostics/`.
+  is moved to `1-9-0-diagnostics/` after the eighth diagnostic (§11b).
+
+### d2: `false-criterion`, run 1 of 2. `cyc_75be94aadbd3` / implementation `run_6feedfbf7eaf`, 21:19–22:03 ET. **Cleared.**
+
+Record `false-criterion/shakeout-20260930T020336Z.json`.
+- **Outcome:** `blocked_unverified`, 1 of 15. There was one correction round, and it ended at round
+  0 as **`contested_check`**. The run's failure reason names the planted check:
+  `acceptance:declared_imports on app/api/runs/route.ts (vc-declared-imports-lib-alias)`.
+- **The fault:** planted its row (`rows 0 -> 1`) on every evaluation of the develop task's first
+  attempt.
+- **The dispute:** captured on the develop task (`by: dev`, round 0). The analyzer confirmed it: 1
+  confirmed, 0 rejected, 0 unruled, 0 unmatched.
+- **The import:** unchanged. The develop task's stored `app/api/runs/route.ts` (`art_df072eaa45a3`)
+  imports through `@/lib/errors` and `@/lib/store`, with no relative import.
+- **The passes:** three, each answering `form: none`.
+- **Against A′ d2** (`cyc_959b9e726a4e`), the same in every clause of the invariant, with two
+  differences, both the model's own choices:
+  - **2 of 15 there, 1 here.** A′'s checks ran on two develop emissions; here they ran on one.
+  - **The unresolved import:** A′'s named `@/lib/store`, and this one names `@/lib/errors`.
+- **Reading: YES.** Every §3b falsifier is absent:
+  - no refund without a dispute (`refunded_rounds` asked, none);
+  - the dispute was read;
+  - no rejection;
+  - the import was not degraded.
+- **The 1.9 mechanisms, where this cycle shows them:**
+  - **#1697:** the round's ids are `corr-run_6feedfbf-00-s00-data.analyze_failure` and
+    `…-00-s00-governance.correction_decision`. No repair was dispatched, and `repeated_round_ids`
+    was asked and returned none.
+  - **#1720:** the cycle carries `deploy_id: dep_d413c36959ab`.
+  - **#1745:** `log_sources` is `docker` for both.
+  - **#1753:** read by hand at 22:05 ET, in the gap before d3. All eight agents were `online` at
+    `1abe3666`, `revision_matches_deploy: true`. **It was not read at d1's or d2's launch**, as
+    §3d′ asks; those two rest on the deploy-time read (§2) and each cycle's `deploy_id`.
+- **Texture:** one contentless emission, where A′ had none. It is a self-evaluation pass of 268
+  characters with no fence (`development_develop_handler:self_eval`), one of the three `form: none`
+  answers. A pass that finds nothing to change has no fence to carry. This is a diagnostic, not a
+  counted roll, so L1 does not read it.
 
 ## 11. Amendments after the first launch
 
@@ -275,7 +314,8 @@ self-approve, and the decider is recorded per roll.
 - The two counted arms were unaffected: they use the default location
   (`var/verification_sets/1-9-0-<arm>`).
 
-**The driver checkout moves.** It moves from `7fdda5b1` to the commit carrying this fix, detached,
+**The driver checkout moves.** *(Its timing is superseded by §11b: it does not move until the
+eighth diagnostic ends.)* It moves from `7fdda5b1` to the commit carrying this fix, detached,
 in the sequencer's gap between two diagnostics. Nothing else moves with it: the diff is the eight
 `records_dir` lines and this document. No framework path changes, and no reading can.
 
@@ -284,3 +324,38 @@ in the sequencer's gap between two diagnostics. Nothing else moves with it: the 
 **Who ruled.** This is a docs-only fix of the registration's own configs, made under §8's rule
 that driver and docs changes which cannot alter a reading are free. It is recorded here so the
 records' location, and the checkout's move, are part of the registration's history.
+
+### 11b. The checkout moves after the eighth diagnostic, not between two (2026-09-30)
+
+**What changed.**
+- §11a moved the driver checkout in the sequencer's gap between two diagnostics. That timing was
+  wrong. The sequencer loads a diagnostic's config *before* its gap
+  (`var/1-9-0-logs/run_1_9_0_diagnostics.py`, the loop's first two lines). A move in the gap would
+  split the two readers:
+  - the driver would write the record under `1-9-0-diagnostics/`;
+  - the sequencer would look for it under `1-8-2-diagnostics/`, find none, and read "seam not
+    reached". That spends the second run and stops the set on a reading nobody made.
+- So the checkout stays at `7fdda5b1` until the sequencer notes `all_eight_ran`, and all eight
+  diagnostics write under `1-8-2-diagnostics/<name>/`. It moves to `93253694` (#1766) before the
+  first counted roll launches; the counted arms' configs are the same at both commits.
+- Once the eighth diagnostic ends, every 1.9 record moves to `1-9-0-diagnostics/<name>/` unchanged.
+
+**Why no reading moves.** The shakeout and chain paths never read a directory's earlier records.
+The driver's one directory read is the placement window's latest-record lookup, which no diagnostic
+runs. The chain runs without `--resume`, so it starts from a fresh state and never from 1.8.2's.
+
+**What it cost, and the restore.** The driver writes two files under fixed names in a records
+directory. Each 1.9 run overwrote 1.8.2's copy of them in the diagnostic's own directory:
+- `shakeout-deploy.json`, the shakeout's deploy identity, in each shakeout diagnostic's directory;
+- `chain-state.json`, in `unattended-chain/`.
+
+1.8.2's copies are restored from the line's records on the v1.8.2 Release. That is
+`squadops-1.8.2-records.tar.gz`, whose sha256 `791ad261…` is the one the package records
+(`site/content/releases/v1.8.2/package.yaml`) and was checked before use. The 1.9 copies move with
+the 1.9 records.
+
+**Evidence.** The sequencer's loop, above. Also the two overwritten identity files' timestamps: 20:16
+and 21:18 ET, the launches of d1 and d2.
+
+**Who ruled.** Mine, under §8, as in §11a: this corrects a docs amendment's timing, and no
+framework path, config the driver reads during a run, or reading moves.
