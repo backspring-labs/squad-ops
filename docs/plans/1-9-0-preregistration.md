@@ -1,5 +1,7 @@
 # 1.9.0 — pre-registration (plan §4, §3.6)
 
+**Rev 2 (2026-09-30): d1 read (§10). The diagnostics' records directory is corrected (§11a).**
+
 **Status: rev 1 (2026-09-29). Merged unreviewed: no crew review** (plan §7 decision 7). The owner
 said "I don't have crew budget for the review — I think we need to fly solo". Decision 6's fallback
 applies: the record says so here, at the revision. **Nothing in the set had launched at merge.** The rules, the
@@ -247,8 +249,38 @@ self-approve, and the decider is recorded per roll.
 
 ## 10. Readings: appended as they land
 
-*(none yet)*
+### d1: `compile-loop`, run 1 of 2. `cyc_f4fca4758e83`, 2026-09-29 20:16–21:14 ET. **Cleared.**
+
+- **Verdict:** `accepted`, with **zero correction rounds**.
+- **Fault:** `compile_loop_two_type_errors` was applied to the develop tasks (for example, `m000`
+  grew from 2,228 to 2,366 characters). The seam was reached: the task compiled clean through its
+  self-evaluation passes (seven recorded under `development_develop_handler`), and no correction
+  round ran.
+- **Against the registration:** this reads as 1.8.2's A′ d1 read, so on this diagnostic the
+  behaviour held equal across the extraction (§3b, first row).
+- **Records location:** the record was written under `1-8-2-diagnostics/`, by §11a's defect, and
+  is moved to `1-9-0-diagnostics/`.
 
 ## 11. Amendments after the first launch
 
-*(none yet)*
+### 11a. The diagnostics' records go to the 1.9 line's own directory (2026-09-30)
+
+**What changed.**
+- The eight diagnostic configs carried 1.8.2's `records_dir`
+  (`var/verification_sets/1-8-2-diagnostics/<name>`) from the configs they were generated from.
+  Their records were landing beside 1.8.2's. They now point at
+  `var/verification_sets/1-9-0-diagnostics/<name>`.
+- The records written before the fix (d1 `compile-loop` and d2 `false-criterion`) are moved
+  there unchanged.
+- The two counted arms were unaffected: they use the default location
+  (`var/verification_sets/1-9-0-<arm>`).
+
+**The driver checkout moves.** It moves from `7fdda5b1` to the commit carrying this fix, detached,
+in the sequencer's gap between two diagnostics. Nothing else moves with it: the diff is the eight
+`records_dir` lines and this document. No framework path changes, and no reading can.
+
+**Evidence.** d1's record path, `var/verification_sets/1-8-2-diagnostics/compile-loop/shakeout-20260930T011458Z.json`.
+
+**Who ruled.** This is a docs-only fix of the registration's own configs, made under §8's rule
+that driver and docs changes which cannot alter a reading are free. It is recorded here so the
+records' location, and the checkout's move, are part of the registration's history.

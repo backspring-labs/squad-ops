@@ -40,7 +40,7 @@
 # Shape's provenance: 1.7.1 roll 4's own-frame import edit; #1053/#1273's zero-byte and prose-only emissions
 
 name: 1-9-0-diagnostic-own-frame-then-prose-repair
-records_dir: var/verification_sets/1-8-2-diagnostics/own-frame-then-prose-repair
+records_dir: var/verification_sets/1-9-0-diagnostics/own-frame-then-prose-repair
 pre_registration: docs/plans/1-9-0-preregistration.md
 project: group_run
 squad_profile: full-38

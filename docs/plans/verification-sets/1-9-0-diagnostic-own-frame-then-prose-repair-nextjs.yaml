@@ -32,7 +32,7 @@
 # NON-COUNTING by declaration before launch: it declares faults, and the driver refuses to count
 # a cycle that does.
 name: 1-9-0-diagnostic-own-frame-then-prose-repair-nextjs
-records_dir: var/verification_sets/1-8-2-diagnostics/own-frame-then-prose-repair-nextjs
+records_dir: var/verification_sets/1-9-0-diagnostics/own-frame-then-prose-repair-nextjs
 pre_registration: docs/plans/1-9-0-preregistration.md
 project: group_run
 squad_profile: full-38

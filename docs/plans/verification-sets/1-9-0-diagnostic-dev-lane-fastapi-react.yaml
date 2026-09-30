@@ -25,7 +25,7 @@
 # is recorded and counted per cell (§46a), never refused on this deploy. Two-run budget.
 
 name: 1-9-0-diagnostic-dev-lane-fastapi-react
-records_dir: var/verification_sets/1-8-2-diagnostics/dev-lane-fastapi-react
+records_dir: var/verification_sets/1-9-0-diagnostics/dev-lane-fastapi-react
 pre_registration: docs/plans/1-9-0-preregistration.md
 project: group_run
 squad_profile: full-38

@@ -27,7 +27,7 @@
 # `handler_hang` seam readout (`loop_texture.task_timeouts`). N cell: none. One chain; a chain that
 # fails its prediction stops the set and the plan is revised in the open.
 name: 1-9-0-diagnostic-unattended-chain
-records_dir: var/verification_sets/1-8-2-diagnostics/unattended-chain
+records_dir: var/verification_sets/1-9-0-diagnostics/unattended-chain
 pre_registration: docs/plans/1-9-0-preregistration.md
 project: group_run
 squad_profile: full-38
