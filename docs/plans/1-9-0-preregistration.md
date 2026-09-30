@@ -1,5 +1,7 @@
 # 1.9.0 — pre-registration (plan §4, §3.6)
 
+**Rev 5 (2026-09-30): d4 read (§10).**
+
 **Rev 4 (2026-09-30): d3 read (§10).**
 
 **Rev 3 (2026-09-30): d2 read (§10). §11a's checkout move is re-timed to after the eighth diagnostic
@@ -334,6 +336,32 @@ Record `redelivery/shakeout-20260930T030822Z.json`.
   - `log_sources` is `docker` for both (#1745);
   - no contentless emission, and no task timeout;
   - heartbeats read at 23:09 ET, before d4: eight `online` at `1abe3666`, all matching (#1753).
+
+### d4: `unattended-chain`, run once. 23:12–04:37 ET (5 h 25 m; A′ took 5 h 41 m). **YES on every row of the campaign-readiness claim.**
+
+Record `unattended-chain/chain-20260930T083739Z.json`, with `cycle-0N-20260930T…` for each cycle.
+`resumes 0`, `stopped` none. Every cycle was assessed, and there was no manual step. The box was
+quiet before the first launch and after every cycle. The gate was approved by the driver under the
+set's gate notes.
+
+| cycle | fault | result |
+|---|---|---|
+| c1 `cyc_c6faa57c49d9` | none | accepted, 20 of 20, after two correction rounds. The rounds' ids are distinct at every stage: `corr-`, `repair-` and `retest-run_3581cad7-00-s00-…` and `…-01-s01-…` (#1697) |
+| c2 `cyc_baa44d5f73d4` | cancel at develop, 00:50:47 ET | **the wait ended at 00:50:55** (`dispatch_wait_ended_by_cancel`, 8 s). The run is `cancelled`, with ghosts at **0 emissions and 0 late replies**, and the box was quiet 1 s after. Four stranded focus leases were released (#529) |
+| c3 `cyc_48b45a9af31f` | `neo` killed while it ran the develop task, 01:28:22 ET | the redelivery was refused as typed (`task-run_3c0b2c31-m000-development.develop`); accepted, 21 of 21 |
+| c4 `cyc_3ab2cf9c55ce` | `handler_hang` | seam **YES**: three develop tasks (`m000`–`m002`) each failed at 1,800.0 s as a typed `task_timeout`; accepted, 21 of 21 |
+
+- **Against the claim** (§3b's second row, 1.8.2's verbatim): no ghost generation, no run left
+  `running`, no hang past its bound, and no manual step. The claim survives the extraction. Each
+  cycle's end now passes through `CycleCompletion`.
+- **#1701:** no `Failed to transition run … to cancelled` line anywhere in the runtime-api's log
+  since the set began. The cancel logs its own lines once.
+- **#1754:** predicted silent, and silent: no run paused.
+- **#1720:** all four chain cycles carry `deploy_id: dep_d413c36959ab` (`squadops cycles show`, each read).
+- **Texture:** no task timeout in c1, where A′'s c1 hit the bound on a qa re-take. No contentless
+  emission in any cycle.
+- **Heartbeats** read at 04:38 ET, before d5: eight `online` at `1abe3666`, all matching. That
+  includes `neo`, restarted by c3's fault.
 
 ## 11. Amendments after the first launch
 
