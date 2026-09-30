@@ -24,7 +24,9 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(REPO_ROOT / "scripts" / "dev"))
 
+from bundle import RefusingQueue, build_bundle  # noqa: E402
 from corpus import (  # noqa: E402
     ArtifactMeta,
     Round,
@@ -34,6 +36,7 @@ from corpus import (  # noqa: E402
     join_failures_to_rounds,
     preceding_checkpoint,
 )
+from read_only_vault import ReadOnlyVault  # noqa: E402
 
 from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry  # noqa: E402
 from adapters.persistence.pool import create_pool  # noqa: E402
@@ -143,6 +146,45 @@ async def build_corpus(dsn: str, vault: Path, records_root: Path) -> tuple[list[
     return rounds, {"summaries": len(rows), "decisions": dict(kept_paths), "refused": dict(refused)}
 
 
+async def build_bundles(dsn: str, vault_dir: Path, corpus: Path, out: Path) -> dict:
+    """One bundle per corpus round, rebuilt by the executor's own loaders (``bundle.py``)."""
+    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from adapters.cycles.postgres_squad_profile import PostgresSquadProfile
+
+    pool = await _read_only_pool(dsn)
+    registry = PostgresCycleRegistry(pool)
+    vault = ReadOnlyVault(vault_dir)
+    profiles = PostgresSquadProfile(pool=pool)
+    executor = DispatchedFlowExecutor(
+        cycle_registry=registry,
+        artifact_vault=vault,
+        queue=RefusingQueue(),
+        squad_profile=profiles,
+        task_timeout=1800.0,
+    )
+    out.mkdir(parents=True, exist_ok=True)
+    tally: collections.Counter[str] = collections.Counter()
+    try:
+        for line in corpus.read_text().splitlines():
+            row = json.loads(line)
+            key = f"{row['run_id']}-{row['analysis_id']}"
+            try:
+                bundle = await build_bundle(
+                    row, executor=executor, registry=registry, vault=vault, profiles=profiles
+                )
+            except Exception as exc:  # noqa: BLE001 - a round that cannot be rebuilt is counted, by type
+                tally[f"error: {type(exc).__name__}: {str(exc)[:80]}"] += 1
+                continue
+            if isinstance(bundle, str):
+                tally[bundle] += 1
+                continue
+            (out / f"{key}.json").write_text(bundle.to_json())
+            tally["bundled"] += 1
+    finally:
+        await pool.close()
+    return dict(tally)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="command", required=True)
@@ -150,10 +192,19 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--vault", type=Path, default=REPO_ROOT / "data" / "artifacts")
     p.add_argument("--records", type=Path, default=REPO_ROOT / "var" / "verification_sets")
     p.add_argument("--out", type=Path, required=True)
+    b = sub.add_parser("bundle", help="rebuild each corpus round's inputs by the product's code")
+    b.add_argument("--vault", type=Path, default=REPO_ROOT / "data" / "artifacts")
+    b.add_argument("--corpus", type=Path, required=True)
+    b.add_argument("--out", type=Path, required=True, help="a directory, one JSON per round")
     args = ap.parse_args(argv)
     dsn = os.environ.get(DSN_ENV)
     if not dsn:
-        raise SystemExit(f"{DSN_ENV} is required: the registry the corpus reads")
+        raise SystemExit(f"{DSN_ENV} is required: the registry the replay reads")
+    if args.command == "bundle":
+        print(
+            json.dumps(asyncio.run(build_bundles(dsn, args.vault, args.corpus, args.out)), indent=2)
+        )
+        return 0
     rounds, tally = asyncio.run(build_corpus(dsn, args.vault, args.records))
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text("".join(json.dumps(r.as_row(), default=str) + "\n" for r in rounds))
