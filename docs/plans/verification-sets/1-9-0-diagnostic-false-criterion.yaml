@@ -20,7 +20,7 @@
 # a confirmation), the run's terminal decision, and the develop task's stored artifact. N cell: none.
 # Two-run budget.
 name: 1-9-0-diagnostic-false-criterion
-records_dir: var/verification_sets/1-8-2-diagnostics/false-criterion
+records_dir: var/verification_sets/1-9-0-diagnostics/false-criterion
 pre_registration: docs/plans/1-9-0-preregistration.md
 project: group_run
 squad_profile: full-38

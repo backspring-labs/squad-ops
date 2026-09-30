@@ -18,7 +18,7 @@
 # `loop_texture.self_eval_passes`), the develop task's `self_eval_revision_form` lines, and the run
 # summary's `tokens_by_task_type`. N cell: none. Two-run budget.
 name: 1-9-0-diagnostic-compile-loop
-records_dir: var/verification_sets/1-8-2-diagnostics/compile-loop
+records_dir: var/verification_sets/1-9-0-diagnostics/compile-loop
 pre_registration: docs/plans/1-9-0-preregistration.md
 project: group_run
 squad_profile: full-38

@@ -17,7 +17,7 @@
 # Readout: the driver's `qa_repair_process_killed` seam readout (`loop_texture.redelivered_refusals`),
 # the run's terminal state, and the qa container's restart count. N cell: none. Two-run budget.
 name: 1-9-0-diagnostic-redelivery
-records_dir: var/verification_sets/1-8-2-diagnostics/redelivery
+records_dir: var/verification_sets/1-9-0-diagnostics/redelivery
 pre_registration: docs/plans/1-9-0-preregistration.md
 project: group_run
 squad_profile: full-38
