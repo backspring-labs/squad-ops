@@ -40,6 +40,9 @@ class RefusingQueue:
 @dataclass(frozen=True)
 class Bundle:
     round: dict[str, Any]
+    prd: str
+    agents: dict[str, dict[str, Any]]
+    resolved_config: dict[str, Any]
     envelope: dict[str, Any]
     failed_artifacts: list[dict[str, str]]
     analysis: dict[str, Any]
@@ -51,6 +54,9 @@ class Bundle:
         return json.dumps(
             {
                 "round": self.round,
+                "prd": self.prd,
+                "agents": self.agents,
+                "resolved_config": self.resolved_config,
                 "envelope": self.envelope,
                 "failed_artifacts": self.failed_artifacts,
                 "analysis": self.analysis,
@@ -87,6 +93,16 @@ async def build_bundle(
             cycle = dataclasses.replace(
                 cycle, execution_overrides={**cycle.execution_overrides, **forwarding}
             )
+    # The PRD text, resolved as _prepare_cycle_for_run resolves it (that method also writes a run
+    # root, which this stage must not): an artifact id is read from the vault, else the project's
+    # PRD file, and the cycle carries the text from here on.
+    prd = cycle.prd_ref
+    if prd and prd.startswith("art_"):
+        prd = (await vault.retrieve(prd))[1].decode("utf-8", errors="replace")
+    if not prd:
+        prd = await executor._resolve_prd_from_project(cycle.project_id)
+    if prd and prd != cycle.prd_ref:
+        cycle = dataclasses.replace(cycle, prd_ref=prd)
     profile, snapshot = await profiles.resolve_snapshot(cycle.squad_profile_id)
     plan = await executor._load_plan_for_run(cycle, run)
     contract = await executor._load_contract_for_run(cycle, run)
@@ -124,8 +140,24 @@ async def build_bundle(
             f"squad profile {cycle.squad_profile_id} moved since the round: {cycle.squad_profile_snapshot_ref[:16]} → {snapshot[:16]}",
         )
     )
+    from squadops.cycles.agent_config import resolve_agent_config
+
+    agents = {}
+    for role in ("lead", "dev", "qa", "builder", "data", "strat"):
+        try:
+            resolved = resolve_agent_config(role, profile)
+        except Exception:  # noqa: BLE001 - a role the profile does not serve
+            continue
+        agents[role] = {
+            "agent_id": resolved.agent_id,
+            "model": resolved.model,
+            "config_overrides": dict(resolved.config_overrides or {}),
+        }
     return Bundle(
         round=row,
+        prd=prd or "",
+        agents=agents,
+        resolved_config=cycle.resolved_config(),
         envelope=enriched.to_dict(),
         failed_artifacts=failed_artifacts,
         analysis=analysis,

@@ -155,7 +155,11 @@ async def build_bundles(dsn: str, vault_dir: Path, corpus: Path, out: Path) -> d
     registry = PostgresCycleRegistry(pool)
     vault = ReadOnlyVault(vault_dir)
     profiles = PostgresSquadProfile(pool=pool)
+    from adapters.cycles.factory import create_project_registry
+
     executor = DispatchedFlowExecutor(
+        # The PRD file resolver reads the project registry the runtime reads (config).
+        project_registry=create_project_registry("config"),
         cycle_registry=registry,
         artifact_vault=vault,
         queue=RefusingQueue(),
@@ -186,6 +190,7 @@ async def build_bundles(dsn: str, vault_dir: Path, corpus: Path, out: Path) -> d
 
 
 def main(argv: list[str] | None = None) -> int:
+    os.chdir(REPO_ROOT)  # the projects' PRD paths are repository-relative
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="command", required=True)
     p = sub.add_parser("corpus", help="enumerate the stored failing rounds a replay can start from")
