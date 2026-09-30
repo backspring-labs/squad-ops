@@ -189,6 +189,62 @@ async def build_bundles(dsn: str, vault_dir: Path, corpus: Path, out: Path) -> d
     return dict(tally)
 
 
+def run_replay(work: Path, selection: list[str], samples: int, main_checkout: Path) -> int:
+    """The registered sample, arms alternating round by round (scoped, then whole-file), each a
+    one-off of the qa service: an arm is a process-wide choice, so it is never shared."""
+    import subprocess
+
+    harness = Path(__file__).resolve().parent
+    for bundle in selection:
+        for arm in ("scoped", "whole_file"):
+            cmd = [
+                "docker", "compose", "run", "--rm", "--no-deps", "-T",
+                "-v", f"{harness}:/replay:ro", "-v", f"{work}:/out",
+                "eve", "python", "/replay/container.py", "replay",
+                "--bundles", "/out/bundles", "--admission", "/out/admission.jsonl",
+                "--arm", arm, "--samples", str(samples), "--out", "/out/replay.jsonl",
+                "--only", bundle,
+            ]  # fmt: skip
+            code = subprocess.call(cmd, cwd=main_checkout)
+            print(json.dumps({"bundle": bundle, "arm": arm, "exit": code}), flush=True)
+    return 0
+
+
+def report(replay: Path, bundles: Path) -> dict:
+    """Per arm and stack: acceptance, regressions, the change a response makes against its size,
+    empty responses, time and tokens. Counts, never rates alone (the small-N rule)."""
+    stacks = {
+        p.name: (json.loads(p.read_text()).get("resolved_config") or {}).get("build_profile")
+        for p in bundles.glob("*.json")
+    }
+    out: dict = {}
+    for line in replay.read_text().splitlines():
+        r = json.loads(line)
+        if r.get("stub"):
+            continue
+        key = f"{r['arm']} / {stacks.get(r['bundle'])}"
+        cell = out.setdefault(
+            key,
+            {"samples": 0, "accepted": 0, "unrunnable": 0, "empty": 0, "with_regressions": 0,
+             "emitted_chars": [], "changed_lines": [], "repair_seconds": []},
+        )  # fmt: skip
+        cell["samples"] += 1
+        if r.get("verdict") == "unrunnable":
+            cell["unrunnable"] += 1
+            continue
+        cell["accepted"] += bool(r.get("accepted"))
+        cell["empty"] += bool(r.get("empty"))
+        cell["with_regressions"] += bool(r.get("regressions"))
+        cell["emitted_chars"].append(r.get("emitted_chars"))
+        cell["changed_lines"].append(r.get("changed_lines"))
+        cell["repair_seconds"].append(r.get("repair_seconds"))
+    for cell in out.values():
+        for k in ("emitted_chars", "changed_lines", "repair_seconds"):
+            vals = sorted(v for v in cell[k] if v is not None)
+            cell[k] = {"median": vals[len(vals) // 2] if vals else None, "n": len(vals)}
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     os.chdir(REPO_ROOT)  # the projects' PRD paths are repository-relative
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
@@ -201,7 +257,23 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--vault", type=Path, default=REPO_ROOT / "data" / "artifacts")
     b.add_argument("--corpus", type=Path, required=True)
     b.add_argument("--out", type=Path, required=True, help="a directory, one JSON per round")
+    rr = sub.add_parser("run", help="replay the registered sample, arms alternating per round")
+    rr.add_argument(
+        "--work", type=Path, required=True, help="bundles/, admission.jsonl, replay.jsonl"
+    )
+    rr.add_argument("--selection", type=Path, required=True, help="one bundle file name per line")
+    rr.add_argument("--samples", type=int, default=3)
+    rr.add_argument("--main-checkout", type=Path, required=True, help="where docker compose runs")
+    rp = sub.add_parser("report", help="summarize the replay per arm and stack")
+    rp.add_argument("--work", type=Path, required=True)
     args = ap.parse_args(argv)
+    if args.command == "run":
+        selection = [s.strip() for s in args.selection.read_text().splitlines() if s.strip()]
+        return run_replay(args.work, selection, args.samples, args.main_checkout)
+    if args.command == "report":
+        summary = report(args.work / "replay.jsonl", args.work / "bundles")
+        print(json.dumps(summary, indent=2))
+        return 0
     dsn = os.environ.get(DSN_ENV)
     if not dsn:
         raise SystemExit(f"{DSN_ENV} is required: the registry the replay reads")
