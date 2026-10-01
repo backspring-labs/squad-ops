@@ -172,6 +172,37 @@ class TestRunNodeTestsSuccess:
         assert result.executed is True
         assert result.exit_code == 1
 
+    @patch("squadops.capabilities.handlers.test_runner._materialize_files")
+    @patch("os.path.isfile", return_value=True)
+    @patch("tempfile.mkdtemp", return_value="/tmp/qa_node_test")
+    @patch("shutil.rmtree")
+    async def test_the_runner_reads_the_error_a_timeout_hid(self, _rmtree, _mkdtemp, _isfile, _mat):
+        """#1784, entered at `run_node_tests`. Bug caught: the run's real output (1.9 React
+        roll 4) printed the TypeError that failed the test, and the runner returned none of it.
+        Vitest splits it: the summary on stdout, the block on stderr."""
+        from pathlib import Path
+
+        fixture = (
+            Path(__file__).resolve().parents[2]
+            / "fixtures"
+            / "roll_replays"
+            / "1-9-0-react-roll-4-vitest-output.txt"
+        ).read_text()
+        out, err = fixture.split("=== stderr ===\n", 1)
+        install_proc = _make_proc_mock(returncode=0)
+        vitest_proc = _make_proc_mock(returncode=1, stdout=out.encode(), stderr=err.encode())
+        procs = iter([install_proc, vitest_proc])
+
+        async def mock_exec(*args, **kwargs):
+            return next(procs)
+
+        with patch("asyncio.create_subprocess_exec", side_effect=mock_exec):
+            result = await run_node_tests(_SOURCE_FILES, _TEST_FILES)
+
+        [error] = result.unhandled_errors
+        assert "src/views/CreateRunView.jsx:17:37" in error
+        assert "TypeError: Cannot read properties of undefined (reading 'value')" in error
+
 
 # ---------------------------------------------------------------------------
 # run_node_tests — timeout
