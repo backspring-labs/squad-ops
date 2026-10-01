@@ -738,6 +738,18 @@ are. Nothing here re-reads or replaces them.
 - Its image ids, deploy record id and config hashes are read and written here before the first
   launch.
 
+**The post-set deploy, as read before the first launch (2026-10-01, 15:10 ET).**
+
+| | |
+|---|---|
+| Deploy: commit | **`8a058dc3`**, main after #1769. Every framework image's revision label reads it |
+| Deploy: image IDs | `runtime-api 1db649b6a39a`, `max 6182bdd7bdd9`, `neo eb12a4ce6218`, `nat 1742f189ef5d`, `bob 84aafb02fbb0`, `eve 13a900e53c0f`, `data 2fba158c6508`. All seven changed from §1. `han 521af5188a4e` and `joi fffbcdbe4a62` were rebuilt with them; neither is in the identity assertion |
+| Deploy: record | **`dep_23e742c972e7`** (#1720): 21 services (9 with no revision label), 5 models (1 with no digest, Atlas's `Qwen/Qwen3.8-27B-FP8`). All eight agents' heartbeats read `8a058dc3` with `revision_matches_deploy: True` |
+| `resolved_config_hash` | FastAPI+React **`a79f58658cd8`**, re-read on the tree with the CLI's own `compute_config_hash` and **unmoved**: no post-set change touched `validated-fullstack` |
+| `squad_profile_snapshot_ref` | **`2d8d4feb3519a7ec`**, re-read by the driver's `live_squad_snapshot("full-38")` and **unmoved** |
+| Loaded, not built | Appended to the post-set configs, each a live call with its control. **Read from the deploy by the counted roll's `--dry-run`:** runtime-api `1522 keep_progress True True`, `1776 2.8.0`; eve `1784 Uncaught Exception: TypeError: x []`; neo `1774 True True`, `1776 2.8.0`, `1753 8a058dc3` |
+| Preflight | All three post-set configs clean, the counted one with `--counting` |
+
 **The configs, and where the records go.**
 - These runs get their own configs (`docs/plans/verification-sets/1-9-0-post-set-*.yaml`), generated
   from the set's.
