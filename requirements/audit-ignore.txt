@@ -9,3 +9,12 @@
 # ecdsa 0.19.2 — NO fix version published (via python-jose on the auth boundary). Stays
 # listed until python-jose is retired or ecdsa ships a fix; revisited at every refresh.
 PYSEC-2026-1325
+
+# urllib3 2.7.0 — three advisories published 2026-10-01, fixed in 2.8.0 (#1776). Accepted ONLY
+# until the rebuild that follows the 1.9 verification set: that set's deploy (1abe3666) is pinned
+# and cannot rebuild mid-set, and a lock change merged now would put drift between the tagged
+# tree and the validated deploy (1.9 pre-registration §8). The bump goes into the post-set rebuild
+# (with #1522 and #1774), and these three lines leave with it, before the 1.9 tag.
+CVE-2026-97687
+CVE-2026-97688
+CVE-2026-97689
