@@ -1,6 +1,6 @@
 # 1.9.0 plan — the close of the 1.x line
 
-**Status:** adopted, rev 8 (2026-10-01): rev 3 adopted at merge, with the rulings made after adoption in §7a and during the set in §7b. Written on the owner's word at the
+**Status:** adopted, rev 9 (2026-10-01): rev 3 adopted at merge, with the rulings made after adoption in §7a and during the set and at the cut in §7b. Written on the owner's word at the
 1.8.2 cut ("let's cut 1.8.2 and write 1.9.0 plan"). The 1.8.2 counted rolls answered the question
 this plan was held for: **no 1.8.3 opens** (the 1.8.2 plan §3.10; the pre-registration §10, deploy
 A′).
@@ -395,6 +395,13 @@ Ten questions reached the owner after rev 3 merged. Each was ruled as recommende
    to move it to 2.0. The ruling keeps it in 1.9, where it rides the post-set rebuild and the same
    counted roll as #1784, predicted silent (pre-registration §12).
 
+4. **The cut proceeds at four of six** (2026-10-01: "with our root causing broken into those two
+   fixes, I think I've already made the call on the 6/6"). §3.6's experimental gate registers
+   functional yield at 1.8.2's level, six of six, and the set measured four of six. The ruling
+   records the gate as **unmet by its letter** and cuts on it, because the two rejections' one root
+   cause is split into item 2's two fixes. No counted roll is added. Recorded in the
+   pre-registration §11e, and in its cut record (§13).
+
 **What this does to §5's accounting.**
 - **In the release:**
   - #414 leaves;
@@ -403,6 +410,10 @@ Ten questions reached the owner after rev 3 merged. Each was ruled as recommende
 - **2.0:**
   - #414 joins, reframed as the sequencing rule;
   - #1785 joins.
+- **Re-read at the cut (§5):** #1469 moves to 2.0. Its corpus has not arrived: the vault's 6 failed
+  frontend builds are the same 6 as at the 1.8.2 cut, and none is the shape its parser targets.
+- **Unplaced, proposed for 2.0's instruments:** #1788, filed by the replay (it keeps no raw
+  response), with #1756.
 
 ## 8. What this plan does not decide
 
@@ -425,6 +436,8 @@ Ten questions reached the owner after rev 3 merged. Each was ruled as recommende
     #1122 is closed as not planned; #1626 closed at the cut;
   - §7's decisions adopted at merge, and decision 6 recorded in SIP-0086 §12a;
   - 43 issues, 40 of them open.
+- **Rev 9 (2026-10-01):** §7b item 4: the cut proceeds at four of six on the owner's ruling. #1469 moves
+  to 2.0 at its cut re-read, and #1788 is named as unplaced.
 - **Rev 8 (2026-10-01):** §7b item 3: #1522 merges in 1.9 on the owner's ruling, against the recommendation.
 - **Rev 7 (2026-10-01):** §7b item 2: the root cause of the counted set's two rejections. #1784 (the
   evidence fix) goes to 1.9's post-set rebuild and #1785 (prevention) to 2.0.

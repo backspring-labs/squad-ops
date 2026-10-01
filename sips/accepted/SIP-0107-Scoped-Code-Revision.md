@@ -2333,3 +2333,37 @@ time, nothing is spent past the reading.
   - a supplier for dev × Next.js that survives §12a's self-evaluation (#1716);
   - a readable re-take count (#1724).
 
+## 46r. 2026-10-01 — N read a fourth time, as texture: the set's dev cells at zero, both supplied after it
+
+**What changed.** Nothing in the SIP's design. This records the fourth count, so that 2.0's
+decision on §38 step 7 reads it from here. The 1.9 plan reads N as texture, with no gate and no
+extra rolls (its decision 5), under 1.8.2 §3c's definition verbatim: a scoped revision transaction,
+verified and persisted under its verified identity, rewriting no more than half its file. Two
+counting fixes are in: #1697's run-unique round ids, and #1724's recorded re-take verification.
+
+| cell | the 1.9 set (`1abe3666`) | after the set (`8a058dc3`) |
+|---|---|---|
+| qa × React | 4 (d3, d6) | 0 |
+| qa × Next.js | 2 (d5) | 0 |
+| dev × React | **0**: d7 UNASKABLE, the fault never applied (§11c, #1774) | **2**: `dev-lane-fastapi-react` (5%, 2%) |
+| dev × Next.js | **0**: d8's transaction verified, then discarded at its retest | **1**: `dev-lane-nextjs` (6%) |
+
+**The evidence.** The set's reading is `docs/plans/1-9-0-preregistration.md` §10 (the set's close).
+The post-set reading is that record's §12, on the post-set deploy, which carries #1774's fault fix.
+Those runs sit **outside the set's registration** (its §11c, §11d), and the table keeps the two
+apart.
+- **On the set alone, N is unmet a fourth time:** both dev cells are zero, and a required cell at
+  zero fails the reading regardless of the total.
+- **After the set, both dev cells were supplied,** each on its first run, by the dev-lane fault
+  keyed on the declared join (#1716, #1774). The dev × Next.js transaction persisted, where d8's
+  had been discarded at its retest.
+
+**Who ruled, and what follows.** No ruling was asked: N does not gate 1.9 (plan decision 5).
+- This SIP stays `accepted`.
+- Step 7 stays a **2.0 decision** (§46q).
+- What that decision has to settle, beyond §46q's two open items, which this line closed (#1716
+  supplies dev × Next.js; #1724 makes a re-take countable):
+  - whether a count may combine a set with runs outside its registration;
+  - the convergence replay's reading (#1764): scoped never converged worse than whole-file and
+    regressed in no sample, against 1 and 8. Its one open question is nine empty scoped dev repairs
+    on Next.js, which the harness cannot explain because it keeps no raw response (#1788).
