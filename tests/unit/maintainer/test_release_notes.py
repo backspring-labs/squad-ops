@@ -512,3 +512,21 @@ class TestSipTransitionsAreTheFrontmattersNotThePaths:
         assert "## Improvement proposals amended in place" in page
         assert "| SIP-0058-X | implemented |" in page
         assert "## Improvement proposals\n" not in page
+
+
+@pytest.mark.parametrize(
+    "reason", ["the recovery path.", "the recovery path", "the recovery path. "]
+)
+def test_the_showcase_reason_ends_with_one_period(reason):
+    """Bug caught: v1.8.2's release page reads "corrected.." because the page appended a period
+    to a reason that already ended with one."""
+    import yaml
+
+    package = yaml.safe_load(
+        (REPO_ROOT / "site" / "content" / "releases" / "v1.8.2" / "package.yaml").read_text()
+    )
+    package["showcase"] = {"cycle_id": "cyc_x", "reason": reason, "role": "counted"}
+
+    page = build_release_package.render("1.8.2", "v1.8.2", package)
+
+    assert "Of cycle `cyc_x` (counted) — the recovery path.\n" in page

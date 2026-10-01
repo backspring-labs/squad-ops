@@ -251,11 +251,36 @@ async def admit(bundle: dict[str, Any], system: Any) -> dict[str, Any]:
     }
 
 
+def without_faults(value: Any) -> Any:
+    """``value`` with every fault declaration removed, at any depth (#1764).
+
+    A round from a diagnostic cycle carries that cycle's declared faults: in its resolved config,
+    in the cycle's ``applied_defaults`` and ``execution_overrides``, and in the envelope's own
+    ``inputs``. Rebuilt as-is, the faults fire **inside the replay**. The first live sample showed
+    it: `repair_prose_only` replaced the model's repair with 48 characters of planted prose, so the
+    sample measured the fault, not the arm. The planted defect in the failing tree stays; it is
+    what the repair must fix. Only the declaration that would fire again is removed. Only dict
+    keys are touched, never file content that happens to mention one.
+    """
+    from squadops.capabilities.handlers.fault_injection import DECLARATION_KEY
+
+    if isinstance(value, dict):
+        return {k: without_faults(v) for k, v in value.items() if k != DECLARATION_KEY}
+    if isinstance(value, list):
+        return [without_faults(v) for v in value]
+    return value
+
+
+def load_bundle(path: Path) -> dict[str, Any]:
+    """A bundle as every stage of the replay must see it: with no fault left to fire."""
+    return without_faults(json.loads(path.read_text()))
+
+
 async def _admit_all(bundles: Path, out: Path) -> dict[str, int]:
     rows, tally = [], {}
     systems: dict[str, Any] = {}
     for path in sorted(bundles.glob("*.json")):
-        bundle = json.loads(path.read_text())
+        bundle = load_bundle(path)
         model = bundle["agents"]["qa"]["model"]
         system = systems.get(model) or await compose_system("qa", model=model)
         systems[model] = system
@@ -625,7 +650,7 @@ async def _replay_all(
         for path in sorted(bundles.glob("*.json")):
             if path.name not in admitted or (only and path.name not in only):
                 continue
-            bundle = json.loads(path.read_text())
+            bundle = load_bundle(path)
             systems: dict[str, Any] = {}
             stub_llm = None
             for role, agent in bundle["agents"].items():

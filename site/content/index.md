@@ -7,6 +7,9 @@ and produces a runnable project directory.
 It runs on locally hosted open-weight models. The reference deployment is a Qwen
 27B model on an NVIDIA DGX Spark.
 
+[What a cycle delivers](showcase.md) shows one cycle from the latest release: the
+application it built, and its run as it happened.
+
 ```bash
 squadops cycles create play_game --squad-profile full --request-profile validated-fullstack
 squadops runs assemble play_game <cycle-id> <run-id> --out ./output

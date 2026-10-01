@@ -1,5 +1,17 @@
 # 1.9.0 — pre-registration (plan §4, §3.6)
 
+**Rev 10 (2026-10-01): React rolls 3–4 and both Next.js rolls read; the set closes (§10).**
+
+**Rev 9 (2026-10-01): React rolls 1 and 2 read; the set paused on roll 2's rejection and resumed on the owner's ruling (§11d).**
+
+**Rev 8 (2026-09-30): d8 read; the diagnostics close, §11b executed, the counted set opens (§10).**
+
+**Rev 7 (2026-09-30): d7 read (§10); the set stopped on it and resumed on the owner's ruling (§11c).**
+
+**Rev 6 (2026-09-30): d5 and d6 read (§10).**
+
+**Rev 5 (2026-09-30): d4 read (§10).**
+
 **Rev 4 (2026-09-30): d3 read (§10).**
 
 **Rev 3 (2026-09-30): d2 read (§10). §11a's checkout move is re-timed to after the eighth diagnostic
@@ -335,6 +347,274 @@ Record `redelivery/shakeout-20260930T030822Z.json`.
   - no contentless emission, and no task timeout;
   - heartbeats read at 23:09 ET, before d4: eight `online` at `1abe3666`, all matching (#1753).
 
+### d4: `unattended-chain`, run once. 23:12–04:37 ET (5 h 25 m; A′ took 5 h 41 m). **YES on every row of the campaign-readiness claim.**
+
+Record `unattended-chain/chain-20260930T083739Z.json`, with `cycle-0N-20260930T…` for each cycle.
+`resumes 0`, `stopped` none. Every cycle was assessed, and there was no manual step. The box was
+quiet before the first launch and after every cycle. The gate was approved by the driver under the
+set's gate notes.
+
+| cycle | fault | result |
+|---|---|---|
+| c1 `cyc_c6faa57c49d9` | none | accepted, 20 of 20, after two correction rounds. The rounds' ids are distinct at every stage: `corr-`, `repair-` and `retest-run_3581cad7-00-s00-…` and `…-01-s01-…` (#1697) |
+| c2 `cyc_baa44d5f73d4` | cancel at develop, 00:50:47 ET | **the wait ended at 00:50:55** (`dispatch_wait_ended_by_cancel`, 8 s). The run is `cancelled`, with ghosts at **0 emissions and 0 late replies**, and the box was quiet 1 s after. Four stranded focus leases were released (#529) |
+| c3 `cyc_48b45a9af31f` | `neo` killed while it ran the develop task, 01:28:22 ET | the redelivery was refused as typed (`task-run_3c0b2c31-m000-development.develop`); accepted, 21 of 21 |
+| c4 `cyc_3ab2cf9c55ce` | `handler_hang` | seam **YES**: three develop tasks (`m000`–`m002`) each failed at 1,800.0 s as a typed `task_timeout`; accepted, 21 of 21 |
+
+- **Against the claim** (§3b's second row, 1.8.2's verbatim): no ghost generation, no run left
+  `running`, no hang past its bound, and no manual step. The claim survives the extraction. Each
+  cycle's end now passes through `CycleCompletion`.
+- **#1701:** no `Failed to transition run … to cancelled` line anywhere in the runtime-api's log
+  since the set began. The cancel logs its own lines once.
+- **#1754:** predicted silent, and silent: no run paused.
+- **#1720:** all four chain cycles carry `deploy_id: dep_d413c36959ab` (`squadops cycles show`, each read).
+- **Texture:** no task timeout in c1, where A′'s c1 hit the bound on a qa re-take. No contentless
+  emission in any cycle.
+- **Heartbeats** read at 04:38 ET, before d5: eight `online` at `1abe3666`, all matching. That
+  includes `neo`, restarted by c3's fault.
+
+### d5: `own-frame-then-prose-repair-nextjs`. **Cleared on run 2**, where A′ cleared on run 1.
+
+**Run 1:** `cyc_1d359f7fa22c` / `run_8523f2ba1395`, 04:41–05:53 ET. **Seam not reached.**
+- The own-frame fault applied to `m006`'s suite, on its first attempt.
+- The round's analysis named `lib/store.ts`, a file the workspace does not have. It was refuted
+  and told to the decision (#968).
+- The decision routed the round to the **dev** repair, narrowed to `app/api/runs/[run_id]/route.ts`.
+  The dev repair's retest failed. The cycle was accepted later, 16 of 16.
+- L7 was unreached because of the analyzer's diagnosis, not the router. On this stack the own-frame
+  route is taken on analyzer–decision unanimity (#1581). That is A′'s route too, and here the
+  analyzer did not implicate the suite. The runner's own-frame stamp (`qa_owned_routed`) did not
+  fire on this stack in either run, nor was it A′'s route.
+
+**Run 2:** `cyc_359759afe0af` / `run_34c19ad936a9`, 05:57–07:08 ET. **Cleared.**
+- **Outcome:** `accepted`, 19 of 19.
+- **L7 YES:** the faults applied to both suites (`m006`, `m007`). Each round was routed `own_artifact`
+  on analyzer–decision unanimity, to its own suite.
+- **L4 YES:** both prose-only repairs (48 characters each) were refunded, "round s00" and "round
+  s01", with distinct ids. `repeated_round_ids` was asked and returned none.
+- **The qa re-takes:** both accepted edits (anchored, about 1% each):
+  `__tests__/test_runs_happy.test.ts`, and `__tests__/test_runs_errors.test.ts`. **#1724 recorded
+  each re-take's verification:** vitest executed, exit 0, and no failed checks. That makes **two
+  qa × Next.js candidates**, where §3c expected 1–2.
+
+**The judgment.** I read this as the same reading as A′'s, within the two-run budget the
+registration gives every diagnostic. The mechanism both runs took is A′'s. Run 1's miss is the
+analyzer's call on a round the fault had set up. The extraction did not move that seam.
+- It stands as texture, not as a falsification of §3b's first row.
+- A reviewer who reads "cleared on run 2" as "reading otherwise than on A′" has the record to say
+  so.
+
+**Texture:** the two contentless emissions are the planted prose-only repairs, both refunded. This
+is a diagnostic, so L1 does not read it.
+
+### d6: `own-frame-then-prose-repair`, run 1. `cyc_a045fa94c30f` / `run_8b0b06683639`, 07:12–08:08 ET. **Cleared, on its own terms.**
+
+Record `own-frame-then-prose-repair/shakeout-20260930T120814Z.json`.
+- **Outcome:** `accepted`, 21 of 21.
+- **L7 YES:** each suite's own-frame failure was routed to its own suite by the runner's stamp
+  (`qa_owned_routed`, #1130):
+  - `backend/tests/test_runs.py` (a `TypeError` at `test_create_run_success:24`);
+  - `frontend/src/__tests__/views.test.jsx`.
+- **L4 YES, read directly.** On A′ this row read UNASKABLE: the two faulted repairs shared one id
+  (`repair-run_99242d1e-00-qa.test_repair`), and it cleared only by the owner's ruling (1.8.2
+  §11f). Here each repair has its own:
+  - `repair-run_8b0b0668-00-s00-qa.test_repair`;
+  - `…-00-s01-…`.
+
+  The refunds name "round s00" and "round s01". **This is #1697's prediction on the diagnostic that
+  was its shape** (plan §4). No ruling is needed.
+- **The qa re-takes:** both accepted edits:
+  - `backend/tests/test_runs.py`, 181 of 6,939 characters (3%);
+  - `frontend/src/__tests__/views.test.jsx`, 138 of 4,181 (3%).
+
+  Each has a recorded verification: the suite executed, exit 0, 6 and 7 passed, and no failed
+  checks. That makes **two qa × React candidates.**
+- **Heartbeats** read at 07:09 ET before d6, and at 08:08 ET before d7: all eight `online` and
+  matching.
+
+**N so far, as texture (§3c):**
+- qa × React: 4 (d3's two and d6's two);
+- qa × Next.js: 2 (d5);
+- dev × React and dev × Next.js: their diagnostics are next.
+
+### d7: `dev-lane-fastapi-react`. **Not reached after two runs: the fault never applied. Ruled UNASKABLE on this deploy (§11c).**
+
+**Run 1:** `cyc_1e1c9364efe3` / `run_f59e47975fd7`, 08:12–09:15 ET. **Run 2:** `cyc_7a67a1c5b903` /
+`run_a7a8b0253361`, 09:19–10:08 ET. Both were accepted, 20 of 20. Run 1 had one correction round,
+on a qa suite; run 2 had none.
+
+- **The fault did not bite in either run.** `dev_join_response_omits_declared_fields` logged
+  `DID NOT BITE … emission_unchanged` on all four develop tasks of each run. #1718's instrument read
+  it, and the seam is UNASKABLE, "neither YES nor NO" (#1588).
+- **Why:** the fault finds the join handler by a literal path, a `/join` decorator in Python. Both
+  runs' authored manifests named the join `POST /runs/{run_id}/participants` ("join a run with a
+  participant name"), with leave as `DELETE /runs/{run_id}/participants/{participant_name}`. There
+  was no `/join` route to rewrite.
+- **How often:** 344 of the 395 manifests in the vault name a `/join` path, and 23 name the join as
+  a `/participants` collection. Those 23 come from counted rolls and diagnostics alike, so this
+  diagnostic does not push toward the naming. Two in a row was chance, on a defect: the fault should
+  key on the join the manifest declares. That is **#1774**.
+- **The set stopped** at 10:08 ET on §3d's rule. It was resumed on the owner's ruling (§11c).
+- **#1716's prediction is not read on this deploy.** The fault's defect never entered a develop
+  emission, so whether it survives self-evaluation was not asked. The dev × React cell stays empty
+  here.
+
+### d8: `dev-lane-nextjs`, run 1. `cyc_98a316402a1b` / `run_7b9430c961fb`, 21:06–22:05 ET. **Cleared: the dev lane reached its seam on the App Router stack.**
+
+Record `dev-lane-nextjs/shakeout-20261001T020536Z.json`. The set resumed with this run on §11c's ruling.
+- **#1716's prediction, read on Next.js: YES.**
+  - The fault **applied** on `m000`'s first attempt (`app/api/runs/[run_id]/join/route.ts`, 5,114 →
+    5,158 characters). The defect was in what the develop task handed on.
+  - The qa task's join probe rejected the app (`vc-probe-api-runs-join`: "response missing key(s)").
+  - The round was routed to the **dev** repair, narrowed to the probe-owned slot
+    (`app/api/runs/[run_id]/join/route.ts`, #1015). Its revision form is an accepted anchored edit,
+    179 of 1,366 characters (13%).
+  - A′ could not reach this seam (1.8.2 §11h).
+- **The repair did not converge.** Its patch verification passed (12 checks), and the qa suite's
+  retest failed. The patch was discarded, which is today's path, and was never persisted (no
+  `patch_candidate_identity` line).
+  - Round 1 carried one failure, clearing 2 and adding 2. The run ended `plan_defect` at round 1:
+    `rejected`, 16 of 18, with `vc-probe-api-runs-join` and `tests_pass` unmet.
+  - This is a diagnostic, so the rejection is texture. Its signature is the join probe the fault
+    planted, still failing after the discarded repair.
+- **N (§3c):** not countable. A dev × Next.js transaction was produced and verified, but §3c counts
+  only a transaction **persisted** under its verified identity, and this one's retest discarded it.
+  The cell stays at 0 on this deploy. That is texture, since N does not gate (§3c).
+- **#1522, read forward:** its completeness guard would also have discarded this repair. The round
+  failed a probe row, and the retest, which runs only the suite and its authenticity rows, does not
+  evaluate one.
+- `repeated_round_ids` was asked and returned none; the rounds are `-s00-` and `-s01-`. There was no
+  contentless emission and no task timeout.
+
+### The diagnostics' close: `all_eight_ran`, 22:05 ET
+
+- **Read:**
+  - six cleared: d1, d2, d3, d5 (on run 2), d6 and d8;
+  - the chain read YES on every row (d4);
+  - d7 is UNASKABLE on this deploy (§11c).
+- **No new seam finding.** d7's miss is the diagnostic's own fault (#1774), not a framework seam.
+  By §6's exit rule this is the shakeout's pass, in one round on deploy `1abe3666`.
+- **Heartbeats** read before every launch from d3 on: all eight `online` and matching each time.
+
+**§11b executed at 22:06 ET:**
+- **The 1.9 records moved.** All 36 files the set wrote under `1-8-2-diagnostics/` were copied to
+  `1-9-0-diagnostics/<name>/`, each copy checked by sha256, and then the sources removed.
+- **1.8.2's seven overwritten files were restored** from `squadops-1.8.2-records.tar.gz` (sha256
+  `791ad261…`, as the package records): six `shakeout-deploy.json` and `unattended-chain/chain-state.json`.
+  All 31 of 1.8.2's files in those directories now match the tarball byte for byte. The empty
+  `dev-lane-nextjs` directory, which the 1.9 run had created, was removed.
+- **The driver checkout moved** from `7fdda5b1` to `93253694`. The only difference between the two
+  on `scripts/dev`, the counted configs, `src` and `adapters` is #1765's four
+  `convergence_replay` files, which the driver does not import. `verification_set_driver.py` and
+  both counted configs are identical.
+- **The counted set launched at 22:07 ET.** Roll 1 is `cyc_20a01ea59964`, with HEAD pinned at
+  `93253694` and config hash `a79f58658cd8`.
+
+### React roll 1: `cyc_20a01ea59964`, 22:07–23:01 ET. **Accepted, 21 of 21.**
+
+- **Outcome:** zero correction rounds, no contentless emission (L1 holds), no task timeout.
+- **1.9's loaded checks are the deployed code.** The record's preflight compared each one with this
+  registration's pin, and all matched:
+  - `runtime-api`: `1697` (repair ids carry `-s00-`), `1754` (`run_paused`), `1720`;
+  - `neo`: `353` (the prompt pack verifies, 33 entries) and `1753` (revision `1abe3666`).
+- **Lineage:** `deploy_id: dep_d413c36959ab`; logs read from docker for both sources.
+
+### React roll 2: `cyc_189cb78ce86b` / `run_2765fc519058`, 23:05 ET–00:13 ET. **Rejected, 20 of 21.**
+
+- **The signature:**
+  1. The frontend suite (`m006`'s `qa.test`, `src/__tests__/runs.test.jsx`) failed two RunDetail
+     tests: "displays run details, allows a successful join, then shows duplicate error", and
+     "displays a not-found message for an unknown run id".
+  2. Round 0 routed it to the **dev** repair. Its revision is an accepted anchored edit of
+     `frontend/src/views/RunDetail.jsx`, 132 of 4,311 characters (3%). Patch verification passed on
+     10 checks.
+  3. **The retest failed the same two tests**, so the repair was discarded, today's path.
+  4. Round 1's re-dispatched suite failed four. They were the same two behaviours, once in
+     `src/__tests__/runs.test.jsx` and again in a second copy of the suite the re-authoring wrote at
+     `src/tests/runs.test.jsx`.
+  5. The run ended `plan_defect` at round 1: "2 failure(s) carried from round 0 without progress (0
+     cleared, 2 added)". `vc-suite-passes` is adverse.
+- **Not the extraction's path.** Between v1.8.2 and `1abe3666`, the correction modules changed only
+  by #1697's round-id threading (`0739af1d`). The executor's own changes on this path are the same
+  threading. #1507's slices moved `execute_run`, `execute_cycle` and the framing gate, not the
+  repair, the retest or the repeat rule.
+- **A known signature.** The same `plan_defect` "carried without progress" rejection ended three
+  earlier counted rolls: 1.8.0 React roll 6, 1.8.0 Next.js roll 1, and 1.8.1 React roll 1. Across
+  the 97 counted rolls stored, 74 were accepted. 1.8.2's arm produced no rejection, so §3b's texture
+  clause, which covers only signatures 1.8.2's arm produced, does not apply by its letter.
+- **#1522 would not have changed it.** The retest cleared nothing.
+- **L1 holds:** no contentless emission, and no task timeout. `repeated_round_ids` was asked and
+  returned none.
+- **§3b's first row, by its letter:** functional yield can now be at most five of six, against the
+  registered six of six. The set was paused before roll 3 (00:14 ET) for the owner's ruling (§11d).
+
+### React roll 3: `cyc_cf13ebda0daa` / `run_cdf77319bdf2`, 03:05–03:56 ET. **Accepted, 21 of 21.**
+
+Zero correction rounds. There was no contentless emission and no task timeout.
+
+### React roll 4: `cyc_9727f1c382e2` / `run_ba96fad7b652`, 04:00–05:21 ET. **Rejected, 20 of 21.**
+
+- **The signature:** **one** frontend test failed in every round and every retest: "CreateRunView >
+  shows a validation message when required fields are empty". It took about 1,008 ms each time, so
+  the test's wait timed out on text the app never rendered.
+- **Three rounds:**
+  1. a dev repair, an accepted anchored edit of `frontend/src/views/CreateRunView.jsx` (201 of
+     2,886 characters, 7%);
+  2. a repair that added new files only;
+  3. a round routed `own_artifact`, to the qa suite.
+- The two retests each failed the same one test. The run ended "Max correction attempts (3)
+  exhausted", a signature earlier lines also produced.
+- **#1522 would not have changed it:** one failure, before and after.
+- **Not a 1.9 change.** For a counted roll, the agents' code is the code A′ ran:
+  - the prompt changes are #353's hash plumbing, with no fragment text changed;
+  - #1716's `held_through_pass` returns its input unchanged when no fault is declared, and a
+    counted roll declares none.
+
+  The runtime-api's correction path changed only by #1697's ids (§10, roll 2).
+- **Both React rejections are the same class:** a frontend view test whose wait timed out at about
+  a second, and which the repairs did not fix.
+
+### Next.js roll 1: `cyc_d23bc93670f6` / `run_ebc5f05b2108`, 05:25–06:18 ET. **Accepted, 14 of 14.** Zero correction rounds.
+
+### Next.js roll 2: `cyc_c3ab78540862` / `run_c85bc04b3b83`, 06:22–07:21 ET. **Accepted, 18 of 18.** Zero correction rounds.
+
+### The set's close: `all_six_ran`, 07:21 ET
+
+| claim (§3a, §3b) | reading |
+|---|---|
+| **L1** | **holds on every counted roll.** No contentless emission on any of the six |
+| **Behaviour held equal: functional yield** | **4 of 6** (React 2 of 4, Next.js 2 of 2), against the registered six of six. **Unmet by its letter.** The owner rules it at the cut (§11d) |
+| **Behaviour held equal: the mechanism** | Both rejections ran a path the extraction did not move (§10, rolls 2 and 4), on signatures earlier lines produced. React's pooled yield since 1.7.2 is 35 of 46 (76%); at that rate, 2 of 4 or worse has about a one-in-four chance. A′'s 4 of 4 had about one in three |
+| **Behaviour held equal: the diagnostics** | compile-loop, false-criterion, redelivery and both own-frame diagnostics read as on A′. Own-frame on Next.js took both of its runs (§10, d5) |
+| **Campaign readiness** | **YES on every row** (d4) |
+| **Round identity (#1697)** | **holds.** Distinct `-sNN-` ids on every correction task across the set. `repeated_round_ids` was asked and returned none on every record. Each refund named its own round. d6 read L4 directly where A′ needed a ruling |
+| **The dev lane reaches its seam (#1716)** | **Next.js: YES** (d8). **React: UNASKABLE** on this deploy; the fault never applied (§11c, #1774). It is re-read after the set |
+| **The contested result, the compile loop, redelivery** | as registered (d1, d2, d3) |
+
+- **N (§3c), as texture:** qa × React 4 (d3, d6); qa × Next.js 2 (d5); dev × React 0 (d7
+  UNASKABLE); dev × Next.js 0 (d8's transaction verified, but discarded at its retest and never
+  persisted).
+- **§3d′, the 1.9 mechanisms:**
+  - #1720: every counted and chain cycle carries `dep_d413c36959ab`;
+  - #1753: heartbeats matched at every launch from d3 on;
+  - #1745: every record read `docker` for both log sources;
+  - #353 is silent: the loaded check verified, and there was no `HashMismatchError`;
+  - #1754 is silent: no run paused;
+  - #1701: no duplicate transition warning.
+- **§9's drift, declared:**
+  - The image ids are §1's.
+  - The driver checkout moved from `7fdda5b1` to `93253694` after the diagnostics (§11b). The
+    driver and the counted configs are identical.
+  - **The tree merged during the set** (`7fdda5b1..main`, outside `docs/` and `sips/`):
+    - #1765's `convergence_replay` harness and its tests;
+    - the site and its release hook (#1770);
+    - the release builder's one-line fix and its test;
+    - `requirements/audit-ignore.txt` (#1777: three urllib3 advisories, accepted until the
+      post-set rebuild, #1776).
+
+    **Nothing under `src/` or `adapters/`** (`git diff 7fdda5b1 main -- src adapters` is empty).
+    #1522 (PR #1769) stays a draft.
+
 ## 11. Amendments after the first launch
 
 ### 11a. The diagnostics' records go to the 1.9 line's own directory (2026-09-30)
@@ -394,3 +674,51 @@ and 21:18 ET, the launches of d1 and d2.
 
 **Who ruled.** Mine, under §8, as in §11a: this corrects a docs amendment's timing, and no
 framework path, config the driver reads during a run, or reading moves.
+
+### 11c. The dev lane on FastAPI+React is read UNASKABLE on this deploy, and the set resumes (2026-09-30)
+
+**What changed.** §3d's rule stopped the set when `dev-lane-fastapi-react` did not reach its seam
+after two runs (§10, d7). The miss is a defect in the diagnostic's own fault, not a framework
+finding. The fault keys on a literal `/join` path, and both runs' authored manifests named the join
+otherwise (#1774). So:
+- d7 is recorded **UNASKABLE on this deploy**. It is neither cleared nor a falsification of §3b. The
+  extraction's claim is unaffected, since no seam the extraction moved was asked.
+- **The set resumes as registered:** `dev-lane-nextjs` (d8, whose fault keys on a `join/route.ts`
+  path, the naming most Next.js manifests use), then the six counted rolls.
+- **#1774 is fixed in the rebuild that #1522 needs after the set**, and both dev-lane diagnostics are
+  re-run on that deploy. #1716's prediction is read there, outside this registration, and stated as
+  such.
+- This is not the shakeout loop's "a finding becomes a fix, and the deploy moves" (§6). The finding
+  is in the test harness, and moving the deploy for it would void eight diagnostic readings to
+  re-ask none of the extraction's questions.
+
+**Evidence.** §10's d7 reading, the two records `dev-lane-fastapi-react/shakeout-20260930T131528Z.json`
+and `…140834Z.json`, and #1774.
+
+**Who ruled.** The owner, 2026-09-30 at 21:06 ET, choosing "Ruled unaskable, resume" from the
+options presented: this, a fix with a re-registration, or skipping d8 as well. Precedent: 1.8.2
+§11h, where the dev lane on A′ was ruled unreachable by construction and the set continued. The set
+resumed at 21:06 ET with d8.
+
+### 11d. React roll 2's rejection: the counted set resumes, and the yield bar is ruled at the cut (2026-10-01)
+
+**What changed.** §3b says a falsified prediction stops the set. Roll 2's rejection makes the
+registered yield, six of six at 1.8.2's level, unreachable. The set was paused before roll 3 with
+the STOP file at 00:14 ET, and the reading went to the owner.
+- The rejection's path is unchanged in 1.9 except for round ids.
+- Its signature is one 1.8.0 and 1.8.1 rolls produced.
+- #1522 would not have changed it.
+
+**The ruling.**
+- Rolls 3–6 run as registered.
+- Roll 2 is recorded as a rejection on a known signature, on a path the extraction did not move.
+- **The yield bar is ruled at the cut**, on all six rolls, with this reading beside it. It is not
+  read as met. The cut record states the yield as measured.
+- The counted set resumed at 03:05 ET with roll 3 (`cyc_cf13ebda0daa`).
+
+**Evidence.** §10's roll 2 reading: the record `1-9-0-fastapi-react/roll-02-20261001T041300Z.json`,
+the vault's three test reports for `m006` and its retest, and `git log v1.8.2..1abe3666` on the
+correction modules.
+
+**Who ruled.** The owner, 2026-10-01 at 03:05 ET, choosing "Resume all four, rule at cut" over
+"resume, stop on another rejection" and "stop the set now".

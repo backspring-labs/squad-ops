@@ -80,6 +80,14 @@ class RunTestsResult:
     # silently. Reported, not verdict-changing (promotion to a blocking check is a
     # deliberate decision, not a side effect of detection).
     uncollected_test_files: tuple[str, ...] = ()
+    # #1784: runtime errors vitest caught OUTSIDE a failing test's own assertion — thrown in an
+    # event handler, a render, a rejected promise — each as the lines that name it (the error,
+    # the first frame in project code with its source line, and the test vitest says was
+    # running). The failing test itself shows only the symptom, a `waitFor` that timed out;
+    # both rejected counted rolls of the 1.9 set were diagnosed from that symptom while the
+    # TypeError that caused it sat unread in the report. Empty for pytest, which reports an
+    # error inside the test that raised it.
+    unhandled_errors: tuple[str, ...] = ()
 
     @property
     def tests_passed(self) -> bool:
@@ -447,6 +455,8 @@ async def run_node_tests(
             # forbade from touching the file (1.7.1 React roll 4, R2 falsified).
             suite_defects=tuple(suite_defects(failure_rows, source_files, "vitest")),
             uncollected_test_files=tuple(uncollected),
+            # #1784: vitest prints the summary on stdout and each error's block on stderr.
+            unhandled_errors=tuple(parse_vitest_unhandled_errors(f"{stdout}\n{stderr}")),
         )
 
     except Exception as exc:
@@ -833,6 +843,15 @@ def failed_tests_pass_row(
         # whole file (1.6.6 React roll 6, two failing cases of four). Bounded: identity
         # plus the first message, so a hundred-case red cannot flood the row.
         "failing_cases": failing_cases(result.test_failures),
+        # #1784: a runtime error the test run caught outside any assertion rides the
+        # row's ``app_traceback``, the field #687 hoists into the evidence the analyzer
+        # reads and #788 renders into the repair prompt. The failing case above shows only
+        # the timeout it caused.
+        **(
+            {"app_traceback": "\n\n".join(result.unhandled_errors)}
+            if result.unhandled_errors
+            else {}
+        ),
     }
 
 
@@ -1325,6 +1344,75 @@ _VITEST_TEXT_CASE = re.compile(
 )
 
 
+#: #1784: the header vitest prints above each runtime error it caught outside a test's own
+#: assertion. "Unhandled Errors" (plural) is the summary above them all and is not a block.
+_VITEST_UNHANDLED_HEADER = re.compile(
+    r"^⎯+ (?:Unhandled Rejection|Uncaught Exception|Unhandled Error) ⎯+\s*$"
+)
+#: A vitest stack frame, ``❯ <function> <path>:<line>:<col>`` (the function is optional).
+_VITEST_FRAME = re.compile(r"^\s*❯ (?:\S+ )?(?P<loc>\S+:\d+:\d+)\s*$")
+#: vitest's code frame under a stack frame: ``  118|  source`` and the caret line ``   |   ^``.
+_VITEST_CODE_FRAME = re.compile(r"^\s+\d*\|")
+_VITEST_UNHANDLED_NOTES = ("This error originated in", "The latest test that might've caused")
+_VITEST_UNHANDLED_LIMIT = 3
+_VITEST_UNHANDLED_CHARS = 1500
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def parse_vitest_unhandled_errors(output: str) -> list[str]:
+    """Each runtime error vitest caught outside a failing test's assertion, as its own lines
+    (#1784), at most three and identical ones once.
+
+    A block keeps:
+    - the error;
+    - the first frame in project code, not ``node_modules``, with the source line vitest shows
+      under it;
+    - vitest's own note of the test that was running.
+
+    Those name the defect. The framework frames under them do not. A view that throws in
+    an event handler under jsdom leaves its test failing on a timeout, and this is the only
+    place the cause is printed (1.9 React roll 4: ``form.datetime.value`` at
+    ``CreateRunView.jsx:17``; roll 2: ``run.participants.length`` at ``RunDetail.jsx:118``).
+    """
+    lines = _ANSI.sub("", output or "").splitlines()
+    blocks: list[str] = []
+    seen: set[tuple[str, str]] = set()
+    i = 0
+    while i < len(lines) and len(blocks) < _VITEST_UNHANDLED_LIMIT:
+        header = _VITEST_UNHANDLED_HEADER.match(lines[i])
+        if header is None:
+            i += 1
+            continue
+        kind = lines[i].strip("⎯ ").strip()
+        j = i + 1
+        body: list[str] = []
+        while j < len(lines) and not lines[j].startswith("⎯"):
+            body.append(lines[j])
+            j += 1
+        i = j
+        error = next((line.strip() for line in body if line.strip()), "")
+        kept, frame, in_frame = [], "", False
+        for line in body:
+            located = _VITEST_FRAME.match(line)
+            if located:
+                in_frame = not frame and "node_modules" not in located.group("loc")
+                if in_frame:
+                    frame = located.group("loc")
+                    kept.append(line.rstrip())
+                continue
+            if in_frame and _VITEST_CODE_FRAME.match(line):
+                kept.append(line.rstrip())
+                continue
+            in_frame = False
+            if line.strip().startswith(_VITEST_UNHANDLED_NOTES):
+                kept.append(line.strip())
+        if not error or (error, frame) in seen:
+            continue
+        seen.add((error, frame))
+        blocks.append("\n".join([f"{kind}: {error}", *kept])[:_VITEST_UNHANDLED_CHARS])
+    return blocks
+
+
 def parse_vitest_failure_text(stdout: str) -> list[dict]:
     """Per-failure rows from vitest's text output — the fallback when no JSON report was
     written, and the shape every stored ``test_report.md`` carries for replay (#1123).
@@ -1540,6 +1628,10 @@ async def run_fullstack_tests(
         uncollected_test_files=(
             tuple(backend_result.uncollected_test_files)
             + tuple(frontend_result.uncollected_test_files)
+        ),
+        # #1784: evidence, so both sides, for #1305's reason above.
+        unhandled_errors=(
+            tuple(backend_result.unhandled_errors) + tuple(frontend_result.unhandled_errors)
         ),
         stdout="\n\n".join(combined_stdout_parts)[:_STDOUT_LIMIT],
         stderr="\n\n".join(combined_stderr_parts)[:_STDOUT_LIMIT],
