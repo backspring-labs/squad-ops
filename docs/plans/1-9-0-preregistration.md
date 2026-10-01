@@ -1,5 +1,7 @@
 # 1.9.0 — pre-registration (plan §4, §3.6)
 
+**Rev 11 (2026-10-01): the post-set runs read (§12), the yield bar ruled (§11e), and the cut record (§13).**
+
 **Rev 10 (2026-10-01): React rolls 3–4 and both Next.js rolls read; the set closes (§10).**
 
 **Rev 9 (2026-10-01): React rolls 1 and 2 read; the set paused on roll 2's rejection and resumed on the owner's ruling (§11d).**
@@ -723,6 +725,40 @@ correction modules.
 **Who ruled.** The owner, 2026-10-01 at 03:05 ET, choosing "Resume all four, rule at cut" over
 "resume, stop on another rejection" and "stop the set now".
 
+### 11e. The yield bar: the cut proceeds at four of six, with the rejections' root cause split into two fixes (2026-10-01)
+
+**What changed.** §3a registers functional yield held equal to 1.8.2, six of six. The set measured
+four of six (§10, the set's close), and §11d left the ruling to the cut.
+
+**The reading the ruling rests on.** Both rejections have one root cause, read from the vault's
+stored test reports. In each, a frontend view threw a `TypeError` during the test. Vitest printed it
+only in its "Uncaught Exception" / "Unhandled Rejection" block, which nothing read. The failure
+analysis saw only the `waitFor` timeouts the throw caused, and every repair aimed at those.
+- **Roll 4:** the view read `form.datetime.value`, and jsdom does not expose a form's controls as named
+  properties.
+- **Roll 2:** the test rendered `<RunDetail/>` without its `<Route path="/runs/:run_id">`. `useParams`
+  was empty, the fetch went to `/runs/undefined`, the mock answered `{}`, and
+  `run.participants.length` threw.
+
+Neither path was moved by the extraction (§10, rolls 2 and 4).
+
+**The ruling.**
+- The cut proceeds with the yield as measured: **four of six, recorded as unmet by its letter**,
+  not as met.
+- The root cause is addressed by two fixes:
+  - **#1784**, the evidence: vitest's unhandled errors reach the failing row as `app_traceback`, and
+    from there the analysis and the repair. Merged (PR #1786) and on the post-set deploy (§12).
+  - **#1785**, the prevention: the two jsdom pitfalls, shown in the develop and qa prompts. In 2.0
+    (plan §7b item 2).
+- No counted roll is added to the set. The post-set roll (§12) is texture and does not count toward
+  the yield.
+
+**Evidence.** §10's readings of rolls 2 and 4; the vault's test reports for both rolls; #1784's
+issue; plan rev 7 §7b item 2.
+
+**Who ruled.** The owner, 2026-10-01: "with our root causing broken into those two fixes, I think
+I've already made the call on the 6/6."
+
 ## 12. After the set: the post-set deploy and its runs (registered 2026-10-01, before the rebuild)
 
 These runs are **outside the set's registration** (§11c, §11d). The set's readings stand as they
@@ -779,3 +815,147 @@ are. Nothing here re-reads or replaces them.
 - L1 is read on it as on every counted roll.
 - The yield ruling at the cut reads the set's six rolls (§11d), not this one.
 
+**Readings, appended as they land.**
+
+#### Post-set run 1: `dev-lane-fastapi-react`, run 1. `cyc_d95e002a2bc6` / implementation `run_f3e52ad54de2`, 15:27–16:27 ET. **Cleared on run 1: the dev lane reached its seam on React.**
+
+- **#1774: holds.** The fault applied to the develop task that writes the declared join
+  (`task-run_f3e52ad5-m000-development.develop`, 3,914→3,943 characters). The join probe failed.
+  The correction was narrowed to the probe-owned slot (`backend/routes.py`, #1015), and the dev
+  repair's anchored edit (5% of the file) was applied. `seam_reached: true`. This is #1716's
+  prediction, read on React for the first time; d7 could not ask it on the set's deploy (§11c).
+- **#1784: silent, as predicted.** No stored test report carries an unhandled-error block, and no
+  row carries `app_traceback`.
+- **#1522: silent, as predicted.** `progress_kept` was asked and is empty. Both repairs were
+  accepted, so nothing was discarded.
+- **The run:** accepted, 21 of 21, the boot audit PASS, and 2 correction rounds:
+  - round 1 was the fault: the join handler returned only `{id}` against its declared model
+    (`ResponseValidationError`, HTTP 500);
+  - round 2 was a frontend join test whose call read `/runs/undefined/join`. It was an assertion
+    failure, not a thrown error, and an anchored dev edit to `RunDetailView.jsx` (2%) fixed it.
+- L1: no contentless emission of 22. Round ids: none repeated. No task failed at its wait.
+- **N, as texture:** dev × React 2 (the two anchored dev repairs, 5% and 2%).
+
+#### Post-set run 2: `dev-lane-nextjs`, run 1. `cyc_8daf320a41fb` / implementation `run_ea1fa70d813f`, 16:31–17:48 ET. **Cleared on run 1.**
+
+- **#1774: holds.** The fault applied to the develop task that writes the join
+  (`task-run_ea1fa70d-m002-development.develop`, 1,291→1,335 characters). This design named it
+  `…/join` (`app/api/runs/[run_id]/join/route.ts`), so the new `POST …/participants` branch was not
+  the one exercised. The join probe failed ("response missing key(s): [title, datetime,
+  meetingLocation, participants, createdAt]"). The correction was narrowed to the join route, and
+  the dev repair's anchored edit (6% of the file) was applied. `seam_reached: true`.
+- **The dev repair persisted.** It was accepted, and verified equals persisted (SIP-0107 §20). d8's
+  transaction on the set's deploy was verified but discarded at its retest (§10), so this is a
+  dev × Next.js transaction that persisted.
+- **#1784: silent, as predicted.** No stored test report carries an unhandled-error block.
+- **#1522: silent, as predicted.** `progress_kept` was asked and is empty.
+- **The run:** accepted, 18 of 18, the boot audit PASS, 1 correction round (the fault's).
+- L1: no contentless emission of 25. Round ids: none repeated. No task failed at its wait.
+- **N, as texture:** dev × Next.js 1 (6%).
+
+#### Post-set run 3: the counted FastAPI+React roll. `cyc_7a4b7a6fbf0e` / implementation `run_f0424d18987b`, 17:52–18:42 ET. **Accepted, 21 of 21.** Zero correction rounds.
+
+- The boot audit PASS, and no intervention: functional.
+- **L1 holds:** no contentless emission of 16 logged. No task failed at its wait, and no round id
+  repeated.
+- **#1522 and #1784: silent, and unexercised.** With no correction round there was no retest to
+  keep and no failing test report to read. `progress_kept` is UNASKABLE for that reason ("no
+  correction round"), and no stored test report carries an unhandled-error block.
+- The pins held as registered: config hash `a79f58658cd8` and snapshot `2d8d4feb3519` on the
+  cycle; the driver's identity matched every image id.
+
+#### The post-set close, 18:42 ET
+
+| change | prediction (§12) | reading |
+|---|---|---|
+| **#1774** | the fault applies on the declared join, and the dev-lane seam is reached on React within the budget | **holds.** Applied and reached on the first run of both stacks. On React, #1716's prediction read YES, where d7 could not ask it on the set's deploy |
+| **#1784** | silent unless a frontend view throws | **silent.** No view threw in any of the three runs. The path that would carry it, a thrown view, did not occur, so it is **not exercised** on a live cycle. Its wiring test enters at `run_node_tests` with roll 2's and roll 4's stored outputs (PR #1786) |
+| **#1522** | silent | **silent.** Every repair in the two diagnostics was accepted, and the roll had none, so no strict reduction occurred to keep. **Not exercised** on a live cycle; its replay of the stored rounds saw none in 96 (#1764) |
+| **#1776** | no behaviour change; the audit clean | **holds.** Main's `dependency audit` green on every run since #1783 |
+
+- **All three cycles carry `deploy_id: dep_23e742c972e7`** (#1720), and every agent's heartbeat
+  read `8a058dc3` with `revision_matches_deploy: True` before the first launch and after the last run.
+- **N, as texture:** dev × React 2, dev × Next.js 1, qa × React 0, qa × Next.js 0. Each of the
+  three dev transactions was verified and persisted, and rewrote at most 6% of its file. SIP-0107
+  §46r carries them beside the set's count.
+- **What these runs cannot say.** Three runs on one deploy. They show #1774's fix reaching its seam
+  on both stacks, and they show neither behaviour change misfiring. They do not show either one
+  changing an outcome: neither change's case occurred.
+
+---
+
+## 13. The cut record (2026-10-01)
+
+**The three gates (plan §3.6):**
+- **Implementation: met.**
+  - #1697 landed first and alone, and read on re-runs of A′'s d3 and d6 before #1507 started (plan
+    §3.1's result, #1747).
+  - The three #1507 slices merged, each with main read green (#1748, #1749, #1750). The completion
+    boundary is named, `CycleCompletion`, and every way a cycle ends reaches it by a wiring test.
+  - §3.3's instruments merged before the deploy: #1714, #1718, #1696, #1724, #1716 and the
+    Prefect-log fallback (#1745).
+  - The named debts landed by §3.4's rules: #353, #1448, #1701, #1691, #1732, and #1720 and #1722
+    by decision 1. #1754 joined (§7a item 6).
+  - After the set: #1522 (decision 3; §7b item 3), #1774, #1776 and #1784 (§7b item 2), on the
+    post-set deploy (§12).
+- **Experimental: met except functional yield, which the owner ruled (§11e).**
+  - **L1 held on every counted roll.**
+  - **Functional yield: four of six**, against six of six. **Unmet by its letter** and recorded so.
+    The owner's ruling (§11e) cuts at four of six, with the two rejections' one root cause split
+    into #1784 (in this release) and #1785 (2.0).
+  - The `unattended-chain` read YES on every row of 1.8.2's claim (d4).
+  - `redelivery` and `compile-loop` read as predicted (d3, d1).
+  - #1697's prediction reads: distinct ids on every correction task, each refund joined to its own
+    dispatch, and `repeated_round_ids` empty on every record.
+- **Evidence: met at the record; the Release attachment and hygiene are steps 7 and 8.**
+  - Every record is three-state, and the marker self-check passed at every launch.
+  - The readouts came from the durable log store. Every record read `docker` for both log sources,
+    since no rebuild fell inside a cycle, so the Prefect fallback (#1745) was never needed.
+  - Every record was written under the main checkout's `var/`.
+
+**Drops, by §3.8, each with its home:**
+- **The ops rider: resolved, not dropped.** #176 and #1176 closed with their readings. #1177,
+  #1408 and #1412 were retired as not planned (§7a item 5).
+- **#1039, partly delivered.** The site shows what a cycle delivers, generated from the newest
+  release package. The remainder, a LangFuse screenshot and the home page's hierarchy, goes to
+  2.0's idle-box time.
+- **#567 → 2.0.** Its gate could not run, because no complete emission is stored (§3.4; #1756).
+- **#1522 and the convergence replay** were not dropped: #1522 merged (§7b item 3), and the replay
+  read (#1764).
+- **#1469 → 2.0, still blocked on its corpus.** Re-read at the cut, as §5 places it: across the
+  vault the frontend build check has 1,809 passed, 6 failed and 2 skipped evaluations. The 6 are
+  the same 6 as at the 1.8.2 cut, all Next.js type errors. None is the unresolved-import shape its
+  parser targets, and none is on React/Vite.
+
+**Moved by ruling, not by capacity:** #1031 (§7a item 8), #414 (§7b item 1) and #1785 (§7b item 2)
+to 2.0. **Unplaced and proposed for 2.0's instruments:** #1756 and #1788 (the replay keeps no raw
+response, filed during #1764).
+
+**Drift the record declares (§9):**
+- **Config hashes:** `a79f58658cd8` (React) and `8e730c8ea169` (Next.js), unmoved from 1.8.2.
+- **Squad snapshot:** unmoved at `2d8d4feb3519a7ec`.
+- **Image ids:** the set's (§1) all differ from A′'s. The post-set deploy's (§12) all differ from
+  the set's.
+
+**What the cut evidence does not cover:**
+- **The set validated `1abe3666`. The tagged tree carries three code changes since, plus one
+  dependency:**
+  - #1774 (`98176e8a`), the dev-lane fault's join detection. Diagnostic-only: it changes what an
+    injected fault bites, and nothing on a counted path.
+  - #1784 (`2a0fb2ed`), vitest's unhandled errors in the failure evidence. **Behavioural**: it adds
+    to what the failure analysis and a repair are shown, when a view throws.
+  - #1522 (`8a058dc3`), a repair that makes progress is kept. **Behavioural**: a strict reduction
+    is no longer discarded.
+  - #1776, urllib3 2.8.0, in every image.
+
+  These ran on the post-set deploy (`8a058dc3`, `dep_23e742c972e7`): two dev-lane diagnostics
+  and one counted React roll, all three accepted (§12, the post-set close). #1774 reached its seam
+  on both stacks. **#1784 and #1522 were silent and unexercised:** no view threw, and no repair's
+  retest made partial progress. So the tagged tree's two behavioural changes rest on their tests
+  (#1784's enter at `run_node_tests` with roll 2's and roll 4's stored outputs), and on three live
+  cycles where neither misfired. **No live cycle has shown either one changing an outcome.** The set's yield and L1 readings are of `1abe3666`, not
+  of the tagged tree; the post-set roll held L1 on `8a058dc3`.
+- **The rest is additive and changes no reading:** the convergence replay harness and its tests,
+  the site and its release hook, the release builder's one-line fix, the configs and docs.
+- **This line measured one PRD (group_run) on one model (qwen3.8:27b).** The completion boundary
+  is shown exercised by the set's runs and its wiring tests. Campaign's use of it is 2.0's.
