@@ -1,5 +1,7 @@
 # 1.9.0 — pre-registration (plan §4, §3.6)
 
+**Rev 9 (2026-10-01): React rolls 1 and 2 read; the set paused on roll 2's rejection and resumed on the owner's ruling (§11d).**
+
 **Rev 8 (2026-09-30): d8 read; the diagnostics close, §11b executed, the counted set opens (§10).**
 
 **Rev 7 (2026-09-30): d7 read (§10); the set stopped on it and resumed on the owner's ruling (§11c).**
@@ -506,6 +508,44 @@ Record `dev-lane-nextjs/shakeout-20261001T020536Z.json`. The set resumed with th
 - **The counted set launched at 22:07 ET.** Roll 1 is `cyc_20a01ea59964`, with HEAD pinned at
   `93253694` and config hash `a79f58658cd8`.
 
+### React roll 1: `cyc_20a01ea59964`, 22:07–23:01 ET. **Accepted, 21 of 21.**
+
+- **Outcome:** zero correction rounds, no contentless emission (L1 holds), no task timeout.
+- **1.9's loaded checks are the deployed code.** The record's preflight compared each one with this
+  registration's pin, and all matched:
+  - `runtime-api`: `1697` (repair ids carry `-s00-`), `1754` (`run_paused`), `1720`;
+  - `neo`: `353` (the prompt pack verifies, 33 entries) and `1753` (revision `1abe3666`).
+- **Lineage:** `deploy_id: dep_d413c36959ab`; logs read from docker for both sources.
+
+### React roll 2: `cyc_189cb78ce86b` / `run_2765fc519058`, 23:05 ET–00:13 ET. **Rejected, 20 of 21.**
+
+- **The signature:**
+  1. The frontend suite (`m006`'s `qa.test`, `src/__tests__/runs.test.jsx`) failed two RunDetail
+     tests: "displays run details, allows a successful join, then shows duplicate error", and
+     "displays a not-found message for an unknown run id".
+  2. Round 0 routed it to the **dev** repair. Its revision is an accepted anchored edit of
+     `frontend/src/views/RunDetail.jsx`, 132 of 4,311 characters (3%). Patch verification passed on
+     10 checks.
+  3. **The retest failed the same two tests**, so the repair was discarded, today's path.
+  4. Round 1's re-dispatched suite failed four. They were the same two behaviours, once in
+     `src/__tests__/runs.test.jsx` and again in a second copy of the suite the re-authoring wrote at
+     `src/tests/runs.test.jsx`.
+  5. The run ended `plan_defect` at round 1: "2 failure(s) carried from round 0 without progress (0
+     cleared, 2 added)". `vc-suite-passes` is adverse.
+- **Not the extraction's path.** Between v1.8.2 and `1abe3666`, the correction modules changed only
+  by #1697's round-id threading (`0739af1d`). The executor's own changes on this path are the same
+  threading. #1507's slices moved `execute_run`, `execute_cycle` and the framing gate, not the
+  repair, the retest or the repeat rule.
+- **A known signature.** The same `plan_defect` "carried without progress" rejection ended three
+  earlier counted rolls: 1.8.0 React roll 6, 1.8.0 Next.js roll 1, and 1.8.1 React roll 1. Across
+  the 97 counted rolls stored, 74 were accepted. 1.8.2's arm produced no rejection, so §3b's texture
+  clause, which covers only signatures 1.8.2's arm produced, does not apply by its letter.
+- **#1522 would not have changed it.** The retest cleared nothing.
+- **L1 holds:** no contentless emission, and no task timeout. `repeated_round_ids` was asked and
+  returned none.
+- **§3b's first row, by its letter:** functional yield can now be at most five of six, against the
+  registered six of six. The set was paused before roll 3 (00:14 ET) for the owner's ruling (§11d).
+
 ## 11. Amendments after the first launch
 
 ### 11a. The diagnostics' records go to the 1.9 line's own directory (2026-09-30)
@@ -590,3 +630,26 @@ and `…140834Z.json`, and #1774.
 options presented: this, a fix with a re-registration, or skipping d8 as well. Precedent: 1.8.2
 §11h, where the dev lane on A′ was ruled unreachable by construction and the set continued. The set
 resumed at 21:06 ET with d8.
+
+### 11d. React roll 2's rejection: the counted set resumes, and the yield bar is ruled at the cut (2026-10-01)
+
+**What changed.** §3b says a falsified prediction stops the set. Roll 2's rejection makes the
+registered yield, six of six at 1.8.2's level, unreachable. The set was paused before roll 3 with
+the STOP file at 00:14 ET, and the reading went to the owner.
+- The rejection's path is unchanged in 1.9 except for round ids.
+- Its signature is one 1.8.0 and 1.8.1 rolls produced.
+- #1522 would not have changed it.
+
+**The ruling.**
+- Rolls 3–6 run as registered.
+- Roll 2 is recorded as a rejection on a known signature, on a path the extraction did not move.
+- **The yield bar is ruled at the cut**, on all six rolls, with this reading beside it. It is not
+  read as met. The cut record states the yield as measured.
+- The counted set resumed at 03:05 ET with roll 3 (`cyc_cf13ebda0daa`).
+
+**Evidence.** §10's roll 2 reading: the record `1-9-0-fastapi-react/roll-02-20261001T041300Z.json`,
+the vault's three test reports for `m006` and its retest, and `git log v1.8.2..1abe3666` on the
+correction modules.
+
+**Who ruled.** The owner, 2026-10-01 at 03:05 ET, choosing "Resume all four, rule at cut" over
+"resume, stop on another rejection" and "stop the set now".
