@@ -1,5 +1,7 @@
 # 1.9.0 — pre-registration (plan §4, §3.6)
 
+**Rev 7 (2026-09-30): d7 read (§10); the set stopped on it and resumed on the owner's ruling (§11c).**
+
 **Rev 6 (2026-09-30): d5 and d6 read (§10).**
 
 **Rev 5 (2026-09-30): d4 read (§10).**
@@ -429,6 +431,28 @@ Record `own-frame-then-prose-repair/shakeout-20260930T120814Z.json`.
 - qa × Next.js: 2 (d5);
 - dev × React and dev × Next.js: their diagnostics are next.
 
+### d7: `dev-lane-fastapi-react`. **Not reached after two runs: the fault never applied. Ruled UNASKABLE on this deploy (§11c).**
+
+**Run 1:** `cyc_1e1c9364efe3` / `run_f59e47975fd7`, 08:12–09:15 ET. **Run 2:** `cyc_7a67a1c5b903` /
+`run_a7a8b0253361`, 09:19–10:08 ET. Both were accepted, 20 of 20. Run 1 had one correction round,
+on a qa suite; run 2 had none.
+
+- **The fault did not bite in either run.** `dev_join_response_omits_declared_fields` logged
+  `DID NOT BITE … emission_unchanged` on all four develop tasks of each run. #1718's instrument read
+  it, and the seam is UNASKABLE, "neither YES nor NO" (#1588).
+- **Why:** the fault finds the join handler by a literal path, a `/join` decorator in Python. Both
+  runs' authored manifests named the join `POST /runs/{run_id}/participants` ("join a run with a
+  participant name"), with leave as `DELETE /runs/{run_id}/participants/{participant_name}`. There
+  was no `/join` route to rewrite.
+- **How often:** 344 of the 395 manifests in the vault name a `/join` path, and 23 name the join as
+  a `/participants` collection. Those 23 come from counted rolls and diagnostics alike, so this
+  diagnostic does not push toward the naming. Two in a row was chance, on a defect: the fault should
+  key on the join the manifest declares. That is **#1774**.
+- **The set stopped** at 10:08 ET on §3d's rule. It was resumed on the owner's ruling (§11c).
+- **#1716's prediction is not read on this deploy.** The fault's defect never entered a develop
+  emission, so whether it survives self-evaluation was not asked. The dev × React cell stays empty
+  here.
+
 ## 11. Amendments after the first launch
 
 ### 11a. The diagnostics' records go to the 1.9 line's own directory (2026-09-30)
@@ -488,3 +512,28 @@ and 21:18 ET, the launches of d1 and d2.
 
 **Who ruled.** Mine, under §8, as in §11a: this corrects a docs amendment's timing, and no
 framework path, config the driver reads during a run, or reading moves.
+
+### 11c. The dev lane on FastAPI+React is read UNASKABLE on this deploy, and the set resumes (2026-09-30)
+
+**What changed.** §3d's rule stopped the set when `dev-lane-fastapi-react` did not reach its seam
+after two runs (§10, d7). The miss is a defect in the diagnostic's own fault, not a framework
+finding. The fault keys on a literal `/join` path, and both runs' authored manifests named the join
+otherwise (#1774). So:
+- d7 is recorded **UNASKABLE on this deploy**. It is neither cleared nor a falsification of §3b. The
+  extraction's claim is unaffected, since no seam the extraction moved was asked.
+- **The set resumes as registered:** `dev-lane-nextjs` (d8, whose fault keys on a `join/route.ts`
+  path, the naming most Next.js manifests use), then the six counted rolls.
+- **#1774 is fixed in the rebuild that #1522 needs after the set**, and both dev-lane diagnostics are
+  re-run on that deploy. #1716's prediction is read there, outside this registration, and stated as
+  such.
+- This is not the shakeout loop's "a finding becomes a fix, and the deploy moves" (§6). The finding
+  is in the test harness, and moving the deploy for it would void eight diagnostic readings to
+  re-ask none of the extraction's questions.
+
+**Evidence.** §10's d7 reading, the two records `dev-lane-fastapi-react/shakeout-20260930T131528Z.json`
+and `…140834Z.json`, and #1774.
+
+**Who ruled.** The owner, 2026-09-30 at 21:06 ET, choosing "Ruled unaskable, resume" from the
+options presented: this, a fix with a re-registration, or skipping d8 as well. Precedent: 1.8.2
+§11h, where the dev lane on A′ was ruled unreachable by construction and the set continued. The set
+resumed at 21:06 ET with d8.
