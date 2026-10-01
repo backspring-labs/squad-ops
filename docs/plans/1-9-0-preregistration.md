@@ -559,11 +559,15 @@ Zero correction rounds. There was no contentless emission and no task timeout.
 - **The signature:** **one** frontend test failed in every round and every retest: "CreateRunView >
   shows a validation message when required fields are empty". It took about 1,008 ms each time, so
   the test's wait timed out on text the app never rendered.
-- **Three rounds:**
-  1. a dev repair, an accepted anchored edit of `frontend/src/views/CreateRunView.jsx` (201 of
+- **Three rounds,** in the order the run's Prefect timeline shows them (corrected at the cut; this
+  reading first listed them out of order, and did not name the builder's):
+  1. the builder's: `builder.assemble` failed, and its repair added new files only;
+  2. a dev repair, an accepted anchored edit of `frontend/src/views/CreateRunView.jsx` (201 of
      2,886 characters, 7%);
-  2. a repair that added new files only;
-  3. a round routed `own_artifact`, to the qa suite.
+  3. a round routed `own_artifact`, to the qa suite: an accepted anchored edit of
+     `frontend/src/__tests__/runs.test.jsx` (2%).
+
+  So two rounds aimed at the failing test.
 - The two retests each failed the same one test. The run ended "Max correction attempts (3)
   exhausted", a signature earlier lines also produced.
 - **#1522 would not have changed it:** one failure, before and after.
@@ -733,7 +737,8 @@ four of six (§10, the set's close), and §11d left the ruling to the cut.
 **The reading the ruling rests on.** Both rejections have one root cause, read from the vault's
 stored test reports. In each, a frontend view threw a `TypeError` during the test. Vitest printed it
 only in its "Uncaught Exception" / "Unhandled Rejection" block, which nothing read. The failure
-analysis saw only the `waitFor` timeouts the throw caused, and every repair aimed at those.
+analysis saw only the `waitFor` timeouts the throw caused, and every repair of the failing test
+aimed at those (roll 4's first round was the builder's, §10).
 - **Roll 4:** the view read `form.datetime.value`, and jsdom does not expose a form's controls as named
   properties.
 - **Roll 2:** the test rendered `<RunDetail/>` without its `<Route path="/runs/:run_id">`. `useParams`
