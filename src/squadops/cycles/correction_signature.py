@@ -21,6 +21,7 @@ artifacts, and the abort.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from squadops.cycles.failure_evidence import FailureEvidenceCategory, derive_failure_category
@@ -192,6 +193,50 @@ def classify_movement(
     if current > previous:
         return MOVEMENT_EXPANSION
     return MOVEMENT_SHIFTED
+
+
+@dataclass(frozen=True)
+class RetestReduction:
+    """A repair's retest that cleared some of its round's failures and added none (#1522)."""
+
+    before: frozenset[tuple[str, str, str]]
+    after: frozenset[tuple[str, str, str]]
+
+    @property
+    def cleared(self) -> frozenset[tuple[str, str, str]]:
+        return self.before - self.after
+
+
+def retest_reduction(
+    round_evidence: dict[str, Any],
+    retest_evidence: dict[str, Any],
+    retest_evaluated: frozenset[str],
+) -> RetestReduction | None:
+    """The retest's failures as ``MOVEMENT_PROGRESS`` against the round's, or ``None`` (#1522).
+
+    A repair whose retest does not pass is discarded, and the failed task is re-dispatched
+    against the tree without it. When the retest cleared some failures and added none, that
+    throws away progress, and the next round's signature measures the unrepaired app (1.7.5
+    React roll 3: 7 → 4, 9 → 4 and 5 → 3, each repair discarded). This names the one case
+    worth keeping. It is the movement table's own ``progress`` class, taken between the round
+    and its retest rather than between two rounds.
+
+    ``None`` whenever the comparison cannot be trusted:
+    - either side has no product signature (an infra round, or a retest with no failing row);
+    - the retest added a failure, cleared nothing, or shifted;
+    - the retest did not evaluate a check the round failed (``retest_evaluated`` holds the
+      check ids its rows carry). A failure the retest never looked at would otherwise read as
+      cleared.
+    """
+    before = failure_signature(round_evidence)
+    after = failure_signature(retest_evidence)
+    if not before or not after:
+        return None
+    if classify_movement(before, after) != MOVEMENT_PROGRESS:
+        return None
+    if not {check for check, _, _ in before} <= retest_evaluated:
+        return None
+    return RetestReduction(before=before, after=after)
 
 
 def carried_failures(

@@ -1298,3 +1298,73 @@ tree. So building change 4 as intended means **giving the repairs a self-evaluat
 model calls inside every repair, beside the §22 refusal retry, with a depth to choose. That is a
 behavioural change the plan (§3.3) doesn't settle, so it waits for the owner's ruling rather than
 being read into the text.
+
+### 12b. 2026-09-30 — a repair that makes progress is kept, and the next round starts from its retest (#1522)
+
+**Ruled.** 1.9.0 plan §7 decision 3: #1522 is kept for 1.9 and lands only after the extraction's set
+has read, with its own counted roll. The owner ruled on 2026-09-29: "ok good with all
+recommendations". The design is on #1522 (issuecomment-5903396500). It changed while being built;
+**What changed from the posted design** below says how.
+
+**What was built before.** A correction repair whose retest does not pass is discarded, and the
+failed task is re-dispatched against the tree without it (`patch_acceptance.py`, the retest block
+returning `None` → `"continue"`). A repair that cleared most of a round's failures leaves the tree
+exactly as it was. 1.7.5 React roll 3 (`cyc_89153929749f`) went 7 → 4, 9 → 4 and 5 → 3 on its own
+retests, and every one was thrown away. Each qa attempt then re-authored its suite against an app
+that never changed. The vault held ten such reductions, three of them from 8 or 9 failures to 1
+(#1522's table).
+
+**What changes.** When all of these hold, the repair is **kept**:
+- the patch passes its typed verification (the accept path's own bar, unchanged);
+- its retest executed;
+- the retest's failure signature is `MOVEMENT_PROGRESS` against the round's (`retest_reduction`,
+  `correction_signature.py`): fewer failures and none new, per failing test where #878 splits the
+  suite;
+- the retest evaluated every check the round failed. The retest runs only the suite and its
+  authenticity rows, so a round that also failed `frontend_build` or a typed criterion keeps
+  today's path. A check the retest never ran would otherwise read as cleared.
+
+A kept repair:
+- is **stored as accepted state** under the failed task's type, proven as an accepted patch is
+  (SIP-0107 §20), less the failed attempt's evidence;
+- is recorded for #994's rewind guard;
+- has the task's workspace re-derived from it;
+- hands the **retest's own failure** to the next correction round. The retest already ran the
+  task's suite on the kept tree, so nothing is re-dispatched. The next round's signature is the
+  retest's.
+
+The round is spent like any round, and the loop ends when a round accepts, discards, or the budget
+is spent. The run-lived carry tells the next round the repair was kept. It is not a refusal, so
+#1129's reader still counts the round.
+
+**What changed from the posted design.** The design on #1522 re-dispatched the failed task
+against the kept tree. Building it showed that a re-dispatched qa suite is a fresh emission:
+- a kept suite repair would be overwritten by it;
+- a kept app repair would be re-measured by a suite written from scratch.
+
+That is roll 3's churn. Showing qa its suite as an edit request instead would invite editing tests
+to pass a buggy app when the failure is the app's. The retest is the task run on the kept tree,
+which is the issue's option 1 as written ("with the round's signature taken from the retest").
+
+**SIP-0107 §5.4 holds.** Atomicity forbids accepting part of a transaction. A kept repair is the
+whole candidate, stored whole; what is partial is its outcome. The code says "kept progress", not
+"partial acceptance", for that reason.
+
+**pf-31 Fix E holds.** These still never supersede the accepted state:
+- a candidate whose retest adds a failure;
+- one that fails typed verification;
+- one whose two sides cannot be compared.
+
+**The record.** A kept repair logs
+`progress_kept task=… round=… failing_before=… failing_after=… cleared=…`. The verification-set
+driver reads it into `loop_texture.progress_kept`, which is UNASKABLE on a roll with no correction
+round.
+
+**Verified by:**
+- the rule, and each of its fallbacks, at the executor's acceptance entry
+  (`test_outcome_routing.py`);
+- a wiring test entering at `execute_run`, asserting that the kept repair is stored, the task is
+  never re-dispatched, and the next round is verified against the tree that includes it
+  (`test_correction_runner.py`);
+- mutation checks on each;
+- decision 3's counted roll, still to run, predicted silent unless a reduction occurs.

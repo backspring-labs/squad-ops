@@ -998,6 +998,131 @@ class TestAcceptPatchRetest:
         assert action == "continue"
         assert "patched_result" not in holder
 
+    @staticmethod
+    def _suite_row(*titles: str) -> dict:
+        """A failing ``tests_pass`` row as the runner writes it, one identity per failing test."""
+        return {
+            "check": "tests_pass",
+            "passed": False,
+            "executed": True,
+            "exit_code": 1,
+            "tests_passed": False,
+            "runner": "pytest",
+            "failing_tests": [f"tests/test_api.py::{title}" for title in titles],
+        }
+
+    def _round_failing(self, *titles: str, extra_rows: tuple = ()) -> TaskResult:
+        result = self._failed_qa_result()
+        result.outputs["validation_result"] = {
+            "passed": False,
+            "checks": [self._suite_row(*titles), *extra_rows],
+        }
+        result.outputs["artifacts"].append(
+            {
+                "name": "typed_check_evaluation_task_9.json",
+                "content": '{"passed": false}',
+                "type": "typed_check_evaluation",
+            }
+        )
+        return result
+
+    def _retest_failing(self, *titles: str) -> TaskResult:
+        return TaskResult(
+            task_id="retest-run_001-00-qa.test",
+            status="FAILED",
+            outputs={
+                "test_result": {"executed": True, "exit_code": 1, "tests_passed": False},
+                "validation_result": {"passed": False, "checks": [self._suite_row(*titles)]},
+            },
+            error="Repaired suite still fails (exit 1)",
+        )
+
+    async def test_a_retest_that_clears_some_failures_and_adds_none_is_kept(self, executor, cycle):
+        """Bug caught (#1522, 1.7.5 React roll 3 `cyc_89153929749f`): round 0's repair cleared
+        three of seven failures on its own retest and was thrown away, so the task re-ran
+        against the unrepaired tree and the next round measured the original app."""
+        from adapters.cycles.patch_acceptance import (
+            KEEP_PROGRESS,
+            KEPT_ARTIFACTS_KEY,
+            KEPT_NEXT_FAILURE_KEY,
+            KEPT_OUTPUTS_KEY,
+        )
+        from squadops.cycles.patch_verification import candidate_revision_id
+
+        executor._correction_runner.reexecute_repaired_suite = AsyncMock(
+            return_value=self._retest_failing("c")
+        )
+        holder: dict = {}
+        carry: dict = {}
+        action = await executor._try_accept_patch(
+            self._qa_envelope(),
+            self._round_failing("a", "b", "c"),
+            self._repair(),
+            holder,
+            repair_rejection_carry=carry,
+            **self._kwargs(cycle),
+        )
+
+        assert action == KEEP_PROGRESS
+        # Nothing renders a pass: the task still fails until a run of it passes.
+        assert "patched_result" not in holder
+        kept = holder[KEPT_ARTIFACTS_KEY]
+        # The repaired suite is kept; the failed attempt's evidence is not (#1111, #1318).
+        assert [(a["name"], "assert 1" in a["content"]) for a in kept] == [
+            ("tests/test_api.py", True)
+        ]
+        assert holder[KEPT_OUTPUTS_KEY]["validation_result"] == {
+            "persisted_revision_id": candidate_revision_id({}, kept)
+        }
+        # The next round starts from the retest: the task run on the kept tree, under its id.
+        next_failure = holder[KEPT_NEXT_FAILURE_KEY]
+        assert (next_failure.task_id, next_failure.status) == ("task_9", "FAILED")
+        [row] = next_failure.outputs["validation_result"]["checks"]
+        assert row["failing_tests"] == ["tests/test_api.py::c"]
+        # The next round is told the repair was kept, and not as a refusal (#1129's reader).
+        [entry] = carry["task_9"]
+        assert entry.startswith(
+            "correction attempt 0: repaired suite retest cleared 2 of 3 failure(s) and added none"
+        )
+
+    @pytest.mark.parametrize(
+        "round_titles, retest_titles, round_extra",
+        [
+            (("a", "b"), ("b", "d"), ()),
+            (("a", "b"), ("a", "b"), ()),
+            (
+                ("a", "b"),
+                ("b",),
+                ({"check": "frontend_build", "passed": False, "executed": True},),
+            ),
+        ],
+        ids=["added-a-failure", "cleared-nothing", "retest-never-built-the-frontend"],
+    )
+    async def test_a_retest_that_cannot_be_trusted_as_progress_is_still_discarded(
+        self, executor, cycle, round_titles, retest_titles, round_extra
+    ):
+        """Bug caught: pf-31 Fix E's hazard, a candidate that is not strictly better superseding
+        the accepted state. A new failure, no change, or a check the retest never evaluated
+        (its absence would read as cleared) each keep today's path: discard and re-dispatch."""
+        executor._correction_runner.reexecute_repaired_suite = AsyncMock(
+            return_value=self._retest_failing(*retest_titles)
+        )
+        holder: dict = {}
+        carry: dict = {}
+        action = await executor._try_accept_patch(
+            self._qa_envelope(),
+            self._round_failing(*round_titles, extra_rows=round_extra),
+            self._repair(),
+            holder,
+            repair_rejection_carry=carry,
+            **self._kwargs(cycle),
+        )
+
+        assert action == "continue"
+        assert holder == {}
+        [entry] = carry["task_9"]
+        assert "repaired suite retest FAILED" in entry
+
     async def test_missing_retest_context_never_accepts_stale_evidence(self, executor):
         """Bug caught: a legacy call shape (no cycle) silently accepting with
         the stale test_result — conservative fallback is re-dispatch."""
