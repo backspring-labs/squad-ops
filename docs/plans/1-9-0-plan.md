@@ -1,6 +1,6 @@
 # 1.9.0 plan — the close of the 1.x line
 
-**Status:** adopted, rev 6 (2026-09-30): rev 3 adopted at merge, with the rulings made after adoption in §7a and during the set in §7b. Written on the owner's word at the
+**Status:** adopted, rev 7 (2026-10-01): rev 3 adopted at merge, with the rulings made after adoption in §7a and during the set in §7b. Written on the owner's word at the
 1.8.2 cut ("let's cut 1.8.2 and write 1.9.0 plan"). The 1.8.2 counted rolls answered the question
 this plan was held for: **no 1.8.3 opens** (the 1.8.2 plan §3.10; the pre-registration §10, deploy
 A′).
@@ -375,9 +375,29 @@ Ten questions reached the owner after rev 3 merged. Each was ruled as recommende
      from reaching its required checks. That is a verdict-path change, not an allocation, and it is
      2.0's to design.
 
+2. **The counted rolls' rejections get their evidence fix in 1.9, and their prevention in 2.0**
+   (2026-10-01: "Good with your recommendations").
+   - **The root cause.** Both rejected counted rolls (React 2 and 4) were a React view throwing at
+     runtime under vitest's jsdom:
+     - roll 4: a form read by name, `form.datetime.value`;
+     - roll 2: a test that rendered a route-param view without its route.
+
+     The `TypeError` that caused each was printed only in vitest's unhandled-error block, which
+     nothing read. The analyzer diagnosed the `waitFor` timeout instead. On roll 4 it described a
+     validation branch as missing that the code has, and no round could converge.
+   - **#1784 lands in 1.9's post-set rebuild.** Those errors reach the failure evidence through the
+     `app_traceback` seam (#687, #788). It rides the same rebuild and counted roll as #1522.
+   - **#1785 moves to 2.0:** the two jsdom pitfalls, shown in the develop and qa prompts. It changes
+     what every develop and qa task is shown, which is broader than a stabilization line carries.
+
 **What this does to §5's accounting.**
-- **In the release:** #414 leaves.
-- **2.0:** #414 joins, reframed as the sequencing rule.
+- **In the release:**
+  - #414 leaves;
+  - #1774 (the dev-lane fault keyed on the declared join), #1776 (urllib3) and #1784 join, all
+    filed during the set.
+- **2.0:**
+  - #414 joins, reframed as the sequencing rule;
+  - #1785 joins.
 
 ## 8. What this plan does not decide
 
@@ -400,6 +420,8 @@ Ten questions reached the owner after rev 3 merged. Each was ruled as recommende
     #1122 is closed as not planned; #1626 closed at the cut;
   - §7's decisions adopted at merge, and decision 6 recorded in SIP-0086 §12a;
   - 43 issues, 40 of them open.
+- **Rev 7 (2026-10-01):** §7b item 2: the root cause of the counted set's two rejections. #1784 (the
+  evidence fix) goes to 1.9's post-set rebuild and #1785 (prevention) to 2.0.
 - **Rev 6 (2026-09-30):** §7b records #414's move to 2.0. §3.4, §3.7, §3.8, §5 and §6 are
   corrected to match.
 - **Rev 5 (2026-09-29):** the outcomes of §7a items 3, 4 and 9 (#176, #1176, #567), with the
