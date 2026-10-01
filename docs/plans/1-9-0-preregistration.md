@@ -1,5 +1,7 @@
 # 1.9.0 — pre-registration (plan §4, §3.6)
 
+**Rev 10 (2026-10-01): React rolls 3–4 and both Next.js rolls read; the set closes (§10).**
+
 **Rev 9 (2026-10-01): React rolls 1 and 2 read; the set paused on roll 2's rejection and resumed on the owner's ruling (§11d).**
 
 **Rev 8 (2026-09-30): d8 read; the diagnostics close, §11b executed, the counted set opens (§10).**
@@ -545,6 +547,73 @@ Record `dev-lane-nextjs/shakeout-20261001T020536Z.json`. The set resumed with th
   returned none.
 - **§3b's first row, by its letter:** functional yield can now be at most five of six, against the
   registered six of six. The set was paused before roll 3 (00:14 ET) for the owner's ruling (§11d).
+
+### React roll 3: `cyc_cf13ebda0daa` / `run_cdf77319bdf2`, 03:05–03:56 ET. **Accepted, 21 of 21.**
+
+Zero correction rounds. There was no contentless emission and no task timeout.
+
+### React roll 4: `cyc_9727f1c382e2` / `run_ba96fad7b652`, 04:00–05:21 ET. **Rejected, 20 of 21.**
+
+- **The signature:** **one** frontend test failed in every round and every retest: "CreateRunView >
+  shows a validation message when required fields are empty". It took about 1,008 ms each time, so
+  the test's wait timed out on text the app never rendered.
+- **Three rounds:**
+  1. a dev repair, an accepted anchored edit of `frontend/src/views/CreateRunView.jsx` (201 of
+     2,886 characters, 7%);
+  2. a repair that added new files only;
+  3. a round routed `own_artifact`, to the qa suite.
+- The two retests each failed the same one test. The run ended "Max correction attempts (3)
+  exhausted", a signature earlier lines also produced.
+- **#1522 would not have changed it:** one failure, before and after.
+- **Not a 1.9 change.** For a counted roll, the agents' code is the code A′ ran:
+  - the prompt changes are #353's hash plumbing, with no fragment text changed;
+  - #1716's `held_through_pass` returns its input unchanged when no fault is declared, and a
+    counted roll declares none.
+
+  The runtime-api's correction path changed only by #1697's ids (§10, roll 2).
+- **Both React rejections are the same class:** a frontend view test whose wait timed out at about
+  a second, and which the repairs did not fix.
+
+### Next.js roll 1: `cyc_d23bc93670f6` / `run_ebc5f05b2108`, 05:25–06:18 ET. **Accepted, 14 of 14.** Zero correction rounds.
+
+### Next.js roll 2: `cyc_c3ab78540862` / `run_c85bc04b3b83`, 06:22–07:21 ET. **Accepted, 18 of 18.** Zero correction rounds.
+
+### The set's close: `all_six_ran`, 07:21 ET
+
+| claim (§3a, §3b) | reading |
+|---|---|
+| **L1** | **holds on every counted roll.** No contentless emission on any of the six |
+| **Behaviour held equal: functional yield** | **4 of 6** (React 2 of 4, Next.js 2 of 2), against the registered six of six. **Unmet by its letter.** The owner rules it at the cut (§11d) |
+| **Behaviour held equal: the mechanism** | Both rejections ran a path the extraction did not move (§10, rolls 2 and 4), on signatures earlier lines produced. React's pooled yield since 1.7.2 is 35 of 46 (76%); at that rate, 2 of 4 or worse has about a one-in-four chance. A′'s 4 of 4 had about one in three |
+| **Behaviour held equal: the diagnostics** | compile-loop, false-criterion, redelivery and both own-frame diagnostics read as on A′. Own-frame on Next.js took both of its runs (§10, d5) |
+| **Campaign readiness** | **YES on every row** (d4) |
+| **Round identity (#1697)** | **holds.** Distinct `-sNN-` ids on every correction task across the set. `repeated_round_ids` was asked and returned none on every record. Each refund named its own round. d6 read L4 directly where A′ needed a ruling |
+| **The dev lane reaches its seam (#1716)** | **Next.js: YES** (d8). **React: UNASKABLE** on this deploy; the fault never applied (§11c, #1774). It is re-read after the set |
+| **The contested result, the compile loop, redelivery** | as registered (d1, d2, d3) |
+
+- **N (§3c), as texture:** qa × React 4 (d3, d6); qa × Next.js 2 (d5); dev × React 0 (d7
+  UNASKABLE); dev × Next.js 0 (d8's transaction verified, but discarded at its retest and never
+  persisted).
+- **§3d′, the 1.9 mechanisms:**
+  - #1720: every counted and chain cycle carries `dep_d413c36959ab`;
+  - #1753: heartbeats matched at every launch from d3 on;
+  - #1745: every record read `docker` for both log sources;
+  - #353 is silent: the loaded check verified, and there was no `HashMismatchError`;
+  - #1754 is silent: no run paused;
+  - #1701: no duplicate transition warning.
+- **§9's drift, declared:**
+  - The image ids are §1's.
+  - The driver checkout moved from `7fdda5b1` to `93253694` after the diagnostics (§11b). The
+    driver and the counted configs are identical.
+  - **The tree merged during the set** (`7fdda5b1..main`, outside `docs/` and `sips/`):
+    - #1765's `convergence_replay` harness and its tests;
+    - the site and its release hook (#1770);
+    - the release builder's one-line fix and its test;
+    - `requirements/audit-ignore.txt` (#1777: three urllib3 advisories, accepted until the
+      post-set rebuild, #1776).
+
+    **Nothing under `src/` or `adapters/`** (`git diff 7fdda5b1 main -- src adapters` is empty).
+    #1522 (PR #1769) stays a draft.
 
 ## 11. Amendments after the first launch
 
