@@ -5,6 +5,94 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.9.0] — 2026-10-01
+
+**The completion boundary: the executor's run spine, extracted, and the line's records kept.** Plan:
+`docs/plans/1-9-0-plan.md` (rev 9). Record: `docs/plans/1-9-0-preregistration.md` §10–§13, with
+the cut record in §13.
+
+**The claim, measured on the 1.9 deploy (`1abe3666`, `dep_d413c36959ab`).** Moving `execute_run`,
+`execute_cycle` and the framing gate out of the executor (#1507) changed nothing a cycle does that
+the set could see.
+- **The diagnostics** read as on 1.8.2's deploy:
+  - compile-loop, false-criterion and redelivery cleared on run 1;
+  - own-frame cleared on both stacks, Next.js on its second run;
+  - **the unattended chain read YES on every row**: a cancel, a killed agent and a hung handler,
+    four cycles back to back, with no manual step.
+- **Round identity (#1697) holds.** No repair id repeated across the set. The own-frame diagnostic
+  read its refund seam directly, where 1.8.2's needed a ruling.
+- **The dev lane reached its seam on Next.js** (#1716). On React it was UNASKABLE on the set's
+  deploy: the fault keyed on a `/join` spelling, and both runs' designs named the join otherwise
+  (#1774, fixed after the set and read on the post-set deploy).
+- **The counted set: four of six, with L1 held on every roll.** React 2 of 4, Next.js 2 of 2. The
+  registered bar was six of six, so it is **unmet by its letter**, and the owner ruled the cut at
+  four of six (§11e). Both rejections were React view tests whose `waitFor` timed out, on a
+  correction path the extraction did not move. **Their one root cause:** the view threw a
+  `TypeError` under jsdom. Vitest printed it only in its unhandled-error block, which nothing read,
+  so the analysis and every repair aimed at the timeout. The evidence fix is #1784, in this release.
+  The prevention, showing the two jsdom pitfalls in the develop and qa prompts, is #1785, in 2.0.
+
+**The completion boundary (#1507).**
+- The framing gate's plan check leaves the executor (#1748).
+- `execute_run` is split by concern: provisioning and admission leave it (#1749).
+- `execute_cycle`'s gate leaves it, and every way a cycle ends meets `CycleCompletion` (#1750).
+- A run that did not complete ends the workload sequence, uncancelled (#1754, #1759).
+
+**Lineage: what ran, recorded.**
+- Each deploy writes a record of what it put in service, and each cycle references it (#1720,
+  #1760, #1761).
+- Every image carries its source revision, and agents report theirs on the heartbeat (#1753).
+- Prefect flow runs carry project, framework and replay tags (#1722).
+- The prompt fragments' hashes are stamped at the image build (#353).
+
+**Named debts.**
+- The routes read their ports from the request's app (#1448).
+- A run already in its target state is not transitioned again (#1701).
+- Prompts sync before the agents restart, and an agent is healthy only once it runs (#1691).
+- The records tarball is byte-stable, and the upload refuses anything but the approved bytes (#1732).
+- The deploy's own two findings: the recorder loads the deploy's secrets, and `all` rebuilds every
+  agent service (#1762).
+
+**The instruments.**
+- The driver reads a window a rebuild took from Prefect's stored log (#1745).
+- An unbitten fault is recorded as ran-and-unchanged (#1718).
+- The #1699 guard excuses a run that started before the runtime-api's current process (#1714).
+- The marker self-check counts every sample line (#1696).
+- The record carries each qa re-take's verification (#1724).
+- The retest readout joins by round identity, and refunds read in both forms (#1697).
+
+**After the set, on the post-set deploy (`8a058dc3`, `dep_23e742c972e7`).**
+- **A repair that makes progress is kept** (#1522). When a repair's retest clears some failures
+  without passing, the kept files stand and the next round starts from that retest, rather than the
+  repair being discarded wholesale. SIP-0086 §12b.
+- **Vitest's unhandled errors reach the failure evidence** (#1784) as the run's `app_traceback`,
+  which the analysis and the repair brief already read.
+- **The dev-lane fault finds the join the manifest declares** (#1774).
+- urllib3 2.8.0 retires three advisories published during the set (#1776).
+- **Read on that deploy (pre-registration §12):**
+  - both dev-lane diagnostics reached their seam on the first run (on React, the seam d7 could not
+    ask on the set's deploy), and the Next.js dev repair persisted where the set's was discarded at
+    its retest;
+  - one counted React roll was accepted, 21 of 21, with no correction round and L1 held;
+  - #1522 and #1784 were silent and unexercised: no view threw, and no retest made partial
+    progress.
+- **The convergence replay** (#1764): scoped against whole-file repair on 16 stored failing rounds,
+  three samples each. No prediction was falsified. The scoped arm accepted more (9 against 7 on
+  Next.js, 16 against 11 on React) and regressed in no sample, where whole-file regressed in 1 and
+  8. Nine scoped Next.js dev repairs came back empty, and the harness keeps no raw response to say
+  why (#1788). This is 2.0's flip decision's input.
+- The docs site shows what a cycle delivers, generated from the newest release package (#1039,
+  partly).
+
+**Not landed, stated.**
+- **The yield bar:** four of six against six of six, cut on the owner's ruling (§11e).
+- **#414 moves to 2.0** (the owner's ruling). Its gate, measured, does not support the reserve.
+- **#1785 moves to 2.0,** the rejections' prevention.
+- **#567 and #1031 move to 2.0**, and so do #1755 and #1757. **#1469 moves to 2.0**: its corpus
+  has still not arrived.
+- **#1039's remainder:** a LangFuse screenshot and the home page's hierarchy.
+- **SIP-0107's flip** stays a 2.0 decision. N was read a fourth time as texture (§46r).
+
 ## [1.8.2] — 2026-09-29
 
 **The unattended release: a cycle you can leave running.** Plan: `docs/plans/1-8-2-plan.md`
