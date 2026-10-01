@@ -155,3 +155,34 @@ def test_the_cycle_and_profile_rebuild_to_what_was_bundled():
 
     assert container.cycle_from_dict(dataclasses.asdict(cycle)) == cycle
     assert container.profile_from_dict(dataclasses.asdict(profile)) == profile
+
+
+def test_a_loaded_bundle_carries_no_fault_to_fire_in_the_replay(tmp_path):
+    """Bug caught (#1764, the first live sample): a round from a diagnostic cycle was rebuilt with
+    its declared faults, and `repair_prose_only` replaced the model's repair with planted prose.
+    The declaration sits in four places, and the correction runner reads the cycle's."""
+    from squadops.capabilities.handlers.fault_injection import declared_faults
+
+    declared = "qa_suite_own_frame_failure,repair_prose_only"
+    bundle = _bundle(["tests_pass"])
+    bundle["resolved_config"]["fault_injection"] = declared
+    bundle["envelope"]["inputs"]["resolved_config"] = {"fault_injection": declared, "x": 1}
+    bundle["cycle"] = {
+        "applied_defaults": {"fault_injection": declared, "build_profile": "p"},
+        "execution_overrides": {"fault_injection": declared},
+    }
+    bundle["failed_artifacts"][0]["content"] = "# mentions fault_injection in prose\n"
+    path = tmp_path / "b.json"
+    path.write_text(__import__("json").dumps(bundle))
+
+    loaded = container.load_bundle(path)
+
+    assert declared_faults(loaded["resolved_config"]) == ()
+    assert declared_faults(loaded["envelope"]["inputs"]["resolved_config"]) == ()
+    assert loaded["cycle"] == {
+        "applied_defaults": {"build_profile": "p"},
+        "execution_overrides": {},
+    }
+    # File content is evidence, not a declaration: untouched.
+    assert loaded["failed_artifacts"][0]["content"] == "# mentions fault_injection in prose\n"
+    assert loaded["envelope"]["inputs"]["resolved_config"]["x"] == 1
