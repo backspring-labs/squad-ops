@@ -722,3 +722,48 @@ correction modules.
 
 **Who ruled.** The owner, 2026-10-01 at 03:05 ET, choosing "Resume all four, rule at cut" over
 "resume, stop on another rejection" and "stop the set now".
+
+## 12. After the set: the post-set deploy and its runs (registered 2026-10-01, before the rebuild)
+
+These runs are **outside the set's registration** (§11c, §11d). The set's readings stand as they
+are. Nothing here re-reads or replaces them.
+
+**The deploy.**
+- A rebuild of every service from main, with `rebuild_and_deploy.sh all` and the deploy record
+  (#1720), once #1769 has merged. It carries the four changes merged after the set:
+  - #1522, a repair that makes progress is kept;
+  - #1774, the dev-lane fault keyed on the declared join;
+  - #1776, urllib3 2.8.0;
+  - #1784, vitest's unhandled errors in the failure evidence.
+- Its image ids, deploy record id and config hashes are read and written here before the first
+  launch.
+
+**The configs, and where the records go.**
+- These runs get their own configs (`docs/plans/verification-sets/1-9-0-post-set-*.yaml`), generated
+  from the set's.
+- The counted roll's pins are re-taken from the post-set deploy. The set's config pins the set's
+  images, and the driver would refuse it (exit 3).
+- Records go under `var/verification_sets/1-9-0-post-set-*/`, so the set's directories stay the
+  set's.
+
+**The runs, in order.**
+1. `dev-lane-fastapi-react`, with the two-run budget.
+2. `dev-lane-nextjs`, with the two-run budget.
+3. **One counted FastAPI+React roll**, decision 3's roll for #1522, which now also carries #1784.
+   React is the stack both rejections came from.
+
+**The predictions, one per change, each read where its mechanism shows.**
+
+| change | prediction | read from | falsified by |
+|---|---|---|---|
+| **#1774** | the fault **applies** on the develop task that writes the declared join, whether the design names it `…/join` or `POST …/participants`, and the dev-lane seam is reached on React within the budget. That is #1716's prediction, read for the first time on React | the fault's `APPLIED` line; the record's `seam_reached` | `DID NOT BITE` on a join the manifest declares; the seam unreached after two runs |
+| **#1784** | **predicted silent unless a frontend view throws.** Where vitest reports an unhandled error, the failing `tests_pass` row carries it as `app_traceback`, and the round's analysis names the thrown line | the failed task's stored validation rows; the round's `failure_analysis` in the vault | an unhandled-error block in a test report with no `app_traceback` on its row |
+| **#1522** | **predicted silent.** The replay saw no strict reduction in 96 repairs (#1764). If one occurs, a `progress_kept` line appears, the kept set is stored under the task, and the next round starts from its retest without re-dispatching the task | the record's `loop_texture.progress_kept`; the runtime-api log | a strict reduction discarded with no `progress_kept` line; a re-dispatch after a `progress_kept` |
+| **#1776** | no behaviour change; the dependency audit is clean | main's `dependency audit` | an advisory |
+
+**What the roll can and cannot say.**
+- One roll does not measure yield. Its verdict is texture, read by its signature as §3b reads any
+  rejection.
+- L1 is read on it as on every counted roll.
+- The yield ruling at the cut reads the set's six rolls (§11d), not this one.
+
