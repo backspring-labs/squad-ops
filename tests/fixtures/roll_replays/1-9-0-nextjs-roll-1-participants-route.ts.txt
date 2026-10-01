@@ -1,0 +1,86 @@
+import { TABLES, find, update } from '@/lib/store';
+import { ApiError, errorResponse } from '@/lib/errors';
+
+export async function POST(request: Request, { params }: { params: { run_id: string } }) {
+  try {
+    let body: Record<string, unknown>;
+    try {
+      body = await request.json();
+    } catch {
+      throw new ApiError('validation_error', 'Request body must be valid JSON');
+    }
+
+    const name = body.name;
+    if (typeof name !== 'string' || name.trim().length === 0) {
+      throw new ApiError('validation_error', 'Participant name is required');
+    }
+
+    const trimmedName = name.trim();
+
+    const run = find(TABLES.Run, params.run_id);
+    if (!run) {
+      throw new ApiError('run_not_found', `Run '${params.run_id}' was not found`);
+    }
+
+    const participants: string[] = (run.participants as string[]) || [];
+    const isDuplicate = participants.some(
+      (p) => p.toLowerCase() === trimmedName.toLowerCase()
+    );
+
+    if (isDuplicate) {
+      throw new ApiError('duplicate_participant', `Participant '${trimmedName}' is already registered for this run`);
+    }
+
+    run.participants = [...participants, trimmedName];
+    const updatedRun = update(TABLES.Run, run);
+    return Response.json(updatedRun);
+  } catch (err) {
+    return errorResponse(err);
+  }
+}
+
+export async function DELETE(request: Request, { params }: { params: { run_id: string } }) {
+  try {
+    let name: string | undefined;
+
+    const url = new URL(request.url);
+    name = url.searchParams.get('name') || undefined;
+
+    if (!name) {
+      try {
+        const body: Record<string, unknown> = await request.json();
+        if (typeof body.name === 'string') {
+          name = body.name;
+        }
+      } catch {
+        // no JSON body
+      }
+    }
+
+    if (!name || name.trim().length === 0) {
+      throw new ApiError('validation_error', 'Participant name is required');
+    }
+
+    const trimmedName = name.trim();
+
+    const run = find(TABLES.Run, params.run_id);
+    if (!run) {
+      throw new ApiError('run_not_found', `Run '${params.run_id}' was not found`);
+    }
+
+    const participants: string[] = (run.participants as string[]) || [];
+    const index = participants.findIndex(
+      (p) => p.toLowerCase() === trimmedName.toLowerCase()
+    );
+
+    if (index === -1) {
+      throw new ApiError('participant_not_found', `Participant '${trimmedName}' was not found on this run`);
+    }
+
+    run.participants = participants.filter((_, i) => i !== index);
+    const updatedRun = update(TABLES.Run, run);
+    return Response.json(updatedRun);
+  } catch (err) {
+    return errorResponse(err);
+  }
+}
