@@ -56,6 +56,9 @@ _COUNTING_SETS: dict[str, dict[str, int]] = {
     # 1.9.0 plan §4: 4 + 2, as 1.8.2 — behaviour held equal across the extraction. Pinned at the
     # pre-registration (rev 1) on the 1.9 deploy (1abe3666), before any launch.
     "1-9-0": {"nextjs": 2, "fastapi-react": 4},
+    # 1.9 pre-registration §12: the post-set deploy's one counted React roll — decision 3's roll for
+    # #1522, carrying #1784 — outside the set's registration. Pinned from the post-set deploy.
+    "1-9-0-post-set": {"fastapi-react": 1},
 }
 _ARM_STACK = {
     "nextjs": "nextjs_ts",
@@ -464,7 +467,11 @@ class TestSquadSnapshotIsAnIdentity:
         enumerated = {name for name, _, _ in _COUNTING_SET_FILES}
         assert _committed_counting_sets() == enumerated
 
-    @pytest.mark.parametrize("line", list(_COUNTING_SETS))
+    # A line with one arm (the 1.9 post-set roll) has no pair to compare; its pins are held by
+    # `test_the_counting_sets_are_fully_pinned`.
+    @pytest.mark.parametrize(
+        "line", [line for line, arms in _COUNTING_SETS.items() if len(arms) == 2]
+    )
     def test_both_sets_share_the_deploy_and_snapshot_but_not_the_config_hash(self, driver, line):
         """A line's two stack arms share the deploy and the squad and differ in the request
         profile; a comparison window's two arms share the deploy and differ in BOTH the squad
