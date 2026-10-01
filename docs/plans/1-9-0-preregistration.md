@@ -1,5 +1,7 @@
 # 1.9.0 — pre-registration (plan §4, §3.6)
 
+**Rev 8 (2026-09-30): d8 read; the diagnostics close, §11b executed, the counted set opens (§10).**
+
 **Rev 7 (2026-09-30): d7 read (§10); the set stopped on it and resumed on the owner's ruling (§11c).**
 
 **Rev 6 (2026-09-30): d5 and d6 read (§10).**
@@ -452,6 +454,57 @@ on a qa suite; run 2 had none.
 - **#1716's prediction is not read on this deploy.** The fault's defect never entered a develop
   emission, so whether it survives self-evaluation was not asked. The dev × React cell stays empty
   here.
+
+### d8: `dev-lane-nextjs`, run 1. `cyc_98a316402a1b` / `run_7b9430c961fb`, 21:06–22:05 ET. **Cleared: the dev lane reached its seam on the App Router stack.**
+
+Record `dev-lane-nextjs/shakeout-20261001T020536Z.json`. The set resumed with this run on §11c's ruling.
+- **#1716's prediction, read on Next.js: YES.**
+  - The fault **applied** on `m000`'s first attempt (`app/api/runs/[run_id]/join/route.ts`, 5,114 →
+    5,158 characters). The defect was in what the develop task handed on.
+  - The qa task's join probe rejected the app (`vc-probe-api-runs-join`: "response missing key(s)").
+  - The round was routed to the **dev** repair, narrowed to the probe-owned slot
+    (`app/api/runs/[run_id]/join/route.ts`, #1015). Its revision form is an accepted anchored edit,
+    179 of 1,366 characters (13%).
+  - A′ could not reach this seam (1.8.2 §11h).
+- **The repair did not converge.** Its patch verification passed (12 checks), and the qa suite's
+  retest failed. The patch was discarded, which is today's path, and was never persisted (no
+  `patch_candidate_identity` line).
+  - Round 1 carried one failure, clearing 2 and adding 2. The run ended `plan_defect` at round 1:
+    `rejected`, 16 of 18, with `vc-probe-api-runs-join` and `tests_pass` unmet.
+  - This is a diagnostic, so the rejection is texture. Its signature is the join probe the fault
+    planted, still failing after the discarded repair.
+- **N (§3c):** not countable. A dev × Next.js transaction was produced and verified, but §3c counts
+  only a transaction **persisted** under its verified identity, and this one's retest discarded it.
+  The cell stays at 0 on this deploy. That is texture, since N does not gate (§3c).
+- **#1522, read forward:** its completeness guard would also have discarded this repair. The round
+  failed a probe row, and the retest, which runs only the suite and its authenticity rows, does not
+  evaluate one.
+- `repeated_round_ids` was asked and returned none; the rounds are `-s00-` and `-s01-`. There was no
+  contentless emission and no task timeout.
+
+### The diagnostics' close: `all_eight_ran`, 22:05 ET
+
+- **Read:**
+  - six cleared: d1, d2, d3, d5 (on run 2), d6 and d8;
+  - the chain read YES on every row (d4);
+  - d7 is UNASKABLE on this deploy (§11c).
+- **No new seam finding.** d7's miss is the diagnostic's own fault (#1774), not a framework seam.
+  By §6's exit rule this is the shakeout's pass, in one round on deploy `1abe3666`.
+- **Heartbeats** read before every launch from d3 on: all eight `online` and matching each time.
+
+**§11b executed at 22:06 ET:**
+- **The 1.9 records moved.** All 36 files the set wrote under `1-8-2-diagnostics/` were copied to
+  `1-9-0-diagnostics/<name>/`, each copy checked by sha256, and then the sources removed.
+- **1.8.2's seven overwritten files were restored** from `squadops-1.8.2-records.tar.gz` (sha256
+  `791ad261…`, as the package records): six `shakeout-deploy.json` and `unattended-chain/chain-state.json`.
+  All 31 of 1.8.2's files in those directories now match the tarball byte for byte. The empty
+  `dev-lane-nextjs` directory, which the 1.9 run had created, was removed.
+- **The driver checkout moved** from `7fdda5b1` to `93253694`. The only difference between the two
+  on `scripts/dev`, the counted configs, `src` and `adapters` is #1765's four
+  `convergence_replay` files, which the driver does not import. `verification_set_driver.py` and
+  both counted configs are identical.
+- **The counted set launched at 22:07 ET.** Roll 1 is `cyc_20a01ea59964`, with HEAD pinned at
+  `93253694` and config hash `a79f58658cd8`.
 
 ## 11. Amendments after the first launch
 
