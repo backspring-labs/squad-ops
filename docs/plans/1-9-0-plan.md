@@ -1,6 +1,6 @@
 # 1.9.0 plan — the close of the 1.x line
 
-**Status:** adopted, rev 7 (2026-10-01): rev 3 adopted at merge, with the rulings made after adoption in §7a and during the set in §7b. Written on the owner's word at the
+**Status:** adopted, rev 8 (2026-10-01): rev 3 adopted at merge, with the rulings made after adoption in §7a and during the set in §7b. Written on the owner's word at the
 1.8.2 cut ("let's cut 1.8.2 and write 1.9.0 plan"). The 1.8.2 counted rolls answered the question
 this plan was held for: **no 1.8.3 opens** (the 1.8.2 plan §3.10; the pre-registration §10, deploy
 A′).
@@ -390,6 +390,11 @@ Ten questions reached the owner after rev 3 merged. Each was ruled as recommende
    - **#1785 moves to 2.0:** the two jsdom pitfalls, shown in the develop and qa prompts. It changes
      what every develop and qa task is shown, which is broader than a stabilization line carries.
 
+3. **#1522 merges in 1.9** (2026-10-01: "Merge #1522 in 1.9 anyway"). The replay (#1764) saw no strict
+   reduction in 96 repairs, the case #1522 keeps, and the set saw none either. The recommendation was
+   to move it to 2.0. The ruling keeps it in 1.9, where it rides the post-set rebuild and the same
+   counted roll as #1784, predicted silent (pre-registration §12).
+
 **What this does to §5's accounting.**
 - **In the release:**
   - #414 leaves;
@@ -420,6 +425,7 @@ Ten questions reached the owner after rev 3 merged. Each was ruled as recommende
     #1122 is closed as not planned; #1626 closed at the cut;
   - §7's decisions adopted at merge, and decision 6 recorded in SIP-0086 §12a;
   - 43 issues, 40 of them open.
+- **Rev 8 (2026-10-01):** §7b item 3: #1522 merges in 1.9 on the owner's ruling, against the recommendation.
 - **Rev 7 (2026-10-01):** §7b item 2: the root cause of the counted set's two rejections. #1784 (the
   evidence fix) goes to 1.9's post-set rebuild and #1785 (prevention) to 2.0.
 - **Rev 6 (2026-09-30):** §7b records #414's move to 2.0. §3.4, §3.7, §3.8, §5 and §6 are
