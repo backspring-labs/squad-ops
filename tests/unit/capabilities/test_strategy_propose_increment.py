@@ -1,8 +1,9 @@
 """``strategy.propose_increment`` (SIP-0109 §9.1; #1706), entered at ``handle()``.
 
 The real prompt assets render through the real renderer and assembler; the model is stubbed with
-the emissions under test. The baseline is the 1.9 roll cyc_7a4b7a6fbf0e's authored manifest, served
-from a vault by its artifact id the way the campaign's cycle names it.
+the emissions under test. The baseline is the 1.9 roll cyc_7a4b7a6fbf0e's authored manifest, carried
+in the cycle's persisted campaign_proposal block — the way the live run receives it: the agent's
+container has no artifact vault (cyc_a06843b58e4f refused for exactly that).
 """
 
 from __future__ import annotations
@@ -36,17 +37,6 @@ def _out_of_scope() -> str:
     return _REFERENCE
 
 
-class _Vault:
-    def __init__(self, fail: bool = False) -> None:
-        self.fail = fail
-
-    async def retrieve(self, artifact_id: str):
-        if self.fail:
-            raise OSError("vault unavailable")
-        assert artifact_id == "art_f127a0c2f5e7"
-        return None, _BASELINE.encode("utf-8")
-
-
 def _ctx(*replies: str) -> MagicMock:
     ctx = MagicMock()
     ctx.role_id = "strat"
@@ -61,7 +51,7 @@ def _ctx(*replies: str) -> MagicMock:
     return ctx
 
 
-def _inputs(*, scope=("backend/**", "frontend/**"), vault=None, block=True) -> dict:
+def _inputs(*, scope=("backend/**", "frontend/**"), manifest=_BASELINE, block=True) -> dict:
     config: dict = {"build_profile": "fullstack_fastapi_react", "proposal_max_attempts": 2}
     if block:
         config["campaign_proposal"] = {
@@ -69,6 +59,7 @@ def _inputs(*, scope=("backend/**", "frontend/**"), vault=None, block=True) -> d
             "version": 1,
             "baseline_tree": "tree:7a4b7a6f",
             "baseline_manifest_artifact_id": "art_f127a0c2f5e7",
+            "baseline_manifest": manifest,
             "objective": {
                 "statement": "evolve group_run toward its PRD's expansion scope",
                 "allowed_scope": list(scope),
@@ -78,7 +69,6 @@ def _inputs(*, scope=("backend/**", "frontend/**"), vault=None, block=True) -> d
         }
     return {
         "resolved_config": config,
-        "artifact_vault": vault or _Vault(),
         "prd": "## Expansion Tier 1\n1. Capacity limit per run",
     }
 
@@ -156,9 +146,9 @@ async def test_a_backend_only_revision_of_a_refused_proposal_is_accepted():
     ("inputs", "message"),
     [
         (_inputs(block=False), "no campaign_proposal"),
-        (_inputs(vault=_Vault(fail=True)), "is unreadable"),
+        (_inputs(manifest=""), "carries no baseline_manifest"),
     ],
-    ids=["no-campaign-context", "unreadable-baseline"],
+    ids=["no-campaign-context", "no-baseline-manifest"],
 )
 async def test_a_proposal_without_its_context_fails_before_asking_the_model(inputs, message):
     ctx = _ctx()
@@ -173,3 +163,38 @@ def test_the_proposal_workload_is_one_strategy_step_and_needs_the_strategy_role(
     assert (steps, builder) == ([(TaskType.STRATEGY_PROPOSE_INCREMENT, "strat")], False)
     with pytest.raises(CycleError, match="missing required proposal roles: strat"):
         _resolve_workload_steps(WorkloadType.PROPOSAL, profile, {"dev", "qa"})
+
+
+async def test_an_envelope_from_the_runtime_reaches_the_handler_with_no_vault_and_is_accepted():
+    """Wiring, entered where the agent enters: a task envelope through the real HandlerExecutor
+    and HandlerRegistry, its inputs shaped as the runtime sends them — the cycle's resolved
+    config and the PRD, and no artifact vault. Bug caught: the handler needing an input the
+    runtime never sends (cyc_a06843b58e4f, the first live proposal run, refused for the vault)."""
+    from squadops.orchestration.handler_executor import HandlerExecutor
+    from squadops.orchestration.handler_registry import HandlerRegistry
+    from squadops.tasks.models import TaskEnvelope
+
+    ctx = _ctx(_fenced(_REFERENCE))
+    registry = HandlerRegistry()
+    registry.register(StrategyProposeIncrementHandler(), roles=("strat",))
+    executor = HandlerExecutor("nat", registry, ctx.ports, role="strat")
+    inputs = _inputs()
+    assert "artifact_vault" not in inputs
+    envelope = TaskEnvelope(
+        task_id="t1",
+        agent_id="nat",
+        cycle_id="cyc_1",
+        pulse_id="p",
+        project_id="group_run",
+        task_type=TaskType.STRATEGY_PROPOSE_INCREMENT,
+        correlation_id="c",
+        causation_id="c",
+        trace_id="t",
+        span_id="s",
+        inputs=inputs,
+    )
+
+    result = await executor.execute(envelope)
+
+    assert str(result.status).lower().endswith("succeeded"), (result.status, result.error)
+    assert result.outputs["change_request"]["proposal_id"] == "prop_1"
