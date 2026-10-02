@@ -168,3 +168,52 @@ async def test_a_bundle_that_no_longer_hashes_to_its_address_is_never_run():
     assert [(f["criterion_id"], f["held"]) for f in document["frozen"]] == [
         ("F1", "blocked_unverified")
     ]
+
+
+# §8.1: "the old bundle is retired and the new one frozen" — a verifier the change replaces.
+_F1_REPLACED = (
+    "from app import join\n\ndef test_a_full_run_is_refused():\n    assert join(2, 2) == 409\n"
+)
+_F1_STALE = (
+    "from app import join\n\ndef test_a_full_run_still_joins():\n    assert join(2, 2) == 200\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("candidate_f1", "verdict", "held"),
+    [
+        (_F1_REPLACED, "accepted", "held"),
+        # The replacement fails on the candidate: frozen as it is, it would fail every later one.
+        (_F1_STALE, "rejected", "broken"),
+        # The candidate never wrote the replacement: nothing to freeze, and nothing passed.
+        (None, "blocked_unverified", "blocked_unverified"),
+    ],
+    ids=["replaced", "replacement-fails", "replacement-missing"],
+)
+async def test_a_replaced_verifier_is_frozen_anew_from_the_candidate(candidate_f1, verdict, held):
+    """§8.1, §24r's not-built, through the handler's real ``handle()``. Bugs caught: a replaced
+    criterion left unfrozen, so the behaviour it guards is guarded by nothing after this
+    increment; the old bundle still run against the change that ruled it out; or a replacement
+    that fails on the candidate frozen anyway."""
+    from squadops.campaigns.evaluator_trees import FileTree, VerifierBundle
+
+    candidate = {k: v for k, v in CANDIDATE.items() if k != _F1}
+    if candidate_f1 is not None:
+        candidate[_F1] = candidate_f1
+    _, document = await _evaluate(
+        **_frozen_inputs(),
+        acceptance_workspace_files=candidate,
+        increment_retired_criteria=["F1"],
+        increment_replaced_criteria=[{"criterion_id": "F1", "path": _F1}],
+    )
+
+    assert document["verdict"] == verdict
+    [f1] = [f for f in document["frozen"] if f["criterion_id"] == "F1"]
+    old = VerifierBundle("F1", FileTree.of({_F1: _F1_TEST}), ("both",)).address
+    assert f1["held"] == held and f1["bundle_address"] != old
+    assert document["replaced"] == ["F1"]
+    if candidate_f1 is not None:
+        assert document["new_bundles"]["F1"]["files"][_F1] == candidate_f1
+        assert document["new_bundles"]["F1"]["test_path"] == _F1
+    else:
+        assert "F1" not in document["new_bundles"]

@@ -282,3 +282,46 @@ def test_a_parameterized_route_is_seeded_by_its_collections_create():
         e for e in _implementation(True, STORED) if e.task_type == "qa.evaluate_increment"
     ]
     assert evaluation.inputs["increment_route_seeds"] == seeds
+
+
+def test_a_replaced_verifier_reaches_the_evaluation_at_the_file_its_launch_pinned():
+    """§8.1, entered at ``generate_task_plan``. Bugs caught: the evaluation never told which
+    verifier was replaced, so the new one is never frozen; or told a path other than the pinned
+    one, so it freezes a file nobody wrote."""
+    import dataclasses
+
+    authored = yaml.safe_load((_FIXTURES / "reference-capacity-change-request.yaml").read_text())
+    authored["replaces_verifiers"] = [{"criterion_id": "F1", "reason": "a full run now refuses"}]
+    replacing = stored_change_request(
+        validate_proposal(
+            authored,
+            ProposalContext(
+                "prop_cap",
+                1,
+                "sha-accepted",
+                BASELINE,
+                "fullstack_fastapi_react",
+                ("backend/**", "frontend/**"),
+                ("F1", "F2"),
+            ),
+        ).change_request
+    )
+    cycle = _cycle(True)
+    block = {
+        **cycle.execution_overrides["campaign_proposal"],
+        "frozen_criteria": [
+            {"criterion_id": "F1", "test_path": "backend/tests/criteria/test_F1.py"},
+            {"criterion_id": "F2", "test_path": "backend/tests/criteria/test_F2.py"},
+        ],
+    }
+    cycle = dataclasses.replace(cycle, execution_overrides={"campaign_proposal": block})
+    run = Run("run_i", "cyc_inc", 3, "running", "system", "cfg", workload_type="implementation")
+
+    *_, last = generate_task_plan(
+        cycle, run, PROFILE, plan=_PLAN, interface_manifest=CANDIDATE, change_request=replacing
+    )
+
+    assert last.inputs["increment_replaced_criteria"] == [
+        {"criterion_id": "F1", "path": "backend/tests/criteria/test_F1.py"}
+    ]
+    assert last.inputs["increment_retired_criteria"] == ["F1"]

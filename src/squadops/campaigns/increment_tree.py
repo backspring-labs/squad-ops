@@ -207,6 +207,12 @@ def increment_evaluation_inputs(
         "increment_route_seeds": route_seeds(manifest),
         # §8.1: the frozen criteria this change retires, or whose verifiers it replaces.
         "increment_retired_criteria": list(retired_criteria(change_request)),
+        # §8.1: of those, each replaced verifier at its own test file, frozen anew from the
+        # candidate.
+        "increment_replaced_criteria": [
+            {"criterion_id": criterion_id, "path": path}
+            for criterion_id, path in replaced_criterion_files(resolved_config, change_request)
+        ],
     }
 
 
@@ -284,12 +290,33 @@ def route_seeds(manifest: Any) -> dict[str, dict[str, Any]]:
 
 def retired_criteria(change_request: str) -> tuple[str, ...]:
     """The frozen criteria an approved change request retires, or whose verifier it replaces
-    (§8.1): either way the old bundle is no longer frozen. A replacement's new bundle is not
-    frozen yet (§24r)."""
+    (§8.1): either way the old bundle is no longer frozen. A replacement's new bundle is frozen
+    from the candidate (``replaced_criterion_files``)."""
     from squadops.campaigns.change_request import load_stored_change_request
 
     request = load_stored_change_request(change_request)
     return tuple(sorted({r.criterion_id for r in (*request.retires, *request.replaces_verifiers)}))
+
+
+def replaced_criterion_files(
+    resolved_config: Mapping[str, Any], change_request: str
+) -> tuple[tuple[str, str], ...]:
+    """Each frozen criterion whose verifier the approved change request replaces (§8.1), at the
+    test file its launch pinned, as ``(criterion_id, path)``: the new verifier is written where
+    the old one was, and its bundle frozen from the candidate there. A replacement of a criterion
+    this launch did not pin names no file, and is none."""
+    from squadops.campaigns.change_request import load_stored_change_request
+
+    request = load_stored_change_request(change_request)
+    pinned = {
+        str(pin["criterion_id"]): str(pin.get("test_path") or "")
+        for pin in (resolved_config.get("campaign_proposal") or {}).get("frozen_criteria") or ()
+    }
+    return tuple(
+        (r.criterion_id, pinned[r.criterion_id])
+        for r in request.replaces_verifiers
+        if pinned.get(r.criterion_id)
+    )
 
 
 def increment_frozen_files(
