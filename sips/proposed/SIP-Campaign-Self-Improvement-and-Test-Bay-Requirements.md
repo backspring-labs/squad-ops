@@ -15,6 +15,23 @@ Created: 2026-07-02
 Supersedes: Earlier informal Cycle Loop / Loop Policy concepts (this SIP is the successor to the "Loop Policy" naming in `docs/ideas/SquadOps-Roadmap-Runtime-Loop-Capability-Backed-Agents.md`)  
 Related Concepts: Campaign, Cycle, Run, Duty, Capability Pack, Capability Asset, Capability Binding Contract, Continuum, Agent Runtime Modes, Test Bay, Capability Promotion
 
+> **Placement, recorded 2026-10-01.** This SIP stays a proposed vision anchor. Two later decisions
+> narrow what 2.0 takes from it.
+> - **The squad does not improve its own framework in 2.0** (the owner's direction, 2026-09-28,
+>   `docs/plans/post-1-8-2-roadmap-reconciliation.md`). Framework improvement is the **outer loop**, a
+>   process run by the owner and, as the owner ruled on 2026-10-01, the **Nostromo crew**: it observes
+>   campaigns, proposes falsifiable improvements, and changes the framework only between campaigns and
+>   only with the owner's approval (`docs/ideas/nostromo-framework-optimization-crew.md`). The goal of
+>   the squad improving its own framework stands, and is not scheduled.
+> - **What 2.0 carries from here:**
+>   - the Campaign mechanic, in `SIP-Campaign-Orchestration.md` revision 2;
+>   - the morning review (§7.8), as that SIP's evidence package and digest;
+>   - Test Bay's role as a measuring instrument, as the calibration cycle (#1709).
+>
+>   Capability packs, promotion and Test Bay as a GitHub-backed proving ground are not scheduled.
+>
+> The "carved out to 1.6" target above is the July record. Campaign is 2.0's headline (`docs/plans/2-0-0-plan.md`).
+
 ---
 
 ## 1. Executive Summary
