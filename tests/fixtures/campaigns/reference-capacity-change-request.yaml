@@ -1,0 +1,85 @@
+# The brownfield reference scenario's fixed change request (docs/plans/2-0-0-validation-plan.md §4; #1804):
+# the group_run PRD's Expansion Tier 1, item 1, the capacity limit per run, against the 1.9 baseline
+# cyc_7a4b7a6fbf0e (tests/fixtures/campaigns/baseline-cyc_7a4b7a6fbf0e-interface_manifest.yaml).
+# Authored as the strategy role would author it: no footprint, no hash, no identity — the framework's.
+kind: feature
+prd_delta:
+  - id: capacity-limit
+    op: add
+    text: "A run may set a capacity. Joining a full run is refused, and the run's page shows how many of its places are taken."
+manifest_delta:
+  - op: modify
+    target: entity
+    key: Run
+    definition:
+      name: Run
+      fields:
+        - { name: id, type: string, required: true, generated: true }
+        - { name: title, type: string, required: true }
+        - { name: datetime, type: string, required: true }
+        - { name: location, type: string, required: true }
+        - { name: distance, type: string, required: false }
+        - { name: pace, type: string, required: false }
+        - { name: notes, type: string, required: false }
+        - { name: capacity, type: integer, required: false }
+        - { name: participants, type: "list[string]", required: true, default: [] }
+        - { name: participant_count, type: integer, required: true }
+  - op: modify
+    target: request_shape
+    key: RunCreate
+    definition:
+      required: [title, datetime, location]
+      optional: [distance, pace, notes, capacity]
+  - op: add
+    target: error_code
+    key: capacity_exceeded
+    definition: { http: 409 }
+  - op: modify
+    target: endpoint
+    key: "POST /runs/{run_id}/join"
+    definition:
+      method: POST
+      path: "/runs/{run_id}/join"
+      summary: join a run with a participant name, refused when the run is full
+      request: JoinIn
+      response: Run
+      errors: [validation_error, run_not_found, duplicate_participant, capacity_exceeded]
+  - op: modify
+    target: client_route
+    key: "/runs/:run_id"
+    definition:
+      path: "/runs/:run_id"
+      view: RunDetailView
+      purpose: show run details, participant list, places taken of capacity, join form, and leave form
+      testids:
+        - run-detail-view
+        - run-detail-title
+        - run-detail-participants
+        - run-detail-participant
+        - run-detail-participant-count
+        - run-detail-join-form
+        - run-detail-join-name
+        - run-detail-join-submit
+        - run-detail-leave-form
+        - run-detail-leave-name
+        - run-detail-leave-submit
+        - run-detail-error
+        - run-detail-not-found
+        - capacity-status
+criteria:
+  - id: C1
+    statement: A run created with capacity 2 is returned with capacity 2
+    surface_kind: endpoint
+    surface: "POST /runs"
+    observable: "the 201 response body carries capacity: 2"
+  - id: C2
+    statement: Joining a full run is refused
+    surface_kind: endpoint
+    surface: "POST /runs/{run_id}/join"
+    observable: "409 with error code capacity_exceeded when the run's participants already fill its capacity"
+  - id: C3
+    statement: The run's page shows places taken of capacity
+    surface_kind: client_route
+    surface: "/runs/:run_id"
+    observable: "capacity-status renders '2 / 2 joined' for a full run of capacity 2"
+must_not_break: []
