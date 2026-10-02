@@ -32,7 +32,7 @@ from squadops.api.campaign_schemas import (
     ResumeRequest,
 )
 from squadops.api.middleware.auth import require_scopes
-from squadops.auth.models import AuditEvent, Identity, Role, Scope
+from squadops.auth.models import Identity, Role, Scope
 from squadops.campaigns import lifecycle
 from squadops.campaigns.models import (
     Campaign,
@@ -80,71 +80,54 @@ def _registry(request: Request):
     return get_campaign_registry(request)
 
 
-def _project_to_audit(request: Request, entry: ControlLogEntry, identity: Identity | None) -> None:
-    """Project a control-log row to the security audit (§13). Fail-open by contract: a failed
-    projection is logged and loses no control record."""
-    try:
-        from squadops.api.runtime.deps import get_audit_port
+def _ports(request: Request) -> tuple:
+    """The audit port and the event bus, each ``None`` when unwired: a missing projection, not
+    an error."""
+    from squadops.api.runtime.deps import get_audit_port, get_cycle_event_bus
 
+    try:
         audit = get_audit_port(request)
-    except Exception:  # noqa: BLE001 — an unwired audit port is a missing projection, not an error
+    except Exception:  # noqa: BLE001
         audit = None
-    if audit is None:
-        return
     try:
-        audit.record(
-            AuditEvent(
-                action=f"campaign.{entry.operation}",
-                actor_id=entry.actor,
-                actor_type=(identity.identity_type if identity is not None else "unknown"),
-                resource_type="campaign",
-                resource_id=entry.campaign_id,
-                result="success" if entry.outcome is ControlOutcome.APPLIED else "denied",
-                denial_reason=str(entry.refusal) if entry.refusal else None,
-                metadata=(
-                    ("actor_role", entry.actor_role),
-                    ("reason", entry.reason),
-                    ("idempotency_key", entry.idempotency_key),
-                    ("entry_id", entry.entry_id),
-                    ("prior_state", str(entry.prior_state)),
-                    ("next_state", str(entry.next_state)),
-                ),
-                request_id=request.headers.get("X-Request-ID"),
-            )
-        )
-    except Exception:  # noqa: BLE001 — fail-open, as the port's contract says
-        logger.warning("campaign audit projection failed: %s", entry.entry_id, exc_info=True)
+        events = get_cycle_event_bus(request)
+    except Exception:  # noqa: BLE001
+        events = None
+    return audit, events
 
 
-def _project_to_events(request: Request, result: TransitionResult) -> None:
-    """Project an applied control-log row to the cycle event bus (SIP-0077, §13). Best-effort:
-    a missed event loses no control record, and the control log is read for the truth."""
-    try:
-        from squadops.api.runtime.deps import get_cycle_event_bus
-        from squadops.events.types import EventType
+def _project_to_audit(request: Request, entry: ControlLogEntry, identity: Identity | None) -> None:
+    """A refused row, to the security audit (§13): the route's own projection, with the
+    caller's identity type and request id. Fail-open."""
+    from squadops.campaigns.projection import project
 
-        entry = result.entry
-        get_cycle_event_bus(request).emit(
-            EventType.CAMPAIGN_TRANSITIONED,
-            entity_type="campaign",
-            entity_id=entry.campaign_id,
-            context={"campaign_id": entry.campaign_id, "project_id": result.campaign.project_id},
-            payload={
-                "entry_id": entry.entry_id,
-                "operation": str(entry.operation),
-                "prior_state": str(entry.prior_state) if entry.prior_state else None,
-                "next_state": str(entry.next_state),
-                "actor_role": entry.actor_role,
-            },
-        )
-    except Exception:  # noqa: BLE001 — a projection never fails the operation it projects
-        logger.warning("campaign event projection failed: %s", result.entry.entry_id, exc_info=True)
+    audit, _events = _ports(request)
+    project(
+        audit,
+        None,
+        entry=entry,
+        result=None,
+        actor_type=identity.identity_type if identity is not None else "unknown",
+        request_id=request.headers.get("X-Request-ID"),
+    )
 
 
 def _project(request: Request, result: TransitionResult, identity: Identity | None) -> None:
-    if not result.replayed:
-        _project_to_audit(request, result.entry, identity)
-        _project_to_events(request, result)
+    """An applied row, to the audit and the event bus (§13), by the one builder every writer
+    uses (``squadops.campaigns.projection``). A replay projects nothing new."""
+    from squadops.campaigns.projection import project
+
+    if result.replayed:
+        return
+    audit, events = _ports(request)
+    project(
+        audit,
+        events,
+        entry=result.entry,
+        result=result,
+        actor_type=identity.identity_type if identity is not None else "unknown",
+        request_id=request.headers.get("X-Request-ID"),
+    )
 
 
 async def apply_control(

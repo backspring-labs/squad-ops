@@ -68,8 +68,9 @@ _CYCLES_ROUTE = Path("src/squadops/api/routes/cycles/cycles.py")
 # SIP-0109 #1799: the cycle cancel path moved here, shared by the cycle route and a campaign's
 # abort, and its CYCLE_CANCELLED emit with it.
 _CANCELLATION = Path("src/squadops/api/routes/cycles/cancellation.py")
-# SIP-0109 §13: the campaign routes project each applied control-log row as campaign.transitioned.
-_CAMPAIGNS_ROUTE = Path("src/squadops/api/routes/campaigns/campaigns.py")
+# SIP-0109 §13: each applied control-log row is projected as campaign.transitioned, by the one
+# builder the campaign routes and every other writer use (step 6).
+_CAMPAIGN_PROJECTION = Path("src/squadops/campaigns/projection.py")
 # SIP-0109 §12b: a campaign's launch creates a cycle's first run by its own path, and announces
 # it as the create route does (cycle.created).
 _CAMPAIGN_LAUNCH = Path("src/squadops/api/campaign_launch.py")
@@ -86,7 +87,7 @@ _ALL_EMISSION_FILES = [
     _WORKLOAD_GATE_PATH,
     _CYCLES_ROUTE,
     _CANCELLATION,
-    _CAMPAIGNS_ROUTE,
+    _CAMPAIGN_PROJECTION,
     _RUNS_ROUTE,
     _ARTIFACTS_ROUTE,
     _CAMPAIGN_LAUNCH,
@@ -300,8 +301,8 @@ class TestRouteEmissionPoints:
         refs = _find_event_type_refs_in_file(_CYCLES_ROUTE)
         assert "CYCLE_CREATED" in refs
 
-    def test_the_campaign_routes_emit_campaign_transitioned(self) -> None:
-        refs = _find_event_type_refs_in_file(_CAMPAIGNS_ROUTE)
+    def test_the_campaign_projection_emits_campaign_transitioned(self) -> None:
+        refs = _find_event_type_refs_in_file(_CAMPAIGN_PROJECTION)
         assert "CAMPAIGN_TRANSITIONED" in refs
 
     def test_the_cancel_path_emits_cycle_cancelled(self) -> None:
@@ -412,7 +413,8 @@ class TestEmitCallSitePayloadFields:
         to RunProvisioning — same total; step 3 moved the gate's four to WorkloadGate — same total.
         SIP-0109 #1799 moved the cycle cancel route's CYCLE_CANCELLED emit into the shared cancel
         path (cancellation.py) — same total; and added the campaign routes' one projection emit,
-        CAMPAIGN_TRANSITIONED, 48 → 49. SIP-0109 #1801 added the workload gate's proposal-revision
+        CAMPAIGN_TRANSITIONED, 48 → 49 (moved, same total, to the shared campaign projection that
+        every control-log writer uses, SIP-0109 step 6). SIP-0109 #1801 added the workload gate's proposal-revision
         WORKLOAD_ADVANCED emit (the supervisor's returned proposal, revised in a new run), 49 → 50;
         and the campaign launch's CYCLE_CREATED for a launched cycle's first run, 50 → 51."""
         total = 0
