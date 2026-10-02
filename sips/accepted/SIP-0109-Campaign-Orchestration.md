@@ -1407,6 +1407,7 @@ declared test id. The root anchor is the first declared id, stamped on the view'
 `npx` left the dev server it started still serving and writing into the workspace being removed.
 Each server now runs in a session of its own and its whole process group is stopped. No process
 outlived the second reading.
+
 ### 24q. The brownfield reference scenario, as built (2026-10-02, #1804; decided under the 2.0 charter)
 
 - **The inputs** (`examples/03_group_run/reference_scenario.yaml`), each pinned by hash:
@@ -1433,6 +1434,7 @@ outlived the second reading.
   - **the proposal half:** a proposal against the same baseline, recorded and rated, not built;
   - **the per-mechanism report:** each brownfield mechanism reported separately, read from the
     record (the evaluation artifact, §24n).
+
 ### 24r. Frozen verifiers protected, and retirement, as built (2026-10-02, §19 items 7 and 12e; decided under the 2.0 charter)
 
 - **No plan writes an earlier criterion's frozen test file** (`validate_increment_frozen_files`).
@@ -1453,6 +1455,33 @@ outlived the second reading.
 - **Not built: re-freezing a replaced verifier.** `replaces_verifiers` is treated as retirement, so the
   replacement's new bundle is not frozen. A change that replaces a verifier leaves that behaviour
   unfrozen until a later criterion covers it.
+
+### 24s. Retry cycles, as built (2026-10-02, §10a, §19 item 12b in part; decided under the 2.0 charter)
+
+- **What launches a retry:** a `retry` decision (§10 row 10), or the owner's resume of a held one.
+- **How it is launched** (`launch_requests.bound_launch`): with the policy's proposal profile, with its
+  `proposal` workload removed, so its stack is the campaign's and no proposal is run or ruled. It
+  carries:
+  - the increment's own `campaign_proposal` block;
+  - the approved seeds: the candidate manifest, the change request and the contract. They are read
+    from the increment's approved proposal run, or from the failed retry's own launch.
+
+  So every increment seam reads it as the increment it continues: bind-mode framing on the
+  candidate, the footprint, the accepted tree as the starting tree, the evaluation.
+- **The binding is re-checked before anything launches.** The increment's baseline must still be the
+  accepted tree, and an applied ruling approving that proposal version must be on record. Otherwise
+  the decision escalates and names the mismatch. Any change of scope, baseline or content needs a new
+  proposal and ruling.
+- **The campaign moves to `retrying`.** When the retry ends it is `evaluating` again, and it is decided
+  like an increment.
+- **Retries and repairs are judged like an increment:** by their own evaluation (§8.4), and promoted
+  when accepted.
+- **Not built:**
+  - **repair cycles:** implementation only, under the failed cycle's plan, from the failed candidate's
+    content, with the prior-cycle brief in the correction context;
+  - **a retry's prior-cycle brief shown to framing.**
+
+  A `repair` decision still escalates as unbuilt.
 
 ---
 

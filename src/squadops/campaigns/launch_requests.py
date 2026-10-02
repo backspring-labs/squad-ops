@@ -94,3 +94,46 @@ def increment_launch(
             )
         },
     )
+
+
+def bound_launch(
+    campaign: Campaign,
+    kind: CycleKind,
+    block: dict,
+    plan_artifact_refs: list[str],
+    contract_ref: str | None,
+) -> LaunchRequest:
+    """A cycle that reuses an increment's bound change request, ruling, baseline and footprint
+    (§10a): the policy's proposal profile — so the stack is the campaign's — with its proposal
+    step removed, since no proposal is run and no ruling is asked. It carries the increment's
+    ``campaign_proposal`` block and the approved seeds, so every increment seam reads it as the
+    increment it continues."""
+    from squadops.contracts.cycle_request_profiles import load_profile
+    from squadops.cycles.models import WorkloadType
+
+    policy = campaign.policy
+    sequence = [
+        dict(w)
+        for w in load_profile(policy.proposal_profile).defaults["workload_sequence"]
+        if w.get("type") != WorkloadType.PROPOSAL
+    ]
+    assert kind in (CycleKind.RETRY, CycleKind.REPAIR), kind
+    user_values: dict = {
+        "campaign_proposal": dict(block),
+        "plan_artifact_refs": list(plan_artifact_refs),
+        "workload_sequence": sequence,
+    }
+    if contract_ref:
+        user_values["contract_ref"] = contract_ref
+    return LaunchRequest(
+        kind,
+        {
+            "body": cycle_request_body(
+                policy.proposal_profile,
+                squad_profile_id=policy.squad_profile,
+                user_values=user_values,
+                notes=f"campaign {campaign.campaign_id}: {kind} of {block.get('proposal_id')} "
+                "(SIP-0109 §10a)",
+            )
+        },
+    )
