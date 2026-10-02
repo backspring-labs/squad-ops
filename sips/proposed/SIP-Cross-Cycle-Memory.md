@@ -12,16 +12,14 @@ Draft (proposed)
 
 **Author:** Jason Ladd
 **Created:** 2026-08-03
-**Revision:** 3 (2026-10-01). It folds in the new elements of the owner's v4 draft (2026-08-29,
-recorded in `docs/ideas/cross-cycle-memory-v4-draft.md`) as §5a, corrects references that went stale,
-and states how Campaign (2.0) and this SIP meet. Revision 2 (2026-08-03) incorporated design-review
-round 1: the typed Phase-1 primitive, governed encoding templates, the lifecycle `status` dimension,
-deterministic Phase-1 retrieval, the recall-vs-outcome metric split, and Phase-1 decay.
+**Revision:** 2 (2026-08-03 — design-review round 1 incorporated: typed Phase-1
+primitive, governed encoding templates, lifecycle `status` dimension, deterministic
+Phase-1 retrieval, recall-vs-outcome metric split, Phase-1 decay)
 **Builds on:** SIP-042 (LanceDB semantic memory — the storage mechanics), SIP-0088/0089
 (persistent agent identity), #669 (framing re-roll rejection context — the within-cycle
 rung and the injection seam this SIP reuses), SIP-0101 (Cycle Replay Harness — the
-measurement instrument), Campaign Orchestration (proposed, **v2.0's headline**, revision 2; see §7
-and §5a).
+measurement instrument), Campaign Orchestration (proposed, v1.8 — same-release
+companion; see §7).
 **Absorbs:** the "Hierarchical Cognitive Memory Architecture" idea doc (J. Ladd, 2026-08)
 as the long-term vision (§10); this SIP normatively specifies only Phase 1.
 **Placement amended 2026-09-12 (owner's ruling, `docs/plans/1-8-0-plan.md` §8 decision 2):** **v2.2**, after Campaign headlines v2.0 — not a 1.8 rider and not a 2.0 rider. The evidence: the B1 baseline's inputs (`src/squadops/cycles/rejection_baseline.py`) hold thirteen rejection records, all 2026-08-10 to 2026-08-23, and none since 1.6.2's success-status single-sourcing; every counted set since 1.6.3 reports zero framing re-rolls, so Phase 1's seed corpus at the plan gate is empty on this workload — a zero that says the original proving workload is dormant, not that the mechanism has no value — and the recurrence that remains is in the correction loop (this SIP's own §13 question 3, "Phase 1.5"). **What 1.8 does for this SIP:** emits the B1 baseline as a document; ships the one lineage seam and the one failure-attribution registry (intentions 1 and 2) for the scorecard's sake. **What ships in v2.1, not in 1.8:** the recall port, an inert NoOp that answers *empty* (not `NoOpMemoryPort`, which raises), the root injecting it explicitly (a factory with a required selector arrives with the first real adapter), and the call site through `plan_rejection_context` — declared on six task types on main, not the three counted below. **2.1 also re-reads this SIP's Phase-1 value hypothesis against the recurrence evidence available at its cut**, so 2.2 activates the mechanism against a proving workload that is actually live. The paragraph below is the superseded 2026-08-07 placement, kept as the record.
@@ -286,50 +284,6 @@ recall threshold it stops being injected, and past a floor its `status` moves to
 `deprecated` (never injected again, retained for the audit trail). Computed entirely
 from the same per-gate feedback above — no new machinery.
 
-## 5a. Revision 3 additions (2026-10-01, from the v4 draft)
-
-The v4 draft (`docs/ideas/cross-cycle-memory-v4-draft.md`) restates most of §5: a typed behavioral
-pattern, the governed template registry, the trust lifecycle, deterministic seams and mode neutrality.
-Its `VerifiedBehavioralPattern` is this SIP's `ReflectiveFailurePattern`. Revision 3 adopts what is new
-in it:
-- **A hard applicability gate before any ranking.** A pattern is eligible only when project, role,
-  task type and stack all match. Similarity ranks only the eligible.
-- **A density cap.** At most three recalled patterns per task, by weighted confidence.
-- **Rejection precedence.** When validators conflict on one run, only the highest-precedence class
-  (compilation, then security boundary, then function, then performance) writes a candidate.
-- **Origin-model provenance.** Each pattern records the model family it was learned on. Recall
-  penalizes a pattern learned on a different family.
-- **The context-efficiency measure,** beside recurrence suppression: the tokens injected for a pattern
-  against the tokens of the raw trace it replaces.
-- **The four-arm experiment** as the proving design: no memory, raw trace, factual memory, distilled
-  pattern. Its instrument is the **convergence replay harness** (#1765), which already replays stored
-  failing rounds per arm. SIP-0101, which v4 named, replays a cycle from a boundary and does not run
-  arms.
-
-**Corrected by revision 3:**
-- **#571 is closed.** The LanceDB filter-before-limit and similarity defects in §12 are fixed, so the
-  prerequisite is met. Phase 1 still verifies recall against the adapter on its own corpus first.
-- **The read seam is `plan_rejection_context`** on the live, dispatched execution path. It is not
-  `InProcessFlowExecutor`, which v4 named.
-- **The corpus.** v4 asks for at least 30 historical failure plans. The plan-gate corpus holds 13,
-  none after 2026-08-23 (the placement note above). Phase 1's target is the correction lane (§13
-  question 3), where recurrence is live. The jsdom pitfalls behind 1.9's two rejections (#1785) are
-  this SIP's motivating class in its current form. **Campaigns are the corpus's source:** the evidence
-  package records every failure under the failure-attribution registry's vocabulary, with campaign,
-  cycle and increment (`SIP-Campaign-Orchestration.md` revision 2, §14).
-
-**Governance, proposed for this review.** Under 2.0's rules, anything that changes how the squad
-behaves lands between campaigns, with the owner's approval. That is how the calibration cycle can
-still say whether a framework change helped. So:
-- **only `promoted` patterns** (owner-approved) inject into counted cycles;
-- `candidate` and `validated` patterns inject only in replay experiments;
-- no pattern changes within a running campaign.
-
-v4's case for automation (its §10.3: unattended campaigns must not stall on repeated errors) is answered
-in 2.0 by the prior-cycle brief and the crew's outer loop. This SIP's later contribution is to **scope**
-those approved corrective rules (the applicability gate) and to **measure** them (recurrence
-suppression). Without it, every approved rule goes into every prompt, the bloat v4's §3.1 describes.
-
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 
 Phase 1 implements the cycle-mode loop, but the substrate is designed so duty- and
@@ -378,8 +332,8 @@ Phase 1's implementation (normative), with the utilization sketch they exist to 
 
 ## 7. Campaign interaction
 
-Campaign Orchestration (v2.0's headline since 2026-09-12; revision 2 makes a campaign evolve one app;
-this SIP's Phase 1 follows in v2.2) is the sharpest consumer of cross-cycle memory: `repair`/`retry`/`fork` continuations create
+Campaign Orchestration (targeting v1.8, the same release as this SIP's Phase 1) is the
+sharpest consumer of cross-cycle memory: `repair`/`retry`/`fork` continuations create
 back-to-back cycles pursuing one objective, where the prior cycle's failure classes are
 maximally relevant and the recurrence metric takes its tightest form (did the class
 recur *within the campaign*?).

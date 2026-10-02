@@ -40,7 +40,7 @@ author: Backspring Labs / SquadOps
 >
 > | part | when |
 > |---|---|
-> | **an increment's new tests must fail on its baseline** (demonstrated discrimination for brownfield cycles) | **before the first campaign**, as `SIP-Campaign-Orchestration.md` revision 2 §8.1 |
+> | **each criterion an increment adds has a test that fails on its baseline for the intended reason** (demonstrated discrimination for brownfield cycles) | **before the first campaign**, as `SIP-Campaign-Orchestration.md` revision 3 §8.2 |
 > | Test-First Verification's stub-based red gate, for greenfield cycles | after the first campaign: the calibration cycle is the yardstick, and changing its verification moves the baseline it exists to hold |
 > | risk-first instructions for qa and builder, with "no new test is justified" a legal outcome (§19) | after the first campaign, as an outer-loop experiment read against the calibration cycle |
 > | the test-value audit, fault corpus, detection matrix and deletion experiment on the framework's suite (§10–§28) | after, as Nostromo crew work. It suits crew local inference between cycles (§34). It is not commissioning work, because deletion decisions take judgement |
