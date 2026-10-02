@@ -93,6 +93,14 @@ _ALLOWLIST: set[tuple[str, str]] = {
     ("src/squadops/capabilities/handlers/planning/merge.py", "failure"),
     # - the correction protocol's decided path ("abort" ends the run, not a campaign).
     ("adapters/cycles/dispatched_flow_executor.py", "abort"),
+    # SIP-0109 step 2's change-request vocabularies (#1706) share three more words, none about a
+    # change request:
+    # - an anchored edit's verb ("REMOVE" deletes the anchored span);
+    ("src/squadops/capabilities/anchored_edits.py", "remove"),
+    # - a Dockerfile instruction ("ADD" copies into the image);
+    ("src/squadops/cycles/container_packaging.py", "add"),
+    # - a plan proposer's parse-error text ("malformed" names the YAML failure).
+    ("src/squadops/capabilities/handlers/planning/propose.py", "malformed"),
 }
 
 # Enum values this short/common that they produce coincidental matches are not
