@@ -130,6 +130,8 @@ def _cycle_row(**overrides):
         "framework_version": None,
         "framework_git_sha": None,
         "deploy_id": None,  # #1720, migration 1051
+        "campaign_id": None,  # SIP-0109 #1799, migration 1610
+        "kind": None,
         "notes": None,
         "cancelled": False,
     }

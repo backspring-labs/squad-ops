@@ -50,6 +50,47 @@ from squadops.ports.cycles.cycle_registry import CycleRegistryPort
 logger = logging.getLogger(__name__)
 
 
+#: Every column a cycle row is created with, in ``_cycle_insert_args``' order. One list, so
+#: ``create_cycle`` and ``create_cycle_for_launch`` cannot store a cycle differently.
+_CYCLE_INSERT_COLUMNS = (
+    "cycle_id, project_id, created_at, created_by, prd_ref, "
+    "squad_profile_id, squad_profile_snapshot_ref, task_flow_policy, "
+    "build_strategy, applied_defaults, execution_overrides, "
+    "expected_artifact_types, experiment_context, notes, request_profile, "
+    "framework_version, framework_git_sha, deploy_id, campaign_id, kind"
+)
+_CYCLE_INSERT_COLUMN_COUNT = len(_CYCLE_INSERT_COLUMNS.split(","))
+
+
+def _placeholders(count: int) -> str:
+    return ",".join(f"${i}" for i in range(1, count + 1))
+
+
+def _cycle_insert_args(cycle: Cycle) -> tuple:
+    return (
+        cycle.cycle_id,
+        cycle.project_id,
+        cycle.created_at,
+        cycle.created_by,
+        cycle.prd_ref,
+        cycle.squad_profile_id,
+        cycle.squad_profile_snapshot_ref,
+        _policy_to_dict(cycle.task_flow_policy),
+        cycle.build_strategy,
+        cycle.applied_defaults,
+        cycle.execution_overrides,
+        list(cycle.expected_artifact_types),
+        cycle.experiment_context,
+        cycle.notes,
+        cycle.request_profile,
+        cycle.framework_version,
+        cycle.framework_git_sha,
+        cycle.deploy_id,
+        cycle.campaign_id,
+        cycle.kind,
+    )
+
+
 class PostgresCycleRegistry(CycleRegistryPort):
     """Postgres-backed CycleRegistryPort implementation."""
 
@@ -62,35 +103,39 @@ class PostgresCycleRegistry(CycleRegistryPort):
         try:
             async with self._pool.acquire() as conn:
                 await conn.execute(
-                    "INSERT INTO cycle_registry "
-                    "(cycle_id, project_id, created_at, created_by, prd_ref, "
-                    "squad_profile_id, squad_profile_snapshot_ref, task_flow_policy, "
-                    "build_strategy, applied_defaults, execution_overrides, "
-                    "expected_artifact_types, experiment_context, notes, request_profile, "
-                    "framework_version, framework_git_sha, deploy_id) "
-                    "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)",
-                    cycle.cycle_id,
-                    cycle.project_id,
-                    cycle.created_at,
-                    cycle.created_by,
-                    cycle.prd_ref,
-                    cycle.squad_profile_id,
-                    cycle.squad_profile_snapshot_ref,
-                    _policy_to_dict(cycle.task_flow_policy),
-                    cycle.build_strategy,
-                    cycle.applied_defaults,
-                    cycle.execution_overrides,
-                    list(cycle.expected_artifact_types),
-                    cycle.experiment_context,
-                    cycle.notes,
-                    cycle.request_profile,
-                    cycle.framework_version,
-                    cycle.framework_git_sha,
-                    cycle.deploy_id,
+                    f"INSERT INTO cycle_registry ({_CYCLE_INSERT_COLUMNS}) "
+                    f"VALUES ({_placeholders(_CYCLE_INSERT_COLUMN_COUNT)})",
+                    *_cycle_insert_args(cycle),
                 )
         except asyncpg.UniqueViolationError as err:
             raise ValidationError(f"Cycle already exists: {cycle.cycle_id}") from err
         return cycle
+
+    async def create_cycle_for_launch(self, cycle: Cycle, launch_id: str) -> Cycle:
+        if not launch_id or not cycle.campaign_id:
+            raise ValidationError(
+                f"Cycle {cycle.cycle_id}: a launch needs its launch id and the cycle's campaign_id"
+            )
+        # The unique source_launch_id decides between concurrent launchers: the loser's insert
+        # does nothing, and it reads the winner's cycle. A cycle_id conflict is not covered by
+        # the ON CONFLICT target, so it still raises.
+        try:
+            async with self._pool.acquire() as conn:
+                inserted = await conn.fetchval(
+                    f"INSERT INTO cycle_registry ({_CYCLE_INSERT_COLUMNS}, source_launch_id) "
+                    f"VALUES ({_placeholders(_CYCLE_INSERT_COLUMN_COUNT + 1)}) "
+                    "ON CONFLICT (source_launch_id) DO NOTHING RETURNING cycle_id",
+                    *_cycle_insert_args(cycle),
+                    launch_id,
+                )
+                if inserted is not None:
+                    return cycle
+                row = await conn.fetchrow(
+                    "SELECT * FROM cycle_registry WHERE source_launch_id = $1", launch_id
+                )
+        except asyncpg.UniqueViolationError as err:
+            raise ValidationError(f"Cycle already exists: {cycle.cycle_id}") from err
+        return self._row_to_cycle(row)
 
     async def get_cycle(self, cycle_id: str) -> Cycle:
         async with self._pool.acquire() as conn:
@@ -583,6 +628,8 @@ class PostgresCycleRegistry(CycleRegistryPort):
             framework_version=row["framework_version"],
             framework_git_sha=row["framework_git_sha"],
             deploy_id=row["deploy_id"],
+            campaign_id=row["campaign_id"],
+            kind=row["kind"],
             notes=row["notes"],
             cancelled=row["cancelled"],
         )

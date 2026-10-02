@@ -57,7 +57,9 @@ def _parse_table_columns(migrations_dir: Path) -> dict[str, set[str]]:
 
 # (table, model, db_only_columns, model_only_fields)
 _REGISTRY = [
-    ("cycle_registry", Cycle, set(), set()),
+    # source_launch_id (SIP-0109 §12b, 1610): the launch a campaign cycle was created from, written
+    # and read only by create_cycle_for_launch as its idempotency key, never a Cycle field
+    ("cycle_registry", Cycle, {"source_launch_id"}, set()),
     ("cycle_runs", Run, set(), {"gate_decisions"}),  # gate_decisions -> child table
     # run_id = parent FK; id = SERIAL surrogate PK (both DB-only, not model fields)
     ("cycle_gate_decisions", GateDecision, {"run_id", "id"}, set()),
