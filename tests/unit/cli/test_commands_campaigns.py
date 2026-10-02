@@ -203,3 +203,23 @@ def test_classify_sends_the_version_and_its_classification(get_client):
             "idempotency_key": "k-9",
         },
     )
+
+
+@patch("squadops.cli.commands.campaigns._get_client")
+def test_resume_names_the_owners_action_only_when_given(get_client):
+    """#1866: an escalated campaign resumes only on a named action, so a CLI that cannot send
+    one leaves the owner no way to move it. Bugs caught: the action dropped on the way; or an
+    action sent for a plain resume, which the API would refuse against the held one."""
+    client = _client(post={**_RESULT, "entry": {**_RESULT["entry"], "operation": "resume"}})
+    get_client.return_value = client
+    base = ["campaigns", "resume", "cmp_1", "--reason", "rule", "--idempotency-key", "k-9"]
+
+    named = runner.invoke(app, [*base, "--action", "abandon_and_propose"])
+    plain = runner.invoke(app, base)
+
+    assert (named.exit_code, plain.exit_code) == (0, 0), named.output + plain.output
+    sent = [c.kwargs["json"] for c in client.post.call_args_list]
+    assert sent == [
+        {"reason": "rule", "idempotency_key": "k-9", "action": "abandon_and_propose"},
+        {"reason": "rule", "idempotency_key": "k-9"},
+    ]
