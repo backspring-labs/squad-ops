@@ -75,3 +75,24 @@ def move(
     )
     values.update(overrides)
     return CampaignTransition(**values)
+
+
+def cycle_for(intent, *, project_id: str = "group_run"):
+    """The cycle an intent describes, with a fresh id per call, as the cycle-create path mints one."""
+    import uuid
+
+    from squadops.cycles.models import Cycle, TaskFlowPolicy
+
+    return Cycle(
+        cycle_id=f"cyc_{uuid.uuid4().hex[:12]}",
+        project_id=project_id,
+        created_at=datetime.now(UTC),
+        created_by="launcher",
+        prd_ref=None,
+        squad_profile_id="full",
+        squad_profile_snapshot_ref="sha256:abc",
+        task_flow_policy=TaskFlowPolicy(mode="sequential"),
+        build_strategy="fresh",
+        campaign_id=intent.campaign_id,
+        kind=intent.cycle_kind.value,
+    )

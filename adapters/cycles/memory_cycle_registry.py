@@ -49,12 +49,31 @@ class MemoryCycleRegistry(CycleRegistryPort):
         # SIP-0101 Slice 2: (run_id, checkpoint_index) pairs excluded from pruning
         # (the model stays retention-agnostic; postgres carries this as a column)
         self._retained_checkpoints: set[tuple[str, int]] = set()
+        # SIP-0109 §12b: source_launch_id → cycle_id, the unique column's twin
+        self._cycle_by_launch: dict[str, str] = {}
 
     # --- Cycle CRUD ---
 
     async def create_cycle(self, cycle: Cycle) -> Cycle:
         self._cycles[cycle.cycle_id] = dataclasses.asdict(cycle)
         # Store the TaskFlowPolicy object for gate validation
+        self._cycles[cycle.cycle_id]["_policy_obj"] = cycle.task_flow_policy
+        return cycle
+
+    async def create_cycle_for_launch(self, cycle: Cycle, launch_id: str) -> Cycle:
+        if not launch_id or not cycle.campaign_id:
+            raise ValidationError(
+                f"Cycle {cycle.cycle_id}: a launch needs its launch id and the cycle's campaign_id"
+            )
+        existing = self._cycle_by_launch.get(launch_id)
+        if existing is not None:
+            return self._to_cycle(self._cycles[existing])
+        if cycle.cycle_id in self._cycles:
+            raise ValidationError(f"Cycle already exists: {cycle.cycle_id}")
+        # Nothing is awaited between the check and the writes: the memory form of the unique
+        # source_launch_id, so two launchers on one intent cannot both pass the check.
+        self._cycle_by_launch[launch_id] = cycle.cycle_id
+        self._cycles[cycle.cycle_id] = dataclasses.asdict(cycle)
         self._cycles[cycle.cycle_id]["_policy_obj"] = cycle.task_flow_policy
         return cycle
 

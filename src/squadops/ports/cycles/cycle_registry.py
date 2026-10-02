@@ -30,6 +30,20 @@ class CycleRegistryPort(ABC):
         """Persist a new Cycle and return it."""
 
     @abstractmethod
+    async def create_cycle_for_launch(self, cycle: Cycle, launch_id: str) -> Cycle:
+        """Persist a campaign-launched cycle, idempotently by its launch (SIP-0109 §12b).
+
+        The cycle is stored with ``source_launch_id = launch_id``, which is unique. When a cycle
+        already carries that launch id, it is returned and nothing is written: a launcher that
+        crashed after creating the cycle, or a second launcher on the same intent, finds the
+        first one's cycle instead of creating another.
+
+        Raises:
+            ValidationError: If the cycle carries no ``campaign_id``, or its id is taken by a
+                cycle of another launch.
+        """
+
+    @abstractmethod
     async def get_cycle(self, cycle_id: str) -> Cycle:
         """Return a cycle by ID.
 

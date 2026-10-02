@@ -124,9 +124,15 @@ def transition_request_hash(transition: CampaignTransition) -> str:
 
     A repeat with the same key and the same hash is a replay; the same key with any other content
     is a conflict, refused and recorded (§12a).
+
+    A record-only operation's content is the fact it records, its target and binding, and not
+    who reported it: two launchers marking one launch with the same cycle are one fact, and the
+    second replays. The same launch marked with a different cycle is still a conflict.
     """
     payload = dataclasses.asdict(transition)
     payload.pop("idempotency_key")
+    if transition.operation.records_only:
+        payload = {k: payload[k] for k in ("operation", "target", "binding")}
     return _digest(payload)
 
 

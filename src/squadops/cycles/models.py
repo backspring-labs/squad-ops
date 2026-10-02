@@ -388,6 +388,11 @@ class Cycle:
     # the models' weights, where framework_git_sha names only the runtime API's. None when no
     # deploy had been recorded.
     deploy_id: str | None = None
+    # SIP-0109 (#1799): the campaign that launched the cycle, and why (a ``CycleKind`` value:
+    # calibration, increment, repair or retry). None on a cycle no campaign launched, which is
+    # otherwise unchanged (§19).
+    campaign_id: str | None = None
+    kind: str | None = None
 
     notes: str | None = None
 
