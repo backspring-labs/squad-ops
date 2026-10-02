@@ -128,6 +128,10 @@ class QAEvaluateIncrementHandler(CapabilityHandler):
         }
         candidate_files = dict(inputs.get("acceptance_workspace_files") or {})
         retired = tuple(str(c) for c in inputs.get("increment_retired_criteria") or ())
+        replaced = [
+            NewCriterion(f["criterion_id"], f["path"])
+            for f in inputs.get("increment_replaced_criteria") or ()
+        ]
         evaluation = await evaluate_increment(
             increment_id=increment_id,
             accepted=accepted,
@@ -143,6 +147,7 @@ class QAEvaluateIncrementHandler(CapabilityHandler):
             run=partial(run_suite, framework, timeout_seconds=_SUITE_TIMEOUT_SECONDS),
             invocation=(framework,),
             retired=retired,
+            replaced=replaced,
         )
         document = evaluation_document(
             evaluation,
@@ -151,6 +156,7 @@ class QAEvaluateIncrementHandler(CapabilityHandler):
             candidate=candidate,
             new=new,
             retired=retired,
+            replaced=replaced,
         )
         return self._result(
             inputs,

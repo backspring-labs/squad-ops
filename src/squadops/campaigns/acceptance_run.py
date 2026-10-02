@@ -71,8 +71,8 @@ class IncrementEvaluation:
     discriminations: tuple[Discrimination, ...]
     frozen: tuple[FrozenResult, ...]
     routes: tuple[RouteResult, ...]
-    #: The bundles the new criteria were frozen into: what a promotion freezes for later
-    #: increments (§8.1).
+    #: The bundles the new criteria, and the replaced verifiers, were frozen into: what a
+    #: promotion freezes for later increments (§8.1).
     new_bundles: Mapping[str, VerifierBundle]
 
 
@@ -101,8 +101,13 @@ async def evaluate_increment(
     run: Runner,
     invocation: Iterable[str],
     retired: Iterable[str],
+    replaced: Iterable[NewCriterion] = (),
 ) -> IncrementEvaluation:
-    """The increment's acceptance (§8): discrimination, accumulated acceptance, rendering."""
+    """The increment's acceptance (§8): discrimination, accumulated acceptance, rendering.
+
+    ``replaced`` is each frozen criterion whose verifier the change request replaces, at its own
+    test file (§8.1): the old bundle is retired, and the new one is frozen from the candidate and
+    run there as a frozen criterion is — it must pass, and nothing discriminates it."""
     invocation = tuple(invocation)
     discriminations, bundles = [], {}
     for criterion in new:
@@ -136,12 +141,25 @@ async def evaluate_increment(
             runs[criterion.criterion_id] = await _run(
                 candidate_verifier_overlay(candidate, criterion.bundle, surface), surface, run
             )
-    frozen_results = accumulated_acceptance(
-        increment_id,
-        candidate.identity,
-        {c.criterion_id: (c.bundle.address if c.bundle else None, c.test_path) for c in frozen},
-        runs,
-    )
+    held_by = {
+        c.criterion_id: (c.bundle.address if c.bundle else None, c.test_path) for c in frozen
+    }
+    # §8.1: "the old bundle is retired and the new one frozen." A replacement the candidate does
+    # not carry whole has no bundle, and is blocked like a missing one.
+    for criterion in replaced:
+        try:
+            bundle = freeze_bundle(
+                criterion.criterion_id, candidate, criterion.test_path, surface, invocation
+            )
+        except BundleIncomplete:
+            held_by[criterion.criterion_id] = (None, criterion.test_path)
+            continue
+        bundles[criterion.criterion_id] = bundle
+        held_by[criterion.criterion_id] = (bundle.address, criterion.test_path)
+        runs[criterion.criterion_id] = await _run(
+            candidate_verifier_overlay(candidate, bundle, surface), surface, run
+        )
+    frozen_results = accumulated_acceptance(increment_id, candidate.identity, held_by, runs)
     frozen_results = _changed_verifiers_blocked(frozen_results, frozen, candidate)
     routes = route_rendering(declared_routes, rendered)
     return IncrementEvaluation(
@@ -187,11 +205,13 @@ def evaluation_document(
     candidate: FileTree,
     new: Iterable[NewCriterion],
     retired: Iterable[str],
+    replaced: Iterable[NewCriterion] = (),
 ) -> dict:
     """The evaluation as plain data, for the ``increment_evaluation`` artifact the completion hook
     reads (§8.4: every result keyed, the bundles a promotion freezes carried whole)."""
     acceptance = evaluation.acceptance
-    test_paths = {c.criterion_id: c.test_path for c in new}
+    replaced = tuple(replaced)
+    test_paths = {c.criterion_id: c.test_path for c in (*new, *replaced)}
     return {
         "increment_id": increment_id,
         "accepted_tree": accepted.identity,
@@ -228,6 +248,9 @@ def evaluation_document(
         ],
         # §8.1: the criteria this increment retires — dropped from the frozen set at promotion.
         "retired": sorted(retired),
+        # §8.1: of those, the criteria whose verifier was replaced — their new bundles are in
+        # ``new_bundles``, frozen at promotion in place of the retired ones.
+        "replaced": sorted(c.criterion_id for c in replaced),
         "new_bundles": {
             criterion_id: {
                 "address": bundle.address,

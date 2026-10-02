@@ -1454,7 +1454,7 @@ outlived the second reading.
     the frozen set every later launch pins leaves it out.
 - **Not built: re-freezing a replaced verifier.** `replaces_verifiers` is treated as retirement, so the
   replacement's new bundle is not frozen. A change that replaces a verifier leaves that behaviour
-  unfrozen until a later criterion covers it.
+  unfrozen until a later criterion covers it. *(Built since: §24x.)*
 
 ### 24s. Retry cycles, as built (2026-10-02, §10a, §19 item 12b in part; decided under the 2.0 charter)
 
@@ -1614,6 +1614,31 @@ run's inputs.
   increment is a different change, so its framing and build authors are not told that. Only the
   proposal reads `abandoned_increment`.
 - **A `propose` that replaces nothing carries none.**
+
+### 24x. A replaced verifier, frozen anew (2026-10-02, §8.1, §24r's not-built; decided under the 2.0 charter)
+
+§8.1: a change request replaces a criterion's bundle through `replaces_verifiers`, and "the old bundle
+is retired and the new one frozen." §24r built the retirement. This builds the freeze.
+
+- **Where the replacement is:** at the test file the launch pinned for that criterion. The new
+  verifier is written where the old one was, and the plan gate already lets the plan write it
+  (§24r).
+  - The evaluation is handed each replaced criterion with that path
+    (`increment_replaced_criteria`, from `replaced_criterion_files`).
+  - A replacement of a criterion the launch did not pin names no file, and is none.
+- **How it is judged:** its new bundle is frozen from the candidate's copy of that file, and run on
+  the candidate as a frozen criterion is.
+  - It must hold. A replacement that fails on the candidate is `broken`, and the increment is not
+    accepted.
+  - A replacement the candidate does not carry is `blocked_unverified`.
+  - Nothing discriminates it: it guards behaviour the campaign already accepted, changed by a ruled
+    scope.
+- **How it is frozen:** the new bundle is in the evaluation's `new_bundles`, so the promotion freezes
+  it.
+  - The same PROMOTE row retires the old one (`retired_criteria`).
+  - The frozen-set fold applies a row's retirements before its freezes, so the criterion stays
+    frozen, under its new bundle, for every later launch.
+  - The evaluation records which criteria were replaced (`replaced`).
 
 ---
 
