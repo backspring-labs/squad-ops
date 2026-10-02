@@ -509,6 +509,8 @@ class InterfaceManifest:
 
         entity_names = {e.name for e in self.entities}
         shape_names = {s.name for s in self.api.request_shapes}
+        contract = self.api.error_contract
+        declared_codes = {c.code for c in contract.codes} if contract is not None else set()
         for ep in self.api.endpoints:
             label = f"endpoint {ep.method} {ep.path}".rstrip()
             if not ep.method or not ep.path:
@@ -523,6 +525,13 @@ class InterfaceManifest:
                 # primitive (str/int/…) the expander passes through.
                 if base and base[0].isupper() and base not in entity_names:
                     errors.append(f"{label}: response references undeclared entity {base!r}")
+            # #1817: an error the contract does not define has no status, and the expander
+            # drops it without a trace — the app cannot raise it and a probe cannot assert it.
+            undeclared = [code for code in ep.errors if code not in declared_codes]
+            if undeclared:
+                errors.append(
+                    f"{label}: errors {undeclared} are not defined in api.error_contract.codes"
+                )
 
         for route in self.frontend.routes:
             if not route.view:

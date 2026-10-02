@@ -1,6 +1,6 @@
 ---
 template_id: request.manifest_authoring_rules_appendix
-version: "2"
+version: "3"
 required_variables: []
 ---
 ## MANIFEST RULES (authoritative — a manifest that breaks one is rejected)
@@ -21,8 +21,9 @@ the thing that was wrong.
 
 **nothing-undeclared** — Every name the manifest uses is declared inside it. An endpoint's
 `request` names a declared `request_shapes` entry or entity; an endpoint's `response` names
-a declared entity (write `list[Entity]` for a collection, unquoted); every frontend route
-declares a `view`. A reference to something you did not declare cannot be expanded into a
+a declared entity (write `list[Entity]` for a collection, unquoted); every code in an
+endpoint's `errors` is defined under `error_contract.codes` with its `http` status; every frontend
+route declares a `view`. A reference to something you did not declare cannot be expanded into a
 skeleton, so the manifest describes an application that cannot exist.
 
 **declare-something-to-build** — The manifest declares at least one endpoint, and the
