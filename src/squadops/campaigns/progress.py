@@ -731,18 +731,18 @@ class CampaignProgress:
     ) -> dict[str, Any] | None:
         """#1692: the failed cycle's brief, from its assessment (read here when the caller has
         none — an owner's resume) and its runs' verification summaries. It is an aid to the next
-        cycle, so a record that cannot be read leaves it out, with a warning; it never blocks the
-        launch."""
+        cycle, so a record that cannot be read or derived from leaves it out, with a warning; it
+        never blocks the launch."""
         try:
             if latest is None:
                 latest = await self._assess(cycle.cycle_id)
             summaries = await self._cycles.list_run_verification_summaries(cycle.cycle_id)
+            return prior_cycle_brief(latest, [f for s in summaries for f in s.failed_detail])
         except Exception:  # noqa: BLE001 — an unreadable record is absent, never a blocked launch
             logger.warning(
                 "cycle %s: no prior-cycle brief: its records are unreadable", cycle.cycle_id
             )
             return None
-        return prior_cycle_brief(latest, [f for s in summaries for f in s.failed_detail])
 
     async def _approved_plan(self, cycle: Cycle) -> str | None:
         """The implementation plan the failed cycle built under (§10a): its framing's approved

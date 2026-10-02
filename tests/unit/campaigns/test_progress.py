@@ -766,9 +766,11 @@ async def test_an_environment_failure_is_retried_with_the_bound_request_and_no_n
     ]
 
 
-@pytest.mark.parametrize("readable", [True, False], ids=["records-read", "records-unreadable"])
+@pytest.mark.parametrize(
+    "records", ["read", "unreadable", "malformed"], ids=lambda r: f"records-{r}"
+)
 async def test_an_owners_retry_carries_the_brief_and_is_never_blocked_by_it(
-    calibrating, stored, readable
+    calibrating, stored, records
 ):
     """#1692, entered at the owner's word (``owner_action``), which has no assessment in hand.
     Bugs caught: an owner's retry launched without the brief a decided one carries; or a
@@ -776,8 +778,10 @@ async def test_an_owners_retry_carries_the_brief_and_is_never_blocked_by_it(
     from squadops.campaigns.continuation import PendingAction
 
     w = await _increment_failed_by_the_environment(calibrating, stored)
-    if not readable:
+    if records == "unreadable":
         w.progress._assess = AsyncMock(side_effect=RuntimeError("the assessment store is down"))
+    if records == "malformed":
+        w.progress._assess = AsyncMock(return_value=object())  # read, and nothing to derive from
 
     transition = await w.progress.owner_action(
         await w.campaigns.get_campaign(CID),
@@ -791,7 +795,8 @@ async def test_an_owners_retry_carries_the_brief_and_is_never_blocked_by_it(
 
     block = transition.launch.cycle_request["body"]["execution_overrides"]["campaign_proposal"]
     assert transition.launch.cycle_kind is CycleKind.RETRY
-    assert (block.get("prior_cycle") or {}).get("cycle_id") == ("cyc_inc" if readable else None)
+    expected = "cyc_inc" if records == "read" else None
+    assert (block.get("prior_cycle") or {}).get("cycle_id") == expected
 
 
 @pytest.mark.parametrize(
