@@ -32,8 +32,8 @@ def policy(**overrides) -> CampaignPolicy:
         lease_expiry_s=3600,
         launch_blocked_interval_s=300,
         launch_blocked_attempts=6,
-        calibration_profile="group-run-react",
-        proposal_profile="group-run-proposal",
+        calibration_profile="validated-fullstack",
+        proposal_profile="campaign-proposal",
         squad_profile="full-38",
     )
     values.update(overrides)

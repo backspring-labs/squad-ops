@@ -122,6 +122,11 @@ def get_campaign_registry(request: Request) -> CampaignRegistryPort:
     return _required(request, "campaign_registry", "CampaignRegistryPort")
 
 
+def get_campaign_progress(request: Request):
+    """Return the campaign progress service (SIP-0109 §10): the owner's word executes through it."""
+    return _required(request, "campaign_progress", "CampaignProgress")
+
+
 def get_campaign_launch(request: Request):
     """Return the campaign launch service (SIP-0109 §12b)."""
     return _required(request, "campaign_launch", "CampaignLaunchService")
