@@ -30,6 +30,9 @@ def _jsonable(reading) -> dict:
 
 
 async def snapshot(dsn: str, vault_dir: Path) -> dict[str, dict]:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))  # the guard sits beside this script
+    from _evidence_read_guard import UnreadableEvidence, require_readable_vault
+
     from adapters.cycles.cycle_evidence import assemble_cycle_evidence
     from adapters.cycles.filesystem_artifact_vault import FilesystemArtifactVault
     from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
@@ -37,11 +40,8 @@ async def snapshot(dsn: str, vault_dir: Path) -> dict[str, dict]:
     from squadops.cycles.cycle_assessment import AssessorIdentity, assess
     from squadops.cycles.cycle_outcome import resolve_cycle_outcome
 
-    if not (vault_dir / "_index.json").is_file():
-        # The vault rebuilds a missing index on construction, which is a write.
-        raise SystemExit(
-            f"no vault index at {vault_dir}: refusing to construct a vault that writes"
-        )
+    require_readable_vault(vault_dir)
+    unreadable = UnreadableEvidence()
 
     pool = await create_pool(
         dsn, min_size=1, max_size=2, server_settings={"default_transaction_read_only": "on"}
@@ -59,12 +59,17 @@ async def snapshot(dsn: str, vault_dir: Path) -> dict[str, dict]:
             ]
         out: dict[str, dict] = {}
         for cycle_id in cycle_ids:
+            unreadable.reset()
             try:
                 outcome = await resolve_cycle_outcome(registry, cycle_id)
                 evidence = await assemble_cycle_evidence(registry, vault, cycle_id)
                 out[cycle_id] = _jsonable(assess(outcome, evidence, assessor=assessor).attribution)
             except Exception as exc:  # noqa: BLE001 — reported per cycle, never dropped
                 out[cycle_id] = {"error": f"{type(exc).__name__}: {exc}"}
+            missed = unreadable.reset()
+            if missed:
+                # An attribution read with artifacts missing is not this cycle's attribution.
+                out[cycle_id] = {"error": f"evidence unreadable: {len(missed)} artifact(s)"}
         return out
     finally:
         await pool.close()
