@@ -973,6 +973,24 @@ proposed in the PR that builds the decision.
 
    Every other gate still needs `cycles:write`, and refuses a binding.
 
+
+### 24d. §9.2's revision request, as built (2026-10-02, #1801; implementer's reading, not yet ruled)
+
+1. **A returned proposal is revised in a new proposal run of the same cycle,** in #811's shape:
+   - the returned run is superseded (cancelled);
+   - the new run's `campaign_proposal` block carries the next version, the supervisor's note word
+     for word, and the change request it revises;
+   - the strategy role is shown all three, and its new version is submitted and ruled on afresh.
+2. **The budget is the campaign's `max_proposal_revisions`,** carried on the block as
+   `max_revisions` by the launch, and required there.
+   - **Revisions made so far** are counted as the cycle's superseded proposal runs, read from the
+     registry, so a restart counts the same.
+   - **When the budget is spent,** the sequence stops (`revision_unavailable`). The proposal counts
+     as rejected (§9.5) and the cycle ends at the gate.
+3. **The revised block travels as a forwarding override,** as #811's framing revision does. A
+   restart while the revision run is in flight re-enters with the cycle's own block. That
+   recovery belongs to step 8 (§12a, #1803).
+
 ---
 
 ## Revision history

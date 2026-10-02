@@ -111,7 +111,20 @@ class StrategyProposeIncrementHandler(_PlanningTaskHandler):
         if prd:
             # The objective points into the product's requirements (its expansion scope, say);
             # the model is shown them rather than asked to recall them.
-            variables["prd_section"] = f"\n### The product's requirements\n\n{prd}\n"
+            section = await renderer.render("request.proposal_prd_section", {"prd": prd})
+            variables["prd_section"] = section.content
+        note = str(block.get("supervisor_note") or "").strip()
+        if note:
+            # SIP-0109 §9.2: a revision run is shown the note and the version it revises.
+            section = await renderer.render(
+                "request.proposal_supervisor_revision",
+                {
+                    "prior_version": str(proposal_context.version - 1),
+                    "supervisor_note": note,
+                    "prior_change_request": str(block.get("prior_change_request") or "").strip(),
+                },
+            )
+            variables["supervisor_note_section"] = section.content
         rendered = await renderer.render(self._request_template_id, variables)
         assembled = context.ports.prompt_service.assemble(
             role=context.role_id,  # SIP-0108 §10m: the identity layer is what the process IS
@@ -242,11 +255,6 @@ def _render_variables(block: dict, context: ProposalContext) -> dict[str, str]:
             or "- none yet: this is the first increment after calibration"
         ),
     }
-    note = str(block.get("supervisor_note") or "").strip()
-    if note:
-        variables["supervisor_note_section"] = (
-            "\n## The supervisor returned your last version for revision\n\n" + note + "\n"
-        )
     return variables
 
 

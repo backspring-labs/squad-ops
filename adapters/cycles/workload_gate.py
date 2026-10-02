@@ -34,7 +34,14 @@ from squadops.campaigns.gate import (
 from squadops.campaigns.models import ControlOperationRefused, SubmittedProposal
 from squadops.capabilities.handlers.planning.proposal import CHANGE_REQUEST_ARTIFACT_TYPE
 from squadops.cycles.cycle_end import CycleStopReason
-from squadops.cycles.models import ArtifactRef, Cycle, GateDecision, GateDecisionValue
+from squadops.cycles.models import (
+    ArtifactRef,
+    Cycle,
+    GateDecision,
+    GateDecisionValue,
+    RunStatus,
+    WorkloadType,
+)
 from squadops.events.types import EventType
 
 # The executor's logger name: the gate's lines are read by where they have always come from.
@@ -267,6 +274,41 @@ class WorkloadGate:
             # Deliberately the SAME path a system rejection takes (#522/#669), driven
             # by a different trigger — a second re-execution loop beside a proven one
             # is how they drift.
+            if workload_entry.get("type") == WorkloadType.PROPOSAL:
+                # SIP-0109 §9.2: the supervisor never edits a proposal. The strategy role
+                # writes the next version, shown the note and the version it revises, and
+                # the new version is submitted and ruled on afresh.
+                revised = await self._proposal_revision(cycle, run, decision)
+                if revised is None:
+                    # §9.5: the revisions of one proposal are spent; it counts as rejected.
+                    logger.info(
+                        "Gate %r returned_for_revision on run %s: the proposal's revision "
+                        "budget is spent, so it counts as rejected",
+                        gate_name,
+                        current_run_id,
+                    )
+                    return step(GateOutcome.STOP, CycleStopReason.REVISION_UNAVAILABLE)
+                await self._cycle_registry.cancel_run(current_run_id)
+                forwarding_overrides = {
+                    **(forwarding_overrides or {}),
+                    "campaign_proposal": revised,
+                }
+                revision_run = await self._create_next_workload_run(
+                    cycle, run, workload_entry, config_hash=run.resolved_config_hash
+                )
+                current_run_id = revision_run.run_id
+                self._cycle_event_bus.emit(
+                    EventType.WORKLOAD_ADVANCED,
+                    entity_type="workload",
+                    entity_id=current_run_id,
+                    context={"cycle_id": cycle_id, "run_id": current_run_id},
+                    payload={
+                        "workload_type": WorkloadType.PROPOSAL,
+                        "reason": "proposal_revision_on_supervisor_request",
+                        "revision": revised["version"],
+                    },
+                )
+                return step(GateOutcome.RE_EXECUTE)
             if (
                 workload_entry.get("type") == "framing"
                 and framing_revisions < max_framing_revisions
@@ -424,3 +466,38 @@ class WorkloadGate:
             f"run {run.run_id} reached the {INCREMENT_RULING_GATE} gate with no "
             f"{CHANGE_REQUEST_ARTIFACT_TYPE} artifact"
         )
+
+    async def _proposal_revision(
+        self, cycle: Cycle, run: Any, decision: GateDecision
+    ) -> dict | None:
+        """The ``campaign_proposal`` block the revision run proposes from, or ``None`` when the
+        proposal's revisions are spent (§9.5).
+
+        The budget is the campaign's ``max_proposal_revisions``, carried on the block; the
+        revisions already made are the cycle's superseded proposal runs, read from the registry
+        so a restart counts the same. The new version follows the one the supervisor returned,
+        read from its stored change request, and the block carries that change request and the
+        note: revise, don't re-roll (#811).
+        """
+        block = cycle.resolved_config().get("campaign_proposal")
+        if not isinstance(block, dict) or "max_revisions" not in block:
+            raise ValueError(
+                f"cycle {cycle.cycle_id}: its campaign_proposal block carries no max_revisions — "
+                "the campaign's revision budget is declared by its launch, never defaulted"
+            )
+        runs = await self._cycle_registry.list_runs(cycle.cycle_id)
+        superseded = sum(
+            1
+            for r in runs
+            if r.workload_type == WorkloadType.PROPOSAL and r.status == RunStatus.CANCELLED.value
+        )
+        if superseded >= int(block["max_revisions"]):
+            return None
+        document = await self._change_request_document(run)
+        returned = binding_from_change_request(document)
+        return {
+            **block,
+            "version": returned.version + 1,
+            "supervisor_note": (decision.notes or "").strip(),
+            "prior_change_request": document,
+        }
