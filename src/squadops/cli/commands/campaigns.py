@@ -153,11 +153,14 @@ def _control(
     reason: str,
     idempotency_key: str | None,
     expected_state: str | None,
+    action: str | None = None,
 ) -> None:
     key = _key(idempotency_key)
     body = {"reason": reason, "idempotency_key": key}
     if expected_state:
         body["expected_state"] = expected_state
+    if action:
+        body["action"] = action
     _show_result(
         ctx, _call(ctx, "post", f"/api/v1/campaigns/{campaign_id}/{operation}", json=body), key
     )
@@ -258,9 +261,17 @@ def resume(
     reason: str = _REASON,
     idempotency_key: str | None = _KEY,
     expected_state: str | None = _EXPECTED,
+    action: str | None = typer.Option(
+        None,
+        "--action",
+        help=(
+            "The action the owner names: required to resume an escalated campaign (propose, "
+            "abandon_and_propose, repair, retry); a paused one resumes into its held action"
+        ),
+    ),
 ):
-    """Resume a paused campaign (the owner's word)."""
-    _control(ctx, "resume", campaign_id, reason, idempotency_key, expected_state)
+    """Resume a paused or escalated campaign (the owner's word, §10)."""
+    _control(ctx, "resume", campaign_id, reason, idempotency_key, expected_state, action)
 
 
 @app.command("abort")
