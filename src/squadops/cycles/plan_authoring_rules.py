@@ -71,6 +71,8 @@ COVERED_ELSEWHERE: dict[str, str] = {
     # SIP-0109 §7.3 (#1705): rendered per increment with its actual footprint, and only for
     # an increment — every other cycle's plan has no footprint to respect.
     "validate_increment_footprint": "request.plan_increment_footprint_appendix",
+    # SIP-0109 §8.1: rendered per increment with each new criterion's actual file.
+    "validate_increment_criterion_files": "request.plan_increment_criteria_appendix",
 }
 
 # Validators with no author-facing rule: nothing the author writes can trip them, or the

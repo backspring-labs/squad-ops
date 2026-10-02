@@ -162,6 +162,18 @@ def test_every_refusal_is_reported_not_only_the_first():
     }
 
 
+def test_a_new_criterion_may_not_take_a_frozen_criterions_id():
+    """§8.1. Bug caught: a second increment naming its first criterion C1 again — the new test
+    written over the frozen one's file, and its bundle filed under the old criterion's id."""
+    doc = _authored()
+    doc["criteria"][0]["id"] = "B2"  # frozen by an earlier increment (_context's prior)
+
+    verdict = validate_proposal(doc, _context())
+
+    assert [r.kind for r in verdict.refusals] == [RefusalKind.REUSED_CRITERION]
+    assert verdict.refusals[0].detail.startswith("B2 already name")
+
+
 @pytest.mark.parametrize(
     ("kind", "accepted"), [(ChangeKind.FEATURE, False), (ChangeKind.REFACTOR, True)]
 )

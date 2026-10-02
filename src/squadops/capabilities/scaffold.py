@@ -1620,6 +1620,12 @@ class ScaffoldStack:
     #: means the stack freezes no client a suite could mock, and the planner binds nothing
     #: (Next.js suites call route handlers directly).
     client_surface: ClientSurface | None = None
+    #: SIP-0109 §8.1: where a campaign criterion's own test file lives, by the criterion's
+    #: surface kind (``endpoint``, ``client_route``), as a template on ``{criterion}``. The file
+    #: is the criterion's alone: its verifier bundle is frozen from it, and a later increment's
+    #: test changes never touch it. Inside ``qa_test_namespace`` (held by the stack inventory).
+    #: Empty means the stack cannot host a campaign increment's criteria, and asking refuses.
+    criterion_test_files: tuple[tuple[str, str], ...] = ()
 
 
 _STACKS: dict[str, ScaffoldStack] = {
@@ -1652,6 +1658,10 @@ _STACKS: dict[str, ScaffoldStack] = {
         store_brief_lines=_store_brief_lines_fastapi_react,
         client_surface_lines=_client_surface_lines_fastapi_react,
         client_surface=_CLIENT_SURFACE_FASTAPI_REACT,
+        criterion_test_files=(
+            ("endpoint", "backend/tests/criteria/test_{criterion}.py"),
+            ("client_route", "frontend/src/__tests__/criteria/{criterion}.test.jsx"),
+        ),
     ),
     # #822 stack #2, a module from the start; stack #1 joined it in #1131 (the reference
     # contract's frozen digests are the proof that the move changed no template byte).
@@ -1683,6 +1693,10 @@ _STACKS: dict[str, ScaffoldStack] = {
         # SIP-0104: the first (and so far only) stack with a deterministic test scaffold.
         # Stack #1 deliberately does not declare one — opt-in is explicit, never inherited.
         verification_scaffold=_NEXTJS_TS_NAME,
+        criterion_test_files=(
+            ("endpoint", "__tests__/criteria/{criterion}.test.ts"),
+            ("client_route", "__tests__/criteria/{criterion}.test.tsx"),
+        ),
     ),
 }
 
@@ -1693,6 +1707,23 @@ def _stack(stack: str) -> ScaffoldStack:
     if known is None:
         raise ValueError(f"no scaffold expander for stack {stack!r}; available: {sorted(_STACKS)}")
     return known
+
+
+def criterion_test_path(stack: str, criterion_id: str, surface_kind: str) -> str:
+    """A campaign criterion's own test file on ``stack`` (SIP-0109 §8.1): where the qa role
+    writes the test that discriminates it, and the file its verifier bundle is frozen from.
+
+    The id is kept to letters, digits and ``_`` so it is a valid module name on every runner.
+    Raises ``ValueError`` for a stack, or a surface kind, that declares no such file: a
+    criterion with nowhere to live is refused, never placed by guess."""
+    templates = dict(_stack(stack).criterion_test_files)
+    template = templates.get(str(surface_kind))
+    if template is None:
+        raise ValueError(
+            f"stack {stack!r} declares no criterion test file for a {surface_kind!r} criterion "
+            f"(declared: {sorted(templates)})"
+        )
+    return template.format(criterion=re.sub(r"[^A-Za-z0-9_]", "_", criterion_id))
 
 
 def skeleton_pins_success_status_for(stack: str) -> bool:
