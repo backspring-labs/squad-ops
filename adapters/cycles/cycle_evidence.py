@@ -26,8 +26,12 @@ from squadops.cycles.cycle_assessment import (
     RunRecord,
     TerminationRecord,
     assess,
+    attribution_from_events,
+    failure_events,
+    terminal_run,
 )
 from squadops.cycles.cycle_outcome import resolve_cycle_outcome
+from squadops.cycles.failure_records import FailureRecord, events_of, failure_records
 from squadops.cycles.rejection_baseline import REJECTION_ARTIFACT_TYPE
 from squadops.cycles.task_outcome import CORRECTION_TERMINATION_ARTIFACT_TYPE
 
@@ -54,6 +58,28 @@ async def assess_cycle(
     return assess(outcome, evidence, assessor=assessor)
 
 
+async def record_cycle_failures(
+    registry: CycleRegistryPort, vault: ArtifactVaultPort, cycle_id: str, last_run_id: str
+) -> tuple[FailureRecord, ...] | None:
+    """At a cycle's ending, persist its failure records as one set (SIP-0109 §14, #1710).
+
+    The events come from the one producer, ``failure_events``, and each input the attribution
+    could not read becomes an ``unaskable`` record. The attribution read later is computed
+    from exactly this set. An ending whose last run has not terminated (a run paused at a gate)
+    records nothing, because there is nothing to attribute yet; it returns ``None``.
+    """
+    outcome = await resolve_cycle_outcome(registry, cycle_id)
+    evidence = await assemble_cycle_evidence(registry, vault, cycle_id)
+    if terminal_run(evidence) is None:
+        return None
+    cycle = await registry.get_cycle(cycle_id)
+    events = failure_events(outcome, evidence)
+    reading = attribution_from_events(outcome, evidence, events)
+    records = failure_records(cycle_id, events, reading.unrecorded, campaign_id=cycle.campaign_id)
+    await registry.record_failure_records(cycle_id, last_run_id, records)
+    return records
+
+
 async def _all_runs(registry: CycleRegistryPort, cycle_id: str) -> list:
     runs: list = []
     while True:
@@ -69,6 +95,7 @@ async def assemble_cycle_evidence(
     """Everything ``assess`` reads beside ``CycleOutcome``, from the registry and the vault."""
     cycle = await registry.get_cycle(cycle_id)
     runs = await _all_runs(registry, cycle_id)
+    records = await registry.get_failure_records(cycle_id)
     summary_runs: list[str] = []
     loop_summaries = {}
     for run in runs:
@@ -151,6 +178,7 @@ async def assemble_cycle_evidence(
         artifacts=tuple(artifacts),
         rejection_records=tuple(rejections),
         terminations=tuple(terminations),
+        persisted_failure_events=events_of(records) if records is not None else None,
     )
 
 

@@ -10,6 +10,7 @@ import dataclasses
 from datetime import datetime
 
 from squadops.cycles.checkpoint import RunCheckpoint
+from squadops.cycles.failure_records import FailureRecord
 from squadops.cycles.lifecycle import (
     GATE_REJECTED_STATES,
     TERMINAL_STATES,
@@ -51,6 +52,8 @@ class MemoryCycleRegistry(CycleRegistryPort):
         self._retained_checkpoints: set[tuple[str, int]] = set()
         # SIP-0109 §12b: source_launch_id → cycle_id, the unique column's twin
         self._cycle_by_launch: dict[str, str] = {}
+        # SIP-0109 §14: cycle_id → its failure-record sets, oldest first (append-only)
+        self._failure_record_sets: dict[str, list[tuple[str, tuple[FailureRecord, ...]]]] = {}
 
     # --- Cycle CRUD ---
 
@@ -278,6 +281,19 @@ class MemoryCycleRegistry(CycleRegistryPort):
 
     async def get_run_loop_summary(self, run_id: str) -> RunLoopSummary | None:
         return self._loop_summaries.get(run_id)
+
+    async def record_failure_records(
+        self, cycle_id: str, last_run_id: str, records: tuple[FailureRecord, ...]
+    ) -> int:
+        if cycle_id not in self._cycles:
+            raise CycleNotFoundError(f"Cycle not found: {cycle_id}")
+        sets = self._failure_record_sets.setdefault(cycle_id, [])
+        sets.append((last_run_id, tuple(records)))
+        return len(sets)
+
+    async def get_failure_records(self, cycle_id: str) -> tuple[FailureRecord, ...] | None:
+        sets = self._failure_record_sets.get(cycle_id)
+        return sets[-1][1] if sets else None
 
     async def list_run_verification_summaries(self, cycle_id: str) -> list[RunVerificationSummary]:
         """Return a cycle's persisted per-run verification summaries, by run_number."""

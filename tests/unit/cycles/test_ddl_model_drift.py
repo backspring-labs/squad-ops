@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pytest
 
+from squadops.cycles.failure_records import FailureRecord
 from squadops.cycles.models import Cycle, GateDecision, Run, SquadProfile
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[3] / "infra" / "migrations"
@@ -64,6 +65,9 @@ _REGISTRY = [
     # run_id = parent FK; id = SERIAL surrogate PK (both DB-only, not model fields)
     ("cycle_gate_decisions", GateDecision, {"run_id", "id"}, set()),
     ("squad_profiles", SquadProfile, {"is_active", "updated_at"}, set()),  # DB-managed
+    # set_index (SIP-0109 §14, 1620): which ending's set a record belongs to; the registry
+    # assigns it on write and reads only the latest set back
+    ("cycle_failure_records", FailureRecord, {"set_index"}, set()),
 ]
 
 

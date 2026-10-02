@@ -884,6 +884,41 @@ shakeout.
 
 ---
 
+## 24. Post-acceptance amendments
+
+### 24a. §14's failure records, as built (2026-10-02, #1813; ruled by the owner)
+
+Step 1a's second part (#1710) persists a cycle's failure records at its ending. It settled four
+points §14 left open, or stated otherwise. **The owner ruled all four as recommended, on
+2026-10-02.**
+
+1. **The persisted events are part of `CycleEvidence`** (`persisted_failure_events`), not a new argument
+   to `assess()`.
+   - **What changed:** §14 says the attribution is computed "from that exact persisted set" and does
+     not say how the set reaches the assessment. It reaches it as evidence.
+   - **The evidence:** `assess()` is pinned to `(outcome, evidence, *, assessor)` by
+     `test_assess_reads_two_arguments_and_a_declared_assessor`, because the evidence identity must
+     vouch for everything the assessment reads (SIP-0108 §4.1(a)).
+   - **The identity rule:** the field is omitted from the identity's canonical form when it is `None`.
+     Every identity already recorded, in the benchmark registry and in the verification-set records,
+     is therefore unchanged. A test pins one computed before the field existed.
+2. **The assessment itself is not persisted at completion.**
+   - **What changed:** §14 step 2 says "persist the assessment". The events are persisted, and the
+     assessment is computed on read from them, deterministically.
+   - **Why:** a stored assessment would be a second copy that can disagree with the code that reads it.
+   - **Where the frozen copy goes:** the place it matters, the campaign's close-time evidence package
+     (step 7, §14's "close-time package").
+3. **Records are append-only sets, one per ending,** and the latest set is the cycle's. A resumed run
+   (`resume_from_failed`) ends a cycle again, and a write-once-per-cycle rule would refuse the second
+   ending. A set with no records means "recorded, no failures". No set means "never recorded", and
+   such a cycle's attribution is derived by the producer, as before 1a.
+4. **The backfill of stored cycles (criterion 12d) runs once, after the records are deployed, with a
+   backup taken first.** It writes to the live registry, so it waits for the deploy. It uses the same
+   producer whose neutrality was proven against all 629 stored cycles on 2026-10-01
+   (`scripts/dev/attribution_snapshot.py`, #1811).
+
+---
+
 ## Revision history
 
 - **Revision 6 (2026-10-01, late evening):** the crew's fourth review, which found revision 5 resolved its

@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 
 from squadops.cycles.checkpoint import RunCheckpoint
+from squadops.cycles.failure_records import FailureRecord
 from squadops.cycles.models import (
     Cycle,
     CycleStatus,
@@ -223,6 +224,27 @@ class CycleRegistryPort(ABC):
         (``aggregate_cycle_outcome``). Order is by run_number; the roll-up is
         order-independent. Returns an empty list for an unknown or run-less cycle.
         """
+
+    # --- Failure records (SIP-0109 §14, #1710) ---
+
+    @abstractmethod
+    async def record_failure_records(
+        self, cycle_id: str, last_run_id: str, records: tuple[FailureRecord, ...]
+    ) -> int:
+        """Append one ending's failure records as one set, atomically, and return its index.
+
+        Append-only: each ending of the cycle appends a set (a resumed run ends the cycle
+        again), and the latest set is the cycle's. A set with no records is written too: it is
+        what distinguishes "recorded, no failures" from "never recorded".
+
+        Raises:
+            CycleNotFoundError: If the cycle_id is not found.
+        """
+
+    @abstractmethod
+    async def get_failure_records(self, cycle_id: str) -> tuple[FailureRecord, ...] | None:
+        """The cycle's latest failure-record set; ``()`` when it recorded none, ``None`` when no
+        set was ever written (a cycle that ended before the records existed)."""
 
     # --- Checkpoint (SIP-0079) ---
 
