@@ -77,13 +77,15 @@ def _committed_counting_sets() -> set[str]:
     """The set configs on disk that are counting arms of a line.
 
     Excluded by naming convention rather than by a second list, so a new line's pair is
-    picked up automatically: `*-diagnostic-*` injects a fault and can never count, and
-    `*-ab-*` is an A/B arm, which carries no pin fields at all.
+    picked up automatically: `*-diagnostic-*` injects a fault and can never count,
+    `*-ab-*` is an A/B arm, which carries no pin fields at all, and `*-regression-*` is an
+    uncounted roll on a new deploy read against an earlier line's baseline (the 2.0 validation
+    plan, rev 2), which carries that baseline's configuration pins and no deploy pins.
     """
     return {
         path.name
         for path in _SETS.glob("*.yaml")
-        if "-diagnostic-" not in path.name and "-ab-" not in path.name
+        if not any(kind in path.name for kind in ("-diagnostic-", "-ab-", "-regression-"))
     }
 
 
