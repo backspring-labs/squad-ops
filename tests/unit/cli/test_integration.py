@@ -68,10 +68,12 @@ def _test_config():
     )
 
 
-def _wire_cycle_ports(app):
+def _wire_cycle_ports(app, vault_dir):
     """Wire in-memory cycle adapters into the DI container.
 
-    Replaces the startup_event() wiring which requires Postgres/RabbitMQ.
+    Replaces the startup_event() wiring which requires Postgres/RabbitMQ. The vault lives in a
+    temporary directory: the factory's default is the working directory's ``data/artifacts``,
+    which in the main checkout is the deploy's live vault.
     """
     from adapters.cycles.factory import (
         create_artifact_vault,
@@ -83,7 +85,7 @@ def _wire_cycle_ports(app):
     project_registry = create_project_registry("config")
     cycle_registry = create_cycle_registry("memory")
     squad_profile = create_squad_profile_port("config")
-    artifact_vault = create_artifact_vault("filesystem")
+    artifact_vault = create_artifact_vault("filesystem", base_dir=vault_dir)
 
     # #1448: the app's own ports, on its state.
     app.state.project_registry = project_registry
@@ -98,12 +100,12 @@ def _wire_cycle_ports(app):
 
 
 @pytest.fixture(scope="module")
-def fastapi_app():
+def fastapi_app(tmp_path_factory):
     """Lazily import the FastAPI app and wire in-memory adapters."""
     from squadops.api.runtime.main import create_app
 
     fa_app = create_app(_test_config())
-    _wire_cycle_ports(fa_app)
+    _wire_cycle_ports(fa_app, tmp_path_factory.mktemp("vault"))
     return fa_app
 
 
