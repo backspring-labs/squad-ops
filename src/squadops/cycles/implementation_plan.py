@@ -931,6 +931,32 @@ class ImplementationPlan:
             if not is_qa_test_path_for_stack(artifact, stack)
         ]
 
+    def validate_increment_footprint(self, footprint: tuple[str, ...] | None) -> list[str]:
+        """SIP-0109 §7.3 (#1705): an increment's plan covers only its approved change.
+
+        The footprint is the files the approved change request's manifest delta touches, plus
+        the stack's qa test namespace, derived as the change request's own was. Every other
+        file is the accepted application, which the implementation starts from; a task that
+        declares one would rewrite accepted work nobody ruled on. ``None`` is a cycle that is
+        not an increment, and is not checked.
+
+        Returns:
+            List of validation error strings (empty = valid).
+        """
+        if not footprint:
+            return []
+        from squadops.campaigns.change_request import in_footprint
+
+        return [
+            f"Task {task.task_index} ({task.focus}): {task.task_type} declares {artifact!r}, "
+            f"which this increment's approved change does not touch. The accepted application "
+            f"keeps that file as it is; plan only the files the change touches: "
+            f"{', '.join(footprint)}"
+            for task in self.tasks
+            for artifact in task.expected_artifacts
+            if not in_footprint(artifact, footprint)
+        ]
+
     def validate_frozen_artifact_ownership(self, contract: VerificationContract) -> list[str]:
         """#658: no task, any role, may declare a frozen-surface file as an
         ``expected_artifact``.

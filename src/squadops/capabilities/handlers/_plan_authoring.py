@@ -92,6 +92,12 @@ async def contract_surface_sections(renderer: Any, inputs: dict[str, Any]) -> st
     surfaces = (
         ("request.plan_bind_criteria_appendix", "criteria_index", "contract_criteria_index"),
         ("request.plan_frozen_surface_appendix", "frozen_surface_index", "frozen_surface_index"),
+        # SIP-0109 §7.3 (#1705 d): an increment's plan covers only its approved change.
+        (
+            "request.plan_increment_footprint_appendix",
+            "footprint_index",
+            "increment_footprint_index",
+        ),
     )
     sections: list[str] = []
     for template_id, variable, input_key in surfaces:

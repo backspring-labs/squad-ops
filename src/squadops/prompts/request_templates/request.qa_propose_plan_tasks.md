@@ -13,6 +13,7 @@ optional_variables:
   - typed_acceptance_vocabulary
   - bind_criteria_section
   - frozen_surface_section
+  - increment_footprint_section
   - rejection_context_section
   - authoring_rules_section
 ---
@@ -78,4 +79,5 @@ confidence: ""  # low | medium | high
 {{bind_criteria_section}}
 
 {{frozen_surface_section}}
+{{increment_footprint_section}}
 {{rejection_context_section}}

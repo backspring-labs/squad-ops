@@ -68,6 +68,9 @@ COVERED_ELSEWHERE: dict[str, str] = {
     # SIP-0098 §6.3 "bind, don't author" — rendered per-cycle with the actual criterion
     # ids, which is strictly more useful than a general statement of the rule.
     "validate_criteria_refs": "request.plan_bind_criteria_appendix",
+    # SIP-0109 §7.3 (#1705): rendered per increment with its actual footprint, and only for
+    # an increment — every other cycle's plan has no footprint to respect.
+    "validate_increment_footprint": "request.plan_increment_footprint_appendix",
 }
 
 # Validators with no author-facing rule: nothing the author writes can trip them, or the
