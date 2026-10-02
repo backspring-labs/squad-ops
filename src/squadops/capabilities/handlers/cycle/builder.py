@@ -13,6 +13,7 @@ from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
 )
+from squadops.capabilities.handlers.prior_cycle import prior_cycle_section
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
 from squadops.tasks.task_types import TaskType
@@ -185,6 +186,10 @@ class BuilderAssembleHandler(_CycleTaskHandler):
             )
             if disputes:
                 variables["disputed_checks_section"] = disputes
+            # #1692: a bound cycle's assembly is shown the failed cycle it continues.
+            prior = await prior_cycle_section(renderer, inputs)
+            if prior:
+                variables["prior_cycle_section"] = prior
             rendered = await renderer.render(
                 "request.builder_assemble.build_assemble",
                 variables,

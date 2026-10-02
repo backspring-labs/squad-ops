@@ -1508,6 +1508,56 @@ outlived the second reading.
 - **Not built: the prior-cycle brief** that §10a's table puts in a repair's correction context. It
   is #1692's, and until it lands a repair is told nothing of the cycle it repairs beyond its files.
 
+### 24u. The prior-cycle brief, as built (2026-10-02, #1692, §10a, §14; decided under the 2.0 charter)
+
+This builds what §24s and §24t recorded as not built: the brief a retry and a repair are shown.
+
+- **What it is** (`campaigns/prior_cycle.py`): the failed cycle's own record, carried to the cycle
+  that recovers from it. No model writes any of it (§14: authored by the framework from the prior
+  cycle's records). It holds:
+  - the assessment's typed indicators: the verdict, the failed checks, what went unverified and
+    why, criteria coverage, correction movements and refunded rounds;
+  - the cause the attribution names;
+  - **why each failed check failed:** the reason its run's stored verification summary recorded
+    (`failed_detail`, #500).
+    - The latest run's reason is used.
+    - Only checks the assessment counts as failed are included.
+    - Each reason is shown verbatim in a fence, up to 1500 characters, and says where it was cut.
+    - A check its producer disputed (SIP-0096 §17a) is marked as disputed.
+- **An indicator the assessment could not ask is shown as `not recorded (<reason>)`,** never
+  omitted, so an absence is not read as "nothing failed". A check with no stored reason is listed
+  without one, and none is invented.
+- **How it travels:**
+  - A retry or repair launch carries it on its `campaign_proposal` block (`prior_cycle`). It is read
+    from the decided cycle's assessment and its runs' summaries: at the decision, or for an owner's
+    resume, at the resume.
+  - It is an aid, so a record that cannot be read leaves the brief out, with a warning. It never
+    blocks the launch, the owner's included.
+  - The continuation decision never reads it.
+- **Who is handed it is the context-assembly registry's declaration** (`prior_cycle_brief`), as it
+  is for a framing re-roll's rejection (#669). The flagged authors are:
+  - framing's: the technical design, the test strategy, the plan authoring brief and the three
+    proposers;
+  - the implementation's: the developer, the qa test author and the builder.
+
+  No other task gets it: not the merger, nor the evaluation. Each flagged author shows it through
+  one managed asset (`request.prior_cycle_brief_appendix`). `qa.define_test_strategy` moves out of
+  `DECLARED_NO_CONTEXT`, since it now has a declared input.
+- **What differs from §10a's table:**
+  - **A repair shows it to the implementation's authors, not to its correction context.** A repair
+    re-runs the approved plan over the failed candidate, so those authors are the ones correcting
+    the failed cycle. The correction rounds inside the repair read their own cycle's failures, which
+    are newer than the brief.
+  - **A retry shows it to framing, as §10a says, and to its implementation's authors too.** They
+    build the same increment again, and the checks that failed will judge them.
+- **Not built, of what #1692 lists:**
+  - **The proposal run's brief** (§7's inputs). A fresh proposal after an abandoned increment (row
+    13) is not yet handed the brief of the cycle that ended it.
+  - **The correction chain's own record:** what each round tried, and the patches it refused.
+    The brief carries the round counts, not their content.
+  - **The recurrence measure:** whether a failure class recurs within the campaign after the brief
+    is shown.
+
 ### 24v. A cycle that ended with no decision, re-heard at startup (2026-10-02, §12a, #1803; decided under the 2.0 charter)
 
 **§12a's restart table lacked a row for a launched cycle that ended with no decision recorded.**

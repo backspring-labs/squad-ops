@@ -105,6 +105,8 @@ class ContextAssemblyContract:
     ``bind_criteria_index``: in bind mode this proposer receives the
     contract's criteria index + the frozen-surface index, so it binds
     covered-file criteria instead of authoring them (SIP-0098 98.3 / pf-42).
+    ``prior_cycle_brief``: in a retry or a repair this author is handed the failed cycle's
+    brief, the record of the cycle it recovers from (#1692, SIP-0109 §10a).
     ``bind_behavioral_surface``: in bind mode this task receives the
     contract's behavioral surface — serialized probes (98.5), the
     endpoint→fill-slot ownership map (#688), pinned-status expectation lines
@@ -117,6 +119,7 @@ class ContextAssemblyContract:
     manifest_surfaces: tuple[str, ...] = ()
     wrapup_evidence: bool = False
     plan_rejection_context: bool = False
+    prior_cycle_brief: bool = False
     bind_criteria_index: bool = False
     bind_behavioral_surface: bool = False
     #: SIP-0104 P3: this task receives the deterministic test scaffold (slot table +
@@ -175,6 +178,7 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
         # field surface, and the DOM testid inventory — to the INITIAL author
         # on the same transport repairs have always used.
         manifest_surfaces=_DEV_SURFACES,
+        prior_cycle_brief=True,
     ),
     TaskType.BUILDER_ASSEMBLE: ContextAssemblyContract(
         artifact_filter=ArtifactFilter(
@@ -183,6 +187,7 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
             by_type_fallback=("document",),
         ),
         acceptance_workspace=True,
+        prior_cycle_brief=True,
     ),
     # qa.test's prompt context IS the full accepted tree (#644); in bind mode
     # it additionally carries the contract's behavioral surface at PLAN time.
@@ -201,6 +206,7 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
         bind_behavioral_surface=True,
         manifest_surfaces=(SURFACE_FROZEN,),
         bind_verification_scaffold=True,
+        prior_cycle_brief=True,
     ),
     # --- planning chain (#657): upstream documents on an envelope-local
     # prior_outputs copy; all four authoring types receive a re-roll's
@@ -235,11 +241,17 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
         ),
         artifact_landing=LANDING_PRIOR_OUTPUTS,
         plan_rejection_context=True,
+        prior_cycle_brief=True,
     ),
     # #811: the technical design answers an operator's revision request too. A note about
     # the interface is a note about the design, and a revision that changed only the manifest
     # would leave `technical_design.md` describing an interface that no longer exists.
-    TaskType.DEVELOPMENT_DESIGN_PLAN: ContextAssemblyContract(plan_rejection_context=True),
+    TaskType.DEVELOPMENT_DESIGN_PLAN: ContextAssemblyContract(
+        plan_rejection_context=True, prior_cycle_brief=True
+    ),
+    # #1692: an increment's test strategy covers its new criteria, and a retry's is written
+    # knowing which of them failed before.
+    TaskType.QA_DEFINE_TEST_STRATEGY: ContextAssemblyContract(prior_cycle_brief=True),
     # SIP-0103 §5c.1 (#791): the manifest author's input contract, as data. The PRD and
     # the blueprint's vocabulary arrive on the envelope; what lands here is the cycle's
     # OWN framing — strategy's frame (which §5a has constraining scope from above) and
@@ -267,6 +279,7 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
         artifact_landing=LANDING_PRIOR_OUTPUTS,
         plan_rejection_context=True,
         bind_criteria_index=True,
+        prior_cycle_brief=True,
     ),
     TaskType.QA_PROPOSE_PLAN_TASKS: ContextAssemblyContract(
         artifact_filter=ArtifactFilter(
@@ -280,6 +293,7 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
         artifact_landing=LANDING_PRIOR_OUTPUTS,
         plan_rejection_context=True,
         bind_criteria_index=True,
+        prior_cycle_brief=True,
     ),
     TaskType.STRATEGY_PROPOSE_PLAN_GUIDANCE: ContextAssemblyContract(
         artifact_filter=ArtifactFilter(
@@ -290,6 +304,7 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
         ),
         artifact_landing=LANDING_PRIOR_OUTPUTS,
         plan_rejection_context=True,
+        prior_cycle_brief=True,
     ),
     # --- wrap-up pipeline (#683): the run-level verification_evidence
     # injection fires when any planned task carries the flag.
@@ -332,7 +347,6 @@ DECLARED_NO_CONTEXT: frozenset[str] = frozenset(
         # the planning filters above select; their own inputs are envelope-native.
         TaskType.DATA_RESEARCH_CONTEXT,
         TaskType.STRATEGY_FRAME_OBJECTIVE,
-        TaskType.QA_DEFINE_TEST_STRATEGY,
         # Sign-off only (SIP-0093): the gate package rides prior_outputs, and plan
         # validation is deterministic and upstream of this task.
         TaskType.GOVERNANCE_REVIEW_PLAN,

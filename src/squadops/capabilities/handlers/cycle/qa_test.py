@@ -24,6 +24,7 @@ from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
 )
+from squadops.capabilities.handlers.prior_cycle import prior_cycle_section
 from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
 from squadops.cycles.check_registry import (
     CHECK_FRONTEND_BUILD,
@@ -1633,6 +1634,12 @@ class QATestHandler(_CycleTaskHandler):
             )
             if disputes_section:
                 user_prompt = f"{user_prompt}\n{disputes_section}"
+            # #1692: a bound cycle's test author is shown the failed cycle it continues.
+            prior_section = await prior_cycle_section(
+                getattr(context.ports, "request_renderer", None), inputs
+            )
+            if prior_section:
+                user_prompt = f"{user_prompt}\n{prior_section}"
             retake_section, retake_offered = await self._retake_section(context, inputs)
             if retake_section:
                 user_prompt = f"{user_prompt}\n{retake_section}"

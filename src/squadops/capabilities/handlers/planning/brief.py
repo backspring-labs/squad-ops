@@ -14,6 +14,7 @@ from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
 )
+from squadops.capabilities.handlers.prior_cycle import prior_cycle_section
 from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
@@ -65,6 +66,9 @@ class GovernancePreparePlanAuthoringBriefHandler(_PlanningTaskHandler):
             increment_section = await self._increment_section(renderer, inputs)
             if increment_section:
                 variables["increment_section"] = increment_section
+            prior = await prior_cycle_section(renderer, inputs)
+            if prior:
+                variables["prior_cycle_section"] = prior
             # #686: the brief pins the frame the proposers author against, so the
             # plan-shape rules belong here as much as on the proposers themselves.
             variables["authoring_rules_section"] = await self._authoring_rules_section(renderer)
