@@ -80,21 +80,29 @@ def _artifact_raw_path(art: dict) -> str | None:
 _BUILDER_FORBIDDEN_SOURCE_SUFFIXES = (".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs")
 
 
-def bound_record_or_none(interface_manifest: Any, run_id: str) -> Any:
+def bound_record_or_none(interface_manifest: Any, run_id: str, resolved_config: Any) -> Any:
     """SIP-0100 2.4: the bound scaffold record (frozen paths + bytes) for a scaffold-bound
     run, or None for unbound/legacy runs (no manifest / non-scaffoldable stack → no
     enforcement, plan §10). Best-effort: a build failure disables enforcement rather than
-    failing the run."""
+    failing the run.
+
+    ``resolved_config`` is the cycle's: an increment's record carries its footprint (SIP-0109
+    §7.3, #1705 c2), derived as the plan gate's is, so the grants and the gate agree."""
     if interface_manifest is None:
         return None
     try:
+        from squadops.campaigns.increment_tree import increment_footprint
         from squadops.capabilities.scaffold import is_scaffoldable_stack
         from squadops.cycles.bound_scaffold_record import build_bound_record
 
         if not is_scaffoldable_stack(getattr(interface_manifest, "stack", "")):
             return None
         return build_bound_record(
-            interface_manifest, run_id=run_id, attempt_id=run_id, created_at=""
+            interface_manifest,
+            run_id=run_id,
+            attempt_id=run_id,
+            created_at="",
+            increment_footprint=increment_footprint(resolved_config, interface_manifest) or (),
         )
     except Exception:
         logger.warning(

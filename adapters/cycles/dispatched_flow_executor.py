@@ -1438,7 +1438,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 started=time.monotonic(),
             ),
             ownership=_Ownership(
-                bound_record=self._build_bound_record_for_run(interface_manifest, run_id)
+                bound_record=self._build_bound_record_for_run(
+                    interface_manifest, run_id, cycle.resolved_config()
+                )
             ),
         )
 
@@ -3325,13 +3327,15 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             envelope, result, repair_artifacts, patched_result_holder, **kwargs
         )
 
-    def _build_bound_record_for_run(self, interface_manifest: Any, run_id: str) -> Any:
+    def _build_bound_record_for_run(
+        self, interface_manifest: Any, run_id: str, resolved_config: Any
+    ) -> Any:
         """SIP-0100 2.4: build the bound scaffold record (frozen paths + bytes) for a scaffold-bound
         run, or None for unbound/legacy runs (no manifest / non-scaffoldable stack → no enforcement,
         plan §10). Best-effort: a build failure disables enforcement rather than failing the run."""
         from squadops.cycles.scaffold_enforcement import bound_record_or_none
 
-        return bound_record_or_none(interface_manifest, run_id)
+        return bound_record_or_none(interface_manifest, run_id, resolved_config)
 
     def _enforce_frozen_ownership(
         self,

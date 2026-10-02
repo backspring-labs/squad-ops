@@ -1032,7 +1032,7 @@ class CorrectionRunner:
 
         # SIP-0100 3.4b: repair emissions are subject to the same frozen-ownership
         # enforcement as regular task storage — None on unbound runs (no-op).
-        bound_record = bound_record_or_none(interface_manifest, run_id)
+        bound_record = bound_record_or_none(interface_manifest, run_id, cycle.resolved_config())
         # The five protocol steps, each a method consuming the previous step's returned
         # value (1.7.5 recovery extraction map §4 step 4). The orchestration below reads
         # as diagnose → resolve → bank-and-terminate → repair → judge, with a typed value
