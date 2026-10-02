@@ -31,21 +31,28 @@ def _canonical(reading) -> str:
 
 
 async def backfill(dsn: str, vault_dir: Path, *, write: bool) -> dict:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))  # the guard sits beside this script
+    from _evidence_read_guard import UnreadableEvidence, require_readable_vault
+
     from adapters.cycles.cycle_evidence import assess_cycle, record_cycle_failures
     from adapters.cycles.filesystem_artifact_vault import FilesystemArtifactVault
     from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
     from adapters.persistence.pool import create_pool
     from squadops.cycles.cycle_assessment import AssessorIdentity
 
-    if not (vault_dir / "_index.json").is_file():
-        raise SystemExit(
-            f"no vault index at {vault_dir}: refusing to construct a vault that writes"
-        )
+    require_readable_vault(vault_dir)
+    unreadable = UnreadableEvidence()
 
     settings = {} if write else {"default_transaction_read_only": "on"}
     pool = await create_pool(dsn, min_size=1, max_size=2, server_settings=settings)
     assessor = AssessorIdentity(framework_version="backfill", git_sha="backfill")
-    report: dict = {"written": [], "skipped_recorded": 0, "skipped_not_ended": [], "mismatch": []}
+    report: dict = {
+        "written": [],
+        "skipped_recorded": 0,
+        "skipped_not_ended": [],
+        "skipped_unreadable": [],
+        "mismatch": [],
+    }
     try:
         registry = PostgresCycleRegistry(pool=pool)
         vault = FilesystemArtifactVault(base_dir=vault_dir)
@@ -64,7 +71,12 @@ async def backfill(dsn: str, vault_dir: Path, *, write: bool) -> dict:
             if last_run_id is None:
                 report["skipped_not_ended"].append(cycle_id)
                 continue
+            unreadable.reset()
             before = (await assess_cycle(registry, vault, cycle_id, assessor=assessor)).attribution
+            if unreadable.reset():
+                # Records written from evidence with artifacts missing would be degraded forever.
+                report["skipped_unreadable"].append(cycle_id)
+                continue
             if not write:
                 report["written"].append({"cycle_id": cycle_id, "would_write": True})
                 continue
@@ -101,11 +113,12 @@ def main(argv: list[str] | None = None) -> int:
         "records": sum(e.get("records", 0) for e in report["written"]),
         "skipped_recorded": report["skipped_recorded"],
         "skipped_not_ended": len(report["skipped_not_ended"]),
+        "skipped_unreadable": report["skipped_unreadable"],
         "attribution_mismatches": report["mismatch"],
     }
     json.dump(summary, sys.stdout, indent=1)
     sys.stdout.write("\n")
-    return 1 if report["mismatch"] else 0
+    return 1 if report["mismatch"] or report["skipped_unreadable"] else 0
 
 
 if __name__ == "__main__":
