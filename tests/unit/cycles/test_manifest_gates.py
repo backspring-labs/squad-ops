@@ -24,6 +24,7 @@ from squadops.cycles.manifest_gates import (
     PROOF_ERROR_SHAPE,
     PROOF_EXPANDS,
     PROOF_INTERFACE_COHERENT,
+    PROOF_LINT,
     PROOF_PARSES,
     PROOF_STATUS_DECLARED,
     PROOF_TESTID_COVERAGE,
@@ -79,6 +80,30 @@ def test_collection_post_without_success_status_is_unwinnable():
     detail = next(f.detail for f in findings if f.proof == PROOF_STATUS_DECLARED)
     assert "201" in detail and "200" in detail  # names both sides of the disagreement
     assert "success_status" in detail  # names the fix
+
+
+@pytest.mark.parametrize(
+    "contract",
+    ["drop-the-code", "no-contract"],
+)
+def test_an_endpoint_error_the_contract_does_not_define_is_unwinnable(contract):
+    """#1817: the expander drops an error code the contract does not define, so the app can
+    never raise it with a status and a probe for it asserts against nothing. Both shapes seen:
+    a code missing from the contract, and (cyc_b98c45fcd5c8, 1 of 402 stored manifests) no
+    contract at all."""
+    data = _reference_dict()
+    join = next(e for e in data["api"]["endpoints"] if e["path"].endswith("/join"))
+    join.setdefault("errors", []).append("capacity_exceeded")
+    if contract == "no-contract":
+        data["api"].pop("error_contract", None)
+
+    findings = assess_winnability(_as_yaml(data))
+
+    assert PROOF_LINT in _proofs(findings)
+    detail = next(
+        f.detail for f in findings if f.proof == PROOF_LINT and "capacity_exceeded" in f.detail
+    )
+    assert "error_contract.codes" in detail
 
 
 def test_v4_class_foreign_root_error_shape_is_unwinnable():
