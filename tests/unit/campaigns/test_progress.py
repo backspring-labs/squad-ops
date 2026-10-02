@@ -589,9 +589,17 @@ def _environment_failure(cycle_id):
     )
 
 
-async def _increment_failed_by_the_environment(calibrating, *, ruled="approved", moved=False):
+async def _increment_failed_by_the_environment(
+    calibrating, stored, *, ruled="approved", moved=False, environment=True
+):
     """An accepted calibration, an increment proposed against its tree and ruled on, built, and
-    rejected for a cause outside the work."""
+    rejected for a cause outside the work. Its approved seeds are stored, as the gate stores
+    them; created before the calibration's manifest, so the calibration's stays the latest."""
+    stored["art_candidate"] = (
+        _ref("art_candidate", "interface_manifest.yaml", "interface_manifest", -2),
+        MANIFEST.encode(),
+    )
+    stored["art_cr"] = (_ref("art_cr", "change_request.yaml", "change_request", -1), b"cr")
     from squadops.campaigns.gate import ruling_transition, submission
     from squadops.campaigns.models import ProposalBinding, SubmittedProposal
     from squadops.cycles.models import GateDecisionValue
@@ -634,7 +642,11 @@ async def _increment_failed_by_the_environment(calibrating, *, ruled="approved",
             idempotency_key="rule-1",
         ),
     )
-    w._assess = lambda cycle_id: _async(_environment_failure(cycle_id))
+    w._assess = lambda cycle_id: _async(
+        _environment_failure(cycle_id)
+        if environment
+        else _assessment(cycle_id, RunVerdict.REJECTED)
+    )
     w.progress._assess = w._assess
     await w.end("cyc_inc", increment_run, CycleStopReason.SEQUENCE_COMPLETED)
     return w
@@ -645,11 +657,11 @@ async def _async(value):
 
 
 async def test_an_environment_failure_is_retried_with_the_bound_request_and_no_new_ruling(
-    calibrating,
+    calibrating, stored
 ):
     """§10 row 10, §10a. Bugs caught: a retry that re-proposes (a new ruling for the same change),
     one built from a stale baseline, or one that runs the proposal workload again."""
-    w = await _increment_failed_by_the_environment(calibrating)
+    w = await _increment_failed_by_the_environment(calibrating, stored)
 
     stored = await w.campaigns.get_campaign(CID)
     decision = (await w.campaigns.control_log(CID))[-1]
@@ -675,12 +687,50 @@ async def test_an_environment_failure_is_retried_with_the_bound_request_and_no_n
     ],
     ids=["the-baseline-moved", "never-approved"],
 )
-async def test_a_retry_whose_binding_no_longer_holds_escalates_instead(calibrating, kwargs, reason):
+async def test_a_retry_whose_binding_no_longer_holds_escalates_instead(
+    calibrating, stored, kwargs, reason
+):
     """§10a: a mismatch refuses the cycle. Bug caught: a retry built on a baseline that moved, or
     on a version nobody approved — scope changed without a ruling."""
-    w = await _increment_failed_by_the_environment(calibrating, **kwargs)
+    w = await _increment_failed_by_the_environment(calibrating, stored, **kwargs)
 
     stored = await w.campaigns.get_campaign(CID)
     decision = (await w.campaigns.control_log(CID))[-1]
     assert stored.state is CampaignState.ESCALATED
     assert reason in decision.binding["unbuilt"]
+
+
+async def test_a_rejected_increment_is_repaired_from_its_own_candidate_under_its_plan(
+    calibrating, stored
+):
+    """§10 row 12, §10a. Bugs caught: a repair that frames afresh (a retry by another name), one
+    built without the plan the failed cycle was approved under, or one that starts from the
+    accepted tree and so throws the failed work away."""
+    import dataclasses as _dc
+
+    stored["art_plan"] = (
+        _dc.replace(
+            _ref("art_plan", "implementation_plan.yaml", "control_implementation_plan", 5),
+            promotion_status="promoted",
+        ),
+        b"version: 1",
+    )
+    w = await _increment_failed_by_the_environment(calibrating, stored, environment=False)
+
+    decision = (await w.campaigns.control_log(CID))[-1]
+    *_, repair = await w.campaigns.launch_intents(CID)
+    overrides = repair.cycle_request["body"]["execution_overrides"]
+    assert (decision.binding["row"], decision.binding["action"]) == (12, "repair")
+    assert (await w.campaigns.get_campaign(CID)).state is CampaignState.REPAIRING
+    assert repair.cycle_kind is CycleKind.REPAIR
+    assert overrides["campaign_proposal"]["repair_of"] == "cyc_inc"
+    assert overrides["plan_artifact_refs"] == ["art_candidate", "art_cr", "art_plan"]
+    assert [w["type"] for w in overrides["workload_sequence"]] == ["implementation"]
+
+
+async def test_a_repair_with_no_approved_plan_escalates(calibrating, stored):
+    w = await _increment_failed_by_the_environment(calibrating, stored, environment=False)
+
+    decision = (await w.campaigns.control_log(CID))[-1]
+    assert (await w.campaigns.get_campaign(CID)).state is CampaignState.ESCALATED
+    assert "no approved implementation plan" in decision.binding["unbuilt"]

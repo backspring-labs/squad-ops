@@ -96,6 +96,14 @@ def increment_launch(
     )
 
 
+#: The workloads each bound cycle runs (§10a): a retry frames afresh and builds; a repair builds
+#: only, under the failed cycle's approved plan.
+BOUND_WORKLOADS = {
+    CycleKind.RETRY: ("framing", "implementation"),
+    CycleKind.REPAIR: ("implementation",),
+}
+
+
 def bound_launch(
     campaign: Campaign,
     kind: CycleKind,
@@ -104,20 +112,25 @@ def bound_launch(
     contract_ref: str | None,
 ) -> LaunchRequest:
     """A cycle that reuses an increment's bound change request, ruling, baseline and footprint
-    (§10a): the policy's proposal profile — so the stack is the campaign's — with its proposal
-    step removed, since no proposal is run and no ruling is asked. It carries the increment's
+    (§10a): the policy's proposal profile — so the stack is the campaign's — keeping only the
+    kind's workloads (``BOUND_WORKLOADS``): no proposal is run and no ruling is asked, and a
+    repair runs the build alone. It carries the increment's
     ``campaign_proposal`` block and the approved seeds, so every increment seam reads it as the
     increment it continues."""
     from squadops.contracts.cycle_request_profiles import load_profile
-    from squadops.cycles.models import WorkloadType
 
     policy = campaign.policy
+    keep = BOUND_WORKLOADS[kind]
     sequence = [
         dict(w)
         for w in load_profile(policy.proposal_profile).defaults["workload_sequence"]
-        if w.get("type") != WorkloadType.PROPOSAL
+        if w.get("type") in keep
     ]
-    assert kind in (CycleKind.RETRY, CycleKind.REPAIR), kind
+    if [w["type"] for w in sequence] != list(keep):
+        raise ValueError(
+            f"profile {policy.proposal_profile!r} cannot run a {kind}: it does not hold the "
+            f"workloads {list(keep)}"
+        )
     user_values: dict = {
         "campaign_proposal": dict(block),
         "plan_artifact_refs": list(plan_artifact_refs),
