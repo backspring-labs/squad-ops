@@ -137,3 +137,32 @@ async def increment_seed(vault: Any, registry: Any, cycle: Any, completed_run: A
         plan_refs=(manifest, *((request,) if request else ())),
         contract_ref=latest(CONTRACT_ARTIFACT_TYPE),
     )
+
+
+@dataclasses.dataclass(frozen=True)
+class CriterionFile:
+    """A new criterion and its own test file (SIP-0109 §8.1): the qa role writes the test that
+    discriminates it there, and its verifier bundle is frozen from that file."""
+
+    criterion_id: str
+    surface_kind: str
+    surface: str
+    path: str
+
+
+def increment_criterion_files(change_request: str, stack: str) -> tuple[CriterionFile, ...]:
+    """Each new criterion of the approved change request, with its file on ``stack``
+    (``scaffold.criterion_test_path``). The document is the stored one, hash-checked."""
+    from squadops.campaigns.change_request import load_stored_change_request
+    from squadops.capabilities.scaffold import criterion_test_path
+
+    request = load_stored_change_request(change_request)
+    return tuple(
+        CriterionFile(
+            c.id,
+            str(c.surface_kind),
+            c.surface,
+            criterion_test_path(stack, c.id, str(c.surface_kind)),
+        )
+        for c in request.criteria
+    )

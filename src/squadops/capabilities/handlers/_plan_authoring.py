@@ -98,6 +98,12 @@ async def contract_surface_sections(renderer: Any, inputs: dict[str, Any]) -> st
             "footprint_index",
             "increment_footprint_index",
         ),
+        # SIP-0109 §8.1 (#1705 e): each new criterion's own test file, which a qa task writes.
+        (
+            "request.plan_increment_criteria_appendix",
+            "criterion_files_index",
+            "increment_criterion_files_index",
+        ),
     )
     sections: list[str] = []
     for template_id, variable, input_key in surfaces:

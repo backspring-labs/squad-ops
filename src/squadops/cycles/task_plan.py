@@ -653,6 +653,38 @@ def _applicable_acceptance(plan_task: Any) -> list:
     return acceptance
 
 
+def _inject_increment_indexes(
+    inputs: dict, footprint: tuple[str, ...] | None, criterion_files: tuple[Any, ...]
+) -> None:
+    """SIP-0109: what an increment's plan authors are shown — data only; each rule's prose is
+    its managed appendix (#448), and the plan gate enforces it.
+
+    - §7.3 (#1705 d): the files the approved change touches. The rest is the accepted
+      application.
+    - §8.1: each new criterion's own test file, which a qa task must write.
+    """
+    if footprint:
+        inputs["increment_footprint_index"] = "\n".join(f"- `{p}`" for p in footprint)
+    if criterion_files:
+        inputs["increment_criterion_files_index"] = "\n".join(
+            f"- {f.criterion_id} ({f.surface_kind} `{f.surface}`): `{f.path}`"
+            for f in criterion_files
+        )
+
+
+def _increment_criterion_files(
+    change_request: str | None, resolved_config: Mapping[str, Any]
+) -> tuple[Any, ...]:
+    """An increment framing's new criteria and their own test files (SIP-0109 §8.1), or ``()``
+    for every other run."""
+    if not change_request:
+        return ()
+    from squadops.campaigns.increment_tree import increment_criterion_files
+    from squadops.capabilities.scaffold import scaffold_stack_for
+
+    return increment_criterion_files(change_request, scaffold_stack_for(resolved_config))
+
+
 def _require_change_request_for_increment_framing(
     run: Run, resolved_config: Mapping[str, Any], change_request: str | None
 ) -> None:
@@ -726,6 +758,7 @@ def inject_contract_inputs(
     task_type: str,
     interface_manifest: InterfaceManifest | None = None,
     footprint: tuple[str, ...] | None = None,
+    criterion_files: tuple[Any, ...] = (),
 ) -> None:
     """Bind-mode envelope inputs derived from the contract (SIP-0098).
 
@@ -768,11 +801,7 @@ def inject_contract_inputs(
         frozen_index = frozen_surface_index_lines(interface_manifest)
         if frozen_index:
             inputs["frozen_surface_index"] = "\n".join(frozen_index)
-        # SIP-0109 §7.3 (#1705 d): an increment's plan covers only the files its approved
-        # change touches — the rest is the accepted application. Data only; the rule's prose
-        # is the managed appendix (#448), and the plan gate enforces it.
-        if footprint:
-            inputs["increment_footprint_index"] = "\n".join(f"- `{p}`" for p in footprint)
+        _inject_increment_indexes(inputs, footprint, criterion_files)
     if task_contract.bind_behavioral_surface:
         if contract.behavioral.probes:
             inputs["contract_probes"] = [p.to_dict() for p in contract.behavioral.probes]
@@ -1162,6 +1191,7 @@ def generate_task_plan(
     from squadops.campaigns.increment_tree import increment_footprint
 
     footprint = increment_footprint(resolved_config, interface_manifest)
+    criterion_files = _increment_criterion_files(change_request, resolved_config)
     _require_change_request_for_increment_framing(run, resolved_config, change_request)
 
     if run.workload_type is not None:
@@ -1324,7 +1354,9 @@ def generate_task_plan(
             )
             inputs["acceptance_criteria"] = acceptance
 
-        inject_contract_inputs(inputs, contract, task_type, interface_manifest, footprint)
+        inject_contract_inputs(
+            inputs, contract, task_type, interface_manifest, footprint, criterion_files
+        )
         _inject_rejection_context(inputs, framing_rejection_context, task_type)
         _inject_increment_change_request(inputs, change_request)
 

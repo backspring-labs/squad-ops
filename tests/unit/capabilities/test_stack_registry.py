@@ -183,3 +183,41 @@ def test_the_registry_is_the_single_answer_to_which_stacks_exist():
     assert is_scaffoldable_stack("nextjs_ts")
     assert not is_scaffoldable_stack("")
     assert not is_scaffoldable_stack("nextjs")
+
+
+# --------------------------------------------------------------------------- #
+# SIP-0109 §8.1: a campaign criterion's own test file
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("stack", sorted(scaffold._STACKS))
+@pytest.mark.parametrize("surface_kind", ["endpoint", "client_route"])
+def test_every_stack_places_each_kind_of_criterion_inside_its_own_qa_namespace(stack, surface_kind):
+    """Bug caught: a criterion file declared outside the stack's qa namespace — the qa grant
+    refuses the write, so the criterion's test can never exist and it is never met."""
+    path = scaffold.criterion_test_path(stack, "C1", surface_kind)
+
+    assert is_qa_test_path_for_stack(path, stack), path
+    assert "C1" in path
+
+
+@pytest.mark.parametrize(
+    ("criterion_id", "stack", "surface_kind", "error"),
+    [
+        ("cap-limit.1", "fullstack_fastapi_react", "endpoint", None),
+        ("C1", "fullstack_fastapi_react", "a_cron_job", "declares no criterion test file"),
+        ("C1", "nothing_registered", "endpoint", "no scaffold expander"),
+    ],
+    ids=["id-kept-to-a-module-name", "unknown-surface-kind", "unknown-stack"],
+)
+def test_a_criterion_file_is_a_valid_module_or_refused(criterion_id, stack, surface_kind, error):
+    """Bugs caught: an id with ``-`` or ``.`` producing a test module pytest cannot import, or a
+    criterion with nowhere to live placed by guess."""
+    if error is None:
+        assert (
+            scaffold.criterion_test_path(stack, criterion_id, surface_kind)
+            == "backend/tests/criteria/test_cap_limit_1.py"
+        )
+        return
+    with pytest.raises(ValueError, match=error):
+        scaffold.criterion_test_path(stack, criterion_id, surface_kind)

@@ -22,7 +22,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from graphlib import CycleError, TopologicalSorter
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
@@ -955,6 +955,31 @@ class ImplementationPlan:
             for task in self.tasks
             for artifact in task.expected_artifacts
             if not in_footprint(artifact, footprint)
+        ]
+
+    def validate_increment_criterion_files(self, criterion_files: tuple[Any, ...]) -> list[str]:
+        """SIP-0109 §8.1: each new criterion of an increment is proven in its own test file,
+        which a qa task writes. That file is the criterion's verifier for every later increment;
+        a criterion whose file no qa task writes is never discriminated, so never met (§8.2).
+        Empty for every cycle that is not an increment.
+
+        Returns:
+            List of validation error strings (empty = valid), one per unplanned criterion.
+        """
+        from squadops.tasks.task_types import authors_qa_suite
+
+        planned = {
+            artifact
+            for task in self.tasks
+            if authors_qa_suite(task.task_type)
+            for artifact in task.expected_artifacts
+        }
+        return [
+            f"Criterion {f.criterion_id} ({f.surface_kind} {f.surface}) is proven in its own "
+            f"test file {f.path!r}, and no qa task's expected_artifacts include it. Add it to a "
+            "qa task; the file holds that criterion's tests and no other's"
+            for f in criterion_files
+            if f.path not in planned
         ]
 
     def validate_frozen_artifact_ownership(self, contract: VerificationContract) -> list[str]:

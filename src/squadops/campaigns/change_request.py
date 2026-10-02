@@ -130,6 +130,7 @@ class RefusalKind(StrEnum):
     UNKNOWN_PRIOR_CRITERION = "unknown_prior_criterion"
     KEEP_AND_RETIRE = "keep_and_retire"
     NO_CRITERIA = "no_criteria"
+    REUSED_CRITERION = "reused_criterion"
 
 
 @dataclass(frozen=True)
@@ -504,6 +505,17 @@ def _criteria_refusals(request: ChangeRequest, context: ProposalContext) -> list
             )
         )
     prior = set(context.prior_criteria)
+    # §8.1: a criterion pins its own verifier bundle by id for the rest of the campaign, so a new
+    # criterion under a frozen one's id would share its file and its bundle.
+    reused = sorted({c.id for c in request.criteria} & prior)
+    if reused:
+        refusals.append(
+            ProposalRefusal(
+                RefusalKind.REUSED_CRITERION,
+                f"{', '.join(reused)} already name criteria an earlier increment froze; a new "
+                "criterion takes an id no earlier increment used (§8.1)",
+            )
+        )
     retired = {r.criterion_id for r in (*request.retires, *request.replaces_verifiers)}
     unknown = sorted((set(request.must_not_break) | retired) - prior)
     if unknown:

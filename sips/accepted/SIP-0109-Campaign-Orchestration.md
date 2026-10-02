@@ -1263,6 +1263,31 @@ being built in the order the design note on #1705 sets out:
 - **Still to build:** the lease's persistence and its API (`/api/v1/campaigns/{id}/lease`,
   `campaigns:supervise`); enforcement at the cycle-create preflight, at the launcher (re-attempted
   at the policy's interval, escalating after its count), and at run starts.
+### 24m. Criterion-owned test files, as built (2026-10-02, #1705 e, part 0; decided under the 2.0 charter)
+
+§8.1 places each criterion's test in its own file, `<the stack's test dir>/criteria/<criterion_id>.test.<ext>`,
+"which the scaffold emits as a fill slot (SIP-0104)".
+
+- **What differs: the qa plan writes the file, not the scaffold.**
+  - **Why:** only `nextjs_ts` has a SIP-0104 verification-scaffold emitter. The campaign's reference
+    stack, `fullstack_fastapi_react`, has none, so there is no shell for the file to be a slot of.
+  - **What the plan does instead:** a qa task names the file in its `expected_artifacts`.
+    `validate_increment_criterion_files` refuses a plan that leaves a new criterion's file unwritten,
+    at the plan gate the framing re-roll keys on.
+  - **Taught before enforced:** the plan authors are shown each criterion's file
+    (`request.plan_increment_criteria_appendix`).
+  - **A file only a dev task names does not count:** the qa role writes the test that proves the
+    criterion.
+- **Where the file lives is the stack's declaration** (`ScaffoldStack.criterion_test_files`, by surface
+  kind), held inside the stack's qa namespace by the inventory test.
+  - **`fullstack_fastapi_react`:** `backend/tests/criteria/test_<id>.py` for an endpoint;
+    `frontend/src/__tests__/criteria/<id>.test.jsx` for a client route. pytest collects only
+    `test_*.py`, so the §8.1 pattern is adapted to each runner's convention.
+  - **`nextjs_ts`:** `__tests__/criteria/<id>.test.ts` and `.test.tsx`.
+  - **The id is kept to letters, digits and `_`,** so the file is a valid module on every runner.
+- **A new criterion may not reuse an id an earlier increment froze** (`reused_criterion`, a new
+  proposal refusal). A criterion pins its bundle by id for the rest of the campaign, so a reused id
+  would share the frozen file and its bundle.
 
 ---
 

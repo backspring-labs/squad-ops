@@ -273,6 +273,15 @@ class FramingGateCheck:
                     ),
                 )
             )
+            # SIP-0109 §8.1: each new criterion's own test file is written by a qa task.
+            errors.extend(
+                classifier.collect(
+                    "validate_increment_criterion_files",
+                    parsed_plan.validate_increment_criterion_files(
+                        await self._increment_criterion_files(cycle)
+                    ),
+                )
+            )
 
         # SIP-0098 98.3: bind-mode contract validation. A seeded contract_ref switches the
         # cycle to bind mode — the plan must bind the contract's covered-file criteria by
@@ -507,6 +516,30 @@ class FramingGateCheck:
             classifier.collect_proofs(f.proof for f in outcome.blocking_findings)
         logger.info("interface_manifest rejected at gate: classes=%s", outcome.class_counts())
         return [f"interface_manifest [{f.proof}]: {f.detail}" for f in outcome.findings]
+
+    async def _increment_criterion_files(self, cycle: Cycle) -> tuple[Any, ...]:
+        """The increment's new criteria and their own test files, from the approved change
+        request the run was forwarded; ``()`` for any other cycle. The gate never raises
+        (#473): a framing run without its change request could not have been provisioned, so
+        an unreadable one here is logged and the rule skipped."""
+        from squadops.campaigns.increment_tree import (
+            approved_change_request,
+            increment_criterion_files,
+        )
+        from squadops.capabilities.scaffold import scaffold_stack_for
+
+        try:
+            document = await approved_change_request(self._artifact_vault, cycle)
+            if document is None:
+                return ()
+            return increment_criterion_files(document, scaffold_stack_for(cycle.resolved_config()))
+        except Exception:
+            logger.warning(
+                "increment criterion files unreadable for cycle %s; the rule is skipped",
+                cycle.cycle_id,
+                exc_info=True,
+            )
+            return ()
 
     async def _increment_footprint(self, cycle: Cycle, run_manifest: str | None) -> Any:
         """The increment's footprint, or ``None`` for a cycle that is not an increment (or
