@@ -550,7 +550,102 @@ UNRECORDED_PROOFS = "failed_proofs: rejection record predates their recording"
 _TERMINAL_STATUSES = frozenset({RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED})
 
 
+def failure_events(outcome: CycleOutcome, evidence: CycleEvidence) -> tuple[FailureEvent, ...]:
+    """The cycle's failure events: the one producer (SIP-0109 §14, #1710).
+
+    Deterministic, from the cycle's ``CycleOutcome`` and evidence alone, for the terminal run
+    ``assess()`` selects (the highest-numbered). It takes the outcome because a completed run's
+    events come from ``outcome.failed`` and ``outcome.unverified``, which ``CycleEvidence`` does
+    not carry.
+    - **A completed run:** one event per executed-and-failed check, then one per required check
+      that did not execute, with its reason.
+    - **A failed run** that ended its correction loop or its time budget: one event per recorded
+      round failure.
+    - **Otherwise none:** the attribution then reads something other than events (a gate's
+      rejection record, a terminal decision), or cannot read the cycle at all.
+
+    The attribution is computed from exactly what this returns (``attribution_from_events``), so
+    a consumer that persists these events and recomputes from them reads the same attribution.
+    """
+    final = _terminal_run(evidence)
+    if final is None or _machine_gate_refusal(final):
+        return ()
+    if final.status == RunStatus.COMPLETED:
+        if _no_summaries(outcome, evidence):
+            return ()
+        failed = tuple(
+            FailureEvent(
+                run_id=final.run_id,
+                task_id="",
+                check_id=check_id,
+                category=FailureEvidenceCategory.EXECUTED_AND_FAILED,
+            )
+            for check_id in sorted(outcome.failed)
+        )
+        unverified = tuple(
+            FailureEvent(
+                run_id=final.run_id, task_id="", check_id=u.check_id, not_executed_reason=u.reason
+            )
+            for u in sorted(outcome.unverified, key=lambda u: u.check_id)
+            if u.required
+        )
+        return failed + unverified
+    if final.status == RunStatus.FAILED:
+        summary = evidence.loop_summaries.get(final.run_id)
+        if (
+            summary is None
+            or summary.terminal is None
+            or summary.terminal.kind not in _ROUND_FAILURE_TERMINALS
+            or summary.round_failures is None
+        ):
+            return ()
+        return tuple(
+            FailureEvent(
+                run_id=final.run_id,
+                task_id=r.task_id,
+                round_index=r.round_index,
+                category=r.category,
+                locus=r.locus,
+                emission_signature=r.emission_signature,
+            )
+            for r in summary.round_failures
+        )
+    return ()
+
+
+#: The terminal decisions whose evidence is the run's round failures.
+_ROUND_FAILURE_TERMINALS = frozenset(
+    {TerminalKind.CORRECTION_TERMINATED, TerminalKind.RUN_TIME_BUDGET_EXCEEDED}
+)
+
+
+def _terminal_run(evidence: CycleEvidence) -> RunRecord | None:
+    """The run the attribution reads: the highest-numbered, once it has ended."""
+    if not evidence.runs:
+        return None
+    final = max(evidence.runs, key=lambda r: r.run_number)
+    return final if final.status in _TERMINAL_STATUSES else None
+
+
+def _machine_gate_refusal(final: RunRecord) -> bool:
+    return any(
+        g.decision == GateDecisionValue.REJECTED and is_machine_decision(g.decided_by)
+        for g in final.gate_decisions
+    )
+
+
 def _attribution(outcome: CycleOutcome, evidence: CycleEvidence) -> AttributionReading:
+    return attribution_from_events(outcome, evidence, failure_events(outcome, evidence))
+
+
+def attribution_from_events(
+    outcome: CycleOutcome, evidence: CycleEvidence, events: tuple[FailureEvent, ...]
+) -> AttributionReading:
+    """The terminal attribution, computed from the cycle's failure events (SIP-0109 §14).
+
+    ``events`` is what ``failure_events(outcome, evidence)`` returns, or the persisted copy of
+    it: no row of the attribution re-derives an event from the outcome or the evidence.
+    """
     if not evidence.runs:
         return AttributionReading(IndicatorState.UNASKABLE, reason="no_runs")
     final = max(evidence.runs, key=lambda r: r.run_number)
@@ -559,15 +654,12 @@ def _attribution(outcome: CycleOutcome, evidence: CycleEvidence) -> AttributionR
             IndicatorState.UNASKABLE, reason=f"cycle_not_terminal: {final.status}"
         )
 
-    if any(
-        g.decision == GateDecisionValue.REJECTED and is_machine_decision(g.decided_by)
-        for g in final.gate_decisions
-    ):
+    if _machine_gate_refusal(final):
         return _gate_refusal(final, evidence)
     if final.status == RunStatus.COMPLETED:
-        return _completed(final, outcome, evidence)
+        return _completed(final, outcome, evidence, events)
     if final.status == RunStatus.FAILED:
-        return _failed_run(final, evidence)
+        return _failed_run(final, evidence, events)
     return _read(
         TerminalEvidence(kind=TerminalKind.OTHER),
         refs=(EvidenceRef(RefKind.RUN, final.run_id),),
@@ -618,31 +710,19 @@ def _gate_refusal(final: RunRecord, evidence: CycleEvidence) -> AttributionReadi
 
 
 def _completed(
-    final: RunRecord, outcome: CycleOutcome, evidence: CycleEvidence
+    final: RunRecord,
+    outcome: CycleOutcome,
+    evidence: CycleEvidence,
+    events: tuple[FailureEvent, ...],
 ) -> AttributionReading:
     if _no_summaries(outcome, evidence):
         return AttributionReading(IndicatorState.UNASKABLE, reason=_NO_VERIFICATION_SUMMARY)
-    verdict = str(outcome.verdict)
-    failures = tuple(
-        FailureEvent(
-            run_id=final.run_id,
-            task_id="",
-            check_id=check_id,
-            category=FailureEvidenceCategory.EXECUTED_AND_FAILED,
-        )
-        for check_id in sorted(outcome.failed)
-    )
-    unverified = tuple(
-        FailureEvent(
-            run_id=final.run_id, task_id="", check_id=u.check_id, not_executed_reason=u.reason
-        )
-        for u in sorted(outcome.unverified, key=lambda u: u.check_id)
-        if u.required
-    )
+    failures = tuple(e for e in events if e.category == FailureEvidenceCategory.EXECUTED_AND_FAILED)
+    unverified = tuple(e for e in events if e.not_executed_reason is not None)
     return _read(
         TerminalEvidence(
             kind=TerminalKind.COMPLETED,
-            verdict=verdict,
+            verdict=str(outcome.verdict),
             failure_events=failures,
             unverified=unverified,
         ),
@@ -651,7 +731,9 @@ def _completed(
     )
 
 
-def _failed_run(final: RunRecord, evidence: CycleEvidence) -> AttributionReading:
+def _failed_run(
+    final: RunRecord, evidence: CycleEvidence, events: tuple[FailureEvent, ...]
+) -> AttributionReading:
     summary = evidence.loop_summaries.get(final.run_id)
     if summary is None or summary.terminal is None:
         return AttributionReading(
@@ -667,21 +749,11 @@ def _failed_run(final: RunRecord, evidence: CycleEvidence) -> AttributionReading
     )
     unrecorded: tuple[str, ...] = ()
     failures: tuple[FailureEvent, ...] = ()
-    if decision.kind in (TerminalKind.CORRECTION_TERMINATED, TerminalKind.RUN_TIME_BUDGET_EXCEEDED):
+    if decision.kind in _ROUND_FAILURE_TERMINALS:
         if summary.round_failures is None:
             unrecorded = (UNRECORDED_ROUND_FAILURE_EVENTS,)
         else:
-            failures = tuple(
-                FailureEvent(
-                    run_id=final.run_id,
-                    task_id=r.task_id,
-                    round_index=r.round_index,
-                    category=r.category,
-                    locus=r.locus,
-                    emission_signature=r.emission_signature,
-                )
-                for r in summary.round_failures
-            )
+            failures = events
     elif decision.kind == TerminalKind.COMPLIANCE_BUDGET_EXCEEDED:
         unrecorded = (UNRECORDED_REFUSED_EMISSIONS,)
     return _read(
