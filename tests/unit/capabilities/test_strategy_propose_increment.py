@@ -130,6 +130,33 @@ async def test_a_revision_run_is_shown_the_note_and_the_version_it_revises_and_e
     assert result.outputs["change_request"]["version"] == 2
 
 
+async def test_a_proposal_after_an_abandoned_increment_is_shown_why_it_was_abandoned():
+    """SIP-0109 §7, row 13 (#1692), through the real render: the launch carries the abandoned
+    increment's brief and the proposal shows it. Bugs caught: the brief carried and never
+    rendered (a template slot no handler fills, #1289's shape), or shown to a first proposal
+    that replaces nothing."""
+    abandoned = {
+        "cycle_id": "cyc_inc",
+        "verdict": "rejected",
+        "failed_checks": ["tests_pass"],
+        "why_failed": [
+            {"check_id": "tests_pass", "reason": "POST /runs returned 422", "contested": False}
+        ],
+    }
+    inputs = _inputs()
+    inputs["resolved_config"]["campaign_proposal"]["abandoned_increment"] = abandoned
+    shown, first = _ctx(_fenced(_REFERENCE)), _ctx(_fenced(_REFERENCE))
+
+    await StrategyProposeIncrementHandler().handle(shown, inputs)
+    await StrategyProposeIncrementHandler().handle(first, _inputs())
+
+    [prompt] = _prompts(shown)
+    assert "### The last increment was abandoned" in prompt
+    assert "- failed checks: `tests_pass`" in prompt
+    assert "POST /runs returned 422" in prompt
+    assert "abandoned" not in _prompts(first)[0]
+
+
 async def test_a_refusal_comes_back_with_every_reason_and_the_revision_is_judged_afresh():
     """Bug caught: the model revising blind — told only that it failed — or the second attempt
     judged against the first attempt's verdict."""

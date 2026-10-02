@@ -54,7 +54,10 @@ def start_transition(
 
 
 def increment_launch(
-    campaign: Campaign, baseline_manifest: str, frozen: tuple[dict, ...] = ()
+    campaign: Campaign,
+    baseline_manifest: str,
+    frozen: tuple[dict, ...] = (),
+    abandoned: dict | None = None,
 ) -> LaunchRequest:
     """An increment cycle (§7.3): the policy's proposal profile, run by its squad, proposing
     against the accepted tree. The ``campaign_proposal`` block carries what the proposal run
@@ -63,7 +66,9 @@ def increment_launch(
 
     ``frozen`` is every criterion earlier increments froze (§8.1), each with its own test file and
     its verifier bundle's artifact: pinned at launch, so the proposal knows the ids it may not
-    reuse and the evaluation runs exactly these bundles, whatever is promoted meanwhile."""
+    reuse and the evaluation runs exactly these bundles, whatever is promoted meanwhile.
+
+    ``abandoned`` is the brief of the increment this one replaces (row 13), when there is one."""
     policy = campaign.policy
     assert campaign.accepted is not None
     return LaunchRequest(
@@ -88,6 +93,10 @@ def increment_launch(
                         "prior_criteria": [f["criterion_id"] for f in frozen],
                         "frozen_criteria": [dict(f) for f in frozen],
                         "max_revisions": policy.max_proposal_revisions,
+                        # Row 13 (#1692): why the increment this one replaces was abandoned. Its
+                        # own key, read by the proposal alone — never ``prior_cycle``, which tells
+                        # every author the increment was attempted before.
+                        **({"abandoned_increment": dict(abandoned)} if abandoned else {}),
                     }
                 },
                 notes=f"campaign {campaign.campaign_id}: increment (SIP-0109 §7.3)",

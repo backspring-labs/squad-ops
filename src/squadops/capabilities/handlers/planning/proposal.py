@@ -30,6 +30,7 @@ from squadops.campaigns.change_request import (
     stored_change_request,
     validate_proposal,
 )
+from squadops.campaigns.prior_cycle import brief_lines
 from squadops.capabilities.handlers.base import HandlerEvidence, HandlerResult
 from squadops.capabilities.handlers.planning.base import _PlanningTaskHandler
 from squadops.tasks.task_types import TaskType
@@ -125,6 +126,14 @@ class StrategyProposeIncrementHandler(_PlanningTaskHandler):
                 },
             )
             variables["supervisor_note_section"] = section.content
+        abandoned = brief_lines(block.get("abandoned_increment"))
+        if abandoned:
+            # SIP-0109 §7, row 13 (#1692): a fresh proposal is shown why the last increment was
+            # abandoned, so it does not propose the same failure again unchanged.
+            section = await renderer.render(
+                "request.proposal_abandoned_increment", {"brief_lines": abandoned}
+            )
+            variables["abandoned_increment_section"] = section.content
         rendered = await renderer.render(self._request_template_id, variables)
         assembled = context.ports.prompt_service.assemble(
             role=context.role_id,  # SIP-0108 §10m: the identity layer is what the process IS

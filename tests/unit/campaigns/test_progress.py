@@ -174,10 +174,15 @@ class _World:
 
 @pytest.fixture
 async def calibrating() -> _World:
-    async def make(verdict):
+    async def make(verdict, **policy_overrides):
         w = _World(verdict)
         draft = campaign(
-            CID, policy=policy(calibration_profile="framing", proposal_profile="campaign-increment")
+            CID,
+            policy=policy(
+                calibration_profile="framing",
+                proposal_profile="campaign-increment",
+                **policy_overrides,
+            ),
         )
         await w.campaigns.create_campaign(
             draft, actor="owner", actor_role="admin", reason="r", idempotency_key="create"
@@ -640,7 +645,7 @@ def _environment_failure(cycle_id):
 
 
 async def _increment_failed_by_the_environment(
-    calibrating, stored, *, ruled="approved", moved=False, environment=True, reasons=()
+    calibrating, stored, *, ruled="approved", moved=False, environment=True, reasons=(), **policy
 ):
     """An accepted calibration, an increment proposed against its tree and ruled on, built, and
     rejected for a cause outside the work. Its approved seeds are stored, as the gate stores
@@ -654,7 +659,7 @@ async def _increment_failed_by_the_environment(
     from squadops.campaigns.models import ProposalBinding, SubmittedProposal
     from squadops.cycles.models import GateDecisionValue
 
-    w, run = await calibrating(RunVerdict.ACCEPTED)
+    w, run = await calibrating(RunVerdict.ACCEPTED, **policy)
     await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
     accepted = (await w.campaigns.get_campaign(CID)).accepted.identity
     block = {
@@ -797,6 +802,33 @@ async def test_an_owners_retry_carries_the_brief_and_is_never_blocked_by_it(
     assert transition.launch.cycle_kind is CycleKind.RETRY
     expected = "cyc_inc" if records == "read" else None
     assert (block.get("prior_cycle") or {}).get("cycle_id") == expected
+
+
+async def test_an_abandoned_increments_record_reaches_the_next_proposal_and_no_other_task(
+    calibrating, stored
+):
+    """§10 row 13, §7 (#1692), entered at the completion hook: a rejected increment with no
+    repair left is abandoned, and the fresh proposal is told why. Bugs caught: the next proposal
+    as blind as the last; or the record carried as ``prior_cycle``, which would tell every author
+    of the new, different increment that it was attempted before."""
+    from squadops.cycles.verification_integrity import FailedCheck
+
+    w = await _increment_failed_by_the_environment(
+        calibrating,
+        stored,
+        environment=False,
+        reasons=(FailedCheck("tests_pass", "POST /runs returned 422, expected 201", True),),
+        max_repair_cycles_per_increment=0,
+    )
+
+    decision = (await w.campaigns.control_log(CID))[-1]
+    *_, proposal = await w.campaigns.launch_intents(CID)
+    block = proposal.cycle_request["body"]["execution_overrides"]["campaign_proposal"]
+    assert (decision.binding["row"], decision.binding["action"]) == (13, "abandon_and_propose")
+    assert proposal.cycle_kind is CycleKind.INCREMENT
+    assert block["abandoned_increment"]["cycle_id"] == "cyc_inc"
+    assert block["abandoned_increment"]["why_failed"][0]["check_id"] == "tests_pass"
+    assert "prior_cycle" not in block
 
 
 @pytest.mark.parametrize(
