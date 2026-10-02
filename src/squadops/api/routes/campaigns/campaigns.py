@@ -328,11 +328,22 @@ def _transition(
 
 
 def _paused_from(log: list[ControlLogEntry]) -> CampaignState | None:
-    """The state the latest applied row into ``paused`` moved the campaign out of."""
+    """The state a resume returns the campaign to: the one the latest applied row into
+    ``paused`` moved it out of, or ``awaiting_ruling`` when its proposal was submitted to the
+    increment gate during the pause (the gate opened while the campaign held, §9.2)."""
+    gate_opened = False
     for entry in reversed(log):
-        if entry.outcome is ControlOutcome.APPLIED and entry.next_state is CampaignState.PAUSED:
-            if entry.prior_state is not CampaignState.PAUSED:
-                return entry.prior_state
+        if entry.outcome is not ControlOutcome.APPLIED:
+            continue
+        if entry.operation is ControlOperation.SUBMIT and entry.prior_state is CampaignState.PAUSED:
+            gate_opened = True
+        elif (
+            entry.next_state is CampaignState.PAUSED
+            and entry.prior_state is not CampaignState.PAUSED
+        ):
+            if gate_opened and entry.prior_state is CampaignState.AT_PROPOSAL:
+                return CampaignState.AWAITING_RULING
+            return entry.prior_state
     return None
 
 
