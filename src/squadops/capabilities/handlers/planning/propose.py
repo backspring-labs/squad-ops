@@ -202,33 +202,20 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         )
         return rendered.content
 
-    async def _footprint_section(self, renderer: Any, inputs: dict[str, Any]) -> str:
-        """The files an increment's plan may touch, or "" (SIP-0109 §7.3, #1705 d).
-
-        Same conditions as the frozen section: an increment's dev/qa proposers, the index data
-        injected by the executor, the prose a managed asset (#448). The plan gate refuses a
-        task outside it; this tells the author before the refusal does."""
+    async def _increment_sections(self, renderer: Any, inputs: dict[str, Any]) -> str:
+        """What an increment's dev/qa proposers are shown, or "" (SIP-0109 §7.3, §8.1): the
+        footprint, the files the scaffold regenerates, each new criterion's own test file and
+        the earlier criteria's frozen verifiers — the same table the merger renders
+        (``INCREMENT_SURFACES``, #1874). The index data is injected by the executor, the prose a
+        managed asset (#448); the plan gate refuses what these teach, so they teach first."""
         if self._proposer_role not in ("development", "qa"):
             return ""
-        sections = []
-        for template_id, variable, key in (
-            (
-                "request.plan_increment_footprint_appendix",
-                "footprint_index",
-                "increment_footprint_index",
-            ),
-            # #1868: of those, the files the scaffold regenerates — never claimed.
-            (
-                "request.plan_increment_regenerated_appendix",
-                "regenerated_index",
-                "increment_regenerated_index",
-            ),
-        ):
-            index = inputs.get(key)
-            if index:
-                rendered = await renderer.render(template_id, {variable: index})
-                sections.append(rendered.content)
-        return "\n\n".join(sections)
+        from squadops.capabilities.handlers._plan_authoring import (
+            INCREMENT_SURFACES,
+            render_surfaces,
+        )
+
+        return await render_surfaces(renderer, inputs, INCREMENT_SURFACES)
 
     async def handle(
         self,
@@ -274,9 +261,9 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         if frozen_surface_section:
             variables["frozen_surface_section"] = frozen_surface_section
         # SIP-0109 §7.3 (#1705 d): an increment's footprint, beside what the scaffold froze.
-        footprint_section = await self._footprint_section(renderer, inputs)
-        if footprint_section:
-            variables["increment_footprint_section"] = footprint_section
+        increment_sections = await self._increment_sections(renderer, inputs)
+        if increment_sections:
+            variables["increment_sections"] = increment_sections
         # #686: the plan-shape rules the deterministic validators enforce. No input
         # to key on — they hold for every plan, so this one renders unconditionally.
         variables["authoring_rules_section"] = await self._authoring_rules_section(renderer)
