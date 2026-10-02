@@ -143,6 +143,8 @@ class AtlasAdapter(LLMPort):
             LLMCapability.STREAMING_USAGE: True,  # usage frame with `choices: []`
             LLMCapability.THINKING_TOKENS: True,  # `completion_tokens_details.reasoning_tokens`
             LLMCapability.REASONING_CONTROL: True,  # `reasoning_effort`, incl. `none`
+            # It serves exactly the weights it was launched with: what it lists is loaded.
+            LLMCapability.LOADED_MODELS: True,
         }
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -474,6 +476,11 @@ class AtlasAdapter(LLMPort):
         except Exception as e:
             raise self._translate(e, self._default_model, "list_available_models") from e
         return [ModelInfo(name=name) for entry in data.get("data", []) if (name := entry.get("id"))]
+
+    async def list_loaded_models(self) -> list[ModelInfo]:
+        """The served models are the loaded ones: Atlas holds the weights it was launched with
+        for its whole life, so ``/v1/models`` answers both questions."""
+        return await self.list_available_models()
 
     async def health(self) -> dict[str, Any]:
         """Reachability and auth in one probe; never raises."""

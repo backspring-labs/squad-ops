@@ -98,6 +98,7 @@ class OllamaAdapter(LLMPort):
             LLMCapability.STREAMING_USAGE: True,
             LLMCapability.THINKING_TOKENS: False,
             LLMCapability.REASONING_CONTROL: True,
+            LLMCapability.LOADED_MODELS: True,
         }
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -600,6 +601,23 @@ class OllamaAdapter(LLMPort):
                 modified_at=m.get("modified_at"),
                 digest=m.get("digest") or None,
             )
+            for m in data.get("models", [])
+            if (name := m.get("name"))
+        ]
+
+    async def list_loaded_models(self) -> list[ModelInfo]:
+        """The models Ollama holds in memory now (``/api/ps``), with their digests: a tag
+        re-pulled under the same name carries a different digest (#1720)."""
+        client = await self._get_client()
+        try:
+            response = await client.get("/api/ps", timeout=self._model_list_timeout)
+            response.raise_for_status()
+            data = response.json()
+        except httpx.ConnectError as e:
+            raise LLMConnectionError(f"Failed to connect to Ollama at {self._base_url}") from e
+
+        return [
+            ModelInfo(name=name, size_bytes=m.get("size"), digest=m.get("digest") or None)
             for m in data.get("models", [])
             if (name := m.get("name"))
         ]
