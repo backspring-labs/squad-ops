@@ -48,6 +48,7 @@ from squadops.capabilities.handlers.planning import (
     QaProposePlanTasksHandler,
     QAValidateRefinementHandler,
     StrategyFrameObjectiveHandler,
+    StrategyProposeIncrementHandler,
     StrategyProposePlanGuidanceHandler,
 )
 from squadops.capabilities.handlers.repair_tasks import (
@@ -106,6 +107,8 @@ HANDLER_CONFIGS: list[tuple[type[CapabilityHandler], tuple[str, ...]]] = [
     # Planning handlers (SIP-0078: Planning Workload Protocol)
     (DataResearchContextHandler, ("data",)),
     (StrategyFrameObjectiveHandler, ("strat",)),
+    # SIP-0109 §9.1: the proposal run's one task; only the strategy role proposes.
+    (StrategyProposeIncrementHandler, ("strat",)),
     (DevelopmentDesignPlanHandler, ("dev",)),
     # SIP-0103 §3.1 (#791): the authored-manifest stage. Dispatched only in authored
     # mode — a scaffoldable stack with no pinned contract (see

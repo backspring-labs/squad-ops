@@ -1,0 +1,25 @@
+name: campaign-proposal
+description: "SIP-0109 §9.1: a campaign's proposal run — the strategy role proposes the next increment as a typed change request"
+defaults:
+  # SIP-0086 §12a change 1: declared, never defaulted. The proposal's rails judge it inside
+  # its task (squadops.campaigns.change_request), so no self-evaluation pass opens; 0 says so.
+  max_self_eval_passes: 0
+  # SIP-0108 §10i item 3: declared. A proposal that fails is retried as a run (§9.1), not
+  # corrected: there is no candidate to repair.
+  correction_steps: [analyze, decide, repair]
+  build_strategy: fresh
+  build_profile: fullstack_fastapi_react
+  # The in-task revisions the rails' refusals buy, as the manifest author's budget does.
+  proposal_max_attempts: 3
+  task_flow_policy:
+    mode: sequential
+    gates: []
+  expected_artifact_types:
+    - document
+  # The proposal workload alone. In a campaign's increment cycle the increment_ruling gate
+  # follows it (step 5, #1801); run alone, it proves the proposal against the deploy.
+  workload_sequence:
+    - type: proposal
+      gate: null
+  experiment_context: {}
+  notes: "Campaign proposal run (SIP-0109 §9.1)"

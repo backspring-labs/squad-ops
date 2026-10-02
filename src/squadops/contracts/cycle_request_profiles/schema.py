@@ -42,6 +42,11 @@ _APPLIED_DEFAULTS_EXTRA_KEYS = {
     # Plan-authoring retry runway for the merge/manifest loop (#424); read by
     # _plan_authoring_service via resolved_config (default 2).
     "manifest_max_attempts",
+    # SIP-0109 §9.1: the proposal run's in-task revision budget against its rails.
+    "proposal_max_attempts",
+    # SIP-0109 §9.1: the campaign's proposal context, by id (the accepted manifest's artifact,
+    # the objective and its scope, the prior criteria); set per cycle by the campaign.
+    "campaign_proposal",
     "output_validation",
     "max_self_eval_passes",
     "min_artifact_count",

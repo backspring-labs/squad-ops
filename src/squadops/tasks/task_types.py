@@ -35,6 +35,8 @@ class TaskType(StrEnum):
     STRATEGY_FRAME_OBJECTIVE = "strategy.frame_objective"
     STRATEGY_PROPOSE_PLAN_GUIDANCE = "strategy.propose_plan_guidance"
     STRATEGY_CORRECTIVE_PLAN = "strategy.corrective_plan"
+    # SIP-0109 §9.1: the proposal run's one task — the only one that authors a change request.
+    STRATEGY_PROPOSE_INCREMENT = "strategy.propose_increment"
 
     # --- development (dev) ---
     DEVELOPMENT_DESIGN = "development.design"

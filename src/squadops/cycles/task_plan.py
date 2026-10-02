@@ -406,7 +406,13 @@ _KNOWN_WORKLOAD_TYPES = {
     WorkloadType.REFINEMENT,
     WorkloadType.EVALUATION,
     WorkloadType.WRAPUP,
+    WorkloadType.PROPOSAL,
 }
+
+#: SIP-0109 §7.3, §9.1: the proposal workload's one step, the only author of a change request.
+PROPOSAL_TASK_STEPS: list[tuple[TaskType, str]] = [
+    (TaskType.STRATEGY_PROPOSE_INCREMENT, "strat"),
+]
 
 # Task types that are build steps (for routing_reason metadata)
 _BUILD_TASK_TYPES = {s[0] for s in BUILD_TASK_STEPS} | {s[0] for s in BUILDER_ASSEMBLY_TASK_STEPS}
@@ -507,6 +513,11 @@ def _resolve_workload_steps(
             profile.profile_id, WORKLOAD_REQUIRED_ROLES[workload_type], profile_roles
         )
         steps = list(CYCLE_TASK_STEPS)
+    elif workload_type == WorkloadType.PROPOSAL:
+        _check_required_roles(
+            profile.profile_id, WORKLOAD_REQUIRED_ROLES[workload_type], profile_roles, "proposal"
+        )
+        steps = list(PROPOSAL_TASK_STEPS)
     elif workload_type == WorkloadType.WRAPUP:
         _check_required_roles(
             profile.profile_id, WORKLOAD_REQUIRED_ROLES[workload_type], profile_roles, "wrap-up"

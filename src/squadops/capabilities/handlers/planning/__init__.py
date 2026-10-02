@@ -27,6 +27,7 @@ from squadops.capabilities.handlers.planning.manifest import (
     DevelopmentAuthorManifestHandler,
 )
 from squadops.capabilities.handlers.planning.merge import GovernanceMergePlanHandler
+from squadops.capabilities.handlers.planning.proposal import StrategyProposeIncrementHandler
 from squadops.capabilities.handlers.planning.propose import (
     DevelopmentProposePlanTasksHandler,
     QaProposePlanTasksHandler,
@@ -53,6 +54,7 @@ __all__ = [
     "QAValidateRefinementHandler",
     "QaProposePlanTasksHandler",
     "StrategyFrameObjectiveHandler",
+    "StrategyProposeIncrementHandler",
     "StrategyProposePlanGuidanceHandler",
     "_PlanningTaskHandler",
     "_ProposeBaseHandler",

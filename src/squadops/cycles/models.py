@@ -108,6 +108,8 @@ class WorkloadType:
     EVALUATION = "evaluation"
     REFINEMENT = "refinement"
     WRAPUP = "wrapup"
+    #: SIP-0109 §7.3: an increment cycle's first workload — the strategy role proposes.
+    PROPOSAL = "proposal"
 
 
 class PromotionStatus:
@@ -220,6 +222,7 @@ WORKLOAD_REQUIRED_ROLES: dict[str, frozenset[str]] = {
     WorkloadType.EVALUATION: REQUIRED_PLAN_ROLES,
     WorkloadType.WRAPUP: REQUIRED_WRAPUP_ROLES,
     WorkloadType.IMPLEMENTATION: frozenset(),
+    WorkloadType.PROPOSAL: frozenset({"strat"}),
 }
 
 # Roles that may appear in ``plan_authoring_contributors`` (SIP-0093 Rev 1). Homed
