@@ -1,6 +1,6 @@
 ---
 template_id: request.development_develop_fill_only_appendix
-version: "6"
+version: "7"
 required_variables:
   - stack
 optional_variables:
@@ -25,6 +25,22 @@ the fixed slots** — never to rebuild, rewire, or regenerate the scaffold.
 - Frontend view components (`frontend/src/views/*.jsx`) — implement each component's
   body. `apiFetch` is the wired data-access seam; call it (it prefixes `/api` and
   unwraps the error envelope).
+- **A form's values come from state or from `FormData`.** The views' tests run under
+  jsdom, which does not expose a form's controls as properties of the form: a handler
+  reading `event.target.email.value` works in a browser and throws in the tests (1.9's
+  React roll 4 was rejected on exactly this pattern). Either form works in both:
+
+  ```jsx
+  // held in state
+  const [email, setEmail] = useState('')
+  // <input name="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+
+  // or read from the form when it is submitted
+  function handleSubmit(event) {
+    event.preventDefault()
+    const email = new FormData(event.currentTarget).get('email')
+  }
+  ```
 
 **DO NOT touch the scaffold-owned surface — it is frozen and verified:**
 - Do NOT change route **paths, methods, decorators, or signatures** in `backend/routes.py`.
