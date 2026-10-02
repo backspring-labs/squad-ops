@@ -61,6 +61,14 @@ class ControlRequest(BaseModel):
     expected_state: str | None = None
 
 
+class ResumeRequest(ControlRequest):
+    """The owner's word (§10). A paused campaign resumes into its held action, or where it was;
+    an escalated one resumes on the action named here: ``propose``, ``abandon_and_propose``,
+    ``repair`` or ``retry`` (stopping it is ``abort``)."""
+
+    action: str | None = None
+
+
 class AcceptedTreeDTO(BaseModel):
     identity: str
     cycle_id: str

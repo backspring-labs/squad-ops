@@ -1056,6 +1056,27 @@ As built:
      framing (§7.3) is not built. So a `propose` decision launches a proposal run that ends with no
      verdict, and §10 row 14 escalates it to the owner with the proposal stored.
 
+
+### 24g. The owner's word, as built (2026-10-02, #1800; implementer's reading, not yet ruled)
+
+1. **The held action is executed by the owner's `resume`** (§10, §19 criterion 12a).
+   - **What the resume reads:** the latest applied row into `paused`. When that row is a decision
+     whose guard paused it, the resume executes that row's action exactly as recorded: a launch
+     action writes its intent in the resume's own row, and an abandonment is recorded with it.
+   - **The executing row:** it carries `{"action": …, "executes": "held"}`.
+   - **Anything else refuses:** a second resume finds the campaign no longer paused and is refused
+     as stale. A resume naming a different action is refused.
+   - **This supersedes §24f's** "not yet executed by the owner's resume".
+2. **An escalation is ruled through the same `resume`,** which must name the action (`propose`,
+   `abandon_and_propose`, `repair` or `retry`). There is no separate ruling route; stopping is
+   `abort`. The row carries `"executes": "ruling"`.
+3. **An abandonment counts as unaccepted wherever it was executed:** by a decision under
+   `proceed`, or by the owner's word.
+4. **`repair` and `retry` are refused as unbuilt** (#1705). They are refused, not pretended.
+5. **A policy's request profiles must exist when the campaign is created** (422 otherwise). A
+   profile that cannot be loaded at a later launch escalates the campaign with that reason; it
+   never leaves the decision unwritten.
+
 ---
 
 ## Revision history

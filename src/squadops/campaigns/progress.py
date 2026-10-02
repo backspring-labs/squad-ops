@@ -139,6 +139,40 @@ def decision_transition(
     )
 
 
+class CannotLaunch(ValueError):
+    """An action the owner's word names, whose cycle cannot be launched (and why)."""
+
+
+#: The actions the owner's word executes (§10): a held one on resume, or the one an escalation
+#: ruling names. ``escalate`` is the waiting itself; stopping is ``abort``.
+OWNER_ACTIONS = frozenset(
+    {
+        PendingAction.PROPOSE,
+        PendingAction.ABANDON_AND_PROPOSE,
+        PendingAction.REPAIR,
+        PendingAction.RETRY,
+    }
+)
+
+
+def held_action(log: list) -> PendingAction | None:
+    """The action a pausing limit holds (§10): the one recorded on the latest applied row into
+    ``paused``, when that row was a decision whose guard paused it. A supervisor's pause holds
+    nothing, and its resume returns the campaign where it was."""
+    for entry in reversed(log):
+        if entry.outcome != ControlOutcome.APPLIED or entry.next_state != CampaignState.PAUSED:
+            continue
+        if entry.prior_state == CampaignState.PAUSED:
+            continue
+        if (
+            entry.operation == ControlOperation.DECIDE
+            and entry.binding.get("guard") == Guard.PAUSED
+        ):
+            return PendingAction(entry.binding["action"])
+        return None
+    return None
+
+
 def decision_key(cycle_id: str) -> str:
     """One decision per campaign cycle (§10): the key is the cycle's."""
     return f"decide:{cycle_id}"
@@ -176,12 +210,9 @@ def derive_counters(
             since_increment = []
         else:
             since_increment.append(record.kind)
+    applied = [e for e in log if e.outcome == ControlOutcome.APPLIED]
     decisions = [
-        e.binding
-        for e in log
-        if e.operation == ControlOperation.DECIDE
-        and e.outcome == ControlOutcome.APPLIED
-        and "row" in e.binding
+        e.binding for e in applied if e.operation == ControlOperation.DECIDE and "row" in e.binding
     ]
     rejected_in_row = 1 if ending is CycleEnding.REJECTED_AT_GATE else 0
     if rejected_in_row:
@@ -196,8 +227,13 @@ def derive_counters(
         repair_cycles=since_increment.count(CycleKind.REPAIR),
         retry_cycles=since_increment.count(CycleKind.RETRY),
         rejected_proposals_in_row=rejected_in_row,
+        # An abandonment is counted wherever it was executed: by a decision under ``proceed``,
+        # or by the owner's word (a held action resumed, an escalation ruled).
         unaccepted_increments=sum(
-            1 for b in decisions if b.get("action") == PendingAction.ABANDON_AND_PROPOSE
+            1
+            for e in applied
+            if e.binding.get("action") == PendingAction.ABANDON_AND_PROPOSE
+            and (e.operation != ControlOperation.DECIDE or e.binding.get("guard") == Guard.PROCEED)
         ),
         objective_met=objective_met,
     )
@@ -320,6 +356,40 @@ class CampaignProgress:
         )
         return result.campaign
 
+    async def owner_action(
+        self,
+        campaign: Campaign,
+        action: PendingAction,
+        *,
+        held: bool,
+        actor: str,
+        actor_role: str,
+        reason: str,
+        idempotency_key: str,
+    ) -> CampaignTransition:
+        """The owner's word executing ``action`` (§10), as a ``resume`` row: a launch action's
+        intent is written in it, and ``abandon_and_propose`` records its abandonment with it.
+        The action is executed as recorded — a held one is never recomputed. Raises
+        :class:`CannotLaunch` for an action this campaign cannot execute."""
+        if action not in OWNER_ACTIONS:
+            raise CannotLaunch(f"{action} is not an action the owner's word executes")
+        if action in (PendingAction.REPAIR, PendingAction.RETRY):
+            raise CannotLaunch(f"{action} cycles (§10a) are not built yet (#1705)")
+        built = await self._propose_launch(campaign)
+        if isinstance(built, str):
+            raise CannotLaunch(built)
+        return CampaignTransition(
+            operation=ControlOperation.RESUME,
+            actor=actor,
+            actor_role=actor_role,
+            reason=reason,
+            idempotency_key=idempotency_key,
+            next_state=CampaignState.AT_PROPOSAL,
+            expected_state=campaign.state,
+            binding={"action": action.value, "executes": "held" if held else "ruling"},
+            launch=built,
+        )
+
     async def _propose_launch(self, campaign: Campaign) -> LaunchRequest | str:
         """The increment cycle a ``propose`` writes, from the accepted tree's manifest — or why
         it cannot be launched."""
@@ -332,7 +402,10 @@ class CampaignProgress:
         if not manifests:
             return f"the accepted cycle {campaign.accepted.cycle_id} stored no interface manifest"
         _ref, content = await self._vault.retrieve(manifests[-1].artifact_id)
-        return increment_launch(campaign, content.decode("utf-8"))
+        try:
+            return increment_launch(campaign, content.decode("utf-8"))
+        except FileNotFoundError as e:
+            return f"the policy's proposal profile cannot be loaded: {e}"
 
     async def _evaluating(self, campaign: Campaign, cycle: Cycle) -> Campaign:
         result = await self._campaigns.transition(

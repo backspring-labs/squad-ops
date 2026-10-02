@@ -290,7 +290,7 @@ def test_the_counters_are_read_from_the_campaigns_own_records():
     def decided(ending, action=None):
         entry = MagicMock()
         entry.operation, entry.outcome = ControlOperation.DECIDE, "applied"
-        entry.binding = {"row": 6, "ending": ending, "action": action}
+        entry.binding = {"row": 6, "ending": ending, "action": action, "guard": "proceed"}
         return entry
 
     started = MagicMock()

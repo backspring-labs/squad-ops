@@ -496,6 +496,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     state.cycle_registry = cycle_registry
     state.deploy_registry = deploy_registry
     state.campaign_registry = campaign_registry
+    state.campaign_progress = campaign_progress
     state.squad_profile = squad_profile
     state.artifact_vault = artifact_vault
     state.flow_executor = flow_executor

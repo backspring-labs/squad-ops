@@ -29,6 +29,7 @@ from squadops.api.campaign_schemas import (
     ControlLogEntryResponse,
     ControlRequest,
     ControlResultResponse,
+    ResumeRequest,
 )
 from squadops.api.middleware.auth import require_scopes
 from squadops.auth.models import AuditEvent, Identity, Role, Scope
@@ -199,6 +200,7 @@ async def create_campaign(
             created_by=actor,
             updated_at=now,
         )
+        _require_profiles(campaign.policy)
         result = await _registry(request).create_campaign(
             campaign,
             actor=actor,
@@ -286,19 +288,56 @@ async def pause_campaign(
 async def resume_campaign(
     request: Request,
     campaign_id: str,
-    body: ControlRequest,
+    body: ResumeRequest,
     identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_CONTROL)),
 ) -> ControlResultResponse:
-    """Resume a paused campaign into the state it was paused from (§17).
+    """The owner's word (§10, §17).
 
-    With step 5, a resume also executes the held pending action (§10). Until then there is no
-    held action, so the campaign returns to the state the pausing row moved it out of. A
-    campaign that is not paused refuses the resume as stale, and the refusal is recorded.
+    - **Paused by a limit:** the action the decision held is executed as recorded, never
+      recomputed, and a launch action's intent is written in this row.
+    - **Paused by the supervisor:** the campaign returns to the state it was paused from.
+    - **Escalated:** the action this ruling names is executed the same way.
+
+    Anything else refuses the resume as stale, and the refusal is recorded.
     """
+    from squadops.api.runtime.deps import get_campaign_progress
+    from squadops.campaigns.continuation import PendingAction
+    from squadops.campaigns.progress import CannotLaunch, held_action
+
     actor, role = actor_from(identity)
     registry = _registry(request)
-    paused_from = _paused_from(await registry.control_log(campaign_id))
+    log = await registry.control_log(campaign_id)
     campaign = await registry.get_campaign(campaign_id)
+    held = held_action(log) if campaign.state is CampaignState.PAUSED else None
+    named = None
+    if body.action is not None:
+        try:
+            named = PendingAction(body.action)
+        except ValueError as e:
+            raise HTTPException(422, _validation(f"unknown action {body.action!r}")) from e
+    if campaign.state is CampaignState.ESCALATED and named is None:
+        raise HTTPException(422, _validation("an escalated campaign resumes on a named action"))
+    if held is not None and named is not None and named is not held:
+        raise HTTPException(
+            422, _validation(f"the held action is {held}; a resume executes it as recorded")
+        )
+    action = held or (named if campaign.state is CampaignState.ESCALATED else None)
+    if action is not None:
+        try:
+            transition = await get_campaign_progress(request).owner_action(
+                campaign,
+                action,
+                held=held is not None,
+                actor=actor,
+                actor_role=role,
+                reason=body.reason,
+                idempotency_key=body.idempotency_key,
+            )
+        except CannotLaunch as e:
+            raise HTTPException(422, _validation(str(e))) from e
+        result = await apply_control(request, campaign_id, transition, identity)
+        return _result(result, launched_cycles=await launch_pending(request, result))
+    paused_from = _paused_from(log)
     target = (
         paused_from if campaign.state is CampaignState.PAUSED and paused_from else campaign.state
     )
@@ -311,6 +350,22 @@ async def resume_campaign(
         expected_state=CampaignState.PAUSED,
     )
     return _result(await apply_control(request, campaign_id, transition, identity))
+
+
+def _require_profiles(policy: CampaignPolicy) -> None:
+    """Every request profile the policy names must exist: a campaign whose launches could never
+    be built is refused at its creation, not discovered at its first launch."""
+    from squadops.contracts.cycle_request_profiles import load_profile
+
+    for field in ("calibration_profile", "proposal_profile"):
+        try:
+            load_profile(getattr(policy, field))
+        except FileNotFoundError as e:
+            raise ValueError(f"policy.{field}: {e}") from e
+
+
+def _validation(message: str) -> dict:
+    return {"error": {"code": "VALIDATION_ERROR", "message": message, "details": None}}
 
 
 @router.post("/{campaign_id}/abort")

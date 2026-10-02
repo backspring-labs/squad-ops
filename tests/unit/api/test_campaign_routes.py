@@ -47,7 +47,7 @@ _POLICY = dict(
     launch_blocked_interval_s=300,
     launch_blocked_attempts=6,
     calibration_profile="validated-fullstack",
-    proposal_profile="group-run-proposal",
+    proposal_profile="campaign-proposal",
     squad_profile="full-38",
 )
 
@@ -331,11 +331,22 @@ async def test_abort_cancels_the_launched_cycle_by_the_existing_path(world):
     assert (resp["campaign"]["state"], resp["campaign"]["outcome"]) == ("completed", "aborted")
 
 
-def test_an_invalid_policy_is_a_422_not_a_500(world):
-    """Bug caught: a policy the domain refuses (a zero cycle limit) surfacing as a crash."""
-    resp = _create(world, policy={**_POLICY, "max_cycles": 0})
+@pytest.mark.parametrize(
+    ("override", "message"),
+    [
+        ({"max_cycles": 0}, "max_cycles must be >= 1"),
+        # A campaign whose launches could never be built is refused at its creation.
+        ({"proposal_profile": "no-such-profile"}, "policy.proposal_profile"),
+        ({"calibration_profile": "no-such-profile"}, "policy.calibration_profile"),
+    ],
+)
+async def test_an_invalid_policy_is_a_422_not_a_500_and_creates_nothing(world, override, message):
+    """Bugs caught: a policy the domain refuses surfacing as a crash, or a campaign created
+    whose first launch can only fail."""
+    resp = _create(world, policy={**_POLICY, **override})
     assert resp.status_code == 422
-    assert "max_cycles must be >= 1" in resp.json()["detail"]["error"]["message"]
+    assert message in resp.json()["detail"]["error"]["message"]
+    assert world.client.get("/api/v1/campaigns/cmp_api000000001").status_code == 404
 
 
 def test_an_unknown_campaign_is_a_404(world):
