@@ -1671,6 +1671,28 @@ def _effective_sources(
     return list(by_path.values())
 
 
+async def run_suite(
+    test_framework: str,
+    source_files: list[dict[str, str]],
+    test_files: list[dict[str, str]],
+    timeout_seconds: int = 60,
+) -> RunTestsResult:
+    """The framework's own test suite, and nothing else: no build or boot check. The one
+    dispatch on ``test_framework`` (pytest / vitest / both), which ``run_build_validation``
+    wraps with the deliverable's checks. SIP-0109 §8 runs one criterion's tests at a time on
+    two trees, where the deliverable's build is judged elsewhere. Never raises."""
+    from squadops.capabilities.development_profiles import (
+        TEST_FRAMEWORK_BOTH,
+        TEST_FRAMEWORK_VITEST,
+    )
+
+    if test_framework == TEST_FRAMEWORK_VITEST:
+        return await run_node_tests(source_files, test_files, timeout_seconds=timeout_seconds)
+    if test_framework == TEST_FRAMEWORK_BOTH:
+        return await run_fullstack_tests(source_files, test_files, timeout_seconds=timeout_seconds)
+    return await run_generated_tests(source_files, test_files, timeout_seconds=timeout_seconds)
+
+
 async def run_build_validation(
     test_framework: str,
     source_files: list[dict[str, str]],
@@ -1694,21 +1716,15 @@ async def run_build_validation(
         TEST_FRAMEWORK_VITEST,
     )
 
+    result = await run_suite(test_framework, source_files, test_files, timeout_seconds)
     if test_framework == TEST_FRAMEWORK_VITEST:
-        result = await run_node_tests(source_files, test_files, timeout_seconds=timeout_seconds)
         frontend_target: str | None = None
         run_frontend, run_backend = True, False
     elif test_framework == TEST_FRAMEWORK_BOTH:
-        result = await run_fullstack_tests(
-            source_files, test_files, timeout_seconds=timeout_seconds
-        )
         frontend_target = "frontend"
         run_frontend, run_backend = True, True
     else:
         # pytest / backend-only: no frontend to build, but the backend must import
-        result = await run_generated_tests(
-            source_files, test_files, timeout_seconds=timeout_seconds
-        )
         frontend_target = None
         run_frontend, run_backend = False, True
 

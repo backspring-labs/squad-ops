@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 from collections import Counter
 from collections.abc import Mapping
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -685,34 +686,71 @@ def _increment_criterion_files(
     return increment_criterion_files(change_request, scaffold_stack_for(resolved_config))
 
 
-def _require_change_request_for_increment_framing(
+#: The workloads of an increment cycle that are handed its approved change request.
+_CHANGE_REQUEST_WORKLOADS = (WorkloadType.FRAMING, WorkloadType.IMPLEMENTATION)
+
+
+def _require_change_request_for_increment(
     run: Run, resolved_config: Mapping[str, Any], change_request: str | None
 ) -> None:
-    """An increment's framing frames its approved change request, and nothing else does
-    (SIP-0109 §7.3). Without it the framing would design the accepted application again from
-    its PRD; given to any other run, the request would frame a cycle that never proposed it."""
+    """An increment's framing frames its approved change request (SIP-0109 §7.3), and its
+    implementation's evaluation judges the criteria the request names (§8); nothing else is
+    handed one. Without it the framing would design the accepted application again from its
+    PRD; given to another run, it would frame a cycle that never proposed it."""
     from squadops.campaigns.increment_tree import increment_baseline
 
-    framing_an_increment = (
-        run.workload_type == WorkloadType.FRAMING
+    in_an_increment = (
+        run.workload_type in _CHANGE_REQUEST_WORKLOADS
         and increment_baseline(resolved_config) is not None
     )
-    if framing_an_increment and not change_request:
+    if in_an_increment and not change_request:
         raise CycleError(
-            f"run {run.run_id} frames an increment with no approved change request (SIP-0109 §7.3)"
+            f"run {run.run_id} ({run.workload_type}) of an increment has no approved change "
+            "request (SIP-0109 §7.3)"
         )
-    if change_request and not framing_an_increment:
+    if change_request and not in_an_increment:
         raise CycleError(
             f"run {run.run_id} was given a change request, which only an increment's framing "
-            "frames (SIP-0109 §7.3)"
+            "and implementation take (SIP-0109 §7.3)"
         )
 
 
-def _inject_increment_change_request(inputs: dict[str, Any], change_request: str | None) -> None:
-    """SIP-0109 §7.3: every stage of an increment's framing is handed the approved change
-    request, its framed objective; the framing stages and the brief show it."""
-    if change_request is not None:
-        inputs["increment_change_request"] = change_request
+@dataclass(frozen=True)
+class _IncrementEvaluation:
+    """An increment's implementation ends in its evaluation (SIP-0109 §8): the step, and the
+    plan-time inputs the registry's ``increment_evaluation`` tasks are handed."""
+
+    steps: tuple[tuple[str, str], ...] = ()
+    inputs: Mapping[str, Any] = field(default_factory=dict)
+
+
+def _increment_evaluation(
+    run: Run,
+    resolved_config: Mapping[str, Any],
+    change_request: str | None,
+    interface_manifest: InterfaceManifest | None,
+) -> _IncrementEvaluation:
+    if run.workload_type != WorkloadType.IMPLEMENTATION or not change_request:
+        return _IncrementEvaluation()
+    from squadops.campaigns.increment_tree import increment_evaluation_inputs
+
+    return _IncrementEvaluation(
+        steps=((TaskType.QA_EVALUATE_INCREMENT, "qa"),),
+        inputs=increment_evaluation_inputs(resolved_config, change_request, interface_manifest),
+    )
+
+
+def _increment_inputs(
+    run: Run, task_type: str, change_request: str | None, evaluation: _IncrementEvaluation
+) -> dict[str, Any]:
+    """What one envelope of an increment is handed (SIP-0109): every framing stage the approved
+    change request, its framed objective (§7.3); each ``increment_evaluation`` task what its
+    judgement needs (§8)."""
+    if change_request is not None and run.workload_type == WorkloadType.FRAMING:
+        return {"increment_change_request": change_request}
+    if get_context_contract(task_type).increment_evaluation:
+        return dict(evaluation.inputs)
+    return {}
 
 
 def _inject_rejection_context(
@@ -1192,7 +1230,8 @@ def generate_task_plan(
 
     footprint = increment_footprint(resolved_config, interface_manifest)
     criterion_files = _increment_criterion_files(change_request, resolved_config)
-    _require_change_request_for_increment_framing(run, resolved_config, change_request)
+    _require_change_request_for_increment(run, resolved_config, change_request)
+    evaluation = _increment_evaluation(run, resolved_config, change_request, interface_manifest)
 
     if run.workload_type is not None:
         steps, builder_used = _resolve_workload_steps(
@@ -1208,6 +1247,8 @@ def generate_task_plan(
     if plan is not None and has_build_steps:
         plan = _bind_plan_criteria(plan, contract)
         steps = _replace_build_steps_with_plan(steps, plan, profile, profile_roles, contract)
+    # SIP-0109 §8: after everything that builds the candidate, never before the plan's body.
+    steps = list(steps) + list(evaluation.steps)
 
     # Shared lineage IDs for the entire plan
     correlation_id = uuid4().hex
@@ -1358,7 +1399,7 @@ def generate_task_plan(
             inputs, contract, task_type, interface_manifest, footprint, criterion_files
         )
         _inject_rejection_context(inputs, framing_rejection_context, task_type)
-        _inject_increment_change_request(inputs, change_request)
+        inputs.update(_increment_inputs(run, task_type, change_request, evaluation))
 
         envelope = TaskEnvelope(
             task_id=task_id,

@@ -55,6 +55,8 @@ class TaskType(StrEnum):
     QA_VALIDATE = "qa.validate"
     QA_VALIDATE_REFINEMENT = "qa.validate_refinement"
     QA_ASSESS_OUTCOMES = "qa.assess_outcomes"
+    #: SIP-0109 §8: an increment's acceptance, run on the stack's runner — deterministic, no model.
+    QA_EVALUATE_INCREMENT = "qa.evaluate_increment"
 
     # --- builder ---
     BUILDER_ASSEMBLE = "builder.assemble"

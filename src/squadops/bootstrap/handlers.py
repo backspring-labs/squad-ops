@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from squadops.capabilities.handlers.cycle.evaluate_increment import QAEvaluateIncrementHandler
 from squadops.capabilities.handlers.cycle_tasks import (
     BuilderAssembleHandler,
     DataReportHandler,
@@ -137,6 +138,8 @@ HANDLER_CONFIGS: list[tuple[type[CapabilityHandler], tuple[str, ...]]] = [
     (DataClassifyUnresolvedHandler, ("data",)),
     (GovernanceCloseoutDecisionHandler, ("lead",)),
     (GovernancePublishHandoffHandler, ("lead",)),
+    # SIP-0109 §8: an increment's acceptance, deterministic, on the stack's runner.
+    (QAEvaluateIncrementHandler, ("qa",)),
 ]
 
 

@@ -124,6 +124,11 @@ class ContextAssemblyContract:
     #: interface manifest at injection (Gate 1 byte-equivalence makes re-derivation
     #: exact); presence-keyed like every surface here.
     bind_verification_scaffold: bool = False
+    #: SIP-0109 §8: this task judges an increment. At plan time it is handed the increment's
+    #: id, each new criterion's own file and the candidate's declared routes; at dispatch the
+    #: accepted tree the increment builds on (the accepted cycle's delivered files, as the run
+    #: seeded them, #1842), beside the candidate (``acceptance_workspace``).
+    increment_evaluation: bool = False
 
 
 _EMPTY_CONTRACT = ContextAssemblyContract()
@@ -288,6 +293,11 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
     ),
     # --- wrap-up pipeline (#683): the run-level verification_evidence
     # injection fires when any planned task carries the flag.
+    # --- SIP-0109 §8: an increment's acceptance judges the candidate against the accepted
+    # tree, so it is handed both.
+    TaskType.QA_EVALUATE_INCREMENT: ContextAssemblyContract(
+        acceptance_workspace=True, increment_evaluation=True
+    ),
     TaskType.DATA_GATHER_EVIDENCE: ContextAssemblyContract(wrapup_evidence=True),
     TaskType.QA_ASSESS_OUTCOMES: ContextAssemblyContract(wrapup_evidence=True),
     TaskType.DATA_CLASSIFY_UNRESOLVED: ContextAssemblyContract(wrapup_evidence=True),

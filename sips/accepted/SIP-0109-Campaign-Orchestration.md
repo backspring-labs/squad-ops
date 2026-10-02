@@ -1289,6 +1289,46 @@ being built in the order the design note on #1705 sets out:
   proposal refusal). A criterion pins its bundle by id for the rest of the campaign, so a reused id
   would share the frozen file and its bundle.
 
+
+### 24n. The increment's evaluation, as built (2026-10-02, #1705 e, part 1; decided under the 2.0 charter)
+
+**What differs from the #1705 design note:** the design note put the runner in the sandbox. The
+evaluation is a deterministic qa task instead, `qa.evaluate_increment`, the last task of an
+increment's implementation run.
+- **Why not the sandbox:** its typed operations run only the backend suite and report an exit code
+  and an output tail. §8.2 reads per-test results.
+- **Why the qa container:** the qa role's container already runs both stacks' runners and parses
+  their reports (`test_runner.run_suite`, now the one dispatch on the test framework, which
+  `run_build_validation` wraps).
+- **The reading is posted on #1705** (issuecomment-5957403977).
+
+**What it is handed** (the registry's `increment_evaluation` tasks):
+- **At plan time:**
+  - the increment's id;
+  - each new criterion's own file (§24m);
+  - the routes the candidate manifest declares, with their test ids.
+
+  The implementation run is handed the approved change request for this. It goes to the
+  evaluation alone, not to the build tasks.
+- **At dispatch:**
+  - the accepted tree: the run's seeded artifacts from the accepted cycle its launch names (#1842);
+  - the candidate: the acceptance workspace.
+
+  Without both trees nothing is judged, because an empty baseline would read every new test as
+  discriminating.
+
+**What it writes:** the `increment_evaluation` artifact. It carries the verdict, every
+per-criterion and per-route result keyed as §8.4 says, and each newly frozen bundle whole, for a
+promotion to store.
+
+**What it does not do yet:**
+- **No route is rendered (§8.3).** Every declared route arrives unrendered and is
+  `blocked_unverified`, so an increment that declares a route is `blocked_unverified`, never
+  promoted, and never wrongly accepted.
+- **No frozen bundles are run (§8.1).** They arrive with promotion (part 2). The first increment
+  after calibration has none.
+- **The completion hook does not read the artifact yet** (part 2).
+
 ---
 
 ## Revision history

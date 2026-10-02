@@ -144,3 +144,52 @@ async def evaluate_increment(
         routes=routes,
         new_bundles=bundles,
     )
+
+
+def evaluation_document(
+    evaluation: IncrementEvaluation, *, increment_id: str, accepted: FileTree, candidate: FileTree
+) -> dict:
+    """The evaluation as plain data, for the ``increment_evaluation`` artifact the completion hook
+    reads (§8.4: every result keyed, the bundles a promotion freezes carried whole)."""
+    acceptance = evaluation.acceptance
+    return {
+        "increment_id": increment_id,
+        "accepted_tree": accepted.identity,
+        "candidate_tree": candidate.identity,
+        "verdict": str(acceptance.verdict),
+        "unmet": list(acceptance.unmet),
+        "blocked": list(acceptance.blocked),
+        "discriminations": [
+            {
+                "criterion_id": d.criterion_id,
+                "met": d.met,
+                "reason": str(d.reason),
+                "discriminating": list(d.discriminating),
+            }
+            for d in evaluation.discriminations
+        ],
+        "frozen": [
+            {
+                "criterion_id": f.criterion_id,
+                "bundle_address": f.bundle_address,
+                "held": str(f.held),
+                "detail": f.detail,
+            }
+            for f in evaluation.frozen
+        ],
+        "routes": [
+            {"path": r.path, "held": str(r.held), "missing": list(r.missing)}
+            for r in evaluation.routes
+        ],
+        "new_bundles": {
+            criterion_id: {
+                "address": bundle.address,
+                "invocation": list(bundle.invocation),
+                "files": {
+                    path: content.decode("utf-8", errors="replace")
+                    for path, content in bundle.files.files
+                },
+            }
+            for criterion_id, bundle in evaluation.new_bundles.items()
+        },
+    }

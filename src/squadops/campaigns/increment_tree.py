@@ -166,3 +166,56 @@ def increment_criterion_files(change_request: str, stack: str) -> tuple[Criterio
         )
         for c in request.criteria
     )
+
+
+#: The artifact an increment's evaluation writes, which the completion hook reads (§8.4).
+INCREMENT_EVALUATION_ARTIFACT_TYPE = "increment_evaluation"
+INCREMENT_EVALUATION_FILENAME = "increment_evaluation.json"
+
+
+def declared_routes(manifest: Any) -> dict[str, tuple[str, ...]]:
+    """Each client route the manifest declares, with the test ids its page must render (§8.3)."""
+    frontend = getattr(manifest, "frontend", None)
+    return {r.path: tuple(r.testids) for r in (getattr(frontend, "routes", None) or ())}
+
+
+def increment_evaluation_inputs(
+    resolved_config: Mapping[str, Any], change_request: str, manifest: Any
+) -> dict[str, Any]:
+    """What an increment's evaluation task is handed at plan time: the increment's id, each new
+    criterion's own file (§8.1) and the routes the candidate declares (§8.3). The two trees are
+    the dispatch's: the accepted tree as seeded (#1842) and the candidate as built."""
+    from squadops.capabilities.scaffold import scaffold_stack_for
+
+    block = resolved_config.get("campaign_proposal") or {}
+    return {
+        "increment_id": str(block.get("proposal_id") or ""),
+        "increment_criterion_files": [
+            {"criterion_id": f.criterion_id, "path": f.path}
+            for f in increment_criterion_files(change_request, scaffold_stack_for(resolved_config))
+        ],
+        "increment_declared_routes": {
+            path: list(testids) for path, testids in declared_routes(manifest).items()
+        },
+    }
+
+
+async def accepted_tree_contents(
+    vault: Any, resolved_config: Any, stored: list[tuple[str, Any]]
+) -> dict[str, str]:
+    """The accepted tree an increment's run was seeded with (#1842), as ``path -> content``:
+    the run's stored artifacts that belong to the accepted cycle its launch names. Empty for a
+    cycle that is not an increment."""
+    block = (
+        resolved_config.get("campaign_proposal") if isinstance(resolved_config, Mapping) else None
+    )
+    accepted_cycle = (block or {}).get("accepted_cycle_id") if isinstance(block, Mapping) else None
+    if not accepted_cycle:
+        return {}
+    files: dict[str, str] = {}
+    for artifact_id, ref in stored:
+        if getattr(ref, "cycle_id", None) != accepted_cycle:
+            continue
+        _, content = await vault.retrieve(artifact_id)
+        files[ref.filename] = content.decode("utf-8", errors="replace")
+    return files

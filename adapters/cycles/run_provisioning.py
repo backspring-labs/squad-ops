@@ -161,9 +161,10 @@ class RunProvisioning:
         if verification_contract is not None:
             interface_manifest = await self._seeded_manifest_for_authoring(cycle)
 
-        # SIP-0109 §7.3: an increment's framing frames its approved change request.
+        # SIP-0109: an increment's framing frames its approved change request (§7.3), and its
+        # implementation's evaluation judges the criteria it names (§8).
         change_request = None
-        if run.workload_type == WorkloadType.FRAMING:
+        if run.workload_type in (WorkloadType.FRAMING, WorkloadType.IMPLEMENTATION):
             from squadops.campaigns.increment_tree import approved_change_request
 
             change_request = await approved_change_request(self._artifact_vault, cycle)
