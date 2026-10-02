@@ -34,7 +34,7 @@ from squadops.campaigns.models import (
     CycleKind,
 )
 from squadops.campaigns.progress import CampaignProgress, decision_transition
-from squadops.cycles.models import ArtifactRef
+from squadops.cycles.models import ArtifactRef, Cycle, TaskFlowPolicy
 from tests.unit.campaigns.builders import campaign, move, policy
 
 CID = "cmp_owner0000001"
@@ -83,9 +83,25 @@ class _World:
         app.include_router(campaigns_router)
         register_domain_error_handlers(app)
         app.state.campaign_registry = self.campaigns
+        # The decided increment: a real cycle, launched with no bound change request, so a
+        # bound launch reads it and refuses (§10a) rather than reading a mock.
+        cycles = AsyncMock()
+        cycles.get_cycle.return_value = Cycle(
+            cycle_id="cyc_inc",
+            project_id="group_run",
+            created_at=NOW,
+            created_by="campaign-launcher",
+            prd_ref=None,
+            squad_profile_id="full-38",
+            squad_profile_snapshot_ref="sha256:abc",
+            task_flow_policy=TaskFlowPolicy(mode="sequential"),
+            build_strategy="fresh",
+            campaign_id=CID,
+            kind="increment",
+        )
         app.state.campaign_progress = CampaignProgress(
             campaigns=self.campaigns,
-            cycles=AsyncMock(),
+            cycles=cycles,
             vault=_Vault(),
             assess=AsyncMock(),
             launch=AsyncMock(),
@@ -179,7 +195,7 @@ async def test_a_resume_cannot_swap_the_held_action(world):
         (None, 422, CampaignState.ESCALATED),
         ("propose", 200, CampaignState.AT_PROPOSAL),
         ("abandon_and_propose", 200, CampaignState.AT_PROPOSAL),
-        # §10a's cycles are not built: refused, not pretended.
+        # §10a: a cycle with no bound change request cannot be repaired — refused, not pretended.
         ("repair", 422, CampaignState.ESCALATED),
         ("escalate", 422, CampaignState.ESCALATED),
         ("nonsense", 422, CampaignState.ESCALATED),
