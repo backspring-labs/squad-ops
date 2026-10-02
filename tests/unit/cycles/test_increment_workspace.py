@@ -178,3 +178,45 @@ async def test_the_reference_increment_builds_on_its_baseline_outside_any_campai
 
     assert "art_routes" in seeds
     assert contents["backend/routes.py"] == "# the accepted routes\n"
+
+
+async def test_a_repair_continues_the_failed_candidate_on_top_of_the_accepted_tree(vault):
+    """§10a, entered at the run's seeding and composition. Bugs caught: a repair seeded from the
+    accepted tree alone, discarding the failed cycle's work it exists to repair; one seeded from
+    the failed candidate alone, losing the accepted files the change never touched; or the two
+    composed in the wrong order, so the accepted version overwrites the failed one."""
+    import dataclasses as _dc
+
+    vault.put(
+        _ref(
+            "art_failed_routes",
+            "backend/routes.py",
+            "source",
+            cycle_id="cyc_failed",
+            created=20,
+            producing_task_type="development.develop",
+        ),
+        "# the failed increment's routes\n",
+    )
+    vault.put(
+        _ref(
+            "art_view",
+            "frontend/src/views/RunListView.jsx",
+            "source",
+            cycle_id="cyc_cal",
+            created=2,
+            producing_task_type="development.develop",
+        ),
+        "// the accepted view\n",
+    )
+    repair = _cycle("repair")
+    block = {**repair.execution_overrides["campaign_proposal"], "repair_of": "cyc_failed"}
+    repair = _dc.replace(
+        repair, execution_overrides={**repair.execution_overrides, "campaign_proposal": block}
+    )
+
+    seeds, contents = await _seed_and_compose(vault, repair)
+
+    assert contents["backend/routes.py"] == "# the failed increment's routes\n"
+    assert contents["frontend/src/views/RunListView.jsx"] == "// the accepted view\n"
+    assert "art_cand" not in seeds

@@ -237,7 +237,7 @@ class RunProvisioning:
                 # SIP-0109 §7.3: an increment builds on the accepted tree. Its delivered files
                 # are produced content, so they take every slot the stubs above would fill
                 # (#881); only what the increment adds stays a stub.
-                from squadops.campaigns.increment_tree import accepted_tree_refs
+                from squadops.campaigns.increment_tree import starting_tree_refs
 
-                seed_artifact_refs.extend(await accepted_tree_refs(self._artifact_vault, cycle))
+                seed_artifact_refs.extend(await starting_tree_refs(self._artifact_vault, cycle))
         return seed_artifact_refs, interface_manifest

@@ -199,6 +199,9 @@ _INCREMENT_KINDS = (CycleKind.INCREMENT, CycleKind.RETRY, CycleKind.REPAIR)
 #: The cycles whose accepted tree a promotion makes the campaign's (§12a).
 _PROMOTED_KINDS = (CycleKind.CALIBRATION, *_INCREMENT_KINDS)
 
+#: An increment's approved seed: its candidate manifest and change request (#1840).
+_SEED_TYPES = frozenset({"interface_manifest", "change_request"})
+
 #: Where a launch action takes the campaign (§17).
 _LAUNCH_STATES = {
     PendingAction.PROPOSE: CampaignState.AT_PROPOSAL,
@@ -637,21 +640,27 @@ class CampaignProgress:
         """The cycle a launch action writes (§10, §10a), or why it cannot be launched."""
         if action in (PendingAction.PROPOSE, PendingAction.ABANDON_AND_PROPOSE):
             return await self._propose_launch(campaign)
-        if action is PendingAction.RETRY:
-            if cycle is None:
-                return "no decided cycle to retry"
-            return await self._retry_launch(campaign, cycle)
-        return f"{action} cycles (§10a) are not built yet (#1705)"
+        kind = {PendingAction.RETRY: CycleKind.RETRY, PendingAction.REPAIR: CycleKind.REPAIR}.get(
+            action
+        )
+        if kind is None:
+            return f"{action} launches no cycle"
+        if cycle is None:
+            return f"no decided cycle to {action}"
+        return await self._bound_launch(campaign, cycle, kind)
 
-    async def _retry_launch(self, campaign: Campaign, cycle: Cycle) -> LaunchRequest | str:
-        """§10a: a retry reuses exactly the increment's bound change request, ruling, baseline
-        and footprint, from a fresh candidate on the accepted tree. Its binding is re-checked:
+    async def _bound_launch(
+        self, campaign: Campaign, cycle: Cycle, kind: CycleKind
+    ) -> LaunchRequest | str:
+        """§10a: a retry or a repair reuses exactly the increment's bound change request, ruling,
+        baseline and footprint. A retry starts a fresh candidate on the accepted tree; a repair
+        continues the failed cycle's candidate under its approved plan. The binding is re-checked:
         the baseline must still be the accepted tree, and the ruling that approved this version
         must be on record. A mismatch launches nothing — any change of scope, baseline or content
         needs a new proposal and ruling."""
         block = cycle.resolved_config().get("campaign_proposal")
         if not isinstance(block, dict) or not block.get("proposal_id"):
-            return f"cycle {cycle.cycle_id} carries no bound change request to retry"
+            return f"cycle {cycle.cycle_id} carries no bound change request to {kind}"
         accepted = campaign.accepted.identity if campaign.accepted else None
         if block.get("baseline_tree") != accepted:
             return (
@@ -668,7 +677,42 @@ class CampaignProgress:
         if seeds is None:
             return f"cycle {cycle.cycle_id}'s approved seed cannot be found"
         plan_refs, contract_ref = seeds
-        return bound_launch(campaign, CycleKind.RETRY, block, plan_refs, contract_ref)
+        if kind is CycleKind.REPAIR:
+            plan = await self._approved_plan(cycle)
+            if plan is None:
+                return f"cycle {cycle.cycle_id} has no approved implementation plan to repair under"
+            # The failed cycle's candidate is the repair's starting tree (``starting_tree_refs``).
+            block = {**block, "repair_of": cycle.cycle_id}
+            plan_refs = [*plan_refs, *([plan] if plan not in plan_refs else [])]
+        try:
+            return bound_launch(campaign, kind, block, plan_refs, contract_ref)
+        except (FileNotFoundError, ValueError) as e:
+            return f"the policy's proposal profile cannot launch a {kind}: {e}"
+
+    async def _approved_plan(self, cycle: Cycle) -> str | None:
+        """The implementation plan the failed cycle built under (§10a): its framing's approved
+        plan, or — for a repair of a repair — the one that repair was launched with."""
+        refs = await self._vault.list_artifacts(cycle_id=cycle.cycle_id)
+        plans = sorted(
+            (
+                r
+                for r in refs
+                if r.artifact_type == "control_implementation_plan"
+                and r.promotion_status == "promoted"
+            ),
+            key=lambda r: str(r.created_at),
+        )
+        if plans:
+            return plans[-1].artifact_id
+        forwarded = list((cycle.execution_overrides or {}).get("plan_artifact_refs") or ())
+        for ref_id in reversed(forwarded):
+            try:
+                ref, _content = await self._vault.retrieve(ref_id)
+            except Exception:  # noqa: BLE001 — an unreadable ref is absent, never a crash
+                continue
+            if ref.artifact_type == "control_implementation_plan":
+                return ref_id
+        return None
 
     async def _bound_seeds(self, cycle: Cycle) -> tuple[list[str], str | None] | None:
         """The increment's approved seeds: from its approved proposal run (#1840), or — for a
@@ -679,8 +723,18 @@ class CampaignProgress:
             seed = await increment_seed(self._vault, self._cycles, cycle, last)
             if seed is not None:
                 return list(seed.plan_refs), seed.contract_ref
+        # The seed types alone: a repaired cycle's launch also carried the plan it built under,
+        # which a later retry frames afresh and must not inherit.
         overrides = cycle.execution_overrides or {}
-        refs = list(overrides.get("plan_artifact_refs") or ())
+        refs = []
+        for ref_id in overrides.get("plan_artifact_refs") or ():
+            try:
+                ref, _content = await self._vault.retrieve(ref_id)
+            except Exception:  # noqa: BLE001 — an unreadable seed is absent, never a crash
+                logger.warning("bound seed %s unreadable", ref_id, exc_info=True)
+                continue
+            if ref.artifact_type in _SEED_TYPES:
+                refs.append(ref_id)
         return (refs, overrides.get("contract_ref")) if refs else None
 
     async def _last_decided_cycle(self, campaign: Campaign) -> Cycle | None:

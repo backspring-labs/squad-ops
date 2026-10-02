@@ -306,3 +306,18 @@ def increment_frozen_files(
         for pin in block.get("frozen_criteria") or ()
         if pin.get("test_path") and pin["criterion_id"] not in retired
     )
+
+
+async def starting_tree_refs(vault: Any, cycle: Any) -> list[str]:
+    """The tree an increment-family implementation starts from (§10a): the accepted tree's
+    delivered files, and — for a repair — the failed cycle's delivered candidate laid over them,
+    so the repair continues the failed work rather than starting it again. Both are produced
+    content, so each takes its slots from the skeleton's stubs (#881), and the later wins."""
+    refs = await accepted_tree_refs(vault, cycle)
+    block = cycle.resolved_config().get("campaign_proposal")
+    failed = block.get("repair_of") if isinstance(block, Mapping) else None
+    if not failed:
+        return refs
+    candidate = await vault.list_artifacts(cycle_id=failed)
+    chosen = delivered_files(StoredArtifact.from_record(dataclasses.asdict(r)) for r in candidate)
+    return refs + [ref for ref in chosen.values() if ref not in refs]

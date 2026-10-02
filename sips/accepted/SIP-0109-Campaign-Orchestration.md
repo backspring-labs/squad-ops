@@ -1483,6 +1483,31 @@ outlived the second reading.
 
   A `repair` decision still escalates as unbuilt.
 
+### 24t. Repair cycles, as built (2026-10-02, §10a, §19 item 12b; decided under the 2.0 charter)
+
+- **What launches a repair:** a `repair` decision (§10 row 12), or the owner's resume of a held one.
+  It is launched by the same `bound_launch` as a retry (§24s), with the same binding re-check. A
+  `repair` decision no longer escalates as unbuilt, which §24s recorded.
+- **It runs the build alone.** Each bound kind keeps only its own workloads of the policy's proposal
+  profile (`BOUND_WORKLOADS`): a retry keeps `framing` and `implementation`, a repair keeps
+  `implementation`. A profile that does not hold them refuses the launch, and the decision escalates
+  and names the reason.
+- **Under the failed cycle's approved plan.** The launch forwards the implementation plan the failed
+  cycle built under, beside the increment's seeds:
+  - its framing's promoted plan;
+  - or, for a repair of a repair, the plan that repair was launched with.
+
+  The implementation run loads it from the forwarded refs, as it loads any approved plan. A cycle
+  with no plan on record cannot be repaired, and the decision escalates (`unbuilt`).
+- **From the failed candidate.** The block names the cycle it repairs (`repair_of`). The run's
+  starting tree (`starting_tree_refs`) is the accepted tree's delivered files with the failed
+  cycle's delivered files composed over them, so a file both hold is the failed cycle's.
+- **A retry after a repair does not inherit the repair's plan.** The seeds a bound launch carries
+  forward are filtered to the seed types (the candidate manifest and the change request). A seed
+  that cannot be read is left out and logged, never a crash.
+- **Not built: the prior-cycle brief** that §10a's table puts in a repair's correction context. It
+  is #1692's, and until it lands a repair is told nothing of the cycle it repairs beyond its files.
+
 ---
 
 ## Revision history
