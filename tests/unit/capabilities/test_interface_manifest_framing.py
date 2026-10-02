@@ -188,6 +188,7 @@ def _executor_for(manifest_yaml: str | None) -> tuple[DispatchedFlowExecutor, An
     executor = DispatchedFlowExecutor(task_timeout=300.0, artifact_vault=vault)
     run = MagicMock()
     run.artifact_refs = refs
+    run.workload_type = "framing"  # the plan gate judges the run that authored the plan (#1864)
     cycle = MagicMock()
     cycle.applied_defaults = {"implementation_plan": True}
     # a real Cycle always has a dict here; without it MagicMock's .get() returns a

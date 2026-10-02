@@ -304,6 +304,7 @@ def _gate_executor(with_contract: bool) -> tuple[Any, Any, Any]:
     run = MagicMock()
     run.run_id = "run_1"
     run.artifact_refs = refs
+    run.workload_type = "framing"  # the plan gate judges the run that authored the plan (#1864)
     cycle = _cycle()
     cycle.applied_defaults = {"implementation_plan": True}
     cycle.resolved_config.return_value = {"implementation_plan": True}

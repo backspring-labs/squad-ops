@@ -26,7 +26,7 @@ from uuid import uuid4
 from squadops.cycles.contract_derivation import CONTRACT_ARTIFACT_TYPE, SEEDED_MANIFEST_FILENAME
 from squadops.cycles.frozen_check_validation import frozen_check_violations
 from squadops.cycles.manifest_authoring import MANIFEST_ARTIFACT_TYPE
-from squadops.cycles.models import ArtifactRef, Cycle
+from squadops.cycles.models import PLAN_JUDGED_WORKLOADS, ArtifactRef, Cycle
 from squadops.cycles.rejection_baseline import (
     REJECTION_ARTIFACT_TYPE,
     REJECTION_FILENAME,
@@ -88,6 +88,10 @@ class FramingGateCheck:
         ``tests/unit/cycles/test_plan_gate_seams.py``.
         """
         if not cycle.resolved_config().get("implementation_plan", False):
+            return []
+        # #1864: only a run whose gate judges the plan is judged by it. A proposal run at the
+        # increment gate authors a change request, and would always read as a collapsed framing.
+        if getattr(run, "workload_type", None) not in PLAN_JUDGED_WORKLOADS:
             return []
 
         from squadops.cycles.implementation_plan import ImplementationPlan
