@@ -39,6 +39,7 @@ from squadops.capabilities.client_surface import (
     ClientSurface,
 )
 from squadops.capabilities.rendered_packaging import render_packaging
+from squadops.capabilities.route_paths import path_segments
 from squadops.capabilities.success_status import derived_success_status
 from squadops.capabilities.type_tokens import base_type_name
 
@@ -608,11 +609,18 @@ def client_surface_lines(manifest: InterfaceManifest) -> list[str]:
     return lines
 
 
+def _router_path(path: str) -> str:
+    """A manifest route path in React Router's syntax: ``/runs/{run_id}`` and ``/runs/:run_id``
+    both render ``/runs/:run_id``. Written verbatim, a brace parameter is a literal segment the
+    router never matches, and the view is unreachable in a browser (#1794)."""
+    return "/" + "/".join(f":{s.name}" if s.param else s.name for s in path_segments(path))
+
+
 def _app_jsx(manifest: InterfaceManifest) -> str:
     routes = manifest.frontend.routes
     imports = "\n".join(f"import {r.view} from './views/{r.view}.jsx'" for r in routes)
     route_els = "\n".join(
-        f'        <Route path="{r.path}" element={{<{r.view} />}} />' for r in routes
+        f'        <Route path="{_router_path(r.path)}" element={{<{r.view} />}} />' for r in routes
     )
     return (
         "import { Routes, Route } from 'react-router-dom'\n"
