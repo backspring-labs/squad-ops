@@ -666,8 +666,12 @@ class CampaignProgress:
         latest: CycleAssessment | None = None,
     ) -> LaunchRequest | str:
         """The cycle a launch action writes (§10, §10a), or why it cannot be launched."""
-        if action in (PendingAction.PROPOSE, PendingAction.ABANDON_AND_PROPOSE):
+        if action is PendingAction.PROPOSE:
             return await self._propose_launch(campaign)
+        if action is PendingAction.ABANDON_AND_PROPOSE:
+            # Row 13 (#1692): the fresh proposal is shown why the increment it replaces failed.
+            abandoned = await self._prior_cycle_brief(cycle, latest) if cycle else None
+            return await self._propose_launch(campaign, abandoned)
         kind = {PendingAction.RETRY: CycleKind.RETRY, PendingAction.REPAIR: CycleKind.REPAIR}.get(
             action
         )
@@ -801,9 +805,11 @@ class CampaignProgress:
             return None
         return await self._cycles.get_cycle(decided[-1].target)
 
-    async def _propose_launch(self, campaign: Campaign) -> LaunchRequest | str:
+    async def _propose_launch(
+        self, campaign: Campaign, abandoned: dict[str, Any] | None = None
+    ) -> LaunchRequest | str:
         """The increment cycle a ``propose`` writes, from the accepted tree's manifest — or why
-        it cannot be launched."""
+        it cannot be launched. ``abandoned``: the brief of the increment it replaces (row 13)."""
         if campaign.accepted is None:
             return "the campaign has no accepted tree to propose against"
         refs = await self._vault.list_artifacts(cycle_id=campaign.accepted.cycle_id)
@@ -815,7 +821,7 @@ class CampaignProgress:
         _ref, content = await self._vault.retrieve(manifests[-1].artifact_id)
         frozen = frozen_criteria(await self._campaigns.control_log(campaign.campaign_id))
         try:
-            return increment_launch(campaign, content.decode("utf-8"), frozen)
+            return increment_launch(campaign, content.decode("utf-8"), frozen, abandoned)
         except FileNotFoundError as e:
             return f"the policy's proposal profile cannot be loaded: {e}"
 

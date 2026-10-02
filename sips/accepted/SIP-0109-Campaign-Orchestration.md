@@ -1595,6 +1595,26 @@ from logs, and the recorded ending is the record.
 - **Any recovery for a cycle that ended before this record existed.** It is left alone. The
   shakeout's campaign was aborted for that reason.
 
+### 24w. The abandoned increment's brief, shown to the next proposal (2026-10-02, §7, row 13, #1692; decided under the 2.0 charter)
+
+This builds the first of §24u's not-built items. §7 lists the prior-cycle brief among the proposal
+run's inputs.
+
+- **When:** an `abandon_and_propose`, whether by the decision (§10 row 13: rejected, no repair left)
+  or by the owner's word.
+- **What is carried:** the new increment's launch carries the abandoned cycle's brief, read as §24u
+  reads it, fail-soft.
+- **Who sees it:** the proposal shows it through its own asset
+  (`request.proposal_abandoned_increment`).
+  - The asset says the abandoned change is not in the application.
+  - It says the same change proposed again will be judged by the same checks.
+  - It asks for a smaller or changed proposal, or a different one.
+- **It has its own key, `abandoned_increment`, never `prior_cycle`.** The registry hands
+  `prior_cycle` to every author of the cycle as "this increment was attempted before" (§24u). The new
+  increment is a different change, so its framing and build authors are not told that. Only the
+  proposal reads `abandoned_increment`.
+- **A `propose` that replaces nothing carries none.**
+
 ---
 
 ## Revision history
