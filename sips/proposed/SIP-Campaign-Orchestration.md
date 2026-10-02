@@ -9,7 +9,7 @@ created_at: '2026-07-04T00:00:00Z'
 
 ## Status
 
-Proposed — **revision 5 (2026-10-01), for design review.** **Targets v2.0, the headline**
+Proposed — **revision 6 (2026-10-01), for design review.** **Targets v2.0, the headline**
 (`docs/plans/2-0-0-plan.md`, draft).
 
 **The rule this SIP establishes** (from the crew's design review, adopted):
@@ -19,7 +19,14 @@ Proposed — **revision 5 (2026-10-01), for design review.** **Targets v2.0, the
 > - **the supervisor rules without becoming the author;**
 > - **every launch is derived exactly once from durable evidence and a recorded ruling.**
 
-**What revision 5 changes.** The crew's third review (Ripley, on #1798) found revision 4 close, and named
+**What revision 6 changes.** The crew's fourth review (Ripley, on #1798) confirmed revision 5 resolved all
+seven of its prior findings, and named one final state-machine contradiction: escalation both bypassed
+and obeyed the pausing guard. Revision 6 sets one precedence:
+- terminal outcome, then escalation, then the pausing guard, then the autonomous launch or abandonment;
+- `escalate` is unguarded, and the guard applies only to guardable actions;
+- an owner's ruling is not re-guarded (§10, criterion 12g).
+
+**What revision 5 changed.** The crew's third review (Ripley, on #1798) found revision 4 close, and named
 bounded corrections, all made here:
 - **frozen criteria execute under their own content-addressed verifier bundles** through a named
   candidate-verifier overlay, the fourth tree (§7.4, §8.1);
@@ -459,24 +466,35 @@ ContinuationDecision = (terminal | pending_action, guard)
 | 13 | `latest.verdict = rejected` | `abandon_and_propose` (counts as unaccepted) |
 | 14 | otherwise | `escalate` |
 
-**Step 3, the guard.** If a pausing limit is reached (elapsed time, budget, rejected proposals in a row),
-`guard = paused (that limit)`. Otherwise `guard = proceed`.
+**Step 3, the guard. It applies only to guardable actions.** The pending actions are of two kinds:
+- **guardable,** the actions the campaign would execute on its own: the cycle-launch actions
+  (`propose`, `repair`, `retry`) and `abandon_and_propose`;
+- **unguarded:** `escalate`.
 
-**Execution. Pending actions are of two kinds:**
-- **cycle-launch actions:** `propose`, `repair`, `retry`;
-- **control transitions:** `escalate`, `stop`, and the abandonment half of `abandon_and_propose`.
+For a guardable action: if a pausing limit is reached (elapsed time, budget, rejected proposals in a
+row), `guard = paused (that limit)`; otherwise `guard = proceed`. **`escalate` has no guard.**
+
+**The precedence, end to end:** terminal outcome (step 1), then escalation, then the pausing guard, then
+the autonomous launch or abandonment. **Escalation wins over a simultaneous pausing limit**, so the owner
+receives one ruling to make, never a pause holding an escalation.
+
+**Execution. Control transitions are** `escalate`, `stop`, and the abandonment half of
+`abandon_and_propose`.
 
 **Only a cycle-launch action creates a launch intent** (§12b). The transition writes the pending action
 and the guard together:
 - **A launch action under `proceed`** becomes a launch intent in the same transaction.
 - **`abandon_and_propose` under `proceed`** atomically records the abandonment, updates the unaccepted
   count, and writes the `propose` intent, in one transaction.
-- **`escalate`** moves the campaign to `escalated`, with no intent, whatever the guard says. It waits for
-  the owner's recorded ruling, which names the next action: propose, abandon, repair, retry, or stop.
-  That action then executes by the same rules, launch actions through an intent.
-- **Any action under `paused`** is **held**, with no intent. **The owner's resume executes that same
-  recorded action** by the same rules: a launch action becomes an intent in the resume's transition, and
-  a control transition executes as one. It never recomputes the decision.
+- **`escalate`** is unguarded. It moves the campaign directly to `escalated`, with no intent, and waits
+  for the owner's recorded ruling. The ruling names the next action (propose, abandon, repair, retry,
+  or stop), which executes at once, launch actions through an intent. **The pausing guard does not
+  re-apply to an owner's ruling.** The ruling is the owner's word, and the owner's word is also what
+  lifts a limit-caused pause.
+- **Any guardable action under `paused`** is **held**, with no intent. **The owner's resume executes
+  that same recorded action** by the same rules: a launch action becomes an intent in the resume's
+  transition, and `abandon_and_propose` records its abandonment and its intent together. It never
+  recomputes the decision.
 
 **The rules that bind it:**
 - **Success first** (row 3 before row 4).
@@ -788,6 +806,9 @@ action, and its resume executes that action. `cancelled` derives `CANCELLED`, as
      `blocked_unverified`.
 12f. **Only launch actions create intents:** `escalate` and `stop` never do, and `abandon_and_propose`
      records the abandonment and its intent in one transaction, both under `proceed` and on resume.
+12g. **Escalation wins over a simultaneous pausing limit:** a cycle whose pending action is `escalate`
+     while a pausing limit is reached ends in `escalated`, never `paused`, and the owner makes one ruling.
+     That ruling's action executes without the pausing guard re-applying.
 13. **The evidence package is usable without the producing deploy:** materialized from records alone,
     and re-materialized identically after a crash at close.
 14. The reference scenario reports each brownfield mechanism separately, with the proposal rated.
@@ -862,6 +883,10 @@ shakeout.
 
 ## Revision history
 
+- **Revision 6 (2026-10-01, late evening):** the crew's fourth review, which found revision 5 resolved its
+  prior findings and named one contradiction: escalation both bypassed and obeyed the pausing guard.
+  Revision 6 makes escalation unguarded, applies the guard only to guardable actions, and fixes the
+  precedence (§10, criterion 12g).
 - **Revision 5 (2026-10-01, late evening):** the crew's third review (Ripley, on #1798), which found
   revision 4 close and named bounded corrections, made here:
   - content-addressed verifier bundles, executed through the candidate-verifier overlay (§7.4, §8.1);

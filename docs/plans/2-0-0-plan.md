@@ -1,6 +1,6 @@
 # 2.0.0 plan — Campaign: the squad evolves one app, the crew evolves the framework
 
-**Status:** DRAFT, rev 5 (2026-10-01), for the owner's review. Rev 2 folded in an external review of rev 1. Rev 3 folded in the crew's design review of rev 2 (Ripley, on #1798), with the owner's rulings on it. Rev 4 folded in the crew's re-review, and rev 5 its third review (§9). **Not adopted.** Written at the 1.9.0 cut
+**Status:** DRAFT, rev 6 (2026-10-01), for the owner's review. Rev 2 folded in an external review of rev 1. Rev 3 folded in the crew's design review of rev 2 (Ripley, on #1798), with the owner's rulings on it. Rev 4 folded in the crew's re-review, rev 5 its third review, and rev 6 its fourth (§9). **Not adopted.** Written at the 1.9.0 cut
 on the owner's word ("can you draft a plan to review and any SIP revisions"). It turns three inputs into
 a release:
 - the owner's direction of 2026-09-28 (`docs/plans/post-1-8-2-roadmap-reconciliation.md`);
@@ -8,7 +8,7 @@ a release:
   (`docs/ideas/nostromo-framework-optimization-crew.md`);
 - the owner's rulings on that IDEA the same day (§2 below).
 
-The design it builds on is the Campaign SIP's revision 5 (`sips/proposed/SIP-Campaign-Orchestration.md`).
+The design it builds on is the Campaign SIP's revision 6 (`sips/proposed/SIP-Campaign-Orchestration.md`).
 That SIP is proposed, and this plan adopts only after it is accepted (§6, step 1).
 
 **What 2.0 is.** An even minor, a feature release, led by one headline: **Campaign**. 1.9 extracted the
@@ -102,7 +102,7 @@ three things apart throughout: an observation, a causal hypothesis, and a valida
 
 ## 3. The content
 
-### 3.1 The headline: Campaign (the SIP's revision 5)
+### 3.1 The headline: Campaign (the SIP's revision 6)
 
 The Campaign SIP is revised to the two-loop direction: an objective envelope, a pure continuation
 policy, and a campaign that evolves one app. The plan sequences its parts. The design is the SIP's.
@@ -332,7 +332,7 @@ the cut's evidence.
 
 Merge order follows the dependencies (the Campaign SIP's §18). Each step's PR proves its
 intermediate acceptance before the next starts.
-1. **The Campaign SIP's revision 5: design review and acceptance.** This plan adopts after it.
+1. **The Campaign SIP's revision 6: design review and acceptance.** This plan adopts after it.
 2. **Decision 1, the flip,** and its prerequisites: #1788 first, then #1755 and #1727.
 3. **The domain model, the transactional control log, and the launch outbox (#1799).** Proves atomic
    commit with state, conflicts refused, restart read from the log, and exactly one cycle per launch
@@ -428,6 +428,9 @@ crew's conditions:
 
 ## 9. Revision history
 
+- **Rev 6 (2026-10-01, late evening):** folds in the crew's fourth review. It confirmed rev 5's
+  corrections, and named one final contradiction (escalation and the pausing guard), resolved in the
+  SIP's revision 6.
 - **Rev 5 (2026-10-01, late evening):** folds in the crew's third review. The SIP's revision 5 makes
   its bounded corrections: verifier bundles executed through a candidate-verifier overlay, launch
   actions separated from control transitions, the outcome-aware failure producer, and deterministic
