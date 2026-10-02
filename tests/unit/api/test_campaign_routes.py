@@ -48,6 +48,7 @@ _POLICY = dict(
     launch_blocked_attempts=6,
     calibration_profile="validated-fullstack",
     proposal_profile="group-run-proposal",
+    squad_profile="full-38",
 )
 
 
@@ -158,6 +159,20 @@ async def test_each_role_holds_exactly_the_operations_the_ruling_gives_it(
         world.as_(_identity(role, user="x"))
     assert _control(world, "resume", "k-resume").status_code == resume
     assert _control(world, "abort", "k-abort").status_code == abort
+
+
+@pytest.mark.parametrize(
+    "role", [Role.CAMPAIGN_SUPERVISOR, Role.CAMPAIGN_TRIAGE, Role.OPERATOR, Role.VIEWER]
+)
+async def test_only_the_owners_seat_starts_a_campaign(world, role):
+    """The owner's ruling (10-02): starting a campaign launches cycles, which is the owner's
+    (campaigns:control), never the supervisor's. Bug caught: the start guarded by
+    campaigns:supervise, letting the crew launch a campaign."""
+    _create(world)
+    world.as_(_identity(role, user="x"))
+
+    assert _control(world, "start", "k-start").status_code == 403
+    assert (await world.campaigns.get_campaign("cmp_api000000001")).state is CampaignState.DRAFT
 
 
 def test_no_identity_is_refused_once_authorization_is_configured(world):

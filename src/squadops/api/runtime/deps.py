@@ -122,6 +122,11 @@ def get_campaign_registry(request: Request) -> CampaignRegistryPort:
     return _required(request, "campaign_registry", "CampaignRegistryPort")
 
 
+def get_campaign_launch(request: Request):
+    """Return the campaign launch service (SIP-0109 §12b)."""
+    return _required(request, "campaign_launch", "CampaignLaunchService")
+
+
 def get_deploy_registry(request: Request) -> DeployRegistryPort:
     """Return the DeployRegistryPort (#1720): what each deploy put in service."""
     return _required(request, "deploy_registry", "DeployRegistryPort")

@@ -91,3 +91,40 @@ def compute_overrides(defaults: dict, user_values: dict) -> dict:
         if key not in defaults or defaults[key] != value:
             overrides[key] = value
     return overrides
+
+
+#: The profile defaults that are top-level fields of a cycle-create request, not config keys.
+CRP_BODY_FIELDS = (
+    "build_strategy",
+    "task_flow_policy",
+    "expected_artifact_types",
+    "experiment_context",
+)
+
+
+def cycle_request_body(
+    profile_name: str,
+    *,
+    squad_profile_id: str,
+    user_values: dict | None = None,
+    notes: str | None = None,
+    prd_ref: str | None = None,
+) -> dict:
+    """The cycle-create request a profile and the caller's values make: exactly the body
+    ``squadops cycles create`` sends, so a cycle a campaign launches server-side (SIP-0109 §12b)
+    is created from the same request an operator's would be."""
+    crp = load_profile(profile_name)
+    merged = merge_config(crp.defaults, user_values or {})
+    body: dict[str, Any] = {
+        "squad_profile_id": squad_profile_id,
+        "applied_defaults": crp.defaults,
+        "execution_overrides": compute_overrides(crp.defaults, merged),
+        "request_profile": profile_name,
+        "notes": notes,
+    }
+    if prd_ref:
+        body["prd_ref"] = prd_ref
+    for key in CRP_BODY_FIELDS:
+        if key in merged:
+            body[key] = merged[key]
+    return body

@@ -4,7 +4,9 @@ Cycle API routes (SIP-0064 §9.3).
 
 import logging
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 
@@ -50,7 +52,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/projects/{project_id}/cycles", tags=["cycles"])
 
 
-async def _pulled_model_names(request: Request) -> list[str] | None:
+async def _pulled_model_names(port: Any | None) -> list[str] | None:
     """Best-effort list of the LLM backend's pulled-model names, or ``None``.
 
     ``None`` (backend not configured / provider declares no listing / unreachable) makes
@@ -61,11 +63,12 @@ async def _pulled_model_names(request: Request) -> list[str] | None:
     adapter class it is — SIP-0106 §3.2's site 2; the ``isinstance(OllamaAdapter)`` it
     replaces made every non-Ollama provider silently unverifiable (#1157).
     """
-    from squadops.api.runtime.deps import get_llm_port
     from squadops.ports.llm.provider import LLMCapability
 
+    if port is None:
+        logger.info("preflight_model_list_unverifiable", extra={"error": "no LLM port"})
+        return None
     try:
-        port = get_llm_port(request)
         if not port.supports(LLMCapability.MODEL_LISTING):
             return None
         raw = await port.list_available_models()
@@ -118,7 +121,7 @@ async def _sandbox_preflight_decision() -> PreflightDecision:
 
 
 async def _run_create_preflight(
-    request: Request, profile: SquadProfile, config: dict
+    llm_port: Any | None, profile: SquadProfile, config: dict
 ) -> tuple[Finding, ...]:
     """SIP-0095 create-time preflight: fail fast BEFORE persist/dispatch.
 
@@ -143,7 +146,7 @@ async def _run_create_preflight(
         # emission outside the fill slots, surfacing as "the plan claims nothing" a full
         # framing workload later.
         stack_development_profile_decision(config),
-        model_availability_decision(profile, await _pulled_model_names(request)),
+        model_availability_decision(profile, await _pulled_model_names(llm_port)),
         # #1145: pulled is not the same as registered. A model the backend serves but
         # MODEL_SPECS does not know runs with the overflow guard disabled and a
         # different completion budget than a registered model on the same capability —
@@ -173,7 +176,7 @@ async def _run_create_preflight(
 
 
 async def _seed_derived_contract(
-    request: Request, body: CycleCreateRequest, project_id: str
+    vault: Any | None, body: CycleCreateRequest, project_id: str
 ) -> str | None:
     """Derive a verification contract from a seeded manifest (#779, M0b).
 
@@ -195,7 +198,6 @@ async def _seed_derived_contract(
     manifest raises :class:`PreflightRejectedError`: falling through to author mode
     would hand back a green carrying none of the criteria that were asked for.
     """
-    from squadops.api.runtime.deps import get_artifact_vault
     from squadops.cycles.contract_derivation import (
         ContractDerivationError,
         derive_and_store_contract,
@@ -210,7 +212,8 @@ async def _seed_derived_contract(
         # cycle that never had a manifest does not depend on vault wiring at all.
         return None
 
-    vault = get_artifact_vault(request)
+    if vault is None:
+        raise RuntimeError("ArtifactVaultPort not configured: a seeded manifest cannot be read")
     manifest_content = await load_seeded_manifest_content(
         vault, overrides.get("plan_artifact_refs")
     )
@@ -295,28 +298,87 @@ async def _current_deploy_id(registry) -> str | None:
     return latest.deploy_id if latest else None
 
 
-@router.post("", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
-async def create_cycle(
-    request: Request, project_id: str, body: CycleCreateRequest, background_tasks: BackgroundTasks
-):
-    """Create a Cycle + first Run (T17: atomic).
+@dataclass(frozen=True)
+class CreationPorts:
+    """The ports creating a cycle reads: gathered from the request's app by the create route,
+    and from the composition root by a campaign's launch (SIP-0109 §12b), so both create a cycle
+    by one path. The LLM port and the vault are optional, as they are to the route: the model
+    preflight warns without a listing, and the vault is read only when a manifest is seeded."""
 
-    SIP-0066: After persisting, enqueues execute_run as a background task.
-    """
-    from squadops.api.runtime.deps import (
-        get_cycle_registry,
-        get_deploy_registry,
-        get_flow_executor,
-        get_project_registry,
-        get_squad_profile_port,
+    project_registry: Any
+    squad_profile: Any
+    cycle_registry: Any
+    deploy_registry: Any
+    llm: Any | None = None
+    artifact_vault: Any | None = None
+
+    @classmethod
+    def of_request(cls, request: Request) -> "CreationPorts":
+        from squadops.api.runtime.deps import (
+            get_artifact_vault,
+            get_cycle_registry,
+            get_deploy_registry,
+            get_llm_port,
+            get_project_registry,
+            get_squad_profile_port,
+        )
+
+        def optional(getter):
+            try:
+                return getter(request)
+            except Exception:  # noqa: BLE001 — unwired is what the reader handles
+                return None
+
+        return cls(
+            project_registry=get_project_registry(request),
+            squad_profile=get_squad_profile_port(request),
+            cycle_registry=get_cycle_registry(request),
+            deploy_registry=get_deploy_registry(request),
+            llm=optional(get_llm_port),
+            artifact_vault=optional(get_artifact_vault),
+        )
+
+
+@dataclass(frozen=True)
+class PreparedCycle:
+    """A cycle and its first run, built and preflighted, not yet persisted."""
+
+    cycle: Cycle
+    run: Run
+    warnings: tuple[Finding, ...]
+
+
+def first_run(cycle: Cycle, *, initiated_by: str) -> Run:
+    """A cycle's first run: its workload type is the effective sequence's first (#26, #724)."""
+    ws = cycle.resolved_config().get("workload_sequence", [])
+    return Run(
+        run_id=f"run_{uuid.uuid4().hex[:12]}",
+        cycle_id=cycle.cycle_id,
+        run_number=1,
+        status="queued",
+        initiated_by=initiated_by,
+        resolved_config_hash=compute_config_hash(cycle.applied_defaults, cycle.execution_overrides),
+        workload_type=ws[0]["type"] if ws else None,
     )
 
-    project_registry = get_project_registry(request)
-    await project_registry.get_project(project_id)
+
+async def prepare_cycle(
+    ports: CreationPorts,
+    project_id: str,
+    body: CycleCreateRequest,
+    *,
+    created_by: str = "system",
+    initiated_by: str = "api",
+    campaign_id: str | None = None,
+    kind: str | None = None,
+) -> PreparedCycle:
+    """Build and preflight a cycle and its first run from a create request: the route's body,
+    or a campaign launch's (SIP-0109 §12b), which also names the campaign and the cycle's kind.
+    Raises before anything is persisted when the project is unknown or a preflight blocks."""
+    await ports.project_registry.get_project(project_id)
 
     # Resolve squad profile snapshot
-    profile_port = get_squad_profile_port(request)
-    profile, snapshot_hash = await profile_port.resolve_snapshot(body.squad_profile_id)
+    profile, snapshot_hash = await ports.squad_profile.resolve_snapshot(body.squad_profile_id)
 
     # Build domain objects
     cycle_id = f"cyc_{uuid.uuid4().hex[:12]}"
@@ -340,35 +402,32 @@ async def create_cycle(
     effective_config = resolve_config(applied_defaults, body.execution_overrides or {})
 
     # SIP-0095: create-time preflight — fail fast (422) before persist/dispatch.
-    preflight_warnings = await _run_create_preflight(request, profile, effective_config)
+    preflight_warnings = await _run_create_preflight(ports.llm, profile, effective_config)
 
     # SIP-0101 Slice 3: replay declaration validated + interim compatibility
     # gate, same fail-fast point (moves into the SIP-0095 preflight in Slice 4).
-    await _validate_replay_declaration(get_cycle_registry(request), body, applied_defaults)
+    await _validate_replay_declaration(ports.cycle_registry, body, applied_defaults)
 
     # #779 (M0b): a seeded manifest with no contract_ref would run UNBOUND. Derive
     # the contract it implies and pin it as an artifact, so bind mode engages
     # exactly as it does for an operator who ingested one by hand. After this the
     # effective config must be recomputed — the new ref is part of it.
-    derived_ref = await _seed_derived_contract(request, body, project_id)
+    derived_ref = await _seed_derived_contract(ports.artifact_vault, body, project_id)
     if derived_ref is not None:
         body.execution_overrides = {
             **(body.execution_overrides or {}),
             "contract_ref": derived_ref,
         }
-        effective_config = resolve_config(applied_defaults, body.execution_overrides)
         logger.info(
             "cycle_create_derived_contract",
             extra={"project_id": project_id, "contract_ref": derived_ref},
         )
 
-    config_hash = compute_config_hash(applied_defaults, body.execution_overrides)
-
     cycle = Cycle(
         cycle_id=cycle_id,
         project_id=project_id,
         created_at=now,
-        created_by="system",
+        created_by=created_by,
         prd_ref=body.prd_ref,
         squad_profile_id=body.squad_profile_id,
         squad_profile_snapshot_ref=snapshot_hash,
@@ -385,29 +444,33 @@ async def create_cycle(
         framework_git_sha=resolve_git_sha(),
         # #1720: and which deploy — every service's image and the models' weights, recorded by
         # the deploy step. None when no deploy has been recorded: unknown, never a guess.
-        deploy_id=await _current_deploy_id(get_deploy_registry(request)),
+        deploy_id=await _current_deploy_id(ports.deploy_registry),
         notes=body.notes,
+        campaign_id=campaign_id,
+        kind=kind,
     )
+    return PreparedCycle(cycle, first_run(cycle, initiated_by=initiated_by), preflight_warnings)
 
-    # Resolve workload_type from workload_sequence (fixes #26; #724: the
-    # effective sequence, so an overridden sequence types run 1 correctly)
-    ws = effective_config.get("workload_sequence", [])
-    workload_type = ws[0]["type"] if ws else None
 
-    run = Run(
-        run_id=f"run_{uuid.uuid4().hex[:12]}",
-        cycle_id=cycle_id,
-        run_number=1,
-        status="queued",
-        initiated_by="api",
-        resolved_config_hash=config_hash,
-        workload_type=workload_type,
-    )
+@router.post("", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
+async def create_cycle(
+    request: Request, project_id: str, body: CycleCreateRequest, background_tasks: BackgroundTasks
+):
+    """Create a Cycle + first Run (T17: atomic).
+
+    SIP-0066: After persisting, enqueues execute_run as a background task.
+    """
+    from squadops.api.runtime.deps import get_flow_executor
+
+    ports = CreationPorts.of_request(request)
+    prepared = await prepare_cycle(ports, project_id, body)
+    cycle, run, preflight_warnings = prepared.cycle, prepared.run, prepared.warnings
+    snapshot_hash = cycle.squad_profile_snapshot_ref
+    config_hash = run.resolved_config_hash
 
     # Persist atomically (T17)
-    cycle_registry = get_cycle_registry(request)
-    await cycle_registry.create_cycle(cycle)
-    await cycle_registry.create_run(run)
+    await ports.cycle_registry.create_cycle(cycle)
+    await ports.cycle_registry.create_run(run)
 
     # SIP-0077: cycle.created
     from squadops.api.runtime.deps import get_cycle_event_bus

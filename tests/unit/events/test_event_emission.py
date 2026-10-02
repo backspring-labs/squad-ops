@@ -70,6 +70,9 @@ _CYCLES_ROUTE = Path("src/squadops/api/routes/cycles/cycles.py")
 _CANCELLATION = Path("src/squadops/api/routes/cycles/cancellation.py")
 # SIP-0109 §13: the campaign routes project each applied control-log row as campaign.transitioned.
 _CAMPAIGNS_ROUTE = Path("src/squadops/api/routes/campaigns/campaigns.py")
+# SIP-0109 §12b: a campaign's launch creates a cycle's first run by its own path, and announces
+# it as the create route does (cycle.created).
+_CAMPAIGN_LAUNCH = Path("src/squadops/api/campaign_launch.py")
 _RUNS_ROUTE = Path("src/squadops/api/routes/cycles/runs.py")
 _ARTIFACTS_ROUTE = Path("src/squadops/api/routes/cycles/artifacts.py")
 
@@ -86,6 +89,7 @@ _ALL_EMISSION_FILES = [
     _CAMPAIGNS_ROUTE,
     _RUNS_ROUTE,
     _ARTIFACTS_ROUTE,
+    _CAMPAIGN_LAUNCH,
 ]
 
 
@@ -409,8 +413,9 @@ class TestEmitCallSitePayloadFields:
         SIP-0109 #1799 moved the cycle cancel route's CYCLE_CANCELLED emit into the shared cancel
         path (cancellation.py) — same total; and added the campaign routes' one projection emit,
         CAMPAIGN_TRANSITIONED, 48 → 49. SIP-0109 #1801 added the workload gate's proposal-revision
-        WORKLOAD_ADVANCED emit (the supervisor's returned proposal, revised in a new run), 49 → 50."""
+        WORKLOAD_ADVANCED emit (the supervisor's returned proposal, revised in a new run), 49 → 50;
+        and the campaign launch's CYCLE_CREATED for a launched cycle's first run, 50 → 51."""
         total = 0
         for path in _ALL_EMISSION_FILES:
             total += len(self._extract_emit_calls(path))
-        assert total == 50
+        assert total == 51

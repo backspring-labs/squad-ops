@@ -36,6 +36,7 @@ class CampaignPolicyDTO(BaseModel):
     launch_blocked_attempts: int
     calibration_profile: str
     proposal_profile: str
+    squad_profile: str
 
 
 class CampaignCreateRequest(BaseModel):
@@ -107,3 +108,5 @@ class ControlResultResponse(BaseModel):
     replayed: bool
     #: Cycles the operation cancelled through the existing cancel path (an abort's).
     cancelled_cycles: list[str] = Field(default_factory=list)
+    #: Cycles the operation's launch intent started (a start's calibration cycle, §12b).
+    launched_cycles: list[str] = Field(default_factory=list)

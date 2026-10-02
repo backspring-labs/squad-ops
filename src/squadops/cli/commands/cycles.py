@@ -20,9 +20,8 @@ from squadops.cli.output import (
     print_table,
 )
 from squadops.contracts.cycle_request_profiles import (
-    compute_overrides,
+    cycle_request_body,
     load_profile,
-    merge_config,
 )
 from squadops.cycles.cycle_assessment import IndicatorState
 from squadops.cycles.lifecycle import compute_config_hash
@@ -61,21 +60,6 @@ def _resolve_prd_ref(ctx: typer.Context, project_id: str, prd: str) -> str:
             print_error(str(e))
             raise typer.Exit(code=e.exit_code) from e
     return prd
-
-
-_CRP_BODY_FIELDS = (
-    "build_strategy",
-    "task_flow_policy",
-    "expected_artifact_types",
-    "experiment_context",
-)
-
-
-def _merge_crp_body_fields(body: dict, merged: dict) -> None:
-    """Copy known cycle request profile defaults into the request body."""
-    for key in _CRP_BODY_FIELDS:
-        if key in merged:
-            body[key] = merged[key]
 
 
 def _replay_marker_lines_from_detail(data: dict) -> list[str]:
@@ -146,31 +130,21 @@ def create_cycle(
     # 2. Parse --set flags
     user_values = _parse_set_flags(set_flags or [])
 
-    # 3. Merge CRP defaults with user values to get full config
-    merged = merge_config(crp.defaults, user_values)
-
-    # 4. Compute overrides (only fields that differ from CRP defaults)
-    overrides = compute_overrides(crp.defaults, merged)
-
-    # 5. Compute local hash for verification
-    local_hash = compute_config_hash(crp.defaults, overrides)
-
-    # 5b. Resolve --prd: file path → auto-ingest, artifact ID → pass through
+    # 3. Resolve --prd: file path → auto-ingest, artifact ID → pass through
     prd_ref = _resolve_prd_ref(ctx, project_id, prd) if prd else None
 
-    # 6. Build request body
-    body = {
-        "squad_profile_id": squad_profile_id,
-        "applied_defaults": crp.defaults,
-        "execution_overrides": overrides,
-        "request_profile": profile,
-        "notes": notes,
-    }
-    if prd_ref:
-        body["prd_ref"] = prd_ref
+    # 4. The request body: the profile's defaults, the overrides that differ from them, and the
+    #    profile's top-level fields — one builder, which a campaign's launch uses too (SIP-0109).
+    body = cycle_request_body(
+        profile,
+        squad_profile_id=squad_profile_id,
+        user_values=user_values,
+        notes=notes,
+        prd_ref=prd_ref,
+    )
 
-    # Merge known CRP defaults into body where they map to top-level DTO fields
-    _merge_crp_body_fields(body, merged)
+    # 5. Compute local hash for verification
+    local_hash = compute_config_hash(crp.defaults, body["execution_overrides"])
 
     # 7. POST to API
     try:

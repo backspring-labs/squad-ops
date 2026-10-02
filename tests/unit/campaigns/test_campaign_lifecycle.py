@@ -165,6 +165,8 @@ def test_a_record_cannot_launch():
         (dict(max_repair_cycles_per_increment=-1), "must be >= 0"),
         (dict(budget_tokens=True), "must be an integer"),
         (dict(proposal_profile=" "), "proposal_profile is required"),
+        # Every launch names the squad that runs it: a campaign without one cannot launch.
+        (dict(squad_profile=""), "squad_profile is required"),
     ],
 )
 def test_a_policy_limit_outside_its_floor_is_refused(override, message):

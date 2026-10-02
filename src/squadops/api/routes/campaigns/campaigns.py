@@ -158,6 +158,19 @@ async def apply_control(
     return result
 
 
+async def launch_pending(request: Request, result: TransitionResult) -> list[str]:
+    """Drain the launch intents (§12b) when this row wrote one, and name the cycle this row's
+    intent launched. A replay drains too: its intent may be pending still, if the first attempt
+    died before launching. A launch the drain could not make names nothing, and stays pending."""
+    if result.intent is None:
+        return []
+    from squadops.api.runtime.deps import get_campaign_launch
+
+    await get_campaign_launch(request).drain()
+    intent = await _registry(request).get_launch_intent(result.intent.launch_id)
+    return [intent.cycle_id] if intent.cycle_id else []
+
+
 # ---------------------------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------------------------
@@ -226,6 +239,35 @@ async def get_control_log(
     identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_READ)),
 ) -> list[ControlLogEntryResponse]:
     return [_entry(e) for e in await _registry(request).control_log(campaign_id)]
+
+
+@router.post("/{campaign_id}/start")
+async def start_campaign(
+    request: Request,
+    campaign_id: str,
+    body: ControlRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_CONTROL)),
+) -> ControlResultResponse:
+    """The owner's start (§17): the draft moves to calibrating, its calibration cycle's launch
+    intent written in the same row (§12b), and the cycle is launched by the cycle-create path.
+    A campaign that is not a draft refuses the start as stale, and the refusal is recorded."""
+    from squadops.campaigns.launch_requests import start_transition
+
+    actor, role = actor_from(identity)
+    campaign = await _registry(request).get_campaign(campaign_id)
+    try:
+        transition = start_transition(
+            campaign,
+            actor=actor,
+            actor_role=role,
+            reason=body.reason,
+            idempotency_key=body.idempotency_key,
+        )
+    except FileNotFoundError as e:
+        # The policy names a request profile that does not exist: nothing can launch.
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    result = await apply_control(request, campaign_id, transition, identity)
+    return _result(result, launched_cycles=await launch_pending(request, result))
 
 
 @router.post("/{campaign_id}/pause")
@@ -412,10 +454,15 @@ def _entry(e: ControlLogEntry) -> ControlLogEntryResponse:
     )
 
 
-def _result(result: TransitionResult, cancelled_cycles: list[str] | None = None):
+def _result(
+    result: TransitionResult,
+    cancelled_cycles: list[str] | None = None,
+    launched_cycles: list[str] | None = None,
+):
     return ControlResultResponse(
         campaign=_campaign(result.campaign),
         entry=_entry(result.entry),
         replayed=result.replayed,
         cancelled_cycles=cancelled_cycles or [],
+        launched_cycles=launched_cycles or [],
     )
