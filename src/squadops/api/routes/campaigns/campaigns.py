@@ -8,8 +8,9 @@ after its row commits. The scopes are the owner's ruling of 2026-10-02:
 - **control** (``campaigns:control``, the owner): create, resume, abort.
 
 The actor and role on every row come from the caller's verified token, never from the request
-body. Each row is projected to ``AuditPort``. That port is fail-open, which is acceptable because
-the control log, not the projection, carries completeness (§13).
+body. Each row is projected to ``AuditPort``, and each applied row to the cycle event bus as
+``campaign.transitioned``. Both are best-effort, which is acceptable because the control log, not a
+projection, carries completeness (§13).
 """
 
 from __future__ import annotations
@@ -113,6 +114,37 @@ def _project_to_audit(request: Request, entry: ControlLogEntry, identity: Identi
         logger.warning("campaign audit projection failed: %s", entry.entry_id, exc_info=True)
 
 
+def _project_to_events(request: Request, result: TransitionResult) -> None:
+    """Project an applied control-log row to the cycle event bus (SIP-0077, §13). Best-effort:
+    a missed event loses no control record, and the control log is read for the truth."""
+    try:
+        from squadops.api.runtime.deps import get_cycle_event_bus
+        from squadops.events.types import EventType
+
+        entry = result.entry
+        get_cycle_event_bus(request).emit(
+            EventType.CAMPAIGN_TRANSITIONED,
+            entity_type="campaign",
+            entity_id=entry.campaign_id,
+            context={"campaign_id": entry.campaign_id, "project_id": result.campaign.project_id},
+            payload={
+                "entry_id": entry.entry_id,
+                "operation": str(entry.operation),
+                "prior_state": str(entry.prior_state) if entry.prior_state else None,
+                "next_state": str(entry.next_state),
+                "actor_role": entry.actor_role,
+            },
+        )
+    except Exception:  # noqa: BLE001 — a projection never fails the operation it projects
+        logger.warning("campaign event projection failed: %s", result.entry.entry_id, exc_info=True)
+
+
+def _project(request: Request, result: TransitionResult, identity: Identity | None) -> None:
+    if not result.replayed:
+        _project_to_audit(request, result.entry, identity)
+        _project_to_events(request, result)
+
+
 async def _apply(
     request: Request, campaign_id: str, transition: CampaignTransition, identity: Identity | None
 ) -> TransitionResult:
@@ -121,8 +153,7 @@ async def _apply(
     except ControlOperationRefused as refused:
         _project_to_audit(request, refused.entry, identity)
         raise
-    if not result.replayed:
-        _project_to_audit(request, result.entry, identity)
+    _project(request, result, identity)
     return result
 
 
@@ -165,8 +196,7 @@ async def create_campaign(
         raise HTTPException(
             422, {"error": {"code": "VALIDATION_ERROR", "message": str(e), "details": None}}
         ) from e
-    if not result.replayed:
-        _project_to_audit(request, result.entry, identity)
+    _project(request, result, identity)
     return _result(result)
 
 

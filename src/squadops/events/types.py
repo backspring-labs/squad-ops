@@ -1,6 +1,7 @@
 """Canonical event type constants for the cycle lifecycle event taxonomy.
 
-29 event types across 9 entity types (cycle, run, gate, task, pulse, artifact, checkpoint, correction, workload).
+31 event types across 10 entity types (cycle, run, gate, task, pulse, artifact, checkpoint, correction,
+workload, campaign).
 Follows the WorkloadType / ArtifactType constants-class pattern (not enum).
 """
 
@@ -65,9 +66,13 @@ class EventType:
     WORKLOAD_GATE_AWAITING = "workload.gate_awaiting"
     WORKLOAD_ADVANCED = "workload.advanced"
 
+    # --- Campaign (1) --- SIP-0109 §13: one per applied control-log row, a projection of it.
+    # The API's reads of the control log are authoritative after a missed event.
+    CAMPAIGN_TRANSITIONED = "campaign.transitioned"
+
     @classmethod
     def all(cls) -> tuple[str, ...]:
-        """Return all 29 event type constants."""
+        """Return all event type constants."""
         return tuple(
             v
             for k, v in vars(cls).items()
