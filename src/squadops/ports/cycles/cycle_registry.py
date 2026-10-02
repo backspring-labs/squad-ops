@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 
 from squadops.cycles.checkpoint import RunCheckpoint
+from squadops.cycles.cycle_end import RecordedEnd
 from squadops.cycles.failure_records import FailureRecord
 from squadops.cycles.models import (
     Cycle,
@@ -245,6 +246,22 @@ class CycleRegistryPort(ABC):
     async def get_failure_records(self, cycle_id: str) -> tuple[FailureRecord, ...] | None:
         """The cycle's latest failure-record set; ``()`` when it recorded none, ``None`` when no
         set was ever written (a cycle that ended before the records existed)."""
+
+    @abstractmethod
+    async def record_cycle_end(self, end: RecordedEnd) -> int:
+        """Append one ending of the cycle and return its index (SIP-0109 §12a, #1803).
+
+        Append-only: a resumed run that ends the cycle again appends another, and the latest is
+        the cycle's.
+
+        Raises:
+            CycleNotFoundError: If the cycle_id is not found.
+        """
+
+    @abstractmethod
+    async def get_cycle_end(self, cycle_id: str) -> RecordedEnd | None:
+        """The cycle's latest recorded ending, or ``None`` when it recorded none (a cycle in
+        flight, or one that ended before endings were recorded)."""
 
     # --- Checkpoint (SIP-0079) ---
 

@@ -10,6 +10,7 @@ import dataclasses
 from datetime import datetime
 
 from squadops.cycles.checkpoint import RunCheckpoint
+from squadops.cycles.cycle_end import RecordedEnd
 from squadops.cycles.failure_records import FailureRecord
 from squadops.cycles.lifecycle import (
     GATE_REJECTED_STATES,
@@ -54,6 +55,7 @@ class MemoryCycleRegistry(CycleRegistryPort):
         self._cycle_by_launch: dict[str, str] = {}
         # SIP-0109 §14: cycle_id → its failure-record sets, oldest first (append-only)
         self._failure_record_sets: dict[str, list[tuple[str, tuple[FailureRecord, ...]]]] = {}
+        self._cycle_ends: dict[str, list[RecordedEnd]] = {}
 
     # --- Cycle CRUD ---
 
@@ -294,6 +296,17 @@ class MemoryCycleRegistry(CycleRegistryPort):
     async def get_failure_records(self, cycle_id: str) -> tuple[FailureRecord, ...] | None:
         sets = self._failure_record_sets.get(cycle_id)
         return sets[-1][1] if sets else None
+
+    async def record_cycle_end(self, end: RecordedEnd) -> int:
+        if end.cycle_id not in self._cycles:
+            raise CycleNotFoundError(f"Cycle not found: {end.cycle_id}")
+        ends = self._cycle_ends.setdefault(end.cycle_id, [])
+        ends.append(end)
+        return len(ends)
+
+    async def get_cycle_end(self, cycle_id: str) -> RecordedEnd | None:
+        ends = self._cycle_ends.get(cycle_id)
+        return ends[-1] if ends else None
 
     async def list_run_verification_summaries(self, cycle_id: str) -> list[RunVerificationSummary]:
         """Return a cycle's persisted per-run verification summaries, by run_number."""

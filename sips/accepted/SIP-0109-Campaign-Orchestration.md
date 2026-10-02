@@ -1508,6 +1508,43 @@ outlived the second reading.
 - **Not built: the prior-cycle brief** that §10a's table puts in a repair's correction context. It
   is #1692's, and until it lands a repair is told nothing of the cycle it repairs beyond its files.
 
+### 24v. A cycle that ended with no decision, re-heard at startup (2026-10-02, §12a, #1803; decided under the 2.0 charter)
+
+**§12a's restart table lacked a row for a launched cycle that ended with no decision recorded.**
+That happens when the completion hook failed, or when the process stopped between the cycle's end
+and its decision.
+- **Its row said:** "calibrating, or running an increment: the campaign waits on the cycle". The
+  cycle had already ended, so the campaign waited forever.
+- **The evidence:** the first live campaign shakeout (`cmp_a34deb3d7372`).
+  - Its calibration ended accepted.
+  - The hook promoted it, then crashed before deciding (#1857).
+  - Nothing heard the cycle again. The hook's own docstring promised a re-entry that did not exist.
+  - The campaign was aborted.
+
+**As built:**
+- **The ending is recorded before the campaign is told.** `CycleCompletion.end` appends the cycle's
+  ending (`RecordedEnd`: the last run and the stop reason; migration `1670_cycle_ends.sql`) beside
+  its failure records. The table is append-only, and the latest ending is the cycle's.
+- **At startup, after the launcher's drain, every launched cycle of a live campaign is re-heard**
+  (`CampaignProgress.rehear_ended`, from `main._resume_campaigns`), from its recorded ending.
+  - A cycle with no recorded ending is in flight, or ended before endings were recorded, and is
+    left alone.
+  - A paused ending is not decided, as at the hook.
+  - A decision already recorded for the cycle is returned unchanged, so re-hearing changes nothing.
+- **Re-hearing runs after the drain, never inside it,** because a decision launches through the
+  drain, which holds its lock.
+
+**What differs from re-reading the cycle:** the stop reason is never reconstructed from the runs. A
+gate rejection and a failed run can leave the same run statuses. §12a says nothing is reconstructed
+from logs, and the recorded ending is the record.
+
+**Not built:**
+- **A re-hear between restarts.** A hook that fails while the process stays up leaves its campaign
+  until the next restart.
+- **The fault-injected diagnostic** §12a requires for this row.
+- **Any recovery for a cycle that ended before this record existed.** It is left alone. The
+  shakeout's campaign was aborted for that reason.
+
 ---
 
 ## Revision history

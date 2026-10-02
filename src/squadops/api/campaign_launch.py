@@ -69,13 +69,13 @@ class CampaignLaunchService:
             except Exception:
                 logger.exception("campaign_launch_failed")
             started = []
-            for cycle_id in await self._launched_cycles():
+            for cycle_id in await self.launched_cycles():
                 run = await self._start_first_run(cycle_id)
                 if run is not None:
                     started.append(run)
             return started
 
-    async def _launched_cycles(self) -> list[str]:
+    async def launched_cycles(self) -> list[str]:
         """The cycles every live campaign's launched intents created."""
         cycle_ids = []
         for project in await self._creation.project_registry.list_projects():
