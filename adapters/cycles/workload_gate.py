@@ -17,6 +17,7 @@ It borrows late (defended-bespoke-decisions §38), by an explicit list of the ex
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -131,7 +132,21 @@ class WorkloadGate:
         # the sequence stops cleanly — never a silent orchestrator
         # death the operator can only diagnose by re-reviewing the
         # manifest by hand (the 3.13 stall).
-        plan_errors = await self._reject_invalid_plan_before_workload_gate(run, cycle, gate_name)
+        #
+        # The plan is judged against the cycle as this run saw it: what forwarding handed the
+        # run — an increment's seeded contract and manifest (SIP-0109 §7.3) — is not on the
+        # registry's cycle, and without it every bind-mode net reads author mode.
+        run_cycle = (
+            dataclasses.replace(
+                cycle,
+                execution_overrides={**cycle.execution_overrides, **forwarding_overrides},
+            )
+            if forwarding_overrides
+            else cycle
+        )
+        plan_errors = await self._reject_invalid_plan_before_workload_gate(
+            run, run_cycle, gate_name
+        )
         if plan_errors:
             rejection = GateDecision(
                 gate_name=gate_name,
