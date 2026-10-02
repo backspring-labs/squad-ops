@@ -7,6 +7,8 @@ decision named, not one rebuilt from whatever the profiles say by then.
 
 from __future__ import annotations
 
+import uuid
+
 from squadops.campaigns.models import (
     Campaign,
     CampaignState,
@@ -48,4 +50,38 @@ def start_transition(
         next_state=CampaignState.CALIBRATING,
         expected_state=CampaignState.DRAFT,
         launch=calibration_launch(campaign),
+    )
+
+
+def increment_launch(campaign: Campaign, baseline_manifest: str) -> LaunchRequest:
+    """An increment cycle (§7.3): the policy's proposal profile, run by its squad, proposing
+    against the accepted tree. The ``campaign_proposal`` block carries what the proposal run
+    reads — the accepted tree's identity and its manifest's text (the agent has no vault, #1821),
+    the objective — and the campaign's revision budget, which the increment gate spends (§9.5)."""
+    policy = campaign.policy
+    assert campaign.accepted is not None
+    return LaunchRequest(
+        CycleKind.INCREMENT,
+        {
+            "body": cycle_request_body(
+                policy.proposal_profile,
+                squad_profile_id=policy.squad_profile,
+                user_values={
+                    "campaign_proposal": {
+                        "proposal_id": f"prop_{uuid.uuid4().hex[:12]}",
+                        "version": 1,
+                        "baseline_tree": campaign.accepted.identity,
+                        "baseline_manifest": baseline_manifest,
+                        "objective": {
+                            "statement": campaign.objective.statement,
+                            "allowed_scope": list(campaign.objective.allowed_scope),
+                            "measurement": campaign.objective.measurement,
+                        },
+                        "prior_criteria": [],
+                        "max_revisions": policy.max_proposal_revisions,
+                    }
+                },
+                notes=f"campaign {campaign.campaign_id}: increment (SIP-0109 §7.3)",
+            )
+        },
     )

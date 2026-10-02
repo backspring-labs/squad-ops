@@ -1017,6 +1017,45 @@ proposed in the PR that builds the decision.
 5. **Not built: escalating a launch the preflight refuses.** Such a launch stays pending and is
    logged. Escalating the campaign on it is recovery (§12a, #1803).
 
+
+### 24f. The completion hook, as built, and what it does not do yet (2026-10-02, #1800, #1709; implementer's reading, not yet ruled)
+
+At a campaign cycle's completion boundary (`CycleCompletion`), `squadops.campaigns.progress`:
+- reads the ending;
+- promotes an accepted calibration's tree;
+- derives the counters;
+- writes the continuation decision in one row keyed by the cycle, with its intent under `proceed`.
+
+As built:
+
+1. **The accepted tree is the files the cycle delivered,** by the one rule every reader shares
+   (#1832), identified by their hash.
+2. **Only a calibration is promoted here.**
+   - **Why:** an increment's promotion waits for §8's acceptance (step 4's decisions) to be wired
+     into its completion.
+   - **The alternative refused:** promoting on the cycle verdict alone would skip the frozen
+     criteria and the discrimination check.
+3. **A cycle that stopped resumable (paused, or not terminal, #1754) is not decided.** A decision
+   already recorded for the cycle is returned on re-entry, never recomputed, even if the clock has
+   since crossed a limit.
+4. **A launched cycle's end first moves the campaign to `evaluating`** (§17), then decides.
+5. **The counters are derived from the campaign's records:**
+   - launches give the cycles, and the cycles' usage gives the tokens;
+   - the START row gives the elapsed time;
+   - the earlier decision rows give the rejected proposals in a row and the unaccepted increments;
+   - repair and retry cycles count since the increment cycle they serve.
+6. **Not built, and named, not hidden:**
+   - **`objective_met` is always false.** The measurement has no reader yet (§24b), so a campaign
+     ends by exhaustion, failure, escalation or abort, not in success.
+   - **`repair` and `retry` escalate** with the reason that their cycles (§10a) are not built yet
+     (#1705).
+   - **A held action under a pausing limit is recorded on the row,** but the owner's resume does
+     not yet execute it.
+   - **An increment cycle runs the proposal profile alone.** The increment gate needs a workload
+     after it (the sequence loop ends on its last workload before that workload's gate), and delta
+     framing (§7.3) is not built. So a `propose` decision launches a proposal run that ends with no
+     verdict, and §10 row 14 escalates it to the owner with the proposal stored.
+
 ---
 
 ## Revision history

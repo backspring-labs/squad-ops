@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 class CycleCompletion:
     """Ends a cycle: one ``CycleEnd`` per ending."""
 
-    BORROWED = ("_cycle_registry", "_artifact_vault")
+    BORROWED = ("_cycle_registry", "_artifact_vault", "_campaign_progress")
 
     def __init__(self, *, executor: Callable[[], Any]) -> None:
         self._executor = executor
@@ -38,6 +38,7 @@ class CycleCompletion:
     async def end(self, cycle_id: str, last_run: Any, stopped_because: CycleStopReason) -> CycleEnd:
         summary = await self._cycle_registry.get_run_loop_summary(last_run.run_id)
         await self._record_failures(cycle_id, last_run.run_id)
+        await self._hear_campaign(cycle_id, last_run, stopped_because)
         return CycleEnd(
             cycle_id=cycle_id,
             last_run_id=last_run.run_id,
@@ -45,6 +46,30 @@ class CycleCompletion:
             last_run_terminal=getattr(summary, "terminal", None),
             stopped_because=stopped_because,
         )
+
+    async def _hear_campaign(
+        self, cycle_id: str, last_run: Any, stopped_because: CycleStopReason
+    ) -> None:
+        """SIP-0109 §10, Appendix A: a campaign's cycle ends here, and its campaign decides what
+        follows. After the failure records, which the decision's assessment reads (§14). A
+        failure is logged loudly and does not stop the ending: the campaign is then left where
+        it was, and a decision for the cycle can still be made by re-entry."""
+        cycle = await self._cycle_registry.get_cycle(cycle_id)
+        if not cycle.campaign_id:
+            return
+        if self._campaign_progress is None:
+            logger.error(
+                "campaign_cycle_ended_unheard",
+                extra={"cycle_id": cycle_id, "campaign_id": cycle.campaign_id},
+            )
+            return
+        try:
+            await self._campaign_progress.cycle_ended(cycle, last_run, stopped_because)
+        except Exception:
+            logger.exception(
+                "campaign_progress_failed",
+                extra={"cycle_id": cycle_id, "campaign_id": cycle.campaign_id},
+            )
 
     async def _record_failures(self, cycle_id: str, last_run_id: str) -> None:
         """Persist the ending's failure records. A failed write is logged loudly and does not
