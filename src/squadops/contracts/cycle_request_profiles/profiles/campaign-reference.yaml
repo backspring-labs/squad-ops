@@ -5,6 +5,13 @@ defaults:
   build_strategy: fresh
   development_profile: fullstack_fastapi_react
   build_profile: fullstack_fastapi_react
+  # SIP-0109 §7.3: an increment's framing runs the plan proposers, where the increment's
+  # footprint, criteria and frozen indexes are taught (#1870: without contributors the merger
+  # authored alone, and a contract set at creation is refused as unwinnable, #762).
+  plan_authoring_contributors:
+    - development
+    - qa
+    - strategy
   task_flow_policy:
     mode: sequential
     gates:

@@ -347,3 +347,64 @@ async def test_the_proposers_are_shown_the_regenerated_files_too():
     assert "- `backend/routes.py`" in section
     assert "Files this change touches that the scaffold writes" in section
     assert section.index("- `backend/models.py`") > section.index("scaffold writes")
+
+
+@pytest.mark.parametrize("profile_name", ["campaign-increment", "campaign-reference"])
+def test_an_increments_framing_runs_the_plan_proposers(profile_name):
+    """SIP-0109 §7.3 (#1870), on each campaign profile's own defaults: the framing table names
+    the plan proposers, which is where the footprint, criteria and frozen indexes are taught.
+    Bugs caught: a campaign increment framed by the merger alone (shakeout 2's three framings);
+    or the reference increment refused at creation, as #762 refuses a bind-mode cycle no
+    proposer can author."""
+    from squadops.contracts.cycle_request_profiles import load_profile
+    from squadops.cycles.models import AgentProfileEntry, SquadProfile
+    from squadops.cycles.preflight import bind_mode_authoring_decision
+    from squadops.cycles.task_plan import generate_task_plan
+
+    defaults = dict(load_profile(profile_name).defaults)
+    squad = SquadProfile(
+        profile_id="full",
+        name="full",
+        description="",
+        version=1,
+        created_at=NOW,
+        agents=tuple(
+            AgentProfileEntry(agent_id=a, role=r, model="m", enabled=True, serves_roles=(r,))
+            for a, r in (
+                ("nat", "strat"),
+                ("neo", "dev"),
+                ("eve", "qa"),
+                ("data", "data"),
+                ("max", "lead"),
+                ("bob", "builder"),
+            )
+        ),
+    )
+    from squadops.capabilities.scaffold import InterfaceManifest
+
+    cycle = _cycle(True)
+    cycle = dataclasses.replace(
+        cycle,
+        applied_defaults=defaults,
+        execution_overrides={**cycle.execution_overrides, "contract_ref": "art_contract"},
+    )
+    run = Run("run_f", "cyc_inc", 2, "running", "system", "cfg", workload_type="framing")
+    contract = MagicMock()
+    contract.criteria_index_lines.return_value = ["- C1"]
+    contract.behavioral.probes = ()
+
+    plan = generate_task_plan(
+        cycle,
+        run,
+        squad,
+        contract=contract,
+        interface_manifest=InterfaceManifest.from_yaml(CANDIDATE),
+        change_request=STORED_REQUEST,
+    )
+
+    assert {
+        "development.propose_plan_tasks",
+        "qa.propose_plan_tasks",
+        "strategy.propose_plan_guidance",
+    } <= {e.task_type for e in plan}
+    assert not bind_mode_authoring_decision({**defaults, "contract_ref": "art_contract"}).rejected
