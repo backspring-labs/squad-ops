@@ -31,7 +31,7 @@ from squadops.cycles.cycle_assessment import AssessorIdentity, CycleEvidence, Ru
 from squadops.cycles.cycle_end import CycleStopReason
 from squadops.cycles.models import ArtifactRef, Cycle, Run, TaskFlowPolicy
 from squadops.cycles.verification_integrity import CycleOutcome, RunVerdict
-from tests.unit.campaigns.builders import campaign, policy
+from tests.unit.campaigns.builders import campaign, move, policy
 
 NOW = datetime(2026, 10, 2, 15, 0, tzinfo=UTC)
 CID = "cmp_prog00000001"
@@ -247,6 +247,31 @@ async def test_a_rejected_calibration_stops_the_campaign_and_promotes_nothing(ca
         None,
     )
     assert len(await w.campaigns.launch_intents(CID)) == 1
+    w.launches.assert_not_awaited()
+
+
+async def test_a_cycle_ending_after_an_abort_decides_and_launches_nothing(calibrating):
+    """§12a: an abort is terminal — no continuation follows, whatever arrives after. Bug
+    caught: the cancelled cycle's completion, arriving after the abort committed, writing a
+    decision (here §10 row 2's stop, which the registry would refuse and record as a row) or a
+    launch for a campaign that has ended."""
+    w, run = await calibrating(RunVerdict.REJECTED)
+    await w.campaigns.transition(
+        CID,
+        move(
+            CampaignState.COMPLETED,
+            "abort",
+            operation=ControlOperation.ABORT,
+            outcome=CampaignOutcome.ABORTED,
+        ),
+    )
+    rows = len(await w.campaigns.control_log(CID))
+
+    await w.end("cyc_cal", run, CycleStopReason.RUN_CANCELLED)
+
+    stored = await w.campaigns.get_campaign(CID)
+    assert stored.outcome is CampaignOutcome.ABORTED
+    assert len(await w.campaigns.control_log(CID)) == rows
     w.launches.assert_not_awaited()
 
 
