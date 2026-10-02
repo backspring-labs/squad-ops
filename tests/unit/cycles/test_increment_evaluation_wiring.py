@@ -167,6 +167,9 @@ class _Vault:
     async def retrieve(self, artifact_id):
         return self.stored[artifact_id]
 
+    async def list_artifacts(self, *, cycle_id=None, **_):
+        return [r for r, _ in self.stored.values() if cycle_id is None or r.cycle_id == cycle_id]
+
 
 def _ref(artifact_id: str, filename: str, cycle_id: str) -> ArtifactRef:
     return ArtifactRef(
@@ -193,6 +196,9 @@ async def test_the_evaluation_is_handed_the_accepted_tree_as_the_increment_seede
         "a_routes": (_ref("a_routes", "backend/routes.py", "cyc_accepted"), b"accepted routes"),
         "i_routes": (_ref("i_routes", "backend/routes.py", "cyc_inc"), b"increment routes"),
         "a_view": (_ref("a_view", "frontend/src/views/RunListView.jsx", "cyc_accepted"), b"list"),
+        # #1876: the accepted tree's own scaffold-frozen file. The increment's seed leaves it out
+        # (the candidate regenerates it), but the baseline overlay needs the baseline's.
+        "a_models": (_ref("a_models", "backend/models.py", "cyc_accepted"), b"baseline models"),
     }
     executor = DispatchedFlowExecutor(
         cycle_registry=AsyncMock(),
@@ -213,6 +219,7 @@ async def test_the_evaluation_is_handed_the_accepted_tree_as_the_increment_seede
     assert enriched.inputs["accepted_tree_files"] == {
         "backend/routes.py": "accepted routes",
         "frontend/src/views/RunListView.jsx": "list",
+        "backend/models.py": "baseline models",
     }
     assert enriched.inputs["acceptance_workspace_files"]["backend/routes.py"] == "increment routes"
 

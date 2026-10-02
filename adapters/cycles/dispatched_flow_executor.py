@@ -2552,7 +2552,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
             resolved = envelope.inputs.get("resolved_config")
             extra_inputs["accepted_tree_files"] = await accepted_tree_contents(
-                self._artifact_vault, resolved, stored_artifacts
+                self._artifact_vault, resolved
             )
             extra_inputs["frozen_bundles"] = await frozen_bundle_contents(
                 self._artifact_vault, resolved

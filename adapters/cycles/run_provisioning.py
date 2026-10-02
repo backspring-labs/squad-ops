@@ -237,7 +237,14 @@ class RunProvisioning:
                 # SIP-0109 §7.3: an increment builds on the accepted tree. Its delivered files
                 # are produced content, so they take every slot the stubs above would fill
                 # (#881); only what the increment adds stays a stub.
+                # #1876: never its scaffold-frozen files, which the skeleton above regenerated
+                # from the candidate manifest.
                 from squadops.campaigns.increment_tree import starting_tree_refs
+                from squadops.capabilities.scaffold import frozen_paths
 
-                seed_artifact_refs.extend(await starting_tree_refs(self._artifact_vault, cycle))
+                seed_artifact_refs.extend(
+                    await starting_tree_refs(
+                        self._artifact_vault, cycle, frozen_paths(interface_manifest)
+                    )
+                )
         return seed_artifact_refs, interface_manifest

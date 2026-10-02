@@ -131,10 +131,7 @@ def _model_source(manifest: InterfaceManifest) -> str:
         lines.append(f"class {shape.name}(BaseModel):")
         if not shape.required and not shape.optional:
             lines.append("    pass")
-        for name in shape.required:
-            lines.append(f"    {name}: NonBlankStr")
-        for name in shape.optional:
-            lines.append(f"    {name}: str | None = None")
+        lines.extend(_request_field_lines(manifest, shape.required, shape.optional))
         lines.append("")
 
     lines.extend(_entity_body_model_lines(manifest))
@@ -157,11 +154,21 @@ def _entity_body_model_lines(manifest: InterfaceManifest) -> list[str]:
         lines.append(f"class {manifest.request_model_name(entity_name)}(BaseModel):")
         if not required and not optional:
             lines.append("    pass")
-        for name in required:
-            lines.append(f"    {name}: NonBlankStr")
-        for name in optional:
-            lines.append(f"    {name}: str | None = None")
+        lines.extend(_request_field_lines(manifest, required, optional))
         lines.append("")
+    return lines
+
+
+def _request_field_lines(manifest: InterfaceManifest, required, optional) -> list[str]:
+    """A request model's fields, typed as the entities declare them (#1876). A required string
+    is ``NonBlankStr`` — blank input is a 422 (#593) — and any other required field its own
+    type; an optional field is nullable with no default value (#1125)."""
+    lines = []
+    for name in required:
+        kind = manifest.field_type(name)
+        lines.append(f"    {name}: {'NonBlankStr' if kind == 'string' else _py_type(kind)}")
+    for name in optional:
+        lines.append(f"    {name}: {_py_type(manifest.field_type(name))} | None = None")
     return lines
 
 
