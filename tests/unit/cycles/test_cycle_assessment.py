@@ -27,12 +27,15 @@ from squadops.cycles.cycle_assessment import (
     RunRecord,
     TerminationRecord,
     assess,
+    attribution_from_events,
+    failure_events,
 )
 from squadops.cycles.failure_attribution import (
     ATTRIBUTION_REGISTRY_VERSION,
     AttributionClass,
     TerminalKind,
 )
+from squadops.cycles.failure_evidence import FailureEvidenceCategory
 from squadops.cycles.llm_usage import RunUsage, UsageTotals
 from squadops.cycles.run_loop_summary import (
     AbsentEmission,
@@ -448,6 +451,129 @@ class TestAttribution:
 
         assert reading.attribution.primary == primary
         assert reading.unrecorded == unrecorded
+
+
+class TestFailureEvents:
+    """SIP-0109 §14 (#1710): ``failure_events`` is the one producer, and the attribution is
+    computed from exactly what it returns."""
+
+    def test_a_completed_cycle_yields_its_failed_checks_then_its_required_unverified_ones(self):
+        """Bug caught: an optional check's non-execution recorded as a failure, or the order
+        moving between runs of the producer (persisted records must be reproducible)."""
+        outcome = _outcome(
+            verdict=RunVerdict.REJECTED,
+            failed=("tests_pass", "lint"),
+            unverified=(
+                UnverifiedCheck("typecheck", NotExecutedReason.MISSING_TOOLING, True),
+                UnverifiedCheck("a11y", NotExecutedReason.MISSING_TOOLING, False),
+            ),
+        )
+        _, evidence = _accepted_cycle()
+
+        events = failure_events(outcome, evidence)
+
+        assert [(e.check_id, e.category, e.not_executed_reason) for e in events] == [
+            ("lint", FailureEvidenceCategory.EXECUTED_AND_FAILED, None),
+            ("tests_pass", FailureEvidenceCategory.EXECUTED_AND_FAILED, None),
+            ("typecheck", None, NotExecutedReason.MISSING_TOOLING),
+        ]
+        assert {e.run_id for e in events} == {"run_i1"}
+
+    @pytest.mark.parametrize(
+        ("kind", "round_failures", "expected"),
+        [
+            (TerminalKind.CORRECTION_TERMINATED, "recorded", [(0, "executed_and_failed")]),
+            (TerminalKind.RUN_TIME_BUDGET_EXCEEDED, "recorded", [(0, "executed_and_failed")]),
+            (TerminalKind.CORRECTION_TERMINATED, None, []),
+            (TerminalKind.COMPLIANCE_BUDGET_EXCEEDED, "recorded", []),
+        ],
+        ids=["correction-terminated", "time-budget", "predates-recording", "compliance-budget"],
+    )
+    def test_a_failed_run_yields_its_round_failures_only_where_its_terminal_reads_them(
+        self, kind, round_failures, expected
+    ):
+        from squadops.cycles.run_loop_summary import RoundFailure
+
+        rounds = (RoundFailure("t-qa", 0, "executed_and_failed", "subject"),)
+        decision = Decision(kind=kind, task_id="t-qa")
+        outcome, evidence = _failed_impl(
+            decision, round_failures=rounds if round_failures else None
+        )
+
+        events = failure_events(outcome, evidence)
+
+        assert [(e.round_index, e.category) for e in events] == expected
+
+    def test_no_events_where_the_attribution_reads_none(self):
+        record = RejectionRecord("art_rej", "run_f1", "progress_plan_review", {"v": 1}, {})
+        outcome, running = _accepted_cycle()
+        running = CycleEvidence(
+            **{
+                **running.__dict__,
+                "runs": (_run("run_i1", 1, "implementation", status="running", seconds=None),),
+            }
+        )
+        assert failure_events(*_gate_refused(record)) == ()
+        assert failure_events(outcome, running) == ()
+        assert failure_events(outcome, CycleEvidence(cycle_id="cyc_1", runs=())) == ()
+
+    def test_the_attribution_is_computed_from_the_events_it_is_given(self):
+        """Bug caught: the attribution re-deriving its failures from the outcome, so persisted
+        events would be decorative and a recomputation from them could silently disagree."""
+        _, evidence = _accepted_cycle()
+        rejected = _outcome(verdict=RunVerdict.REJECTED, failed=("tests_pass",))
+        blocked = _outcome(
+            verdict=RunVerdict.BLOCKED_UNVERIFIED,
+            unverified=(UnverifiedCheck("tests_pass", NotExecutedReason.MISSING_TOOLING, True),),
+        )
+
+        def read(outcome, events):
+            return attribution_from_events(outcome, evidence, events)
+
+        assert read(rejected, failure_events(rejected, evidence)).unrecorded == (
+            UNRECORDED_CHECK_LOCUS,
+        )
+        assert read(rejected, ()).unrecorded == ()
+        assert read(blocked, failure_events(blocked, evidence)).attribution.primary == (
+            AttributionClass.ENVIRONMENT_OR_INFRASTRUCTURE_FAILURE
+        )
+        assert read(blocked, ()).attribution.primary == AttributionClass.UNATTRIBUTED
+
+    @pytest.mark.parametrize(
+        "scenario",
+        ["accepted", "rejected", "blocked", "correction-terminated", "gate-refused"],
+    )
+    def test_assess_reads_the_attribution_through_the_producer(self, scenario):
+        """Wiring: ``assess()`` is what the assessment route calls (``assess_cycle``). Its
+        attribution is the one computed from ``failure_events``, on every terminal shape."""
+        from squadops.cycles.run_loop_summary import RoundFailure
+
+        _, accepted = _accepted_cycle()
+        cases = {
+            "accepted": (_outcome(), accepted),
+            "rejected": (_outcome(verdict=RunVerdict.REJECTED, failed=("tests_pass",)), accepted),
+            "blocked": (
+                _outcome(
+                    verdict=RunVerdict.BLOCKED_UNVERIFIED,
+                    unverified=(
+                        UnverifiedCheck("tests_pass", NotExecutedReason.MISSING_TOOLING, True),
+                    ),
+                ),
+                accepted,
+            ),
+            "correction-terminated": _failed_impl(
+                Decision(kind=TerminalKind.CORRECTION_TERMINATED, task_id="t-qa"),
+                round_failures=(RoundFailure("t-qa", 0, "executed_and_failed", "subject"),),
+            ),
+            "gate-refused": _gate_refused(
+                RejectionRecord("art_rej", "run_f1", "progress_plan_review", {"v": 1}, {})
+            ),
+        }
+        outcome, evidence = cases[scenario]
+
+        assert assess(outcome, evidence, assessor=ASSESSOR).attribution == (
+            attribution_from_events(outcome, evidence, failure_events(outcome, evidence))
+        )
 
 
 class TestIdentity:
