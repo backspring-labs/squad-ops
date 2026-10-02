@@ -1,6 +1,6 @@
 # 2.0.0 plan — Campaign: the squad evolves one app, the crew evolves the framework
 
-**Status:** **adopted, rev 7 (2026-10-01).** On 2026-10-01 the owner accepted the Campaign SIP as
+**Status:** **adopted, rev 8 (2026-10-01).** On 2026-10-01 the owner accepted the Campaign SIP as
 **SIP-0109**, after the crew approved its revision 6, and ruled this plan's seven decisions (§7): "good
 to accept Campaign SIP. good with seven decisions". Rev 2 folded in an external review of rev 1. Rev 3 folded in the crew's design review of rev 2 (Ripley, on #1798), with the owner's rulings on it. Rev 4 folded in the crew's re-review, rev 5 its third review, and rev 6 its fourth (§9). Written at the 1.9.0 cut
 on the owner's word ("can you draft a plan to review and any SIP revisions"). It turns three inputs into
@@ -122,7 +122,7 @@ policy, and a campaign that evolves one app. The plan sequences its parts. The d
 | **recovery** | #1803 | first campaign | restart, duplicate completion, repeated ruling, interrupted promotion, abort. Each guarantee is verified by a fault-injected diagnostic (SIP §12a) |
 | **the calibration cycle** | #1709 | first campaign | every campaign opens with group_run built from scratch: the yardstick for greenfield behaviour |
 | **the brownfield reference scenario** | #1804 | shakeout | a fixed baseline and change request: the yardstick for proposal writing, scoped repair and accumulated acceptance (SIP §11a) |
-| **the evidence package and the morning digest** | #1710 | shakeout (its failure producer: first campaign) | write-once campaign records, readable without the deploy that made them, with every failure under the failure-attribution registry's vocabulary (§3.7); the digest the owner reads |
+| **the evidence package and the morning digest** | #1710 | shakeout (its failure producer: first campaign) | write-once campaign records, readable without the deploy that made them, with every failure under the failure-attribution registry's vocabulary (§3.7). The digest the owner reads **opens with the squad's first pass** at what went wrong: each claim cites its run, cycle and artifact ids and the log excerpt it rests on, a lead rather than a finding (#1719) |
 | **campaign and deploy tags on Prefect runs** | #1728 | cut | with #1720's deploy records |
 | **the request-profile taxonomy** | #316 | first campaign | a continuation that names the next cycle's profile needs one coherent namespace |
 
@@ -186,6 +186,10 @@ The runbook, written close to the first campaign, carries the IDEA's §7–§9 w
 - **The proposal schema** is the IDEA's eight fields, with one change: the prediction names a
   **mechanism**, meaning the logged fact or record field that changes, beside any rate. At a campaign's
   N, a rate alone cannot separate an effect from noise. The verification sets learned that repeatedly.
+- **Frontier models are spent on judgement, not on reading** (#1719). The frontier reader starts from
+  the squad's first pass in the digest, and decides what the squad cannot: whether the diagnosis is
+  right, and whether the cause is the app, the framework, or model variance. The squad and the
+  evidence package do the reading.
 - **The baseline for "it improved" is the calibration cycle**, run on the deploy before and after the
   change. The increments are not the baseline: they change from campaign to campaign.
 - **The first standing subject is feature writing**, the strategy role's proposals, from the ledger
@@ -204,7 +208,7 @@ One control surface, on the existing lanes. No shadow control plane.
 | rule at the increment gate, bound to the proposal version and the accepted tree | the existing gate decision path (`GateDecisionValue`, `src/squadops/cycles/models.py:57-63`) | exists; the binding and the idempotency key are new (#1801) |
 | acquire and release the box lease | the same resource, enforced at every cycle launch | none: new (#1802) |
 | cancel a stalled run | the existing cancel path | exists (#1683, #1700) |
-| an identity for the crew, least privilege | Keycloak roles (SIP-0062) | a new service identity and role. The network path from cloud roles to the runtime API is a security design the owner reviews; its specifics stay out of the public record |
+| an identity for the crew, least privilege | Keycloak roles (SIP-0062) | **two roles, each enforced by the API:** a supervisor role (campaign controls and reads), and a read-only triage role (`cycles:read`). **Crew accounts reach SquadOps through the CLI and API only, with no docker access** (#1719). The network path from cloud roles is a security design the owner reviews; its specifics stay out of the public record |
 | an authoritative record of every control operation: actor, role, reason, target, idempotency key, binding, outcome | **the campaign control log**, transactional with each state change; security audit is a projection | new (#1799). `AuditPort` is fail-open by contract (`src/squadops/ports/audit.py:16-17`), and `AuditEvent` has no role, reason or idempotency key (`src/squadops/auth/models.py:139-153`), so it cannot be the authority |
 | events, and authoritative snapshots after a missed event | the cycle event bus (`src/squadops/ports/events/cycle_event_bus.py`) and the API's reads | the bus exists; no endpoint streams cycle events (only chat streams). Snapshots by polling suffice for the first campaign |
 | tree identity per cycle and per accepted increment | workspace revision ids (#734); SIP-0107 §20's verified identity | exists per cycle; the accepted-tree identity per increment is #1705/#1707's |
@@ -434,6 +438,10 @@ crew's conditions:
 
 ## 9. Revision history
 
+- **Rev 8 (2026-10-01, late evening):** #1719's ideas, revised to match SIP-0109, are folded in:
+  - the digest opens with the squad's first pass;
+  - frontier models are spent on judgement, not on reading;
+  - the crew has two roles, and reaches SquadOps through the CLI and API only.
 - **Rev 7 (2026-10-01, late evening): adopted.** The crew approved the SIP's revision 6 for
   implementation, and the owner:
   - accepted it as **SIP-0109**;
