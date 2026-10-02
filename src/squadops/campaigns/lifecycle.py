@@ -78,6 +78,17 @@ _FORWARD: dict[CampaignState, frozenset[CampaignState]] = {
 def _legal_targets(current: CampaignState) -> frozenset[CampaignState]:
     if current is CampaignState.COMPLETED:
         return frozenset()
+    if current is CampaignState.DRAFT:
+        # Nothing runs in a draft, so there is nothing to pause or escalate: it starts (its
+        # calibration launch, which may be blocked by a busy box) or it is abandoned.
+        return frozenset(
+            {
+                CampaignState.DRAFT,
+                CampaignState.CALIBRATING,
+                CampaignState.LAUNCH_BLOCKED,
+                CampaignState.COMPLETED,
+            }
+        )
     # Every live state may stay put (a control operation that records without moving, such as a
     # second launch-blocked attempt or a proposal run's retry), enter a holding state, or complete.
     targets = set(_FORWARD.get(current, frozenset())) | HOLDING_STATES

@@ -283,3 +283,20 @@ async def test_no_launch_is_drained_after_an_abort(campaigns):
         ),
     )
     assert await campaigns.pending_launch_intents() == []
+
+
+async def test_a_campaigns_launch_intents_read_back_in_order_in_any_state(campaigns, pool):
+    """An abort reads these to cancel what the campaign launched (§12a)."""
+    first = await campaigns.transition(CID, _launching("k-1"))
+    await CampaignLauncher(campaigns, PostgresCycleRegistry(pool=pool), _build, actor="l1").drain()
+    await campaigns.transition(CID, move(S.AWAITING_RULING, "k-2"))
+    await campaigns.transition(
+        CID, move(S.AT_PROPOSAL, "k-3", launch=LaunchRequest(CycleKind.INCREMENT))
+    )
+
+    intents = await campaigns.launch_intents(CID)
+
+    assert [(i.launch_id == first.intent.launch_id, i.state) for i in intents] == [
+        (True, LaunchIntentState.LAUNCHED),
+        (False, LaunchIntentState.PENDING),
+    ]

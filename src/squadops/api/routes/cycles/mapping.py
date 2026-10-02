@@ -264,6 +264,8 @@ def cycle_to_response(
         framework_version=cycle.framework_version,
         framework_git_sha=cycle.framework_git_sha,
         deploy_id=cycle.deploy_id,
+        campaign_id=cycle.campaign_id,
+        kind=cycle.kind,
         notes=cycle.notes,
         status=status.value,
         runs=[run_to_response(r) for r in runs],

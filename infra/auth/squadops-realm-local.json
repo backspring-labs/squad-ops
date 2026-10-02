@@ -49,6 +49,18 @@
         "description": "Agent service identity — status writes via /api/v1/agents/status only",
         "composite": false,
         "clientRole": false
+      },
+      {
+        "name": "campaign-supervisor",
+        "description": "Campaign supervisor (SIP-0109 \u00a713): reads campaigns and cycles, rules at the increment gate, takes and releases the box lease, pauses. Cannot create, resume after a limit, or abort",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "campaign-triage",
+        "description": "Campaign triage (#1719): reads campaigns and cycles, nothing else",
+        "composite": false,
+        "clientRole": false
       }
     ],
     "client": {

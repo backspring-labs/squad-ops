@@ -64,6 +64,12 @@ class MemoryCampaignRegistry(CampaignRegistryPort):
         pending.sort(key=lambda i: i.created_at)
         return copy.deepcopy(pending)
 
+    async def launch_intents(self, campaign_id: str) -> list[LaunchIntent]:
+        self._campaign(campaign_id)
+        found = [i for i in self._intents.values() if i.campaign_id == campaign_id]
+        found.sort(key=lambda i: i.created_at)
+        return copy.deepcopy(found)
+
     async def get_launch_intent(self, launch_id: str) -> LaunchIntent:
         return copy.deepcopy(self._intent(launch_id))
 
