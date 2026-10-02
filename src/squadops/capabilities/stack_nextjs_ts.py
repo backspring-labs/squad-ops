@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING, Any
 from squadops.capabilities.app_invocation import JS_MODULE_LOAD, AppInvocation
 from squadops.capabilities.baseline_stylesheet import BASELINE_CSS
 from squadops.capabilities.rendered_packaging import render_packaging
+from squadops.capabilities.route_paths import path_segments
 from squadops.capabilities.success_status import success_status_for
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, avoids a scaffold import cycle
@@ -108,19 +109,9 @@ def _ts_type(raw: str, declared: Collection[str] = ()) -> str:
 
 
 def _segments(path: str) -> str:
-    """``/runs/{run_id}/join`` → ``runs/[run_id]/join`` (bend 2). Frontend routes arrive in
-    ``:id`` form, so both parameter syntaxes translate to Next's bracket directory."""
-    out = []
-    for seg in path.strip("/").split("/"):
-        if not seg:
-            continue
-        if seg.startswith("{") and seg.endswith("}"):
-            out.append(f"[{seg[1:-1]}]")
-        elif seg.startswith(":"):
-            out.append(f"[{seg[1:]}]")
-        else:
-            out.append(seg)
-    return "/".join(out)
+    """``/runs/{run_id}/join`` → ``runs/[run_id]/join`` (bend 2). A parameter in either of the
+    manifest's spellings (``route_paths``) becomes Next's bracket directory."""
+    return "/".join(f"[{s.name}]" if s.param else s.name for s in path_segments(path))
 
 
 def _dir_shape(directory: str) -> str:
