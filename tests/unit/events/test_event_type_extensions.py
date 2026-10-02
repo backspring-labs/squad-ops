@@ -8,8 +8,8 @@ pytestmark = [pytest.mark.domain_events]
 
 
 class TestSIP0079EventTypes:
-    def test_all_returns_30_items(self):
-        assert len(EventType.all()) == 30
+    def test_all_returns_31_items(self):
+        assert len(EventType.all()) == 31  # SIP-0109 added campaign.transitioned
 
     def test_no_duplicate_values(self):
         all_values = EventType.all()

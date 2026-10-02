@@ -271,3 +271,41 @@ def test_an_invalid_policy_is_a_422_not_a_500(world):
 def test_an_unknown_campaign_is_a_404(world):
     resp = world.client.get("/api/v1/campaigns/cmp_missing")
     assert (resp.status_code, resp.json()["detail"]["error"]["code"]) == (404, "CAMPAIGN_NOT_FOUND")
+
+
+class _Bus:
+    def __init__(self, fail: bool = False) -> None:
+        self.emitted = []
+        self.fail = fail
+
+    def emit(self, event_type, **kwargs) -> None:
+        if self.fail:
+            raise RuntimeError("the bus is down")
+        self.emitted.append((event_type, kwargs))
+
+
+async def test_each_applied_row_is_projected_as_one_event_and_a_replay_as_none(world):
+    """§13's event projection. Bug caught: a replay re-announcing a transition, or a row
+    projected without its operation and states."""
+    bus = _Bus()
+    world.client.app.state.cycle_event_bus = bus
+    _create(world)
+    await world.campaigns.transition("cmp_api000000001", move(CampaignState.CALIBRATING, "k-run"))
+
+    _control(world, "pause", "k-1")
+    _control(world, "pause", "k-1")
+
+    assert [(t, k["payload"]["operation"], k["payload"]["next_state"]) for t, k in bus.emitted] == [
+        ("campaign.transitioned", "create", "draft"),
+        ("campaign.transitioned", "pause", "paused"),
+    ]
+
+
+async def test_a_failing_event_bus_fails_no_operation(world):
+    world.client.app.state.cycle_event_bus = _Bus(fail=True)
+    _create(world)
+    await world.campaigns.transition("cmp_api000000001", move(CampaignState.CALIBRATING, "k-run"))
+
+    resp = _control(world, "pause", "k-1")
+
+    assert resp.status_code == 200 and resp.json()["campaign"]["state"] == "paused"

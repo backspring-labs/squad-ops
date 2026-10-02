@@ -25,6 +25,7 @@ from squadops.cli.commands.artifacts import artifacts_app, baseline_app
 from squadops.cli.commands.assignment import app as assignment_app
 from squadops.cli.commands.auth import auth_app, login, logout
 from squadops.cli.commands.bootstrap import bootstrap
+from squadops.cli.commands.campaigns import app as campaigns_app
 from squadops.cli.commands.cycles import app as cycles_app
 from squadops.cli.commands.doctor import doctor
 from squadops.cli.commands.meta import app as meta_app
@@ -95,6 +96,7 @@ app.command("bootstrap")(bootstrap)
 app.add_typer(projects_app, name="projects")
 app.add_typer(cycles_app, name="cycles")
 app.add_typer(runs_app, name="runs")
+app.add_typer(campaigns_app, name="campaigns")  # SIP-0109 §13
 app.add_typer(profiles_app, name="squad-profiles")
 app.add_typer(artifacts_app, name="artifacts")
 app.add_typer(baseline_app, name="baseline")
