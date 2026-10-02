@@ -264,3 +264,86 @@ def test_an_increment_framing_plan_carries_its_footprint_to_the_plan_author():
     [merge] = [e for e in plan if e.task_type == "governance.merge_plan"]
     assert "- `backend/routes.py`" in merge.inputs["increment_footprint_index"]
     assert "RunListView.jsx" not in merge.inputs["increment_footprint_index"]
+
+
+async def test_the_footprint_names_apart_the_files_the_scaffold_regenerates():
+    """#1868, entered at ``generate_task_plan`` with the real contract the candidate manifest
+    derives — the set the gate refuses a claim on. Shakeout 2's first framing claimed
+    ``backend/models.py`` and ``backend/errors.py`` because the footprint told it to plan tasks
+    for them, while the frozen rule forbade it. Bugs caught: a frozen file taught as one to plan
+    for; or dropped from what the author is shown altogether, so it is not told they change."""
+    from adapters.prompts.factory import create_prompt_asset_source
+    from squadops.capabilities.handlers._plan_authoring import contract_surface_sections
+    from squadops.capabilities.scaffold import InterfaceManifest
+    from squadops.capabilities.scaffold_contract import emit_contract_yaml
+    from squadops.cycles.models import AgentProfileEntry, SquadProfile
+    from squadops.cycles.task_plan import generate_task_plan
+    from squadops.cycles.verification_contract import VerificationContract
+    from squadops.prompts.renderer import RequestTemplateRenderer
+
+    candidate = InterfaceManifest.from_yaml(CANDIDATE)
+    contract = VerificationContract.from_yaml(emit_contract_yaml(candidate))
+    frozen = {ff.path for ff in contract.frozen_files}
+    profile = SquadProfile(
+        profile_id="full",
+        name="full",
+        description="",
+        version=1,
+        created_at=NOW,
+        agents=tuple(
+            AgentProfileEntry(agent_id=a, role=r, model="m", enabled=True, serves_roles=(r,))
+            for a, r in (
+                ("nat", "strat"),
+                ("neo", "dev"),
+                ("eve", "qa"),
+                ("data", "data"),
+                ("max", "lead"),
+            )
+        ),
+    )
+    cycle = _cycle(True)
+    cycle = dataclasses.replace(
+        cycle, execution_overrides={**cycle.execution_overrides, "contract_ref": "art_contract"}
+    )
+    run = Run("run_f", "cyc_inc", 2, "running", "system", "cfg", workload_type="framing")
+
+    plan = generate_task_plan(
+        cycle,
+        run,
+        profile,
+        contract=contract,
+        interface_manifest=candidate,
+        change_request=STORED_REQUEST,
+    )
+    [merge] = [e for e in plan if e.task_type == "governance.merge_plan"]
+    text = await contract_surface_sections(
+        RequestTemplateRenderer(create_prompt_asset_source("filesystem")), merge.inputs
+    )
+
+    assert {"backend/models.py", "backend/errors.py"} <= frozen
+    assert "backend/models.py" not in merge.inputs["increment_footprint_index"]
+    assert "- `backend/routes.py`" in merge.inputs["increment_footprint_index"]
+    assert "- `backend/models.py`" in merge.inputs["increment_regenerated_index"]
+    regenerated = text.split("Files this change touches that the scaffold writes")[1]
+    assert "- `backend/models.py`" in regenerated and "- `backend/errors.py`" in regenerated
+
+
+async def test_the_proposers_are_shown_the_regenerated_files_too():
+    """#1868: the dev and qa proposers render the footprint through their own section. Bug
+    caught: the merger told which files the scaffold writes while the proposers, who author the
+    tasks, are told only the footprint."""
+    from adapters.prompts.factory import create_prompt_asset_source
+    from squadops.capabilities.handlers.planning_tasks import DevelopmentProposePlanTasksHandler
+    from squadops.prompts.renderer import RequestTemplateRenderer
+
+    section = await DevelopmentProposePlanTasksHandler()._footprint_section(
+        RequestTemplateRenderer(create_prompt_asset_source("filesystem")),
+        {
+            "increment_footprint_index": "- `backend/routes.py`",
+            "increment_regenerated_index": "- `backend/models.py`",
+        },
+    )
+
+    assert "- `backend/routes.py`" in section
+    assert "Files this change touches that the scaffold writes" in section
+    assert section.index("- `backend/models.py`") > section.index("scaffold writes")

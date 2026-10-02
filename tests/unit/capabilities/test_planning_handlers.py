@@ -1212,6 +1212,25 @@ class TestProduceManifestRetry:
         assert "total_tasks: N+M+P" in user_prompt
         assert "Put QA handoff last" not in user_prompt
 
+    async def test_an_increments_plan_author_is_not_offered_a_builder(self):
+        """#1868, at the plan-authoring service. A builder's artifacts are packaging, which an
+        increment's footprint never holds, so any builder task is refused at the plan gate
+        (shakeout 2's first framing). Bug caught: the task type offered, and the example teaching
+        it, to the one kind of cycle that can never use it. The control is the test above."""
+        ctx = _make_context(_VALID_MANIFEST_YAML)
+        await self._call_produce(
+            ctx,
+            profile_roles=["dev", "qa", "lead", "builder"],
+            resolved_config={
+                "build_profile": "python_cli_builder",
+                "campaign_proposal": {"proposal_id": "p", "baseline_manifest": "version: 1"},
+            },
+        )
+
+        user_prompt = ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0][1].content
+        assert "builder.assemble" not in user_prompt
+        assert "total_builder_tasks" not in user_prompt
+
     async def test_builder_guidance_absent_when_builder_role_missing(self):
         """A squad without a builder gets no builder row, no builder total, and — since
         #1312 retired the handoff — no ordering guideline about it either."""

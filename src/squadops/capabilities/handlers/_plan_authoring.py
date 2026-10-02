@@ -98,6 +98,12 @@ async def contract_surface_sections(renderer: Any, inputs: dict[str, Any]) -> st
             "footprint_index",
             "increment_footprint_index",
         ),
+        # #1868: of those, the files the scaffold regenerates from the approved manifest.
+        (
+            "request.plan_increment_regenerated_appendix",
+            "regenerated_index",
+            "increment_regenerated_index",
+        ),
         # SIP-0109 §8.1 (#1705 e): each new criterion's own test file, which a qa task writes.
         (
             "request.plan_increment_criteria_appendix",
@@ -118,7 +124,9 @@ async def contract_surface_sections(renderer: Any, inputs: dict[str, Any]) -> st
             continue
         rendered = await renderer.render(template_id, {variable: index})
         sections.append(rendered.content)
-    return "".join(sections)
+    # Each appendix opens with its heading and ends on its list: joined bare, a list's last
+    # line ran into the next heading.
+    return "\n\n".join(sections)
 
 
 async def retry_yaml_call(

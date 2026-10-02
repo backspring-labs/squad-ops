@@ -109,7 +109,17 @@ async def produce_plan(
     # plan). The guideline/example prompt blocks below key off the same
     # judgment: dropping the task type while the prose still teaches it would
     # invite exactly the invalid plan the vocabulary forbids.
-    offer_builder = has_builder and bool(resolved_config.get("build_profile"))
+    #
+    # #1868: never in an increment. A builder's artifacts are packaging, which an increment's
+    # footprint never holds (the accepted tree's packaging is its starting tree), so any builder
+    # task is refused at the plan gate.
+    from squadops.campaigns.increment_tree import increment_baseline
+
+    offer_builder = (
+        has_builder
+        and bool(resolved_config.get("build_profile"))
+        and increment_baseline(resolved_config) is None
+    )
     allowed_task_types = sorted(planner_build_task_types(offer_builder=offer_builder))
     task_types_section = (
         f"Available task_types (use ONLY these; do NOT invent new ones): "

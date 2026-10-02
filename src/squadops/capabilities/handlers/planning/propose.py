@@ -210,13 +210,25 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         task outside it; this tells the author before the refusal does."""
         if self._proposer_role not in ("development", "qa"):
             return ""
-        index = inputs.get("increment_footprint_index")
-        if not index:
-            return ""
-        rendered = await renderer.render(
-            "request.plan_increment_footprint_appendix", {"footprint_index": index}
-        )
-        return rendered.content
+        sections = []
+        for template_id, variable, key in (
+            (
+                "request.plan_increment_footprint_appendix",
+                "footprint_index",
+                "increment_footprint_index",
+            ),
+            # #1868: of those, the files the scaffold regenerates — never claimed.
+            (
+                "request.plan_increment_regenerated_appendix",
+                "regenerated_index",
+                "increment_regenerated_index",
+            ),
+        ):
+            index = inputs.get(key)
+            if index:
+                rendered = await renderer.render(template_id, {variable: index})
+                sections.append(rendered.content)
+        return "\n\n".join(sections)
 
     async def handle(
         self,
