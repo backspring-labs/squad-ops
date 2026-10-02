@@ -991,6 +991,32 @@ proposed in the PR that builds the decision.
    restart while the revision run is in flight re-enters with the cycle's own block. That
    recovery belongs to step 8 (§12a, #1803).
 
+
+### 24e. Starting a campaign and launching its cycles, as built (2026-10-02, #1709, #1799; implementer's reading, not yet ruled)
+
+1. **A `start` operation.**
+   - **What changed:** §13's surface names create, pause, resume and abort, and §17 draws
+     `draft → calibrating`, but no operation made that move. `start` does it. It needs
+     `campaigns:control` (the owner's, per the 10-02 role ruling), acts on a draft only, and
+     writes the calibration cycle's launch intent in its own row.
+   - **Migration 1650** adds it to the operation list.
+2. **The policy names the squad** (`squad_profile`, required). Every launch is run by a squad, and
+   §15's policy named only the request profiles.
+3. **A launch is created by the cycle-create path itself.**
+   - **What changed:** the create route's body became `prepare_cycle`. The route and a campaign's
+     launch both build, preflight and persist a cycle through it.
+   - **The intent carries the whole cycle-create request,** built from the policy when the deciding
+     row is written, so a re-drain creates the cycle the decision named.
+4. **The first run.**
+   - **When drains run:** after every row that writes an intent, and once at startup.
+   - **What each drain reconciles:** every live campaign's launched intents. A launched cycle
+     without a run gets its first one, and a queued first run the process has not started is
+     started.
+   - **So a crash** between the mark and the run, or between the run and its start, is repaired
+     by the next drain, and no cycle gets a second first run.
+5. **Not built: escalating a launch the preflight refuses.** Such a launch stays pending and is
+   logged. Escalating the campaign on it is recovery (§12a, #1803).
+
 ---
 
 ## Revision history

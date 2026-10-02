@@ -34,6 +34,7 @@ def policy(**overrides) -> CampaignPolicy:
         launch_blocked_attempts=6,
         calibration_profile="group-run-react",
         proposal_profile="group-run-proposal",
+        squad_profile="full-38",
     )
     values.update(overrides)
     return CampaignPolicy(**values)

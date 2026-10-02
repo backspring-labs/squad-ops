@@ -59,6 +59,31 @@ def test_a_control_command_sends_its_reason_key_and_expected_state(get_client):
 
 
 @patch("squadops.cli.commands.campaigns._get_client")
+def test_start_names_the_cycle_it_launched(get_client):
+    """Bug caught: a start that reports the campaign moved but not which cycle it launched —
+    the one thing the owner next watches."""
+    client = _client(
+        post={
+            **_RESULT,
+            "campaign": {"campaign_id": "cmp_1", "state": "calibrating"},
+            "entry": {"operation": "start", "prior_state": "draft", "next_state": "calibrating"},
+            "launched_cycles": ["cyc_cal000000001"],
+        }
+    )
+    get_client.return_value = client
+
+    result = runner.invoke(
+        app, ["campaigns", "start", "cmp_1", "--reason", "go", "--idempotency-key", "k-1"]
+    )
+
+    assert result.exit_code == 0, result.output
+    client.post.assert_called_once_with(
+        "/api/v1/campaigns/cmp_1/start", json={"reason": "go", "idempotency_key": "k-1"}
+    )
+    assert "launched cycles: cyc_cal000000001" in result.output
+
+
+@patch("squadops.cli.commands.campaigns._get_client")
 def test_a_key_is_minted_and_printed_when_none_is_given(get_client):
     """A retry can resend what was printed. Bug caught: no key sent, or one the user never sees."""
     client = _client(post=_RESULT)

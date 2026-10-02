@@ -61,13 +61,14 @@ class ControlOperation(StrEnum):
     """A control operation, each one a control-log row (§13).
 
     Every member is an operation the SIP names: the supervision surface's create, pause, resume
-    and abort (§13), a proposal submitted to the increment gate and the ruling on it (§9.2), the
+    and abort (§13), the owner's start (draft → calibrating, launching the calibration cycle), a proposal submitted to the increment gate and the ruling on it (§9.2), the
     continuation decision (§10), the promotion transition (§10), and the launcher marking an
     intent launched (§12b). Later steps add theirs (the lease, launch-blocked) as they gain
     behaviour.
     """
 
     CREATE = "create"
+    START = "start"
     PAUSE = "pause"
     RESUME = "resume"
     ABORT = "abort"
@@ -216,9 +217,11 @@ class CampaignPolicy:
     lease_expiry_s: int
     launch_blocked_interval_s: int
     launch_blocked_attempts: int
-    # The request profiles the calibration cycle and the proposal run use
+    # The request profiles the calibration cycle and the proposal run use, and the squad that
+    # runs every cycle the campaign launches
     calibration_profile: str
     proposal_profile: str
+    squad_profile: str
 
     def __post_init__(self) -> None:
         for f in fields(self):
@@ -236,6 +239,7 @@ class CampaignPolicy:
             "CampaignPolicy",
             calibration_profile=self.calibration_profile,
             proposal_profile=self.proposal_profile,
+            squad_profile=self.squad_profile,
         )
 
 

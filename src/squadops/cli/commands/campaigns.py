@@ -58,6 +58,8 @@ def _show_result(ctx: typer.Context, data: dict, key: str) -> None:
     )
     if data.get("cancelled_cycles"):
         print_success(f"cancelled cycles: {', '.join(data['cancelled_cycles'])}")
+    if data.get("launched_cycles"):
+        print_success(f"launched cycles: {', '.join(data['launched_cycles'])}")
 
 
 @app.command("create")
@@ -164,6 +166,17 @@ def _control(
 _REASON = typer.Option(..., "--reason", help="Why: recorded on the control log")
 _KEY = typer.Option(None, "--idempotency-key", help="Resend a key to replay, not repeat")
 _EXPECTED = typer.Option(None, "--expected-state", help="Refuse if the campaign has moved")
+
+
+@app.command("start")
+def start(
+    ctx: typer.Context,
+    campaign_id: str = typer.Argument(...),
+    reason: str = _REASON,
+    idempotency_key: str | None = _KEY,
+):
+    """Start a draft campaign: its calibration cycle launches (the owner's word)."""
+    _control(ctx, "start", campaign_id, reason, idempotency_key, None)
 
 
 @app.command("pause")

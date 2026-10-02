@@ -132,6 +132,7 @@ _STATE_SLOTS = (
     "reconciliation_task",
     "duty_scheduler",  # SIP-0089 §2.4, opt-in; stopped on shutdown
     "runtime_coordinator",  # SIP-0089 §3.5 (#233) single-writer (D16), shared by executor + scheduler
+    "campaign_launch_task",  # SIP-0109 §12b: the startup drain of pending launch intents
 )
 
 
@@ -494,6 +495,24 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     except Exception as e:
         logger.warning("LLM port not registered (non-fatal): %s", e)
 
+    # SIP-0109 §12b: a campaign's launches become cycles by the cycle-create path itself.
+    from squadops.api.campaign_launch import CampaignLaunchService
+    from squadops.api.routes.cycles.cycles import CreationPorts
+
+    state.campaign_launch = CampaignLaunchService(
+        campaigns=campaign_registry,
+        creation=CreationPorts(
+            project_registry=project_registry,
+            squad_profile=squad_profile,
+            cycle_registry=cycle_registry,
+            deploy_registry=deploy_registry,
+            llm=llm_adapter,
+            artifact_vault=artifact_vault,
+        ),
+        flow_executor=flow_executor,
+        event_bus=event_bus,
+    )
+
 
 async def _init_monitoring(state, config, pool) -> None:
     """Initialize health checker and chat ports."""
@@ -615,6 +634,9 @@ async def _startup(app: FastAPI) -> None:
     await _init_cycle_subsystem(state, config, state.pool)
     await _init_monitoring(state, config, state.pool)
     await _init_duty_scheduler(state, config, state.pool)
+    # SIP-0109 §12b: an intent a crash left pending is launched now. Every subsystem is up, and
+    # the startup sweeps ran before the executor existed.
+    state.campaign_launch_task = asyncio.create_task(state.campaign_launch.drain())
 
 
 async def _shutdown(app: FastAPI) -> None:

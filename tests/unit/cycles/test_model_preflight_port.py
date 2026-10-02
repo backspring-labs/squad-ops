@@ -7,8 +7,6 @@ was never caught before dispatch.
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import pytest
 
 from squadops.api.routes.cycles.cycles import _pulled_model_names
@@ -31,20 +29,20 @@ class _Port:
         return self._models
 
 
-def _request(port):
-    """A request whose app holds ``port`` — the app's own port (#1448), not a process global."""
-    return SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(llm_port=port)))
-
-
 async def test_any_provider_declaring_listing_is_verified():
     port = _Port(listing=True, models=[ModelInfo(name="qwen3.8:27b"), ModelInfo(name="")])
-    assert await _pulled_model_names(_request(port)) == ["qwen3.8:27b"]
+    assert await _pulled_model_names(port) == ["qwen3.8:27b"]
 
 
 async def test_a_provider_without_listing_is_unverifiable_not_empty():
     """``None`` warns-and-allows; ``[]`` would read as *no models present* and block."""
-    assert await _pulled_model_names(_request(_Port(listing=False))) is None
+    assert await _pulled_model_names(_Port(listing=False)) is None
 
 
 async def test_an_unreachable_backend_is_unverifiable():
-    assert await _pulled_model_names(_request(_Port(listing=True, fail=True))) is None
+    assert await _pulled_model_names(_Port(listing=True, fail=True)) is None
+
+
+async def test_no_llm_port_is_unverifiable():
+    """The create route reads an unwired port as ``None``; a campaign's launch may too."""
+    assert await _pulled_model_names(None) is None
