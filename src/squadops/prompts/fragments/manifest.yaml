@@ -89,6 +89,11 @@ fragments:
   layer: task_type
   roles:
   - qa
+- fragment_id: task_type.strategy.propose_increment
+  path: shared/task_type/task_type.strategy.propose_increment.md
+  layer: task_type
+  roles:
+  - strat
 - fragment_id: task_type.development.propose_plan_tasks
   path: shared/task_type/task_type.development.propose_plan_tasks.md
   layer: task_type

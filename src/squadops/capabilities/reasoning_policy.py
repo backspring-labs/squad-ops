@@ -74,6 +74,7 @@ REASONING_BY_TASK_TYPE: dict[str, str] = {
     TaskType.DEVELOPMENT_AUTHOR_MANIFEST: ReasoningLevel.HIGH,
     TaskType.STRATEGY_ANALYZE_PRD: ReasoningLevel.HIGH,
     TaskType.STRATEGY_FRAME_OBJECTIVE: ReasoningLevel.HIGH,
+    TaskType.STRATEGY_PROPOSE_INCREMENT: ReasoningLevel.HIGH,
     TaskType.DEVELOPMENT_DESIGN: ReasoningLevel.HIGH,
     TaskType.DEVELOPMENT_DESIGN_PLAN: ReasoningLevel.HIGH,
     TaskType.QA_DEFINE_TEST_STRATEGY: ReasoningLevel.HIGH,

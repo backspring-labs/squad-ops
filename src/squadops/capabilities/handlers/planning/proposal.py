@@ -1,0 +1,269 @@
+"""The proposal run's one task: the strategy role proposes the next increment (SIP-0109 §9.1; #1706).
+
+``strategy.propose_increment`` is the only task that authors a change request (§3: only the
+strategy role proposes). It is shown the accepted manifest verbatim, the objective and its
+allowed scope, and the criteria earlier increments froze; it emits ``change_request.yaml``; and
+the rails (``squadops.campaigns.change_request.validate_proposal``) judge it inside the task. A
+refusal returns every reason to the model for a revision, up to ``proposal_max_attempts``. A
+proposal still refused after them fails the task, and the run's ordinary retry follows (§9.1:
+then ``proposal_failed``). A refused proposal is never trimmed into an accepted one.
+
+The proposal's context comes from the cycle's configuration (``campaign_proposal``), by id:
+the accepted manifest is fetched from the artifact vault by its artifact id, so the request
+the campaign launched names exactly which tree it proposes against.
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import logging
+import time
+from functools import partial
+from typing import TYPE_CHECKING, Any
+
+import yaml
+
+from squadops.campaigns.change_request import (
+    ProposalContext,
+    ProposalVerdict,
+    validate_proposal,
+)
+from squadops.capabilities.handlers.base import HandlerEvidence, HandlerResult
+from squadops.capabilities.handlers.planning.base import _PlanningTaskHandler
+from squadops.tasks.task_types import TaskType
+
+if TYPE_CHECKING:
+    from squadops.capabilities.handlers.context import ExecutionContext
+
+logger = logging.getLogger(__name__)
+
+CHANGE_REQUEST_FILENAME = "change_request.yaml"
+CHANGE_REQUEST_ARTIFACT_TYPE = "change_request"
+
+#: The authoring stages' shared default: the manifest author spends the same two attempts when a
+#: profile configures neither.
+_PROPOSAL_MAX_ATTEMPTS_DEFAULT = 2
+
+
+class ProposalContextMissing(ValueError):
+    """The cycle's configuration does not carry the campaign's proposal context."""
+
+
+def proposal_context_from(resolved_config: dict, baseline_manifest: str) -> ProposalContext:
+    """The rails' context from the cycle's ``campaign_proposal`` block and the fetched manifest."""
+    block = resolved_config.get("campaign_proposal")
+    if not isinstance(block, dict):
+        raise ProposalContextMissing(
+            "the cycle carries no campaign_proposal block: a proposal run is launched by a "
+            "campaign, which names the accepted tree and the objective it proposes against"
+        )
+    try:
+        objective = block["objective"]
+        return ProposalContext(
+            proposal_id=str(block["proposal_id"]),
+            version=int(block["version"]),
+            baseline_tree=str(block["baseline_tree"]),
+            baseline_manifest=baseline_manifest,
+            expected_stack=str(resolved_config.get("build_profile") or ""),
+            allowed_scope=tuple(str(s) for s in objective["allowed_scope"]),
+            prior_criteria=tuple(str(c) for c in block.get("prior_criteria") or ()),
+        )
+    except (KeyError, TypeError, ValueError) as e:
+        raise ProposalContextMissing(f"campaign_proposal is incomplete: {e!r}") from e
+
+
+class StrategyProposeIncrementHandler(_PlanningTaskHandler):
+    """Proposal handler: author the typed change request for the next increment."""
+
+    _handler_name = "strategy_propose_increment_handler"
+    _task_type = TaskType.STRATEGY_PROPOSE_INCREMENT
+    _role = "strat"
+    _artifact_name = CHANGE_REQUEST_FILENAME
+    _request_template_id = "request.strategy_propose_increment"
+
+    async def handle(self, context: ExecutionContext, inputs: dict[str, Any]) -> HandlerResult:
+        from squadops.capabilities.handlers._plan_authoring import retry_yaml_call
+
+        start_time = time.perf_counter()
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is None:
+            return self._failure(
+                start_time, inputs, f"{self._handler_name} requires request_renderer"
+            )
+        resolved_config = inputs.get("resolved_config") or {}
+        block = resolved_config.get("campaign_proposal") or {}
+        try:
+            # The context first: without it there is no manifest to fetch, and saying so
+            # names the real absence rather than the vault's.
+            proposal_context_from(resolved_config, "")
+            baseline = await _baseline_manifest(
+                inputs.get("artifact_vault"), block.get("baseline_manifest_artifact_id")
+            )
+            proposal_context = proposal_context_from(resolved_config, baseline)
+        except ProposalContextMissing as e:
+            return self._failure(start_time, inputs, str(e))
+
+        rendered = await renderer.render(
+            self._request_template_id, _render_variables(block, proposal_context)
+        )
+        assembled = context.ports.prompt_service.assemble(
+            role=context.role_id,  # SIP-0108 §10m: the identity layer is what the process IS
+            hook="agent_start",
+            task_type=self._task_type,
+        )
+
+        verdicts: list[ProposalVerdict] = []
+
+        async def parse_and_validate(text: str | None) -> tuple[Any, str | None]:
+            if not text or not text.strip():
+                return None, (
+                    f"No `{CHANGE_REQUEST_FILENAME}` block was found in your response. Emit "
+                    "exactly one fenced block whose header carries that filename."
+                )
+            try:
+                authored = yaml.safe_load(text)
+            except yaml.YAMLError as e:
+                return None, f"`{CHANGE_REQUEST_FILENAME}` is not valid YAML: {e}"
+            verdict = validate_proposal(authored, proposal_context)
+            verdicts.append(verdict)
+            if verdict.accepted:
+                return verdict, None
+            feedback = await renderer.render(
+                "request.change_request_revision_feedback",
+                {"refusals": "\n".join(f"- [{r.kind}] {r.detail}" for r in verdict.refusals)},
+            )
+            return None, feedback.content
+
+        accepted, _last_yaml, last_error = await retry_yaml_call(
+            call=partial(self._llm_call, context, inputs=inputs, started=start_time),
+            chat_kwargs=self._build_chat_kwargs(inputs),
+            system_prompt=assembled.content,
+            user_prompt=rendered.content,
+            parse_and_validate=parse_and_validate,
+            max_attempts=int(
+                resolved_config.get("proposal_max_attempts", _PROPOSAL_MAX_ATTEMPTS_DEFAULT)
+            ),
+            handler_name=self._handler_name,
+        )
+        if accepted is None:
+            refused = verdicts[-1].refusals if verdicts else ()
+            reasons = "; ".join(f"[{r.kind}] {r.detail}" for r in refused) or last_error
+            return self._failure(
+                start_time,
+                inputs,
+                f"the proposal was refused after its revision budget (§9.1): {reasons}",
+            )
+        return self._success(start_time, inputs, accepted, assembled, rendered)
+
+    def _success(
+        self,
+        start_time: float,
+        inputs: dict[str, Any],
+        verdict: ProposalVerdict,
+        assembled: Any,
+        rendered: Any,
+    ) -> HandlerResult:
+        request = verdict.change_request
+        document = yaml.safe_dump(
+            json_safe(dataclasses.asdict(request)), sort_keys=False, allow_unicode=True
+        )
+        outputs: dict[str, Any] = {
+            "summary": (
+                f"[{self._role}] proposed {request.proposal_id} v{request.version} "
+                f"({request.kind}, {len(request.criteria)} criteria, "
+                f"{len(request.footprint)} footprint entries) — hash {request.content_hash[:12]}"
+            ),
+            "role": self._role,
+            "artifacts": [
+                {
+                    "name": CHANGE_REQUEST_FILENAME,
+                    "content": document,
+                    "media_type": "text/yaml",
+                    "type": CHANGE_REQUEST_ARTIFACT_TYPE,
+                }
+            ],
+            "change_request": {
+                "proposal_id": request.proposal_id,
+                "version": request.version,
+                "content_hash": request.content_hash,
+                "baseline_tree": request.baseline_tree,
+            },
+            "prompt_provenance": {
+                "system_prompt_bundle_hash": assembled.assembly_hash,
+                "request_template_id": rendered.template_id,
+                "request_template_version": rendered.template_version,
+                "request_render_hash": rendered.render_hash,
+                "prompt_environment": "production",
+            },
+        }
+        return HandlerResult(
+            success=True,
+            outputs=outputs,
+            _evidence=HandlerEvidence.create(
+                handler_name=self._handler_name,
+                task_type=self._task_type,
+                duration_ms=(time.perf_counter() - start_time) * 1000,
+                inputs_hash=self._hash_dict(inputs),
+                outputs_hash=self._hash_dict(outputs),
+            ),
+        )
+
+    def _failure(self, start_time: float, inputs: dict[str, Any], error: str) -> HandlerResult:
+        logger.warning("%s: %s", self._handler_name, error)
+        return HandlerResult(
+            success=False,
+            outputs={},
+            _evidence=HandlerEvidence.create(
+                handler_name=self._handler_name,
+                task_type=self._task_type,
+                duration_ms=(time.perf_counter() - start_time) * 1000,
+                inputs_hash=self._hash_dict(inputs),
+            ),
+            error=error,
+        )
+
+
+async def _baseline_manifest(vault: Any, artifact_id: Any) -> str:
+    if vault is None or not artifact_id:
+        raise ProposalContextMissing(
+            "the accepted manifest cannot be read: the proposal needs the artifact vault and "
+            "campaign_proposal.baseline_manifest_artifact_id"
+        )
+    try:
+        _ref, content = await vault.retrieve(str(artifact_id))
+    except Exception as e:  # noqa: BLE001 — any vault failure is the same refusal to start
+        raise ProposalContextMissing(
+            f"the accepted manifest {artifact_id} is unreadable: {e}"
+        ) from e
+    return content.decode("utf-8") if isinstance(content, bytes) else str(content)
+
+
+def _render_variables(block: dict, context: ProposalContext) -> dict[str, str]:
+    objective = block.get("objective") or {}
+    variables = {
+        "objective_statement": str(objective.get("statement", "")),
+        "objective_measurement": str(objective.get("measurement", "")),
+        "allowed_scope_lines": "\n".join(f"- `{s}`" for s in context.allowed_scope),
+        "baseline_manifest": context.baseline_manifest.strip(),
+        "prior_criteria_lines": (
+            "\n".join(f"- `{c}`" for c in context.prior_criteria)
+            or "- none yet: this is the first increment after calibration"
+        ),
+    }
+    note = str(block.get("supervisor_note") or "").strip()
+    if note:
+        variables["supervisor_note_section"] = (
+            "\n## The supervisor returned your last version for revision\n\n" + note + "\n"
+        )
+    return variables
+
+
+def json_safe(value: Any) -> Any:
+    """Enums to their values, tuples to lists: the document's YAML carries plain data."""
+    if isinstance(value, dict):
+        return {k: json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [json_safe(v) for v in value]
+    if hasattr(value, "value") and isinstance(value.value, str):
+        return value.value
+    return value
