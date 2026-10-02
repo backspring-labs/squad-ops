@@ -25,7 +25,12 @@ import pytest
 pytestmark = [pytest.mark.domain_orchestration]
 
 REPO = Path(__file__).resolve().parents[3]
-MODULES = ("squadops.cycles.cycle_assessment", "squadops.campaigns.continuation")
+MODULES = (
+    "squadops.cycles.cycle_assessment",
+    "squadops.campaigns.continuation",
+    # SIP-0109 §9.3: the lease and the box's quietness; the caller reads the engines.
+    "squadops.campaigns.box",
+)
 
 #: Prefixes the closure must not reach: stores and their ports, the wiring, the network, the
 #: clock and the process environment.

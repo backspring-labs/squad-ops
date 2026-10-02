@@ -1,0 +1,122 @@
+"""The box: who holds it, and whether it is quiet (SIP-0109 §9.3; #1802).
+
+Pure decisions. One owner of the Spark at a time, the squad or the supervisor, held as a lease
+with an expiry. Every cycle launch and run start refuses while the supervisor holds it, and every
+launch also needs a quiet box: every model an engine has loaded is a model the active deploy
+record declares (#1720). An engine that cannot be read is not quiet: the check fails closed.
+
+What is read, and by whom, is the caller's: the deploy record from the registry, each engine's
+loaded-model listing through its port. This module never reads anything.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable
+from dataclasses import dataclass
+from datetime import datetime
+from enum import StrEnum
+
+
+class LeaseHolder(StrEnum):
+    SQUAD = "squad"
+    SUPERVISOR = "supervisor"
+
+
+@dataclass(frozen=True)
+class BoxLease:
+    """The box's one lease. The squad's holds no expiry; the supervisor's always does, so a
+    supervisor that crashes cannot hold the box forever (§9.3)."""
+
+    holder: LeaseHolder
+    held_by: str
+    acquired_at: datetime
+    expires_at: datetime | None = None
+    #: The campaign whose checkpoint the supervisor holds the box for.
+    campaign_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if (self.holder is LeaseHolder.SUPERVISOR) != (self.expires_at is not None):
+            raise ValueError("a supervisor's lease, and only one, carries an expiry")
+
+    def supervisor_holds(self, now: datetime) -> bool:
+        return self.holder is LeaseHolder.SUPERVISOR and now < self.expires_at
+
+    def expired(self, now: datetime) -> bool:
+        return self.holder is LeaseHolder.SUPERVISOR and now >= self.expires_at
+
+
+@dataclass(frozen=True)
+class Model:
+    """A model by name, and by digest where its engine reports one."""
+
+    name: str
+    digest: str | None = None
+
+    def matches(self, declared: Model) -> bool:
+        if self.name != declared.name:
+            return False
+        return self.digest is None or declared.digest is None or self.digest == declared.digest
+
+
+@dataclass(frozen=True)
+class EngineReading:
+    """One engine's loaded models, or ``None`` when it could not be read (and ``error`` says
+    why)."""
+
+    engine: str
+    loaded: tuple[Model, ...] | None
+    error: str = ""
+
+
+@dataclass(frozen=True)
+class Quietness:
+    quiet: bool
+    reasons: tuple[str, ...] = ()
+
+
+def box_quietness(declared: Iterable[Model], readings: Iterable[EngineReading]) -> Quietness:
+    """Quiet when every engine was read and every model it has loaded is declared by the active
+    deploy record. Every reason is reported, not the first."""
+    declared = tuple(declared)
+    reasons: list[str] = []
+    for reading in readings:
+        if reading.loaded is None:
+            reasons.append(f"engine {reading.engine} could not be read: {reading.error or '?'}")
+            continue
+        for model in reading.loaded:
+            if not any(model.matches(d) for d in declared):
+                reasons.append(
+                    f"engine {reading.engine} has {model.name}"
+                    + (f" ({model.digest[:12]})" if model.digest else "")
+                    + " loaded, which the deploy record does not declare"
+                )
+    return Quietness(not reasons, tuple(reasons))
+
+
+class LaunchRefusal(StrEnum):
+    SUPERVISOR_HOLDS_THE_BOX = "supervisor_holds_the_box"
+    BOX_NOT_QUIET = "box_not_quiet"
+
+
+@dataclass(frozen=True)
+class LaunchVerdict:
+    refusal: LaunchRefusal | None
+    reasons: tuple[str, ...] = ()
+
+    @property
+    def allowed(self) -> bool:
+        return self.refusal is None
+
+
+def launch_verdict(lease: BoxLease | None, quietness: Quietness, now: datetime) -> LaunchVerdict:
+    """Whether a cycle may launch on the box (§9.3). The lease is read first: a supervisor
+    holding the box refuses whatever the box reads. An expired supervisor lease no longer holds
+    it, but the launch still needs a quiet box, so a crew model left resident refuses it."""
+    if lease is not None and lease.supervisor_holds(now):
+        return LaunchVerdict(
+            LaunchRefusal.SUPERVISOR_HOLDS_THE_BOX,
+            (f"the supervisor ({lease.held_by}) holds the box until {lease.expires_at:%H:%M:%SZ}",),
+        )
+    if not quietness.quiet:
+        return LaunchVerdict(LaunchRefusal.BOX_NOT_QUIET, quietness.reasons)
+    return LaunchVerdict(None)
