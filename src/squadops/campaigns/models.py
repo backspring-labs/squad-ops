@@ -1,0 +1,364 @@
+"""Campaign domain models (SIP-0109 §15, §17).
+
+Frozen dataclasses beside ``Cycle`` and ``Run``. This module holds the shapes that step 1 (#1799)
+gives behaviour: the campaign, its objective and policy, its lifecycle states, the control-log
+entry and the launch intent. The shapes later steps give behaviour (the change request, the
+increment ruling, the box lease, the proposal ledger, the frozen criterion, the failure record, the
+continuation decision, the verifier bundle) arrive with those steps, so none of them is a shape
+without a consumer.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field, fields
+from datetime import datetime
+from enum import StrEnum
+
+# =============================================================================
+# Enums
+# =============================================================================
+
+
+class CampaignState(StrEnum):
+    """The campaign's lifecycle state (§17). The legal moves between them are in ``lifecycle``."""
+
+    DRAFT = "draft"
+    CALIBRATING = "calibrating"
+    AT_PROPOSAL = "at_proposal"
+    AWAITING_RULING = "awaiting_ruling"
+    BUILDING = "building"
+    EVALUATING = "evaluating"
+    PROMOTING = "promoting"
+    REPAIRING = "repairing"
+    RETRYING = "retrying"
+    LAUNCH_BLOCKED = "launch_blocked"
+    PAUSED = "paused"
+    ESCALATED = "escalated"
+    COMPLETED = "completed"
+
+
+class CampaignOutcome(StrEnum):
+    """How a completed campaign ended (§17: ``completed (success | failure | aborted | exhausted)``)."""
+
+    SUCCESS = "success"
+    FAILURE = "failure"
+    ABORTED = "aborted"
+    EXHAUSTED = "exhausted"
+
+
+class CycleKind(StrEnum):
+    """Why a campaign launched a cycle: ``cycles.kind`` (§16). A cycle no campaign launched has none."""
+
+    CALIBRATION = "calibration"
+    INCREMENT = "increment"
+    REPAIR = "repair"
+    RETRY = "retry"
+
+
+class ControlOperation(StrEnum):
+    """A control operation, each one a control-log row (§13).
+
+    Every member is an operation the SIP names: the supervision surface's create, pause, resume
+    and abort (§13), a ruling at the increment gate (§9.2), the continuation decision (§10), the
+    promotion transition (§10), and the launcher marking an intent launched (§12b). Later steps add
+    theirs (the lease, launch-blocked) as they gain behaviour.
+    """
+
+    CREATE = "create"
+    PAUSE = "pause"
+    RESUME = "resume"
+    ABORT = "abort"
+    RULE = "rule"
+    DECIDE = "decide"
+    PROMOTE = "promote"
+    MARK_LAUNCHED = "mark_launched"
+
+    @property
+    def records_only(self) -> bool:
+        """An operation that records a fact without moving the campaign's state.
+
+        It is the one kind accepted on a completed campaign: a launch the launcher had already
+        made before an abort committed is still a cycle that exists, and its record must say so.
+        """
+        return self is ControlOperation.MARK_LAUNCHED
+
+
+class ControlOutcome(StrEnum):
+    """Whether a control operation took effect. A refused operation is recorded too (§12a)."""
+
+    APPLIED = "applied"
+    REFUSED = "refused"
+
+
+class RefusalReason(StrEnum):
+    """Why a control operation was refused. Each refusal is a control-log row naming one."""
+
+    #: The idempotency key was already used by an applied operation with different content.
+    CONFLICTING_IDEMPOTENCY_KEY = "conflicting_idempotency_key"
+    #: The caller acted on a state the campaign is no longer in.
+    STALE_STATE = "stale_state"
+    #: The lifecycle has no such move from the current state (§17).
+    ILLEGAL_TRANSITION = "illegal_transition"
+    #: The campaign has completed: nothing but a record-only operation follows (§12a, abort).
+    CAMPAIGN_COMPLETED = "campaign_completed"
+
+
+class LaunchIntentState(StrEnum):
+    """A launch intent's state (§15): written ``pending``, marked ``launched`` with its cycle."""
+
+    PENDING = "pending"
+    LAUNCHED = "launched"
+
+
+# =============================================================================
+# Exceptions
+# =============================================================================
+
+
+class CampaignError(Exception):
+    """Base exception for campaign domain errors."""
+
+
+class CampaignNotFoundError(CampaignError):
+    """Raised when a campaign_id cannot be found."""
+
+
+class CampaignExistsError(CampaignError):
+    """Raised when a campaign is created under an id another creation already holds."""
+
+
+class LaunchIntentNotFoundError(CampaignError):
+    """Raised when a launch_id cannot be found."""
+
+
+class ControlOperationRefused(CampaignError):
+    """A control operation the registry refused, and recorded. ``entry`` is the refusal's row."""
+
+    def __init__(self, entry: ControlLogEntry) -> None:
+        self.entry = entry
+        super().__init__(
+            f"{entry.operation} on campaign {entry.campaign_id} refused: {entry.refusal}"
+        )
+
+
+# =============================================================================
+# The campaign
+# =============================================================================
+
+
+def _require_text(owner: str, **values: str | None) -> None:
+    for name, value in values.items():
+        if not value or not value.strip():
+            raise ValueError(f"{owner}.{name} is required")
+
+
+@dataclass(frozen=True)
+class CampaignObjective:
+    """What the campaign is for (§15): the statement, the scope it may touch, how success reads."""
+
+    statement: str
+    allowed_scope: tuple[str, ...]
+    measurement: str
+
+    def __post_init__(self) -> None:
+        _require_text("CampaignObjective", statement=self.statement, measurement=self.measurement)
+
+
+#: Policy fields that must be at least 1: a campaign with no cycles, a zero ruling bound or a zero
+#: interval cannot run. The others are counts a campaign may set to zero (no repair cycles, say).
+_POSITIVE_POLICY_FIELDS = frozenset(
+    {
+        "max_cycles",
+        "max_elapsed_s",
+        "budget_tokens",
+        "crew_ruling_bound_s",
+        "owner_ruling_bound_s",
+        "lease_expiry_s",
+        "launch_blocked_interval_s",
+        "launch_blocked_attempts",
+    }
+)
+
+
+@dataclass(frozen=True)
+class CampaignPolicy:
+    """The campaign's limits and bounds (§9.5, §15). Every field is required: a limit is set from
+    its basis and recorded, never defaulted (the 2.0 plan's limits ruling)."""
+
+    # §9.5's limits
+    max_cycles: int
+    max_elapsed_s: int
+    budget_tokens: int
+    max_repair_cycles_per_increment: int
+    max_retry_cycles_per_increment: int
+    max_proposal_run_retries: int
+    max_proposal_revisions: int
+    max_rejected_proposals_in_row: int
+    max_unaccepted_increments: int
+    # §9.2's ruling bounds
+    crew_ruling_bound_s: int
+    owner_ruling_bound_s: int
+    # §9.3's lease and launch-blocked handling
+    lease_expiry_s: int
+    launch_blocked_interval_s: int
+    launch_blocked_attempts: int
+    # The request profiles the calibration cycle and the proposal run use
+    calibration_profile: str
+    proposal_profile: str
+
+    def __post_init__(self) -> None:
+        for f in fields(self):
+            if (
+                f.type != "int"
+            ):  # annotations are strings under `from __future__ import annotations`
+                continue
+            value = getattr(self, f.name)
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ValueError(f"CampaignPolicy.{f.name} must be an integer, got {value!r}")
+            floor = 1 if f.name in _POSITIVE_POLICY_FIELDS else 0
+            if value < floor:
+                raise ValueError(f"CampaignPolicy.{f.name} must be >= {floor}, got {value}")
+        _require_text(
+            "CampaignPolicy",
+            calibration_profile=self.calibration_profile,
+            proposal_profile=self.proposal_profile,
+        )
+
+
+@dataclass(frozen=True)
+class Campaign:
+    """A campaign (§15). Its ``state`` is always its last applied control-log row's next state:
+    both are written in one transaction, so on restart the row read is the state (§12a)."""
+
+    campaign_id: str
+    project_id: str
+    objective: CampaignObjective
+    policy: CampaignPolicy
+    state: CampaignState
+    created_at: datetime
+    created_by: str
+    updated_at: datetime
+    outcome: CampaignOutcome | None = None
+
+    def __post_init__(self) -> None:
+        if (self.state is CampaignState.COMPLETED) != (self.outcome is not None):
+            raise ValueError(
+                f"campaign {self.campaign_id}: an outcome is set exactly when it is completed "
+                f"(state {self.state}, outcome {self.outcome})"
+            )
+
+
+# =============================================================================
+# The control log and launch intents
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class ControlLogEntry:
+    """One control-log row (§13): written in the transaction of the state change it records.
+
+    A refused operation is a row too, with ``outcome = refused``, its ``refusal``, and the state
+    unchanged. ``seq`` orders a campaign's rows; ``launch_id`` names the intent this row wrote or
+    marked, when it did.
+    """
+
+    entry_id: str
+    campaign_id: str
+    seq: int
+    operation: ControlOperation
+    actor: str
+    actor_role: str
+    reason: str
+    target: str | None
+    idempotency_key: str
+    request_hash: str
+    binding: dict
+    outcome: ControlOutcome
+    refusal: RefusalReason | None
+    prior_state: CampaignState | None
+    next_state: CampaignState
+    committed_at: datetime
+    launch_id: str | None = None
+
+
+@dataclass(frozen=True)
+class LaunchRequest:
+    """The cycle a decision launches (§12b): its kind and the inputs it is created from."""
+
+    cycle_kind: CycleKind
+    cycle_request: dict = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class LaunchIntent:
+    """An outbox row (§12b, §15): written with its decision, drained by the launcher.
+
+    ``launch_id`` is derived from the deciding row's id. The launcher creates the cycle with
+    ``source_launch_id = launch_id``, then marks the intent ``launched`` with that cycle's id in a
+    control-log transition of its own.
+    """
+
+    launch_id: str
+    campaign_id: str
+    decision_entry_id: str
+    cycle_kind: CycleKind
+    cycle_request: dict
+    state: LaunchIntentState
+    created_at: datetime
+    cycle_id: str | None = None
+    launched_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class CampaignTransition:
+    """A control operation as its caller asks for it.
+
+    ``next_state`` is ``None`` exactly for a record-only operation. ``expected_state`` is the
+    state the caller acted on; when the campaign has moved since, the operation is refused as
+    stale. ``launch`` writes a launch intent in the same transaction (§12b).
+    """
+
+    operation: ControlOperation
+    actor: str
+    actor_role: str
+    reason: str
+    idempotency_key: str
+    next_state: CampaignState | None
+    outcome: CampaignOutcome | None = None
+    target: str | None = None
+    binding: dict = field(default_factory=dict)
+    expected_state: CampaignState | None = None
+    launch: LaunchRequest | None = None
+
+    def __post_init__(self) -> None:
+        _require_text(
+            "CampaignTransition",
+            actor=self.actor,
+            actor_role=self.actor_role,
+            reason=self.reason,
+            idempotency_key=self.idempotency_key,
+        )
+        if self.operation is ControlOperation.CREATE:
+            raise ValueError("a campaign is created by create_campaign, not by a transition")
+        if self.operation.records_only != (self.next_state is None):
+            raise ValueError(
+                f"{self.operation}: a record-only operation, and only one, leaves next_state unset"
+            )
+        if (self.next_state is CampaignState.COMPLETED) != (self.outcome is not None):
+            raise ValueError(
+                "an outcome is given exactly when the transition completes the campaign"
+            )
+        if self.launch is not None and self.operation.records_only:
+            raise ValueError(f"{self.operation} records a fact; it cannot launch")
+
+
+@dataclass(frozen=True)
+class TransitionResult:
+    """What an applied (or replayed) control operation left: its row, the campaign after it, and
+    the launch intent it wrote or marked. ``replayed`` is true when the idempotency key had
+    already been applied with the same content, and nothing new happened."""
+
+    entry: ControlLogEntry
+    campaign: Campaign
+    intent: LaunchIntent | None
+    replayed: bool
