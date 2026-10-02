@@ -3,7 +3,8 @@
 # Generated from 1-9-0-post-set-fastapi-react.yaml, whose roll cyc_7a4b7a6fbf0e is the baseline (accepted
 # 21 of 21, zero correction rounds, 1-9-0-preregistration.md §12). What changed: the name, the records home
 # and the notes; the deploy pins removed (a new deploy, and this is not a counted roll); and loaded checks
-# for what the deploy adds: SIP-0109 step 1's storage (#1808, #1809) and #1797's route syntax.
+# for what the deploy adds: SIP-0109 step 1's storage (#1808, #1809), #1797's route syntax, and, from the
+# second 2.0 deploy, step 1a's failure records (#1813) and #1785's jsdom prompts.
 # The 1.9 post-set config follows, as carried.
 #
 # 1.9 post-set run — fastapi-react (pre-registration §12), on the post-set deploy.
@@ -343,6 +344,12 @@ loaded_checks:
     # with no parameter is unchanged.
     from squadops.capabilities.stack_fastapi_react import _router_path
     print("1797", _router_path("/runs/{run_id}"), _router_path("/runs"))
+    # 1813: a cycle's ending persists its failure records (SIP-0109 §14, §24a). The producer's
+    # records carry one unaskable record per unread input; control: no input, no record.
+    from adapters.cycles.cycle_evidence import record_cycle_failures
+    from squadops.cycles.failure_records import failure_records as _fr
+    print("1813", callable(record_cycle_failures),
+          [(r.state.value, r.unasked_input) for r in _fr("c", (), ("x: not stored",))], _fr("c", (), ()))
   # The live hypothesis, read on the container that actually runs qa.test rather than off the
   # framework — a policy present in runtime-api and absent in eve's image is #1289's shape.
   eve: |-
@@ -390,6 +397,14 @@ loaded_checks:
     from squadops.capabilities.handlers.test_runner import parse_vitest_unhandled_errors as _pu
     _blk = "⎯⎯⎯⎯⎯ Uncaught Exception ⎯⎯⎯⎯⎯\nTypeError: x\n ❯ V src/views/V.jsx:1:1\n"
     print("1784", _pu(_blk)[0].splitlines()[0], _pu("no block"))
+    # 1785: the qa.test system prompt shows a route-param view mounted under its route.
+    # Control: the same role's prompt without the task type does not.
+    from adapters.prompts.factory import create_prompt_repository as _repo
+    from squadops.prompts.assembler import PromptAssembler as _PA
+    from squadops.tasks.task_types import TaskType as _TT
+    _pa = _PA(_repo("filesystem"))
+    print("1785-qa", "useParams" in _pa.assemble("qa", "agent_start", task_type=_TT.QA_TEST).content,
+          "useParams" in _pa.assemble("qa", "agent_start").content)
   # 598: the builder's prompt is composed in the builder's container. Control: a legacy profile
   # with no scaffold carries no "provided by the scaffold" block.
   bob: |-
@@ -462,6 +477,15 @@ loaded_checks:
     _nj = '```python:backend/routes.py\n@router.get("/runs")\ndef l():\n    return runs\n```\n'
     print("1774", _jf.transform(_pj) != _pj, _jf.transform(_nj) == _nj)
     print("1776", _u3.__version__)
+    # 1785: the React develop appendix shows the jsdom-safe form reads, rendered from this image's
+    # assets (the deploy's asset source is the filesystem). Control: another appendix does not.
+    import asyncio as _aio
+    from adapters.prompts.factory import create_prompt_asset_source as _src
+    from squadops.prompts.renderer import RequestTemplateRenderer as _Rr
+    _rr = _Rr(_src(provider="filesystem"))
+    _dev = _aio.run(_rr.render("request.development_develop_fill_only_appendix", {"stack": "fullstack_fastapi_react"})).content
+    _ctl = _aio.run(_rr.render("request.qa_test_dom_anchor_appendix", {"testid_lines": "- x"})).content
+    print("1785-dev", "new FormData(event.currentTarget)" in _dev, "new FormData(event.currentTarget)" in _ctl)
 # The baseline's configuration pins, carried so a moved request profile or squad profile is
 # caught before launch. Not the deploy pins: this is a new deploy, and the roll is not counted.
 expected_config_hash_prefix: "a79f58658cd8"

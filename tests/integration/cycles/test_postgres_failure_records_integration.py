@@ -73,6 +73,15 @@ async def registry():
     await apply_migrations(pool, Path(__file__).parents[3] / "infra" / "migrations")
     async with pool.acquire() as conn:
         await conn.execute("TRUNCATE TABLE cycle_failure_records, cycle_failure_record_sets")
+        # A run row is referenced by its summaries: remove them first, or a second session
+        # on the same database fails here on the first session's backfill run.
+        for table in ("run_verification_summaries", "run_loop_summaries"):
+            await conn.execute(
+                f"DELETE FROM {table} WHERE run_id IN "
+                "(SELECT run_id FROM cycle_runs WHERE cycle_id = $1)",
+                "cyc_fr1",
+            )
+        await conn.execute("DELETE FROM cycle_runs WHERE cycle_id = $1", "cyc_fr1")
         await conn.execute("DELETE FROM cycle_registry WHERE project_id = $1", PROJECT)
     reg = PostgresCycleRegistry(pool=pool)
     await reg.create_cycle(
@@ -139,3 +148,43 @@ async def test_a_record_violating_the_schema_leaves_no_partial_set(registry):
     assert await reg.get_failure_records("cyc_fr1") is None
     async with pool.acquire() as conn:
         assert await conn.fetchval("SELECT count(*) FROM cycle_failure_records") == 0
+
+
+async def test_the_backfill_writes_once_and_proves_the_attribution_unchanged(registry, tmp_path):
+    """Criterion 12d through the backfill script's own function: a dry run writes nothing, a
+    write records the cycle and finds no attribution that moved, and a second run skips it."""
+    import importlib.util
+
+    from adapters.cycles.filesystem_artifact_vault import FilesystemArtifactVault
+    from squadops.cycles.models import Run
+    from squadops.cycles.verification_integrity import aggregate_verification
+
+    reg, _ = registry
+    await reg.create_run(
+        Run(
+            run_id="run_fr1",
+            cycle_id="cyc_fr1",
+            run_number=1,
+            status="completed",
+            initiated_by="api",
+            resolved_config_hash="h",
+            workload_type="implementation",
+        )
+    )
+    await reg.record_run_verification_summary("run_fr1", aggregate_verification([]))
+    FilesystemArtifactVault(tmp_path / "vault")  # writes the empty vault's index
+    path = Path(__file__).parents[3] / "scripts" / "dev" / "backfill_failure_records.py"
+    spec = importlib.util.spec_from_file_location("backfill_failure_records", path)
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+
+    dry = await script.backfill(POSTGRES_URL, tmp_path / "vault", write=False)
+    assert [e["cycle_id"] for e in dry["written"]] == ["cyc_fr1"]
+    assert await reg.get_failure_records("cyc_fr1") is None
+
+    wrote = await script.backfill(POSTGRES_URL, tmp_path / "vault", write=True)
+    assert (wrote["written"], wrote["mismatch"]) == ([{"cycle_id": "cyc_fr1", "records": 0}], [])
+    assert await reg.get_failure_records("cyc_fr1") == ()
+
+    again = await script.backfill(POSTGRES_URL, tmp_path / "vault", write=True)
+    assert (again["written"], again["skipped_recorded"]) == ([], 1)
