@@ -20,6 +20,7 @@ from squadops.cli.output import (
     print_success,
     print_table,
 )
+from squadops.cycles.delivered_tree import StoredArtifact, delivered_files
 
 
 def _format_duration(started: str | None, finished: str | None) -> str:
@@ -355,31 +356,6 @@ def list_checkpoints(
         print_table(["Index", "Tasks Completed", "Artifacts", "Created At"], rows, quiet=quiet)
 
 
-# Build artifact types eligible for assembly (D9)
-_BUILD_ARTIFACT_TYPES = {"source", "test", "config"}
-
-
-def _is_scaffold_seeded(meta: dict) -> bool:
-    return bool((meta.get("metadata") or {}).get("scaffold_seeded"))
-
-
-def _prefer_artifact(candidate: dict, incumbent: dict) -> bool:
-    """True when *candidate* should replace *incumbent* for the same filename (#881).
-
-    Produced code beats a scaffold-seeded version regardless of recency — a
-    resumed run can carry re-seeded stubs stored AFTER the dev fills, and
-    write-in-list-order would ship the stub. Among equals, the later
-    ``created_at`` wins (ISO timestamps compare lexicographically).
-    """
-    seeded_candidate, seeded_incumbent = (
-        _is_scaffold_seeded(candidate),
-        _is_scaffold_seeded(incumbent),
-    )
-    if seeded_candidate != seeded_incumbent:
-        return seeded_incumbent
-    return str(candidate.get("created_at") or "") >= str(incumbent.get("created_at") or "")
-
-
 @app.command("assemble")
 def assemble_run(
     ctx: typer.Context,
@@ -414,12 +390,17 @@ def assemble_run(
             print_error("No artifacts found for this run")
             raise typer.Exit(code=exit_codes.NOT_FOUND)
 
-        # 3. Fetch metadata for each artifact, filter to build types
-        build_artifacts: list[dict] = []
-        for ref_id in artifact_refs:
-            meta = client.get(f"/api/v1/artifacts/{ref_id}")
-            if meta.get("artifact_type") in _BUILD_ARTIFACT_TYPES:
-                build_artifacts.append(meta)
+        # 3. Fetch metadata for each artifact; the run's delivered files are chosen by the one
+        #    rule every reader uses (#1832): failed emissions and repair candidates are never
+        #    delivered, produced code beats a scaffold stub (#881), then the latest.
+        records = {
+            meta["artifact_id"]: meta
+            for meta in (client.get(f"/api/v1/artifacts/{ref_id}") for ref_id in artifact_refs)
+        }
+        delivered = set(
+            delivered_files(StoredArtifact.from_record(m) for m in records.values()).values()
+        )
+        build_artifacts = [meta for art_id, meta in records.items() if art_id in delivered]
 
         if not build_artifacts:
             client.close()
@@ -428,16 +409,6 @@ def assemble_run(
                 "this run may only contain planning artifacts"
             )
             raise typer.Exit(code=exit_codes.NOT_FOUND)
-
-        # 3b. #881: one artifact per filename — produced code over scaffold stubs,
-        # then latest. A plain write-in-list-order ships whichever version was
-        # stored last, which on a resumed run is the re-seeded stub.
-        by_filename: dict[str, dict] = {}
-        for meta in build_artifacts:
-            incumbent = by_filename.get(meta["filename"])
-            if incumbent is None or _prefer_artifact(meta, incumbent):
-                by_filename[meta["filename"]] = meta
-        build_artifacts = list(by_filename.values())
 
         # 4. Create output directory and download each artifact
         target_dir = out / output_dir_name

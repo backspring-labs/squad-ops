@@ -58,7 +58,7 @@ from squadops.capabilities.ui_data_path import (
     expects_json,
     extract_ui_calls,
 )
-from squadops.cycles.task_plan import REPAIR_TASK_TYPES
+from squadops.cycles.delivered_tree import StoredArtifact, delivered_files
 from squadops.cycles.verification_contract import (
     VerificationContract,
     capture_probe_values,
@@ -77,7 +77,6 @@ _ASSEMBLY_SENTINELS: dict[str, str] = {
 }
 
 _VAULT_CONTAINER = "squadops-runtime-api"
-_WORKSPACE_ARTIFACT_TYPES = frozenset({"source", "test", "config"})
 _AUDIT_ROOT = Path("/tmp/squadops-sandbox-audit")
 
 
@@ -97,25 +96,16 @@ def _pull_run_artifacts(project: str, cycle_id: str, run_id: str, dest: Path) ->
 
 
 def _select_deliverable(pulled: Path) -> dict[str, str]:
-    """filename -> content, acceptance-aware last-wins (the executor's rule)."""
-    latest: dict[str, tuple[str, Path]] = {}
+    """filename -> content: the run's delivered files, by the one rule every reader uses
+    (``squadops.cycles.delivered_tree``, #1832). An artifact whose content file is missing
+    is not a record of anything delivered."""
+    records = {}
     for meta_path in pulled.glob("*/metadata.json"):
         meta = json.loads(meta_path.read_text())
-        if meta.get("artifact_type") not in _WORKSPACE_ARTIFACT_TYPES:
-            continue
-        if (meta.get("metadata") or {}).get("emission_status") == "failed":
-            continue  # #971: a banked failed emission is triage evidence, never the deliverable
-        producing = (meta.get("metadata") or {}).get("producing_task_type", "")
-        if producing in REPAIR_TASK_TYPES:
-            continue  # rejected candidate — accepted repairs re-store under the task type
-        filename = meta["filename"]
-        content_file = meta_path.parent / filename
-        if not content_file.is_file():
-            continue
-        created = str(meta.get("created_at", ""))
-        if filename not in latest or created > latest[filename][0]:
-            latest[filename] = (created, content_file)
-    return {name: path.read_text() for name, (_, path) in latest.items()}
+        if (meta_path.parent / meta["filename"]).is_file():
+            records[meta["artifact_id"]] = (meta, meta_path.parent)
+    delivered = delivered_files(StoredArtifact.from_record(m) for m, _ in records.values())
+    return {name: (records[art_id][1] / name).read_text() for name, art_id in delivered.items()}
 
 
 async def _run_ui_data_path(files: dict[str, str], stack: str, base_url: str) -> list[str]:

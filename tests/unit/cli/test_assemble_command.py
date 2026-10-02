@@ -60,6 +60,60 @@ def _mock_client(
     return mock
 
 
+class TestAssembleDeliversWhatTheRunAccepted:
+    @patch("squadops.cli.commands.runs._get_client")
+    def test_assemble_downloads_only_the_delivered_files(self, mock_get_client, tmp_path):
+        """#1832, through the command. Bugs caught: a rejected repair candidate or a failed
+        emission assembled because it is newer (179 stored runs differed under the old rule),
+        or a resumed run's re-seeded stub assembled over the fill (#881)."""
+
+        def meta(art_id, filename, created_at, **extra):
+            return {
+                "artifact_id": art_id,
+                "artifact_type": "source",
+                "filename": filename,
+                "created_at": created_at,
+                "size_bytes": 1,
+                "metadata": extra,
+            }
+
+        metas = [
+            meta(
+                "art_dev",
+                "backend/routes.py",
+                "2026-09-01T10:00:00Z",
+                producing_task_type="development.develop",
+            ),
+            meta(
+                "art_cand",
+                "backend/routes.py",
+                "2026-09-01T10:30:00Z",
+                producing_task_type="development.correction_repair",
+            ),
+            meta("art_main", "backend/main.py", "2026-09-01T10:00:00Z"),
+            meta("art_failed", "backend/main.py", "2026-09-01T10:40:00Z", emission_status="failed"),
+            meta("art_fill", "frontend/src/App.jsx", "2026-09-01T10:00:00Z"),
+            meta("art_stub", "frontend/src/App.jsx", "2026-09-01T11:00:00Z", scaffold_seeded=True),
+        ]
+        client = _mock_client(
+            cycle_data={"project_id": "group_run"},
+            run_data={"run_id": "run_001", "artifact_refs": [m["artifact_id"] for m in metas]},
+            artifact_metas=metas,
+        )
+        client.download.side_effect = lambda path: (path.encode(), "x")
+        mock_get_client.return_value = client
+
+        result = runner.invoke(
+            app,
+            ["runs", "assemble", "group_run", "cyc_001", "run_001", "--out", str(tmp_path)],
+        )
+
+        assert result.exit_code == 0, result.output
+        downloaded = sorted(c.args[0].split("/")[-2] for c in client.download.call_args_list)
+        assert downloaded == ["art_dev", "art_fill", "art_main"]
+        assert "3 file(s)" in _plain(result.output)
+
+
 class TestAssembleWritesFiles:
     @patch("squadops.cli.commands.runs._get_client")
     def test_assemble_writes_files(self, mock_get_client, tmp_path):

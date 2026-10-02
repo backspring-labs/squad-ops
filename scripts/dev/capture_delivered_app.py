@@ -61,13 +61,13 @@ from pathlib import Path
 
 import yaml
 
+from squadops.cycles.delivered_tree import StoredArtifact, delivered_files
+
 REPO = Path(__file__).resolve().parents[2]
 VAULT = REPO / "data/artifacts"
 RELEASES = REPO / "site/content/releases"
 SANDBOX_IMAGE = "squadops-sandbox-env:py3.12-node20-1.4"
 CONTAINER = "squadops-delivered-app-capture"
-#: Not the vault's own bookkeeping, and not the run's reports — the app.
-NOT_APP = {"run_report.md", "test_report.md", "definition_of_done.json"}
 
 
 def sh(*args: str, check: bool = True) -> str:
@@ -78,10 +78,10 @@ def sh(*args: str, check: bool = True) -> str:
 
 
 def reconstruct(project: str, cycle: str, run: str, out: Path) -> int:
-    """The delivered tree: latest artifact per filename, which is what the audit builds.
-
-    Earlier versions of a file are real history, not the delivery — taking the newest per
-    name is what makes this the tree the run ended with rather than a union of attempts.
+    """The delivered tree, by the one rule the audit reads too (#1832): per filename, the latest
+    workspace artifact the run accepted. A rejected repair candidate or a failed emission is
+    never what the run delivered, however recent; this took the newest file by name before, and
+    so could photograph a repair the framework had rejected.
     """
     src = VAULT / project / cycle / run
     if not src.is_dir():
@@ -106,16 +106,13 @@ def reconstruct(project: str, cycle: str, run: str, out: Path) -> int:
             )
             if out.exists():
                 raise SystemExit(f"could not clear {out} — remove it by hand and re-run") from None
-    latest: dict[str, tuple[str, Path]] = {}
+    records = {}
     for meta_path in src.glob("art_*/metadata.json"):
         meta = json.loads(meta_path.read_text())
-        name = meta.get("filename")
-        if not name or name in NOT_APP or name.startswith("typed_check_evaluation"):
-            continue
-        stamp = meta.get("created_at", "")
-        if name not in latest or stamp > latest[name][0]:
-            latest[name] = (stamp, meta_path.parent)
-    for name, (_, art_dir) in latest.items():
+        records[meta["artifact_id"]] = (meta, meta_path.parent)
+    delivered = delivered_files(StoredArtifact.from_record(m) for m, _ in records.values())
+    latest = {name: records[art_id][1] for name, art_id in delivered.items()}
+    for name, art_dir in latest.items():
         source = art_dir / name
         if not source.exists():
             files = [p for p in art_dir.rglob("*") if p.is_file() and p.name != "metadata.json"]
