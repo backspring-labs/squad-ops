@@ -655,7 +655,10 @@ def _applicable_acceptance(plan_task: Any) -> list:
 
 
 def _inject_increment_indexes(
-    inputs: dict, footprint: tuple[str, ...] | None, criterion_files: tuple[Any, ...]
+    inputs: dict,
+    footprint: tuple[str, ...] | None,
+    criterion_files: tuple[Any, ...],
+    frozen_files: tuple[tuple[str, str], ...] = (),
 ) -> None:
     """SIP-0109: what an increment's plan authors are shown — data only; each rule's prose is
     its managed appendix (#448), and the plan gate enforces it.
@@ -670,6 +673,11 @@ def _inject_increment_indexes(
         inputs["increment_criterion_files_index"] = "\n".join(
             f"- {f.criterion_id} ({f.surface_kind} `{f.surface}`): `{f.path}`"
             for f in criterion_files
+        )
+    # §8.1: the earlier criteria's frozen verifiers, which no task writes.
+    if frozen_files:
+        inputs["increment_frozen_files_index"] = "\n".join(
+            f"- {criterion_id}: `{path}`" for criterion_id, path in frozen_files
         )
 
 
@@ -797,6 +805,7 @@ def inject_contract_inputs(
     interface_manifest: InterfaceManifest | None = None,
     footprint: tuple[str, ...] | None = None,
     criterion_files: tuple[Any, ...] = (),
+    frozen_files: tuple[tuple[str, str], ...] = (),
 ) -> None:
     """Bind-mode envelope inputs derived from the contract (SIP-0098).
 
@@ -839,7 +848,7 @@ def inject_contract_inputs(
         frozen_index = frozen_surface_index_lines(interface_manifest)
         if frozen_index:
             inputs["frozen_surface_index"] = "\n".join(frozen_index)
-        _inject_increment_indexes(inputs, footprint, criterion_files)
+        _inject_increment_indexes(inputs, footprint, criterion_files, frozen_files)
     if task_contract.bind_behavioral_surface:
         if contract.behavioral.probes:
             inputs["contract_probes"] = [p.to_dict() for p in contract.behavioral.probes]
@@ -1230,6 +1239,9 @@ def generate_task_plan(
 
     footprint = increment_footprint(resolved_config, interface_manifest)
     criterion_files = _increment_criterion_files(change_request, resolved_config)
+    from squadops.campaigns.increment_tree import increment_frozen_files
+
+    frozen_files = increment_frozen_files(resolved_config, change_request)
     _require_change_request_for_increment(run, resolved_config, change_request)
     evaluation = _increment_evaluation(run, resolved_config, change_request, interface_manifest)
 
@@ -1396,7 +1408,13 @@ def generate_task_plan(
             inputs["acceptance_criteria"] = acceptance
 
         inject_contract_inputs(
-            inputs, contract, task_type, interface_manifest, footprint, criterion_files
+            inputs,
+            contract,
+            task_type,
+            interface_manifest,
+            footprint,
+            criterion_files,
+            frozen_files,
         )
         _inject_rejection_context(inputs, framing_rejection_context, task_type)
         inputs.update(_increment_inputs(run, task_type, change_request, evaluation))

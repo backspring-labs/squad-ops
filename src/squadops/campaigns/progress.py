@@ -205,7 +205,8 @@ def increment_verdict(
 
 
 def frozen_criteria(log: list) -> tuple[dict, ...]:
-    """Every criterion the campaign's promotions froze (§8.1), from the control log, in order."""
+    """Every criterion the campaign's promotions froze and none retired (§8.1), from the control
+    log, in order."""
     frozen: dict[str, dict] = {}
     for entry in log:
         if (
@@ -213,6 +214,8 @@ def frozen_criteria(log: list) -> tuple[dict, ...]:
             or entry.outcome is not ControlOutcome.APPLIED
         ):
             continue
+        for criterion_id in entry.binding.get("retired_criteria") or ():
+            frozen.pop(criterion_id, None)
         for criterion in entry.binding.get("frozen_criteria") or ():
             frozen[criterion["criterion_id"]] = dict(criterion)
     return tuple(frozen.values())
@@ -414,6 +417,7 @@ class CampaignProgress:
                     "identity": identity,
                     "files": len(files),
                     "frozen_criteria": frozen,
+                    "retired_criteria": list((evaluation or {}).get("retired") or ()),
                 },
                 accepted=AcceptedTree(identity, cycle.cycle_id),
             ),

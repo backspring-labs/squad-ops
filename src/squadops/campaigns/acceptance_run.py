@@ -19,6 +19,7 @@ here knows a stack. Nothing here writes a tree.
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
 
@@ -26,6 +27,7 @@ from squadops.campaigns.acceptance import (
     Discrimination,
     DiscriminationReason,
     FrozenResult,
+    Held,
     IncrementAcceptance,
     RouteResult,
     TreeRun,
@@ -98,6 +100,7 @@ async def evaluate_increment(
     rendered: Mapping[str, frozenset[str] | None],
     run: Runner,
     invocation: Iterable[str],
+    retired: Iterable[str],
 ) -> IncrementEvaluation:
     """The increment's acceptance (§8): discrimination, accumulated acceptance, rendering."""
     invocation = tuple(invocation)
@@ -123,7 +126,10 @@ async def evaluate_increment(
             discrimination(criterion.criterion_id, criterion.test_path, on_baseline, on_candidate)
         )
 
-    frozen = list(frozen)
+    # §8.1: a criterion the change request retires (or whose verifier it replaces) is no longer
+    # frozen, and is not run.
+    retired = frozenset(retired)
+    frozen = [c for c in frozen if c.criterion_id not in retired]
     runs = {}
     for criterion in frozen:
         if criterion.bundle is not None:
@@ -136,6 +142,7 @@ async def evaluate_increment(
         {c.criterion_id: (c.bundle.address if c.bundle else None, c.test_path) for c in frozen},
         runs,
     )
+    frozen_results = _changed_verifiers_blocked(frozen_results, frozen, candidate)
     routes = route_rendering(declared_routes, rendered)
     return IncrementEvaluation(
         acceptance=increment_acceptance(tuple(discriminations), frozen_results, routes),
@@ -146,6 +153,32 @@ async def evaluate_increment(
     )
 
 
+def _changed_verifiers_blocked(
+    results: tuple[FrozenResult, ...], frozen: list[FrozenCriterion], candidate: FileTree
+) -> tuple[FrozenResult, ...]:
+    """§8.1, §19 item 7: a frozen criterion's test file changed in the candidate, without a
+    ``retires`` entry, blocks acceptance. Its bundle still runs as frozen — the candidate's
+    copy is never what is judged — but a candidate that rewrote a verifier nobody ruled on is
+    not accepted on it."""
+    changed = {
+        c.criterion_id
+        for c in frozen
+        if c.bundle is not None
+        and candidate.get(c.test_path) is not None
+        and candidate.get(c.test_path) != c.bundle.files.get(c.test_path)
+    }
+    return tuple(
+        dataclasses.replace(
+            r,
+            held=Held.BLOCKED_UNVERIFIED,
+            detail="its test file changed in the candidate without a retires entry (§8.1)",
+        )
+        if r.criterion_id in changed
+        else r
+        for r in results
+    )
+
+
 def evaluation_document(
     evaluation: IncrementEvaluation,
     *,
@@ -153,6 +186,7 @@ def evaluation_document(
     accepted: FileTree,
     candidate: FileTree,
     new: Iterable[NewCriterion],
+    retired: Iterable[str],
 ) -> dict:
     """The evaluation as plain data, for the ``increment_evaluation`` artifact the completion hook
     reads (§8.4: every result keyed, the bundles a promotion freezes carried whole)."""
@@ -192,6 +226,8 @@ def evaluation_document(
             }
             for r in evaluation.routes
         ],
+        # §8.1: the criteria this increment retires — dropped from the frozen set at promotion.
+        "retired": sorted(retired),
         "new_bundles": {
             criterion_id: {
                 "address": bundle.address,

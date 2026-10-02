@@ -104,6 +104,12 @@ async def contract_surface_sections(renderer: Any, inputs: dict[str, Any]) -> st
             "criterion_files_index",
             "increment_criterion_files_index",
         ),
+        # SIP-0109 §8.1: the earlier criteria's frozen verifiers, which no task writes.
+        (
+            "request.plan_increment_frozen_appendix",
+            "frozen_files_index",
+            "increment_frozen_files_index",
+        ),
     )
     sections: list[str] = []
     for template_id, variable, input_key in surfaces:

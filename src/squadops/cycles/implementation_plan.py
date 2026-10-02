@@ -982,6 +982,25 @@ class ImplementationPlan:
             if f.path not in planned
         ]
 
+    def validate_increment_frozen_files(self, frozen_files: tuple[Any, ...]) -> list[str]:
+        """SIP-0109 §8.1, §19 item 12e: an earlier criterion's test file is its frozen verifier.
+        No task writes one, unless the approved change retires that criterion or replaces its
+        verifier — in which case it is not in ``frozen_files``. Empty for every cycle that is not
+        an increment, and for an increment with nothing frozen yet.
+
+        Returns:
+            List of validation error strings (empty = valid), one per offending task and file.
+        """
+        frozen = {path: criterion_id for criterion_id, path in frozen_files}
+        return [
+            f"Task {task.task_index} ({task.focus}): {task.task_type} declares {artifact!r}, the "
+            f"frozen verifier of criterion {frozen[artifact]}. It is kept exactly as frozen; an "
+            "earlier criterion's test changes only when an approved change request retires it"
+            for task in self.tasks
+            for artifact in task.expected_artifacts
+            if artifact in frozen
+        ]
+
     def validate_frozen_artifact_ownership(self, contract: VerificationContract) -> list[str]:
         """#658: no task, any role, may declare a frozen-surface file as an
         ``expected_artifact``.

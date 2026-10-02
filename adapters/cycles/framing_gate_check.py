@@ -273,6 +273,15 @@ class FramingGateCheck:
                     ),
                 )
             )
+            # SIP-0109 §8.1, §19 item 12e: no task writes an earlier criterion's frozen file.
+            errors.extend(
+                classifier.collect(
+                    "validate_increment_frozen_files",
+                    parsed_plan.validate_increment_frozen_files(
+                        await self._increment_frozen_files(cycle)
+                    ),
+                )
+            )
             # SIP-0109 §8.1: each new criterion's own test file is written by a qa task.
             errors.extend(
                 classifier.collect(
@@ -516,6 +525,25 @@ class FramingGateCheck:
             classifier.collect_proofs(f.proof for f in outcome.blocking_findings)
         logger.info("interface_manifest rejected at gate: classes=%s", outcome.class_counts())
         return [f"interface_manifest [{f.proof}]: {f.detail}" for f in outcome.findings]
+
+    async def _increment_frozen_files(self, cycle: Cycle) -> tuple[tuple[str, str], ...]:
+        """The frozen criteria files the plan may not write (§8.1): the launch's pins, less what
+        the approved change retires. ``()`` for any other cycle; never raises (#473)."""
+        from squadops.campaigns.increment_tree import (
+            approved_change_request,
+            increment_frozen_files,
+        )
+
+        try:
+            document = await approved_change_request(self._artifact_vault, cycle)
+            return increment_frozen_files(cycle.resolved_config(), document)
+        except Exception:
+            logger.warning(
+                "increment frozen files unreadable for cycle %s; the rule is skipped",
+                cycle.cycle_id,
+                exc_info=True,
+            )
+            return ()
 
     async def _increment_criterion_files(self, cycle: Cycle) -> tuple[Any, ...]:
         """The increment's new criteria and their own test files, from the approved change
