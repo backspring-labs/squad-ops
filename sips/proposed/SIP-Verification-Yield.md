@@ -6,9 +6,9 @@ author: Backspring Labs / SquadOps
 ---
 # SIP-XXXX: Verification Yield and Test Value
 
-**Status:** Draft
+**Status:** Proposed (the owner's draft, revision 1, under the placement note below)
 **Revision:** 1
-**Target:** TBD
+**Target:** placed below: one slice in 2.0, through the Campaign SIP; the rest after the first campaign
 **Authors:** Backspring Labs / SquadOps
 **Theme:** Verification quality, test economics, agent efficiency
 
@@ -36,11 +36,17 @@ author: Backspring Labs / SquadOps
 > - additive-suite containment (#1022);
 > - assertion strength (#999).
 >
+> **Where this SIP meets a requirement for executable evidence, the requirement governs.** §19 makes "no
+> additional automated test is justified" a legal outcome. It applies **only where no acceptance contract
+> or SIP requires executable evidence.** Campaign's rule for feature and fix increments (one executable,
+> discriminating test per new criterion; `SIP-Campaign-Orchestration.md` §8.2) is a deliberate policy
+> requirement. Where the two meet, Campaign's governs, so the squad never receives opposite instructions.
+>
 > **When each part lands:**
 >
 > | part | when |
 > |---|---|
-> | **each criterion an increment adds has a test that fails on its baseline for the intended reason** (demonstrated discrimination for brownfield cycles) | **before the first campaign**, as `SIP-Campaign-Orchestration.md` revision 3 §8.2 |
+> | **each criterion an increment adds has a test that fails on its baseline for the intended reason** (demonstrated discrimination for brownfield cycles) | **before the first campaign**, as `SIP-Campaign-Orchestration.md` revision 5 §8.2 |
 > | Test-First Verification's stub-based red gate, for greenfield cycles | after the first campaign: the calibration cycle is the yardstick, and changing its verification moves the baseline it exists to hold |
 > | risk-first instructions for qa and builder, with "no new test is justified" a legal outcome (§19) | after the first campaign, as an outer-loop experiment read against the calibration cycle |
 > | the test-value audit, fault corpus, detection matrix and deletion experiment on the framework's suite (§10–§28) | after, as Nostromo crew work. It suits crew local inference between cycles (§34). It is not commissioning work, because deletion decisions take judgement |

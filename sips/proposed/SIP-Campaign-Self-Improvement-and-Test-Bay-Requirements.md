@@ -24,13 +24,19 @@ Related Concepts: Campaign, Cycle, Run, Duty, Capability Pack, Capability Asset,
 >   only with the owner's approval (`docs/ideas/nostromo-framework-optimization-crew.md`). The goal of
 >   the squad improving its own framework stands, and is not scheduled.
 > - **What 2.0 carries from here:**
->   - the Campaign mechanic, in `SIP-Campaign-Orchestration.md` revision 2;
+>   - the Campaign mechanic, in `SIP-Campaign-Orchestration.md` revision 5;
 >   - the morning review (§7.8), as that SIP's evidence package and digest;
 >   - Test Bay's role as a measuring instrument, as the calibration cycle (#1709).
 >
 >   Capability packs, promotion and Test Bay as a GitHub-backed proving ground are not scheduled.
 >
 > The "carved out to 1.6" target above is the July record. Campaign is 2.0's headline (`docs/plans/2-0-0-plan.md`).
+>
+> **Which text is normative.** The body below is a **historical vision anchor**, and **none of it is a
+> 2.0 requirement**. Only the three items above carry into 2.0, and **their newer definitions govern on
+> any conflict**: the Campaign SIP, the 2.0 plan, and the issues they place. Where the body says 2.0
+> should ship self-improvement campaign templates, Test Bay, capability promotion, a Continuum surface,
+> or framework PR campaigns, those are outer-loop work or unscheduled, as this note says.
 
 ---
 

@@ -1,6 +1,6 @@
 # 2.0.0 plan — Campaign: the squad evolves one app, the crew evolves the framework
 
-**Status:** DRAFT, rev 4 (2026-10-01), for the owner's review. Rev 2 folded in an external review of rev 1. Rev 3 folded in the crew's design review of rev 2 (Ripley, on #1798), with the owner's rulings on it. Rev 4 folds in the crew's re-review (§9). **Not adopted.** Written at the 1.9.0 cut
+**Status:** DRAFT, rev 5 (2026-10-01), for the owner's review. Rev 2 folded in an external review of rev 1. Rev 3 folded in the crew's design review of rev 2 (Ripley, on #1798), with the owner's rulings on it. Rev 4 folded in the crew's re-review, and rev 5 its third review (§9). **Not adopted.** Written at the 1.9.0 cut
 on the owner's word ("can you draft a plan to review and any SIP revisions"). It turns three inputs into
 a release:
 - the owner's direction of 2026-09-28 (`docs/plans/post-1-8-2-roadmap-reconciliation.md`);
@@ -8,7 +8,7 @@ a release:
   (`docs/ideas/nostromo-framework-optimization-crew.md`);
 - the owner's rulings on that IDEA the same day (§2 below).
 
-The design it builds on is the Campaign SIP's revision 4 (`sips/proposed/SIP-Campaign-Orchestration.md`).
+The design it builds on is the Campaign SIP's revision 5 (`sips/proposed/SIP-Campaign-Orchestration.md`).
 That SIP is proposed, and this plan adopts only after it is accepted (§6, step 1).
 
 **What 2.0 is.** An even minor, a feature release, led by one headline: **Campaign**. 1.9 extracted the
@@ -102,7 +102,7 @@ three things apart throughout: an observation, a causal hypothesis, and a valida
 
 ## 3. The content
 
-### 3.1 The headline: Campaign (the SIP's revision 4)
+### 3.1 The headline: Campaign (the SIP's revision 5)
 
 The Campaign SIP is revised to the two-loop direction: an objective envelope, a pure continuation
 policy, and a campaign that evolves one app. The plan sequences its parts. The design is the SIP's.
@@ -112,7 +112,7 @@ policy, and a campaign that evolves one app. The plan sequences its parts. The d
 | **the campaign object and the control log** | #1799 | first campaign | model, registry (memory and Postgres), `Cycle.campaign_id` and `kind`, lifecycle, `/api/v1/campaigns` and the CLI; **a transactional control log as the authority** for every control operation, with security audit and events as projections; **a launch-intent outbox with idempotent cycle creation**, so each decision launches exactly once (SIP §12b, §13, §15–§17) |
 | **the continuation decision and the limits** | #1800 | first campaign | **an ordered, three-step decision** at the completion boundary (SIP §10): terminal outcomes, then a pending action, then a pausing guard. A pause holds the pending action, and the owner's resume executes it without recomputation. Reads `CycleAssessment`; each limit's action, and who resumes (SIP §9.5) |
 | **the increment cycle** | #1705 | first campaign | workloads `proposal` → gate `increment_ruling` → delta-scoped `framing` → gate `progress_plan_review` → `implementation`, starting from the accepted tree; **a typed change request** whose manifest delta the gates check, with a derived footprint the plan validator enforces (SIP §7) |
-| **the three trees** | #1806 | first campaign | accepted (immutable), candidate, and the baseline-evaluator overlay (the accepted tree's product code plus the candidate's tests, never its product code); test identity; **criterion-owned verifier bundles** and a versioned fixture set, frozen as executable identities (SIP §7.4, §8) |
+| **the evaluator trees** | #1806 | first campaign | accepted (immutable), candidate, **the baseline-evaluator overlay** (the accepted tree's product code plus the candidate's tests, never its product code), and **the candidate-verifier overlay** (the candidate's product code under one frozen criterion's bundle, never its own test files); test identity; **content-addressed verifier bundles**, one per criterion (SIP §7.4, §8) |
 | **accumulated acceptance** | #1707, #1796 | first campaign | every earlier increment's acceptance still passes, **including each declared page rendering its view in a browser** (#1796); **each criterion the increment adds has a test that fails on the baseline for the intended reason**, through the app's public surface (SIP §8.2) |
 | **the prior-cycle brief** | #1692 | first campaign | a repair or retry cycle is told what the cycle before it did |
 | **the proposal run and the increment gate, on the leash** | #1706, #1708, #1801 | first campaign | §3.2 |
@@ -314,7 +314,7 @@ the cut's evidence.
 - **The headline (18):** #1705, #1706, #1707, #1708, #1709, #1710, #1711, #1692, #316, #1728, #1796,
   #1799–#1804 (the campaign object and control log, the continuation decision and limits, the
   supervision interface, the box lease, recovery, and the brownfield reference scenario), and #1806
-  (the three trees).
+  (the evaluator trees).
 - **Carried in (14):** #1785, #414, #1755, #1727, #567, #1031, #1469, #949, #950, #557, #1757, #1039,
   #1756, #1788. Each is classified in §3.5.
 - **Instruments, the crew's first work (1):** #1793. With #1756 and #1788 above, these are §3.6.
@@ -332,19 +332,20 @@ the cut's evidence.
 
 Merge order follows the dependencies (the Campaign SIP's §18). Each step's PR proves its
 intermediate acceptance before the next starts.
-1. **The Campaign SIP's revision 3: design review and acceptance.** This plan adopts after it.
+1. **The Campaign SIP's revision 5: design review and acceptance.** This plan adopts after it.
 2. **Decision 1, the flip,** and its prerequisites: #1788 first, then #1755 and #1727.
 3. **The domain model, the transactional control log, and the launch outbox (#1799).** Proves atomic
    commit with state, conflicts refused, restart read from the log, and exactly one cycle per launch
    intent under a crash on either side of creation.
-   - **Then the one failure producer (#1710's first part):** `failure_events(evidence)` extracted,
-     persisted at completion, and consumed by attribution. It is behaviour-neutral, and proves it by
-     recomputing every stored cycle's attribution unchanged.
+   - **Then the one failure producer (#1710's first part):** `failure_events(outcome, evidence)`
+     extracted. In one completion transaction, the events are persisted and then the attribution is
+     computed from them. It is behaviour-neutral, and proves it by backfilling every stored cycle and
+     recomputing its attribution unchanged.
 4. **The proposal run and the typed change request (#1706).** Proves recruitment like any run,
    out-of-scope refusal, and the delta through the manifest gates.
-5. **The three trees and the verifier bundles (#1806).** Proves the accepted tree immutable, no
-   candidate product code in the overlay, and that adding a criterion changes no other criterion's
-   frozen identity.
+5. **The evaluator trees and the verifier bundles (#1806).** Proves the accepted tree immutable, no
+   candidate product code in the baseline overlay, no candidate test files in the candidate-verifier
+   overlay, and that adding a criterion changes no other criterion's bundle.
 6. **Accumulated acceptance and baseline discrimination (#1707, #1796),** with the prior-cycle brief
    (#1692). Proves frozen criteria executing, and import errors not counted.
 7. **The increment gate, the binding, the box lease, the continuation decision, and repair and retry
@@ -427,6 +428,10 @@ crew's conditions:
 
 ## 9. Revision history
 
+- **Rev 5 (2026-10-01, late evening):** folds in the crew's third review. The SIP's revision 5 makes
+  its bounded corrections: verifier bundles executed through a candidate-verifier overlay, launch
+  actions separated from control transitions, the outcome-aware failure producer, and deterministic
+  repair exhaustion. This plan's step 3 now uses that producer's signature.
 - **Rev 4 (2026-10-01, late evening):** folds in the crew's re-review of rev 3. It confirmed rev 3 closed
   its seven blockers, and named five seams, closed in the SIP's revision 4:
   - the held pending action and its resume;
