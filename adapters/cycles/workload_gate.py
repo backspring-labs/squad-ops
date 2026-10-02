@@ -28,6 +28,7 @@ from uuid import uuid4
 
 from squadops.campaigns.gate import (
     INCREMENT_RULING_GATE,
+    INCREMENT_SEED_PRODUCER,
     binding_from_change_request,
     submission,
 )
@@ -414,6 +415,11 @@ class WorkloadGate:
                 current_run_id, (refinement_ref.artifact_id,)
             )
 
+        if gate_name == INCREMENT_RULING_GATE:
+            # SIP-0109 §7.3 (#1705 step a): the approved increment's framing binds to the
+            # candidate manifest — the accepted one with the approved delta applied.
+            await self._seed_increment(cycle, run)
+
         return step(GateOutcome.PROCEED)
 
     async def _submit_proposal(self, cycle: Cycle, run: Any) -> None:
@@ -501,3 +507,63 @@ class WorkloadGate:
             "supervisor_note": (decision.notes or "").strip(),
             "prior_change_request": document,
         }
+
+    async def _seed_increment(self, cycle: Cycle, run: Any) -> None:
+        """Store the approved increment's candidate manifest and the contract derived from it
+        as the proposal run's promoted artifacts, where the next workload's forwarding finds
+        them (``_build_forwarding_overrides``): framing then runs in bind mode against them,
+        and authors no manifest (§7.3: the manifest is the baseline's plus the typed delta).
+
+        Re-entering the gate after a restart finds the seed already stored and stores nothing.
+        """
+        from squadops.campaigns.change_request import (
+            apply_manifest_delta,
+            load_stored_change_request,
+        )
+        from squadops.cycles.contract_derivation import (
+            SEEDED_MANIFEST_FILENAME,
+            derive_and_store_contract,
+        )
+        from squadops.cycles.gate_promotion import promote_run_artifacts
+        from squadops.cycles.manifest_authoring import MANIFEST_ARTIFACT_TYPE
+
+        stored = await self._artifact_vault.list_artifacts(run_id=run.run_id)
+        if any(r.metadata.get("producing_task_type") == INCREMENT_SEED_PRODUCER for r in stored):
+            return
+        request = load_stored_change_request(await self._change_request_document(run))
+        block = cycle.resolved_config().get("campaign_proposal") or {}
+        baseline = str(block.get("baseline_manifest") or "")
+        if not baseline.strip():
+            raise ValueError(
+                f"cycle {cycle.cycle_id}: its campaign_proposal block carries no baseline "
+                "manifest, so the approved delta has nothing to apply to"
+            )
+        candidate = apply_manifest_delta(baseline, request.manifest_delta).encode("utf-8")
+        await self._artifact_vault.store(
+            ArtifactRef(
+                artifact_id=f"art_{uuid4().hex[:12]}",
+                project_id=cycle.project_id,
+                cycle_id=cycle.cycle_id,
+                run_id=run.run_id,
+                artifact_type=MANIFEST_ARTIFACT_TYPE,
+                filename=SEEDED_MANIFEST_FILENAME,
+                content_hash=sha256(candidate).hexdigest(),
+                size_bytes=len(candidate),
+                media_type="text/yaml",
+                created_at=datetime.now(UTC),
+                metadata={
+                    "producing_task_type": INCREMENT_SEED_PRODUCER,
+                    "proposal_id": request.proposal_id,
+                    "version": request.version,
+                },
+            ),
+            candidate,
+        )
+        await derive_and_store_contract(
+            self._artifact_vault,
+            cycle.project_id,
+            candidate.decode("utf-8"),
+            cycle_id=cycle.cycle_id,
+            run_id=run.run_id,
+        )
+        await promote_run_artifacts(self._artifact_vault, run.run_id)

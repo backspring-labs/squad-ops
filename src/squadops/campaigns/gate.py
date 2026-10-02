@@ -29,6 +29,9 @@ from squadops.cycles.models import GateDecisionValue
 #: The gate's name, as a campaign increment profile declares it after the proposal workload.
 INCREMENT_RULING_GATE = "increment_ruling"
 
+#: The provenance of the candidate manifest an approved increment seeds for its framing (§7.3).
+INCREMENT_SEED_PRODUCER = "campaign.increment_seed"
+
 #: The role on the rows the executor writes for the campaign.
 EXECUTOR_ROLE = "executor"
 
