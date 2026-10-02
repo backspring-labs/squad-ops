@@ -201,6 +201,22 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         )
         return rendered.content
 
+    async def _footprint_section(self, renderer: Any, inputs: dict[str, Any]) -> str:
+        """The files an increment's plan may touch, or "" (SIP-0109 §7.3, #1705 d).
+
+        Same conditions as the frozen section: an increment's dev/qa proposers, the index data
+        injected by the executor, the prose a managed asset (#448). The plan gate refuses a
+        task outside it; this tells the author before the refusal does."""
+        if self._proposer_role not in ("development", "qa"):
+            return ""
+        index = inputs.get("increment_footprint_index")
+        if not index:
+            return ""
+        rendered = await renderer.render(
+            "request.plan_increment_footprint_appendix", {"footprint_index": index}
+        )
+        return rendered.content
+
     async def handle(
         self,
         context: ExecutionContext,
@@ -244,6 +260,10 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         frozen_surface_section = await self._frozen_surface_section(renderer, inputs)
         if frozen_surface_section:
             variables["frozen_surface_section"] = frozen_surface_section
+        # SIP-0109 §7.3 (#1705 d): an increment's footprint, beside what the scaffold froze.
+        footprint_section = await self._footprint_section(renderer, inputs)
+        if footprint_section:
+            variables["increment_footprint_section"] = footprint_section
         # #686: the plan-shape rules the deterministic validators enforce. No input
         # to key on — they hold for every plan, so this one renders unconditionally.
         variables["authoring_rules_section"] = await self._authoring_rules_section(renderer)

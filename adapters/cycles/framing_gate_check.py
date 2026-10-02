@@ -260,6 +260,20 @@ class FramingGateCheck:
                     )
                 )
 
+        # SIP-0109 §7.3 (#1705 d): an increment's plan covers only its approved change. Its
+        # candidate manifest is seeded (bind mode), so it is read from the cycle, not the run.
+        # Only this seam: the plan is fixed once the gate promotes it, and a rejection here
+        # re-rolls framing with the reason as authoring context (#669).
+        if parsed_plan is not None:
+            errors.extend(
+                classifier.collect(
+                    "validate_increment_footprint",
+                    parsed_plan.validate_increment_footprint(
+                        await self._increment_footprint(cycle, interface_content)
+                    ),
+                )
+            )
+
         # SIP-0098 98.3: bind-mode contract validation. A seeded contract_ref switches the
         # cycle to bind mode — the plan must bind the contract's covered-file criteria by
         # id (validate_criteria_refs) rather than author them, and the contract must be
@@ -493,3 +507,27 @@ class FramingGateCheck:
             classifier.collect_proofs(f.proof for f in outcome.blocking_findings)
         logger.info("interface_manifest rejected at gate: classes=%s", outcome.class_counts())
         return [f"interface_manifest [{f.proof}]: {f.detail}" for f in outcome.findings]
+
+    async def _increment_footprint(self, cycle: Cycle, run_manifest: str | None) -> Any:
+        """The increment's footprint, or ``None`` for a cycle that is not an increment (or
+        whose candidate manifest cannot be read, which the manifest's own nets report)."""
+        from squadops.campaigns.increment_tree import increment_baseline, increment_footprint
+        from squadops.capabilities.scaffold import InterfaceManifest
+
+        if increment_baseline(cycle.resolved_config()) is None:
+            return None
+        content = run_manifest or await self._load_seeded_manifest_content(cycle)
+        if not content:
+            return None
+        try:
+            return increment_footprint(
+                cycle.resolved_config(), InterfaceManifest.from_yaml(content)
+            )
+        except Exception:
+            # The gate never raises (#473). An unreadable manifest is reported by its own nets.
+            logger.warning(
+                "increment footprint unreadable for cycle %s; the footprint rule is skipped",
+                cycle.cycle_id,
+                exc_info=True,
+            )
+            return None

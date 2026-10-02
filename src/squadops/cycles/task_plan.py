@@ -678,6 +678,7 @@ def inject_contract_inputs(
     contract: VerificationContract | None,
     task_type: str,
     interface_manifest: InterfaceManifest | None = None,
+    footprint: tuple[str, ...] | None = None,
 ) -> None:
     """Bind-mode envelope inputs derived from the contract (SIP-0098).
 
@@ -720,6 +721,11 @@ def inject_contract_inputs(
         frozen_index = frozen_surface_index_lines(interface_manifest)
         if frozen_index:
             inputs["frozen_surface_index"] = "\n".join(frozen_index)
+        # SIP-0109 §7.3 (#1705 d): an increment's plan covers only the files its approved
+        # change touches — the rest is the accepted application. Data only; the rule's prose
+        # is the managed appendix (#448), and the plan gate enforces it.
+        if footprint:
+            inputs["increment_footprint_index"] = "\n".join(f"- `{p}`" for p in footprint)
     if task_contract.bind_behavioral_surface:
         if contract.behavioral.probes:
             inputs["contract_probes"] = [p.to_dict() for p in contract.behavioral.probes]
@@ -1101,6 +1107,10 @@ def generate_task_plan(
     # stays config-shaped on every envelope, then inject it onto the
     # plan-authoring tasks only (below).
     framing_rejection_context = resolved_config.pop("framing_rejection_context", None)
+    # SIP-0109 §7.3 (#1705 d): an increment cycle's footprint, for its plan authors.
+    from squadops.campaigns.increment_tree import increment_footprint
+
+    footprint = increment_footprint(resolved_config, interface_manifest)
 
     if run.workload_type is not None:
         steps, builder_used = _resolve_workload_steps(
@@ -1262,7 +1272,7 @@ def generate_task_plan(
             )
             inputs["acceptance_criteria"] = acceptance
 
-        inject_contract_inputs(inputs, contract, task_type, interface_manifest)
+        inject_contract_inputs(inputs, contract, task_type, interface_manifest, footprint)
         _inject_rejection_context(inputs, framing_rejection_context, task_type)
 
         envelope = TaskEnvelope(

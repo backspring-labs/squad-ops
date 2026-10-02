@@ -368,10 +368,19 @@ def derive_footprint(baseline_manifest: str, candidate_manifest: str) -> tuple[s
     """The files the change may touch: each product file whose expansion differs between the
     accepted manifest and the delta's (added, changed or removed), plus the stack's qa test
     namespace as ``<dir>**`` patterns. Sorted, so equal deltas give equal footprints."""
-    from squadops.capabilities.scaffold import InterfaceManifest, expand, qa_test_namespace
+    from squadops.capabilities.scaffold import InterfaceManifest
 
-    before = InterfaceManifest.from_yaml(baseline_manifest)
-    after = InterfaceManifest.from_yaml(candidate_manifest)
+    return derive_footprint_from(
+        InterfaceManifest.from_yaml(baseline_manifest),
+        InterfaceManifest.from_yaml(candidate_manifest),
+    )
+
+
+def derive_footprint_from(before: Any, after: Any) -> tuple[str, ...]:
+    """``derive_footprint`` over parsed manifests: the one derivation, for a caller that
+    already holds them."""
+    from squadops.capabilities.scaffold import expand, qa_test_namespace
+
     old = {f["name"]: f["content"] for f in expand(before)}
     new = {f["name"]: f["content"] for f in expand(after)}
     namespace = qa_test_namespace(after)
