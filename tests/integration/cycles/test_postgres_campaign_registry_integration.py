@@ -22,6 +22,7 @@ from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
 from adapters.persistence.pool import create_pool
 from squadops.campaigns.launcher import CampaignLauncher
 from squadops.campaigns.models import (
+    AcceptedTree,
     CampaignOutcome,
     CampaignState,
     ControlOperation,
@@ -126,6 +127,29 @@ async def test_a_restart_reads_the_campaign_its_log_and_its_intent_back(campaign
     assert log[-1] == decided.entry
     assert intent == decided.intent
     assert [e.seq for e in log] == [1, 2, 3]
+
+
+async def test_a_promoted_tree_survives_a_restart_and_is_stored_whole(campaigns, pool):
+    """§12a. Bug caught: the accepted columns left out of the transition's UPDATE, so the tree
+    reads ``None`` after a restart; or half a tree stored."""
+    tree = AcceptedTree("sha-cal", "cyc_cal000000001")
+    await campaigns.transition(
+        CID, move(S.CALIBRATING, "k-promote", operation=ControlOperation.PROMOTE, accepted=tree)
+    )
+    await campaigns.transition(CID, move(S.AT_PROPOSAL, "k-prop"))
+
+    fresh_pool = await create_pool(POSTGRES_URL, min_size=1, max_size=2)
+    try:
+        stored = await PostgresCampaignRegistry(pool=fresh_pool).get_campaign(CID)
+    finally:
+        await fresh_pool.close()
+
+    assert stored.accepted == tree
+    async with pool.acquire() as conn:
+        with pytest.raises(asyncpg.CheckViolationError):
+            await conn.execute(
+                "UPDATE campaigns SET accepted_cycle_id = NULL WHERE campaign_id = $1", CID
+            )
 
 
 async def test_a_refusal_row_survives_the_refusal(campaigns):

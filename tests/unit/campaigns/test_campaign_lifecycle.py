@@ -11,6 +11,7 @@ from squadops.campaigns.lifecycle import (
     launch_id_for,
 )
 from squadops.campaigns.models import (
+    AcceptedTree,
     CampaignOutcome,
     CampaignState,
     CampaignTransition,
@@ -122,6 +123,9 @@ def test_a_refusal_row_leaves_the_state_where_it_was():
         (dict(operation=ControlOperation.CREATE), "create_campaign"),
         (dict(reason="  "), "reason is required"),
         (dict(idempotency_key=""), "idempotency_key is required"),
+        # §12a: the accepted tree moves only by a promotion, and a promotion names its tree.
+        (dict(accepted=AcceptedTree("sha-1", "cyc_1")), "only a promotion"),
+        (dict(operation=ControlOperation.PROMOTE), "only a promotion"),
     ],
 )
 def test_a_malformed_control_operation_is_refused_at_construction(kwargs, message):
