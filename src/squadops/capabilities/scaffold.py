@@ -1459,6 +1459,11 @@ def harness_entry_modules(stack: str) -> tuple[str, ...]:
     return known.harness_entry_modules if known else ()
 
 
+def test_config_files_for_stack(stack: str) -> tuple[str, ...]:
+    """The stack's test-runner configuration files outside its qa namespace (SIP-0109 §7.4)."""
+    return _stack(stack).test_config_files
+
+
 def qa_test_namespace_for_stack(stack: str) -> tuple[str, ...]:
     """The directory prefixes that own qa test files on ``stack`` (SIP-0100 D1).
 
@@ -1504,6 +1509,11 @@ class ScaffoldStack:
     #: SIP-0100 D1: workspace-relative directory prefixes that own QA test files. A QA file
     #: outside this surface is an unauthorized write.
     qa_test_namespace: tuple[str, ...] = ()
+    #: SIP-0109 §7.4: the files outside ``qa_test_namespace`` that configure the test runner
+    #: and nothing else. The baseline-evaluator overlay takes them from the candidate with its
+    #: tests; the candidate-verifier overlay takes them from a criterion's frozen bundle. A file
+    #: that configures the build too (a vite config) is product code, and is not listed.
+    test_config_files: tuple[str, ...] = ()
     #: SIP-0100 harness boundary: app entry modules a QA test must NOT import — it consumes
     #: the scaffold-owned ``client`` fixture instead. ``app.main``/``main`` are the recurring
     #: wrong guesses that killed pf-25/26.
@@ -1617,6 +1627,7 @@ _STACKS: dict[str, ScaffoldStack] = {
         name=_FASTAPI_REACT_NAME,
         expand=_expand_fullstack_fastapi_react,
         fill_slots=_fill_slots_fullstack_fastapi_react,
+        test_config_files=("conftest.py", "frontend/src/test-setup.js"),
         # ``frontend/src/__tests__/`` is where this stack seeds its own harness
         # (``stack_fastapi_react.py``, ``_HARNESS_TEST_JSX``) and therefore where the qa
         # role emits beside it. The declaration named only ``frontend/src/tests/``, a
@@ -1648,6 +1659,7 @@ _STACKS: dict[str, ScaffoldStack] = {
         name=_NEXTJS_TS_NAME,
         expand=_expand_nextjs_ts,
         fill_slots=_fill_slots_nextjs_ts,
+        test_config_files=("vitest.config.ts",),
         # Co-located `__tests__/` beside source, not a directory prefix at the tree root —
         # one of the three FastAPI-shaped assumptions S2 selected this stack to break. The
         # bare name is the declaration of that convention; `within_namespace` reads it as a
