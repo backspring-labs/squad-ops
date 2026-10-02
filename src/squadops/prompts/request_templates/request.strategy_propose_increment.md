@@ -9,6 +9,7 @@ required_variables:
   - prior_criteria_lines
 optional_variables:
   - supervisor_note_section
+  - prd_section
 ---
 ## Propose the next increment of this application
 
@@ -28,6 +29,7 @@ not trimmed):
 and the supervisor rules on the retirement):
 {{prior_criteria_lines}}
 {{supervisor_note_section}}
+{{prd_section}}
 ### The accepted application's interface manifest, exactly as it stands
 
 ```yaml

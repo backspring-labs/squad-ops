@@ -103,9 +103,13 @@ class StrategyProposeIncrementHandler(_PlanningTaskHandler):
         except ProposalContextMissing as e:
             return self._failure(start_time, inputs, str(e))
 
-        rendered = await renderer.render(
-            self._request_template_id, _render_variables(block, proposal_context)
-        )
+        variables = _render_variables(block, proposal_context)
+        prd = str(inputs.get("prd") or "").strip()
+        if prd:
+            # The objective points into the product's requirements (its expansion scope, say);
+            # the model is shown them rather than asked to recall them.
+            variables["prd_section"] = f"\n### The product's requirements\n\n{prd}\n"
+        rendered = await renderer.render(self._request_template_id, variables)
         assembled = context.ports.prompt_service.assemble(
             role=context.role_id,  # SIP-0108 §10m: the identity layer is what the process IS
             hook="agent_start",

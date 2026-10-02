@@ -76,7 +76,11 @@ def _inputs(*, scope=("backend/**", "frontend/**"), vault=None, block=True) -> d
             },
             "prior_criteria": [],
         }
-    return {"resolved_config": config, "artifact_vault": vault or _Vault(), "prd": ""}
+    return {
+        "resolved_config": config,
+        "artifact_vault": vault or _Vault(),
+        "prd": "## Expansion Tier 1\n1. Capacity limit per run",
+    }
 
 
 def _prompts(ctx) -> list[str]:
@@ -109,6 +113,7 @@ async def test_an_accepted_proposal_is_the_typed_change_request_with_its_footpri
     [prompt] = _prompts(ctx)
     assert "run-detail-leave-submit" in prompt  # the baseline manifest, shown verbatim
     assert "- `frontend/**`" in prompt  # the allowed scope
+    assert "1. Capacity limit per run" in prompt  # the requirements the objective points into
 
 
 async def test_a_refusal_comes_back_with_every_reason_and_the_revision_is_judged_afresh():
