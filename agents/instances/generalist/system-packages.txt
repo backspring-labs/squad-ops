@@ -3,3 +3,5 @@
 # Asserted equal to the union by tests/unit/agents/test_han_roster_and_image.py.
 nodejs
 npm
+# SIP-0109 §8.3: the qa role reads rendered pages with headless Chromium (route_rendering).
+chromium

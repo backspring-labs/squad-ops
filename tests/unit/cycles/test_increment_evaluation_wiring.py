@@ -259,3 +259,26 @@ async def test_the_evaluation_is_handed_the_bundles_its_launch_pinned():
     enriched = await executor._enrich_envelope(evaluation, {}, [], [])
 
     assert enriched.inputs["frozen_bundles"] == {"F1": bundle}
+
+
+def test_a_parameterized_route_is_seeded_by_its_collections_create():
+    """§8.3. Bugs caught: the run page read at ``/runs/:run_id`` literally (never the view), or
+    seeded with a body the create probe would not send."""
+    from squadops.campaigns.increment_tree import route_seeds
+    from squadops.capabilities.scaffold_contract import create_request_body
+
+    seeds = route_seeds(CANDIDATE)
+
+    [create] = [ep for ep in CANDIDATE.api.endpoints if (ep.method, ep.path) == ("POST", "/runs")]
+    assert seeds == {
+        "/runs/:run_id": {
+            "method": "POST",
+            "path": "/runs",
+            "json": create_request_body(CANDIDATE, create),
+            "param": "run_id",
+        }
+    }
+    [evaluation] = [
+        e for e in _implementation(True, STORED) if e.task_type == "qa.evaluate_increment"
+    ]
+    assert evaluation.inputs["increment_route_seeds"] == seeds

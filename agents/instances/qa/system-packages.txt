@@ -8,3 +8,8 @@
 # Dockerfile (#306).
 nodejs
 npm
+
+# Chromium: SIP-0109 §8.3 — an increment's evaluation reads the test ids each declared route's
+# page rendered (handlers/route_rendering.py, headless --dump-dom). qa only: no other role
+# renders pages.
+chromium

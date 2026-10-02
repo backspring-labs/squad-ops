@@ -187,22 +187,33 @@ def _held(address: str | None, test_path: str, run: TreeRun | None) -> tuple[Hel
 class RouteResult:
     path: str
     held: Held
+    #: The root anchor, when the page did not render it.
     missing: tuple[str, ...] = ()
+    #: The view's other declared anchors this reading did not show — state-dependent (a list's
+    #: rows on an empty list, an error banner): recorded, not judged (§24p).
+    not_shown: tuple[str, ...] = ()
 
 
 def route_rendering(
     declared: Mapping[str, tuple[str, ...]], rendered: Mapping[str, frozenset[str] | None]
 ) -> tuple[RouteResult, ...]:
-    """Each declared route against the test ids found on its page. ``None`` is a page that was
-    never rendered or read, which is blocked, never a pass."""
+    """Each declared route against the test ids found on its page (§8.3): it renders when its
+    view's ROOT anchor does — the first declared id, stamped on the view's container (#659).
+
+    Not every declared id: a view's anchors include states that exclude each other (a list's
+    rows and its empty state; a form and its error), so one reading of a correct page never shows
+    them all — the first live reading failed a correct app that way (§24p). The rest are recorded
+    as ``not_shown``. ``None`` is a page that was never rendered or read: blocked, never a pass."""
     results = []
     for path, testids in sorted(declared.items()):
         seen = rendered.get(path)
         if seen is None:
             results.append(RouteResult(path, Held.BLOCKED_UNVERIFIED))
             continue
-        missing = tuple(t for t in testids if t not in seen)
-        results.append(RouteResult(path, Held.BROKEN if missing else Held.HELD, missing))
+        root, rest = (testids[0], testids[1:]) if testids else (None, ())
+        missing = (root,) if root is not None and root not in seen else ()
+        not_shown = tuple(t for t in rest if t not in seen)
+        results.append(RouteResult(path, Held.BROKEN if missing else Held.HELD, missing, not_shown))
     return tuple(results)
 
 

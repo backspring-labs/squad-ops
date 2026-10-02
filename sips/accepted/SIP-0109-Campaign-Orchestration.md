@@ -1359,6 +1359,55 @@ promotion to store.
   - **route rendering:** every increment that declares a route stays `blocked_unverified` until
     rendering is read (§8.3, part 3). It is repaired by row 8 and never promoted.
 
+
+### 24p. Route rendering, as built (2026-10-02, #1705 e, part 3; decided under the 2.0 charter)
+
+§8.3: every declared route renders. The evaluation (§24n) reads it in the qa container, not in the
+sandbox as the #1705 step e reading recommended.
+- **Why not the sandbox:** runtime-api does not reach the SIP-0102 sandbox service.
+  - Its provider is `noop`, and no sandbox client is wired into runtime-api or the agents.
+  - Reaching it needs the service's address and token in runtime-api's environment, which is a
+    `docker-compose.yml` change.
+- **Why the qa container:** it already boots the backend for behavioural probes (#822). Its role
+  declares its own system packages, so the browser is one line there (`chromium`), and no other
+  role's image grows.
+
+**How a page is read** (`handlers/route_rendering.py`):
+1. **The candidate is stood up.** The backend is booted by the stack's probe profile, on the port
+   the scaffold's dev proxy targets. The frontend is served by its own dev server after an install.
+   Both are named by the stack's `render_profile` (FastAPI+React: `vite_dev_proxy`).
+2. **A parameterized route is brought into being first** (`route_seeds`). Its collection's create
+   request is sent, with the body the create probe sends (`create_request_body`, now the one
+   synthesis), and the created id fills the route's parameter.
+3. **Each page is read** by headless Chromium (`--dump-dom`), and the `data-testid` values it
+   rendered are judged against the route's declared test ids.
+
+**Anything unread is `blocked_unverified`, never passed.** That covers:
+- no render profile for the stack;
+- an app that does not install or boot;
+- a route with no seed, or a seed the app refuses;
+- a page the browser could not read.
+
+`nextjs_ts` declares no render profile yet, so its routes are blocked.
+
+**What differs from §8.3's text: a route renders when its view's root anchor does**, not every
+declared test id. The root anchor is the first declared id, stamped on the view's container (#659).
+- **The evidence:** the first live reading, of roll 4's delivered app (`cyc_2296ec2e5121`, accepted
+  21/21), in the qa image. All three pages rendered their root anchor.
+  - `/`, read with an empty list, did not show its row anchors (`runs-list`, `run-row`, …).
+  - `/runs/new` did not show `create-run-error`.
+- **Why that rules out the literal reading:** a view's anchors include states that exclude each
+  other — a list's rows and its empty state, a form and its error. One reading of a correct page
+  never shows them all, so "every declared id" fails a correct app.
+- **What happens to the others:** the anchors a reading did not show are recorded on the route's
+  result (`not_shown`), not judged. Each state's anchors are exercised by the qa suites, which put
+  the page into that state.
+
+**The same live check found a leak** in the first cut of the renderer, which this fixes. Stopping
+`npx` left the dev server it started still serving and writing into the workspace being removed.
+Each server now runs in a session of its own and its whole process group is stopped. No process
+outlived the second reading.
+
 ---
 
 ## Revision history

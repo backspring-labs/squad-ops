@@ -152,20 +152,24 @@ def test_a_frozen_criterion_holds_fails_or_is_blocked_never_silently_passes():
 # --- §8.3 ----------------------------------------------------------------------------------------
 
 
-def test_a_route_renders_only_when_every_declared_test_id_appears():
+def test_a_route_renders_when_its_views_root_anchor_does():
+    """§8.3 as read on a live page (§24p). Bugs caught: a correct list page failed because its
+    empty state and its rows cannot both show (the strict reading), or a page that rendered
+    something other than its view passed."""
     results = route_rendering(
         {
-            "/": ("run-list-view", "run-list"),
+            # Roll 4's list page, read empty: the root and the empty state, no rows.
+            "/": ("runs-list-view", "run-row", "empty-state"),
             "/runs/:run_id": ("run-detail-view", "capacity-status"),
         },
         {
-            "/": frozenset({"run-list-view", "run-list", "extra"}),
-            "/runs/:run_id": frozenset({"run-detail-view"}),
+            "/": frozenset({"runs-list-view", "empty-state", "create-run-link"}),
+            "/runs/:run_id": frozenset({"capacity-status"}),  # not the detail view
         },
     )
     assert results == (
-        RouteResult("/", Held.HELD),
-        RouteResult("/runs/:run_id", Held.BROKEN, ("capacity-status",)),
+        RouteResult("/", Held.HELD, (), ("run-row",)),
+        RouteResult("/runs/:run_id", Held.BROKEN, ("run-detail-view",)),
     )
     assert route_rendering({"/new": ("x",)}, {}) == (RouteResult("/new", Held.BLOCKED_UNVERIFIED),)
 
