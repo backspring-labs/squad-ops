@@ -322,7 +322,7 @@ in it:
   question 3), where recurrence is live. The jsdom pitfalls behind 1.9's two rejections (#1785) are
   this SIP's motivating class in its current form. **Campaigns are the corpus's source:** the evidence
   package records every failure under the failure-attribution registry's vocabulary, with campaign,
-  cycle and increment (`SIP-Campaign-Orchestration.md` revision 2, §14).
+  cycle and increment (`SIP-0109-Campaign-Orchestration.md` revision 2, §14).
 
 **Governance (normative in revision 3; §5's injection rule and recall chain carry it).** Under 2.0's rules, anything that changes how the squad
 behaves lands between campaigns, with the owner's approval. That is how the calibration cycle can

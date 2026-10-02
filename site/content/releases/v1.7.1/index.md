@@ -447,7 +447,7 @@ agent container, at emission and at repair, and each image provisions its toolch
 | [SIP-API-Contract-Hardening](../../design/sips/SIP-API-Contract-Hardening.md) | new | proposed |
 | [SIP-Agent-Comms-Delivery-Guarantees](../../design/sips/SIP-Agent-Comms-Delivery-Guarantees.md) | new | proposed |
 | [SIP-Agent-Embodiment-Runtime](../../design/sips/SIP-Agent-Embodiment-Runtime.md) | new | proposed |
-| [SIP-Campaign-Orchestration](../../design/sips/SIP-Campaign-Orchestration.md) | new | proposed |
+| SIP-Campaign-Orchestration | new | proposed |
 | [SIP-Campaign-Self-Improvement-and-Test-Bay-Requirements](../../design/sips/SIP-Campaign-Self-Improvement-and-Test-Bay-Requirements.md) | new | proposed |
 | [SIP-Capability-Backed-Agents](../../design/sips/SIP-Capability-Backed-Agents.md) | new | proposed |
 | [SIP-Continuum-Runtime-Console](../../design/sips/SIP-Continuum-Runtime-Console.md) | new | proposed |

@@ -113,7 +113,7 @@ post-retest governance review (SIP drafted) → v1.6+.
 | Proposal | From | To |
 |---|---|---|
 | [SIP-0096-Verification-Evidence-Integrity](../../design/sips/SIP-0096-Verification-Evidence-Integrity.md) | new | implemented |
-| [SIP-Campaign-Orchestration](../../design/sips/SIP-Campaign-Orchestration.md) | new | proposed |
+| SIP-Campaign-Orchestration | new | proposed |
 | [SIP-Campaign-Self-Improvement-and-Test-Bay-Requirements](../../design/sips/SIP-Campaign-Self-Improvement-and-Test-Bay-Requirements.md) | new | proposed |
 | [SIP-Cross-Cycle-Memory](../../design/sips/SIP-Cross-Cycle-Memory.md) | new | proposed |
 | SIP-Cycle-Evaluation-Scorecard | new | proposed |

@@ -231,7 +231,7 @@ queue deferred to 1.6.1+: #1011, #1012 (byte-verified reproducer banked), #1013,
 | [SIP-API-Contract-Hardening](../../design/sips/SIP-API-Contract-Hardening.md) | new | proposed |
 | [SIP-Agent-Embodiment-Runtime](../../design/sips/SIP-Agent-Embodiment-Runtime.md) | new | proposed |
 | SIP-Atlas-Provider-Adapter | new | proposed |
-| [SIP-Campaign-Orchestration](../../design/sips/SIP-Campaign-Orchestration.md) | new | proposed |
+| SIP-Campaign-Orchestration | new | proposed |
 | [SIP-Capability-Backed-Agents](../../design/sips/SIP-Capability-Backed-Agents.md) | new | proposed |
 | [SIP-Cross-Cycle-Memory](../../design/sips/SIP-Cross-Cycle-Memory.md) | new | proposed |
 | SIP-Cycle-Evaluation-Scorecard | new | proposed |
