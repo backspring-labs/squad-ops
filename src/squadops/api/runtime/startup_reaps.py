@@ -203,6 +203,80 @@ async def reap_stranded_activities(
 _STRANDED_SWEEP_CYCLES_PER_PROJECT = 200
 
 
+async def _ended_through_the_boundary(
+    cycle_registry: CycleRegistryPort, cycle_id: str, runs: list
+) -> bool:
+    """Whether the cycle's recorded ending (#1860) is its latest live run's: the cycle reached
+    the completion boundary there, so nothing after that run was ever owed."""
+    from squadops.cycles.models import RunStatus
+
+    end = await cycle_registry.get_cycle_end(cycle_id)
+    live = [r for r in runs if r.status != RunStatus.CANCELLED.value]
+    return end is not None and bool(live) and end.last_run_id == live[-1].run_id
+
+
+async def _sweep_cycle(cycle_registry: CycleRegistryPort, project_id: str, cycle) -> bool:
+    """One cycle of the stranded-cycle sweep: logs what it finds, and returns whether the cycle
+    is STRANDED (the count the sweep reports)."""
+    from squadops.cycles.lifecycle import WorkloadStranding, classify_workload_stranding
+    from squadops.cycles.models import RunStatus
+
+    stranded = False
+    sequence = cycle.resolved_config().get("workload_sequence") or []
+    if not sequence:
+        return False
+    runs = await cycle_registry.list_runs(cycle.cycle_id)
+    # #1872: a cycle whose recorded ending is its latest run's ended through the
+    # completion boundary (SIP-0109 §12a) — a spent framing re-roll's last rejection,
+    # say — and is neither stranded nor a rejection that "landed as the process died".
+    if await _ended_through_the_boundary(cycle_registry, cycle.cycle_id, runs):
+        return False
+    verdict = classify_workload_stranding(sequence, runs, cycle.cancelled)
+    if verdict is None:
+        return False
+    position = len([r for r in runs if r.status != RunStatus.CANCELLED.value]) - 1
+    if verdict is WorkloadStranding.STRANDED:
+        stranded = True
+        logger.warning(
+            "Cycle %s (project %s) is STRANDED between workloads: position "
+            "%d/%d (%s) completed%s but its execute_cycle loop died before "
+            "creating the successor. Recover with: squadops runs retry %s %s",
+            cycle.cycle_id,
+            project_id,
+            position,
+            len(sequence),
+            sequence[position].get("type", "unknown"),
+            (" with gate approved" if sequence[position].get("gate") else " (ungated boundary)"),
+            project_id,
+            cycle.cycle_id,
+        )
+    elif verdict is WorkloadStranding.GATE_PENDING:
+        logger.info(
+            "Cycle %s (project %s) awaits gate %r on completed position %d/%d — "
+            "its gate poller died with the process, so approval alone will not "
+            "resume it: approve, then squadops runs retry %s %s",
+            cycle.cycle_id,
+            project_id,
+            sequence[position].get("gate"),
+            position,
+            len(sequence),
+            project_id,
+            cycle.cycle_id,
+        )
+    elif verdict is WorkloadStranding.GATE_REJECTED:
+        logger.info(
+            "Cycle %s (project %s) carries a rejected gate %r at position %d/%d "
+            "with no supersede/re-roll recorded — the rejection landed as the "
+            "process died; it resolves FAILED and stays operator-owned",
+            cycle.cycle_id,
+            project_id,
+            sequence[position].get("gate"),
+            position,
+            len(sequence),
+        )
+    return stranded
+
+
 async def detect_stranded_cycles(
     cycle_registry: CycleRegistryPort,
     project_registry: ProjectRegistryPort | None,
@@ -226,9 +300,6 @@ async def detect_stranded_cycles(
     if project_registry is None:
         return 0
     try:
-        from squadops.cycles.lifecycle import WorkloadStranding, classify_workload_stranding
-        from squadops.cycles.models import RunStatus
-
         stranded_count = 0
         for project in await project_registry.list_projects():
             cycles = await cycle_registry.list_cycles(
@@ -242,57 +313,8 @@ async def detect_stranded_cycles(
                     project.project_id,
                 )
             for cycle in cycles:
-                sequence = cycle.resolved_config().get("workload_sequence") or []
-                if not sequence:
-                    continue
-                runs = await cycle_registry.list_runs(cycle.cycle_id)
-                verdict = classify_workload_stranding(sequence, runs, cycle.cancelled)
-                if verdict is None:
-                    continue
-                position = len([r for r in runs if r.status != RunStatus.CANCELLED.value]) - 1
-                if verdict is WorkloadStranding.STRANDED:
+                if await _sweep_cycle(cycle_registry, project.project_id, cycle):
                     stranded_count += 1
-                    logger.warning(
-                        "Cycle %s (project %s) is STRANDED between workloads: position "
-                        "%d/%d (%s) completed%s but its execute_cycle loop died before "
-                        "creating the successor. Recover with: squadops runs retry %s %s",
-                        cycle.cycle_id,
-                        project.project_id,
-                        position,
-                        len(sequence),
-                        sequence[position].get("type", "unknown"),
-                        (
-                            " with gate approved"
-                            if sequence[position].get("gate")
-                            else " (ungated boundary)"
-                        ),
-                        project.project_id,
-                        cycle.cycle_id,
-                    )
-                elif verdict is WorkloadStranding.GATE_PENDING:
-                    logger.info(
-                        "Cycle %s (project %s) awaits gate %r on completed position %d/%d — "
-                        "its gate poller died with the process, so approval alone will not "
-                        "resume it: approve, then squadops runs retry %s %s",
-                        cycle.cycle_id,
-                        project.project_id,
-                        sequence[position].get("gate"),
-                        position,
-                        len(sequence),
-                        project.project_id,
-                        cycle.cycle_id,
-                    )
-                elif verdict is WorkloadStranding.GATE_REJECTED:
-                    logger.info(
-                        "Cycle %s (project %s) carries a rejected gate %r at position %d/%d "
-                        "with no supersede/re-roll recorded — the rejection landed as the "
-                        "process died; it resolves FAILED and stays operator-owned",
-                        cycle.cycle_id,
-                        project.project_id,
-                        sequence[position].get("gate"),
-                        position,
-                        len(sequence),
-                    )
         if stranded_count:
             logger.warning(
                 "Startup sweep surfaced %d cycle(s) stranded between workloads", stranded_count
