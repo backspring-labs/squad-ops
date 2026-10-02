@@ -1138,8 +1138,14 @@ being built in the order the design note on #1705 sets out:
   - **At the increment gate's approval:** the approved change request, whose stored hash is checked,
     has its manifest delta applied to the accepted manifest. The candidate manifest and the contract
     derived from it (#779) are stored as the proposal run's promoted artifacts.
-  - **At the next advance:** the forwarding builder hands them over as `plan_artifact_refs` and
+  - **At every later advance:** the forwarding builder hands them over as `plan_artifact_refs` and
     `contract_ref`. Framing runs in bind mode and authors no manifest.
+    - **Every workload, not just the next one.** They are read from the approved proposal run, so
+      they reach the implementation as well as the framing, as a seed from cycle creation reaches
+      every workload.
+    - **Why "every" (#1705 b):** a three-workload increment showed the gap. Forwarding is rebuilt
+      from the cycle and the run that just finished, so the implementation would have run
+      unscaffolded, in author mode and without the accepted tree.
 - **c1. The implementation starts from the accepted tree.**
   - **How the run finds it:** the increment's launch names the accepted cycle
     (`campaign_proposal.accepted_cycle_id`).

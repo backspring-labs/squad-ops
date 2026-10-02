@@ -372,6 +372,33 @@ async def test_the_approved_change_request_reaches_the_increments_framing(execut
     assert await approved_change_request(executor._artifact_vault, framing) == _CHANGE_REQUEST
 
 
+async def test_the_approved_seed_binds_every_workload_after_the_proposal(executor):
+    """§7.3: the candidate manifest and its contract bind the increment's implementation as they
+    bind its framing, as a creation-time seed binds every workload. Entered at the forwarding the
+    workload loop builds after framing completes, and at a restart's rebuild of it (#434). Bug
+    caught: forwarding rebuilt from the cycle and the framing run alone drops the proposal run's
+    seed, so the implementation runs unscaffolded, in author mode, without the accepted tree."""
+    await _reach_the_gate(executor, _cycle(CID))
+    stored = executor._artifact_vault.stored
+    [seed] = [r for r, _ in stored.values() if r.artifact_type == "interface_manifest"]
+    [contract] = [r for r, _ in stored.values() if r.artifact_type == "verification_contract"]
+    framing = Run(
+        run_id="run_frame",
+        cycle_id="cyc_inc",
+        run_number=2,
+        status="completed",
+        initiated_by="system",
+        resolved_config_hash="cfg",
+        workload_type="framing",
+    )
+    executor._cycle_registry.list_runs.return_value = [_PROPOSAL_RUN, framing]
+
+    forwarded = await executor._build_forwarding_overrides(_cycle(CID), framing)
+
+    assert seed.artifact_id in forwarded["plan_artifact_refs"]
+    assert forwarded["contract_ref"] == contract.artifact_id
+
+
 async def test_an_increments_framing_without_its_change_request_is_refused(executor):
     """Bug caught: an increment framed as a new application because nothing was forwarded."""
     from squadops.campaigns.increment_tree import approved_change_request
