@@ -298,6 +298,7 @@ def _stranded_fixture(decisions: tuple):
     cycle_registry = AsyncMock()
     cycle_registry.list_cycles.return_value = [cycle]
     cycle_registry.list_runs.return_value = [_seq_run(1, "completed", decisions)]
+    cycle_registry.get_cycle_end.return_value = None  # no ending recorded after this run
     return cycle_registry, project_registry
 
 
@@ -342,9 +343,35 @@ class TestDetectStrandedCycles:
         await detect_stranded_cycles(cycle_registry, project_registry)
 
         called = {c[0] for c in cycle_registry.mock_calls}
-        assert called <= {"list_cycles", "list_runs"}, (
+        assert called <= {"list_cycles", "list_runs", "get_cycle_end"}, (
             f"read-only sweep touched mutating registry surface: {called}"
         )
+
+    @pytest.mark.parametrize("recorded", [True, False], ids=["ended-at-the-boundary", "died"])
+    async def test_a_rejection_the_cycle_ended_on_is_not_told_as_a_crash(self, caplog, recorded):
+        """#1872: shakeout 2's increment spent its framing re-rolls and ended ``plan_rejected``
+        through the completion boundary, and every restart narrated it as a rejection that
+        "landed as the process died". Bug caught: a normal ending told as a crash; or a real one
+        (no ending recorded after the run) no longer surfaced."""
+        from squadops.cycles.cycle_end import CycleStopReason, RecordedEnd
+
+        rejected = (
+            GateDecision(
+                gate_name="plan-review", decision="rejected", decided_by="system", decided_at=NOW
+            ),
+        )
+        cycle_registry, project_registry = _stranded_fixture(rejected)
+        if recorded:
+            cycle_registry.get_cycle_end.return_value = RecordedEnd(
+                "cyc_stranded", "run_001", CycleStopReason.PLAN_REJECTED
+            )
+
+        with caplog.at_level("INFO"):
+            count = await detect_stranded_cycles(cycle_registry, project_registry)
+
+        assert count == 0
+        told = any("landed as the process died" in r.message for r in caplog.records)
+        assert told is (not recorded)
 
     async def test_registry_failure_never_blocks_boot(self):
         project_registry = AsyncMock()
