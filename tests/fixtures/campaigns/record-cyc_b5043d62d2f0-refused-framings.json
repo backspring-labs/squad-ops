@@ -1,0 +1,113 @@
+{
+  "cycle_id": "cyc_b5043d62d2f0",
+  "cycle_outcome": {
+    "failed": [],
+    "inert": [],
+    "replay": null,
+    "required_unmet": [],
+    "run_count": 4,
+    "unverified": [],
+    "verdict": "accepted",
+    "verified": [],
+    "waived": []
+  },
+  "runs": [
+    {
+      "cycle_id": "cyc_b5043d62d2f0",
+      "failure_reason": null,
+      "finished_at": "2026-10-02T21:10:46.857762Z",
+      "gate_decisions": [
+        {
+          "decided_at": "2026-10-02T21:12:02.634710Z",
+          "decided_by": "human:005159fd-7461-45e4-b4f5-b2c9f868161b",
+          "decision": "approved",
+          "gate_name": "progress_increment_ruling",
+          "notes": "Ruled as the shakeout's delegated supervisor (uncounted, 2.0 charter). Approved: a feature in scope (backend/**, frontend/**) toward the PRD's Expansion Tier 1 (capacity limit per run). T1 (POST /runs echoes capacity), T2 (join at capacity -> 409 capacity_reached) and T3 (run-detail-capacity shows 'count / capacity joined') each fail on the baseline for a behavioural reason and pass on a correct candidate. Footprint is five product files plus test dirs; nothing frozen is touched; manifest delta additive; no retirements.",
+          "waived_checks": [],
+          "waiver_reason": null
+        }
+      ],
+      "initiated_by": "system",
+      "resolved_config_hash": "49e8a5acaf3ed06c7be71c763cc82754b9564656cbc2ef1ca62e2e4c9b660903",
+      "resolved_config_ref": null,
+      "run_id": "run_7e217a51f5eb",
+      "run_number": 1,
+      "started_at": "2026-10-02T21:08:59.028851Z",
+      "status": "completed",
+      "workload_type": "proposal"
+    },
+    {
+      "cycle_id": "cyc_b5043d62d2f0",
+      "failure_reason": null,
+      "finished_at": "2026-10-02T21:29:46.530193Z",
+      "gate_decisions": [
+        {
+          "decided_at": "2026-10-02T21:29:46.767983Z",
+          "decided_by": "system:plan_validation",
+          "decision": "rejected",
+          "gate_name": "progress_plan_review",
+          "notes": "Task 2 (Package the build output for deployment): builder.assemble declares 'assembly_notes.md', which this increment's approved change does not touch. The accepted application keeps that file as it is; plan only the files the change touches: backend/errors.py, backend/models.py, backend/routes.py, frontend/src/views/RunCreate.jsx, frontend/src/views/RunDetail.jsx, backend/tests/**, frontend/src/__tests__/**, frontend/src/tests/**; verification_contract: Task 0 (Enforce capacity limit in backend routes): development.develop declares expected artifact 'backend/errors.py', which is frozen (scaffold-owned) \u2014 no task may claim a frozen file as a deliverable; scaffold enforcement restores frozen bytes at emission, so the task cannot satisfy its expected artifacts and a repair scoped to it would target the wrong files; verification_contract: Task 0 (Enforce capacity limit in backend routes): development.develop declares expected artifact 'backend/models.py', which is frozen (scaffold-owned) \u2014 no task may claim a frozen file as a deliverable; scaffold enforcement restores frozen bytes at emission, so the task cannot satisfy its expected artifacts and a repair scoped to it would target the wrong files",
+          "waived_checks": [],
+          "waiver_reason": null
+        }
+      ],
+      "initiated_by": "system",
+      "resolved_config_hash": "49e8a5acaf3ed06c7be71c763cc82754b9564656cbc2ef1ca62e2e4c9b660903",
+      "resolved_config_ref": null,
+      "run_id": "run_5196098151d8",
+      "run_number": 2,
+      "started_at": "2026-10-02T21:12:09.185593Z",
+      "status": "cancelled",
+      "workload_type": "framing"
+    },
+    {
+      "cycle_id": "cyc_b5043d62d2f0",
+      "failure_reason": null,
+      "finished_at": "2026-10-02T21:44:51.316394Z",
+      "gate_decisions": [
+        {
+          "decided_at": "2026-10-02T21:44:51.561028Z",
+          "decided_by": "system:plan_validation",
+          "decision": "rejected",
+          "gate_name": "progress_plan_review",
+          "notes": "Task 3 (Assemble build deliverables): builder.assemble declares 'assembly_notes.md', which this increment's approved change does not touch. The accepted application keeps that file as it is; plan only the files the change touches: backend/errors.py, backend/models.py, backend/routes.py, frontend/src/views/RunCreate.jsx, frontend/src/views/RunDetail.jsx, backend/tests/**, frontend/src/__tests__/**, frontend/src/tests/**",
+          "waived_checks": [],
+          "waiver_reason": null
+        }
+      ],
+      "initiated_by": "system",
+      "resolved_config_hash": "49e8a5acaf3ed06c7be71c763cc82754b9564656cbc2ef1ca62e2e4c9b660903",
+      "resolved_config_ref": null,
+      "run_id": "run_52070054cfd3",
+      "run_number": 3,
+      "started_at": "2026-10-02T21:29:46.808503Z",
+      "status": "cancelled",
+      "workload_type": "framing"
+    },
+    {
+      "cycle_id": "cyc_b5043d62d2f0",
+      "failure_reason": null,
+      "finished_at": "2026-10-02T22:04:32.022235Z",
+      "gate_decisions": [
+        {
+          "decided_at": "2026-10-02T22:04:32.263632Z",
+          "decided_by": "system:plan_validation",
+          "decision": "rejected",
+          "gate_name": "progress_plan_review",
+          "notes": "Task 3 (Assemble build deliverables and document the increment): builder.assemble declares 'assembly_notes.md', which this increment's approved change does not touch. The accepted application keeps that file as it is; plan only the files the change touches: backend/errors.py, backend/models.py, backend/routes.py, frontend/src/views/RunCreate.jsx, frontend/src/views/RunDetail.jsx, backend/tests/**, frontend/src/__tests__/**, frontend/src/tests/**",
+          "waived_checks": [],
+          "waiver_reason": null
+        }
+      ],
+      "initiated_by": "system",
+      "resolved_config_hash": "49e8a5acaf3ed06c7be71c763cc82754b9564656cbc2ef1ca62e2e4c9b660903",
+      "resolved_config_ref": null,
+      "run_id": "run_7a7a4242b899",
+      "run_number": 4,
+      "started_at": "2026-10-02T21:44:51.608739Z",
+      "status": "completed",
+      "workload_type": "framing"
+    }
+  ],
+  "status": "failed"
+}

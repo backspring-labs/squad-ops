@@ -49,6 +49,8 @@ def prior_cycle_brief(
             continue
         if indicator.state is IndicatorState.OBSERVED:
             brief[name] = indicator.value
+        elif indicator.state is IndicatorState.ASKED_NONE:
+            brief[name] = []  # asked, and there were none: shown as "none", never dropped
         elif indicator.state is IndicatorState.UNASKABLE:
             brief[name] = f"{_UNASKABLE}{indicator.reason}"
     reading = assessment.attribution

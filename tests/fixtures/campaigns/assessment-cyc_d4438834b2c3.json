@@ -1,0 +1,613 @@
+{
+  "assessment_version": 1,
+  "assessor_framework_version": "1.9.0",
+  "assessor_git_sha": "c972c57a",
+  "attribution": {
+    "contributing": [
+      {
+        "attribution": "producer_output_failure",
+        "check_id": null,
+        "round_index": 0,
+        "run_id": "run_be3caea2c20f",
+        "source": "failure_event",
+        "task_id": "task-run_be3caea2-m002-qa.test",
+        "value": "app_error"
+      },
+      {
+        "attribution": "handoff_or_convergence_failure",
+        "check_id": null,
+        "round_index": 1,
+        "run_id": "run_be3caea2c20f",
+        "source": "correction_movement",
+        "task_id": "task-run_be3caea2-m002-qa.test",
+        "value": "repeat"
+      },
+      {
+        "attribution": "producer_output_failure",
+        "check_id": null,
+        "round_index": 1,
+        "run_id": "run_be3caea2c20f",
+        "source": "failure_event",
+        "task_id": "task-run_be3caea2-m002-qa.test",
+        "value": "app_error"
+      }
+    ],
+    "primary": "handoff_or_convergence_failure",
+    "reason": null,
+    "refs": [
+      {
+        "id": "run_be3caea2c20f",
+        "kind": "registry_run"
+      },
+      {
+        "id": "run_be3caea2c20f",
+        "kind": "run_summary"
+      }
+    ],
+    "registry_version": 1,
+    "state": "observed",
+    "terminal_kind": "correction_terminated",
+    "unrecorded": []
+  },
+  "attribution_registry_version": 1,
+  "coordination": [
+    {
+      "name": "correction_rounds",
+      "reason": null,
+      "refs": [
+        {
+          "id": "art_4d4b095bba29",
+          "kind": "vault_artifact"
+        },
+        {
+          "id": "art_899c56c48777",
+          "kind": "vault_artifact"
+        }
+      ],
+      "state": "observed",
+      "value": 2
+    },
+    {
+      "name": "failed_emission_artifacts",
+      "reason": null,
+      "refs": [
+        {
+          "id": "art_376e33f0bb15",
+          "kind": "vault_artifact"
+        },
+        {
+          "id": "art_3f888e6d3c23",
+          "kind": "vault_artifact"
+        },
+        {
+          "id": "art_637e602e017c",
+          "kind": "vault_artifact"
+        },
+        {
+          "id": "art_7d2bbd1ad176",
+          "kind": "vault_artifact"
+        },
+        {
+          "id": "art_81960f33709a",
+          "kind": "vault_artifact"
+        },
+        {
+          "id": "art_ac2e6546c6de",
+          "kind": "vault_artifact"
+        }
+      ],
+      "state": "observed",
+      "value": 6
+    },
+    {
+      "name": "failed_emissions",
+      "reason": null,
+      "refs": [
+        {
+          "id": "art_376e33f0bb15",
+          "kind": "vault_artifact"
+        },
+        {
+          "id": "art_3f888e6d3c23",
+          "kind": "vault_artifact"
+        },
+        {
+          "id": "art_637e602e017c",
+          "kind": "vault_artifact"
+        },
+        {
+          "id": "art_7d2bbd1ad176",
+          "kind": "vault_artifact"
+        },
+        {
+          "id": "art_81960f33709a",
+          "kind": "vault_artifact"
+        },
+        {
+          "id": "art_ac2e6546c6de",
+          "kind": "vault_artifact"
+        }
+      ],
+      "state": "observed",
+      "value": 2
+    },
+    {
+      "name": "contentless_emissions",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": {
+        "repair_rounds": 0,
+        "task_attempts": 0
+      }
+    },
+    {
+      "name": "framing_rerolls",
+      "reason": null,
+      "refs": [
+        {
+          "id": "run_2b5f83604259",
+          "kind": "registry_run"
+        }
+      ],
+      "state": "observed",
+      "value": 1
+    },
+    {
+      "name": "plan_defect_terminations",
+      "reason": null,
+      "refs": [
+        {
+          "id": "term_-qa.test_01",
+          "kind": "vault_artifact"
+        }
+      ],
+      "state": "observed",
+      "value": 1
+    },
+    {
+      "name": "refunded_rounds",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": []
+    },
+    {
+      "name": "correction_movements",
+      "reason": null,
+      "refs": [
+        {
+          "id": "run_be3caea2c20f",
+          "kind": "run_summary"
+        }
+      ],
+      "state": "observed",
+      "value": [
+        {
+          "movement": "new",
+          "round_index": 0,
+          "run_id": "run_be3caea2c20f",
+          "task_id": "task-run_be3caea2-m002-qa.test"
+        },
+        {
+          "movement": "repeat",
+          "round_index": 1,
+          "run_id": "run_be3caea2c20f",
+          "task_id": "task-run_be3caea2-m002-qa.test"
+        }
+      ]
+    }
+  ],
+  "cycle_id": "cyc_d4438834b2c3",
+  "efficiency": [
+    {
+      "name": "wall_clock_seconds_by_run",
+      "reason": null,
+      "refs": [
+        {
+          "id": "run_2b5f83604259",
+          "kind": "registry_run"
+        },
+        {
+          "id": "run_be3caea2c20f",
+          "kind": "registry_run"
+        },
+        {
+          "id": "run_fc62b9054377",
+          "kind": "registry_run"
+        }
+      ],
+      "state": "observed",
+      "value": {
+        "run_2b5f83604259": 1790.737441,
+        "run_be3caea2c20f": 1067.117432,
+        "run_fc62b9054377": 1376.634702
+      }
+    },
+    {
+      "name": "wall_clock_seconds",
+      "reason": null,
+      "refs": [
+        {
+          "id": "run_2b5f83604259",
+          "kind": "registry_run"
+        },
+        {
+          "id": "run_be3caea2c20f",
+          "kind": "registry_run"
+        },
+        {
+          "id": "run_fc62b9054377",
+          "kind": "registry_run"
+        }
+      ],
+      "state": "observed",
+      "value": 4234.489575
+    },
+    {
+      "name": "tokens_by_run",
+      "reason": null,
+      "refs": [
+        {
+          "id": "run_2b5f83604259",
+          "kind": "run_summary"
+        },
+        {
+          "id": "run_be3caea2c20f",
+          "kind": "run_summary"
+        },
+        {
+          "id": "run_fc62b9054377",
+          "kind": "run_summary"
+        }
+      ],
+      "state": "observed",
+      "value": {
+        "run_2b5f83604259": {
+          "completion": 43653,
+          "prompt": 87677,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 7
+        },
+        "run_be3caea2c20f": {
+          "completion": 25397,
+          "prompt": 106155,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 11
+        },
+        "run_fc62b9054377": {
+          "completion": 32182,
+          "prompt": 78059,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 7
+        }
+      }
+    },
+    {
+      "name": "tokens_by_task_type",
+      "reason": null,
+      "refs": [
+        {
+          "id": "run_2b5f83604259",
+          "kind": "run_summary"
+        },
+        {
+          "id": "run_be3caea2c20f",
+          "kind": "run_summary"
+        },
+        {
+          "id": "run_fc62b9054377",
+          "kind": "run_summary"
+        }
+      ],
+      "state": "observed",
+      "value": {
+        "builder.assemble": {
+          "completion": 20,
+          "prompt": 15668,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 1
+        },
+        "data.analyze_failure": {
+          "completion": 3987,
+          "prompt": 21040,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 2
+        },
+        "development.correction_repair": {
+          "completion": 1641,
+          "prompt": 11705,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 1
+        },
+        "development.design_plan": {
+          "completion": 11324,
+          "prompt": 11698,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 2
+        },
+        "development.develop": {
+          "completion": 6572,
+          "prompt": 25763,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 2
+        },
+        "development.propose_plan_tasks": {
+          "completion": 9255,
+          "prompt": 34640,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 2
+        },
+        "governance.correction_decision": {
+          "completion": 404,
+          "prompt": 8752,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 2
+        },
+        "governance.define_done": {
+          "completion": 3008,
+          "prompt": 3457,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 1
+        },
+        "governance.merge_plan": {
+          "completion": 0,
+          "prompt": 0,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 0
+        },
+        "governance.prepare_plan_authoring_brief": {
+          "completion": 15835,
+          "prompt": 33290,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 2
+        },
+        "governance.review_plan": {
+          "completion": 8500,
+          "prompt": 11708,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 2
+        },
+        "qa.define_test_strategy": {
+          "completion": 8131,
+          "prompt": 11353,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 2
+        },
+        "qa.propose_plan_tasks": {
+          "completion": 13190,
+          "prompt": 44474,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 2
+        },
+        "qa.test": {
+          "completion": 9765,
+          "prompt": 19770,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 2
+        },
+        "strategy.propose_plan_guidance": {
+          "completion": 9600,
+          "prompt": 18573,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 2
+        }
+      }
+    },
+    {
+      "name": "llm_calls",
+      "reason": null,
+      "refs": [
+        {
+          "id": "run_2b5f83604259",
+          "kind": "run_summary"
+        },
+        {
+          "id": "run_be3caea2c20f",
+          "kind": "run_summary"
+        },
+        {
+          "id": "run_fc62b9054377",
+          "kind": "run_summary"
+        }
+      ],
+      "state": "observed",
+      "value": {
+        "calls": 25,
+        "failed_calls": 0,
+        "tasks_unreported": []
+      }
+    }
+  ],
+  "evidence_identity": "e91a34efaffd757c70645764e7ccb8d4abee5ffee8fa189a950f3843433880f0",
+  "outcome": [
+    {
+      "name": "verdict",
+      "reason": null,
+      "refs": [
+        {
+          "id": "run_2b5f83604259",
+          "kind": "verification_summary"
+        },
+        {
+          "id": "run_be3caea2c20f",
+          "kind": "verification_summary"
+        },
+        {
+          "id": "run_fc62b9054377",
+          "kind": "verification_summary"
+        }
+      ],
+      "state": "observed",
+      "value": "rejected"
+    },
+    {
+      "name": "criteria_coverage",
+      "reason": null,
+      "refs": [
+        {
+          "id": "run_2b5f83604259",
+          "kind": "verification_summary"
+        },
+        {
+          "id": "run_be3caea2c20f",
+          "kind": "verification_summary"
+        },
+        {
+          "id": "run_fc62b9054377",
+          "kind": "verification_summary"
+        }
+      ],
+      "state": "observed",
+      "value": {
+        "total": 18,
+        "verified": 11
+      }
+    },
+    {
+      "name": "required_unverified_by_reason",
+      "reason": null,
+      "refs": [
+        {
+          "id": "run_2b5f83604259",
+          "kind": "verification_summary"
+        },
+        {
+          "id": "run_be3caea2c20f",
+          "kind": "verification_summary"
+        },
+        {
+          "id": "run_fc62b9054377",
+          "kind": "verification_summary"
+        }
+      ],
+      "state": "asked_none",
+      "value": {}
+    },
+    {
+      "name": "inert",
+      "reason": null,
+      "refs": [
+        {
+          "id": "run_2b5f83604259",
+          "kind": "verification_summary"
+        },
+        {
+          "id": "run_be3caea2c20f",
+          "kind": "verification_summary"
+        },
+        {
+          "id": "run_fc62b9054377",
+          "kind": "verification_summary"
+        }
+      ],
+      "state": "asked_none",
+      "value": []
+    },
+    {
+      "name": "waived",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": []
+    }
+  ],
+  "quality": [
+    {
+      "name": "failed_checks",
+      "reason": null,
+      "refs": [
+        {
+          "id": "run_2b5f83604259",
+          "kind": "verification_summary"
+        },
+        {
+          "id": "run_be3caea2c20f",
+          "kind": "verification_summary"
+        },
+        {
+          "id": "run_fc62b9054377",
+          "kind": "verification_summary"
+        }
+      ],
+      "state": "observed",
+      "value": [
+        "tests_pass",
+        "vc-probe-runs",
+        "vc-probe-runs-join",
+        "vc-probe-runs-join-duplicate",
+        "vc-probe-runs-leave"
+      ]
+    },
+    {
+      "name": "unverified_by_reason",
+      "reason": null,
+      "refs": [
+        {
+          "id": "run_2b5f83604259",
+          "kind": "verification_summary"
+        },
+        {
+          "id": "run_be3caea2c20f",
+          "kind": "verification_summary"
+        },
+        {
+          "id": "run_fc62b9054377",
+          "kind": "verification_summary"
+        }
+      ],
+      "state": "asked_none",
+      "value": {}
+    },
+    {
+      "name": "verified_executable",
+      "reason": "sip_0102_step_5_not_landed",
+      "refs": [],
+      "state": "unaskable",
+      "value": null
+    },
+    {
+      "name": "verified_functional",
+      "reason": "sip_0102_step_5_not_landed",
+      "refs": [],
+      "state": "unaskable",
+      "value": null
+    }
+  ]
+}

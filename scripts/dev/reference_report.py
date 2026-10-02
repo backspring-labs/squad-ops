@@ -1,0 +1,87 @@
+#!/usr/bin/env python3
+"""The brownfield reference increment's per-mechanism report (SIP-0109 §11a; #1804).
+
+Reads one reference increment's record through the runtime API — the cycle and its runs' gate
+decisions, its assessment, and its evaluation artifact — and reports each brownfield mechanism
+separately: delta framing, scoped repair, accumulated acceptance and baseline discrimination,
+with route rendering and the verdict. The derivation is ``campaigns.reference.mechanism_report``;
+this script only fetches. Read-only.
+
+Usage:
+    python scripts/dev/reference_report.py --cycle CYCLE_ID [--project group_run] [--json]
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+
+from squadops.campaigns.increment_tree import INCREMENT_EVALUATION_ARTIFACT_TYPE
+
+
+def _evaluation(client, project: str, cycle_id: str) -> dict | None:
+    """The cycle's latest evaluation artifact, or ``None`` when it wrote none."""
+    listed = client.get(f"/api/v1/projects/{project}/cycles/{cycle_id}/artifacts")
+    rows = listed if isinstance(listed, list) else listed.get("artifacts", [])
+    evaluations = sorted(
+        (a for a in rows if a.get("artifact_type") == INCREMENT_EVALUATION_ARTIFACT_TYPE),
+        key=lambda a: str(a.get("created_at") or ""),
+    )
+    if not evaluations:
+        return None
+    content, _name = client.download(f"/api/v1/artifacts/{evaluations[-1]['artifact_id']}/download")
+    return json.loads(content.decode("utf-8"))
+
+
+def _markdown(report: dict) -> str:
+    lines = [f"# Reference increment {report['cycle_id']} ({report['status']})", ""]
+    framing = report["delta_framing"]
+    lines += [f"## Delta framing: {framing['attempts']} attempt(s)"]
+    for gate in framing["gates"]:
+        lines.append(f"- `{gate['run_id']}`: {gate['decision']} by {gate['decided_by']}")
+        if gate["notes"]:
+            lines.append(f"  - {gate['notes']}")
+    repair = report["scoped_repair"]
+    lines += ["", "## Scoped repair"]
+    lines += [f"- {k}: {v}" for k, v in repair.items()]
+    for name in ("accumulated_acceptance", "baseline_discrimination", "route_rendering"):
+        section = report[name]
+        lines += ["", f"## {name.replace('_', ' ').capitalize()}"]
+        if not section["read"]:
+            lines.append(f"- not read: {section['reason']}")
+            continue
+        lines += [f"- {json.dumps(row, sort_keys=True)}" for row in section["rows"]]
+        if not section["rows"]:
+            lines.append(f"- {section['note']}")
+    verdict = report["verdict"]
+    lines += ["", "## Verdict", f"- increment: {verdict['increment']}, cycle: {verdict['cycle']}"]
+    lines += [f"- unmet: {verdict['unmet']}", f"- blocked: {verdict['blocked']}"]
+    return "\n".join(lines)
+
+
+def main() -> int:
+    from squadops.campaigns.reference import mechanism_report
+    from squadops.cli.commands.cycles import _get_client
+
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--cycle", required=True)
+    parser.add_argument("--project", default="group_run")
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args()
+
+    client = _get_client(None)
+    base = f"/api/v1/projects/{args.project}/cycles/{args.cycle}"
+    cycle = client.get(base)
+    try:
+        assessment = client.get(f"{base}/assessment")
+    except Exception as e:  # noqa: BLE001 — reported as unread, never as a pass
+        print(f"warning: the assessment could not be read: {e}", file=sys.stderr)
+        assessment = None
+    report = mechanism_report(cycle, assessment, _evaluation(client, args.project, args.cycle))
+    print(json.dumps(report, indent=2, sort_keys=True) if args.json else _markdown(report))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

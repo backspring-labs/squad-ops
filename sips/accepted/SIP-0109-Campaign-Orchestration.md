@@ -1688,6 +1688,32 @@ implementation then failed `plan_defect`, because every test of criterion C1 die
 the candidate's `RunCreate.capacity` refused the integer its criterion sends. Request fields now
 take their entity's declared type.
 
+### 24aa. The reference scenario's per-mechanism report, as built (2026-10-02, §11a, §24q's not-built; decided under the 2.0 charter)
+
+`scripts/dev/reference_report.py --cycle <id>`. The derivation is `reference.mechanism_report`; the
+script only fetches. It reads one reference increment's record through the runtime API and
+reports each brownfield mechanism separately, read from the record only.
+- **Delta framing:** each framing attempt and its gate. A refusal is shown with its notes whole: the
+  gate joins its reasons with `; `, a reason can carry one itself, and the record cannot be split
+  back into them.
+- **Scoped repair:** the correction movements and refunded rounds, from the cycle's assessment, and
+  the cause its attribution names. If no implementation ran, the report says so.
+- **Accumulated acceptance, baseline discrimination and route rendering:** each read from the
+  evaluation artifact (§24n). If there is none, the report says the increment was never judged.
+- **The verdict:** the increment's and the cycle's.
+
+**The assessment's three states are kept** (#1445): a value; `none` when asked and there were none;
+`not recorded (reason)` otherwise. An absence is never read as either of the first two. The
+prior-cycle brief (§24u) had dropped `asked_none` indicators, and now shows them as `none`.
+
+**Its fixtures are live records:** shakeout 2's refused increment, and the reference increment's
+failed build (`cyc_d4438834b2c3`, with its assessment).
+
+**Not built:**
+- **the proposal half** (the owner's ruling is asked on #1804);
+- **validation on an evaluated increment's record.** None has completed yet: the reference build
+  failed on #1876/#1877.
+
 ---
 
 ## Revision history
