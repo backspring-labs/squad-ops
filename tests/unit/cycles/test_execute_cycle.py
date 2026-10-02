@@ -383,6 +383,17 @@ class TestForwardingRebuildOnEntry:
     silently fell back to static task steps.
     """
 
+    @staticmethod
+    def _forwarding_reads(executor) -> list:
+        """The vault reads the forwarding rebuild makes, which are by prior run. The cycle's
+        completion also reads the vault, by cycle, to write its failure records (SIP-0109 §14);
+        that read is not forwarding, and these tests are about forwarding."""
+        return [
+            c.kwargs
+            for c in executor._artifact_vault.list_artifacts.await_args_list
+            if "run_id" in c.kwargs
+        ]
+
     def _artifact(self, artifact_id: str, artifact_type: str, minute: int) -> ArtifactRef:
         return ArtifactRef(
             artifact_id=artifact_id,
@@ -417,9 +428,9 @@ class TestForwardingRebuildOnEntry:
 
         await executor.execute_cycle("cyc_001", "run_003")
 
-        executor._artifact_vault.list_artifacts.assert_awaited_once_with(
-            run_id="run_001", promotion_status="promoted"
-        )
+        assert self._forwarding_reads(executor) == [
+            {"run_id": "run_001", "promotion_status": "promoted"}
+        ]
         forwarded = executor.execute_run.call_args_list[0][1]["forwarding_overrides"]
         assert forwarded["prior_workload_artifact_refs"] == ["art_plan", "art_code"]
         # framing → plan refs carry only document/plan types, not code
@@ -437,7 +448,7 @@ class TestForwardingRebuildOnEntry:
         await executor.execute_cycle("cyc_001", "run_001")
 
         assert executor.execute_run.call_args_list[0][1]["forwarding_overrides"] is None
-        executor._artifact_vault.list_artifacts.assert_not_awaited()
+        assert self._forwarding_reads(executor) == []
 
     async def test_prior_run_not_completed_degrades_to_no_forwarding(self, executor, mock_registry):
         # A failed prior workload has nothing trustworthy to forward — the
@@ -454,7 +465,7 @@ class TestForwardingRebuildOnEntry:
         await executor.execute_cycle("cyc_001", "run_002")
 
         assert executor.execute_run.call_args_list[0][1]["forwarding_overrides"] is None
-        executor._artifact_vault.list_artifacts.assert_not_awaited()
+        assert self._forwarding_reads(executor) == []
 
     async def test_retry_forwarding_skips_the_failed_run_at_its_own_position(
         self, executor, mock_registry
@@ -498,7 +509,7 @@ class TestForwardingRebuildOnEntry:
 
         # start_index 2 on a 2-entry sequence: loop body never runs, and the
         # rebuild finds no COMPLETED run at position 1 — degrade, no forwarding.
-        executor._artifact_vault.list_artifacts.assert_not_awaited()
+        assert self._forwarding_reads(executor) == []
 
 
 # ---------------------------------------------------------------------------

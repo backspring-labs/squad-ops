@@ -17,7 +17,7 @@ Numeric ranges are reserved to keep parallel work streams from colliding. SIP-00
 | `1300–1399` | SIP-0091 Duty Durability via Temporal (v1.3) | Reserved (tentative) |
 | `1400–1499` | SIP-0096 Verification Evidence Integrity (v1.4) | In use — see `1400_run_verification_summaries.sql` |
 | `1500–1599` | SIP-0108 Cycle Evaluation Scorecard (v1.8) | In use — `1500_run_loop_summaries.sql`, the run summary (§4.1) |
-| `1600–1699` | SIP-0109 Campaign Orchestration (v2.0) | In use — `1600_campaigns.sql`, the campaign, its control log and launch outbox; `1610_cycle_campaign_columns.sql`, a cycle's campaign, kind and source launch (#1799) |
+| `1600–1699` | SIP-0109 Campaign Orchestration (v2.0) | In use — `1600_campaigns.sql`, the campaign, its control log and launch outbox; `1610_cycle_campaign_columns.sql`, a cycle's campaign, kind and source launch (#1799); `1620_cycle_failure_records.sql`, a cycle's failure records (#1710) |
 
 If your work doesn't fit a reserved range, pick the next free hundred and add a row here in the same PR.
 

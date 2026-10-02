@@ -189,6 +189,11 @@ class CycleEvidence:
     artifacts: tuple[ArtifactRecord, ...] = ()
     rejection_records: tuple[RejectionRecord, ...] = ()
     terminations: tuple[TerminationRecord, ...] = ()
+    #: SIP-0109 §14: the failure events persisted at the cycle's latest ending, in their recorded
+    #: order. ``None`` when none were persisted (a cycle that ended before the records existed);
+    #: ``()`` when the ending recorded no failures. Omitted from the evidence identity when
+    #: ``None``, so an identity computed before the records existed is unchanged.
+    persisted_failure_events: tuple[FailureEvent, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -245,14 +250,19 @@ class CycleAssessment:
 def assess(
     outcome: CycleOutcome, evidence: CycleEvidence, *, assessor: AssessorIdentity
 ) -> CycleAssessment:
-    """The cycle's four dimensions and attribution, read from ``outcome`` and ``evidence``."""
+    """The cycle's four dimensions and attribution, read from ``outcome`` and ``evidence``.
+
+    The attribution is computed from the cycle's persisted failure events when the evidence
+    carries them (SIP-0109 §14: no consumer re-derives the events), and from the producer for
+    a cycle that ended before they were persisted.
+    """
     return CycleAssessment(
         cycle_id=evidence.cycle_id,
         outcome=_outcome_dimension(outcome, evidence),
         quality=_quality_dimension(outcome, evidence),
         coordination=_coordination_dimension(evidence),
         efficiency=_efficiency_dimension(evidence),
-        attribution=_attribution(outcome, evidence),
+        attribution=attribution_from_events(outcome, evidence, _events_to_read(outcome, evidence)),
         assessment_version=ASSESSMENT_VERSION,
         attribution_registry_version=ATTRIBUTION_REGISTRY_VERSION,
         evidence_identity=evidence_identity(outcome, evidence),
@@ -567,7 +577,7 @@ def failure_events(outcome: CycleOutcome, evidence: CycleEvidence) -> tuple[Fail
     The attribution is computed from exactly what this returns (``attribution_from_events``), so
     a consumer that persists these events and recomputes from them reads the same attribution.
     """
-    final = _terminal_run(evidence)
+    final = terminal_run(evidence)
     if final is None or _machine_gate_refusal(final):
         return ()
     if final.status == RunStatus.COMPLETED:
@@ -619,7 +629,7 @@ _ROUND_FAILURE_TERMINALS = frozenset(
 )
 
 
-def _terminal_run(evidence: CycleEvidence) -> RunRecord | None:
+def terminal_run(evidence: CycleEvidence) -> RunRecord | None:
     """The run the attribution reads: the highest-numbered, once it has ended."""
     if not evidence.runs:
         return None
@@ -634,8 +644,10 @@ def _machine_gate_refusal(final: RunRecord) -> bool:
     )
 
 
-def _attribution(outcome: CycleOutcome, evidence: CycleEvidence) -> AttributionReading:
-    return attribution_from_events(outcome, evidence, failure_events(outcome, evidence))
+def _events_to_read(outcome: CycleOutcome, evidence: CycleEvidence) -> tuple[FailureEvent, ...]:
+    if evidence.persisted_failure_events is not None:
+        return evidence.persisted_failure_events
+    return failure_events(outcome, evidence)
 
 
 def attribution_from_events(
@@ -777,7 +789,11 @@ def _failed_run(
 def evidence_identity(outcome: CycleOutcome, evidence: CycleEvidence) -> str:
     """A sha256 over the canonical form of both arguments — equal evidence, equal identity,
     whatever order the adapter assembled it in."""
-    payload = {"outcome": _canonical(outcome), "evidence": _canonical(evidence)}
+    canonical_evidence = _canonical(evidence)
+    if evidence.persisted_failure_events is None:
+        # A field added after identities were first recorded: absent, it leaves them as they were.
+        del canonical_evidence["persisted_failure_events"]
+    payload = {"outcome": _canonical(outcome), "evidence": canonical_evidence}
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()

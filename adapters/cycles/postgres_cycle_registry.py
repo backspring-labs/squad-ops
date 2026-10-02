@@ -14,6 +14,12 @@ from typing import Any
 import asyncpg
 
 from squadops.cycles.checkpoint import RunCheckpoint
+from squadops.cycles.failure_attribution import (
+    ATTRIBUTION_REGISTRY_VERSION,
+    AttributionClass,
+    FailureEvent,
+)
+from squadops.cycles.failure_records import FailureRecord, FailureRecordState
 from squadops.cycles.lifecycle import (
     GATE_REJECTED_STATES,
     TERMINAL_STATES,
@@ -515,6 +521,61 @@ class PostgresCycleRegistry(CycleRegistryPort):
             return None
         return RunLoopSummary.from_dict(row["summary"])
 
+    async def record_failure_records(
+        self, cycle_id: str, last_run_id: str, records: tuple[FailureRecord, ...]
+    ) -> int:
+        """Append one ending's failure-record set in one transaction (SIP-0109 §14).
+
+        The cycle's row lock serializes two endings of one cycle, so each set takes the next
+        index; the set row and its records commit together or not at all.
+        """
+        async with self._pool.acquire() as conn, conn.transaction():
+            exists = await conn.fetchval(
+                "SELECT 1 FROM cycle_registry WHERE cycle_id = $1 FOR UPDATE", cycle_id
+            )
+            if exists is None:
+                raise CycleNotFoundError(f"Cycle not found: {cycle_id}")
+            set_index = await conn.fetchval(
+                "SELECT COALESCE(MAX(set_index), 0) + 1 FROM cycle_failure_record_sets "
+                "WHERE cycle_id = $1",
+                cycle_id,
+            )
+            await conn.execute(
+                "INSERT INTO cycle_failure_record_sets "
+                "(cycle_id, set_index, last_run_id, registry_version, record_count, recorded_at) "
+                "VALUES ($1, $2, $3, $4, $5, now())",
+                cycle_id,
+                set_index,
+                last_run_id,
+                ATTRIBUTION_REGISTRY_VERSION,
+                len(records),
+            )
+            if records:
+                await conn.executemany(
+                    "INSERT INTO cycle_failure_records "
+                    "(cycle_id, set_index, event_index, state, registry_version, event, "
+                    "attribution_class, unasked_input, campaign_id, increment_id) "
+                    "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+                    [_failure_record_args(cycle_id, set_index, r) for r in records],
+                )
+        return set_index
+
+    async def get_failure_records(self, cycle_id: str) -> tuple[FailureRecord, ...] | None:
+        async with self._pool.acquire() as conn:
+            set_index = await conn.fetchval(
+                "SELECT MAX(set_index) FROM cycle_failure_record_sets WHERE cycle_id = $1",
+                cycle_id,
+            )
+            if set_index is None:
+                return None
+            rows = await conn.fetch(
+                "SELECT * FROM cycle_failure_records WHERE cycle_id = $1 AND set_index = $2 "
+                "ORDER BY event_index",
+                cycle_id,
+                set_index,
+            )
+        return tuple(_row_to_failure_record(r) for r in rows)
+
     async def get_run_verification_summary(self, run_id: str) -> RunVerificationSummary | None:
         """One run's persisted verification roll-up, or None (#682)."""
         async with self._pool.acquire() as conn:
@@ -819,4 +880,35 @@ def _verification_summary_from_dict(d: dict) -> RunVerificationSummary:
             )
             for i in d.get("inspections", [])
         ),
+    )
+
+
+def _failure_record_args(cycle_id: str, set_index: int, record: FailureRecord) -> tuple:
+    return (
+        cycle_id,
+        set_index,
+        record.event_index,
+        record.state.value,
+        record.registry_version,
+        dataclasses.asdict(record.event) if record.event is not None else None,
+        record.attribution_class.value if record.attribution_class else None,
+        record.unasked_input,
+        record.campaign_id,
+        record.increment_id,
+    )
+
+
+def _row_to_failure_record(row: asyncpg.Record) -> FailureRecord:
+    return FailureRecord(
+        cycle_id=row["cycle_id"],
+        event_index=row["event_index"],
+        state=FailureRecordState(row["state"]),
+        registry_version=row["registry_version"],
+        event=FailureEvent(**row["event"]) if row["event"] is not None else None,
+        attribution_class=(
+            AttributionClass(row["attribution_class"]) if row["attribution_class"] else None
+        ),
+        unasked_input=row["unasked_input"],
+        campaign_id=row["campaign_id"],
+        increment_id=row["increment_id"],
     )
