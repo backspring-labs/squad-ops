@@ -364,6 +364,18 @@ def _require_profiles(policy: CampaignPolicy) -> None:
             raise ValueError(f"policy.{field}: {e}") from e
 
 
+async def _materialize_after_close(request: Request, campaign_id: str) -> None:
+    """A closed campaign's package (§14). The close is committed whatever happens here; a
+    failure is logged loudly, and ``POST …/package`` materializes it later from the same
+    records."""
+    try:
+        from squadops.api.runtime.deps import get_campaign_progress
+
+        await get_campaign_progress(request).materialize_package(campaign_id)
+    except Exception:
+        logger.exception("campaign_package_not_materialized", extra={"campaign_id": campaign_id})
+
+
 def _validation(message: str) -> dict:
     return {"error": {"code": "VALIDATION_ERROR", "message": message, "details": None}}
 
@@ -388,7 +400,71 @@ async def abort_campaign(
     )
     result = await apply_control(request, campaign_id, transition, identity)
     cancelled = await _cancel_launched_cycles(request, campaign_id)
+    if not result.replayed:
+        await _materialize_after_close(request, campaign_id)
     return _result(result, cancelled_cycles=cancelled)
+
+
+@router.post("/{campaign_id}/package")
+async def materialize_package(
+    request: Request,
+    campaign_id: str,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_CONTROL)),
+) -> dict:
+    """Materialize the campaign's evidence package and digest now (§14, #1710): a projection
+    of its records, idempotent by identity. A campaign's close materializes it on its own."""
+    from squadops.api.runtime.deps import get_campaign_progress
+
+    await _registry(request).get_campaign(campaign_id)  # 404 before anything is written
+    pkg_identity, package_id, digest_id = await get_campaign_progress(request).materialize_package(
+        campaign_id
+    )
+    return {
+        "identity": pkg_identity,
+        "package_artifact_id": package_id,
+        "digest_artifact_id": digest_id,
+    }
+
+
+@router.get("/{campaign_id}/package")
+async def read_package(
+    request: Request,
+    campaign_id: str,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_READ)),
+) -> dict:
+    """The latest stored evidence package's identity and its digest (the morning read)."""
+    from squadops.api.runtime.deps import get_artifact_vault
+    from squadops.campaigns.progress import EVIDENCE_ARTIFACT_TYPE
+
+    campaign = await _registry(request).get_campaign(campaign_id)
+    vault = get_artifact_vault(request)
+    digests = sorted(
+        (
+            r
+            for r in await vault.list_artifacts(
+                project_id=campaign.project_id, artifact_type=EVIDENCE_ARTIFACT_TYPE
+            )
+            if r.metadata.get("campaign_id") == campaign_id and r.metadata.get("part") == "digest"
+        ),
+        key=lambda r: str(r.created_at),
+    )
+    if not digests:
+        raise HTTPException(
+            404,
+            {
+                "error": {
+                    "code": "PACKAGE_NOT_FOUND",
+                    "message": f"campaign {campaign_id} has no evidence package yet",
+                    "details": None,
+                }
+            },
+        )
+    ref, content = await vault.retrieve(digests[-1].artifact_id)
+    return {
+        "identity": ref.metadata.get("identity"),
+        "digest_artifact_id": ref.artifact_id,
+        "digest": content.decode("utf-8"),
+    }
 
 
 # ---------------------------------------------------------------------------------------------
