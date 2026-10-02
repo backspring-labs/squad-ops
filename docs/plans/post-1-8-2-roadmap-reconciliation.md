@@ -6,9 +6,15 @@ v2.0 row cites it. The Campaign SIP's revision, which turns it into design, foll
 close.
 
 **Revised:** 2026-09-28, the same day, on the owner's further direction. The squad takes the first pass
-at what went wrong in a campaign. Frontier triage is a bounded session between campaigns that reads
-through the `squadops` CLI, never container logs, and spends frontier models on judgement, not on
-reading.
+at what went wrong in a campaign. Frontier triage reads through the `squadops` CLI, never container
+logs, and spends frontier models on judgement, not on reading.
+
+**Revised again, 2026-10-01: the Nostromo crew's part.** The owner's IDEA of that day
+(`docs/ideas/nostromo-framework-optimization-crew.md`), and the rulings on it, give the crew two jobs:
+**supervising every campaign at its checkpoints**, and **triaging the framework between campaigns**.
+They also allow crew local inference between squad cycles. The section below is revised to match.
+**`sips/accepted/SIP-0109-Campaign-Orchestration.md` and the adopted 2.0 plan
+(`docs/plans/2-0-0-plan.md`) govern on any conflict** with this note.
 
 ## The direction
 
@@ -94,23 +100,32 @@ and whether the cause is the app (the next cycle's business), the framework (an 
 model variance (the calibration cycle's reading says which). It does not scrape logs; the squad and
 the evidence package do the reading.
 
-**Nostromo's part.** Its cloud roles triage in a **bounded session between campaigns**, not through the
-night, and land fixes in the same window, while the deploy may move. Triage and cross-layer tracing sit
-with Ripley, Parker and Dallas (§44.1).
-- **The crew reads through the `squadops` CLI, with read-only scope.** The API already separates
-  `cycles:read` from `cycles:write`. A crew client holding only the first can read runs, cycles and
-  artifacts, and cannot decide a gate, cancel, retry or resume a run, or create a cycle — a boundary
-  the API enforces, not a prompt. Crew accounts on the Spark have no docker access, by design, and
-  gain none.
-- **While the squad runs cycles, only cloud roles are used.** Nostromo's §36 forbids crew local
-  inference beside SquadOps execution on the Spark, so Mother and Brett, both on local models, sit a
-  campaign out; enforcing that is Nostromo's to build (§36.3). With triage between campaigns, nothing
-  needs orchestrating during one.
-- The crew authors, at most, a campaign's **objective and backlog**, never the per-cycle scope inside
-  a running campaign. Its constitution: the crew "is never a squad".
+**Nostromo's part** (revised 2026-10-01; SIP-0109 governs). The crew has two jobs:
+- **Supervision, at every checkpoint inside a campaign.** The crew rules on each increment proposal at
+  its gate: approve, request revision, or reject, with a reason (SIP-0109 §9.2). It holds escalation and
+  abort. **It never authors an increment's content.** The strategy role does, and the crew "is never a
+  squad". At most it authors a campaign's objective and backlog.
+- **Triage, between campaigns.** This is a bounded session, starting from the squad's first pass, with
+  Ripley, Parker and Dallas (§44.1). Framework fixes land between campaigns, with the owner's approval,
+  while the deploy may move.
+
+**How it reaches SquadOps:**
+- **Through the CLI and the API only. Crew accounts on the Spark have no docker access, by design, and
+  gain none.** A log line a finding needs, and the CLI cannot show, is a gap in the evidence package.
+- **Two scopes, each enforced by the API, not by a prompt:**
+  - a **supervisor role** holding campaign controls (gate rulings, pause, abort, the box lease) and
+    reads;
+  - a **read-only role** (`cycles:read`) for triage, which can read runs, cycles and artifacts, and
+    cannot decide a gate, cancel, retry or resume a run, or create a cycle.
+
+  How the roles and the network path are provisioned is a private security design for the owner (the
+  2.0 plan's decision 6).
+- **Inference on the Spark: crew local inference is allowed between squad cycles and between
+  campaigns, never while the squad runs a cycle** (the owner's ruling, 2026-10-01). This is the crew's
+  §36 modes, and SquadOps enforces its half with the box lease and the quiet-box check (SIP-0109 §9.3).
+  Cloud roles may work at any time.
 - The crew is pre-commissioning: its §43 gate is unmet, and its one squad-ops PR is the WP-1 probe,
-  #1512. Its "safe first" archetypes (§44.1) fit 1.9's bounded debt, so 1.9 is a natural place to
-  commission it.
+  #1512. The 2.0 plan commissions it on 2.0's pre-campaign work (its §3.6).
 
 ## What changes on the roadmap
 
@@ -123,11 +138,13 @@ with Ripley, Parker and Dallas (§44.1).
 
 ## What this note does not decide
 
-- The Campaign SIP's design — its revision, after the 1.8.2 set, and its design review.
+- The Campaign SIP's design. *(Since decided: SIP-0109, accepted 2026-10-01.)*
 - Whether `strat`'s proposals need approval before a cycle builds them, or run automatically within
-  the allowed scope (#1706, #1708).
+  the allowed scope (#1706, #1708). *(Since decided: every proposal is ruled on at its gate in 2.0, the
+  owner's ruling of 2026-10-01.)*
 - The runbook's details (#1711).
 - Who in the squad writes the first pass, and in what form — including whether `squadops cycles
   assess` is its seed (#1710).
-- How the crew's read-only client is provisioned in Keycloak.
+- How the crew's two roles, the supervisor and the read-only one, are provisioned in Keycloak, and the
+  network path to them: a private security design (the 2.0 plan's decision 6).
 - Nostromo's commissioning order, which is the crew's operating model to settle.
