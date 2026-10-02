@@ -14,16 +14,17 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
-from squadops.campaigns.models import CycleKind
 from squadops.cycles.delivered_tree import StoredArtifact, delivered_files
 
 
 def accepted_cycle_of(cycle: Any) -> str | None:
-    """The accepted cycle an increment cycle builds on, from its launch's ``campaign_proposal``
-    block; ``None`` for any other cycle."""
-    if getattr(cycle, "kind", None) != CycleKind.INCREMENT:
+    """The accepted cycle an increment builds on, from its ``campaign_proposal`` block; ``None``
+    for any other cycle. Keyed on the block, as every other increment seam is
+    (``increment_baseline``): a campaign's increment and the reference increment outside any
+    campaign (§11a, #1804) both carry one."""
+    block = cycle.resolved_config().get("campaign_proposal")
+    if not isinstance(block, Mapping):
         return None
-    block = cycle.resolved_config().get("campaign_proposal") or {}
     return block.get("accepted_cycle_id") or None
 
 

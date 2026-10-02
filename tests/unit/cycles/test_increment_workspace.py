@@ -101,10 +101,15 @@ def vault():
     return v
 
 
-def _cycle(kind: str | None, accepted_cycle_id: str | None = "cyc_cal") -> Cycle:
-    block = {"proposal_id": "p", "version": 1}
+def _cycle(
+    kind: str | None, accepted_cycle_id: str | None = "cyc_cal", *, block: bool = True
+) -> Cycle:
+    proposal = {"proposal_id": "p", "version": 1}
     if accepted_cycle_id:
-        block["accepted_cycle_id"] = accepted_cycle_id
+        proposal["accepted_cycle_id"] = accepted_cycle_id
+    overrides: dict = {"plan_artifact_refs": ["art_candidate_manifest"]}
+    if block:
+        overrides["campaign_proposal"] = proposal
     return Cycle(
         cycle_id="cyc_inc",
         project_id="group_run",
@@ -115,10 +120,7 @@ def _cycle(kind: str | None, accepted_cycle_id: str | None = "cyc_cal") -> Cycle
         squad_profile_snapshot_ref="x",
         task_flow_policy=TaskFlowPolicy(mode="sequential"),
         build_strategy="fresh",
-        execution_overrides={
-            "plan_artifact_refs": ["art_candidate_manifest"],
-            "campaign_proposal": block,
-        },
+        execution_overrides=overrides,
         campaign_id="cmp_1" if kind else None,
         kind=kind,
     )
@@ -156,13 +158,23 @@ async def test_an_increment_s_developer_is_given_the_accepted_implementation_not
 
 
 @pytest.mark.parametrize(
-    ("kind", "accepted"),
-    [(None, "cyc_cal"), ("calibration", "cyc_cal"), ("increment", None)],
-    ids=["no-campaign", "calibration", "increment-without-accepted-cycle"],
+    ("kind", "accepted", "block"),
+    [(None, None, False), ("calibration", None, False), ("increment", None, True)],
+    ids=["ordinary-cycle", "calibration", "increment-without-accepted-cycle"],
 )
-async def test_any_other_cycle_builds_from_the_skeleton_as_before(vault, kind, accepted):
+async def test_any_other_cycle_builds_from_the_skeleton_as_before(vault, kind, accepted, block):
     """Bug caught: a calibration (or any ordinary cycle) seeded with another cycle's files."""
-    seeds, contents = await _seed_and_compose(vault, _cycle(kind, accepted))
+    seeds, contents = await _seed_and_compose(vault, _cycle(kind, accepted, block=block))
 
     assert "art_routes" not in seeds
     assert contents.get("backend/routes.py") != "# the accepted routes\n"
+
+
+async def test_the_reference_increment_builds_on_its_baseline_outside_any_campaign(vault):
+    """§11a, #1804: the reference increment carries the same block a campaign's increment does,
+    with no campaign. Bug caught: its build started from stubs because the accepted tree was
+    keyed on the campaign's cycle kind, so the scenario measured a greenfield build."""
+    seeds, contents = await _seed_and_compose(vault, _cycle(None, "cyc_cal"))
+
+    assert "art_routes" in seeds
+    assert contents["backend/routes.py"] == "# the accepted routes\n"

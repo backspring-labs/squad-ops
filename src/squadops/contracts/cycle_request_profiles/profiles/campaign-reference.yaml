@@ -1,0 +1,44 @@
+name: campaign-reference
+description: "SIP-0109 §11a: the brownfield reference increment (#1804) — a fixed, pre-approved change request built on a fixed accepted baseline, outside any campaign"
+defaults:
+  correction_steps: [analyze, decide, repair]
+  build_strategy: fresh
+  development_profile: fullstack_fastapi_react
+  build_profile: fullstack_fastapi_react
+  task_flow_policy:
+    mode: sequential
+    gates:
+      - name: progress_plan_review
+        description: Review planning artifacts and build manifest before implementation begins.
+        after_task_types:
+          - governance.review
+  expected_artifact_types:
+    - document
+    - source
+    - test
+    - config
+  workload_sequence:
+    # The request is pre-approved and recorded as such (§11a): no proposal, no ruling. Bind mode
+    # against the candidate manifest the launcher seeds; the plan covers only the change's
+    # footprint (#1843).
+    - type: framing
+      gate: progress_plan_review
+    # Starts from the accepted tree's delivered files (#1842).
+    - type: implementation
+      gate: null
+  build_tasks: true
+  implementation_plan: true
+  output_validation: true
+  max_self_eval_passes: 3
+  max_correction_attempts: 3
+  max_build_subtasks: 15
+  typed_acceptance: true
+  command_acceptance_checks: true
+  manifest_max_attempts: 4
+  required_checks:
+    - tests_pass
+    - frontend_build
+    - required_files
+  time_budget_seconds: 10800
+  experiment_context: {}
+  notes: "Brownfield reference increment (SIP-0109 §11a, #1804)"

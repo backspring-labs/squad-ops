@@ -1407,6 +1407,32 @@ declared test id. The root anchor is the first declared id, stamped on the view'
 `npx` left the dev server it started still serving and writing into the workspace being removed.
 Each server now runs in a session of its own and its whole process group is stopped. No process
 outlived the second reading.
+### 24q. The brownfield reference scenario, as built (2026-10-02, #1804; decided under the 2.0 charter)
+
+- **The inputs** (`examples/03_group_run/reference_scenario.yaml`), each pinned by hash:
+  - **The baseline:** `cyc_7a4b7a6fbf0e`. Its delivered tree is reconstructed from the vault by the one
+    delivered-tree rule (#1833).
+  - **Its manifest.**
+  - **The fixed change request:** the PRD's capacity limit, as the validation plan's §4 defines it.
+  - **The two seeds derived from them:** the stored change request and the candidate manifest.
+  - **Drift is refused:** a launch whose input moved from its pin is refused. A different baseline or
+    request is a different measurement, never the yardstick. Pins are written once and never
+    overwritten.
+- **How it is built:** the seeds are made through the proposal's own rails and the approved gate's
+  derivation (`campaigns/reference.py`), exactly as a campaign's increment gate stores them.
+- **How it is launched:** one cycle on `campaign-reference` (framing → plan review → implementation; no
+  proposal, no ruling: the request is pre-approved and recorded as such).
+  - **It carries the same `campaign_proposal` block** a campaign's increment launch writes, and its
+    seeds in `plan_artifact_refs` and `contract_ref`.
+  - **So every increment seam treats it as an increment, with no campaign:** bind-mode framing on the
+    candidate, the change request shown, the footprint taught and enforced, the evaluation.
+  - **The accepted tree is now keyed on the block** (`accepted_cycle_of`), as every other seam
+    already was, rather than on the campaign's cycle kind.
+- **The launcher:** `scripts/dev/launch_reference_increment.py` (`--dry-run`, `--write-pins`).
+- **Not built yet:**
+  - **the proposal half:** a proposal against the same baseline, recorded and rated, not built;
+  - **the per-mechanism report:** each brownfield mechanism reported separately, read from the
+    record (the evaluation artifact, §24n).
 ### 24r. Frozen verifiers protected, and retirement, as built (2026-10-02, §19 items 7 and 12e; decided under the 2.0 charter)
 
 - **No plan writes an earlier criterion's frozen test file** (`validate_increment_frozen_files`).
