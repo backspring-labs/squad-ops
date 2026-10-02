@@ -117,7 +117,8 @@ teaches nothing.
 4. An increment is **accepted only under accumulated acceptance** (§8): its own criteria, plus every
    earlier increment's.
 5. Between cycles, the **strategy role proposes** the next change request, and the **supervisor rules**
-   on it (§9). No increment builds without a ruling.
+   on that exact version (§9). No increment builds without a ruling, and the box has one owner at a
+   time (§9.3).
 6. After each cycle reaches `CycleCompletion`, a **pure continuation decision** (§10) yields the next
    action. It reads `CycleAssessment` and never derives a grade itself.
 7. A Campaign is persisted (`CampaignRegistryPort`, memory and Postgres), observable through
@@ -213,25 +214,34 @@ An increment is accepted only if:
 Accumulated acceptance is re-executed on the candidate tree. It is never carried forward from an earlier
 verdict. A criterion that cannot execute counts as `blocked_unverified`, never as a pass (SIP-0096).
 
-### 8.1 An increment's new tests must fail on its baseline
+### 8.1 Each criterion an increment adds must be shown to fail on its baseline
 
 Accumulated acceptance is only as strong as the tests it re-runs. In a campaign, every increment's
 tests become guards for every later increment, so a test that cannot fail is a hollow guard for the
 rest of the campaign. A brownfield cycle can check this, and a greenfield one cannot: the baseline is
 the app without the increment.
 
-- **Feature and fix increments:** the increment's **new** tests are run against the **baseline** tree.
-  Each must **fail there as an assertion**. A test that dies on an import error or a missing module
-  proves nothing. SIP-0104's Phase 2 assertion-shape classifier already makes that distinction. Each
-  test must then pass on the candidate. A new test that passes on the baseline does not discriminate
-  the increment, and the increment is not accepted until it is replaced or removed.
+- **Feature and fix increments: one discriminating test per criterion.** Each acceptance criterion
+  the increment adds needs at least one test that **fails on the baseline for the intended behavioural
+  reason** and passes on the candidate. Other new tests may pass on both, for example a preservation
+  test for behaviour that already worked. Those tests are guards, not evidence of the increment.
+- **"For the intended reason" means an assertion on the app's public surface:** a response, a status,
+  a rendered element.
+  - **New behaviour is tested through the running app's public surface**: an HTTP request to the
+    route, or a rendered client route. It is never tested by importing a module that does not exist
+    yet. On the baseline, a missing endpoint answers 404 or 405, and a missing view renders without its
+    declared test ids. Those are behavioural failures, and they count.
+  - **An import error, a missing module, an unavailable fixture or a failed setup is not behavioural
+    evidence,** and does not count. SIP-0104's Phase 2 assertion-shape classifier draws that line.
+- **A criterion with no discriminating test is not met,** and the increment is not accepted until one
+  exists.
 - **Refactor increments:** no new test is required. The existing guards must pass on both trees,
   which is what behaviour preservation means.
 - **What this check is.** It is the campaign's form of demonstrated discrimination, from
   `SIP-Verification-Yield.md` (§7) and `SIP-Test-First-Verification.md` (Phase 1). It needs no
   contract-conforming stub, because the baseline does that job, and it costs one extra test run per
   increment.
-- **Its result is recorded per test in the proposal ledger (§9.4).**
+- **Its result is recorded per criterion and per test in the proposal ledger (§9.4).**
 
 ---
 
@@ -239,7 +249,9 @@ the app without the increment.
 
 ### 9.1 The proposal
 
-At a checkpoint, the strategy role authors the next change request (§7.2) from:
+In a checkpoint's **proposing phase** (§9.3), while the squad holds the box, the strategy role authors
+the next change request (§7.2). It is a **versioned proposal**: an id and a version, with a revision
+being a new version, never an edit in place. Its inputs:
 - the objective and its allowed change scope;
 - the accepted app: its manifest, its accumulated acceptance, its open failures;
 - the campaign's evidence so far, including the prior-cycle brief (§14);
@@ -255,9 +267,14 @@ The proposal is authored outside the continuation decision, which stays pure (§
 
 ### 9.2 The ruling
 
-The supervisor rules on every proposal:
-- **approve**, **amend** (the amended change request is what builds), or **reject**;
-- every ruling carries a reason.
+The supervisor rules on every proposal version (#1801):
+- **approve**, **request revision**, or **reject**, with a reason;
+- **the supervisor never edits a proposal.** Editing one would make it the author. A revision request
+  returns the proposal to the strategy role, which writes the next version in a new proposing phase. The
+  supervisor then rules on that exact version;
+- **every ruling binds** to the proposal's id, its version, its content hash, and the accepted tree's
+  identity. A ruling whose binding no longer matches the campaign's state is **refused as stale**, so an
+  old approval cannot authorize changed scope.
 
 The supervisor may also:
 - **escalate** to the owner;
@@ -271,27 +288,35 @@ and never waits without a bound being recorded (#1708).
 The owner can rule through the same interface at any checkpoint, and is the supervisor when no crew is
 assigned.
 
-### 9.3 The checkpoint and the box
+### 9.3 The checkpoint, in phases, and who owns the box (#1802)
 
-A checkpoint is the only time anything other than the squad may run inference on the box (ruling 2):
-1. The cycle reaches `CycleCompletion`, and its participants are released (§12).
-2. The campaign enters `at_checkpoint`. The continuation decision is recorded, and the proposal is
-   published. **No squad inference runs from here until the next launch.**
-3. The supervisor may now use the box. The crew's own guard (its operating model §36) reads, through
-   SquadOps's API or CLI, that no run is in flight.
-4. The supervisor posts its ruling.
-5. **The next cycle launches only on a quiet box**: no model resident that the squad's deploy did not
-   load. This check is the campaign launch's preflight. SquadOps reads its own state and the box's
-   resident models, and never reads the crew's files. A launch refused by the quiet check is recorded,
-   retried within a bound, then escalated.
+SquadOps records **one owner of the Spark at a time**, as a lease held by the squad or by the
+supervisor. Acquiring and releasing it go through the API and are audited, and a supervisor's lease
+carries an expiry. A checkpoint runs in phases:
+
+| phase | what happens | the box |
+|---|---|---|
+| **1. completion** | the cycle reaches `CycleCompletion`, and its participants are released (§12). The continuation decision is recorded | the squad |
+| **2. proposing** | when the decision calls for one, the strategy role writes the proposal (§9.1). This is squad inference | the squad |
+| **3. handoff** | the lease passes to the supervisor. From here, no squad inference and no launch runs on the box | the supervisor |
+| **4. review** | the supervisor may run inference on the box (ruling 2; the crew operating model's §36) and posts its ruling (§9.2). A revision request returns to phase 2, and the lease passes back to the squad | the supervisor |
+| **5. return** | the supervisor releases the lease, its models unloaded | the squad |
+| **6. launch** | the next cycle launches | the squad |
+
+**Enforcement.** Every cycle launch on the box refuses while the supervisor holds the lease, and refuses
+on a box that is not quiet: a model resident that the squad's deploy did not load. This applies to
+campaign, CLI and driver launches alike, so nothing launches beside the crew's models by another path.
+- **An expired lease** reverts to the squad only if the quiet-box check passes. With a crew model still
+  resident, the campaign escalates instead of launching.
+- SquadOps reads its own lease and the box's resident models. It never reads the crew's files.
 
 ### 9.4 The proposal ledger
 
 One record per increment, written as it happens:
-- the proposal and its inputs;
-- the ruling, its reason, and who ruled;
+- each proposal version and its inputs;
+- each ruling, its reason, who ruled, and its binding (§9.2);
 - the cycle's outcome: verdict, correction rounds and their causes, framing re-rolls, criteria added, any
-  earlier increment broken, and each new test's baseline result (§8.1);
+  earlier increment broken, and each criterion's discriminating test with its baseline result (§8.1);
 - the supervisor's classification of what went wrong, if anything:
   - scope too large;
   - acceptance criteria not checkable;
@@ -305,11 +330,24 @@ The ledger is the evidence for two things:
   campaigns, with the owner's approval;
 - any later decision to loosen the leash, which this SIP does not make.
 
-### 9.5 The no-progress rule
+### 9.5 Limits: which pauses, which stops, and who resumes (#1800)
 
-A campaign whose proposals stop producing accepted increments stops. The rule is declared in
-`CampaignPolicy` (`max_unaccepted_increments`). Hitting it yields `stop_failure`, with the ledger as the
-reason.
+A campaign can obey every checkpoint rule while it keeps proposing or repairing without progress. Each
+limit below is declared in `CampaignPolicy`, and reaching it is recorded with its value:
+
+| limit | when reached | resumes on |
+|---|---|---|
+| total cycles (`max_cycles`) | `stop_failure` (exhausted) | — |
+| elapsed time | pause | the owner |
+| budget (tokens) | pause | the owner |
+| repair attempts on one increment | the increment is abandoned. The baseline stays, and the next checkpoint proposes anew. It counts as an unaccepted increment | — |
+| revisions of one proposal | the proposal counts as rejected | — |
+| rejected proposals in a row | pause | the owner |
+| unaccepted increments, the no-progress rule (`max_unaccepted_increments`) | `stop_failure`, with the ledger as the reason | — |
+| the checkpoint ruling bound | pause (`awaiting_ruling`) | the supervisor's ruling, or the owner |
+
+**A pause caused by a limit resumes only on the owner's word, recorded.** The supervisor can rule on a
+pending proposal, but cannot lift a limit.
 
 ---
 
@@ -334,7 +372,7 @@ campaign_continuation_decision(
 | `escalate` | the decision needs the owner | the supervisor's escalation queue |
 | `wait` | an external condition: a ruling not yet given, a declared resume time | the campaign stays `at_checkpoint` or `paused`. This replaces revision 1's `defer`, whose duty-window borrow had no mechanism (rev 1 open question 5) |
 | `stop_success` | the objective is met by its measurement | the evidence package and the digest |
-| `stop_failure` | the policy's limits are reached (cycles, budget, time, the no-progress rule) | the evidence package and the digest |
+| `stop_failure` | a stopping limit is reached (§9.5) | the evidence package and the digest |
 
 **The integrity rules revision 1 set, kept:**
 - `stop_success` requires a roll-up with `verdict = accepted`, or an owner's ruling. Never narrative.
@@ -350,12 +388,26 @@ campaign_continuation_decision(
 
 Every campaign opens with **the same PRD built from scratch** on the campaign's deploy. That is today's
 group_run cycle, under a fixed request profile.
-- Its result is recorded as the campaign's **yardstick**, and is the outer loop's baseline: a framework
-  change is read as helping or not on the calibration cycle before and after it, never on the increments,
-  which differ by design.
+- Its result is recorded as the campaign's **yardstick for greenfield behaviour**. A framework change is
+  read as helping or not on the calibration cycle before and after it, never on the increments, which
+  differ by design.
+- **It is not evidence about the brownfield mechanisms.** It exercises no proposal, no delta framing, no
+  accumulated acceptance. §11a is their yardstick.
 - Its tree is also the campaign's first accepted baseline when it is accepted. A rejected calibration
   cycle stops the campaign before any increment (`stop_failure`, reason: calibration). A campaign does
   not evolve an app the framework could not build that night.
+
+### 11a. The brownfield reference scenario (#1804)
+
+A fixed scenario is the comparable signal for the brownfield mechanisms:
+- a stored, accepted group_run tree as the baseline, and a fixed change request, both pinned by hash;
+- one cycle that builds the fixed change request, read separately on the delta framing, scoped repair,
+  accumulated acceptance and the baseline-discrimination check (§8.1);
+- the strategy role also writes a proposal against the same baseline and objective. That proposal is
+  **recorded and rated by the supervisor, not built**, so the proposal-writing step is comparable across
+  framework changes while the build stays fixed.
+
+It runs in the fast lane between campaigns, and in a release's counted set.
 
 ---
 
@@ -370,9 +422,22 @@ Each cycle recruits as today, through the SIP-0089 coordinator: per-run `ambient
   `CycleCompletion` the executor returns them `cycle→ambient`, and the decision sequences after that.
 - With `fork` deferred (§5), no two cycles of one campaign ever recruit at once.
 
+### 12a. Recovery (#1803)
+
+What a campaign guarantees when something goes wrong. Each guarantee is verified by a fault-injected
+diagnostic before the first unattended campaign:
+
+| event | required outcome |
+|---|---|
+| the runtime API restarts at any campaign state | the campaign resumes from the registry. **No ruling is lost**, because a ruling is durable before it is acknowledged |
+| a duplicate completion event for one cycle | **one** continuation decision, keyed on the cycle; never two launches |
+| a repeated ruling | the same ruling, by its idempotency key; nothing new launches |
+| interruption during accumulated acceptance or baseline promotion | **no partial promotion.** The accepted-tree identity changes in one step, only after every check is recorded. Otherwise the baseline is the previous accepted tree |
+| an abort | terminal. The running cycle is cancelled through the existing cancel path, and **no continuation follows**, whatever arrives after |
+
 ---
 
-## 13. The supervision interface
+## 13. The supervision interface (#1801)
 
 One control surface, on the existing lanes:
 
@@ -385,8 +450,11 @@ One control surface, on the existing lanes:
 | events | campaign decisions, rulings and checkpoints as cycle events (SIP-0077 taxonomy, with its parity tests). The API's reads are authoritative after a missed event |
 | provenance | the deploy record (#1720) on every cycle; the accepted-tree identity per increment; the usage ledger per role and task |
 
-**A ruling is idempotent by its key.** A repeated post of the same ruling is the same ruling, never a
-second launch.
+**A ruling is idempotent by its key, and bound to what it rules on** (§9.2): the proposal's id, version
+and content hash, and the accepted tree's identity. A repeated post of the same ruling is the same
+ruling, never a second launch. A ruling whose binding is stale is refused.
+
+**The box lease** (§9.3, #1802) is acquired and released through the same interface, and audited.
 
 ---
 
@@ -418,13 +486,14 @@ Frozen dataclasses beside `Cycle` and `Run`:
   - status derived from its cycles, its last decision and its checkpoint state.
 - **`CampaignObjective`**: statement, allowed change scope, measurement reference.
 - **`CampaignPolicy`**:
-  - `max_cycles`, budget, time;
-  - `max_unaccepted_increments` (§9.5);
-  - the checkpoint ruling bound;
+  - the limits of §9.5: total cycles, elapsed time, budget, repair attempts per increment, revisions
+    per proposal, rejected proposals in a row, `max_unaccepted_increments`, the checkpoint ruling bound;
   - the calibration request profile.
-- **`ChangeRequest`**: PRD delta, manifest delta, acceptance criteria, must-not-break.
-- **`CheckpointRuling`**: approve, amend or reject; the amended change request; the reason; who ruled;
-  the idempotency key.
+- **`ChangeRequest`**: PRD delta, manifest delta, acceptance criteria, must-not-break; with the
+  proposal's id, version and content hash.
+- **`CheckpointRuling`**: approve, request revision, or reject; the reason; who ruled; the binding
+  (proposal id, version, content hash, accepted-tree identity); the idempotency key.
+- **`BoxLease`**: the owner (squad or supervisor), acquired at, expiry, released at.
 - **`LedgerEntry`** (§9.4).
 - **`ContinuationDecision`**: outcome, rationale, evidence references, decided at.
 - **`CampaignEvidence`**: references, not payloads.
@@ -447,7 +516,8 @@ the next free number is used.
 
 ```
 draft → calibrating → at_checkpoint ⇄ running_increment
-                         ↘ paused (awaiting_ruling | owner pause)
+         at_checkpoint = completion → proposing ⇄ review → return   (§9.3)
+                         ↘ paused (awaiting_ruling | limit | owner pause)
                          ↘ completed (success | failure | aborted | exhausted)
 ```
 
@@ -460,11 +530,13 @@ draft → calibrating → at_checkpoint ⇄ running_increment
 1. **The campaign object:** the model, registry, API and CLI, `Cycle.campaign_id`, the audit. No
    automation.
 2. **The brownfield cycle and accumulated acceptance** (§7, §8), with the prior-cycle brief.
-3. **The proposal, the ruling, the checkpoint handoff, the ledger** (§9), and the continuation decision
-   (§10).
-4. **The calibration cycle, the evidence package and the digest** (§11, §14).
+3. **The proposal, the ruling, the checkpoint phases and the box lease, the ledger, the limits** (§9),
+   and the continuation decision (§10).
+4. **Recovery** (§12a), each guarantee with its diagnostic.
+5. **The calibration cycle, the brownfield reference scenario, the evidence package and the digest**
+   (§11, §11a, §14).
 
-Acceptance of the SIP's implementation is all four, the SIP-0089/0090 precedent that a phase is not the
+Acceptance of the SIP's implementation is all five, the SIP-0089/0090 precedent that a phase is not the
 whole SIP.
 
 ---
@@ -480,11 +552,17 @@ whole SIP.
    unchanged.
 5. An increment is accepted only with every earlier increment's criteria re-executed and passing, and
    every declared route rendering its view.
-5a. A feature or fix increment's new tests each fail on the baseline as an assertion and pass on the
-    candidate. One that passes on the baseline blocks acceptance (§8.1).
-6. **No increment builds without a recorded ruling.** A ruling not given within its bound pauses the
-   campaign, and the record says so.
-7. **The next launch refuses a box that is not quiet,** and the refusal is recorded.
+5a. Each acceptance criterion a feature or fix increment adds has a test that fails on the baseline,
+    as an assertion on the app's public surface, and passes on the candidate. A criterion without one
+    is not met (§8.1).
+6. **No increment builds without a recorded ruling bound to the current proposal version and accepted
+   tree.** A stale ruling is refused. A ruling not given within its bound pauses the campaign, and the
+   record says so.
+7. **Every launch on the box refuses while the supervisor holds the lease, or on a box that is not
+   quiet,** and the refusal is recorded. An expired lease with a crew model resident escalates (§9.3).
+7a. **Each limit of §9.5, reached, takes its declared action.** A limit-caused pause resumes only on the
+    owner's recorded word.
+7b. **Each recovery guarantee of §12a holds under its fault-injected diagnostic.**
 8. Every control operation has an audit record with actor, reason and idempotency key. A repeated ruling
    launches nothing new.
 9. The continuation decision is pure. An architecture test asserts it does no persistence or dispatch.
@@ -494,6 +572,8 @@ whole SIP.
     deploy identity and the audit. The digest is rendered from it.
 12. A two-increment campaign on a live stack: the calibration cycle, two increments proposed, ruled on
     and accepted, the second with the first's criteria still passing.
+13. The brownfield reference scenario runs with pinned inputs. Its record reports each mechanism
+    separately, and the recorded proposal carries the supervisor's rating (§11a).
 
 ---
 
@@ -503,14 +583,17 @@ whole SIP.
   ruling bound, `awaiting_ruling` in the digest, and the owner as fallback. Stalling is the safe failure.
 - **Feature-writing defects hide behind implementation defects.** *Mitigation:* the ledger's
   classification keeps "a sound proposal implemented badly" apart (§9.4).
-- **The box handoff races.** A crew model is still resident when a cycle launches. *Mitigation:* the
-  quiet-box preflight is SquadOps's own check, not the crew's word (§9.3).
+- **The box handoff races.** A crew model is still resident when a cycle launches. *Mitigation:* one
+  owner at a time as a recorded lease, enforced at every launch whatever starts it, with the quiet-box
+  check on reclaim (§9.3). The crew's word is not the guard.
+- **A stale approval builds changed scope.** *Mitigation:* rulings bound to the proposal version and the
+  accepted tree (§9.2).
 - **Accumulated acceptance grows slow.** Every increment re-executes every earlier criterion.
   *Mitigation:* measure it per increment in the ledger. A ten-hour campaign of a few increments is the
   scale 2.0 claims.
 - **A brownfield framing re-authors the app.** *Mitigation:* §7.3's rule, and the delta gates.
-- **Runaway continuation.** *Mitigation:* the policy's caps and the no-progress rule. Every launch is
-  ruled on.
+- **Runaway continuation.** *Mitigation:* the limits of §9.5, including repair attempts and proposal
+  rejections and revisions. Every launch is ruled on.
 - **Scope creep into the 2.0 vision anchor.** *Mitigation:* §5's non-goals.
 
 ---
@@ -543,8 +626,13 @@ whole SIP.
 - **The baseline check (replay):** a stored increment's real suite, run on its real baseline. A test
   that fails only by import error is not credited as discriminating.
 - **The ruling gate (wiring):** no launch without a ruling; a repeated ruling launches nothing new; a
-  ruling not given pauses the campaign.
-- **The quiet-box preflight:** a resident foreign model refuses the launch.
+  stale ruling (a changed proposal version, or a moved accepted tree) is refused; a ruling not given
+  pauses the campaign.
+- **The box lease:** a launch by each path (campaign, CLI, driver) refuses while the supervisor holds
+  the lease; a resident foreign model refuses the launch; an expired lease with a crew model resident
+  escalates.
+- **The limits:** each limit of §9.5, reached from a crafted campaign, takes its declared action.
+- **Recovery:** one fault-injected diagnostic per row of §12a, on a live campaign, read from its record.
 - **E2E:** acceptance criterion 12 on a live stack.
 
 ---
@@ -568,6 +656,15 @@ whole SIP.
     and box handoff, the proposal ledger, the calibration cycle, the supervision interface, the evidence
     package, the digest and the prior-cycle brief (#1705–#1710, #1692, #1796);
   - `wait` replaces `defer`; `fork` is deferred; #288 is recorded as fixed;
+  - from an external review of the 2.0 plan draft the same day:
+    - the checkpoint's phases, with a recorded box lease enforced at every launch (§9.3, #1802);
+    - revision requests instead of supervisor edits, and rulings bound to the proposal version and the
+      accepted tree (§9.2, #1801);
+    - the limits and who resumes them (§9.5, #1800);
+    - recovery guarantees (§12a, #1803);
+    - the baseline rule narrowed to one discriminating test per criterion, through the app's public
+      surface (§8.1);
+    - the brownfield reference scenario (§11a, #1804);
   - an increment's new tests must fail on its baseline (§8.1), and the evidence package records
     failures under the attribution registry's vocabulary (§14). Both were added after the owner's
     review of the Verification Yield and Cross-Cycle Memory proposals the same day;

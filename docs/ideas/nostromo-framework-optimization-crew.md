@@ -4,8 +4,11 @@
 > Campaign SIP's revision (`sips/proposed/SIP-Campaign-Orchestration.md`, rev 2), which record how 2.0
 > adopts it. The owner's rulings of the same day amend it:
 > - **Loop 2 does not choose the increment.** The strategy role proposes each increment, on a short
->   leash: the crew approves, amends or rejects every proposal at the checkpoint, and watches how
->   increments are proposed and implemented, so it can recommend improvements to the feature-writing step.
+>   leash.
+>   - The crew approves, requests a revision of, or rejects every proposal at the checkpoint. It never
+>     edits one.
+>   - It watches how increments are proposed and implemented, so it can recommend improvements to the
+>     feature-writing step.
 > - **The continuation policy stays in SquadOps.** The crew holds the escalation queue and an abort.
 > - **The crew may run local inference on the Spark between squad cycles and between campaigns,** never
 >   while the squad runs a cycle. That is the crew operating model's §36, as written.
