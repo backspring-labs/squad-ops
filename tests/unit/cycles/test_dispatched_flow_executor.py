@@ -1381,7 +1381,8 @@ class TestWorkloadGateSeamValidation:
         ref.filename = "implementation_plan.yaml"
         ref.artifact_type = "control_implementation_plan"
         mock_vault.retrieve.return_value = (ref, plan_yaml.encode())
-        return dataclasses.replace(run, artifact_refs=("art_plan",))
+        # The plan gate judges the framing run that authored the plan (#1864).
+        return dataclasses.replace(run, artifact_refs=("art_plan",), workload_type="framing")
 
     async def test_unwinnable_qa_task_rejected_at_workload_gate(
         self, executor, mock_vault, cycle, run
@@ -1456,7 +1457,14 @@ class TestWorkloadGatePlanAbsent:
     implementation_plan profile = authoring collapsed — reject at the gate
     (free re-roll), never approve into an uninstrumented implementation run."""
 
-    async def test_absent_plan_rejected(self, executor, mock_vault, cycle, run):
+    @pytest.mark.parametrize(
+        ("workload", "judged"),
+        [("framing", True), ("implementation", True), ("proposal", False)],
+    )
+    async def test_absent_plan_rejected(self, executor, mock_vault, cycle, run, workload, judged):
+        """#1864: judged where the gate judges the plan — the framing that authored it and the
+        implementation built under it — and never at a proposal's gate, whose run authors a
+        change request: every increment was refused there before its supervisor could rule."""
         import dataclasses
 
         gated_cycle = dataclasses.replace(
@@ -1466,12 +1474,12 @@ class TestWorkloadGatePlanAbsent:
                 "correction_steps": ["analyze", "decide", "repair"],
             },
         )
-        bare_run = dataclasses.replace(run, artifact_refs=())
+        bare_run = dataclasses.replace(run, artifact_refs=(), workload_type=workload)
 
         errors = await executor._reject_invalid_plan_before_workload_gate(
             bare_run, gated_cycle, "progress_plan_review"
         )
-        assert any("plan_authoring_collapsed" in e for e in errors)
+        assert any("plan_authoring_collapsed" in e for e in errors) is judged
 
     async def test_unreadable_plan_still_defers(self, executor, mock_vault, cycle, run):
         """Exists-but-unparseable keeps today's deferral — the dispatch net

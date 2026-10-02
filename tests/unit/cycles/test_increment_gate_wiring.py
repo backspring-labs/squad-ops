@@ -86,6 +86,11 @@ def _ref(artifact_id: str, artifact_type: str, filename: str, content: str) -> t
 
 
 def _cycle(campaign_id: str | None) -> Cycle:
+    """An increment cycle as the launcher creates it: with the ``campaign-increment`` profile's
+    own defaults applied (#1864 — its ``implementation_plan: true`` is what armed the framing plan
+    check at the proposal's gate, and a cycle without the profile's defaults never reached it)."""
+    from squadops.contracts.cycle_request_profiles import load_profile
+
     return Cycle(
         cycle_id="cyc_inc",
         project_id="group_run",
@@ -96,6 +101,7 @@ def _cycle(campaign_id: str | None) -> Cycle:
         squad_profile_snapshot_ref="sha256:abc",
         task_flow_policy=TaskFlowPolicy(mode="sequential"),
         build_strategy="fresh",
+        applied_defaults=dict(load_profile("campaign-increment").defaults),
         execution_overrides={
             "plan_artifact_refs": ["art_manifest"],
             "campaign_proposal": {

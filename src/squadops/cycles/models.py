@@ -112,6 +112,14 @@ class WorkloadType:
     PROPOSAL = "proposal"
 
 
+#: The workloads whose gate judges the implementation plan (#1864): the run that authored it, and
+#: the run built under it, which is seeded with it (``implementation.yaml``'s
+#: ``progress_implement``). A proposal run authors a change request, validated by its own handler,
+#: and carries no plan: before SIP-0109 no gate followed any other workload with the plan on, so
+#: the check never had to ask what it was judging.
+PLAN_JUDGED_WORKLOADS = frozenset({WorkloadType.FRAMING, WorkloadType.IMPLEMENTATION})
+
+
 class PromotionStatus:
     """Well-known artifact promotion status constants."""
 

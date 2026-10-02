@@ -79,6 +79,7 @@ def _make_run(artifact_refs=()) -> MagicMock:
     run = MagicMock()
     run.run_id = "run_abcdef123456"
     run.artifact_refs = list(artifact_refs)
+    run.workload_type = "framing"  # the plan gate judges the run that authored the plan (#1864)
     return run
 
 
