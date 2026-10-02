@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from squadops.campaigns.models import (
+    RULING_MOVES,
     Campaign,
     CampaignState,
     CampaignTransition,
@@ -202,7 +203,29 @@ def adjudicate(
     assert transition.next_state is not None  # guaranteed by CampaignTransition for non-record ops
     if transition.next_state not in LEGAL_TRANSITIONS[campaign.state]:
         return Adjudication(refusal=RefusalReason.ILLEGAL_TRANSITION)
+    if transition.ruling is not None:
+        return Adjudication(refusal=ruling_refusal(campaign, transition))
     return Adjudication()
+
+
+def ruling_refusal(campaign: Campaign, transition: CampaignTransition) -> RefusalReason | None:
+    """§9.2: the gate takes approve, request revision or reject, each moving the campaign where
+    §17 draws it, and each bound to the proposal at the gate and the accepted tree. Checked in
+    the transaction that records the ruling, so the binding is read against committed state."""
+    ruling = transition.ruling
+    assert ruling is not None
+    if RULING_MOVES.get(ruling.decision) is not transition.next_state:
+        return RefusalReason.ILLEGAL_RULING
+    proposal = campaign.proposal
+    accepted = campaign.accepted.identity if campaign.accepted else None
+    if (
+        proposal is None
+        or ruling.run_id != proposal.run_id
+        or ruling.binding != proposal.binding
+        or ruling.binding.baseline_tree != accepted
+    ):
+        return RefusalReason.STALE_BINDING
+    return None
 
 
 def control_log_entry(
@@ -307,6 +330,7 @@ def applied_campaign(campaign: Campaign, transition: CampaignTransition, at: dat
         updated_at=at,
         # The accepted tree changes here and nowhere else (§12a).
         accepted=transition.accepted or campaign.accepted,
+        proposal=transition.submitted or campaign.proposal,
     )
 
 

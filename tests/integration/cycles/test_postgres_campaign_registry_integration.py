@@ -20,6 +20,7 @@ from adapters.cycles import postgres_campaign_registry
 from adapters.cycles.postgres_campaign_registry import PostgresCampaignRegistry
 from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
 from adapters.persistence.pool import create_pool
+from squadops.campaigns.gate import ruling_transition, submission
 from squadops.campaigns.launcher import CampaignLauncher
 from squadops.campaigns.models import (
     AcceptedTree,
@@ -31,8 +32,11 @@ from squadops.campaigns.models import (
     CycleKind,
     LaunchIntentState,
     LaunchRequest,
+    ProposalBinding,
     RefusalReason,
+    SubmittedProposal,
 )
+from squadops.cycles.models import GateDecisionValue
 from tests.integration.conftest import integration_postgres_dsn
 from tests.unit.campaigns.builders import campaign, cycle_for, move
 
@@ -150,6 +154,55 @@ async def test_a_promoted_tree_survives_a_restart_and_is_stored_whole(campaigns,
             await conn.execute(
                 "UPDATE campaigns SET accepted_cycle_id = NULL WHERE campaign_id = $1", CID
             )
+
+
+async def test_a_submitted_proposal_and_a_stale_rulings_refusal_are_stored(campaigns):
+    """§9.2 on the database: the submission's proposal survives a restart, and the refusal
+    values 1640 adds are accepted by the control log's CHECK. Bug caught: a migration whose list
+    omits the new value, so every stale ruling fails at the database instead of being recorded."""
+    binding = ProposalBinding("prop_1", 1, "hash-v1", "sha-cal")
+    await campaigns.transition(
+        CID,
+        move(
+            S.CALIBRATING,
+            "k-promote",
+            operation=ControlOperation.PROMOTE,
+            accepted=AcceptedTree("sha-cal", "cyc_cal000000001"),
+        ),
+    )
+    await campaigns.transition(CID, move(S.AT_PROPOSAL, "k-prop"))
+    await campaigns.transition(
+        CID, submission(S.AT_PROPOSAL, SubmittedProposal(binding, "cyc_inc", "run_p1"))
+    )
+    stale = ProposalBinding("prop_1", 1, "hash-edited", "sha-cal")
+    with pytest.raises(ControlOperationRefused):
+        await campaigns.transition(
+            CID,
+            ruling_transition(
+                GateDecisionValue.APPROVED,
+                stale,
+                run_id="run_p1",
+                actor="crew",
+                actor_role="campaign-supervisor",
+                reason="r",
+                idempotency_key="k-rule",
+            ),
+        )
+
+    fresh_pool = await create_pool(POSTGRES_URL, min_size=1, max_size=2)
+    try:
+        restarted = PostgresCampaignRegistry(pool=fresh_pool)
+        stored = await restarted.get_campaign(CID)
+        log = await restarted.control_log(CID)
+    finally:
+        await fresh_pool.close()
+
+    assert stored.proposal == SubmittedProposal(binding, "cyc_inc", "run_p1")
+    assert stored.state is S.AWAITING_RULING
+    assert (log[-2].operation, log[-1].refusal) == (
+        ControlOperation.SUBMIT,
+        RefusalReason.STALE_BINDING,
+    )
 
 
 async def test_a_refusal_row_survives_the_refusal(campaigns):

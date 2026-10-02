@@ -119,6 +119,7 @@ if TYPE_CHECKING:
     from squadops.cycles.models import SquadProfile
     from squadops.ports.comms.queue import QueuePort
     from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
+    from squadops.ports.cycles.campaign_registry import CampaignRegistryPort
     from squadops.ports.cycles.cycle_registry import CycleRegistryPort
     from squadops.ports.cycles.project_registry import ProjectRegistryPort
     from squadops.ports.cycles.squad_profile import SquadProfilePort
@@ -472,8 +473,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         task_dispatcher: TaskDispatcher | None = None,
         patch_acceptance: PatchAcceptance | None = None,
         correction_repair: CorrectionRepair | None = None,
+        campaign_registry: CampaignRegistryPort | None = None,
     ) -> None:
         self._cycle_registry = cycle_registry
+        # SIP-0109 §9.2: the campaign a cycle belongs to hears its increment gate open. A
+        # campaign cycle run by an executor without one fails at that gate, loudly.
+        self._campaign_registry = campaign_registry
         self._artifact_vault = artifact_vault
         self._queue = queue
         self._reply_router = reply_router

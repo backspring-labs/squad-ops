@@ -14,6 +14,8 @@ from dataclasses import dataclass, field, fields
 from datetime import datetime
 from enum import StrEnum
 
+from squadops.cycles.models import GateDecisionValue
+
 # =============================================================================
 # Enums
 # =============================================================================
@@ -59,15 +61,17 @@ class ControlOperation(StrEnum):
     """A control operation, each one a control-log row (§13).
 
     Every member is an operation the SIP names: the supervision surface's create, pause, resume
-    and abort (§13), a ruling at the increment gate (§9.2), the continuation decision (§10), the
-    promotion transition (§10), and the launcher marking an intent launched (§12b). Later steps add
-    theirs (the lease, launch-blocked) as they gain behaviour.
+    and abort (§13), a proposal submitted to the increment gate and the ruling on it (§9.2), the
+    continuation decision (§10), the promotion transition (§10), and the launcher marking an
+    intent launched (§12b). Later steps add theirs (the lease, launch-blocked) as they gain
+    behaviour.
     """
 
     CREATE = "create"
     PAUSE = "pause"
     RESUME = "resume"
     ABORT = "abort"
+    SUBMIT = "submit"
     RULE = "rule"
     DECIDE = "decide"
     PROMOTE = "promote"
@@ -101,6 +105,12 @@ class RefusalReason(StrEnum):
     ILLEGAL_TRANSITION = "illegal_transition"
     #: The campaign has completed: nothing but a record-only operation follows (§12a, abort).
     CAMPAIGN_COMPLETED = "campaign_completed"
+    #: A ruling bound to a proposal or an accepted tree that is no longer current (§9.2): an old
+    #: approval cannot authorize changed scope.
+    STALE_BINDING = "stale_binding"
+    #: A ruling the increment gate does not take: ``approved_with_refinements`` would make the
+    #: supervisor an author (§9.2).
+    ILLEGAL_RULING = "illegal_ruling"
 
 
 class LaunchIntentState(StrEnum):
@@ -243,6 +253,53 @@ class AcceptedTree:
 
 
 @dataclass(frozen=True)
+class ProposalBinding:
+    """What a ruling binds to (§9.2): the proposal's identity and the tree it was proposed
+    against. A ruling whose binding is not the campaign's current one is refused as stale."""
+
+    proposal_id: str
+    version: int
+    content_hash: str
+    baseline_tree: str
+
+    def __post_init__(self) -> None:
+        _require_text(
+            "ProposalBinding",
+            proposal_id=self.proposal_id,
+            content_hash=self.content_hash,
+            baseline_tree=self.baseline_tree,
+        )
+
+
+@dataclass(frozen=True)
+class SubmittedProposal:
+    """The proposal at the increment gate: its binding, and the run that produced it."""
+
+    binding: ProposalBinding
+    cycle_id: str
+    run_id: str
+
+
+#: The rulings the increment gate takes, and the state each moves the campaign to (§9.2, §17).
+#: ``approved_with_refinements`` is absent: refining would make the supervisor an author.
+RULING_MOVES: dict[GateDecisionValue, CampaignState] = {
+    GateDecisionValue.APPROVED: CampaignState.BUILDING,
+    GateDecisionValue.RETURNED_FOR_REVISION: CampaignState.AT_PROPOSAL,
+    GateDecisionValue.REJECTED: CampaignState.AT_PROPOSAL,
+}
+
+
+@dataclass(frozen=True)
+class IncrementRuling:
+    """A ruling at the increment gate: the gate decision, the binding it was made on, and the
+    run whose gate it decides (the submitted proposal's)."""
+
+    decision: GateDecisionValue
+    binding: ProposalBinding
+    run_id: str
+
+
+@dataclass(frozen=True)
 class Campaign:
     """A campaign (§15). Its ``state`` is always its last applied control-log row's next state:
     both are written in one transaction, so on restart the row read is the state (§12a)."""
@@ -258,6 +315,9 @@ class Campaign:
     outcome: CampaignOutcome | None = None
     #: ``None`` until the calibration cycle's tree is promoted.
     accepted: AcceptedTree | None = None
+    #: The proposal last submitted to the increment gate: the one a ruling binds to, and the
+    #: one a repair or retry re-checks (§10a).
+    proposal: SubmittedProposal | None = None
 
     def __post_init__(self) -> None:
         if (self.state is CampaignState.COMPLETED) != (self.outcome is not None):
@@ -336,6 +396,8 @@ class CampaignTransition:
     state the caller acted on; when the campaign has moved since, the operation is refused as
     stale. ``launch`` writes a launch intent in the same transaction (§12b). ``accepted`` is the
     tree a promotion makes the campaign's accepted tree, and only a promotion carries one.
+    ``submitted`` is the proposal a submission puts at the increment gate, and ``ruling`` the
+    ruling on it; each operation, and only it, carries its own.
     """
 
     operation: ControlOperation
@@ -350,6 +412,8 @@ class CampaignTransition:
     expected_state: CampaignState | None = None
     launch: LaunchRequest | None = None
     accepted: AcceptedTree | None = None
+    submitted: SubmittedProposal | None = None
+    ruling: IncrementRuling | None = None
 
     def __post_init__(self) -> None:
         _require_text(
@@ -373,6 +437,10 @@ class CampaignTransition:
             raise ValueError(f"{self.operation} records a fact; it cannot launch")
         if (self.operation is ControlOperation.PROMOTE) != (self.accepted is not None):
             raise ValueError("a promotion, and only a promotion, names the tree it accepts")
+        if (self.operation is ControlOperation.SUBMIT) != (self.submitted is not None):
+            raise ValueError("a submission, and only a submission, names the proposal it submits")
+        if (self.operation is ControlOperation.RULE) != (self.ruling is not None):
+            raise ValueError("a ruling, and only a ruling, carries its decision and binding")
 
 
 @dataclass(frozen=True)
