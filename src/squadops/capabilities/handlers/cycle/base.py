@@ -55,6 +55,7 @@ from squadops.capabilities.handlers.cycle.validation import (
     _classify_file,
 )
 from squadops.capabilities.handlers.emission_log import log_emission_shape
+from squadops.capabilities.handlers.fault_injection import held_through_pass
 from squadops.capabilities.handlers.fault_injection import hold as hold_fault
 from squadops.capabilities.handlers.fault_injection import inject as inject_fault
 
@@ -1117,6 +1118,17 @@ class _CycleTaskHandler(CapabilityHandler):
                     if (artifact := followup.artifact_for(f)) is not None
                 ]
             artifacts = self._merge_artifacts(artifacts, new_artifacts, evidence_extra)
+            # #1716: a declared fault whose seam lies downstream of this loop is held through
+            # the pass, so the task hands on the defect the diagnostic declared. A no-op for a
+            # cycle that declares none.
+            artifacts = held_through_pass(
+                artifacts,
+                handler_name=self._handler_name,
+                task_id=str(getattr(context, "task_id", "") or ""),
+                resolved_config=inputs.get("resolved_config"),
+                inputs=inputs,
+                pass_index=self_eval_count,
+            )
             followup.after_merge(artifacts, evidence_extra)
             validation = await self._validated(
                 context, inputs, artifacts, typed_error_counts=typed_error_counts

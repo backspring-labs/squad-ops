@@ -20,6 +20,8 @@ import httpx
 import yaml
 
 from squadops.api.runtime.agent_labels import get_role_label
+from squadops.cycles.deploy_record import revision_matches_deploy
+from squadops.ports.cycles.deploy_registry import DeployRegistryPort
 from squadops.ports.runtime.activity import RuntimeActivityPort
 from squadops.ports.runtime.state import RuntimeStatePort
 from squadops.runtime.lifecycle_status import runtime_status_from_lifecycle
@@ -62,8 +64,11 @@ class HealthChecker:
         config: Any,
         runtime_state: RuntimeStatePort | None = None,
         activity: RuntimeActivityPort | None = None,
+        deploy_registry: DeployRegistryPort,
     ) -> None:
         self.pg_pool = pg_pool
+        # #1720: what the deploy recorded, beside what each agent reports on its heartbeat.
+        self._deploy_registry = deploy_registry
         self.redis_client = redis_client
         self._config = config
         self._runtime_state = runtime_state
@@ -169,15 +174,22 @@ class HealthChecker:
 
     # ── Agent status from DB ────────────────────────────────────────────
 
+    async def deployed_revisions(self) -> dict[str, str | None] | None:
+        """Each service's revision as the latest deploy recorded it (#1720), or ``None`` when no
+        deploy has been recorded. An agent's compose service is named for its agent id."""
+        record = await self._deploy_registry.latest()
+        return None if record is None else {s.service: s.revision for s in record.services}
+
     async def get_agent_status(self) -> list[dict[str, Any]]:
         """Return agent status list, merging DB rows with instances.yaml metadata."""
         try:
+            deployed = await self.deployed_revisions()
             async with self.pg_pool.acquire() as conn:
                 # LEFT JOIN the SIP-0089 runtime row so the list carries posture
                 # (mode) and the canonical health signal (runtime_status). Both
                 # are NULL for an agent with no runtime-state row yet (#230).
                 rows = await conn.fetch(
-                    "SELECT s.agent_id, s.lifecycle_state, s.version, s.tps, "
+                    "SELECT s.agent_id, s.lifecycle_state, s.version, s.revision, s.tps, "
                     "s.memory_count, s.last_heartbeat, s.current_task_id, "
                     "r.mode, r.runtime_status "
                     "FROM agent_status s "
@@ -207,6 +219,14 @@ class HealthChecker:
                     "mode": row["mode"],
                     "runtime_status": row["runtime_status"],
                     "version": row["version"] or "0.0.0",
+                    # #1720: None when the agent's build recorded no commit — never a guess.
+                    "revision": row["revision"],
+                    # #1720: what the latest deploy recorded for this agent's service, and
+                    # whether the agent still runs it — False: changed since the record.
+                    "deployed_revision": (deployed or {}).get(agent_id),
+                    "revision_matches_deploy": revision_matches_deploy(
+                        row["revision"], (deployed or {}).get(agent_id)
+                    ),
                     "tps": row["tps"],
                     "memory_count": row["memory_count"] if row["memory_count"] is not None else 0,
                     "last_seen": (
@@ -236,6 +256,9 @@ class HealthChecker:
                     "mode": None,
                     "runtime_status": None,
                     "version": "0.0.0",
+                    "revision": None,
+                    "deployed_revision": None,
+                    "revision_matches_deploy": None,
                     "tps": 0,
                     "memory_count": 0,
                     "last_seen": None,
@@ -251,12 +274,12 @@ class HealthChecker:
             await conn.execute(
                 """
                 INSERT INTO agent_status
-                (agent_id, lifecycle_state, last_heartbeat, current_task_id, version, tps, memory_count, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                (agent_id, lifecycle_state, last_heartbeat, current_task_id, version, tps, memory_count, updated_at, revision)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 ON CONFLICT (agent_id)
                 DO UPDATE SET
                     lifecycle_state = $2, last_heartbeat = $3, current_task_id = $4,
-                    version = $5, tps = $6, memory_count = $7, updated_at = $8
+                    version = $5, tps = $6, memory_count = $7, updated_at = $8, revision = $9
                 """,
                 agent_status["agent_id"],
                 agent_status["lifecycle_state"],
@@ -266,6 +289,7 @@ class HealthChecker:
                 agent_status.get("tps", 0),
                 agent_status.get("memory_count", 0) or 0,
                 now,
+                agent_status.get("revision"),
             )
         await self._update_runtime_state_heartbeat(
             agent_status["agent_id"], agent_status["lifecycle_state"]

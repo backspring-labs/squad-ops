@@ -1,0 +1,1247 @@
+version: 1.9.0
+tag: v1.9.0
+previous_tag: v1.8.2
+date: '2026-10-01'
+commit: 35ce1dac5f9b8dfd00e1b94da03d45fb047596bd
+narrative: "**The completion boundary: the executor's run spine, extracted, and the\
+  \ line's records kept.** Plan:\n`docs/plans/1-9-0-plan.md` (rev 9). Record: `docs/plans/1-9-0-preregistration.md`\
+  \ §10–§13, with\nthe cut record in §13.\n\n**The claim, measured on the 1.9 deploy\
+  \ (`1abe3666`, `dep_d413c36959ab`).** Moving `execute_run`,\n`execute_cycle` and\
+  \ the framing gate out of the executor (#1507) changed nothing a cycle does that\n\
+  the set could see.\n- **The diagnostics** read as on 1.8.2's deploy:\n  - compile-loop,\
+  \ false-criterion and redelivery cleared on run 1;\n  - own-frame cleared on both\
+  \ stacks, Next.js on its second run;\n  - **the unattended chain read YES on every\
+  \ row**: a cancel, a killed agent and a hung handler,\n    four cycles back to back,\
+  \ with no manual step.\n- **Round identity (#1697) holds.** No repair id repeated\
+  \ across the set. The own-frame diagnostic\n  read its refund seam directly, where\
+  \ 1.8.2's needed a ruling.\n- **The dev lane reached its seam on Next.js** (#1716).\
+  \ On React it was UNASKABLE on the set's\n  deploy: the fault keyed on a `/join`\
+  \ spelling, and both runs' designs named the join otherwise\n  (#1774, fixed after\
+  \ the set and read on the post-set deploy).\n- **The counted set: four of six, with\
+  \ L1 held on every roll.** React 2 of 4, Next.js 2 of 2. The\n  registered bar was\
+  \ six of six, so it is **unmet by its letter**, and the owner ruled the cut at\n\
+  \  four of six (§11e). Both rejections were React view tests whose `waitFor` timed\
+  \ out, on a\n  correction path the extraction did not move. **Their one root cause:**\
+  \ the view threw a\n  `TypeError` under jsdom. Vitest printed it only in its unhandled-error\
+  \ block, which nothing read,\n  so the analysis and every repair aimed at the timeout.\
+  \ The evidence fix is #1784, in this release.\n  The prevention, showing the two\
+  \ jsdom pitfalls in the develop and qa prompts, is #1785, in 2.0.\n\n**The completion\
+  \ boundary (#1507).**\n- The framing gate's plan check leaves the executor (#1748).\n\
+  - `execute_run` is split by concern: provisioning and admission leave it (#1749).\n\
+  - `execute_cycle`'s gate leaves it, and every way a cycle ends meets `CycleCompletion`\
+  \ (#1750).\n- A run that did not complete ends the workload sequence, uncancelled\
+  \ (#1754, #1759).\n\n**Lineage: what ran, recorded.**\n- Each deploy writes a record\
+  \ of what it put in service, and each cycle references it (#1720,\n  #1760, #1761).\n\
+  - Every image carries its source revision, and agents report theirs on the heartbeat\
+  \ (#1753).\n- Prefect flow runs carry project, framework and replay tags (#1722).\n\
+  - The prompt fragments' hashes are stamped at the image build (#353).\n\n**Named\
+  \ debts.**\n- The routes read their ports from the request's app (#1448).\n- A run\
+  \ already in its target state is not transitioned again (#1701).\n- Prompts sync\
+  \ before the agents restart, and an agent is healthy only once it runs (#1691).\n\
+  - The records tarball is byte-stable, and the upload refuses anything but the approved\
+  \ bytes (#1732).\n- The deploy's own two findings: the recorder loads the deploy's\
+  \ secrets, and `all` rebuilds every\n  agent service (#1762).\n\n**The instruments.**\n\
+  - The driver reads a window a rebuild took from Prefect's stored log (#1745).\n\
+  - An unbitten fault is recorded as ran-and-unchanged (#1718).\n- The #1699 guard\
+  \ excuses a run that started before the runtime-api's current process (#1714).\n\
+  - The marker self-check counts every sample line (#1696).\n- The record carries\
+  \ each qa re-take's verification (#1724).\n- The retest readout joins by round identity,\
+  \ and refunds read in both forms (#1697).\n\n**After the set, on the post-set deploy\
+  \ (`8a058dc3`, `dep_23e742c972e7`).**\n- **A repair that makes progress is kept**\
+  \ (#1522). When a repair's retest clears some failures\n  without passing, the kept\
+  \ files stand and the next round starts from that retest, rather than the\n  repair\
+  \ being discarded wholesale. SIP-0086 §12b.\n- **Vitest's unhandled errors reach\
+  \ the failure evidence** (#1784) as the run's `app_traceback`,\n  which the analysis\
+  \ and the repair brief already read.\n- **The dev-lane fault finds the join the\
+  \ manifest declares** (#1774).\n- urllib3 2.8.0 retires three advisories published\
+  \ during the set (#1776).\n- **Read on that deploy (pre-registration §12):**\n \
+  \ - both dev-lane diagnostics reached their seam on the first run (on React, the\
+  \ seam d7 could not\n    ask on the set's deploy), and the Next.js dev repair persisted\
+  \ where the set's was discarded at\n    its retest;\n  - one counted React roll\
+  \ was accepted, 21 of 21, with no correction round and L1 held;\n  - #1522 and #1784\
+  \ were silent and unexercised: no view threw, and no retest made partial\n    progress.\n\
+  - **The convergence replay** (#1764): scoped against whole-file repair on 16 stored\
+  \ failing rounds,\n  three samples each. No prediction was falsified. The scoped\
+  \ arm accepted more (9 against 7 on\n  Next.js, 16 against 11 on React) and regressed\
+  \ in no sample, where whole-file regressed in 1 and\n  8. Nine scoped Next.js dev\
+  \ repairs came back empty, and the harness keeps no raw response to say\n  why (#1788).\
+  \ This is 2.0's flip decision's input.\n- The docs site shows what a cycle delivers,\
+  \ generated from the newest release package (#1039,\n  partly).\n\n**Not landed,\
+  \ stated.**\n- **The yield bar:** four of six against six of six, cut on the owner's\
+  \ ruling (§11e).\n- **#414 moves to 2.0** (the owner's ruling). Its gate, measured,\
+  \ does not support the reserve.\n- **#1785 moves to 2.0,** the rejections' prevention.\n\
+  - **#567 and #1031 move to 2.0**, and so do #1755 and #1757. **#1469 moves to 2.0**:\
+  \ its corpus\n  has still not arrived.\n- **#1039's remainder:** a LangFuse screenshot\
+  \ and the home page's hierarchy.\n- **SIP-0107's flip** stays a 2.0 decision. N\
+  \ was read a fourth time as texture (§46r)."
+pull_requests:
+- number: 1792
+  title: 'release: 1.9.0 — the completion-boundary release'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-01'
+- number: 1791
+  title: 'docs(1.9): the post-set readings, the yield ruling (§11e), the cut record
+    (§13), and N''s fourth count (SIP-0107 §46r)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-01'
+- number: 1790
+  title: 'docs(1.9): the post-set configs — two dev-lane diagnostics and one counted
+    React roll (pre-registration §12)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-01'
+- number: 1769
+  title: 'feat(correction): a repair that makes progress is kept, and the next round
+    starts from its retest'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1522
+  merged_at: '2026-10-01'
+- number: 1789
+  title: 'docs(1.9): the post-set registration (§12); #1522 merges in 1.9 (plan rev
+    8)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-01'
+- number: 1786
+  title: 'fix(test-runner): vitest''s unhandled errors reach the failure evidence
+    as the run''s traceback'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1784
+  merged_at: '2026-10-01'
+- number: 1787
+  title: 'docs(1.9): rev 7 — the counted rejections'' root cause; #1784 to 1.9, #1785
+    to 2.0'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-01'
+- number: 1783
+  title: 'deps: urllib3 2.8.0, retiring the three advisories accepted until the post-set
+    rebuild'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1776
+  merged_at: '2026-10-01'
+- number: 1782
+  title: 'fix(fault-injection): the dev-lane fault finds the join the manifest declares'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1774
+  merged_at: '2026-10-01'
+- number: 1781
+  title: 'fix(replay): a replayed round carries no fault declaration'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-01'
+- number: 1780
+  title: 'docs(1.9): the set closes — rolls 3–6; yield 4 of 6, ruled at the cut'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-01'
+- number: 1779
+  title: 'docs(1.9): React rolls 1–2 — roll 2 rejected on a known signature; the set
+    resumes (§11d)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-01'
+- number: 1778
+  title: 'docs(1.9): d8 reading — the dev lane reaches its seam on Next.js; the diagnostics
+    close, the counted set opens'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-01'
+- number: 1777
+  title: 'deps: accept urllib3 2.7.0''s three new advisories until the post-set rebuild'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-01'
+- number: 1775
+  title: 'docs(1.9): d7 read UNASKABLE, and the set resumes on the owner''s ruling'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-01'
+- number: 1773
+  title: 'docs(1.9): d5 and d6 readings — own-frame cleared on both stacks'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-30'
+- number: 1772
+  title: 'docs(1.9): d4 unattended-chain''s reading — YES on every row of the campaign-readiness
+    claim'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-30'
+- number: 1771
+  title: 'docs(1.9): rev 6 — #414 moves to 2.0'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-30'
+- number: 1770
+  title: 'docs(site): what a cycle delivers — the latest release''s screenshots, generated
+    from its package'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-30'
+- number: 1768
+  title: 'docs(1.9): d3 redelivery''s reading — cleared; round identity holds where
+    A′ collided'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-30'
+- number: 1767
+  title: 'docs(1.9): d2 false-criterion''s reading, and the checkout moves after the
+    eighth diagnostic'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-30'
+- number: 1766
+  title: 'docs(1.9): the diagnostics'' records go to the 1.9 line''s own directory,
+    and d1''s reading'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-30'
+- number: 1765
+  title: 'feat(replay): the convergence replay''s harness — stored failing rounds,
+    rebuilt by the product''s code, repaired per arm'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-30'
+- number: 1763
+  title: 'docs(1.9): the pre-registration — the set''s rules, predictions and pins
+    on the 1.9 deploy'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-30'
+- number: 1762
+  title: 'fix(deploy): the 1.9 deploy''s two findings — the recorder loads the deploy''s
+    secrets, and all rebuilds every agent service'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-29'
+- number: 1761
+  title: 'fix(lineage): the fleet read flags an agent changed since the deploy record,
+    and SIP-0108''s lineage reads the record first'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1720
+  merged_at: '2026-09-29'
+- number: 1760
+  title: 'fix(lineage): each deploy writes a record of what it put in service, and
+    each cycle references it'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-29'
+- number: 1758
+  title: 'docs(1.9): rev 4 — the ten rulings after adoption, and the passages they
+    correct'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-29'
+- number: 1759
+  title: 'fix(executor): a run that did not complete ends the workload sequence, uncancelled'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1754
+  merged_at: '2026-09-29'
+- number: 1745
+  title: 'feat(driver): a window a rebuild took is read from Prefect''s stored log'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-29'
+- number: 1753
+  title: 'fix(lineage): every image carries its source revision, and agents report
+    theirs on the heartbeat'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-29'
+- number: 1752
+  title: 'refactor(prompts): the fragment hashes are stamped at the image build, not
+    kept in the manifest'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 353
+  merged_at: '2026-09-29'
+- number: 1751
+  title: 'refactor(api): the routes read their ports from the request''s app, not
+    a process-wide registry'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1448
+  merged_at: '2026-09-29'
+- number: 1750
+  title: 'refactor(executor): execute_cycle''s gate leaves it, and every way a cycle
+    ends meets CycleCompletion (#1507 step 3)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1507
+  merged_at: '2026-09-29'
+- number: 1749
+  title: 'refactor(executor): execute_run by concern — provisioning and admission
+    leave it (#1507 step 2)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-29'
+- number: 1748
+  title: 'refactor(executor): the framing gate''s plan check leaves the executor (#1507
+    step 1)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-29'
+- number: 1747
+  title: 'docs(1.9): §3.1''s result — #1697 reads on both re-runs'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-29'
+- number: 1746
+  title: 'docs(1.9): the completion-boundary map for #1507'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-29'
+- number: 1743
+  title: 'feat(prefect): flow runs carry project, framework and replay tags'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1722
+  merged_at: '2026-09-29'
+- number: 1741
+  title: 'fix(deploy): prompts sync before the agents restart, and an agent is healthy
+    only once it runs'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1691
+  merged_at: '2026-09-29'
+- number: 1744
+  title: 'fix(driver): the retest readout joins a round by its identity, not its index
+    alone'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-29'
+- number: 1740
+  title: 'fix(executor): a run already in the target state is not transitioned again'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1701
+  merged_at: '2026-09-29'
+- number: 1742
+  title: 'fix(driver): refunded_rounds reads the refund line in both forms'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-29'
+- number: 1739
+  title: 'fix(release): the records tarball is byte-stable, and the upload refuses
+    anything but the approved bytes'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1732
+  merged_at: '2026-09-29'
+- number: 1738
+  title: 'fix(fault-injection): the dev-lane fault survives the develop task''s own
+    self-evaluation'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1716
+  merged_at: '2026-09-29'
+- number: 1737
+  title: 'feat(driver): the record carries each qa re-take''s verification and each
+    pass that wrote a file'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1724
+  merged_at: '2026-09-29'
+- number: 1736
+  title: 'fix(driver): the marker self-check holds every sample line to counting'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1696
+  merged_at: '2026-09-29'
+- number: 1735
+  title: 'fix(driver): an unbitten fault is recorded as ran-and-unchanged, not as
+    never-ran'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1718
+  merged_at: '2026-09-29'
+- number: 1734
+  title: 'fix(driver): the #1699 guard excuses a run that started before the runtime-api''s
+    current process'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1714
+  merged_at: '2026-09-29'
+- number: 1733
+  title: 'fix(correction): a round''s task ids are unique within the run, even when
+    a refund re-takes its index'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1697
+  merged_at: '2026-09-29'
+- number: 1726
+  title: 'docs(1.9): the plan, rev 3 (adopted) — #1697 first, the executor''s completion
+    boundary (#1507), every open issue on a release line'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-29'
+- number: 1731
+  title: 'docs(release): v1.8.2''s records attached to the Release — the package names
+    the asset'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-29'
+- number: 1730
+  title: 'docs(release): capture the v1.8.2 release package; the capture seeds under
+    the interface''s base path'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-29'
+sip_moves: []
+sip_amendments:
+- sip: SIP-0057-Hexagonal-Layered-Prompt-System
+  status: implemented
+- sip: SIP-0086-Build-Convergence-Loop-Dynamic
+  status: implemented
+- sip: SIP-0107-Scoped-Code-Revision
+  status: accepted
+- sip: SIP-0108-Cycle-Evaluation-Scorecard
+  status: implemented
+cycles:
+- cycle_id: cyc_20a01ea59964
+  role: counted
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_189cb78ce86b
+  role: counted
+  captured: true
+  status: failed
+  verdict: rejected
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed:
+  - tests_pass
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_cf13ebda0daa
+  role: counted
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_9727f1c382e2
+  role: counted
+  captured: true
+  status: failed
+  verdict: rejected
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:required_files
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed:
+  - tests_pass
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_d23bc93670f6
+  role: counted
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:frontend_compiles
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-participants
+  - vc-probe-api-runs-participants-duplicate
+  - vc-probe-api-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_c3ab78540862
+  role: counted
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:count_at_least
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:frontend_compiles
+  - acceptance:regex_match
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_f4fca4758e83
+  role: diagnostic
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:frontend_compiles
+  - acceptance:regex_match
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_75be94aadbd3
+  role: diagnostic
+  captured: true
+  status: failed
+  verdict: blocked_unverified
+  verified:
+  - acceptance:declared_imports
+  - acceptance:frontend_compiles
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - non_stub_files
+  failed:
+  - acceptance:declared_imports
+  required_unmet:
+  - frontend_build
+  - required_files
+  - tests_pass
+  unverified:
+  - frontend_build
+  - required_files
+  - tests_pass
+  run_count: 2
+- cycle_id: cyc_9ee4b3bb2d19
+  role: diagnostic
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_c6faa57c49d9
+  role: diagnostic
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-participants
+  - vc-probe-runs-participants-duplicate
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_baa44d5f73d4
+  role: diagnostic
+  captured: true
+  status: active
+  verdict: blocked_unverified
+  verified: []
+  failed: []
+  required_unmet:
+  - frontend_build
+  - required_files
+  - tests_pass
+  unverified:
+  - frontend_build
+  - required_files
+  - tests_pass
+  run_count: 2
+- cycle_id: cyc_48b45a9af31f
+  role: diagnostic
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_3ab2cf9c55ce
+  role: diagnostic
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_1d359f7fa22c
+  role: diagnostic
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:count_at_least
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:frontend_compiles
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_359759afe0af
+  role: diagnostic
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:frontend_compiles
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-leave-duplicate
+  - vc-probe-api-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_a045fa94c30f
+  role: diagnostic
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_1e1c9364efe3
+  role: diagnostic
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-participants
+  - vc-probe-runs-participants-duplicate
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_7a67a1c5b903
+  role: diagnostic
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-participants
+  - vc-probe-runs-participants-duplicate
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_98a316402a1b
+  role: diagnostic
+  captured: true
+  status: failed
+  verdict: rejected
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:frontend_compiles
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-rejects-blank
+  failed:
+  - vc-probe-api-runs-join
+  - tests_pass
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_d95e002a2bc6
+  role: diagnostic
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_8daf320a41fb
+  role: diagnostic
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:frontend_compiles
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_7a4b7a6fbf0e
+  role: shakeout
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+screenshots:
+- delivered-app-react-roll-4-create-run-form.png
+- delivered-app-react-roll-4-run-list.png
+- prefect-flow-run-react-roll-4-a-builder-round-then-two-repairs-aimed-at-a-test-timeout-whose-cause-went-unread.png
+showcase:
+  cycle_id: cyc_9727f1c382e2
+  reason: 'Counted React roll 4, rejected after three correction rounds: a builder
+    round, then two repairs aimed at a test timeout whose cause, a TypeError only
+    jsdom raises, was printed where nothing read it (#1784). Its delivered app boots,
+    lists runs and renders its create form; its detail page cannot be shown, because
+    the scaffold wrote its manifest''s route as /runs/{run_id}, which the router never
+    matches (#1794)'
+  role: counted
+records:
+  asset: squadops-1.9.0-records.tar.gz
+  sha256: 3592d280d43aa38fbdf227a37111915f0f30a152639dd80f5601601b1a0d15f8
+  files: 65
+  bytes: 191827
+  attached_at: '2026-10-01T23:47:02Z'
+  scanned:
+    secret_values: 55
+    patterns:
+    - langfuse key
+    - api key (sk-)
+    - jwt
+    - private key

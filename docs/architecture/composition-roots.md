@@ -50,7 +50,7 @@ with the reason each wires infrastructure (#154):
 
 | root | wires |
 |---|---|
-| `squadops.api.runtime` (`main`, `deps`, `scheduler_bootstrap`) | the runtime API: pool, queue, LLM, registries, vault, telemetry, tracker, events, executor, auth |
+| `squadops.api.runtime` (`main`, `deps`, `scheduler_bootstrap`, `record_deploy`) | the runtime API: pool, queue, LLM, registries, vault, telemetry, tracker, events, executor, auth. `record_deploy` is its second process, the deploy step's one-off (#1720): the pool, the deploy registry, the squad profile and the LLM, through the same factories and selectors |
 | `squadops.agents.entrypoint` | the agent container: queue, LLM, memory, prompts, telemetry, filesystem, messaging |
 | `squadops.sandbox.main` | the sandbox service |
 | `squadops.bootstrap` | system composition, the doctor's checks, the secrets provider |
@@ -151,7 +151,7 @@ in the guard's named exceptions (§6.5) so a new one is a decision.
 | runtime API | persistence over the pool | `create_pool` (#577) then the five Postgres adapters (`main.py:359–373`, `:472–477`, `:495`) | ✓ substrate-bound | — |
 | runtime API | Redis client, broker connection | `main.py:472`, `:569` — vendor probes, diagnostic use | not a binding | — |
 | runtime API | **import** | `configure_logging()`, `app = FastAPI(...)`, `register_domain_error_handlers(app)`, **`config = load_config(...)` at `main.py:57`**, the URL globals (`:60–61`), the fingerprint log, the auth and CORS middleware from `config.auth` (`:83–110`), the routers (`:113–156`) and the connection globals (`:159–163`) all execute at import; `tests/unit/cli/test_integration.py:57` works around it by setting env vars and popping `sys.modules` | ✗ R3 | **#286** |
-| runtime API | the routes' dependency registry | `src/squadops/api/runtime/deps.py:30–60`: twenty module-global `_<port>` variables populated by `set_*` and read by `get_*` from ten route modules — **process-global by construction** | ✗ R4 (a second ownership path beside the app) | **named, §6.4 and §7 — not closed by #286** |
+| runtime API | the routes' dependency registry | was `deps.py`'s twenty module-global `_<port>` variables — **process-global by construction**. Now `app.state` slots (`deps.PORT_SLOTS`, started at `None` by `create_app`, assigned by `_startup`), read by `deps.py`'s getters from the request's app | ✓ R4 since #1448 | **closed by #1448** |
 | agent entrypoint | LLM, memory, prompt repository, prompt asset source, telemetry, LLM observability | through their factories (`entrypoint.py:342–441`) | ✓ R1 | — |
 | agent entrypoint | queue | **`RabbitMQAdapter(url=rabbitmq_url, prefetch_count=1)` at `entrypoint.py:453`** — `prefetch_count` is a tunable (#323), correctly a constructor argument; the binding is not | ✗ R1 | **#301** |
 | agent entrypoint | filesystem | **`LocalFileSystemAdapter()` at `entrypoint.py:447`** while `adapters.tools.factory.create_filesystem_provider(provider, allowed_roots, production_mode)` exists — the same shape as the queue, found by this audit rather than by #301 | ✗ R1, R2 | **#301** |
@@ -256,16 +256,15 @@ defaults the root relies on today are named in the PR.
   produced an app object under overridden env; `create_app` produces the same object from a
   config value, with no env and no `sys.modules` surgery.
 
-**What #286 does not fix, stated so it is not claimed.** The routes do not read their ports
-from `app.state`; they read them from `deps.py`'s module-global registry — twenty `_<port>`
-variables, `set_*` at composition, `get_*` from ten route modules
-(`src/squadops/api/runtime/deps.py:30–60`). After #286, `create_app` populates that registry,
-which means **two apps in one process share one registry and the second `create_app`
-overwrites the first's ports.** #286 therefore delivers import purity and app-owned
-connections; **it does not deliver multi-app isolation, and this standard does not claim
-it.** The registry is a second ownership path (R4) and is named in §7 with the follow-on
-that closes it — the routes reading their ports through `Depends` from `request.app.state`,
-which touches ten route modules and is its own change, not #286's.
+**What #286 did not fix, and #1448 did.** After #286 the routes still read their ports from
+`deps.py`'s module-global registry, which `create_app` populated, so two apps in one process
+shared one registry and the second overwrote the first's ports. **#1448 closed it:** every port
+the routes read is an `app.state` slot beside the connections, and `deps.py`'s getters are
+dependency providers over the request's app. The routes pass the request to the getter, and
+`Depends(get_x)` works wherever that reads better. `create_app` starts every port slot at
+`None`, so an unwired port reads as unconfigured, as before.
+`tests/unit/api/test_two_apps_resolve_their_own_ports.py` builds two apps with distinct fake
+ports in one process and asserts each route resolves its own.
 
 ### 6.6 What the guard asserts
 
@@ -287,8 +286,9 @@ construction" also passes when a binding is deleted outright:
    is a deliberate decision recorded in the table**, the `COMPOSITION_ROOTS` precedent.
 3. **Expected bindings are present and enter through their factory (R1, positive):** a table
    in the test declares, per root, the provider-selected bindings it is expected to perform —
-   the runtime API: LLM, queue, A2A client, project registry, cycle registry, squad profile,
-   artifact vault, workflow tracker, event bus, LLM observability, flow executor, auth; the
+   the runtime API: LLM, queue, A2A client, project registry, cycle registry, deploy registry
+   (#1720), squad profile, artifact vault, workflow tracker, event bus, LLM observability, flow
+   executor, auth — with `record_deploy`'s own LLM, squad profile and deploy registry; the
    agent entrypoint: LLM, queue, filesystem, memory, prompt repository, prompt asset source,
    telemetry, LLM observability, and the A2A server behind its switch; the sandbox: the
    service; bootstrap: secrets — and asserts **exactly one factory call per expected
@@ -310,11 +310,9 @@ changes and this standard does not.
 
 ## 7. Known deviations, named — none closed by this line unless its row says so
 
-- **The routes' dependency registry is process-global** (`deps.py:30–60`). After #286 it is
-  populated by `create_app` and still shared by every app in the process (§6.5). The
-  follow-on is the routes reading their ports through `Depends` from `request.app.state` —
-  **#1448**, filed at this standard's review and placed by the 1.8 plan. Until it lands,
-  **"one process, one runtime app" is a stated constraint, not an accident.**
+- ~~**The routes' dependency registry is process-global.**~~ **Closed by #1448 (1.9):** the
+  ports are `app.state` slots read from the request's app (§6.5), and two apps in one process
+  each resolve their own. "One process, one runtime app" is no longer a constraint.
 - **Factory selector defaults.** **Eighteen selector parameters across eleven factory
   modules** default their provider (the exact table is in **#1449**; this document's first
   draft counted nine, which is the point — a default is invisible until it is looked for):

@@ -25,6 +25,8 @@ from __future__ import annotations
 
 import logging
 
+from fastapi import Request
+
 from squadops.api.runtime.deps import (
     get_activity_port,
     get_cancel_queue_port,
@@ -38,13 +40,15 @@ from squadops.cycles.naming import flow_run_name
 logger = logging.getLogger(__name__)
 
 
-async def cancel_orphaned_flow_runs(project_id: str, cycle_id: str, run_ids: list[str]) -> int:
+async def cancel_orphaned_flow_runs(
+    request: Request, project_id: str, cycle_id: str, run_ids: list[str]
+) -> int:
     """Transition still-running Prefect flow runs for the given cycle runs to
     CANCELLED. Returns the number cancelled (0 if none active / Prefect off)."""
     if not run_ids:
         return 0
     try:
-        tracker = get_workflow_tracker()
+        tracker = get_workflow_tracker(request)
         names = [flow_run_name(project_id, cycle_id, rid) for rid in run_ids]
         flow_run_ids = await tracker.find_active_flow_run_ids(names)
         for flow_run_id in flow_run_ids:
@@ -64,7 +68,7 @@ async def cancel_orphaned_flow_runs(project_id: str, cycle_id: str, run_ids: lis
         return 0
 
 
-async def release_cancelled_run_leases(cycle_id: str, run_ids: list[str]) -> int:
+async def release_cancelled_run_leases(request: Request, cycle_id: str, run_ids: list[str]) -> int:
     """Release the focus leases held by the cancelled run(s). Returns how many cleared.
 
     Each run's leases are keyed by ``owner_ref = run_id`` (the executor's
@@ -75,8 +79,8 @@ async def release_cancelled_run_leases(cycle_id: str, run_ids: list[str]) -> int
     Returns 0 when no coordinator/lease port is wired (a pool-less deployment
     has no leases to release).
     """
-    coordinator = get_runtime_coordinator()
-    focus_lease = get_focus_lease_port()
+    coordinator = get_runtime_coordinator(request)
+    focus_lease = get_focus_lease_port(request)
     if coordinator is None or focus_lease is None or not run_ids:
         return 0
     from squadops.runtime import reasons
@@ -102,7 +106,7 @@ async def release_cancelled_run_leases(cycle_id: str, run_ids: list[str]) -> int
     return released
 
 
-async def notify_agents_of_cancel(cycle_id: str, run_ids: list[str]) -> int:
+async def notify_agents_of_cancel(request: Request, cycle_id: str, run_ids: list[str]) -> int:
     """Tell every agent holding the cancelled run's work to drop it (#1648). Returns how many
     agents were told.
 
@@ -113,7 +117,7 @@ async def notify_agents_of_cancel(cycle_id: str, run_ids: list[str]) -> int:
     notice there would wait behind the task it was sent to stop. Best-effort, never raises: a
     cancel succeeds whether or not the agents hear of it.
     """
-    queue = get_cancel_queue_port()
+    queue = get_cancel_queue_port(request)
     if queue is None or not run_ids:
         return 0
     import json
@@ -121,8 +125,8 @@ async def notify_agents_of_cancel(cycle_id: str, run_ids: list[str]) -> int:
     from squadops.comms.run_cancellation import control_queue, run_cancelled_notice
 
     agents: set[str] = set()
-    activity_port = get_activity_port()
-    focus_lease = get_focus_lease_port()
+    activity_port = get_activity_port(request)
+    focus_lease = get_focus_lease_port(request)
     try:
         if activity_port is not None:
             agents |= {
@@ -159,7 +163,7 @@ async def notify_agents_of_cancel(cycle_id: str, run_ids: list[str]) -> int:
     return told
 
 
-async def abort_cancelled_cycle_activities(cycle_id: str) -> int:
+async def abort_cancelled_cycle_activities(request: Request, cycle_id: str) -> int:
     """End the cycle's open runtime activities. Returns how many flipped.
 
     Scoped to the cycle rather than the cancelled run because that is how
@@ -170,7 +174,7 @@ async def abort_cancelled_cycle_activities(cycle_id: str) -> int:
     Returns 0 when no activity port is wired (a pool-less deployment records no
     activities).
     """
-    activity_port = get_activity_port()
+    activity_port = get_activity_port(request)
     if activity_port is None:
         return 0
     from squadops.runtime import reasons

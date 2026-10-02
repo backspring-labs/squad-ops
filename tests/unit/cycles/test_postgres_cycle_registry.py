@@ -129,6 +129,7 @@ def _cycle_row(**overrides):
         "request_profile": None,
         "framework_version": None,
         "framework_git_sha": None,
+        "deploy_id": None,  # #1720, migration 1051
         "notes": None,
         "cancelled": False,
     }

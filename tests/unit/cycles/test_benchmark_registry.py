@@ -23,6 +23,7 @@ from adapters.cycles.benchmark_regrade import regrade
 from adapters.cycles.cycle_evidence import assess_cycle
 from adapters.cycles.filesystem_artifact_vault import FilesystemArtifactVault
 from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
+from adapters.cycles.memory_deploy_registry import MemoryDeployRegistry
 from squadops.cycles.benchmark_registry import (
     BenchmarkManifestError,
     BenchmarkRoll,
@@ -38,6 +39,7 @@ from squadops.cycles.benchmark_registry import (
     render_capture,
 )
 from squadops.cycles.cycle_assessment import AssessorIdentity, CycleEvidence, RunRecord
+from squadops.cycles.deploy_record import DeployRecord, ModelWeights, ServiceImage
 from squadops.cycles.models import Cycle, Run, TaskFlowPolicy
 from squadops.cycles.verification_integrity import aggregate_verification
 
@@ -49,6 +51,18 @@ CAPTURE = REPO / "docs" / "benchmark" / "regrade.json"
 T0 = datetime(2026, 9, 11, 10, 0, tzinfo=UTC)
 ASSESSOR = AssessorIdentity(framework_version="1.8.0", git_sha="abc1234")
 PINS = PinnedDeploy("8fd30eb8", {"runtime-api": "93c7dd5fd6f5"}, "set.yaml")
+#: #1720: A′'s shape — the runtime API rebuilt from one commit, the agents from another.
+DEPLOY = DeployRecord(
+    deploy_id="dep_a0prime0000",
+    recorded_at=datetime(2026, 9, 28, tzinfo=UTC),
+    recorded_by="rebuild_and_deploy.sh runtime-api",
+    source_revision="8e2c2e87",
+    services=(
+        ServiceImage("neo", "sha256:neo", "ccc9475d"),
+        ServiceImage("runtime-api", "sha256:api", "8e2c2e87"),
+    ),
+    models=(ModelWeights("qwen3.8:27b", "22130167c4c2"),),
+)
 
 
 def _cycle(cycle_id="cyc_1", *, notes="1.7.5 set — COUNTED roll 2 of 6.", stack="nextjs_ts", **kw):
@@ -205,26 +219,39 @@ class TestPreflight:
 
 
 @pytest.mark.parametrize(
-    ("cycle", "roll", "expected"),
+    ("cycle", "roll", "deploy", "expected"),
     [
+        (
+            _cycle(
+                framework_version="1.8.2", framework_git_sha="8e2c2e87", deploy_id=DEPLOY.deploy_id
+            ),
+            _roll(),
+            DEPLOY,
+            (LineageSource.DEPLOY_RECORD, "1.8.2", "8e2c2e87", PINS, DEPLOY),
+        ),
         (
             _cycle(framework_version="1.8.0", framework_git_sha="b92f3cf3"),
             _roll(),
-            (LineageSource.CYCLE_RECORD, "1.8.0", "b92f3cf3", PINS),
+            None,
+            (LineageSource.CYCLE_RECORD, "1.8.0", "b92f3cf3", PINS, None),
         ),
         (
             _cycle(framework_version="1.8.0"),
             _roll(),
-            (LineageSource.SET_PINS, "1.8.0", None, PINS),
+            None,
+            (LineageSource.SET_PINS, "1.8.0", None, PINS, None),
         ),
-        (_cycle(), _roll(role=RollRole.VOID, pins=None), None),
+        (_cycle(), _roll(role=RollRole.VOID, pins=None), None, None),
     ],
-    ids=["#80's commit", "a version without a commit", "a void with neither"],
+    ids=["the deploy record", "#80's commit", "a version without a commit", "a void with neither"],
 )
-def test_lineage_is_the_cycles_commit_else_the_sets_pins_and_never_a_guess(cycle, roll, expected):
-    """Bug caught: a version string standing in for a commit, or a void row credited with the
-    rebuilt deploy's pins."""
-    lineage = lineage_for(roll, cycle)
+def test_lineage_is_the_deploy_else_the_cycles_commit_else_the_sets_pins_and_never_a_guess(
+    cycle, roll, deploy, expected
+):
+    """Bug caught: a version string standing in for a commit, a void row credited with the
+    rebuilt deploy's pins, or (#1720) a cycle whose deploy record names the agents' code read by
+    the runtime's commit alone — A′, where the two differed."""
+    lineage = lineage_for(roll, cycle, deploy)
 
     if expected is None:
         assert lineage is None
@@ -234,6 +261,7 @@ def test_lineage_is_the_cycles_commit_else_the_sets_pins_and_never_a_guess(cycle
             lineage.framework_version,
             lineage.framework_git_sha,
             lineage.pins,
+            lineage.deploy,
         ) == expected
 
 
@@ -246,7 +274,9 @@ async def test_the_regrade_keeps_every_declared_roll_and_grades_only_what_its_pr
     or a capture mixing rows graded under another contract version."""
     registry = MemoryCycleRegistry()
     vault = FilesystemArtifactVault(tmp_path / "vault")
-    await registry.create_cycle(_cycle())
+    deploys = MemoryDeployRegistry()
+    await deploys.record(DEPLOY)
+    await registry.create_cycle(_cycle(framework_git_sha="8e2c2e87", deploy_id=DEPLOY.deploy_id))
     await registry.create_cycle(_cycle("cyc_shakeout", notes="SHAKEOUT — NON-COUNTING"))
     for cycle_id in ("cyc_1", "cyc_shakeout"):
         run_id = f"run_{cycle_id}"
@@ -270,6 +300,7 @@ async def test_the_regrade_keeps_every_declared_roll_and_grades_only_what_its_pr
         vault,
         [_roll(), _roll("cyc_shakeout"), _roll("cyc_gone")],
         assessor=ASSESSOR,
+        deploys=deploys,
     )
 
     assert [(r.roll.cycle_id, r.preflight.refusals) for r in rows] == [
@@ -294,6 +325,15 @@ async def test_the_regrade_keeps_every_declared_roll_and_grades_only_what_its_pr
     }
     assert document["sets"]["1.7.5 Next.js"]["pins"]["deploy_commit"] == "8fd30eb8"
     assert [r["cycle_id"] for r in document["rows"]] == ["cyc_1", "cyc_shakeout", "cyc_gone"]
+    # #1720: the registry's deploy record reaches the capture, the agents' commit beside the API's.
+    lineage = document["rows"][0]["lineage"]
+    assert (lineage["source"], lineage["deploy_id"]) == ("deploy_record", "dep_a0prime0000")
+    assert lineage["services"] == {
+        "neo": ["sha256:neo", "ccc9475d"],
+        "runtime-api": ["sha256:api", "8e2c2e87"],
+    }
+    assert lineage["models"] == {"qwen3.8:27b": "22130167c4c2"}
+    assert document["rows"][1]["lineage"]["deploy_id"] is None
     with pytest.raises(ValueError, match="other contract versions"):
         capture_document(rows, versions={**versions, "assessment_version": 2}, assessor=ASSESSOR)
 

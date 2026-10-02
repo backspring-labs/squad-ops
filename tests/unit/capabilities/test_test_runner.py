@@ -1196,3 +1196,137 @@ class TestTheFullstackMergeKeepsBothSidesEvidence:
         merged = await self._merge(monkeypatch, backend, frontend)
         assert merged.runner == "vitest"
         assert len(merged.suite_defects) == 2, "evidence is still kept from both"
+
+
+# ---------------------------------------------------------------------------
+# #1784: vitest's unhandled errors reach the failure evidence
+# ---------------------------------------------------------------------------
+
+
+class TestVitestUnhandledErrorsReachTheEvidence:
+    """Bugs caught (#1784, both rejected counted rolls of the 1.9 set): a view that threw in an
+    event handler or a render under jsdom left its test failing on a `waitFor` timeout. The
+    TypeError that caused it was printed only in vitest's unhandled-error block, which nothing
+    read. The analyzer diagnosed the timeout: it invented a missing validation branch on roll 4
+    and blamed the app for roll 2's test bug."""
+
+    _OUTPUTS = {
+        "react roll 4: a form read by name": (
+            "1-9-0-react-roll-4-vitest-output.txt",
+            "Unhandled Rejection: TypeError: Cannot read properties of undefined (reading 'value')",
+            "src/views/CreateRunView.jsx:17:37",
+            "const datetime = (form.datetime.value || '').trim();",
+            "shows a validation message when required fields are empty",
+        ),
+        "react roll 2: a route-param view rendered without its route": (
+            "1-9-0-react-roll-2-vitest-output.txt",
+            "Uncaught Exception: TypeError: Cannot read properties of undefined (reading 'length')",
+            "src/views/RunDetail.jsx:118:25",
+            "{run.participants.length > 0 ? (",
+            "displays run details, allows a successful join, then shows duplicate error",
+        ),
+    }
+
+    @pytest.mark.parametrize("case", sorted(_OUTPUTS))
+    def test_each_real_error_is_read_with_its_line_and_its_test(self, case):
+        from squadops.capabilities.handlers.test_runner import parse_vitest_unhandled_errors
+
+        fixture, error, frame, source, test = self._OUTPUTS[case]
+        output = (
+            Path(__file__).resolve().parents[2] / "fixtures" / "roll_replays" / fixture
+        ).read_text()
+
+        [block] = parse_vitest_unhandled_errors(output)
+
+        assert block.splitlines()[0] == error
+        assert frame in block and source in block and f'is "{test}"' in block
+        # The framework's own frames name nothing a repair can act on.
+        assert "node_modules" not in block
+
+    def test_nothing_is_read_from_a_summary_alone_and_repeats_and_excess_are_bounded(self):
+        from squadops.capabilities.handlers.test_runner import parse_vitest_unhandled_errors
+
+        summary = "⎯⎯⎯⎯⎯⎯ Unhandled Errors ⎯⎯⎯⎯⎯⎯\n\nVitest caught 1 unhandled error.\n"
+
+        def block(n: int) -> str:
+            return (
+                "⎯⎯⎯⎯⎯ Uncaught Exception ⎯⎯⎯⎯⎯\n"
+                f"TypeError: boom {n}\n"
+                " ❯ commitRoot node_modules/react-dom/cjs/react-dom.development.js:1:1\n"
+                f" ❯ View src/views/View{n}.jsx:{n}:1\n"
+            )
+
+        assert parse_vitest_unhandled_errors(summary) == []
+        assert len(parse_vitest_unhandled_errors(block(1) + block(1))) == 1
+        five = parse_vitest_unhandled_errors("".join(block(n) for n in range(1, 6)))
+        assert [b.splitlines()[0] for b in five] == [
+            f"Uncaught Exception: TypeError: boom {n}" for n in (1, 2, 3)
+        ]
+        # The first PROJECT frame is the one kept, past a framework frame above it.
+        assert five[0].splitlines()[1].strip() == "❯ View src/views/View1.jsx:1:1"
+
+    def test_the_failing_row_carries_them_as_the_traceback_the_evidence_hoists(self):
+        """The seam: #687 hoists a row's `app_traceback` into the evidence the analyzer
+        reads, and #788 renders it into the repair prompt. A row that does not carry it
+        reaches neither."""
+        from squadops.capabilities.handlers.test_runner import failed_tests_pass_row
+        from squadops.cycles.failure_evidence import build_failure_evidence
+        from squadops.tasks.models import TaskEnvelope, TaskResult
+
+        error = "Uncaught Exception: TypeError: x\n ❯ View src/views/View.jsx:1:1"
+        row = failed_tests_pass_row(
+            RunTestsResult(executed=True, exit_code=1, runner="vitest", unhandled_errors=(error,))
+        )
+        envelope = TaskEnvelope(
+            task_id="t",
+            agent_id="eve",
+            cycle_id="c",
+            pulse_id="p",
+            project_id="pr",
+            task_type="qa.test",
+            correlation_id="c",
+            causation_id="c",
+            trace_id="t",
+            span_id="s",
+            inputs={},
+        )
+        result = TaskResult(
+            task_id="t",
+            status="FAILED",
+            outputs={"validation_result": {"passed": False, "checks": [row]}},
+            error="tests failed",
+        )
+
+        evidence = build_failure_evidence(envelope, result, prior_plan_deltas_count=0)
+
+        assert evidence["app_tracebacks"] == [{"check": "tests_pass", "traceback": error}]
+        assert "app_traceback" not in failed_tests_pass_row(
+            RunTestsResult(executed=True, exit_code=1, runner="vitest")
+        )
+
+    async def test_the_fullstack_merge_keeps_the_frontends_errors(self, monkeypatch):
+        """#1305's class: a field the merge did not carry was discarded for the one stack
+        that takes this path, with the backend executed and controlling. Asserted through
+        the real merge in `run_fullstack_tests`."""
+        import squadops.capabilities.handlers.test_runner as tr
+
+        async def _backend(*_a, **_k):
+            return tr.RunTestsResult(executed=True, exit_code=0, runner="pytest")
+
+        async def _frontend(*_a, **_k):
+            return tr.RunTestsResult(
+                executed=True, exit_code=1, runner="vitest", unhandled_errors=("front",)
+            )
+
+        monkeypatch.setattr(tr, "run_generated_tests", _backend)
+        monkeypatch.setattr(tr, "run_node_tests", _frontend)
+        merged = await tr.run_fullstack_tests(
+            [{"path": "backend/a.py", "content": "x"}],
+            [
+                {"path": "backend/tests/test_a.py", "content": "x"},
+                {"path": "frontend/src/__tests__/a.test.jsx", "content": "x"},
+            ],
+        )
+
+        assert merged.runner == "pytest"
+        assert merged.unhandled_errors == ("front",)

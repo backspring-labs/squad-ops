@@ -569,6 +569,256 @@ Record `own-frame-then-prose-repair/shakeout-20260928T134909Z.json`.
   **Held by the owner's ruling (§11f)**; the literal UNASKABLE stands in the record. Evidence:
   `var/1-8-2-logs/Aprime-own-frame-react-1-l4-evidence.log`.
 
+#### A′ d7 — `dev-lane-fastapi-react`: runs 1 and 2, 10:35–13:40 ET — **not reached after two runs; ruled unreachable on A′ by construction (§11h)**
+
+- **Run 1**, `cyc_25a7a6ad8ebd` / `run_d2b1a457283c`, 10:35–11:31 ET. Record
+  `dev-lane-fastapi-react/shakeout-20260928T153113Z.json`.
+  - **Outcome:** `accepted`, 20 of 20; zero correction rounds.
+  - **The fault** bit no develop task: all four logged `DID NOT BITE` (the emission returned
+    unchanged), so the seam read **UNASKABLE**.
+  - **Instrument nit:** the record's reason reads "no attempt of its target task ran". Four ran.
+    The driver parses `APPLIED` and out-of-scope lines (`verification_set_driver.py:2650-2671`),
+    never `DID NOT BITE`. The state is right and the reason is wrong.
+- **A run lost to the box**, `cyc_0716b8d637c2` / implementation `run_358dfb8cf945`, from 11:35 ET.
+  - The Spark halted at 12:15:23 ET, ten minutes into implementation. The fault had applied to
+    `m000` at 12:08:35.
+  - No record exists. The run was cancelled through the CLI at 12:34:18.
+  - Its log is kept as `var/1-8-2-logs/dev-lane-fastapi-react-2-lost-to-halt-20260928T161523Z.log`.
+  - **It did not spend the budget (§11g).**
+- **Run 2**, `cyc_18608cb78207` / `run_69ed3e528311`, 12:36–13:40 ET. Record
+  `dev-lane-fastapi-react/shakeout-20260928T174010Z.json`.
+  - **Outcome:** `accepted`, 21 of 21; one correction round.
+  - **The fault applied** to `m000` at 13:09:18 ET (3,157 → 3,261 chars). The join handler's
+    `return run` became `return {"id": getattr(run, "id", None)}`, with the transform's comment
+    `# #1251 injected fault: …`.
+  - **`m000`'s own self-evaluation pass 1** edited `backend/routes.py` at 13:09:30 and was
+    accepted (anchored edits, 270 of 3,229 characters, 8%). The file stored that second ends the
+    join handler with `return run` again, and carries no marker.
+  - No check failed. The one correction round repaired an unrelated frontend qa test
+    (`RunDetailView.jsx`, 7%). `narrowed_to_join_slot` is empty, so the seam read **NO**.
+  - **The reversion is established by elimination.** The pass is the only writer between the
+    fault and the stored file. The edit's text is not stored; its logged head opens on the
+    runs-list handler.
+- **The set stopped at 13:40 ET** under §3d's rule, "a seam not reached after its budget stops the
+  set". Nothing was in flight.
+- **The contrast:** in 1.8.0's and 1.8.1's diagnostic sets, this fault reached the seam in all
+  eight runs, both stacks, with no self-evaluation revision form recorded. Filed as #1716.
+- **N:** dev × React takes nothing from this diagnostic.
+
+#### A′ d8 — `dev-lane-nextjs`: **not run (§11h)**
+
+The TypeScript form of the fault carries the same comment (`fault_injection.py:279`), and the
+Next.js develop tasks run the same loop (A′ d1's `development.develop:self_eval` calls). The skip
+rests on a prediction, never observed: that the loop reverts the fault here too. dev × Next.js takes
+nothing from a diagnostic on this line.
+
+The sequencer resumed at `absent-suite`, 13:49 ET.
+
+#### A′ d9 — `absent-suite`: `cyc_e009d4bef185` / `run_894a1b9c3e76`, 13:49–15:06 ET — **cleared, run 1**
+
+Record `absent-suite/shakeout-20260928T190638Z.json`.
+- **Outcome:** `accepted`, 21 of 21; three correction rounds.
+- **L2 YES:** both faulted suites (`m005`, `m006`) entered correction, and their repairs were
+  retested. `m005`'s first retest failed and its second passed; `m006` passed.
+- **The contentless emissions** are the fault's own (48 characters, every emission attempt).
+- **N:** a `development.correction_repair` made an anchored edit, 2% of `backend/routes.py`. It was
+  accepted, patch verification passed, the retest passed, and it persisted under the identity it
+  was verified with. That is **a dev × React candidate** by rule 4.4 #2. The two qa repairs
+  supplied whole new suite files (`new_files_only`), so they are not candidates.
+
+#### A′ d10 — `path-prefix`: `cyc_a68192cdc29b` / `run_90ebf9022dc7`, 15:10–16:08 ET — **cleared, run 1**
+
+Record `path-prefix/shakeout-20260928T200821Z.json`.
+- **Outcome:** `accepted`, 20 of 20; one correction round.
+- **L8b YES:** the extractor stripped the placeholder `path/` from both faulted suites, to
+  `backend/tests/test_runs.py` and `frontend/src/__tests__/runs.test.jsx`.
+- **N:** a `qa.test_repair` made an anchored edit, 5% of `runs.test.jsx`. It was accepted, patch
+  verification passed, the retest passed, and verified equals persisted. That is **a qa × React
+  candidate**.
+
+#### A′ d11 — `absent-suite-then-false-claim`: `cyc_c78d29f83a80` / `run_b0f99d3f52ce`, 16:12–17:19 ET — **cleared, run 1**
+
+Record `absent-suite-then-false-claim/shakeout-20260928T211941Z.json`.
+- **Outcome:** `accepted`, 17 of 17; two correction rounds.
+- **A1 YES:** the analyzer's false claim (`backend/__squadops_injected_fault__.py`) was refuted
+  against the workspace. Neither correction decision inherited it: round 0 quoted the refuted path
+  in order to reject it, which is not inheritance (#1600).
+- **L2 reached:** `m006`'s retest failed, and the loop then re-authored the suite, as 1.8.1
+  recorded.
+- **N:** none. The qa repair supplied a new file.
+
+#### A′ d12 — `contentless-builder`: `cyc_9f0d91b70570` / `run_fea1750e87e2`, 17:23–18:10 ET — **cleared, run 1**
+
+Record `contentless-builder/shakeout-20260928T221045Z.json`.
+- **Outcome:** `accepted`, 21 of 21; zero correction rounds.
+- **R1 YES:** the builder's first attempt was contentless (the fault cut 95 characters to 48). It
+  was retried with its emission-shape fact (a 978-character appendix, one expected file), and the
+  retry was accepted.
+
+#### A′ d13 — `contentless-builder-all-attempts`: runs 1 and 2, 18:14–19:43 ET — **not reached after two runs; ruled unreached on A′ (§11i)**
+
+- **Run 1,** `cyc_92caa0c9758a` / `run_310c73525c09`, record `shakeout-20260928T225413Z.json`.
+  - **The path:** both builder emission attempts were contentless (by the fault), and the retry
+    with the fact fired. `data.analyze_failure` classified the failure **`model_limitation`**, and
+    `governance.correction_decision` chose **`rewind`**.
+  - **Why the rewind stood:** the pf-45 guard (`correction_policy.py`) escalates a rewind to
+    `patch` only for a `work_product` classification. Rewind is run death
+    (`dispatched_flow_executor.py:3629-3630`).
+  - **Outcome:** `blocked_unverified`, 8 of 15. No builder patch, so F1 was not reached.
+  - **Held briefly:** the second run was held with the STOP file for about a minute to read this;
+    the reading is logged in `sequencer-state.jsonl`.
+- **Run 2,** `cyc_2c036055e67e` / `run_c30e646ba44b`, record `shakeout-20260928T234324Z.json`: the
+  same path — `model_limitation`, then `rewind`, then run death. `blocked_unverified`, 8 of 15.
+- **Against 1.8.1:** its run of this diagnostic (`cyc_b7058e601977`) reached F1. There the analyzer
+  classified `work_product`, `work_product`, `model_limitation`, and the decision chose `patch`
+  three times.
+- **Across recorded 1.8.x runs,** `correction_path` was `patch` 94 times, `continue` 5, `rewind` 3
+  and `abort` 2.
+- **Filed as #1723.** The correction decision's prompt is unchanged since v1.8.1, and the
+  analyzer's changes are dispute-only. The shift is not yet attributed.
+- **N:** none; the builder × React cell is declared not required.
+
+#### A′ — L5, read by hand at the set's close
+
+A re-dispatched suite must carry every case the failed report named (#1260). Read from the stored
+suites, by case title:
+
+| diagnostic | the failed report named | the re-take's suite | final |
+|---|---|---|---|
+| d5 own-frame, Next.js | `runs-api.test.ts > POST /api/runs — create > creates a run with all required fields and returns the created object with an id` | carries it | 19 of 19 passed (19 before) |
+| d6 own-frame, React (backend) | `test_create_run_valid` | carries it | 13 passed (12 before) |
+| d6 own-frame, React (frontend) | `RunListView > renders run entries with title and participant count` | carries it | 7 passed (5 before) |
+
+**L5: YES on both.**
+
+#### The shakeout exit (§6)
+
+- **Round 2 of the three budgeted,** on deploy A′ (`8e2c2e87`).
+- **Eleven diagnostics ran to a reading.** Two were settled by the owner's rulings: d7's dev lane
+  (§11h, with d8 skipped) and d13's F1 (§11i). d6's L4 is held on the logs (§11f).
+- **No framework seam finding on A′.** The rest are instrument issues and questions, filed:
+  - #1714: the #1699 guard reads a dead executor as live;
+  - #1716: the dev-lane fault is reverted by the task's own self-evaluation;
+  - #1718: the driver drops the fault hook's DID-NOT-BITE lines;
+  - #1723: F1's rewind;
+  - #1724: a re-take's verification and identity are not in the record.
+- **The exit rule is met.** One deploy halt (the Spark, 12:15 ET, 2026-09-28) cost one run, which
+  did not spend the budget (§11g).
+
+#### The counted rolls (§4, §5)
+
+Records under `var/verification_sets/1-8-2-fastapi-react/` and `…/1-8-2-nextjs/`. Every roll
+carried the arm's config hash and squad snapshot `2d8d4feb3519a7ec`, the deploy's image ids, driver
+HEAD `53c6b608`, and an asserted P0.
+
+| roll | cycle / implementation run | launched (UTC) | verdict | criteria | rounds | minutes |
+|---|---|---|---|---|---|---|
+| React 1 | `cyc_02a140a4b78d` / `run_14c4c9137f32` | 2026-09-28 23:44 | accepted | 21/21 | 0 | 48 |
+| React 2 | `cyc_b6596791666a` / `run_695f0839d40a` | 2026-09-29 00:37 | accepted | 21/21 | 1 | 63 |
+| React 3 | `cyc_cc8f314dd766` / `run_fdae423ad9ad` | 01:45 | accepted | 21/21 | 0 | 50 |
+| React 4 | `cyc_bffc046e2cd3` / `run_e006d86cbb7f` | 02:40 | accepted | 21/21 | 0 | 48 |
+| Next.js 1 | `cyc_1c545ccd8d4c` / `run_f38a112372ce` | 03:32 | accepted | 18/18 | 1 | 56 |
+| Next.js 2 | `cyc_557776e00957` / `run_2e16c60aa313` | 04:34 | accepted | 17/17 | 0 | 67 |
+
+- **L1 held on every roll.** React 2's two contentless emissions were both recovered:
+  - the builder's was retried with its fact, and the retry was accepted;
+  - a `development_correction_repair` spent its whole 12,288-token budget on reasoning, was asked
+    again once with the fact (item 2, `cap_exhausted_retry` 01:35:14Z), and the retry's anchored
+    edit (8% of `RunListView.jsx`) was accepted, verified and retested.
+- **Next.js 1's round** was a `builder.assemble_repair`: an anchored edit that replaced all of the
+  small `assembly_notes.md`. It was accepted and verified. There is no builder × Next.js cell.
+  Texture: a whole-file replacement delivered through an anchored edit.
+
+#### §3.10 of the plan: **no 1.8.3**
+
+- **Neither trigger held on any counted roll.** T1: no `qa.test` task failed by the declared wait.
+  T2: no contentless emission went unrecovered. So:
+  - **#1697 is 1.9's first item,** before #1507;
+  - **#1701 and #1696 ride 1.9;**
+  - **the qa exhaustion (A′ d4's chain, c1) is texture.**
+- **Reported on every roll, as registered:**
+  - **qa self-evaluation budget exhaustion:** none on any counted roll. The one budget exhaustion was
+    a dev correction repair, recovered.
+  - **`qa.test:self_eval` usage** (usage ledger): none on React 1–4 or Next.js 1; Next.js 2, one call
+    with 6,222 completion tokens.
+  - **The qa cells' scoped transactions** came only from diagnostics. No counted roll produced a qa
+    repair.
+
+#### N, as registered (§3c)
+
+| cell | A′ candidates | from |
+|---|---|---|
+| dev × React | 2 | d9 (2%), counted React 2 (8%) |
+| dev × Next.js | **0** | its only supplier, d8, was skipped (§11h); no Next.js roll produced a dev repair |
+| qa × React | 5 | d3 re-takes (2%, 1%), d6 re-takes (14%, 17%), d10 repair (5%) |
+| qa × Next.js | 1 | d5 re-take (1%) |
+| builder × React | 0 | declared not required |
+
+- **N is not met.** The total is 8 against N = 6, but "a required cell at zero fails the reading
+  regardless of the total", and dev × Next.js is zero.
+- **The five qa re-takes carry a caveat, filed as #1724.** Their verification is in the qa agent's
+  logs and their typed-check evaluations — for d5, a passing `vitest` run and 44 of 44 checks
+  against workspace revision `3da2d267…`. But the record does not hold it, and the re-take path
+  never asserts verified-equals-persisted. Read without them, the total is 4. **N fails either
+  way.**
+- **By the plan (§2.3, §3.7):**
+  - no deploy B and no flip;
+  - SIP-0107 stays `accepted`, with this third count stated (§46q);
+  - the 1.9 plan names step 7 as a 2.0 decision.
+
+#### The cut record
+
+**The three gates (plan §3.7):**
+- **Implementation.** Items 1–11 and 13–16 merged. Item 12 (the convergence replay) was not built,
+  and drops to 1.9 by §3.9. §12a changes 1–3 and §17a with #1581 merged, with their SIP sections
+  amended as built; §12a change 4 is held for the owner (§2 above). The flip was not merged, since
+  N was not met.
+- **Experimental.**
+  - L1 held on all six counted rolls.
+  - `compile-loop`, `false-criterion` and `redelivery` read as predicted (A′ d1–d3).
+  - The `unattended-chain` read YES on every row of §3b's claim (A′ d4). #1699's fix was verified
+    live: the wait ended 6 s after the cancel, where deploy A held it 30 minutes.
+  - The retest readout's fields are present on every patch with a suite to retest. A builder patch
+    reads its patch verification instead.
+  - N was read on A′ as registered: not met.
+  - The replay's predictions go with item 12 to 1.9.
+- **Evidence.**
+  - Every record is three-state.
+  - The marker self-check passed at every launch: a failed check refuses the launch, and none was
+    refused.
+  - Every record was written under the main checkout's `var/`.
+  - Hygiene and the Release attachment are the cut's steps 8 and 7.
+
+**Drops, by §3.9, each with its new home:**
+- **#1039** (the site pass) → 1.9's idle-box time.
+- **The flip and deploy B** → the 1.9 plan names step 7 as a 2.0 decision (N above).
+- **The ops rider** (#1177, #176 recipe 2, #1176, #1408, #1412) → 1.9, its count now at five.
+  §3.9 forbids it to sit between the set and the cut.
+- **Item 12** → 1.9.
+
+**Drift the record declares (§9):**
+- **Config hashes:** `a79f58658cd8` (React) and `8e730c8ea169` (Next.js), against 1.8.1's
+  `58eed2c52e1f` and `fff4a6435c97`. The cause is §12a change 1's `max_self_eval_passes`.
+- **Squad snapshot:** unchanged at `2d8d4feb3519a7ec`.
+- **Image ids:**
+  - all differ from deploy B″'s;
+  - A′ rebuilt only the runtime API (`793d9fd6dc1a`, from `8e2c2e87`);
+  - the agents run deploy A's images (from `ccc9475d`). Between those two commits, the only change
+    in what agent images copy is `adapters/cycles/task_dispatcher.py` (#1699), the runtime's
+    dispatcher.
+- **The carried configs' one construction fix** (`task_timeout=1800`) is as registered.
+
+**What the cut evidence does not cover:**
+- **The code is the validated deploy's.** The tagged tree carries no change under `src/` or
+  `adapters/` against `8e2c2e87`.
+- **The rest is additive and changes no reading:**
+  - CI: a secret scan (#1713);
+  - the release-package capture's token path (#1721);
+  - docs and records.
+- **This line measured one PRD (group_run) on one model (qwen3.8:27b), on one deploy.** The
+  campaign-readiness claim is for cycles of that shape, run back to back. It is not a claim about a
+  campaign's continuation, which is 2.0's.
+
 ---
 
 ## 11. Amendments after the first launch
@@ -713,3 +963,81 @@ apart by time — each dispatch, its fault's `APPLIED` line, and its refund foll
 
 **What did not change.** §11d's guard, and every other reading. #1697's run-unique id, on deploy B,
 removes the shape.
+
+### 11g. A run lost to a box halt does not spend the budget — owner's ruling, 2026-09-28
+
+**What changed.** `dev-lane-fastapi-react`'s second budgeted run was spent again, after the Spark
+halted under the first attempt at it. §3d's two-run budget says nothing about a run lost to the
+box.
+
+**The evidence.**
+- The previous boot's journal stops mid-stream at 12:15:23 ET, with no kernel, memory or shutdown
+  line. It is the same signature as the box's four earlier hard halts. The box was back at
+  12:27:10.
+- Every container restarted on its own. The image ids re-read after it equal §1's.
+- The run (`run_358dfb8cf945`) was ten minutes into implementation. Its fault had applied at
+  12:08:35. It had not reached verification, so nothing was read.
+
+**Who ruled.** The owner, offered two readings:
+1. **The halt does not count; re-run it as run 2 of 2** — the one chosen.
+2. The run counts as spent. The literal stop rule would not fire, since the seam was reached; the
+   ruling would have been on a question never asked.
+
+**What did not move.** The budget stayed two. The re-run was launched as attempt 2 only
+(`sequencer-state.jsonl`, 16:36:10Z), and a seam not reached on it stops the set, as it did (§11h).
+
+### 11h. The dev lane's seam is unreachable on A′ by construction; `dev-lane-nextjs` is skipped — owner's ruling, 2026-09-28
+
+**What changed.**
+- A′ d7 closes as **not reached after two runs**, read as unreachable by construction rather than
+  as a falsified prediction.
+- A′ d8 (`dev-lane-nextjs`) is not run.
+- The set resumed at `absent-suite`.
+
+**The evidence (§10 A′ d7).**
+- The fault transforms the develop task's first emission (`cycle/base.py:1531`). The §12a
+  self-evaluation passes that follow are not fault-wired (`apply_fault` defaults to `False`,
+  `:1444`).
+- Run 2's first pass reverted the join handler twelve seconds after the fault applied, before any
+  probe.
+- The transform's own comment announces the defect to the pass that reviews it.
+- In 1.8.0 and 1.8.1, before the loop, the seam was reached eight times in eight.
+- This is the shape of 1.7.5's contentless-builder diagnostic, whose seam a new upstream recovery
+  made unreachable.
+
+**Who ruled.** The owner, offered three options:
+1. **Rule it unreachable, skip `dev-lane-nextjs` on the prediction, resume, and file the fault's
+   redesign (#1716)** — the one chosen.
+2. Run `dev-lane-nextjs` to test the prediction: about 50 minutes, or about 105 with its second
+   run, and the set stops again if the loop reverts it.
+3. Fix the fault now. That rebuilds the agents, which is a new deploy.
+
+**What it costs.** The dev × React and dev × Next.js cells lose the one to two transactions each
+that §3c expected from these diagnostics. They rest on the counted rolls' expectation: about one
+across React's four rolls, about none across Next.js's two.
+
+**What did not move.** The rule, the other eleven diagnostics' budgets, N's definition and target,
+and every pin.
+
+**Texture, not a finding:** the loop caught and fixed a response-contract defect on its first pass,
+in twelve seconds, which is what §12a exists to do.
+
+### 11i. F1 is unreached on A′; the diagnostics phase closes — owner's ruling, 2026-09-28
+
+**What changed.** A′ d13 closes as **not reached after two runs**, read as unreached on this deploy,
+and the counted rolls launched (19:44 ET).
+
+**The evidence (§10 A′ d13):**
+- **Both runs took the same designed path:** `model_limitation`, then `rewind`, then run death.
+  That path never dispatches a builder repair.
+- **The builder × React cell is declared not required,** and F1 is not in the plan's experimental
+  gate (plan §3.7).
+
+**Who ruled.** The owner, in advance of run 2 (2026-09-28, about 19:05 ET), choosing among the
+registered outcomes:
+1. **The same miss** → rule it unreached, file the question (#1723), and launch the counted rolls —
+   the one that applied.
+2. A different miss inside the design → the same ruling.
+3. A miss outside the design → hold the rolls, and ping.
+
+**What did not move.** The rule, every other reading, N's definition and target, and every pin.

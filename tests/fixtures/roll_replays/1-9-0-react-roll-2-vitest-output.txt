@@ -1,0 +1,254 @@
+=== stdout ===
+=== Frontend (vitest) ===
+
+ RUN  v2.1.9 /tmp/qa_node_a36neq11/frontend
+
+ ✓ src/__tests__/runs.test.jsx > RunCreate – create flow > submits all fields via POST /runs and navigates on success
+ ✓ src/__tests__/runs.test.jsx > RunCreate – create flow > shows a validation error and does not call the API when required fields are empty
+ × src/__tests__/runs.test.jsx > RunDetail – join flow and duplicate rejection > displays run details, allows a successful join, then shows duplicate error 1006ms
+   → Unable to find an element by: [data-testid="run-detail-view"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<html>[39m
+  [36m<head />[39m
+  [36m<body>[39m
+    [36m<div />[39m
+  [36m</body>[39m
+[36m</html>[39m
+ × src/__tests__/runs.test.jsx > RunDetail – join flow and duplicate rejection > displays a not-found message for an unknown run id
+   → Unable to find an element by: [data-testid="run-not-found"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+ ✓ src/__tests__/runs.test.jsx > RunList – renders runs > displays run items with all expected anchors
+ ✓ src/__tests__/runs.test.jsx > RunList – renders runs > shows empty-state when no runs exist
+
+⎯⎯⎯⎯⎯⎯ Unhandled Errors ⎯⎯⎯⎯⎯⎯
+
+Vitest caught 2 unhandled errors during the test run.
+This might cause false positive tests. Resolve unhandled errors to make sure your tests are not affected.
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+ Test Files  1 failed (1)
+      Tests  2 failed | 4 passed (6)
+     Errors  2 errors
+   Start at  03:58:18
+   Duration  1.63s (transform 90ms, setup 70ms, collect 86ms, tests 1.06s, environment 198ms, prepare 38ms)
+
+JSON report written to /tmp/qa_node_a36neq11/frontend/.vitest_report.json
+
+=== stderr ===
+=== Frontend (vitest) ===
+stderr | src/__tests__/runs.test.jsx > RunCreate – create flow > submits all fields via POST /runs and navigates on success
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+stderr | src/__tests__/runs.test.jsx > RunDetail – join flow and duplicate rejection > displays run details, allows a successful join, then shows duplicate error
+Error: Uncaught [TypeError: Cannot read properties of undefined (reading 'length')]
+    at reportException (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:26599:12) TypeError: Cannot read properties of undefined (reading 'length')
+    at RunDetail (/tmp/qa_node_a36neq11/frontend/src/views/RunDetail.jsx:118:25)
+    at renderWithHooks (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at updateFunctionComponent (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:19617:20)
+    at beginWork (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:21640:16)
+    at HTMLUnknownElement.callCallback (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/generated/EventListener.js:26:30)
+    at innerInvokeEventListeners (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:350:25)
+    at invokeEventListeners (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+Error: Uncaught [TypeError: Cannot read properties of undefined (reading 'length')]
+    at reportException (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:26599:12) TypeError: Cannot read properties of undefined (reading 'length')
+    at RunDetail (/tmp/qa_node_a36neq11/frontend/src/views/RunDetail.jsx:118:25)
+    at renderWithHooks (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at updateFunctionComponent (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:19617:20)
+    at beginWork (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:21640:16)
+    at HTMLUnknownElement.callCallback (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/generated/EventListener.js:26:30)
+    at innerInvokeEventListeners (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:350:25)
+    at invokeEventListeners (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+The above error occurred in the <RunDetail> component:
+
+    at RunDetail (/tmp/qa_node_a36neq11/frontend/src/views/RunDetail.jsx:10:44)
+    at Router (/tmp/qa_node_a36neq11/frontend/node_modules/react-router/dist/umd/react-router.development.js:1203:17)
+    at MemoryRouter (/tmp/qa_node_a36neq11/frontend/node_modules/react-router/dist/umd/react-router.development.js:1097:7)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+stderr | src/__tests__/runs.test.jsx > RunDetail – join flow and duplicate rejection > displays a not-found message for an unknown run id
+Error: Uncaught [TypeError: Cannot read properties of undefined (reading 'length')]
+    at reportException (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:26599:12) TypeError: Cannot read properties of undefined (reading 'length')
+    at RunDetail (/tmp/qa_node_a36neq11/frontend/src/views/RunDetail.jsx:118:25)
+    at renderWithHooks (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at updateFunctionComponent (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:19617:20)
+    at beginWork (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:21640:16)
+    at HTMLUnknownElement.callCallback (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/generated/EventListener.js:26:30)
+    at innerInvokeEventListeners (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:350:25)
+    at invokeEventListeners (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+Error: Uncaught [TypeError: Cannot read properties of undefined (reading 'length')]
+    at reportException (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:26599:12) TypeError: Cannot read properties of undefined (reading 'length')
+    at RunDetail (/tmp/qa_node_a36neq11/frontend/src/views/RunDetail.jsx:118:25)
+    at renderWithHooks (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at updateFunctionComponent (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:19617:20)
+    at beginWork (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:21640:16)
+    at HTMLUnknownElement.callCallback (/tmp/qa_node_a36neq11/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/generated/EventListener.js:26:30)
+    at innerInvokeEventListeners (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:350:25)
+    at invokeEventListeners (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/tmp/qa_node_a36neq11/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+The above error occurred in the <RunDetail> component:
+
+    at RunDetail (/tmp/qa_node_a36neq11/frontend/src/views/RunDetail.jsx:10:44)
+    at Router (/tmp/qa_node_a36neq11/frontend/node_modules/react-router/dist/umd/react-router.development.js:1203:17)
+    at MemoryRouter (/tmp/qa_node_a36neq11/frontend/node_modules/react-router/dist/umd/react-router.development.js:1097:7)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/__tests__/runs.test.jsx > RunDetail – join flow and duplicate rejection > displays run details, allows a successful join, then shows duplicate error
+TestingLibraryElementError: Unable to find an element by: [data-testid="run-detail-view"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<html>[39m
+  [36m<head />[39m
+  [36m<body>[39m
+    [36m<div />[39m
+  [36m</body>[39m
+[36m</html>[39m
+ ❯ Proxy.waitForWrapper node_modules/@testing-library/dom/dist/wait-for.js:163:27
+ ❯ src/__tests__/runs.test.jsx:136:11
+    134| 
+    135|     // Wait for initial load
+    136|     await waitFor(() => {
+       |           ^
+    137|       expect(screen.getByTestId('run-detail-view')).toBeInTheDocument()
+    138|       expect(screen.getByTestId('run-detail-title')).toHaveTextContent…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  src/__tests__/runs.test.jsx > RunDetail – join flow and duplicate rejection > displays a not-found message for an unknown run id
+TestingLibraryElementError: Unable to find an element by: [data-testid="run-not-found"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+ ❯ Object.getElementError node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ src/__tests__/runs.test.jsx:225:19
+    223|     })
+    224| 
+    225|     expect(screen.getByTestId('run-not-found')).toBeInTheDocument()
+       |                   ^
+    226|   })
+    227| })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+⎯⎯⎯⎯⎯ Uncaught Exception ⎯⎯⎯⎯⎯
+TypeError: Cannot read properties of undefined (reading 'length')
+ ❯ RunDetail src/views/RunDetail.jsx:118:25
+    116|         {run.participant_count} participant{run.participant_count === …
+    117|       </p>
+    118|       {run.participants.length > 0 ? (
+       |                         ^
+    119|         <ul data-testid="participant-list">
+    120|           {run.participants.map((name, i) => (
+ ❯ renderWithHooks node_modules/react-dom/cjs/react-dom.development.js:15486:18
+ ❯ updateFunctionComponent node_modules/react-dom/cjs/react-dom.development.js:19617:20
+ ❯ beginWork node_modules/react-dom/cjs/react-dom.development.js:21640:16
+ ❯ beginWork$1 node_modules/react-dom/cjs/react-dom.development.js:27465:14
+ ❯ performUnitOfWork node_modules/react-dom/cjs/react-dom.development.js:26599:12
+ ❯ workLoopSync node_modules/react-dom/cjs/react-dom.development.js:26505:5
+ ❯ renderRootSync node_modules/react-dom/cjs/react-dom.development.js:26473:7
+ ❯ recoverFromConcurrentError node_modules/react-dom/cjs/react-dom.development.js:25889:20
+ ❯ performSyncWorkOnRoot node_modules/react-dom/cjs/react-dom.development.js:26135:20
+
+This error originated in "src/__tests__/runs.test.jsx" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.
+The latest test that might've caused the error is "displays run details, allows a successful join, then shows duplicate error". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+
+⎯⎯⎯⎯⎯ Uncaught Exception ⎯⎯⎯⎯⎯
+TypeError: Cannot read properties of undefined (reading 'length')
+ ❯ RunDetail src/views/RunDetail.jsx:118:25
+    116|         {run.participant_count} participant{run.participant_count === …
+    117|       </p>
+    118|       {run.participants.length > 0 ? (
+       |                         ^
+    119|         <ul data-testid="participant-list">
+    120|           {run.participants.map((name, i) => (
+ ❯ renderWithHooks node_modules/react-dom/cjs/react-dom.development.js:15486:18
+ ❯ updateFunctionComponent node_modules/react-dom/cjs/react-dom.development.js:19617:20
+ ❯ beginWork node_modules/react-dom/cjs/react-dom.development.js:21640:16
+ ❯ beginWork$1 node_modules/react-dom/cjs/react-dom.development.js:27465:14
+ ❯ performUnitOfWork node_modules/react-dom/cjs/react-dom.development.js:26599:12
+ ❯ workLoopSync node_modules/react-dom/cjs/react-dom.development.js:26505:5
+ ❯ renderRootSync node_modules/react-dom/cjs/react-dom.development.js:26473:7
+ ❯ recoverFromConcurrentError node_modules/react-dom/cjs/react-dom.development.js:25889:20
+ ❯ performSyncWorkOnRoot node_modules/react-dom/cjs/react-dom.development.js:26135:20
+
+This error originated in "src/__tests__/runs.test.jsx" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.
+The latest test that might've caused the error is "displays a not-found message for an unknown run id". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+
+

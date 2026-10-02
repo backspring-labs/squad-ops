@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from squadops.api.middleware.auth import require_scopes
@@ -25,6 +25,8 @@ class AgentStatusCreate(BaseModel):
     lifecycle_state: str
     current_task_id: str | None = None
     version: str | None = None
+    # #1720: the commit the agent's image was built from (None when the build recorded none).
+    revision: str | None = None
     tps: int = 0
     memory_count: int | None = None
     # Deprecated fields (ignored if present)
@@ -43,16 +45,16 @@ class AgentStatusUpdate(BaseModel):
 _VALID_LIFECYCLE_STATES = {"STARTING", "READY", "WORKING", "BLOCKED", "CRASHED", "STOPPING"}
 
 
-def _get_health_checker():
+def _get_health_checker(request: Request):
     from squadops.api.runtime.deps import get_health_checker
 
-    return get_health_checker()
+    return get_health_checker(request)
 
 
 @router.post("/status", dependencies=[Depends(require_scopes(Scope.AGENTS_WRITE))])
-async def create_or_update_agent_status(agent_status: AgentStatusCreate):
+async def create_or_update_agent_status(request: Request, agent_status: AgentStatusCreate):
     """Create or update agent status (heartbeat endpoint)."""
-    hc = _get_health_checker()
+    hc = _get_health_checker(request)
     agent_id = agent_status.agent_id
     if agent_status.agent_name and not agent_id:
         agent_id = agent_status.agent_name.lower()
@@ -73,6 +75,7 @@ async def create_or_update_agent_status(agent_status: AgentStatusCreate):
                 "lifecycle_state": agent_status.lifecycle_state,
                 "current_task_id": agent_status.current_task_id,
                 "version": agent_status.version,
+                "revision": agent_status.revision,
                 "tps": agent_status.tps,
                 "memory_count": agent_status.memory_count,
             }
@@ -82,9 +85,9 @@ async def create_or_update_agent_status(agent_status: AgentStatusCreate):
 
 
 @router.put("/status/{agent_id}", dependencies=[Depends(require_scopes(Scope.AGENTS_WRITE))])
-async def update_agent_status(agent_id: str, update: AgentStatusUpdate):
+async def update_agent_status(request: Request, agent_id: str, update: AgentStatusUpdate):
     """Update agent status fields."""
-    hc = _get_health_checker()
+    hc = _get_health_checker(request)
 
     updates = []
     params: list = []

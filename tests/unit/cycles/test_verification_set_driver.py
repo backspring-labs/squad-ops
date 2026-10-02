@@ -12,6 +12,7 @@ from __future__ import annotations
 import dataclasses
 import importlib.util
 import json
+import re
 import sys
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
@@ -52,6 +53,12 @@ _COUNTING_SETS: dict[str, dict[str, int]] = {
     # 1.8.2 plan §4.1: 4 + 2, as in 1.8.1 — the regression bar and N's margin. Pinned at the
     # deploy A pre-registration (rev 1), before any launch.
     "1-8-2": {"nextjs": 2, "fastapi-react": 4},
+    # 1.9.0 plan §4: 4 + 2, as 1.8.2 — behaviour held equal across the extraction. Pinned at the
+    # pre-registration (rev 1) on the 1.9 deploy (1abe3666), before any launch.
+    "1-9-0": {"nextjs": 2, "fastapi-react": 4},
+    # 1.9 pre-registration §12: the post-set deploy's one counted React roll — decision 3's roll for
+    # #1522, carrying #1784 — outside the set's registration. Pinned from the post-set deploy.
+    "1-9-0-post-set": {"fastapi-react": 1},
 }
 _ARM_STACK = {
     "nextjs": "nextjs_ts",
@@ -89,6 +96,20 @@ def driver():
     sys.modules["verification_set_driver"] = module  # dataclasses resolve annotations via it
     spec.loader.exec_module(module)
     return module
+
+
+@pytest.fixture(autouse=True)
+def _the_deploys_containers_are_not_read(request, monkeypatch):
+    """Every test reads a stubbed window, never the live deploy's containers: the Prefect
+    fallback asks docker when each container was created, and an unstubbed ask read this box's
+    real rebuild times. A test of that check itself sets ``reads_container_creation``."""
+    if (
+        getattr(request.cls, "reads_container_creation", False)
+        or "driver" not in request.fixturenames
+    ):
+        return
+    driver = request.getfixturevalue("driver")
+    monkeypatch.setattr(driver, "container_recreated_since", lambda container, since: False)
 
 
 class TestLogWindow:
@@ -446,7 +467,11 @@ class TestSquadSnapshotIsAnIdentity:
         enumerated = {name for name, _, _ in _COUNTING_SET_FILES}
         assert _committed_counting_sets() == enumerated
 
-    @pytest.mark.parametrize("line", list(_COUNTING_SETS))
+    # A line with one arm (the 1.9 post-set roll) has no pair to compare; its pins are held by
+    # `test_the_counting_sets_are_fully_pinned`.
+    @pytest.mark.parametrize(
+        "line", [line for line, arms in _COUNTING_SETS.items() if len(arms) == 2]
+    )
     def test_both_sets_share_the_deploy_and_snapshot_but_not_the_config_hash(self, driver, line):
         """A line's two stack arms share the deploy and the squad and differ in the request
         profile; a comparison window's two arms share the deploy and differ in BOTH the squad
@@ -1460,6 +1485,37 @@ class TestADiagnosticIsReadByTheSeamItReached:
             driver.seam_readouts(("repair_prose_only",), rec)["repair_prose_only"]["reached"]
             is False
         )
+
+    @pytest.mark.parametrize(
+        ("refunds", "reached"),
+        [
+            (
+                [
+                    "correction attempt 0 refunded (round s00): the repair emitted no content",
+                    "correction attempt 0 refunded (round s01): the repair emitted no content",
+                ],
+                True,
+            ),
+            (["correction attempt 0 refunded (round s07): the repair emitted no content"], False),
+        ],
+    )
+    def test_l4_joins_each_refund_to_its_own_round_by_sequence(self, driver, refunds, reached):
+        """#1697. Bug caught: two faulted prose repairs at one round index (a refund re-takes the
+        index). Before the round sequence, their ids were identical, and #1698's guard set L4
+        aside (A′ d6, §11f). With the sequence, each refund joins its own round. A refund of
+        some other round (``s07``) is not credited to the faulted ones."""
+        applied = {
+            "repair_prose_only": {
+                "applied": [
+                    {"task": "repair-run_99242d1e-00-s00-qa.test_repair"},
+                    {"task": "repair-run_99242d1e-00-s01-qa.test_repair"},
+                ],
+                "out_of_scope": [],
+            }
+        }
+        rec = self._rec(faults_applied=applied, refunded_rounds=refunds, repeated_round_ids=[])
+        out = driver.seam_readouts(("repair_prose_only",), rec)["repair_prose_only"]
+        assert out["reached"] is reached
 
     def test_a_fault_with_no_readout_is_named_not_skipped(self, driver):
         out = driver.seam_readouts(("some_new_fault",), self._rec())
@@ -4325,6 +4381,201 @@ class TestPassAndReTakeRevisionForms:
         assert "predates the instrument" in out[field]["reason"]
 
 
+class TestAReTakesVerificationIsRecorded:
+    """#1724: a qa re-take completes on the ordinary task path, where no patch verification or
+    identity line is written, so the record carried its revision form and nothing that
+    verified it — and a self-evaluation pass that wrote a file left no form at all. Read here
+    from A′'s Next.js re-take (cyc_96656c0e48be, eve), whose lines are the registry's sample."""
+
+    _NEXT_TASK = (
+        "2026-09-28 12:40:02,110 - squadops.capabilities.handlers.emission_log - INFO - "
+        "qa_test_handler emission shape: chars=5120 completion_tokens=2900 reasoning_chars=100 "
+        "fences={'fill': 0, 'path': 2, 'plain': 0} head=\"```typescript:__tests__/x.test.ts\""
+    )
+
+    def _window(self, driver, monkeypatch, eve_lines):
+        monkeypatch.setattr(
+            driver,
+            "docker_logs",
+            lambda container, since, until=None: (
+                ["noise", *eve_lines] if container == "squadops-eve" else ["noise"]
+            ),
+        )
+        return driver.texture_from_agent_lines(driver.agent_log_window("2026-09-28T12:30:00Z"))
+
+    @pytest.mark.parametrize(
+        ("suite_line", "expected_suite"),
+        [
+            (
+                None,
+                {"framework": "vitest", "executed": True, "exit_code": 0, "tests_passed": True},
+            ),
+            (
+                "2026-09-28 12:38:11,749 - squadops.capabilities.handlers.cycle.qa_test - INFO - "
+                "qa_test_handler suite: framework=vitest executed=True exit_code=1 "
+                "tests_passed=False test_files=10 source_files=17 uncollected=[] error=''",
+                {"framework": "vitest", "executed": True, "exit_code": 1, "tests_passed": False},
+            ),
+            (_NEXT_TASK, None),
+        ],
+        ids=["verified: suite passed (A′ d5)", "suite ran and failed", "next task, no suite"],
+    )
+    def test_a_retake_and_what_verified_it_reach_the_record(
+        self, driver, monkeypatch, suite_line, expected_suite
+    ):
+        """Wiring: raw container lines through the agent filter into the texture the record is
+        built from. Bug this catches: the filter dropping the typed-check, trigger or suite line
+        (each needs its own key), a re-take's episode running on into the next task, or a suite
+        that failed reading as no verification at all."""
+        lines = list(driver.AGENT_MARKER_SAMPLES["retake_verifications"])
+        if suite_line is not None:
+            lines[-1] = suite_line
+
+        (episode,) = self._window(driver, monkeypatch, lines)["retake_verifications"]
+
+        assert episode["task_index"] == 4
+        assert episode["edited"] == ["__tests__/runs-api.test.ts"]
+        assert episode["failed_on_retake"] == ["assertion_kinds_match", "dom_anchor_queries"]
+        assert episode["self_eval_trigger"] == [
+            "expected_artifacts",
+            "acceptance:assertion_kinds_match",
+            "acceptance:dom_anchor_queries",
+        ]
+        assert [
+            (e["first_path"], e["re_emits_offered"], e["chars"])
+            for e in episode["self_eval_emissions"]
+        ] == [("__tests__/participants.test.ts", True, 6972)]
+        assert episode["suite"] == expected_suite
+
+    def test_a_pass_that_writes_a_file_is_recorded_and_a_fill_only_pass_is_not(
+        self, driver, monkeypatch
+    ):
+        """#1724 item 2. Bug this catches: a pass that wrote a whole file reading as no pass
+        (it logs no revision form), or a fill-only pass — which merges into slots and writes
+        no file — counted as one that did."""
+        (pass_line,) = driver.AGENT_MARKER_SAMPLES["self_eval_file_emissions"]
+        fill_only = pass_line.replace("'fill': 0, 'path': 1", "'fill': 3, 'path': 0")
+
+        out = self._window(driver, monkeypatch, [pass_line, fill_only])
+
+        assert out["self_eval_file_emissions"] == [
+            {
+                "handler": "qa_test_handler",
+                "at": "2026-09-28T12:37:53.271+00:00",
+                "chars": 6972,
+                "path_fences": 1,
+                "plain_fences": 0,
+                "first_path": "__tests__/participants.test.ts",
+            }
+        ]
+
+    # Real: A′'s `own-frame-then-prose-repair` (React), run_99242d1e947f — m005's first dispatch,
+    # its re-dispatch for the re-take, then m006's (the saved runtime-api log, 2026-09-28).
+    _DISPATCHES = [
+        "2026-09-28 13:30:20,315 INFO adapters.cycles.task_dispatcher: Dispatched task "
+        "task-run_99242d1e-m005-qa.test (qa.test) to eve_comms, awaiting reply on eve_replies",
+        "2026-09-28 13:36:04,038 INFO adapters.cycles.task_dispatcher: Dispatched task "
+        "task-run_99242d1e-m005-qa.test (qa.test) to eve_comms, awaiting reply on eve_replies",
+        "2026-09-28 13:38:40,000 INFO adapters.cycles.task_dispatcher: Dispatched task "
+        "task-run_99242d1e-m004-builder.assemble (builder.assemble) to bob_comms, awaiting reply",
+        "2026-09-28 13:38:53,927 INFO adapters.cycles.task_dispatcher: Dispatched task "
+        "task-run_99242d1e-m006-qa.test (qa.test) to eve_comms, awaiting reply on eve_replies",
+    ]
+
+    @pytest.mark.parametrize(
+        ("at", "task_index", "task_index_from"),
+        [
+            ("2026-09-28T13:38:49.000+00:00", 5, "dispatch"),
+            ("2026-09-28T13:48:20.000+00:00", 6, "dispatch"),
+            ("2026-09-28T13:29:00.000+00:00", None, None),
+        ],
+        ids=[
+            "m005's re-take (a later m006 dispatch and another type ignored)",
+            "m006's re-take",
+            "no dispatch before it",
+        ],
+    )
+    def test_a_retake_whose_checks_all_passed_is_indexed_by_its_dispatch(
+        self, driver, at, task_index, task_index_from
+    ):
+        """Bug this catches: a re-take whose checks all passed — which logs no typed-check line,
+        four of A′'s six — left without an index, so its stored evaluation never joined; or
+        indexed by a later dispatch, or another task type's."""
+        episodes = [{"at": at, "task_type": "qa.test", "task_index": None}]
+
+        (indexed,) = driver.index_retakes_by_dispatch(episodes, self._DISPATCHES)
+
+        assert (indexed["task_index"], indexed.get("task_index_from")) == (
+            task_index,
+            task_index_from,
+        )
+        (joined,) = driver.join_retake_evaluations([indexed], {})
+        if task_index is None:
+            assert joined["final_evaluation_reason"] == (
+                "neither a typed-check line nor a dispatch named the re-take's task index"
+            )
+
+    def _store(self, root, art, created_at, statuses):
+        d = root / "data" / "artifacts" / "p" / "cyc_1" / "run_1" / art
+        d.mkdir(parents=True)
+        (d / "metadata.json").write_text(json.dumps({"artifact_id": art, "created_at": created_at}))
+        (d / "typed_check_evaluation_task_4.json").write_text(
+            json.dumps(
+                {
+                    "task_index": 4,
+                    "workspace_revision_id": "3da2d267",
+                    "evaluations": [
+                        {"check": f"c{i}", "status": status} for i, status in enumerate(statuses)
+                    ],
+                }
+            )
+        )
+
+    @pytest.mark.parametrize(
+        ("stored", "expected_artifact", "reason"),
+        [
+            (
+                [
+                    ("art_first", "2026-09-28 12:29:13.721481+00:00", ["passed", "failed"]),
+                    ("art_retake", "2026-09-28 12:38:24.224435+00:00", ["passed", "passed"]),
+                ],
+                "art_retake",
+                None,
+            ),
+            (
+                [("art_first", "2026-09-28 12:29:13.721481+00:00", ["passed", "failed"])],
+                None,
+                "no evaluation of task 4 was stored after the re-take",
+            ),
+        ],
+        ids=["the evaluation after the re-take", "only the failed attempt's"],
+    )
+    def test_the_retake_is_joined_to_the_evaluation_its_task_stored_after_it(
+        self, driver, monkeypatch, tmp_path, stored, expected_artifact, reason
+    ):
+        """Bug this catches: the failed first attempt's evaluation — same task, same workspace
+        revision — credited as the re-take's verification, which is the one reading the join
+        exists to rule out."""
+        import types
+
+        for art, created_at, statuses in stored:
+            self._store(tmp_path, art, created_at, statuses)
+        monkeypatch.setattr(driver, "main_checkout", lambda: tmp_path)
+        episodes = [{"at": "2026-09-28T12:36:47.305+00:00", "task_index": 4}]
+
+        (joined,) = driver.join_retake_evaluations(
+            episodes,
+            driver.stored_task_evaluations(types.SimpleNamespace(project="p"), "cyc_1", "run_1"),
+        )
+
+        final = joined["final_evaluation"]
+        assert (final or {}).get("artifact_id") == expected_artifact
+        assert joined.get("final_evaluation_reason") == reason
+        if final:
+            assert final["statuses"] == {"passed": 2}
+            assert final["workspace_revision_id"] == "3da2d267"
+
+
 class TestASeamIsReadOnlyWhenItsFaultApplied:
     """#1588: the 1.8.0 own-frame diagnostic's run 1 (cyc_eee9b62e6a4f) credited L4 on a
     refund the dev's prose answer had earned — in a cycle where the qa repair the fault
@@ -4373,6 +4624,7 @@ class TestASeamIsReadOnlyWhenItsFaultApplied:
                 "out_of_scope": [
                     {"task": "task-run_57e2c248-m005-qa.test", "scope": "first_attempt"}
                 ],
+                "did_not_bite": [],
             }
         }
         assert driver.faults_applied([]) == {}
@@ -4389,6 +4641,78 @@ class TestASeamIsReadOnlyWhenItsFaultApplied:
         assert len(driver.faults_applied(lines)["repair_prose_only"]["applied"]) == len(
             driver.AGENT_SERVICES
         )
+
+    # Real: A′'s `dev-lane-fastapi-react` run 1, cyc_25a7a6ad8ebd (neo), 2026-09-28 (#1718).
+    _DID_NOT_BITE = (
+        "2026-09-28 15:12:03,429 - squadops.capabilities.handlers.fault_injection - WARNING - "
+        "fault_injection: DID NOT BITE dev_join_response_omits_declared_fields on "
+        "task=task-run_d2b1a457-{}-development.develop handler=development_develop_handler — "
+        "the emission was returned unchanged (3688 chars), so the downstream path runs as if no "
+        "fault were declared. THIS DIAGNOSTIC PROVES NOTHING about the dev lane: a probe failure "
+        "on a developer-owned route is repaired by a development repair aimed at the probe-owned "
+        "slot, verified and applied."
+    )
+    # The planted-row form, as ``fault_injection.inject`` writes it (no real one yet).
+    _NO_SHAPE = (
+        "2026-09-25 14:14:19,403 - squadops.capabilities.handlers.fault_injection - WARNING - "
+        "fault_injection: DID NOT BITE false_criterion_alias_import on "
+        "task=task-run_27462d5a-m000-development.develop handler=development_develop_handler — "
+        "no artifact carries the shape its row is about. THIS DIAGNOSTIC PROVES NOTHING about L3."
+    )
+
+    @pytest.mark.parametrize(
+        ("neo_lines", "fault", "reason"),
+        [
+            (
+                list(map(_DID_NOT_BITE.format, ("m000", "m001", "m002", "m003"))),
+                "dev_join_response_omits_declared_fields",
+                "the fault never applied — declared for "
+                "task-run_d2b1a457-m000-development.develop, "
+                "task-run_d2b1a457-m001-development.develop, "
+                "task-run_d2b1a457-m002-development.develop, "
+                "task-run_d2b1a457-m003-development.develop, each attempt ran, and the fault "
+                "found nothing to change (DID NOT BITE: emission_unchanged); the seam was not "
+                "exercised, so this is neither YES nor NO (#1588)",
+            ),
+            (
+                [_NO_SHAPE],
+                "false_criterion_alias_import",
+                "the fault never applied — declared for "
+                "task-run_27462d5a-m000-development.develop, each attempt ran, and the fault "
+                "found nothing to change (DID NOT BITE: no_shape_to_plant); the seam was not "
+                "exercised, so this is neither YES nor NO (#1588)",
+            ),
+            (
+                [],
+                "dev_join_response_omits_declared_fields",
+                "the fault never applied — no attempt of its target task ran; the seam was not "
+                "exercised, so this is neither YES nor NO (#1588)",
+            ),
+        ],
+        ids=["ran and unchanged (A′ d7 run 1)", "ran with no shape to plant", "never ran"],
+    )
+    def test_an_unbitten_fault_is_named_as_ran_not_as_never_ran(
+        self, driver, monkeypatch, neo_lines, fault, reason
+    ):
+        """#1718. Bug this catches: the hook's DID NOT BITE lines kept by the agent filter and
+        dropped by the parser, so four develop attempts that ran read as "no attempt of its
+        target task ran" — and A′'s dev-lane spent its second run on the wrong question.
+        Wiring: raw container lines through the agent window, the texture the record is built
+        from, and the seam reading; a prepared ``faults_applied`` would pass without the fix."""
+        monkeypatch.setattr(
+            driver,
+            "docker_logs",
+            lambda container, since, until=None: (
+                ["noise", *neo_lines] if container == "squadops-neo" else ["noise"]
+            ),
+        )
+        texture = driver.texture_from_agent_lines(driver.agent_log_window("2026-09-28T15:00:00Z"))
+        rec = {"correction_rounds": 0, "loop_texture": texture}
+
+        reading = driver.seam_readouts((fault,), rec)[fault]
+
+        assert reading["reached"] is None
+        assert reading["unaskable"]["loop_texture.faults_applied"] == reason
 
     @staticmethod
     def _rec(faults_applied=None, **texture):
@@ -5487,7 +5811,8 @@ class TestTheChainRunsUnattended:
                 "1",
                 [
                     "§4.3 run-state isolation: 1 run(s) ended in the registry whose executor has "
-                    "not finished (no loop summary) — a live wait may still act on them (#1699)"
+                    "not finished (no loop summary) — a live wait may still act on them (#1699); "
+                    "started under the runtime-api's current process (2026-09-28T16:28:01Z)"
                 ],
             ),
         ],
@@ -5502,11 +5827,107 @@ class TestTheChainRunsUnattended:
         missing loop summary is the executor's own "not done yet"."""
 
         def psql(query: str) -> str:
-            return unfinished if "run_loop_summaries" in query else "0"
+            return f"{unfinished}|0" if "run_loop_summaries" in query else "0"
 
         monkeypatch.setattr(driver, "psql", psql)
+        monkeypatch.setattr(driver, "runtime_api_started_at", lambda: "2026-09-28T16:28:01Z")
 
         assert driver.run_state_isolation_problems(None) == expected
+
+    @pytest.mark.parametrize(
+        ("boot", "runs", "expected"),
+        [
+            ("2026-09-28T16:28:01.348280198Z", ["2026-09-28T16:05:52+00:00"], []),
+            (
+                "2026-09-28T16:28:01.348280198Z",
+                ["2026-09-28T16:05:52+00:00", "2026-09-28T16:40:00+00:00"],
+                [
+                    "§4.3 run-state isolation: 1 run(s) ended in the registry whose executor has "
+                    "not finished (no loop summary) — a live wait may still act on them (#1699); "
+                    "started under the runtime-api's current process "
+                    "(2026-09-28T16:28:01.348280198Z); 1 earlier one(s) excused (#1714)"
+                ],
+            ),
+            (
+                None,
+                ["2026-09-28T16:05:52+00:00"],
+                [
+                    "§4.3 run-state isolation: 1 run(s) ended in the registry whose executor has "
+                    "not finished (no loop summary) — a live wait may still act on them (#1699); "
+                    "the runtime-api's start could not be read, so none is excused (#1714)"
+                ],
+            ),
+        ],
+        ids=[
+            "halted before the restart: excused",
+            "one each side: only the later refuses",
+            "start unreadable: fails closed",
+        ],
+    )
+    def test_quiet_excuses_a_run_that_started_before_the_runtime_api_process(
+        self, driver, monkeypatch, capsys, boot, runs, expected
+    ):
+        """#1714 (1.8.2 A′ `dev-lane-fastapi-react` run 2: `run_358dfb8cf945` started 16:05:52Z,
+        the Spark halted, the runtime-api restarted 16:28:01Z). Bug this catches: the chain's
+        quiet check refusing for a day over a run whose executor died with the process — or,
+        the other way, excusing #1699's live wait because it too has no summary. Enters where
+        the chain does; the stub registry evaluates the bound the query actually carries."""
+        cfg = driver.SetConfig(
+            name="s",
+            project="p",
+            squad_profile="x",
+            request_profile="y",
+            gate_name="g",
+            gate_notes="g",
+            launch_notes="l",
+            shakeout_notes="s",
+            n_rolls=1,
+        )
+
+        def psql(query: str) -> str:
+            if "run_loop_summaries" not in query:
+                return "0"
+            bound = re.search(r"r\.started_at >= '([^']+)'::timestamptz", query)
+            if bound is None:
+                assert "filter (where true)" in query
+                return f"{len(runs)}|0"
+            # Python's parser takes microseconds, as Postgres does; the query keeps the nanos.
+            at = datetime.fromisoformat(re.sub(r"(\.\d{6})\d+", r"\1", bound[1]))
+            live = sum(datetime.fromisoformat(s) >= at for s in runs)
+            return f"{live}|{len(runs) - live}"
+
+        monkeypatch.setattr(driver, "psql", psql)
+        monkeypatch.setattr(driver, "runtime_api_started_at", lambda: boot)
+        monkeypatch.setattr(driver, "active_activities", lambda cycle_id=None: [])
+        monkeypatch.setattr(
+            driver, "queue_depths", lambda: {f"{a}_comms": (0, 0) for a in driver.AGENT_SERVICES}
+        )
+
+        assert driver.quiet_box_problems(cfg) == expected
+        excused_logged = (
+            "#1714: 1 ended run(s) without a loop summary excused" in capsys.readouterr().out
+        )
+        assert excused_logged is (boot is not None)
+
+    @pytest.mark.parametrize(
+        ("inspected", "expected"),
+        [
+            ("2026-09-29T17:36:46.348280198Z", "2026-09-29T17:36:46.348280198Z"),
+            ("0001-01-01T00:00:00Z", None),
+            ("", None),
+            ("2026-09-29T17:36:46Z' or true --", None),
+        ],
+        ids=["a real start", "never started", "no such container", "malformed"],
+    )
+    def test_the_runtime_api_start_is_read_or_refused(
+        self, driver, monkeypatch, inspected, expected
+    ):
+        """#1714. Bug this catches: a zero time (a container that never started) or a malformed
+        reading reaching the guard's query as the bound — the first would silently excuse
+        nothing, the second would put docker's output into SQL."""
+        monkeypatch.setattr(driver, "sh", lambda cmd, check=True: inspected)
+
+        assert driver.runtime_api_started_at() == expected
 
     def test_quiet_is_read_from_the_agents_queues_not_only_run_state(self, driver, monkeypatch):
         """Bug this catches: a box called quiet from run state and leases alone. A cancel
@@ -5693,6 +6114,41 @@ class TestEveryCollectorMarkerSurvivesItsFilter:
             "refunded_rounds's runtime-api sample survives the filter and feeds nothing" in p
             for p in driver.marker_self_check_problems()
         )
+
+    def test_one_unread_form_is_named_though_another_form_feeds_the_field(
+        self, driver, monkeypatch
+    ):
+        """#1696, recreating #1695: ``faults_applied`` parsing only the ``chars`` form. Bug this
+        catches: the check reading a field's samples together, so the ``chars`` line kept the
+        field fed and the unparsed ``rows`` form (a planted row) passed the self-check."""
+        real = driver.faults_applied
+        monkeypatch.setattr(
+            driver, "faults_applied", lambda lines: real([ln for ln in lines if " rows " not in ln])
+        )
+
+        problems = driver.marker_self_check_problems()
+
+        assert problems == [
+            "#1696: faults_applied's agent sample line adds nothing to the reading — an unread "
+            "form or a dead sample: " + repr(driver.AGENT_MARKER_SAMPLES["faults_applied"][1][:140])
+        ]
+
+    def test_a_join_needs_every_line_and_a_dead_line_is_named(self, driver, monkeypatch):
+        """#1696. Bug this catches, both ways: a per-line check that refuses a join field (one
+        dispatch of an id is never a repeat, so each line alone reads nothing), and a sample
+        that survives the filter and changes nothing, kept as if it proved a form."""
+        dead = (
+            "2026-09-23 12:47:34,637 INFO adapters.cycles.task_dispatcher: Dispatched task "
+            "task-run_3aff38c4-m004-development.develop (development.develop) to neo_comms"
+        )
+        samples = dict(driver.RUNTIME_MARKER_SAMPLES)
+        samples["repeated_round_ids"] = (*samples["repeated_round_ids"], dead)
+        monkeypatch.setattr(driver, "RUNTIME_MARKER_SAMPLES", samples)
+
+        assert driver.marker_self_check_problems() == [
+            "#1696: repeated_round_ids's runtime-api sample line adds nothing to the reading — "
+            f"an unread form or a dead sample: {dead[:140]!r}"
+        ]
 
     @pytest.mark.parametrize(
         ("read", "samples", "aliases", "declared"),
@@ -6162,6 +6618,64 @@ FAILED backend/tests/test_runs.py::test_post_dev_seed_returns_200 - pydantic_...
             f"{suite}::test_new": "no_repo_frame",
         }
 
+    def test_a_refunded_round_and_its_re_take_are_two_rounds_not_one(
+        self, driver, monkeypatch, tmp_path
+    ):
+        """#1697, the join's side: since ids carry the run's round sequence, a refunded round
+        (``-00-s00-``) and the round that re-takes the index (``-00-s01-``) no longer repeat an
+        id, so #1698's guard no longer sets them aside. Bug this catches: the join still keyed by
+        index alone — both repairs merged into one round, and the refunded repair's earlier time
+        choosing the report from before the first failure as "before", instead of the re-take's."""
+        tree = tmp_path / "vault"
+        suite = "backend/tests/test_runs.py"
+        first_failure = "```\nFAILED backend/tests/test_runs.py::test_a - boom\n1 failed\n```"
+        re_take = (
+            "```\nFAILED backend/tests/test_runs.py::test_b - boom\n1 failed, 1 passed in 0.1s\n```"
+        )
+        after = "```\nFAILED backend/tests/test_runs.py::test_a - boom\n1 failed\n```"
+        self._store(tree, 1, suite, "task-run_ab12cd34-m005-qa.test", "t1", "def test_a(): ...\n")
+        self._store(
+            tree, 2, "test_report.md", "task-run_ab12cd34-m005-qa.test", "t2", first_failure
+        )
+        # The refunded repair stored only its prose; the re-take then reported again.
+        self._store(
+            tree,
+            3,
+            "build_warnings.md",
+            "repair-run_ab12cd34-00-s00-qa.test_repair",
+            "t3",
+            "I'll look.",
+        )
+        self._store(tree, 4, "test_report.md", "task-run_ab12cd34-m005-qa.test", "t4", re_take)
+        self._store(
+            tree, 5, suite, "repair-run_ab12cd34-00-s01-qa.test_repair", "t5", "def test_a(): 1\n"
+        )
+        self._store(tree, 6, "test_report.md", "retest-run_ab12cd34-00-s01-qa.test", "t6", after)
+        monkeypatch.setattr(driver, "artifact_dirs", lambda *a, **k: sorted(tree.glob("art_*")))
+        monkeypatch.setattr(driver, "main_checkout", lambda: tree)
+
+        (rnd,) = driver.retest_readout(
+            driver.SetConfig(
+                name="s",
+                project="p",
+                squad_profile="x",
+                request_profile="y",
+                gate_name="g",
+                gate_notes="g",
+                launch_notes="l",
+                shakeout_notes="s",
+                n_rolls=1,
+            ),
+            "cyc",
+            "run",
+        )
+
+        assert (rnd["round"], rnd["seq"]) == (0, 1)
+        assert rnd["repair"] == ["qa.test_repair"]
+        # "before" is the re-take's report: test_a passed there, so failing now is a regression.
+        assert rnd["before_failures"] == 1
+        assert rnd["regressions"] == [f"{suite}::test_a"]
+
     def test_a_round_whose_pre_patch_report_ran_nothing_cannot_read_regressions(
         self, driver, monkeypatch, tmp_path
     ):
@@ -6208,6 +6722,130 @@ FAILED backend/tests/test_runs.py::test_post_dev_seed_returns_200 - pydantic_...
         assert rounds[0]["regressions"] is None and rounds[0]["before_executed"] is False
         texture = driver.retest_texture(rounds)
         assert texture["retest_regressions"] == 0
+
+
+class TestALostWindowIsReadFromPrefectsStoredLog:
+    """1.9.0 plan §3.3: a rebuild recreates a container and ``docker logs`` loses the window, and
+    with it every texture field a record had not already taken. The driver now reads such a
+    window from Prefect's stored log, and names the two kinds of line that never reach it."""
+
+    reads_container_creation = True
+    #: Prefect's ``log`` rows, as the driver's query returns them (real messages, the #1697
+    #: verification's redelivery re-run, cyc_cfc00ce6ebd8).
+    _ROWS = [
+        {
+            "t": "2026-09-29 18:24:28,785",
+            "n": "adapters.cycles.dispatched_flow_executor",
+            "l": 30,
+            "m": "correction attempt 0 refunded (round s00): the repair emitted no content "
+            "(signature unreported), so the round is re-taken rather than spent (refund 1 of 3, "
+            "#1053/#998)",
+        },
+        {
+            "t": "2026-09-29 18:28:39,991",
+            "n": "squadops.capabilities.handlers.emission_log",
+            "l": 20,
+            "m": "qa_test_handler emission shape: chars=2056 completion_tokens=3412 "
+            "reasoning_chars=8979 fences={'fill': 0, 'path': 1, 'plain': 0} head=\"```python:"
+            'backend/tests/test_runs.py"',
+        },
+        {
+            "t": "2026-09-29 18:28:40,002",
+            "n": "squadops.capabilities.handlers.cycle.qa_test",
+            "l": 20,
+            "m": 'qa_retake_revision_form {"accepted": true, "edited": ["backend/tests/'
+            'test_runs.py"], "form": "edits", "handler": "qa_test_handler", "new_files": [], '
+            '"offered": {"backend/tests/test_runs.py": 5}, "task_type": "qa.test"}',
+        },
+    ]
+
+    @staticmethod
+    def _cfg(driver, faults):
+        return dataclasses.replace(
+            driver.load_set_config(_SETS / "1-8-1-nextjs.yaml"),
+            overrides={"fault_injection": list(faults)} if faults else {},
+        )
+
+    def _loop_texture(self, driver, monkeypatch, recreated, faults=()):
+        monkeypatch.setattr(driver, "artifact_dirs", lambda *a, **k: [])
+        monkeypatch.setattr(driver, "_fill_rejections", lambda *a: [])
+        monkeypatch.setattr(driver, "fill_merge_evidence", lambda *a: [])
+        monkeypatch.setattr(driver, "_decision_inherited_claims", lambda *a: [])
+        monkeypatch.setattr(driver, "docker_logs", lambda c, s, u=None: [])
+        monkeypatch.setattr(
+            driver,
+            "container_recreated_since",
+            lambda container, since: container in recreated,
+        )
+        monkeypatch.setattr(
+            driver, "psql", lambda q: json.dumps(self._ROWS) if "from log l" in q else ""
+        )
+        return driver.loop_texture(
+            self._cfg(driver, faults), "cyc_cfc00ce6ebd8", "run", "2026-09-29T17:37:20Z"
+        )
+
+    def test_a_rebuilt_runtime_reads_its_window_from_prefect_and_says_so(self, driver, monkeypatch):
+        """Wiring, entered at ``loop_texture``, the record's live caller. Bug this catches: a
+        rebuilt runtime-api's refunds read as none (docker's window is empty after it), or the
+        record not saying which source a window came from."""
+        out = self._loop_texture(driver, monkeypatch, recreated={"squadops-runtime-api"})
+
+        assert out["log_sources"] == {"runtime-api": "prefect", "agents": "docker"}
+        (refund,) = out["refunded_rounds"]["value"]
+        assert refund.startswith("correction attempt 0 refunded (round s00)")
+        # The agents' containers held their window: docker's (here empty) is what was read.
+        assert out["qa_retake_revision_forms"]["state"] == "unaskable"
+
+    @pytest.mark.parametrize(
+        ("faults", "fault_state"),
+        [((), "observed"), (("qa_repair_process_killed",), "unaskable")],
+        ids=["no process-death fault", "a process-death fault declared"],
+    )
+    def test_agents_read_from_prefect_name_what_prefect_never_carries(
+        self, driver, monkeypatch, faults, fault_state
+    ):
+        """Bug this catches: the redelivery refusals Prefect never holds read as "none refused",
+        and a fault that killed its process read as never applied — both answers the log cannot
+        give, measured on the redelivery re-run (44 of 46 fields equal, these two not)."""
+        out = self._loop_texture(driver, monkeypatch, recreated={"squadops-eve"}, faults=faults)
+
+        assert out["log_sources"]["agents"] == "prefect"
+        (form,) = out["qa_retake_revision_forms"]["value"]
+        assert form["edited"] == ["backend/tests/test_runs.py"]
+        assert out["redelivered_refusals"]["state"] == "unaskable"
+        assert "outside any task" in out["redelivered_refusals"]["reason"]
+        assert out["faults_applied"]["state"] == (
+            "asked_none" if fault_state == "observed" else "unaskable"
+        )
+
+    @pytest.mark.parametrize(
+        ("created", "recreated"),
+        [
+            ("2026-09-29T17:36:46.348280198Z", False),
+            ("2026-09-29T18:40:00.123456789Z", True),
+            ("", False),
+        ],
+        ids=["created before the cycle", "created after: a rebuild", "unreadable"],
+    )
+    def test_a_container_created_after_the_window_opened_lost_it(
+        self, driver, monkeypatch, created, recreated
+    ):
+        monkeypatch.setattr(driver, "sh", lambda cmd, check=True: created)
+
+        assert (
+            driver.container_recreated_since("squadops-runtime-api", "2026-09-29T17:37:20Z")
+            is recreated
+        )
+
+    def test_the_process_death_faults_are_the_registrys_crash_faults(self, driver):
+        """The driver names the faults whose APPLIED line dies with the process; the registry
+        is where a fault is declared a crash. Bug this catches: a new crash fault read from
+        Prefect as never applied because this list was not told."""
+        from squadops.capabilities.handlers.fault_injection import FAULTS
+
+        assert set(driver.FAULTS_LOGGED_AT_PROCESS_DEATH) == {
+            name for name, f in FAULTS.items() if f.crash
+        }
 
 
 class TestTheHangBoundIsReadFromTheLineTheDispatcherWrites:

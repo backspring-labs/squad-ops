@@ -921,7 +921,7 @@ Campaign the measures its continuation policy reads. The owner's ruling of 2026-
    reasoning depth changes the outcome. A frontier model with unrestrained tokens produces fabulous
    results nobody can afford at scale; it is the expensive corner of the cost/outcome frontier, not
    the baseline. The question is **outcome per unit of cost across placements**.
-2. **Campaign.** The iterative improvement loop (2.0, `sips/proposed/SIP-Campaign-Orchestration.md`)
+2. **Campaign.** The iterative improvement loop (2.0, `sips/accepted/SIP-0109-Campaign-Orchestration.md`)
    reads the assessment as its continuation policy. Critically important in its own right, not as a
    validation of aim 1.
 3. **Embodiment.** Agent embodiment deployed in the runtime modes
@@ -1253,3 +1253,35 @@ runner, the void rule, per-roll cost), which is the harness the placement experi
 twelve pair records; the pre-registration §10c–§10f.
 
 **Ruled by.** The owner, 2026-09-24, at the 1.8.1 cut (keeping Solo); the reading is the runner's.
+
+### 10p. 2026-09-29 — lineage reads the cycle's deploy record first (§4.3, §10f)
+
+**What changed.** §10f's lineage had two sources: #80's fields where the cycle carries a commit, and
+otherwise the set's pinned deploy. It now has three, in this order:
+
+1. **The cycle's deploy record** (#1720). Each deploy writes one record of what it put in service:
+   every running service's image ID and revision label, and the digest of each model an enabled
+   agent of any squad profile names. A cycle references the record current at its creation
+   (`cycle_registry.deploy_id`, migration `1051`).
+2. #80's fields.
+3. The set's pins.
+
+`lineage_for` takes the record as a required argument; the regrade reads it from the deploy
+registry by the cycle's `deploy_id`. The capture's lineage names it — `deploy_id`, each service's
+`[image_id, revision]`, each model's digest — and `BENCHMARK_REGISTRY_VERSION` is 2. The committed
+`docs/benchmark/regrade.json` was written under 1 and keeps it. A store from before migration
+`1050` has no records; the regrade reads it as before, and its store notes say so.
+
+**The evidence.** On 1.8.2's deploy A′ the runtime API was rebuilt from `8e2c2e87` while the agents
+ran `ccc9475d`'s images. Every A′ cycle recorded `8e2c2e87`, so `CYCLE_RECORD` lineage named code
+the agents were not running, and a cycle launched outside a verification set had no pins to fall
+back on. A model re-pulled under the same tag was invisible to both sources. #1720 has the full
+account.
+
+**Unknown stays unknown.** A service whose image carries no revision label, a model the provider
+reports without a digest, and a cycle created before any deploy was recorded all read `None`.
+
+**Who ruled.** The owner placed #1720 in 1.9 (the 1.9.0 plan's decision 1) and chose its writer
+(§7a item 1, 2026-09-29): a one-off command in the runtime image, `record_deploy`, run by the
+deploy step. The order of the three sources was decided in implementation: the record names
+everything the other two do, and more.

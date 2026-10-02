@@ -36,7 +36,13 @@ from squadops.cycles.check_registry import (
     OWED_UNDECLARED,
     compose_owed_framework_rows,
 )
-from squadops.cycles.correction_signature import REPAIR_REFUSED_MARKER
+from squadops.cycles.correction_signature import (
+    REPAIR_REFUSED_MARKER,
+    RetestReduction,
+    render_signature,
+    retest_reduction,
+)
+from squadops.cycles.failure_evidence import build_failure_evidence
 from squadops.cycles.patch_verification import (
     EXECUTED_IN_RUNTIME_API,
     FILE_ABSENT_REASONS,
@@ -58,6 +64,16 @@ if TYPE_CHECKING:
     from squadops.tasks.models import TaskEnvelope, TaskResult
 
 logger = logging.getLogger(__name__)
+
+#: The action for a repair whose progress is kept (#1522): its retest cleared some of the round's
+#: failures and added none. The executor stores the kept set as accepted state, re-derives the
+#: task's workspace from it, and routes the retest's failure as the next round's: the retest
+#: already ran the task on the kept tree, so nothing is re-dispatched.
+KEEP_PROGRESS = "keep_progress"
+#: The holder keys a kept repair travels under, from ``_keep_progress`` to the executor.
+KEPT_ARTIFACTS_KEY = "kept_artifacts"
+KEPT_OUTPUTS_KEY = "kept_outputs"
+KEPT_NEXT_FAILURE_KEY = "kept_next_failure"
 
 
 def correction_is_deadlocked(
@@ -104,6 +120,66 @@ def _record_repair_rejection(carry: dict[str, list[str]] | None, task_id: str, e
     entries = carry.setdefault(task_id, [])
     entries.append(entry[:_REPAIR_REJECTION_CHAR_LIMIT])
     del entries[:-_REPAIR_REJECTION_ENTRY_LIMIT]
+
+
+def _prove_candidate_identity(
+    envelope: TaskEnvelope, subject: _PatchSubject, verification: Any, artifacts: list[dict]
+) -> str:
+    """The stored set's identity, proven equal to the verified candidate's, or the run fails.
+
+    SIP-0107 §20: ``verified_revision_id == persisted_revision_id``, or nothing is accepted.
+    The verifier took the candidate's identity; this recomputes it over the base and the
+    artifacts about to be stored, after every step between them (the retest, evidence
+    supersession, the owed-row derivation) has run. A mismatch is a framework integrity failure
+    whatever the checks said — a verdict about one tree cannot accept another — so it fails the
+    run loudly rather than re-dispatching, which would bury a framework defect under an ordinary
+    correction round (the #1350 precedent).
+    """
+    verified_revision_id = verification.candidate_revision_id
+    persisted_revision_id = candidate_revision_id(subject.workspace_files, artifacts)
+    if verified_revision_id != persisted_revision_id:
+        logger.error(
+            "patch_candidate_identity task=%s MISMATCH verified_revision_id=%s "
+            "persisted_revision_id=%s base_revision_id=%s (SIP-0107 §20)",
+            envelope.task_id,
+            verified_revision_id,
+            persisted_revision_id,
+            verification.workspace_revision_id,
+        )
+        raise _ExecutionError(
+            f"patch acceptance task={envelope.task_id}: the set about to be stored is not the "
+            f"candidate that was verified (verified_revision_id={verified_revision_id}, "
+            f"persisted_revision_id={persisted_revision_id}) — SIP-0107 §20"
+        )
+    logger.info(
+        "patch_candidate_identity task=%s verified_revision_id=%s persisted_revision_id=%s "
+        "base_revision_id=%s (SIP-0107 §20)",
+        envelope.task_id,
+        verified_revision_id,
+        persisted_revision_id,
+        verification.workspace_revision_id,
+    )
+    return persisted_revision_id
+
+
+def _retest_reduction_of(
+    envelope: TaskEnvelope, result: TaskResult, retest_result: TaskResult
+) -> RetestReduction | None:
+    """The round's failures against its retest's, both read through the evidence builder the
+    correction runner's own signature reads (#1522). A check counts as evaluated by the retest
+    when one of its rows names it, and ``tests_pass`` also when its suite executed, since a
+    passing suite leaves no failure row."""
+    retest_outputs = retest_result.outputs or {}
+    rows = (retest_outputs.get("validation_result") or {}).get("checks") or []
+    evaluated = {str(row["check"]) for row in rows if isinstance(row, dict) and row.get("check")}
+    test_result = retest_outputs.get("test_result")
+    if isinstance(test_result, dict) and test_result.get("executed") is True:
+        evaluated.add(CHECK_TESTS_PASS)
+    return retest_reduction(
+        build_failure_evidence(envelope, result, prior_plan_deltas_count=0),
+        build_failure_evidence(envelope, retest_result, prior_plan_deltas_count=0),
+        frozenset(evaluated),
+    )
 
 
 def _repaired_suite_files(
@@ -181,6 +257,11 @@ class _RetestOutcome:
     corrected_outputs: dict[str, Any]
     rows: list[dict[str, Any]]
     evidence: list[dict[str, Any]] | None
+    #: #1522: set when the retest did not pass but cleared some of the round's failures
+    #: and added none. The repair is kept, whole, rather than discarded, and
+    #: ``failed_retest`` (the retest's own result) is the next round's failure.
+    reduction: RetestReduction | None = None
+    failed_retest: TaskResult | None = None
 
 
 class PatchAcceptance:
@@ -222,6 +303,7 @@ class PatchAcceptance:
         run_id: str = "",
         cycle: Cycle | None = None,
         correction_attempts: int = 0,
+        round_seq: int = 0,
         prior_outputs: dict[str, Any] | None = None,
         all_artifact_refs: list[str] | None = None,
         stored_artifacts: list[tuple[str, ArtifactRef]] | None = None,
@@ -237,7 +319,8 @@ class PatchAcceptance:
         bound_record: Any = None,
         compliance_counter: dict[str, int] | None = None,
     ) -> str:
-        """Behaviorally verify a patch (#389); return "accept_patch" or "continue".
+        """Behaviorally verify a patch (#389); return "accept_patch", "continue", or
+        ``KEEP_PROGRESS`` for a repair whose retest cleared some failures and added none (#1522).
 
         Verification itself is the pure ``patch_verification`` module; this
         method only assembles its inputs from the failed task and renders the
@@ -302,6 +385,7 @@ class PatchAcceptance:
             run_id=run_id,
             cycle=cycle,
             correction_attempts=correction_attempts,
+            round_seq=round_seq,
             prior_outputs=prior_outputs,
             all_artifact_refs=all_artifact_refs,
             stored_artifacts=stored_artifacts,
@@ -315,6 +399,16 @@ class PatchAcceptance:
         )
         if retest is None:
             return "continue"
+        if retest.reduction is not None and retest.failed_retest is not None:
+            return self._keep_progress(
+                envelope,
+                subject,
+                verdict,
+                retest.reduction,
+                retest.failed_retest,
+                patched_result_holder,
+                correction_attempts=correction_attempts,
+            )
 
         patched_artifacts, spine_rows = self._settle_patch_evidence(
             envelope, subject, verdict, retest
@@ -661,6 +755,7 @@ class PatchAcceptance:
         run_id: str,
         cycle: Cycle | None,
         correction_attempts: int,
+        round_seq: int,
         prior_outputs: dict[str, Any] | None,
         all_artifact_refs: list[str] | None,
         stored_artifacts: list[tuple[str, ArtifactRef]] | None,
@@ -722,6 +817,7 @@ class PatchAcceptance:
                 enriched_envelope if enriched_envelope is not None else envelope,
                 patched_artifacts,
                 correction_attempts,
+                round_seq=round_seq,
                 prior_outputs=prior_outputs if prior_outputs is not None else {},
                 all_artifact_refs=all_artifact_refs if all_artifact_refs is not None else [],
                 stored_artifacts=stored_artifacts if stored_artifacts is not None else [],
@@ -768,6 +864,29 @@ class PatchAcceptance:
                 retest_reason or "-",
             )
             if not retest_passed:
+                # #1522: a retest that cleared some of the round's failures and added none is
+                # progress the next round must build on, not a repair to throw away.
+                reduction = (
+                    _retest_reduction_of(envelope, result, retest_result)
+                    if retest_result is not None
+                    else None
+                )
+                if reduction is not None:
+                    _record_repair_rejection(
+                        repair_rejection_carry,
+                        envelope.task_id,
+                        f"correction attempt {correction_attempts}: repaired suite retest "
+                        f"cleared {len(reduction.cleared)} of {len(reduction.before)} failure(s) "
+                        "and added none — the repair is kept, and the next round "
+                        f"starts from its retest (#1522): {retest_reason or 'no verdict detail'}",
+                    )
+                    return _RetestOutcome(
+                        corrected_outputs=corrected_outputs,
+                        rows=[],
+                        evidence=None,
+                        reduction=reduction,
+                        failed_retest=retest_result,
+                    )
                 _record_repair_rejection(
                     repair_rejection_carry,
                     envelope.task_id,
@@ -952,28 +1071,8 @@ class PatchAcceptance:
         """
         verification = verdict.verification
         verified_revision_id = verification.candidate_revision_id
-        persisted_revision_id = candidate_revision_id(subject.workspace_files, patched_artifacts)
-        if verified_revision_id != persisted_revision_id:
-            logger.error(
-                "patch_candidate_identity task=%s MISMATCH verified_revision_id=%s "
-                "persisted_revision_id=%s base_revision_id=%s (SIP-0107 §20)",
-                envelope.task_id,
-                verified_revision_id,
-                persisted_revision_id,
-                verification.workspace_revision_id,
-            )
-            raise _ExecutionError(
-                f"patch acceptance task={envelope.task_id}: the set about to be stored is not the "
-                f"candidate that was verified (verified_revision_id={verified_revision_id}, "
-                f"persisted_revision_id={persisted_revision_id}) — SIP-0107 §20"
-            )
-        logger.info(
-            "patch_candidate_identity task=%s verified_revision_id=%s persisted_revision_id=%s "
-            "base_revision_id=%s (SIP-0107 §20)",
-            envelope.task_id,
-            verified_revision_id,
-            persisted_revision_id,
-            verification.workspace_revision_id,
+        persisted_revision_id = _prove_candidate_identity(
+            envelope, subject, verification, patched_artifacts
         )
         corrected_outputs = retest.corrected_outputs
         retest_rows = retest.rows
@@ -1002,3 +1101,57 @@ class PatchAcceptance:
             outcome_class=None,
         )
         return "accept_patch"
+
+    def _keep_progress(
+        self,
+        envelope: TaskEnvelope,
+        subject: _PatchSubject,
+        verdict: _PatchVerdict,
+        reduction: RetestReduction,
+        failed_retest: TaskResult,
+        patched_result_holder: dict[str, Any],
+        *,
+        correction_attempts: int,
+    ) -> str:
+        """#1522: keep a repair whose retest cleared some of the round's failures and added none.
+
+        The kept set is the candidate that was verified, proven as an accepted patch is
+        (SIP-0107 §20), less the failed attempt's evidence: the re-dispatch writes its own, and a
+        stale report stored under the task would be read as the task's state (#1111, #1318).
+        Nothing here renders a passing result. The task still fails. pf-31 Fix E stands: a
+        candidate that added a failure, failed its typed verification or could not be compared
+        never reaches this method.
+
+        **The next round starts from the retest, not from a re-dispatch.** The retest already ran
+        the task's suite on the kept tree, so its failure is the one the next round must repair,
+        and its artifacts (the suite it ran) are the next repair's base. A re-dispatch would
+        re-author the suite instead: a kept suite repair would be overwritten by the next
+        emission, and a kept app repair re-measured by a suite written against it from scratch.
+        1.7.5 React roll 3 is that churn, qa re-authoring against an app that never changed. It is
+        also the issue's option 1 as written: the round's signature taken from the retest.
+        """
+        artifacts = supersede_evidence_artifacts(subject.patched_artifacts, None).artifacts
+        persisted_revision_id = _prove_candidate_identity(
+            envelope, subject, verdict.verification, artifacts
+        )
+        logger.info(
+            "progress_kept task=%s round=%d failing_before=%d failing_after=%d cleared=%s "
+            "persisted_revision_id=%s (#1522)",
+            envelope.task_id,
+            correction_attempts,
+            len(reduction.before),
+            len(reduction.after),
+            "; ".join(render_signature(reduction.cleared)),
+            persisted_revision_id,
+        )
+        patched_result_holder[KEPT_ARTIFACTS_KEY] = artifacts
+        # What the storing step's §5.5 guard reads: an accepted set carries its identity.
+        patched_result_holder[KEPT_OUTPUTS_KEY] = {
+            "artifacts": artifacts,
+            "validation_result": {"persisted_revision_id": persisted_revision_id},
+        }
+        # The retest ran as its own task id; the next round is about the failed task.
+        patched_result_holder[KEPT_NEXT_FAILURE_KEY] = dataclasses.replace(
+            failed_retest, task_id=envelope.task_id
+        )
+        return KEEP_PROGRESS

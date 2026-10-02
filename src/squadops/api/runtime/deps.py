@@ -1,12 +1,22 @@
 """
 FastAPI dependencies for Runtime API (SIP-0048, SIP-0062, SIP-0064).
 
+#1448: every port the routes read lives on the app that owns it — ``app.state``, beside the
+connections #286 moved there — and each getter here is a FastAPI dependency provider over the
+request's app. There is no process-wide registry: two runtime apps in one process each resolve
+their own ports (``docs/architecture/composition-roots.md`` R4). The composition root assigns the
+slots (``squadops/api/runtime/main.py``); ``create_app`` starts every slot at ``None``, so an
+unwired port reads as unconfigured exactly as it did before.
+
 Part of SIP-0.8.8 migration from _v0_legacy/infra/runtime-api/deps.py
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import logging
+from typing import TYPE_CHECKING, Any
+
+from fastapi import Request
 
 from squadops import __version__ as SQUADOPS_VERSION
 from squadops._version import resolve_git_sha
@@ -16,6 +26,7 @@ from squadops.ports.auth.authorization import AuthorizationPort
 from squadops.ports.comms.queue import QueuePort
 from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
 from squadops.ports.cycles.cycle_registry import CycleRegistryPort
+from squadops.ports.cycles.deploy_registry import DeployRegistryPort
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
 from squadops.ports.cycles.project_registry import ProjectRegistryPort
 from squadops.ports.cycles.squad_profile import SquadProfilePort
@@ -30,129 +41,97 @@ if TYPE_CHECKING:
     from squadops.ports.runtime.focus_lease import FocusLeasePort
     from squadops.runtime.coordinator import RuntimeCoordinator
 
-# Global adapter instances (initialized at startup)
-_auth_port: AuthPort | None = None
-_authz_port: AuthorizationPort | None = None
-_audit_port = None  # AuditPort | None
-_health_checker: HealthChecker | None = None
+logger = logging.getLogger(__name__)
 
-# SIP-0064 cycle port singletons
-_project_registry: ProjectRegistryPort | None = None
-_cycle_registry: CycleRegistryPort | None = None
-_squad_profile: SquadProfilePort | None = None
-_artifact_vault: ArtifactVaultPort | None = None
-_flow_executor: FlowExecutionPort | None = None
-
-# SIP-0077: Cycle event bus
-_cycle_event_bus: CycleEventBusPort | None = None
-_cycle_event_bus_warned: bool = False
-
-_workflow_tracker: WorkflowTrackerPort | None = None
-_workflow_tracker_warned: bool = False
-
-# SIP-0075: LLM port for model management endpoints
-_llm_port: LLMPort | None = None
-
-# SIP-0089 §2.7: Assignment port for the assignment REST surface
-_assignment_port: AssignmentPort | None = None
-
-# #373/#529/#561: the runtime state a cancel has to tear down, since cancellation
-# bypasses the executor's finalize path entirely — the single-writer coordinator
-# (D16) plus the lease and activity ports. All None without a Postgres pool.
-_runtime_coordinator: RuntimeCoordinator | None = None
-_focus_lease_port: FocusLeasePort | None = None
-_activity_port: RuntimeActivityPort | None = None
-#: #1648: the queue a cancel's notice reaches the agents holding the run's tasks through.
-_cancel_queue_port: QueuePort | None = None
+#: The ports the routes read, one ``app.state`` slot each. ``create_app`` starts them at ``None``
+#: and the composition root assigns them; the getters below are the only readers.
+PORT_SLOTS = (
+    "auth_port",  # SIP-0062
+    "authz_port",
+    "audit_port",  # SIP-0062 Phase 3b
+    "project_registry",  # SIP-0064
+    "cycle_registry",
+    "deploy_registry",  # #1720
+    "squad_profile",
+    "artifact_vault",
+    "flow_executor",
+    "cycle_event_bus",  # SIP-0077 — best-effort: read as a no-op when unwired
+    "llm_port",  # SIP-0075
+    "assignment_port",  # SIP-0089 §2.7
+    # #373/#529/#561: what a cancel tears down (it bypasses the executor's finalize path);
+    # all None without a Postgres pool. The coordinator is the root's single instance (D16).
+    "focus_lease_port",
+    "activity_port",
+    "cancel_queue_port",  # #1648
+    # SIP-0085 chat
+    "chat_repo",
+    "chat_cache",
+    "a2a_client",
+    "all_agents",
+    "messaging_agents",
+)
+#: Slots #286 already declared for connections and processes, read here too: the health checker,
+#: the workflow tracker and the runtime coordinator (``main._STATE_SLOTS``).
 
 
-def set_auth_ports(
-    auth: AuthPort | None = None,
-    authz: AuthorizationPort | None = None,
-) -> None:
-    """Set auth adapter instances for dependency injection (SIP-0062)."""
-    global _auth_port, _authz_port
-    _auth_port = auth
-    _authz_port = authz
+def _slot(request: Request, name: str) -> Any:
+    return getattr(request.app.state, name, None)
 
 
-def set_audit_port(audit) -> None:
-    """Set audit port instance (SIP-0062 Phase 3b)."""
-    global _audit_port
-    _audit_port = audit
+def get_auth_port(request: Request) -> AuthPort | None:
+    """Return the app's AuthPort, or None if not configured."""
+    return _slot(request, "auth_port")
 
 
-def get_auth_port() -> AuthPort | None:
-    """Return the current AuthPort instance, or None if not configured."""
-    return _auth_port
+def get_authz_port(request: Request) -> AuthorizationPort | None:
+    """Return the app's AuthorizationPort, or None if not configured."""
+    return _slot(request, "authz_port")
 
 
-def get_authz_port() -> AuthorizationPort | None:
-    """Return the current AuthorizationPort instance, or None if not configured."""
-    return _authz_port
-
-
-def get_audit_port():
-    """Return the current AuditPort instance, or None if not configured."""
-    return _audit_port
+def get_audit_port(request: Request):
+    """Return the app's AuditPort, or None if not configured."""
+    return _slot(request, "audit_port")
 
 
 # =============================================================================
-# SIP-0064 cycle port setters/getters
+# SIP-0064 cycle ports
 # =============================================================================
 
 
-def set_cycle_ports(
-    project_registry: ProjectRegistryPort | None = None,
-    cycle_registry: CycleRegistryPort | None = None,
-    squad_profile: SquadProfilePort | None = None,
-    artifact_vault: ArtifactVaultPort | None = None,
-    flow_executor: FlowExecutionPort | None = None,
-) -> None:
-    """Set SIP-0064 cycle port instances for dependency injection."""
-    global _project_registry, _cycle_registry, _squad_profile, _artifact_vault, _flow_executor
-    if project_registry is not None:
-        _project_registry = project_registry
-    if cycle_registry is not None:
-        _cycle_registry = cycle_registry
-    if squad_profile is not None:
-        _squad_profile = squad_profile
-    if artifact_vault is not None:
-        _artifact_vault = artifact_vault
-    if flow_executor is not None:
-        _flow_executor = flow_executor
+def _required(request: Request, name: str, port: str) -> Any:
+    value = _slot(request, name)
+    if value is None:
+        raise RuntimeError(f"{port} not configured")
+    return value
 
 
-def get_project_registry() -> ProjectRegistryPort:
+def get_project_registry(request: Request) -> ProjectRegistryPort:
     """Return the ProjectRegistryPort (T14: never None at call sites)."""
-    if _project_registry is None:
-        raise RuntimeError("ProjectRegistryPort not configured")
-    return _project_registry
+    return _required(request, "project_registry", "ProjectRegistryPort")
 
 
-def get_cycle_registry() -> CycleRegistryPort:
+def get_cycle_registry(request: Request) -> CycleRegistryPort:
     """Return the CycleRegistryPort (T14: never None at call sites)."""
-    if _cycle_registry is None:
-        raise RuntimeError("CycleRegistryPort not configured")
-    return _cycle_registry
+    return _required(request, "cycle_registry", "CycleRegistryPort")
 
 
-def get_squad_profile_port() -> SquadProfilePort:
+def get_deploy_registry(request: Request) -> DeployRegistryPort:
+    """Return the DeployRegistryPort (#1720): what each deploy put in service."""
+    return _required(request, "deploy_registry", "DeployRegistryPort")
+
+
+def get_squad_profile_port(request: Request) -> SquadProfilePort:
     """Return the SquadProfilePort (T14: never None at call sites)."""
-    if _squad_profile is None:
-        raise RuntimeError("SquadProfilePort not configured")
-    return _squad_profile
+    return _required(request, "squad_profile", "SquadProfilePort")
 
 
-def get_artifact_vault() -> ArtifactVaultPort:
+def get_artifact_vault(request: Request) -> ArtifactVaultPort:
     """Return the ArtifactVaultPort (T14: never None at call sites)."""
-    if _artifact_vault is None:
-        raise RuntimeError("ArtifactVaultPort not configured")
-    return _artifact_vault
+    return _required(request, "artifact_vault", "ArtifactVaultPort")
 
 
-async def assess_cycle_from_stores(cycle_id: str) -> CycleAssessment:
-    """Compute a cycle's assessment from the wired registry and vault (SIP-0108 §4.1 (a)).
+async def assess_cycle_from_stores(request: Request, cycle_id: str) -> CycleAssessment:
+    """Compute a cycle's assessment from the app's registry and vault (SIP-0108 §4.1 (a)).
 
     Composed here because assembling the evidence is an adapter concern and only a
     composition root may import one (#154). The projection itself is pure and lives in
@@ -162,106 +141,78 @@ async def assess_cycle_from_stores(cycle_id: str) -> CycleAssessment:
     from adapters.cycles.cycle_evidence import assess_cycle
 
     return await assess_cycle(
-        get_cycle_registry(),
-        get_artifact_vault(),
+        get_cycle_registry(request),
+        get_artifact_vault(request),
         cycle_id,
         assessor=AssessorIdentity(framework_version=SQUADOPS_VERSION, git_sha=resolve_git_sha()),
     )
 
 
-def get_flow_executor() -> FlowExecutionPort:
+def get_flow_executor(request: Request) -> FlowExecutionPort:
     """Return the FlowExecutionPort (T14: never None at call sites)."""
-    if _flow_executor is None:
-        raise RuntimeError("FlowExecutionPort not configured")
-    return _flow_executor
+    return _required(request, "flow_executor", "FlowExecutionPort")
 
 
 # =============================================================================
-# Health checker singleton
+# Health checker
 # =============================================================================
 
 
-def set_health_checker(checker: HealthChecker) -> None:
-    """Set the HealthChecker instance for dependency injection."""
-    global _health_checker
-    _health_checker = checker
-
-
-def get_health_checker() -> HealthChecker:
-    """Return the HealthChecker instance."""
-    if _health_checker is None:
-        raise RuntimeError("HealthChecker not configured")
-    return _health_checker
+def get_health_checker(request: Request) -> HealthChecker:
+    """Return the app's HealthChecker."""
+    return _required(request, "health_checker", "HealthChecker")
 
 
 # =============================================================================
-# SIP-0077: Cycle event bus
+# SIP-0077: Cycle event bus; #77: workflow tracker — both best-effort
 # =============================================================================
 
 
-def set_cycle_event_bus(bus: CycleEventBusPort) -> None:
-    """Set the cycle event bus instance (SIP-0077)."""
-    global _cycle_event_bus
-    _cycle_event_bus = bus
+def _warn_once(request: Request, flag: str, message: str) -> None:
+    state = request.app.state
+    if not getattr(state, flag, False):
+        logger.warning(message)
+        setattr(state, flag, True)
 
 
-def get_cycle_event_bus() -> CycleEventBusPort:
-    """Return the CycleEventBusPort instance.
+def get_cycle_event_bus(request: Request) -> CycleEventBusPort:
+    """Return the app's CycleEventBusPort.
 
     Unlike other port getters, this returns NoOpCycleEventBus instead of
     raising RuntimeError — event emission is best-effort, routes should
     never fail because the bus is unconfigured. Logs a warning once per
-    process when falling back to NoOp.
+    app when falling back to NoOp.
     """
-    global _cycle_event_bus_warned
-    if _cycle_event_bus is not None:
-        return _cycle_event_bus
-
-    if not _cycle_event_bus_warned:
-        import logging
-
-        logging.getLogger(__name__).warning(
-            "CycleEventBusPort not configured — using NoOpCycleEventBus. "
-            "Canonical event publication is disabled/degraded."
-        )
-        _cycle_event_bus_warned = True
-
+    bus = _slot(request, "cycle_event_bus")
+    if bus is not None:
+        return bus
+    _warn_once(
+        request,
+        "cycle_event_bus_warned",
+        "CycleEventBusPort not configured — using NoOpCycleEventBus. "
+        "Canonical event publication is disabled/degraded.",
+    )
     from adapters.events.noop_cycle_event_bus import NoOpCycleEventBus
 
     return NoOpCycleEventBus()
 
 
-# =============================================================================
-# #77: Workflow tracker (Prefect) — used by cancel routes to stop orphaned runs
-# =============================================================================
-
-
-def set_workflow_tracker(tracker: WorkflowTrackerPort) -> None:
-    """Set the WorkflowTrackerPort instance (#77: cancel propagation)."""
-    global _workflow_tracker
-    _workflow_tracker = tracker
-
-
-def get_workflow_tracker() -> WorkflowTrackerPort:
-    """Return the WorkflowTrackerPort instance.
+def get_workflow_tracker(request: Request) -> WorkflowTrackerPort:
+    """Return the app's WorkflowTrackerPort (#77: used by cancel routes to stop orphaned runs).
 
     Best-effort like the event bus: returns NoOpWorkflowTracker instead of
     raising when unconfigured, so cancel routes never fail because workflow
-    tracking is off. Warns once per process on fallback.
+    tracking is off. Warns once per app on fallback.
     """
-    global _workflow_tracker_warned
-    if _workflow_tracker is not None:
-        return _workflow_tracker
-
-    if not _workflow_tracker_warned:
-        import logging
-
-        logging.getLogger(__name__).warning(
-            "WorkflowTrackerPort not configured — using NoOpWorkflowTracker. "
-            "Cancellations will not propagate to Prefect."
-        )
-        _workflow_tracker_warned = True
-
+    tracker = _slot(request, "workflow_tracker")
+    if tracker is not None:
+        return tracker
+    _warn_once(
+        request,
+        "workflow_tracker_warned",
+        "WorkflowTrackerPort not configured — using NoOpWorkflowTracker. "
+        "Cancellations will not propagate to Prefect.",
+    )
     from adapters.cycles.noop_workflow_tracker import NoOpWorkflowTracker
 
     return NoOpWorkflowTracker()
@@ -272,17 +223,9 @@ def get_workflow_tracker() -> WorkflowTrackerPort:
 # =============================================================================
 
 
-def set_llm_port(llm: LLMPort) -> None:
-    """Set the LLM port instance (SIP-0075: model management endpoints)."""
-    global _llm_port
-    _llm_port = llm
-
-
-def get_llm_port() -> LLMPort:
-    """Return the LLMPort instance."""
-    if _llm_port is None:
-        raise RuntimeError("LLMPort not configured")
-    return _llm_port
+def get_llm_port(request: Request) -> LLMPort:
+    """Return the app's LLMPort."""
+    return _required(request, "llm_port", "LLMPort")
 
 
 # =============================================================================
@@ -290,21 +233,13 @@ def get_llm_port() -> LLMPort:
 # =============================================================================
 
 
-def set_assignment_port(port: AssignmentPort) -> None:
-    """Set the AssignmentPort instance for the assignment REST surface."""
-    global _assignment_port
-    _assignment_port = port
-
-
-def get_assignment_port() -> AssignmentPort:
-    """Return the AssignmentPort instance.
+def get_assignment_port(request: Request) -> AssignmentPort:
+    """Return the app's AssignmentPort.
 
     Raises RuntimeError if unconfigured — assignments require a Postgres pool,
     so a missing port at a route call site is a wiring error, not a no-op.
     """
-    if _assignment_port is None:
-        raise RuntimeError("AssignmentPort not configured")
-    return _assignment_port
+    return _required(request, "assignment_port", "AssignmentPort")
 
 
 # =============================================================================
@@ -312,80 +247,28 @@ def get_assignment_port() -> AssignmentPort:
 # =============================================================================
 
 
-def set_cancellation_ports(
-    coordinator: RuntimeCoordinator | None,
-    focus_lease: FocusLeasePort | None,
-    activity: RuntimeActivityPort | None,
-    *,
-    queue: QueuePort | None,
-) -> None:
-    """Register the runtime ports a cancel has to tear down.
-
-    Cancellation never reaches the executor's finalize path, so the leases and
-    activities the cancelled run holds have to be cleared by the route. The
-    coordinator MUST be the composition root's single instance (D16) — the lease
-    sweep returns agents to ambient through it, and a second mode-writer would
-    race the executor and the duty scheduler. ``queue`` carries the notice to the
-    agents already holding the run's tasks (#1648); it is required, because a
-    composition root that forgets it leaves every dispatched task running.
-    """
-    global _runtime_coordinator, _focus_lease_port, _activity_port, _cancel_queue_port
-    _runtime_coordinator = coordinator
-    _focus_lease_port = focus_lease
-    _activity_port = activity
-    _cancel_queue_port = queue
-
-
-def get_runtime_coordinator() -> RuntimeCoordinator | None:
+def get_runtime_coordinator(request: Request) -> RuntimeCoordinator | None:
     """Return the shared coordinator, or None when no Postgres pool is wired."""
-    return _runtime_coordinator
+    return _slot(request, "runtime_coordinator")
 
 
-def get_focus_lease_port() -> FocusLeasePort | None:
+def get_focus_lease_port(request: Request) -> FocusLeasePort | None:
     """Return the focus-lease port, or None when no Postgres pool is wired.
 
     Unlike :func:`get_assignment_port` this never raises: cancellation must
     succeed on a pool-less deployment, where there are no leases to release.
     """
-    return _focus_lease_port
+    return _slot(request, "focus_lease_port")
 
 
-def get_cancel_queue_port() -> QueuePort | None:
+def get_cancel_queue_port(request: Request) -> QueuePort | None:
     """Return the queue a cancel's notice goes out on, or None when none is wired (#1648)."""
-    return _cancel_queue_port
+    return _slot(request, "cancel_queue_port")
 
 
-def get_activity_port() -> RuntimeActivityPort | None:
+def get_activity_port(request: Request) -> RuntimeActivityPort | None:
     """Return the activity port, or None when no Postgres pool is wired.
 
     Never raises, for the same reason as :func:`get_focus_lease_port`.
     """
-    return _activity_port
-
-
-# =============================================================================
-# SIP-0085: Chat ports
-# =============================================================================
-
-
-def set_chat_ports(
-    *,
-    chat_repo: object | None = None,
-    chat_cache: object | None = None,
-    a2a_client: object | None = None,
-    all_agents: dict | None = None,
-    messaging_agents: dict | None = None,
-) -> None:
-    """Set SIP-0085 chat port instances for dependency injection."""
-    from squadops.api.routes.chat import routes as chat_routes
-
-    if chat_repo is not None:
-        chat_routes._chat_repo = chat_repo
-    if chat_cache is not None:
-        chat_routes._chat_cache = chat_cache
-    if a2a_client is not None:
-        chat_routes._a2a_client = a2a_client
-    if all_agents is not None:
-        chat_routes._all_agents = all_agents
-    if messaging_agents is not None:
-        chat_routes._messaging_agents = messaging_agents
+    return _slot(request, "activity_port")

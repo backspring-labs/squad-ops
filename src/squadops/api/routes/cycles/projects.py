@@ -4,7 +4,7 @@ Project API routes (SIP-0064 §9.1).
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 
 from squadops.api.middleware.auth import require_scopes
@@ -15,25 +15,25 @@ router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
 
 @router.get("", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
-async def list_projects():
+async def list_projects(request: Request):
     from squadops.api.runtime.deps import get_project_registry
 
-    registry = get_project_registry()
+    registry = get_project_registry(request)
     projects = await registry.list_projects()
     return [project_to_response(p) for p in projects]
 
 
 @router.get("/{project_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
-async def get_project(project_id: str):
+async def get_project(request: Request, project_id: str):
     from squadops.api.runtime.deps import get_project_registry
 
-    registry = get_project_registry()
+    registry = get_project_registry(request)
     project = await registry.get_project(project_id)
     return project_to_response(project)
 
 
 @router.get("/{project_id}/prd-content", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
-async def get_project_prd_content(project_id: str):
+async def get_project_prd_content(request: Request, project_id: str):
     """Read PRD file content for a project (SIP-0074 §3.5).
 
     Best-effort: returns 404 if prd_path is not configured or the file is not
@@ -41,7 +41,7 @@ async def get_project_prd_content(project_id: str):
     """
     from squadops.api.runtime.deps import get_project_registry
 
-    registry = get_project_registry()
+    registry = get_project_registry(request)
     project = await registry.get_project(project_id)
 
     if not project.prd_path:

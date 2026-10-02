@@ -64,10 +64,9 @@ def client(mock_squad_profile, mock_llm_port, monkeypatch):
     app = FastAPI()
     app.include_router(router)
     register_domain_error_handlers(app)  # as the runtime does (#576)
-    import squadops.api.runtime.deps as deps_mod
 
-    monkeypatch.setattr(deps_mod, "_squad_profile", mock_squad_profile)
-    monkeypatch.setattr(deps_mod, "_llm_port", mock_llm_port)
+    app.state.squad_profile = mock_squad_profile
+    app.state.llm_port = mock_llm_port
     return TestClient(app)
 
 

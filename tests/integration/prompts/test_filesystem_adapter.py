@@ -4,7 +4,7 @@ Integration tests for FileSystemPromptRepository adapter.
 Tests verify:
 - POSIX path mapping on macOS
 - Manifest loading and parsing
-- Hash mismatch detection
+- Hash mismatch detection against the build stamp (#353)
 - Fragment resolution with winning rule
 """
 
@@ -20,6 +20,7 @@ from squadops.prompts.exceptions import (
     HashMismatchError,
     ManifestValidationError,
 )
+from squadops.prompts.fragment_stamp import write_stamp
 from squadops.prompts.models import PromptFragment
 
 # Path to actual fragments in the repo
@@ -86,20 +87,8 @@ Lead-specific identity content.
         return FileSystemPromptRepository(base_path=tmp_path)
 
     def _create_manifest(self, base_path: Path) -> str:
-        """Create a manifest for test fragments."""
-        import hashlib
-
+        """Create a manifest for test fragments: a registry, with no hash columns (#353)."""
         import yaml
-
-        def get_hash(path: Path) -> str:
-            content = path.read_text()
-            # Extract content after header
-            import re
-
-            match = re.match(r"^---\s*\n.*?\n---\s*\n", content, re.DOTALL)
-            if match:
-                content = content[match.end() :].strip()
-            return hashlib.sha256(content.encode()).hexdigest()
 
         fragments = [
             {
@@ -107,14 +96,12 @@ Lead-specific identity content.
                 "path": "shared/identity/identity.md",
                 "layer": "identity",
                 "roles": ["*"],
-                "sha256": get_hash(base_path / "shared" / "identity" / "identity.md"),
             },
             {
                 "fragment_id": "constraints.global",
                 "path": "shared/constraints/constraints.global.md",
                 "layer": "constraints",
                 "roles": ["*"],
-                "sha256": get_hash(base_path / "shared" / "constraints" / "constraints.global.md"),
             },
         ]
 
@@ -122,7 +109,6 @@ Lead-specific identity content.
             "version": "0.8.5",
             "updated_at": "2026-01-24T00:00:00Z",
             "fragments": fragments,
-            "manifest_hash": "",
         }
 
         return yaml.dump(manifest)
@@ -198,16 +184,9 @@ Lead-specific identity content.
         computed = PromptFragment.compute_hash(fragment.content)
         assert fragment.sha256_hash == computed
 
-    def test_validate_integrity_passes(self, temp_repo):
-        """validate_integrity should pass when all hashes match."""
-        result = temp_repo.validate_integrity()
-        assert result is True
-
     def test_validate_integrity_detects_tampering(self, tmp_path):
-        """validate_integrity should detect tampered files."""
-        # Setup: Create a valid repo first
+        """validate_integrity should detect a file changed after the build stamped it."""
         (tmp_path / "shared" / "identity").mkdir(parents=True)
-
         fragment_path = tmp_path / "shared" / "identity" / "identity.md"
         fragment_path.write_text("""---
 fragment_id: identity
@@ -217,13 +196,7 @@ roles: ["*"]
 ---
 Original content.
 """)
-
-        # Create manifest with original hash
-        import hashlib
-
-        original_hash = hashlib.sha256(b"Original content.").hexdigest()
-
-        manifest_content = f"""
+        (tmp_path / "manifest.yaml").write_text("""
 version: "0.8.5"
 updated_at: "2026-01-24T00:00:00Z"
 fragments:
@@ -231,9 +204,8 @@ fragments:
     path: shared/identity/identity.md
     layer: identity
     roles: ["*"]
-    sha256: {original_hash}
-"""
-        (tmp_path / "manifest.yaml").write_text(manifest_content)
+""")
+        write_stamp(tmp_path)
 
         # Now tamper with the file
         fragment_path.write_text("""---

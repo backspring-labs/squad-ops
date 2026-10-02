@@ -219,6 +219,19 @@ UNASKABLE_REASONS: dict[str, str] = {
         "no emission retry was aimed in the window (#1372) — the appendix question presupposes "
         "a retry"
     ),
+    # The Prefect fallback (1.9.0 plan §3.3): the agents' window was read from Prefect's stored
+    # log because a rebuild had recreated a container since the cycle ran. Two kinds of line
+    # never reach that log, measured against docker on the #1697 verification's redelivery re-run.
+    "agent_lines_from_prefect": (
+        "the agents' window was read from Prefect's stored log (a container was recreated since "
+        "the cycle ran), which never carries the entrypoint's redelivery refusal — it is logged "
+        "outside any task, so the forwarder has no run to attach it to"
+    ),
+    "process_death_fault_from_prefect": (
+        "the agents' window was read from Prefect's stored log, and a declared fault ends its "
+        "process as it logs (`qa_repair_process_killed`): its APPLIED line is written as the "
+        "process dies, before the forwarder flushes, so the log holds no record of it"
+    ),
     "no_correction_decision_stored": (
         "no correction_decision.md stored — the claim is read from the decision itself (#968)"
     ),
@@ -333,6 +346,7 @@ EVIDENCE_FIELDS: dict[str, tuple[str, ...]] = {
     "loop_texture.unjoinable_refutations": _PATCH_PATH,
     "loop_texture.refunded_rounds": _PATCH_PATH,
     "loop_texture.evidence_superseded": _PATCH_PATH,
+    "loop_texture.progress_kept": _PATCH_PATH,
     # 1.8.2 item 15: any roll can hit the bound, so only an empty window leaves it unasked.
     "loop_texture.task_timeouts": ("runtime_window_empty",),
     # SIP-0096 §17a change 5: a dispute is adjudicated inside a correction round.
@@ -357,10 +371,10 @@ EVIDENCE_FIELDS: dict[str, tuple[str, ...]] = {
     "loop_texture.empty_repair_emissions": _AGENT_WINDOW,
     "loop_texture.emission_tokens_by_handler": _AGENT_WINDOW,
     "loop_texture.placeholder_strips": _AGENT_WINDOW,
-    "loop_texture.faults_applied": _AGENT_WINDOW,
+    "loop_texture.faults_applied": (*_AGENT_WINDOW, "process_death_fault_from_prefect"),
     # 1.8.2 plan §4.1: `compile-loop`'s passes and `redelivery`'s refusal, in the agents' logs.
     "loop_texture.self_eval_passes": _AGENT_WINDOW,
-    "loop_texture.redelivered_refusals": _AGENT_WINDOW,
+    "loop_texture.redelivered_refusals": (*_AGENT_WINDOW, "agent_lines_from_prefect"),
     "loop_texture.retried_with_fact": (*_AGENT_WINDOW, "no_emission_retry_aimed"),
     "loop_texture.retried_blind": (*_AGENT_WINDOW, "no_emission_retry_aimed"),
     "loop_texture.repair_revision_forms": (
@@ -370,6 +384,10 @@ EVIDENCE_FIELDS: dict[str, tuple[str, ...]] = {
     ),
     "loop_texture.self_eval_revision_forms": (*_AGENT_WINDOW, "no_self_eval_revision_form_line"),
     "loop_texture.qa_retake_revision_forms": (*_AGENT_WINDOW, "no_qa_retake_revision_form_line"),
+    # #1724: a re-take's verification (its suite line and its stored evaluation), and each
+    # self-evaluation pass that wrote a whole file.
+    "loop_texture.retake_verifications": (*_AGENT_WINDOW, "no_qa_retake_revision_form_line"),
+    "loop_texture.self_eval_file_emissions": _AGENT_WINDOW,
     # loop_texture: the Prefect server's window (its filter keeps only overrun lines, so an
     # empty window is a quiet one)
     "loop_texture.prefect_loop_overruns": (),
@@ -449,7 +467,7 @@ EVIDENCE_FIELDS: dict[str, tuple[str, ...]] = {
 #: member of these is registered and every registered field of these is produced.
 EVIDENCE_GROUPS = ("loop_texture", "typed_checks", "loaded_checks", "lineage")
 #: Record metadata that lives beside evidence fields without being one.
-_NOT_EVIDENCE = {"loop_texture.log_window"}
+_NOT_EVIDENCE = {"loop_texture.log_window", "loop_texture.log_sources"}
 
 
 def unaskable_reason(condition: str) -> str:
@@ -1323,17 +1341,58 @@ def run_state_isolation_problems(cfg: SetConfig) -> list[str]:
     # nobody would send. The executor's last act is the run's loop summary (run_completion),
     # so an ended run without one still has live work. Bounded to a day: rows older than the
     # summary table have none, and no executor outlives its tasks' bounds by that much.
-    unfinished = psql(
-        "select count(*) from cycle_runs r where r.status in ('completed','failed','cancelled') "
+    #
+    # #1714: the executor lives in the runtime-api process, so a run that started before that
+    # process did (a box halt, a rebuild over a running cycle) has no executor left to act on
+    # it and never will have a summary. It is excused, and said to be; only a run that started
+    # under the current process can be #1699's live wait. An unreadable start fails closed.
+    boot = runtime_api_started_at()
+    live = "true" if boot is None else f"r.started_at >= '{boot}'::timestamptz"
+    counts = psql(
+        f"select count(*) filter (where {live}), count(*) filter (where not ({live})) "
+        "from cycle_runs r where r.status in ('completed','failed','cancelled') "
         "and r.started_at > now() - interval '1 day' and not exists "
         "(select 1 from run_loop_summaries s where s.run_id = r.run_id);"
     )
+    unfinished, _, excused = counts.partition("|")
+    if excused and excused != "0":
+        log(
+            f"#1714: {excused} ended run(s) without a loop summary excused — they started before "
+            f"the runtime-api's current process ({boot}), so no executor is left to act on them"
+        )
     if unfinished != "0":
+        bound = (
+            f"started under the runtime-api's current process ({boot})"
+            if boot
+            else "the runtime-api's start could not be read, so none is excused (#1714)"
+        )
+        if excused and excused != "0":
+            bound += f"; {excused} earlier one(s) excused (#1714)"
         problems.append(
             f"§4.3 run-state isolation: {unfinished} run(s) ended in the registry whose executor "
-            "has not finished (no loop summary) — a live wait may still act on them (#1699)"
+            f"has not finished (no loop summary) — a live wait may still act on them (#1699); "
+            f"{bound}"
         )
     return problems
+
+
+def runtime_api_started_at() -> str | None:
+    """When the runtime-api's current process started — its container's ``State.StartedAt`` —
+    or None when docker cannot say (#1714).
+
+    That process holds every executor (``create_flow_executor`` builds the
+    ``DispatchedFlowExecutor`` in it), so no run that started before it can have a live wait.
+    Anything but a well-formed, real timestamp is None: the zero time of a container that
+    never started would excuse nothing, and a malformed one must not reach the query.
+    """
+    raw = sh(
+        f"docker inspect --format={{{{.State.StartedAt}}}} {RUNTIME_API_CONTAINER}", check=False
+    )
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z", raw) or raw.startswith(
+        "0001-"
+    ):
+        return None
+    return raw
 
 
 def arm_substrate_problems(one: SetConfig, other: SetConfig) -> list[str]:
@@ -2334,6 +2393,61 @@ def runtime_log_window(since: str, until: str | None = None) -> list[str]:
     return _runtime_lines_of_interest(docker_logs(RUNTIME_API_CONTAINER, since, until))
 
 
+#: Where a window's lines were read from (``loop_texture.log_sources``).
+LOG_SOURCE_DOCKER = "docker"
+LOG_SOURCE_PREFECT = "prefect"
+#: The faults whose APPLIED line is written as the process dies, so Prefect's stored log never
+#: holds it. Guarded against the registry's ``crash`` flag by the test.
+FAULTS_LOGGED_AT_PROCESS_DEATH = ("qa_repair_process_killed",)
+_PREFECT_LEVELS = {10: "DEBUG", 20: "INFO", 30: "WARNING", 40: "ERROR", 50: "CRITICAL"}
+
+
+def container_recreated_since(container: str, since: str) -> bool:
+    """Whether ``container`` was created after ``since`` — a rebuild recreates it, and its
+    ``docker logs`` then hold nothing from before. A restart keeps the container and its logs.
+    An unreadable creation time reads as not recreated: docker's window is then read as before."""
+    created = sh(f"docker inspect --format={{{{.Created}}}} {container}", check=False)
+    started = _as_utc_moment(since)
+    made = _as_utc_moment(created)
+    return bool(started and made and made > started)
+
+
+def _as_utc_moment(stamp: str) -> datetime | None:
+    # docker writes nanoseconds; Python parses microseconds.
+    text = re.sub(r"(\.\d{6})\d+", r"\1", (stamp or "").strip())
+    try:
+        moment = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
+
+
+def prefect_log_lines(cycle_id: str) -> list[str]:
+    """Every line Prefect stored for the cycle's flow runs, oldest first, in the shape the
+    agents' containers write (``<time> - <logger> - <LEVEL> - <message>``), so the same filters
+    and collectors read them (1.9.0 plan §3.3).
+
+    Prefect's log is durable where ``docker logs`` is not: a rebuild recreates a container and
+    its window is gone, and until now so was every texture field a record had not already taken.
+    Measured on the #1697 verification's redelivery re-run (``cyc_cfc00ce6ebd8``): 44 of 46
+    texture fields read identically from here; the two that differ are the conditions
+    ``agent_lines_from_prefect`` and ``process_death_fault_from_prefect`` name.
+    """
+    rows = psql(
+        "select coalesce(json_agg(json_build_object('t', to_char(l.timestamp at time zone 'UTC', "
+        "'YYYY-MM-DD HH24:MI:SS,MS'), 'n', l.name, 'l', l.level, 'm', l.message) "
+        "order by l.timestamp), '[]') from log l join flow_run f on f.id = l.flow_run_id "
+        f"where f.parameters->>'cycle_id' = '{cycle_id}';"
+    )
+    try:
+        stored = json.loads(rows or "[]")
+    except ValueError:
+        return []
+    return [
+        f"{r['t']} - {r['n']} - {_PREFECT_LEVELS.get(r['l'], r['l'])} - {r['m']}" for r in stored
+    ]
+
+
 #: The runtime-api lines the loop's collectors read. Every key is exercised by a sample in
 #: ``RUNTIME_MARKER_SAMPLES`` and every collector field is fed by one (#1632).
 _RUNTIME_LINE_KEYS = (
@@ -2374,6 +2488,8 @@ _RUNTIME_LINE_KEYS = (
     "task_timeout task=",
     # SIP-0096 §17a change 5: each round's disputes as the analyzer ruled them.
     "contested_rows task=",
+    # #1522: a repair kept, its retest having cleared some failures and added none.
+    "progress_kept task=",
 )
 
 
@@ -2397,6 +2513,12 @@ _AGENT_LINE_KEYS = (
     # line is its revision form in N's qa cells (1.8.2 deploy A pre-registration §3c).
     "self_eval_revision_form ",
     "qa_retake_revision_form ",
+    # #1724: a qa re-take's verification, read in the qa container's own order — its typed
+    # checks (their index names the stored evaluation), the self-evaluation trigger, and the
+    # suite run that verified the tree.
+    "typed_acceptance_check subtask=",
+    "self_eval trigger: ",
+    " suite: framework=",
     # #1588: the fault hook's own trace — APPLIED to which attempt, or declared and out of
     # scope. A seam reading that does not know whether its fault applied credited L4 on a
     # refund the dev's prose answer earned, in a cycle where no qa repair ever ran.
@@ -2655,11 +2777,24 @@ _FAULT_OUT_OF_SCOPE = re.compile(
     r"fault_injection: (?P<fault>\w+) declared for (?P<task>\S+) but this attempt is outside "
     r"its scope \((?P<scope>\w+)\)"
 )
+# #1718: the hook's third outcome — the fault ran on its target and had nothing to change. Two
+# forms (``fault_injection.inject``): the transform returned the emission unchanged, or no
+# artifact carries the shape a planted row is about.
+_FAULT_DID_NOT_BITE = re.compile(
+    r"fault_injection: DID NOT BITE (?P<fault>\w+) on task=(?P<task>\S+) handler=(?P<handler>\S+) "
+    r"— (?P<why>the emission was returned unchanged|no artifact carries the shape)"
+)
+_DID_NOT_BITE_FORM = {
+    "the emission was returned unchanged": "emission_unchanged",
+    "no artifact carries the shape": "no_shape_to_plant",
+}
+_FAULT_BUCKETS = ("applied", "out_of_scope", "did_not_bite")
 
 
 def faults_applied(lines: list[str]) -> dict[str, dict[str, list[dict]]]:
-    """Per declared fault, the attempts it was APPLIED to and the attempts it was declared
-    for but out of scope — read from the fault hook's own lines in the agents' logs (#1588).
+    """Per declared fault, the attempts it was APPLIED to, the attempts it was declared for
+    but out of scope, and the attempts it ran on and DID NOT BITE (#1718) — read from the
+    fault hook's own lines in the agents' logs (#1588).
 
     A seam reading is a claim about what the fault's application caused. Without this fact
     the own-frame diagnostic's record credited L4 on a refund that the dev's prose refusal
@@ -2667,13 +2802,17 @@ def faults_applied(lines: list[str]) -> dict[str, dict[str, list[dict]]]:
     never applied and the seam was never exercised. Pure; ``seam_readouts`` reads it.
     """
     out: dict[str, dict[str, list[dict]]] = {}
+
+    def bucket(fault: str, name: str) -> list[dict]:
+        return out.setdefault(fault, {b: [] for b in _FAULT_BUCKETS})[name]
+
     for line in lines:
         if (m := _FAULT_APPLIED.search(line)) is not None:
             # A transform reports the emission's characters; a planted row (`false-criterion`)
             # reports the evaluation's rows — `rows 0 -> 1`, which read as never applied until
             # deploy A's d2 (pre-registration §11c).
             unit = m.group("unit")
-            out.setdefault(m.group("fault"), {"applied": [], "out_of_scope": []})["applied"].append(
+            bucket(m.group("fault"), "applied").append(
                 {
                     "task": m.group("task"),
                     "handler": m.group("handler"),
@@ -2683,9 +2822,17 @@ def faults_applied(lines: list[str]) -> dict[str, dict[str, list[dict]]]:
                 }
             )
         elif (m := _FAULT_OUT_OF_SCOPE.search(line)) is not None:
-            out.setdefault(m.group("fault"), {"applied": [], "out_of_scope": []})[
-                "out_of_scope"
-            ].append({"task": m.group("task"), "scope": m.group("scope")})
+            bucket(m.group("fault"), "out_of_scope").append(
+                {"task": m.group("task"), "scope": m.group("scope")}
+            )
+        elif (m := _FAULT_DID_NOT_BITE.search(line)) is not None:
+            bucket(m.group("fault"), "did_not_bite").append(
+                {
+                    "task": m.group("task"),
+                    "handler": m.group("handler"),
+                    "form": _DID_NOT_BITE_FORM[m.group("why")],
+                }
+            )
     return out
 
 
@@ -2733,9 +2880,25 @@ def correction_entered(logs: Sequence[str], correction_rounds: int | None) -> bo
 #: be sound (delegating helpers, regex markers, implicit concatenation, format substitution):
 #: it passed while #1631 was live. Running the real filter and the real collector on the
 #: emitter's real line has none of those holes.
+class FilterOnly(str):
+    """A marker sample kept so its window's filter key is exercised, whose effect on its field
+    is a join the sample set cannot show on its own — declared with the reason, and exempt
+    from #1696's every-line-counts check. The exemption is visible where the line is, the way
+    ``RUNTIME_FIELDS_NOT_LOGGED_HERE`` declares a field no line can feed."""
+
+    why: str
+
+    def __new__(cls, line: str, *, why: str) -> FilterOnly:
+        sample = super().__new__(cls, line)
+        sample.why = why
+        return sample
+
+
 RUNTIME_MARKER_SAMPLES: dict[str, tuple[str, ...]] = {
     # Real: deploy A's `redelivery`, cyc_8176207ea2f3 — one id, two dispatches (#1697); and a
-    # retest's dispatch from deploy B″ (1.8.1, 2026-09-23), the other key's form.
+    # retest's dispatch from deploy B″ (1.8.1, 2026-09-23), the other key's form. The retest
+    # form's second dispatch is rendered: one dispatch is never a repeat, so a lone retest line
+    # could not show the form is read (#1696).
     "repeated_round_ids": (
         "2026-09-25 16:46:44,393 INFO adapters.cycles.task_dispatcher: Dispatched task "
         "repair-run_f10f98e6-00-qa.test_repair (qa.test_repair) to eve_comms, awaiting reply "
@@ -2744,6 +2907,8 @@ RUNTIME_MARKER_SAMPLES: dict[str, tuple[str, ...]] = {
         "repair-run_f10f98e6-00-qa.test_repair (qa.test_repair) to eve_comms, awaiting reply "
         "on eve_replies",
         "2026-09-23 13:45:11,223 INFO adapters.cycles.task_dispatcher: Dispatched task "
+        "retest-run_c2103c7f-00-qa.test (qa.test) to eve_comms, awaiting reply on eve_replies",
+        "2026-09-23 13:52:40,000 INFO adapters.cycles.task_dispatcher: Dispatched task "
         "retest-run_c2103c7f-00-qa.test (qa.test) to eve_comms, awaiting reply on eve_replies",
     ),
     "narrowed_targets": (
@@ -2772,9 +2937,14 @@ RUNTIME_MARKER_SAMPLES: dict[str, tuple[str, ...]] = {
         "task=task-run_3aff38c4-m004-development.develop task_type=development.develop "
         "status=unverifiable reason=no_executed_blocking_checks checks=0 failed=- "
         "decided_by_agent=0 agent_rows=0 agent_executed=0 skips=missing_tooling:2",
-        "2026-09-23 12:47:34,637 INFO adapters.cycles.task_dispatcher: Dispatched task "
-        "task-run_3aff38c4-m004-development.develop (development.develop) to neo_comms, "
-        "awaiting reply on neo_replies",
+        FilterOnly(
+            "2026-09-23 12:47:34,637 INFO adapters.cycles.task_dispatcher: Dispatched task "
+            "task-run_3aff38c4-m004-development.develop (development.develop) to neo_comms, "
+            "awaiting reply on neo_replies",
+            why="the re-dispatch refuses an unverifiable patch at once, but one no retest "
+            "claims is refused at the window's end either way — the line changes this reading "
+            "only when a retest of the same task follows it",
+        ),
     ),
     "patch_verifications": (
         "2026-09-23 13:45:11,184 INFO adapters.cycles.patch_acceptance: patch_verification "
@@ -2827,15 +2997,28 @@ RUNTIME_MARKER_SAMPLES: dict[str, tuple[str, ...]] = {
         "2026-09-21 02:35:02,717 WARNING adapters.cycles.dispatched_flow_executor: correction "
         "attempt 0 refunded: the repair emitted no content (signature unreported), so the round "
         "is re-taken rather than spent (refund 1 of 3, #1053/#998)",
+        # Real: the #1697 verification's `redelivery` re-run, cyc_cfc00ce6ebd8 — the form every
+        # refund takes since #1697, which this collector read as none until it was sampled.
+        "2026-09-29 18:32:11,452 WARNING adapters.cycles.dispatched_flow_executor: correction "
+        "attempt 0 refunded (round s01): the repair emitted no content (signature unreported), "
+        "so the round is re-taken rather than spent (refund 2 of 3, #1053/#998)",
+    ),
+    # Rendered: #1522 is new, so no deploy has emitted it. The line is the format string in
+    # `PatchAcceptance._keep_progress`, filled by the real `retest_reduction` and
+    # `render_signature` over a three-to-one reduction.
+    "progress_kept": (
+        "2026-09-30 09:00:00,000 INFO adapters.cycles.patch_acceptance: progress_kept task=task"
+        "-run_b6a8121c-m006-qa.test round=0 failing_before=3 failing_after=1 cleared=tests_pass"
+        "|frontend/src/__tests__/runViews.test.jsx|failed;runner=vitest;exit=1;test=renders the"
+        " list; tests_pass|frontend/src/__tests__/runViews.test.jsx|failed;runner=vitest;exit=1"
+        ";test=shows the join error persisted_revision_id=57ed944cf457ad772da339b65a9404e42a0c5"
+        "cb4ed2e4dd7f2d34cad73bfd4a1 (#1522)",
     ),
     "evidence_superseded": (
         "2026-09-23 13:45:20,213 INFO adapters.cycles.patch_acceptance: patch "
         "task=task-run_c2103c7f-m006-qa.test failed-attempt evidence superseded: "
         "replaced=test_report.md dropped=typed_check_evaluation_task_6.json (retest=yes) "
         "(#1111/#1318)",
-        "2026-09-23 13:45:20,213 INFO adapters.cycles.patch_acceptance: patch_retest "
-        "task=task-run_c2103c7f-m006-qa.test status=SUCCEEDED passed=True reason=Repaired suite "
-        "passed",
     ),
     "qa_owned_routed": (
         "2026-09-23 20:46:40,636 INFO adapters.cycles.correction_repair: correction_repair_locus: "
@@ -2956,6 +3139,45 @@ AGENT_MARKER_SAMPLES: dict[str, tuple[str, ...]] = {
         "path placeholder: 'path/backend/tests/test_runs.py' emitted under the example's literal "
         "'path/' segment; stripped to 'backend/tests/test_runs.py', which the task expects (#1272)",
     ),
+    # Real: A′'s `own-frame-then-prose-repair-nextjs`, cyc_96656c0e48be (eve), 2026-09-28 — the
+    # re-take, the two checks that failed on it, the pass they triggered (it re-emitted the
+    # offered, unedited suite), and the suite run that verified the tree (#1724).
+    "retake_verifications": (
+        "2026-09-28 12:36:47,305 - squadops.capabilities.handlers.cycle.qa_test - INFO - qa_retak"
+        'e_revision_form {"accepted": true, "edited": ["__tests__/runs-api.test.ts"], "failure_re'
+        'ason": null, "fills": 0, "form": "edits", "fragment_anchors": 0, "handler": "qa_test_han'
+        'dler", "modes": ["anchored"], "new_files": [], "offered": {"__tests__/participants.test.'
+        'ts": 9, "__tests__/runs-api.test.ts": 7}, "refusals": 0, "replaced": {"__tests__/runs-ap'
+        'i.test.ts": {"chars": 67, "of": 6557, "pct": 1}}, "retried": false, "task_type": "qa.tes'
+        't", "whole_file_offered": [], "whole_file_unoffered": []}',
+        "2026-09-28 12:36:47,316 - squadops.capabilities.handlers.cycle.base - INFO - typed_accep"
+        "tance_check subtask=4 check=assertion_kinds_match severity=error status=failed blocking="
+        "True reason=file_not_found",
+        "2026-09-28 12:36:47,317 - squadops.capabilities.handlers.cycle.base - INFO - typed_accep"
+        "tance_check subtask=4 check=dom_anchor_queries severity=error status=failed blocking=Tru"
+        "e reason=file_not_found",
+        "2026-09-28 12:36:48,081 - squadops.capabilities.handlers.cycle.qa_test - INFO - qa_test_"
+        "handler self_eval trigger: failing_checks=['expected_artifacts', 'acceptance:assertion_k"
+        "inds_match', 'acceptance:dom_anchor_queries'] missing=['file:__tests__/participants.test"
+        ".ts', 'acceptance:assertion_kinds_match', 'acceptance:dom_anchor_queries'] summary='Miss"
+        "ing: file:__tests__/participants.test.ts, acceptance:assertion_kinds_match, acceptance:d"
+        "om_anchor_queries; Typed checks failed: 2 of 40'",
+        "2026-09-28 12:37:53,271 - squadops.capabilities.handlers.emission_log - INFO - qa_test_h"
+        "andler:self_eval emission shape: chars=6972 completion_tokens=2115 reasoning_chars=743 f"
+        "ences={'fill': 0, 'path': 1, 'plain': 0} head=\"```typescript:__tests__/participants.test"
+        ".ts import { beforeEach, describe, expect, it } from 'vitest' import { reset, all, TABLE"
+        "S } from '@/lib/store' import *\"",
+        "2026-09-28 12:38:11,749 - squadops.capabilities.handlers.cycle.qa_test - INFO - qa_test_"
+        "handler suite: framework=vitest executed=True exit_code=0 tests_passed=True test_files=1"
+        "0 source_files=17 uncollected=[] error=''",
+    ),
+    "self_eval_file_emissions": (
+        "2026-09-28 12:37:53,271 - squadops.capabilities.handlers.emission_log - INFO - qa_test_h"
+        "andler:self_eval emission shape: chars=6972 completion_tokens=2115 reasoning_chars=743 f"
+        "ences={'fill': 0, 'path': 1, 'plain': 0} head=\"```typescript:__tests__/participants.test"
+        ".ts import { beforeEach, describe, expect, it } from 'vitest' import { reset, all, TABLE"
+        "S } from '@/lib/store' import *\"",
+    ),
     "faults_applied": (
         "2026-09-21 05:41:41,684 - squadops.capabilities.handlers.fault_injection - WARNING - "
         "fault_injection: APPLIED dev_join_response_omits_declared_fields to "
@@ -2966,6 +3188,15 @@ AGENT_MARKER_SAMPLES: dict[str, tuple[str, ...]] = {
         "fault_injection: APPLIED false_criterion_alias_import to "
         "task=task-run_27462d5a-m000-development.develop handler=development_develop_handler "
         "rows 0 -> 1 scope=first_attempt (found_in=#1580)",
+        # Real: A′'s `dev-lane-fastapi-react` run 1, cyc_25a7a6ad8ebd (neo) — the unbitten form
+        # the driver dropped until #1718.
+        "2026-09-28 15:12:03,429 - squadops.capabilities.handlers.fault_injection - WARNING - "
+        "fault_injection: DID NOT BITE dev_join_response_omits_declared_fields on "
+        "task=task-run_d2b1a457-m000-development.develop handler=development_develop_handler — "
+        "the emission was returned unchanged (3688 chars), so the downstream path runs as if no "
+        "fault were declared. THIS DIAGNOSTIC PROVES NOTHING about the dev lane: a probe failure "
+        "on a developer-owned route is repaired by a development repair aimed at the probe-owned "
+        "slot, verified and applied.",
     ),
 }
 AGENT_SAMPLE_ALIASES: dict[str, str] = {
@@ -3008,11 +3239,30 @@ def marker_self_check_problems() -> list[str]:
                     f"#1632: the {window} filter drops {name}'s marker line — the field can "
                     f"never read YES: {dropped[0][:140]!r}"
                 )
-            elif read(kept).get(name) == empty.get(name):
+                continue
+            full = read(kept).get(name)
+            if full == empty.get(name):
                 problems.append(
                     f"#1632: {name}'s {window} sample survives the filter and feeds nothing — "
                     "the collector no longer reads the line its emitter writes"
                 )
+                continue
+            # #1696: every line must count. Read together, one line's reading hid another's
+            # unread form — `faults_applied`'s `rows` line went unparsed while its `chars`
+            # line kept the field fed, and this check passed. Leave-one-out rather than each
+            # line alone, because some fields are joins (a repeated id needs both dispatches).
+            # An alias reads samples written for its source field, so only the source is held
+            # to this.
+            if name != source:
+                continue
+            for i, line in enumerate(lines):
+                if isinstance(line, FilterOnly):
+                    continue
+                if read(keep(lines[:i] + lines[i + 1 :])).get(name) == full:
+                    problems.append(
+                        f"#1696: {name}'s {window} sample line adds nothing to the reading — an "
+                        f"unread form or a dead sample: {line[:140]!r}"
+                    )
     for marker in _CORRECTION_MARKERS:
         lines = [line for sample in RUNTIME_MARKER_SAMPLES.values() for line in sample]
         carrying = [line for line in _runtime_lines_of_interest(lines) if marker in line]
@@ -3034,10 +3284,34 @@ def loop_texture(
     correction_rounds: int | None = None,
     correction_decisions: int | None = None,
 ) -> dict:
-    raw = docker_logs(RUNTIME_API_CONTAINER, since, until)
+    # 1.9.0 plan §3.3: a window a rebuild took is read from Prefect's stored log instead — docker
+    # first while its container still holds the window, because two kinds of line never reach
+    # Prefect (the conditions say which).
+    services = set_agent_services(cfg)
+    sources = {
+        "runtime-api": LOG_SOURCE_PREFECT
+        if container_recreated_since(RUNTIME_API_CONTAINER, since)
+        else LOG_SOURCE_DOCKER,
+        "agents": LOG_SOURCE_PREFECT
+        if any(container_recreated_since(f"squadops-{s}", since) for s in services)
+        else LOG_SOURCE_DOCKER,
+    }
+    stored = prefect_log_lines(cycle_id) if LOG_SOURCE_PREFECT in sources.values() else []
+    raw = (
+        stored
+        if sources["runtime-api"] == LOG_SOURCE_PREFECT
+        else docker_logs(RUNTIME_API_CONTAINER, since, until)
+    )
     logs = _runtime_lines_of_interest(raw)
     out = texture_from_logs(logs)
-    out.update(texture_from_agent_lines(agent_log_window(since, until, set_agent_services(cfg))))
+    out.update(
+        texture_from_agent_lines(
+            _agent_lines_of_interest(stored)
+            if sources["agents"] == LOG_SOURCE_PREFECT
+            else agent_log_window(since, until, services)
+        )
+    )
+    out["log_sources"] = sources
     # #330: the Prefect server's loop-service overruns in this cycle's window.
     out["prefect_loop_overruns"] = prefect_loop_overruns(prefect_log_window(since, until))
     out["log_window"] = {"since": since, "until": until}
@@ -3054,6 +3328,11 @@ def loop_texture(
     out["fill_rejections"] = rejections or []
     # #999: the qa task's fill-merge evidence, persisted as an artifact and read from it.
     out["fill_merge_evidence"] = fill_merge_evidence(cfg, cycle_id, impl_run) if impl_run else []
+    # #1724: each re-take joined to the evaluation its task stored after it.
+    out["retake_verifications"] = join_retake_evaluations(
+        index_retakes_by_dispatch(out["retake_verifications"], logs),
+        stored_task_evaluations(cfg, cycle_id, impl_run) if impl_run else {},
+    )
     # #1540: suites the runner never collected — non-execution with no row anywhere else.
     uncollected = uncollected_suites(cfg, cycle_id, impl_run) if impl_run else None
     out["uncollected_suites"] = uncollected or []
@@ -3077,6 +3356,9 @@ def loop_texture(
         "runtime_window_empty": len(raw) == 0,
         "no_correction_round": not correction_entered(logs, correction_rounds),
         "no_emission_shape_lines": out["emissions_logged"] == 0,
+        "agent_lines_from_prefect": sources["agents"] == LOG_SOURCE_PREFECT,
+        "process_death_fault_from_prefect": sources["agents"] == LOG_SOURCE_PREFECT
+        and any(f in FAULTS_LOGGED_AT_PROCESS_DEATH for f in declared_fault_names(cfg.overrides)),
         "no_emission_retry_aimed": len(out["emission_retries"]) == 0,
         "no_repair_revision_form_line": len(out["repair_revision_forms"]) == 0,
         "no_self_eval_revision_form_line": len(out["self_eval_revision_forms"]) == 0,
@@ -3366,6 +3648,36 @@ def _out_of_scope_attempts(rec: Mapping[str, Any], fault: str) -> list[dict]:
     return list((by_fault.get(fault) or {}).get("out_of_scope") or [])
 
 
+def _unbitten_attempts(rec: Mapping[str, Any], fault: str) -> list[dict]:
+    """The attempts ``fault`` ran on and could not change (#1718); empty for a record that
+    predates the bucket, which then reads as it always did."""
+    by_fault = value_at(rec, "loop_texture.faults_applied", {}) or {}
+    return list((by_fault.get(fault) or {}).get("did_not_bite") or [])
+
+
+def _never_applied_reason(rec: Mapping[str, Any], fault: str) -> str:
+    """Why a declared fault exercised nothing, in the terms that decide the next step (#1718).
+
+    "It ran and had nothing to change" points at the transform against this model's output;
+    "outside its scope" at the scope rule; "no attempt ran" at scheduling. They were one
+    sentence until A′'s dev-lane run 1 spent its second run on the wrong question.
+    """
+
+    def tasks(attempts: list[dict]) -> str:
+        return ", ".join(sorted({str(a.get("task")) for a in attempts}))
+
+    parts = []
+    if unbitten := _unbitten_attempts(rec, fault):
+        forms = sorted({str(a.get("form")) for a in unbitten})
+        parts.append(
+            f"declared for {tasks(unbitten)}, each attempt ran, and the fault found nothing to "
+            f"change (DID NOT BITE: {', '.join(forms)})"
+        )
+    if out_of_scope := _out_of_scope_attempts(rec, fault):
+        parts.append(f"declared for {tasks(out_of_scope)} but every attempt was outside its scope")
+    return "; ".join(parts) or "no attempt of its target task ran"
+
+
 def _lines_naming_applied_tasks(lines: list[str], rec: Mapping[str, Any], fault: str) -> list[str]:
     """The lines about a task the fault was applied to. When the record cannot say which
     (it predates the field, or the fault never applied) every line is kept — the applied
@@ -3376,8 +3688,13 @@ def _lines_naming_applied_tasks(lines: list[str], rec: Mapping[str, Any], fault:
     return [line for line in lines if any(task in line for task in ids)]
 
 
-_REPAIR_ROUND = re.compile(r"^repair-run_[0-9a-f]+-(?P<round>\d+)-")
-_REFUND_ATTEMPT = re.compile(r"correction attempt (?P<attempt>\d+) refunded")
+#: #1697: a repair id carries the round index and, from 1.9, the run's round sequence
+#: (``repair-run_x-00-s01-…``); a refund line carries both (``… refunded (round s01)``). Records
+#: from before it carry the index alone, and are read as they always were.
+_REPAIR_ROUND = re.compile(r"^repair-run_[0-9a-f]+-(?P<round>\d+)-(?:s(?P<seq>\d+)-)?")
+_REFUND_ATTEMPT = re.compile(
+    r"correction attempt (?P<attempt>\d+) refunded(?: \(round s(?P<seq>\d+)\))?"
+)
 
 
 def _qa_suite_absent_reading(rec: Mapping[str, Any]) -> tuple[bool, dict[str, Any]]:
@@ -3398,11 +3715,24 @@ def _repair_prose_only_reading(rec: Mapping[str, Any]) -> tuple[bool | None, lis
     own-frame diagnostic's run 1 carried a refund of the dev's prose answer in a cycle where
     the fault's target never ran; read without the join, that was L4 reached."""
     refunds = list(value_at(rec, "loop_texture.refunded_rounds", []) or [])
-    rounds = {
-        int(m.group("round"))
+    matches = [
+        m
         for a in (_applied_attempts(rec, "repair_prose_only") or [])
         if (m := _REPAIR_ROUND.match(str(a.get("task") or ""))) is not None
-    }
+    ]
+    # #1697, from 1.9: the faulted repairs carry the run's round sequence, so each refund joins
+    # its own round exactly — (index, sequence) — even where a refund re-took the index.
+    if matches and all(m.group("seq") is not None for m in matches):
+        keyed = {(int(m.group("round")), int(m.group("seq"))) for m in matches}
+        refunds = [
+            r
+            for r in refunds
+            if (m := _REFUND_ATTEMPT.search(r)) is not None
+            and m.group("seq") is not None
+            and (int(m.group("attempt")), int(m.group("seq"))) in keyed
+        ]
+        return bool(refunds), refunds
+    rounds = {int(m.group("round")) for m in matches}
     # #1697: a round index two dispatches share cannot say whose refund a line is — UNASKABLE,
     # never a YES credited on the other repair's refund.
     if rounds & repeated_round_indices(value_at(rec, "loop_texture.repeated_round_ids", [])):
@@ -3453,17 +3783,9 @@ def seam_readouts(faults, rec: dict) -> dict[str, dict]:
                 "stands on the seam's evidence alone"
             )
         elif not applied:
-            out_of_scope = _out_of_scope_attempts(rec, name)
             unaskable["loop_texture.faults_applied"] = (
-                "the fault never applied — "
-                + (
-                    "declared for "
-                    + ", ".join(sorted({str(a.get("task")) for a in out_of_scope}))
-                    + " but every attempt was outside its scope"
-                    if out_of_scope
-                    else "no attempt of its target task ran"
-                )
-                + "; the seam was not exercised, so this is neither YES nor NO (#1588)"
+                f"the fault never applied — {_never_applied_reason(rec, name)}; the seam was "
+                "not exercised, so this is neither YES nor NO (#1588)"
             )
             state = None
         out[name] = {
@@ -3746,6 +4068,9 @@ def texture_from_agent_lines(agent_lines: list[str]) -> dict:
     out["repair_revision_forms"] = repair_revision_forms(agent_lines)
     out["self_eval_revision_forms"] = revision_forms(agent_lines, _SELF_EVAL_FORM_MARKER)
     out["qa_retake_revision_forms"] = revision_forms(agent_lines, _QA_RETAKE_FORM_MARKER)
+    # #1724: each re-take's verification, and each pass that wrote a whole file.
+    out["retake_verifications"] = retake_verifications(agent_lines)
+    out["self_eval_file_emissions"] = self_eval_file_emissions(agent_lines)
     # #1311: L8a — the model emitted under the placeholder and the extractor repaired it
     # (read from the agent's log, the only place it is visible).
     out["placeholder_strips"] = placeholder_strips(agent_lines)
@@ -3829,6 +4154,235 @@ def revision_forms(agent_lines: list[str], form_marker: str) -> list[dict]:
     return forms
 
 
+_SELF_EVAL_TRIGGER = re.compile(r"self_eval trigger: failing_checks=\[(?P<checks>[^\]]*)\]")
+_SUITE_RUN = re.compile(
+    r"(?P<handler>\w+) suite: framework=(?P<framework>\S+) executed=(?P<executed>\w+) "
+    r"exit_code=(?P<exit_code>\S+) tests_passed=(?P<tests_passed>\w+)"
+)
+#: The first path a whole-file emission names, off its shape line's ``head`` (a path fence
+#: opens ```` ```<lang>:<path> ````).
+_HEAD_FENCE_PATH = re.compile(r'head="```[\w+#.-]*:(?P<path>[^\s"]+)')
+
+
+def _agent_line_time(line: str) -> str | None:
+    """An agent log line's own timestamp, as UTC ISO (the containers log UTC)."""
+    match = re.match(r"(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}),(\d{3})", line)
+    return f"{match[1]}T{match[2]}.{match[3]}+00:00" if match else None
+
+
+def _whole_file_emission(line: str) -> dict | None:
+    """A self-evaluation pass's emission, when it writes whole files (path or plain fences)."""
+    shapes = emission_shapes([line]) if _SELF_EVAL_SHAPE.search(line) else []
+    if not shapes:
+        return None
+    fences = shapes[0]["fences"]
+    if not (fences.get("path", 0) or fences.get("plain", 0)):
+        return None
+    head = _HEAD_FENCE_PATH.search(line)
+    return {
+        "handler": shapes[0]["handler"].removesuffix(":self_eval"),
+        "at": _agent_line_time(line),
+        "chars": shapes[0]["chars"],
+        "path_fences": fences.get("path", 0),
+        "plain_fences": fences.get("plain", 0),
+        "first_path": head.group("path") if head else None,
+    }
+
+
+def self_eval_file_emissions(agent_lines: list[str]) -> list[dict]:
+    """Every self-evaluation pass whose emission adds or re-emits whole files — pure (#1724).
+
+    A pass offered the edit form logs a ``self_eval_revision_form``; a pass that writes a file
+    logged nothing but its emission shape, so a record could not show that a verified tree was
+    a task's own emission plus a file a pass supplied. The shape names the fences it carried and
+    its head names the first path; which files beyond the first is not logged anywhere.
+    """
+    return [e for line in agent_lines if (e := _whole_file_emission(line)) is not None]
+
+
+def retake_verifications(agent_lines: list[str]) -> list[dict]:
+    """Each qa re-take and what verified it, read in the qa container's own order — pure (#1724).
+
+    The re-take's revision form was recorded and its verification was not: it completes on the
+    ordinary task path, where no patch verification or identity line is written. So each
+    ``qa_retake_revision_form`` line opens an episode that collects what followed it in that
+    container: the typed checks that failed on the re-take (their ``subtask`` is the task index
+    its stored evaluation is filed under), the self-evaluation pass they triggered and any file
+    it wrote, and the suite run. The suite line closes the episode; the next task's emission, or
+    another re-take, closes it without one, and ``suite`` stays None — a re-take whose suite
+    never ran is a reading, not a gap. The stored evaluation is joined in ``loop_texture``.
+    """
+    episodes: list[dict] = []
+    current: dict | None = None
+    for line in agent_lines:
+        _, marker, payload = line.partition(_QA_RETAKE_FORM_MARKER)
+        if marker:
+            if current is not None:
+                episodes.append(current)
+            current = _open_retake(line, payload)
+        elif current is not None and _fold_into_retake(current, line):
+            episodes.append(current)
+            current = None
+    if current is not None:
+        episodes.append(current)
+    return episodes
+
+
+def _open_retake(line: str, payload: str) -> dict:
+    try:
+        form = json.loads(payload)
+    except ValueError:
+        form = {"unparsed": line.strip()}
+    return {
+        "at": _agent_line_time(line),
+        "task_type": form.get("task_type"),
+        "form": form.get("form"),
+        "accepted": form.get("accepted"),
+        "edited": list(form.get("edited") or []),
+        "new_files": list(form.get("new_files") or []),
+        "offered": sorted(form.get("offered") or {}),
+        "task_index": None,
+        "task_index_from": None,
+        "failed_on_retake": [],
+        "self_eval_trigger": None,
+        "self_eval_emissions": [],
+        "suite": None,
+    }
+
+
+def _fold_into_retake(episode: dict, line: str) -> bool:
+    """One qa-container line into an open re-take; True when the line closes it — its suite
+    run, or the next task's emission (no suite ran for this one)."""
+    if _EMISSION_SHAPE.search(line) and not _SELF_EVAL_SHAPE.search(line):
+        return True
+    if "typed_acceptance_check subtask=" in line:
+        if episode["task_index"] is None:
+            episode["task_index"] = _int_or_none(_field(line, "subtask"))
+            episode["task_index_from"] = "typed_check_line"
+        if episode["self_eval_trigger"] is None and _field(line, "status") == "failed":
+            episode["failed_on_retake"].append(_field(line, "check"))
+    elif (m := _SELF_EVAL_TRIGGER.search(line)) is not None:
+        episode["self_eval_trigger"] = re.findall(r"'([^']+)'", m.group("checks"))
+    elif (emission := _whole_file_emission(line)) is not None:
+        path = emission["first_path"]
+        emission["re_emits_offered"] = None if path is None else path in episode["offered"]
+        episode["self_eval_emissions"].append(emission)
+    elif (m := _SUITE_RUN.search(line)) is not None:
+        episode["suite"] = {
+            "framework": m.group("framework"),
+            "executed": m.group("executed") == "True",
+            "exit_code": _int_or_none(m.group("exit_code")),
+            "tests_passed": m.group("tests_passed") == "True",
+        }
+        return True
+    return False
+
+
+#: A plan task's dispatch in the runtime-api window: its index and type off the id.
+_TASK_DISPATCH = re.compile(r"Dispatched task task-run_[0-9a-f]+-m(?P<index>\d+)-(?P<type>\S+) ")
+
+
+def index_retakes_by_dispatch(episodes: list[dict], runtime_logs: list[str]) -> list[dict]:
+    """A re-take's task index, read from its own dispatch when its typed-check lines named none.
+
+    The agent logs a ``typed_acceptance_check`` line only for a check that did not pass, so a
+    re-take whose checks all passed names no index — on A′, four of six. The re-take is the
+    re-dispatch of its task, and the executor dispatches plan tasks one at a time, so the last
+    dispatch of the re-take's own task type before its form line is its dispatch.
+    """
+    dispatches = [
+        (_as_utc(_agent_line_time(line)), int(m.group("index")), m.group("type"))
+        for line in runtime_logs
+        if (m := _TASK_DISPATCH.search(line)) is not None
+    ]
+    indexed = []
+    for episode in episodes:
+        episode = dict(episode)
+        at = _as_utc(episode.get("at"))
+        if episode.get("task_index") is None and at is not None:
+            before = [
+                index
+                for when, index, task_type in dispatches
+                if when is not None and when <= at and task_type == episode.get("task_type")
+            ]
+            if before:
+                episode["task_index"] = before[-1]
+                episode["task_index_from"] = "dispatch"
+        indexed.append(episode)
+    return indexed
+
+
+def stored_task_evaluations(cfg: SetConfig, cycle_id: str, run_id: str) -> dict[int, list[dict]]:
+    """Every stored typed-check evaluation, by task index, oldest first (#1724).
+
+    A task evaluated twice (a failed attempt, then its re-take) stores two
+    ``typed_check_evaluation_task_<N>.json`` artifacts; ``created_at`` orders them.
+    ``workspace_revision_id`` is the ACCEPTED WORKSPACE the task started from — the executor
+    cuts it at dispatch (``dispatched_flow_executor``, #734 Slice A) — so both attempts carry
+    the same id, and the tree the checks actually ran on is that revision plus the task's own
+    emission. Whether what was verified is what persisted is #1727's question, not this id's.
+    """
+    by_index: dict[int, list[dict]] = {}
+    for art in artifact_dirs(cfg, cycle_id, run_id):
+        meta = _metadata(art) or {}
+        for path in art.glob("typed_check_evaluation_*.json"):
+            try:
+                doc = json.loads(path.read_text())
+            except (OSError, ValueError):
+                continue
+            index = _int_or_none(doc.get("task_index"))
+            if index is None:
+                continue
+            rows = doc.get("evaluations") or []
+            by_index.setdefault(index, []).append(
+                {
+                    "artifact_id": meta.get("artifact_id") or art.name,
+                    "created_at": str(meta.get("created_at") or ""),
+                    "workspace_revision_id": doc.get("workspace_revision_id"),
+                    "statuses": _count_by(str(r.get("status") or "?") for r in rows),
+                    "failed_checks": sorted(
+                        str(r.get("check")) for r in rows if r.get("status") == "failed"
+                    ),
+                }
+            )
+    for evaluations in by_index.values():
+        evaluations.sort(key=lambda e: _as_utc(e["created_at"]) or datetime.min.replace(tzinfo=UTC))
+    return by_index
+
+
+def _as_utc(stamp: str | None) -> datetime | None:
+    try:
+        return datetime.fromisoformat(stamp) if stamp else None
+    except ValueError:
+        return None
+
+
+def join_retake_evaluations(
+    episodes: list[dict], evaluations: Mapping[int, list[dict]]
+) -> list[dict]:
+    """Each re-take with the first evaluation of its task stored after it — its final one
+    (#1724). The reason is named when there is none, so a missing verification reads as a
+    fact about the run rather than an empty field."""
+    joined = []
+    for episode in episodes:
+        episode = dict(episode)
+        index, at = episode.get("task_index"), _as_utc(episode.get("at"))
+        after = [
+            e
+            for e in evaluations.get(index, [])
+            if at is None or (_as_utc(e["created_at"]) or at) >= at
+        ]
+        episode["final_evaluation"] = after[0] if after else None
+        if not after:
+            episode["final_evaluation_reason"] = (
+                "neither a typed-check line nor a dispatch named the re-take's task index"
+                if index is None
+                else f"no evaluation of task {index} was stored after the re-take"
+            )
+        joined.append(episode)
+    return joined
+
+
 def _int_or_none(value) -> int | None:
     try:
         return int(value)
@@ -3867,6 +4421,12 @@ def emission_tokens_by_handler(shapes: list[dict]) -> dict[str, dict]:
                 continue
             row[field_name] += value
     return dict(sorted(out.items()))
+
+
+#: A refund's own line, in both forms: ``… refunded: the repair emitted no content`` and, since
+#: #1697, ``… refunded (round s01): the repair emitted no content``. The collector matched the
+#: first literally, so on the first deploy carrying #1697 every refund read as none.
+_REFUND_LINE = re.compile(r"refunded(?: \(round s\d+\))?: the repair emitted no content")
 
 
 def texture_from_logs(logs: list[str]) -> dict:
@@ -4006,12 +4566,18 @@ def texture_from_logs(logs: list[str]) -> dict:
         # refunded round 0 exactly as predicted and the readout, wired to the wrong field,
         # read L4 as not reached.
         "refunded_rounds": [
-            _fact(line, "correction attempt")
-            for line in logs
-            if "refunded: the repair emitted no content" in line
+            _fact(line, "correction attempt") for line in logs if _REFUND_LINE.search(line)
         ],
         "evidence_superseded": [
             _fact(line, "patch_retest task=") for line in logs if "evidence superseded" in line
+        ],
+        # #1522: every repair kept, with the round's failure count before and its
+        # retest's after, and what it cleared. The executor's own line for the same keep (the
+        # re-derived workspace) carries no counts and is not a second keep.
+        "progress_kept": [
+            _fact(line, "progress_kept task=")
+            for line in logs
+            if "progress_kept task=" in line and " failing_before=" in line
         ],
         # 1.8.2 item 15: every task the orchestrator failed because its declared wait ran out.
         "task_timeouts": [
@@ -4279,9 +4845,18 @@ def _stale_evaluations(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[dic
 # The retest readout (1.8.2 plan §3.2 item 1): where a retested patch still fails
 # ---------------------------------------------------------------------------
 
-#: A retest's own report and a repair's own artifacts, joined by the round index they carry.
-_RETEST_TASK = re.compile(r"^retest-run_[0-9a-f]+-(\d+)-")
-_REPAIR_TASK = re.compile(r"^repair-run_[0-9a-f]+-(\d+)-")
+#: A retest's own report and a repair's own artifacts, joined by the round they carry: the index,
+#: and since #1697 the run's round sequence (``-00-s01-``). Rounds that share an index — a refunded
+#: round and the one that re-takes it — are distinct rounds; an id without a sequence reads as before.
+_RETEST_TASK = re.compile(r"^retest-run_[0-9a-f]+-(\d+)-(?:s(\d+)-)?")
+_REPAIR_TASK = re.compile(r"^repair-run_[0-9a-f]+-(\d+)-(?:s(\d+)-)?")
+
+
+def _round_key(match: re.Match[str]) -> tuple[int, int | None]:
+    """A round's identity off its task id: ``(index, sequence)``, the sequence None before #1697."""
+    return int(match.group(1)), int(match.group(2)) if match.group(2) else None
+
+
 #: pytest --tb=short: a failure block's header, a repo frame (relative, so site-packages and
 #: the interpreter's own frames never count), and the short summary's node id.
 _PYTEST_HEADER = re.compile(r"^_{3,} (?:ERROR collecting )?(\S.*?) _{3,}$")
@@ -4465,14 +5040,17 @@ def retest_readout(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[dict]:
     region is the diff of each repaired file against its last stored version.
     """
     versions = _vault_versions(cfg, cycle_id, impl_run)
-    rounds: dict[int, dict] = {}
+    # #1697: keyed by the round's identity, not its index alone. A refunded round and the round
+    # that re-takes it share an index; keyed by index their repairs merged, and the earlier
+    # (refunded) repair's time chose the "before" report.
+    rounds: dict[tuple[int, int | None], dict] = {}
     for v in versions:
         if (m := _RETEST_TASK.match(v["task_id"])) and v["filename"] == "test_report.md":
-            rounds.setdefault(int(m.group(1)), {})["retest"] = v
+            rounds.setdefault(_round_key(m), {})["retest"] = v
         elif m := _REPAIR_TASK.match(v["task_id"]):
-            rounds.setdefault(int(m.group(1)), {}).setdefault("repair", []).append(v)
+            rounds.setdefault(_round_key(m), {}).setdefault("repair", []).append(v)
     out = []
-    for index, parts in sorted(rounds.items()):
+    for (index, seq), parts in sorted(rounds.items(), key=lambda kv: (kv[0][0], kv[0][1] or -1)):
         retest, repair = parts.get("retest"), parts.get("repair") or []
         if retest is None or not repair:
             continue
@@ -4507,6 +5085,7 @@ def retest_readout(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[dict]:
         out.append(
             {
                 "round": index,
+                "seq": seq,
                 "repair": sorted({_REPAIR_TASK.sub("", v["task_id"]) for v in repair}),
                 "edited": {f: [list(r) for r in ranges] for f, ranges in edited.items()},
                 "retest_executed": after["executed"],
@@ -4912,6 +5491,12 @@ def restate(rec: dict) -> tuple[dict, list[str]]:
             correction,
         ),
         "no_emission_shape_lines": (value_at(out, "loop_texture.emissions_logged", 0) or 0) == 0,
+        # A record written before the Prefect fallback read docker throughout.
+        "agent_lines_from_prefect": (
+            ((out.get("loop_texture") or {}).get("log_sources") or {}).get("agents")
+            == LOG_SOURCE_PREFECT
+        ),
+        "process_death_fault_from_prefect": False,
         "no_emission_retry_aimed": not value_at(out, "loop_texture.emission_retries", []),
         # A record written before #1653 counted rounds BY decisions, so its round count is
         # its decision count; a newer one carries the decisions separately.

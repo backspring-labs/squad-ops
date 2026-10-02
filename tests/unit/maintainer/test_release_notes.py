@@ -203,15 +203,130 @@ class TestCycleEvidenceCapture:
         assert "Authorization: Bearer tok-123" in seen["args"]
 
     def test_a_missing_token_says_so_in_the_reason(self, monkeypatch):
-        """The maintainer needs to know WHICH failure this was — an expired login and a
-        genuinely absent cycle want different responses."""
+        """The maintainer needs to know WHICH failure this was — a token that could not be
+        obtained and a genuinely absent cycle want different responses."""
         brp = build_release_package
 
         monkeypatch.setattr(brp, "run", lambda *a, **k: '{"detail": "Missing header"}')
         monkeypatch.setattr(brp, "_bearer_token", lambda: "")
         got = brp.cycle_evidence(["cyc_1"], "http://api", "proj")[0]
         assert got["captured"] is False
-        assert "squadops login" in got["reason"]
+        assert "no token" in got["reason"]
+
+
+class TestTokenResolution:
+    """The capture obtains a current token itself, through the CLI's own resolution.
+
+    At the 1.7.5 cut a login taken at the start and a capture an hour later wrote all 16
+    rows "Not captured — Invalid or expired token": `_bearer_token` read the CLI's cached
+    token raw, while the CLI's `resolve_token` would have refreshed it. These tests enter at
+    `cycle_evidence`, the capture's caller, with the real token store (under a temporary
+    XDG_CONFIG_HOME) and the real resolution; only the network refresh and the CLI login
+    subprocess are stubbed.
+    """
+
+    ROLLUP = '{"cycle_outcome": {"verdict": "accepted", "run_count": 1}}'
+
+    @staticmethod
+    def _token(access: str, *, expires_in: float):
+        import time
+
+        from squadops.cli.auth import CachedToken
+
+        return CachedToken(
+            access_token=access,
+            refresh_token="refresh-1",
+            expires_at=time.time() + expires_in,
+            token_endpoint="http://keycloak/token",
+            client_id="squadops-cli",
+            grant_type="password",
+        )
+
+    @pytest.fixture
+    def env(self, monkeypatch, tmp_path):
+        """An isolated CLI config and token store, a fake console script beside a fake
+        interpreter, and a `run` that records every command and answers the API call."""
+        import squadops.cli.auth as auth
+
+        brp = build_release_package
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+        monkeypatch.delenv("SQUADOPS_TOKEN", raising=False)
+        (tmp_path / "bin").mkdir()
+        (tmp_path / "bin" / "squadops").write_text("")
+        monkeypatch.setattr(brp.sys, "executable", str(tmp_path / "bin" / "python"))
+
+        calls: dict = {"logins": [], "api": [], "on_login": None}
+
+        def _fake_run(*args, **kwargs):
+            if args[1:2] == ("login",):
+                calls["logins"].append(args)
+                if calls["on_login"]:
+                    auth.save_token(calls["on_login"])
+                return ""
+            calls["api"].append(args)
+            return self.ROLLUP
+
+        monkeypatch.setattr(brp, "run", _fake_run)
+        return calls, auth
+
+    def test_an_expired_cached_token_is_refreshed_before_the_request(self, env, monkeypatch):
+        """The 1.7.5 bug: the stale token went out and every row read "Not captured"."""
+        calls, auth = env
+        auth.save_token(self._token("stale", expires_in=-3600))
+        monkeypatch.setattr(
+            auth, "refresh_access_token", lambda t: self._token("fresh", expires_in=300)
+        )
+
+        got = build_release_package.cycle_evidence(["cyc_1"], "http://api", "proj")[0]
+
+        assert got["captured"] is True
+        assert "Authorization: Bearer fresh" in calls["api"][0]
+        assert calls["logins"] == []
+        assert auth.load_cached_token().access_token == "fresh"
+
+    def test_when_the_refresh_fails_it_logs_in_once_without_a_prompt(self, env, monkeypatch):
+        """A refresh token that has expired too must not end the capture: one
+        non-interactive login with the driver's credentials, never `--keycloak-url`."""
+        calls, auth = env
+        auth.save_token(self._token("stale", expires_in=-3600))
+        monkeypatch.setattr(auth, "refresh_access_token", lambda t: None)
+        monkeypatch.setenv("SQUADOPS_DRIVER_USER", "maint")
+        monkeypatch.setenv("SQUADOPS_DRIVER_PASSWORD", "pw-1")
+        calls["on_login"] = self._token("logged-in", expires_in=300)
+
+        got = build_release_package.cycle_evidence(["cyc_1"], "http://api", "proj")[0]
+
+        assert got["captured"] is True
+        assert len(calls["logins"]) == 1
+        assert calls["logins"][0][1:] == ("login", "-u", "maint", "-p", "pw-1")
+        assert "Authorization: Bearer logged-in" in calls["api"][0]
+
+    def test_a_valid_token_is_used_as_is(self, env, monkeypatch):
+        """No refresh and no login when the cached token is current: a capture must not
+        replace a maintainer's session it did not need to touch."""
+        calls, auth = env
+        auth.save_token(self._token("current", expires_in=3600))
+
+        def _no_refresh(token):
+            raise AssertionError("refreshed a current token")
+
+        monkeypatch.setattr(auth, "refresh_access_token", _no_refresh)
+
+        build_release_package.cycle_evidence(["cyc_1"], "http://api", "proj")
+
+        assert "Authorization: Bearer current" in calls["api"][0]
+        assert calls["logins"] == []
+
+    def test_when_no_token_can_be_obtained_the_request_goes_without_one(self, env):
+        """No cache and a login that stores nothing: the request carries no header, and
+        the capture degrades to the disclosed absence rather than failing the package."""
+        calls, _ = env
+
+        assert build_release_package._bearer_token() == ""
+        assert len(calls["logins"]) == 1
+
+        build_release_package.cycle_evidence(["cyc_1"], "http://api", "proj")
+        assert not any("Authorization" in str(a) for a in calls["api"][0])
 
 
 class TestCycleRoles:
@@ -397,3 +512,21 @@ class TestSipTransitionsAreTheFrontmattersNotThePaths:
         assert "## Improvement proposals amended in place" in page
         assert "| SIP-0058-X | implemented |" in page
         assert "## Improvement proposals\n" not in page
+
+
+@pytest.mark.parametrize(
+    "reason", ["the recovery path.", "the recovery path", "the recovery path. "]
+)
+def test_the_showcase_reason_ends_with_one_period(reason):
+    """Bug caught: v1.8.2's release page reads "corrected.." because the page appended a period
+    to a reason that already ended with one."""
+    import yaml
+
+    package = yaml.safe_load(
+        (REPO_ROOT / "site" / "content" / "releases" / "v1.8.2" / "package.yaml").read_text()
+    )
+    package["showcase"] = {"cycle_id": "cyc_x", "reason": reason, "role": "counted"}
+
+    page = build_release_package.render("1.8.2", "v1.8.2", package)
+
+    assert "Of cycle `cyc_x` (counted) — the recovery path.\n" in page

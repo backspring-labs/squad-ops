@@ -390,6 +390,132 @@ class TestCorrectionPatch:
         terminal_statuses = [c.args[1] for c in status_calls]
         assert RunStatus.COMPLETED in terminal_statuses
 
+    async def test_kept_progress_is_what_the_next_round_repairs(
+        self, executor, mock_queue, mock_registry, mock_vault
+    ):
+        """#1522, entered at ``execute_run``. Bugs caught: the kept repair not stored as accepted
+        state; the task re-dispatched (re-authored from scratch) instead of the next round
+        starting from the retest; the next round's verification run against the workspace the
+        kept repair improved on, which the envelope held from before the task's first attempt.
+        Acceptance itself is stubbed here and proven in ``test_outcome_routing``."""
+        import dataclasses
+        from collections import Counter
+
+        from adapters.cycles.patch_acceptance import (
+            KEEP_PROGRESS,
+            KEPT_ARTIFACTS_KEY,
+            KEPT_NEXT_FAILURE_KEY,
+            KEPT_OUTPUTS_KEY,
+        )
+        from squadops.cycles.patch_verification import candidate_revision_id
+
+        mock_registry.get_cycle.return_value = dataclasses.replace(
+            mock_registry.get_cycle.return_value,
+            applied_defaults={
+                # The build steps after the framing ones: `development.develop`'s contract
+                # carries the acceptance workspace the next round verifies against.
+                "build_tasks": ["development.develop", "qa.test"],
+                "max_correction_attempts": 3,
+                "correction_steps": ["analyze", "decide", "repair"],
+            },
+        )
+        decision = {
+            "summary": "patch",
+            "role": "lead",
+            "correction_path": "patch",
+            "decision_rationale": "Fix is localized",
+            "affected_task_types": ["development.develop"],
+            "classification": "work_product",
+            "analysis_summary": "Output quality issue",
+        }
+        kept = {"name": "src/app_fix.py", "content": "fixed = True\n", "type": "source"}
+        # A vault that returns what it stored: the workspace is re-derived by reading it back.
+        blobs: dict = {}
+
+        def _store(ref, content):
+            blobs[ref.artifact_id] = (ref, content)
+            return ref
+
+        mock_vault.store.side_effect = _store
+        mock_vault.retrieve.side_effect = lambda artifact_id: blobs[artifact_id]
+        dispatched: Counter = Counter()
+        failed_task: dict = {}
+
+        def responder(env):
+            tid = env["task_id"]
+            dispatched[tid] += 1
+            if "correction_decision" in tid:
+                return TaskResult(task_id=tid, status="SUCCEEDED", outputs=decision)
+            if tid.startswith("corr-"):
+                return TaskResult(
+                    task_id=tid,
+                    status="SUCCEEDED",
+                    outputs={"summary": "ok", "role": "data", "classification": "work_product"},
+                )
+            if tid.startswith("repair-"):
+                # A repair with content: an empty one is refunded before acceptance is asked.
+                return TaskResult(
+                    task_id=tid,
+                    status="SUCCEEDED",
+                    outputs={"summary": "repaired", "role": "dev", "artifacts": [dict(kept)]},
+                )
+            if env["task_type"] == "development.develop" and not failed_task:
+                failed_task["id"] = tid
+                return TaskResult(
+                    task_id=tid,
+                    status="FAILED",
+                    outputs={"outcome_class": TaskOutcome.SEMANTIC_FAILURE, "role": "dev"},
+                    error="suite fails",
+                )
+            return TaskResult(task_id=tid, status="SUCCEEDED", outputs={"summary": "ok"})
+
+        mock_queue.reply_router.responder = responder
+        calls: list[dict] = []
+
+        async def accept(envelope, result, repair_artifacts, holder, **kwargs):
+            calls.append({"result": result, **kwargs})
+            if len(calls) == 1:
+                holder[KEPT_ARTIFACTS_KEY] = [kept]
+                holder[KEPT_OUTPUTS_KEY] = {
+                    "artifacts": [kept],
+                    "validation_result": {
+                        "persisted_revision_id": candidate_revision_id(None, [kept])
+                    },
+                }
+                holder[KEPT_NEXT_FAILURE_KEY] = TaskResult(
+                    task_id=envelope.task_id,
+                    status="FAILED",
+                    outputs={"outcome_class": TaskOutcome.SEMANTIC_FAILURE, "role": "qa"},
+                    error="Repaired suite still fails (exit 1)",
+                )
+                return KEEP_PROGRESS
+            holder["patched_result"] = TaskResult(
+                task_id=envelope.task_id, status="SUCCEEDED", outputs={"summary": "repaired"}
+            )
+            return "accept_patch"
+
+        with (
+            patch.object(executor, "_try_accept_patch", new=accept),
+            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        assert len(calls) == 2
+        # The next round repaired the retest's failure, and the task was never re-dispatched.
+        assert calls[1]["result"].error == "Repaired suite still fails (exit 1)"
+        assert dispatched[failed_task["id"]] == 1
+        # The kept repair is accepted state, stored under the failed task's type...
+        stored = [
+            (c.args[0].filename, c.args[0].metadata.get("producing_task_type"))
+            for c in mock_vault.store.call_args_list
+        ]
+        assert ("src/app_fix.py", "development.develop") in stored
+        # ...and the next round verified against the tree that includes it.
+        workspace = calls[1]["enriched_envelope"].inputs["acceptance_workspace_files"]
+        assert workspace["src/app_fix.py"] == "fixed = True\n"
+        terminal = [c.args[1] for c in mock_registry.update_run_status.call_args_list]
+        assert terminal[-1] == RunStatus.COMPLETED
+
     async def test_patch_rerun_never_converges_fails_run(self, executor, mock_queue, mock_registry):
         """#374: a patch whose re-run never passes must FAIL the run, not false-complete.
 
@@ -1639,7 +1765,8 @@ class TestCorrectionModelResolution:
         # Wrap generate_task_plan so the failed task carries a real plan
         # contract. (The static plan generator only sets these when an
         # ImplementationPlan is supplied — the path under test here.)
-        import adapters.cycles.dispatched_flow_executor as exec_mod
+        # #1507 step 2: the plan is generated in run provisioning now; patched where it is looked up.
+        import adapters.cycles.run_provisioning as exec_mod
         from squadops.cycles.task_plan import generate_task_plan as real_gen
 
         def _gen_with_contract(*args, **kwargs):
@@ -2141,7 +2268,7 @@ class TestCorrectionRunnerStandalone:
         assert protocol_result.repair_artifacts == [
             {
                 **repaired,
-                "producer_task_id": "repair-run_001-00-builder.assemble_repair",
+                "producer_task_id": "repair-run_001-00-s00-builder.assemble_repair",
                 "producer_task_type": "builder.assemble_repair",
             }
         ]
@@ -2990,7 +3117,7 @@ class TestReexecuteRepairedSuite:
         (env,) = dispatcher.dispatched
         assert env.task_type == "qa.test"
         assert env.agent_id == "eve"
-        assert env.task_id == "retest-run_001-01-qa.test"
+        assert env.task_id == "retest-run_001-01-s00-qa.test"
         assert env.causation_id == "task-run_001-m004-qa.test"
         assert env.metadata["retest"] is True
 
@@ -7719,3 +7846,99 @@ class TestARefundedQaRoundIsReTakenAsAnEditRequest:
         executor._carry_facts_to_the_next_attempt(self._failed(envelope), envelope, None)
 
         assert "retake_current_files" not in envelope.inputs
+
+
+class TestRoundIdsAreUniqueAcrossARefund:
+    """#1697: a refunded round re-takes its attempt index (#1053), and the round's task ids were
+    keyed on that index alone. On 1.8.2 deploy A′, two repairs of two different suites both
+    carried ``repair-run_99242d1e-00-qa.test_repair`` (d6), and #1698's guard had to set the L4
+    reading aside, because the record could not say whose refund was whose."""
+
+    async def test_two_rounds_around_a_refund_get_distinct_ids(self, executor, cycle):
+        """Wiring, entered at ``_dispatch_correction_protocol`` (block 3), which assigns the round,
+        and ``_route_correction_path`` (block 4), which grants the refund: the path a live run
+        takes. Bug caught: the second round reusing the first round's ids after the refund."""
+        from adapters.cycles.correction_ids import correction_task_id
+        from adapters.cycles.correction_runner import CorrectionProtocolResult
+        from squadops.tasks.models import TaskResult
+
+        seen: list[tuple[int, int]] = []
+
+        async def _protocol(*args, correction_attempts, round_seq, **kwargs):
+            seen.append((correction_attempts, round_seq))
+            return CorrectionProtocolResult(
+                correction_path="continue",
+                emission_empty=True,
+                empty_emission_signatures=("prose_only",),
+            )
+
+        executor._correction_runner.run_correction_protocol = _protocol
+        counter: dict[str, int] = {"n": 0, "empty_refunds": 0}
+        envelope = TestProgressAwareTermination._envelope()
+        failed = TaskResult(task_id=envelope.task_id, status="FAILED", error="suite failed")
+        common = dict(
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+            profile=None,
+            flow_run_id=None,
+            enriched_envelope=None,
+            interface_manifest=None,
+            budget_guard=None,
+            repair_rejection_carry=None,
+        )
+        for _ in range(2):
+            round_ = await executor._dispatch_correction_protocol(
+                failed,
+                envelope,
+                cycle,
+                "run_99242d1e947f",
+                correction_counter=counter,
+                correction_signature_state={},
+                scaffold_enforcement_carry=[],
+                accepted_repair_task_ids=None,
+                **common,
+            )
+            await executor._route_correction_path(
+                round_,
+                failed,
+                envelope,
+                "run_99242d1e947f",
+                cycle=cycle,
+                correction_counter=counter,
+                patched_result_holder=None,
+                bound_record=None,
+                compliance_counter=None,
+                **common,
+            )
+
+        # The refund re-took the index; the sequence did not.
+        assert seen == [(0, 0), (0, 1)]
+        ids = {
+            correction_task_id("repair", "run_99242d1e947f", a, s, "qa.test_repair")
+            for a, s in seen
+        }
+        assert ids == {
+            "repair-run_99242d1e-00-s00-qa.test_repair",
+            "repair-run_99242d1e-00-s01-qa.test_repair",
+        }
+
+
+@pytest.mark.parametrize(
+    ("task_id", "first_attempt"),
+    [
+        ("repair-run_99242d1e-00-s01-qa.test_repair", True),
+        ("repair-run_99242d1e-01-s00-qa.test_repair", False),
+        ("corr-run_99242d1e-00-s03-data.analyze_failure", True),
+        ("repair-run_99242d1e-00-qa.test_repair", True),
+    ],
+)
+def test_the_fault_hook_reads_the_round_index_not_the_sequence(task_id, first_attempt):
+    """Bug caught: a sequence placed where the fault hook reads the attempt (the first ``-NN-``)
+    would make a second round look like a first attempt, or the reverse, and re-apply or skip a
+    registered fault. The sequence sits after the index, behind an ``s``."""
+    from squadops.capabilities.handlers.fault_injection import _is_first_attempt
+
+    assert _is_first_attempt(task_id, {}) is first_attempt

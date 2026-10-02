@@ -221,16 +221,35 @@ _ADDRESSED_BLOCK = re.compile(
     r"^(?P<open>[ \t]{0,3}```(?P<info>[^\s`]*)[^\n]*\n)(?P<body>.*?)(?P<close>^[ \t]{0,3}```[ \t]*$)",
     re.M | re.S,
 )
-#: A Python route decorator whose path ends in ``/join`` — the frozen decorator both stacks'
-#: FastAPI skeletons pin (``@router.post("/runs/{run_id}/join", ...)``).
-_PY_JOIN_DECORATOR = re.compile(r"^@\w+\.(?:post|put|patch)\(\s*[\"'][^\"']*/join[\"']", re.M)
+#: The join route's decorator, in the order a file is searched (#1774). The join is the
+#: item-scoped call that adds a participant. Of 403 stored manifests:
+#: - 349 name it ``…/{run_id}/join``, the frozen decorator both stacks' FastAPI skeletons pin;
+#: - 46 model it as ``POST …/{run_id}/participants``, with leave as a DELETE on the member or
+#:   a ``…/leave`` POST.
+#: Keying on ``/join`` alone left the dev-lane diagnostic nothing to bite on the second shape
+#: (1.9 set, d7, both runs). A ``/join`` route wins where a file has both.
+_PY_JOIN_DECORATORS = (
+    re.compile(r"^@\w+\.(?:post|put|patch)\(\s*[\"'][^\"']*/join[\"']", re.M),
+    re.compile(r"^@\w+\.post\(\s*[\"'][^\"']*\}/participants/?[\"']", re.M),
+)
 _PY_TOP_LEVEL = re.compile(r"^(?:@|def |async def |class |\S)", re.M)
 _PY_RETURN = re.compile(r"^(?P<indent>[ \t]+)return (?P<expr>[\w.\[\]\"']+)[ \t]*$", re.M)
 #: The success return every stored Next.js join route ends with (3 of 3 accepted 1.7.5 rolls).
 _TS_JSON_RETURN = re.compile(
     r"return (?P<ctor>Response|NextResponse)\.json\((?P<expr>[\w.]+)(?P<rest>\s*,[^()]*)?\)(?P<semi>;?)"
 )
-_INJECTED_JOIN_NOTE = "#1251 injected fault: the join response omits the run's declared fields"
+#: The faulted returns, so re-applying to a handler that already carries one is a no-op (#1716). No
+#: comment marks the line: the model reviews this code in its own self-evaluation passes, and a
+#: comment announcing the defect is an instruction to remove it. Provenance is the ``APPLIED``
+#: line and the record's ``faults_applied``.
+_PY_FAULTED_RETURN = 'return {"id": getattr('
+#: #1774: a handler that answers through ``JSONResponse(..., content={...})`` (the 1.9 dev-lane
+#: React run 1 shape) is faulted to the same response, its ``content`` cut to the id.
+_PY_JSON_RESPONSE_RETURN = re.compile(r"^(?P<indent>[ \t]+)return JSONResponse\(", re.M)
+_PY_CONTENT_ID = re.compile(r"[\"']id[\"']\s*:\s*(?P<expr>[^,\n}]+)")
+_PY_STATUS_CODE = re.compile(r"status_code\s*=\s*(?P<code>[\w.]+)")
+_PY_FAULTED_CONTENT = 'content={"id": '
+_TS_FAULTED_CAST = "as unknown as { id?: unknown }).id }"
 
 
 def _python_join_without_fields(body: str) -> str:
@@ -240,7 +259,7 @@ def _python_join_without_fields(body: str) -> str:
     ``response_model=Run`` decorator, so the response fails the model and the app answers
     500 where the contract probe expects 200 and the run's fields.
     """
-    decorator = _PY_JOIN_DECORATOR.search(body)
+    decorator = next((m for rx in _PY_JOIN_DECORATORS if (m := rx.search(body))), None)
     if decorator is None:
         return body
     start = body.find("\n", decorator.end()) + 1
@@ -251,15 +270,53 @@ def _python_join_without_fields(body: str) -> str:
     after_def = body.find("\n", signature.end()) + 1
     following = _PY_TOP_LEVEL.search(body, after_def)
     end = following.start() if following else len(body)
-    returns = list(_PY_RETURN.finditer(body, after_def, end))
-    if not returns:
+    handler = body[after_def:end]
+    if _PY_FAULTED_RETURN in handler or _PY_FAULTED_CONTENT in handler:
         return body
-    last = returns[-1]
+    # The handler's success answer is its last return, in whichever of the two forms it takes.
+    bare = list(_PY_RETURN.finditer(body, after_def, end))
+    wrapped = list(_PY_JSON_RESPONSE_RETURN.finditer(body, after_def, end))
+    if wrapped and (not bare or wrapped[-1].start() > bare[-1].start()):
+        return _python_json_response_without_fields(body, wrapped[-1], end)
+    if not bare:
+        return body
+    last = bare[-1]
     replacement = (
         f'{last.group("indent")}return {{"id": getattr({last.group("expr")}, "id", None)}}'
-        f"  # {_INJECTED_JOIN_NOTE}"
     )
     return body[: last.start()] + replacement + body[last.end() :]
+
+
+def _python_json_response_without_fields(body: str, call: re.Match[str], end: int) -> str:
+    """A ``return JSONResponse(...)`` whose ``content`` is cut to the id (#1774).
+
+    ``JSONResponse`` bypasses ``response_model``, so the app answers with the declared status and
+    a body missing every declared field but the id. That is the defect class the fault plants
+    (see ``_join_response_omits_declared_fields``), reached through the handler's own response
+    type. A call whose parentheses do not close inside the handler is left unchanged, and the
+    fault reads DID NOT BITE.
+    """
+    opened = call.end() - 1
+    depth = 0
+    for i in range(opened, end):
+        if body[i] == "(":
+            depth += 1
+        elif body[i] == ")":
+            depth -= 1
+            if depth == 0:
+                closed = i
+                break
+    else:
+        return body
+    args = body[opened + 1 : closed]
+    identity = _PY_CONTENT_ID.search(args)
+    status = _PY_STATUS_CODE.search(args)
+    replacement = (
+        f"{call.group('indent')}return JSONResponse("
+        + (f"status_code={status.group('code')}, " if status else "")
+        + f"{_PY_FAULTED_CONTENT}{identity.group('expr').strip() if identity else 'None'}}})"
+    )
+    return body[: call.start()] + replacement + body[closed + 1 :]
 
 
 def _typescript_join_without_fields(body: str) -> str:
@@ -269,16 +326,47 @@ def _typescript_join_without_fields(body: str) -> str:
     qa fill runs, so the probe fails on the missing fields. The cast keeps ``next build``'s
     type check clean, so the defect reaches the probe rather than stopping at the build.
     """
+    if _TS_FAULTED_CAST in body:
+        return body
     returns = list(_TS_JSON_RETURN.finditer(body))
     if not returns:
         return body
     last = returns[-1]
     replacement = (
         f"return {last.group('ctor')}.json({{ id: ({last.group('expr')} as unknown as "
-        f"{{ id?: unknown }}).id }}{last.group('rest') or ''}){last.group('semi')} "
-        f"// {_INJECTED_JOIN_NOTE}"
+        f"{{ id?: unknown }}).id }}{last.group('rest') or ''}){last.group('semi')}"
     )
     return body[: last.start()] + replacement + body[last.end() :]
+
+
+def _join_file_without_fields(path: str, body: str) -> str:
+    """One file's join handler, faulted by its language; any other file unchanged. The unit both
+    the emission transform and the hold through self-evaluation apply (#1716)."""
+    if path.endswith(".py"):
+        return _python_join_without_fields(body)
+    if path.endswith("join/route.ts"):
+        return _typescript_join_without_fields(body)
+    if path.endswith("/participants/route.ts"):
+        # #1774: a join modelled as ``POST …/participants`` shares its file with the leave's
+        # DELETE (1.9 Next.js roll 1), so only the POST export is the join.
+        span = _ts_export_span(body, "POST")
+        if span is None:
+            return body
+        a, b = span
+        return body[:a] + _typescript_join_without_fields(body[a:b]) + body[b:]
+    return body
+
+
+_TS_EXPORT = re.compile(r"^export\s+(?:async\s+)?(?:function|const)\s+(?P<name>[A-Z]+)\b", re.M)
+
+
+def _ts_export_span(body: str, name: str) -> tuple[int, int] | None:
+    """Where a route file's ``name`` handler export starts and the next export begins."""
+    exports = list(_TS_EXPORT.finditer(body))
+    for i, export in enumerate(exports):
+        if export.group("name") == name:
+            return export.start(), exports[i + 1].start() if i + 1 < len(exports) else len(body)
+    return None
 
 
 def _join_response_omits_declared_fields(content: str) -> str:
@@ -294,19 +382,15 @@ def _join_response_omits_declared_fields(content: str) -> str:
     declared shape — and fails on every manifest.
 
     Scoped by language to the join handler: a Python block's function under a ``/join``
-    decorator, and a TypeScript block addressed at a ``join/route.ts`` path. Every other
-    block, and every other handler in the same file, is returned unchanged.
+    decorator, or a ``POST …/participants`` one where the manifest models the join that way;
+    a TypeScript block addressed at a ``join/route.ts`` path, or the ``POST`` export of a
+    ``participants/route.ts`` (#1774). Every other block, and every other handler in the same
+    file, is returned unchanged.
     """
 
     def rewrite(match: re.Match[str]) -> str:
-        info, body = match.group("info"), match.group("body")
-        path = info.partition(":")[2]
-        if path.endswith(".py"):
-            new_body = _python_join_without_fields(body)
-        elif path.endswith("join/route.ts"):
-            new_body = _typescript_join_without_fields(body)
-        else:
-            return match.group(0)
+        path = match.group("info").partition(":")[2]
+        new_body = _join_file_without_fields(path, match.group("body"))
         return match.group("open") + new_body + match.group("close")
 
     return _ADDRESSED_BLOCK.sub(rewrite, content)
@@ -424,6 +508,12 @@ class Fault:
     #: The stacks whose emissions carry the file shape the fault is about; empty for any. A
     #: declaration on another stack's cycle is refused, since the fault could not bite there.
     stacks: frozenset[str] = frozenset()
+    #: #1716: the same defect as ``transform``, applied to one file by its path. Set for a fault
+    #: whose task self-evaluates (SIP-0086 §12a) and whose seam lies downstream of it: after
+    #: each pass merges, the handed-on files are re-faulted, so a pass cannot deliver a
+    #: repaired file while the diagnostic asks about what the task hands on. The loop still
+    #: runs, and its texture is still read from it.
+    file_transform: Callable[[str, str], str] | None = None
 
     @property
     def transforms_emission(self) -> bool:
@@ -494,11 +584,14 @@ FAULTS: dict[str, Fault] = {
     ),
     # 1.8.0 plan §4.1: the dev lane had no fault, so no diagnostic could force a development
     # repair and Scoped Code Revision's dev grant (SIP-0107 §38 step 3) had nothing to prove
-    # itself on. First attempt only: the develop task's emission takes it, the qa task's
-    # probes reject the app, and the development repair that follows runs clean.
+    # itself on. First attempt only: the develop task hands the faulted join on, the qa task's
+    # probes reject the app, and the development repair that follows runs clean. #1716: "the
+    # emission takes it" stopped being enough when the develop task began self-evaluating
+    # (1.8.2) — a pass reverted it on A′ — so it is held through each pass's merge.
     "dev_join_response_omits_declared_fields": Fault(
         task=TaskType.DEVELOPMENT_DEVELOP,
         transform=_join_response_omits_declared_fields,
+        file_transform=_join_file_without_fields,
         found_in="#1029's response floor — 1.6.3 Next.js set record §6: rolls 1, 4 and 5 rejected, "
         "correctly, on a join response that failed the frozen floor every round",
         exercises="the dev lane: a probe failure on a developer-owned route is repaired by a "
@@ -763,6 +856,63 @@ HANG_SECONDS = 24 * 60 * 60
 CRASH_EXIT_CODE = 137
 #: The process exit, bound here so a test can observe a crash without being killed by it.
 _exit = os._exit
+
+
+def held_through_pass(
+    artifacts: list[dict[str, Any]],
+    *,
+    handler_name: str,
+    task_id: str,
+    resolved_config: Mapping[str, Any] | None,
+    inputs: Mapping[str, Any] | None = None,
+    pass_index: int,
+) -> list[dict[str, Any]]:
+    """The files a self-evaluation pass merged, with each declared fault that must survive the
+    task's own loop re-applied to them (#1716) — the files unchanged for a cycle with none.
+
+    On A′'s ``dev-lane-fastapi-react`` run 2 the develop task's first pass edited the faulted
+    join handler back to ``return run``, and the diagnostic's seam became unreachable by
+    construction. Re-applying after each merge means every validation — the recorded one
+    included — reads the tree the task will hand on. A re-application is logged in ``APPLIED``
+    form, so the record's ``faults_applied`` counts the attempt the seam is read against.
+    """
+    holding = [
+        (name, fault)
+        for name in declared_faults(resolved_config)
+        if (fault := FAULTS.get(name)) is not None
+        and fault.file_transform is not None
+        and task_id.endswith(fault.task)
+        and _applies(fault, task_id, inputs)
+    ]
+    if not holding:
+        return artifacts  # the same list: a cycle that declares none is untouched
+    held = [dict(a) for a in artifacts]
+    for name, fault in holding:
+        before = after = 0
+        for artifact in held:
+            content, path = artifact.get("content"), str(artifact.get("name") or "")
+            if not isinstance(content, str) or not path:
+                continue
+            faulted = fault.file_transform(path, content)
+            if faulted != content:
+                before, after = before + len(content), after + len(faulted)
+                artifact["content"] = faulted
+        if before:
+            logger.warning(
+                "fault_injection: APPLIED %s to task=%s handler=%s chars %d -> %d scope=%s "
+                "(held through self-evaluation pass %d, whose files carried it unfaulted, #1716; "
+                "found_in=%s exercises=%s) — this cycle is a DIAGNOSTIC and must not be counted",
+                name,
+                task_id,
+                handler_name,
+                before,
+                after,
+                fault.scope.value,
+                pass_index,
+                fault.found_in,
+                fault.exercises,
+            )
+    return held
 
 
 def planted_rows(

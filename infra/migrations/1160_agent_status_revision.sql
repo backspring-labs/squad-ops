@@ -1,0 +1,11 @@
+-- 1160_agent_status_revision.sql
+-- #1720 (#80's follow-on; the agent_status table of SIP-0089 / #231): the heartbeat carries the
+-- commit the agent's image was built from.
+--
+-- agent_status.version names the release (every agent on a deploy reads 1.8.1); it cannot say
+-- which code an agent runs. An agent rebuilt from another commit, or one a deploy failed to
+-- replace (#370's class), reads the same. revision is SQUADOPS_GIT_SHA, which the agent image
+-- now sets from the deploy's source hash, with -dirty on a build from a modified tree; NULL when
+-- the build recorded none. Idempotent, and tolerant of the table's absence for the reason 1150
+-- gives: agent_status is created by infra/init.sql, not by any migration.
+ALTER TABLE IF EXISTS agent_status ADD COLUMN IF NOT EXISTS revision TEXT;

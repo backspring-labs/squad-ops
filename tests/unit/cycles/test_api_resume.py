@@ -133,10 +133,9 @@ def client(mock_cycle_registry, mock_flow_executor, monkeypatch):
     app = FastAPI()
     app.include_router(router)
     register_domain_error_handlers(app)  # as the runtime does (#576)
-    import squadops.api.runtime.deps as deps_mod
 
-    monkeypatch.setattr(deps_mod, "_cycle_registry", mock_cycle_registry)
-    monkeypatch.setattr(deps_mod, "_flow_executor", mock_flow_executor)
+    app.state.cycle_registry = mock_cycle_registry
+    app.state.flow_executor = mock_flow_executor
     return TestClient(app)
 
 

@@ -13,23 +13,24 @@ from __future__ import annotations
 
 import asyncio
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from squadops.api.runtime.agent_labels import get_role_label
+from squadops.cycles.deploy_record import revision_matches_deploy
 
 router = APIRouter(prefix="/health", tags=["platform-health"])
 
 
-def _get_health_checker():
+def _get_health_checker(request: Request):
     from squadops.api.runtime.deps import get_health_checker
 
-    return get_health_checker()
+    return get_health_checker(request)
 
 
 @router.get("/infra")
-async def health_infra():
+async def health_infra(request: Request):
     """Run all infrastructure probes concurrently."""
-    hc = _get_health_checker()
+    hc = _get_health_checker(request)
     results = await asyncio.gather(
         hc.check_rabbitmq(),
         hc.check_postgres(),
@@ -45,16 +46,16 @@ async def health_infra():
 
 
 @router.get("/agents")
-async def health_agents():
+async def health_agents(request: Request):
     """Get agent health status."""
-    hc = _get_health_checker()
+    hc = _get_health_checker(request)
     return await hc.get_agent_status()
 
 
 @router.get("/agents/status/{agent_id}")
-async def get_agent_status_by_id(agent_id: str):
+async def get_agent_status_by_id(request: Request, agent_id: str):
     """Get a single agent's status."""
-    hc = _get_health_checker()
+    hc = _get_health_checker(request)
     try:
         async with hc.pg_pool.acquire() as conn:
             # LEFT JOIN the SIP-0089 runtime row so the single-agent route carries
@@ -62,7 +63,7 @@ async def get_agent_status_by_id(agent_id: str):
             # parity with GET /health/agents (#230). Health is runtime_status; the
             # legacy network_status field is gone (#305 Part B).
             row = await conn.fetchrow(
-                "SELECT s.agent_id, s.lifecycle_state, s.version, s.tps, "
+                "SELECT s.agent_id, s.lifecycle_state, s.version, s.revision, s.tps, "
                 "s.memory_count, s.last_heartbeat, s.current_task_id, "
                 "r.mode, r.runtime_status "
                 "FROM agent_status s "
@@ -83,6 +84,7 @@ async def get_agent_status_by_id(agent_id: str):
         info = instances.get(row["agent_id"], {})
         role = info.get("role", "unknown")
 
+        deployed = (await hc.deployed_revisions() or {}).get(row["agent_id"])
         return {
             "agent_id": row["agent_id"],
             "agent_name": hc._get_display_name(row["agent_id"]),
@@ -93,6 +95,11 @@ async def get_agent_status_by_id(agent_id: str):
             "runtime_status": row["runtime_status"],
             "lifecycle_state": lifecycle_state,
             "version": row["version"],
+            "revision": row["revision"],
+            # #1720: the latest deploy record's revision for this agent's service, and whether
+            # the agent still runs it.
+            "deployed_revision": deployed,
+            "revision_matches_deploy": revision_matches_deploy(row["revision"], deployed),
             "tps": row["tps"],
             "memory_count": row.get("memory_count", 0) or 0,
             "last_seen": (
@@ -107,13 +114,13 @@ async def get_agent_status_by_id(agent_id: str):
 
 
 @router.get("/agents/{agent_id}/runtime-state")
-async def get_agent_runtime_state(agent_id: str):
+async def get_agent_runtime_state(request: Request, agent_id: str):
     """Return the SIP-0089 AgentRuntimeState for an agent.
 
     Returns 404 if no row exists yet (agent has not heartbeated since the
     runtime-state migration applied).
     """
-    hc = _get_health_checker()
+    hc = _get_health_checker(request)
     try:
         # Normalize case to match the sibling /agents/status/{agent_id} route,
         # which lower-cases agent_id; rows are stored lower-cased.
@@ -129,13 +136,13 @@ async def get_agent_runtime_state(agent_id: str):
 
 
 @router.get("/agents/{agent_id}/activity")
-async def get_agent_current_activity(agent_id: str):
+async def get_agent_current_activity(request: Request, agent_id: str):
     """Return the agent's current (active) RuntimeActivity (SIP-0089 §4.7).
 
     Returns 404 when the agent has no active activity (idle), or when the
     runtime-api has no RuntimeActivityPort wired.
     """
-    hc = _get_health_checker()
+    hc = _get_health_checker(request)
     try:
         activity = await hc.get_current_activity(agent_id.lower())
     except Exception as e:

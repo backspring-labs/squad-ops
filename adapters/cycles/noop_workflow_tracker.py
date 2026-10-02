@@ -8,6 +8,7 @@ branching on enablement; state setters and ``close`` are pure no-ops.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 from uuid import uuid4
 
@@ -30,6 +31,7 @@ class NoOpWorkflowTracker(WorkflowTrackerPort):
         flow_id: str,
         run_name: str,
         parameters: dict[str, Any] | None = None,
+        tags: Sequence[str] = (),
     ) -> str:
         return self._placeholder()
 

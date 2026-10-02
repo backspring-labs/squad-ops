@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from squadops.api.cycle_schemas import (
@@ -46,7 +46,7 @@ async def list_models():
     return JSONResponse(content=specs, headers=_CACHE_HEADERS)
 
 
-def _llm_port_supporting(capability: str):
+def _llm_port_supporting(request: Request, capability: str):
     """Get the LLM port from DI, requiring a declared capability.
 
     Asks the port what it can do rather than which adapter class it is. The
@@ -61,7 +61,7 @@ def _llm_port_supporting(capability: str):
     from squadops.api.runtime.deps import get_llm_port
 
     try:
-        port = get_llm_port()
+        port = get_llm_port(request)
     except RuntimeError:
         raise HTTPException(status_code=503, detail="LLM port not configured") from None
 
@@ -74,11 +74,11 @@ def _llm_port_supporting(capability: str):
 
 
 @router.get("/pulled", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
-async def list_pulled_models():
+async def list_pulled_models(request: Request):
     """List locally pulled models with active profile cross-reference."""
     from squadops.llm.model_registry import MODEL_SPECS
 
-    port = _llm_port_supporting(LLMCapability.MODEL_LISTING)
+    port = _llm_port_supporting(request, LLMCapability.MODEL_LISTING)
 
     try:
         available = await port.list_available_models()
@@ -90,7 +90,7 @@ async def list_pulled_models():
     try:
         from squadops.api.runtime.deps import get_squad_profile_port
 
-        profile_port = get_squad_profile_port()
+        profile_port = get_squad_profile_port(request)
         active_id = await profile_port.get_active_profile_id()
         if active_id:
             profile = await profile_port.get_profile(active_id)
@@ -126,7 +126,7 @@ async def list_pulled_models():
 
 
 @router.post("/pull", status_code=202, dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
-async def pull_model(body: PullModelRequest):
+async def pull_model(request: Request, body: PullModelRequest):
     """Start pulling a model in the background. Returns 202 with pull_id."""
     from squadops.api.runtime.pull_tracker import (
         complete_pull_job,
@@ -134,7 +134,7 @@ async def pull_model(body: PullModelRequest):
         fail_pull_job,
     )
 
-    port = _llm_port_supporting(LLMCapability.MODEL_MANAGEMENT)
+    port = _llm_port_supporting(request, LLMCapability.MODEL_MANAGEMENT)
     job = create_pull_job(body.name)
 
     async def _do_pull():
@@ -171,11 +171,11 @@ async def pull_status(pull_id: str):
 
 
 @router.delete("/{model_name:path}", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
-async def delete_model(model_name: str):
+async def delete_model(request: Request, model_name: str):
     """Delete a locally pulled model."""
     from squadops.llm.exceptions import LLMConnectionError, LLMModelNotFoundError
 
-    port = _llm_port_supporting(LLMCapability.MODEL_MANAGEMENT)
+    port = _llm_port_supporting(request, LLMCapability.MODEL_MANAGEMENT)
 
     try:
         await port.delete_model(model_name)

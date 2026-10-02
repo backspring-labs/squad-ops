@@ -4,12 +4,14 @@ Unit tests for HealthChecker (extracted from legacy health_app.py).
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from adapters.cycles.memory_deploy_registry import MemoryDeployRegistry
 from squadops.api.runtime.health_checker import HealthChecker
+from squadops.cycles.deploy_record import DeployRecord, ServiceImage
 
 
 @pytest.fixture()
@@ -46,7 +48,12 @@ def mock_pg_pool():
 @pytest.fixture()
 def checker(mock_pg_pool, mock_config):
     """Create a HealthChecker with mocked dependencies."""
-    return HealthChecker(pg_pool=mock_pg_pool, redis_client=None, config=mock_config)
+    return HealthChecker(
+        pg_pool=mock_pg_pool,
+        redis_client=None,
+        config=mock_config,
+        deploy_registry=MemoryDeployRegistry(),
+    )
 
 
 class TestComputeNetworkStatus:
@@ -94,6 +101,7 @@ class TestGetAgentStatus:
             "agent_id": "max",
             "lifecycle_state": "READY",
             "version": "0.9.7",
+            "revision": None,
             "tps": 5,
             "memory_count": 10,
             "last_heartbeat": datetime.utcnow(),
@@ -125,6 +133,7 @@ class TestGetAgentStatus:
             "agent_id": "max",
             "lifecycle_state": "READY",
             "version": "0.9.7",
+            "revision": None,
             "tps": 5,
             "memory_count": 10,
             "last_heartbeat": datetime.utcnow(),
@@ -161,6 +170,7 @@ class TestGetAgentStatus:
             "agent_id": "neo",
             "lifecycle_state": "READY",
             "version": "0.9.7",
+            "revision": None,
             "tps": 5,
             "memory_count": 10,
             "last_heartbeat": datetime.utcnow(),
@@ -181,15 +191,15 @@ class TestGetAgentStatus:
         assert neo["role_label"] == "Developer"
 
 
-class TestAgentStatusRuntimeMode:
-    """#230: the agent list LEFT JOINs agent_runtime_state to surface posture
-    (mode) and the canonical health signal (runtime_status)."""
+class _StatusRows:
+    """The fleet read's rows: ``agent_status`` LEFT JOIN ``agent_runtime_state``."""
 
     def _row(self, **overrides):
         data = {
             "agent_id": "max",
             "lifecycle_state": "READY",
             "version": "0.9.7",
+            "revision": None,
             "tps": 5,
             "memory_count": 10,
             "last_heartbeat": datetime.utcnow(),
@@ -209,6 +219,11 @@ class TestAgentStatusRuntimeMode:
         conn.__aexit__ = AsyncMock(return_value=False)
         mock_pg_pool.acquire.return_value = conn
 
+
+class TestAgentStatusRuntimeMode(_StatusRows):
+    """#230: the agent list LEFT JOINs agent_runtime_state to surface posture
+    (mode) and the canonical health signal (runtime_status)."""
+
     @pytest.mark.asyncio
     async def test_surfaces_mode_and_runtime_status(self, checker, mock_pg_pool):
         """When a runtime row exists, its mode + runtime_status appear on the agent."""
@@ -225,6 +240,62 @@ class TestAgentStatusRuntimeMode:
         agent = (await checker.get_agent_status())[0]
         assert agent["mode"] is None
         assert agent["runtime_status"] is None
+
+
+class TestAnAgentsRevisionAgainstTheDeployRecord(_StatusRows):
+    """#1720: the fleet read sets each agent's heartbeat revision beside the latest deploy
+    record's for its service. Bug caught: an agent rebuilt or recreated since the record reading
+    as matching, so cycles reference a deploy that no longer describes it — or an unknown on
+    either side reported as a mismatch, a stale-agent alarm with nothing behind it."""
+
+    @pytest.mark.parametrize(
+        ("reported", "deployed", "matches"),
+        [
+            ("7acc2bc1", "7acc2bc1", True),
+            ("ccc9475d", "7acc2bc1", False),
+            (None, "7acc2bc1", None),
+            ("7acc2bc1", None, None),
+        ],
+        ids=[
+            "runs-what-was-recorded",
+            "changed-since-the-record",
+            "no-heartbeat-revision",
+            "image-without-a-label",
+        ],
+    )
+    async def test_the_fleet_read_compares_the_heartbeat_with_the_record(
+        self, checker, mock_pg_pool, reported, deployed, matches
+    ):
+        await checker._deploy_registry.record(
+            DeployRecord(
+                deploy_id="dep_000000000001",
+                recorded_at=datetime.now(UTC),
+                recorded_by="rebuild_and_deploy.sh all",
+                source_revision="7acc2bc1",
+                services=(ServiceImage("max", "sha256:max", deployed),),
+                models=(),
+            )
+        )
+        self._wire(mock_pg_pool, self._row(revision=reported))
+
+        (agent,) = await checker.get_agent_status()
+
+        assert (
+            agent["revision"],
+            agent["deployed_revision"],
+            agent["revision_matches_deploy"],
+        ) == (
+            reported,
+            deployed,
+            matches,
+        )
+
+    async def test_with_no_deploy_recorded_nothing_is_compared(self, checker, mock_pg_pool):
+        self._wire(mock_pg_pool, self._row(revision="7acc2bc1"))
+
+        (agent,) = await checker.get_agent_status()
+
+        assert (agent["deployed_revision"], agent["revision_matches_deploy"]) == (None, None)
 
 
 class TestUpdateAgentStatusInDb:
@@ -311,7 +382,11 @@ class TestReconcileOnce:
         pool.acquire.return_value = conn
         runtime_state = AsyncMock()
         checker = HealthChecker(
-            pg_pool=pool, redis_client=None, config=mock_config, runtime_state=runtime_state
+            deploy_registry=MemoryDeployRegistry(),
+            pg_pool=pool,
+            redis_client=None,
+            config=mock_config,
+            runtime_state=runtime_state,
         )
         return checker, conn, runtime_state
 
@@ -378,7 +453,11 @@ class TestHeartbeatMirror:
     def _checker(self, mock_config):
         runtime_state = AsyncMock()
         checker = HealthChecker(
-            pg_pool=MagicMock(), redis_client=None, config=mock_config, runtime_state=runtime_state
+            deploy_registry=MemoryDeployRegistry(),
+            pg_pool=MagicMock(),
+            redis_client=None,
+            config=mock_config,
+            runtime_state=runtime_state,
         )
         return checker, runtime_state
 
@@ -407,7 +486,12 @@ class TestGetCurrentActivity:
     async def test_returns_none_when_no_activity_port(self, mock_config):
         """Bug class: with no RuntimeActivityPort wired, the read must yield None
         (→ 404 idle), not raise."""
-        checker = HealthChecker(pg_pool=MagicMock(), redis_client=None, config=mock_config)
+        checker = HealthChecker(
+            pg_pool=MagicMock(),
+            redis_client=None,
+            config=mock_config,
+            deploy_registry=MemoryDeployRegistry(),
+        )
         assert await checker.get_current_activity("max") is None
 
     @pytest.mark.asyncio
@@ -416,7 +500,11 @@ class TestGetCurrentActivity:
         port = AsyncMock()
         port.get_current_activity.return_value = None
         checker = HealthChecker(
-            pg_pool=MagicMock(), redis_client=None, config=mock_config, activity=port
+            deploy_registry=MemoryDeployRegistry(),
+            pg_pool=MagicMock(),
+            redis_client=None,
+            config=mock_config,
+            activity=port,
         )
         assert await checker.get_current_activity("max") is None
 
@@ -447,7 +535,11 @@ class TestGetCurrentActivity:
             started_at=started,
         )
         checker = HealthChecker(
-            pg_pool=MagicMock(), redis_client=None, config=mock_config, activity=port
+            deploy_registry=MemoryDeployRegistry(),
+            pg_pool=MagicMock(),
+            redis_client=None,
+            config=mock_config,
+            activity=port,
         )
 
         result = await checker.get_current_activity("max")

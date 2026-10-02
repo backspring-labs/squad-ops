@@ -21,6 +21,13 @@ pytestmark = [pytest.mark.domain_orchestration]
 _EXECUTOR_PATH = (
     Path(__file__).resolve().parents[3] / "adapters" / "cycles" / "dispatched_flow_executor.py"
 )
+#: #1507 step 1: the promotion seam's body moved to the framing gate's plan check; the executor
+#: keeps it as a delegate, so its definition and call site are read above and its validators here.
+_FRAMING_GATE_CHECK_PATH = _EXECUTOR_PATH.with_name("framing_gate_check.py")
+_PROMOTION_SEAM_BODY = "reject_invalid_plan_before_workload_gate"
+#: #1507 step 3: the inter-workload gate moved to its own module; it is where the sequence calls
+#: the promotion seam (the executor's delegate), so its call site is read there.
+_WORKLOAD_GATE_PATH = _EXECUTOR_PATH.with_name("workload_gate.py")
 
 _PROMOTION_SEAM = "_reject_invalid_plan_before_workload_gate"
 _DISPATCH_SEAM = "_reject_unsatisfiable_plan_at_gate"
@@ -51,7 +58,8 @@ def test_both_plan_gate_seams_are_defined_and_called():
     assert _PROMOTION_SEAM in defined, f"{_PROMOTION_SEAM} was removed — see its D5 ownership note"
     assert _DISPATCH_SEAM in defined, f"{_DISPATCH_SEAM} was removed — see its D5 ownership note"
 
-    assert _method_calls(tree, _PROMOTION_SEAM), (
+    gate_tree = ast.parse(_WORKLOAD_GATE_PATH.read_text(encoding="utf-8"))
+    assert _method_calls(gate_tree, _PROMOTION_SEAM), (
         f"no call site for {_PROMOTION_SEAM} — the inter-workload promotion path "
         "(the one multi-workload cycles actually traverse) lost its plan-validation net"
     )
@@ -98,13 +106,19 @@ def test_builder_floor_rule_is_wired_at_both_seams():
     """#888 (the #718/#719 rule applied): the builder-floor validator must be
     called from BOTH seams — dropping either lets an under-covered plan reach
     the #291 completion gate, which has no repair path (roll 15's dead end)."""
-    tree = ast.parse(_EXECUTOR_PATH.read_text(encoding="utf-8"))
+
+    def sources(path, names):
+        return {
+            node.name: ast.unparse(node)
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+            if isinstance(node, ast.AsyncFunctionDef | ast.FunctionDef) and node.name in names
+        }
 
     seam_sources = {
-        node.name: ast.unparse(node)
-        for node in ast.walk(tree)
-        if isinstance(node, ast.AsyncFunctionDef | ast.FunctionDef)
-        and node.name in (_PROMOTION_SEAM, _DISPATCH_SEAM)
+        _DISPATCH_SEAM: sources(_EXECUTOR_PATH, {_DISPATCH_SEAM})[_DISPATCH_SEAM],
+        _PROMOTION_SEAM: sources(_FRAMING_GATE_CHECK_PATH, {_PROMOTION_SEAM_BODY})[
+            _PROMOTION_SEAM_BODY
+        ],
     }
 
     for seam in (_PROMOTION_SEAM, _DISPATCH_SEAM):

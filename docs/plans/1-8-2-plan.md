@@ -41,7 +41,7 @@ Written from:
 - SIP-0086 §12a and SIP-0096 §17a as re-targeted on 2026-09-17
 - SIP-0107 §38 step 7 and §39.8
 - SIP-0108 §10o (Solo kept)
-- the Campaign SIP (`sips/proposed/SIP-Campaign-Orchestration.md`)
+- the Campaign SIP (`sips/accepted/SIP-0109-Campaign-Orchestration.md`)
 - the tracker on 2026-09-24: 28 open issues, each placed by name (§5)
 
 **1.8.2 is the model-capability tranche and the line that answers what 1.8.1 found.** The 1.8.1
@@ -177,7 +177,7 @@ cover who decides a cycle's review gate.** `validated-fullstack` has a human gat
 (`progress_plan_review`), and today the driver approves it by a registered policy constant
 (`--as-agent`, the decider recorded). A campaign needs a declared decider for that gate. That
 belongs to Campaign's own design, where its `escalate` outcome already maps to a gate decision
-(`sips/proposed/SIP-Campaign-Orchestration.md` §7.1). 1.8.2 does not build it. The chain uses the
+(`sips/accepted/SIP-0109-Campaign-Orchestration.md` §7.1). 1.8.2 does not build it. The chain uses the
 driver's policy and says so on its record (§8).
 
 *For the record:* rev 0 recommended the flip line alone; rev 1 and rev 2 recommended campaign

@@ -101,6 +101,12 @@ RUN npm_pkgs="agents/instances/${AGENT_ROLE}/npm-global-packages.txt"; \
 
 # Cache-bust: when SOURCE_HASH changes, Docker invalidates this layer and below
 ARG SOURCE_HASH=unknown
+# #1720: the commit the image was built from (#80's source hash, `-dirty` from a modified
+# tree). The label is readable with `docker inspect` without starting the container; the
+# variable is what the running agent reports on its heartbeat. Before this, only the
+# runtime-api image carried it, and no agent could say which commit it ran.
+LABEL org.opencontainers.image.revision="${SOURCE_HASH}"
+ENV SQUADOPS_GIT_SHA=${SOURCE_HASH}
 
 # Copy source code (changes frequently, but doesn't invalidate deps layer)
 COPY src/ ./src/
@@ -109,6 +115,10 @@ COPY adapters/ ./adapters/
 # Install package in editable mode (fast - just creates .egg-info)
 RUN --mount=type=cache,target=/root/.cache/pip pip install -e .
 
+# #353: stamp the prompt pack as it ships: the fragment hashes the prompt repository
+# verifies against at runtime. After the last COPY of src/, so it describes this image.
+RUN python -m squadops.prompts.fragment_stamp
+
 # Create required directories
 RUN mkdir -p /app/logs /app/data/memory_db
 
@@ -116,8 +126,10 @@ RUN mkdir -p /app/logs /app/data/memory_db
 EXPOSE 8000
 
 # Health check
+# #1691: the running agent's own mark (squadops.agents.readiness), not a module import — an
+# import passed while every agent restart-looped on the #352 startup guard.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD python -c "from squadops.agents.entrypoint import AgentRunner; print('Agent healthy')" || exit 1
+    CMD python -m squadops.agents.readiness || exit 1
 
 # Run the agent entry point
 CMD ["python", "-m", "squadops.agents.entrypoint"]

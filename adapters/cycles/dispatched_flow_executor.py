@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
-import json
+import functools
 import logging
 import os
 import time
@@ -27,17 +27,28 @@ from uuid import uuid4
 
 from adapters.cycles.correction_repair import CorrectionRepair
 from adapters.cycles.correction_runner import CorrectionRunner
+from adapters.cycles.cycle_completion import CycleCompletion
 from adapters.cycles.execution_errors import (
     _CancellationError,
     _ExecutionError,
     _PausedError,
-    _RecruitmentRejectedError,
 )
-from adapters.cycles.patch_acceptance import PatchAcceptance, _record_repair_rejection
+from adapters.cycles.framing_gate_check import FramingGateCheck
+from adapters.cycles.patch_acceptance import (
+    KEEP_PROGRESS,
+    KEPT_ARTIFACTS_KEY,
+    KEPT_NEXT_FAILURE_KEY,
+    KEPT_OUTPUTS_KEY,
+    PatchAcceptance,
+    _record_repair_rejection,
+)
 from adapters.cycles.pulse_boundary_runner import PulseBoundaryRunner
+from adapters.cycles.run_admission import RunAdmission
 from adapters.cycles.run_completion import RunCompletion, resolve_terminal_outcome
+from adapters.cycles.run_provisioning import RunInProgress, RunProvisioning
 from adapters.cycles.task_dispatcher import TaskDispatcher
 from adapters.cycles.task_naming import build_task_name
+from adapters.cycles.workload_gate import GateOutcome, WorkloadGate
 from squadops.capabilities.context_assembly import (
     ACCEPTANCE_WORKSPACE_FILTER,
     LANDING_PRIOR_OUTPUTS,
@@ -57,10 +68,10 @@ from squadops.cycles.contract_derivation import (
     is_interface_manifest,
 )
 from squadops.cycles.correction_signature import REPAIR_EMPTY_MARKER
+from squadops.cycles.cycle_end import STOP_REASON_FOR_UNCOMPLETED_RUN, CycleStopReason
 from squadops.cycles.emission_integrity import EMISSION_FAILURE_KEY, EMISSION_STATUS_FAILED
 from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.failure_evidence import failing_cases_from_evidence
-from squadops.cycles.frozen_check_validation import frozen_check_violations
 from squadops.cycles.manifest_authoring import (
     GATE_DECIDED_BY_NO_QUESTIONS,
     MANIFEST_ARTIFACT_TYPE,
@@ -74,11 +85,9 @@ from squadops.cycles.models import (
     Run,
     RunStatus,
 )
-from squadops.cycles.naming import flow_run_name
+from squadops.cycles.naming import flow_run_name, flow_run_tags
 from squadops.cycles.patch_verification import storage_altered_accepted_patch
 from squadops.cycles.rejection_baseline import (
-    REJECTION_ARTIFACT_TYPE,
-    REJECTION_FILENAME,
     RejectionClassifier,
 )
 from squadops.cycles.run_ledger import RunLedger
@@ -92,14 +101,10 @@ from squadops.cycles.scaffold_integrity_evidence import (
     STAGE_FAILED_EMISSION,
 )
 from squadops.cycles.task_outcome import CorrectionTerminationReason, TaskOutcome
-from squadops.cycles.task_plan import generate_task_plan, inject_contract_inputs
+from squadops.cycles.task_plan import inject_contract_inputs
 from squadops.cycles.verification_normalize import normalize_task_checks
 from squadops.events.types import EventType
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
-from squadops.runtime import reasons
-from squadops.runtime.admission import admit_participants, release_participants
-from squadops.runtime.focus_reaper import release_owner_leases
-from squadops.runtime.recruitment import reserve_buffer_decision
 from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
 from squadops.tasks.task_types import (
     TaskType,
@@ -231,6 +236,18 @@ def record_task_evidence(ledger: RunLedger, task_result, task_id: str) -> None:
 #: (CLAUDE.md: tables over chains).
 _ASSEMBLY_NOTES_READERS: frozenset[str] = frozenset({TaskType.QA_TEST})
 
+#: #1522: the inputs ``_enrich_envelope`` derives from the run's stored artifacts. When a repair
+#: is kept mid-loop (#1522), these are re-derived onto the envelope the retry loop
+#: re-dispatches, so the re-run sees the kept set. Every other input rides unchanged: the
+#: attempt carry (``_carry_facts_to_the_next_attempt``) lives on the same dict.
+_STORE_DERIVED_INPUTS: tuple[str, ...] = (
+    "artifact_refs",
+    "artifact_contents",
+    "assembly_notes",
+    "acceptance_workspace_files",
+    "workspace_revision_id",
+)
+
 
 @dataclasses.dataclass(frozen=True)
 class _CorrectionRound:
@@ -244,6 +261,9 @@ class _CorrectionRound:
     protocol: Any
     attempt: int
     max_attempts: int
+    #: #1697: the run's round sequence. Unlike ``attempt``, a refund never resets it, so the
+    #: round's task ids stay unique (adapters/cycles/correction_ids.py).
+    round_seq: int = 0
 
 
 #: The run's own mutable execution state, named (1.7.5 recovery extraction map §4 step 6).
@@ -398,6 +418,23 @@ class RunState:
     #: authoring stage lands a manifest; every task dispatched after that binds to it.
     #: Empty for seeded runs, whose contract was pinned at creation.
     authored: tuple[Any, Any] = (None, None)
+
+
+def _flow_run_tags_for(cycle: Cycle) -> list[str]:
+    """#1722: the cycle's Prefect tags, from what the cycle already holds. A replay declaration
+    is validated at create; one that no longer parses is left untagged rather than failing the
+    flow run's creation."""
+    from squadops.cycles.replay import parse_replay_declaration
+
+    try:
+        replay = parse_replay_declaration(cycle.execution_overrides or {})
+    except ValueError:
+        replay = None
+    return flow_run_tags(
+        project_id=cycle.project_id,
+        framework_git_sha=cycle.framework_git_sha,
+        replay_of=replay.source_run_id if replay else None,
+    )
 
 
 class DispatchedFlowExecutor(FlowExecutionPort):
@@ -583,172 +620,22 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # replaces this with the decision the raise site declared.
         terminal = RunTerminalDecision(kind=TerminalKind.COMPLETED)
         ledger = RunLedger()
-        cycle = None
-        plan = None
-        verification_contract = None
-        # SIP-0089 §3.5 (#233): agents this run transitioned ambient→cycle, to be
-        # returned to ambient (releasing their cycle lease) in the finally. Stays
-        # empty when recruitment defers (admission rolls its own recruits back) or
-        # when no coordinator is wired.
-        recruited_agent_ids: tuple[str, ...] = ()
+        # #1507 step 2: what the finally reads, recorded by provisioning and admission the moment
+        # each is known, so a run that fails partway finalizes with exactly the state it reached.
+        # recruited_agent_ids (SIP-0089 §3.5, #233) stays empty when recruitment defers or no
+        # coordinator is wired.
+        state = RunInProgress()
 
         try:
-            cycle, run_root = await self._prepare_cycle_for_run(
-                cycle_id, run_id, forwarding_overrides=forwarding_overrides
+            provisioned = await self._run_provisioning.prepare(
+                state, cycle_id, run_id, profile_id, forwarding_overrides=forwarding_overrides
             )
-            run = await self._cycle_registry.get_run(run_id)
-            profile, _ = await self._squad_profile.resolve_snapshot(profile_id)
-
-            # queued/failed/paused -> running. Skipped when already RUNNING:
-            # the resume/retry routes flip the run to RUNNING before enqueuing
-            # execution (#222/#256), and RUNNING -> RUNNING is an illegal
-            # transition — the unconditional call instantly failed every
-            # resumed run on a lifecycle-enforcing registry (#342).
-            if run.status != RunStatus.RUNNING.value:
-                await self._cycle_registry.update_run_status(run_id, RunStatus.RUNNING)
-
-            # SIP-0079: Check if resuming from checkpoint
-            existing_checkpoint = await self._cycle_registry.get_latest_checkpoint(run_id)
-            if existing_checkpoint:
-                self._cycle_event_bus.emit(
-                    EventType.RUN_RESUMED,
-                    entity_type="run",
-                    entity_id=run_id,
-                    context={
-                        "cycle_id": cycle_id,
-                        "run_id": run_id,
-                        "project_id": cycle.project_id,
-                    },
-                    payload={"checkpoint_index": existing_checkpoint.checkpoint_index},
-                )
-            else:
-                self._cycle_event_bus.emit(
-                    EventType.RUN_STARTED,
-                    entity_type="run",
-                    entity_id=run_id,
-                    context={
-                        "cycle_id": cycle_id,
-                        "run_id": run_id,
-                        "project_id": cycle.project_id,
-                    },
-                )
-
-            # SIP-0086 / SIP-0092: Load implementation plan for implementation
-            # workloads. The plan is produced by the planning workload and
-            # forwarded via plan_artifact_refs. Loading it here (not mid-loop)
-            # keeps the executor deterministic — the plan is fully materialized
-            # before task dispatch begins.
-            implementation_plan = await self._load_plan_for_run(cycle, run)
-
-            # SIP-0098 98.3: a seeded contract_ref switches the cycle to bind mode.
-            # Loaded here (alongside the plan) so net-a inside generate_task_plan can
-            # validate the plan's criteria_refs and dispatch can resolve them into
-            # TypedChecks. Absent contract = author mode = today's behavior.
-            verification_contract = await self._load_contract_for_run(cycle, run)
-
-            # pf-42: the proposer binds criteria for the fill slots but is told nothing
-            # about the frozen files, so a check it wants on one is written against an
-            # invented interior. The manifest is what those files expand from, so it is
-            # the authority on their contents.
-            #
-            # Read from the OPERATOR-SEEDED rail, not `_load_interface_manifest_for_run`
-            # — that one returns None for a framing run by design (#496), and framing is
-            # exactly when the proposer needs this. The #496 rule is that a framing run
-            # must not expand or carry skeleton FILES; describing the interface in a
-            # prompt materializes nothing, so it stays inside that rule. Bind mode
-            # already requires a seeded manifest (#494), so this is the same document
-            # the gate hash-checks and the skeleton later expands from.
-            interface_manifest = None
-            if verification_contract is not None:
-                interface_manifest = await self._seeded_manifest_for_authoring(cycle)
-
-            plan = generate_task_plan(
-                cycle,
-                run,
-                profile,
-                plan=implementation_plan,
-                contract=verification_contract,
-                interface_manifest=interface_manifest,
+            await self._run_admission.admit(state, provisioned.participating_agent_ids, run_id)
+            seed_artifact_refs, interface_manifest = await self._run_provisioning.seed(
+                state, provisioned, run_id
             )
-            participating_agent_ids = {e.agent_id for e in plan}
-
-            # SIP-0089 §2.5: reserve-buffer guard. The plan now names every
-            # agent this run would recruit. If one is committed to — or about to
-            # start — a hard duty window (§11.4), defer the run rather than pull
-            # the agent into cycle work. Opt-in: skipped when no AssignmentPort
-            # is wired. Decision is pure (time-injected) and lives in the runtime
-            # domain; we only enforce it here.
-            if self._assignment_port is not None:
-                guard_now = datetime.now(UTC)
-                active_assignments = await self._assignment_port.list_active_assignments(guard_now)
-                decision = reserve_buffer_decision(
-                    active_assignments,
-                    participating_agent_ids,
-                    guard_now,
-                )
-                if not decision.allowed:
-                    raise _RecruitmentRejectedError(decision.blocking_agent_id, decision.reason)
-
-            # SIP-0089 §3.5 (#233): having cleared the reserve-buffer guard, route
-            # recruitment through the coordinator — each participant transitions
-            # ambient→cycle, acquiring its cycle FocusLease (§3.4). A lease
-            # conflict is a deferral, not a failure: it rides the same
-            # _RecruitmentRejectedError → RUN_PAUSED path with a typed focus_lease_*
-            # reason (no new EventType). admission rolls back any agents it already
-            # recruited before deferring, so a paused run strands no one in cycle.
-            # Opt-in: skipped when no coordinator is wired (§2.5-only fallback).
-            if self._coordinator is not None:
-                admission = await admit_participants(
-                    self._coordinator,
-                    participating_agent_ids,
-                    owner_ref=run_id,
-                )
-                if not admission.admitted:
-                    raise _RecruitmentRejectedError(admission.blocking_agent_id, admission.reason)
-                recruited_agent_ids = admission.recruited_agent_ids
-
-            # Build-only validation (D6): require plan_artifact_refs
-            include_plan = bool(cycle.resolved_config().get("plan_tasks", True))
-            include_build = bool(cycle.resolved_config().get("build_tasks"))
-            seed_artifact_refs: list[str] = []
-            if include_build and not include_plan:
-                # Legacy build-only run: plan_artifact_refs are mandatory
-                plan_refs = cycle.execution_overrides.get("plan_artifact_refs")
-                if not plan_refs:
-                    raise _ExecutionError("plan_artifact_refs required for build-only cycle")
-                seed_artifact_refs = list(plan_refs)
-            elif run.workload_type is not None:
-                # Multi-workload run: seed from forwarded planning artifacts
-                plan_refs = cycle.execution_overrides.get("plan_artifact_refs")
-                if plan_refs:
-                    seed_artifact_refs = list(plan_refs)
-
-            # SIP-0099 99.3: if framing forwarded an interface manifest, expand it into a
-            # walking skeleton and seed those files so develop fills the fixed slots.
-            # Data-driven: no manifest -> seed_artifact_refs unchanged = byte-identical to
-            # today (the manifest itself is already among plan_artifact_refs; this ADDS the
-            # expanded skeleton). Logic lives in helpers (#290 god-file rule).
-            # #881: never on resume. The checkpoint's artifact_refs already carry the
-            # original seed set, and a fresh set stores NEW artifact ids that
-            # _seed_prior_artifacts appends AFTER the restored state — last-writer-wins
-            # per filename then hands every fill slot back to a stub that throws by
-            # design, so the resumed run tests the skeleton instead of the app.
-            interface_manifest = await self._load_interface_manifest_for_run(cycle, run)
-            if interface_manifest is not None and existing_checkpoint is None:
-                skeleton_refs = await self._seed_skeleton_artifacts(
-                    interface_manifest, cycle, run_id
-                )
-                seed_artifact_refs.extend(skeleton_refs)
-                # SIP-0104: the deterministic test scaffold rides the same seed act, and
-                # only on top of an actually-seeded skeleton — the tree its shells'
-                # imports resolve against is the tree this run carries. Same #881
-                # no-resume rule by construction (this whole branch is seed-time only).
-                if skeleton_refs:
-                    seed_artifact_refs.extend(
-                        await self._seed_verification_scaffold_artifacts(
-                            interface_manifest, cycle, run_id
-                        )
-                    )
+            cycle, plan = state.cycle, state.plan
+            profile, run_root = provisioned.profile, provisioned.run_root
 
             # LangFuse + Prefect observability setup
             obs_ctx, flow_run_id = await self._init_run_observability(
@@ -856,39 +743,17 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 logger.info(outcome.log_message)
 
         finally:
-            # SIP-0089 §3.5 (#233): release the cycle leases this run acquired,
-            # whatever the outcome (completed/failed/paused/cancelled). Best-effort
-            # and isolated per agent — a stranded cycle lease would block all of an
-            # agent's future recruitment, so this must run before anything that can
-            # raise. Empty (and skipped) when the run recruited no one.
-            if self._coordinator is not None and recruited_agent_ids:
-                await release_participants(self._coordinator, recruited_agent_ids, owner_ref=run_id)
-            # #373: then sweep anything still held under this run's owner_ref.
-            # `recruited_agent_ids` records only the agents *this* admission call
-            # transitioned; a recruitment replay (#288 idempotent-skip on a
-            # resumed run) leaves leases owned by this run that the release above
-            # cannot see. Best-effort — a sweep failure must not mask the run's
-            # own outcome.
-            if self._coordinator is not None and self._focus_lease_port is not None:
-                try:
-                    await release_owner_leases(
-                        self._coordinator,
-                        self._focus_lease_port,
-                        run_id,
-                        reason_code=reasons.LEASE_STRANDED_AT_RUN_FINALIZE,
-                    )
-                except Exception:
-                    logger.warning("Stranded-lease sweep failed for run %s", run_id, exc_info=True)
+            await self._run_admission.release(run_id, state.recruited_agent_ids)
             await self._run_completion.finalize(
                 cycle_id,
                 run_id,
                 run_status,
                 obs_ctx,
                 flow_run_id,
-                cycle=cycle,
-                plan=plan,
+                cycle=state.cycle,
+                plan=state.plan,
                 ledger=ledger,
-                contract=verification_contract,
+                contract=state.verification_contract,
                 usage=self._task_dispatcher.take_run_usage(run_id),
                 terminal=terminal,
             )
@@ -910,9 +775,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
     ) -> None:
         """Execute a full cycle by iterating over workload_sequence.
 
-        Assumes execute_run() returns only after the run reaches a terminal
-        state (completed, failed, cancelled). Decision semantics for inter-
-        workload gates are interpreted here, not in the polling helper.
+        execute_run() returns once the run has ended or been deferred: completed, failed,
+        cancelled, or paused (#1754). Only a completed run advances the sequence; any other
+        status stops it, with the reason ``STOP_REASON_FOR_UNCOMPLETED_RUN`` names. Decision
+        semantics for inter-workload gates are interpreted here, not in the polling helper.
         """
         cycle = await self._cycle_registry.get_cycle(cycle_id)
         workload_sequence = cycle.resolved_config().get("workload_sequence", [])
@@ -920,6 +786,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # Single-workload fast path (D7)
         if len(workload_sequence) <= 1:
             await self.execute_run(cycle_id, first_run_id, profile_id)
+            await self._cycle_completion.end(
+                cycle_id,
+                await self._cycle_registry.get_run(first_run_id),
+                CycleStopReason.SINGLE_WORKLOAD_ENDED,
+            )
             return
 
         # #257: support resuming mid-sequence. first_run_id may be a later
@@ -961,6 +832,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         framing_revisions = 0
         max_framing_revisions = int(cycle.resolved_config().get("manifest_max_attempts", 2))
         i = start_index
+        # #1507 step 3: every way the loop ends names why, and meets CycleCompletion after it.
+        run = None
+        stopped_because = CycleStopReason.SEQUENCE_COMPLETED
         while i < len(workload_sequence):
             workload_entry = workload_sequence[i]
             await self.execute_run(
@@ -970,9 +844,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 forwarding_overrides=forwarding_overrides,
             )
 
-            # Check terminal status (compare persisted string values)
+            # Check terminal status (compare persisted string values). #1754: anything but a
+            # completed run stops the sequence. A paused run read as completed was gated, its
+            # empty plan rejected, and each framing re-roll cancelled it.
             run = await self._cycle_registry.get_run(current_run_id)
-            if run.status in (RunStatus.FAILED.value, RunStatus.CANCELLED.value):
+            if run.status != RunStatus.COMPLETED.value:
                 self._cycle_event_bus.emit(
                     EventType.WORKLOAD_COMPLETED,
                     entity_type="workload",
@@ -983,6 +859,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         "terminal_status": run.status,
                     },
                 )
+                stopped_because = STOP_REASON_FOR_UNCOMPLETED_RUN[RunStatus(run.status)]
                 break
 
             self._cycle_event_bus.emit(
@@ -998,273 +875,35 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
             # Last workload — done
             if i >= len(workload_sequence) - 1:
+                stopped_because = CycleStopReason.SEQUENCE_COMPLETED
                 break
 
             # Inter-workload gate
             gate_name = workload_entry.get("gate")
             if gate_name and gate_name != "auto":
-                # #464: the inter-workload gate is the plan gate our cycle
-                # shapes actually traverse (the mid-run _handle_gate path only
-                # fires for task_flow_policy gates) — validate the authored
-                # plan BEFORE asking the operator to review it. A doomed plan
-                # gets a rejection, not a review request.
-                #
-                # #473: mechanical rejection is congruent with a human
-                # --reject: a REJECTED gate decision is recorded (visible in
-                # `runs show` / gate_decisions), GATE_DECIDED is emitted, and
-                # the sequence stops cleanly — never a silent orchestrator
-                # death the operator can only diagnose by re-reviewing the
-                # manifest by hand (the 3.13 stall).
-                plan_errors = await self._reject_invalid_plan_before_workload_gate(
-                    run, cycle, gate_name
+                gate = await self._workload_gate.decide(
+                    cycle=cycle,
+                    cycle_id=cycle_id,
+                    run=run,
+                    workload_entry=workload_entry,
+                    gate_name=gate_name,
+                    current_run_id=current_run_id,
+                    forwarding_overrides=forwarding_overrides,
+                    framing_rerolls=framing_rerolls,
+                    framing_revisions=framing_revisions,
+                    max_framing_rerolls=max_framing_rerolls,
+                    max_framing_revisions=max_framing_revisions,
                 )
-                if plan_errors:
-                    rejection = GateDecision(
-                        gate_name=gate_name,
-                        decision=GateDecisionValue.REJECTED.value,
-                        decided_by="system:plan_validation",
-                        decided_at=datetime.now(UTC),
-                        notes="; ".join(plan_errors),
-                    )
-                    await self._cycle_registry.record_gate_decision(current_run_id, rejection)
-                    self._cycle_event_bus.emit(
-                        EventType.GATE_DECIDED,
-                        entity_type="run",
-                        entity_id=current_run_id,
-                        context={"cycle_id": cycle_id, "run_id": current_run_id},
-                        payload={
-                            "gate_name": gate_name,
-                            "decision": GateDecisionValue.REJECTED.value,
-                            "decided_by": "system:plan_validation",
-                        },
-                    )
-                    logger.error(
-                        "Plan auto-rejected at gate %r on run %s: %s",
-                        gate_name,
-                        current_run_id,
-                        "; ".join(plan_errors),
-                    )
-                    # #522: a *system* plan-validation rejection is a stochastic
-                    # framing fault (the rule the model tripped is already in its
-                    # prompt), not an operator's verdict — the retry a human would
-                    # grant instantly. Re-roll framing, bounded by
-                    # ``framing_max_rerolls``, rather than killing the cycle. The
-                    # rejection stays in gate_decisions (evidence, #473); the
-                    # superseded framing run is CANCELLED so the positional
-                    # run↔workload invariant (#257/D14) holds — exactly one
-                    # non-cancelled run per position. A human --reject is a
-                    # different decided_by and never reaches this branch.
-                    if (
-                        workload_entry.get("type") == "framing"
-                        and framing_rerolls < max_framing_rerolls
-                    ):
-                        framing_rerolls += 1
-                        await self._cycle_registry.cancel_run(current_run_id)
-                        # #669: the re-roll must revise, not re-dice — thread
-                        # what died and why into the new framing's authoring
-                        # prompts on the §6.6 forwarding rail. The rail is
-                        # rebuilt at the next workload advance, so the context
-                        # never leaks past framing; a second re-roll replaces
-                        # the first's context with the latest rejection.
-                        rejected_plan_yaml = await self._load_rejected_plan_yaml(run)
-                        rejection_context: dict[str, Any] = {"rejection_reasons": list(plan_errors)}
-                        if rejected_plan_yaml:
-                            rejection_context["rejected_plan_yaml"] = rejected_plan_yaml
-                        forwarding_overrides = {
-                            **(forwarding_overrides or {}),
-                            "framing_rejection_context": rejection_context,
-                        }
-                        reroll_run = await self._create_next_workload_run(
-                            cycle,
-                            run,
-                            workload_entry,
-                            config_hash=run.resolved_config_hash,
-                        )
-                        current_run_id = reroll_run.run_id
-                        self._cycle_event_bus.emit(
-                            EventType.WORKLOAD_ADVANCED,
-                            entity_type="workload",
-                            entity_id=current_run_id,
-                            context={"cycle_id": cycle_id, "run_id": current_run_id},
-                            payload={
-                                "workload_type": "framing",
-                                "reason": "framing_reroll_on_system_rejection",
-                                "reroll": framing_rerolls,
-                            },
-                        )
-                        logger.info(
-                            "Framing re-roll %d/%d on cycle %s: new framing run %s",
-                            framing_rerolls,
-                            max_framing_rerolls,
-                            cycle_id,
-                            current_run_id,
-                        )
-                        continue  # same index — re-execute framing
+                current_run_id, forwarding_overrides = (
+                    gate.current_run_id,
+                    gate.forwarding_overrides,
+                )
+                framing_rerolls, framing_revisions = gate.framing_rerolls, gate.framing_revisions
+                if gate.outcome is GateOutcome.RE_EXECUTE:
+                    continue  # same index — re-execute framing
+                if gate.outcome is GateOutcome.STOP:
+                    stopped_because = gate.stopped_because
                     break
-                # M4 (#807): the gate stops only when the DESIGN asks a question. A
-                # manifest that declares no unresolved decision has already been approved by
-                # the deterministic gates, and a review that adds nothing is worse than no
-                # review — it manufactures the appearance of one. Keyed on the design, never
-                # on who wrote it (Guard 1a).
-                questions = await self._design_questions_for_gate(run, cycle)
-                if questions is not None and not questions:
-                    # Synthesized, not short-circuited: the decision runs through the SAME
-                    # exhaustive dispatch below that a human's answer does, so a
-                    # pass-through cannot reach a path an approval would not.
-                    decision = await self._approve_gate_without_questions(
-                        current_run_id, cycle_id, gate_name
-                    )
-                else:
-                    self._cycle_event_bus.emit(
-                        EventType.WORKLOAD_GATE_AWAITING,
-                        entity_type="workload",
-                        entity_id=current_run_id,
-                        context={"cycle_id": cycle_id, "run_id": current_run_id},
-                        # The questions ARE the review request (§5c.10): an operator shown
-                        # "approve?" reviews nothing; one shown "the PRD does not define the
-                        # expansion checkpoint — which is it?" answers what only they know.
-                        payload={
-                            "gate_name": gate_name,
-                            "open_questions": list(questions or ()),
-                        },
-                    )
-                    if questions:
-                        logger.info(
-                            "Gate %r on run %s is waiting on %d design question(s): %s",
-                            gate_name,
-                            current_run_id,
-                            len(questions),
-                            "; ".join(questions),
-                        )
-                    decision = await self._poll_inter_workload_gate(
-                        current_run_id,
-                        cycle,
-                        gate_name,
-                    )
-
-                if decision.decision == GateDecisionValue.REJECTED:
-                    break  # Run stays COMPLETED; rejection in gate_decisions
-
-                if decision.decision == GateDecisionValue.RETURNED_FOR_REVISION:
-                    # #466: revision is NOT an approval — the sequence must never advance
-                    # with the un-revised plan (the 3.10 false-approve). #811 makes the
-                    # revision actually happen instead of stopping: without it the gate could
-                    # ask a design question and then do nothing with the answer, which is the
-                    # rubber stamp it replaced wearing a better costume.
-                    #
-                    # Deliberately the SAME path a system rejection takes (#522/#669), driven
-                    # by a different trigger — a second re-execution loop beside a proven one
-                    # is how they drift.
-                    if (
-                        workload_entry.get("type") == "framing"
-                        and framing_revisions < max_framing_revisions
-                    ):
-                        framing_revisions += 1
-                        # Cancel FIRST: the positional run↔workload invariant (#257/D14) is
-                        # exactly one non-cancelled run per position, and the superseded run
-                        # still occupies this one.
-                        await self._cycle_registry.cancel_run(current_run_id)
-                        revision_context: dict[str, Any] = {
-                            "rejection_reasons": [
-                                decision.notes.strip()
-                                or "The reviewer returned this design for revision."
-                            ]
-                        }
-                        # §5c.6's "revise, don't re-roll": without the prior manifest the new
-                        # framing re-authors from scratch with a hint attached, which is the
-                        # fay-6 new-dice failure in disguise.
-                        prior_manifest = await self._run_manifest_content(run, cycle)
-                        if prior_manifest:
-                            revision_context["prior_manifest_yaml"] = prior_manifest
-                        forwarding_overrides = {
-                            **(forwarding_overrides or {}),
-                            "framing_rejection_context": revision_context,
-                            # #811: the superseded run whose completed prefix the revision
-                            # restores instead of re-earning.
-                            "framing_revision_source": run.run_id,
-                        }
-                        revision_run = await self._create_next_workload_run(
-                            cycle,
-                            run,
-                            workload_entry,
-                            config_hash=run.resolved_config_hash,
-                        )
-                        current_run_id = revision_run.run_id
-                        self._cycle_event_bus.emit(
-                            EventType.WORKLOAD_ADVANCED,
-                            entity_type="workload",
-                            entity_id=current_run_id,
-                            context={"cycle_id": cycle_id, "run_id": current_run_id},
-                            payload={
-                                "workload_type": "framing",
-                                "reason": "framing_revision_on_operator_request",
-                                "revision": framing_revisions,
-                            },
-                        )
-                        logger.info(
-                            "Gate %r returned_for_revision on run %s: revising (%d/%d) in "
-                            "new framing run %s with the reviewer's notes as authoring "
-                            "context",
-                            gate_name,
-                            run.run_id,
-                            framing_revisions,
-                            max_framing_revisions,
-                            current_run_id,
-                        )
-                        continue  # same index — re-execute framing, revised
-                    logger.info(
-                        "Gate %r returned_for_revision on run %s: stopping the workload "
-                        "sequence — %s",
-                        gate_name,
-                        current_run_id,
-                        (
-                            f"the revision budget is spent ({framing_revisions}/"
-                            f"{max_framing_revisions})"
-                            if workload_entry.get("type") == "framing"
-                            else "only a framing workload can be revised"
-                        ),
-                    )
-                    break
-
-                if decision.decision not in (
-                    GateDecisionValue.APPROVED,
-                    GateDecisionValue.APPROVED_WITH_REFINEMENTS,
-                ):
-                    # #466: exhaustive dispatch — an unknown/future decision
-                    # value must never silently act as an approval.
-                    logger.warning(
-                        "Gate %r on run %s carries unrecognized decision %r: "
-                        "stopping the workload sequence",
-                        gate_name,
-                        current_run_id,
-                        decision.decision,
-                    )
-                    break
-
-                # Write refinement notes as artifact (D10)
-                if (
-                    decision.decision == GateDecisionValue.APPROVED_WITH_REFINEMENTS
-                    and decision.notes
-                ):
-                    artifact_content = f"# Refinement Notes\n\n{decision.notes}\n"
-                    content_bytes = artifact_content.encode()
-                    refinement_ref = ArtifactRef(
-                        artifact_id=f"art_{uuid4().hex[:12]}",
-                        project_id=cycle.project_id,
-                        cycle_id=cycle.cycle_id,
-                        run_id=current_run_id,
-                        artifact_type="document",
-                        filename="refinement_notes.md",
-                        content_hash=sha256(content_bytes).hexdigest(),
-                        size_bytes=len(content_bytes),
-                        media_type="text/markdown",
-                        created_at=datetime.now(UTC),
-                        metadata={"producing_task_type": "gate.refinement_notes"},
-                    )
-                    await self._artifact_vault.store(refinement_ref, content_bytes)
-                    await self._cycle_registry.append_artifact_refs(
-                        current_run_id, (refinement_ref.artifact_id,)
-                    )
 
             # Positional duplicate guard (D14).
             # Assumes runs are created in sequence order by this orchestration
@@ -1301,6 +940,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 payload={"workload_type": next_workload.get("type")},
             )
             i += 1
+
+        # #1507 step 3: the completion boundary — one CycleEnd for every way the cycle ended.
+        if run is not None:
+            await self._cycle_completion.end(cycle_id, run, stopped_because)
 
     @staticmethod
     def _typed_workload_position(run, workload_sequence, non_cancelled) -> int | None:
@@ -1981,31 +1624,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # must survive, or a failed run reads as "0 verified" instead of red.
         _last_failed_result: dict[str, Any] = {}
 
-        async def _route_outcome(
-            result,
-            _envelope=envelope,
-            _enriched=enriched,
-            _consecutive_failures=state.routing.consecutive_failures,
-            _holder=_last_failed_result,
-        ):
-            # #1323: authorize BEFORE holding. The held result is the base the repair
-            # overlay is built from (``_try_accept_patch``) and the source the triage
-            # bank stores (#971) — both must see the same authorized set, or a path
-            # the producer may not write is admitted here and the repair that fixes
-            # it is refused at storage for touching it.
-            result = await self._admit_failed_emission(
-                result,
-                _envelope,
-                cycle,
-                run_id,
-                state.produced.all_artifact_refs,
-                bound_record=state.ownership.bound_record,
-                compliance_counter=state.ownership.compliance_counter,
-            )
-            _holder["result"] = result
-            if ledger is not None:
-                record_absent_emission(ledger, result, _envelope)
-            action = await self._handle_task_outcome(
+        async def _next_action(result, _envelope, _enriched, _consecutive_failures, _holder):
+            return await self._handle_task_outcome(
                 result=result,
                 envelope=_envelope,
                 enriched_envelope=_enriched,
@@ -2033,6 +1653,55 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 accepted_repair_task_ids=state.correction.accepted_repair_task_ids,
                 ledger=ledger,
             )
+
+        async def _route_outcome(
+            result,
+            _envelope=envelope,
+            _enriched=enriched,
+            _consecutive_failures=state.routing.consecutive_failures,
+            _holder=_last_failed_result,
+        ):
+            # #1323: authorize BEFORE holding. The held result is the base the repair
+            # overlay is built from (``_try_accept_patch``) and the source the triage
+            # bank stores (#971) — both must see the same authorized set, or a path
+            # the producer may not write is admitted here and the repair that fixes
+            # it is refused at storage for touching it.
+            result = await self._admit_failed_emission(
+                result,
+                _envelope,
+                cycle,
+                run_id,
+                state.produced.all_artifact_refs,
+                bound_record=state.ownership.bound_record,
+                compliance_counter=state.ownership.compliance_counter,
+            )
+            _holder["result"] = result
+            if ledger is not None:
+                record_absent_emission(ledger, result, _envelope)
+            action = await _next_action(
+                result, _envelope, _enriched, _consecutive_failures, _holder
+            )
+            while action == KEEP_PROGRESS:
+                # #1522: the repair cleared some of the round's failures and added none. It
+                # becomes accepted state, and the retest's failure (the task run on the kept
+                # tree) is routed as the next round's: nothing is re-dispatched. Every round
+                # draws on the correction budget, so this ends when a round accepts, discards,
+                # or the budget is spent. The round's failed attempt is recorded first, as a
+                # re-dispatched one is below (#379).
+                _record_task_evidence(result)
+                result = await self._store_kept_progress(
+                    _holder,
+                    _envelope,
+                    _enriched,
+                    cycle,
+                    run_id,
+                    state,
+                    interface_manifest=interface_manifest,
+                )
+                _holder["result"] = result
+                action = await _next_action(
+                    result, _envelope, _enriched, _consecutive_failures, _holder
+                )
             if action == "accept_patch":
                 # #994: remember that THIS task now has accepted, stored repaired
                 # state. A later round's rewind re-authors from the checkpoint and
@@ -2475,52 +2144,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         author mode = today's behavior exactly."""
         return bool(cycle.execution_overrides.get("contract_ref"))
 
-    async def _store_rejection_record(
-        self,
-        run: Any,
-        cycle: Any,
-        gate_name: str,
-        classifier: Any,
-        errors: list[str],
-    ) -> None:
-        """Persist which classes rejected this plan (#809, B1).
-
-        Written at the moment of rejection because that is the only moment the producing
-        validator is known without parsing prose back out of a joined error string. Nothing
-        in 1.6 reads it — the pre-memory baseline is unrecoverable once Cross-Cycle Memory
-        exists, so it is captured now and aggregated whenever the window is scored.
-
-        Never raises. A baseline is a record, not a gate: losing one cycle's bookkeeping is a
-        gap in a dataset, while failing the rejection path would turn it into a lost cycle.
-        """
-        payload = classifier.record(gate_name, errors)
-        if not payload:
-            return
-        content = json.dumps(payload, indent=2).encode("utf-8")
-        try:
-            await self._artifact_vault.store(
-                ArtifactRef(
-                    artifact_id=f"art_{uuid4().hex[:12]}",
-                    project_id=cycle.project_id,
-                    artifact_type=REJECTION_ARTIFACT_TYPE,
-                    filename=REJECTION_FILENAME,
-                    content_hash=sha256(content).hexdigest(),
-                    size_bytes=len(content),
-                    media_type="application/json",
-                    created_at=datetime.now(UTC),
-                    cycle_id=cycle.cycle_id,
-                    run_id=run.run_id,
-                ),
-                content,
-            )
-        except Exception:
-            logger.warning(
-                "Could not store the rejection record for run %s; the baseline loses this "
-                "cycle's plan-validation classes",
-                run.run_id,
-                exc_info=True,
-            )
-
     async def _design_questions_for_gate(self, run: Any, cycle: Any) -> tuple[str, ...] | None:
         """The design questions this run's manifest declined to answer (#807, M4).
 
@@ -2746,32 +2369,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         )
         return contract
 
-    @staticmethod
-    def _validate_contract_binding(contract: Any, interface_content: str) -> list[str]:
-        """§10 decision — FAIL on interface-manifest hash mismatch.
-
-        A contract binds to the exact skeleton it was authored against via
-        ``skeleton.interface_manifest_hash``. If the run's manifest hashes to
-        something else, the contract measures a different skeleton's fill against
-        the wrong criteria (the stale-evidence-after-mutation class) — a hard
-        rejection, not a warning read once and ignored. The manifest's own parse
-        failures are already reported by ``_validate_interface_manifest``; here a
-        parse failure is a no-op to avoid a duplicate rejection."""
-        from squadops.capabilities.scaffold import InterfaceManifest
-
-        try:
-            manifest = InterfaceManifest.from_yaml(interface_content)
-        except Exception:  # noqa: BLE001 — parse failure already surfaced elsewhere
-            return []
-        actual = manifest.content_hash()
-        expected = contract.skeleton.interface_manifest_hash
-        if actual != expected:
-            return [
-                f"contract bound to interface_manifest_hash {expected[:12]}… but the run's "
-                f"manifest hashes to {actual[:12]}… — the contract was authored against a "
-                f"different skeleton (stale binding, rejected)"
-            ]
-        return []
+    _validate_contract_binding = staticmethod(FramingGateCheck._validate_contract_binding)
 
     # ------------------------------------------------------------------
     # Extracted helpers for _execute_sequential
@@ -3201,6 +2799,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 re-rolls its artifacts and clobbers the repair).
             "break_correction" — correction handled without re-run (governance
                 "continue": advance without repair), advance to next task.
+            ``KEEP_PROGRESS`` — (#1522) a ``patch`` correction whose retest cleared some of
+                the round's failures and added none; ``_route_outcome`` stores the kept
+                repair and routes the retest's failure as the next round's, so the
+                dispatcher never sees this token.
 
         Raises:
             _PausedError — task is blocked
@@ -3464,6 +3066,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # corr-/plan_delta- id. The pre-increment value keys those deterministic ids.
         attempt = correction_counter["n"]
         correction_counter["n"] = attempt + 1
+        # #1697: the round sequence advances on EVERY round, refunded or not, so two rounds that
+        # share ``attempt`` (a refund re-takes the index, #1053) never share a task id.
+        round_seq = correction_counter.get("round_seq", 0)
+        correction_counter["round_seq"] = round_seq + 1
 
         # The DISPATCHED envelope, as the retest hand-off below already passes: the
         # correction runner forwards the failed task's typed-acceptance workspace to the
@@ -3479,6 +3085,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             envelope=enriched_envelope if enriched_envelope is not None else envelope,
             result=result,
             correction_attempts=attempt,
+            round_seq=round_seq,
             prior_outputs=prior_outputs,
             all_artifact_refs=all_artifact_refs,
             stored_artifacts=stored_artifacts,
@@ -3517,7 +3124,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 )
             ),
         )
-        return _CorrectionRound(protocol=protocol, attempt=attempt, max_attempts=max_corrections)
+        return _CorrectionRound(
+            protocol=protocol, attempt=attempt, max_attempts=max_corrections, round_seq=round_seq
+        )
 
     async def _route_correction_path(
         self,
@@ -3553,6 +3162,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         """
         protocol = round_.protocol
         attempt = round_.attempt
+        round_seq = round_.round_seq
         max_corrections = round_.max_attempts
         correction_path = protocol.correction_path
         # #1053: an emission containing nothing is not an attempt at the fix. Arm B of
@@ -3587,9 +3197,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         )
                     )
                 logger.warning(
-                    "correction attempt %d refunded: the repair emitted no content (%s), so "
-                    "the round is re-taken rather than spent (refund %d of %d, #1053/#998)",
+                    "correction attempt %d refunded (round s%02d): the repair emitted no content "
+                    "(%s), so the round is re-taken rather than spent (refund %d of %d, #1053/#998)",
                     attempt,
+                    round_seq,
                     ", ".join(protocol.empty_emission_signatures) or "signature unreported",
                     correction_counter["empty_refunds"],
                     max_corrections,
@@ -3647,6 +3258,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 run_id=run_id,
                 cycle=cycle,
                 correction_attempts=attempt,
+                round_seq=round_seq,
                 enriched_envelope=enriched_envelope,
                 prior_outputs=prior_outputs,
                 all_artifact_refs=all_artifact_refs,
@@ -3826,47 +3438,17 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         retain_checkpoint: bool = False,
     ) -> None:
         """Collect artifacts from a successful task and save a checkpoint."""
-        # Collect artifacts (with producing_task_type metadata)
-        artifacts = (result.outputs or {}).get("artifacts", [])
-        # SIP-0100 2.4: on a scaffold-bound run, a producer's emission of a scaffold-frozen path
-        # has its content restored to the bound scaffold bytes (D2 authority) — the producer
-        # cannot overwrite a frozen file (pf-26). Recorded, not silent; no-op when unbound.
-        # 3.3: enforcement returns structured evidence; emit it (event + log) before storage.
-        if bound_record is not None and artifacts:
-            enforced, integrity_evidence = self._enforce_frozen_ownership(
-                artifacts, bound_record, envelope
-            )
-            for record in integrity_evidence:
-                self._emit_scaffold_integrity_evidence(record, envelope)
-            # SIP-0107 §5.5: an accepted patch is stored as the candidate it was verified as.
-            altered = storage_altered_accepted_patch(result.outputs, artifacts, enforced)
-            if altered is not None:
-                raise _ExecutionError(
-                    f"artifact storage task={envelope.task_id}: ownership enforcement changed an "
-                    f"accepted patch's set (before={altered[0]}, after={altered[1]}) — the stored "
-                    "state would not be the verified candidate (SIP-0107 §5.5)"
-                )
-            artifacts = enforced
-            # 3.4a: circuit-breaker — raises CONTRACT_COMPLIANCE past the bound (before storage).
-            if compliance_counter is not None:
-                self._enforce_compliance_budget(
-                    integrity_evidence, cycle, envelope, compliance_counter
-                )
-        new_refs: list[str] = []
-        for art in artifacts:
-            ref = await self._store_artifact(
-                art,
-                cycle,
-                run_id,
-                envelope,
-                producing_task_type=envelope.task_type,
-            )
-            new_refs.append(ref.artifact_id)
-            all_artifact_refs.append(ref.artifact_id)
-            stored_artifacts.append((ref.artifact_id, ref))
-
-        if new_refs:
-            await self._cycle_registry.append_artifact_refs(run_id, tuple(new_refs))
+        await self._store_accepted_artifacts(
+            (result.outputs or {}).get("artifacts", []),
+            result.outputs,
+            envelope,
+            cycle,
+            run_id,
+            all_artifact_refs,
+            stored_artifacts,
+            bound_record=bound_record,
+            compliance_counter=compliance_counter,
+        )
 
         # Chain outputs by role
         role = envelope.metadata.get("role", "unknown")
@@ -3895,6 +3477,123 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 "completed_task_id": envelope.task_id,
             },
         )
+
+    async def _store_accepted_artifacts(
+        self,
+        artifacts: list[dict],
+        outputs: dict[str, Any] | None,
+        envelope: TaskEnvelope,
+        cycle: Cycle,
+        run_id: str,
+        all_artifact_refs: list[str],
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+        *,
+        bound_record: Any = None,
+        compliance_counter: dict[str, int] | None = None,
+    ) -> None:
+        """Store a task's artifacts as the run's accepted state (producing_task_type metadata).
+
+        Two callers: a task that succeeded (``_collect_artifacts_and_checkpoint``), and a repair
+        kept mid-loop (#1522), which stores without completing the task or
+        checkpointing. ``outputs`` is what the §5.5 guard reads: a set carrying
+        ``persisted_revision_id`` is a verified candidate, and enforcement may not change it.
+        """
+        # SIP-0100 2.4: on a scaffold-bound run, a producer's emission of a scaffold-frozen path
+        # has its content restored to the bound scaffold bytes (D2 authority) — the producer
+        # cannot overwrite a frozen file (pf-26). Recorded, not silent; no-op when unbound.
+        # 3.3: enforcement returns structured evidence; emit it (event + log) before storage.
+        if bound_record is not None and artifacts:
+            enforced, integrity_evidence = self._enforce_frozen_ownership(
+                artifacts, bound_record, envelope
+            )
+            for record in integrity_evidence:
+                self._emit_scaffold_integrity_evidence(record, envelope)
+            # SIP-0107 §5.5: an accepted patch is stored as the candidate it was verified as.
+            altered = storage_altered_accepted_patch(outputs, artifacts, enforced)
+            if altered is not None:
+                raise _ExecutionError(
+                    f"artifact storage task={envelope.task_id}: ownership enforcement changed an "
+                    f"accepted patch's set (before={altered[0]}, after={altered[1]}) — the stored "
+                    "state would not be the verified candidate (SIP-0107 §5.5)"
+                )
+            artifacts = enforced
+            # 3.4a: circuit-breaker — raises CONTRACT_COMPLIANCE past the bound (before storage).
+            if compliance_counter is not None:
+                self._enforce_compliance_budget(
+                    integrity_evidence, cycle, envelope, compliance_counter
+                )
+        new_refs: list[str] = []
+        for art in artifacts:
+            ref = await self._store_artifact(
+                art,
+                cycle,
+                run_id,
+                envelope,
+                producing_task_type=envelope.task_type,
+            )
+            new_refs.append(ref.artifact_id)
+            all_artifact_refs.append(ref.artifact_id)
+            stored_artifacts.append((ref.artifact_id, ref))
+
+        if new_refs:
+            await self._cycle_registry.append_artifact_refs(run_id, tuple(new_refs))
+
+    async def _store_kept_progress(
+        self,
+        holder: dict[str, Any],
+        envelope: TaskEnvelope,
+        enriched: TaskEnvelope,
+        cycle: Cycle,
+        run_id: str,
+        state: RunState,
+        *,
+        interface_manifest: Any,
+    ) -> TaskResult:
+        """#1522: store a kept repair as accepted state; return the next round's failure.
+
+        The next round's failure is the kept repair's own retest, the task run on the kept tree.
+        The task's envelope was enriched before its first attempt, and the next round verifies
+        and retests against that envelope's workspace, so the inputs derived from the stored
+        artifacts are re-derived here. Without that, the next repair would be verified against
+        the tree this one improved on. If the task is later re-dispatched (a retry, or a
+        decision to re-run it), the same refresh is what it sees.
+        The task is not completed and no checkpoint is written: it still fails until a run of
+        it passes. The kept set is recorded for #994's rewind guard, as an accepted patch is,
+        since a rewind re-authors from the checkpoint and cannot preserve it.
+        """
+        await self._store_accepted_artifacts(
+            holder.pop(KEPT_ARTIFACTS_KEY),
+            holder.pop(KEPT_OUTPUTS_KEY),
+            envelope,
+            cycle,
+            run_id,
+            state.produced.all_artifact_refs,
+            state.produced.stored_artifacts,
+            bound_record=state.ownership.bound_record,
+            compliance_counter=state.ownership.compliance_counter,
+        )
+        state.correction.accepted_repair_task_ids.add(envelope.task_id)
+        authored_contract, authored_manifest = state.authored
+        fresh = await self._enrich_envelope(
+            envelope,
+            state.produced.prior_outputs,
+            state.produced.all_artifact_refs,
+            state.produced.stored_artifacts,
+            interface_manifest=interface_manifest or authored_manifest,
+            run_derived_contract=authored_contract,
+        )
+        for key in _STORE_DERIVED_INPUTS:
+            if key in fresh.inputs:
+                enriched.inputs[key] = fresh.inputs[key]
+            else:
+                enriched.inputs.pop(key, None)
+        logger.info(
+            "progress_kept task=%s kept as accepted state; the next round starts from its "
+            "retest on workspace_revision_id=%s (#1522)",
+            envelope.task_id,
+            enriched.inputs.get("workspace_revision_id", "-"),
+        )
+        return holder.pop(KEPT_NEXT_FAILURE_KEY)
 
     # ------------------------------------------------------------------
     # Extracted helpers for execute_run
@@ -3987,6 +3686,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         "run_id": run_id,
                         "project_id": cycle.project_id,
                     },
+                    tags=_flow_run_tags_for(cycle),
                 )
                 await self._workflow_tracker.set_flow_run_state(flow_run_id, RunStatus.RUNNING)
             except Exception:
@@ -4197,338 +3897,57 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
             await asyncio.sleep(poll_interval)
 
+    @functools.cached_property
+    def _run_provisioning(self) -> RunProvisioning:
+        """#1507 step 2: what a run does before dispatch, bar admission. Built on first use, as
+        ``_framing_gate_check`` is, and borrowing late (§38)."""
+        return RunProvisioning(executor=lambda: self)
+
+    @functools.cached_property
+    def _run_admission(self) -> RunAdmission:
+        """#1507 step 2: the run's admission and its release (§38, as above)."""
+        return RunAdmission(executor=lambda: self)
+
+    @functools.cached_property
+    def _workload_gate(self) -> WorkloadGate:
+        """#1507 step 3: the inter-workload gate. Built on first use, borrowing late (§38)."""
+        return WorkloadGate(executor=lambda: self)
+
+    @functools.cached_property
+    def _cycle_completion(self) -> CycleCompletion:
+        """#1507 step 3: the one place a cycle ends (the completion boundary)."""
+        return CycleCompletion(executor=lambda: self)
+
+    @functools.cached_property
+    def _framing_gate_check(self) -> FramingGateCheck:
+        """#1507 step 1: the framing gate's plan check. Built on first use rather than in
+        ``__init__``, so an executor assembled without it (the unit suites' bare executors)
+        gets the same collaborator. It borrows late either way (defended-bespoke-decisions §38):
+        the vault and the three loaders it shares with ``execute_run`` stay here."""
+        return FramingGateCheck(
+            artifact_vault=lambda: self._artifact_vault,
+            is_bind_mode=lambda *args, **kw: self._is_bind_mode(*args, **kw),
+            load_seeded_manifest_content=lambda *args, **kw: self._load_seeded_manifest_content(
+                *args, **kw
+            ),
+            load_contract_for_run=lambda *args, **kw: self._load_contract_for_run(*args, **kw),
+        )
+
     async def _reject_invalid_plan_before_workload_gate(
         self,
         run: Any,
         cycle: Cycle,
         gate_name: str,
     ) -> list[str]:
-        """#464: criteria-scope validation at the inter-workload plan gate.
+        """#464: the inter-workload gate's plan check — returns its errors, never raises (#473).
 
-        This is the gate path multi-workload cycles actually traverse (the
-        framing run COMPLETES, then the sequence gates) — the mid-run
-        ``_reject_unsatisfiable_plan_at_gate`` never fires here. Searches the
-        completed run's artifacts for the authored plan; validation errors
-        are RETURNED (#473) so the caller records a system REJECTED gate
-        decision instead of the orchestrator dying silently (the 3.13
-        stall). Role validation is not duplicated at this seam: it keeps its
-        dispatch-time net in ``generate_task_plan``. Absent or unreadable
-        plans defer to that same net — this check only ever adds an earlier
-        rejection, never a pass.
-
-        OWNERSHIP (#663 D5): this seam and ``_reject_unsatisfiable_plan_at_gate``
-        are deliberately SEPARATE nets with different error channels — they are
-        plan VALIDATION, not context assembly, and merging them would conflate
-        #473's returns-vs-raises semantics. This one owns the inter-workload
-        promotion decision: errors return, the caller records a system REJECTED
-        gate decision, and the framing re-rolls for free. The other owns in-run
-        dispatch admission and raises. A new plan-validation rule must pick its
-        net by WHERE the reject must land (recorded re-roll vs run failure) —
-        landing a rule on only one seam when both apply is the #718/#719 scar.
-        Both call sites are pinned by
-        ``tests/unit/cycles/test_plan_gate_seams.py``.
+        #1507 step 1: the check lives in ``FramingGateCheck``; this delegate keeps the call site
+        and the separate-nets ownership (#663 D5, defended-bespoke-decisions §48) where both nets
+        are pinned by ``tests/unit/cycles/test_plan_gate_seams.py``.
         """
-        if not cycle.resolved_config().get("implementation_plan", False):
-            return []
-
-        from squadops.cycles.implementation_plan import ImplementationPlan
-
-        errors: list[str] = []
-        interface_content: str | None = None
-        parsed_plan: ImplementationPlan | None = None
-        plan_artifact_seen = False  # #424: exists-but-unreadable ≠ absent
-        # #796: an authored cycle's contract was derived DURING this run, so it lives on the
-        # run's refs rather than in execution_overrides. Without this the bind-mode nets —
-        # frozen-artifact ownership, qa ownership, module existence, criteria binding — stay
-        # switched off for exactly the plans that need them most (V4 roll 1: four tasks
-        # claimed scaffold-frozen files and nothing caught it).
-        run_contract_ref: str | None = None
-        # B1 (#809): which validator rejected, recorded where it is known. The gate calls its
-        # validators one at a time, so no signature changes and no prose to parse back — the
-        # names are the same vocabulary the authoring-rules asset teaches.
-        classifier = RejectionClassifier()
-        contract = None  # set in bind mode below; feeds the soft-violation log
-        for ref_id in tuple(run.artifact_refs or ()):
-            try:
-                ref, content_bytes = await self._artifact_vault.retrieve(ref_id)
-            except Exception:
-                continue
-            artifact_type = getattr(ref, "artifact_type", None)
-            if ref.filename == "implementation_plan.yaml" or (
-                artifact_type == "control_implementation_plan"
-            ):
-                plan_artifact_seen = True
-                try:
-                    parsed_plan = ImplementationPlan.from_yaml(
-                        content_bytes.decode(errors="replace")
-                    )
-                except Exception:
-                    logger.warning(
-                        "Plan artifact %s unreadable before gate %r — deferring to the "
-                        "dispatch-time validation net",
-                        ref_id,
-                        gate_name,
-                        exc_info=True,
-                    )
-                else:
-                    errors.extend(
-                        classifier.collect(
-                            "validate_criteria_scope", parsed_plan.validate_criteria_scope()
-                        )
-                    )
-                    # #645: contract-independent winnability nets — an
-                    # unexecutable command check or a directory-shaped
-                    # expected artifact dooms the roll deterministically;
-                    # both are provable here in microseconds, and a system
-                    # rejection re-rolls framing for free where a human
-                    # rejection would end the cycle (#522).
-                    errors.extend(
-                        classifier.collect(
-                            "validate_command_checks", parsed_plan.validate_command_checks()
-                        )
-                    )
-                    errors.extend(
-                        classifier.collect(
-                            "validate_expected_artifact_shapes",
-                            parsed_plan.validate_expected_artifact_shapes(),
-                        )
-                    )
-                    # #673: a dual-claimed expected artifact aliases two tasks
-                    # onto one file's fate (repair mis-scoping, last-wins
-                    # emission) — provable plan-wide right here, and a system
-                    # rejection re-rolls framing for free (#522).
-                    errors.extend(
-                        classifier.collect(
-                            "validate_unique_expected_artifacts",
-                            parsed_plan.validate_unique_expected_artifacts(),
-                        )
-                    )
-                    # #715: a qa.test task whose declared artifacts can never
-                    # satisfy required tests_pass fails on any content — shk-4
-                    # burned three correction rounds on one. #426: builder
-                    # tasks without a configured build_profile die at the #291
-                    # dispatch guard — this seam (the one multi-workload
-                    # cycles actually traverse) rejects both for a free
-                    # framing re-roll.
-                    errors.extend(
-                        classifier.collect(
-                            "validate_check_applicability",
-                            parsed_plan.validate_check_applicability(cycle.resolved_config()),
-                        )
-                    )
-                    # #1587: collected is not owned — the suite must sit where the stack
-                    # says qa's files live, or nothing downstream treats it as qa's.
-                    errors.extend(
-                        classifier.collect(
-                            "validate_qa_suite_namespace",
-                            parsed_plan.validate_qa_suite_namespace(cycle.resolved_config()),
-                        )
-                    )
-                    errors.extend(
-                        classifier.collect(
-                            "validate_build_config",
-                            parsed_plan.validate_build_config(cycle.resolved_config()),
-                        )
-                    )
-                    # Roll 15: a plan whose builder task under-covers the build
-                    # profile's required_files converges its whole suite and then
-                    # dies at the #291 completion gate — which has no repair path
-                    # and no incomplete builder task left on resume. Provable
-                    # here; rejection re-rolls framing for free.
-                    errors.extend(
-                        classifier.collect(
-                            "validate_builder_floor",
-                            parsed_plan.validate_builder_floor(cycle.resolved_config()),
-                        )
-                    )
-            elif (
-                ref.filename == SEEDED_MANIFEST_FILENAME or artifact_type == MANIFEST_ARTIFACT_TYPE
-            ):
-                interface_content = content_bytes.decode(errors="replace")
-            elif artifact_type == CONTRACT_ARTIFACT_TYPE:
-                run_contract_ref = ref_id
-
-        # #424: this seam's precondition is implementation_plan=true, so a
-        # COMPLETED framing run with no plan artifact at all means plan
-        # authoring collapsed (manifest exhaustion / artifact lost) — the
-        # profile's instrument does not exist, and letting the gate approve
-        # spends a full implementation run to be caught by the SIP-0096
-        # throttle at the very end. Reject here, where a re-roll costs
-        # minutes; generate_task_plan's dispatch net is the raising backstop.
-        # An unreadable plan (parse failure above) still defers — that
-        # artifact exists and the dispatch net gives it a full diagnosis.
-        if not plan_artifact_seen:
-            errors.append(
-                "plan_authoring_collapsed: this framing run produced no "
-                "implementation_plan artifact, but the profile's instrumentation "
-                "contract (typed_acceptance/implementation_plan) lives in the "
-                "authored plan — re-roll framing rather than running "
-                "uninstrumented."
-            )
-
-        # A framing-authored interface manifest is validated here — this is
-        # its ONLY net; generate_task_plan's dispatch-time net validates the PLAN, never
-        # the manifest. Errors join the same returned list, so they flow into the
-        # identical system:plan_validation REJECTED recording.
-        # Absent manifest → no-op = today's behavior (byte-identical for plan-only cycles).
-        if interface_content is not None:
-            errors.extend(self._validate_interface_manifest(interface_content, classifier))
-
-        # #1013: manifest↔plan consistency + completeness — the two framing-internal
-        # species that cost V38 counted rolls (roll 1's 201-vs-200 contradiction; slot
-        # 6's manifest-only 201 the plan never stated). Needs BOTH artifacts, so it
-        # runs after the collection loop; an unparseable manifest defers exactly like
-        # an unreadable plan does (this check only ever adds an earlier rejection,
-        # never a pass). Lands on THIS seam deliberately: the reject must re-roll
-        # framing for free, not fail a run at dispatch (see the ownership note above).
-        if interface_content is not None and parsed_plan is not None:
-            try:
-                from squadops.capabilities.scaffold import InterfaceManifest
-
-                parsed_manifest = InterfaceManifest.from_yaml(interface_content)
-            except Exception:
-                logger.warning(
-                    "Manifest unparseable before gate %r — #1013 consistency check "
-                    "deferred to the manifest's own validation net",
-                    gate_name,
-                    exc_info=True,
-                )
-            else:
-                errors.extend(
-                    classifier.collect(
-                        "validate_manifest_plan_consistency",
-                        parsed_plan.validate_manifest_plan_consistency(parsed_manifest),
-                    )
-                )
-
-        # SIP-0098 98.3: bind-mode contract validation. A seeded contract_ref switches the
-        # cycle to bind mode — the plan must bind the contract's covered-file criteria by
-        # id (validate_criteria_refs) rather than author them, and the contract must be
-        # bound to this run's skeleton (hash check). A seeded-but-unparseable contract is
-        # a hard rejection, never a silent fall-through to author mode (§10). Errors join
-        # the same returned list → identical system:plan_validation REJECTED recording.
-        # Contract absent (author mode) → no-op = today's behavior.
-        if self._is_bind_mode(cycle) or run_contract_ref is not None:
-            # #494/#496: the contract binds to a skeleton, so bind mode REQUIRES an
-            # interface manifest — without one, no skeleton is expanded at the
-            # implementation run and contract checks would measure from-scratch code
-            # (the §10 stale-binding class through the front door). In bind mode the
-            # manifest is normally operator-SEEDED via plan_artifact_refs (#496 —
-            # framing cannot re-derive it from a product-only PRD without hash
-            # drift; emission is author-mode only). A framing-emitted manifest, if
-            # one appears anyway, still takes precedence and is still hash-checked.
-            seeded_content: str | None = None
-            if interface_content is None:
-                seeded_content = await self._load_seeded_manifest_content(cycle)
-            if interface_content is None and seeded_content is None:
-                errors.append(
-                    "verification_contract: bind mode requires an interface manifest "
-                    "and none exists — this run emitted none and no seeded "
-                    "interface_manifest.yaml is present in plan_artifact_refs; the "
-                    "contract binds to a skeleton, and without a manifest the "
-                    "implementation would run unscaffolded while claiming contract "
-                    "verification (#494, #496)"
-                )
-            contract = await self._load_contract_for_run(cycle, run, ref=run_contract_ref)
-            if contract is None:
-                errors.append(
-                    "verification_contract: contract_ref is seeded but the contract is "
-                    "missing or unparseable — bind mode cannot validate the plan"
-                )
-            else:
-                binding_content = (
-                    interface_content if interface_content is not None else (seeded_content)
-                )
-                if binding_content is not None:
-                    errors.extend(self._validate_contract_binding(contract, binding_content))
-                if parsed_plan is not None:
-                    # #509: bind the contract's covered-file criteria
-                    # deterministically BEFORE validating — the descoping rule
-                    # then guards against binding bugs instead of taxing every
-                    # roll on the author's transcription. Dispatch applies the
-                    # same normalization (generate_task_plan), so the validated
-                    # plan and the executed plan cannot drift.
-                    parsed_plan, auto_bound = parsed_plan.with_contract_criteria_bound(contract)
-                    for note in auto_bound:
-                        logger.info("criteria_auto_bound (gate %s): %s", gate_name, note)
-                    # SIP-0108 §4.2: each bind-mode validator is classified under its own
-                    # name, as the author-mode ones above are — the refusal is read by
-                    # which validators refused, never by parsing this prefix back.
-                    errors.extend(
-                        classifier.collect(
-                            "validate_criteria_refs",
-                            [
-                                f"verification_contract: {e}"
-                                for e in parsed_plan.validate_criteria_refs(contract)
-                            ],
-                        )
-                    )
-                    errors.extend(
-                        classifier.collect(
-                            "validate_qa_artifact_ownership",
-                            [
-                                f"verification_contract: {e}"
-                                for e in parsed_plan.validate_qa_artifact_ownership(contract)
-                            ],
-                        )
-                    )
-                    errors.extend(
-                        classifier.collect(
-                            "validate_frozen_artifact_ownership",
-                            [
-                                f"verification_contract: {e}"
-                                for e in parsed_plan.validate_frozen_artifact_ownership(contract)
-                            ],
-                        )
-                    )
-                    # #671: import_present against a module the closed scaffold
-                    # surface cannot provide is provably unwinnable here, in
-                    # microseconds — a system rejection re-rolls framing for
-                    # free where the doomed roll would burn its correction
-                    # budget (#522).
-                    errors.extend(
-                        classifier.collect(
-                            "validate_module_existence",
-                            [
-                                f"verification_contract: {e}"
-                                for e in parsed_plan.validate_module_existence(contract)
-                            ],
-                        )
-                    )
-                    # pf-42: a typed check aimed at a frozen file is decidable right
-                    # now — the skeleton those files will contain is deterministic.
-                    # A failing one makes the plan unwinnable (frozen emissions are
-                    # restored, so the repair loop can never converge), and it costs
-                    # milliseconds to prove instead of a three-hour roll.
-                    if binding_content is not None:
-                        errors.extend(
-                            f"verification_contract: {e}"
-                            for e in await frozen_check_violations(
-                                parsed_plan, contract, binding_content
-                            )
-                        )
-
-        # Soft (warning/info-severity) structural violations are tolerated, not
-        # rejected — but logged so the pass is never silent (a warning check can't
-        # block a build per RC-9, so it must not kill the cycle at plan validation).
-        if parsed_plan is not None:
-            # #1254: reported beside the tolerated criteria, never fatal — the rule is
-            # taught in the vocabulary and enforced by the dispatch strip; a framing
-            # re-roll for a row dispatch drops would cost half an hour for nothing.
-            soft = parsed_plan.soft_criteria_violations(contract) + [
-                f"tolerated (derived): {note}" for note in parsed_plan.validate_derived_criteria()
-            ]
-            if soft:
-                logger.warning(
-                    "Plan for gate %r on run %s: tolerated %d soft criteria "
-                    "violation(s) (warning/info severity — not rejecting): %s",
-                    gate_name,
-                    run.run_id,
-                    len(soft),
-                    "; ".join(soft),
-                )
-        await self._store_rejection_record(run, cycle, gate_name, classifier, errors)
-        return errors
+        return await self._framing_gate_check.reject_invalid_plan_before_workload_gate(
+            run, cycle, gate_name
+        )
 
     async def _load_seeded_manifest_content(self, cycle: Cycle) -> str | None:
         """Raw content of an operator-seeded interface manifest, or ``None`` (#496).
@@ -4571,37 +3990,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             logger.warning("seeded interface manifest did not parse; frozen surface omitted")
             return None
 
-    @staticmethod
-    def _validate_interface_manifest(
-        content: str, classifier: RejectionClassifier | None = None
-    ) -> list[str]:
-        """Run both manifest gates over a framing-emitted manifest, returning errors
-        prefixed for the REJECTED gate note.
-
-        #791 (M1) widened this from ``lint()`` alone to the full M2/M3 assessment: the
-        authoring stage runs the same two gates in-stage, and a manifest that exhausts
-        its revision budget is emitted anyway (see ``DevelopmentAuthorManifestHandler``)
-        precisely so this seam can reject it — a system rejection re-rolls framing for
-        free (#522), where letting it through spends a whole implementation workload on a
-        design already proven unwinnable.
-
-        Only a *framing-emitted* manifest reaches here — the scan reads ``run.artifact_refs``,
-        and a seeded manifest lives on the cycle's ``plan_artifact_refs`` rail — so bind-mode
-        cycles are unaffected by the widening.
-
-        The gate note is prose for the operator. The failed proofs are also recorded as values
-        on ``classifier`` (SIP-0108 §4.2) — the blocking ones, since an advisory proof refuses
-        nothing — so the refusal is read by which proofs failed, never by parsing this note.
-        """
-        from squadops.cycles.authoring_failure import assess_authoring_outcome
-
-        outcome = assess_authoring_outcome(content)
-        if not outcome.rejected:
-            return []
-        if classifier is not None:
-            classifier.collect_proofs(f.proof for f in outcome.blocking_findings)
-        logger.info("interface_manifest rejected at gate: classes=%s", outcome.class_counts())
-        return [f"interface_manifest [{f.proof}]: {f.detail}" for f in outcome.findings]
+    _validate_interface_manifest = staticmethod(FramingGateCheck._validate_interface_manifest)
 
     async def _reject_unsatisfiable_plan_at_gate(
         self,
@@ -4946,7 +4335,21 @@ class DispatchedFlowExecutor(FlowExecutionPort):
     async def _safe_transition(
         self, run_id: str, status: RunStatus, *, failure_reason: str | None = None
     ) -> None:
-        """Attempt status transition, logging but not raising on failure."""
+        """Attempt status transition, logging but not raising on failure.
+
+        #1701: a run already in ``status`` is left as it is. The cancel route marks the run
+        cancelled before the executor's own cancellation path ends it, and the registry refuses
+        the same-state write — which logged "Failed to transition" on every API cancel, a
+        warning that meant nothing on the path where #1699's real one was. An unreadable status
+        falls through to the write, as before.
+        """
+        try:
+            current = (await self._cycle_registry.get_run(run_id)).status
+        except Exception:
+            current = None
+        if isinstance(current, str) and current == status:
+            logger.debug("Run %s is already %s; no transition needed", run_id, status.value)
+            return
         try:
             await self._cycle_registry.update_run_status(
                 run_id, status, failure_reason=failure_reason

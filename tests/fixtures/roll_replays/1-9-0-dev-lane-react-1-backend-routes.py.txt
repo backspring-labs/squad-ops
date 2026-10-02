@@ -1,0 +1,126 @@
+import uuid
+import time
+
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+
+from .models import Run, RunCreate, ParticipantJoin
+from .store import run_store
+from .errors import ApiError
+
+router = APIRouter()
+
+
+@router.post("/runs", response_model=Run, status_code=201)
+def post_runs(payload: RunCreate):
+    if not payload.title or not str(payload.title).strip():
+        raise ApiError("validation_error", "Title is required and cannot be empty")
+    if not payload.datetime or not str(payload.datetime).strip():
+        raise ApiError("validation_error", "Datetime is required and cannot be empty")
+    if not payload.meeting_location or not str(payload.meeting_location).strip():
+        raise ApiError("validation_error", "Meeting location is required and cannot be empty")
+
+    run_id = str(uuid.uuid4())
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+    run = Run(
+        id=run_id,
+        title=payload.title,
+        datetime=payload.datetime,
+        meeting_location=payload.meeting_location,
+        distance=payload.distance,
+        pace_target=payload.pace_target,
+        route_notes=payload.route_notes,
+        participants=[],
+        created_at=now,
+    )
+
+    run_store[run_id] = run
+
+    return JSONResponse(
+        status_code=201,
+        content={
+            "id": run.id,
+            "title": run.title,
+            "datetime": run.datetime,
+            "meeting_location": run.meeting_location,
+            "distance": run.distance,
+            "pace_target": run.pace_target,
+            "route_notes": run.route_notes,
+            "participants": run.participants,
+            "created_at": run.created_at,
+        },
+    )
+
+
+@router.get("/runs", response_model=list[Run])
+def get_runs():
+    return list(run_store.values())
+
+
+@router.get("/runs/{run_id}", response_model=Run)
+def get_runs_run_id(run_id: str):
+    run = run_store.get(run_id)
+    if run is None:
+        raise ApiError("run_not_found", f"Run with id '{run_id}' not found")
+    return run
+
+
+@router.post("/runs/{run_id}/participants", response_model=Run, status_code=201)
+def post_runs_run_id_participants(run_id: str, payload: ParticipantJoin):
+    if not payload.name or not str(payload.name).strip():
+        raise ApiError("validation_error", "Participant name is required and cannot be empty")
+
+    run = run_store.get(run_id)
+    if run is None:
+        raise ApiError("run_not_found", f"Run with id '{run_id}' not found")
+
+    name = payload.name.strip()
+    for existing in run.participants:
+        if existing.lower() == name.lower():
+            raise ApiError("duplicate_participant", f"Participant '{name}' is already on this run")
+
+    run.participants.append(name)
+    run_store[run_id] = run
+
+    return JSONResponse(
+        status_code=201,
+        content={
+            "id": run.id,
+            "title": run.title,
+            "datetime": run.datetime,
+            "meeting_location": run.meeting_location,
+            "distance": run.distance,
+            "pace_target": run.pace_target,
+            "route_notes": run.route_notes,
+            "participants": run.participants,
+            "created_at": run.created_at,
+        },
+    )
+
+
+@router.delete("/runs/{run_id}/participants/{participant_name}", response_model=Run)
+def delete_runs_run_id_participants_participant_name(run_id: str, participant_name: str):
+    if not participant_name or not participant_name.strip():
+        raise ApiError("validation_error", "Participant name is required and cannot be empty")
+
+    run = run_store.get(run_id)
+    if run is None:
+        raise ApiError("run_not_found", f"Run with id '{run_id}' not found")
+
+    name = participant_name.strip()
+    found = False
+    remaining = []
+    for p in run.participants:
+        if p.lower() == name.lower():
+            found = True
+        else:
+            remaining.append(p)
+
+    if not found:
+        raise ApiError("participant_not_found", f"Participant '{name}' not found on this run")
+
+    run.participants = remaining
+    run_store[run_id] = run
+
+    return run

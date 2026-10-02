@@ -21,6 +21,7 @@ def mock_health_checker():
     hc.pg_pool = MagicMock()
     hc._heartbeat_is_fresh = MagicMock(return_value=True)
     hc._get_display_name = MagicMock(return_value="Max")
+    hc.deployed_revisions = AsyncMock(return_value=None)  # #1720: no deploy recorded
 
     hc.check_rabbitmq = AsyncMock(return_value={"component": "RabbitMQ", "status": "online"})
     hc.check_postgres = AsyncMock(return_value={"component": "PostgreSQL", "status": "online"})
@@ -107,6 +108,7 @@ class TestAgentStatusById:
             "agent_id": "max",
             "lifecycle_state": "READY",
             "version": "0.9.7",
+            "revision": "7acc2bc1",
             "tps": 5,
             "memory_count": 10,
             "last_heartbeat": datetime(2026, 2, 16, 12, 0, 0),
@@ -119,11 +121,18 @@ class TestAgentStatusById:
         mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
         mock_conn.__aexit__ = AsyncMock(return_value=False)
         mock_health_checker.pg_pool.acquire.return_value = mock_conn
+        # #1720: the latest deploy recorded max at another commit — max changed since.
+        mock_health_checker.deployed_revisions = AsyncMock(return_value={"max": "ccc9475d"})
 
         resp = client.get("/health/agents/status/max")
         assert resp.status_code == 200
         data = resp.json()
         assert data["agent_id"] == "max"
+        assert (data["revision"], data["deployed_revision"], data["revision_matches_deploy"]) == (
+            "7acc2bc1",
+            "ccc9475d",
+            False,
+        )
         assert data["lifecycle_state"] == "READY"
         # #231: the single-agent route now carries the canonical health + posture
         # at parity with the list route, with network_status demoted to back-compat.

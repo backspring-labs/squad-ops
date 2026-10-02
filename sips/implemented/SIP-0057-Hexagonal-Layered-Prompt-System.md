@@ -92,3 +92,58 @@ Tests must verify that the FileSystemAdapter correctly maps POSIX paths on macOS
 * [ ] Integrity hashes are verified before string concatenation.
 * [ ] BaseAgent is successfully integrated with the PromptService hooks.
 * [ ] Unit tests confirm isolated domain logic works without filesystem access.
+## 10. Post-acceptance amendment — integrity is stamped at the image build, not kept in the manifest (2026-09-29, #353)
+
+**What changed.**
+
+- **§5.3.** The manifest enumerates fragments with their relative paths, layer and roles, anchored
+  to a version. It no longer carries a SHA256 per fragment, or a hash over itself.
+- **The hashes are taken where the pack leaves the repository.** Each image build (the agent image
+  and the runtime-api image) runs `python -m squadops.prompts.fragment_stamp` after copying `src/`.
+  That hashes every registered fragment and writes `manifest.stamp.json` beside the manifest.
+- **§2.2.3, §7.2 and §8.3 now hold in an image, against that stamp.** A fragment whose content
+  differs from the stamp raises `HashMismatchError`:
+  - when the manifest loads;
+  - when the fragment is read after the load;
+  - when the file is on disk but the build never stamped it.
+
+  A stamp that describes a different manifest (another version, or another set of fragments)
+  raises `ManifestValidationError`.
+- **A source checkout has no stamp and verifies nothing.** Its files are the reference, and nothing
+  has been shipped to verify against. Editing a fragment in the tree is now one edit, not two.
+- **Retired:**
+  - `scripts/dev/regen_fragment_manifest.py`, its CI step and its pre-commit hook;
+  - `ManifestFragment.sha256`, `PromptManifest.manifest_hash` and
+    `PromptManifest.compute_manifest_hash`.
+
+**Evidence.**
+
+- **The hashes caused the incidents they were meant to catch.** Both prompt-integrity incidents,
+  #195 and #327, came from the committed hashes drifting away from the files beside them. Three
+  mechanisms existed only to keep a derived value in step with its source in the same commit:
+  the regen tool, the CI guard and the load-time check.
+- **§2.2.3 was not implemented in fact.** Reading the code at #353 showed three things:
+  - the load-time "hard fail" (#327) compared the manifest's `manifest_hash` with a hash of the
+    manifest's own `sha256` column, and read no fragment;
+  - `validate_integrity`, the only comparison of content with the manifest, had no production
+    caller;
+  - the assembler's `_verify_hash` compares a fragment's hash with a hash computed from the same
+    content when the file was parsed.
+
+  So until #353, nothing at runtime compared shipped content with a recorded hash. A live-edited
+  or stale fragment would have run. It is refused now, in an image.
+
+**Deliberately not built.**
+
+- **The stamp carries no hash over the whole pack.** The manifest's one was read only by the
+  load check that compared it with the columns. If #1720's lineage work needs a pack fingerprint,
+  it can add one to the stamp.
+- **The assembler's `_verify_hash` is left as it is.** §9's "integrity hashes are verified before
+  string concatenation" is met by the repository's read, which compares against the stamp. The
+  assembler's check remains a self-comparison.
+
+**Who ruled.** The 1.9 plan (`docs/plans/1-9-0-plan.md` §3.4, adopted 2026-09-29) placed #353 as a
+behaviour-neutral debt; the stamp can only differ from the files on a deploy that edits or
+overlays the shipped source, and none does. The design is #353's. Two calls were made in
+implementation, under the 1.9 merge authority: dropping the pack hash, and leaving a source
+checkout unverified.

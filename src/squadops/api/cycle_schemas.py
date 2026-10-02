@@ -246,6 +246,8 @@ class CycleResponse(BaseModel):
     request_profile: str | None = None
     framework_version: str | None = None
     framework_git_sha: str | None = None
+    #: #1720: the deploy record the cycle was created on; None when no deploy had been recorded.
+    deploy_id: str | None = None
     notes: str | None = None
     status: str  # Derived CycleStatus
     runs: list[RunResponse] = Field(default_factory=list)

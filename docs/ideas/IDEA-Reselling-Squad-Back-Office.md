@@ -23,7 +23,7 @@ Companion documents:
   produces and duty agents operate. This doc is its near-term, hand-built precursor.
 - `sips/proposed/SIP-Capability-Backed-Agents.md` — the 2.0 capability-pack umbrella; the
   seam a reselling pack needs (§7.1).
-- `sips/proposed/SIP-Campaign-Orchestration.md` — the 2.0 headline; campaigns over cycles.
+- `sips/accepted/SIP-0109-Campaign-Orchestration.md` — the 2.0 headline; campaigns over cycles.
 - SIP-0089 (runtime modes and duty windows), SIP-0090 (embodiment and its action-authority
   boundary), SIP-0091 (duty durability via Temporal — re-decided by §8).
 

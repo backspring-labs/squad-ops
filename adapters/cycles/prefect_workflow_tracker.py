@@ -11,6 +11,7 @@ Execution never blocks on Prefect failures.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
@@ -92,6 +93,7 @@ class PrefectWorkflowTracker(WorkflowTrackerPort):
         flow_id: str,
         run_name: str,
         parameters: dict[str, Any] | None = None,
+        tags: Sequence[str] = (),
     ) -> str:
         """Create a flow run. Returns flow_run_id."""
         try:
@@ -101,6 +103,7 @@ class PrefectWorkflowTracker(WorkflowTrackerPort):
                     "flow_id": flow_id,
                     "name": run_name,
                     "parameters": parameters or {},
+                    "tags": list(tags),
                     "state": {
                         "type": "SCHEDULED",
                         "name": "Scheduled",

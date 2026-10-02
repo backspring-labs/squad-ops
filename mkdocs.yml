@@ -76,6 +76,7 @@ nav:
   # design specs) sit deliberately outside the four modes; Diátaxis does not
   # claim them, and the OSS convention for each is well established.
   - Overview: index.md
+  - What a cycle delivers: showcase.md
   - Evidence: evidence.md
   - Tutorial:
       - Getting started: getting-started.md

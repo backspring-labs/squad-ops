@@ -101,6 +101,37 @@ def test_expand_wires_frontend_routes_to_view_imports():
     assert '<Route path="/runs/:id" element={<RunDetailView />} />' in app
 
 
+@pytest.mark.parametrize("declared", ["/runs/{run_id}", "/runs/:run_id"])
+def test_app_routes_a_parameter_in_react_routers_syntax_whichever_spelling_was_declared(declared):
+    """#1794: the authoring rules spell a parameter in braces, React Router reads only `:name`.
+    Rendered verbatim, `{run_id}` is a literal segment the router never matches, and the view is
+    unreachable in a browser while every test that renders it directly still passes."""
+    m = _group_run_manifest()
+    routes = tuple(
+        dc.replace(r, path=declared) if r.view == "RunDetailView" else r for r in m.frontend.routes
+    )
+    m = dc.replace(m, frontend=dc.replace(m.frontend, routes=routes))
+
+    app = _by_name(expand(m))["frontend/src/App.jsx"]
+
+    assert '<Route path="/runs/:run_id" element={<RunDetailView />} />' in app
+    assert "{run_id}" not in app
+
+
+def test_roll_4s_stored_manifest_seeds_a_detail_route_the_router_matches():
+    """The wiring: 1.9.0 React roll 4 (`cyc_9727f1c382e2`) authored `/runs/{run_id}`, and the
+    App.jsx the executor seeded through the build profile routed it verbatim (#1794). Its detail
+    page rendered nothing in a browser; the boot audit passed it."""
+    stored = _REPO_ROOT / "tests/fixtures/roll_replays/1-9-0-react-roll-4-interface_manifest.yaml"
+    m = InterfaceManifest.from_yaml(stored.read_text(encoding="utf-8"))
+    assert [r.path for r in m.frontend.routes if r.view == "RunDetailView"] == ["/runs/{run_id}"]
+
+    app = _by_name(get_profile(m.stack).expand(m))["frontend/src/App.jsx"]
+
+    assert '<Route path="/runs/:run_id" element={<RunDetailView />} />' in app
+    assert '<Route path="/runs/new" element={<CreateRunView />} />' in app
+
+
 def test_expand_defines_every_declared_endpoint_and_model():
     files = _by_name(expand(_group_run_manifest()))
 

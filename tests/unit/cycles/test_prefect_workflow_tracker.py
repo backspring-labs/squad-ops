@@ -112,6 +112,28 @@ class TestCreateFlowRun:
         assert body["flow_id"] == "flow-123"
         assert body["name"] == "run-001"
 
+    @pytest.mark.parametrize(
+        ("tags", "sent"),
+        [
+            (
+                ("project:group_run", "framework:0739af1d"),
+                ["project:group_run", "framework:0739af1d"],
+            ),
+            ((), []),
+        ],
+        ids=["tagged", "untagged"],
+    )
+    async def test_the_flow_runs_tags_are_posted(self, tags, sent):
+        """#1722. Bug this catches: the adapter accepting tags and dropping them, so every flow
+        run reads ``tags: []`` in Prefect as deploy A′'s did."""
+        reporter = PrefectWorkflowTracker(api_url=PREFECT_URL)
+        reporter._client = AsyncMock(spec=httpx.AsyncClient)
+        reporter._client.post = AsyncMock(return_value=_mock_response(201, {"id": "run-abc"}))
+
+        await reporter.create_flow_run("flow-123", "run-001", tags=tags)
+
+        assert reporter._client.post.call_args.kwargs["json"]["tags"] == sent
+
 
 class TestCreateTaskRun:
     async def test_creates_task_run(self):

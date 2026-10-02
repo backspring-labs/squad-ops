@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 SquadOps is a multi-agent orchestration framework for software development. It uses a hexagonal architecture (ports & adapters) with dependency injection for testability.
 
-**Framework Version**: 1.8.1 (single-sourced from `pyproject.toml`; installed metadata is the
+**Framework Version**: 1.9.0 (single-sourced from `pyproject.toml`; installed metadata is the
 install-time copy and is used only when no source tree is present — #1089)
 **Python Requirement**: 3.12 everywhere — containers, CI and dev (#237). Production ran 3.11 until 2026-08-31 while CI tested on 3.12; the lock files were compiled on 3.11 and CI's constraints on 3.12, which is half of what #1041 was.
 
@@ -239,7 +239,7 @@ procedure costs: six consecutive releases tagged but never advertised.
 | 4 | ROADMAP timeline entry |
 | 5 | SIP promotion sweep — promote what is genuinely implemented; a phased or umbrella SIP with open children stays `accepted`, with the gap named |
 | 6 | `git tag vX.Y.Z && git push origin vX.Y.Z` — the Release publishes itself from the CHANGELOG section (`.github/workflows/release.yml`, #1061) |
-| 7 | **Capture the screenshots, then the package** — `capture_delivered_app.py` and `capture_prefect_run.py` into `assets/` first, then `build_release_package.py <version> --cycle <id>:<role> --showcase <id>:<reason>` to PREVIEW, read the cycle evidence, then re-run with `--write` and commit `site/content/releases/vX.Y.Z/`; **then attach the line's records** — `scripts/maintainer/attach_release_records.py X.Y.Z` to build and credential-scan the tarball, then `--upload` to attach it to the Release and record its sha256 in the package |
+| 7 | **Capture the screenshots, then the package** — `capture_delivered_app.py` and `capture_prefect_run.py` into `assets/` first, then `build_release_package.py <version> --cycle <id>:<role> --showcase <id>:<reason>` to PREVIEW, read the cycle evidence, then re-run with `--write` and commit `site/content/releases/vX.Y.Z/`; **then attach the line's records** — `scripts/maintainer/attach_release_records.py X.Y.Z` to build and credential-scan the tarball, then `--upload --expect-sha256 <the preview's>` to attach exactly the approved bytes to the Release and record its sha256 in the package (the tarball is byte-stable, and a rebuild that differs is refused, #1732) |
 | 8 | **Housekeeping** — `scripts/dev/worktree_hygiene.py` to preview, then `--apply --archive-root <a directory outside every checkout>`: each merged worktree's `var/` records are preserved into the main checkout's `var/` and archived, then the worktree and its branch are removed; merged branches no worktree holds are deleted; anything unmerged, dirty or holding a real `data/` is named and left |
 
 Steps 1–3 are guarded by `tests/unit/architecture/test_docs_version_sync.py`, and step 6's
@@ -288,9 +288,9 @@ cycles and shows one, and which one is a judgement that changes per release. The
 run" reliably resolves to a clean one picked by somebody with an interest in the release
 looking good.
 
-**Read step 7's preview before writing it.** The capture needs a running runtime API, a
-current `squadops login`, and the right `--project`; when any is missing the package can
-still be written. At the 1.6.2 cut it reported `1 cycles` and wrote a roll-up of nulls —
+**Read step 7's preview before writing it.** The capture needs a running runtime API and the
+right `--project` (it obtains its own token: the CLI's refresh, then a non-interactive login);
+when either is missing the package can still be written. At the 1.6.2 cut it reported `1 cycles` and wrote a roll-up of nulls —
 four silent defects behind a guard that treated `{"detail": "Not Found"}` as success,
 because valid JSON is valid JSON (#1076). A hollow capture is worse than none: it looks
 like the evidence was taken, and the deploy it came from is gone by the time anyone

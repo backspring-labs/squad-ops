@@ -39,6 +39,7 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any
 
+from adapters.cycles.correction_ids import correction_task_id
 from adapters.cycles.correction_repair import CorrectionRepair
 from adapters.cycles.execution_errors import _ExecutionError
 from squadops.capabilities.context_assembly import (
@@ -991,6 +992,9 @@ class CorrectionRunner:
         repair_rejections: list[str] | None = None,
         has_accepted_repair: bool = False,
         dispute_carry: dict[str, list[dict[str, Any]]] | None = None,
+        # #1697: the run's round sequence, never reset. It makes the round's task ids unique when
+        # a refunded round reuses the attempt index (adapters/cycles/correction_ids.py).
+        round_seq: int = 0,
     ) -> CorrectionProtocolResult:
         """Run the correction protocol: analyze → decide → act.
 
@@ -1040,6 +1044,7 @@ class CorrectionRunner:
             envelope,
             result,
             correction_attempts,
+            round_seq=round_seq,
             prior_outputs=prior_outputs,
             all_artifact_refs=all_artifact_refs,
             stored_artifacts=stored_artifacts,
@@ -1095,6 +1100,7 @@ class CorrectionRunner:
             cycle,
             run_id,
             correction_attempts,
+            round_seq=round_seq,
             prior_outputs=prior_outputs,
             all_artifact_refs=all_artifact_refs,
             stored_artifacts=stored_artifacts,
@@ -1152,6 +1158,7 @@ class CorrectionRunner:
         result: TaskResult,
         correction_attempts: int,
         *,
+        round_seq: int = 0,
         prior_outputs: dict[str, Any],
         all_artifact_refs: list[str],
         stored_artifacts: list[tuple[str, ArtifactRef]],
@@ -1230,7 +1237,9 @@ class CorrectionRunner:
         corr_correlation_id = uuid4().hex
 
         for step_idx, (task_type, role) in enumerate(declared_steps):
-            corr_task_id = f"corr-{run_id[:12]}-{correction_attempts:02d}-{task_type}"
+            corr_task_id = correction_task_id(
+                "corr", run_id, correction_attempts, round_seq, task_type
+            )
             resolved = resolve_agent_config(role, profile)
             agent_id = resolved.agent_id
             agent_model = resolved.model
@@ -1502,6 +1511,7 @@ class CorrectionRunner:
         patched_artifacts: list[dict[str, Any]],
         correction_attempts: int,
         *,
+        round_seq: int = 0,
         prior_outputs: dict[str, Any],
         all_artifact_refs: list[str],
         stored_artifacts: list[tuple[str, ArtifactRef]],
@@ -1571,7 +1581,9 @@ class CorrectionRunner:
         }
 
         retest_envelope = TaskEnvelope(
-            task_id=f"retest-{run_id[:12]}-{correction_attempts:02d}-{envelope.task_type}",
+            task_id=correction_task_id(
+                "retest", run_id, correction_attempts, round_seq, envelope.task_type
+            ),
             agent_id=resolved.agent_id,
             cycle_id=cycle.cycle_id,
             pulse_id=uuid4().hex,

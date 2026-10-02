@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from adapters.cycles.correction_ids import correction_task_id
 from squadops.capabilities.context_assembly import (
     REPAIR_CONTEXT_CONTRACT,
     forwarded_failed_artifacts,
@@ -917,6 +918,7 @@ class CorrectionRepair:
         run_id: str,
         correction_attempts: int,
         *,
+        round_seq: int = 0,
         prior_outputs: dict[str, Any],
         all_artifact_refs: list[str],
         stored_artifacts: list[tuple[str, ArtifactRef]],
@@ -997,7 +999,9 @@ class CorrectionRepair:
                     role,
                     [str(e) for e in (failed_inputs.get("expected_artifacts") or [])],
                 )
-                repair_task_id = f"repair-{run_id[:12]}-{correction_attempts:02d}-{task_type}"
+                repair_task_id = correction_task_id(
+                    "repair", run_id, correction_attempts, round_seq, task_type
+                )
                 _log_repair_brief(
                     task_type,
                     role,

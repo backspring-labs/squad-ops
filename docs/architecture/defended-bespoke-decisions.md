@@ -502,3 +502,147 @@ rejected on the first attempt's six failed rows while the re-authored suite pass
 because the ledger supersedes per `(check_id, subject)` and a check that only ever appears when
 it fails can never be superseded by its own later pass. One helper now attaches it for both
 handlers, so the two cannot diverge a third time. *Lives in:* `_CycleTaskHandler._attach_outcome`.
+
+## 47. The framing gate returns its plan errors; the caller records the rejection
+
+`_reject_invalid_plan_before_workload_gate` returns a list, and the sequencing loop records a
+system `REJECTED` gate decision from it, which re-rolls framing for free (#464, #473). It used to
+raise, and the orchestrator died silently mid-sequence (the 3.13 stall). A validator added here
+adds a rejection reason; it never raises. *Lives in:* the framing gate's plan check (#1507 step 1).
+
+## 48. Two plan nets, two error channels: pick the net by where the rejection must land
+
+The inter-workload gate's check **returns** (a recorded re-roll), and the dispatch-time net in
+`generate_task_plan` / `_reject_unsatisfiable_plan_at_gate` **raises** (a run failure). They are
+separate on purpose (#663 D5): merging them would conflate #473's returns-vs-raises semantics.
+A new rule goes on the net whose landing it needs, and on both when both apply; landing it on one
+when both apply is the #718/#719 scar. `test_plan_gate_seams.py` pins both call sites.
+
+## 49. A missing plan is rejected at the gate; an unreadable one defers
+
+With `implementation_plan` on, a completed framing run with no plan artifact means plan authoring
+collapsed, and approving it spends a whole implementation run before the SIP-0096 throttle catches
+it at the end (#424). An artifact that exists but doesn't parse is different: the dispatch-time
+net gives it a full diagnosis, so the gate defers. Exists-but-unreadable is not absent.
+
+## 50. Whatever is provably unwinnable from the plan and manifest is rejected at the gate
+
+Each validator the gate runs proves, in milliseconds, that a roll cannot pass on any content: an
+unexecutable command check or directory-shaped artifact (#645), a dual-claimed artifact (#673), a
+qa task that can never satisfy `tests_pass` (#715), a builder with no build profile (#426) or under
+its required files (roll 15), a suite outside qa's namespace (#1587), a module the scaffold can't
+provide (#671), a failing check on a frozen file (pf-42), a manifest the plan contradicts (#1013).
+At the gate a re-roll costs minutes; the same defect found later costs a roll's correction budget.
+The check only ever adds an earlier rejection, never a pass.
+
+## 51. Bind mode binds the contract's criteria before validating the plan
+
+In bind mode the contract's covered-file criteria are bound by id before the plan is validated
+(#509), and dispatch applies the same normalization, so the validated plan and the executed plan
+cannot drift. Bind mode requires an interface manifest, seeded or framing-emitted and hash-checked
+(#494, #496), and a seeded contract that won't parse is a hard rejection, never a fall-through to
+author mode (SIP-0098 §10).
+
+## 52. Soft plan violations are logged at the gate, never fatal
+
+A warning- or info-severity criterion can't block a build (RC-9), so it must not kill a cycle at
+plan validation either; the gate logs every tolerated violation, including the derived-criteria
+notes (#1254), so the pass is never silent. The rule is taught in the vocabulary and enforced by
+the dispatch strip, and a framing re-roll for a row dispatch would drop costs half an hour for
+nothing.
+
+## 53. A resumed run is not marked running again
+
+A run is moved to `running` only if it isn't already: the resume and retry routes mark it before
+enqueuing it (#222/#256), and a `running → running` transition is illegal on a lifecycle-enforcing
+registry, which made every resumed run fail instantly (#342). *Lives in:* `RunProvisioning.prepare`.
+
+## 54. A run's plan, contract and manifest are loaded before its first dispatch
+
+The implementation plan (SIP-0086/SIP-0092) and a bind-mode contract (SIP-0098 98.3) are loaded
+together, before any task goes out, so the task plan is fully materialized and the executor stays
+deterministic. The criteria proposer reads the operator-seeded manifest, never a framing run's own:
+a framing run must not carry skeleton files (#496), a prompt describing the interface materializes
+nothing, and bind mode already requires the seeded one (#494). Without it the proposer writes checks
+against an invented interior of the frozen files (pf-42). *Lives in:* `RunProvisioning.prepare`.
+
+## 55. Admission defers a run; it never fails one
+
+A participant committed to, or about to start, a hard duty window (SIP-0089 §2.5), or holding a
+conflicting focus lease (§3.5), pauses the run (`RUN_PAUSED`, resumable) rather than failing it, and
+admission rolls back any agents it already recruited before deferring, so a paused run strands no
+one in cycle mode. Both guards are opt-in: no assignment port, no guard; no coordinator, no
+recruitment. *Lives in:* `RunAdmission.admit`.
+
+## 56. What admits a participant releases it, whatever the run's outcome
+
+The release runs in the run's `finally`, before anything that can raise, isolated per agent: a
+stranded cycle lease blocks all of that agent's future recruitment (#233). A sweep then releases
+anything still held under the run's `owner_ref`, because a recruitment replayed on resume (#288's
+idempotent skip) leaves leases this admission never recorded (#373). *Lives in:*
+`RunAdmission.release`.
+
+## 57. The skeleton is seeded on a fresh run only, and the scaffold only on top of it
+
+A resumed run's checkpoint already carries the original seed set; seeding again stores new ids that
+land after the restored state, and last-writer-wins per filename hands every fill slot back to a
+stub (#881). The test scaffold (SIP-0104) rides the same seed act and only on a seeded skeleton,
+since its shells import against that tree. *Lives in:* `RunProvisioning.seed`.
+
+## 58. A failed run finalizes with the state it reached
+
+`RunInProgress` is mutable, unlike the cycle models: it is the running record of how far a run
+got. `RunCompletion.finalize` receives the cycle, the plan and the contract a run had established
+when it failed, and provisioning records each on the line after the line that establishes it. A
+provisioning step that returned its results only at the end would hand finalization `None` where
+the contract was already loaded — a behaviour change an extraction would hide (#1507 step 2).
+*Lives in:* `RunProvisioning`, `RunAdmission`, and `execute_run`'s `finally`.
+
+## 59. A system plan rejection re-rolls framing, and the re-roll revises
+
+A plan the gate's check rejects is a stochastic framing fault — the rule the model tripped is in its
+prompt already — so framing re-runs, bounded by `framing_max_rerolls`, rather than the cycle dying
+(#522). The default is 2: it shipped as 0, which made the machinery dead code until a correct
+refusal dead-ended a cycle (#1030). The re-roll carries what died and why into the new framing's
+authoring prompts (#669): revise, don't re-dice. The rejection stays in `gate_decisions` as evidence
+(#473). *Lives in:* `WorkloadGate.decide`.
+
+## 60. The gate stops only when the design asks a question
+
+A manifest that declares no unresolved decision has already passed the deterministic gates, and a
+review that adds nothing manufactures the appearance of one (M4, #807). The question-free approval
+is synthesized and runs through the same exhaustive dispatch a human's answer does, so a
+pass-through cannot reach a path an approval would not; the questions themselves are the review
+request (§5c.10). *Lives in:* `WorkloadGate.decide`.
+
+## 61. Returned-for-revision revises, on the re-roll's own path
+
+Revision is not approval: the sequence never advances on the un-revised plan (#466, the 3.10
+false-approve). The revision runs on the same re-execution path a system re-roll takes (#811) — a
+second loop beside a proven one is how they drift — with its own counter, bounded by
+`manifest_max_attempts`, because a human's instruction is not a stochastic fault. It carries the
+prior manifest (§5c.6's "revise, don't re-roll") and the superseded run whose prefix it restores.
+
+## 62. The superseded run is cancelled first
+
+A re-roll or a revision cancels the run it supersedes before creating the next, because the
+positional run↔workload invariant is exactly one non-cancelled run per position (#257, D14).
+
+## 63. An unrecognized gate decision stops the sequence
+
+The dispatch over gate decisions is exhaustive: a value it doesn't know — a future policy, a typo —
+is never read as an approval (#466). *Lives in:* `WorkloadGate.decide`.
+
+## 64. Every way a cycle ends meets one completion boundary
+
+`execute_cycle`'s endings — the single-workload fast path, a run that did not complete, the last
+workload, and each way the gate stops the sequence — all reach `CycleCompletion.end`, which
+produces one read-only `CycleEnd` naming why. It is the seam 2.0's continuation request enters
+(the Campaign SIP's Appendix A). `execute_cycle` keeps the port's `None` return: changing a port
+inside an extraction is out, and the view is observed at the boundary itself (#1507 step 3).
+
+"A run that did not complete" is every status but `completed` (#1754). The loop once stopped only on
+a failed or cancelled run, and read a paused one as completed: it gated it, rejected its empty plan
+and cancelled it with each framing re-roll, so `runs resume` had nothing to re-enter. A paused run
+now ends the sequence uncancelled, as `run_paused`. *Lives in:* `STOP_REASON_FOR_UNCOMPLETED_RUN`
+(`src/squadops/cycles/cycle_end.py`).

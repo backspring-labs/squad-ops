@@ -1,0 +1,411 @@
+=== stdout ===
+=== Frontend (vitest) ===
+
+ RUN  v2.1.9 /tmp/qa_node_tdvu9iyq/frontend
+
+ ✓ src/__tests__/runs.test.jsx > CreateRunView > renders required form fields (title, datetime, meeting location)
+ × src/__tests__/runs.test.jsx > CreateRunView > shows a validation message when required fields are empty 1010ms
+   → Unable to find an element by: [data-testid="create-run-error"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mdata-testid[39m=[32m"create-run-view"[39m
+    [36m>[39m
+      [36m<h1>[39m
+        [0mCreate a Group Run[0m
+      [36m</h1>[39m
+      [36m<form[39m
+        [33mdata-testid[39m=[32m"create-run-form"[39m
+        [33mnovalidate[39m=[32m""[39m
+      [36m>[39m
+        [36m<label>[39m
+          [0mTitle [0m
+          [36m<span[39m
+            [33maria-hidden[39m=[32m"true"[39m
+          [36m>[39m
+            [0m*[0m
+          [36m</span>[39m
+          [36m<input[39m
+            [33mname[39m=[32m"title"[39m
+            [33mtype[39m=[32m"text"[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<label>[39m
+          [0mDate / Time [0m
+          [36m<span[39m
+            [33maria-hidden[39m=[32m"true"[39m
+          [36m>[39m
+            [0m*[0m
+          [36m</span>[39m
+          [36m<input[39m
+            [33mname[39m=[32m"datetime"[39m
+            [33mtype[39m=[32m"datetime-local"[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<label>[39m
+          [0mMeeting Location [0m
+          [36m<span[39m
+            [33maria-hidden[39m=[32m"true"[39m
+          [36m>[39m
+            [0m*[0m
+          [36m</span>[39m
+          [36m<input[39m
+            [33mname[39m=[32m"meeting_location"[39m
+            [33mtype[39m=[32m"text"[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<label>[39m
+          [0mDistance[0m
+          [36m<input[39m
+            [33mname[39m=[32m"distance"[39m
+            [33mplaceholder[39m=[32m"e.g. 5K, 6 mi"[39m
+            [33mtype[39m=[32m"text"[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<label>[39m
+          [0mPace Target[0m
+          [36m<input[39m
+            [33mname[39m=[32m"pace_target"[39m
+            [33mplaceholder[39m=[32m"e.g. 9:00–10:00/mi"[39m
+            [33mtype[39m=[32m"text"[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<label>[39m
+          [0mRoute Notes[0m
+          [36m<textarea[39m
+            [33mname[39m=[32m"route_notes"[39m
+            [33mrows[39m=[32m"3"[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<button[39m
+          [33mdata-testid[39m=[32m"create-run-submit"[39m
+          [33mtype[39m=[32m"submit"[39m
+        [36m>[39m
+          [0mCreate Run[0m
+        [36m</button>[39m
+      [36m</form>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<html>[39m
+  [36m<head />[39m
+  [36m<body>[39m
+    [36m<div>[39m
+      [36m<div[39m
+        [33mdata-testid[39m=[32m"create-run-view"[39m
+      [36m>[39m
+        [36m<h1>[39m
+          [0mCreate a Group Run[0m
+        [36m</h1>[39m
+        [36m<form[39m
+          [33mdata-testid[39m=[32m"create-run-form"[39m
+          [33mnovalidate[39m=[32m""[39m
+        [36m>[39m
+          [36m<label>[39m
+            [0mTitle [0m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+            [36m>[39m
+              [0m*[0m
+            [36m</span>[39m
+            [36m<input[39m
+              [33mname[39m=[32m"title"[39m
+              [33mtype[39m=[32m"text"[39m
+            [36m/>[39m
+          [36m</label>[39m
+          [36m<label>[39m
+            [0mDate / Time [0m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+            [36m>[39m
+              [0m*[0m
+            [36m</span>[39m
+            [36m<input[39m
+              [33mname[39m=[32m"datetime"[39m
+              [33mtype[39m=[32m"datetime-local"[39m
+            [36m/>[39m
+          [36m</label>[39m
+          [36m<label>[39m
+            [0mMeeting Location [0m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+            [36m>[39m
+              [0m*[0m
+            [36m</span>[39m
+            [36m<input[39m
+              [33mname[39m=[32m"meeting_location"[39m
+              [33mtype[39m=[32m"text"[39m
+            [36m/>[39m
+          [36m</label>[39m
+          [36m<label>[39m
+            [0mDistance[0m
+            [36m<input[39m
+              [33mname[39m=[32m"distance"[39m
+              [33mplaceholder[39m=[32m"e.g. 5K, 6 mi"[39m
+              [33mtype[39m=[32m"text"[39m
+            [36m/>[39m
+          [36m</label>[39m
+          [36m<label>[39m
+            [0mPace Target[0m
+            [36m<input[39m
+              [33mname[39m=[32m"pace_target"[39m
+              [33mplaceholder[39m=[32m"e.g. 9:00–10:00/mi"[39m
+              [33mtype[39m=[32m"text"[39m
+            [36m/>[39m
+          [36m</label>[39m
+          [36m<label>[39m
+            [0mRoute Notes[0m
+            [36m<textarea[39m
+              [33mname[39m=[32m"route_notes"[39m
+              [33mrows[39m=[32m"3"[39m
+            [36m/>[39m
+          [36m</label>[39m
+          [36m<button[39m
+            [33mdata-testid[39m=[32m"create-run-submit"[39m
+            [33mtype[39m=[32m"submit"[39m
+          [36m>[39m
+            [0mCreate Run[0m
+          [36m</button>[39m
+        [36m</form>[39m
+      [36m</div>[39m
+    [36m</div>[39m
+  [36m</body>[39m
+[36m</html>[39m
+ ✓ src/__tests__/runs.test.jsx > RunListView > renders a run entry with title and participant count
+ ✓ src/__tests__/runs.test.jsx > RunListView > shows an empty-state message when no runs exist
+ ✓ src/__tests__/runs.test.jsx > RunDetailView > displays run details and the participant list
+ ✓ src/__tests__/runs.test.jsx > RunDetailView > join form rejects an empty name
+
+⎯⎯⎯⎯⎯⎯ Unhandled Errors ⎯⎯⎯⎯⎯⎯
+
+Vitest caught 1 unhandled error during the test run.
+This might cause false positive tests. Resolve unhandled errors to make sure your tests are not affected.
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+ Test Files  1 failed (1)
+      Tests  1 failed | 5 passed (6)
+     Errors  1 error
+   Start at  09:01:06
+   Duration  1.64s (transform 81ms, setup 69ms, collect 82ms, tests 1.09s, environment 193ms, prepare 48ms)
+
+JSON report written to /tmp/qa_node_tdvu9iyq/frontend/.vitest_report.json
+
+=== stderr ===
+=== Frontend (vitest) ===
+stderr | src/__tests__/runs.test.jsx > CreateRunView > renders required form fields (title, datetime, meeting location)
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/__tests__/runs.test.jsx > CreateRunView > shows a validation message when required fields are empty
+TestingLibraryElementError: Unable to find an element by: [data-testid="create-run-error"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mdata-testid[39m=[32m"create-run-view"[39m
+    [36m>[39m
+      [36m<h1>[39m
+        [0mCreate a Group Run[0m
+      [36m</h1>[39m
+      [36m<form[39m
+        [33mdata-testid[39m=[32m"create-run-form"[39m
+        [33mnovalidate[39m=[32m""[39m
+      [36m>[39m
+        [36m<label>[39m
+          [0mTitle [0m
+          [36m<span[39m
+            [33maria-hidden[39m=[32m"true"[39m
+          [36m>[39m
+            [0m*[0m
+          [36m</span>[39m
+          [36m<input[39m
+            [33mname[39m=[32m"title"[39m
+            [33mtype[39m=[32m"text"[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<label>[39m
+          [0mDate / Time [0m
+          [36m<span[39m
+            [33maria-hidden[39m=[32m"true"[39m
+          [36m>[39m
+            [0m*[0m
+          [36m</span>[39m
+          [36m<input[39m
+            [33mname[39m=[32m"datetime"[39m
+            [33mtype[39m=[32m"datetime-local"[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<label>[39m
+          [0mMeeting Location [0m
+          [36m<span[39m
+            [33maria-hidden[39m=[32m"true"[39m
+          [36m>[39m
+            [0m*[0m
+          [36m</span>[39m
+          [36m<input[39m
+            [33mname[39m=[32m"meeting_location"[39m
+            [33mtype[39m=[32m"text"[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<label>[39m
+          [0mDistance[0m
+          [36m<input[39m
+            [33mname[39m=[32m"distance"[39m
+            [33mplaceholder[39m=[32m"e.g. 5K, 6 mi"[39m
+            [33mtype[39m=[32m"text"[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<label>[39m
+          [0mPace Target[0m
+          [36m<input[39m
+            [33mname[39m=[32m"pace_target"[39m
+            [33mplaceholder[39m=[32m"e.g. 9:00–10:00/mi"[39m
+            [33mtype[39m=[32m"text"[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<label>[39m
+          [0mRoute Notes[0m
+          [36m<textarea[39m
+            [33mname[39m=[32m"route_notes"[39m
+            [33mrows[39m=[32m"3"[39m
+          [36m/>[39m
+        [36m</label>[39m
+        [36m<button[39m
+          [33mdata-testid[39m=[32m"create-run-submit"[39m
+          [33mtype[39m=[32m"submit"[39m
+        [36m>[39m
+          [0mCreate Run[0m
+        [36m</button>[39m
+      [36m</form>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<html>[39m
+  [36m<head />[39m
+  [36m<body>[39m
+    [36m<div>[39m
+      [36m<div[39m
+        [33mdata-testid[39m=[32m"create-run-view"[39m
+      [36m>[39m
+        [36m<h1>[39m
+          [0mCreate a Group Run[0m
+        [36m</h1>[39m
+        [36m<form[39m
+          [33mdata-testid[39m=[32m"create-run-form"[39m
+          [33mnovalidate[39m=[32m""[39m
+        [36m>[39m
+          [36m<label>[39m
+            [0mTitle [0m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+            [36m>[39m
+              [0m*[0m
+            [36m</span>[39m
+            [36m<input[39m
+              [33mname[39m=[32m"title"[39m
+              [33mtype[39m=[32m"text"[39m
+            [36m/>[39m
+          [36m</label>[39m
+          [36m<label>[39m
+            [0mDate / Time [0m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+            [36m>[39m
+              [0m*[0m
+            [36m</span>[39m
+            [36m<input[39m
+              [33mname[39m=[32m"datetime"[39m
+              [33mtype[39m=[32m"datetime-local"[39m
+            [36m/>[39m
+          [36m</label>[39m
+          [36m<label>[39m
+            [0mMeeting Location [0m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+            [36m>[39m
+              [0m*[0m
+            [36m</span>[39m
+            [36m<input[39m
+              [33mname[39m=[32m"meeting_location"[39m
+              [33mtype[39m=[32m"text"[39m
+            [36m/>[39m
+          [36m</label>[39m
+          [36m<label>[39m
+            [0mDistance[0m
+            [36m<input[39m
+              [33mname[39m=[32m"distance"[39m
+              [33mplaceholder[39m=[32m"e.g. 5K, 6 mi"[39m
+              [33mtype[39m=[32m"text"[39m
+            [36m/>[39m
+          [36m</label>[39m
+          [36m<label>[39m
+            [0mPace Target[0m
+            [36m<input[39m
+              [33mname[39m=[32m"pace_target"[39m
+              [33mplaceholder[39m=[32m"e.g. 9:00–10:00/mi"[39m
+              [33mtype[39m=[32m"text"[39m
+            [36m/>[39m
+          [36m</label>[39m
+          [36m<label>[39m
+            [0mRoute Notes[0m
+            [36m<textarea[39m
+              [33mname[39m=[32m"route_notes"[39m
+              [33mrows[39m=[32m"3"[39m
+            [36m/>[39m
+          [36m</label>[39m
+          [36m<button[39m
+            [33mdata-testid[39m=[32m"create-run-submit"[39m
+            [33mtype[39m=[32m"submit"[39m
+          [36m>[39m
+            [0mCreate Run[0m
+          [36m</button>[39m
+        [36m</form>[39m
+      [36m</div>[39m
+    [36m</div>[39m
+  [36m</body>[39m
+[36m</html>[39m
+ ❯ Proxy.waitForWrapper node_modules/@testing-library/dom/dist/wait-for.js:163:27
+ ❯ src/__tests__/runs.test.jsx:89:11
+     87|     fireEvent.submit(form)
+     88| 
+     89|     await waitFor(() => {
+       |           ^
+     90|       expect(screen.getByTestId('create-run-error')).toBeInTheDocument…
+     91|     })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+⎯⎯⎯⎯ Unhandled Rejection ⎯⎯⎯⎯⎯
+TypeError: Cannot read properties of undefined (reading 'value')
+ ❯ handleSubmit src/views/CreateRunView.jsx:17:37
+     15|     const form = formRef.current;
+     16|     const title = (form.title.value || '').trim();
+     17|     const datetime = (form.datetime.value || '').trim();
+       |                                     ^
+     18|     const meetingLocation = (form.meeting_location.value || '').trim();
+     19|     const distance = (form.distance.value || '').trim();
+ ❯ HTMLUnknownElement.callCallback node_modules/react-dom/cjs/react-dom.development.js:4164:14
+ ❯ HTMLUnknownElement.callTheUserObjectsOperation node_modules/jsdom/lib/jsdom/living/generated/EventListener.js:26:30
+ ❯ innerInvokeEventListeners node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:350:25
+ ❯ invokeEventListeners node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3
+ ❯ HTMLUnknownElementImpl._dispatch node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9
+ ❯ HTMLUnknownElementImpl.dispatchEvent node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17
+ ❯ HTMLUnknownElement.dispatchEvent node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34
+ ❯ Object.invokeGuardedCallbackDev node_modules/react-dom/cjs/react-dom.development.js:4213:16
+ ❯ invokeGuardedCallback node_modules/react-dom/cjs/react-dom.development.js:4277:31
+
+This error originated in "src/__tests__/runs.test.jsx" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.
+The latest test that might've caused the error is "shows a validation message when required fields are empty". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+
+

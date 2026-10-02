@@ -384,6 +384,10 @@ class Cycle:
     # existed, and for a commit the image did not record — unknown, never a guess.
     framework_version: str | None = None
     framework_git_sha: str | None = None
+    # #1720: the deploy record current when the cycle was created — every service's image and
+    # the models' weights, where framework_git_sha names only the runtime API's. None when no
+    # deploy had been recorded.
+    deploy_id: str | None = None
 
     notes: str | None = None
 

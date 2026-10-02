@@ -15,7 +15,14 @@ from squadops.prompts.exceptions import (
     HashMismatchError,
     ManifestValidationError,
 )
-from squadops.prompts.frontmatter import read_frontmatter, split_frontmatter
+from squadops.prompts.fragment_stamp import (
+    STAMP_FILENAME,
+    FragmentStamp,
+    fragment_body,
+    hash_fragment_file,
+    read_stamp,
+)
+from squadops.prompts.frontmatter import read_frontmatter
 from squadops.prompts.models import ManifestFragment, PromptFragment, PromptManifest
 
 logger = logging.getLogger(__name__)
@@ -39,26 +46,6 @@ class FileSystemPromptRepository(PromptRepository):
         └── qa/
     """
 
-    @classmethod
-    def extract_content(cls, raw_content: str) -> str:
-        """Return a fragment's hashable body: everything after the YAML
-        frontmatter block, stripped (or the whole file, stripped, when there is
-        no frontmatter).
-
-        This is the single definition of "a fragment's content" — shared by the
-        runtime integrity check, the manifest regenerator, and the tests so the
-        manifest sha256 can't drift between them (see issue #195).
-        """
-        _, body = split_frontmatter(raw_content)
-        return body.strip()
-
-    @classmethod
-    def hash_fragment_file(cls, path: Path) -> str:
-        """Compute the canonical SHA256 recorded in the manifest for a fragment
-        file on disk."""
-        raw = Path(path).read_text(encoding="utf-8")
-        return PromptFragment.compute_hash(cls.extract_content(raw))
-
     def __init__(self, base_path: Path, manifest_path: Path | None = None):
         """
         Initialize filesystem repository.
@@ -70,6 +57,8 @@ class FileSystemPromptRepository(PromptRepository):
         self.base_path = Path(base_path)
         self.manifest_path = manifest_path or self.base_path / "manifest.yaml"
         self._manifest: PromptManifest | None = None
+        # The build stamp (#353): present in an image, absent in a source checkout.
+        self._stamp: FragmentStamp | None = None
         self._fragment_cache: dict[str, PromptFragment] = {}
 
     def _load_manifest(self) -> PromptManifest:
@@ -98,7 +87,6 @@ class FileSystemPromptRepository(PromptRepository):
                     path=frag_data["path"],
                     layer=frag_data["layer"],
                     roles=tuple(frag_data.get("roles", ["*"])),
-                    sha256=frag_data["sha256"],
                 )
             )
 
@@ -106,28 +94,46 @@ class FileSystemPromptRepository(PromptRepository):
             version=data.get("version", "0.0.0"),
             updated_at=data.get("updated_at", ""),
             fragments=tuple(fragments),
-            manifest_hash=data.get("manifest_hash", ""),
         )
 
-        # Verify manifest integrity if hash provided. #327: fail hard — a
-        # warn-and-continue here means agents silently run a prompt set that
-        # doesn't match its pinned fingerprint (masked config drift).
-        if manifest.manifest_hash:
-            computed = PromptManifest.compute_manifest_hash(manifest.version, manifest.fragments)
-            if computed != manifest.manifest_hash:
-                raise ManifestValidationError(
-                    f"Manifest hash mismatch: expected {manifest.manifest_hash[:16]}..., "
-                    f"got {computed[:16]}... — the deployed prompt set does not match its "
-                    f"pinned manifest. Regenerate with: "
-                    f"python scripts/dev/regen_fragment_manifest.py --write",
-                    {
-                        "expected": manifest.manifest_hash,
-                        "computed": computed,
-                        "path": str(self.manifest_path),
-                    },
-                )
+        # #327: fail hard — a warn-and-continue here means agents silently run a prompt set
+        # that is not the one they shipped with. #353: the reference is the build stamp, and
+        # the check reads the fragments themselves, not a hash column kept beside them.
+        stamp = read_stamp(self.manifest_path)
+        if stamp is not None:
+            self._verify_pack_against_stamp(manifest, stamp)
+        self._stamp = stamp
 
         return manifest
+
+    def _verify_pack_against_stamp(self, manifest: PromptManifest, stamp: FragmentStamp) -> None:
+        """Every registered fragment reads as the build stamped it.
+
+        Raises:
+            ManifestValidationError: the stamp describes a different manifest.
+            HashMismatchError: a fragment's content changed after the build.
+        """
+        stamp_path = self.manifest_path.parent / STAMP_FILENAME
+        registered = {meta.path for meta in manifest.fragments}
+        if stamp.version != manifest.version or set(stamp.hashes) != registered:
+            raise ManifestValidationError(
+                f"{stamp_path} does not describe this manifest: it stamped pack "
+                f"{stamp.version} with {len(stamp.hashes)} fragments, the manifest is "
+                f"{manifest.version} with {len(registered)} (only in the stamp: "
+                f"{sorted(set(stamp.hashes) - registered)}, only in the manifest: "
+                f"{sorted(registered - set(stamp.hashes))}). The image build writes the stamp; "
+                f"a source checkout needs none.",
+                {"path": str(stamp_path)},
+            )
+        for meta in manifest.fragments:
+            path = self.base_path / meta.path
+            actual = hash_fragment_file(path) if path.is_file() else "<file missing>"
+            if actual != stamp.hashes[meta.path]:
+                raise HashMismatchError(
+                    fragment_id=f"{meta.fragment_id} ({meta.path})",
+                    expected=stamp.hashes[meta.path],
+                    actual=actual,
+                )
 
     def get_manifest(self) -> PromptManifest:
         """Load the prompt manifest (cached)."""
@@ -194,7 +200,7 @@ class FileSystemPromptRepository(PromptRepository):
         header, _ = read_frontmatter(raw_content)
 
         # Content (and its hash) come from the shared canonical extractor.
-        content = self.extract_content(raw_content)
+        content = fragment_body(raw_content)
 
         # Extract metadata (prefer file header, fall back to manifest)
         fragment_id = header.get("fragment_id") or (
@@ -206,6 +212,18 @@ class FileSystemPromptRepository(PromptRepository):
 
         # Compute actual hash
         actual_hash = PromptFragment.compute_hash(content)
+
+        # SIP-0057 §8.3: in an image, a fragment read after the manifest loaded is still the
+        # one the build stamped. The manifest load is what reads the stamp.
+        self.get_manifest()
+        if self._stamp is not None:
+            expected = self._stamp.hashes.get(path.relative_to(self.base_path).as_posix())
+            if expected != actual_hash:
+                raise HashMismatchError(
+                    fragment_id=f"{fragment_id} ({path})",
+                    expected=expected or "<not in the build stamp>",
+                    actual=actual_hash,
+                )
 
         return PromptFragment(
             fragment_id=fragment_id,
@@ -283,32 +301,24 @@ class FileSystemPromptRepository(PromptRepository):
 
     def validate_integrity(self) -> bool:
         """
-        Verify all fragment hashes match the manifest.
+        Verify every fragment still reads as the image build stamped it (#353).
+
+        A source checkout has no stamp: its files are the reference, and there is nothing
+        shipped to verify against.
 
         Returns:
-            True if all hashes match
+            True if every fragment matches the stamp, or there is no stamp
 
         Raises:
+            ManifestValidationError: If the stamp describes a different manifest
             HashMismatchError: If any fragment fails integrity check
         """
         manifest = self.get_manifest()
-
-        for meta in manifest.fragments:
-            path = self.base_path / meta.path
-            if not path.exists():
-                logger.warning(f"Fragment missing: {meta.fragment_id} at {path}")
-                continue
-
-            fragment = self._parse_fragment_file(path, meta)
-
-            if fragment.sha256_hash != meta.sha256:
-                raise HashMismatchError(
-                    fragment_id=meta.fragment_id,
-                    expected=meta.sha256,
-                    actual=fragment.sha256_hash,
-                )
-
-        logger.info("All fragment hashes verified successfully")
+        if self._stamp is None:
+            logger.info("No prompt build stamp: the source fragments are the reference")
+            return True
+        self._verify_pack_against_stamp(manifest, self._stamp)
+        logger.info("All fragment hashes verified against the build stamp")
         return True
 
     def fragment_exists(self, fragment_id: str, role: str | None = None) -> bool:

@@ -44,6 +44,8 @@ ARG SOURCE_HASH=unknown
 # #80: the same value, readable at runtime, so every cycle records the commit it was created
 # on. Without it the commit an image was built from was not recoverable from the image.
 ENV SQUADOPS_GIT_SHA=${SOURCE_HASH}
+# #1720: the same value as an OCI label, readable without starting the container.
+LABEL org.opencontainers.image.revision="${SOURCE_HASH}"
 
 # Copy source code (changes frequently, but doesn't invalidate deps layer)
 COPY src/ ./src/
@@ -55,6 +57,10 @@ COPY infra/ ./infra/
 
 # Install package in editable mode (fast - deps already installed)
 RUN --mount=type=cache,target=/root/.cache/pip pip install -e .
+
+# #353: stamp the prompt pack as it ships: the fragment hashes the prompt repository
+# verifies against at runtime. After the last COPY of src/, so it describes this image.
+RUN python -m squadops.prompts.fragment_stamp
 
 # Expose port
 EXPOSE 8001

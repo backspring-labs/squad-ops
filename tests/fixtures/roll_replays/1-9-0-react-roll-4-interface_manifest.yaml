@@ -1,0 +1,86 @@
+version: 1
+kind: interface_manifest
+project_id: group_run
+source_prd: "PRD: group_run (1-Hour Cycle MVP+) v0.5"
+stack: fullstack_fastapi_react
+scope: "Core run-event lifecycle (create, list, detail, join, leave) with participant management, duplicate rejection, and validation; in-memory persistence only. Deliberately excludes: authentication, persistent storage, external services, mobile, RSVP states, recurring runs, notifications."
+entities:
+  - name: Run
+    fields:
+      - { name: id, type: string, required: true, generated: true }
+      - { name: title, type: string, required: true }
+      - { name: datetime, type: string, required: true }
+      - { name: meeting_location, type: string, required: true }
+      - { name: distance, type: string, required: false, default: null }
+      - { name: pace_target, type: string, required: false, default: null }
+      - { name: route_notes, type: string, required: false, default: null }
+      - { name: capacity, type: integer, required: false, default: null }
+      - { name: participants, type: "list[string]", required: true, default: [] }
+      - { name: participant_count, type: integer, required: true }
+      - { name: created_at, type: string, required: true, generated: true }
+api:
+  base_path: /api
+  request_shapes:
+    RunCreate:
+      required: [title, datetime, meeting_location]
+      optional: [distance, pace_target, route_notes, capacity]
+    JoinRequest:
+      required: [name]
+    LeaveRequest:
+      required: [name]
+  endpoints:
+    - { method: POST, path: /runs, summary: "Create a run event", request: RunCreate, response: Run, success_status: 201, errors: [validation_error] }
+    - { method: GET, path: /runs, summary: "List all runs", response: "list[Run]" }
+    - { method: GET, path: "/runs/{run_id}", summary: "Get run details with participants", response: Run, errors: [run_not_found] }
+    - { method: POST, path: "/runs/{run_id}/join", summary: "Join a run with a participant name", request: JoinRequest, response: Run, errors: [run_not_found, duplicate_participant, validation_error, capacity_exceeded] }
+    - { method: POST, path: "/runs/{run_id}/leave", summary: "Leave a run by participant name", request: LeaveRequest, response: Run, errors: [run_not_found, participant_not_found, validation_error] }
+  error_contract:
+    shape: '{"error": {"code": "...", "message": "..."}}'
+    codes:
+      validation_error: { http: 422 }
+      run_not_found: { http: 404 }
+      participant_not_found: { http: 404 }
+      duplicate_participant: { http: 409 }
+      capacity_exceeded: { http: 403 }
+frontend:
+  framework: react_vite
+  routes:
+    - path: /
+      view: RunListView
+      purpose: "List all runs showing title, datetime, location, participant count; empty state; link to create and to detail"
+      testids: [run-list-view, run-list, run-row, create-run-link]
+    - path: /runs/new
+      view: CreateRunView
+      purpose: "Form to create a new run event with required-field validation and error display"
+      testids: [create-run-view, create-run-form, create-run-submit, create-run-error]
+    - path: "/runs/{run_id}"
+      view: RunDetailView
+      purpose: "Run event details, participant list, join form, leave form, not-found state, error messages"
+      testids: [run-detail-view, run-title, participant-list, participant-count, join-form, join-name-input, join-submit, leave-form, leave-name-input, leave-submit, error-message, not-found-state]
+persistence: in_memory
+decisions:
+  - id: duplicate-name-case-sensitivity
+    choice: "Case-insensitive uniqueness: normalize via strip + lower for the duplicate check; preserve original display casing in the participants list"
+    warrant: "PRD §5.4 — 'default recommendation: case-insensitive uniqueness'"
+  - id: leave-unknown-participant
+    choice: "POST /api/runs/{run_id}/leave returns 404 (participant_not_found) when the name is not on the run; a hard error, not a silent no-op"
+    warrant: "PRD §5.5 — 'choose one and document'; 404 selected for testability and explicit UI feedback over 200 no-op ambiguity"
+  - id: join-leave-http-method
+    choice: "Both join and leave are POST with the participant name carried in the request body"
+    warrant: "PRD §5.4/§5.5 define these as named actions on a run; POST is the conventional verb for actions whose identity is in the path suffix rather than the resource itself"
+  - id: datetime-as-string
+    choice: "datetime is a free-form string on the wire; no ISO-8601 parsing, timezone handling, or server-side sort enforcement is required at this stage"
+    warrant: "PRD §5.1 — 'string input acceptable for MVP'; Tier-1 expansion E2 adds best-effort lexical sort only"
+  - id: participant-count-derived
+    choice: "participant_count is always len(participants); it is never set independently and cannot be mutated by the client"
+    warrant: "PRD §5.6 — count must reflect current state; deriving it eliminates desync between list and detail views"
+  - id: list-ordering
+    unresolved: true
+    question: "PRD §5.2 says 'upcoming runs' but does not specify sort direction (ascending vs descending datetime), whether created_at is a secondary key, or whether unsorted is acceptable. Tier-1 expansion E2 suggests best-effort lexical sort but does not mandate direction."
+
+provenance:
+  mode: authored
+  cycle_id: cyc_9727f1c382e2
+  task_id: task-run_683edff5-003-development.author_manifest
+  attempts: 1
+  revisions: []

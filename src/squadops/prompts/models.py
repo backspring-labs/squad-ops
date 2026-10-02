@@ -85,14 +85,15 @@ class ManifestFragment:
     """
     Fragment entry in the manifest (metadata without content).
 
-    Used for manifest storage - actual content is loaded separately.
+    Used for manifest storage - actual content is loaded separately. The entry registers
+    the fragment; it does not fingerprint it. Hashes are taken at image build
+    (``squadops.prompts.fragment_stamp``, #353).
     """
 
     fragment_id: str
     path: str
     layer: str
     roles: tuple[str, ...]
-    sha256: str
 
 
 @dataclass(frozen=True)
@@ -100,20 +101,18 @@ class PromptManifest:
     """
     Aggregate root - single source of truth for versioned fragments.
 
-    The manifest anchors all fragments to a specific version and provides
-    integrity validation by storing expected hashes.
+    The manifest anchors all fragments to a specific version. Integrity is verified
+    against the build stamp, not against hashes kept in the manifest (#353).
 
     Attributes:
         version: System version this manifest represents
         updated_at: ISO timestamp of last manifest update
         fragments: Mapping of fragment_id to ManifestFragment metadata
-        manifest_hash: Hash of the manifest itself for integrity
     """
 
     version: str
     updated_at: str
     fragments: tuple[ManifestFragment, ...]  # Using tuple for immutability
-    manifest_hash: str
 
     def get_fragment_meta(self, fragment_id: str) -> ManifestFragment | None:
         """Get fragment metadata by ID."""
@@ -129,11 +128,3 @@ class PromptManifest:
     def get_fragments_by_role(self, role: str) -> list[ManifestFragment]:
         """Get all fragments applicable to a role (including shared)."""
         return [f for f in self.fragments if role in f.roles or "*" in f.roles]
-
-    @staticmethod
-    def compute_manifest_hash(version: str, fragments: tuple[ManifestFragment, ...]) -> str:
-        """Compute hash of manifest contents for integrity verification."""
-        content = f"{version}:" + ",".join(
-            f"{f.fragment_id}:{f.sha256}" for f in sorted(fragments, key=lambda x: x.fragment_id)
-        )
-        return hashlib.sha256(content.encode("utf-8")).hexdigest()

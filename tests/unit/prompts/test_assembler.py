@@ -60,7 +60,6 @@ def create_mock_repository(fragments: dict[str, PromptFragment]) -> PromptReposi
         version="0.8.5",
         updated_at="2026-01-24T00:00:00Z",
         fragments=(),
-        manifest_hash="test",
     )
 
     return repo

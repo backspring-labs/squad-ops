@@ -2,7 +2,7 @@
 Tests for SIP-0064 cycle API routes.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -10,8 +10,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from adapters.cycles.memory_deploy_registry import MemoryDeployRegistry
 from squadops.api.error_handlers import register_domain_error_handlers
 from squadops.api.routes.cycles.cycles import router
+from squadops.cycles.deploy_record import DeployRecord, ModelWeights, ServiceImage
 from squadops.cycles.models import (
     AgentProfileEntry,
     Cycle,
@@ -95,12 +97,12 @@ def client(
     app = FastAPI()
     app.include_router(router)
     register_domain_error_handlers(app)  # as the runtime does (#576)
-    import squadops.api.runtime.deps as deps_mod
 
-    monkeypatch.setattr(deps_mod, "_project_registry", mock_project_registry)
-    monkeypatch.setattr(deps_mod, "_cycle_registry", mock_cycle_registry)
-    monkeypatch.setattr(deps_mod, "_squad_profile", mock_squad_profile)
-    monkeypatch.setattr(deps_mod, "_flow_executor", mock_flow_executor)
+    app.state.project_registry = mock_project_registry
+    app.state.cycle_registry = mock_cycle_registry
+    app.state.deploy_registry = MemoryDeployRegistry()  # #1720: no deploy recorded yet
+    app.state.squad_profile = mock_squad_profile
+    app.state.flow_executor = mock_flow_executor
     # #1568: the create-time sandbox preflight reads the provider from the process env, and
     # the provider is required; compose sets it on the runtime API.
     monkeypatch.setenv("SQUADOPS__SANDBOX__PROVIDER", "noop")
@@ -252,6 +254,75 @@ class TestCreateCycleCodeLineage:
         )
 
 
+class TestCreateCycleDeployLineage:
+    """#1720: the deploy a cycle was created on, referenced at the create route.
+
+    Enters at ``POST /api/v1/projects/{project}/cycles`` with the deploy registry holding what the
+    deploy step wrote, and asserts what reaches the cycle registry and what the detail returns.
+    Bug caught: the record written at every deploy while the route never references it, so a
+    cycle still names only the runtime's commit — deploy A′'s case, where the agents ran another
+    commit's images."""
+
+    @staticmethod
+    def _record(deploy_id: str, hours: int, neo_revision: str | None) -> DeployRecord:
+        return DeployRecord(
+            deploy_id=deploy_id,
+            recorded_at=NOW + timedelta(hours=hours),
+            recorded_by="rebuild_and_deploy.sh all",
+            source_revision="7acc2bc1",
+            services=(
+                ServiceImage("neo", "sha256:neo", neo_revision),
+                ServiceImage("runtime-api", "sha256:api", "7acc2bc1"),
+            ),
+            models=(ModelWeights("qwen3.8:27b", "22130167c4c2"),),
+        )
+
+    async def test_the_cycle_references_the_latest_deploy(self, client, mock_cycle_registry):
+        deploys = client.app.state.deploy_registry
+        await deploys.record(self._record("dep_earlier", 0, "ccc9475d"))
+        await deploys.record(self._record("dep_latest", 2, "7acc2bc1"))
+
+        resp = client.post(
+            "/api/v1/projects/hello_squad/cycles",
+            json={"squad_profile_id": "full", "request_profile": "selftest"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        (cycle,) = mock_cycle_registry.create_cycle.call_args[0]
+        assert cycle.deploy_id == "dep_latest"
+        record = await deploys.get(cycle.deploy_id)
+        assert record.service("neo").revision == "7acc2bc1"
+
+    def test_with_no_deploy_recorded_the_cycle_says_unknown(self, client, mock_cycle_registry):
+        resp = client.post(
+            "/api/v1/projects/hello_squad/cycles",
+            json={"squad_profile_id": "full", "request_profile": "selftest"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        (cycle,) = mock_cycle_registry.create_cycle.call_args[0]
+        assert cycle.deploy_id is None
+
+    def test_the_detail_response_carries_the_deploy(self, client, mock_cycle_registry):
+        mock_cycle_registry.get_cycle.return_value = Cycle(
+            cycle_id="cyc_001",
+            project_id="hello_squad",
+            created_at=NOW,
+            created_by="system",
+            prd_ref=None,
+            squad_profile_id="full",
+            squad_profile_snapshot_ref="sha256:abc",
+            task_flow_policy=TaskFlowPolicy(mode="sequential"),
+            build_strategy="fresh",
+            deploy_id="dep_latest",
+        )
+        mock_cycle_registry.list_runs.return_value = []
+
+        body = client.get("/api/v1/projects/hello_squad/cycles/cyc_001").json()
+
+        assert body["deploy_id"] == "dep_latest"
+
+
 class TestListCycles:
     def test_returns_list(self, client):
         resp = client.get("/api/v1/projects/hello_squad/cycles")
@@ -301,7 +372,6 @@ class TestCancelCycle:
     def test_cancel_propagates_to_prefect(self, client, mock_cycle_registry, monkeypatch):
         """#77: cancelling a cycle transitions its still-running Prefect flow
         run(s) to CANCELLED so workers stop executing the orphaned cycle."""
-        import squadops.api.runtime.deps as deps_mod
         from squadops.cycles.models import Run
 
         mock_cycle_registry.cancel_cycle.return_value = None
@@ -317,7 +387,7 @@ class TestCancelCycle:
         ]
         fake_tracker = AsyncMock()
         fake_tracker.find_active_flow_run_ids.return_value = ["flowrun-xyz"]
-        monkeypatch.setattr(deps_mod, "_workflow_tracker", fake_tracker)
+        client.app.state.workflow_tracker = fake_tracker
 
         resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/cancel")
 
@@ -333,7 +403,6 @@ class TestCancelCycle:
     def test_cancel_survives_prefect_failure(self, client, mock_cycle_registry, monkeypatch):
         """Registry cancellation is the source of truth: if Prefect propagation
         fails, the cycle is still reported cancelled (best-effort, #77)."""
-        import squadops.api.runtime.deps as deps_mod
         from squadops.cycles.models import Run
 
         mock_cycle_registry.cancel_cycle.return_value = None
@@ -349,7 +418,7 @@ class TestCancelCycle:
         ]
         fake_tracker = AsyncMock()
         fake_tracker.find_active_flow_run_ids.side_effect = RuntimeError("prefect down")
-        monkeypatch.setattr(deps_mod, "_workflow_tracker", fake_tracker)
+        client.app.state.workflow_tracker = fake_tracker
 
         resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/cancel")
 
@@ -396,7 +465,6 @@ class TestCancelCycle:
         """#373/#529: a lease stranded under an *already-terminal* run blocks
         recruitment just as hard as one under the run being cancelled, so the
         sweep covers the cycle's whole run list."""
-        import squadops.api.runtime.deps as deps_mod
         from squadops.cycles.models import Run
         from squadops.runtime.models import FocusLease
 
@@ -434,8 +502,8 @@ class TestCancelCycle:
             owner_ref
         ]
         lease_port.get_current_lease.return_value = None
-        monkeypatch.setattr(deps_mod, "_focus_lease_port", lease_port)
-        monkeypatch.setattr(deps_mod, "_runtime_coordinator", AsyncMock())
+        client.app.state.focus_lease_port = lease_port
+        client.app.state.runtime_coordinator = AsyncMock()
 
         resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/cancel")
 
@@ -445,7 +513,6 @@ class TestCancelCycle:
     def test_cancel_ends_the_cycles_open_activities(self, client, mock_cycle_registry, monkeypatch):
         """#561: cancel bypasses `RunCompletion.finalize`, leaving one active row
         per recruited agent to trip the one-active-per-agent index forever."""
-        import squadops.api.runtime.deps as deps_mod
         from squadops.runtime import reasons
 
         mock_cycle_registry.cancel_cycle.return_value = None
@@ -462,7 +529,7 @@ class TestCancelCycle:
         activity_port = AsyncMock()
         activity_port.list_active_activities.return_value = rows
         activity_port.abort_activity.side_effect = list(rows)
-        monkeypatch.setattr(deps_mod, "_activity_port", activity_port)
+        client.app.state.activity_port = activity_port
 
         resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/cancel")
 
