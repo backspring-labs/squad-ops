@@ -73,7 +73,10 @@ def _cycle(campaign_id: str | None) -> Cycle:
         squad_profile_snapshot_ref="sha256:abc",
         task_flow_policy=TaskFlowPolicy(mode="sequential"),
         build_strategy="fresh",
-        execution_overrides={"plan_artifact_refs": ["art_manifest"]},
+        execution_overrides={
+            "plan_artifact_refs": ["art_manifest"],
+            "campaign_proposal": {"proposal_id": "prop_cap", "version": 1, "max_revisions": 1},
+        },
         campaign_id=campaign_id,
         kind="increment" if campaign_id else None,
     )
@@ -206,3 +209,70 @@ async def test_a_proposal_run_without_its_change_request_fails_at_the_gate(execu
             max_framing_rerolls=0,
             max_framing_revisions=0,
         )
+
+
+def _returned(notes: str = "Keep it backend only.") -> GateDecision:
+    return GateDecision(
+        gate_name=INCREMENT_RULING_GATE,
+        decision=GateDecisionValue.RETURNED_FOR_REVISION.value,
+        decided_by="human:crew-supervisor",
+        decided_at=NOW,
+        notes=notes,
+    )
+
+
+@pytest.fixture
+def revising(executor):
+    """The supervisor returns the proposal; the registry holds the cycle's runs so far."""
+    executor._poll_inter_workload_gate.return_value = _returned()
+    executor._cycle_registry.list_runs.return_value = [_PROPOSAL_RUN]
+    executor._create_next_workload_run = AsyncMock(
+        return_value=dataclasses.replace(_PROPOSAL_RUN, run_id="run_prop2", run_number=2)
+    )
+    return executor
+
+
+async def test_a_returned_proposal_is_revised_in_a_new_run_from_the_version_it_returned(revising):
+    """§9.2: request revision → a new proposal run with the note; the supervisor never edits.
+    Bugs caught: the sequence stopping (today's non-framing revision), the revision run given
+    the original block (version 1 again, no note), or the returned run left occupying its place."""
+    from adapters.cycles.workload_gate import GateOutcome
+
+    step = await _reach_the_gate(revising, _cycle(CID))
+
+    revised = step.forwarding_overrides["campaign_proposal"]
+    assert step.outcome is GateOutcome.RE_EXECUTE
+    assert step.current_run_id == "run_prop2"
+    revising._cycle_registry.cancel_run.assert_awaited_once_with("run_prop")
+    assert (revised["version"], revised["supervisor_note"]) == (2, "Keep it backend only.")
+    assert revised["prior_change_request"] == _CHANGE_REQUEST
+    assert revised["proposal_id"] == "prop_cap"
+
+
+async def test_a_proposal_whose_revisions_are_spent_stops_and_counts_as_rejected(revising):
+    """§9.5: the revisions of one proposal are bounded. The count is the cycle's superseded
+    proposal runs, read from the registry, so a restart counts the same."""
+    from adapters.cycles.workload_gate import GateOutcome
+    from squadops.cycles.cycle_end import CycleStopReason
+
+    superseded = dataclasses.replace(_PROPOSAL_RUN, run_id="run_prop0", status="cancelled")
+    revising._cycle_registry.list_runs.return_value = [superseded, _PROPOSAL_RUN]
+
+    step = await _reach_the_gate(revising, _cycle(CID))
+
+    assert (step.outcome, step.stopped_because) == (
+        GateOutcome.STOP,
+        CycleStopReason.REVISION_UNAVAILABLE,
+    )
+    revising._cycle_registry.cancel_run.assert_not_awaited()
+    revising._create_next_workload_run.assert_not_awaited()
+
+
+async def test_a_revision_without_the_campaigns_budget_is_refused(revising):
+    """Require, don't default: a block the launch did not give a budget is a defect."""
+    cycle = _cycle(CID)
+    cycle = dataclasses.replace(
+        cycle, execution_overrides={**cycle.execution_overrides, "campaign_proposal": {}}
+    )
+    with pytest.raises(ValueError, match="no max_revisions"):
+        await _reach_the_gate(revising, cycle)

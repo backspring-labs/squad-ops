@@ -106,6 +106,30 @@ async def test_an_accepted_proposal_is_the_typed_change_request_with_its_footpri
     assert "1. Capacity limit per run" in prompt  # the requirements the objective points into
 
 
+async def test_a_revision_run_is_shown_the_note_and_the_version_it_revises_and_emits_the_next():
+    """SIP-0109 §9.2, as the gate hands a revision over (the block the gate writes: the next
+    version, the note, the returned change request). Bugs caught: the revision re-rolled from
+    scratch without the version it revises (#811's revise-don't-re-roll), the note dropped, or
+    the new version stamped with the old number — its ruling would bind to the returned one."""
+    inputs = _inputs()
+    block = inputs["resolved_config"]["campaign_proposal"]
+    block.update(
+        version=2,
+        supervisor_note="Keep the capacity field out of the create view; backend only.",
+        prior_change_request="kind: feature\ncriteria:\n  - id: T1\n    statement: a prior marker\n",
+    )
+    ctx = _ctx(_fenced(_REFERENCE))
+
+    result = await StrategyProposeIncrementHandler().handle(ctx, inputs)
+
+    assert result.success, result.error
+    [prompt] = _prompts(ctx)
+    assert "returned version 1 of your proposal" in prompt
+    assert "> Keep the capacity field out of the create view; backend only." in prompt
+    assert "statement: a prior marker" in prompt
+    assert result.outputs["change_request"]["version"] == 2
+
+
 async def test_a_refusal_comes_back_with_every_reason_and_the_revision_is_judged_afresh():
     """Bug caught: the model revising blind — told only that it failed — or the second attempt
     judged against the first attempt's verdict."""

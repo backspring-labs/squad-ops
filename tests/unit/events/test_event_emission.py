@@ -408,8 +408,9 @@ class TestEmitCallSitePayloadFields:
         to RunProvisioning — same total; step 3 moved the gate's four to WorkloadGate — same total.
         SIP-0109 #1799 moved the cycle cancel route's CYCLE_CANCELLED emit into the shared cancel
         path (cancellation.py) — same total; and added the campaign routes' one projection emit,
-        CAMPAIGN_TRANSITIONED, 48 → 49."""
+        CAMPAIGN_TRANSITIONED, 48 → 49. SIP-0109 #1801 added the workload gate's proposal-revision
+        WORKLOAD_ADVANCED emit (the supervisor's returned proposal, revised in a new run), 49 → 50."""
         total = 0
         for path in _ALL_EMISSION_FILES:
             total += len(self._extract_emit_calls(path))
-        assert total == 49
+        assert total == 50
