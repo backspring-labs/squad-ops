@@ -91,7 +91,7 @@ async def test_a_repeat_after_the_campaign_moved_on_replays_instead_of_refusing_
     await _walk_to_at_proposal(registry)
     ruling = move(S.AWAITING_RULING, "k-gate", expected_state=S.AT_PROPOSAL)
     first = await registry.transition(CID, ruling)
-    await registry.transition(CID, move(S.BUILDING, "k-approve", operation=ControlOperation.RULE))
+    await registry.transition(CID, move(S.BUILDING, "k-moved-on"))
 
     again = await registry.transition(CID, ruling)
     assert again.replayed and again.entry == first.entry

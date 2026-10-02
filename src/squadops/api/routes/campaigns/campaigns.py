@@ -64,7 +64,7 @@ _ROLE_ORDER = (
 _TERMINAL_CYCLE = frozenset({CycleStatus.COMPLETED, CycleStatus.FAILED, CycleStatus.CANCELLED})
 
 
-def _actor(identity: Identity | None) -> tuple[str, str]:
+def actor_from(identity: Identity | None) -> tuple[str, str]:
     """Who acted, from the verified token. With auth disabled there is no token, and the row
     says so rather than inventing a name."""
     if identity is None:
@@ -146,7 +146,7 @@ def _project(request: Request, result: TransitionResult, identity: Identity | No
         _project_to_events(request, result)
 
 
-async def _apply(
+async def apply_control(
     request: Request, campaign_id: str, transition: CampaignTransition, identity: Identity | None
 ) -> TransitionResult:
     try:
@@ -169,7 +169,7 @@ async def create_campaign(
     body: CampaignCreateRequest,
     identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_CONTROL)),
 ) -> ControlResultResponse:
-    actor, role = _actor(identity)
+    actor, role = actor_from(identity)
     now = datetime.now(UTC)
     try:
         campaign = Campaign(
@@ -235,9 +235,9 @@ async def pause_campaign(
     body: ControlRequest,
     identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_SUPERVISE)),
 ) -> ControlResultResponse:
-    actor, role = _actor(identity)
+    actor, role = actor_from(identity)
     transition = _transition(ControlOperation.PAUSE, CampaignState.PAUSED, body, actor, role)
-    return _result(await _apply(request, campaign_id, transition, identity))
+    return _result(await apply_control(request, campaign_id, transition, identity))
 
 
 @router.post("/{campaign_id}/resume")
@@ -253,7 +253,7 @@ async def resume_campaign(
     held action, so the campaign returns to the state the pausing row moved it out of. A
     campaign that is not paused refuses the resume as stale, and the refusal is recorded.
     """
-    actor, role = _actor(identity)
+    actor, role = actor_from(identity)
     registry = _registry(request)
     paused_from = _paused_from(await registry.control_log(campaign_id))
     campaign = await registry.get_campaign(campaign_id)
@@ -268,7 +268,7 @@ async def resume_campaign(
         role,
         expected_state=CampaignState.PAUSED,
     )
-    return _result(await _apply(request, campaign_id, transition, identity))
+    return _result(await apply_control(request, campaign_id, transition, identity))
 
 
 @router.post("/{campaign_id}/abort")
@@ -280,7 +280,7 @@ async def abort_campaign(
 ) -> ControlResultResponse:
     """Abort: terminal (§12a). Every cycle the campaign launched that has not ended is
     cancelled by the existing cancel path, and no continuation follows."""
-    actor, role = _actor(identity)
+    actor, role = actor_from(identity)
     transition = _transition(
         ControlOperation.ABORT,
         CampaignState.COMPLETED,
@@ -289,7 +289,7 @@ async def abort_campaign(
         role,
         outcome=CampaignOutcome.ABORTED,
     )
-    result = await _apply(request, campaign_id, transition, identity)
+    result = await apply_control(request, campaign_id, transition, identity)
     cancelled = await _cancel_launched_cycles(request, campaign_id)
     return _result(result, cancelled_cycles=cancelled)
 
@@ -328,11 +328,22 @@ def _transition(
 
 
 def _paused_from(log: list[ControlLogEntry]) -> CampaignState | None:
-    """The state the latest applied row into ``paused`` moved the campaign out of."""
+    """The state a resume returns the campaign to: the one the latest applied row into
+    ``paused`` moved it out of, or ``awaiting_ruling`` when its proposal was submitted to the
+    increment gate during the pause (the gate opened while the campaign held, §9.2)."""
+    gate_opened = False
     for entry in reversed(log):
-        if entry.outcome is ControlOutcome.APPLIED and entry.next_state is CampaignState.PAUSED:
-            if entry.prior_state is not CampaignState.PAUSED:
-                return entry.prior_state
+        if entry.outcome is not ControlOutcome.APPLIED:
+            continue
+        if entry.operation is ControlOperation.SUBMIT and entry.prior_state is CampaignState.PAUSED:
+            gate_opened = True
+        elif (
+            entry.next_state is CampaignState.PAUSED
+            and entry.prior_state is not CampaignState.PAUSED
+        ):
+            if gate_opened and entry.prior_state is CampaignState.AT_PROPOSAL:
+                return CampaignState.AWAITING_RULING
+            return entry.prior_state
     return None
 
 

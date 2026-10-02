@@ -947,6 +947,32 @@ proposed in the PR that builds the decision.
    - **So a campaign never retries on its own.** The rows are built as written and tested with a
      constructed assessment. Fixing the reading is #1824.
 
+
+### 24c. §9.2's increment gate, as built (2026-10-02, #1801; implementer's reading, not yet ruled)
+
+1. **The proposal is submitted to the campaign when the gate opens.**
+   - **What changed:** §9.2 says a ruling binds to "the gate's current proposal", and does not say
+     how the campaign learns which proposal that is. A new control operation, `submit`, records
+     it. The workload gate writes it on reaching `increment_ruling`. The row pins the proposal
+     (its binding, cycle and run) on the campaign row and moves an `at_proposal` campaign to
+     `awaiting_ruling`.
+   - **Keying:** the row is keyed by the run, so re-entering the gate after a restart replays it.
+   - **A holding campaign** (paused, escalated or launch-blocked) records the proposal in place.
+     Its resume returns it to `awaiting_ruling`.
+   - **The ruling's binding is checked against that pinned proposal and the accepted tree, inside
+     the transaction that records the ruling.** A ruling on any other run's gate is stale too.
+2. **The increment gate is never passed through.** #807 approves a gate whose design declares no
+   open question. An increment cycle carries its baseline's manifest, which declares none, so the
+   increment would have been approved with nobody ruling. The gate is exempt from that path.
+3. **The ruling's row comes before the gate decision.** On the existing gate route, for this gate
+   alone:
+   - the caller needs `campaigns:supervise`;
+   - the binding, a reason (`notes`) and an idempotency key are required, and a waiver is refused;
+   - the `rule` row is written first, and a refused ruling records no gate decision;
+   - a replayed ruling records the gate decision only if the first attempt never did.
+
+   Every other gate still needs `cycles:write`, and refuses a binding.
+
 ---
 
 ## Revision history

@@ -32,14 +32,16 @@ from squadops.campaigns.models import (
     LaunchIntent,
     LaunchIntentNotFoundError,
     LaunchIntentState,
+    ProposalBinding,
     RefusalReason,
+    SubmittedProposal,
     TransitionResult,
 )
 from squadops.ports.cycles.campaign_registry import CampaignRegistryPort
 
 _CAMPAIGN_COLUMNS = (
     "campaign_id, project_id, objective, policy, state, outcome, created_at, created_by, "
-    "updated_at, accepted_identity, accepted_cycle_id"
+    "updated_at, accepted_identity, accepted_cycle_id, proposal"
 )
 _ENTRY_COLUMNS = (
     "entry_id, campaign_id, seq, operation, actor, actor_role, reason, target, idempotency_key, "
@@ -300,12 +302,14 @@ async def _commit(
     if updated is not campaign:
         await conn.execute(
             "UPDATE campaigns SET state = $2, outcome = $3, updated_at = $4, "
-            "accepted_identity = $5, accepted_cycle_id = $6 WHERE campaign_id = $1",
+            "accepted_identity = $5, accepted_cycle_id = $6, proposal = $7 "
+            "WHERE campaign_id = $1",
             updated.campaign_id,
             updated.state.value,
             updated.outcome.value if updated.outcome else None,
             updated.updated_at,
             *_accepted_args(updated.accepted),
+            _proposal_arg(updated.proposal),
         )
     if marks is not None:
         await conn.execute(
@@ -366,6 +370,21 @@ def _campaign_args(campaign: Campaign) -> tuple:
         campaign.created_by,
         campaign.updated_at,
         *_accepted_args(campaign.accepted),
+        _proposal_arg(campaign.proposal),
+    )
+
+
+def _proposal_arg(proposal: SubmittedProposal | None) -> dict | None:
+    return dataclasses.asdict(proposal) if proposal else None
+
+
+def _row_to_proposal(value: dict | None) -> SubmittedProposal | None:
+    if not value:
+        return None
+    return SubmittedProposal(
+        binding=ProposalBinding(**value["binding"]),
+        cycle_id=value["cycle_id"],
+        run_id=value["run_id"],
     )
 
 
@@ -408,6 +427,7 @@ def _row_to_campaign(row: asyncpg.Record) -> Campaign:
             if row["accepted_identity"]
             else None
         ),
+        proposal=_row_to_proposal(row["proposal"]),
     )
 
 

@@ -27,8 +27,9 @@ _MIGRATIONS = Path(__file__).resolve().parents[3] / "infra" / "migrations"
 
 
 def _check_values(sql: str, column: str) -> set[str]:
-    """The quoted values of ``<column> ... CHECK (<column> IN (...))`` in a migration."""
-    match = re.search(rf"\b{column}\b[^,]*?CHECK \({column} IN \((.*?)\)\)", sql, re.DOTALL)
+    """The quoted values of the first ``CHECK (<column> IN (...))`` in a migration. A later
+    migration that replaces a list states it whole, as its table's own constraint."""
+    match = re.search(rf"CHECK \({column} IN \((.*?)\)\)", sql, re.DOTALL)
     assert match, f"no CHECK list for {column}"
     return set(re.findall(r"'([^']+)'", match.group(1)))
 
@@ -38,8 +39,9 @@ def _check_values(sql: str, column: str) -> set[str]:
     [
         ("1600_campaigns.sql", "state", CampaignState),
         ("1600_campaigns.sql", "outcome", CampaignOutcome),
-        ("1600_campaigns.sql", "operation", ControlOperation),
-        ("1600_campaigns.sql", "refusal", RefusalReason),
+        # Replaced whole by 1640 (the increment gate's submit, stale_binding, illegal_ruling).
+        ("1640_campaign_increment_gate.sql", "operation", ControlOperation),
+        ("1640_campaign_increment_gate.sql", "refusal", RefusalReason),
         ("1600_campaigns.sql", "cycle_kind", CycleKind),
         ("1610_cycle_campaign_columns.sql", "kind", CycleKind),
     ],

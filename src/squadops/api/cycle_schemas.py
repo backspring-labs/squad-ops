@@ -54,6 +54,17 @@ class CycleCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class ProposalBindingDTO(BaseModel):
+    """What an increment ruling binds to (SIP-0109 §9.2)."""
+
+    proposal_id: str
+    version: int
+    content_hash: str
+    baseline_tree: str
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class GateDecisionRequest(BaseModel):
     """Gate decision (T4+T13: normalized vocab, typed).
 
@@ -74,6 +85,10 @@ class GateDecisionRequest(BaseModel):
     decided_by_kind: Literal["human", "agent"] | None = None
     waived_checks: list[str] = Field(default_factory=list)
     waiver_reason: str | None = None
+    #: SIP-0109 §9.2, the increment gate only: the proposal and accepted tree the ruling is made
+    #: on, and the caller's retry key. Required there, refused elsewhere.
+    binding: ProposalBindingDTO | None = None
+    idempotency_key: str | None = None
 
     model_config = ConfigDict(extra="forbid")
 

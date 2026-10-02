@@ -26,6 +26,13 @@ from hashlib import sha256
 from typing import Any
 from uuid import uuid4
 
+from squadops.campaigns.gate import (
+    INCREMENT_RULING_GATE,
+    binding_from_change_request,
+    submission,
+)
+from squadops.campaigns.models import ControlOperationRefused, SubmittedProposal
+from squadops.capabilities.handlers.planning.proposal import CHANGE_REQUEST_ARTIFACT_TYPE
 from squadops.cycles.cycle_end import CycleStopReason
 from squadops.cycles.models import ArtifactRef, Cycle, GateDecision, GateDecisionValue
 from squadops.events.types import EventType
@@ -60,6 +67,7 @@ class WorkloadGate:
     BORROWED = (
         "_approve_gate_without_questions",
         "_artifact_vault",
+        "_campaign_registry",
         "_create_next_workload_run",
         "_cycle_event_bus",
         "_cycle_registry",
@@ -201,7 +209,14 @@ class WorkloadGate:
         # the deterministic gates, and a review that adds nothing is worse than no
         # review — it manufactures the appearance of one. Keyed on the design, never
         # on who wrote it (Guard 1a).
-        questions = await self._design_questions_for_gate(run, cycle)
+        if gate_name == INCREMENT_RULING_GATE:
+            # SIP-0109 §9.2: the supervisor's ruling alone moves this gate. An increment cycle
+            # carries its baseline's manifest, which asks nothing, so #807's pass-through would
+            # approve the increment unread; the proposal is submitted to the campaign instead.
+            await self._submit_proposal(cycle, run)
+            questions = None
+        else:
+            questions = await self._design_questions_for_gate(run, cycle)
         if questions is not None and not questions:
             # Synthesized, not short-circuited: the decision runs through the SAME
             # exhaustive dispatch below that a human's answer does, so a
@@ -358,3 +373,54 @@ class WorkloadGate:
             )
 
         return step(GateOutcome.PROCEED)
+
+    async def _submit_proposal(self, cycle: Cycle, run: Any) -> None:
+        """Pin the proposal this run produced at its campaign's increment gate (SIP-0109 §9.2).
+
+        The gate then waits for the supervisor's ruling, which binds to exactly this proposal.
+        Keyed by the run, so re-entering the gate after a restart replays the row. A refusal is
+        recorded by the registry and logged here: the gate still waits, and a ruling against a
+        proposal the campaign does not hold is refused as stale.
+        """
+        if not cycle.campaign_id:
+            raise ValueError(
+                f"cycle {cycle.cycle_id} reached the {INCREMENT_RULING_GATE} gate without a "
+                "campaign: only a campaign increment cycle declares it"
+            )
+        if self._campaign_registry is None:
+            raise RuntimeError(
+                f"campaign cycle {cycle.cycle_id} reached its {INCREMENT_RULING_GATE} gate on "
+                "an executor wired without a campaign registry"
+            )
+        document = await self._change_request_document(run)
+        proposal = SubmittedProposal(
+            binding=binding_from_change_request(document),
+            cycle_id=cycle.cycle_id,
+            run_id=run.run_id,
+        )
+        campaign = await self._campaign_registry.get_campaign(cycle.campaign_id)
+        try:
+            await self._campaign_registry.transition(
+                cycle.campaign_id, submission(campaign.state, proposal)
+            )
+        except ControlOperationRefused as refused:
+            logger.error(
+                "proposal_submission_refused",
+                extra={
+                    "cycle_id": cycle.cycle_id,
+                    "run_id": run.run_id,
+                    "refusal": str(refused.entry.refusal),
+                },
+            )
+
+    async def _change_request_document(self, run: Any) -> str:
+        """The change request the proposal run stored. A proposal workload that completed
+        without one is a defect, never a gate with nothing to rule on."""
+        for ref_id in tuple(run.artifact_refs or ()):
+            ref, content = await self._artifact_vault.retrieve(ref_id)
+            if ref.artifact_type == CHANGE_REQUEST_ARTIFACT_TYPE:
+                return content.decode("utf-8")
+        raise ValueError(
+            f"run {run.run_id} reached the {INCREMENT_RULING_GATE} gate with no "
+            f"{CHANGE_REQUEST_ARTIFACT_TYPE} artifact"
+        )

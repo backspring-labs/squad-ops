@@ -261,6 +261,30 @@ async def test_the_campaign_read_carries_its_accepted_tree(world):
     assert after.json()["accepted"] == {"identity": "sha-cal", "cycle_id": "cyc_cal000000001"}
 
 
+async def test_a_resume_after_the_gate_opened_during_the_pause_returns_to_the_gate(world):
+    """§9.2: a proposal submitted while the campaign was paused waits for its ruling after the
+    resume. Bug caught: the resume returning to at_proposal, where no ruling is legal, so the
+    submitted proposal could never be ruled on."""
+    from squadops.campaigns.gate import submission
+    from squadops.campaigns.models import ProposalBinding, SubmittedProposal
+
+    _create(world)
+    for to, key in ((CampaignState.CALIBRATING, "a"), (CampaignState.AT_PROPOSAL, "b")):
+        await world.campaigns.transition("cmp_api000000001", move(to, key))
+    _control(world, "pause", "k-pause")
+    await world.campaigns.transition(
+        "cmp_api000000001",
+        submission(
+            CampaignState.PAUSED,
+            SubmittedProposal(ProposalBinding("p", 1, "h", "t"), "cyc_1", "run_p"),
+        ),
+    )
+
+    resumed = _control(world, "resume", "k-resume").json()
+
+    assert resumed["campaign"]["state"] == "awaiting_ruling"
+
+
 def test_resuming_a_campaign_that_is_not_paused_is_refused_as_stale(world):
     _create(world)
     resp = _control(world, "resume", "k-resume")

@@ -15,7 +15,9 @@ from squadops.api.cycle_schemas import (
 )
 from squadops.api.middleware.auth import require_scopes
 from squadops.api.routes.cycles.mapping import compute_workload_progress, run_to_response
-from squadops.auth.models import Scope
+from squadops.auth.models import Identity, Scope
+from squadops.campaigns.gate import INCREMENT_RULING_GATE, ruling_transition
+from squadops.campaigns.models import ProposalBinding
 from squadops.cycles.gate_attribution import compose_decided_by
 from squadops.cycles.lifecycle import (
     TERMINAL_STATES,
@@ -217,9 +219,68 @@ async def cancel_run(request: Request, project_id: str, cycle_id: str, run_id: s
     }
 
 
-@router.post(
-    "/{run_id}/gates/{gate_name}", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))]
-)
+async def _gate_scopes(request: Request, gate_name: str) -> Identity | None:
+    """The increment gate is the campaign supervisor's (``campaigns:supervise``); every other
+    gate is a cycle write. One route, so a campaign's ruling goes through the existing gate path
+    (SIP-0109 §9.2) and an operator's cycle writes never reach it."""
+    scope = Scope.CAMPAIGNS_SUPERVISE if gate_name == INCREMENT_RULING_GATE else Scope.CYCLES_WRITE
+    return await require_scopes(scope)(request)
+
+
+async def _rule_increment(
+    request: Request,
+    registry,
+    cycle_id: str,
+    run_id: str,
+    body: GateDecisionRequest,
+    identity: Identity | None,
+) -> bool:
+    """SIP-0109 §9.2: the ruling's control-log row first, checked in its own transaction
+    against the proposal at the gate and the accepted tree; the gate decision follows it.
+
+    A stale, conflicting or illegal ruling is refused there and recorded (409), and decides
+    nothing. Returns whether the gate decision is still to be recorded: a repeated ruling
+    replays its row, and records the decision only if the first attempt never did.
+    """
+    from squadops.api.routes.campaigns.campaigns import actor_from, apply_control
+
+    reason = (body.notes or "").strip()
+    missing = [
+        name
+        for name, value in (
+            ("binding", body.binding),
+            ("idempotency_key", body.idempotency_key),
+            ("notes (the ruling's reason)", reason),
+        )
+        if not value
+    ]
+    if missing:
+        raise ValidationError(f"the {INCREMENT_RULING_GATE} gate requires {', '.join(missing)}")
+    if body.waived_checks or body.waiver_reason:
+        raise ValidationError(f"the {INCREMENT_RULING_GATE} gate takes no waiver")
+    cycle = await registry.get_cycle(cycle_id)
+    if not cycle.campaign_id:
+        raise ValidationError(f"cycle {cycle_id} belongs to no campaign")
+    actor, role = actor_from(identity)
+    await apply_control(
+        request,
+        cycle.campaign_id,
+        ruling_transition(
+            GateDecisionValue(body.decision),
+            ProposalBinding(**body.binding.model_dump()),
+            run_id=run_id,
+            actor=actor,
+            actor_role=role,
+            reason=reason,
+            idempotency_key=body.idempotency_key,
+        ),
+        identity,
+    )
+    run = await registry.get_run(run_id)
+    return not any(d.gate_name == INCREMENT_RULING_GATE for d in run.gate_decisions)
+
+
+@router.post("/{run_id}/gates/{gate_name}")
 async def gate_decision(
     project_id: str,
     cycle_id: str,
@@ -227,10 +288,19 @@ async def gate_decision(
     gate_name: str,
     body: GateDecisionRequest,
     request: Request,
+    identity: Identity | None = Depends(_gate_scopes),
 ):
     from squadops.api.runtime.deps import get_cycle_registry
 
     registry = get_cycle_registry(request)
+
+    if gate_name == INCREMENT_RULING_GATE:
+        if not await _rule_increment(request, registry, cycle_id, run_id, body, identity):
+            return run_to_response(await registry.get_run(run_id))
+    elif body.binding is not None or body.idempotency_key is not None:
+        raise ValidationError(
+            f"binding and idempotency_key belong to the {INCREMENT_RULING_GATE} gate only"
+        )
 
     # SIP-0096 §6.5 (#682): accept-with-waiver is explicit, reasoned, and
     # validated against the run's own unverified disclosure — a waiver

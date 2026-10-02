@@ -463,6 +463,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         activity_port=activity_port,
         coordinator=state.runtime_coordinator,
         focus_lease_port=focus_lease_port,
+        campaign_registry=campaign_registry,
     )
 
     state.project_registry = project_registry
