@@ -184,6 +184,8 @@ class VLLMAdapter(LLMPort):
             # (``_REASONING_DIALS``); for a model with none it is dropped, which is
             # the port's stated contract, not a capability outage.
             LLMCapability.REASONING_CONTROL: True,
+            # It serves exactly the weights it was launched with: what it lists is loaded.
+            LLMCapability.LOADED_MODELS: True,
         }
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -528,6 +530,11 @@ class VLLMAdapter(LLMPort):
             raise self._translate(e, self._default_model, "list_available_models") from e
 
         return [ModelInfo(name=name) for entry in data.get("data", []) if (name := entry.get("id"))]
+
+    async def list_loaded_models(self) -> list[ModelInfo]:
+        """The served models are the loaded ones: vLLM holds the weights it was launched with
+        for its whole life, so ``/v1/models`` answers both questions."""
+        return await self.list_available_models()
 
     async def health(self) -> dict[str, Any]:
         """Report reachability. Never raises — a probe that raises takes down

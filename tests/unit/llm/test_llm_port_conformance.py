@@ -267,6 +267,7 @@ class TestCapabilityHonesty:
             LLMCapability.STREAMING_USAGE,
             LLMCapability.THINKING_TOKENS,
             LLMCapability.REASONING_CONTROL,
+            LLMCapability.LOADED_MODELS,
         }
 
     async def test_supports_is_false_for_an_undeclared_capability(self, case):
@@ -283,6 +284,18 @@ class TestCapabilityHonesty:
             else:
                 with pytest.raises(NotImplementedError):
                     await adapter.list_available_models()
+
+    async def test_loaded_models_declaration_matches_behavior(self, case):
+        """SIP-0109 §9.3: the quiet-box check reads what is resident. Declared True ⇒ the
+        resident set, not the servable one (Ollama's ``/api/ps``, a subset of ``/api/tags``).
+        Declared False ⇒ it raises, because an empty list would read as a quiet box."""
+        adapter = case.build()
+        with wire(case.ok):
+            if adapter.supports(LLMCapability.LOADED_MODELS):
+                assert [m.name for m in await adapter.list_loaded_models()] == case.loaded
+            else:
+                with pytest.raises(NotImplementedError):
+                    await adapter.list_loaded_models()
 
     async def test_model_management_declaration_matches_behavior(self, case):
         adapter = case.build()

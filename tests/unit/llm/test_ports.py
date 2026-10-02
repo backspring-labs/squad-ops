@@ -135,3 +135,15 @@ class TestLLMPortChatParams:
             "temperature": None,
             "timeout_seconds": None,
         }
+
+
+async def test_an_engine_that_cannot_report_its_loaded_models_raises():
+    """SIP-0109 §9.3. Bug caught: a default that answered ``[]`` — an unreadable engine reading
+    as a quiet box, so a launch proceeds onto a box something else is using."""
+    from squadops.ports.llm.provider import LLMCapability
+
+    llm = _ConcreteLLM()
+
+    assert llm.supports(LLMCapability.LOADED_MODELS) is False
+    with pytest.raises(NotImplementedError, match="cannot report loaded models"):
+        await llm.list_loaded_models()

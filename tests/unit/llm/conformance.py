@@ -73,6 +73,8 @@ class AdapterCase:
     # assertion needs one: an adapter that maps by the model's dial sends nothing
     # for a dial-less model, which is the contract, not a defect.
     reasoning_model: str
+    #: SIP-0109 §9.3: what this provider's ``ok`` handler reports as resident now.
+    loaded: list[str]
     #: #410: the text this provider's ``ok`` handler returns in its reasoning channel,
     #: whatever the dialect calls that field. None for a dialect that has no such
     #: channel — the port must then report None, not "".
@@ -153,6 +155,8 @@ def status(code: int, body: dict | None = None) -> DialectHandler:
 # ---------------------------------------------------------------------------
 
 OLLAMA_MODELS = ["qwen2.5:7b", "llama3.2"]
+#: One of the pulled models is resident: ``/api/ps`` answers a subset of ``/api/tags``.
+OLLAMA_LOADED = ["qwen2.5:7b"]
 OLLAMA_CONTENT = "the assembled answer"
 
 # Split so a streaming assertion proves reassembly rather than a single passthrough.
@@ -183,6 +187,11 @@ def ollama_ok(request: httpx.Request) -> httpx.Response:
 
     if path == "/api/tags":
         return httpx.Response(200, json={"models": [{"name": m} for m in OLLAMA_MODELS]})
+
+    if path == "/api/ps":
+        return httpx.Response(
+            200, json={"models": [{"name": m, "digest": "sha-" + m} for m in OLLAMA_LOADED]}
+        )
 
     if path in ("/api/pull", "/api/delete"):
         return httpx.Response(200, json={"status": "success"})
@@ -477,6 +486,7 @@ ADAPTER_CASES: list[AdapterCase] = [
         default_model="qwen2.5:7b",
         override_model="llama3.2",
         models=OLLAMA_MODELS,
+        loaded=OLLAMA_LOADED,
         content=OLLAMA_CONTENT,
         prompt_tokens=_PROMPT_EVAL_COUNT,
         completion_tokens=_EVAL_COUNT,
@@ -496,6 +506,7 @@ ADAPTER_CASES: list[AdapterCase] = [
         default_model="Qwen/Qwen2.5-7B-Instruct",
         override_model="meta-llama/Llama-3.2-3B-Instruct",
         models=VLLM_MODELS,
+        loaded=VLLM_MODELS,
         content=VLLM_CONTENT,
         prompt_tokens=_VLLM_PROMPT_TOKENS,
         completion_tokens=_VLLM_COMPLETION_TOKENS,
@@ -518,6 +529,7 @@ ADAPTER_CASES: list[AdapterCase] = [
         default_model="Qwen/Qwen3.8-27B-FP8",
         override_model="Qwen/Qwen3.8-27B-FP8",
         models=ATLAS_MODELS,
+        loaded=ATLAS_MODELS,
         content=ATLAS_CONTENT,
         prompt_tokens=_ATLAS_PROMPT_TOKENS,
         completion_tokens=_ATLAS_COMPLETION_TOKENS,

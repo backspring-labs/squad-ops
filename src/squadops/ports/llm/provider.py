@@ -23,6 +23,7 @@ class LLMCapability:
     STREAMING_USAGE = "streaming_usage"
     THINKING_TOKENS = "thinking_tokens"
     REASONING_CONTROL = "reasoning_control"
+    LOADED_MODELS = "loaded_models"
 
 
 class LLMPort(ABC):
@@ -210,6 +211,8 @@ class LLMPort(ABC):
           methods changes what is sent on the wire. False means the level is
           accepted and dropped — the call still succeeds, the model keeps its
           own posture (#927).
+        - ``loaded_models``: :meth:`list_loaded_models` is implemented — what the
+          engine holds in memory now, not what it could serve (SIP-0109 §9.3).
 
         Defaults to all-False: an adapter that declares nothing is treated as
         supporting nothing. Failing closed keeps a silent omission from
@@ -221,6 +224,7 @@ class LLMPort(ABC):
             LLMCapability.STREAMING_USAGE: False,
             LLMCapability.THINKING_TOKENS: False,
             LLMCapability.REASONING_CONTROL: False,
+            LLMCapability.LOADED_MODELS: False,
         }
 
     def supports(self, capability: str) -> bool:
@@ -243,6 +247,22 @@ class LLMPort(ABC):
         raise NotImplementedError(
             f"{type(self).__name__} does not support model listing; "
             f"capabilities()['{LLMCapability.MODEL_LISTING}'] is False."
+        )
+
+    async def list_loaded_models(self) -> list[ModelInfo]:
+        """List the models the engine holds in memory now, with their digests where reported.
+
+        What the quiet-box check reads (SIP-0109 §9.3): a model the active deploy did not
+        declare, resident on the engine, means something else is using the box. Distinct from
+        :meth:`list_available_models`, which is what the engine *could* serve.
+
+        Raises:
+            NotImplementedError: when ``loaded_models`` is not declared. "Cannot read" must
+                stay distinct from "nothing loaded": an empty list would read as a quiet box.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} cannot report loaded models; "
+            f"capabilities()['{LLMCapability.LOADED_MODELS}'] is False."
         )
 
     async def pull_model(self, model_name: str) -> None:

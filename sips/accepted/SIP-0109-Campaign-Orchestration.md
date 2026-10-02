@@ -1197,6 +1197,41 @@ being built in the order the design note on #1705 sets out:
 
   `max_cycles` bounds this; step e closes it.
 
+
+### 24l. The box lease and the quiet-box check, as built so far (2026-10-02, #1802; decided under the 2.0 charter)
+
+- **The decisions are pure** (`campaigns/box.py`, held by `test_pure_decisions_do_no_io.py`).
+  - **`BoxLease`:** the squad's lease or the supervisor's. A supervisor's lease must carry an expiry.
+  - **`box_quietness`:** the box is quiet only when every engine was read and every resident model
+    is one the active deploy record declares. Models match by name, and by digest where both sides
+    report one, so a tag re-pulled under a declared name is another model.
+  - **`launch_verdict`:** a live supervisor lease refuses first. An expired one no longer holds the
+    box, but the launch still needs a quiet box.
+- **The reads** (`campaigns/box_reading.py`).
+  - **The declared models** come from the active deploy record (#1720).
+  - **Each engine's resident models** come through a new LLM-port capability, `loaded_models`
+    (`list_loaded_models`): Ollama's `/api/ps`; vLLM and Atlas's `/v1/models`, since they hold the
+    weights they were launched with.
+  - **An engine that cannot report is unreadable, never empty.** The port raises rather than
+    answering `[]`, and the reader records the failure as that engine's reading.
+- **What differs from §9.3: the check is model-only.** §9.3 also reads the GPU's compute processes.
+  - **Why:** the runtime-api container has no GPU device and no `nvidia-smi`
+    (`DeviceRequests: null`).
+  - **What it needs:** granting the service the NVIDIA `utility` capability is a
+    `docker-compose.yml` change, the owner's to make.
+  - **Why not fail closed meanwhile:** failing closed on an unreadable GPU listing would refuse
+    every launch on this box.
+- **Two of the draft's questions (#1829), decided:**
+  - **A run start inside a cycle while the supervisor holds the lease waits, not fails.** It polls
+    the lease, with the ruling bound as its ceiling, so an approval is not turned into a dead
+    increment.
+  - **A refused launch outside a campaign** (the CLI, the set driver) is a 409 that names the
+    refusal and its reasons, plus a security-audit event. A campaign's own refusal is its
+    control-log row (`launch_blocked`).
+- **Still to build:** the lease's persistence and its API (`/api/v1/campaigns/{id}/lease`,
+  `campaigns:supervise`); enforcement at the cycle-create preflight, at the launcher (re-attempted
+  at the policy's interval, escalating after its count), and at run starts.
+
 ---
 
 ## Revision history
