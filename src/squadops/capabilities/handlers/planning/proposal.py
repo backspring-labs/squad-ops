@@ -17,7 +17,6 @@ run's own artifacts into task inputs, so the inputs carry the manifest itself.
 
 from __future__ import annotations
 
-import dataclasses
 import logging
 import time
 from functools import partial
@@ -28,6 +27,7 @@ import yaml
 from squadops.campaigns.change_request import (
     ProposalContext,
     ProposalVerdict,
+    stored_change_request,
     validate_proposal,
 )
 from squadops.capabilities.handlers.base import HandlerEvidence, HandlerResult
@@ -184,9 +184,7 @@ class StrategyProposeIncrementHandler(_PlanningTaskHandler):
         rendered: Any,
     ) -> HandlerResult:
         request = verdict.change_request
-        document = yaml.safe_dump(
-            json_safe(dataclasses.asdict(request)), sort_keys=False, allow_unicode=True
-        )
+        document = stored_change_request(request)
         outputs: dict[str, Any] = {
             "summary": (
                 f"[{self._role}] proposed {request.proposal_id} v{request.version} "
@@ -256,14 +254,3 @@ def _render_variables(block: dict, context: ProposalContext) -> dict[str, str]:
         ),
     }
     return variables
-
-
-def json_safe(value: Any) -> Any:
-    """Enums to their values, tuples to lists: the document's YAML carries plain data."""
-    if isinstance(value, dict):
-        return {k: json_safe(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [json_safe(v) for v in value]
-    if hasattr(value, "value") and isinstance(value.value, str):
-        return value.value
-    return value

@@ -84,7 +84,6 @@ from squadops.cycles.models import (
     GateDecisionValue,
     Run,
     RunStatus,
-    WorkloadType,
 )
 from squadops.cycles.naming import flow_run_name, flow_run_tags
 from squadops.cycles.patch_verification import storage_altered_accepted_patch
@@ -1120,6 +1119,23 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         else:
             overrides["prior_workload_artifact_refs"] = promoted_refs
 
+        # SIP-0109 §7.3 (#1705 a): an approved increment's seed — the candidate manifest, its
+        # contract and the change request — binds every workload after the proposal, as a seed
+        # from cycle creation binds every workload (#779). It outranks anything a workload
+        # derives: an increment authors no manifest.
+        from squadops.campaigns.increment_tree import increment_seed
+
+        seed = await increment_seed(
+            self._artifact_vault, self._cycle_registry, cycle, completed_run
+        )
+        if seed is not None:
+            existing = list(overrides.get("plan_artifact_refs") or ())
+            overrides["plan_artifact_refs"] = existing + [
+                r for r in seed.plan_refs if r not in existing
+            ]
+            if seed.contract_ref and not overrides.get("contract_ref"):
+                overrides["contract_ref"] = seed.contract_ref
+
         # workload-type-specific keys
         wt = completed_run.workload_type
         if wt == "framing":
@@ -1146,22 +1162,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # #796: a contract the framing run derived from its own authored manifest
             # becomes the next workload's contract_ref, exactly as a seeded one would be.
             # An operator-supplied ref always wins — the merge rule for every other key.
-            if not overrides.get("contract_ref"):
-                derived = [a for a in promoted if a.artifact_type == CONTRACT_ARTIFACT_TYPE]
-                if derived:
-                    overrides["contract_ref"] = max(derived, key=lambda a: a.created_at).artifact_id
-        elif wt == WorkloadType.PROPOSAL:
-            # SIP-0109 §7.3 (#1705 step a): an approved increment's candidate manifest and the
-            # contract derived from it, seeded at the increment gate, bind its framing — the
-            # path a seeded manifest takes from cycle creation (#779), from durable state so a
-            # restart's rebuild (#434) forwards the same.
-            seeds = [a for a in promoted if a.artifact_type == MANIFEST_ARTIFACT_TYPE]
-            if seeds:
-                seeded = max(seeds, key=lambda a: a.created_at).artifact_id
-                existing = list(overrides.get("plan_artifact_refs") or ())
-                overrides["plan_artifact_refs"] = existing + [
-                    r for r in (seeded,) if r not in existing
-                ]
             if not overrides.get("contract_ref"):
                 derived = [a for a in promoted if a.artifact_type == CONTRACT_ARTIFACT_TYPE]
                 if derived:

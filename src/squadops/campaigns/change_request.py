@@ -225,6 +225,24 @@ def parse_change_request(
     return request
 
 
+def stored_change_request(request: ChangeRequest) -> str:
+    """The document the proposal run stores (``change_request.yaml``), which
+    ``load_stored_change_request`` reads back: every field, the derived ones included, as plain
+    YAML data."""
+    return yaml.safe_dump(_plain(dataclasses.asdict(request)), sort_keys=False, allow_unicode=True)
+
+
+def _plain(value: Any) -> Any:
+    """Enums to their values, tuples to lists: the document's YAML carries plain data."""
+    if isinstance(value, dict):
+        return {k: _plain(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain(v) for v in value]
+    if hasattr(value, "value") and isinstance(value.value, str):
+        return value.value
+    return value
+
+
 def load_stored_change_request(document: str) -> ChangeRequest:
     """A change request as the proposal run stored it (``change_request.yaml``): the authored
     content, parsed by the one parse, with the framework's derived fields restored. The stored

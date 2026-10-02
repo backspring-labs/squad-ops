@@ -61,6 +61,10 @@ class GovernancePreparePlanAuthoringBriefHandler(_PlanningTaskHandler):
         renderer = getattr(context.ports, "request_renderer", None)
         if renderer is not None:
             variables = self._build_render_variables(prd, prior_outputs, inputs)
+            # SIP-0109 §7.3: the brief frames the proposers from the approved change request.
+            increment_section = await self._increment_section(renderer, inputs)
+            if increment_section:
+                variables["increment_section"] = increment_section
             # #686: the brief pins the frame the proposers author against, so the
             # plan-shape rules belong here as much as on the proposers themselves.
             variables["authoring_rules_section"] = await self._authoring_rules_section(renderer)

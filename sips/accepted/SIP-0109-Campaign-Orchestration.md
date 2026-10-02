@@ -1138,8 +1138,14 @@ being built in the order the design note on #1705 sets out:
   - **At the increment gate's approval:** the approved change request, whose stored hash is checked,
     has its manifest delta applied to the accepted manifest. The candidate manifest and the contract
     derived from it (#779) are stored as the proposal run's promoted artifacts.
-  - **At the next advance:** the forwarding builder hands them over as `plan_artifact_refs` and
+  - **At every later advance:** the forwarding builder hands them over as `plan_artifact_refs` and
     `contract_ref`. Framing runs in bind mode and authors no manifest.
+    - **Every workload, not just the next one.** They are read from the approved proposal run, so
+      they reach the implementation as well as the framing, as a seed from cycle creation reaches
+      every workload.
+    - **Why "every" (#1705 b):** a three-workload increment showed the gap. Forwarding is rebuilt
+      from the cycle and the run that just finished, so the implementation would have run
+      unscaffolded, in author mode and without the accepted tree.
 - **c1. The implementation starts from the accepted tree.**
   - **How the run finds it:** the increment's launch names the accepted cycle
     (`campaign_proposal.accepted_cycle_id`).
@@ -1149,10 +1155,25 @@ being built in the order the design note on #1705 sets out:
     hands every existing file its accepted implementation, and only what the increment adds stays
     a stub.
 - **b, the `campaign-increment` profile:** built, under §24k.
+- **d, framing scoped to the change.** Its two parts:
+  - **The footprint, taught and enforced (#1843).**
+    - **Taught:** the plan authors are shown the footprint (`request.plan_increment_footprint_appendix`).
+    - **Enforced:** the plan gate refuses a task whose `expected_artifacts` fall outside it, through
+      `validate_increment_footprint`, the gate the framing re-roll keys on.
+    - **Where the footprint comes from:** it is derived from the accepted manifest and the
+      candidate, exactly as the change request's footprint was.
+  - **The change request is the framed objective (#1705).** It is forwarded with the seed, from
+    durable state.
+    - **Skipped:** an increment's framing does not run `data.research_context` or
+      `strategy.frame_objective`. A framing that would also author a manifest is refused.
+    - **Shown:** every stage after them is shown the document verbatim
+      (`request.increment_framing_section`), the brief included. The proposers get the brief's
+      frame and the footprint, not the document.
+    - **Checked:** the framing run's provisioning loads the change request and checks its stored
+      hash.
+    - **Required:** an increment framed without it is refused, and a change request given to any
+      other run is refused.
 - **Still to build:**
-  - **d, framing scoped to the footprint:** the proposal-equivalent framing tasks are skipped, and
-    the plan validator refuses a task whose writes fall outside the footprint. This is the primary
-    enforcement.
   - **c2, the ownership record narrowed:** fill slots writable only inside the footprint, the rest
     frozen with the accepted content, as defense in depth.
   - **e, the increment's acceptance at its completion** (#1839's `evaluate_increment`) and its

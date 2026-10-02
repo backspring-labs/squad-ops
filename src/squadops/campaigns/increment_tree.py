@@ -60,3 +60,80 @@ def increment_baseline(resolved_config: Any) -> str | None:
         return None
     baseline = block.get("baseline_manifest")
     return baseline if isinstance(baseline, str) and baseline.strip() else None
+
+
+async def approved_change_request(vault: Any, cycle: Any) -> str | None:
+    """The change request an increment cycle's framing frames (§7.3): the approved document the
+    proposal run stored, forwarded into the framing run's ``plan_artifact_refs`` beside the
+    candidate manifest. Its stored hash is checked, so a document altered after it was ruled on
+    is refused. ``None`` for any cycle that is not an increment.
+
+    An increment's framing without its change request is refused, not framed as a new
+    application: the approved change is the framed objective, and nothing replaces it."""
+    from squadops.campaigns.change_request import load_stored_change_request
+    from squadops.capabilities.handlers.planning.proposal import CHANGE_REQUEST_ARTIFACT_TYPE
+
+    if increment_baseline(cycle.resolved_config()) is None:
+        return None
+    for ref_id in cycle.execution_overrides.get("plan_artifact_refs") or ():
+        ref, content = await vault.retrieve(ref_id)
+        if ref.artifact_type == CHANGE_REQUEST_ARTIFACT_TYPE:
+            document = content.decode("utf-8")
+            load_stored_change_request(document)
+            return document
+    raise ValueError(
+        f"increment cycle {cycle.cycle_id}: its framing was forwarded no approved "
+        f"{CHANGE_REQUEST_ARTIFACT_TYPE}, and an increment frames nothing else"
+    )
+
+
+@dataclasses.dataclass(frozen=True)
+class IncrementSeed:
+    """What an approved increment binds its later workloads to (§7.3)."""
+
+    #: The candidate manifest, then the approved change request when stored.
+    plan_refs: tuple[str, ...]
+    contract_ref: str | None
+
+
+async def increment_seed(vault: Any, registry: Any, cycle: Any, completed_run: Any) -> Any:
+    """The approved increment's seed, as the increment gate stored and promoted it on the
+    proposal run (#1840): the candidate manifest, the contract derived from it, and the change
+    request. ``None`` for any cycle that is not an increment, and before an approval.
+
+    It binds **every** workload after the proposal, as a creation-time seed binds every workload
+    of an ordinary cycle: the framing binds to it, and the implementation's skeleton, accepted
+    tree and contract all hang from it (#1842). Read from the registry and the vault, never from
+    the previous workload's forwarding, so a restart's rebuild (#434) forwards the same."""
+    from squadops.capabilities.handlers.planning.proposal import CHANGE_REQUEST_ARTIFACT_TYPE
+    from squadops.cycles.contract_derivation import CONTRACT_ARTIFACT_TYPE
+    from squadops.cycles.manifest_authoring import MANIFEST_ARTIFACT_TYPE
+    from squadops.cycles.models import RunStatus, WorkloadType
+
+    if increment_baseline(cycle.resolved_config()) is None:
+        return None
+    if completed_run.workload_type == WorkloadType.PROPOSAL:
+        proposal = completed_run
+    else:
+        approved = [
+            r
+            for r in await registry.list_runs(cycle.cycle_id)
+            if r.workload_type == WorkloadType.PROPOSAL and r.status == RunStatus.COMPLETED.value
+        ]
+        if not approved:
+            return None
+        proposal = max(approved, key=lambda r: r.run_number)
+    promoted = await vault.list_artifacts(run_id=proposal.run_id, promotion_status="promoted")
+
+    def latest(artifact_type: str) -> str | None:
+        refs = [a for a in promoted if a.artifact_type == artifact_type]
+        return max(refs, key=lambda a: a.created_at).artifact_id if refs else None
+
+    manifest = latest(MANIFEST_ARTIFACT_TYPE)
+    if manifest is None:
+        return None
+    request = latest(CHANGE_REQUEST_ARTIFACT_TYPE)
+    return IncrementSeed(
+        plan_refs=(manifest, *((request,) if request else ())),
+        contract_ref=latest(CONTRACT_ARTIFACT_TYPE),
+    )

@@ -150,6 +150,26 @@ class _PlanningTaskHandler(_CycleTaskHandler):
         )
         return rendered.content
 
+    async def _increment_section(self, renderer: Any, inputs: dict[str, Any]) -> str:
+        """An increment's approved change request, shown verbatim as the framed objective, or
+        "" (SIP-0109 §7.3).
+
+        The increment's framing skips research and objective framing, because the change
+        request is the frame; every stage after them is shown that document rather than a
+        summary of it, so a design or a test strategy for the accepted application is not
+        re-derived from its PRD.
+        """
+        from squadops.capabilities.anchored_edits import verbatim_block
+
+        document = str(inputs.get("increment_change_request") or "")
+        if not document.strip():
+            return ""
+        rendered = await renderer.render(
+            "request.increment_framing_section",
+            {"change_request": verbatim_block("change_request.yaml", document)},
+        )
+        return rendered.content
+
     async def _authoring_rules_section(self, renderer: Any) -> str:
         """The plan-shape rules every deterministic validator enforces (#686).
 
@@ -233,6 +253,9 @@ class _PlanningTaskHandler(_CycleTaskHandler):
             stack_section = await self._target_stack_section(renderer, inputs)
             if stack_section:
                 variables["target_stack_section"] = stack_section
+            increment_section = await self._increment_section(renderer, inputs)
+            if increment_section:
+                variables["increment_section"] = increment_section
             # #1845: a stage handed a revision request shows it — #811's technical design
             # answers the note it replays for. The registry decides who is handed one
             # (`plan_rejection_context`); a stage given none renders nothing.

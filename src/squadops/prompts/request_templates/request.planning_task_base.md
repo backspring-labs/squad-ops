@@ -1,10 +1,11 @@
 ---
 template_id: request.planning_task_base
-version: "3"
+version: "4"
 required_variables:
   - prd
   - role
 optional_variables:
+  - increment_section
   - target_stack_section
   - time_budget_section
   - prior_outputs
@@ -14,6 +15,7 @@ optional_variables:
 ## Product Requirements Document
 
 {{prd}}
+{{increment_section}}
 {{target_stack_section}}
 {{time_budget_section}}
 {{prior_outputs}}
