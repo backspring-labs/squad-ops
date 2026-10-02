@@ -336,7 +336,7 @@ async def test_the_proposers_are_shown_the_regenerated_files_too():
     from squadops.capabilities.handlers.planning_tasks import DevelopmentProposePlanTasksHandler
     from squadops.prompts.renderer import RequestTemplateRenderer
 
-    section = await DevelopmentProposePlanTasksHandler()._footprint_section(
+    section = await DevelopmentProposePlanTasksHandler()._increment_sections(
         RequestTemplateRenderer(create_prompt_asset_source("filesystem")),
         {
             "increment_footprint_index": "- `backend/routes.py`",
@@ -408,3 +408,39 @@ def test_an_increments_framing_runs_the_plan_proposers(profile_name):
         "strategy.propose_plan_guidance",
     } <= {e.task_type for e in plan}
     assert not bind_mode_authoring_decision({**defaults, "contract_ref": "art_contract"}).rejected
+
+
+async def test_the_qa_proposer_is_shown_each_criterions_own_test_file():
+    """#1874, entered at the qa proposer's real ``handle()`` on the shipped templates. The first
+    multi-role increment framing (the reference, ``cyc_d4438834b2c3``) was refused because no qa
+    task wrote the criteria's own test files: the qa proposer was handed that index as data and
+    never shown its instruction. Bug caught: a surface the merger renders and the proposer who
+    writes the qa tasks never sees — two copies of one list, drifted."""
+    from adapters.prompts.factory import create_prompt_asset_source
+    from squadops.capabilities.handlers.planning_tasks import QaProposePlanTasksHandler
+    from squadops.prompts.renderer import RequestTemplateRenderer
+    from tests.unit.capabilities.test_propose_plan_tasks import (
+        _QA_PROPOSAL_RESPONSE,
+        _make_context,
+        _seeded_inputs,
+    )
+
+    context = _make_context(_QA_PROPOSAL_RESPONSE)
+    context.ports.request_renderer = RequestTemplateRenderer(
+        create_prompt_asset_source("filesystem")
+    )
+    inputs = {
+        **_seeded_inputs(),
+        "increment_footprint_index": "- `backend/routes.py`",
+        "increment_criterion_files_index": "- C1 (endpoint `POST /runs`): "
+        "`backend/tests/criteria/test_C1.py`",
+        "increment_frozen_files_index": "- F1: `backend/tests/criteria/test_F1.py`",
+    }
+
+    await QaProposePlanTasksHandler().handle(context, inputs)
+
+    messages = context.ports.llm.chat_stream_with_usage.call_args.args[0]
+    prompt = "\n".join(str(m.content) for m in messages)
+    assert "Each new criterion is proven in its own test file" in prompt
+    assert "`backend/tests/criteria/test_C1.py`" in prompt
+    assert "- F1: `backend/tests/criteria/test_F1.py`" in prompt

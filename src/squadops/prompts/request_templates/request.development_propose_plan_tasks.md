@@ -1,6 +1,6 @@
 ---
 template_id: request.development_propose_plan_tasks
-version: "5"
+version: "6"
 required_variables:
   - brief_content
   - planning_content
@@ -13,7 +13,7 @@ optional_variables:
   - typed_acceptance_vocabulary
   - bind_criteria_section
   - frozen_surface_section
-  - increment_footprint_section
+  - increment_sections
   - rejection_context_section
   - prior_cycle_section
   - authoring_rules_section
@@ -78,6 +78,6 @@ confidence: ""  # low | medium | high
 {{bind_criteria_section}}
 
 {{frozen_surface_section}}
-{{increment_footprint_section}}
+{{increment_sections}}
 {{rejection_context_section}}
 {{prior_cycle_section}}

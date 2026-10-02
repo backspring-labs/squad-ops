@@ -59,6 +59,46 @@ async def authoring_rules_section(renderer: Any) -> str:
     return rendered.content
 
 
+#: SIP-0109: what an increment's plan authors are shown, as ``(asset, variable, input key)`` —
+#: every author alike, the proposers and the merger (#1874: two copies of this list drifted, and
+#: the qa proposer, who writes the qa tasks, was never shown the criteria's own test files).
+INCREMENT_SURFACES = (
+    # §7.3 (#1705 d): an increment's plan covers only its approved change.
+    ("request.plan_increment_footprint_appendix", "footprint_index", "increment_footprint_index"),
+    # #1868: of those, the files the scaffold regenerates from the approved manifest.
+    (
+        "request.plan_increment_regenerated_appendix",
+        "regenerated_index",
+        "increment_regenerated_index",
+    ),
+    # §8.1 (#1705 e): each new criterion's own test file, which a qa task writes.
+    (
+        "request.plan_increment_criteria_appendix",
+        "criterion_files_index",
+        "increment_criterion_files_index",
+    ),
+    # §8.1: the earlier criteria's frozen verifiers, which no task writes.
+    (
+        "request.plan_increment_frozen_appendix",
+        "frozen_files_index",
+        "increment_frozen_files_index",
+    ),
+)
+
+
+async def render_surfaces(renderer: Any, inputs: dict[str, Any], surfaces) -> str:
+    """Each surface whose index the inputs carry, rendered through its managed asset (#448), in
+    order. Each appendix opens with its heading and ends on its list, so they are joined with a
+    blank line: joined bare, a list's last line ran into the next heading."""
+    sections: list[str] = []
+    for template_id, variable, input_key in surfaces:
+        index = inputs.get(input_key)
+        if index:
+            rendered = await renderer.render(template_id, {variable: index})
+            sections.append(rendered.content)
+    return "\n\n".join(sections)
+
+
 async def contract_surface_sections(renderer: Any, inputs: dict[str, Any]) -> str:
     """The contract surfaces an author needs, rendered, or ``""``.
 
@@ -89,44 +129,19 @@ async def contract_surface_sections(renderer: Any, inputs: dict[str, Any]) -> st
     """
     if renderer is None:
         return ""
-    surfaces = (
-        ("request.plan_bind_criteria_appendix", "criteria_index", "contract_criteria_index"),
-        ("request.plan_frozen_surface_appendix", "frozen_surface_index", "frozen_surface_index"),
-        # SIP-0109 §7.3 (#1705 d): an increment's plan covers only its approved change.
+    return await render_surfaces(
+        renderer,
+        inputs,
         (
-            "request.plan_increment_footprint_appendix",
-            "footprint_index",
-            "increment_footprint_index",
-        ),
-        # #1868: of those, the files the scaffold regenerates from the approved manifest.
-        (
-            "request.plan_increment_regenerated_appendix",
-            "regenerated_index",
-            "increment_regenerated_index",
-        ),
-        # SIP-0109 §8.1 (#1705 e): each new criterion's own test file, which a qa task writes.
-        (
-            "request.plan_increment_criteria_appendix",
-            "criterion_files_index",
-            "increment_criterion_files_index",
-        ),
-        # SIP-0109 §8.1: the earlier criteria's frozen verifiers, which no task writes.
-        (
-            "request.plan_increment_frozen_appendix",
-            "frozen_files_index",
-            "increment_frozen_files_index",
+            ("request.plan_bind_criteria_appendix", "criteria_index", "contract_criteria_index"),
+            (
+                "request.plan_frozen_surface_appendix",
+                "frozen_surface_index",
+                "frozen_surface_index",
+            ),
+            *INCREMENT_SURFACES,
         ),
     )
-    sections: list[str] = []
-    for template_id, variable, input_key in surfaces:
-        index = inputs.get(input_key)
-        if not index:
-            continue
-        rendered = await renderer.render(template_id, {variable: index})
-        sections.append(rendered.content)
-    # Each appendix opens with its heading and ends on its list: joined bare, a list's last
-    # line ran into the next heading.
-    return "\n\n".join(sections)
 
 
 async def retry_yaml_call(
