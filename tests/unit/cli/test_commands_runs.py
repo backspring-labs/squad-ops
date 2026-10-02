@@ -4,6 +4,7 @@ Unit tests for run commands (SIP-0065 §6.3).
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 from typer.testing import CliRunner
 
 from squadops.cli import exit_codes
@@ -155,6 +156,72 @@ class TestRunsGate:
 
         result = runner.invoke(app, ["runs", "gate", "proj1", "cyc_1", "run_1", "g1", "--approve"])
         assert result.exit_code == exit_codes.CONFLICT
+
+
+class TestRunsGateIncrementRuling:
+    """SIP-0109 §9.2 through ``squadops runs gate``: the ruling binds to the document the
+    supervisor reviewed."""
+
+    _CR = (
+        "proposal_id: prop_cap\nversion: 2\nbaseline_tree: sha-accepted\n"
+        "content_hash: hash-cap-v2\nkind: feature\n"
+    )
+
+    @patch("squadops.cli.commands.runs._get_client")
+    def test_the_binding_is_read_from_the_reviewed_change_request(self, mock_get_client, tmp_path):
+        """Bug caught: a binding typed by hand, or taken from whatever is current, so an approval
+        can land on a version nobody read."""
+        reviewed = tmp_path / "change_request.yaml"
+        reviewed.write_text(self._CR)
+        mock_get_client.return_value = _mock_client(post_val={"status": "ok"})
+
+        result = runner.invoke(
+            app,
+            [
+                "runs",
+                "gate",
+                "group_run",
+                "cyc_1",
+                "run_1",
+                "increment_ruling",
+                "--approve",
+                "--notes",
+                "scope reads right",
+                "--change-request",
+                str(reviewed),
+                "--idempotency-key",
+                "k-1",
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        body = mock_get_client.return_value.post.call_args.kwargs["json"]
+        assert body["binding"] == {
+            "proposal_id": "prop_cap",
+            "version": 2,
+            "content_hash": "hash-cap-v2",
+            "baseline_tree": "sha-accepted",
+        }
+        assert (body["idempotency_key"], body["notes"]) == ("k-1", "scope reads right")
+
+    @pytest.mark.parametrize(
+        ("gate", "extra", "message"),
+        [
+            ("increment_ruling", [], "pass --change-request"),
+            ("progress_plan_review", ["--idempotency-key", "k"], "belong to increment_ruling"),
+        ],
+    )
+    @patch("squadops.cli.commands.runs._get_client")
+    def test_a_ruling_without_its_document_or_flags_on_another_gate_send_nothing(
+        self, mock_get_client, gate, extra, message
+    ):
+        result = runner.invoke(
+            app, ["runs", "gate", "group_run", "cyc_1", "run_1", gate, "--approve", *extra]
+        )
+
+        assert result.exit_code == 2
+        assert message in result.output
+        mock_get_client.return_value.post.assert_not_called()
 
 
 class TestRunsResume:

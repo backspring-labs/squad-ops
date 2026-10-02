@@ -4,12 +4,16 @@ Run commands (SIP-0065 §6.3).
 
 from __future__ import annotations
 
+import dataclasses
+import uuid
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
 
 import typer
+import yaml
 
+from squadops.campaigns.gate import INCREMENT_RULING_GATE, binding_from_change_request
 from squadops.cli import exit_codes
 from squadops.cli.client import APIClient, CLIError
 from squadops.cli.config import load_config
@@ -226,6 +230,17 @@ def gate_decision(
         "An agent using a human's credentials is invisible to the token, so declaring is "
         "the only way the record can be true.",
     ),
+    change_request: Path | None = typer.Option(
+        None,
+        "--change-request",
+        help="The increment gate only (SIP-0109 §9.2): the change_request.yaml you reviewed. "
+        "The ruling binds to its identity, so it cannot approve a version you did not read.",
+    ),
+    idempotency_key: str | None = typer.Option(
+        None,
+        "--idempotency-key",
+        help="The increment gate only: resend a key to replay the ruling, not repeat it.",
+    ),
 ):
     """Record a gate decision.
 
@@ -270,6 +285,7 @@ def gate_decision(
         body["waived_checks"] = list(waive)
     if waiver_reason:
         body["waiver_reason"] = waiver_reason
+    body.update(_increment_binding(gate_name, change_request, idempotency_key))
 
     try:
         client = _get_client(ctx)
@@ -286,6 +302,31 @@ def gate_decision(
         print_json(data)
     else:
         print_success(f"Gate {gate_name!r} {decision}")
+
+
+def _increment_binding(gate_name: str, change_request: Path | None, key: str | None) -> dict:
+    """The increment ruling's binding, read from the change request the supervisor reviewed,
+    and its retry key (minted and printed when none is given). Nothing for any other gate,
+    which refuses the two flags."""
+    if gate_name != INCREMENT_RULING_GATE:
+        if change_request is not None or key is not None:
+            print_error(f"--change-request and --idempotency-key belong to {INCREMENT_RULING_GATE}")
+            raise typer.Exit(code=2)
+        return {}
+    if change_request is None:
+        print_error(
+            f"{INCREMENT_RULING_GATE} binds to the change request you reviewed: "
+            "pass --change-request change_request.yaml"
+        )
+        raise typer.Exit(code=2)
+    try:
+        binding = binding_from_change_request(change_request.read_text(encoding="utf-8"))
+    except (OSError, ValueError, yaml.YAMLError) as e:
+        print_error(f"{change_request}: not a change request this ruling can bind to: {e}")
+        raise typer.Exit(code=2) from e
+    key = key or f"cli-{uuid.uuid4().hex}"
+    print_success(f"binding {binding.proposal_id} v{binding.version} (key {key})")
+    return {"binding": dataclasses.asdict(binding), "idempotency_key": key}
 
 
 @app.command("resume")
