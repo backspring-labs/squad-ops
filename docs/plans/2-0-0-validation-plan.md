@@ -1,6 +1,6 @@
 # 2.0.0 validation plan — what each step proves, the recovery diagnostics, the reference scenario
 
-**Status:** DRAFT, rev 1 (2026-10-02), for the owner's and the crew's review. Written overnight on the
+**Status:** DRAFT, rev 2 (2026-10-02), for the owner's and the crew's review. Written overnight on the
 owner's word ("progress the plan through the night"), answering "do you have the validation plan
 spec'd?".
 
@@ -22,7 +22,8 @@ owner (the plan's §6, step 14), with the counted set's predictions and the limi
 | **A mutation check per changed seam:** the guard is reverted or broken, the named test fails, the code is restored, and the `.pyc` is deleted | the 1.9 line's practice |
 | **Real records, not only fixtures.** A new check or producer is run against stored cycles from `data/artifacts/` and the registry | the verification sets' practice |
 | **A behaviour-neutral step proves its neutrality** by recomputing every stored cycle, old path against new | SIP-0109 §18, step 1a |
-| **Read-only against the deploy.** A validation reads the live registry or vault. It never writes to them, and never launches a cycle, outside a registered diagnostic | the plan's §6 |
+| **A step's offline proof reads the deploy, never writes it.** A backfill or replay reads the live registry or vault, and writes neither | the 1.9 line's replay practice |
+| **A step that changes what the deploy runs is also proven live.** After it merges: rebuild, confirm the migration applied and the new code is the code loaded, confirm stored cycles still read, then one uncounted regression roll on the baseline's configuration (§4) once the box is quiet. Live runs are fast-lane evidence, never the cut's (the plan's §5) | CLAUDE.md's wiring rule: #1250, #1256 and #1261 were each found by a live cycle |
 
 ---
 
@@ -130,3 +131,7 @@ It runs in the fast lane between campaigns, and in the counted set.
 
 - **Rev 1 (2026-10-02):** the first draft, written overnight. It holds the verification matrix, the
   recovery diagnostics' designs, and the reference scenario's pinned inputs. For review.
+- **Rev 2 (2026-10-02):** rev 1's rule "never launches a cycle" cited the plan's §6, which says no such
+  thing. Replaced by two rules: offline proofs only read the deploy, and a step that changes what the
+  deploy runs is also proven live, with a rebuild and one uncounted regression roll (the owner's
+  question: aren't builds and cycles critical for validation as you go?).
