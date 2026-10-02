@@ -1640,6 +1640,29 @@ is retired and the new one frozen." §24r built the retirement. This builds the 
     frozen, under its new bundle, for every later launch.
   - The evaluation records which criteria were replaced (`replaced`).
 
+
+### 24y. What an increment's plan authors are offered (2026-10-02, §7.3, #1868; decided under the 2.0 charter)
+
+**The evidence:** shakeout 2's increment (`cyc_b5043d62d2f0`). Its first framing was refused at the
+plan gate for doing what it was taught.
+- The footprint said "plan tasks **only** for these files", and listed `backend/models.py` and
+  `backend/errors.py`. The manifest delta changes them, so the scaffold regenerates them, and the
+  frozen rule forbids any task to claim them.
+- It was offered a builder task, whose `assembly_notes.md` no increment's footprint holds.
+
+**As built:**
+- **The footprint is shown in two parts.**
+  - The files the plan's tasks write.
+  - The files the scaffold regenerates from the approved manifest
+    (`request.plan_increment_regenerated_appendix`), which no task claims.
+  - The split is the contract's `frozen_files`, the set the gate refuses a claim on, so what the
+    authors are taught and what the gate enforces cannot disagree.
+- **An increment's plan has no builder task: `builder.assemble` is not offered.** A builder's
+  artifacts are packaging. An increment's footprint is derived from its manifest delta and test
+  namespace, and never holds packaging; the accepted tree's packaging is its starting tree.
+  - **An increment that does need packaging changed** (a new dependency, say) needs the footprint
+    to reach packaging files first. That is not built.
+
 ---
 
 ## Revision history

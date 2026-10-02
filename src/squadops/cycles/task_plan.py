@@ -659,16 +659,25 @@ def _inject_increment_indexes(
     footprint: tuple[str, ...] | None,
     criterion_files: tuple[Any, ...],
     frozen_files: tuple[tuple[str, str], ...] = (),
+    scaffold_frozen: frozenset[str] = frozenset(),
 ) -> None:
     """SIP-0109: what an increment's plan authors are shown — data only; each rule's prose is
     its managed appendix (#448), and the plan gate enforces it.
 
     - §7.3 (#1705 d): the files the approved change touches. The rest is the accepted
-      application.
+      application. Of those, the scaffold-frozen ones (``scaffold_frozen``, the contract's
+      frozen files — the set the gate refuses a claim on) are listed apart: the scaffold
+      regenerates them from the approved manifest, and no task claims them (#1868: one list
+      taught "plan tasks for these" while the frozen rule forbade claiming two of them).
     - §8.1: each new criterion's own test file, which a qa task must write.
     """
     if footprint:
-        inputs["increment_footprint_index"] = "\n".join(f"- `{p}`" for p in footprint)
+        claimable = [p for p in footprint if p not in scaffold_frozen]
+        regenerated = [p for p in footprint if p in scaffold_frozen]
+        if claimable:
+            inputs["increment_footprint_index"] = "\n".join(f"- `{p}`" for p in claimable)
+        if regenerated:
+            inputs["increment_regenerated_index"] = "\n".join(f"- `{p}`" for p in regenerated)
     if criterion_files:
         inputs["increment_criterion_files_index"] = "\n".join(
             f"- {f.criterion_id} ({f.surface_kind} `{f.surface}`): `{f.path}`"
@@ -861,7 +870,13 @@ def inject_contract_inputs(
         frozen_index = frozen_surface_index_lines(interface_manifest)
         if frozen_index:
             inputs["frozen_surface_index"] = "\n".join(frozen_index)
-        _inject_increment_indexes(inputs, footprint, criterion_files, frozen_files)
+        _inject_increment_indexes(
+            inputs,
+            footprint,
+            criterion_files,
+            frozen_files,
+            frozenset(ff.path for ff in contract.frozen_files),
+        )
     if task_contract.bind_behavioral_surface:
         if contract.behavioral.probes:
             inputs["contract_probes"] = [p.to_dict() for p in contract.behavioral.probes]
