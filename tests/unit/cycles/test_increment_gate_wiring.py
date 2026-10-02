@@ -409,6 +409,42 @@ async def test_an_increments_framing_without_its_change_request_is_refused(execu
     assert await approved_change_request(executor._artifact_vault, ordinary) is None
 
 
+async def test_the_plan_gate_judges_an_increments_plan_in_bind_mode(executor):
+    """§7.3: an increment's framing runs in bind mode on the contract forwarding handed it.
+    Entered at ``WorkloadGate.decide`` for the framing run, as the workload loop calls it. Bug
+    caught: the plan judged against the registry's cycle, which carries no forwarded
+    ``contract_ref`` — so frozen ownership, qa ownership and criteria binding all read author
+    mode and a bad plan fails at implementation instead of re-rolling framing."""
+    seen = []
+
+    async def plan_check(run, cycle, gate_name):
+        seen.append(cycle)
+        return []
+
+    executor._reject_invalid_plan_before_workload_gate = plan_check
+    framing = dataclasses.replace(_PROPOSAL_RUN, run_id="run_frame", workload_type="framing")
+    forwarded = {"plan_artifact_refs": ["art_seed", "art_cr"], "contract_ref": "art_contract"}
+
+    await executor._workload_gate.decide(
+        cycle=_cycle(CID),
+        cycle_id="cyc_inc",
+        run=framing,
+        workload_entry={"type": "framing", "gate": "progress_plan_review"},
+        gate_name="progress_plan_review",
+        current_run_id=framing.run_id,
+        forwarding_overrides=forwarded,
+        framing_rerolls=0,
+        framing_revisions=0,
+        max_framing_rerolls=0,
+        max_framing_revisions=0,
+    )
+
+    [judged] = seen
+    assert executor._is_bind_mode(judged)
+    assert judged.execution_overrides["plan_artifact_refs"] == ["art_seed", "art_cr"]
+    assert judged.execution_overrides["campaign_proposal"]["proposal_id"] == "prop_cap"
+
+
 async def test_a_change_request_altered_after_its_ruling_is_refused_at_the_seed(executor):
     """Bug caught: a stored change request edited after the supervisor approved its hash
     seeding a manifest nobody ruled on."""
