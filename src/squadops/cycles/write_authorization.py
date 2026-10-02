@@ -70,6 +70,8 @@ class WorkspaceOwnership:
     frozen_paths: frozenset[str]
     fill_slots: frozenset[str]
     qa_namespace: frozenset[str]
+    #: SIP-0109 §7.3: an increment's footprint, or empty for any other run.
+    increment_footprint: tuple[str, ...] = ()
 
     @classmethod
     def from_record(cls, record: BoundScaffoldRecord) -> WorkspaceOwnership:
@@ -77,7 +79,19 @@ class WorkspaceOwnership:
             frozen_paths=frozenset(n for p in record.frozen_paths() if (n := normalize_ws_path(p))),
             fill_slots=frozenset(n for p in record.fill_slots if (n := normalize_ws_path(p))),
             qa_namespace=frozenset(record.qa_namespace),  # dir prefixes, kept verbatim
+            increment_footprint=tuple(getattr(record, "increment_footprint", ()) or ()),
         )
+
+    def granted_fill_slots(self) -> frozenset[str]:
+        """The fill slots a dev or builder producer may write. In an increment, only those its
+        approved change touches (#1705 c2): every other slot holds the accepted implementation,
+        so a write there is another producer's surface and is dropped with evidence, and the
+        accepted file stays. The plan gate refuses such a task first; this is the net under it."""
+        if not self.increment_footprint:
+            return self.fill_slots
+        from squadops.campaigns.change_request import in_footprint
+
+        return frozenset(s for s in self.fill_slots if in_footprint(s, self.increment_footprint))
 
     def declared_writable(self) -> frozenset[str]:
         """Every surface a producer *could* be granted (fill slots ∪ QA namespace) — not what any
@@ -103,7 +117,7 @@ class WriteGrant:
     def for_dev_fill(cls, producer: str, ownership: WorkspaceOwnership) -> WriteGrant:
         """A dev fill/repair may write the scaffold fill slots (routes.py, views), never the QA
         namespace — the suite the dev's own work is judged by (SIP-0107 §3.3, §46d)."""
-        return cls(producer=producer, stage="dev_fill", writable=ownership.fill_slots)
+        return cls(producer=producer, stage="dev_fill", writable=ownership.granted_fill_slots())
 
     @classmethod
     def for_qa(cls, producer: str, ownership: WorkspaceOwnership) -> WriteGrant:
@@ -119,7 +133,7 @@ class WriteGrant:
         return cls(
             producer=producer,
             stage="builder",
-            writable=ownership.fill_slots,
+            writable=ownership.granted_fill_slots(),
             may_author_undeclared_source=False,
         )
 

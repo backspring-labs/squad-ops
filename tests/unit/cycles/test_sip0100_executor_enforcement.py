@@ -223,15 +223,15 @@ def test_dev_write_to_its_own_fill_slot_is_not_dropped():
 
 
 def test_build_bound_record_none_for_unbound_and_unscaffoldable():
-    assert DispatchedFlowExecutor._build_bound_record_for_run(object(), None, "r") is None
+    assert DispatchedFlowExecutor._build_bound_record_for_run(object(), None, "r", {}) is None
     bad = InterfaceManifest.from_dict(
         {"version": 1, "kind": "interface_manifest", "project_id": "x", "stack": "cobol_cics"}
     )
-    assert DispatchedFlowExecutor._build_bound_record_for_run(object(), bad, "r") is None
+    assert DispatchedFlowExecutor._build_bound_record_for_run(object(), bad, "r", {}) is None
 
 
 def test_build_bound_record_for_scaffoldable_manifest():
-    rec = DispatchedFlowExecutor._build_bound_record_for_run(object(), _manifest(), "r")
+    rec = DispatchedFlowExecutor._build_bound_record_for_run(object(), _manifest(), "r", {})
     assert rec is not None
     assert "backend/main.py" in rec.frozen_paths()
 

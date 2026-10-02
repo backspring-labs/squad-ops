@@ -43,7 +43,7 @@ def test_binding_is_all_or_nothing_never_partial():
     set covers every scaffold-frozen file across BOTH stacks (backend + frontend + harness); a
     non-scaffoldable stack yields None — never a partial record that would protect some frozen
     files but silently leave others writable."""
-    rec = DispatchedFlowExecutor._build_bound_record_for_run(object(), _manifest(), "r")
+    rec = DispatchedFlowExecutor._build_bound_record_for_run(object(), _manifest(), "r", {})
     assert rec is not None
     frozen = set(rec.frozen_paths())
     for p in (
@@ -60,14 +60,15 @@ def test_binding_is_all_or_nothing_never_partial():
 
     # Unbound stack → no record at all (not a partial one).
     assert (
-        DispatchedFlowExecutor._build_bound_record_for_run(object(), _unscaffoldable(), "r") is None
+        DispatchedFlowExecutor._build_bound_record_for_run(object(), _unscaffoldable(), "r", {})
+        is None
     )
 
 
 def test_unbound_manifest_disables_enforcement():
     """A None manifest (a genuinely unbound/legacy run) binds nothing — the executor guard then
     skips enforcement entirely, preserving pre-SIP behavior."""
-    assert DispatchedFlowExecutor._build_bound_record_for_run(object(), None, "r") is None
+    assert DispatchedFlowExecutor._build_bound_record_for_run(object(), None, "r", {}) is None
 
 
 def test_binding_error_fails_open_documented_d3_deviation(monkeypatch):
@@ -84,6 +85,6 @@ def test_binding_error_fails_open_documented_d3_deviation(monkeypatch):
     monkeypatch.setattr(bsr, "build_bound_record", _boom)
     # A scaffoldable stack (so binding IS attempted) whose build then raises → fail-open None.
     result = DispatchedFlowExecutor._build_bound_record_for_run(
-        object(), _scaffoldable_minimal(), "r"
+        object(), _scaffoldable_minimal(), "r", {}
     )
     assert result is None  # fail-OPEN: enforcement disabled, run continues (NOT D3 fail-closed)

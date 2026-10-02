@@ -76,6 +76,9 @@ class BoundScaffoldRecord:
     # The record's own from_dict refuses tampered aggregates, so a hand-edited stored
     # record cannot launder itself into an enforcement authority.
     verification_scaffold: Any = None
+    # SIP-0109 §7.3 (#1705 c2): an increment's footprint — the files its approved change may
+    # touch. Empty for any other run, and for records bound before this field existed.
+    increment_footprint: tuple[str, ...] = ()
 
     def frozen_paths(self) -> frozenset[str]:
         return frozenset(f.path for f in self.frozen)
@@ -115,6 +118,7 @@ class BoundScaffoldRecord:
                 if self.verification_scaffold is not None
                 else None
             ),
+            "increment_footprint": list(self.increment_footprint),
         }
 
     @classmethod
@@ -132,6 +136,7 @@ class BoundScaffoldRecord:
             qa_namespace=tuple(d.get("qa_namespace", [])),
             fill_seeds=tuple(FrozenArtifact.from_dict(f) for f in d.get("fill_seeds", [])),
             verification_scaffold=_scaffold_record_from(d.get("verification_scaffold")),
+            increment_footprint=tuple(d.get("increment_footprint", [])),
         )
 
 
@@ -180,6 +185,7 @@ def build_bound_record(
     run_id: str,
     attempt_id: str,
     created_at: str,
+    increment_footprint: tuple[str, ...] = (),
 ) -> BoundScaffoldRecord:
     """Assemble the bound record from the scaffold. The frozen set is derived the SAME way the
     verification contract derives it (``expand(manifest) − fill_slot_paths(manifest)``), so the
@@ -210,4 +216,5 @@ def build_bound_record(
             if name in files
         ),
         verification_scaffold=_derive_verification_scaffold(manifest),
+        increment_footprint=increment_footprint,
     )

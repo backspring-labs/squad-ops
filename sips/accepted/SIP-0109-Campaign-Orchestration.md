@@ -1173,9 +1173,20 @@ being built in the order the design note on #1705 sets out:
       hash.
     - **Required:** an increment framed without it is refused, and a change request given to any
       other run is refused.
+- **c2, the ownership narrowed to the footprint**, as defense in depth.
+  - **What it does:** an increment's bound scaffold record carries its footprint, derived as the
+    plan gate's is.
+    - The dev and builder grants become the fill slots inside the footprint.
+    - A write to an accepted slot outside it is another producer's surface: it is dropped with
+      evidence, and the next attempt is told why.
+  - **Where it holds:** at task storage and on every repair emission, the two places the record is
+    built.
+  - **The difference from the design note:** the other slots are not frozen.
+    - **Why not:** the bound record's frozen bytes are the scaffold's stubs, so freezing them would
+      restore a stub over the accepted code.
+    - **What protects the accepted content instead:** the dropped emission leaves the seeded
+      accepted file in place (#1842).
 - **Still to build:**
-  - **c2, the ownership record narrowed:** fill slots writable only inside the footprint, the rest
-    frozen with the accepted content, as defense in depth.
   - **e, the increment's acceptance at its completion** (#1839's `evaluate_increment`) and its
     promotion.
 

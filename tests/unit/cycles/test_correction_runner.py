@@ -2625,6 +2625,97 @@ class TestCorrectionRunnerStandalone:
         )
         assert "Do NOT re-emit this file" in instruction
 
+    async def test_an_increments_repair_may_not_rewrite_an_accepted_slot(self, cycle):
+        """SIP-0109 §7.3, #1705 c2, entered at ``run_correction_protocol``. Bug caught: an
+        increment's repair rewriting an accepted view its approved change never touched — the
+        plan gate checks the plan's tasks, not what a repair emits."""
+        import dataclasses
+        from pathlib import Path
+
+        import yaml
+
+        from squadops.campaigns.change_request import (
+            ProposalContext,
+            apply_manifest_delta,
+            validate_proposal,
+        )
+        from squadops.capabilities.scaffold import InterfaceManifest
+
+        fixtures = Path(__file__).parents[2] / "fixtures" / "campaigns"
+        baseline = (fixtures / "baseline-cyc_7a4b7a6fbf0e-interface_manifest.yaml").read_text()
+        request = validate_proposal(
+            yaml.safe_load((fixtures / "reference-capacity-change-request.yaml").read_text()),
+            ProposalContext(
+                "prop_cap",
+                1,
+                "sha-accepted",
+                baseline,
+                "fullstack_fastapi_react",
+                ("backend/**", "frontend/**"),
+                (),
+            ),
+        ).change_request
+        manifest = InterfaceManifest.from_yaml(
+            apply_manifest_delta(baseline, request.manifest_delta)
+        )
+        increment = dataclasses.replace(
+            cycle,
+            execution_overrides={
+                "campaign_proposal": {"proposal_id": "prop_cap", "baseline_manifest": baseline}
+            },
+        )
+        touched, accepted = (
+            "frontend/src/views/RunDetailView.jsx",
+            "frontend/src/views/RunListView.jsx",
+        )
+
+        def responder(envelope):
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "patch",
+                        "decision_rationale": "patchable",
+                        "affected_task_types": ["development.develop"],
+                    },
+                )
+            if envelope.task_type == "development.correction_repair":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "artifacts": [
+                            {"name": path, "content": "export default () => null\n"}
+                            for path in (touched, accepted)
+                        ],
+                        "summary": "repaired",
+                    },
+                )
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+        runner, _registry, _vault, _bus = self._make_runner(responder)
+        carry: list[str] = []
+
+        protocol_result = await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=increment,
+            envelope=self._failed_envelope(),
+            result=TaskResult(task_id="task_failed", status="FAILED", error="view failed"),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+            interface_manifest=manifest,
+            scaffold_enforcement_carry=carry,
+        )
+
+        assert [a["name"] for a in protocol_result.repair_artifacts] == [touched]
+        (instruction,) = carry
+        assert instruction.startswith(f"`{accepted}` is outside the write grant")
+
     async def test_repair_frozen_emission_dropped_and_signaled(self, cycle):
         """SIP-0100 3.4b (pf-27/pf-30 regression), #691: a repair emitting a
         scaffold-frozen path has that artifact DROPPED before any landing point —
