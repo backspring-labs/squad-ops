@@ -1,6 +1,6 @@
 """The increment ruling through the existing gate path (SIP-0109 §9.2, §13; #1801).
 
-``POST /api/v1/projects/{p}/cycles/{c}/runs/{r}/gates/increment_ruling``, entered at the HTTP
+``POST /api/v1/projects/{p}/cycles/{c}/runs/{r}/gates/progress_increment_ruling``, entered at the HTTP
 surface with the real authorization adapter, over the memory registries. The campaign is at the
 gate with a submitted proposal; what each ruling leaves on the campaign and on the run is read
 back.
@@ -204,7 +204,7 @@ async def test_an_approval_records_one_row_and_one_decision_and_a_repeat_neither
         (INCREMENT_RULING_GATE, {"binding": None}, "requires binding"),
         (INCREMENT_RULING_GATE, {"notes": " "}, "the ruling's reason"),
         (INCREMENT_RULING_GATE, {"waived_checks": ["tests_pass"]}, "takes no waiver"),
-        ("progress_plan_review", {}, "belong to the increment_ruling gate only"),
+        ("progress_plan_review", {}, "belong to the progress_increment_ruling gate only"),
     ],
 )
 async def test_a_malformed_ruling_is_a_422_and_records_nothing(world, gate, body, message):

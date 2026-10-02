@@ -114,7 +114,7 @@ class _World:
 async def world() -> _World:
     w = _World()
     await w.campaigns.create_campaign(
-        campaign(CID, policy=policy(proposal_profile="campaign-proposal")),
+        campaign(CID, policy=policy(proposal_profile="campaign-increment")),
         actor="owner",
         actor_role="admin",
         reason="r",

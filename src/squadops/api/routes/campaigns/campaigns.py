@@ -404,15 +404,23 @@ async def resume_campaign(
 
 
 def _require_profiles(policy: CampaignPolicy) -> None:
-    """Every request profile the policy names must exist: a campaign whose launches could never
-    be built is refused at its creation, not discovered at its first launch."""
+    """Every request profile the policy names must exist, and the proposal profile must reach
+    the increment ruling: a campaign whose launches could never be built, or whose increments
+    could never be ruled, is refused at its creation, not discovered at its first launch."""
+    from squadops.campaigns.gate import increment_sequence_refusal
     from squadops.contracts.cycle_request_profiles import load_profile
 
+    profiles = {}
     for field in ("calibration_profile", "proposal_profile"):
         try:
-            load_profile(getattr(policy, field))
+            profiles[field] = load_profile(getattr(policy, field))
         except FileNotFoundError as e:
             raise ValueError(f"policy.{field}: {e}") from e
+    # The increments are launched from the proposal profile: one that never reaches the ruling
+    # would escalate every increment the campaign proposes.
+    refusal = increment_sequence_refusal(profiles["proposal_profile"].defaults)
+    if refusal:
+        raise ValueError(f"policy.proposal_profile {policy.proposal_profile!r}: {refusal}")
 
 
 async def _materialize_after_close(request: Request, campaign_id: str) -> None:
