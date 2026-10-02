@@ -29,7 +29,7 @@ from squadops.campaigns.models import (
 )
 from squadops.campaigns.progress import CampaignProgress, CycleRecord, cycle_ending, derive_counters
 from squadops.cycles.cycle_assessment import AssessorIdentity, CycleEvidence, RunRecord, assess
-from squadops.cycles.cycle_end import CycleStopReason
+from squadops.cycles.cycle_end import CycleStopReason, RecordedEnd
 from squadops.cycles.models import ArtifactRef, Cycle, Run, TaskFlowPolicy
 from squadops.cycles.verification_integrity import CycleOutcome, RunVerdict
 from tests.unit.campaigns.builders import campaign, move, policy
@@ -256,6 +256,56 @@ async def test_a_cycles_stored_usage_reaches_the_budget_limit(
         state,
         paused_by,
     )
+
+
+async def _resume(w: _World, cycle_ids: list[str]) -> None:
+    """The runtime API's startup, as it resumes campaigns (``main._resume_campaigns``)."""
+    from types import SimpleNamespace
+
+    from squadops.api.runtime.main import _resume_campaigns
+
+    launch = AsyncMock()
+    launch.launched_cycles.return_value = cycle_ids
+    await _resume_campaigns(SimpleNamespace(campaign_launch=launch, campaign_progress=w.progress))
+
+
+async def test_a_cycle_its_hook_failed_to_decide_is_re_heard_once_at_startup(calibrating):
+    """§12a, #1803 — the live shakeout's shape (#1857): the calibration ended accepted, the hook
+    promoted and then crashed before deciding, and nothing heard the cycle again. Entered at the
+    completion hook, which records the ending, and at the startup that re-hears it. Bugs caught:
+    a campaign left where the failed hook left it; a re-entry that decides twice; or one that
+    reconstructs the stop reason instead of reading the recorded one."""
+    w, run = await calibrating(RunVerdict.ACCEPTED)
+    crash = AsyncMock(side_effect=AttributeError("'RunUsage' object has no attribute 'totals'"))
+    working = w.progress._launched_cycles
+    w.progress._launched_cycles = crash
+    await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
+    assert [e.operation for e in await w.campaigns.control_log(CID)][-1] is ControlOperation.PROMOTE
+
+    w.progress._launched_cycles = working
+    await _resume(w, ["cyc_cal"])
+    await _resume(w, ["cyc_cal"])
+
+    log = await w.campaigns.control_log(CID)
+    decisions = [e for e in log if e.operation is ControlOperation.DECIDE]
+    assert [(d.target, d.binding["row"], d.binding["action"]) for d in decisions] == [
+        ("cyc_cal", 5, "propose")
+    ]
+    assert (await w.campaigns.get_campaign(CID)).state is CampaignState.AT_PROPOSAL
+    w.launches.assert_awaited_once()
+
+
+async def test_startup_leaves_a_paused_or_unrecorded_ending_alone(calibrating):
+    """§12a: a cycle that stopped resumable is not decided, and one that recorded no ending is in
+    flight (or predates the record). Bug caught: a re-entry deciding a cycle that has not ended."""
+    w, run = await calibrating(RunVerdict.ACCEPTED)
+    await w.cycles.record_cycle_end(RecordedEnd("cyc_cal", run.run_id, CycleStopReason.RUN_PAUSED))
+
+    await _resume(w, ["cyc_cal", "cyc_unknown"])
+
+    log = await w.campaigns.control_log(CID)
+    assert ControlOperation.DECIDE not in [e.operation for e in log]
+    assert (await w.campaigns.get_campaign(CID)).state is CampaignState.CALIBRATING
 
 
 async def test_the_decision_is_made_once_per_cycle(calibrating):

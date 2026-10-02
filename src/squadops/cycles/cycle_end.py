@@ -65,3 +65,14 @@ class CycleEnd:
     #: when the run recorded none.
     last_run_terminal: RunTerminalDecision | None
     stopped_because: CycleStopReason
+
+
+@dataclass(frozen=True)
+class RecordedEnd:
+    """One ending of a cycle as the completion boundary recorded it, before its campaign was told
+    (SIP-0109 §12a, #1803). What a re-entry reads: never a stop reason reconstructed from the
+    cycle's runs, which a gate rejection and a failed run can leave looking alike."""
+
+    cycle_id: str
+    last_run_id: str
+    stopped_because: CycleStopReason

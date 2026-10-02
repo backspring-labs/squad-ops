@@ -20,7 +20,7 @@ import hashlib
 import json
 import logging
 import uuid
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -453,6 +453,28 @@ class CampaignProgress:
             ),
         )
         return result.campaign
+
+    async def rehear_ended(self, cycle_ids: Iterable[str]) -> list[str]:
+        """§12a (#1803): re-hear each campaign cycle that ended with no decision recorded — its
+        completion hook failed, or the process stopped between the end and the decision. Read
+        from the ending the cycle recorded (``RecordedEnd``), never from a stop reason
+        reconstructed out of its runs; a cycle that recorded none is in flight, or ended before
+        endings were recorded, and is left alone. ``cycle_ended`` returns a decision already
+        recorded unchanged, so re-hearing a decided cycle changes nothing. One cycle that
+        cannot be re-heard is logged and does not stop the rest. Returns the cycles decided now."""
+        decided = []
+        for cycle_id in cycle_ids:
+            try:
+                end = await self._cycles.get_cycle_end(cycle_id)
+                if end is None:
+                    continue
+                cycle = await self._cycles.get_cycle(cycle_id)
+                run = await self._cycles.get_run(end.last_run_id)
+                if await self.cycle_ended(cycle, run, end.stopped_because) is not None:
+                    decided.append(cycle_id)
+            except Exception:
+                logger.exception("campaign_rehear_failed", extra={"cycle_id": cycle_id})
+        return decided
 
     async def owner_action(
         self,

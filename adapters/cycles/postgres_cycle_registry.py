@@ -14,6 +14,7 @@ from typing import Any
 import asyncpg
 
 from squadops.cycles.checkpoint import RunCheckpoint
+from squadops.cycles.cycle_end import CycleStopReason, RecordedEnd
 from squadops.cycles.failure_attribution import (
     ATTRIBUTION_REGISTRY_VERSION,
     AttributionClass,
@@ -559,6 +560,45 @@ class PostgresCycleRegistry(CycleRegistryPort):
                     [_failure_record_args(cycle_id, set_index, r) for r in records],
                 )
         return set_index
+
+    async def record_cycle_end(self, end: RecordedEnd) -> int:
+        """Append one ending (SIP-0109 §12a, #1803). The cycle's row lock serializes two endings
+        of one cycle, so each takes the next index."""
+        async with self._pool.acquire() as conn, conn.transaction():
+            exists = await conn.fetchval(
+                "SELECT 1 FROM cycle_registry WHERE cycle_id = $1 FOR UPDATE", end.cycle_id
+            )
+            if exists is None:
+                raise CycleNotFoundError(f"Cycle not found: {end.cycle_id}")
+            end_index = await conn.fetchval(
+                "SELECT COALESCE(MAX(end_index), 0) + 1 FROM cycle_ends WHERE cycle_id = $1",
+                end.cycle_id,
+            )
+            await conn.execute(
+                "INSERT INTO cycle_ends "
+                "(cycle_id, end_index, last_run_id, stopped_because, recorded_at) "
+                "VALUES ($1, $2, $3, $4, now())",
+                end.cycle_id,
+                end_index,
+                end.last_run_id,
+                end.stopped_because.value,
+            )
+            return end_index
+
+    async def get_cycle_end(self, cycle_id: str) -> RecordedEnd | None:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT last_run_id, stopped_because FROM cycle_ends WHERE cycle_id = $1 "
+                "ORDER BY end_index DESC LIMIT 1",
+                cycle_id,
+            )
+        if row is None:
+            return None
+        return RecordedEnd(
+            cycle_id=cycle_id,
+            last_run_id=row["last_run_id"],
+            stopped_because=CycleStopReason(row["stopped_because"]),
+        )
 
     async def get_failure_records(self, cycle_id: str) -> tuple[FailureRecord, ...] | None:
         async with self._pool.acquire() as conn:

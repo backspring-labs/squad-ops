@@ -667,9 +667,18 @@ async def _startup(app: FastAPI) -> None:
     await _init_cycle_subsystem(state, config, state.pool)
     await _init_monitoring(state, config, state.pool)
     await _init_duty_scheduler(state, config, state.pool)
-    # SIP-0109 §12b: an intent a crash left pending is launched now. Every subsystem is up, and
-    # the startup sweeps ran before the executor existed.
-    state.campaign_launch_task = asyncio.create_task(state.campaign_launch.drain())
+    # SIP-0109 §12a/§12b: what a crash left undone is done now. Every subsystem is up, and the
+    # startup sweeps ran before the executor existed.
+    state.campaign_launch_task = asyncio.create_task(_resume_campaigns(state))
+
+
+async def _resume_campaigns(state) -> None:
+    """§12b: an intent a crash left pending is launched, and a launched cycle's first run
+    started. Then §12a (#1803): every launched cycle that ended with no decision is re-heard
+    from its recorded ending. After the drain, never inside it: a decision launches through the
+    drain, which holds its lock."""
+    await state.campaign_launch.drain()
+    await state.campaign_progress.rehear_ended(await state.campaign_launch.launched_cycles())
 
 
 async def _shutdown(app: FastAPI) -> None:
