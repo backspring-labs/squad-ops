@@ -156,6 +156,8 @@ def test_a_record_cannot_launch():
     [
         (dict(max_cycles=0), "max_cycles must be >= 1"),
         (dict(crew_ruling_bound_s=0), "crew_ruling_bound_s must be >= 1"),
+        # Reached at zero: the campaign would stop or pause on its first decision.
+        (dict(max_unaccepted_increments=0), "max_unaccepted_increments must be >= 1"),
         (dict(max_repair_cycles_per_increment=-1), "must be >= 0"),
         (dict(budget_tokens=True), "must be an integer"),
         (dict(proposal_profile=" "), "proposal_profile is required"),

@@ -165,12 +165,16 @@ class CampaignObjective:
 
 
 #: Policy fields that must be at least 1: a campaign with no cycles, a zero ruling bound or a zero
-#: interval cannot run. The others are counts a campaign may set to zero (no repair cycles, say).
+#: interval cannot run, and a count the decision reads as reached at its value (§10) would be
+#: reached before the first cycle. The others are counts a campaign may set to zero (no repair
+#: cycles, say).
 _POSITIVE_POLICY_FIELDS = frozenset(
     {
         "max_cycles",
         "max_elapsed_s",
         "budget_tokens",
+        "max_rejected_proposals_in_row",
+        "max_unaccepted_increments",
         "crew_ruling_bound_s",
         "owner_ruling_bound_s",
         "lease_expiry_s",

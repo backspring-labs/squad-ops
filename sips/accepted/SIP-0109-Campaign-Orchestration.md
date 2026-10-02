@@ -917,6 +917,36 @@ points §14 left open, or stated otherwise. **The owner ruled all four as recomm
    producer whose neutrality was proven against all 629 stored cycles on 2026-10-01
    (`scripts/dev/attribution_snapshot.py`, #1811).
 
+
+### 24b. §10's continuation decision, as built (2026-10-02, #1800; implementer's reading, not yet ruled)
+
+`squadops.campaigns.continuation.campaign_continuation_decision` implements §10's three steps and
+fourteen rows as written. Building it settled four points §10 leaves to the implementer, and
+found one gap. **None of these has been ruled.** Each is the narrowest reading of the text, and is
+proposed in the PR that builds the decision.
+
+1. **The counters are read with the ending cycle counted,** and the caller supplies them.
+   - **The no-progress count also counts the abandonment row 13 would make.** Otherwise the
+     decision whose own abandonment reaches `max_unaccepted_increments` would return
+     `abandon_and_propose`, and the campaign would launch one more proposal before stopping.
+   - **The evidence:** row 4 is step 1, and abandonment is decided in step 2. Read literally, the
+     count of the abandonment arrives only at the next decision.
+     `test_the_precedence_is_as_written[abandonment-counts]` pins the reading.
+2. **Whether the objective's measurement is met is an input** (`objective_met`), read with this
+   increment counted.
+   - **Why:** `CampaignObjective.measurement` is free text (§15), and no evaluator of it exists.
+   - **What is still owed:** the reference scenario (#1804) gives the first measurement a reader.
+3. **Row 3 does not fire for a calibration cycle.** A calibration cycle carries no increment, so
+   "with this increment counted" cannot hold for it.
+4. **`max_rejected_proposals_in_row` and `max_unaccepted_increments` must be at least 1.** The
+   decision reads a limit as reached at its value. At 0, the campaign would pause or stop on its
+   first decision.
+5. **The gap: rows 10–11 are not reachable today.**
+   - **A rejected completion** reads `unattributed`, because its failed checks carry no locus.
+   - **An infrastructure failure** ends its run `failed`, with no verdict, and row 14 escalates it.
+   - **So a campaign never retries on its own.** The rows are built as written and tested with a
+     constructed assessment. Fixing the reading is #1824.
+
 ---
 
 ## Revision history
