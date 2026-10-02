@@ -1128,6 +1128,37 @@ A second table would be a second record that can disagree with the authority.
   version never submitted to the gate cannot be classified.
 - **Reading it:** `GET …/ledger`, or `squadops campaigns ledger` and `squadops campaigns classify`.
 
+
+### 24j. The increment cycle's seams, as built (2026-10-02, #1705; implementer's reading, decided under the 2.0 charter)
+
+§7.3 says what an increment cycle runs. The seams that carry it reuse existing machinery, and are
+being built in the order the design note on #1705 sets out:
+
+- **a. The candidate manifest binds the increment's framing.**
+  - **At the increment gate's approval:** the approved change request, whose stored hash is checked,
+    has its manifest delta applied to the accepted manifest. The candidate manifest and the contract
+    derived from it (#779) are stored as the proposal run's promoted artifacts.
+  - **At the next advance:** the forwarding builder hands them over as `plan_artifact_refs` and
+    `contract_ref`. Framing runs in bind mode and authors no manifest.
+- **c1. The implementation starts from the accepted tree.**
+  - **How the run finds it:** the increment's launch names the accepted cycle
+    (`campaign_proposal.accepted_cycle_id`).
+  - **What is seeded:** that cycle's delivered files (#1833's rule), beside the candidate manifest's
+    skeleton.
+  - **Why the accepted code wins:** the files are produced content, so the workspace's rule (#881)
+    hands every existing file its accepted implementation, and only what the increment adds stays
+    a stub.
+- **Still to build:**
+  - **b, the `campaign-increment` profile:** proposal → `increment_ruling` → framing →
+    `progress_plan_review` → implementation.
+  - **d, framing scoped to the footprint:** the proposal-equivalent framing tasks are skipped, and
+    the plan validator refuses a task whose writes fall outside the footprint. This is the primary
+    enforcement.
+  - **c2, the ownership record narrowed:** fill slots writable only inside the footprint, the rest
+    frozen with the accepted content, as defense in depth.
+  - **e, the increment's acceptance at its completion** (#1839's `evaluate_increment`) and its
+    promotion.
+
 ---
 
 ## Revision history

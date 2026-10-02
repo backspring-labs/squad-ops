@@ -71,6 +71,8 @@ def increment_launch(campaign: Campaign, baseline_manifest: str) -> LaunchReques
                         "proposal_id": f"prop_{uuid.uuid4().hex[:12]}",
                         "version": 1,
                         "baseline_tree": campaign.accepted.identity,
+                        # The cycle whose delivered files the increment builds on (§7.1).
+                        "accepted_cycle_id": campaign.accepted.cycle_id,
                         "baseline_manifest": baseline_manifest,
                         "objective": {
                             "statement": campaign.objective.statement,
