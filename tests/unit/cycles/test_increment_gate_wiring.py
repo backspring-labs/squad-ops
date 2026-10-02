@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import dataclasses
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -34,15 +35,34 @@ from tests.unit.campaigns.builders import campaign, move
 
 NOW = datetime(2026, 10, 2, 14, 0, tzinfo=UTC)
 CID = "cmp_wire00000001"
-_CHANGE_REQUEST = yaml.safe_dump(
-    {
-        "proposal_id": "prop_cap",
-        "version": 1,
-        "baseline_tree": "sha-accepted",
-        "kind": "feature",
-        "content_hash": "hash-cap-v1",
-    }
-)
+_FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "campaigns"
+_BASELINE = (_FIXTURES / "baseline-cyc_7a4b7a6fbf0e-interface_manifest.yaml").read_text()
+
+
+def _stored_change_request():
+    """The reference capacity proposal, through the proposal's own rails, stored as the
+    proposal run stores it (``StrategyProposeIncrementHandler._success``)."""
+    from squadops.campaigns.change_request import ProposalContext, validate_proposal
+    from squadops.capabilities.handlers.planning.proposal import json_safe
+
+    verdict = validate_proposal(
+        yaml.safe_load((_FIXTURES / "reference-capacity-change-request.yaml").read_text()),
+        ProposalContext(
+            proposal_id="prop_cap",
+            version=1,
+            baseline_tree="sha-accepted",
+            baseline_manifest=_BASELINE,
+            expected_stack="fullstack_fastapi_react",
+            allowed_scope=("backend/**", "frontend/**"),
+            prior_criteria=(),
+        ),
+    )
+    assert verdict.accepted, verdict.refusals
+    request = verdict.change_request
+    return request, yaml.safe_dump(json_safe(dataclasses.asdict(request)), sort_keys=False)
+
+
+_REQUEST, _CHANGE_REQUEST = _stored_change_request()
 #: An interface manifest that declares no open question: #807 would pass its gate through.
 _QUESTION_FREE_MANIFEST = "version: 1\nentities: []\nendpoints: []\nopen_questions: []\n"
 
@@ -75,7 +95,12 @@ def _cycle(campaign_id: str | None) -> Cycle:
         build_strategy="fresh",
         execution_overrides={
             "plan_artifact_refs": ["art_manifest"],
-            "campaign_proposal": {"proposal_id": "prop_cap", "version": 1, "max_revisions": 1},
+            "campaign_proposal": {
+                "proposal_id": "prop_cap",
+                "version": 1,
+                "max_revisions": 1,
+                "baseline_manifest": _BASELINE,
+            },
         },
         campaign_id=campaign_id,
         kind="increment" if campaign_id else None,
@@ -114,19 +139,40 @@ async def campaigns() -> MemoryCampaignRegistry:
     return reg
 
 
+class _Vault:
+    """What the gate reads and stores: the proposal run's artifacts, promotion included."""
+
+    def __init__(self, *stored) -> None:
+        self.stored = {ref.artifact_id: (ref, content) for ref, content in stored}
+
+    async def retrieve(self, artifact_id):
+        return self.stored[artifact_id]
+
+    async def store(self, ref, content):
+        self.stored[ref.artifact_id] = (ref, content)
+        return ref
+
+    async def list_artifacts(self, *, run_id=None, promotion_status=None, **_):
+        return [
+            ref
+            for ref, _ in self.stored.values()
+            if (run_id is None or ref.run_id == run_id)
+            and (promotion_status is None or ref.promotion_status == promotion_status)
+        ]
+
+    async def promote_artifact(self, artifact_id):
+        ref, content = self.stored[artifact_id]
+        self.stored[artifact_id] = (dataclasses.replace(ref, promotion_status="promoted"), content)
+
+
 @pytest.fixture
 def executor(campaigns):
     from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
-    artifacts = {
-        "art_cr": _ref("art_cr", "change_request", "change_request.yaml", _CHANGE_REQUEST),
-        "art_manifest": _ref(
-            "art_manifest", "document", "interface_manifest.yaml", _QUESTION_FREE_MANIFEST
-        ),
-    }
-    vault = AsyncMock()
-    vault.retrieve.side_effect = lambda artifact_id: artifacts[artifact_id]
-    vault.list_artifacts.return_value = []
+    vault = _Vault(
+        _ref("art_cr", "change_request", "change_request.yaml", _CHANGE_REQUEST),
+        _ref("art_manifest", "document", "interface_manifest.yaml", _QUESTION_FREE_MANIFEST),
+    )
     exec_ = DispatchedFlowExecutor(
         cycle_registry=AsyncMock(),
         artifact_vault=vault,
@@ -175,7 +221,9 @@ async def test_the_gate_submits_the_proposal_and_waits_for_the_ruling(executor, 
     executor._poll_inter_workload_gate.assert_awaited_once()
     assert executor._poll_inter_workload_gate.await_args.args[2] == INCREMENT_RULING_GATE
     assert stored.state is CampaignState.AWAITING_RULING
-    assert stored.proposal.binding == ProposalBinding("prop_cap", 1, "hash-cap-v1", "sha-accepted")
+    assert stored.proposal.binding == ProposalBinding(
+        "prop_cap", 1, _REQUEST.content_hash, "sha-accepted"
+    )
     assert (stored.proposal.cycle_id, stored.proposal.run_id) == ("cyc_inc", "run_prop")
 
 
@@ -276,3 +324,42 @@ async def test_a_revision_without_the_campaigns_budget_is_refused(revising):
     )
     with pytest.raises(ValueError, match="no max_revisions"):
         await _reach_the_gate(revising, cycle)
+
+
+async def test_an_approval_seeds_the_candidate_manifest_and_forwards_it_to_framing(executor):
+    """SIP-0109 §7.3, #1705 step a. Bugs caught: the increment's framing authoring a fresh
+    manifest from the PRD (greenfield) instead of binding to the accepted one with the approved
+    delta applied, or the seed lost at the next advance because forwarding is rebuilt from
+    durable state (#434)."""
+    from squadops.campaigns.change_request import apply_manifest_delta
+    from squadops.campaigns.gate import INCREMENT_SEED_PRODUCER
+
+    await _reach_the_gate(executor, _cycle(CID))
+    await _reach_the_gate(executor, _cycle(CID))  # a re-entry after a restart
+
+    stored = executor._artifact_vault.stored
+    seeds = [(r, c) for r, c in stored.values() if r.artifact_type == "interface_manifest"]
+    contracts = [r for r, _ in stored.values() if r.artifact_type == "verification_contract"]
+    [(seed, content)] = seeds
+    [contract] = contracts
+    assert content.decode() == apply_manifest_delta(_BASELINE, _REQUEST.manifest_delta)
+    assert seed.metadata["producing_task_type"] == INCREMENT_SEED_PRODUCER
+    assert (seed.promotion_status, contract.promotion_status) == ("promoted", "promoted")
+
+    forwarded = await executor._build_forwarding_overrides(_cycle(CID), _PROPOSAL_RUN)
+
+    assert seed.artifact_id in forwarded["plan_artifact_refs"]
+    assert forwarded["contract_ref"] == contract.artifact_id
+
+
+async def test_a_change_request_altered_after_its_ruling_is_refused_at_the_seed(executor):
+    """Bug caught: a stored change request edited after the supervisor approved its hash
+    seeding a manifest nobody ruled on."""
+    from squadops.campaigns.change_request import ChangeRequestError
+
+    ref, content = executor._artifact_vault.stored["art_cr"]
+    tampered = content.decode().replace("capacity", "capacitee", 1).encode()
+    executor._artifact_vault.stored["art_cr"] = (ref, tampered)
+
+    with pytest.raises(ChangeRequestError, match="does not match its hash"):
+        await executor._workload_gate._seed_increment(_cycle(CID), _PROPOSAL_RUN)

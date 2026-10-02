@@ -225,6 +225,30 @@ def parse_change_request(
     return request
 
 
+def load_stored_change_request(document: str) -> ChangeRequest:
+    """A change request as the proposal run stored it (``change_request.yaml``): the authored
+    content, parsed by the one parse, with the framework's derived fields restored. The stored
+    hash must be the content's, so a document altered after it was ruled on is refused."""
+    data = yaml.safe_load(document)
+    if not isinstance(data, dict):
+        raise ChangeRequestError("a stored change request is a mapping")
+    try:
+        request = parse_change_request(
+            {k: v for k, v in data.items() if k not in _DERIVED_FIELDS},
+            proposal_id=str(data["proposal_id"]),
+            version=int(data["version"]),
+            baseline_tree=str(data["baseline_tree"]),
+        )
+    except KeyError as e:
+        raise ChangeRequestError(f"the stored change request has no {e}") from e
+    stored_hash = str(data.get("content_hash") or "")
+    if content_hash(request) != stored_hash:
+        raise ChangeRequestError("the stored change request's content does not match its hash")
+    return dataclasses.replace(
+        request, footprint=tuple(data.get("footprint") or ()), content_hash=stored_hash
+    )
+
+
 def _text(raw: Any, key: str) -> str:
     value = raw[key]
     if not isinstance(value, str) or not value.strip():
