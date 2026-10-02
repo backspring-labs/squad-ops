@@ -54,6 +54,7 @@ class QAEvaluateIncrementHandler(CapabilityHandler):
             NewCriterion,
             evaluate_increment,
             evaluation_document,
+            frozen_criteria_from,
         )
         from squadops.campaigns.evaluator_trees import FileTree, TestSurface
         from squadops.campaigns.increment_tree import (
@@ -86,18 +87,20 @@ class QAEvaluateIncrementHandler(CapabilityHandler):
                 inputs, started, success=False, error=f"no {', no '.join(missing)} to evaluate"
             )
 
+        new = [
+            NewCriterion(f["criterion_id"], f["path"])
+            for f in inputs.get("increment_criterion_files") or ()
+        ]
         evaluation = await evaluate_increment(
             increment_id=increment_id,
             accepted=accepted,
             candidate=candidate,
             surface=TestSurface.for_stack(stack),
-            new=[
-                NewCriterion(f["criterion_id"], f["path"])
-                for f in inputs.get("increment_criterion_files") or ()
-            ],
-            # §8.1's frozen bundles arrive with promotion (#1705 e, part 2); the first increment
-            # after calibration has none.
-            frozen=(),
+            new=new,
+            # §8.1: every criterion earlier increments froze, by the bundle its launch pinned.
+            frozen=frozen_criteria_from(
+                inputs.get("increment_frozen_criteria") or (), inputs.get("frozen_bundles") or {}
+            ),
             declared_routes={
                 path: tuple(ids)
                 for path, ids in (inputs.get("increment_declared_routes") or {}).items()
@@ -107,7 +110,7 @@ class QAEvaluateIncrementHandler(CapabilityHandler):
             invocation=(framework,),
         )
         document = evaluation_document(
-            evaluation, increment_id=increment_id, accepted=accepted, candidate=candidate
+            evaluation, increment_id=increment_id, accepted=accepted, candidate=candidate, new=new
         )
         return self._result(
             inputs,

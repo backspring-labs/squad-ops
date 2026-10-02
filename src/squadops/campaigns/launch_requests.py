@@ -53,11 +53,17 @@ def start_transition(
     )
 
 
-def increment_launch(campaign: Campaign, baseline_manifest: str) -> LaunchRequest:
+def increment_launch(
+    campaign: Campaign, baseline_manifest: str, frozen: tuple[dict, ...] = ()
+) -> LaunchRequest:
     """An increment cycle (§7.3): the policy's proposal profile, run by its squad, proposing
     against the accepted tree. The ``campaign_proposal`` block carries what the proposal run
     reads — the accepted tree's identity and its manifest's text (the agent has no vault, #1821),
-    the objective — and the campaign's revision budget, which the increment gate spends (§9.5)."""
+    the objective — and the campaign's revision budget, which the increment gate spends (§9.5).
+
+    ``frozen`` is every criterion earlier increments froze (§8.1), each with its own test file and
+    its verifier bundle's artifact: pinned at launch, so the proposal knows the ids it may not
+    reuse and the evaluation runs exactly these bundles, whatever is promoted meanwhile."""
     policy = campaign.policy
     assert campaign.accepted is not None
     return LaunchRequest(
@@ -79,7 +85,8 @@ def increment_launch(campaign: Campaign, baseline_manifest: str) -> LaunchReques
                             "allowed_scope": list(campaign.objective.allowed_scope),
                             "measurement": campaign.objective.measurement,
                         },
-                        "prior_criteria": [],
+                        "prior_criteria": [f["criterion_id"] for f in frozen],
+                        "frozen_criteria": [dict(f) for f in frozen],
                         "max_revisions": policy.max_proposal_revisions,
                     }
                 },

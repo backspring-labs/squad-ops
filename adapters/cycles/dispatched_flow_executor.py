@@ -2545,10 +2545,17 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 extra_inputs["assembly_notes"] = notes
 
         if contract.increment_evaluation:
-            from squadops.campaigns.increment_tree import accepted_tree_contents
+            from squadops.campaigns.increment_tree import (
+                accepted_tree_contents,
+                frozen_bundle_contents,
+            )
 
+            resolved = envelope.inputs.get("resolved_config")
             extra_inputs["accepted_tree_files"] = await accepted_tree_contents(
-                self._artifact_vault, envelope.inputs.get("resolved_config"), stored_artifacts
+                self._artifact_vault, resolved, stored_artifacts
+            )
+            extra_inputs["frozen_bundles"] = await frozen_bundle_contents(
+                self._artifact_vault, resolved
             )
 
         if contract.acceptance_workspace:

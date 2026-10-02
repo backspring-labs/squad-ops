@@ -32,10 +32,14 @@ from squadops.campaigns.continuation import (
     Guard,
     PendingAction,
     campaign_continuation_decision,
-    latest_verdict,
+    cycle_verdict,
 )
 from squadops.campaigns.evaluator_trees import FileTree
 from squadops.campaigns.evidence import CycleRecords, digest, package
+from squadops.campaigns.increment_tree import (
+    INCREMENT_EVALUATION_ARTIFACT_TYPE,
+    VERIFIER_BUNDLE_ARTIFACT_TYPE,
+)
 from squadops.campaigns.launch_requests import increment_launch
 from squadops.campaigns.models import (
     AcceptedTree,
@@ -180,6 +184,40 @@ def held_action(log: list) -> PendingAction | None:
     return None
 
 
+#: The cycles whose accepted tree a promotion makes the campaign's (§12a).
+_PROMOTED_KINDS = (CycleKind.CALIBRATION, CycleKind.INCREMENT)
+
+
+def increment_verdict(
+    kind: CycleKind, ending: CycleEnding, evaluation: dict | None
+) -> RunVerdict | None:
+    """An increment's own acceptance (§8): its evaluation's verdict. One that reached its
+    assessment without an evaluation is ``blocked_unverified`` — never accepted unjudged. ``None``
+    for every other cycle, and for an increment that never reached its build."""
+    if kind is not CycleKind.INCREMENT or ending is not CycleEnding.ASSESSED:
+        return None
+    if evaluation is None:
+        return RunVerdict.BLOCKED_UNVERIFIED
+    try:
+        return RunVerdict(str(evaluation.get("verdict")))
+    except ValueError:
+        return RunVerdict.BLOCKED_UNVERIFIED
+
+
+def frozen_criteria(log: list) -> tuple[dict, ...]:
+    """Every criterion the campaign's promotions froze (§8.1), from the control log, in order."""
+    frozen: dict[str, dict] = {}
+    for entry in log:
+        if (
+            entry.operation is not ControlOperation.PROMOTE
+            or entry.outcome is not ControlOutcome.APPLIED
+        ):
+            continue
+        for criterion in entry.binding.get("frozen_criteria") or ():
+            frozen[criterion["criterion_id"]] = dict(criterion)
+    return tuple(frozen.values())
+
+
 def decision_key(cycle_id: str) -> str:
     """One decision per campaign cycle (§10): the key is the cycle's."""
     return f"decide:{cycle_id}"
@@ -283,12 +321,19 @@ class CampaignProgress:
             return None
 
         latest = await self._assess(cycle.cycle_id)
-        verdict = latest_verdict(latest)
         ending = cycle_ending(stopped_because, last_run)
         kind = CycleKind(cycle.kind)
+        evaluation = None
+        if kind is CycleKind.INCREMENT and ending is CycleEnding.ASSESSED:
+            evaluation = await self._increment_evaluation(last_run)
+        ended = EndedCycle(
+            cycle.cycle_id, kind, ending, increment_verdict(kind, ending, evaluation)
+        )
+        verdict = cycle_verdict(latest, ended)
 
-        if kind is CycleKind.CALIBRATION and verdict is RunVerdict.ACCEPTED:
-            campaign = await self._promote(campaign, cycle, last_run)
+        # §12a: a calibration's tree, and an increment's when its own acceptance holds too (§8.4).
+        if kind in _PROMOTED_KINDS and verdict is RunVerdict.ACCEPTED:
+            campaign = await self._promote(campaign, cycle, last_run, evaluation)
         if campaign.state in _RUNNING_STATES:
             campaign = await self._evaluating(campaign, cycle)
 
@@ -303,7 +348,7 @@ class CampaignProgress:
                 now=self._clock(),
                 objective_met=False,
             ),
-            EndedCycle(cycle.cycle_id, kind, ending),
+            ended,
             latest,
         )
         launch, unbuilt = None, None
@@ -339,9 +384,13 @@ class CampaignProgress:
             await self.materialize_package(campaign.campaign_id)
         return decision
 
-    async def _promote(self, campaign: Campaign, cycle: Cycle, last_run: Run) -> Campaign:
+    async def _promote(
+        self, campaign: Campaign, cycle: Cycle, last_run: Run, evaluation: dict | None = None
+    ) -> Campaign:
         """§12a: the accepted tree is the files the cycle delivered, identified by their hash,
-        in a transition of its own keyed by the cycle and that identity."""
+        in a transition of its own keyed by the cycle and that identity. An increment's new
+        criteria are frozen with it (§8.1): each bundle stored, and named on the row, so every
+        later increment is launched with it."""
         refs = await self._vault.list_artifacts(cycle_id=cycle.cycle_id, run_id=last_run.run_id)
         chosen = delivered_files(StoredArtifact.from_record(dataclasses.asdict(r)) for r in refs)
         files = {}
@@ -349,6 +398,7 @@ class CampaignProgress:
             _ref, content = await self._vault.retrieve(art_id)
             files[name] = content
         identity = FileTree.of(files).identity
+        frozen = await self._freeze_bundles(cycle, last_run, evaluation)
         result = await self._campaigns.transition(
             campaign.campaign_id,
             CampaignTransition(
@@ -359,7 +409,12 @@ class CampaignProgress:
                 idempotency_key=f"promote:{cycle.cycle_id}:{identity}",
                 next_state=campaign.state,
                 target=cycle.cycle_id,
-                binding={"cycle_id": cycle.cycle_id, "identity": identity, "files": len(files)},
+                binding={
+                    "cycle_id": cycle.cycle_id,
+                    "identity": identity,
+                    "files": len(files),
+                    "frozen_criteria": frozen,
+                },
                 accepted=AcceptedTree(identity, cycle.cycle_id),
             ),
         )
@@ -484,6 +539,69 @@ class CampaignProgress:
             content,
         )
 
+    async def _increment_evaluation(self, run: Run) -> dict | None:
+        """The increment's evaluation (§8), as its implementation run wrote it, or ``None``."""
+        refs = await self._vault.list_artifacts(run_id=run.run_id)
+        written = sorted(
+            (r for r in refs if r.artifact_type == INCREMENT_EVALUATION_ARTIFACT_TYPE),
+            key=lambda r: str(r.created_at),
+        )
+        if not written:
+            return None
+        _ref, content = await self._vault.retrieve(written[-1].artifact_id)
+        try:
+            document = json.loads(content.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError):
+            logger.error("increment_evaluation_unreadable", extra={"run_id": run.run_id})
+            return None
+        return document if isinstance(document, dict) else None
+
+    async def _freeze_bundles(self, cycle: Cycle, run: Run, evaluation: dict | None) -> list[dict]:
+        """Store each new criterion's verifier bundle (§8.1), once: a replayed promotion finds
+        the bundle already stored under its address and reuses it."""
+        if not evaluation:
+            return []
+        stored = {
+            r.metadata.get("bundle_address"): r.artifact_id
+            for r in await self._vault.list_artifacts(cycle_id=cycle.cycle_id, run_id=run.run_id)
+            if r.artifact_type == VERIFIER_BUNDLE_ARTIFACT_TYPE
+        }
+        frozen = []
+        for criterion_id, bundle in sorted((evaluation.get("new_bundles") or {}).items()):
+            address = str(bundle["address"])
+            artifact_id = stored.get(address) or await self._store_bundle(
+                cycle, run, criterion_id, bundle
+            )
+            frozen.append(
+                {
+                    "criterion_id": criterion_id,
+                    "test_path": str(bundle.get("test_path") or ""),
+                    "bundle_ref": artifact_id,
+                    "bundle_address": address,
+                }
+            )
+        return frozen
+
+    async def _store_bundle(self, cycle: Cycle, run: Run, criterion_id: str, bundle: dict) -> str:
+        content = json.dumps(
+            {"criterion_id": criterion_id, **bundle}, indent=2, sort_keys=True
+        ).encode("utf-8")
+        ref = ArtifactRef(
+            artifact_id=f"art_{uuid.uuid4().hex[:12]}",
+            project_id=cycle.project_id,
+            artifact_type=VERIFIER_BUNDLE_ARTIFACT_TYPE,
+            filename=f"verifier_bundle_{criterion_id}.json",
+            content_hash=hashlib.sha256(content).hexdigest(),
+            size_bytes=len(content),
+            media_type="application/json",
+            created_at=self._clock(),
+            cycle_id=cycle.cycle_id,
+            run_id=run.run_id,
+            metadata={"criterion_id": criterion_id, "bundle_address": str(bundle["address"])},
+        )
+        await self._vault.store(ref, content)
+        return ref.artifact_id
+
     async def _propose_launch(self, campaign: Campaign) -> LaunchRequest | str:
         """The increment cycle a ``propose`` writes, from the accepted tree's manifest — or why
         it cannot be launched."""
@@ -496,8 +614,9 @@ class CampaignProgress:
         if not manifests:
             return f"the accepted cycle {campaign.accepted.cycle_id} stored no interface manifest"
         _ref, content = await self._vault.retrieve(manifests[-1].artifact_id)
+        frozen = frozen_criteria(await self._campaigns.control_log(campaign.campaign_id))
         try:
-            return increment_launch(campaign, content.decode("utf-8"))
+            return increment_launch(campaign, content.decode("utf-8"), frozen)
         except FileNotFoundError as e:
             return f"the policy's proposal profile cannot be loaded: {e}"
 

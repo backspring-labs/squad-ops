@@ -49,6 +49,24 @@ class EndedCycle:
     cycle_id: str
     kind: CycleKind
     ending: CycleEnding
+    #: §8: an increment's own acceptance — its evaluation's verdict, or ``blocked_unverified``
+    #: when the evaluation was never written. ``None`` for every other cycle.
+    increment_verdict: RunVerdict | None = None
+
+
+def cycle_verdict(latest: CycleAssessment, cycle: EndedCycle) -> RunVerdict | None:
+    """The verdict the decision reads (§8.4). A calibration's is the cycle's own. An increment is
+    accepted only when the cycle's acceptance and its own (§8) both accepted: either rejecting
+    rejects it, and anything unread leaves it ``blocked_unverified``, never accepted."""
+    verdict = latest_verdict(latest)
+    if verdict is None or cycle.increment_verdict is None:
+        return verdict
+    pair = {verdict, cycle.increment_verdict}
+    if RunVerdict.REJECTED in pair:
+        return RunVerdict.REJECTED
+    if pair == {RunVerdict.ACCEPTED}:
+        return RunVerdict.ACCEPTED
+    return RunVerdict.BLOCKED_UNVERIFIED
 
 
 @dataclass(frozen=True)
@@ -169,7 +187,7 @@ def campaign_continuation_decision(
             f"the assessment is of {latest.cycle_id}, the decision is for {cycle.cycle_id}"
         )
     policy = campaign.policy
-    verdict = latest_verdict(latest)
+    verdict = cycle_verdict(latest, cycle)
     primary = latest_primary(latest)
     repairs_remain = counters.repair_cycles < policy.max_repair_cycles_per_increment
     retries_remain = counters.retry_cycles < policy.max_retry_cycles_per_increment

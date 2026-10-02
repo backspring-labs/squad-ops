@@ -234,3 +234,36 @@ def test_an_assessment_of_another_cycle_is_refused():
 def test_a_malformed_decision_cannot_be_constructed(kwargs):
     with pytest.raises(ValueError):
         ContinuationDecision(CYCLE, **kwargs)
+
+
+@pytest.mark.parametrize(
+    ("cycle_verdict", "increment_verdict", "expected_row"),
+    [
+        (_ACC, _ACC, 7),  # both accepted: the next increment is proposed
+        (_ACC, _BLK, 8),  # a route nobody rendered (§8.3): repaired, never proposed past
+        (_ACC, _REJ, 12),  # a criterion that does not discriminate (§8.2)
+        (_BLK, _ACC, 8),
+        (_REJ, _ACC, 12),
+    ],
+    ids=[
+        "both-accepted",
+        "increment-blocked",
+        "increment-rejected",
+        "cycle-blocked",
+        "cycle-rejected",
+    ],
+)
+def test_an_increment_is_accepted_only_when_its_own_acceptance_is(
+    cycle_verdict, increment_verdict, expected_row
+):
+    """§8.4. Bug caught: an increment whose cycle passed its own checks read as accepted while
+    its new criterion never discriminated, or a declared page never rendered — the next increment
+    proposed on top of an unproven one."""
+    decision = campaign_continuation_decision(
+        CAMPAIGN,
+        counters(),
+        EndedCycle(CYCLE, CycleKind.INCREMENT, CycleEnding.ASSESSED, increment_verdict),
+        assessment(cycle_verdict),
+    )
+
+    assert decision.row == expected_row

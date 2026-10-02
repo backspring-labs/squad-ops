@@ -1329,6 +1329,36 @@ promotion to store.
   after calibration has none.
 - **The completion hook does not read the artifact yet** (part 2).
 
+
+### 24o. An increment's promotion, and the criteria it freezes, as built (2026-10-02, #1705 e, part 2; decided under the 2.0 charter)
+
+- **The decision reads the increment's own acceptance (§8.4).**
+  - **What it reads:** the completion hook reads the implementation run's `increment_evaluation`
+    artifact (§24n). `EndedCycle` carries its verdict.
+  - **How the two verdicts combine** (`cycle_verdict`):
+    - if either the cycle's verdict or the increment's is `rejected`, the increment is rejected;
+    - only when both are `accepted` is the increment accepted;
+    - anything else is `blocked_unverified`.
+  - **A missing evaluation:** an increment that reached its assessment with none is
+    `blocked_unverified`, never accepted unjudged.
+- **An accepted increment is promoted as a calibration is** (§12a): its delivered tree becomes the
+  campaign's accepted tree, in a PROMOTE row keyed by the cycle and that identity.
+- **Its new criteria are frozen with it** (§8.1).
+  - **What is stored:** each new criterion's bundle, as a `verifier_bundle` artifact (files,
+    invocation, address, test path). A replayed promotion finds the bundle by address and reuses it.
+  - **Where they are named:** in the PROMOTE row's `frozen_criteria`. The control log is the record.
+- **Every later increment's launch pins the criteria frozen so far** in its `campaign_proposal`
+  block.
+  - **`prior_criteria`:** the ids the proposal may not reuse (`reused_criterion`, §24m).
+  - **`frozen_criteria`:** each criterion's test path, bundle artifact and address.
+  - **How the evaluation uses them:** at dispatch it is handed the pinned bundles and runs each on the
+    candidate. A bundle that is missing, unreadable, or no longer hashes to its pinned address is
+    never run, and is `blocked_unverified` (SIP-0096).
+- **Not built:**
+  - **retirement:** `retires` and `replaces_verifiers` do not yet remove a frozen criterion;
+  - **route rendering:** every increment that declares a route stays `blocked_unverified` until
+    rendering is read (§8.3, part 3). It is repaired by row 8 and never promoted.
+
 ---
 
 ## Revision history
