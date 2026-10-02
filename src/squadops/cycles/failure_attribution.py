@@ -169,6 +169,7 @@ PLAN_VALIDATORS: tuple[str, ...] = (
     "validate_frozen_artifact_ownership",
     "validate_increment_criterion_files",
     "validate_increment_footprint",
+    "validate_increment_frozen_files",
     "validate_manifest_plan_consistency",
     "validate_module_existence",
     "validate_qa_artifact_ownership",

@@ -1407,6 +1407,26 @@ declared test id. The root anchor is the first declared id, stamped on the view'
 `npx` left the dev server it started still serving and writing into the workspace being removed.
 Each server now runs in a session of its own and its whole process group is stopped. No process
 outlived the second reading.
+### 24r. Frozen verifiers protected, and retirement, as built (2026-10-02, §19 items 7 and 12e; decided under the 2.0 charter)
+
+- **No plan writes an earlier criterion's frozen test file** (`validate_increment_frozen_files`).
+  - **What is protected:** the launch pins the frozen criteria with their test paths (§24o). Each is
+    protected unless the approved change request retires it or replaces its verifier.
+  - **How:** refused at the plan gate the framing re-roll keys on, and taught first
+    (`request.plan_increment_frozen_appendix`).
+- **A candidate that rewrote a frozen verifier is not accepted on it.**
+  - **The bundle still runs as frozen:** the candidate's copy is never what is judged.
+  - **The criterion is blocked:** if the candidate's copy of the test file differs from its bundle
+    without a `retires` entry, the criterion is `blocked_unverified`, and so is the increment (§19
+    item 7).
+- **Retirement:**
+  - **Dropped from the run:** a criterion the change request retires, or whose verifier it replaces,
+    is dropped from the evaluation's frozen set.
+  - **Recorded at promotion:** the promotion records it (`retired_criteria` on the PROMOTE row), and
+    the frozen set every later launch pins leaves it out.
+- **Not built: re-freezing a replaced verifier.** `replaces_verifiers` is treated as retirement, so the
+  replacement's new bundle is not frozen. A change that replaces a verifier leaves that behaviour
+  unfrozen until a later criterion covers it.
 
 ---
 

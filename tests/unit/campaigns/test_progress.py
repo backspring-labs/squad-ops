@@ -490,3 +490,37 @@ async def test_an_increment_not_proven_by_its_own_acceptance_is_not_promoted(
     assert not [e for e in log if e.operation is ControlOperation.PROMOTE and e.target == "cyc_inc"]
     assert (log[-1].binding["row"], log[-1].binding["verdict"]) == (8, "blocked_unverified")
     assert not any(r.artifact_type == "verifier_bundle" for r, _ in stored.values())
+
+
+def test_a_retired_criterion_leaves_the_frozen_set_and_a_later_one_takes_its_place():
+    """§8.1. Bug caught: a criterion an increment retired still pinned for every later launch —
+    run on every candidate and blocking the very change that ruled it out."""
+    from squadops.campaigns.models import ControlLogEntry, ControlOutcome
+    from squadops.campaigns.progress import frozen_criteria
+
+    def promote(seq, frozen, retired=()):
+        return ControlLogEntry(
+            entry_id=f"ctl_{seq}",
+            campaign_id=CID,
+            seq=seq,
+            operation=ControlOperation.PROMOTE,
+            actor="squadops",
+            actor_role="completion",
+            reason="r",
+            target=f"cyc_{seq}",
+            idempotency_key=f"promote:{seq}",
+            request_hash="h",
+            binding={
+                "frozen_criteria": [{"criterion_id": c, "bundle_ref": f"art_{c}"} for c in frozen],
+                "retired_criteria": list(retired),
+            },
+            outcome=ControlOutcome.APPLIED,
+            refusal=None,
+            prior_state=CampaignState.PROMOTING,
+            next_state=CampaignState.AT_PROPOSAL,
+            committed_at=NOW,
+        )
+
+    log = [promote(1, ["C1", "C2"]), promote(2, ["C3"], retired=["C1"])]
+
+    assert [f["criterion_id"] for f in frozen_criteria(log)] == ["C2", "C3"]

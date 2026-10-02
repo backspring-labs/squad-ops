@@ -204,6 +204,8 @@ def increment_evaluation_inputs(
         "increment_frozen_criteria": [dict(f) for f in block.get("frozen_criteria") or ()],
         # §8.3: how each parameterized route's page is brought into being to be rendered.
         "increment_route_seeds": route_seeds(manifest),
+        # §8.1: the frozen criteria this change retires, or whose verifiers it replaces.
+        "increment_retired_criteria": list(retired_criteria(change_request)),
     }
 
 
@@ -277,3 +279,29 @@ def route_seeds(manifest: Any) -> dict[str, dict[str, Any]]:
             "param": params[0][1:],
         }
     return seeds
+
+
+def retired_criteria(change_request: str) -> tuple[str, ...]:
+    """The frozen criteria an approved change request retires, or whose verifier it replaces
+    (§8.1): either way the old bundle is no longer frozen. A replacement's new bundle is not
+    frozen yet (§24r)."""
+    from squadops.campaigns.change_request import load_stored_change_request
+
+    request = load_stored_change_request(change_request)
+    return tuple(sorted({r.criterion_id for r in (*request.retires, *request.replaces_verifiers)}))
+
+
+def increment_frozen_files(
+    resolved_config: Any, change_request: str | None
+) -> tuple[tuple[str, str], ...]:
+    """The test files of the criteria this increment's launch pinned as frozen and its approved
+    change does not retire (§8.1), as ``(criterion_id, path)``. Empty for any other cycle."""
+    if not change_request or increment_baseline(resolved_config) is None:
+        return ()
+    block = resolved_config.get("campaign_proposal") or {}
+    retired = set(retired_criteria(change_request))
+    return tuple(
+        (str(pin["criterion_id"]), str(pin["test_path"]))
+        for pin in block.get("frozen_criteria") or ()
+        if pin.get("test_path") and pin["criterion_id"] not in retired
+    )

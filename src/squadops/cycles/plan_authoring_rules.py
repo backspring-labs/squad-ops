@@ -73,6 +73,8 @@ COVERED_ELSEWHERE: dict[str, str] = {
     "validate_increment_footprint": "request.plan_increment_footprint_appendix",
     # SIP-0109 §8.1: rendered per increment with each new criterion's actual file.
     "validate_increment_criterion_files": "request.plan_increment_criteria_appendix",
+    # SIP-0109 §8.1: rendered per increment with the earlier criteria's actual frozen files.
+    "validate_increment_frozen_files": "request.plan_increment_frozen_appendix",
 }
 
 # Validators with no author-facing rule: nothing the author writes can trip them, or the

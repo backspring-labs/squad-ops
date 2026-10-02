@@ -251,3 +251,99 @@ async def test_the_plan_gate_refuses_a_plan_that_leaves_a_criterion_unproven(qa_
     )
 
     assert [e.split()[1] for e in errors if "is proven in its own test file" in e] == refused
+
+
+_F1 = "backend/tests/criteria/test_F1.py"
+
+
+def _with_frozen_f1(cycle: Cycle) -> Cycle:
+    import dataclasses
+
+    overrides = dict(cycle.execution_overrides)
+    overrides["campaign_proposal"] = {
+        **overrides["campaign_proposal"],
+        "frozen_criteria": [{"criterion_id": "F1", "test_path": _F1, "bundle_ref": "art_f1"}],
+    }
+    return dataclasses.replace(cycle, execution_overrides=overrides)
+
+
+def _retiring_f1() -> str:
+    """The reference change request, retiring the frozen F1 (a known earlier criterion)."""
+    authored = yaml.safe_load((_FIXTURES / "reference-capacity-change-request.yaml").read_text())
+    authored["retires"] = [{"criterion_id": "F1", "reason": "capacity replaces the open join"}]
+    request = validate_proposal(
+        authored,
+        ProposalContext(
+            "prop_cap",
+            1,
+            "sha-accepted",
+            BASELINE,
+            "fullstack_fastapi_react",
+            ("backend/**", "frontend/**"),
+            ("F1",),
+        ),
+    ).change_request
+    return stored_change_request(request)
+
+
+@pytest.mark.parametrize(
+    ("qa_files", "change_request", "refused"),
+    [
+        ((C1, C2, C3, _F1), STORED, ["F1"]),
+        ((C1, C2, C3), STORED, []),
+        ((C1, C2, C3, _F1), "retiring", []),
+    ],
+    ids=["rewrites-a-frozen-verifier", "leaves-it-alone", "the-change-retires-it"],
+)
+async def test_the_plan_gate_refuses_a_plan_that_rewrites_a_frozen_verifier(
+    qa_files, change_request, refused
+):
+    """§8.1, SIP-0109 §19 item 12e, entered at the plan gate. Bug caught: an increment's qa task
+    rewriting an earlier criterion's test to agree with the new change, so the regression it
+    exists to catch is edited away."""
+    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+
+    document = _retiring_f1() if change_request == "retiring" else change_request
+    vault = _Vault(_plan_yaml(("qa.test", qa_files)))
+    vault.stored["art_cr"] = (vault.stored["art_cr"][0], document.encode())
+    executor = DispatchedFlowExecutor(
+        cycle_registry=AsyncMock(),
+        artifact_vault=vault,
+        queue=AsyncMock(),
+        squad_profile=AsyncMock(),
+        task_timeout=5.0,
+    )
+    executor._cycle_event_bus = MagicMock()
+    run = Run(
+        "run_f",
+        "cyc_inc",
+        2,
+        "completed",
+        "system",
+        "cfg",
+        workload_type="framing",
+        artifact_refs=("art_plan", "art_seed", "art_cr"),
+    )
+
+    errors = await executor._reject_invalid_plan_before_workload_gate(
+        run, _with_frozen_f1(_cycle()), "progress_plan_review"
+    )
+
+    assert [
+        e.split("criterion ")[1].split(".")[0] for e in errors if "frozen verifier" in e
+    ] == refused
+
+
+def test_the_plan_authors_are_shown_the_frozen_verifiers():
+    from squadops.cycles.task_plan import inject_contract_inputs
+
+    contract = MagicMock()
+    contract.criteria_index_lines.return_value = ["- K1"]
+    contract.behavioral.probes = ()
+    inputs: dict = {}
+
+    inject_contract_inputs(
+        inputs, contract, "governance.merge_plan", None, None, (), (("F1", _F1),)
+    )
+
+    assert inputs["increment_frozen_files_index"] == f"- F1: `{_F1}`"

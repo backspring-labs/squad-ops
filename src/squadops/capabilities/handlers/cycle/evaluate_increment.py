@@ -127,6 +127,7 @@ class QAEvaluateIncrementHandler(CapabilityHandler):
             for path, ids in (inputs.get("increment_declared_routes") or {}).items()
         }
         candidate_files = dict(inputs.get("acceptance_workspace_files") or {})
+        retired = tuple(str(c) for c in inputs.get("increment_retired_criteria") or ())
         evaluation = await evaluate_increment(
             increment_id=increment_id,
             accepted=accepted,
@@ -141,9 +142,15 @@ class QAEvaluateIncrementHandler(CapabilityHandler):
             rendered=await _rendered(stack, candidate_files, declared, inputs),
             run=partial(run_suite, framework, timeout_seconds=_SUITE_TIMEOUT_SECONDS),
             invocation=(framework,),
+            retired=retired,
         )
         document = evaluation_document(
-            evaluation, increment_id=increment_id, accepted=accepted, candidate=candidate, new=new
+            evaluation,
+            increment_id=increment_id,
+            accepted=accepted,
+            candidate=candidate,
+            new=new,
+            retired=retired,
         )
         return self._result(
             inputs,
