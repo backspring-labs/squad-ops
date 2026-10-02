@@ -179,6 +179,55 @@ def digest(ctx: typer.Context, campaign_id: str = typer.Argument(...)):
     typer.echo(data["digest"])
 
 
+@app.command("ledger")
+def ledger(ctx: typer.Context, campaign_id: str = typer.Argument(...)):
+    """The proposal ledger (§9.4): each version, its ruling, its outcome, its classification."""
+    entries = _call(ctx, "get", f"/api/v1/campaigns/{campaign_id}/ledger")
+    fmt, quiet = _fmt(ctx)
+    if fmt == "json":
+        print_json(entries)
+        return
+    rows = [
+        [
+            f"{e['proposal_id']} v{e['version']}",
+            (e.get("ruling") or {}).get("decision", "—"),
+            str((e.get("outcome") or {}).get("row", "—")),
+            (e.get("classification") or {}).get("classification", "—"),
+        ]
+        for e in entries
+    ]
+    print_table(["Proposal", "Ruling", "Decided (row)", "Classified"], rows, quiet=quiet)
+
+
+@app.command("classify")
+def classify(
+    ctx: typer.Context,
+    campaign_id: str = typer.Argument(...),
+    proposal_id: str = typer.Option(..., "--proposal"),
+    version: int = typer.Option(..., "--version"),
+    classification: str = typer.Option(
+        ...,
+        "--as",
+        help="scope_too_large | criteria_not_checkable | conflicts_with_an_earlier_increment | "
+        "ambiguous_manifest_delta | sound_proposal_built_badly",
+    ),
+    reason: str = _REASON,
+    idempotency_key: str | None = _KEY,
+):
+    """Classify what went wrong with a proposal version (the supervisor's reading, §9.4)."""
+    key = _key(idempotency_key)
+    body = {
+        "proposal_id": proposal_id,
+        "version": version,
+        "classification": classification,
+        "reason": reason,
+        "idempotency_key": key,
+    }
+    _show_result(
+        ctx, _call(ctx, "post", f"/api/v1/campaigns/{campaign_id}/classifications", json=body), key
+    )
+
+
 @app.command("start")
 def start(
     ctx: typer.Context,

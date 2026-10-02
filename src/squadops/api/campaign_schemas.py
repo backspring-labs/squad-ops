@@ -69,6 +69,14 @@ class ResumeRequest(ControlRequest):
     action: str | None = None
 
 
+class ClassificationRequest(ControlRequest):
+    """The supervisor's classification of what went wrong with one proposal version (§9.4)."""
+
+    proposal_id: str
+    version: int
+    classification: str
+
+
 class AcceptedTreeDTO(BaseModel):
     identity: str
     cycle_id: str

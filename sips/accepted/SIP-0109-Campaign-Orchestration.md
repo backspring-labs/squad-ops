@@ -1107,6 +1107,27 @@ As built:
    The package holds what the records hold today. Those additions follow the readouts that
    produce them.
 
+
+### 24i. The proposal ledger, read from the control log (2026-10-02; implementer's reading, not yet ruled)
+
+**What changed:** §16 lists a `campaign_ledger` table. The ledger is built as a **projection of the
+control log** instead.
+
+**Why:** every part of a ledger entry is already a control-log row:
+- the version as submitted (`submit`);
+- its ruling, reason and author (`rule`);
+- its cycle's outcome (`decide`, attached to the last version that cycle carried);
+- the supervisor's classification.
+
+A second table would be a second record that can disagree with the authority.
+
+**As built:**
+- **The classification is a new record-only operation, `classify`** (migration 1660), taking one
+  of §9.4's five readings. It needs `campaigns:supervise`, so the supervisor classifies.
+- **It is accepted after the campaign has ended,** since the ledger is read the morning after. A
+  version never submitted to the gate cannot be classified.
+- **Reading it:** `GET …/ledger`, or `squadops campaigns ledger` and `squadops campaigns classify`.
+
 ---
 
 ## Revision history
