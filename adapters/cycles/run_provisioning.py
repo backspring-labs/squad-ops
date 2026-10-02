@@ -60,6 +60,7 @@ class RunProvisioning:
     #: What provisioning borrows from the executor, read at call time (§38) under the names the
     #: bodies below already used — the whole of its dependency on the executor.
     BORROWED = (
+        "_artifact_vault",
         "_cycle_event_bus",
         "_cycle_registry",
         "_load_contract_for_run",
@@ -224,4 +225,10 @@ class RunProvisioning:
                         interface_manifest, cycle, run_id
                     )
                 )
+                # SIP-0109 §7.3: an increment builds on the accepted tree. Its delivered files
+                # are produced content, so they take every slot the stubs above would fill
+                # (#881); only what the increment adds stays a stub.
+                from squadops.campaigns.increment_tree import accepted_tree_refs
+
+                seed_artifact_refs.extend(await accepted_tree_refs(self._artifact_vault, cycle))
         return seed_artifact_refs, interface_manifest

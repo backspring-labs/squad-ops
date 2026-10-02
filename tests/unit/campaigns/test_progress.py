@@ -363,6 +363,8 @@ def test_the_increment_launch_reads_its_profile_from_the_policy():
     body = increment_launch(c, MANIFEST).cycle_request["body"]
 
     assert (body["request_profile"], body["squad_profile_id"]) == ("campaign-proposal", "full-38")
+    # The increment builds on the accepted cycle's delivered files (§7.1, #1705 c1).
+    assert body["execution_overrides"]["campaign_proposal"]["accepted_cycle_id"] == "cyc_cal"
     assert yaml.safe_load(MANIFEST) == yaml.safe_load(
         body["execution_overrides"]["campaign_proposal"]["baseline_manifest"]
     )
