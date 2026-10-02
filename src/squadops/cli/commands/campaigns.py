@@ -168,6 +168,17 @@ _KEY = typer.Option(None, "--idempotency-key", help="Resend a key to replay, not
 _EXPECTED = typer.Option(None, "--expected-state", help="Refuse if the campaign has moved")
 
 
+@app.command("digest")
+def digest(ctx: typer.Context, campaign_id: str = typer.Argument(...)):
+    """Print the campaign's morning digest, from its latest evidence package (§14)."""
+    data = _call(ctx, "get", f"/api/v1/campaigns/{campaign_id}/package")
+    fmt, _quiet = _fmt(ctx)
+    if fmt == "json":
+        print_json(data)
+        return
+    typer.echo(data["digest"])
+
+
 @app.command("start")
 def start(
     ctx: typer.Context,

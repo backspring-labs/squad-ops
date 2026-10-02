@@ -16,7 +16,10 @@ decision already recorded for the cycle is returned, not recomputed (§8.4).
 from __future__ import annotations
 
 import dataclasses
+import hashlib
+import json
 import logging
+import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -32,6 +35,7 @@ from squadops.campaigns.continuation import (
     latest_verdict,
 )
 from squadops.campaigns.evaluator_trees import FileTree
+from squadops.campaigns.evidence import CycleRecords, digest, package
 from squadops.campaigns.launch_requests import increment_launch
 from squadops.campaigns.models import (
     AcceptedTree,
@@ -49,10 +53,13 @@ from squadops.cycles.contract_derivation import is_interface_manifest
 from squadops.cycles.cycle_assessment import CycleAssessment
 from squadops.cycles.cycle_end import CycleStopReason
 from squadops.cycles.delivered_tree import StoredArtifact, delivered_files
-from squadops.cycles.models import Cycle, Run, RunStatus, WorkloadType
+from squadops.cycles.models import ArtifactRef, Cycle, Run, RunStatus, WorkloadType
 from squadops.cycles.verification_integrity import RunVerdict
 
 logger = logging.getLogger(__name__)
+
+#: The vault type of a campaign's evidence package and digest (§14).
+EVIDENCE_ARTIFACT_TYPE = "campaign_evidence"
 
 #: The role on the rows the completion boundary writes for the campaign.
 COMPLETION_ROLE = "completion"
@@ -328,6 +335,8 @@ class CampaignProgress:
             return decision
         if result.intent is not None:
             await self._launch()
+        if decision.terminal:
+            await self.materialize_package(campaign.campaign_id)
         return decision
 
     async def _promote(self, campaign: Campaign, cycle: Cycle, last_run: Run) -> Campaign:
@@ -388,6 +397,91 @@ class CampaignProgress:
             expected_state=campaign.state,
             binding={"action": action.value, "executes": "held" if held else "ruling"},
             launch=built,
+        )
+
+    async def materialize_package(self, campaign_id: str) -> tuple[str, str, str]:
+        """Store the campaign's evidence package and its digest (§14, #1710): a projection of
+        its records, idempotent by the package's identity. Returns (identity, the package's
+        artifact id, the digest's). A cycle whose assessment cannot be read is in the package
+        with the reason, never left out."""
+        campaign = await self._campaigns.get_campaign(campaign_id)
+        log = await self._campaigns.control_log(campaign_id)
+        launches = await self._campaigns.launch_intents(campaign_id)
+        records = []
+        for intent in launches:
+            if not intent.cycle_id:
+                continue
+            try:
+                assessment = await self._assess(intent.cycle_id)
+            except Exception as e:  # noqa: BLE001 — the package says what it could not read
+                assessment = {"unreadable": f"{type(e).__name__}: {e}"}
+            records.append(
+                CycleRecords(
+                    cycle_id=intent.cycle_id,
+                    kind=intent.cycle_kind.value,
+                    assessment=assessment,
+                    failure_records=await self._cycles.get_failure_records(intent.cycle_id),
+                )
+            )
+        doc = package(campaign, log, launches, records)
+        for ref in await self._vault.list_artifacts(
+            project_id=campaign.project_id, artifact_type=EVIDENCE_ARTIFACT_TYPE
+        ):
+            if (
+                ref.metadata.get("campaign_id") == campaign_id
+                and ref.metadata.get("identity") == doc["identity"]
+                and ref.metadata.get("part") == "package"
+            ):
+                digest_id = ref.metadata.get("digest_artifact_id", "")
+                return doc["identity"], ref.artifact_id, digest_id
+        digest_ref = await self._store_evidence(
+            campaign,
+            doc["identity"],
+            "digest",
+            f"campaign-{campaign_id}-digest.md",
+            digest(doc).encode("utf-8"),
+            "text/markdown",
+            {},
+        )
+        package_ref = await self._store_evidence(
+            campaign,
+            doc["identity"],
+            "package",
+            f"campaign-{campaign_id}-package.json",
+            json.dumps(doc, sort_keys=True, indent=1).encode("utf-8"),
+            "application/json",
+            {"digest_artifact_id": digest_ref.artifact_id},
+        )
+        return doc["identity"], package_ref.artifact_id, digest_ref.artifact_id
+
+    async def _store_evidence(
+        self,
+        campaign: Campaign,
+        identity: str,
+        part: str,
+        filename: str,
+        content: bytes,
+        media_type: str,
+        extra: dict,
+    ):
+        return await self._vault.store(
+            ArtifactRef(
+                artifact_id=f"art_{uuid.uuid4().hex[:12]}",
+                project_id=campaign.project_id,
+                artifact_type=EVIDENCE_ARTIFACT_TYPE,
+                filename=filename,
+                content_hash=hashlib.sha256(content).hexdigest(),
+                size_bytes=len(content),
+                media_type=media_type,
+                created_at=self._clock(),
+                metadata={
+                    "campaign_id": campaign.campaign_id,
+                    "identity": identity,
+                    "part": part,
+                    **extra,
+                },
+            ),
+            content,
         )
 
     async def _propose_launch(self, campaign: Campaign) -> LaunchRequest | str:

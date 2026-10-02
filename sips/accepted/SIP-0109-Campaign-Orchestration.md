@@ -1077,6 +1077,36 @@ As built:
    profile that cannot be loaded at a later launch escalates the campaign with that reason; it
    never leaves the decision unwritten.
 
+
+### 24h. The evidence package, as built (2026-10-02, #1710; implementer's reading, not yet ruled)
+
+1. **The package** is a JSON projection of the campaign's records:
+   - the campaign itself;
+   - its control log (every decision, with the ending and verdict it read);
+   - its launches;
+   - per launched cycle, the `CycleAssessment`, the latest persisted failure-record set, and the
+     decision that followed it.
+
+   **Identity:** the hash of its canonical form.
+2. **It is stored in the vault** (`campaign_evidence`), beside a **morning digest** in Markdown
+   rendered from the package alone:
+   - what was accepted;
+   - each cycle's kind, ending, verdict, decision and attribution;
+   - what the owner is asked to rule.
+3. **When it is materialized:** by a terminal decision, by an abort, and on request
+   (`POST …/package`, `campaigns:control`).
+   - **Idempotent by identity:** the same records store nothing new.
+   - **The close still commits** if the materialization fails, which is logged loudly.
+   - **Reading the digest:** `GET …/package` (`campaigns:read`) or `squadops campaigns digest`.
+4. **A cycle whose assessment cannot be read is in the package with the reason,** never left out.
+5. **Not yet in it:**
+   - the per-round revision forms and stored prompts #1710 lists;
+   - the log lines the readouts read;
+   - a size bound.
+
+   The package holds what the records hold today. Those additions follow the readouts that
+   produce them.
+
 ---
 
 ## Revision history
