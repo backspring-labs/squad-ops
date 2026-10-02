@@ -735,7 +735,7 @@ class CampaignProgress:
             for run in await self._cycles.list_runs(intent.cycle_id):
                 summary = await self._cycles.get_run_loop_summary(run.run_id)
                 if summary is not None:
-                    totals = summary.usage.totals()
+                    totals = summary.usage.total
                     tokens += totals.prompt_tokens + totals.completion_tokens
             records.append(CycleRecord(intent.cycle_kind, tokens))
         return records

@@ -221,6 +221,43 @@ async def test_an_accepted_calibration_is_promoted_then_proposes_against_its_tre
     w.launches.assert_awaited_once()
 
 
+@pytest.mark.parametrize(
+    ("tokens", "state", "paused_by"),
+    [(1_500_000, CampaignState.AT_PROPOSAL, None), (2_100_000, CampaignState.PAUSED, "budget")],
+    ids=["under-budget", "over-budget"],
+)
+async def test_a_cycles_stored_usage_reaches_the_budget_limit(
+    calibrating, tokens, state, paused_by
+):
+    """§9.2, #1857, entered at the completion hook with the run's real loop summary stored, as
+    every live run has. Bugs caught: the token counter crashing on the stored usage, so the hook
+    decides nothing and the campaign is left where it was; or the usage never counted, so the
+    budget limit never pauses."""
+    from squadops.cycles.llm_usage import RunUsage, UsageTotals
+    from squadops.cycles.run_loop_summary import RunLoopSummary
+
+    w, run = await calibrating(RunVerdict.ACCEPTED)
+    usage = UsageTotals(calls=2, prompt_tokens=tokens - 100_000, completion_tokens=100_000)
+    await w.cycles.record_run_loop_summary(
+        run.run_id,
+        RunLoopSummary(
+            run_id=run.run_id,
+            usage=RunUsage(
+                by_task_type={"development.develop": usage}, tasks_reported=2, tasks_unreported=()
+            ),
+        ),
+    )
+
+    await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
+
+    decision = (await w.campaigns.control_log(CID))[-1]
+    assert decision.operation is ControlOperation.DECIDE
+    assert ((await w.campaigns.get_campaign(CID)).state, decision.binding["paused_by"]) == (
+        state,
+        paused_by,
+    )
+
+
 async def test_the_decision_is_made_once_per_cycle(calibrating):
     """§8.4: re-entering returns the recorded decision, never a recomputed one. Bug caught: a
     re-entry after the clock crossed the elapsed limit deciding again — a second, conflicting
