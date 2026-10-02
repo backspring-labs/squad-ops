@@ -99,12 +99,12 @@ policy, and a campaign that evolves one app. The plan sequences its parts. The d
 |---|---|---|
 | **the campaign object** | — | model, registry (memory and Postgres), `Cycle.campaign_id`, lifecycle, `/api/v1/campaigns` and the CLI (SIP §9–§11) |
 | **the brownfield cycle** | #1705 | a cycle starts from the previous accepted tree plus a change request; the manifest moves by a delta the gates check; a failed increment leaves the baseline untouched |
-| **accumulated acceptance** | #1707, #1796 | an increment is accepted only if every earlier increment's acceptance still passes, **including each declared page rendering its view in a browser** (#1796) |
+| **accumulated acceptance** | #1707, #1796 | an increment is accepted only if every earlier increment's acceptance still passes, **including each declared page rendering its view in a browser** (#1796). **A feature or fix increment's new tests must fail on the baseline, as assertions** (the SIP's §8.1, from Verification Yield, §3.7) |
 | **the prior-cycle brief** | #1692 | a repair or retry cycle is told what the cycle before it did |
 | **the increment proposal, on the leash** | #1706, #1708 | §3.2 |
 | **the continuation policy** | — | the pure decision at the completion boundary (SIP §7). It reads `CycleAssessment` and never derives a grade itself |
 | **the calibration cycle** | #1709 | every campaign opens with group_run built from scratch, the same PRD every time, recorded as the campaign's yardstick |
-| **the evidence package and the morning digest** | #1710 | write-once campaign records, readable without the deploy that made them; the digest the owner reads |
+| **the evidence package and the morning digest** | #1710 | write-once campaign records, readable without the deploy that made them, with every failure under the failure-attribution registry's vocabulary (for Cross-Cycle Memory, §3.7); the digest the owner reads |
 | **campaign and deploy tags on Prefect runs** | #1728 | with #1720's deploy records |
 | **the request-profile taxonomy** | #316 | a continuation that names the next cycle's profile needs one coherent namespace (SIP §13) |
 
@@ -219,6 +219,16 @@ first job. 2.0's list has items that fit the operating model's §44.1 "safe firs
 The order and the gate are the crew's operating model to settle (the 09-28 note: "Nostromo's
 commissioning order … is the crew's operating model to settle").
 
+### 3.7 The other proposals reviewed at drafting (2026-10-01)
+
+The owner brought two more proposals to this plan's review. Each was checked against what exists, and
+placed:
+
+| proposal | exists? | before the first campaign | after |
+|---|---|---|---|
+| **Verification Yield and Test Value** (`sips/proposed/SIP-Verification-Yield.md`, new) | no. It overlaps `SIP-Test-First-Verification.md` (proposed in August, not built), which is its mechanism for the squad's own tests | **an increment's new tests must fail on its baseline** (Campaign SIP §8.1). Without it, accumulated acceptance is only as strong as its weakest, never-failing test | the stub-based red gate for greenfield cycles; risk-first qa instructions (an outer-loop experiment); the audit, fault corpus and deletion experiment on the framework's own suite (crew work); verification-cost reporting |
+| **Cross-Cycle Memory, the v4 draft** (`docs/ideas/cross-cycle-memory-v4-draft.md`) | **yes**: it is a later draft of `SIP-Cross-Cycle-Memory.md`, folded in as revision 3 (§5a) | **one line:** the evidence package records failures under the failure-attribution registry's vocabulary, so 2.2 mines campaigns without reconstructing them | all of it. v2.2 as ruled, with the empty recall rail in v2.1. Revision 3 proposes that only owner-approved patterns inject into counted cycles |
+
 ---
 
 ## 4. The verification story
@@ -229,6 +239,7 @@ commissioning order … is the crew's operating model to settle").
 |---|---|---|
 | the app evolves: two or more increments accepted on one tree, earlier increments still passing | the evidence package; accumulated acceptance per increment | a cycle's own verdict |
 | the strategy role's proposals hold up | the proposal ledger: rulings, reasons and outcomes | a count of proposals |
+| each increment's new tests can fail | the ledger's per-test baseline results (Campaign SIP §8.1) | a passing suite |
 | the campaign ran unattended between checkpoints | the chain's four properties per cycle (1.8.2's claim), and zero manual steps in the record | the absence of complaints |
 | the supervisor loop works | each checkpoint's ruling, its latency, the box handoff (quiet-box check passed), and the audit trail | the crew's report alone |
 | the framework did not regress | the calibration cycle against 1.9's set's React numbers | the increments, which differ by design |
@@ -255,6 +266,8 @@ decision 3. The fast lane between campaigns is not the cut's evidence.
 
 **Not an issue, named so it is not lost:**
 - SIP-0107 §38 step 7, the flip (decision 1);
+- the SIPs placed in §3.7: Verification Yield (new), Test-First Verification, and Cross-Cycle
+  Memory revision 3;
 - the crew's §36 handoff, which is the crew's to build and SquadOps's to meet (§3.2);
 - the Capability-Backed Agents SIP and Cross-Cycle Memory (decision 5).
 
@@ -269,7 +282,7 @@ decision 3. The fast lane between campaigns is not the cut's evidence.
 3. **Before the first campaign, in parallel where files allow:**
    - the campaign object and the API (§3.1);
    - the brownfield cycle (#1705) and the prior-cycle brief (#1692);
-   - accumulated acceptance (#1707) with #1796;
+   - accumulated acceptance (#1707) with #1796 and the baseline check (§3.7);
    - #1785;
    - the crew's commissioning work (§3.6);
    - the supervision interface (§3.4).
@@ -317,4 +330,5 @@ decision 3. The fast lane between campaigns is not the cut's evidence.
 ## 9. Revision history
 
 - **Rev 1 (2026-10-01):** the draft, written at the 1.9.0 cut from the 09-28 direction, the owner's IDEA,
-  and the owner's rulings on it. For review.
+  and the owner's rulings on it. For review. Amended the same day with §3.7: the owner's two further
+  proposals, Verification Yield and Cross-Cycle Memory v4, each checked against what exists and placed.

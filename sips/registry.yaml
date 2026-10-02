@@ -1174,3 +1174,12 @@ sips:
   approver: null
   created_at: null
   updated_at: null
+- sip_uid: '17909028044686722'
+  sip_number: null
+  title: Verification Yield and Test Value
+  path: sips/proposed/SIP-Verification-Yield.md
+  status: proposed
+  author: Backspring Labs / SquadOps
+  approver: null
+  created_at: null
+  updated_at: null

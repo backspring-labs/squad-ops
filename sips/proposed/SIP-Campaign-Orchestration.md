@@ -213,6 +213,26 @@ An increment is accepted only if:
 Accumulated acceptance is re-executed on the candidate tree. It is never carried forward from an earlier
 verdict. A criterion that cannot execute counts as `blocked_unverified`, never as a pass (SIP-0096).
 
+### 8.1 An increment's new tests must fail on its baseline
+
+Accumulated acceptance is only as strong as the tests it re-runs. In a campaign, every increment's
+tests become guards for every later increment, so a test that cannot fail is a hollow guard for the
+rest of the campaign. A brownfield cycle can check this, and a greenfield one cannot: the baseline is
+the app without the increment.
+
+- **Feature and fix increments:** the increment's **new** tests are run against the **baseline** tree.
+  Each must **fail there as an assertion**. A test that dies on an import error or a missing module
+  proves nothing. SIP-0104's Phase 2 assertion-shape classifier already makes that distinction. Each
+  test must then pass on the candidate. A new test that passes on the baseline does not discriminate
+  the increment, and the increment is not accepted until it is replaced or removed.
+- **Refactor increments:** no new test is required. The existing guards must pass on both trees,
+  which is what behaviour preservation means.
+- **What this check is.** It is the campaign's form of demonstrated discrimination, from
+  `SIP-Verification-Yield.md` (§7) and `SIP-Test-First-Verification.md` (Phase 1). It needs no
+  contract-conforming stub, because the baseline does that job, and it costs one extra test run per
+  increment.
+- **Its result is recorded per test in the proposal ledger (§9.4).**
+
 ---
 
 ## 9. The increment proposal, on the short leash (#1706, #1708)
@@ -271,7 +291,7 @@ One record per increment, written as it happens:
 - the proposal and its inputs;
 - the ruling, its reason, and who ruled;
 - the cycle's outcome: verdict, correction rounds and their causes, framing re-rolls, criteria added, any
-  earlier increment broken;
+  earlier increment broken, and each new test's baseline result (§8.1);
 - the supervisor's classification of what went wrong, if anything:
   - scope too large;
   - acceptance criteria not checkable;
@@ -375,7 +395,11 @@ second launch.
 - **The evidence package** is write-once at campaign close. It holds:
   - the campaign record, the ledger, and every cycle's record and verdict;
   - the accumulated-acceptance results, the calibration reading, the deploy identity;
-  - the audit trail.
+  - the audit trail;
+  - **every failure, under the failure-attribution registry's vocabulary**
+    (`src/squadops/cycles/failure_attribution.py`, SIP-0108 §4.2), with its campaign, cycle and
+    increment. That way Cross-Cycle Memory (2.2) mines campaigns for recurrence without
+    reconstructing it, and no parallel taxonomy is introduced.
 
   A reader who was not there, without the deploy that made it, can act on it.
 - **The morning digest** is the owner-facing summary of the package: increments accepted, the ledger's
@@ -456,6 +480,8 @@ whole SIP.
    unchanged.
 5. An increment is accepted only with every earlier increment's criteria re-executed and passing, and
    every declared route rendering its view.
+5a. A feature or fix increment's new tests each fail on the baseline as an assertion and pass on the
+    candidate. One that passes on the baseline blocks acceptance (§8.1).
 6. **No increment builds without a recorded ruling.** A ruling not given within its bound pauses the
    campaign, and the record says so.
 7. **The next launch refuses a box that is not quiet,** and the refusal is recorded.
@@ -514,6 +540,8 @@ whole SIP.
   byte-identical.
 - **Accumulated acceptance (wiring):** entering at `CycleCompletion` with a stored two-increment
   record, the earlier criteria reach the verdict.
+- **The baseline check (replay):** a stored increment's real suite, run on its real baseline. A test
+  that fails only by import error is not credited as discriminating.
 - **The ruling gate (wiring):** no launch without a ruling; a repeated ruling launches nothing new; a
   ruling not given pauses the campaign.
 - **The quiet-box preflight:** a resident foreign model refuses the launch.
@@ -540,6 +568,9 @@ whole SIP.
     and box handoff, the proposal ledger, the calibration cycle, the supervision interface, the evidence
     package, the digest and the prior-cycle brief (#1705–#1710, #1692, #1796);
   - `wait` replaces `defer`; `fork` is deferred; #288 is recorded as fixed;
+  - an increment's new tests must fail on its baseline (§8.1), and the evidence package records
+    failures under the attribution registry's vocabulary (§14). Both were added after the owner's
+    review of the Verification Yield and Cross-Cycle Memory proposals the same day;
   - the continuation decision reads `CycleAssessment` at `CycleCompletion`.
 - **Revision 1 (2026-07-04):** the neutral mechanic. Placement history:
   - targeted v1.6;
