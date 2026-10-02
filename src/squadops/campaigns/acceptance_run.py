@@ -147,11 +147,17 @@ async def evaluate_increment(
 
 
 def evaluation_document(
-    evaluation: IncrementEvaluation, *, increment_id: str, accepted: FileTree, candidate: FileTree
+    evaluation: IncrementEvaluation,
+    *,
+    increment_id: str,
+    accepted: FileTree,
+    candidate: FileTree,
+    new: Iterable[NewCriterion],
 ) -> dict:
     """The evaluation as plain data, for the ``increment_evaluation`` artifact the completion hook
     reads (§8.4: every result keyed, the bundles a promotion freezes carried whole)."""
     acceptance = evaluation.acceptance
+    test_paths = {c.criterion_id: c.test_path for c in new}
     return {
         "increment_id": increment_id,
         "accepted_tree": accepted.identity,
@@ -184,6 +190,7 @@ def evaluation_document(
         "new_bundles": {
             criterion_id: {
                 "address": bundle.address,
+                "test_path": test_paths[criterion_id],
                 "invocation": list(bundle.invocation),
                 "files": {
                     path: content.decode("utf-8", errors="replace")
@@ -193,3 +200,29 @@ def evaluation_document(
             for criterion_id, bundle in evaluation.new_bundles.items()
         },
     }
+
+
+def frozen_criteria_from(
+    pinned: Iterable[Mapping], bundles: Mapping[str, Mapping]
+) -> tuple[FrozenCriterion, ...]:
+    """The frozen criteria an increment's launch pinned (§8.1), each with its stored bundle
+    rebuilt. A bundle that is missing, unreadable, or whose content no longer hashes to the
+    address it was frozen under is ``None``: never run, and ``blocked_unverified`` (SIP-0096)."""
+    frozen = []
+    for pin in pinned:
+        criterion_id = str(pin["criterion_id"])
+        stored = bundles.get(criterion_id)
+        bundle = None
+        if stored is not None:
+            try:
+                rebuilt = VerifierBundle(
+                    criterion_id,
+                    FileTree.of(dict(stored["files"])),
+                    tuple(str(a) for a in stored["invocation"]),
+                )
+            except (KeyError, TypeError):
+                rebuilt = None
+            if rebuilt is not None and rebuilt.address == pin.get("bundle_address"):
+                bundle = rebuilt
+        frozen.append(FrozenCriterion(criterion_id, str(pin.get("test_path") or ""), bundle))
+    return tuple(frozen)

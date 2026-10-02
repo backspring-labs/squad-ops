@@ -100,3 +100,43 @@ async def test_nothing_is_judged_without_both_trees(overrides, error):
 
     assert (result.success, document) == (False, None)
     assert error in result.error
+
+
+# §8.1: a criterion an earlier increment froze, run by its stored bundle on the candidate.
+_F1 = "backend/tests/criteria/test_F1.py"
+_F1_TEST = (
+    "from app import join\n\ndef test_an_open_run_accepts_a_join():\n    assert join(2, 0) == 200\n"
+)
+
+
+def _frozen_inputs(address_of=None) -> dict:
+    from squadops.campaigns.evaluator_trees import FileTree, VerifierBundle
+
+    bundle = {"files": {_F1: _F1_TEST}, "invocation": ["both"]}
+    address = VerifierBundle("F1", FileTree.of(bundle["files"]), ("both",)).address
+    return {
+        "increment_frozen_criteria": [
+            {"criterion_id": "F1", "test_path": _F1, "bundle_address": address_of or address}
+        ],
+        "frozen_bundles": {"F1": bundle},
+    }
+
+
+async def test_a_frozen_criterion_runs_by_its_bundle_and_holds():
+    """§8.1. Bug caught: the criteria earlier increments froze never run again, so an increment
+    that broke one would be accepted."""
+    _, document = await _evaluate(**_frozen_inputs())
+
+    assert document["verdict"] == "accepted"
+    assert [(f["criterion_id"], f["held"]) for f in document["frozen"]] == [("F1", "held")]
+
+
+async def test_a_bundle_that_no_longer_hashes_to_its_address_is_never_run():
+    """§8.1, SIP-0096. Bug caught: a stored bundle edited after it was frozen — a verifier nobody
+    ruled on — run and credited as the criterion held."""
+    _, document = await _evaluate(**_frozen_inputs(address_of="0" * 64))
+
+    assert document["verdict"] == "blocked_unverified"
+    assert [(f["criterion_id"], f["held"]) for f in document["frozen"]] == [
+        ("F1", "blocked_unverified")
+    ]

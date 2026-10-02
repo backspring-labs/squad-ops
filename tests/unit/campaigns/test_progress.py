@@ -8,6 +8,7 @@ live path hands it over.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
@@ -387,3 +388,105 @@ async def test_a_proposal_only_increment_escalates_to_the_owner(calibrating):
     assert stored.state is CampaignState.ESCALATED
     assert (decision.binding["row"], decision.binding["action"]) == (14, "escalate")
     assert len(await w.campaigns.launch_intents(CID)) == 2
+
+
+# --------------------------------------------------------------------------------------------
+# §8.4 / §12a: an increment's own acceptance, its promotion and the criteria it freezes
+# --------------------------------------------------------------------------------------------
+
+_C1 = "backend/tests/criteria/test_C1.py"
+
+
+def _evaluation(verdict: str) -> bytes:
+    return json.dumps(
+        {
+            "verdict": verdict,
+            "new_bundles": {
+                "C1": {
+                    "address": "addr-c1",
+                    "test_path": _C1,
+                    "invocation": ["both"],
+                    "files": {_C1: "def test_c1(): ..."},
+                }
+            },
+        }
+    ).encode()
+
+
+@pytest.fixture
+def stored(monkeypatch):
+    """A vault per test that can also store (the promotion writes bundles)."""
+    contents = dict(_STORED)
+    # This module's own globals: ``_Vault`` reads ``_STORED`` by name at call time.
+    monkeypatch.setitem(globals(), "_STORED", contents)
+
+    async def store(self, ref, content):
+        contents[ref.artifact_id] = (ref, content)
+        return ref
+
+    monkeypatch.setattr(_Vault, "store", store, raising=False)
+    return contents
+
+
+async def _end_increment(calibrating, stored, evaluation: bytes | None):
+    w, run = await calibrating(RunVerdict.ACCEPTED)
+    await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
+    if evaluation is not None:
+        stored["art_eval"] = (
+            _ref("art_eval", "increment_evaluation.json", "increment_evaluation", 20),
+            evaluation,
+        )
+    increment_run = await w.launched_cycle("increment", "cyc_inc", "implementation", "completed")
+    await w.end("cyc_inc", increment_run, CycleStopReason.SEQUENCE_COMPLETED)
+    return w
+
+
+async def test_an_accepted_increment_is_promoted_and_its_criteria_frozen_for_the_next(
+    calibrating, stored
+):
+    """§8.4, §8.1, §12a, entered at the completion hook. Bugs caught: an accepted increment never
+    promoted (every later increment proposed against the calibration's tree), its new criterion's
+    bundle never stored, or the next increment launched without it — its id reusable and its
+    verifier never run again."""
+    w = await _end_increment(calibrating, stored, _evaluation("accepted"))
+
+    campaign_now = await w.campaigns.get_campaign(CID)
+    log = await w.campaigns.control_log(CID)
+    [promote] = [
+        e for e in log if e.operation is ControlOperation.PROMOTE and e.target == "cyc_inc"
+    ]
+    [frozen] = promote.binding["frozen_criteria"]
+    bundle_ref, bundle = stored[frozen["bundle_ref"]]
+    assert campaign_now.accepted.cycle_id == "cyc_inc"
+    assert (frozen["criterion_id"], frozen["test_path"]) == ("C1", _C1)
+    assert (bundle_ref.artifact_type, json.loads(bundle)["files"]) == (
+        "verifier_bundle",
+        {_C1: "def test_c1(): ..."},
+    )
+    assert (log[-1].binding["row"], log[-1].binding["action"]) == (7, "propose")
+    *_, next_increment = await w.campaigns.launch_intents(CID)
+    proposal = next_increment.cycle_request["body"]["execution_overrides"]["campaign_proposal"]
+    assert proposal["prior_criteria"] == ["C1"]
+    assert proposal["frozen_criteria"][0]["bundle_ref"] == frozen["bundle_ref"]
+    assert proposal["accepted_cycle_id"] == "cyc_inc"
+
+
+@pytest.mark.parametrize(
+    "evaluation",
+    [_evaluation("blocked_unverified"), None],
+    ids=["a-route-nobody-rendered", "never-evaluated"],
+)
+async def test_an_increment_not_proven_by_its_own_acceptance_is_not_promoted(
+    calibrating, stored, evaluation
+):
+    """§8.4. Bug caught: an increment whose cycle passed its own checks promoted on that alone —
+    its new criterion never shown to discriminate, or a declared page never rendered — and the
+    next increment built on it. Row 8: repaired, not proposed past."""
+    w = await _end_increment(calibrating, stored, evaluation)
+
+    campaign_now = await w.campaigns.get_campaign(CID)
+    log = await w.campaigns.control_log(CID)
+    assert campaign_now.accepted.cycle_id == "cyc_cal"
+    assert not [e for e in log if e.operation is ControlOperation.PROMOTE and e.target == "cyc_inc"]
+    assert (log[-1].binding["row"], log[-1].binding["verdict"]) == (8, "blocked_unverified")
+    assert not any(r.artifact_type == "verifier_bundle" for r, _ in stored.values())

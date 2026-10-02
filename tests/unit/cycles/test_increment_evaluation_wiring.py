@@ -215,3 +215,47 @@ async def test_the_evaluation_is_handed_the_accepted_tree_as_the_increment_seede
         "frontend/src/views/RunListView.jsx": "list",
     }
     assert enriched.inputs["acceptance_workspace_files"]["backend/routes.py"] == "increment routes"
+
+
+async def test_the_evaluation_is_handed_the_bundles_its_launch_pinned():
+    """§8.1, entered at ``_enrich_envelope``. Bugs caught: a pinned bundle never read, so every
+    frozen criterion is blocked; or an unreadable one crashing the dispatch instead of being
+    judged blocked."""
+    import dataclasses
+    import json
+
+    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+
+    bundle = {"files": {"backend/tests/criteria/test_F1.py": "def test(): ..."}, "invocation": []}
+    stored = {
+        "art_f1": (
+            _ref("art_f1", "verifier_bundle_F1.json", "cyc_prior"),
+            json.dumps(bundle).encode(),
+        )
+    }
+    executor = DispatchedFlowExecutor(
+        cycle_registry=AsyncMock(),
+        artifact_vault=_Vault(stored),
+        queue=AsyncMock(),
+        squad_profile=AsyncMock(),
+        task_timeout=5.0,
+    )
+    executor._cycle_event_bus = MagicMock()
+    [evaluation] = [
+        e for e in _implementation(True, STORED) if e.task_type == "qa.evaluate_increment"
+    ]
+    config = dict(evaluation.inputs["resolved_config"])
+    config["campaign_proposal"] = {
+        **config["campaign_proposal"],
+        "frozen_criteria": [
+            {"criterion_id": "F1", "bundle_ref": "art_f1"},
+            {"criterion_id": "F2", "bundle_ref": "art_gone"},
+        ],
+    }
+    evaluation = dataclasses.replace(
+        evaluation, inputs={**evaluation.inputs, "resolved_config": config}
+    )
+
+    enriched = await executor._enrich_envelope(evaluation, {}, [], [])
+
+    assert enriched.inputs["frozen_bundles"] == {"F1": bundle}

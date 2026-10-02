@@ -10,6 +10,7 @@ accepted implementation, and only what the increment adds is a stub to fill.
 from __future__ import annotations
 
 import dataclasses
+import json
 from collections.abc import Mapping
 from typing import Any
 
@@ -171,6 +172,8 @@ def increment_criterion_files(change_request: str, stack: str) -> tuple[Criterio
 #: The artifact an increment's evaluation writes, which the completion hook reads (§8.4).
 INCREMENT_EVALUATION_ARTIFACT_TYPE = "increment_evaluation"
 INCREMENT_EVALUATION_FILENAME = "increment_evaluation.json"
+#: A frozen criterion's verifier bundle, stored at its increment's promotion (§8.1).
+VERIFIER_BUNDLE_ARTIFACT_TYPE = "verifier_bundle"
 
 
 def declared_routes(manifest: Any) -> dict[str, tuple[str, ...]]:
@@ -197,6 +200,8 @@ def increment_evaluation_inputs(
         "increment_declared_routes": {
             path: list(testids) for path, testids in declared_routes(manifest).items()
         },
+        # §8.1: the criteria earlier increments froze, as this increment's launch pinned them.
+        "increment_frozen_criteria": [dict(f) for f in block.get("frozen_criteria") or ()],
     }
 
 
@@ -219,3 +224,20 @@ async def accepted_tree_contents(
         _, content = await vault.retrieve(artifact_id)
         files[ref.filename] = content.decode("utf-8", errors="replace")
     return files
+
+
+async def frozen_bundle_contents(vault: Any, resolved_config: Any) -> dict[str, dict]:
+    """The stored bundle of each criterion an increment's launch pinned, by criterion id. An
+    unreadable one is left out, and its criterion is judged ``blocked_unverified``."""
+    block = (
+        resolved_config.get("campaign_proposal") if isinstance(resolved_config, Mapping) else None
+    )
+    pinned = (block or {}).get("frozen_criteria") if isinstance(block, Mapping) else None
+    bundles: dict[str, dict] = {}
+    for pin in pinned or ():
+        try:
+            _ref, content = await vault.retrieve(pin["bundle_ref"])
+            bundles[str(pin["criterion_id"])] = json.loads(content.decode("utf-8"))
+        except Exception:  # noqa: BLE001 — a bundle that cannot be read is blocked, not a crash
+            continue
+    return bundles
