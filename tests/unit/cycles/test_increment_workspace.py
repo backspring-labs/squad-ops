@@ -148,6 +148,21 @@ async def _seed_and_compose(vault, cycle: Cycle) -> tuple[list[str], dict[str, s
     return seeds, contents
 
 
+async def _workspace(vault, seeds: list[str], task_type: str) -> dict[str, str]:
+    """The files ``task_type`` is composed from the seeded set, as dispatch composes them."""
+    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+
+    executor = DispatchedFlowExecutor(
+        cycle_registry=AsyncMock(),
+        artifact_vault=vault,
+        queue=AsyncMock(),
+        squad_profile=AsyncMock(),
+        task_timeout=5.0,
+    )
+    stored = [(art_id, vault.stored[art_id][0]) for art_id in seeds]
+    return await executor._resolve_artifact_contents(task_type, stored)
+
+
 async def test_an_increment_s_developer_is_given_the_accepted_implementation_not_a_stub(vault):
     """§7.3. Bugs caught: an increment rebuilding the whole app from stubs (greenfield, the
     accepted work discarded), or the accepted tree taken with a rejected repair in it."""
@@ -220,3 +235,37 @@ async def test_a_repair_continues_the_failed_candidate_on_top_of_the_accepted_tr
     assert contents["backend/routes.py"] == "# the failed increment's routes\n"
     assert contents["frontend/src/views/RunListView.jsx"] == "// the accepted view\n"
     assert "art_cand" not in seeds
+
+
+async def test_an_increment_s_frozen_files_are_its_candidate_s_not_the_accepted_tree_s(vault):
+    """#1876, entered at the run's seeding and composition. The reference increment's routes
+    read ``payload.capacity`` (the candidate manifest's ``RunCreate``) against the accepted
+    tree's ``models.py`` (the baseline's, without it): the accepted tree, seeded last, won over
+    the skeleton the candidate regenerated, and no repair can rewrite a frozen file. Bugs
+    caught: a carried-over frozen file shadowing the regenerated one; or the accepted tree's
+    implementation lost with it."""
+    from squadops.capabilities.scaffold import InterfaceManifest, frozen_paths
+
+    assert "backend/models.py" in frozen_paths(InterfaceManifest.from_yaml(_MANIFEST))
+    # As the accepted cycle stored it: its own skeleton's model, seeded by the scaffold.
+    vault.put(
+        _ref(
+            "art_baseline_models",
+            "backend/models.py",
+            "source",
+            cycle_id="cyc_cal",
+            created=3,
+            producing_task_type="scaffold.expand",
+            scaffold_seeded=True,
+        ),
+        "# the baseline's model\n",
+    )
+
+    seeds, _contents = await _seed_and_compose(vault, _cycle("increment"))
+    # The tree the qa suite runs on: the acceptance workspace, every source file seeded.
+    tree = await _workspace(vault, seeds, "qa.test")
+
+    assert "art_baseline_models" not in seeds
+    assert "class " in tree["backend/models.py"]  # the candidate skeleton's model
+    assert tree["backend/models.py"] != "# the baseline's model\n"
+    assert tree["backend/routes.py"] == "# the accepted routes\n"

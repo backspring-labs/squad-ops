@@ -1663,6 +1663,31 @@ plan gate for doing what it was taught.
   - **An increment that does need packaging changed** (a new dependency, say) needs the footprint
     to reach packaging files first. That is not built.
 
+
+### 24z. An increment's frozen files are its candidate's (2026-10-02, §7.3, §24t, #1876; decided under the 2.0 charter)
+
+**The evidence:** the reference increment (`cyc_d4438834b2c3`) passed framing and built. Its
+implementation then failed `plan_defect`, because every test of criterion C1 died with
+`AttributeError: 'RunCreate' object has no attribute 'capacity'`.
+- The routes were written against the candidate manifest, whose `RunCreate` declares `capacity`.
+- The workspace held the **accepted baseline's** scaffold-frozen `backend/models.py`.
+- The accepted tree is seeded after the skeleton, last-writer-wins (#881), so its copy of every
+  frozen file overrode the one the candidate manifest regenerated. No repair can rewrite a frozen
+  file.
+
+**As built:**
+- **What the accepted tree supplies:** an increment's starting tree takes its produced files from
+  the accepted tree (the fill slots, the tests), and for a repair from the failed candidate
+  (§24t). **Never a scaffold-frozen file.** Those are the candidate skeleton's (`frozen_paths`:
+  the skeleton's files less its fill slots).
+- **What the evaluation's baseline reads:** the accepted cycle's delivered files, whole, from that
+  cycle (`accepted_tree_contents`), not from the run's seed. The baseline overlay needs the
+  baseline's own frozen files.
+
+**Found with it** (#1877, not a design change): the scaffold typed every request field `str`, so
+the candidate's `RunCreate.capacity` refused the integer its criterion sends. Request fields now
+take their entity's declared type.
+
 ---
 
 ## Revision history

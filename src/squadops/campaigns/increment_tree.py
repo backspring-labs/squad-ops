@@ -28,15 +28,25 @@ def accepted_cycle_of(cycle: Any) -> str | None:
     return block.get("accepted_cycle_id") or None
 
 
-async def accepted_tree_refs(vault: Any, cycle: Any) -> list[str]:
+async def _delivered(vault: Any, cycle_id: str) -> dict[str, str]:
+    """A cycle's delivered files, ``path -> artifact id``, by the one rule every reader shares
+    (#1832)."""
+    refs = await vault.list_artifacts(cycle_id=cycle_id)
+    return delivered_files(StoredArtifact.from_record(dataclasses.asdict(r)) for r in refs)
+
+
+async def accepted_tree_refs(
+    vault: Any, cycle: Any, frozen: frozenset[str] = frozenset()
+) -> list[str]:
     """The artifact ids of the accepted tree's delivered files, for an increment cycle's
-    implementation to seed; empty for any other cycle."""
+    implementation to seed; empty for any other cycle. ``frozen`` (the candidate skeleton's
+    frozen paths) is left out: those are regenerated from the candidate manifest, and the
+    accepted tree's copies are the baseline's (#1876)."""
     accepted_cycle = accepted_cycle_of(cycle)
     if accepted_cycle is None:
         return []
-    refs = await vault.list_artifacts(cycle_id=accepted_cycle)
-    chosen = delivered_files(StoredArtifact.from_record(dataclasses.asdict(r)) for r in refs)
-    return list(chosen.values())
+    chosen = await _delivered(vault, accepted_cycle)
+    return [ref for path, ref in chosen.items() if path not in frozen]
 
 
 def increment_footprint(resolved_config: Any, candidate: Any) -> tuple[str, ...] | None:
@@ -216,12 +226,12 @@ def increment_evaluation_inputs(
     }
 
 
-async def accepted_tree_contents(
-    vault: Any, resolved_config: Any, stored: list[tuple[str, Any]]
-) -> dict[str, str]:
-    """The accepted tree an increment's run was seeded with (#1842), as ``path -> content``:
-    the run's stored artifacts that belong to the accepted cycle its launch names. Empty for a
-    cycle that is not an increment."""
+async def accepted_tree_contents(vault: Any, resolved_config: Any) -> dict[str, str]:
+    """The accepted tree an increment builds on (#1842), as ``path -> content``: the delivered
+    files of the accepted cycle its launch names, whole — read from that cycle, not from what
+    the run was seeded with, which leaves out the frozen files the candidate regenerates
+    (#1876). The baseline overlay needs the baseline's own. Empty for a cycle that is not an
+    increment."""
     block = (
         resolved_config.get("campaign_proposal") if isinstance(resolved_config, Mapping) else None
     )
@@ -229,11 +239,9 @@ async def accepted_tree_contents(
     if not accepted_cycle:
         return {}
     files: dict[str, str] = {}
-    for artifact_id, ref in stored:
-        if getattr(ref, "cycle_id", None) != accepted_cycle:
-            continue
+    for path, artifact_id in (await _delivered(vault, accepted_cycle)).items():
         _, content = await vault.retrieve(artifact_id)
-        files[ref.filename] = content.decode("utf-8", errors="replace")
+        files[path] = content.decode("utf-8", errors="replace")
     return files
 
 
@@ -335,16 +343,21 @@ def increment_frozen_files(
     )
 
 
-async def starting_tree_refs(vault: Any, cycle: Any) -> list[str]:
+async def starting_tree_refs(
+    vault: Any, cycle: Any, frozen: frozenset[str] = frozenset()
+) -> list[str]:
     """The tree an increment-family implementation starts from (§10a): the accepted tree's
     delivered files, and — for a repair — the failed cycle's delivered candidate laid over them,
     so the repair continues the failed work rather than starting it again. Both are produced
-    content, so each takes its slots from the skeleton's stubs (#881), and the later wins."""
-    refs = await accepted_tree_refs(vault, cycle)
+    content, so each takes its slots from the skeleton's stubs (#881), and the later wins.
+
+    Neither supplies a scaffold-frozen file (``frozen``, the candidate skeleton's): the skeleton
+    regenerates those from the candidate manifest, and a carried-over copy would win over it —
+    the baseline's model under the candidate's routes (#1876, the reference increment)."""
+    refs = await accepted_tree_refs(vault, cycle, frozen)
     block = cycle.resolved_config().get("campaign_proposal")
     failed = block.get("repair_of") if isinstance(block, Mapping) else None
     if not failed:
         return refs
-    candidate = await vault.list_artifacts(cycle_id=failed)
-    chosen = delivered_files(StoredArtifact.from_record(dataclasses.asdict(r)) for r in candidate)
-    return refs + [ref for ref in chosen.values() if ref not in refs]
+    chosen = await _delivered(vault, failed)
+    return refs + [ref for path, ref in chosen.items() if path not in frozen and ref not in refs]

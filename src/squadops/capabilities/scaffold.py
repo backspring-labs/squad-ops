@@ -278,6 +278,16 @@ class InterfaceManifest:
     #: author. Excluded from ``_canonical`` for the same reason ``decisions`` is.
     provenance: Provenance | None = None
 
+    def field_type(self, field: str) -> str:
+        """A request field's declared type: the type an entity declares for a field of that
+        name, or ``string`` when none does. Request shapes are projections of entity fields,
+        so their bodies take the entities' types — the one lookup the create probe's body and
+        the scaffold's request models share (#1876: the models typed every field ``str``, and
+        an integer field refused every integer it was sent)."""
+        # The last entity declaring the name wins, as the probe bodies have always read it.
+        types = {f.name: f.type for e in self.entities for f in e.fields}
+        return types.get(field, "string")
+
     def request_body_fields(self, request: str | None) -> tuple[str, ...]:
         """The fields a body for ``request`` must carry — the ONE answer (#1128).
 
@@ -1356,6 +1366,17 @@ DESCRIBED_FROZEN_SUFFIXES: tuple[str, ...] = (".py", ".ts", ".tsx", ".js", ".jsx
 #: declare. The prior reading — "``.json`` has no declarations to give" — was wrong in
 #: exactly the way this index exists to prevent.
 DESCRIBED_FROZEN_BASENAMES: tuple[str, ...] = ("package.json",)
+
+
+def frozen_paths(manifest: InterfaceManifest | None) -> frozenset[str]:
+    """The files a manifest's skeleton freezes: every file it expands that is not a fill slot.
+    Scaffold-owned — regenerated from the manifest, never claimed by a task (#658), and never
+    carried over from another tree (#1876): an increment's frozen files are its candidate
+    manifest's, not the accepted tree's. Empty without a manifest."""
+    if manifest is None:
+        return frozenset()
+    fills = set(fill_slot_paths(manifest))
+    return frozenset(f["name"] for f in expand(manifest) if f["name"] not in fills)
 
 
 def frozen_surface_index_lines(manifest: InterfaceManifest | None) -> list[str]:

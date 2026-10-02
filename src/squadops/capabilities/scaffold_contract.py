@@ -410,9 +410,8 @@ def create_request_body(manifest: InterfaceManifest, endpoint: Any) -> dict[str,
     declared type and name make plausible (#524). The one synthesis — the create probe sends it,
     and SIP-0109 §8.3's rendering seeds a resource with it — so the two cannot disagree about
     what a valid create looks like."""
-    field_types = {f.name: f.type for e in manifest.entities for f in e.fields}
     return {
-        field: _probe_sample_value(field, field_types.get(field, "string"))
+        field: _probe_sample_value(field, manifest.field_type(field))
         for field in manifest.request_body_fields(endpoint.request)
     }
 
@@ -463,7 +462,6 @@ def _probes(manifest: InterfaceManifest, pack: CriteriaPack) -> list[dict[str, A
     shapes = {s.name: s for s in manifest.api.request_shapes}
     # #524: resolve each required field's declared type (from entity fields) so the
     # probe body carries type/name-appropriate sample values, not a blanket "x".
-    field_types = {f.name: f.type for e in manifest.entities for f in e.fields}
     ec = manifest.api.error_contract
     error_http = {c.code: c.http for c in (ec.codes if ec else ())}
     entity_field_names = {e.name: {f.name for f in e.fields} for e in manifest.entities}
@@ -561,7 +559,7 @@ def _probes(manifest: InterfaceManifest, pack: CriteriaPack) -> list[dict[str, A
             create_slug = _slug(ep.path) or "root"
             for child in children:
                 child_body = {
-                    field: _probe_sample_value(field, field_types.get(field, "string"))
+                    field: _probe_sample_value(field, manifest.field_type(field))
                     for field in manifest.request_body_fields(child.request)
                 }
                 action = child.path.rsplit("/", 1)[-1]
@@ -621,7 +619,7 @@ def _probes(manifest: InterfaceManifest, pack: CriteriaPack) -> list[dict[str, A
             create_slug = _slug(ep.path) or "root"
             for value in child_shape.declared_values(discriminator):
                 child_body = {
-                    field: _probe_sample_value(field, field_types.get(field, "string"))
+                    field: _probe_sample_value(field, manifest.field_type(field))
                     for field in manifest.request_body_fields(child.request)
                 }
                 child_body[discriminator] = value
