@@ -1,6 +1,6 @@
 # 2.0.0 plan — Campaign: the squad evolves one app, the crew evolves the framework
 
-**Status:** DRAFT, rev 3 (2026-10-01), for the owner's review. Rev 2 folded in an external review of rev 1. Rev 3 folds in the crew's design review of rev 2 (Ripley, on #1798), with the owner's rulings on it (§9). **Not adopted.** Written at the 1.9.0 cut
+**Status:** DRAFT, rev 4 (2026-10-01), for the owner's review. Rev 2 folded in an external review of rev 1. Rev 3 folded in the crew's design review of rev 2 (Ripley, on #1798), with the owner's rulings on it. Rev 4 folds in the crew's re-review (§9). **Not adopted.** Written at the 1.9.0 cut
 on the owner's word ("can you draft a plan to review and any SIP revisions"). It turns three inputs into
 a release:
 - the owner's direction of 2026-09-28 (`docs/plans/post-1-8-2-roadmap-reconciliation.md`);
@@ -8,7 +8,7 @@ a release:
   (`docs/ideas/nostromo-framework-optimization-crew.md`);
 - the owner's rulings on that IDEA the same day (§2 below).
 
-The design it builds on is the Campaign SIP's revision 3 (`sips/proposed/SIP-Campaign-Orchestration.md`).
+The design it builds on is the Campaign SIP's revision 4 (`sips/proposed/SIP-Campaign-Orchestration.md`).
 That SIP is proposed, and this plan adopts only after it is accepted (§6, step 1).
 
 **What 2.0 is.** An even minor, a feature release, led by one headline: **Campaign**. 1.9 extracted the
@@ -102,17 +102,17 @@ three things apart throughout: an observation, a causal hypothesis, and a valida
 
 ## 3. The content
 
-### 3.1 The headline: Campaign (the SIP's revision 3)
+### 3.1 The headline: Campaign (the SIP's revision 4)
 
 The Campaign SIP is revised to the two-loop direction: an objective envelope, a pure continuation
 policy, and a campaign that evolves one app. The plan sequences its parts. The design is the SIP's.
 
 | part | issue | required for | what it is |
 |---|---|---|---|
-| **the campaign object and the control log** | #1799 | first campaign | model, registry (memory and Postgres), `Cycle.campaign_id` and `kind`, lifecycle, `/api/v1/campaigns` and the CLI; **a transactional control log as the authority** for every control operation, with security audit and events as projections (SIP §13, §15–§17) |
-| **the continuation decision and the limits** | #1800 | first campaign | **an ordered decision table** with predicates and precedence at the completion boundary (SIP §10), reading `CycleAssessment`; each limit's action, pause or stop, and who resumes (SIP §9.5) |
+| **the campaign object and the control log** | #1799 | first campaign | model, registry (memory and Postgres), `Cycle.campaign_id` and `kind`, lifecycle, `/api/v1/campaigns` and the CLI; **a transactional control log as the authority** for every control operation, with security audit and events as projections; **a launch-intent outbox with idempotent cycle creation**, so each decision launches exactly once (SIP §12b, §13, §15–§17) |
+| **the continuation decision and the limits** | #1800 | first campaign | **an ordered, three-step decision** at the completion boundary (SIP §10): terminal outcomes, then a pending action, then a pausing guard. A pause holds the pending action, and the owner's resume executes it without recomputation. Reads `CycleAssessment`; each limit's action, and who resumes (SIP §9.5) |
 | **the increment cycle** | #1705 | first campaign | workloads `proposal` → gate `increment_ruling` → delta-scoped `framing` → gate `progress_plan_review` → `implementation`, starting from the accepted tree; **a typed change request** whose manifest delta the gates check, with a derived footprint the plan validator enforces (SIP §7) |
-| **the three trees** | #1806 | first campaign | accepted (immutable), candidate, and the baseline-evaluator overlay (the accepted tree's product code plus the candidate's tests, never its product code); test identity; frozen, executable criteria (SIP §7.4, §8) |
+| **the three trees** | #1806 | first campaign | accepted (immutable), candidate, and the baseline-evaluator overlay (the accepted tree's product code plus the candidate's tests, never its product code); test identity; **criterion-owned verifier bundles** and a versioned fixture set, frozen as executable identities (SIP §7.4, §8) |
 | **accumulated acceptance** | #1707, #1796 | first campaign | every earlier increment's acceptance still passes, **including each declared page rendering its view in a browser** (#1796); **each criterion the increment adds has a test that fails on the baseline for the intended reason**, through the app's public surface (SIP §8.2) |
 | **the prior-cycle brief** | #1692 | first campaign | a repair or retry cycle is told what the cycle before it did |
 | **the proposal run and the increment gate, on the leash** | #1706, #1708, #1801 | first campaign | §3.2 |
@@ -120,7 +120,7 @@ policy, and a campaign that evolves one app. The plan sequences its parts. The d
 | **recovery** | #1803 | first campaign | restart, duplicate completion, repeated ruling, interrupted promotion, abort. Each guarantee is verified by a fault-injected diagnostic (SIP §12a) |
 | **the calibration cycle** | #1709 | first campaign | every campaign opens with group_run built from scratch: the yardstick for greenfield behaviour |
 | **the brownfield reference scenario** | #1804 | shakeout | a fixed baseline and change request: the yardstick for proposal writing, scoped repair and accumulated acceptance (SIP §11a) |
-| **the evidence package and the morning digest** | #1710 | shakeout | write-once campaign records, readable without the deploy that made them, with every failure under the failure-attribution registry's vocabulary (§3.7); the digest the owner reads |
+| **the evidence package and the morning digest** | #1710 | shakeout (its failure producer: first campaign) | write-once campaign records, readable without the deploy that made them, with every failure under the failure-attribution registry's vocabulary (§3.7); the digest the owner reads |
 | **campaign and deploy tags on Prefect runs** | #1728 | cut | with #1720's deploy records |
 | **the request-profile taxonomy** | #316 | first campaign | a continuation that names the next cycle's profile needs one coherent namespace |
 
@@ -334,17 +334,23 @@ Merge order follows the dependencies (the Campaign SIP's §18). Each step's PR p
 intermediate acceptance before the next starts.
 1. **The Campaign SIP's revision 3: design review and acceptance.** This plan adopts after it.
 2. **Decision 1, the flip,** and its prerequisites: #1788 first, then #1755 and #1727.
-3. **The domain model and the transactional control log (#1799).** Proves atomic commit with state,
-   conflicts refused, and restart read from the log.
+3. **The domain model, the transactional control log, and the launch outbox (#1799).** Proves atomic
+   commit with state, conflicts refused, restart read from the log, and exactly one cycle per launch
+   intent under a crash on either side of creation.
+   - **Then the one failure producer (#1710's first part):** `failure_events(evidence)` extracted,
+     persisted at completion, and consumed by attribution. It is behaviour-neutral, and proves it by
+     recomputing every stored cycle's attribution unchanged.
 4. **The proposal run and the typed change request (#1706).** Proves recruitment like any run,
    out-of-scope refusal, and the delta through the manifest gates.
-5. **The three trees (#1806).** Proves the accepted tree immutable, no candidate product code in the
-   overlay, and test identity.
+5. **The three trees and the verifier bundles (#1806).** Proves the accepted tree immutable, no
+   candidate product code in the overlay, and that adding a criterion changes no other criterion's
+   frozen identity.
 6. **Accumulated acceptance and baseline discrimination (#1707, #1796),** with the prior-cycle brief
    (#1692). Proves frozen criteria executing, and import errors not counted.
-7. **The increment gate, the binding, the box lease and the continuation table (#1801, #1802, #1800,
-   #1705, #1708, #316).** Proves stale and conflicting rulings refused, every launch path honouring the
-   lease, and each table row reachable.
+7. **The increment gate, the binding, the box lease, the continuation decision, and repair and retry
+   cycles (#1801, #1802, #1800, #1705, #1708, #316).** Proves stale and conflicting rulings refused,
+   every launch path honouring the lease, each row reachable, a paused action resumed exactly once, and
+   repair and retry reusing exactly the bound request.
 8. **The audit and event projections.**
 9. **The calibration cycle, the reference scenario, the evidence package and digest (#1709, #1804,
    #1710).** Proves the package materializing from records alone.
@@ -390,6 +396,27 @@ intermediate acceptance before the next starts.
      `Cycle.campaign_id`, and a launch gate that refuses only while a supervisor holds the box lease.
    - Any break found during the line is named in the CHANGELOG under its own heading.
 
+**The crew's review answered all seven (Ripley, on #1798, at the SIP's revision 3).** It concurred
+with each recommendation, and its refinements are adopted into this plan's text for the owner's ruling:
+- **Decision 1:** the flip stays conditional on #1788 explaining the nine empty Next.js repairs. **If
+  the raw responses show a framework or tooling defect, rather than scoped revision's own inability, it
+  is fixed and the replay re-run before flipping.**
+- **Decision 2:** the crew supervises campaign 1 **only if its commissioning evidence is complete**.
+  Otherwise the owner supervises the shakeout, through the same interface.
+- **Decision 3:** two campaigns of three increments, **claiming only the mechanism and safe stop**,
+  never a rate.
+- **Decisions 4–7, as recommended:** every increment stays gated in 2.0, with the ledger designing any
+  later loosening; Capability-Backed Agents are deferred beyond 2.0; the runtime access path stays a
+  private, least-privilege security design for the owner; and 2.0 is a capability rung, with any actual
+  break named separately in the CHANGELOG.
+
+**The limits' values.** They are set from the shakeout at the pre-registration, as proposed, under the
+crew's conditions:
+- **the complete policy is immutable for the counted set;**
+- the evidence records each value **and its shakeout basis;**
+- **where the shakeout does not support a value, a conservative explicit cap is used,** never an
+  inferred default.
+
 ## 8. What this plan does not decide
 
 - The Campaign SIP's design: that is its revision and its review.
@@ -400,6 +427,15 @@ intermediate acceptance before the next starts.
 
 ## 9. Revision history
 
+- **Rev 4 (2026-10-01, late evening):** folds in the crew's re-review of rev 3. It confirmed rev 3 closed
+  its seven blockers, and named five seams, closed in the SIP's revision 4:
+  - the held pending action and its resume;
+  - the repair and retry contract;
+  - the launch outbox with idempotent cycle creation;
+  - one failure producer and its write point;
+  - criterion-owned verifier bundles.
+
+  The crew's answers to the seven decisions and its rule for the limits' values are recorded in §7.
 - **Rev 3 (2026-10-01, evening):** folds in the crew's design review of rev 2 (Ripley, on #1798), with
   the owner's rulings on it:
   - the proposal as the increment cycle's first run, with the ruling as a gate using the existing gate

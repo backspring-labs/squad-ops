@@ -9,7 +9,7 @@ created_at: '2026-07-04T00:00:00Z'
 
 ## Status
 
-Proposed — **revision 3 (2026-10-01), for design review.** **Targets v2.0, the headline**
+Proposed — **revision 4 (2026-10-01), for design review.** **Targets v2.0, the headline**
 (`docs/plans/2-0-0-plan.md`, draft).
 
 **The rule this SIP establishes** (from the crew's design review, adopted):
@@ -19,7 +19,15 @@ Proposed — **revision 3 (2026-10-01), for design review.** **Targets v2.0, the
 > - **the supervisor rules without becoming the author;**
 > - **every launch is derived exactly once from durable evidence and a recorded ruling.**
 
-**What revision 3 changes.** Revision 2 made the campaign evolve one app, under a supervisor's leash.
+**What revision 4 changes.** The crew's re-review of revision 3 (Ripley, on #1798) found five seams that
+would break implementation. Revision 4 closes them:
+- **a paused decision resumes its recorded pending action**, with no recomputation (§10);
+- **repair and retry cycles have an exact contract** (§10a);
+- **launches go through an outbox**, with idempotent cycle creation (§12b);
+- **failure records come from one named producer and one write point** (§14);
+- **each criterion owns its verifier bundle**, so freezing one never couples it to another (§8.1).
+
+**What revision 3 changed.** Revision 2 made the campaign evolve one app, under a supervisor's leash.
 The crew's design review of it on #1798 (Ripley, 2026-10-01) found that it left the architecture to be
 established during implementation. Revision 3 decides it:
 - **The proposal runs as the first run of the increment cycle,** recruited like any run, and the
@@ -188,6 +196,7 @@ The proposal's output, and the only authored input to the rest of the cycle:
 | `criteria` | each with an id, a statement, its **public surface** (an endpoint, or a client route) and the observable it asserts | §8.2, §8.1 |
 | `must_not_break` | earlier criteria ids this increment must keep passing (by default, all of them) | §8.1 |
 | `retires` | earlier criteria ids the increment retires, each with a reason. A scope change, so the supervisor rules on it explicitly | §8.1 |
+| `revises_fixtures` | frozen fixtures the increment modifies, each with a reason. A scope change, ruled explicitly | §8.1 |
 | `footprint` | the files the delta may touch, derived by the stack's scaffold map from `manifest_delta`, never authored | the plan validator (§7.3), SIP-0107 write grants |
 
 A change request whose `manifest_delta` the SIP-0103 gates refuse never reaches the gate. It is a
@@ -230,18 +239,29 @@ new proposal) starts from the same accepted identity, and there is no partial me
 
 ### 8.1 Accumulated acceptance, with executable carried criteria (#1707)
 
-At acceptance, each criterion is **frozen**: its id, its test ids, the test files' content hashes, and
-the exact runner invocation. That frozen set is the criterion's executable form. Accumulated acceptance
-re-executes **every frozen criterion** not in `retires` on the **candidate** tree, by its frozen
-invocation, and an increment is accepted only if all of them pass.
-- A frozen test file whose hash differs on the candidate is a must-not-break violation, unless its
-  criterion is in `retires`.
-- A criterion that cannot execute counts as `blocked_unverified`, never as a pass (SIP-0096).
+**Each criterion owns its verifier bundle,** so freezing one criterion never couples it to another:
+- **its own test file.** Each new criterion's discriminating test lives in a **criterion-owned file**,
+  `<the stack's test dir>/criteria/<criterion_id>.test.<ext>`, which the scaffold emits as a fill slot
+  (SIP-0104). Adding criterion B creates B's file and changes no file of A's;
+- **the fixture set it was frozen against.** Shared fixtures and helpers form a **versioned fixture
+  set**. A later increment may **add** to it, but may **not modify** a frozen fixture unless its change
+  request lists it in `revises_fixtures`. That is a scope change, ruled explicitly like `retires`;
+- **the test configuration and test-only dependency lock it requires.**
+
+At acceptance, the criterion is **frozen** as its executable identity: the hash of its own file, the
+fixture-set version, the hash of its configuration and dependency subset, and the exact runner
+invocation.
+
+Accumulated acceptance re-executes **every frozen criterion** not in `retires` on the **candidate** tree,
+by its frozen invocation, and **compares each criterion's frozen executable identity**, never a shared
+file's hash. A changed identity without a `retires` or `revises_fixtures` entry is a must-not-break
+violation. A criterion that cannot execute counts as `blocked_unverified`, never as a pass (SIP-0096).
 
 ### 8.2 Baseline discrimination: one test per new criterion
 
-For a `feature` or `fix` increment, each criterion it adds needs **at least one test that fails on the
-baseline-evaluator overlay for the intended reason, and passes on the candidate.** Other new tests,
+For a `feature` or `fix` increment, each criterion it adds needs **at least one test, in its
+criterion-owned file (§8.1), that fails on the baseline-evaluator overlay for the intended reason, and
+passes on the candidate.** Other new tests,
 preservation tests among them, may pass on both.
 - **"For the intended reason" means an assertion failure on the criterion's public surface:** a status,
   a response body, a rendered element. On the overlay, a missing endpoint answering 404 or 405 is
@@ -272,6 +292,8 @@ the candidate tree.
 | accumulated acceptance (§8.1) | the candidate tree | the frozen criteria | `blocked_unverified` | a per-criterion result keyed by (increment, criterion id, candidate identity) | recomputed, idempotent by key |
 | route rendering (§8.3) | the candidate tree, booted | the accumulated manifest's routes | `blocked_unverified` | a per-route result | recomputed |
 | promotion (§12a) | none: reads the results above | every result recorded and passing | no promotion | the new accepted identity, in one control-log transition | idempotent: the transition is keyed by (campaign, increment, candidate identity) |
+| failure records (§14) | the cycle's evidence | `failure_events(evidence)`, the one producer | an `unaskable` record naming the input | one record per event, at completion | keyed by (cycle, event index); re-writing is a no-op |
+| the launcher (§12b) | the launch intents | a pending intent | nothing launches | the cycle, with `source_launch_id` | re-drains; idempotent by `source_launch_id` |
 | quiet-box check (§9.3) | the box: engines and GPU processes | the active deploy record (#1720) | not quiet: the launch is refused | a launch-blocked record | re-evaluated at the next attempt |
 | continuation decision (§10) | none: pure | the cycle's `CycleAssessment`, the campaign record, policy counters | not computed until the cycle is terminal | the decision row, in the control log | keyed by cycle id; recomputing returns the recorded decision |
 
@@ -383,53 +405,88 @@ and cannot lift a limit.
 
 ## 10. The continuation decision (#1800)
 
-Computed once per campaign cycle, after it reaches `CycleCompletion` and its participants are released:
+**Promotion comes first.** An accepted increment is promoted in its own transition when its cycle
+reaches `CycleCompletion` (§12a), before the decision runs. The decision then reads the new accepted
+identity, and a pause never holds a promotion.
+
+The decision is **pure** and runs **once per campaign cycle**, keyed by cycle id. It has three ordered
+steps, and its full result is written in one control-log transition:
 
 ```
-campaign_continuation_decision(
-    campaign:  CampaignState,       # objective, policy, counters, flags, accepted identity
-    cycle:     CycleRecord,         # kind, terminal state, gate outcome
-    latest:    CycleAssessment,     # verdict; attribution.primary (SIP-0108 §4.2)
-) -> ContinuationDecision           # pure; keyed by cycle id
+campaign_continuation_decision(campaign, cycle, latest) -> ContinuationDecision
+    # campaign: objective, policy, counters, flags, accepted identity
+    # cycle:    kind, terminal state, gate outcome
+    # latest:   CycleAssessment (verdict; attribution.primary)
+ContinuationDecision = (terminal | pending_action, guard)
 ```
 
-**The ordered table. The first matching row wins:**
+**Step 1, terminal outcomes. The first match ends the campaign:**
 
 | # | predicate | outcome |
 |---|---|---|
 | 1 | the campaign is aborted | `stop` (aborted) |
-| 2 | `cycle.kind = calibration` and `latest.verdict = accepted` | `continue`: the calibration tree becomes the first accepted baseline |
-| 3 | `cycle.kind = calibration` and `latest.verdict ≠ accepted` | `stop_failure` (calibration) |
-| 4 | `latest.verdict = accepted` and the objective's measurement is met with this increment counted | `stop_success` |
-| 5 | a stopping limit is reached (total cycles, no-progress) | `stop_failure` (that limit) |
-| 6 | a pausing limit is reached (elapsed time, budget, rejected proposals in a row) | `pause` (that limit) |
-| 7 | the cycle ended `rejected_at_gate` or `proposal_failed` | `continue`: propose anew |
-| 8 | `latest.verdict = accepted` | `continue`: promote, then propose the next |
-| 9 | `latest.verdict = blocked_unverified` and repair cycles remain for the increment | `repair` |
-| 10 | `latest.verdict = blocked_unverified` | `escalate` |
-| 11 | `latest.verdict = rejected`, `latest.attribution.primary = environment_or_infrastructure_failure`, and retry cycles remain | `retry` |
+| 2 | `cycle.kind = calibration` and `latest.verdict ≠ accepted` | `stop_failure` (calibration) |
+| 3 | `latest.verdict = accepted`, and the objective's measurement is met with this increment counted | `stop_success` |
+| 4 | a stopping limit is reached (total cycles, no-progress) | `stop_failure` (that limit) |
+
+**Step 2, the pending action. When no terminal outcome fired, the first match is the next action:**
+
+| # | predicate | `pending_action` |
+|---|---|---|
+| 5 | `cycle.kind = calibration` (accepted) | `propose` |
+| 6 | the cycle ended `rejected_at_gate` or `proposal_failed` | `propose` |
+| 7 | `latest.verdict = accepted` | `propose` |
+| 8 | `latest.verdict = blocked_unverified` and repair cycles remain for the increment | `repair` |
+| 9 | `latest.verdict = blocked_unverified` | `escalate` |
+| 10 | `latest.verdict = rejected`, `latest.attribution.primary = environment_or_infrastructure_failure`, and retry cycles remain | `retry` |
+| 11 | `latest.verdict = rejected` and `latest.attribution.primary = environment_or_infrastructure_failure` (no retry cycles remain) | `escalate` |
 | 12 | `latest.verdict = rejected` and repair cycles remain for the increment | `repair` |
-| 13 | `latest.verdict = rejected` | `continue`: the increment is abandoned (counts as unaccepted); propose anew |
+| 13 | `latest.verdict = rejected` | `abandon_and_propose` (counts as unaccepted) |
 | 14 | otherwise | `escalate` |
 
-**The rules that bind the table:**
-- **Success first.** An increment that meets the objective on the last allowed cycle is a success
-  (row 4 before row 5).
-- **Hard stops before pauses,** and pauses before outcome-driven continuation.
-- **`blocked_unverified` never yields `continue` or `stop_success`.** It yields `repair`, `escalate`,
-  or a limit's stop or pause. An unverified cycle proves nothing to continue from.
-- **`stop_success` needs `latest.verdict = accepted`.** Agent narrative never yields it.
-- **No outcome launches a cycle directly.** `continue`, `repair` and `retry` create the next cycle,
-  whose own gate and launch preflight apply.
-- **No `wait` outcome.** A pending ruling is an open gate inside the next cycle, never an output of
-  this function.
+**Step 3, the guard.** If a pausing limit is reached (elapsed time, budget, rejected proposals in a row),
+`guard = paused (that limit)`. Otherwise `guard = proceed`.
+
+**Execution.** The transition writes the pending action and the guard together:
+- **`proceed`:** the pending action becomes a **launch intent** in the same transaction (§12b).
+- **`paused`:** the pending action is **held**, with no intent. **The owner's resume executes that same
+  recorded pending action,** as a launch intent written in the resume's transition. It never recomputes
+  the decision. A resume after the policy changes still executes the held action, and the guard then
+  applies at the next cycle's decision.
+- **`escalate`** waits for the owner's ruling, which records the action to take: propose, abandon,
+  repair, retry, or stop.
+
+**The rules that bind it:**
+- **Success first** (row 3 before row 4).
+- **`blocked_unverified` never yields `propose` from an unverified increment, and never
+  `stop_success`.**
+- **`stop_success` needs `latest.verdict = accepted`.**
+- **No outcome launches directly.** Launches go only through launch intents (§12b).
+- **No `wait` outcome.** A pending ruling is an open gate in the next cycle.
+
+### 10a. Repair and retry cycles
+
+A repair or retry **reuses exactly** the bound change request, its ruling, its baseline and its
+footprint. **Any change of scope, baseline or content requires a new proposal run and ruling,** which
+means a new increment cycle. The baseline cannot move between an increment's cycles: nothing is
+promoted while an increment is unresolved.
+
+| | `repair` | `retry` |
+|---|---|---|
+| **when** | the increment failed a check it can repair | the increment failed for a cause outside the work |
+| **workloads** | `implementation` only, correction-focused, under the failed cycle's approved plan | `framing` (delta-scoped), the gate `progress_plan_review`, `implementation` |
+| **the ruling** | the gate `increment_ruling` is **not run**. The bound ruling is reused by reference, and its binding re-checked: the same `proposal_id`, `version`, `content_hash` and `baseline_tree`. A mismatch refuses the cycle | the same |
+| **the starting tree** | **the failed cycle's candidate content**, by its identity, re-applied onto the accepted tree | **the accepted tree**: a fresh candidate |
+| **the footprint** | the bound change request's. A repair needing writes outside it is refused by the plan validator, and the repair cycle fails | the same |
+| **the prior-cycle brief** | enters the implementation's correction context (#1692) | recorded, and shown to framing |
+| **what forces a fresh proposal** | the repair limit, reached (row 13); a refused write outside the footprint, after repairs are exhausted; any needed change of scope | none by itself: the retry limit, reached, escalates (row 11), and the owner's ruling chooses |
 
 ---
 
 ## 11. The calibration cycle (#1709)
 
 Every campaign opens with **the same PRD built from scratch** on the campaign's deploy, under a fixed
-request profile. It is the **yardstick for greenfield behaviour**, and only rows 2–3 of §10 read its
+request profile. It is the **yardstick for greenfield behaviour**, and only rows 2 and 5 of §10 read its
 verdict. It exercises no proposal, delta or accumulated acceptance; §11a is their yardstick.
 
 ### 11a. The brownfield reference scenario (#1804)
@@ -473,6 +530,8 @@ Nothing is reconstructed from logs.
 | launch blocked | the next quiet-box attempt at the recorded interval |
 | paused, or escalated | nothing, until the owner's recorded word |
 | promotion in progress | promotion is one transition: either committed (the new identity) or not (the old) |
+| a decision recorded with `guard = paused` | nothing launches; the held pending action waits for the owner's resume (§10) |
+| a launch intent not yet `launched` | the launcher re-drains it; creation is idempotent by `source_launch_id` (§12b) |
 | completed | nothing |
 
 **The required outcomes, each verified by a fault-injected diagnostic:**
@@ -481,11 +540,36 @@ Nothing is reconstructed from logs.
 |---|---|
 | a restart in any state above | the table's resumption; **no ruling lost**, because a ruling is committed before it is acknowledged |
 | a duplicate completion event for one cycle | **one** continuation decision, keyed by cycle id; never two cycles created |
+| a crash on either side of cycle creation | **exactly one** cycle per launch intent (§12b) |
+| a pause, then a resume | the recorded pending action executes once; nothing is recomputed (§10) |
 | a repeated ruling | the recorded ruling; nothing new happens |
 | a conflicting idempotency key | refused and recorded |
 | interruption during accumulated acceptance or promotion | **no partial promotion**: the accepted identity changes only in the promotion transition, after every result is recorded |
 | an abort | terminal: the running cycle is cancelled by the existing path; **no continuation follows**, whatever arrives after |
 | a timeout or launch-blocked state | resumable exactly as §9.2 and §9.3 say |
+
+### 12b. Exactly-once launch: the launch intent
+
+The campaign's state lives behind `CampaignRegistryPort`. A launched cycle is created through
+`CycleRegistryPort.create_cycle(cycle)` (`src/squadops/ports/cycles/cycle_registry.py:29`), which has no
+transaction argument and no idempotency source. A crash between the two writes could lose a launch, or
+duplicate it. So launches cross that boundary through an **outbox**:
+- **The decision's transition** (or a resume's, or an escalation ruling's) writes a **launch intent**
+  in the same transaction as its control-log row: `launch_id` (derived from the decision id, unique),
+  the cycle to create, and its `kind` and inputs.
+- **A launcher** drains pending intents and creates each cycle with `source_launch_id = launch_id`.
+  `cycles.source_launch_id` is a new nullable column with a **uniqueness constraint**. **Cycle creation
+  is idempotent by it**: `CycleRegistryPort` gains `create_cycle_for_launch(cycle, launch_id)`, which
+  returns the existing cycle when one carries that id.
+- **The launcher then marks the intent `launched`,** with the cycle id, in a control-log transition.
+- **On restart**, the launcher re-drains every intent that is not `launched`. The uniqueness constraint
+  makes a re-drain create nothing twice.
+- **Fault tests inject a crash on both sides of the boundary:**
+  - after the intent commits, before the cycle is created;
+  - after the cycle is created, before the intent is marked;
+  - two launchers draining the same intent.
+
+  Each must end with exactly one cycle per intent.
 
 ---
 
@@ -527,10 +611,20 @@ acknowledged only after its row commits.
 - the proposal ledger (§9.4);
 - each cycle's records and assessment;
 - each evaluator's durable output (§8.4);
-- **one failure record per failure:** each `FailureEvent` the evidence carries
-  (`src/squadops/cycles/failure_attribution.py:416`), its class by `compose()`
-  (`failure_attribution.py:446`), the registry version, and the campaign, cycle and increment.
-  `compose()` already records an unplaceable event as `unattributed`, and a declared non-failure as none.
+- **one failure record per failure, from one producer.** Today `CycleEvidence`
+  (`src/squadops/cycles/cycle_assessment.py:180`) carries no failure events: `_completed()` and
+  `_failed_run()` (`cycle_assessment.py:620`, `:654`) build `FailureEvent`s transiently while composing
+  the terminal attribution.
+  - **The producer:** those constructions are extracted into **one deterministic function**,
+    `failure_events(evidence) -> tuple[FailureEvent, ...]`.
+  - **One durable write point:** its output is **persisted at the cycle's completion, where the
+    assessment is computed.** Each record holds the `FailureEvent`, its class by `compose()`
+    (`src/squadops/cycles/failure_attribution.py:446`), the registry version, and the campaign, cycle,
+    increment and event index.
+  - **The cycle's attribution consumes the same persisted set.** Campaign evidence reads the records.
+    **No consumer re-derives the events.**
+  - **An input the attribution could not read** (`AttributionReading.unrecorded`) is persisted as a
+    record in state `unaskable`, naming the input. It is never silently absent.
   Cross-Cycle Memory (v2.2, #1805) mines these records for recurrence, with no parallel taxonomy.
 
 **The close-time package** is a **projection** of those records: materialized at close, idempotently,
@@ -558,7 +652,10 @@ Frozen dataclasses beside `Cycle` and `Run`:
 - `LedgerEntry`;
 - `FrozenCriterion`;
 - `FailureRecord`;
-- `ContinuationDecision`.
+- `ContinuationDecision`: a terminal outcome, or a pending action with its guard (§10);
+- `LaunchIntent`: `launch_id`, the cycle to create, its state (`pending | launched`) and its cycle id;
+- `VerifierBundle`: a criterion's own file hash, its fixture-set version, its configuration and
+  dependency hash, and its invocation (§8.1).
 
 ---
 
@@ -569,9 +666,14 @@ Frozen dataclasses beside `Cycle` and `Run`:
 - `campaign_control_log`;
 - `campaign_ledger`;
 - `campaign_frozen_criteria`;
-- `campaign_failure_records`;
 - `campaign_box_lease`;
-- `cycles.campaign_id` and `cycles.kind`, both nullable.
+- `campaign_launch_intents`;
+- `campaign_fixture_sets`, the versioned fixture sets;
+- `cycles.campaign_id` and `cycles.kind`, both nullable, and `cycles.source_launch_id`, nullable and
+  **unique**.
+
+`cycle_failure_records` belong to the cycle, not the campaign: every cycle writes them at completion
+(§14), with campaign ids when the cycle has them.
 
 The next free migration number is used.
 
@@ -589,7 +691,8 @@ any state → escalated → owner resumes or stops
 any state → completed (success | failure | aborted | exhausted)
 ```
 
-Every transition is a control-log row with its cause. `cancelled` derives `CANCELLED`, as on `Cycle`.
+Every transition is a control-log row with its cause. A `paused` campaign holds the decision's pending
+action, and its resume executes that action. `cancelled` derives `CANCELLED`, as on `Cycle`.
 
 ---
 
@@ -597,11 +700,12 @@ Every transition is a control-log row with its cause. `cancelled` derives `CANCE
 
 | step | delivers | what it proves before the next starts |
 |---|---|---|
-| 1 | the domain model and the transactional control log (#1799) | a control operation commits atomically with its state change; an idempotency conflict is refused; a restart reads state from the log |
+| 1 | the domain model, the transactional control log, and the launch outbox with idempotent cycle creation (#1799) | a control operation commits atomically with its state change; an idempotency conflict is refused; a restart reads state from the log; a crash on either side of cycle creation leaves exactly one cycle |
+| 1a | `failure_events(evidence)` extracted as the one producer, persisted at completion and consumed by attribution (#1710) | behaviour-neutral: every stored cycle's attribution is unchanged when recomputed from the persisted records |
 | 2 | the proposal run and the typed change request (#1706) | the run recruits and releases like any run; out-of-scope proposals are refused; the delta passes the manifest gates or the run fails |
-| 3 | the three trees and their isolation (#1806) | the accepted tree is immutable; the overlay contains no candidate product code; test identity classifies new, modified and renamed tests |
+| 3 | the three trees, criterion-owned verifier bundles and the fixture set (#1806) | the accepted tree is immutable; the overlay contains no candidate product code; adding a criterion changes no other criterion's frozen identity |
 | 4 | accumulated acceptance and baseline discrimination (#1707, #1796) | frozen criteria execute on the candidate; a criterion without a discriminating test is not met; an import error is not discrimination |
-| 5 | the increment gate, the binding, the box lease and the continuation table (#1801, #1802, #1800) | stale and conflicting rulings are refused; every launch path honours the lease; each table row is reachable, with precedence as written |
+| 5 | the increment gate, the binding, the box lease, the continuation decision with its held pending action, and repair and retry cycles (#1801, #1802, #1800, #1705) | stale and conflicting rulings are refused; every launch path honours the lease; each row is reachable with precedence as written; a pause and resume executes the held action once; repair and retry reuse exactly the bound request |
 | 6 | the audit and event projections | each control-log row projects; a failed projection loses no control record |
 | 7 | the calibration cycle, the reference scenario, the evidence package and digest (#1709, #1804, #1710) | the package materializes from records alone, idempotently |
 | 8 | the recovery diagnostics (#1803) | every row of §12a holds under its injected fault |
@@ -638,8 +742,21 @@ Every transition is a control-log row with its cause. `cancelled` derives `CANCE
    resumes when the box is quiet, and escalates after its count.
 10. Each limit of §9.5 takes its action. A limit-caused pause resumes only on the owner's word.
 11. **The no-progress rule stops a campaign** whose proposals stop producing accepted increments.
-12. Each row of §10's table is reached by a crafted input, with the precedence as written. The function
-    is pure, which an architecture test asserts.
+12. Each row of §10's three steps is reached by a crafted input, with the precedence as written. The
+    function is pure, which an architecture test asserts.
+12a. **Pause and resume:** for an accepted increment, a rejected increment, a `proposal_failed` cycle, a
+     `repair` and a `retry`, a pausing limit holds the pending action, and the owner's resume executes
+     that same action exactly once, with no recomputation.
+12b. **Repair and retry** reuse exactly the bound change request, ruling, baseline and footprint, start
+     from the trees §10a names, and refuse a cycle whose binding no longer matches.
+12c. **Exactly-once launch:** with a crash injected on each side of cycle creation, and with two
+     launchers, each launch intent yields exactly one cycle.
+12d. **Failure records:** one producer and one write point. The attribution recomputed from the
+     persisted records equals the stored attribution for every stored cycle, and an unreadable input is
+     an `unaskable` record.
+12e. **Verifier bundles:** adding a criterion that shares fixtures with an earlier one leaves the
+     earlier criterion's frozen identity unchanged. Modifying a frozen fixture without
+     `revises_fixtures` blocks acceptance.
 13. **The evidence package is usable without the producing deploy:** materialized from records alone,
     and re-materialized identically after a crash at close.
 14. The reference scenario reports each brownfield mechanism separately, with the proposal rated.
@@ -688,7 +805,11 @@ Every transition is a control-log row with its cause. `cancelled` derives `CANCE
 - **Wiring, entering at `CycleCompletion` with stored two-increment records:** frozen criteria reach
   the verdict.
 - **The lease and the quiet box:** each launch path; fail-closed on an unreadable engine; expiry.
-- **Recovery:** one fault-injected diagnostic per row of §12a's required outcomes.
+- **Recovery:** one fault-injected diagnostic per row of §12a's required outcomes, the launch boundary
+  included (§12b).
+- **Pause and resume:** the five cases of criterion 12a.
+- **The failure producer:** recomputation from the persisted records against every stored cycle's
+  attribution.
 - **E2E:** criterion 15 on a live stack.
 
 ---
@@ -710,6 +831,13 @@ shakeout.
 
 ## Revision history
 
+- **Revision 4 (2026-10-01, late evening):** the crew's re-review of revision 3 (Ripley, on #1798),
+  which confirmed revision 3 closed its seven blockers and named five more seams. Revision 4 closes them:
+  - the held pending action and its resume (§10);
+  - the repair and retry contract (§10a);
+  - the launch outbox and idempotent cycle creation (§12b);
+  - the single failure producer and its write point (§14);
+  - criterion-owned verifier bundles and the fixture set (§8.1).
 - **Revision 3 (2026-10-01, evening):** the crew's design review of revision 2 on #1798 (Ripley), with
   the owner's rulings on it:
   - the proposal as the increment cycle's first run, and the ruling as its gate (§9);
