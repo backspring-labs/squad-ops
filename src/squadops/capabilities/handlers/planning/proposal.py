@@ -8,9 +8,11 @@ refusal returns every reason to the model for a revision, up to ``proposal_max_a
 proposal still refused after them fails the task, and the run's ordinary retry follows (§9.1:
 then ``proposal_failed``). A refused proposal is never trimmed into an accepted one.
 
-The proposal's context comes from the cycle's configuration (``campaign_proposal``), by id:
-the accepted manifest is fetched from the artifact vault by its artifact id, so the request
-the campaign launched names exactly which tree it proposes against.
+The proposal's context is persisted as the run's inputs (§9.1): the cycle's configuration
+carries a ``campaign_proposal`` block holding the accepted manifest's text, with its artifact id
+as provenance. The agent's container has no artifact vault — the first live proposal run
+(``cyc_a06843b58e4f``, 2026-10-02) refused for exactly that — and the runtime resolves only a
+run's own artifacts into task inputs, so the inputs carry the manifest itself.
 """
 
 from __future__ import annotations
@@ -57,6 +59,11 @@ def proposal_context_from(resolved_config: dict, baseline_manifest: str) -> Prop
             "the cycle carries no campaign_proposal block: a proposal run is launched by a "
             "campaign, which names the accepted tree and the objective it proposes against"
         )
+    if not baseline_manifest.strip():
+        raise ProposalContextMissing(
+            "campaign_proposal carries no baseline_manifest: the accepted manifest is the run's "
+            "input (§9.1), persisted with it, not fetched"
+        )
     try:
         objective = block["objective"]
         return ProposalContext(
@@ -93,13 +100,9 @@ class StrategyProposeIncrementHandler(_PlanningTaskHandler):
         resolved_config = inputs.get("resolved_config") or {}
         block = resolved_config.get("campaign_proposal") or {}
         try:
-            # The context first: without it there is no manifest to fetch, and saying so
-            # names the real absence rather than the vault's.
-            proposal_context_from(resolved_config, "")
-            baseline = await _baseline_manifest(
-                inputs.get("artifact_vault"), block.get("baseline_manifest_artifact_id")
+            proposal_context = proposal_context_from(
+                resolved_config, str(block.get("baseline_manifest") or "")
             )
-            proposal_context = proposal_context_from(resolved_config, baseline)
         except ProposalContextMissing as e:
             return self._failure(start_time, inputs, str(e))
 
@@ -225,21 +228,6 @@ class StrategyProposeIncrementHandler(_PlanningTaskHandler):
             ),
             error=error,
         )
-
-
-async def _baseline_manifest(vault: Any, artifact_id: Any) -> str:
-    if vault is None or not artifact_id:
-        raise ProposalContextMissing(
-            "the accepted manifest cannot be read: the proposal needs the artifact vault and "
-            "campaign_proposal.baseline_manifest_artifact_id"
-        )
-    try:
-        _ref, content = await vault.retrieve(str(artifact_id))
-    except Exception as e:  # noqa: BLE001 — any vault failure is the same refusal to start
-        raise ProposalContextMissing(
-            f"the accepted manifest {artifact_id} is unreadable: {e}"
-        ) from e
-    return content.decode("utf-8") if isinstance(content, bytes) else str(content)
 
 
 def _render_variables(block: dict, context: ProposalContext) -> dict[str, str]:
