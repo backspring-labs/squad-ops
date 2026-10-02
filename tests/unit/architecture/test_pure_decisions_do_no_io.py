@@ -1,12 +1,17 @@
-"""SIP-0108 §4.1 (a) / §5 criterion 1 — the cycle assessment performs no I/O.
+"""The pure decisions perform no I/O.
 
-``assess`` reads only ``CycleOutcome`` and ``CycleEvidence`` (and the caller-supplied assessor
-identity, §10c). Held by imports: the module's whole module-level import closure reaches no
-store, port, adapter, network client, clock or environment, and the module itself calls none.
+- **The cycle assessment** (SIP-0108 §4.1 (a) / §5 criterion 1): ``assess`` reads only
+  ``CycleOutcome`` and ``CycleEvidence`` (and the caller-supplied assessor identity, §10c).
+- **The continuation decision** (SIP-0109 §10, §19 criterion 12): it reads the campaign, its
+  counters, the ended cycle and its assessment, and persists and dispatches nothing — the caller
+  writes it in one control-log transition.
+
+Held by imports: each module's whole module-level import closure reaches no store, port, adapter,
+network client, clock or environment, and the module itself calls none.
 
 Bug caught: a registry read, a vault fetch, a ``datetime.now()`` or a config lookup added inside
-the projection — an assessment that changes when nothing in its evidence did, which the
-evidence identity could no longer vouch for.
+a decision — an assessment that changes when nothing in its evidence did, or a continuation that
+launches or persists from inside what the control log records as one decision.
 """
 
 from __future__ import annotations
@@ -20,7 +25,7 @@ import pytest
 pytestmark = [pytest.mark.domain_orchestration]
 
 REPO = Path(__file__).resolve().parents[3]
-MODULE = "squadops.cycles.cycle_assessment"
+MODULES = ("squadops.cycles.cycle_assessment", "squadops.campaigns.continuation")
 
 #: Prefixes the closure must not reach: stores and their ports, the wiring, the network, the
 #: clock and the process environment.
@@ -108,16 +113,18 @@ def _forbidden(name: str) -> bool:
     return any(name == f or name.startswith(f + ".") for f in FORBIDDEN)
 
 
-def test_the_projections_import_closure_reaches_no_io_surface():
-    first_party, external = _closure(MODULE)
+@pytest.mark.parametrize("module", MODULES)
+def test_the_import_closure_reaches_no_io_surface(module):
+    first_party, external = _closure(module)
 
-    assert MODULE in first_party
+    assert module in first_party
     offenders = sorted(n for n in first_party | external if _forbidden(n))
-    assert offenders == [], f"the assessment's import closure reaches I/O surfaces: {offenders}"
+    assert offenders == [], f"{module}'s import closure reaches I/O surfaces: {offenders}"
 
 
-def test_the_projection_calls_no_clock_file_or_environment():
-    source = (REPO / "src" / "squadops" / "cycles" / "cycle_assessment.py").read_text()
+@pytest.mark.parametrize("module", MODULES)
+def test_the_module_calls_no_clock_file_or_environment(module):
+    source = _module_file(module).read_text()
     calls = {
         ast.unparse(node.func) for node in ast.walk(ast.parse(source)) if isinstance(node, ast.Call)
     }
