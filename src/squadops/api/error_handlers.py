@@ -14,14 +14,21 @@ from __future__ import annotations
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from squadops.api.routes.campaigns.errors import campaign_error_envelope
 from squadops.api.routes.chat.errors import chat_error_envelope
 from squadops.api.routes.cycles.errors import cycle_error_envelope
+from squadops.campaigns.models import CampaignError
 from squadops.comms.models import ChatError
 from squadops.cycles.models import CycleError
 
 
 async def cycle_error_to_response(request: Request, exc: CycleError) -> JSONResponse:
     status, detail = cycle_error_envelope(exc)
+    return JSONResponse(status_code=status, content={"detail": detail})
+
+
+async def campaign_error_to_response(request: Request, exc: CampaignError) -> JSONResponse:
+    status, detail = campaign_error_envelope(exc)
     return JSONResponse(status_code=status, content={"detail": detail})
 
 
@@ -34,4 +41,5 @@ def register_domain_error_handlers(app: FastAPI) -> FastAPI:
     """Install the domain-error handlers on ``app``; returns it for chaining."""
     app.add_exception_handler(CycleError, cycle_error_to_response)
     app.add_exception_handler(ChatError, chat_error_to_response)
+    app.add_exception_handler(CampaignError, campaign_error_to_response)  # SIP-0109
     return app

@@ -106,6 +106,20 @@ class PostgresCampaignRegistry(CampaignRegistryPort):
             )
         return [_row_to_intent(r) for r in rows]
 
+    async def launch_intents(self, campaign_id: str) -> list[LaunchIntent]:
+        async with self._pool.acquire() as conn:
+            exists = await conn.fetchval(
+                "SELECT 1 FROM campaigns WHERE campaign_id = $1", campaign_id
+            )
+            if not exists:
+                raise CampaignNotFoundError(f"Campaign not found: {campaign_id}")
+            rows = await conn.fetch(
+                f"SELECT {_INTENT_COLUMNS} FROM campaign_launch_intents WHERE campaign_id = $1 "
+                "ORDER BY created_at, launch_id",
+                campaign_id,
+            )
+        return [_row_to_intent(r) for r in rows]
+
     async def get_launch_intent(self, launch_id: str) -> LaunchIntent:
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(

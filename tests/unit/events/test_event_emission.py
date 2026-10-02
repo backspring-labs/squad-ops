@@ -65,6 +65,9 @@ _CORRECTION_RUNNER_PATH = Path("adapters/cycles/correction_runner.py")
 _PULSE_BOUNDARY_RUNNER_PATH = Path("adapters/cycles/pulse_boundary_runner.py")
 _TASK_DISPATCHER_PATH = Path("adapters/cycles/task_dispatcher.py")
 _CYCLES_ROUTE = Path("src/squadops/api/routes/cycles/cycles.py")
+# SIP-0109 #1799: the cycle cancel path moved here, shared by the cycle route and a campaign's
+# abort, and its CYCLE_CANCELLED emit with it.
+_CANCELLATION = Path("src/squadops/api/routes/cycles/cancellation.py")
 _RUNS_ROUTE = Path("src/squadops/api/routes/cycles/runs.py")
 _ARTIFACTS_ROUTE = Path("src/squadops/api/routes/cycles/artifacts.py")
 
@@ -77,6 +80,7 @@ _ALL_EMISSION_FILES = [
     _RUN_PROVISIONING_PATH,
     _WORKLOAD_GATE_PATH,
     _CYCLES_ROUTE,
+    _CANCELLATION,
     _RUNS_ROUTE,
     _ARTIFACTS_ROUTE,
 ]
@@ -289,8 +293,8 @@ class TestRouteEmissionPoints:
         refs = _find_event_type_refs_in_file(_CYCLES_ROUTE)
         assert "CYCLE_CREATED" in refs
 
-    def test_cycles_route_emits_cycle_cancelled(self) -> None:
-        refs = _find_event_type_refs_in_file(_CYCLES_ROUTE)
+    def test_the_cancel_path_emits_cycle_cancelled(self) -> None:
+        refs = _find_event_type_refs_in_file(_CANCELLATION)
         assert "CYCLE_CANCELLED" in refs
 
     def test_runs_route_emits_run_created(self) -> None:
@@ -394,7 +398,9 @@ class TestEmitCallSitePayloadFields:
         pulse path's 8 emit sites to the PulseBoundaryRunner; slice 5 moved
         the retry loop's 2 per-attempt TASK_* emits to the TaskDispatcher —
         same events at runtime, same total. #1507 step 2 moved the run's two start/resume emits
-        to RunProvisioning — same total; step 3 moved the gate's four to WorkloadGate — same total."""
+        to RunProvisioning — same total; step 3 moved the gate's four to WorkloadGate — same total.
+        SIP-0109 #1799 moved the cycle cancel route's CYCLE_CANCELLED emit into the shared cancel
+        path (cancellation.py) — same total."""
         total = 0
         for path in _ALL_EMISSION_FILES:
             total += len(self._extract_emit_calls(path))

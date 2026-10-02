@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
+from squadops.ports.cycles.campaign_registry import CampaignRegistryPort
 from squadops.ports.cycles.cycle_registry import CycleRegistryPort
 from squadops.ports.cycles.deploy_registry import DeployRegistryPort
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
@@ -57,6 +58,24 @@ def create_deploy_registry(provider: str, **kwargs) -> DeployRegistryPort:
 
         return PostgresDeployRegistry(pool=pool)
     raise ValueError(f"Unknown deploy registry provider: {provider}")
+
+
+def create_campaign_registry(provider: str, **kwargs) -> CampaignRegistryPort:
+    """Create a CampaignRegistryPort adapter (SIP-0109 §16). The campaigns live beside the
+    cycles they launch, so the cycle registry's selector (``cycles.registry_provider``) chooses
+    it."""
+    if provider == "memory":
+        from adapters.cycles.memory_campaign_registry import MemoryCampaignRegistry
+
+        return MemoryCampaignRegistry()
+    elif provider == "postgres":
+        pool = kwargs.get("pool")
+        if pool is None:
+            raise ValueError("pool is required for postgres campaign registry provider")
+        from adapters.cycles.postgres_campaign_registry import PostgresCampaignRegistry
+
+        return PostgresCampaignRegistry(pool=pool)
+    raise ValueError(f"Unknown campaign registry provider: {provider}")
 
 
 def create_squad_profile_port(provider: str, **kwargs) -> SquadProfilePort:

@@ -82,6 +82,15 @@ class CampaignRegistryPort(ABC):
         launch follows an abort, whatever was pending when it committed (§12a)."""
 
     @abstractmethod
+    async def launch_intents(self, campaign_id: str) -> list[LaunchIntent]:
+        """Every launch intent the campaign wrote, oldest first, in any state: an abort reads it
+        to cancel the cycles the campaign launched (§12a).
+
+        Raises:
+            CampaignNotFoundError: If the campaign_id is not found.
+        """
+
+    @abstractmethod
     async def get_launch_intent(self, launch_id: str) -> LaunchIntent:
         """Return a launch intent by id.
 

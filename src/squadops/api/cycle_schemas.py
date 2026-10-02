@@ -248,6 +248,10 @@ class CycleResponse(BaseModel):
     framework_git_sha: str | None = None
     #: #1720: the deploy record the cycle was created on; None when no deploy had been recorded.
     deploy_id: str | None = None
+    # SIP-0109 §19: a cycle's campaign and why it was launched; null on a cycle no campaign
+    # launched, which is otherwise unchanged.
+    campaign_id: str | None = None
+    kind: str | None = None
     notes: str | None = None
     status: str  # Derived CycleStatus
     runs: list[RunResponse] = Field(default_factory=list)

@@ -1,0 +1,374 @@
+"""``/api/v1/campaigns`` — create, read, pause, resume, abort; the control log (SIP-0109 §13).
+
+Each operation is a control-log transition through ``CampaignRegistryPort``, acknowledged only
+after its row commits. The scopes are the owner's ruling of 2026-10-02:
+- **read** (``campaigns:read``): the campaign and its control log;
+- **supervise** (``campaigns:supervise``, the crew's supervisor): pause. Ruling at the increment
+  gate and the box lease arrive with step 5;
+- **control** (``campaigns:control``, the owner): create, resume, abort.
+
+The actor and role on every row come from the caller's verified token, never from the request
+body. Each row is projected to ``AuditPort``. That port is fail-open, which is acceptable because
+the control log, not the projection, carries completeness (§13).
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+
+from squadops.api.campaign_schemas import (
+    CampaignCreateRequest,
+    CampaignObjectiveDTO,
+    CampaignPolicyDTO,
+    CampaignResponse,
+    ControlLogEntryResponse,
+    ControlRequest,
+    ControlResultResponse,
+)
+from squadops.api.middleware.auth import require_scopes
+from squadops.auth.models import AuditEvent, Identity, Role, Scope
+from squadops.campaigns import lifecycle
+from squadops.campaigns.models import (
+    Campaign,
+    CampaignObjective,
+    CampaignOutcome,
+    CampaignPolicy,
+    CampaignState,
+    CampaignTransition,
+    ControlLogEntry,
+    ControlOperation,
+    ControlOperationRefused,
+    ControlOutcome,
+    TransitionResult,
+)
+from squadops.cycles.lifecycle import derive_cycle_status
+from squadops.cycles.models import CycleStatus
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/v1/campaigns", tags=["campaigns"])
+
+#: The role a control-log row names, first match: the most authoritative the caller holds.
+_ROLE_ORDER = (
+    Role.ADMIN,
+    Role.CAMPAIGN_SUPERVISOR,
+    Role.CAMPAIGN_TRIAGE,
+    Role.OPERATOR,
+    Role.VIEWER,
+)
+_TERMINAL_CYCLE = frozenset({CycleStatus.COMPLETED, CycleStatus.FAILED, CycleStatus.CANCELLED})
+
+
+def _actor(identity: Identity | None) -> tuple[str, str]:
+    """Who acted, from the verified token. With auth disabled there is no token, and the row
+    says so rather than inventing a name."""
+    if identity is None:
+        return "anonymous", "unauthenticated"
+    held = next((role for role in _ROLE_ORDER if role in identity.roles), "none")
+    return identity.user_id, held
+
+
+def _registry(request: Request):
+    from squadops.api.runtime.deps import get_campaign_registry
+
+    return get_campaign_registry(request)
+
+
+def _project_to_audit(request: Request, entry: ControlLogEntry, identity: Identity | None) -> None:
+    """Project a control-log row to the security audit (§13). Fail-open by contract: a failed
+    projection is logged and loses no control record."""
+    try:
+        from squadops.api.runtime.deps import get_audit_port
+
+        audit = get_audit_port(request)
+    except Exception:  # noqa: BLE001 — an unwired audit port is a missing projection, not an error
+        audit = None
+    if audit is None:
+        return
+    try:
+        audit.record(
+            AuditEvent(
+                action=f"campaign.{entry.operation}",
+                actor_id=entry.actor,
+                actor_type=(identity.identity_type if identity is not None else "unknown"),
+                resource_type="campaign",
+                resource_id=entry.campaign_id,
+                result="success" if entry.outcome is ControlOutcome.APPLIED else "denied",
+                denial_reason=str(entry.refusal) if entry.refusal else None,
+                metadata=(
+                    ("actor_role", entry.actor_role),
+                    ("reason", entry.reason),
+                    ("idempotency_key", entry.idempotency_key),
+                    ("entry_id", entry.entry_id),
+                    ("prior_state", str(entry.prior_state)),
+                    ("next_state", str(entry.next_state)),
+                ),
+                request_id=request.headers.get("X-Request-ID"),
+            )
+        )
+    except Exception:  # noqa: BLE001 — fail-open, as the port's contract says
+        logger.warning("campaign audit projection failed: %s", entry.entry_id, exc_info=True)
+
+
+async def _apply(
+    request: Request, campaign_id: str, transition: CampaignTransition, identity: Identity | None
+) -> TransitionResult:
+    try:
+        result = await _registry(request).transition(campaign_id, transition)
+    except ControlOperationRefused as refused:
+        _project_to_audit(request, refused.entry, identity)
+        raise
+    if not result.replayed:
+        _project_to_audit(request, result.entry, identity)
+    return result
+
+
+# ---------------------------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------------------------
+
+
+@router.post("")
+async def create_campaign(
+    request: Request,
+    body: CampaignCreateRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_CONTROL)),
+) -> ControlResultResponse:
+    actor, role = _actor(identity)
+    now = datetime.now(UTC)
+    try:
+        campaign = Campaign(
+            campaign_id=body.campaign_id or lifecycle.new_campaign_id(),
+            project_id=body.project_id,
+            objective=CampaignObjective(
+                statement=body.objective.statement,
+                allowed_scope=tuple(body.objective.allowed_scope),
+                measurement=body.objective.measurement,
+            ),
+            policy=CampaignPolicy(**body.policy.model_dump()),
+            state=CampaignState.DRAFT,
+            created_at=now,
+            created_by=actor,
+            updated_at=now,
+        )
+        result = await _registry(request).create_campaign(
+            campaign,
+            actor=actor,
+            actor_role=role,
+            reason=body.reason,
+            idempotency_key=body.idempotency_key,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            422, {"error": {"code": "VALIDATION_ERROR", "message": str(e), "details": None}}
+        ) from e
+    if not result.replayed:
+        _project_to_audit(request, result.entry, identity)
+    return _result(result)
+
+
+@router.get("")
+async def list_campaigns(
+    request: Request,
+    project_id: str,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_READ)),
+) -> list[CampaignResponse]:
+    return [_campaign(c) for c in await _registry(request).list_campaigns(project_id)]
+
+
+@router.get("/{campaign_id}")
+async def get_campaign(
+    request: Request,
+    campaign_id: str,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_READ)),
+) -> CampaignResponse:
+    return _campaign(await _registry(request).get_campaign(campaign_id))
+
+
+@router.get("/{campaign_id}/control-log")
+async def get_control_log(
+    request: Request,
+    campaign_id: str,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_READ)),
+) -> list[ControlLogEntryResponse]:
+    return [_entry(e) for e in await _registry(request).control_log(campaign_id)]
+
+
+@router.post("/{campaign_id}/pause")
+async def pause_campaign(
+    request: Request,
+    campaign_id: str,
+    body: ControlRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_SUPERVISE)),
+) -> ControlResultResponse:
+    actor, role = _actor(identity)
+    transition = _transition(ControlOperation.PAUSE, CampaignState.PAUSED, body, actor, role)
+    return _result(await _apply(request, campaign_id, transition, identity))
+
+
+@router.post("/{campaign_id}/resume")
+async def resume_campaign(
+    request: Request,
+    campaign_id: str,
+    body: ControlRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_CONTROL)),
+) -> ControlResultResponse:
+    """Resume a paused campaign into the state it was paused from (§17).
+
+    With step 5, a resume also executes the held pending action (§10). Until then there is no
+    held action, so the campaign returns to the state the pausing row moved it out of. A
+    campaign that is not paused refuses the resume as stale, and the refusal is recorded.
+    """
+    actor, role = _actor(identity)
+    registry = _registry(request)
+    paused_from = _paused_from(await registry.control_log(campaign_id))
+    campaign = await registry.get_campaign(campaign_id)
+    target = (
+        paused_from if campaign.state is CampaignState.PAUSED and paused_from else campaign.state
+    )
+    transition = _transition(
+        ControlOperation.RESUME,
+        target,
+        body,
+        actor,
+        role,
+        expected_state=CampaignState.PAUSED,
+    )
+    return _result(await _apply(request, campaign_id, transition, identity))
+
+
+@router.post("/{campaign_id}/abort")
+async def abort_campaign(
+    request: Request,
+    campaign_id: str,
+    body: ControlRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_CONTROL)),
+) -> ControlResultResponse:
+    """Abort: terminal (§12a). Every cycle the campaign launched that has not ended is
+    cancelled by the existing cancel path, and no continuation follows."""
+    actor, role = _actor(identity)
+    transition = _transition(
+        ControlOperation.ABORT,
+        CampaignState.COMPLETED,
+        body,
+        actor,
+        role,
+        outcome=CampaignOutcome.ABORTED,
+    )
+    result = await _apply(request, campaign_id, transition, identity)
+    cancelled = await _cancel_launched_cycles(request, campaign_id)
+    return _result(result, cancelled_cycles=cancelled)
+
+
+# ---------------------------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------------------------
+
+
+def _transition(
+    operation: ControlOperation,
+    next_state: CampaignState,
+    body: ControlRequest,
+    actor: str,
+    role: str,
+    *,
+    expected_state: CampaignState | None = None,
+    outcome: CampaignOutcome | None = None,
+) -> CampaignTransition:
+    stated = CampaignState(body.expected_state) if body.expected_state else None
+    try:
+        return CampaignTransition(
+            operation=operation,
+            actor=actor,
+            actor_role=role,
+            reason=body.reason,
+            idempotency_key=body.idempotency_key,
+            next_state=next_state,
+            outcome=outcome,
+            expected_state=stated or expected_state,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            422, {"error": {"code": "VALIDATION_ERROR", "message": str(e), "details": None}}
+        ) from e
+
+
+def _paused_from(log: list[ControlLogEntry]) -> CampaignState | None:
+    """The state the latest applied row into ``paused`` moved the campaign out of."""
+    for entry in reversed(log):
+        if entry.outcome is ControlOutcome.APPLIED and entry.next_state is CampaignState.PAUSED:
+            if entry.prior_state is not CampaignState.PAUSED:
+                return entry.prior_state
+    return None
+
+
+async def _cancel_launched_cycles(request: Request, campaign_id: str) -> list[str]:
+    """Cancel, by the existing path, each cycle the campaign launched that has not ended."""
+    from squadops.api.routes.cycles.cancellation import cancel_cycle_by_the_existing_path
+    from squadops.api.runtime.deps import get_cycle_registry
+
+    cycles = get_cycle_registry(request)
+    cancelled: list[str] = []
+    for intent in await _registry(request).launch_intents(campaign_id):
+        if intent.cycle_id is None:
+            continue
+        cycle = await cycles.get_cycle(intent.cycle_id)
+        status = derive_cycle_status(await cycles.list_runs(cycle.cycle_id), cycle.cancelled)
+        if status in _TERMINAL_CYCLE:
+            continue
+        await cancel_cycle_by_the_existing_path(request, cycle.project_id, cycle.cycle_id)
+        cancelled.append(cycle.cycle_id)
+    return cancelled
+
+
+def _campaign(c: Campaign) -> CampaignResponse:
+    return CampaignResponse(
+        campaign_id=c.campaign_id,
+        project_id=c.project_id,
+        objective=CampaignObjectiveDTO(
+            statement=c.objective.statement,
+            allowed_scope=list(c.objective.allowed_scope),
+            measurement=c.objective.measurement,
+        ),
+        policy=CampaignPolicyDTO(
+            **{f: getattr(c.policy, f) for f in CampaignPolicyDTO.model_fields}
+        ),
+        state=str(c.state),
+        outcome=str(c.outcome) if c.outcome else None,
+        created_at=c.created_at,
+        created_by=c.created_by,
+        updated_at=c.updated_at,
+    )
+
+
+def _entry(e: ControlLogEntry) -> ControlLogEntryResponse:
+    return ControlLogEntryResponse(
+        entry_id=e.entry_id,
+        campaign_id=e.campaign_id,
+        seq=e.seq,
+        operation=str(e.operation),
+        actor=e.actor,
+        actor_role=e.actor_role,
+        reason=e.reason,
+        target=e.target,
+        idempotency_key=e.idempotency_key,
+        binding=dict(e.binding),
+        outcome=str(e.outcome),
+        refusal=str(e.refusal) if e.refusal else None,
+        prior_state=str(e.prior_state) if e.prior_state else None,
+        next_state=str(e.next_state),
+        committed_at=e.committed_at,
+        launch_id=e.launch_id,
+    )
+
+
+def _result(result: TransitionResult, cancelled_cycles: list[str] | None = None):
+    return ControlResultResponse(
+        campaign=_campaign(result.campaign),
+        entry=_entry(result.entry),
+        replayed=result.replayed,
+        cancelled_cycles=cancelled_cycles or [],
+    )

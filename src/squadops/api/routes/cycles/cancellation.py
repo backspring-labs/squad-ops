@@ -34,6 +34,7 @@ from squadops.api.runtime.deps import (
     get_runtime_coordinator,
     get_workflow_tracker,
 )
+from squadops.cycles.lifecycle import TERMINAL_STATES
 from squadops.cycles.models import RunStatus
 from squadops.cycles.naming import flow_run_name
 
@@ -196,3 +197,67 @@ async def abort_cancelled_cycle_activities(request: Request, cycle_id: str) -> i
             cycle_id,
         )
     return aborted
+
+
+async def cancel_cycle_by_the_existing_path(request, project_id: str, cycle_id: str) -> dict:
+    """Cancel a cycle everywhere it lives: its flag, its event, its Prefect flow runs, its
+    in-flight runs, its focus leases and its open activities, telling its agents first.
+
+    The one cancel path: the cycle route calls it, and so does a campaign's abort (SIP-0109
+    §12a: "the running cycle is cancelled by the existing path").
+    """
+    from squadops.api.runtime.deps import get_cycle_registry
+
+    registry = get_cycle_registry(request)
+    await registry.cancel_cycle(cycle_id)
+
+    # SIP-0077: cycle.cancelled
+    from squadops.api.runtime.deps import get_cycle_event_bus
+    from squadops.events.types import EventType
+
+    get_cycle_event_bus(request).emit(
+        EventType.CYCLE_CANCELLED,
+        entity_type="cycle",
+        entity_id=cycle_id,
+        context={"cycle_id": cycle_id, "project_id": project_id},
+        payload={"project_id": project_id},
+    )
+
+    # #77: stop the orphaned Prefect flow run(s) for this cycle's runs so
+    # workers don't keep executing a logically-cancelled cycle.
+    runs = await registry.list_runs(cycle_id)
+    run_ids = [run.run_id for run in runs]
+    # #1648: first, while the activities and leases still say who holds the runs' tasks.
+    agents_notified = await notify_agents_of_cancel(request, cycle_id, run_ids)
+    cancelled = await cancel_orphaned_flow_runs(request, project_id, cycle_id, run_ids)
+
+    # #529: `cancel_cycle` writes only the cycle's `cancelled` flag, so an
+    # in-flight run stays `running` forever — a stale status, and one that
+    # makes the run look live to the startup lease reaper. Transition them
+    # here, per-run isolated so one failure never blocks the rest.
+    for run in runs:
+        if RunStatus(run.status) in TERMINAL_STATES:
+            continue
+        try:
+            await registry.cancel_run(run.run_id)
+        except Exception:
+            logger.warning("cancel_cycle: run %s could not be cancelled", run.run_id, exc_info=True)
+
+    # #529: release the focus leases those runs hold. Swept across every run,
+    # not just the in-flight ones — a lease stranded under an already-terminal
+    # run is exactly #373's case and blocks recruitment just as hard.
+    leases_released = await release_cancelled_run_leases(request, cycle_id, run_ids)
+
+    # #561: and end the cycle's open activity rows. One left active trips the
+    # one-active-per-agent index on every later dispatch, silently ending
+    # that agent's activity tracking.
+    activities_ended = await abort_cancelled_cycle_activities(request, cycle_id)
+
+    return {
+        "status": "cancelled",
+        "cycle_id": cycle_id,
+        "prefect_flow_runs_cancelled": cancelled,
+        "focus_leases_released": leases_released,
+        "activities_ended": activities_ended,
+        "agents_notified": agents_notified,
+    }

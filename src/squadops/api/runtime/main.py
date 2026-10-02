@@ -31,6 +31,7 @@ from squadops.api.middleware.auth import AuthMiddleware, RequestIDMiddleware
 from squadops.api.routes.agent_status import router as agent_status_router
 from squadops.api.routes.assignments import router as assignments_router
 from squadops.api.routes.auth import router as auth_router
+from squadops.api.routes.campaigns import campaigns_router
 from squadops.api.routes.chat import agents_router as chat_agents_router
 from squadops.api.routes.chat import chat_router
 from squadops.api.routes.cycles import (
@@ -104,6 +105,7 @@ def _include_routers(app: FastAPI) -> None:
     app.include_router(projects_router)
     app.include_router(cycles_router)
     app.include_router(runs_router)
+    app.include_router(campaigns_router)  # SIP-0109 §13
     app.include_router(profiles_router)
     app.include_router(artifacts_router)
     app.include_router(cycle_request_profiles_router)  # SIP-0074
@@ -303,6 +305,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     """
     from adapters.cycles.factory import (
         create_artifact_vault,
+        create_campaign_registry,
         create_cycle_registry,
         create_deploy_registry,
         create_flow_executor,
@@ -318,6 +321,11 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     )
     # #1720: the deploy records live beside the cycles, chosen by the same selector.
     deploy_registry = create_deploy_registry(
+        config.cycles.registry_provider,
+        **({"pool": pool} if config.cycles.registry_provider == "postgres" else {}),
+    )
+    # SIP-0109 §16: the campaigns live beside the cycles they launch, chosen by the same selector.
+    campaign_registry = create_campaign_registry(
         config.cycles.registry_provider,
         **({"pool": pool} if config.cycles.registry_provider == "postgres" else {}),
     )
@@ -460,6 +468,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     state.project_registry = project_registry
     state.cycle_registry = cycle_registry
     state.deploy_registry = deploy_registry
+    state.campaign_registry = campaign_registry
     state.squad_profile = squad_profile
     state.artifact_vault = artifact_vault
     state.flow_executor = flow_executor

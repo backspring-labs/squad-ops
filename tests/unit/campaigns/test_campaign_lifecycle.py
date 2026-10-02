@@ -48,6 +48,7 @@ S = CampaignState
         (S.PAUSED, S.REPAIRING),
         (S.ESCALATED, S.AT_PROPOSAL),
         (S.DRAFT, S.COMPLETED),
+        (S.DRAFT, S.LAUNCH_BLOCKED),
         (S.EVALUATING, S.COMPLETED),
     ],
 )
@@ -63,6 +64,8 @@ def test_every_arrow_of_the_lifecycle_diagram_is_legal(current, target):
         (S.BUILDING, S.PROMOTING, "a promotion without evaluation"),
         (S.REPAIRING, S.PROMOTING, "a repair promoted without evaluation"),
         (S.PAUSED, S.DRAFT, "a resumed campaign back in draft"),
+        (S.DRAFT, S.PAUSED, "a draft paused, though nothing runs in a draft"),
+        (S.DRAFT, S.ESCALATED, "a draft escalated, with nothing to escalate"),
         (S.COMPLETED, S.AT_PROPOSAL, "a completed campaign revived"),
         (S.COMPLETED, S.COMPLETED, "a completed campaign completed twice"),
     ],
