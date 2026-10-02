@@ -1,6 +1,8 @@
 # 2.0.0 plan — Campaign: the squad evolves one app, the crew evolves the framework
 
-**Status:** DRAFT, rev 6 (2026-10-01), for the owner's review. Rev 2 folded in an external review of rev 1. Rev 3 folded in the crew's design review of rev 2 (Ripley, on #1798), with the owner's rulings on it. Rev 4 folded in the crew's re-review, rev 5 its third review, and rev 6 its fourth (§9). **Not adopted.** Written at the 1.9.0 cut
+**Status:** **adopted, rev 7 (2026-10-01).** On 2026-10-01 the owner accepted the Campaign SIP as
+**SIP-0109**, after the crew approved its revision 6, and ruled this plan's seven decisions (§7): "good
+to accept Campaign SIP. good with seven decisions". Rev 2 folded in an external review of rev 1. Rev 3 folded in the crew's design review of rev 2 (Ripley, on #1798), with the owner's rulings on it. Rev 4 folded in the crew's re-review, rev 5 its third review, and rev 6 its fourth (§9). Written at the 1.9.0 cut
 on the owner's word ("can you draft a plan to review and any SIP revisions"). It turns three inputs into
 a release:
 - the owner's direction of 2026-09-28 (`docs/plans/post-1-8-2-roadmap-reconciliation.md`);
@@ -8,8 +10,8 @@ a release:
   (`docs/ideas/nostromo-framework-optimization-crew.md`);
 - the owner's rulings on that IDEA the same day (§2 below).
 
-The design it builds on is the Campaign SIP's revision 6 (`sips/proposed/SIP-Campaign-Orchestration.md`).
-That SIP is proposed, and this plan adopts only after it is accepted (§6, step 1).
+The design it builds on is the Campaign SIP's revision 6 (`sips/accepted/SIP-0109-Campaign-Orchestration.md`).
+That SIP was accepted as **SIP-0109** on 2026-10-01, after the crew approved revision 6, and this plan adopted with it (§6, step 1).
 
 **What 2.0 is.** An even minor, a feature release, led by one headline: **Campaign**. 1.9 extracted the
 completion boundary (`CycleCompletion`, `adapters/cycles/cycle_completion.py:20`) that a campaign observes
@@ -332,7 +334,8 @@ the cut's evidence.
 
 Merge order follows the dependencies (the Campaign SIP's §18). Each step's PR proves its
 intermediate acceptance before the next starts.
-1. **The Campaign SIP's revision 6: design review and acceptance.** This plan adopts after it.
+1. **Done, 2026-10-01: the Campaign SIP accepted as SIP-0109** at revision 6, after the crew's approval,
+   and this plan adopted.
 2. **Decision 1, the flip,** and its prerequisites: #1788 first, then #1755 and #1727.
 3. **The domain model, the transactional control log, and the launch outbox (#1799).** Proves atomic
    commit with state, conflicts refused, restart read from the log, and exactly one cycle per launch
@@ -367,7 +370,10 @@ intermediate acceptance before the next starts.
 
 ---
 
-## 7. Decisions for the owner at adoption
+## 7. Decisions at adoption: ruled by the owner, 2026-10-01
+
+**Ruled: all seven, as recommended, with the crew's refinements below adopted** ("good with seven
+decisions").
 
 1. **SIP-0107's flip: decide it before the first campaign.**
    - **Recommendation: flip to scoped revision first,** once #1788 has explained the nine empty
@@ -398,7 +404,7 @@ intermediate acceptance before the next starts.
    - Any break found during the line is named in the CHANGELOG under its own heading.
 
 **The crew's review answered all seven (Ripley, on #1798, at the SIP's revision 3).** It concurred
-with each recommendation, and its refinements are adopted into this plan's text for the owner's ruling:
+with each recommendation, and its refinements are part of the owner's ruling:
 - **Decision 1:** the flip stays conditional on #1788 explaining the nine empty Next.js repairs. **If
   the raw responses show a framework or tooling defect, rather than scoped revision's own inability, it
   is fixed and the replay re-run before flipping.**
@@ -428,6 +434,11 @@ crew's conditions:
 
 ## 9. Revision history
 
+- **Rev 7 (2026-10-01, late evening): adopted.** The crew approved the SIP's revision 6 for
+  implementation, and the owner:
+  - accepted it as **SIP-0109**;
+  - ruled all seven decisions as recommended, with the crew's refinements;
+  - merged Cross-Cycle Memory revision 3 (#1805).
 - **Rev 6 (2026-10-01, late evening):** folds in the crew's fourth review. It confirmed rev 5's
   corrections, and named one final contradiction (escalation and the pausing guard), resolved in the
   SIP's revision 6.

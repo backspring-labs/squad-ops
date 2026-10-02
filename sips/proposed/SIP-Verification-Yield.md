@@ -39,14 +39,14 @@ author: Backspring Labs / SquadOps
 > **Where this SIP meets a requirement for executable evidence, the requirement governs.** §19 makes "no
 > additional automated test is justified" a legal outcome. It applies **only where no acceptance contract
 > or SIP requires executable evidence.** Campaign's rule for feature and fix increments (one executable,
-> discriminating test per new criterion; `SIP-Campaign-Orchestration.md` §8.2) is a deliberate policy
+> discriminating test per new criterion; `SIP-0109-Campaign-Orchestration.md` §8.2) is a deliberate policy
 > requirement. Where the two meet, Campaign's governs, so the squad never receives opposite instructions.
 >
 > **When each part lands:**
 >
 > | part | when |
 > |---|---|
-> | **each criterion an increment adds has a test that fails on its baseline for the intended reason** (demonstrated discrimination for brownfield cycles) | **before the first campaign**, as `SIP-Campaign-Orchestration.md` revision 6 §8.2 |
+> | **each criterion an increment adds has a test that fails on its baseline for the intended reason** (demonstrated discrimination for brownfield cycles) | **before the first campaign**, as `SIP-0109-Campaign-Orchestration.md` revision 6 §8.2 |
 > | Test-First Verification's stub-based red gate, for greenfield cycles | after the first campaign: the calibration cycle is the yardstick, and changing its verification moves the baseline it exists to hold |
 > | risk-first instructions for qa and builder, with "no new test is justified" a legal outcome (§19) | after the first campaign, as an outer-loop experiment read against the calibration cycle |
 > | the test-value audit, fault corpus, detection matrix and deletion experiment on the framework's suite (§10–§28) | after, as Nostromo crew work. It suits crew local inference between cycles (§34). It is not commissioning work, because deletion decisions take judgement |

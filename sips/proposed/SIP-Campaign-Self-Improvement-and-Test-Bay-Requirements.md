@@ -24,7 +24,7 @@ Related Concepts: Campaign, Cycle, Run, Duty, Capability Pack, Capability Asset,
 >   only with the owner's approval (`docs/ideas/nostromo-framework-optimization-crew.md`). The goal of
 >   the squad improving its own framework stands, and is not scheduled.
 > - **What 2.0 carries from here:**
->   - the Campaign mechanic, in `SIP-Campaign-Orchestration.md` revision 6;
+>   - the Campaign mechanic, in `SIP-0109-Campaign-Orchestration.md` revision 6;
 >   - the morning review (§7.8), as that SIP's evidence package and digest;
 >   - Test Bay's role as a measuring instrument, as the calibration cycle (#1709).
 >

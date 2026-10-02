@@ -44,6 +44,6 @@ correction-chain loss mode diagnosed to root cause and filed as #687/#688/#689.
 | [SIP-0090-Agent-Embodiment-Substrate](../../design/sips/SIP-0090-Agent-Embodiment-Substrate.md) | new | accepted |
 | [SIP-0091-Duty-Durability-via-Temporal](../../design/sips/SIP-0091-Duty-Durability-via-Temporal.md) | new | accepted |
 | [SIP-0096-Verification-Evidence-Integrity](../../design/sips/SIP-0096-Verification-Evidence-Integrity.md) | new | accepted |
-| [SIP-Campaign-Orchestration](../../design/sips/SIP-Campaign-Orchestration.md) | new | proposed |
+| SIP-Campaign-Orchestration | new | proposed |
 | [SIP-Cross-Cycle-Memory](../../design/sips/SIP-Cross-Cycle-Memory.md) | new | proposed |
 | SIP-Squad-Authored-Manifest | new | proposed |

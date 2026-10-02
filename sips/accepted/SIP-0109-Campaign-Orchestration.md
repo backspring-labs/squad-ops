@@ -1,16 +1,19 @@
 ---
 sip_uid: '17883224960382348'
 title: Campaign Orchestration
-status: proposed
+status: accepted
 author: jladd
 created_at: '2026-07-04T00:00:00Z'
+sip_number: 109
+updated_at: '2026-10-01T22:03:31.055983Z'
 ---
-# SIP: Campaign Orchestration
+# SIP-0109: Campaign Orchestration
 
 ## Status
 
-Proposed — **revision 6 (2026-10-01), for design review.** **Targets v2.0, the headline**
-(`docs/plans/2-0-0-plan.md`, draft).
+Accepted — **revision 6 (2026-10-01).** Accepted on 2026-10-01 on the owner's ruling, after the crew's
+design review approved revision 6 for implementation (Ripley, on #1798, at `78ab4c73`). **Targets v2.0,
+the headline** (`docs/plans/2-0-0-plan.md`, adopted the same day).
 
 **The rule this SIP establishes** (from the crew's design review, adopted):
 

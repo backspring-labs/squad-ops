@@ -1,7 +1,7 @@
 # IDEA — Nostromo as the SquadOps Framework Optimization Crew
 
 > **Recorded 2026-10-01** as the owner wrote it. It is an input to `docs/plans/2-0-0-plan.md` and to the
-> Campaign SIP's revision (`sips/proposed/SIP-Campaign-Orchestration.md`, rev 2), which record how 2.0
+> Campaign SIP (`sips/accepted/SIP-0109-Campaign-Orchestration.md`, accepted 2026-10-01), which record how 2.0
 > adopts it. The owner's rulings of the same day amend it:
 > - **Loop 2 does not choose the increment.** The strategy role proposes each increment, on a short
 >   leash.

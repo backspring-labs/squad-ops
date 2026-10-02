@@ -65,7 +65,7 @@ the same release.
 1. `SIP-Squad-Authored-Manifest.md` drafted in `sips/proposed/` — the 1.6 M headline
    (accepted 2026-08-07 as `sips/accepted/SIP-0103-Squad-Authored-Manifest.md`)
    previously existed only as a roadmap sentence.
-2. `sips/proposed/SIP-Campaign-Orchestration.md` retargeted v1.6 → v1.8 (header +
+2. `sips/accepted/SIP-0109-Campaign-Orchestration.md` retargeted v1.6 → v1.8 (header +
    phasing section).
 3. `docs/ROADMAP.md` Forward Cadence rewritten to the table above; drafts table and
    SIP-0102 target updated.

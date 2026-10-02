@@ -921,7 +921,7 @@ Campaign the measures its continuation policy reads. The owner's ruling of 2026-
    reasoning depth changes the outcome. A frontier model with unrestrained tokens produces fabulous
    results nobody can afford at scale; it is the expensive corner of the cost/outcome frontier, not
    the baseline. The question is **outcome per unit of cost across placements**.
-2. **Campaign.** The iterative improvement loop (2.0, `sips/proposed/SIP-Campaign-Orchestration.md`)
+2. **Campaign.** The iterative improvement loop (2.0, `sips/accepted/SIP-0109-Campaign-Orchestration.md`)
    reads the assessment as its continuation policy. Critically important in its own right, not as a
    validation of aim 1.
 3. **Embodiment.** Agent embodiment deployed in the runtime modes
