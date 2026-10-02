@@ -20,7 +20,7 @@ import hashlib
 import json
 import logging
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -39,8 +39,9 @@ from squadops.campaigns.evidence import CycleRecords, digest, package
 from squadops.campaigns.increment_tree import (
     INCREMENT_EVALUATION_ARTIFACT_TYPE,
     VERIFIER_BUNDLE_ARTIFACT_TYPE,
+    increment_seed,
 )
-from squadops.campaigns.launch_requests import increment_launch
+from squadops.campaigns.launch_requests import bound_launch, increment_launch
 from squadops.campaigns.models import (
     AcceptedTree,
     Campaign,
@@ -57,7 +58,14 @@ from squadops.cycles.contract_derivation import is_interface_manifest
 from squadops.cycles.cycle_assessment import CycleAssessment
 from squadops.cycles.cycle_end import CycleStopReason
 from squadops.cycles.delivered_tree import StoredArtifact, delivered_files
-from squadops.cycles.models import ArtifactRef, Cycle, Run, RunStatus, WorkloadType
+from squadops.cycles.models import (
+    ArtifactRef,
+    Cycle,
+    GateDecisionValue,
+    Run,
+    RunStatus,
+    WorkloadType,
+)
 from squadops.cycles.verification_integrity import RunVerdict
 
 logger = logging.getLogger(__name__)
@@ -135,7 +143,7 @@ def decision_transition(
             binding["unbuilt"] = unbuilt
             next_state = CampaignState.ESCALATED
         else:
-            next_state = CampaignState.AT_PROPOSAL
+            next_state = _LAUNCH_STATES[decision.action]
     return CampaignTransition(
         operation=ControlOperation.DECIDE,
         actor="squadops",
@@ -146,7 +154,7 @@ def decision_transition(
         outcome=outcome,
         target=decision.cycle_id,
         binding=binding,
-        launch=launch if next_state is CampaignState.AT_PROPOSAL else None,
+        launch=launch if next_state in _LAUNCH_STATES.values() else None,
     )
 
 
@@ -184,8 +192,20 @@ def held_action(log: list) -> PendingAction | None:
     return None
 
 
+#: The cycles that build an increment's change: the increment, and its retries and repairs
+#: (§10a). Each is judged by its own evaluation (§8) and promoted when accepted.
+_INCREMENT_KINDS = (CycleKind.INCREMENT, CycleKind.RETRY, CycleKind.REPAIR)
+
 #: The cycles whose accepted tree a promotion makes the campaign's (§12a).
-_PROMOTED_KINDS = (CycleKind.CALIBRATION, CycleKind.INCREMENT)
+_PROMOTED_KINDS = (CycleKind.CALIBRATION, *_INCREMENT_KINDS)
+
+#: Where a launch action takes the campaign (§17).
+_LAUNCH_STATES = {
+    PendingAction.PROPOSE: CampaignState.AT_PROPOSAL,
+    PendingAction.ABANDON_AND_PROPOSE: CampaignState.AT_PROPOSAL,
+    PendingAction.RETRY: CampaignState.RETRYING,
+    PendingAction.REPAIR: CampaignState.REPAIRING,
+}
 
 
 def increment_verdict(
@@ -194,7 +214,7 @@ def increment_verdict(
     """An increment's own acceptance (§8): its evaluation's verdict. One that reached its
     assessment without an evaluation is ``blocked_unverified`` — never accepted unjudged. ``None``
     for every other cycle, and for an increment that never reached its build."""
-    if kind is not CycleKind.INCREMENT or ending is not CycleEnding.ASSESSED:
+    if kind not in _INCREMENT_KINDS or ending is not CycleEnding.ASSESSED:
         return None
     if evaluation is None:
         return RunVerdict.BLOCKED_UNVERIFIED
@@ -219,6 +239,18 @@ def frozen_criteria(log: list) -> tuple[dict, ...]:
         for criterion in entry.binding.get("frozen_criteria") or ():
             frozen[criterion["criterion_id"]] = dict(criterion)
     return tuple(frozen.values())
+
+
+def _approved(log: list, block: Mapping) -> bool:
+    """Whether an applied ruling approved this proposal version (§9.2)."""
+    return any(
+        entry.operation is ControlOperation.RULE
+        and entry.outcome is ControlOutcome.APPLIED
+        and entry.binding.get("decision") == GateDecisionValue.APPROVED.value
+        and entry.binding.get("proposal_id") == block.get("proposal_id")
+        and entry.binding.get("version") == block.get("version")
+        for entry in log
+    )
 
 
 def decision_key(cycle_id: str) -> str:
@@ -327,7 +359,7 @@ class CampaignProgress:
         ending = cycle_ending(stopped_because, last_run)
         kind = CycleKind(cycle.kind)
         evaluation = None
-        if kind is CycleKind.INCREMENT and ending is CycleEnding.ASSESSED:
+        if kind in _INCREMENT_KINDS and ending is CycleEnding.ASSESSED:
             evaluation = await self._increment_evaluation(last_run)
         ended = EndedCycle(
             cycle.cycle_id, kind, ending, increment_verdict(kind, ending, evaluation)
@@ -356,13 +388,8 @@ class CampaignProgress:
         )
         launch, unbuilt = None, None
         if not decision.terminal and decision.guard is Guard.PROCEED:
-            if decision.action in (PendingAction.PROPOSE, PendingAction.ABANDON_AND_PROPOSE):
-                built = await self._propose_launch(campaign)
-                launch, unbuilt = (
-                    (built, None) if isinstance(built, LaunchRequest) else (None, built)
-                )
-            else:
-                unbuilt = f"{decision.action} cycles (§10a) are not built yet (#1705)"
+            built = await self._launch_for(campaign, decision.action, cycle)
+            launch, unbuilt = (built, None) if isinstance(built, LaunchRequest) else (None, built)
         try:
             result = await self._campaigns.transition(
                 campaign.campaign_id,
@@ -441,9 +468,7 @@ class CampaignProgress:
         :class:`CannotLaunch` for an action this campaign cannot execute."""
         if action not in OWNER_ACTIONS:
             raise CannotLaunch(f"{action} is not an action the owner's word executes")
-        if action in (PendingAction.REPAIR, PendingAction.RETRY):
-            raise CannotLaunch(f"{action} cycles (§10a) are not built yet (#1705)")
-        built = await self._propose_launch(campaign)
+        built = await self._launch_for(campaign, action, await self._last_decided_cycle(campaign))
         if isinstance(built, str):
             raise CannotLaunch(built)
         return CampaignTransition(
@@ -452,7 +477,7 @@ class CampaignProgress:
             actor_role=actor_role,
             reason=reason,
             idempotency_key=idempotency_key,
-            next_state=CampaignState.AT_PROPOSAL,
+            next_state=_LAUNCH_STATES[action],
             expected_state=campaign.state,
             binding={"action": action.value, "executes": "held" if held else "ruling"},
             launch=built,
@@ -605,6 +630,67 @@ class CampaignProgress:
         )
         await self._vault.store(ref, content)
         return ref.artifact_id
+
+    async def _launch_for(
+        self, campaign: Campaign, action: PendingAction, cycle: Cycle | None
+    ) -> LaunchRequest | str:
+        """The cycle a launch action writes (§10, §10a), or why it cannot be launched."""
+        if action in (PendingAction.PROPOSE, PendingAction.ABANDON_AND_PROPOSE):
+            return await self._propose_launch(campaign)
+        if action is PendingAction.RETRY:
+            if cycle is None:
+                return "no decided cycle to retry"
+            return await self._retry_launch(campaign, cycle)
+        return f"{action} cycles (§10a) are not built yet (#1705)"
+
+    async def _retry_launch(self, campaign: Campaign, cycle: Cycle) -> LaunchRequest | str:
+        """§10a: a retry reuses exactly the increment's bound change request, ruling, baseline
+        and footprint, from a fresh candidate on the accepted tree. Its binding is re-checked:
+        the baseline must still be the accepted tree, and the ruling that approved this version
+        must be on record. A mismatch launches nothing — any change of scope, baseline or content
+        needs a new proposal and ruling."""
+        block = cycle.resolved_config().get("campaign_proposal")
+        if not isinstance(block, dict) or not block.get("proposal_id"):
+            return f"cycle {cycle.cycle_id} carries no bound change request to retry"
+        accepted = campaign.accepted.identity if campaign.accepted else None
+        if block.get("baseline_tree") != accepted:
+            return (
+                f"the bound ruling no longer matches: {cycle.cycle_id}'s baseline "
+                f"{str(block.get('baseline_tree'))[:12]} is not the accepted tree"
+            )
+        log = await self._campaigns.control_log(campaign.campaign_id)
+        if not _approved(log, block):
+            return (
+                f"no approving ruling is on record for {block['proposal_id']} "
+                f"version {block.get('version')}"
+            )
+        seeds = await self._bound_seeds(cycle)
+        if seeds is None:
+            return f"cycle {cycle.cycle_id}'s approved seed cannot be found"
+        plan_refs, contract_ref = seeds
+        return bound_launch(campaign, CycleKind.RETRY, block, plan_refs, contract_ref)
+
+    async def _bound_seeds(self, cycle: Cycle) -> tuple[list[str], str | None] | None:
+        """The increment's approved seeds: from its approved proposal run (#1840), or — for a
+        cycle that itself reused them — from that cycle's own launch."""
+        runs = await self._cycles.list_runs(cycle.cycle_id)
+        last = max(runs, key=lambda r: r.run_number) if runs else None
+        if last is not None:
+            seed = await increment_seed(self._vault, self._cycles, cycle, last)
+            if seed is not None:
+                return list(seed.plan_refs), seed.contract_ref
+        overrides = cycle.execution_overrides or {}
+        refs = list(overrides.get("plan_artifact_refs") or ())
+        return (refs, overrides.get("contract_ref")) if refs else None
+
+    async def _last_decided_cycle(self, campaign: Campaign) -> Cycle | None:
+        """The cycle the campaign's latest decision was made for: the one a held action, or an
+        escalation ruling's named action, continues."""
+        log = await self._campaigns.control_log(campaign.campaign_id)
+        decided = [e for e in log if e.operation is ControlOperation.DECIDE and e.target]
+        if not decided:
+            return None
+        return await self._cycles.get_cycle(decided[-1].target)
 
     async def _propose_launch(self, campaign: Campaign) -> LaunchRequest | str:
         """The increment cycle a ``propose`` writes, from the accepted tree's manifest — or why

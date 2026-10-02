@@ -133,7 +133,9 @@ class _World:
     async def _assess(self, cycle_id):
         return _assessment(cycle_id, self.verdict)
 
-    async def launched_cycle(self, kind: str, cycle_id: str, workload: str, status: str) -> Run:
+    async def launched_cycle(
+        self, kind: str, cycle_id: str, workload: str, status: str, overrides: dict | None = None
+    ) -> Run:
         await self.cycles.create_cycle(
             Cycle(
                 cycle_id=cycle_id,
@@ -147,6 +149,7 @@ class _World:
                 build_strategy="fresh",
                 campaign_id=CID,
                 kind=kind,
+                execution_overrides=dict(overrides or {}),
             )
         )
         run = Run(
@@ -524,3 +527,123 @@ def test_a_retired_criterion_leaves_the_frozen_set_and_a_later_one_takes_its_pla
     log = [promote(1, ["C1", "C2"]), promote(2, ["C3"], retired=["C1"])]
 
     assert [f["criterion_id"] for f in frozen_criteria(log)] == ["C2", "C3"]
+
+
+# --------------------------------------------------------------------------------------------
+# §10a: a retry reuses the increment's bound change request, ruling, baseline and footprint
+# --------------------------------------------------------------------------------------------
+
+
+def _environment_failure(cycle_id):
+    """A rejected cycle whose primary cause is the environment: §10 rows 10/11."""
+    import dataclasses as _dc
+
+    from squadops.cycles.cycle_assessment import AttributionReading, IndicatorState
+    from squadops.cycles.failure_attribution import Attribution, AttributionClass
+
+    return _dc.replace(
+        _assessment(cycle_id, RunVerdict.REJECTED),
+        attribution=AttributionReading(
+            IndicatorState.OBSERVED,
+            Attribution(
+                primary=AttributionClass.ENVIRONMENT_OR_INFRASTRUCTURE_FAILURE, contributing=()
+            ),
+        ),
+    )
+
+
+async def _increment_failed_by_the_environment(calibrating, *, ruled="approved", moved=False):
+    """An accepted calibration, an increment proposed against its tree and ruled on, built, and
+    rejected for a cause outside the work."""
+    from squadops.campaigns.gate import ruling_transition, submission
+    from squadops.campaigns.models import ProposalBinding, SubmittedProposal
+    from squadops.cycles.models import GateDecisionValue
+
+    w, run = await calibrating(RunVerdict.ACCEPTED)
+    await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
+    accepted = (await w.campaigns.get_campaign(CID)).accepted.identity
+    block = {
+        "proposal_id": "prop_cap",
+        "version": 1,
+        "baseline_tree": "an-older-tree" if moved else accepted,
+        "accepted_cycle_id": "cyc_cal",
+        "baseline_manifest": MANIFEST,
+    }
+    increment_run = await w.launched_cycle(
+        "increment",
+        "cyc_inc",
+        "implementation",
+        "completed",
+        overrides={
+            "campaign_proposal": block,
+            "plan_artifact_refs": ["art_candidate", "art_cr"],
+            "contract_ref": "art_contract",
+        },
+    )
+    binding = ProposalBinding("prop_cap", 1, "hash-1", accepted)
+    state = (await w.campaigns.get_campaign(CID)).state
+    await w.campaigns.transition(
+        CID, submission(state, SubmittedProposal(binding, "cyc_inc", "run_prop"))
+    )
+    await w.campaigns.transition(
+        CID,
+        ruling_transition(
+            GateDecisionValue(ruled),
+            binding,
+            run_id="run_prop",
+            actor="supervisor",
+            actor_role="campaign_supervisor",
+            reason="r",
+            idempotency_key="rule-1",
+        ),
+    )
+    w._assess = lambda cycle_id: _async(_environment_failure(cycle_id))
+    w.progress._assess = w._assess
+    await w.end("cyc_inc", increment_run, CycleStopReason.SEQUENCE_COMPLETED)
+    return w
+
+
+async def _async(value):
+    return value
+
+
+async def test_an_environment_failure_is_retried_with_the_bound_request_and_no_new_ruling(
+    calibrating,
+):
+    """§10 row 10, §10a. Bugs caught: a retry that re-proposes (a new ruling for the same change),
+    one built from a stale baseline, or one that runs the proposal workload again."""
+    w = await _increment_failed_by_the_environment(calibrating)
+
+    stored = await w.campaigns.get_campaign(CID)
+    decision = (await w.campaigns.control_log(CID))[-1]
+    *_, retry = await w.campaigns.launch_intents(CID)
+    body = retry.cycle_request["body"]
+    overrides = body["execution_overrides"]
+    assert (decision.binding["row"], decision.binding["action"]) == (10, "retry")
+    assert stored.state is CampaignState.RETRYING
+    assert retry.cycle_kind is CycleKind.RETRY
+    assert overrides["campaign_proposal"]["proposal_id"] == "prop_cap"
+    assert (overrides["plan_artifact_refs"], overrides["contract_ref"]) == (
+        ["art_candidate", "art_cr"],
+        "art_contract",
+    )
+    assert [w["type"] for w in overrides["workload_sequence"]] == ["framing", "implementation"]
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "reason"),
+    [
+        (dict(moved=True), "the bound ruling no longer matches"),
+        (dict(ruled="returned_for_revision"), "no approving ruling is on record"),
+    ],
+    ids=["the-baseline-moved", "never-approved"],
+)
+async def test_a_retry_whose_binding_no_longer_holds_escalates_instead(calibrating, kwargs, reason):
+    """§10a: a mismatch refuses the cycle. Bug caught: a retry built on a baseline that moved, or
+    on a version nobody approved — scope changed without a ruling."""
+    w = await _increment_failed_by_the_environment(calibrating, **kwargs)
+
+    stored = await w.campaigns.get_campaign(CID)
+    decision = (await w.campaigns.control_log(CID))[-1]
+    assert stored.state is CampaignState.ESCALATED
+    assert reason in decision.binding["unbuilt"]
