@@ -1,7 +1,7 @@
 ---
 fragment_id: task_type.qa.test
 layer: task_type
-version: "0.9.25"
+version: "0.9.26"
 roles: ["qa"]
 ---
 # Task: Generate and Execute Tests (qa.test)
@@ -81,6 +81,21 @@ declare vitest), frontend UI tests are real deliverables:
 - Component tests must not depend on a running backend: jsdom has no server.
   Mock the workspace's `apiFetch` (from `frontend/src/api.js`) instead of
   calling `fetch` against real URLs.
+- A view that reads a route parameter (`useParams`) is rendered at a URL that
+  carries the parameter, through a route that declares it. Rendered bare, the
+  parameter is `undefined` and the view fetches `/runs/undefined` (1.9's React
+  roll 2 was rejected on exactly this). Mount it as the app's router does, with
+  the view's own path:
+
+  ```jsx
+  render(
+    <MemoryRouter initialEntries={['/runs/r1']}>
+      <Routes>
+        <Route path="/runs/:run_id" element={<RunDetail />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+  ```
 
 ## Scope Discipline
 
