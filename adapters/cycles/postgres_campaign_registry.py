@@ -15,6 +15,7 @@ import asyncpg
 
 from squadops.campaigns import lifecycle
 from squadops.campaigns.models import (
+    AcceptedTree,
     Campaign,
     CampaignExistsError,
     CampaignNotFoundError,
@@ -37,7 +38,8 @@ from squadops.campaigns.models import (
 from squadops.ports.cycles.campaign_registry import CampaignRegistryPort
 
 _CAMPAIGN_COLUMNS = (
-    "campaign_id, project_id, objective, policy, state, outcome, created_at, created_by, updated_at"
+    "campaign_id, project_id, objective, policy, state, outcome, created_at, created_by, "
+    "updated_at, accepted_identity, accepted_cycle_id"
 )
 _ENTRY_COLUMNS = (
     "entry_id, campaign_id, seq, operation, actor, actor_role, reason, target, idempotency_key, "
@@ -297,11 +299,13 @@ async def _commit(
     await _insert_entry(conn, entry)
     if updated is not campaign:
         await conn.execute(
-            "UPDATE campaigns SET state = $2, outcome = $3, updated_at = $4 WHERE campaign_id = $1",
+            "UPDATE campaigns SET state = $2, outcome = $3, updated_at = $4, "
+            "accepted_identity = $5, accepted_cycle_id = $6 WHERE campaign_id = $1",
             updated.campaign_id,
             updated.state.value,
             updated.outcome.value if updated.outcome else None,
             updated.updated_at,
+            *_accepted_args(updated.accepted),
         )
     if marks is not None:
         await conn.execute(
@@ -361,7 +365,12 @@ def _campaign_args(campaign: Campaign) -> tuple:
         campaign.created_at,
         campaign.created_by,
         campaign.updated_at,
+        *_accepted_args(campaign.accepted),
     )
+
+
+def _accepted_args(accepted: AcceptedTree | None) -> tuple[str | None, str | None]:
+    return (accepted.identity, accepted.cycle_id) if accepted else (None, None)
 
 
 def _intent_args(intent: LaunchIntent) -> tuple:
@@ -394,6 +403,11 @@ def _row_to_campaign(row: asyncpg.Record) -> Campaign:
         created_by=row["created_by"],
         updated_at=row["updated_at"],
         outcome=CampaignOutcome(row["outcome"]) if row["outcome"] else None,
+        accepted=(
+            AcceptedTree(row["accepted_identity"], row["accepted_cycle_id"])
+            if row["accepted_identity"]
+            else None
+        ),
     )
 
 

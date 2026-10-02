@@ -20,7 +20,13 @@ from squadops.api.error_handlers import register_domain_error_handlers
 from squadops.api.routes.campaigns import campaigns_router
 from squadops.auth.models import Identity, IdentityType, Role, scopes_for_roles
 from squadops.campaigns.launcher import CampaignLauncher
-from squadops.campaigns.models import CampaignState, CycleKind, LaunchRequest
+from squadops.campaigns.models import (
+    AcceptedTree,
+    CampaignState,
+    ControlOperation,
+    CycleKind,
+    LaunchRequest,
+)
 from tests.unit.campaigns.builders import cycle_for, move
 
 pytestmark = pytest.mark.auth
@@ -228,6 +234,31 @@ async def test_resume_returns_the_campaign_to_the_state_it_was_paused_from(world
         "paused",
         "at_proposal",
     )
+
+
+async def test_the_campaign_read_carries_its_accepted_tree(world):
+    """§7.1: the tree every increment is proposed against and every ruling binds to is readable
+    by the supervisor. Bug caught: the response mapping leaving it out, so a ruling's binding
+    cannot be built from a read."""
+    _create(world)
+    await world.campaigns.transition("cmp_api000000001", move(CampaignState.CALIBRATING, "a"))
+    before = world.client.get("/api/v1/campaigns/cmp_api000000001").json()
+    await world.campaigns.transition(
+        "cmp_api000000001",
+        move(
+            CampaignState.CALIBRATING,
+            "promote",
+            operation=ControlOperation.PROMOTE,
+            accepted=AcceptedTree("sha-cal", "cyc_cal000000001"),
+        ),
+    )
+
+    after = world.as_(_identity(Role.CAMPAIGN_SUPERVISOR)).client.get(
+        "/api/v1/campaigns/cmp_api000000001"
+    )
+
+    assert before["accepted"] is None
+    assert after.json()["accepted"] == {"identity": "sha-cal", "cycle_id": "cyc_cal000000001"}
 
 
 def test_resuming_a_campaign_that_is_not_paused_is_refused_as_stale(world):

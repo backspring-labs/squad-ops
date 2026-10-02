@@ -10,6 +10,7 @@ import pytest
 from adapters.cycles.memory_campaign_registry import MemoryCampaignRegistry
 from squadops.campaigns.lifecycle import launch_id_for
 from squadops.campaigns.models import (
+    AcceptedTree,
     CampaignExistsError,
     CampaignNotFoundError,
     CampaignOutcome,
@@ -95,6 +96,42 @@ async def test_a_repeat_after_the_campaign_moved_on_replays_instead_of_refusing_
     again = await registry.transition(CID, ruling)
     assert again.replayed and again.entry == first.entry
     assert (await registry.get_campaign(CID)).state is S.BUILDING
+
+
+def _promote(to: S, key: str, identity: str, cycle_id: str = "cyc_cal000000001"):
+    return move(
+        to, key, operation=ControlOperation.PROMOTE, accepted=AcceptedTree(identity, cycle_id)
+    )
+
+
+async def test_only_a_promotion_moves_the_accepted_tree(registry):
+    """§12a. Bug caught: the tree dropped by a later transition (every rebuild of the campaign
+    from a transition must carry it), or set by a decision rather than a promotion."""
+    await registry.transition(CID, move(S.CALIBRATING, "k-cal"))
+    promoted = await registry.transition(CID, _promote(S.CALIBRATING, "k-promote", "sha-cal"))
+    await registry.transition(CID, move(S.AT_PROPOSAL, "k-prop"))
+    await registry.transition(CID, move(S.PAUSED, "k-pause", operation=ControlOperation.PAUSE))
+
+    stored = await registry.get_campaign(CID)
+    assert promoted.entry.operation is ControlOperation.PROMOTE
+    assert stored.accepted == AcceptedTree("sha-cal", "cyc_cal000000001")
+    assert stored.state is S.PAUSED
+
+
+async def test_a_second_promotion_under_the_same_key_with_another_tree_is_refused(registry):
+    """§12a: a promotion is keyed by (campaign, increment, candidate identity). Bug caught: the
+    tree left out of the request hash, so a different tree under a used key replays as the first
+    and the caller believes the second was accepted."""
+    await registry.transition(CID, move(S.CALIBRATING, "k-cal"))
+    await registry.transition(CID, _promote(S.CALIBRATING, "k-promote", "sha-cal"))
+
+    replay = await registry.transition(CID, _promote(S.CALIBRATING, "k-promote", "sha-cal"))
+    with pytest.raises(ControlOperationRefused) as refused:
+        await registry.transition(CID, _promote(S.CALIBRATING, "k-promote", "sha-other"))
+
+    assert replay.replayed
+    assert refused.value.entry.refusal is RefusalReason.CONFLICTING_IDEMPOTENCY_KEY
+    assert (await registry.get_campaign(CID)).accepted.identity == "sha-cal"
 
 
 async def test_a_conflicting_idempotency_key_is_refused_and_recorded(registry):

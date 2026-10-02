@@ -301,7 +301,12 @@ def applied_campaign(campaign: Campaign, transition: CampaignTransition, at: dat
     if transition.next_state is None:
         return campaign
     return dataclasses.replace(
-        campaign, state=transition.next_state, outcome=transition.outcome, updated_at=at
+        campaign,
+        state=transition.next_state,
+        outcome=transition.outcome,
+        updated_at=at,
+        # The accepted tree changes here and nowhere else (§12a).
+        accepted=transition.accepted or campaign.accepted,
     )
 
 

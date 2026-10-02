@@ -21,6 +21,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from squadops.api.campaign_schemas import (
+    AcceptedTreeDTO,
     CampaignCreateRequest,
     CampaignObjectiveDTO,
     CampaignPolicyDTO,
@@ -371,6 +372,11 @@ def _campaign(c: Campaign) -> CampaignResponse:
         created_at=c.created_at,
         created_by=c.created_by,
         updated_at=c.updated_at,
+        accepted=(
+            AcceptedTreeDTO(identity=c.accepted.identity, cycle_id=c.accepted.cycle_id)
+            if c.accepted
+            else None
+        ),
     )
 
 

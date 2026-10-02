@@ -60,6 +60,11 @@ class ControlRequest(BaseModel):
     expected_state: str | None = None
 
 
+class AcceptedTreeDTO(BaseModel):
+    identity: str
+    cycle_id: str
+
+
 class CampaignResponse(BaseModel):
     campaign_id: str
     project_id: str
@@ -70,6 +75,9 @@ class CampaignResponse(BaseModel):
     created_at: datetime
     created_by: str
     updated_at: datetime
+    #: The accepted tree every increment is proposed against; ``None`` until the calibration
+    #: cycle's tree is promoted.
+    accepted: AcceptedTreeDTO | None = None
 
 
 class ControlLogEntryResponse(BaseModel):

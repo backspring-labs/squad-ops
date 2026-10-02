@@ -230,6 +230,19 @@ class CampaignPolicy:
 
 
 @dataclass(frozen=True)
+class AcceptedTree:
+    """The campaign's accepted tree (§7.1, §7.4): its verified identity and the cycle whose
+    candidate it is. Every increment is proposed against it and every ruling binds to it; it
+    changes only by a promotion (§12a)."""
+
+    identity: str
+    cycle_id: str
+
+    def __post_init__(self) -> None:
+        _require_text("AcceptedTree", identity=self.identity, cycle_id=self.cycle_id)
+
+
+@dataclass(frozen=True)
 class Campaign:
     """A campaign (§15). Its ``state`` is always its last applied control-log row's next state:
     both are written in one transaction, so on restart the row read is the state (§12a)."""
@@ -243,6 +256,8 @@ class Campaign:
     created_by: str
     updated_at: datetime
     outcome: CampaignOutcome | None = None
+    #: ``None`` until the calibration cycle's tree is promoted.
+    accepted: AcceptedTree | None = None
 
     def __post_init__(self) -> None:
         if (self.state is CampaignState.COMPLETED) != (self.outcome is not None):
@@ -319,7 +334,8 @@ class CampaignTransition:
 
     ``next_state`` is ``None`` exactly for a record-only operation. ``expected_state`` is the
     state the caller acted on; when the campaign has moved since, the operation is refused as
-    stale. ``launch`` writes a launch intent in the same transaction (§12b).
+    stale. ``launch`` writes a launch intent in the same transaction (§12b). ``accepted`` is the
+    tree a promotion makes the campaign's accepted tree, and only a promotion carries one.
     """
 
     operation: ControlOperation
@@ -333,6 +349,7 @@ class CampaignTransition:
     binding: dict = field(default_factory=dict)
     expected_state: CampaignState | None = None
     launch: LaunchRequest | None = None
+    accepted: AcceptedTree | None = None
 
     def __post_init__(self) -> None:
         _require_text(
@@ -354,6 +371,8 @@ class CampaignTransition:
             )
         if self.launch is not None and self.operation.records_only:
             raise ValueError(f"{self.operation} records a fact; it cannot launch")
+        if (self.operation is ControlOperation.PROMOTE) != (self.accepted is not None):
+            raise ValueError("a promotion, and only a promotion, names the tree it accepts")
 
 
 @dataclass(frozen=True)
