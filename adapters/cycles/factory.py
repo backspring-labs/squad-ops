@@ -164,5 +164,6 @@ def create_flow_executor(
             coordinator=kwargs.get("coordinator"),
             focus_lease_port=kwargs.get("focus_lease_port"),
             campaign_registry=kwargs.get("campaign_registry"),
+            campaign_progress=kwargs.get("campaign_progress"),
         )
     raise ValueError(f"Unknown flow executor provider: {provider}")

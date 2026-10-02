@@ -448,6 +448,30 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     # stranded between workloads and its recovery command (#481).
     await detect_stranded_cycles(cycle_registry, project_registry)
 
+    # SIP-0109 §10: a campaign hears its cycles end, at the completion boundary. The launch it
+    # writes is made by the launch service, built below; the drain is read when it is called.
+    from functools import partial
+
+    from adapters.cycles.cycle_evidence import assess_cycle
+    from squadops._version import resolve_git_sha
+    from squadops.campaigns.progress import CampaignProgress
+    from squadops.cycles.cycle_assessment import AssessorIdentity
+
+    campaign_progress = CampaignProgress(
+        campaigns=campaign_registry,
+        cycles=cycle_registry,
+        vault=artifact_vault,
+        assess=partial(
+            assess_cycle,
+            cycle_registry,
+            artifact_vault,
+            assessor=AssessorIdentity(
+                framework_version=SQUADOPS_VERSION, git_sha=resolve_git_sha()
+            ),
+        ),
+        launch=lambda: state.campaign_launch.drain(),
+    )
+
     flow_executor = create_flow_executor(
         "dispatched",
         cycle_registry=cycle_registry,
@@ -465,6 +489,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         coordinator=state.runtime_coordinator,
         focus_lease_port=focus_lease_port,
         campaign_registry=campaign_registry,
+        campaign_progress=campaign_progress,
     )
 
     state.project_registry = project_registry

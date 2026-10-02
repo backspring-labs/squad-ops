@@ -116,6 +116,7 @@ from squadops.telemetry.models import CorrelationContext
 
 if TYPE_CHECKING:
     from adapters.cycles.reply_router import ReplyRouter
+    from squadops.campaigns.progress import CampaignProgress
     from squadops.cycles.models import SquadProfile
     from squadops.ports.comms.queue import QueuePort
     from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
@@ -474,11 +475,14 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         patch_acceptance: PatchAcceptance | None = None,
         correction_repair: CorrectionRepair | None = None,
         campaign_registry: CampaignRegistryPort | None = None,
+        campaign_progress: CampaignProgress | None = None,
     ) -> None:
         self._cycle_registry = cycle_registry
         # SIP-0109 §9.2: the campaign a cycle belongs to hears its increment gate open. A
         # campaign cycle run by an executor without one fails at that gate, loudly.
         self._campaign_registry = campaign_registry
+        # SIP-0109 §10: what a campaign does when one of its cycles ends (CycleCompletion).
+        self._campaign_progress = campaign_progress
         self._artifact_vault = artifact_vault
         self._queue = queue
         self._reply_router = reply_router
