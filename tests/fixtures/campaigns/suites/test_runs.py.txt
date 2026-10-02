@@ -1,0 +1,168 @@
+"""Backend API tests — core run and participant flows.
+
+Exercises create, list, detail, join, duplicate-reject, leave,
+leave-not-found, and unknown-id paths against the FastAPI app via
+the scaffold-provided ``client`` fixture (see root ``conftest.py``).
+"""
+
+
+def _create_run(client, **overrides):
+    """Helper: POST a valid run and return the parsed 201 body."""
+    payload = {
+        "title": "Morning 5K",
+        "datetime": "2025-01-15T07:00:00",
+        "meeting_location": "Riverside Park",
+        "distance": "5K",
+        "pace_target": "9:00/mi",
+        "route_notes": "Steady climb on the east loop",
+    }
+    payload.update(overrides)
+    resp = client.post("/runs", json=payload)
+    assert resp.status_code == 201
+    return resp.json()
+
+
+def test_create_run_success(client):
+    """POST /runs with a valid payload returns 201 and a generated string id."""
+    body = _create_run(client)
+
+    # id is a non-empty generated string
+    assert isinstance(body["id"], str)
+    assert len(body["id"]) > 0
+
+    # required fields are strings
+    assert isinstance(body["title"], str)
+    assert body["title"] == "Morning 5K"
+    assert isinstance(body["datetime"], str)
+    assert isinstance(body["meeting_location"], str)
+
+    # optional fields (provided here) are strings
+    assert isinstance(body["distance"], str)
+    assert isinstance(body["pace_target"], str)
+    assert isinstance(body["route_notes"], str)
+
+    # participants starts as an empty list
+    assert isinstance(body["participants"], list)
+    assert body["participants"] == []
+
+
+def test_create_run_missing_required(client):
+    """POST /runs with an empty title returns 422 validation_error."""
+    resp = client.post(
+        "/runs",
+        json={
+            "title": "",
+            "datetime": "2025-01-15T07:00:00",
+            "meeting_location": "Park",
+        },
+    )
+    assert resp.status_code == 422
+    envelope = resp.json()
+    assert envelope["error"]["code"] == "validation_error"
+    assert isinstance(envelope["error"]["message"], str)
+
+
+def test_list_runs(client):
+    """GET /runs returns a list containing the created run with participant info."""
+    created = _create_run(client)
+
+    resp = client.get("/runs")
+    assert resp.status_code == 200
+    runs = resp.json()
+    assert isinstance(runs, list)
+    assert len(runs) == 1
+
+    found = runs[0]
+    assert found["id"] == created["id"]
+    assert isinstance(found["title"], str)
+    assert isinstance(found["datetime"], str)
+    assert isinstance(found["meeting_location"], str)
+    assert isinstance(found["participants"], list)
+    assert len(found["participants"]) == 0
+
+
+def test_run_detail(client):
+    """GET /runs/{run_id} returns the run with all its fields intact."""
+    created = _create_run(client)
+    run_id = created["id"]
+
+    resp = client.get(f"/runs/{run_id}")
+    assert resp.status_code == 200
+    body = resp.json()
+
+    assert body["id"] == run_id
+    assert isinstance(body["title"], str)
+    assert isinstance(body["datetime"], str)
+    assert isinstance(body["meeting_location"], str)
+    assert isinstance(body["distance"], str)
+    assert isinstance(body["pace_target"], str)
+    assert isinstance(body["route_notes"], str)
+    assert isinstance(body["participants"], list)
+    assert body["title"] == "Morning 5K"
+
+
+def test_join_run(client):
+    """POST /runs/{run_id}/join adds a participant; count increments to 1."""
+    created = _create_run(client)
+    run_id = created["id"]
+    assert len(created["participants"]) == 0
+
+    resp = client.post(f"/runs/{run_id}/join", json={"name": "Alice"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert isinstance(body["participants"], list)
+    assert "Alice" in body["participants"]
+    assert len(body["participants"]) == 1
+
+
+def test_join_duplicate_rejected(client):
+    """A second join with the same name returns 409 duplicate_participant."""
+    created = _create_run(client)
+    run_id = created["id"]
+
+    first = client.post(f"/runs/{run_id}/join", json={"name": "Bob"})
+    assert first.status_code == 200
+
+    second = client.post(f"/runs/{run_id}/join", json={"name": "Bob"})
+    assert second.status_code == 409
+    envelope = second.json()
+    assert envelope["error"]["code"] == "duplicate_participant"
+    assert isinstance(envelope["error"]["message"], str)
+
+
+def test_leave_run(client):
+    """Join then leave: participant is removed and count returns to 0."""
+    created = _create_run(client)
+    run_id = created["id"]
+
+    join_resp = client.post(f"/runs/{run_id}/join", json={"name": "Carol"})
+    assert join_resp.status_code == 200
+    assert len(join_resp.json()["participants"]) == 1
+
+    leave_resp = client.post(f"/runs/{run_id}/leave", json={"name": "Carol"})
+    assert leave_resp.status_code == 200
+    body = leave_resp.json()
+    assert isinstance(body["participants"], list)
+    assert "Carol" not in body["participants"]
+    assert len(body["participants"]) == 0
+
+
+def test_leave_nonexistent(client):
+    """Leave with a name not on the run returns 404 participant_not_found."""
+    created = _create_run(client)
+    run_id = created["id"]
+
+    resp = client.post(f"/runs/{run_id}/leave", json={"name": "Ghost"})
+    assert resp.status_code == 404
+    envelope = resp.json()
+    assert envelope["error"]["code"] == "participant_not_found"
+    assert isinstance(envelope["error"]["message"], str)
+
+
+def test_unknown_run_id(client):
+    """GET /runs/nonexistent returns 404 run_not_found."""
+    resp = client.get("/runs/nonexistent")
+    assert resp.status_code == 404
+    envelope = resp.json()
+    assert envelope["error"]["code"] == "run_not_found"
+    assert isinstance(envelope["error"]["message"], str)
