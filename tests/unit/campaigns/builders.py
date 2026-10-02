@@ -33,7 +33,7 @@ def policy(**overrides) -> CampaignPolicy:
         launch_blocked_interval_s=300,
         launch_blocked_attempts=6,
         calibration_profile="validated-fullstack",
-        proposal_profile="campaign-proposal",
+        proposal_profile="campaign-increment",
         squad_profile="full-38",
     )
     values.update(overrides)

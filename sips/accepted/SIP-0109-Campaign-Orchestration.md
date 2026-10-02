@@ -1148,9 +1148,8 @@ being built in the order the design note on #1705 sets out:
   - **Why the accepted code wins:** the files are produced content, so the workspace's rule (#881)
     hands every existing file its accepted implementation, and only what the increment adds stays
     a stub.
+- **b, the `campaign-increment` profile:** built, under §24k.
 - **Still to build:**
-  - **b, the `campaign-increment` profile:** proposal → `increment_ruling` → framing →
-    `progress_plan_review` → implementation.
   - **d, framing scoped to the footprint:** the proposal-equivalent framing tasks are skipped, and
     the plan validator refuses a task whose writes fall outside the footprint. This is the primary
     enforcement.
@@ -1158,6 +1157,45 @@ being built in the order the design note on #1705 sets out:
     frozen with the accepted content, as defense in depth.
   - **e, the increment's acceptance at its completion** (#1839's `evaluate_increment`) and its
     promotion.
+
+### 24k. The increment profile, and the gate's name (2026-10-02, #1705 step b; decided under the 2.0 charter)
+
+- **What changed: the gate is named `progress_increment_ruling`.** Wherever this SIP says
+  `increment_ruling`, the gate's name is `progress_increment_ruling`.
+  - **The evidence:** SIP-0076 (implemented) expresses a gate's role by its name. A gate referenced
+    from a `workload_sequence` must start with `progress_` or `promote_`, and the profile schema
+    refuses any other name at load. `campaign-increment.yaml` was refused on its first load.
+  - **Why `progress_`:** the ruling decides whether the next workload, framing, begins. That is
+    SIP-0076's progression role. A third prefix would be a new variant of a canon with one
+    validator, which is the drift CLAUDE.md asks to conform rather than extend.
+  - **What it touched:** the gate's name is single-sourced (`campaigns.gate.INCREMENT_RULING_GATE`),
+    so the change is that constant, the profiles' YAML, and test literals. No increment gate had
+    been reached on any deploy, so no stored row carries the old name.
+- **The profile:** `campaign-increment` runs proposal → `progress_increment_ruling` → framing →
+  `progress_plan_review` → implementation. Its defaults are `validated-fullstack`'s, plus the
+  proposal's `proposal_max_attempts`.
+- **The ruling gate declares no `after_task_types`.**
+  - **Why it is declared at all:** the registry refuses a decision on a gate the cycle's policy does
+    not name.
+  - **Why it has no task boundary:** a task boundary pauses a run mid-flight (`_handle_gate`),
+    which here would wait for a ruling on a proposal the workload gate has not yet submitted to the
+    campaign. The first draft of the profile had this defect.
+- **A campaign's proposal profile must reach the ruling, checked at creation** (§24g item 5
+  extended). `increment_sequence_refusal` requires that:
+  - the sequence opens with the proposal workload, gated by the ruling;
+  - a workload follows that gate;
+  - the gate is declared, with no task boundary.
+
+  `campaign-proposal`, the proposal workload alone, is refused as a campaign's proposal profile. It
+  stays for proving a proposal against a deploy outside a campaign.
+- **§24f's "an increment cycle runs the proposal profile alone" no longer holds.** An approved
+  increment now frames and implements. Until step e is built:
+  - its completion is assessed as any cycle is, with the stack's acceptance rather than
+    `evaluate_increment`;
+  - an accepted increment is not promoted, so row 7's next proposal is still made against the
+    calibration's accepted tree.
+
+  `max_cycles` bounds this; step e closes it.
 
 ---
 

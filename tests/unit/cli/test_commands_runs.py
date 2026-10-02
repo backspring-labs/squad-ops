@@ -183,7 +183,7 @@ class TestRunsGateIncrementRuling:
                 "group_run",
                 "cyc_1",
                 "run_1",
-                "increment_ruling",
+                "progress_increment_ruling",
                 "--approve",
                 "--notes",
                 "scope reads right",
@@ -207,8 +207,12 @@ class TestRunsGateIncrementRuling:
     @pytest.mark.parametrize(
         ("gate", "extra", "message"),
         [
-            ("increment_ruling", [], "pass --change-request"),
-            ("progress_plan_review", ["--idempotency-key", "k"], "belong to increment_ruling"),
+            ("progress_increment_ruling", [], "pass --change-request"),
+            (
+                "progress_plan_review",
+                ["--idempotency-key", "k"],
+                "belong to progress_increment_ruling",
+            ),
         ],
     )
     @patch("squadops.cli.commands.runs._get_client")
@@ -220,7 +224,7 @@ class TestRunsGateIncrementRuling:
         )
 
         assert result.exit_code == 2
-        assert message in result.output
+        assert message in " ".join(result.output.split())  # the console wraps at 80 columns
         mock_get_client.return_value.post.assert_not_called()
 
 

@@ -13,6 +13,9 @@ carries its baseline's manifest, which asks nothing, and only the ruling moves t
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import Any
+
 import yaml
 
 from squadops.campaigns.models import (
@@ -24,16 +27,50 @@ from squadops.campaigns.models import (
     ProposalBinding,
     SubmittedProposal,
 )
-from squadops.cycles.models import GateDecisionValue
+from squadops.cycles.models import GateDecisionValue, WorkloadType
 
-#: The gate's name, as a campaign increment profile declares it after the proposal workload.
-INCREMENT_RULING_GATE = "increment_ruling"
+#: The gate's name, as a campaign increment profile declares it after the proposal workload. A
+#: progression gate by SIP-0076's naming canon: the ruling decides whether framing begins (§24k).
+INCREMENT_RULING_GATE = "progress_increment_ruling"
 
 #: The provenance of the candidate manifest an approved increment seeds for its framing (§7.3).
 INCREMENT_SEED_PRODUCER = "campaign.increment_seed"
 
 #: The role on the rows the executor writes for the campaign.
 EXECUTOR_ROLE = "executor"
+
+
+def increment_sequence_refusal(defaults: Mapping[str, Any]) -> str | None:
+    """Why a request profile's ``defaults`` cannot run a campaign's increment cycles, or None
+    (§7.3, #1705 step b).
+
+    The sequence opens with the proposal workload, gated by the ruling, and a workload follows:
+    the sequence ends on its last workload before that workload's gate (§24f), so a ruling gate
+    there would never be reached. The gate is declared, since a decision on an undeclared gate is
+    refused, and with no ``after_task_types``: a task boundary pauses the run mid-flight, waiting
+    on a ruling for a proposal the campaign was never handed (§24k)."""
+    sequence = defaults.get("workload_sequence") or []
+    opening = sequence[0] if sequence and isinstance(sequence[0], Mapping) else {}
+    if (opening.get("type"), opening.get("gate")) != (WorkloadType.PROPOSAL, INCREMENT_RULING_GATE):
+        return (
+            f"its workload_sequence must open with the {WorkloadType.PROPOSAL} workload, gated by "
+            f"{INCREMENT_RULING_GATE}"
+        )
+    if len(sequence) < 2:
+        return (
+            f"a workload must follow {INCREMENT_RULING_GATE}: the sequence ends before its last "
+            "workload's gate"
+        )
+    gates = (defaults.get("task_flow_policy") or {}).get("gates") or []
+    declared = [g for g in gates if g.get("name") == INCREMENT_RULING_GATE]
+    if not declared:
+        return f"its task_flow_policy must declare the {INCREMENT_RULING_GATE} gate"
+    if declared[0].get("after_task_types"):
+        return (
+            f"{INCREMENT_RULING_GATE} takes no after_task_types: a task boundary pauses the "
+            "proposal run before its proposal is submitted"
+        )
+    return None
 
 
 def binding_from_change_request(document: str) -> ProposalBinding:

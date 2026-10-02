@@ -47,7 +47,7 @@ _POLICY = dict(
     launch_blocked_interval_s=300,
     launch_blocked_attempts=6,
     calibration_profile="validated-fullstack",
-    proposal_profile="campaign-proposal",
+    proposal_profile="campaign-increment",
     squad_profile="full-38",
 )
 
@@ -338,6 +338,8 @@ async def test_abort_cancels_the_launched_cycle_by_the_existing_path(world):
         # A campaign whose launches could never be built is refused at its creation.
         ({"proposal_profile": "no-such-profile"}, "policy.proposal_profile"),
         ({"calibration_profile": "no-such-profile"}, "policy.calibration_profile"),
+        # Or whose increments could never be ruled: the proposal workload alone (#1705 step b).
+        ({"proposal_profile": "campaign-proposal"}, "must open with the proposal workload"),
     ],
 )
 async def test_an_invalid_policy_is_a_422_not_a_500_and_creates_nothing(world, override, message):

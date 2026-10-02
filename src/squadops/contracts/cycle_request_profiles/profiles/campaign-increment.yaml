@@ -1,0 +1,56 @@
+name: campaign-increment
+description: "SIP-0109 §7.3: a campaign's increment cycle — the strategy role proposes, the supervisor rules, and the approved change is framed against the accepted app and built on it"
+defaults:
+  correction_steps: [analyze, decide, repair]
+  build_strategy: fresh
+  development_profile: fullstack_fastapi_react
+  build_profile: fullstack_fastapi_react
+  # The in-task revisions the proposal's rails buy, as campaign-proposal declares them.
+  proposal_max_attempts: 3
+  task_flow_policy:
+    mode: sequential
+    gates:
+      # §9.2: the supervisor's ruling, bound to the proposal version and the accepted tree. A
+      # workload follows it, as one must: the sequence ends on its last workload before that
+      # workload's gate (§24f), so a gate on the last workload would never be ruled. Named as a
+      # progression gate (SIP-0076): the ruling decides whether framing begins.
+      - name: progress_increment_ruling
+        description: The supervisor rules on the proposed change — approve, request revision, or reject.
+        # A workload gate only: a task boundary would pause the proposal run mid-flight, before
+        # its proposal is submitted to the campaign (§24k).
+        after_task_types: []
+      - name: progress_plan_review
+        description: Review planning artifacts and build manifest before implementation begins.
+        after_task_types:
+          - governance.review
+  expected_artifact_types:
+    - document
+    - source
+    - test
+    - config
+  workload_sequence:
+    - type: proposal
+      gate: progress_increment_ruling
+    # Bind mode against the candidate manifest the approval seeds (#1840); the plan covers
+    # only the approved change's footprint (#1843).
+    - type: framing
+      gate: progress_plan_review
+    # Starts from the accepted tree's delivered files (#1842).
+    - type: implementation
+      gate: null
+  build_tasks: true
+  implementation_plan: true
+  output_validation: true
+  max_self_eval_passes: 3
+  max_correction_attempts: 3
+  max_build_subtasks: 15
+  typed_acceptance: true
+  command_acceptance_checks: true
+  manifest_max_attempts: 4
+  required_checks:
+    - tests_pass
+    - frontend_build
+    - required_files
+  time_budget_seconds: 10800
+  experiment_context: {}
+  notes: "Campaign increment cycle (SIP-0109 §7.3)"

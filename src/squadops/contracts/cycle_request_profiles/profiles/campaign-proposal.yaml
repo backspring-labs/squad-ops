@@ -16,8 +16,8 @@ defaults:
     gates: []
   expected_artifact_types:
     - document
-  # The proposal workload alone. In a campaign's increment cycle the increment_ruling gate
-  # follows it (step 5, #1801); run alone, it proves the proposal against the deploy.
+  # The proposal workload alone: it proves the proposal against the deploy. A campaign's
+  # increment cycles run campaign-increment, where the ruling gate follows it (#1705 step b).
   workload_sequence:
     - type: proposal
       gate: null

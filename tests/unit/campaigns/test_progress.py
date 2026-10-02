@@ -173,7 +173,7 @@ async def calibrating() -> _World:
     async def make(verdict):
         w = _World(verdict)
         draft = campaign(
-            CID, policy=policy(calibration_profile="framing", proposal_profile="campaign-proposal")
+            CID, policy=policy(calibration_profile="framing", proposal_profile="campaign-increment")
         )
         await w.campaigns.create_campaign(
             draft, actor="owner", actor_role="admin", reason="r", idempotency_key="create"
@@ -356,13 +356,13 @@ def test_the_increment_launch_reads_its_profile_from_the_policy():
 
     c = campaign(
         CID,
-        policy=policy(proposal_profile="campaign-proposal"),
+        policy=policy(proposal_profile="campaign-increment"),
         accepted=AcceptedTree("sha-1", "cyc_cal"),
     )
 
     body = increment_launch(c, MANIFEST).cycle_request["body"]
 
-    assert (body["request_profile"], body["squad_profile_id"]) == ("campaign-proposal", "full-38")
+    assert (body["request_profile"], body["squad_profile_id"]) == ("campaign-increment", "full-38")
     # The increment builds on the accepted cycle's delivered files (§7.1, #1705 c1).
     assert body["execution_overrides"]["campaign_proposal"]["accepted_cycle_id"] == "cyc_cal"
     assert yaml.safe_load(MANIFEST) == yaml.safe_load(
