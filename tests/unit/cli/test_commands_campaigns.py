@@ -164,3 +164,42 @@ def test_create_with_an_unreadable_file_exits_without_calling_the_api(tmp_path):
     )
     assert result.exit_code == 2
     assert "cannot read" in result.output
+
+
+@patch("squadops.cli.commands.campaigns._get_client")
+def test_classify_sends_the_version_and_its_classification(get_client):
+    """Bug caught: the version dropped on the way, so a classification lands on the proposal
+    rather than the version that went wrong (§9.4 keeps one record per version)."""
+    client = _client(post=_RESULT)
+    get_client.return_value = client
+
+    result = runner.invoke(
+        app,
+        [
+            "campaigns",
+            "classify",
+            "cmp_1",
+            "--proposal",
+            "prop_cap",
+            "--version",
+            "2",
+            "--as",
+            "scope_too_large",
+            "--reason",
+            "three views",
+            "--idempotency-key",
+            "k-9",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    client.post.assert_called_once_with(
+        "/api/v1/campaigns/cmp_1/classifications",
+        json={
+            "proposal_id": "prop_cap",
+            "version": 2,
+            "classification": "scope_too_large",
+            "reason": "three views",
+            "idempotency_key": "k-9",
+        },
+    )

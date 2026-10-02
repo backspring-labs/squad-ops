@@ -40,8 +40,8 @@ def _check_values(sql: str, column: str) -> set[str]:
         ("1600_campaigns.sql", "state", CampaignState),
         ("1600_campaigns.sql", "outcome", CampaignOutcome),
         # Replaced whole by 1640 (the increment gate's submit, stale_binding, illegal_ruling).
-        # Replaced whole again by 1650 (the owner's start).
-        ("1650_campaign_start.sql", "operation", ControlOperation),
+        # Replaced whole again by 1650 (the owner's start) and 1660 (the classification).
+        ("1660_campaign_classify.sql", "operation", ControlOperation),
         ("1640_campaign_increment_gate.sql", "refusal", RefusalReason),
         ("1600_campaigns.sql", "cycle_kind", CycleKind),
         ("1610_cycle_campaign_columns.sql", "kind", CycleKind),

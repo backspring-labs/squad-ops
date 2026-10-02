@@ -26,6 +26,7 @@ from squadops.api.campaign_schemas import (
     CampaignObjectiveDTO,
     CampaignPolicyDTO,
     CampaignResponse,
+    ClassificationRequest,
     ControlLogEntryResponse,
     ControlRequest,
     ControlResultResponse,
@@ -253,6 +254,73 @@ async def start_campaign(
         raise HTTPException(status_code=422, detail=str(e)) from e
     result = await apply_control(request, campaign_id, transition, identity)
     return _result(result, launched_cycles=await launch_pending(request, result))
+
+
+@router.post("/{campaign_id}/classifications")
+async def classify_proposal(
+    request: Request,
+    campaign_id: str,
+    body: ClassificationRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_SUPERVISE)),
+) -> ControlResultResponse:
+    """The supervisor's classification of what went wrong with a proposal version (§9.4): a
+    record, accepted after the campaign has ended. A version never submitted to the gate cannot
+    be classified."""
+    from squadops.campaigns.models import ProposalClassification
+
+    try:
+        classification = ProposalClassification(body.classification)
+    except ValueError as e:
+        raise HTTPException(
+            422, _validation(f"unknown classification {body.classification!r}")
+        ) from e
+    log = await _registry(request).control_log(campaign_id)
+    submitted = any(
+        e.operation == ControlOperation.SUBMIT
+        and e.outcome == ControlOutcome.APPLIED
+        and (e.binding.get("proposal_id"), e.binding.get("version"))
+        == (body.proposal_id, body.version)
+        for e in log
+    )
+    if not submitted:
+        raise HTTPException(
+            422,
+            _validation(f"{body.proposal_id} v{body.version} was never submitted to the gate"),
+        )
+    actor, role = actor_from(identity)
+    transition = CampaignTransition(
+        operation=ControlOperation.CLASSIFY,
+        actor=actor,
+        actor_role=role,
+        reason=body.reason,
+        idempotency_key=body.idempotency_key,
+        next_state=None,
+        target=body.proposal_id,
+        binding={
+            "proposal_id": body.proposal_id,
+            "version": body.version,
+            "classification": classification.value,
+        },
+    )
+    return _result(await apply_control(request, campaign_id, transition, identity))
+
+
+@router.get("/{campaign_id}/ledger")
+async def read_ledger(
+    request: Request,
+    campaign_id: str,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_READ)),
+) -> list[dict]:
+    """The proposal ledger (§9.4), read from the control log: per proposal version, its
+    submission, its ruling, its cycle's outcome and its classification."""
+    import dataclasses
+
+    from squadops.campaigns.ledger import ledger
+
+    await _registry(request).get_campaign(campaign_id)
+    return [
+        dataclasses.asdict(e) for e in ledger(await _registry(request).control_log(campaign_id))
+    ]
 
 
 @router.post("/{campaign_id}/pause")

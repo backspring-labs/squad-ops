@@ -77,15 +77,29 @@ class ControlOperation(StrEnum):
     DECIDE = "decide"
     PROMOTE = "promote"
     MARK_LAUNCHED = "mark_launched"
+    #: The supervisor's classification of what went wrong with a proposal (§9.4). A record.
+    CLASSIFY = "classify"
 
     @property
     def records_only(self) -> bool:
         """An operation that records a fact without moving the campaign's state.
 
         It is the one kind accepted on a completed campaign: a launch the launcher had already
-        made before an abort committed is still a cycle that exists, and its record must say so.
+        made before an abort committed is still a cycle that exists, and its record must say so;
+        a proposal's classification is read the morning after, when the campaign may have ended.
         """
-        return self is ControlOperation.MARK_LAUNCHED
+        return self in (ControlOperation.MARK_LAUNCHED, ControlOperation.CLASSIFY)
+
+
+class ProposalClassification(StrEnum):
+    """What went wrong with a proposal, in the supervisor's reading (§9.4)."""
+
+    SCOPE_TOO_LARGE = "scope_too_large"
+    CRITERIA_NOT_CHECKABLE = "criteria_not_checkable"
+    CONFLICTS_WITH_AN_EARLIER_INCREMENT = "conflicts_with_an_earlier_increment"
+    AMBIGUOUS_MANIFEST_DELTA = "ambiguous_manifest_delta"
+    #: A sound proposal implemented badly: not a feature-writing defect (§9.4).
+    SOUND_PROPOSAL_BUILT_BADLY = "sound_proposal_built_badly"
 
 
 class ControlOutcome(StrEnum):
