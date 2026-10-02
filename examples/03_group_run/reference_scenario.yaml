@@ -1,0 +1,26 @@
+# The brownfield reference scenario (SIP-0109 §11a; #1804; validation plan §4, PR #1807).
+#
+# A fixed baseline and a fixed typed change request, both pinned by hash, built by one increment
+# cycle with no gate (`campaign-reference`): the request is pre-approved and recorded as such.
+# Launched by scripts/dev/launch_reference_increment.py, which refuses to launch when an input
+# no longer hashes to its pin — a different baseline or request is a different measurement.
+baseline:
+  # The 1.9 post-set counted React roll on deploy 8a058dc3, accepted 21/21 with zero correction
+  # rounds: the most recent accepted FastAPI+React tree. It implements no capacity limit.
+  cycle_id: cyc_7a4b7a6fbf0e
+  run_id: run_06ec6f50b9ff
+  manifest: tests/fixtures/campaigns/baseline-cyc_7a4b7a6fbf0e-interface_manifest.yaml
+# The PRD's own Expansion Tier 1, item 1: the capacity limit per run.
+change_request: tests/fixtures/campaigns/reference-capacity-change-request.yaml
+stack: fullstack_fastapi_react
+allowed_scope: ["backend/**", "frontend/**"]
+objective:
+  statement: "evolve group_run toward its PRD's expansion scope, one increment at a time"
+  allowed_scope: ["backend/**", "frontend/**"]
+  measurement: "the reference change request, built and accepted"
+pins:
+  baseline_tree: dcff44b833ce1d1d0e54c63748dec34731fca8c5bdee221642ace0406bc3fb9f
+  baseline_manifest: 666facc5ede0328a558c8fd45d379806419f71526ba0e821d95542e2184de0d7
+  change_request_authored: 46d5ffa31b1971b6ceee209115ae893a7ee4588cb9011914132deb645999a0ec
+  change_request: a37fbfaa549a164e542937b58e0096e2383f8250879a4b7716c91f4ae7e1c78e
+  candidate_manifest: 4846b513d8353efed25eecc01a57ca2ebf30dc7b111a7d284f7905e12b32b8c0
