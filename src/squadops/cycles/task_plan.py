@@ -761,6 +761,19 @@ def _increment_inputs(
     return {}
 
 
+def _prior_cycle_inputs(resolved_config: Mapping[str, Any], task_type: str) -> dict[str, Any]:
+    """#1692, SIP-0109 §10a: a retry's or a repair's authors are handed the failed cycle it
+    continues — its brief, as its launch carried it. WHO is the registry's declaration
+    (``prior_cycle_brief``); this composer owns only the derivation."""
+    from squadops.campaigns.prior_cycle import brief_lines
+
+    if not get_context_contract(task_type).prior_cycle_brief:
+        return {}
+    block = resolved_config.get("campaign_proposal")
+    lines = brief_lines(block.get("prior_cycle")) if isinstance(block, Mapping) else ""
+    return {"prior_cycle_brief": lines} if lines else {}
+
+
 def _inject_rejection_context(
     inputs: dict[str, Any], rejection_context: Any, task_type: str
 ) -> None:
@@ -1418,6 +1431,7 @@ def generate_task_plan(
         )
         _inject_rejection_context(inputs, framing_rejection_context, task_type)
         inputs.update(_increment_inputs(run, task_type, change_request, evaluation))
+        inputs.update(_prior_cycle_inputs(resolved_config, task_type))
 
         envelope = TaskEnvelope(
             task_id=task_id,

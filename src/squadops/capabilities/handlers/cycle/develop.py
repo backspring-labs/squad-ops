@@ -14,6 +14,7 @@ from squadops.capabilities.development_profiles import (
 )
 from squadops.capabilities.disputed_checks import criterion_identities
 from squadops.capabilities.handlers.base import HandlerResult
+from squadops.capabilities.handlers.prior_cycle import prior_cycle_section
 from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
@@ -368,6 +369,10 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         )
         if disputes:
             variables["disputed_checks_section"] = disputes
+        # #1692: a repair's build is shown the failed cycle it continues.
+        prior = await prior_cycle_section(renderer, inputs)
+        if prior:
+            variables["prior_cycle_section"] = prior
         rendered = await renderer.render(
             "request.development_develop.focused_build_task", variables
         )

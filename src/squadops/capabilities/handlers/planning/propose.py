@@ -15,6 +15,7 @@ from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
 )
+from squadops.capabilities.handlers.prior_cycle import prior_cycle_section
 from squadops.cycles.acceptance_check_spec import render_typed_acceptance_vocabulary
 from squadops.tasks.task_types import TaskType
 
@@ -273,6 +274,10 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         rejection_section = await self._rejection_context_section(renderer, inputs)
         if rejection_section:
             variables["rejection_context_section"] = rejection_section
+        # #1692: a retry's proposers are shown the failed cycle it recovers from.
+        prior = await prior_cycle_section(renderer, inputs)
+        if prior:
+            variables["prior_cycle_section"] = prior
         rendered = await renderer.render(self._request_template_id, variables)
         user_prompt = rendered.content
 

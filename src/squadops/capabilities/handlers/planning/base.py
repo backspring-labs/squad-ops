@@ -18,6 +18,7 @@ from squadops.capabilities.handlers.base import (
     HandlerResult,
 )
 from squadops.capabilities.handlers.cycle import _CycleTaskHandler
+from squadops.capabilities.handlers.prior_cycle import prior_cycle_section
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
 
@@ -256,6 +257,10 @@ class _PlanningTaskHandler(_CycleTaskHandler):
             increment_section = await self._increment_section(renderer, inputs)
             if increment_section:
                 variables["increment_section"] = increment_section
+            # #1692: a retry's framing is shown the failed cycle it continues.
+            prior = await prior_cycle_section(renderer, inputs)
+            if prior:
+                variables["prior_cycle_section"] = prior
             # #1845: a stage handed a revision request shows it — #811's technical design
             # answers the note it replays for. The registry decides who is handed one
             # (`plan_rejection_context`); a stage given none renders nothing.

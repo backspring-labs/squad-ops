@@ -23,6 +23,7 @@ import uuid
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 from squadops.campaigns.continuation import (
     CampaignCounters,
@@ -54,6 +55,7 @@ from squadops.campaigns.models import (
     LaunchIntentState,
     LaunchRequest,
 )
+from squadops.campaigns.prior_cycle import prior_cycle_brief
 from squadops.cycles.contract_derivation import is_interface_manifest
 from squadops.cycles.cycle_assessment import CycleAssessment
 from squadops.cycles.cycle_end import CycleStopReason
@@ -391,7 +393,7 @@ class CampaignProgress:
         )
         launch, unbuilt = None, None
         if not decision.terminal and decision.guard is Guard.PROCEED:
-            built = await self._launch_for(campaign, decision.action, cycle)
+            built = await self._launch_for(campaign, decision.action, cycle, latest)
             launch, unbuilt = (built, None) if isinstance(built, LaunchRequest) else (None, built)
         try:
             result = await self._campaigns.transition(
@@ -657,7 +659,11 @@ class CampaignProgress:
         return ref.artifact_id
 
     async def _launch_for(
-        self, campaign: Campaign, action: PendingAction, cycle: Cycle | None
+        self,
+        campaign: Campaign,
+        action: PendingAction,
+        cycle: Cycle | None,
+        latest: CycleAssessment | None = None,
     ) -> LaunchRequest | str:
         """The cycle a launch action writes (§10, §10a), or why it cannot be launched."""
         if action in (PendingAction.PROPOSE, PendingAction.ABANDON_AND_PROPOSE):
@@ -669,10 +675,14 @@ class CampaignProgress:
             return f"{action} launches no cycle"
         if cycle is None:
             return f"no decided cycle to {action}"
-        return await self._bound_launch(campaign, cycle, kind)
+        return await self._bound_launch(campaign, cycle, kind, latest)
 
     async def _bound_launch(
-        self, campaign: Campaign, cycle: Cycle, kind: CycleKind
+        self,
+        campaign: Campaign,
+        cycle: Cycle,
+        kind: CycleKind,
+        latest: CycleAssessment | None = None,
     ) -> LaunchRequest | str:
         """§10a: a retry or a repair reuses exactly the increment's bound change request, ruling,
         baseline and footprint. A retry starts a fresh candidate on the accepted tree; a repair
@@ -706,10 +716,33 @@ class CampaignProgress:
             # The failed cycle's candidate is the repair's starting tree (``starting_tree_refs``).
             block = {**block, "repair_of": cycle.cycle_id}
             plan_refs = [*plan_refs, *([plan] if plan not in plan_refs else [])]
+        # #1692: the failed cycle's record, from its typed assessment and its runs' stored
+        # verification summaries, for its successor.
+        brief = await self._prior_cycle_brief(cycle, latest)
+        if brief is not None:
+            block = {**block, "prior_cycle": brief}
         try:
             return bound_launch(campaign, kind, block, plan_refs, contract_ref)
         except (FileNotFoundError, ValueError) as e:
             return f"the policy's proposal profile cannot launch a {kind}: {e}"
+
+    async def _prior_cycle_brief(
+        self, cycle: Cycle, latest: CycleAssessment | None
+    ) -> dict[str, Any] | None:
+        """#1692: the failed cycle's brief, from its assessment (read here when the caller has
+        none — an owner's resume) and its runs' verification summaries. It is an aid to the next
+        cycle, so a record that cannot be read or derived from leaves it out, with a warning; it
+        never blocks the launch."""
+        try:
+            if latest is None:
+                latest = await self._assess(cycle.cycle_id)
+            summaries = await self._cycles.list_run_verification_summaries(cycle.cycle_id)
+            return prior_cycle_brief(latest, [f for s in summaries for f in s.failed_detail])
+        except Exception:  # noqa: BLE001 — an unreadable record is absent, never a blocked launch
+            logger.warning(
+                "cycle %s: no prior-cycle brief: its records are unreadable", cycle.cycle_id
+            )
+            return None
 
     async def _approved_plan(self, cycle: Cycle) -> str | None:
         """The implementation plan the failed cycle built under (§10a): its framing's approved

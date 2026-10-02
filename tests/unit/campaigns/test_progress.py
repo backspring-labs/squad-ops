@@ -640,7 +640,7 @@ def _environment_failure(cycle_id):
 
 
 async def _increment_failed_by_the_environment(
-    calibrating, stored, *, ruled="approved", moved=False, environment=True
+    calibrating, stored, *, ruled="approved", moved=False, environment=True, reasons=()
 ):
     """An accepted calibration, an increment proposed against its tree and ruled on, built, and
     rejected for a cause outside the work. Its approved seeds are stored, as the gate stores
@@ -675,6 +675,22 @@ async def _increment_failed_by_the_environment(
             "contract_ref": "art_contract",
         },
     )
+    if reasons:
+        from squadops.cycles.verification_integrity import RunVerificationSummary
+
+        await w.cycles.record_run_verification_summary(
+            increment_run.run_id,
+            RunVerificationSummary(
+                verdict=RunVerdict.REJECTED,
+                verified=(),
+                failed=tuple(r.check_id for r in reasons),
+                unverified=(),
+                required_unmet=(),
+                executed_count=len(reasons),
+                passed_count=0,
+                failed_detail=tuple(reasons),
+            ),
+        )
     binding = ProposalBinding("prop_cap", 1, "hash-1", accepted)
     state = (await w.campaigns.get_campaign(CID)).state
     await w.campaigns.transition(
@@ -710,8 +726,15 @@ async def test_an_environment_failure_is_retried_with_the_bound_request_and_no_n
     calibrating, stored
 ):
     """§10 row 10, §10a. Bugs caught: a retry that re-proposes (a new ruling for the same change),
-    one built from a stale baseline, or one that runs the proposal workload again."""
-    w = await _increment_failed_by_the_environment(calibrating, stored)
+    one built from a stale baseline, or one that runs the proposal workload again — or one told
+    which check failed and not why (#1692)."""
+    from squadops.cycles.verification_integrity import FailedCheck
+
+    w = await _increment_failed_by_the_environment(
+        calibrating,
+        stored,
+        reasons=(FailedCheck("tests_pass", "POST /runs returned 422, expected 201", True),),
+    )
 
     stored = await w.campaigns.get_campaign(CID)
     decision = (await w.campaigns.control_log(CID))[-1]
@@ -727,6 +750,53 @@ async def test_an_environment_failure_is_retried_with_the_bound_request_and_no_n
         "art_contract",
     )
     assert [w["type"] for w in overrides["workload_sequence"]] == ["framing", "implementation"]
+    # #1692: the retry is told what the cycle it recovers from recorded.
+    prior = overrides["campaign_proposal"]["prior_cycle"]
+    assert (prior["cycle_id"], prior["verdict"], prior["primary_cause"]) == (
+        "cyc_inc",
+        "rejected",
+        "environment_or_infrastructure_failure",
+    )
+    assert prior["why_failed"] == [
+        {
+            "check_id": "tests_pass",
+            "reason": "POST /runs returned 422, expected 201",
+            "contested": False,
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    "records", ["read", "unreadable", "malformed"], ids=lambda r: f"records-{r}"
+)
+async def test_an_owners_retry_carries_the_brief_and_is_never_blocked_by_it(
+    calibrating, stored, records
+):
+    """#1692, entered at the owner's word (``owner_action``), which has no assessment in hand.
+    Bugs caught: an owner's retry launched without the brief a decided one carries; or a
+    resume refused because the failed cycle's records could not be read for an aid."""
+    from squadops.campaigns.continuation import PendingAction
+
+    w = await _increment_failed_by_the_environment(calibrating, stored)
+    if records == "unreadable":
+        w.progress._assess = AsyncMock(side_effect=RuntimeError("the assessment store is down"))
+    if records == "malformed":
+        w.progress._assess = AsyncMock(return_value=object())  # read, and nothing to derive from
+
+    transition = await w.progress.owner_action(
+        await w.campaigns.get_campaign(CID),
+        PendingAction.RETRY,
+        held=False,
+        actor="owner",
+        actor_role="admin",
+        reason="r",
+        idempotency_key="owner-retry",
+    )
+
+    block = transition.launch.cycle_request["body"]["execution_overrides"]["campaign_proposal"]
+    assert transition.launch.cycle_kind is CycleKind.RETRY
+    expected = "cyc_inc" if records == "read" else None
+    assert (block.get("prior_cycle") or {}).get("cycle_id") == expected
 
 
 @pytest.mark.parametrize(
@@ -774,6 +844,7 @@ async def test_a_rejected_increment_is_repaired_from_its_own_candidate_under_its
     assert (await w.campaigns.get_campaign(CID)).state is CampaignState.REPAIRING
     assert repair.cycle_kind is CycleKind.REPAIR
     assert overrides["campaign_proposal"]["repair_of"] == "cyc_inc"
+    assert overrides["campaign_proposal"]["prior_cycle"]["cycle_id"] == "cyc_inc"
     assert overrides["plan_artifact_refs"] == ["art_candidate", "art_cr", "art_plan"]
     assert [w["type"] for w in overrides["workload_sequence"]] == ["implementation"]
 

@@ -1,11 +1,12 @@
 ---
 template_id: request.planning_task_base
-version: "4"
+version: "5"
 required_variables:
   - prd
   - role
 optional_variables:
   - increment_section
+  - prior_cycle_section
   - target_stack_section
   - time_budget_section
   - prior_outputs
@@ -16,6 +17,7 @@ optional_variables:
 
 {{prd}}
 {{increment_section}}
+{{prior_cycle_section}}
 {{target_stack_section}}
 {{time_budget_section}}
 {{prior_outputs}}
