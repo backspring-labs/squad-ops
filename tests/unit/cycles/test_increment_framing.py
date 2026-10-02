@@ -157,8 +157,8 @@ async def test_a_new_applications_framing_is_unchanged():
 @pytest.mark.parametrize(
     ("increment", "change_request", "refusal"),
     [
-        (True, None, "frames an increment with no approved change request"),
-        (False, STORED_REQUEST, "only an increment's framing frames"),
+        (True, None, "of an increment has no approved change request"),
+        (False, STORED_REQUEST, "only an increment.s framing and implementation take"),
     ],
     ids=["an-increment-without-its-change", "a-change-for-a-cycle-that-proposed-none"],
 )

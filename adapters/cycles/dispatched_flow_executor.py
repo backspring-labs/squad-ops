@@ -2544,6 +2544,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             if notes:
                 extra_inputs["assembly_notes"] = notes
 
+        if contract.increment_evaluation:
+            from squadops.campaigns.increment_tree import accepted_tree_contents
+
+            extra_inputs["accepted_tree_files"] = await accepted_tree_contents(
+                self._artifact_vault, envelope.inputs.get("resolved_config"), stored_artifacts
+            )
+
         if contract.acceptance_workspace:
             # #643: the typed-acceptance workspace rides separately from the
             # curated prompt context — evaluation needs the full accepted tree

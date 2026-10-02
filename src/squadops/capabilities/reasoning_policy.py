@@ -64,6 +64,9 @@ REASONING_BY_TASK_TYPE: dict[str, str] = {
     # live: think:false 1 of 6 usable emissions, think:true 6 of 6, same prompt).
     TaskType.QA_TEST: ReasoningLevel.MEDIUM,
     TaskType.QA_TEST_REPAIR: ReasoningLevel.MEDIUM,
+    # SIP-0109 §8: deterministic — no model is called. Declared so the registry stays complete
+    # and a later model call cannot inherit an unread posture.
+    TaskType.QA_EVALUATE_INCREMENT: ReasoningLevel.NONE,
     TaskType.DEVELOPMENT_DEVELOP: ReasoningLevel.MEDIUM,
     TaskType.DEVELOPMENT_REPAIR: ReasoningLevel.MEDIUM,
     TaskType.DEVELOPMENT_CORRECTION_REPAIR: ReasoningLevel.MEDIUM,
