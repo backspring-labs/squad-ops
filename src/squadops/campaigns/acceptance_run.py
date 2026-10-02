@@ -184,7 +184,12 @@ def evaluation_document(
             for f in evaluation.frozen
         ],
         "routes": [
-            {"path": r.path, "held": str(r.held), "missing": list(r.missing)}
+            {
+                "path": r.path,
+                "held": str(r.held),
+                "missing": list(r.missing),
+                "not_shown": list(r.not_shown),
+            }
             for r in evaluation.routes
         ],
         "new_bundles": {

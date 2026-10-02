@@ -202,6 +202,8 @@ def increment_evaluation_inputs(
         },
         # §8.1: the criteria earlier increments froze, as this increment's launch pinned them.
         "increment_frozen_criteria": [dict(f) for f in block.get("frozen_criteria") or ()],
+        # §8.3: how each parameterized route's page is brought into being to be rendered.
+        "increment_route_seeds": route_seeds(manifest),
     }
 
 
@@ -241,3 +243,37 @@ async def frozen_bundle_contents(vault: Any, resolved_config: Any) -> dict[str, 
         except Exception:  # noqa: BLE001 — a bundle that cannot be read is blocked, not a crash
             continue
     return bundles
+
+
+def route_seeds(manifest: Any) -> dict[str, dict[str, Any]]:
+    """What brings a parameterized route's page into being (§8.3): for a declared client route
+    with one parameter (``/runs/:run_id``), the create request on its collection (``POST
+    /runs``) with the body the create probe sends (``create_request_body``), and the
+    parameter the created resource's id fills. A route with no such create, or more than one
+    parameter, has no seed: its page cannot be reached, so it is never rendered and stays
+    ``blocked_unverified``, never passed. A route with no parameter needs none."""
+    from squadops.capabilities.scaffold_contract import create_request_body
+
+    api = getattr(manifest, "api", None)
+    creates = {
+        ep.path: ep
+        for ep in (getattr(api, "endpoints", None) or ())
+        if ep.method == "POST" and "{" not in ep.path
+    }
+    seeds: dict[str, dict[str, Any]] = {}
+    for path in declared_routes(manifest):
+        segments = path.split("/")
+        params = [s for s in segments if s.startswith(":")]
+        if len(params) != 1:
+            continue
+        collection = "/".join(segments[: segments.index(params[0])]) or "/"
+        endpoint = creates.get(collection)
+        if endpoint is None:
+            continue
+        seeds[path] = {
+            "method": "POST",
+            "path": collection,
+            "json": create_request_body(manifest, endpoint),
+            "param": params[0][1:],
+        }
+    return seeds

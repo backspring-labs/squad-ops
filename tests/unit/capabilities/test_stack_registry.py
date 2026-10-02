@@ -221,3 +221,13 @@ def test_a_criterion_file_is_a_valid_module_or_refused(criterion_id, stack, surf
         return
     with pytest.raises(ValueError, match=error):
         scaffold.criterion_test_path(stack, criterion_id, surface_kind)
+
+
+@pytest.mark.parametrize("stack", sorted(scaffold._STACKS))
+def test_a_declared_render_profile_exists(stack):
+    """SIP-0109 §8.3. Bug caught: a stack naming a render profile the renderer does not have —
+    every page silently unread, every increment blocked, with nothing pointing at the typo."""
+    from squadops.capabilities.handlers.route_rendering import render_profile_for
+
+    name = scaffold.render_profile_name_for(stack)
+    assert name == "" or render_profile_for(name) is not None, name

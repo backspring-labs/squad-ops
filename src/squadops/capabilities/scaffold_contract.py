@@ -405,6 +405,18 @@ def _probe_sample_value(field_name: str, field_type: str) -> Any:
     return "sample"
 
 
+def create_request_body(manifest: InterfaceManifest, endpoint: Any) -> dict[str, Any]:
+    """A create request's body for ``endpoint``: its required fields, each with a value its
+    declared type and name make plausible (#524). The one synthesis — the create probe sends it,
+    and SIP-0109 §8.3's rendering seeds a resource with it — so the two cannot disagree about
+    what a valid create looks like."""
+    field_types = {f.name: f.type for e in manifest.entities for f in e.fields}
+    return {
+        field: _probe_sample_value(field, field_types.get(field, "string"))
+        for field in manifest.request_body_fields(endpoint.request)
+    }
+
+
 def _success_expect(
     manifest: InterfaceManifest, status: int, response: str | None
 ) -> dict[str, Any]:
@@ -465,10 +477,7 @@ def _probes(manifest: InterfaceManifest, pack: CriteriaPack) -> list[dict[str, A
         # request is emitted as ``{Entity}Body`` with ``NonBlankStr`` required fields, so
         # the blank-input probe below applies to it exactly as to a declared shape).
         body_fields = manifest.request_body_fields(ep.request)
-        json_body = {
-            field: _probe_sample_value(field, field_types.get(field, "string"))
-            for field in manifest.request_body_fields(ep.request)
-        }
+        json_body = create_request_body(manifest, ep)
         create_probe = {
             "id": f"vc-probe-{_slug(ep.path) or 'root'}",
             "subject": "backend",

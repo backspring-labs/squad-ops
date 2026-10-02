@@ -73,15 +73,43 @@ async def test_a_criterion_that_fails_on_the_accepted_app_and_passes_on_the_cand
     assert result.outputs["artifacts"][0]["type"] == "increment_evaluation"
 
 
-async def test_a_declared_route_nobody_rendered_blocks_the_increment():
-    """§8.3: rendering is not read yet (#1796). Bug caught: an unrendered page passed by
-    omission, so an increment is promoted without anyone seeing it render."""
-    _, document = await _evaluate(increment_declared_routes={"/runs/:run_id": ["capacity-status"]})
+@pytest.fixture
+def pages(monkeypatch):
+    """What the candidate's pages render, in place of standing it up with a browser."""
+    from squadops.capabilities.handlers import route_rendering
 
-    assert document["verdict"] == "blocked_unverified"
-    assert document["routes"] == [
-        {"path": "/runs/:run_id", "held": "blocked_unverified", "missing": []}
-    ]
+    rendered: dict = {}
+
+    def render_routes(files, routes, seeds, **_):
+        return {route: rendered.get(route) for route in routes}
+
+    monkeypatch.setattr(route_rendering, "render_routes", render_routes)
+    return rendered
+
+
+@pytest.mark.parametrize(
+    ("page", "verdict", "held"),
+    [
+        (frozenset({"run-detail-view", "capacity-status"}), "accepted", "held"),
+        # A state-dependent anchor not shown: recorded, not judged (§24p).
+        (frozenset({"run-detail-view"}), "accepted", "held"),
+        # The page rendered something, but not the view the route declares.
+        (frozenset({"capacity-status"}), "rejected", "broken"),
+        (None, "blocked_unverified", "blocked_unverified"),
+    ],
+    ids=["rendered", "a-state-anchor-not-shown", "the-view-not-rendered", "never-rendered"],
+)
+async def test_each_declared_route_is_judged_by_what_its_page_rendered(pages, page, verdict, held):
+    """§8.3, through the handler. Bugs caught: a page that never rendered passed by omission, or
+    one that rendered something other than its view read as rendered."""
+    pages["/runs/:run_id"] = page
+
+    _, document = await _evaluate(
+        increment_declared_routes={"/runs/:run_id": ["run-detail-view", "capacity-status"]}
+    )
+
+    assert document["verdict"] == verdict
+    assert document["routes"][0]["held"] == held
 
 
 @pytest.mark.parametrize(

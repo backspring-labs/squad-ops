@@ -12,6 +12,7 @@ declared route arrives unrendered and is ``blocked_unverified``, never passed by
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -32,6 +33,36 @@ logger = logging.getLogger(__name__)
 
 #: Per suite run; two per new criterion (the baseline and the candidate) and one per frozen one.
 _SUITE_TIMEOUT_SECONDS = 300
+
+
+async def _rendered(
+    stack: str,
+    files: dict[str, str],
+    declared: dict[str, tuple[str, ...]],
+    inputs: dict[str, Any],
+) -> dict[str, frozenset[str] | None]:
+    """The test ids each declared route's page rendered (§8.3), by the stack's render profile;
+    every route unread (``None``, blocked) for a stack that declares none."""
+    from squadops.capabilities.handlers.probe_runner import profile_for_stack
+    from squadops.capabilities.handlers.route_rendering import render_profile_for, render_routes
+    from squadops.capabilities.scaffold import render_profile_name_for
+
+    if not declared:
+        return {}
+    profile = render_profile_for(render_profile_name_for(stack))
+    probe = profile_for_stack(stack)
+    if profile is None or probe is None:
+        logger.warning("stack %r declares no render profile: every route is unread", stack)
+        return {route: None for route in declared}
+    return await asyncio.to_thread(
+        render_routes,
+        files,
+        declared,
+        inputs.get("increment_route_seeds") or {},
+        profile=profile,
+        backend_argv=probe.boot_argv,
+        backend_ready_path=probe.ready_path,
+    )
 
 
 class QAEvaluateIncrementHandler(CapabilityHandler):
@@ -91,6 +122,11 @@ class QAEvaluateIncrementHandler(CapabilityHandler):
             NewCriterion(f["criterion_id"], f["path"])
             for f in inputs.get("increment_criterion_files") or ()
         ]
+        declared = {
+            path: tuple(ids)
+            for path, ids in (inputs.get("increment_declared_routes") or {}).items()
+        }
+        candidate_files = dict(inputs.get("acceptance_workspace_files") or {})
         evaluation = await evaluate_increment(
             increment_id=increment_id,
             accepted=accepted,
@@ -101,11 +137,8 @@ class QAEvaluateIncrementHandler(CapabilityHandler):
             frozen=frozen_criteria_from(
                 inputs.get("increment_frozen_criteria") or (), inputs.get("frozen_bundles") or {}
             ),
-            declared_routes={
-                path: tuple(ids)
-                for path, ids in (inputs.get("increment_declared_routes") or {}).items()
-            },
-            rendered={},
+            declared_routes=declared,
+            rendered=await _rendered(stack, candidate_files, declared, inputs),
             run=partial(run_suite, framework, timeout_seconds=_SUITE_TIMEOUT_SECONDS),
             invocation=(framework,),
         )

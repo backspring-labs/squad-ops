@@ -1626,6 +1626,10 @@ class ScaffoldStack:
     #: test changes never touch it. Inside ``qa_test_namespace`` (held by the stack inventory).
     #: Empty means the stack cannot host a campaign increment's criteria, and asking refuses.
     criterion_test_files: tuple[tuple[str, str], ...] = ()
+    #: SIP-0109 §8.3: how this stack's app is stood up so its pages can be read — a *name*
+    #: in ``handlers.route_rendering``, like ``probe_profile``. Empty means its pages cannot
+    #: be read, and every declared route is ``blocked_unverified``, never passed.
+    render_profile: str = ""
 
 
 _STACKS: dict[str, ScaffoldStack] = {
@@ -1662,6 +1666,7 @@ _STACKS: dict[str, ScaffoldStack] = {
             ("endpoint", "backend/tests/criteria/test_{criterion}.py"),
             ("client_route", "frontend/src/__tests__/criteria/{criterion}.test.jsx"),
         ),
+        render_profile="vite_dev_proxy",
     ),
     # #822 stack #2, a module from the start; stack #1 joined it in #1131 (the reference
     # contract's frozen digests are the proof that the move changed no template byte).
@@ -1707,6 +1712,13 @@ def _stack(stack: str) -> ScaffoldStack:
     if known is None:
         raise ValueError(f"no scaffold expander for stack {stack!r}; available: {sorted(_STACKS)}")
     return known
+
+
+def render_profile_name_for(stack: str) -> str:
+    """The render profile ``stack`` declares (SIP-0109 §8.3), or ``""`` for a stack whose pages
+    cannot be read — or one not registered."""
+    known = _STACKS.get(stack)
+    return known.render_profile if known else ""
 
 
 def criterion_test_path(stack: str, criterion_id: str, surface_kind: str) -> str:
