@@ -59,6 +59,7 @@ from squadops.capabilities.context_assembly import (
     retake_suite_files,
     wrapup_evidence_applies,
 )
+from squadops.capabilities.handlers.planning.proposal import CHANGE_REQUEST_ARTIFACT_TYPE
 from squadops.cycles.agent_config import build_agent_resolver
 from squadops.cycles.build_completeness import compute_missing_required_files
 from squadops.cycles.checkpoint import RunCheckpoint
@@ -1155,12 +1156,17 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # contract derived from it, seeded at the increment gate, bind its framing — the
             # path a seeded manifest takes from cycle creation (#779), from durable state so a
             # restart's rebuild (#434) forwards the same.
+            # The approved change request rides with them: it is the framed objective (§7.3).
             seeds = [a for a in promoted if a.artifact_type == MANIFEST_ARTIFACT_TYPE]
             if seeds:
                 seeded = max(seeds, key=lambda a: a.created_at).artifact_id
+                forwarded = [seeded]
+                requests = [a for a in promoted if a.artifact_type == CHANGE_REQUEST_ARTIFACT_TYPE]
+                if requests:
+                    forwarded.append(max(requests, key=lambda a: a.created_at).artifact_id)
                 existing = list(overrides.get("plan_artifact_refs") or ())
                 overrides["plan_artifact_refs"] = existing + [
-                    r for r in (seeded,) if r not in existing
+                    r for r in forwarded if r not in existing
                 ]
             if not overrides.get("contract_ref"):
                 derived = [a for a in promoted if a.artifact_type == CONTRACT_ARTIFACT_TYPE]

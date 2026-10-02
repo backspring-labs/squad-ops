@@ -42,8 +42,11 @@ _BASELINE = (_FIXTURES / "baseline-cyc_7a4b7a6fbf0e-interface_manifest.yaml").re
 def _stored_change_request():
     """The reference capacity proposal, through the proposal's own rails, stored as the
     proposal run stores it (``StrategyProposeIncrementHandler._success``)."""
-    from squadops.campaigns.change_request import ProposalContext, validate_proposal
-    from squadops.capabilities.handlers.planning.proposal import json_safe
+    from squadops.campaigns.change_request import (
+        ProposalContext,
+        stored_change_request,
+        validate_proposal,
+    )
 
     verdict = validate_proposal(
         yaml.safe_load((_FIXTURES / "reference-capacity-change-request.yaml").read_text()),
@@ -59,7 +62,7 @@ def _stored_change_request():
     )
     assert verdict.accepted, verdict.refusals
     request = verdict.change_request
-    return request, yaml.safe_dump(json_safe(dataclasses.asdict(request)), sort_keys=False)
+    return request, stored_change_request(request)
 
 
 _REQUEST, _CHANGE_REQUEST = _stored_change_request()
@@ -350,6 +353,33 @@ async def test_an_approval_seeds_the_candidate_manifest_and_forwards_it_to_frami
 
     assert seed.artifact_id in forwarded["plan_artifact_refs"]
     assert forwarded["contract_ref"] == contract.artifact_id
+
+
+async def test_the_approved_change_request_reaches_the_increments_framing(executor):
+    """§7.3, #1705 d: the approved change request is the framed objective. Entered at the gate,
+    through the forwarding a restart rebuilds, to the loader the framing run's provisioning
+    calls. Bug caught: the framing reaching provisioning without the document it frames, and
+    framing the accepted application again from its PRD."""
+    from squadops.campaigns.increment_tree import approved_change_request
+
+    await _reach_the_gate(executor, _cycle(CID))
+    forwarded = await executor._build_forwarding_overrides(_cycle(CID), _PROPOSAL_RUN)
+    framing = _cycle(CID)
+    framing = dataclasses.replace(
+        framing, execution_overrides={**framing.execution_overrides, **forwarded}
+    )
+
+    assert await approved_change_request(executor._artifact_vault, framing) == _CHANGE_REQUEST
+
+
+async def test_an_increments_framing_without_its_change_request_is_refused(executor):
+    """Bug caught: an increment framed as a new application because nothing was forwarded."""
+    from squadops.campaigns.increment_tree import approved_change_request
+
+    with pytest.raises(ValueError, match="no approved change_request"):
+        await approved_change_request(executor._artifact_vault, _cycle(CID))
+    ordinary = dataclasses.replace(_cycle(None), execution_overrides={})
+    assert await approved_change_request(executor._artifact_vault, ordinary) is None
 
 
 async def test_a_change_request_altered_after_its_ruling_is_refused_at_the_seed(executor):

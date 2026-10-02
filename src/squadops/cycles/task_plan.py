@@ -135,6 +135,7 @@ _PLAN_AUTHORING_PROPOSER_STEPS: dict[str, tuple[str, str]] = {
 def build_planning_steps(
     plan_authoring_contributors: list[str] | None,
     authors_manifest: bool = False,
+    increment: bool = False,
 ) -> list[tuple[str, str]]:
     """Return the framing task sequence per SIP-0093 PR 93.3 cutover.
 
@@ -157,6 +158,10 @@ def build_planning_steps(
     — §5a's "QA reviews for verifiability" obtained without adding a second
     judgment gate over proofs M3 already makes mechanically.
 
+    ``increment`` (SIP-0109 §7.3) skips research and objective framing: the approved change
+    request is the framed objective. An increment authors no manifest either — its manifest is
+    the accepted one plus the approved typed delta — so the two together are refused.
+
     Raises:
         CycleError: if any contributor in the list isn't in
             ``VALID_PLAN_AUTHORING_CONTRIBUTORS``. Rejecting at sequence-
@@ -172,11 +177,20 @@ def build_planning_steps(
             f"{sorted(VALID_PLAN_AUTHORING_CONTRIBUTORS)}."
         )
 
-    steps: list[tuple[str, str]] = [
-        (TaskType.DATA_RESEARCH_CONTEXT, "data"),
-        (TaskType.STRATEGY_FRAME_OBJECTIVE, "strat"),
-        (TaskType.DEVELOPMENT_DESIGN_PLAN, "dev"),
-    ]
+    if increment and authors_manifest:
+        raise CycleError(
+            "an increment's framing authors no manifest: it binds to the accepted manifest "
+            "plus the approved delta (SIP-0109 §7.3)"
+        )
+    steps: list[tuple[str, str]] = []
+    if not increment:
+        steps.extend(
+            [
+                (TaskType.DATA_RESEARCH_CONTEXT, "data"),
+                (TaskType.STRATEGY_FRAME_OBJECTIVE, "strat"),
+            ]
+        )
+    steps.append((TaskType.DEVELOPMENT_DESIGN_PLAN, "dev"))
     if authors_manifest:
         steps.append((AUTHOR_MANIFEST_TASK_TYPE, AUTHOR_MANIFEST_ROLE))
     steps.extend(
@@ -492,10 +506,13 @@ def _resolve_workload_steps(
         # SIP-0093 PR 93.3: framing sequence is dynamic per
         # plan_authoring_contributors config. Empty/missing contributors
         # → sole-author route through the merger.
+        from squadops.campaigns.increment_tree import increment_baseline
+
         contributors = (resolved_config or {}).get("plan_authoring_contributors")
         steps = build_planning_steps(
             contributors,
             authors_manifest=authors_interface_manifest(resolved_config),
+            increment=increment_baseline(resolved_config) is not None,
         )
     elif workload_type == WorkloadType.REFINEMENT:
         _check_required_roles(
@@ -634,6 +651,36 @@ def _applicable_acceptance(plan_task: Any) -> list:
                 continue
         acceptance.append(criterion)
     return acceptance
+
+
+def _require_change_request_for_increment_framing(
+    run: Run, resolved_config: Mapping[str, Any], change_request: str | None
+) -> None:
+    """An increment's framing frames its approved change request, and nothing else does
+    (SIP-0109 §7.3). Without it the framing would design the accepted application again from
+    its PRD; given to any other run, the request would frame a cycle that never proposed it."""
+    from squadops.campaigns.increment_tree import increment_baseline
+
+    framing_an_increment = (
+        run.workload_type == WorkloadType.FRAMING
+        and increment_baseline(resolved_config) is not None
+    )
+    if framing_an_increment and not change_request:
+        raise CycleError(
+            f"run {run.run_id} frames an increment with no approved change request (SIP-0109 §7.3)"
+        )
+    if change_request and not framing_an_increment:
+        raise CycleError(
+            f"run {run.run_id} was given a change request, which only an increment's framing "
+            "frames (SIP-0109 §7.3)"
+        )
+
+
+def _inject_increment_change_request(inputs: dict[str, Any], change_request: str | None) -> None:
+    """SIP-0109 §7.3: every stage of an increment's framing is handed the approved change
+    request, its framed objective; the framing stages and the brief show it."""
+    if change_request is not None:
+        inputs["increment_change_request"] = change_request
 
 
 def _inject_rejection_context(
@@ -1070,6 +1117,7 @@ def generate_task_plan(
     plan: ImplementationPlan | None = None,
     contract: VerificationContract | None = None,
     interface_manifest: InterfaceManifest | None = None,
+    change_request: str | None = None,
 ) -> list[TaskEnvelope]:
     """Generate a task plan for a cycle run.
 
@@ -1091,6 +1139,9 @@ def generate_task_plan(
             present the cycle is in bind mode: the plan is validated to *bind*
             the contract's criteria by id (net-a, raises), and each task's
             ``criteria_refs`` resolve into TypedChecks. Absent = author mode.
+        change_request: An increment's approved change request, for its framing run
+            (SIP-0109 §7.3) — the framed objective every framing task is shown. Required
+            there, and refused anywhere else.
 
     Returns:
         Ordered list of TaskEnvelopes, one per pipeline step.
@@ -1111,6 +1162,7 @@ def generate_task_plan(
     from squadops.campaigns.increment_tree import increment_footprint
 
     footprint = increment_footprint(resolved_config, interface_manifest)
+    _require_change_request_for_increment_framing(run, resolved_config, change_request)
 
     if run.workload_type is not None:
         steps, builder_used = _resolve_workload_steps(
@@ -1274,6 +1326,7 @@ def generate_task_plan(
 
         inject_contract_inputs(inputs, contract, task_type, interface_manifest, footprint)
         _inject_rejection_context(inputs, framing_rejection_context, task_type)
+        _inject_increment_change_request(inputs, change_request)
 
         envelope = TaskEnvelope(
             task_id=task_id,

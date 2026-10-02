@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from adapters.cycles.execution_errors import _ExecutionError
-from squadops.cycles.models import Cycle, RunStatus
+from squadops.cycles.models import Cycle, RunStatus, WorkloadType
 from squadops.cycles.task_plan import generate_task_plan
 from squadops.events.types import EventType
 
@@ -161,6 +161,13 @@ class RunProvisioning:
         if verification_contract is not None:
             interface_manifest = await self._seeded_manifest_for_authoring(cycle)
 
+        # SIP-0109 §7.3: an increment's framing frames its approved change request.
+        change_request = None
+        if run.workload_type == WorkloadType.FRAMING:
+            from squadops.campaigns.increment_tree import approved_change_request
+
+            change_request = await approved_change_request(self._artifact_vault, cycle)
+
         plan = generate_task_plan(
             cycle,
             run,
@@ -168,6 +175,7 @@ class RunProvisioning:
             plan=implementation_plan,
             contract=verification_contract,
             interface_manifest=interface_manifest,
+            change_request=change_request,
         )
         state.plan = plan
         participating_agent_ids = {e.agent_id for e in plan}

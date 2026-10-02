@@ -7,6 +7,7 @@ fill slot the change does not touch — the accepted implementation keeps it.
 
 from __future__ import annotations
 
+import dataclasses
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
@@ -17,6 +18,7 @@ import yaml
 from squadops.campaigns.change_request import (
     ProposalContext,
     apply_manifest_delta,
+    stored_change_request,
     validate_proposal,
 )
 from squadops.cycles.models import ArtifactRef, Cycle, Run, TaskFlowPolicy
@@ -37,6 +39,7 @@ _REQUEST = validate_proposal(
     ),
 ).change_request
 CANDIDATE = apply_manifest_delta(BASELINE, _REQUEST.manifest_delta)
+STORED_REQUEST = stored_change_request(_REQUEST)
 
 
 def _plan(*artifacts: str) -> str:
@@ -243,12 +246,19 @@ def test_an_increment_framing_plan_carries_its_footprint_to_the_plan_author():
     contract.behavioral.probes = ()
     run = Run("run_f", "cyc_inc", 2, "running", "system", "cfg", workload_type="framing")
 
+    # As the approval forwards them (#1840): the candidate manifest's contract and the change
+    # request ride the framing run's overrides.
+    cycle = _cycle(True)
+    cycle = dataclasses.replace(
+        cycle, execution_overrides={**cycle.execution_overrides, "contract_ref": "art_contract"}
+    )
     plan = generate_task_plan(
-        _cycle(True),
+        cycle,
         run,
         profile,
         contract=contract,
         interface_manifest=InterfaceManifest.from_yaml(CANDIDATE),
+        change_request=STORED_REQUEST,
     )
 
     [merge] = [e for e in plan if e.task_type == "governance.merge_plan"]

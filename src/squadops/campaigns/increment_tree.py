@@ -60,3 +60,28 @@ def increment_baseline(resolved_config: Any) -> str | None:
         return None
     baseline = block.get("baseline_manifest")
     return baseline if isinstance(baseline, str) and baseline.strip() else None
+
+
+async def approved_change_request(vault: Any, cycle: Any) -> str | None:
+    """The change request an increment cycle's framing frames (§7.3): the approved document the
+    proposal run stored, forwarded into the framing run's ``plan_artifact_refs`` beside the
+    candidate manifest. Its stored hash is checked, so a document altered after it was ruled on
+    is refused. ``None`` for any cycle that is not an increment.
+
+    An increment's framing without its change request is refused, not framed as a new
+    application: the approved change is the framed objective, and nothing replaces it."""
+    from squadops.campaigns.change_request import load_stored_change_request
+    from squadops.capabilities.handlers.planning.proposal import CHANGE_REQUEST_ARTIFACT_TYPE
+
+    if increment_baseline(cycle.resolved_config()) is None:
+        return None
+    for ref_id in cycle.execution_overrides.get("plan_artifact_refs") or ():
+        ref, content = await vault.retrieve(ref_id)
+        if ref.artifact_type == CHANGE_REQUEST_ARTIFACT_TYPE:
+            document = content.decode("utf-8")
+            load_stored_change_request(document)
+            return document
+    raise ValueError(
+        f"increment cycle {cycle.cycle_id}: its framing was forwarded no approved "
+        f"{CHANGE_REQUEST_ARTIFACT_TYPE}, and an increment frames nothing else"
+    )
