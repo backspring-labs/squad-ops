@@ -455,10 +455,17 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     from adapters.cycles.cycle_evidence import assess_cycle
     from squadops._version import resolve_git_sha
     from squadops.campaigns.progress import CampaignProgress
+    from squadops.campaigns.projection import ProjectingCampaignRegistry
     from squadops.cycles.cycle_assessment import AssessorIdentity
 
+    # SIP-0109 §13 (step 6): every row a non-route writer commits — the gate's submission, the
+    # completion boundary's promotion and decision, the launcher's mark — is projected to the
+    # audit and the event bus, as the routes project theirs.
+    projected_campaigns = ProjectingCampaignRegistry(
+        campaign_registry, audit=getattr(state, "audit_port", None), events=event_bus
+    )
     campaign_progress = CampaignProgress(
-        campaigns=campaign_registry,
+        campaigns=projected_campaigns,
         cycles=cycle_registry,
         vault=artifact_vault,
         assess=partial(
@@ -488,7 +495,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         activity_port=activity_port,
         coordinator=state.runtime_coordinator,
         focus_lease_port=focus_lease_port,
-        campaign_registry=campaign_registry,
+        campaign_registry=projected_campaigns,
         campaign_progress=campaign_progress,
     )
 
@@ -526,7 +533,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     from squadops.api.routes.cycles.cycles import CreationPorts
 
     state.campaign_launch = CampaignLaunchService(
-        campaigns=campaign_registry,
+        campaigns=projected_campaigns,
         creation=CreationPorts(
             project_registry=project_registry,
             squad_profile=squad_profile,
