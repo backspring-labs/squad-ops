@@ -233,6 +233,12 @@ class _PlanningTaskHandler(_CycleTaskHandler):
             stack_section = await self._target_stack_section(renderer, inputs)
             if stack_section:
                 variables["target_stack_section"] = stack_section
+            # #1845: a stage handed a revision request shows it — #811's technical design
+            # answers the note it replays for. The registry decides who is handed one
+            # (`plan_rejection_context`); a stage given none renders nothing.
+            rejection_section = await self._rejection_context_section(renderer, inputs)
+            if rejection_section:
+                variables["rejection_context_section"] = rejection_section
             rendered = await renderer.render(self._request_template_id, variables)
             user_prompt = rendered.content
         else:

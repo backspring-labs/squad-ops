@@ -270,3 +270,54 @@ def test_every_authoring_template_declares_and_places_the_slot(template_id):
     header, _, body = path.read_text(encoding="utf-8").partition("\n---\n")
     assert "- authoring_rules_section" in header
     assert "{{authoring_rules_section}}" in body
+
+
+# --- the framing tail's own handle() (#1845) ----------------------------------- #
+
+
+async def _design_prompt(inputs: dict) -> str:
+    """The user prompt ``development.design_plan`` sends, through its real ``handle()`` and the
+    shipped prompt assets."""
+    from adapters.prompts.factory import create_prompt_asset_source
+    from squadops.capabilities.handlers.planning.framing import DevelopmentDesignPlanHandler
+    from squadops.prompts.renderer import RequestTemplateRenderer
+
+    handler = DevelopmentDesignPlanHandler()
+    sent: list[str] = []
+
+    async def _llm_call(context, messages, chat_kwargs, **_):
+        sent.append(messages[-1].content)
+        return MagicMock(), "the technical design"
+
+    handler._llm_call = _llm_call
+    context = MagicMock()
+    context.ports.request_renderer = RequestTemplateRenderer(
+        create_prompt_asset_source("filesystem")
+    )
+    context.ports.prompt_service.assemble.return_value = MagicMock(content="sys", assembly_hash="h")
+    result = await handler.handle(context, {"prd": "the PRD", "resolved_config": {}, **inputs})
+    assert result.success
+    [prompt] = sent
+    return prompt
+
+
+async def test_the_design_stage_shows_the_revision_request_it_is_handed():
+    """#811 replays a revision from the technical design so the design answers the note.
+    Bug caught (#1845): the note reaching the stage's inputs and never its prompt — the
+    design re-authored unprompted while the manifest author, downstream, answered it."""
+    _inject_rejection_context(
+        inputs := {},
+        {"rejection_reasons": ["Persist runs across restarts, not in memory."]},
+        "development.design_plan",
+    )
+
+    prompt = await _design_prompt(inputs)
+
+    assert "THIS CYCLE'S PREVIOUS FRAMING WAS RETURNED" in prompt
+    assert "- Persist runs across restarts, not in memory." in prompt
+
+
+@pytest.mark.parametrize("reasons", [None, [], ["  "]], ids=["absent", "empty", "blank"])
+async def test_a_design_stage_with_no_revision_request_renders_none(reasons):
+    inputs = {} if reasons is None else {"rejection_reasons": reasons}
+    assert "PREVIOUS FRAMING WAS RETURNED" not in await _design_prompt(inputs)
