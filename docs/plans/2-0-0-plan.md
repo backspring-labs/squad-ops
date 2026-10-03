@@ -406,6 +406,9 @@ Fifteen issues carry the title. Three are closed: #1728, #1802 and #1804.
     Built (SIP-0109 §24ao), before rebuild 18.
   - **#1930** (an OpenTelemetry console exporter thread crashed an xdist worker at shutdown, with the
     run green): test infrastructure. **2.1.0.**
+  - **#1934** (proposal runs use random task ids, so #1929's replay cannot recognise a re-attached
+    proposal task, which then runs twice): found on rebuild 18. The cost is time only, on a path the
+    set reaches only through an unplanned restart during a proposal run. **2.1.0.**
 
 ### 5a.4 The path to registration
 
