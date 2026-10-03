@@ -54,6 +54,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from checkouts import main_checkout  # noqa: E402
+from verification_set_driver import login  # noqa: E402
 
 from squadops.campaigns.models import CampaignState  # noqa: E402
 
@@ -419,6 +420,10 @@ def _taken_up(since: str, runs: Sequence[str], timeout_s: int = 300) -> list[str
 
 
 def squadops(*args: str) -> subprocess.CompletedProcess:
+    """A CLI call, logged in first, by the driver's rule: the token lasts minutes and a
+    diagnostic waits hours for its moment. On an expired session a ruling, a pause or an abort
+    fails, and the next wait (the pause landing, the campaign completing) can never pass."""
+    login(str(SQUADOPS))
     return subprocess.run([str(SQUADOPS), *args], capture_output=True, text=True)
 
 

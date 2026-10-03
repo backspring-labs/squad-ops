@@ -6,6 +6,7 @@ shape it exists to catch. The decision shapes are the ones a live campaign wrote
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import sys
 from pathlib import Path
 
@@ -138,3 +139,20 @@ def test_a_mistyped_sequence_is_refused_before_the_first_injection(spec, monkeyp
         diag.main(["cmp_abc", "restart-at:building", spec])
 
     assert exit_.value.code == 2
+
+
+def test_every_cli_call_logs_in_first(monkeypatch):
+    """Bug caught: the 2026-10-03 increment legs, whose CLI session expired 45 minutes into a
+    wait. A ruling, a pause or an abort made on it fails, and ``restart-paused`` then waits on a
+    pause that never lands, which stops the sequence."""
+    calls = []
+    monkeypatch.setattr(diag, "login", lambda cli: calls.append(("login", cli)))
+    monkeypatch.setattr(
+        diag.subprocess,
+        "run",
+        lambda cmd, **kw: calls.append(("run", cmd[1:3])) or subprocess.CompletedProcess(cmd, 0),
+    )
+
+    diag.squadops("campaigns", "pause", "cmp_abc")
+
+    assert calls == [("login", str(diag.SQUADOPS)), ("run", ["campaigns", "pause"])]
