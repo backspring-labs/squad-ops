@@ -498,6 +498,9 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         focus_lease_port=focus_lease_port,
         campaign_registry=projected_campaigns,
         campaign_progress=campaign_progress,
+        # SIP-0109 §9.3 (#1928): a run start waits on the launch's own verdict. The box reader
+        # is built below, from the LLM port; read when a run starts, as the drain is above.
+        box_verdict=lambda: state.box_reader.verdict(),
     )
 
     state.project_registry = project_registry

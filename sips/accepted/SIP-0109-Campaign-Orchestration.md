@@ -2106,6 +2106,45 @@ have found it after the exit shakeout and cost another shakeout round.
 by the process failing, and the restart is what this answers. The proof live is #1803's restart
 diagnostic, on the registered deploy.
 
+### 24an. A run start refuses what a launch refuses (2026-10-03, §9.3, §24ai, #1928; ruled by the owner)
+
+**What §9.3 said, and what it left open.** "Every cycle launch and every run start on the box refuses
+while the supervisor holds the lease. Every launch also requires a quiet box." A run start read only
+the lease (§24ai). The lease returns to the squad when the supervisor releases it or when it expires,
+and a release did not require the models unloaded. So a crew model left resident was run beside by
+the cycle's next run. At an increment gate that run is the framing run the ruling just approved: the
+supervisor's own seam. The crew's blocking review of the 2.0 pre-registration (#1908) asked for this
+case, "an expired lease with a crew model resident", to be refused testably rather than by operator
+discipline. Found re-reading that review against the code. The owner chose option 1 of #1928's three:
+the run start, not the release.
+
+**As built:**
+- **A run start waits on the launch's own verdict** (`launch_verdict`, read through the box reader):
+  the supervisor's lease first, then the quiet box. `RunAdmission.await_box` reads the box reader's
+  verdict, so one rule decides a launch and a run start, and the start refuses what the launch
+  refuses.
+- **A wait, not a failure** (§24l's rule, kept). The run stays queued and reads the box every 15 s.
+  It starts once a launch would be allowed: the lease given back, and the crew's model unloaded.
+- **Its ceiling is one full lease** (`lease_expiry_s`) of the campaign whose box it waits on: the
+  holding campaign while the lease is held, else the run's own. Past it the run fails unstarted,
+  with the verdict's reasons.
+- **A run outside every campaign is refused at once** on a box that is not quiet. It has no lease to
+  wait out, and its launch is refused the same way (the create route's 409).
+- **Wiring:** the executor takes a `box_verdict` port. The composition root binds it late to the box
+  reader, as it binds the launch drain.
+
+**Not built:**
+- **A release that refuses while the box is not quiet** (#1928's option 2). The run start's wait
+  already covers a release and an expiry alike, so it would add a second mechanism for half the
+  cases.
+- **The quiet box stays model-only** (§24ai): the GPU's compute processes are still not read, and a
+  crew session using a model the deploy declares reads as quiet. The pre-registration states both.
+
+**Read before building:** nothing on the deploy loads an undeclared model mid-cycle. No embedding
+model is installed, and no agent has logged an embedding call. Every campaign launch since #1802, each
+made right after a cycle ended, passed the quiet check. So a squad run waits only on what the
+check exists to refuse.
+
 ---
 
 ## Revision history

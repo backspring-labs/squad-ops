@@ -412,8 +412,20 @@ Fifteen issues carry the title. Three are closed: #1728, #1802 and #1804.
      restart mid-cycle left a campaign's gate decision unacted on and its run stuck `running`.
    - The fix, #1923 (SIP-0109 §24am), re-attaches campaign cycles at startup. It merged as
      `5aae934c`, which is rebuild 17.
-3. **The exit shakeout:** shakeout 6 on the same deploy, with the log archive beside it. It also reads
-   #1802's live-lease proof (the quiet-box half ran on 2026-10-03).
+   - **#1928** was found the same day, by re-reading the crew's review of #1908 against the code. A
+     run start read only the lease, so a crew model left resident when the lease returned was run
+     beside. The owner ruled option 1, a run start refuses what a launch refuses (SIP-0109 §24an).
+     It lands before **rebuild 18, the deploy the set registers.**
+   - **The diagnostics re-run on rebuild 18.** Those on rebuild 17 were the restart paths' first
+     live read, and precondition 5 asks for the registered deploy.
+3. **The exit shakeout:** shakeout 6 on rebuild 18, with the log archive beside it. At its first
+   increment gate it reads #1802's live-lease proof (the quiet-box half ran on 2026-10-03), with the
+   crew's second ask added:
+   - a create while the lease is held is refused (`supervisor_holds_the_box`);
+   - the ruling approved while held: the framing run waits, queued;
+   - the lease released with a stand-in crew model still resident: the framing run keeps waiting
+     (`box_not_quiet`, §24an), and a create is refused the same way;
+   - the model unloaded: the framing run starts.
 4. **The owner's stop:** registration (#1908), after the crew's re-review. **Who supervises is not a
    SquadOps decision** (§24al): decision 2 resolves to whoever rules, recorded as each ruling's
    actor, and decision 6 belongs to the crew's access, not to the set.
