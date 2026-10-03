@@ -918,7 +918,7 @@ def _client_http_call(expr: ast.expr) -> tuple[str, str] | None:
 
 
 def _assert_status_triples(
-    node: ast.Assert, bindings: list[tuple[str, int, tuple[str, str]]]
+    node: ast.Assert, bindings: list[tuple[str, int, tuple[str, str] | None]]
 ) -> list[tuple[str, str, int, int]]:
     """``(METHOD, path, asserted_status, lineno)`` rows an assert deterministically
     pins: ``assert <resp>.status_code == <int>`` (either operand order, ``Eq`` only),
@@ -942,7 +942,9 @@ def _assert_status_triples(
     base = attr.value
     call = _client_http_call(base)
     if call is None and isinstance(base, ast.Name):
-        # latest binding of this name before the assert (source order, not walk order)
+        # latest binding of this name before the assert (source order, not walk order). A
+        # rebinding the check cannot read is ``None`` and wins too: the name no longer means
+        # the earlier call (#1898).
         prior = [b for name, line, b in bindings if name == base.id and line < node.lineno]
         call = prior[-1] if prior else None
     if call is None:
@@ -957,7 +959,7 @@ def _extract_status_assertions(tree: ast.AST) -> list[tuple[str, str, int, int]]
     for func in (
         n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)
     ):
-        bindings: list[tuple[str, int, tuple[str, str]]] = []
+        bindings: list[tuple[str, int, tuple[str, str] | None]] = []
         nodes = sorted(
             (n for n in ast.walk(func) if isinstance(n, ast.Assign | ast.Assert)),
             key=lambda n: n.lineno,
@@ -965,9 +967,13 @@ def _extract_status_assertions(tree: ast.AST) -> list[tuple[str, str, int, int]]
         for node in nodes:
             if isinstance(node, ast.Assign):
                 if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
-                    call = _client_http_call(node.value)
-                    if call is not None:
-                        bindings.append((node.targets[0].id, node.lineno, call))
+                    # #1898: every assignment is recorded, an unreadable one as ``None``, so a
+                    # name reused for a call the check cannot read (an f-string path) stops
+                    # meaning the earlier one. Recording only readable calls left
+                    # ``resp = client.post(f"/runs/{run_id}/join")`` bound to the create.
+                    bindings.append(
+                        (node.targets[0].id, node.lineno, _client_http_call(node.value))
+                    )
             else:
                 out.extend(_assert_status_triples(node, bindings))
     return out
