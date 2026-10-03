@@ -423,6 +423,8 @@ def _row_to_campaign(row: asyncpg.Record) -> Campaign:
             statement=objective["statement"],
             allowed_scope=tuple(objective["allowed_scope"]),
             measurement=objective["measurement"],
+            # §24ah: absent on a campaign stored before the field existed.
+            target_accepted_increments=objective.get("target_accepted_increments"),
         ),
         policy=CampaignPolicy(**row["policy"]),
         state=CampaignState(row["state"]),

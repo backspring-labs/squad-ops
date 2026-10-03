@@ -48,6 +48,7 @@ def campaign(campaign_id: str = "cmp_aaaaaaaaaaaa", **overrides) -> Campaign:
             statement="evolve group_run toward its PRD's expansion scope",
             allowed_scope=("backend", "frontend"),
             measurement="two accepted increments",
+            target_accepted_increments=2,
         ),
         policy=policy(),
         state=CampaignState.DRAFT,

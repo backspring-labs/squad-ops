@@ -170,6 +170,13 @@ async def create_campaign(
     actor, role = actor_from(identity)
     now = datetime.now(UTC)
     try:
+        if body.objective.target_accepted_increments is None:
+            # §24ah: a new campaign's measurement has a reader, or row 3 can never stop it in
+            # success and it proposes past its objective until a limit stops it.
+            raise ValueError(
+                "objective.target_accepted_increments is required: the accepted increments "
+                "that meet the objective (§10 row 3)"
+            )
         campaign = Campaign(
             campaign_id=body.campaign_id or lifecycle.new_campaign_id(),
             project_id=body.project_id,
@@ -177,6 +184,7 @@ async def create_campaign(
                 statement=body.objective.statement,
                 allowed_scope=tuple(body.objective.allowed_scope),
                 measurement=body.objective.measurement,
+                target_accepted_increments=body.objective.target_accepted_increments,
             ),
             policy=CampaignPolicy(**body.policy.model_dump()),
             state=CampaignState.DRAFT,
@@ -606,6 +614,7 @@ def _campaign(c: Campaign) -> CampaignResponse:
             statement=c.objective.statement,
             allowed_scope=list(c.objective.allowed_scope),
             measurement=c.objective.measurement,
+            target_accepted_increments=c.objective.target_accepted_increments,
         ),
         policy=CampaignPolicyDTO(
             **{f: getattr(c.policy, f) for f in CampaignPolicyDTO.model_fields}

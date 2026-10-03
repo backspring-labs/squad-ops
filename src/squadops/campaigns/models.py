@@ -182,14 +182,30 @@ def _require_text(owner: str, **values: str | None) -> None:
 
 @dataclass(frozen=True)
 class CampaignObjective:
-    """What the campaign is for (§15): the statement, the scope it may touch, how success reads."""
+    """What the campaign is for (§15): the statement, the scope it may touch, how success reads.
+
+    ``measurement`` is the success criterion in words; ``target_accepted_increments`` is its one
+    machine reading: the accepted increments that meet it, read by §10 row 3 (§24ah). It is
+    required of every new campaign; ``None`` only on a campaign stored before it existed, whose
+    measurement has no reader and so never stops in success.
+    """
 
     statement: str
     allowed_scope: tuple[str, ...]
     measurement: str
+    target_accepted_increments: int | None
 
     def __post_init__(self) -> None:
         _require_text("CampaignObjective", statement=self.statement, measurement=self.measurement)
+        target = self.target_accepted_increments
+        if target is not None and (isinstance(target, bool) or not isinstance(target, int)):
+            raise ValueError(
+                f"CampaignObjective.target_accepted_increments must be an integer, got {target!r}"
+            )
+        if target is not None and target < 1:
+            raise ValueError(
+                f"CampaignObjective.target_accepted_increments must be >= 1, got {target}"
+            )
 
 
 #: Policy fields that must be at least 1: a campaign with no cycles, a zero ruling bound or a zero

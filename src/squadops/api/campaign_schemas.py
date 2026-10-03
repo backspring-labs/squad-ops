@@ -17,6 +17,9 @@ class CampaignObjectiveDTO(BaseModel):
     statement: str
     allowed_scope: list[str] = Field(default_factory=list)
     measurement: str
+    #: §24ah: the accepted increments that meet the objective, read by §10 row 3. Required of a
+    #: new campaign; ``None`` reads back only for one stored before the field existed.
+    target_accepted_increments: int | None
 
 
 class CampaignPolicyDTO(BaseModel):

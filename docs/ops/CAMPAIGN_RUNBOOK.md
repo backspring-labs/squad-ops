@@ -23,7 +23,8 @@ at it rather than repeating it.
 | the CLI is authenticated | `squadops login` | every command below goes through the runtime API |
 
 **The policy file** (`var/campaigns/<name>.yaml`) holds `project_id`, `objective` (statement,
-`allowed_scope`, measurement) and every `policy` limit. Each limit is required, never defaulted
+`allowed_scope`, measurement, and `target_accepted_increments`, the accepted increments that end the
+campaign in success, §24ah) and every `policy` limit. Each limit is required, never defaulted
 (SIP-0109 §9.5). `var/campaigns/shakeout-4.yaml` is a working example. `max_cycles` counts every cycle
 the campaign launches: the calibration, each increment, each repair and each retry.
 
