@@ -1,4 +1,4 @@
-"""The reference increment's per-mechanism report (SIP-0109 §11a; #1804), read from real records.
+"""An increment's per-mechanism report (SIP-0109 §11a; #1804), read from real records.
 
 Each fixture is a live cycle's record as the runtime API returns it: what the report must read is
 what a cycle actually writes, never a shape this file invents.
@@ -93,3 +93,31 @@ def test_an_evaluated_increment_reports_each_mechanism_from_its_evaluation():
     assert report["accumulated_acceptance"]["note"] == "no frozen criteria were pinned"
     assert report["verdict"]["increment"] == "blocked_unverified"
     assert report["verdict"]["cycle"] == "accepted"
+
+
+def test_the_report_names_which_increment_it_reads():
+    """A campaign's increment (shakeout 3's first, ``cyc_df019ef84ca4``) beside the reference
+    scenario's (``cyc_257539e64218``). Bug caught: a campaign increment's report headed as the
+    reference scenario, so a reader credits the wrong cycle's mechanisms."""
+    import importlib.util
+
+    path = Path(__file__).resolve().parents[3] / "scripts" / "dev" / "reference_report.py"
+    spec = importlib.util.spec_from_file_location("reference_report_script", path)
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+
+    campaign = mechanism_report(
+        _record("record-cyc_df019ef84ca4-campaign-increment.json"), None, None
+    )
+    reference = mechanism_report(
+        _record("record-cyc_257539e64218-reference-evaluated.json"), None, None
+    )
+
+    assert (campaign["campaign_id"], campaign["kind"]) == ("cmp_3cd057058851", "increment")
+    assert script._markdown(campaign).splitlines()[:3] == [
+        "# Increment cyc_df019ef84ca4 (completed)",
+        "",
+        "- campaign `cmp_3cd057058851`, increment cycle",
+    ]
+    assert (reference["campaign_id"], reference["kind"]) == (None, None)
+    assert script._markdown(reference).splitlines()[2] == "- the reference scenario (no campaign)"

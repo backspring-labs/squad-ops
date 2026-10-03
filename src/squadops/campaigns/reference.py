@@ -141,6 +141,10 @@ def mechanism_report(
     return {
         "cycle_id": cycle.get("cycle_id"),
         "status": cycle.get("status"),
+        # Which increment this is: a campaign's (its id and kind), or the reference scenario's,
+        # which no campaign launched.
+        "campaign_id": cycle.get("campaign_id"),
+        "kind": cycle.get("kind"),
         "delta_framing": {
             "attempts": len(framings),
             "gates": [_gate(r) for r in framings],
