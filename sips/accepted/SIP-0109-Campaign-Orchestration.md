@@ -2174,6 +2174,12 @@ up again, and every restart passed. The records showed two costs behind the pass
 **Not built:** an agent restarted since holds no replies, and runs the task, as before. A task whose
 original reply reached no one and whose agent has since restarted is run again: the cost before
 this change, now only in that case.
+- **Amended the same day: a proposal task is not recognised** (#1934, found on rebuild 18's
+  `restart-at:at_proposal`). The replay keys on the task id, and only framing and implementation
+  runs have deterministic ids (`task-{run}-{index}-{type}`, #811). A proposal run's ids are
+  random, so its re-dispatched task is a new id, and the agent runs it again. The cost is time
+  only: the original's reply is dropped as unknown, and the copy's reply answers the new wait.
+  Deterministic ids for every workload are placed in 2.1.0.
 
 ---
 
