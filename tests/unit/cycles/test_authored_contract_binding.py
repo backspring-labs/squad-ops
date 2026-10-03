@@ -342,6 +342,8 @@ async def test_the_gate_rejects_v4s_plan_once_the_contract_is_derived():
         "validate_frozen_artifact_ownership": 3,
         "validate_module_existence": 1,
         "validate_unique_expected_artifacts": 1,
+        # #1912: V4's plan also carried three qa.test tasks declaring no suite.
+        "validate_qa_tasks_author_a_suite": 3,
     }
     # The manifest beside it fails a proof too; the record names it as the note does.
     assert record["proofs"] == {"error_shape_agrees": 1}

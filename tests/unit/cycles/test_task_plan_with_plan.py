@@ -754,6 +754,19 @@ class TestGenerateTaskPlanBindMode:
         with pytest.raises(CycleError, match="duplicate expected artifacts"):
             generate_task_plan(_make_cycle(), _make_run(), _make_profile(), plan=plan)
 
+    def test_qa_task_with_no_suite_raises_at_dispatch(self):
+        """#1912 backstop: a qa.test task that declares no suite must never reach dispatch,
+        where it fails whatever it returns and ends the run blocked_unverified."""
+        from squadops.cycles.models import CycleError
+
+        plan = ImplementationPlan.from_yaml(
+            MANIFEST_YAML.replace(
+                'expected_artifacts: ["tests/test_api.py"]', "expected_artifacts: []", 1
+            )
+        )
+        with pytest.raises(CycleError, match="qa task authors no suite"):
+            generate_task_plan(_make_cycle(), _make_run(), _make_profile(), plan=plan)
+
     def test_import_present_on_nonexistent_module_raises_at_dispatch(self):
         """#671 backstop: fay-17's shape — an error-severity import_present
         requiring a module the contract's surface cannot provide must never

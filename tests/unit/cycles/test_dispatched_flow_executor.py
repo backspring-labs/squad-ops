@@ -1646,6 +1646,71 @@ class TestCorrectionDeadlockIsNotRetried:
         assert self._deadlocked("passed", None) is False
 
 
+class TestGateRejectsAQaTaskThatAuthorsNoSuite:
+    """#1912 on the mid-run gate seam, the one an increment's plan gate passes through: a qa.test
+    task declaring no suite is refused under its own validator, so the framing re-rolls for free
+    instead of the run ending blocked_unverified. The control is the same task naming its file."""
+
+    _PLAN = (
+        TestGateRejectsBuilderPlanWithoutBuildProfile._BUILDER_PLAN_YAML.replace(
+            "builder.assemble", "qa.test"
+        )
+        .replace("role: builder", "role: qa")
+        .replace(
+            '    expected_artifacts:\n      - "qa_handoff.md"\n      - "Dockerfile"\n'
+            '      - "__main__.py"\n      - "requirements.txt"\n',
+            "    expected_artifacts: EXPECTED\n",
+        )
+    )
+
+    @pytest.mark.parametrize(
+        ("expected", "refused"),
+        [("[]", ("validate_qa_tasks_author_a_suite",)), ('["backend/tests/test_runs.py"]', None)],
+    )
+    async def test_the_gate_refuses_only_the_suiteless_task(
+        self, executor, mock_vault, cycle, expected, refused
+    ):
+        import dataclasses
+
+        from adapters.cycles.execution_errors import _ExecutionError
+
+        assert "EXPECTED" in self._PLAN
+        gated_cycle = dataclasses.replace(
+            cycle,
+            applied_defaults={
+                "implementation_plan": True,
+                "required_checks": ["tests_pass"],
+                "build_profile": "fullstack_fastapi_react",
+                "correction_steps": ["analyze", "decide", "repair"],
+            },
+        )
+        mock_vault.retrieve.return_value = (
+            "ref",
+            self._PLAN.replace("EXPECTED", expected).encode(),
+        )
+        agent = MagicMock()
+        agent.role = "qa"
+        agent.serves_roles = ("qa",)
+        agent.enabled = True
+        profile = MagicMock()
+        profile.profile_id = "full"
+        profile.agents = [agent]
+
+        gate = executor._reject_unsatisfiable_plan_at_gate(
+            TestGateRejectsBuilderPlanWithoutBuildProfile._stored_plan_artifacts(),
+            profile,
+            ["progress_plan_review"],
+            gated_cycle,
+        )
+        if refused is None:
+            await gate
+            return
+        with pytest.raises(_ExecutionError) as exc_info:
+            await gate
+        assert "declares no expected artifact" in str(exc_info.value)
+        assert exc_info.value.terminal.refused_validators == refused
+
+
 class TestGateRejectsAQaSuiteOutsideTheStacksNamespace:
     """#1587 on the mid-run gate seam: collected is not owned. `tests/test_runs.py` at the
     repository root passes the collection rule (pytest collects it) and is refused by the

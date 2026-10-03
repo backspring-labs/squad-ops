@@ -241,7 +241,7 @@ async def test_real_asset_states_the_shk1_rule_in_the_rendered_section():
 
     assert "PLAN SHAPE RULES" in section
     assert "one-file-one-owner" in section  # the class that cost shk-1 a re-roll
-    assert "expected_artifacts: []" in section  # the legitimate alternative
+    assert "qa-tasks-author-a-suite" in section  # #1912
     assert "no-frozen-claims" in section  # #658
     assert "imports-must-exist" in section  # #671
 
