@@ -13,16 +13,21 @@ carries its baseline's manifest, which asks nothing, and only the ruling moves t
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from datetime import datetime
+from enum import StrEnum
 from typing import Any
 
 import yaml
 
 from squadops.campaigns.models import (
     RULING_MOVES,
+    Campaign,
     CampaignState,
     CampaignTransition,
+    ControlLogEntry,
     ControlOperation,
+    ControlOutcome,
     IncrementRuling,
     ProposalBinding,
     SubmittedProposal,
@@ -38,6 +43,16 @@ INCREMENT_SEED_PRODUCER = "campaign.increment_seed"
 
 #: The role on the rows the executor writes for the campaign.
 EXECUTOR_ROLE = "executor"
+
+#: The role on the rows the campaign sweep writes (§24ae).
+SWEEP_ROLE = "sweep"
+
+
+class RulingSeat(StrEnum):
+    """Whose ruling bound the gate passed (§9.2): the crew's supervisor first, then the owner."""
+
+    CREW = "crew"
+    OWNER = "owner"
 
 
 def increment_sequence_refusal(defaults: Mapping[str, Any]) -> str | None:
@@ -143,3 +158,71 @@ def ruling_transition(
         },
         ruling=IncrementRuling(decision, binding, run_id),
     )
+
+
+def gate_opened_at(log: Sequence[ControlLogEntry]) -> datetime | None:
+    """When the increment gate last opened: the latest applied row that moved the campaign into
+    ``awaiting_ruling``. A submission opens it; so does a resume that returns a held proposal to
+    the gate, which is when the supervisor could first rule on it."""
+    opened = None
+    for entry in log:
+        if (
+            entry.outcome is ControlOutcome.APPLIED
+            and entry.next_state is CampaignState.AWAITING_RULING
+            and entry.prior_state is not CampaignState.AWAITING_RULING
+        ):
+            opened = entry.committed_at
+    return opened
+
+
+def ruling_overdue_transitions(
+    campaign: Campaign, log: Sequence[ControlLogEntry], now: datetime
+) -> list[CampaignTransition]:
+    """The ``ruling_overdue`` rows the gate is owed at ``now`` (§9.2, §9.5; §24ae): one per seat
+    whose bound has passed since the gate opened, each written once per proposal version.
+
+    Each keeps the campaign ``awaiting_ruling``, which is the bound's pause, and nothing rules
+    on the gate: a ruling still resolves it, the owner's or the crew's (§9.5's row), and the
+    campaign never proceeds unapproved. Pure, so the sweep writes exactly what this decides.
+    """
+    proposal = campaign.proposal
+    if campaign.state is not CampaignState.AWAITING_RULING or proposal is None:
+        return []
+    opened = gate_opened_at(log)
+    if opened is None:
+        return []
+    written = {e.idempotency_key for e in log if e.outcome is ControlOutcome.APPLIED}
+    waited = (now - opened).total_seconds()
+    owed = []
+    for seat, bound in (
+        (RulingSeat.CREW, campaign.policy.crew_ruling_bound_s),
+        (RulingSeat.OWNER, campaign.policy.owner_ruling_bound_s),
+    ):
+        binding = proposal.binding
+        key = f"ruling_overdue:{seat}:{proposal.run_id}:v{binding.version}"
+        if waited < bound or key in written:
+            continue
+        owed.append(
+            CampaignTransition(
+                operation=ControlOperation.RULING_OVERDUE,
+                actor="squadops",
+                actor_role=SWEEP_ROLE,
+                reason=(
+                    f"the increment gate opened at {opened.isoformat()} and the {seat}'s ruling "
+                    f"bound of {bound}s has passed; the campaign stays awaiting_ruling and "
+                    f"nothing proceeds unapproved"
+                ),
+                idempotency_key=key,
+                expected_state=CampaignState.AWAITING_RULING,
+                next_state=CampaignState.AWAITING_RULING,
+                target=proposal.run_id,
+                binding={
+                    "seat": seat.value,
+                    "proposal_id": binding.proposal_id,
+                    "version": binding.version,
+                    "opened_at": opened.isoformat(),
+                    "bound_s": bound,
+                },
+            )
+        )
+    return owed

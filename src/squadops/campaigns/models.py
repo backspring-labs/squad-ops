@@ -79,6 +79,9 @@ class ControlOperation(StrEnum):
     MARK_LAUNCHED = "mark_launched"
     #: The supervisor's classification of what went wrong with a proposal (§9.4). A record.
     CLASSIFY = "classify"
+    #: The increment gate has waited past a seat's ruling bound (§9.2, §9.5; §24ae). The campaign
+    #: stays ``awaiting_ruling``, which is the bound's pause; nothing proceeds unapproved.
+    RULING_OVERDUE = "ruling_overdue"
 
     @property
     def records_only(self) -> bool:

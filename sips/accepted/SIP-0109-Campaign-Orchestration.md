@@ -1802,6 +1802,45 @@ unattended campaign would stop at every increment's gate for a question already 
 Decisions sit outside the manifest's structural projection, so no contract binding or skeleton
 moves.
 
+### 24ae. The ruling bound, as built (2026-10-03, §9.2, §9.5, §19 criterion 10, #1801; decided under the 2.0 charter)
+
+`crew_ruling_bound_s` and `owner_ruling_bound_s` were declared in `CampaignPolicy` and read
+nowhere, so an unruled gate waited forever with nothing recorded. §9.2 says a gate not ruled
+within the bound "pauses the campaign (`awaiting_ruling`)". §9.5's row says the pause resumes on
+"a ruling, or the owner".
+
+**As built:**
+- **A sweep in the runtime API** runs every 60 seconds (`main._sweep_campaigns` →
+  `CampaignProgress.sweep_ruling_bounds`) over every campaign in `awaiting_ruling`
+  (`CampaignRegistryPort.campaigns_in_state`).
+- **The gate's clock starts when it opens:** the latest applied row that moved the campaign into
+  `awaiting_ruling` (`gate_opened_at`). That is a submission, or a resume that returns a held
+  proposal to the gate. A revision's new version opens it afresh.
+- **Each seat's bound, once passed, is one row:** `ruling_overdue` with `seat` `crew` or `owner`,
+  keyed by the seat, the proposal run and the version, so it is written once
+  (`ruling_overdue_transitions`, pure).
+  - The row keeps the campaign `awaiting_ruling` (`expected_state` and `next_state` both
+    `awaiting_ruling`). That state is the bound's pause, and nothing launches from it.
+  - A row that races a ruling is refused as stale and recorded. It never lands on a gate
+    already ruled.
+- **Nothing rules on the gate.** A ruling still resolves it, from the crew's supervisor or the
+  owner, before or after either bound. The campaign never proceeds unapproved.
+- **The owner's morning digest** asks for the ruling while the gate waits, and names each bound
+  it has passed. The digest is the row's reader.
+- **Migration 1680** adds `ruling_overdue` to the control log's operation list.
+
+**Not built, as my draft on #1801 proposed (comment of 2026-10-02):**
+- **An owner-only gate after the crew's bound.** §9.5's row says a ruling resumes the gate, so a
+  late crew ruling is accepted.
+- **Moving to `paused` at the owner's bound.** `awaiting_ruling` is the pause §9.5 names. A
+  `paused` state would let a crew ruling lift what §9.5 calls a limit-caused pause.
+- **The box lease's return at the crew's bound** (§9.3) waits for the lease's persistence, which
+  §24l records as still to build. The sweep is where it will be read.
+
+**The sweep's next tenants:** re-hearing an ended cycle between restarts (§24v's not-built) and
+the launch-blocked retries (§9.3). Each needs its own concurrency reading against the live
+completion hook before it joins.
+
 ---
 
 ## Revision history

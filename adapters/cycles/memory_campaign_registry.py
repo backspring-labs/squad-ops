@@ -50,6 +50,11 @@ class MemoryCampaignRegistry(CampaignRegistryPort):
         found.sort(key=lambda c: c.created_at, reverse=True)
         return copy.deepcopy(found)
 
+    async def campaigns_in_state(self, state: CampaignState) -> list[Campaign]:
+        found = [c for c in self._campaigns.values() if c.state is state]
+        found.sort(key=lambda c: c.created_at)
+        return copy.deepcopy(found)
+
     async def control_log(self, campaign_id: str) -> list[ControlLogEntry]:
         self._campaign(campaign_id)
         return copy.deepcopy(self._log[campaign_id])

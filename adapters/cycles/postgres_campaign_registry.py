@@ -85,6 +85,14 @@ class PostgresCampaignRegistry(CampaignRegistryPort):
             )
         return [_row_to_campaign(r) for r in rows]
 
+    async def campaigns_in_state(self, state: CampaignState) -> list[Campaign]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                f"SELECT {_CAMPAIGN_COLUMNS} FROM campaigns WHERE state = $1 ORDER BY created_at",
+                state.value,
+            )
+        return [_row_to_campaign(r) for r in rows]
+
     async def control_log(self, campaign_id: str) -> list[ControlLogEntry]:
         async with self._pool.acquire() as conn:
             exists = await conn.fetchval(

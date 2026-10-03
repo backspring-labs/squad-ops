@@ -20,6 +20,7 @@ from typing import Any
 from squadops.auth.models import AuditEvent
 from squadops.campaigns.models import (
     Campaign,
+    CampaignState,
     CampaignTransition,
     ControlLogEntry,
     ControlOperationRefused,
@@ -148,6 +149,9 @@ class ProjectingCampaignRegistry(CampaignRegistryPort):
 
     async def list_campaigns(self, project_id: str) -> list[Campaign]:
         return await self._inner.list_campaigns(project_id)
+
+    async def campaigns_in_state(self, state: CampaignState) -> list[Campaign]:
+        return await self._inner.campaigns_in_state(state)
 
     async def control_log(self, campaign_id: str) -> list[ControlLogEntry]:
         return await self._inner.control_log(campaign_id)

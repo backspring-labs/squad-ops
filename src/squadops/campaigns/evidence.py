@@ -144,9 +144,29 @@ def _questions(campaign: dict, rows: list[dict]) -> list[str]:
             f"A limit ({last['binding'].get('paused_by')}) holds "
             f"`{last['binding'].get('action')}`. Your resume executes it as recorded."
         )
+    if campaign["state"] == CampaignState.AWAITING_RULING:
+        asks.append(_awaiting_ruling(campaign, applied))
     refused = [r for r in rows if r["outcome"] == ControlOutcome.REFUSED]
     if refused:
         asks.append(
             f"{len(refused)} refused operation(s) are recorded; the control log names each."
         )
     return asks
+
+
+def _awaiting_ruling(campaign: dict, applied: list[dict]) -> str:
+    """The gate's ask, with each ruling bound it has already waited past (§9.2; §24ae)."""
+    proposal = campaign.get("proposal") or {}
+    binding = proposal.get("binding") or {}
+    overdue = [
+        r["binding"]["seat"]
+        for r in applied
+        if r["operation"] == ControlOperation.RULING_OVERDUE
+        and r["target"] == proposal.get("run_id")
+        and r["binding"].get("version") == binding.get("version")
+    ]
+    late = f", past the {' and the '.join(overdue)} ruling bound" if overdue else ""
+    return (
+        f"The increment gate waits on a ruling for `{binding.get('proposal_id')}` "
+        f"v{binding.get('version')}{late}. Rule it, or abort the campaign."
+    )

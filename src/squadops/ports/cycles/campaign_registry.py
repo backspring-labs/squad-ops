@@ -12,6 +12,7 @@ from abc import ABC, abstractmethod
 
 from squadops.campaigns.models import (
     Campaign,
+    CampaignState,
     CampaignTransition,
     ControlLogEntry,
     LaunchIntent,
@@ -52,6 +53,11 @@ class CampaignRegistryPort(ABC):
     @abstractmethod
     async def list_campaigns(self, project_id: str) -> list[Campaign]:
         """A project's campaigns, newest first by ``created_at``."""
+
+    @abstractmethod
+    async def campaigns_in_state(self, state: CampaignState) -> list[Campaign]:
+        """Every project's campaigns in ``state``, oldest first by ``created_at``: what a sweep
+        over the campaigns waiting on something reads (§24ae)."""
 
     @abstractmethod
     async def transition(
