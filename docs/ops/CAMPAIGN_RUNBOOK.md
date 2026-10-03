@@ -42,7 +42,7 @@ A campaign needs a human only in these states. Everything else is the campaign w
 | state, or what to look for | what it means | what to do |
 |---|---|---|
 | `awaiting_ruling` | the increment gate is open: a proposal waits (§9.2) | rule it (§3) |
-| an open plan gate (`progress_plan_review` with no decision) | the framing asked a design question the manifest left `unresolved` | answer it (§4) |
+| an open plan gate (`progress_plan_review` with no decision) | the framing asked a design question the manifest left `unresolved` | answer it (§4). Past the crew's and the owner's ruling bounds it is recorded as `ruling_overdue`, and the digest asks for it; it is never answered for you |
 | `escalated` | the decision named an action it could not launch, or a row that needs the owner | read why, fix if it is the framework, resume with an action (§5) |
 | `paused` | a limit held the next action (§9.5), or the supervisor paused it | the owner's resume executes the held action |
 | `launch_blocked` | the box refused a launch (§9.3): the supervisor holds it, or a model the deploy did not load is resident | it retries every `launch_blocked_interval_s`, then escalates; after the escalation, `resume` with no `--action` retries it once the box is free |

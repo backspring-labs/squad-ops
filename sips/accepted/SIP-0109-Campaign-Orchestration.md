@@ -1986,6 +1986,32 @@ log to read it from.
 **Deployed proof:** the pre-registration's precondition 4 (#1908), read on the deploy that carries
 this, and appended here.
 
+### 24aj. A plan gate waiting on a design question is bounded too (2026-10-03, §9.2, §9.5, §24ae, #1708; ruled by the owner)
+
+§24ae bounded the increment gate and nothing else. A framing whose plan asks a design question
+stops its cycle at `progress_plan_review` until someone answers. That wait had no bound and left no
+record, so a campaign could sit on it unseen. #1708's "no gate waits without bound" was unmet for the
+2.0 set. The owner ruled this built before the loop's exit shakeout (2.0 plan rev 9, §5a.5).
+
+**As built:**
+- **The same sweep, the same row.** Every interval, `CampaignProgress.sweep_ruling_bounds` also
+  reads each campaign in `calibrating`, `building`, `repairing` or `retrying`.
+  - **Which gate is waiting** (`gate.waiting_gate`): its newest launched cycle is waiting when the
+    newest run completed, that run's workload names a gate, and the gate holds no decision. The run
+    is read by its number, not its position, so a re-rolled framing reads correctly.
+  - **The rows** (`gate.plan_gate_overdue_transitions`, pure): each seat whose bound has passed since
+    the gate opened (the run's `finished_at`) gets one `ruling_overdue` row. It is keyed by the seat,
+    the run and the gate, and its binding names the gate and the cycle.
+  - **The increment gate is left to §24ae's rows.**
+- **The row keeps the campaign where it is,** and nothing answers the gate. The supervisor's or the
+  owner's answer still resolves it, before or after either bound (the runbook's §4).
+- **The digest asks for the answer** while the overdue rows are the campaign's latest word, naming
+  the gate, the run and each bound passed. Once the campaign moves on, the ask goes.
+
+**Not built, by the same decisions as §24ae:** an owner-only answer after the crew's bound, and a
+move to `paused`. In 2.0 every gate stays the supervisor's or the owner's (the plan's decision 4).
+The auto-decision tier and the escalation queue are placed in 2.2.0.
+
 ---
 
 ## Revision history

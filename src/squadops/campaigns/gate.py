@@ -14,6 +14,7 @@ carries its baseline's manifest, which asks nothing, and only the ruling moves t
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from typing import Any
@@ -32,7 +33,7 @@ from squadops.campaigns.models import (
     ProposalBinding,
     SubmittedProposal,
 )
-from squadops.cycles.models import GateDecisionValue, WorkloadType
+from squadops.cycles.models import GateDecisionValue, RunStatus, WorkloadType
 
 #: The gate's name, as a campaign increment profile declares it after the proposal workload. A
 #: progression gate by SIP-0076's naming canon: the ruling decides whether framing begins (§24k).
@@ -226,3 +227,105 @@ def ruling_overdue_transitions(
             )
         )
     return owed
+
+
+# =============================================================================
+# The plan gate's bound (#1708; §9.2's bound, applied to the gate after framing)
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class WaitingGate:
+    """The inter-workload gate a campaign's cycle waits at, and since when."""
+
+    cycle_id: str
+    run_id: str
+    gate_name: str
+    opened_at: datetime
+
+
+def waiting_gate(
+    cycle_id: str, workload_sequence: Sequence[Mapping[str, Any]], runs
+) -> WaitingGate | None:
+    """The gate a cycle waits at, or None: its latest run completed, that run's workload names a
+    gate after it, and the gate holds no decision. The latest run is read by its number, not by
+    position, so a re-rolled framing (a second run of one workload) reads correctly."""
+    live = [r for r in runs if r.status != RunStatus.CANCELLED]
+    if not live:
+        return None
+    last = max(live, key=lambda r: r.run_number)
+    if last.status != RunStatus.COMPLETED or last.finished_at is None:
+        return None
+    gate = next(
+        (w.get("gate") for w in workload_sequence if w.get("type") == last.workload_type), None
+    )
+    if not gate or any(d.gate_name == gate for d in last.gate_decisions):
+        return None
+    return WaitingGate(cycle_id, last.run_id, str(gate), last.finished_at)
+
+
+def plan_gate_overdue_transitions(
+    campaign: Campaign,
+    log: Sequence[ControlLogEntry],
+    waiting: WaitingGate | None,
+    now: datetime,
+) -> list[CampaignTransition]:
+    """The ``ruling_overdue`` rows a cycle's plan gate is owed at ``now`` (#1708): one per seat
+    whose ruling bound has passed since the gate opened, each written once per run and gate.
+
+    The same bound the increment gate has (§24ae), applied to the gate a framing stops at when its
+    plan asks a design question. Each row keeps the campaign in the state it is in, and nothing
+    decides the gate: the supervisor's or the owner's answer still resolves it, and nothing is
+    approved by the bound. Pure, so the sweep writes exactly what this decides.
+    """
+    if waiting is None or waiting.gate_name == INCREMENT_RULING_GATE:
+        return []
+    if campaign.state not in _GATE_WAITING_STATES:
+        return []
+    written = {e.idempotency_key for e in log if e.outcome is ControlOutcome.APPLIED}
+    waited = (now - waiting.opened_at).total_seconds()
+    owed = []
+    for seat, bound in (
+        (RulingSeat.CREW, campaign.policy.crew_ruling_bound_s),
+        (RulingSeat.OWNER, campaign.policy.owner_ruling_bound_s),
+    ):
+        key = f"gate_overdue:{seat}:{waiting.run_id}:{waiting.gate_name}"
+        if waited < bound or key in written:
+            continue
+        owed.append(
+            CampaignTransition(
+                operation=ControlOperation.RULING_OVERDUE,
+                actor="squadops",
+                actor_role=SWEEP_ROLE,
+                reason=(
+                    f"the {waiting.gate_name} gate on run {waiting.run_id} opened at "
+                    f"{waiting.opened_at.isoformat()} and the {seat}'s ruling bound of {bound}s has "
+                    f"passed; it waits on an answer and nothing proceeds without one"
+                ),
+                idempotency_key=key,
+                expected_state=campaign.state,
+                next_state=campaign.state,
+                target=waiting.run_id,
+                binding={
+                    "seat": seat.value,
+                    "gate": waiting.gate_name,
+                    "cycle_id": waiting.cycle_id,
+                    "opened_at": waiting.opened_at.isoformat(),
+                    "bound_s": bound,
+                },
+            )
+        )
+    return owed
+
+
+#: The states in which a campaign's cycle can wait at a gate after framing: the calibration, an
+#: increment's build, and its repair or retry. The increment gate's own waiting state is
+#: ``awaiting_ruling``, bounded by ``ruling_overdue_transitions``.
+_GATE_WAITING_STATES = frozenset(
+    {
+        CampaignState.CALIBRATING,
+        CampaignState.BUILDING,
+        CampaignState.REPAIRING,
+        CampaignState.RETRYING,
+    }
+)

@@ -151,12 +151,37 @@ def _questions(campaign: dict, rows: list[dict]) -> list[str]:
         )
     if campaign["state"] == CampaignState.AWAITING_RULING:
         asks.append(_awaiting_ruling(campaign, applied))
+    waiting = _plan_gate_waiting(applied)
+    if waiting:
+        asks.append(waiting)
     refused = [r for r in rows if r["outcome"] == ControlOutcome.REFUSED]
     if refused:
         asks.append(
             f"{len(refused)} refused operation(s) are recorded; the control log names each."
         )
     return asks
+
+
+def _plan_gate_waiting(applied: list[dict]) -> str | None:
+    """A gate after framing still waiting past a ruling bound (#1708): its overdue rows are the
+    campaign's latest word, with nothing that moved the campaign since. Once the gate is answered,
+    the campaign moves on and the ask goes with it."""
+    since: list[dict] = []
+    for r in reversed(applied):
+        operation = ControlOperation(r["operation"])
+        if operation is ControlOperation.RULING_OVERDUE and r["binding"].get("gate"):
+            since.append(r)
+        elif not operation.records_only:
+            break
+    if not since:
+        return None
+    gate, run = since[0]["binding"]["gate"], since[0]["target"]
+    seats = sorted({r["binding"]["seat"] for r in since if r["target"] == run})
+    return (
+        f"The `{gate}` gate on run `{run}` waits on an answer to its design question, past the "
+        f"{' and the '.join(seats)} ruling bound. Answer it (the runbook's §4), or abort the "
+        f"campaign."
+    )
 
 
 def _awaiting_ruling(campaign: dict, applied: list[dict]) -> str:
