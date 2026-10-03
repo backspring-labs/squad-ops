@@ -452,6 +452,100 @@ def response_measures(
     }
 
 
+#: Each response is kept whole up to this many characters: enough to tell an abstention, a
+#: prose-only answer and an edit that failed to parse apart, which ``emitted 0`` cannot (#1788).
+RAW_RESPONSE_LIMIT = 6000
+
+
+class RecordingLLM:
+    """The adapter with every generation it makes kept, in order, until drained (#1788).
+
+    The replay's per-file measures read only what a repair's artifacts became, so a response
+    that yielded no file read ``emitted 0`` whatever it said. This keeps what the model sent.
+    A call that raises is kept as its error, then re-raised unchanged.
+    """
+
+    def __init__(self, inner: Any) -> None:
+        self._inner = inner
+        self._calls: list[Any] = []
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+    async def chat_stream_with_usage(self, messages: Any, **kwargs: Any) -> Any:
+        try:
+            reply = await self._inner.chat_stream_with_usage(messages, **kwargs)
+        except Exception as exc:
+            self._calls.append(exc)
+            raise
+        self._calls.append(reply)
+        return reply
+
+    def drain(self) -> list[Any]:
+        """Every generation since the last drain, and forget them."""
+        calls, self._calls = self._calls, []
+        return calls
+
+
+def response_reading(call: Any) -> dict[str, Any]:
+    """One generation as the replay keeps it: the text (bounded), what its fences parsed to,
+    and the call's token usage — the evidence a live cycle's emission-shape line gives."""
+    from squadops.capabilities.anchored_edits import parse_anchored_edits, strip_edit_blocks
+    from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
+
+    if isinstance(call, BaseException):
+        return {"error": f"{type(call).__name__}: {str(call)[:300]}"}
+    text = call.content or ""
+    parse = parse_anchored_edits(text)
+    body = strip_edit_blocks(text) if parse.found else text
+    return {
+        "chars": len(text),
+        "text": text[:RAW_RESPONSE_LIMIT],
+        "truncated": len(text) > RAW_RESPONSE_LIMIT,
+        "reasoning_chars": len(call.reasoning_text or ""),
+        "prompt_tokens": call.prompt_tokens,
+        "completion_tokens": call.completion_tokens,
+        "reasoning_tokens": call.reasoning_tokens,
+        "edit_fences_found": parse.found,
+        "edits_parsed": len(parse.edits),
+        "edits_malformed": [{"path": m.path, "reason": m.reason} for m in parse.malformed],
+        "whole_files": [f["filename"] for f in extract_fenced_files(body)],
+    }
+
+
+def step_record(
+    role: str, step_envelope: Any, step: Any, offered: Any, calls: list[Any]
+) -> dict[str, Any]:
+    """One repair step of a sample: what it was offered and asked, each generation it made, and
+    the transaction its handler recorded (accepted, or every refusal)."""
+    outputs = step.outputs or {}
+    return {
+        "role": role,
+        "task_type": step_envelope.task_type,
+        "edit_form_offered": offered,
+        "expected": list((step_envelope.inputs or {}).get("expected_artifacts") or []),
+        "usage": outputs.get("llm_usage"),
+        "responses": [response_reading(c) for c in calls],
+        "anchored_edits": outputs.get("anchored_edits"),
+    }
+
+
+async def compose_recorded_systems(
+    bundle: dict[str, Any], *, stub: bool
+) -> tuple[dict[str, Any], StubLLM | None]:
+    """Each role's system with its generations recorded; under ``stub`` one canned adapter
+    answers for every role, beneath each role's own recorder."""
+    systems: dict[str, Any] = {}
+    stub_llm = None
+    for role, agent in bundle["agents"].items():
+        llm = (await compose_system(role, model=agent["model"])).ports.llm
+        if stub:
+            stub_llm = stub_llm or StubLLM(llm)
+            llm = stub_llm
+        systems[role] = await compose_system(role, model=agent["model"], llm=RecordingLLM(llm))
+    return systems, stub_llm
+
+
 async def replay_sample(
     bundle: dict[str, Any], systems: dict[str, Any], retest: Any
 ) -> dict[str, Any]:
@@ -503,16 +597,10 @@ async def replay_sample(
         # through the handler's own decision (after the arm's override), not inferred.
         probe = type("_Probe", (repair_handlers._RepairPromptMixin,), {})()
         offered = probe._anchorable_files(step_envelope.inputs or {})
+        recorder = systems[role].ports.llm
+        recorder.drain()  # only this step's generations are its responses
         step = await systems[role].orchestrator.submit_task(step_envelope, timeout_seconds=1800)
-        usage.append(
-            {
-                "role": role,
-                "task_type": step_envelope.task_type,
-                "edit_form_offered": offered,
-                "expected": list((step_envelope.inputs or {}).get("expected_artifacts") or []),
-                "usage": (step.outputs or {}).get("llm_usage"),
-            }
-        )
+        usage.append(step_record(role, step_envelope, step, offered, recorder.drain()))
         return step
 
     async def reexecute_repaired_suite(
@@ -651,13 +739,7 @@ async def _replay_all(
             if path.name not in admitted or (only and path.name not in only):
                 continue
             bundle = load_bundle(path)
-            systems: dict[str, Any] = {}
-            stub_llm = None
-            for role, agent in bundle["agents"].items():
-                systems[role] = await compose_system(role, model=agent["model"])
-                if stub:
-                    stub_llm = stub_llm or StubLLM(systems[role].ports.llm)
-                    systems[role] = await compose_system(role, model=agent["model"], llm=stub_llm)
+            systems, stub_llm = await compose_recorded_systems(bundle, stub=stub)
             if stub_llm is not None:
                 stub_llm.canned = _canned_unchanged(bundle)
             retest = await systems["qa"].orchestrator.submit_task(

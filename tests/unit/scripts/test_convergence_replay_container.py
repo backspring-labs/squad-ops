@@ -186,3 +186,176 @@ def test_a_loaded_bundle_carries_no_fault_to_fire_in_the_replay(tmp_path):
     # File content is evidence, not a declaration: untouched.
     assert loaded["failed_artifacts"][0]["content"] == "# mentions fault_injection in prose\n"
     assert loaded["envelope"]["inputs"]["resolved_config"]["x"] == 1
+
+
+# --- #1788: each repair step keeps the generations it made --------------------------------
+
+
+class _FakeLLM:
+    """Answers each call with the next canned reply, or raises it."""
+
+    def __init__(self, *replies):
+        self._replies = list(replies)
+
+    async def chat_stream_with_usage(self, messages, **kwargs):
+        reply = self._replies.pop(0)
+        if isinstance(reply, BaseException):
+            raise reply
+        return reply
+
+
+def _reply(content: str):
+    from squadops.llm.models import ChatMessage
+
+    return ChatMessage(
+        role="assistant",
+        content=content,
+        prompt_tokens=900,
+        completion_tokens=40,
+        reasoning_tokens=12,
+        reasoning_text="thinking",
+    )
+
+
+_PROSE = "The failing test is in a suite I may not edit, so I am leaving the app unchanged."
+_MALFORMED_EDIT = "```edit:app/x.py\n<<<<<<< SEARCH\nfoo\n```\n"
+
+
+@pytest.mark.parametrize(
+    "content, reading",
+    [
+        ("", {"chars": 0, "edit_fences_found": False, "edits_malformed": [], "whole_files": []}),
+        (
+            _PROSE,
+            {
+                "chars": len(_PROSE),
+                "edit_fences_found": False,
+                "edits_malformed": [],
+                "whole_files": [],
+            },
+        ),
+        (
+            _MALFORMED_EDIT,
+            {
+                "chars": len(_MALFORMED_EDIT),
+                "edit_fences_found": True,
+                "edits_malformed": [{"path": "app/x.py", "reason": "missing_divider"}],
+                "whole_files": [],
+            },
+        ),
+    ],
+    ids=["an empty response", "a prose-only abstention", "an edit that failed to parse"],
+)
+async def test_a_sample_keeps_what_each_empty_repair_said(monkeypatch, content, reading):
+    """#1788: nine Next.js repairs read ``emitted 0`` and the record could not say why.
+    Entered at ``replay_sample``, the function ``_replay_all`` runs per sample, with the
+    repair and its judge stubbed and the role's recorded adapter real. Bug caught: the
+    response, its parse and its usage not kept, so these three read the same; or a stale
+    generation from before the step credited to it."""
+    from squadops.tasks.models import TaskEnvelope
+
+    recorder = container.RecordingLLM(_FakeLLM(_reply("a stale earlier call"), _reply(content)))
+    await recorder.chat_stream_with_usage([])  # made before the step: not its response
+    transaction = {"accepted": False, "refusals": ["app/x.py: missing_divider"]}
+
+    async def _submit(step_envelope, timeout_seconds):
+        await recorder.chat_stream_with_usage([])
+        return SimpleNamespace(outputs={"llm_usage": None, "anchored_edits": transaction})
+
+    class _Repair:
+        def __init__(self, *, dispatch_step):
+            self._dispatch_step = dispatch_step
+
+        async def dispatch(self, mode, diagnosis, envelope, result, cycle, run_id, *a, **k):
+            step = TaskEnvelope.from_dict(
+                {
+                    **_bundle(["tests_pass"])["envelope"],
+                    "task_type": "development.repair",
+                    "metadata": {"role": "dev"},
+                }
+            )
+            await self._dispatch_step(step, run_id, cycle, None)
+            return SimpleNamespace(
+                artifacts=[],
+                typed_checks=[],
+                steps_ran=["development.repair"],
+                empty_signatures=[],
+                anchored_edits_refused=False,
+            )
+
+    class _Judge:
+        def __init__(self, **_):
+            pass
+
+        async def accept(self, *a, **k):
+            return "reject_patch"
+
+    monkeypatch.setattr("adapters.cycles.correction_repair.CorrectionRepair", _Repair)
+    monkeypatch.setattr("adapters.cycles.patch_acceptance.PatchAcceptance", _Judge)
+    monkeypatch.setattr(container, "cycle_from_dict", lambda d: SimpleNamespace())
+    monkeypatch.setattr(container, "profile_from_dict", lambda d: SimpleNamespace())
+    bundle = {**_bundle(["tests_pass"]), "analysis": {}, "decision": {}, "cycle": {}, "profile": {}}
+    systems = {
+        "dev": SimpleNamespace(
+            ports=SimpleNamespace(llm=recorder),
+            orchestrator=SimpleNamespace(submit_task=_submit),
+        )
+    }
+    retest = _system({"passed": False, "executed": True}).orchestrator.submit_task.return_value
+
+    row = await container.replay_sample(bundle, systems, retest)
+
+    (step,) = row["usage"]
+    (kept,) = step["responses"]
+    assert {k: kept[k] for k in reading} == reading
+    assert (kept["text"], kept["truncated"]) == (content, False)
+    assert (kept["prompt_tokens"], kept["completion_tokens"], kept["reasoning_tokens"]) == (
+        900,
+        40,
+        12,
+    )
+    assert step["anchored_edits"] == transaction
+
+
+async def test_a_long_response_is_kept_bounded_and_a_failed_call_as_its_error():
+    """The edges: a response past the limit keeps its true length beside the bounded text; a
+    call that raises is kept as its error and still raises. Bug caught: an unbounded sample
+    row, or a timed-out call vanishing so the step reads as a model that said nothing."""
+    long = "x" * (container.RAW_RESPONSE_LIMIT + 10)
+    recorder = container.RecordingLLM(_FakeLLM(_reply(long), TimeoutError("read timed out")))
+
+    await recorder.chat_stream_with_usage([])
+    with pytest.raises(TimeoutError):
+        await recorder.chat_stream_with_usage([])
+
+    first, second = (container.response_reading(c) for c in recorder.drain())
+    assert (first["chars"], len(first["text"]), first["truncated"]) == (
+        len(long),
+        container.RAW_RESPONSE_LIMIT,
+        True,
+    )
+    assert second == {"error": "TimeoutError: read timed out"}
+    assert recorder.drain() == []
+
+
+async def test_every_role_generates_through_its_own_recorder(monkeypatch):
+    """``_replay_all`` composes through ``compose_recorded_systems``. Bug caught: a role whose
+    adapter is not recorded (its steps would carry no responses), or the stub answering for
+    one role only."""
+    composed = []
+
+    async def _compose(role, *, model, llm=None):
+        composed.append((role, llm))
+        return SimpleNamespace(ports=SimpleNamespace(llm=llm or _FakeLLM()))
+
+    monkeypatch.setattr(container, "compose_system", _compose)
+    bundle = {"agents": {"dev": {"model": "m"}, "qa": {"model": "m"}}}
+
+    systems, stub = await container.compose_recorded_systems(bundle, stub=True)
+
+    assert sorted(systems) == ["dev", "qa"]
+    assert all(isinstance(s.ports.llm, container.RecordingLLM) for s in systems.values())
+    assert {id(s.ports.llm._inner) for s in systems.values()} == {id(stub)}
+    plain, no_stub = await container.compose_recorded_systems(bundle, stub=False)
+    assert no_stub is None
+    assert not any(isinstance(s.ports.llm._inner, container.StubLLM) for s in plain.values())
