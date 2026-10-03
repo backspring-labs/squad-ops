@@ -1880,6 +1880,27 @@ proposal-only cycle cannot reach a gate to be ruled at.
 **Not built:** a dummy workload after a gate so that the proposal could be ruled. That cycle would
 pretend it might build, and its ruling would arm a gate that launches nothing.
 
+### 24ag. An accepted repair proposes from the manifest it ran against (2026-10-03, §10a, §24ad, #1902; decided under the 2.0 charter)
+
+**The evidence:** shakeout 4's repair cycle (`cyc_eaae3dec8d09`) was accepted and promoted, and the
+next proposal escalated at control-log seq 14: "the accepted cycle stored no interface manifest".
+§10a's repair reuses the increment's approved seeds through its launch's `plan_artifact_refs` and
+stores none of its own. The proposal read only the accepted cycle's own artifacts.
+
+**As built:**
+- **The accepted manifest is the one the cycle ran against** (`_accepted_manifest`): one it stored
+  (a calibration's authored manifest, an increment's approved seed), else the seed its launch
+  carried.
+- **§24ad's answer follows the repair to the cycle that framed it.** A repair runs no framing, so it
+  has no gate of its own. The answer is read at the framing gate of the cycle it repaired
+  (`repair_of`), following repairs of repairs, bounded. The decision's `warrant` names the cycle
+  whose gate answered, not the repair that was accepted. A retry runs framing again, so it reads
+  its own gate.
+
+**Why it passed CI:** the progress tests' fake vault handed every stored artifact to every cycle, so
+any accepted cycle "stored" the calibration's manifest. The new test answers by cycle, as the live
+vault does.
+
 ---
 
 ## Revision history

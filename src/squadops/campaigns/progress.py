@@ -61,7 +61,10 @@ from squadops.campaigns.models import (
     LaunchRequest,
 )
 from squadops.campaigns.prior_cycle import prior_cycle_brief
-from squadops.cycles.contract_derivation import is_interface_manifest
+from squadops.cycles.contract_derivation import (
+    is_interface_manifest,
+    load_seeded_manifest_content,
+)
 from squadops.cycles.cycle_assessment import CycleAssessment
 from squadops.cycles.cycle_end import CycleStopReason
 from squadops.cycles.gate_attribution import is_machine_decision
@@ -84,6 +87,10 @@ EVIDENCE_ARTIFACT_TYPE = "campaign_evidence"
 
 #: The role on the rows the completion boundary writes for the campaign.
 COMPLETION_ROLE = "completion"
+
+#: How many repairs back a framing answer is looked for: a repair of a repair is bounded by the
+#: policy's per-increment repairs, and a cycle naming itself must not loop (#1902).
+_REPAIR_CHAIN_LIMIT = 8
 
 #: Stops after which the cycle can still continue: a paused run resumes, and a run still
 #: queued or running was not an ending at all (#1754).
@@ -872,23 +879,22 @@ class CampaignProgress:
         it cannot be launched. ``abandoned``: the brief of the increment it replaces (row 13)."""
         if campaign.accepted is None:
             return "the campaign has no accepted tree to propose against"
-        refs = await self._vault.list_artifacts(cycle_id=campaign.accepted.cycle_id)
-        manifests = sorted(
-            (r for r in refs if is_interface_manifest(r)), key=lambda r: str(r.created_at)
-        )
-        if not manifests:
-            return f"the accepted cycle {campaign.accepted.cycle_id} stored no interface manifest"
-        _ref, content = await self._vault.retrieve(manifests[-1].artifact_id)
-        baseline = content.decode("utf-8")
+        baseline = await self._accepted_manifest(campaign.accepted.cycle_id)
+        if baseline is None:
+            return (
+                f"the accepted cycle {campaign.accepted.cycle_id} ran against no interface "
+                f"manifest it stored or was seeded with"
+            )
         # §24ad (#1885): a question the accepted cycle's gate answered is not asked again.
-        answer = await self._question_answer(campaign.accepted.cycle_id)
-        if answer is not None:
+        answered = await self._question_answer(campaign.accepted.cycle_id)
+        if answered is not None:
+            answer, where = answered
             baseline = resolve_answered_questions(
                 baseline,
                 answer=str(answer.notes).strip(),
                 answered_by=answer.decided_by,
                 answered_at=answer.decided_at.isoformat(),
-                where=campaign.accepted.cycle_id,
+                where=where,
             )
         frozen = frozen_criteria(await self._campaigns.control_log(campaign.campaign_id))
         try:
@@ -896,20 +902,52 @@ class CampaignProgress:
         except FileNotFoundError as e:
             return f"the policy's proposal profile cannot be loaded: {e}"
 
-    async def _question_answer(self, cycle_id: str) -> GateDecision | None:
-        """The answer a person gave at the cycle's framing gate: its latest approval that a
-        principal made, with notes. A machine pass-through answered nothing, and an approval
-        with no notes stated no answer, so neither resolves a question (§24ad)."""
-        answers = [
-            decision
-            for run in sorted(await self._cycles.list_runs(cycle_id), key=lambda r: r.run_number)
-            if run.workload_type == WorkloadType.FRAMING
-            for decision in run.gate_decisions
-            if decision.decision == GateDecisionValue.APPROVED
-            and not is_machine_decision(decision.decided_by)
-            and (decision.notes or "").strip()
-        ]
-        return answers[-1] if answers else None
+    async def _accepted_manifest(self, cycle_id: str) -> str | None:
+        """The interface manifest the accepted cycle ran against (#1902): one it stored (a
+        calibration's authored manifest, an increment's approved seed), else the seed its launch
+        carried. A repair reuses its increment's approved seeds and stores none of its own, so
+        reading only the cycle's own artifacts escalated every campaign whose repair was
+        accepted."""
+        refs = await self._vault.list_artifacts(cycle_id=cycle_id)
+        manifests = sorted(
+            (r for r in refs if is_interface_manifest(r)), key=lambda r: str(r.created_at)
+        )
+        if manifests:
+            _ref, content = await self._vault.retrieve(manifests[-1].artifact_id)
+            return content.decode("utf-8")
+        cycle = await self._cycles.get_cycle(cycle_id)
+        return await load_seeded_manifest_content(
+            self._vault, (cycle.execution_overrides or {}).get("plan_artifact_refs")
+        )
+
+    async def _question_answer(self, cycle_id: str) -> tuple[GateDecision, str] | None:
+        """The answer a person gave at the framing gate of the cycle that framed the accepted
+        manifest: its latest approval that a principal made, with notes. A machine pass-through
+        answered nothing, and an approval with no notes stated no answer, so neither resolves a
+        question (§24ad). A repair runs no framing: its manifest was framed by the cycle it
+        repaired, so the answer is read there, and named with the cycle it came from (#1902)."""
+        for _hop in range(_REPAIR_CHAIN_LIMIT):
+            answers = [
+                decision
+                for run in sorted(
+                    await self._cycles.list_runs(cycle_id), key=lambda r: r.run_number
+                )
+                if run.workload_type == WorkloadType.FRAMING
+                for decision in run.gate_decisions
+                if decision.decision == GateDecisionValue.APPROVED
+                and not is_machine_decision(decision.decided_by)
+                and (decision.notes or "").strip()
+            ]
+            if answers:
+                return answers[-1], cycle_id
+            block = (
+                (await self._cycles.get_cycle(cycle_id)).resolved_config().get("campaign_proposal")
+            )
+            repaired = block.get("repair_of") if isinstance(block, Mapping) else None
+            if not repaired:
+                return None
+            cycle_id = str(repaired)
+        return None
 
     async def _evaluating(self, campaign: Campaign, cycle: Cycle) -> Campaign:
         result = await self._campaigns.transition(
