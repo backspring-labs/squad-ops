@@ -909,11 +909,19 @@ class _CycleTaskHandler(CapabilityHandler):
         record = application.record()
         if not application.accepted:
             return [], record
+        # #1897: an edit keeps the type of the file it edits. Typed by path, a qa suite's file
+        # read "source" and left the suite the pass had just repaired.
+        types = {str(a["name"]): a.get("type") for a in artifacts if a.get("name")}
         edited = []
         for path, text in sorted(application.outcome.changed_files().items()):
             artifact_type, media_type = _classify_file(path)
             edited.append(
-                {"name": path, "content": text, "media_type": media_type, "type": artifact_type}
+                {
+                    "name": path,
+                    "content": text,
+                    "media_type": media_type,
+                    "type": types.get(path) or artifact_type,
+                }
             )
         return edited + whole, record
 
