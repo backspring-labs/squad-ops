@@ -3666,17 +3666,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         """
         import dataclasses as _dc
 
-        cycle = await self._cycle_registry.get_cycle(cycle_id)
         # SIP-0083: merge forwarding overrides from multi-workload orchestration
         # (threaded per-run from execute_cycle, SIP-0097 §6.6 — not executor state)
-        if forwarding_overrides:
-            cycle = _dc.replace(
-                cycle,
-                execution_overrides={
-                    **cycle.execution_overrides,
-                    **forwarding_overrides,
-                },
-            )
+        cycle = (await self._cycle_registry.get_cycle(cycle_id)).with_overrides(
+            forwarding_overrides
+        )
 
         # Resolve PRD content — if prd_ref is an artifact ID, fetch the
         # actual content so handlers receive the PRD text, not just the ID.
