@@ -334,14 +334,40 @@ class TestPrefectFlowRunTags:
                 ["project:hello_squad", "framework:0739af1d", "replay-of:run_99242d1e947f"],
             ),
             ({"framework_git_sha": None}, ["project:hello_squad"]),
+            (
+                {
+                    "framework_git_sha": "0739af1d",
+                    "deploy_id": "dep_fd4de43a1f39",
+                    "campaign_id": "cmp_be852b0f08f0",
+                    "kind": "increment",
+                },
+                [
+                    "project:hello_squad",
+                    "framework:0739af1d",
+                    "deploy:dep_fd4de43a1f39",
+                    "campaign:cmp_be852b0f08f0",
+                ],
+            ),
+            (
+                {"framework_git_sha": "0739af1d", "deploy_id": "dep_fd4de43a1f39"},
+                ["project:hello_squad", "framework:0739af1d", "deploy:dep_fd4de43a1f39"],
+            ),
         ],
-        ids=["a normal cycle", "a replay", "no framework commit stamped: no framework tag"],
+        ids=[
+            "a normal cycle",
+            "a replay",
+            "no framework commit stamped: no framework tag",
+            "a campaign's cycle (#1728)",
+            "a cycle outside a campaign: no campaign tag (#1728)",
+        ],
     )
     async def test_the_tags_that_reach_the_flow_run(
         self, executor, mock_prefect, cycle, changes, tags
     ):
-        """Bug this catches: tags built and never passed; a ``framework:None`` a filter must
-        know to exclude; a replay indistinguishable from the run it replays."""
+        """Bug this catches: tags built and never passed; a ``framework:None`` or
+        ``campaign:None`` a filter must know to exclude; a replay indistinguishable from the run
+        it replays; a campaign's cycles that no filter can gather, or whose deploy changes
+        cannot be seen (#1728)."""
         import dataclasses
 
         await executor._init_run_observability(

@@ -424,9 +424,9 @@ class RunState:
 
 
 def _flow_run_tags_for(cycle: Cycle) -> list[str]:
-    """#1722: the cycle's Prefect tags, from what the cycle already holds. A replay declaration
-    is validated at create; one that no longer parses is left untagged rather than failing the
-    flow run's creation."""
+    """#1722, #1728: the cycle's Prefect tags, from what the cycle already holds. A replay
+    declaration is validated at create; one that no longer parses is left untagged rather than
+    failing the flow run's creation."""
     from squadops.cycles.replay import parse_replay_declaration
 
     try:
@@ -436,6 +436,8 @@ def _flow_run_tags_for(cycle: Cycle) -> list[str]:
     return flow_run_tags(
         project_id=cycle.project_id,
         framework_git_sha=cycle.framework_git_sha,
+        deploy_id=cycle.deploy_id,
+        campaign_id=cycle.campaign_id,
         replay_of=replay.source_run_id if replay else None,
     )
 
