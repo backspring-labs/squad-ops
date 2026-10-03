@@ -228,7 +228,7 @@ Each item is classified: **first campaign** (required before it), **cut** (requi
 | #1757 | what rewind means for an unattended run | **first campaign** | with recovery (#1803) |
 | #1755, #1727, #1788 | the qa re-take's dropped files; §20 on the re-take path; the replay's raw response | **first campaign, if decision 1 flips** | the flip's prerequisites, #1788 first. Deferrable if it does not flip |
 | #949, #950, #557 | the framing revision boundary; the plan gate's review packet; the post-retest acceptance review | decided with the gate policy (#1708) | each absorbed by #1708 (then first campaign) or deferrable, ruled at adoption |
-| #1793 | the release capture | **cut** | the cut's screenshots depend on it; the crew's commissioning work (§3.6) |
+| #1793 | the release capture | **cut** | the cut's screenshots depend on it. Built (#1925) and kept by the owner's ruling; see §3.6's amendment |
 | #414 | the sequencing rule: an unrepaired non-required failure does not stop the run reaching its required checks | deferrable | if built, it lands before the shakeout, and its counted evidence is a **dedicated diagnostic** placing a non-required failure ahead of a required check. A campaign set will not reliably produce that case, so its cycles carry it only as texture |
 | #1031 | the manifest-authoring design primer | deferrable | it pays at the brownfield manifest delta (#1705) |
 | #1756 | stored generation text cut at 10,000 characters | deferrable | crew commissioning work (§3.6); unblocks #567 |
@@ -251,6 +251,15 @@ first job. 2.0's list has items that fit the operating model's §44.1 "safe firs
 
 The order and the gate are the crew's operating model to settle (the 09-28 note: "Nostromo's
 commissioning order … is the crew's operating model to settle").
+
+**Amended 2026-10-03, by the owner's ruling.** Two of these items were built in-session, not by the
+crew:
+- #1788's raw response, in #1892;
+- #1793's capture, in #1925. It was taken to fill a wait window, and this section was not re-read
+  first.
+
+The owner ruled to keep both, and to leave #1756 for the crew. **The crew's commissioning work is
+#1756 and the ship's recorder.**
 
 ### 3.7 The other proposals reviewed at drafting (2026-10-01)
 
@@ -324,6 +333,7 @@ the cut's evidence.
 - **Carried in (14):** #1785, #414, #1755, #1727, #567, #1031, #1469, #949, #950, #557, #1757, #1039,
   #1756, #1788. Each is classified in §3.5.
 - **Instruments, the crew's first work (1):** #1793. With #1756 and #1788 above, these are §3.6.
+  By §3.6's amendment, #1788 and #1793 were built and kept, and #1756 stays the crew's.
 
 **Not an issue, named so it is not lost:**
 - SIP-0107 §38 step 7, the flip (decision 1);
@@ -358,7 +368,7 @@ Fifteen issues carry the title. Three are closed: #1728, #1802 and #1804.
 | #1708 the gate policy for unattended cycles | the increment gate is supervised and bounded (#1801, #1895); an increment's plan gate decides itself when no question is open (#1905), and an answered question carries forward (#1885). **A plan gate waiting on a question is bounded and recorded: #1918** (§24aj). **One supervisor's bound, whoever holds the seat: #1920** (§24al, the owner's ruling) | auto-decision within scope and an escalation queue: **not 2.0** (decision 4) | **the 2.0 part built**; the auto tier and the queue **2.2.0** |
 | #1710 the evidence package and digest | the failure producer and records (#1811, #1813); the package and digest at close (#1837, §24h). **What died with the logs is kept: #1919** (§24ak): the runs' revision forms persisted and carried in the package; each cycle's log window archived on the Spark | the size bound; the app's evolution with screenshots (the owner's 2026-09-28 input); the squad's first pass (#1719; who writes it is the owner's open question) | **the capture built**; the renderings **after the set, before the cut** (re-materialized from records) |
 | #1711 the outer-loop runbook | the minimum runbook (#1904, step 12), grown through the shakeouts | the loop's second half: fix, redeploy, next campaign, the approval boundary, the calibration as baseline | **after the set** (step 15) |
-| #1803 recovery semantics | a cycle that ended undecided is re-heard at startup (#1860, §24v); the live launch-blocked diagnostic ran in #1802's proof (refused, escalated, resumed) | **the remaining fault-injected diagnostics (§12a, §19 item 1)**, designed in the validation plan's §3 (#1807): a restart at each state, a duplicate completion, a repeated and a conflicting ruling, an interrupted promotion, an abort. The pre-registration reads them as the set's recovery evidence. Not built: a re-hear between restarts; escalating a launch the preflight refuses (§24e) | the harness in `scripts/dev` (it does not move the deploy), run **after the exit shakeout, before registration**, on the registered deploy |
+| #1803 recovery semantics | a cycle that ended undecided is re-heard at startup (#1860, §24v); the live launch-blocked diagnostic ran in #1802's proof (refused, escalated, resumed) | **the remaining fault-injected diagnostics (§12a, §19 item 1)**, designed in the validation plan's §3 (#1807). **The harness: #1924.** The blocked legs passed 4/4 on rebuild 17 (2026-10-03, `cmp_575115942556`). The diagnostics cover a restart at each state, a duplicate completion, a repeated and a conflicting ruling, an interrupted promotion, an abort. The pre-registration reads them as the set's recovery evidence. Not built: a re-hear between restarts; escalating a launch the preflight refuses (§24e) | the harness in `scripts/dev` (it does not move the deploy). Run on rebuild 17 **before the exit shakeout**, on the same deploy; see §5a.4 |
 | #1824 the retry rows are unreachable | evidence: none of 156 stored failed cycles reads `environment_or_infrastructure_failure`, and `INFRASTRUCTURE_FAILURE` has no producer | the gap is in attribution (SIP-0108), not in §10. Escalating is the safe direction: every failure outside the work goes to the owner | **2.1.0**, with the attribution work; rows 10–11 named in the record as unreachable |
 
 ### 5a.2 The rest of §5's headline and carried-in issues
@@ -373,8 +383,8 @@ Fifteen issues carry the title. Three are closed: #1728, #1802 and #1804.
 | #1788 the replay's raw response | built (#1892); the re-run read; the flip merged (#1909); **the checkpoint pair read on the flipped deploy:** both stacks accepted, and no repair refused (SIP-0107 §46s) | **closed** by this revision's PR |
 | #949, #950, #557 | not built. Decision 4 keeps every increment gated, so none is needed in 2.0 | **2.2.0**, with the gate loosening, decided from the ledger |
 | #1785, #1755 | closed | — |
-| #1793 the release capture | open | the cut, as placed |
-| #414, #567, #1031, #1469, #1756 | open | **2.1.0** |
+| #1793 the release capture | built (#1925): the main checkout's vault, the browser's own error page named, `--browser` | **closed**; kept by the owner's ruling (§3.6) |
+| #414, #567, #1031, #1469, #1756 | open | **2.1.0**; #1756 is the crew's (§3.6) |
 | #1039 the docs site's design pass | open | deferrable, as placed |
 
 ### 5a.3 Filed since adoption
@@ -394,18 +404,21 @@ Fifteen issues carry the title. Three are closed: #1728, #1802 and #1804.
 
 1. **Before the exit shakeout,** because each changes what the set runs: #1708's plan-gate bound
    (#1918, merged), #1710's capture (#1919, merged), and the one supervision bound (#1920).
-2. **The exit shakeout:** shakeout 6, on the deploy that carries them, with the log archive beside
-   it. It also reads #1802's live-lease proof (the quiet-box half ran on 2026-10-03).
-3. **On the registered deploy, before registration:** #1803's recovery diagnostics, as the
-   validation plan's §3 (#1807) designs them. **#1922** (found 2026-10-03 by reading the code
-   ahead of the restart diagnostic): a restart mid-cycle left a campaign's gate decision unacted
-   on and its run stuck `running`. The fix (#1923, SIP-0109 §24am) re-attaches campaign cycles at
-   startup. It lands before rebuild 17, so the exit shakeout and the diagnostics run on a deploy
-   that carries it.
+2. **On the deploy the set would register, first:** #1803's recovery diagnostics, as the validation
+   plan's §3 (#1807) designs them. They run before the exit shakeout, not after it (amended
+   2026-10-03). The restart paths are newer than anything a shakeout exercises (#1922's re-attach
+   had never run live), so a finding there comes before a five-hour shakeout, not after one.
+   - **#1922** was found on 2026-10-03, by reading the code ahead of the restart diagnostic: a
+     restart mid-cycle left a campaign's gate decision unacted on and its run stuck `running`.
+   - The fix, #1923 (SIP-0109 §24am), re-attaches campaign cycles at startup. It merged as
+     `5aae934c`, which is rebuild 17.
+3. **The exit shakeout:** shakeout 6 on the same deploy, with the log archive beside it. It also reads
+   #1802's live-lease proof (the quiet-box half ran on 2026-10-03).
 4. **The owner's stop:** registration (#1908), after the crew's re-review. **Who supervises is not a
    SquadOps decision** (§24al): decision 2 resolves to whoever rules, recorded as each ruling's
    actor, and decision 6 belongs to the crew's access, not to the set.
-5. **After the set, before the cut:** #1710's renderings, #1711's runbook, #1793's capture.
+5. **After the set, before the cut:** #1710's renderings and #1711's runbook. #1793's capture was built
+   early (#1925).
 
 **#1807, the validation plan** (verification matrix, recovery diagnostics, reference scenario
 inputs) sat unmerged from 2026-10-02, outside this section. The 2.0 regression configs cite it as
