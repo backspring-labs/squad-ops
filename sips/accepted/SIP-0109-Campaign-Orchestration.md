@@ -1715,6 +1715,22 @@ failed build (`cyc_d4438834b2c3`, with its assessment).
   failed on #1876/#1877. *(Validated since, on the completed reference `cyc_257539e64218`: routes
   held, criteria `not_run` on #1880.)*
 
+
+### 24ab. The builder still assembles an increment's build (2026-10-02, §24y, #439; decided under the 2.0 charter)
+
+§24y says an increment's plan has no builder task, and none is offered. The build still runs one.
+- **Where it comes from:** #439's workload-invariant tail appends `builder.assemble`, and `qa.test`
+  after it, to every implementation run whose squad has a builder, whatever the plan holds.
+  Assembly and verification are workload-owned, so a plan cannot drop them.
+- **The evidence:** the accepted reference increment `cyc_7c503f5e0fdf`.
+  - Its plan had no builder task, and its build ran `builder.assemble`.
+  - The increment was accepted, and its footprint held.
+- **Why it is harmless:** the builder's packaging outputs (`Dockerfile`, `.dockerignore`, …) are in
+  the candidate skeleton's frozen set, so scaffold enforcement restores them, and its notes are a
+  document. So the tail changes no accepted file.
+- **Not decided:** whether an increment's build should skip the tail's assembly. It costs one
+  builder task per increment, and nothing measured so far says it does harm.
+
 ---
 
 ## Revision history
