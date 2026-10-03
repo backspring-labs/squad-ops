@@ -399,6 +399,11 @@ Fifteen issues carry the title. Three are closed: #1728, #1802 and #1804.
     **2.1.0.**
   - **#1913** (the qa agent's checks read a file the runtime drops): its live trigger is removed by
     #1912. **2.1.0.**
+  - **#1929** (a graceful runtime restart is handled as a run failure, and re-attach dispatches the
+    in-flight task twice): both seen in the restart diagnostic, and neither changed its outcome. They
+    appear only on a restart mid-cycle, which the set does not do. **2.1.0.**
+  - **#1930** (an OpenTelemetry console exporter thread crashed an xdist worker at shutdown, with the
+    run green): test infrastructure. **2.1.0.**
 
 ### 5a.4 The path to registration
 
@@ -420,12 +425,13 @@ Fifteen issues carry the title. Three are closed: #1728, #1802 and #1804.
      live read, and precondition 5 asks for the registered deploy.
 3. **The exit shakeout:** shakeout 6 on rebuild 18, with the log archive beside it. At its first
    increment gate it reads #1802's live-lease proof (the quiet-box half ran on 2026-10-03), with the
-   crew's second ask added:
-   - a create while the lease is held is refused (`supervisor_holds_the_box`);
-   - the ruling approved while held: the framing run waits, queued;
-   - the lease released with a stand-in crew model still resident: the framing run keeps waiting
-     (`box_not_quiet`, §24an), and a create is refused the same way;
-   - the model unloaded: the framing run starts.
+   crew's second ask added. An acquire needs the gate open, so the expired lease comes first:
+   1. a short lease: a create is refused (`supervisor_holds_the_box`);
+   2. the lease left to expire with a stand-in crew model resident: a create is refused (`box_not_quiet`);
+   3. the lease re-acquired and the ruling approved while held: the framing run waits, queued;
+   4. the lease released with the model still resident: the framing run keeps waiting (`box_not_quiet`,
+      §24an);
+   5. the model unloaded: the framing run starts.
 4. **The owner's stop:** registration (#1908), after the crew's re-review. **Who supervises is not a
    SquadOps decision** (§24al): decision 2 resolves to whoever rules, recorded as each ruling's
    actor, and decision 6 belongs to the crew's access, not to the set.
