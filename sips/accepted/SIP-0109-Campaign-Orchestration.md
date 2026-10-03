@@ -1986,6 +1986,26 @@ log to read it from.
 **Deployed proof:** the pre-registration's precondition 4 (#1908), read on the deploy that carries
 this, and appended here.
 
+- **The quiet-box half, rebuild 16** (2026-10-03, 14:38–14:39 UTC, `cmp_969baa78fd39`). With
+  `llama3.1:8b` resident, a CLI create was refused (409 `box_not_quiet`, audit
+  `cycle.launch_refused`). The campaign's launch went `launch_blocked`, then escalated. After the
+  unload and a resume, the sweep launched it 15 s later.
+- **The live-lease half, rebuild 18** (`5f46d946`, shakeout 6's first increment gate, 2026-10-03,
+  22:05–22:09 UTC, `cmp_58d4e3b0a5d3`). 5 of 5 steps passed:
+  1. a 120 s lease: a create refused, `supervisor_holds_the_box`;
+  2. the lease expired with `llama3.1:8b` resident: a create refused, `box_not_quiet`;
+  3. re-acquired, and the ruling approved while held: the framing run stayed queued
+     (`run_start_waiting_for_box … refusal=supervisor_holds_the_box`);
+  4. released with the model still resident: the framing run stayed queued, and a create was
+     refused, `box_not_quiet` (§24an);
+  5. the model unloaded: `run_start_box_free … waited_s=120`, and the framing run started 3.6 s
+     later.
+
+  Each refused create was audited (`cycle.launch_refused`, `denied`). The step log is
+  `var/campaigns/cmp_58d4e3b0a5d3/proofs/1802-live-lease-proof.log`; the records are on #1908.
+- **Not shown live: a campaign launch under a live lease.** It cannot arise: an acquire needs the
+  increment gate open and no run in flight, and a campaign launches only when a cycle ends.
+
 ### 24aj. A plan gate waiting on a design question is bounded too (2026-10-03, §9.2, §9.5, §24ae, #1708; ruled by the owner)
 
 §24ae bounded the increment gate and nothing else. A framing whose plan asks a design question
@@ -2139,6 +2159,10 @@ the run start, not the release.
   cases.
 - **The quiet box stays model-only** (§24ai): the GPU's compute processes are still not read, and a
   crew session using a model the deploy declares reads as quiet. The pre-registration states both.
+
+**Proven live (rebuild 18, 2026-10-03, 22:08:41–22:09:46 UTC):** with the lease released and
+`llama3.1:8b` still resident, the framing run the ruling had approved stayed queued for 65 s, and
+started 3.6 s after the unload (§24ai's deployed proof, step 4).
 
 **Read before building:** nothing on the deploy loads an undeclared model mid-cycle. No embedding
 model is installed, and no agent has logged an embedding call. Every campaign launch since #1802, each
