@@ -15,9 +15,16 @@ are appended, and if the deploy moves, this registration is void and re-made.
      accepted, with every frozen criterion (T1–T3) held and T4 discriminating. That is two accepted
      increments on one tree.
    - **Shakeout 5** runs on the deploy carrying shakeout 4's fixes and §24ah.
-2. **Decision 1, the SIP-0107 flip, is decided.** It is conditional on #1788 explaining the nine empty
-   scoped Next.js repairs (the crew's refinement). #1788's record is built (#1892), and its re-run
-   (four bundles, scoped arm) runs on the idle box before this registers.
+2. **Decision 1, the SIP-0107 flip: RULED (owner, 2026-10-03, "go with your recommendation on the
+   flip").** #1788's re-run explained the nine empty scoped Next.js repairs:
+   - 9 were correct dev abstentions or disputes on qa-owned defects;
+   - 2 exhausted the 12,288-token completion cap;
+   - 1 was an edit.
+
+   **The flip is merged (#1909, SIP-0107 §46s):** a repair's whole re-emission of an offered file is
+   refused, typed, and retried once. Proof part 1: 0 of 120 recorded repair forms were `whole_file`.
+   **Proof part 2 must read before this registers:** a checkpoint pair (React and Next.js regression
+   rolls, #1910) on the deploy carrying the flip. The loop's exit shakeout then runs on that deploy.
 3. **The crew's commissioning evidence** decides who supervises (decision 2). Absent it, the owner
    supervises through the same interface, and the record says so.
 
@@ -164,6 +171,6 @@ The crew's conditions (plan §7):
 ## 9. The owner's decisions at this stop
 
 1. Register as drafted, or amend.
-2. Decision 1: flip or not, once #1788's re-run reads.
+2. ~~Decision 1: flip or not.~~ Ruled 2026-10-03: flip (#1909). Its checkpoint pair is read before registering.
 3. Decision 2: who supervises.
 4. The policy values in §5.
