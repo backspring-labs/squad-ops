@@ -332,3 +332,49 @@ def test_a_replaced_verifier_reaches_the_evaluation_at_the_file_its_launch_pinne
         {"criterion_id": "F1", "path": "backend/tests/criteria/test_F1.py"}
     ]
     assert last.inputs["increment_retired_criteria"] == ["F1"]
+
+
+async def test_the_evaluation_judges_the_candidate_with_its_qa_suites():
+    """#1880, entered at ``_enrich_envelope``. The reference increment's evaluation froze no
+    criterion — each ``not_run``, ``<test_path> is not in the tree`` — because the candidate it
+    was handed was cut to source and config, and the criteria's own files are qa suites. Bugs
+    caught: the evaluation's candidate without the criterion files; or every acceptance workspace
+    widened to tests, which the typed-acceptance checks were never meant to read."""
+    import dataclasses
+
+    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+
+    suite = dataclasses.replace(
+        _ref("i_c1", "backend/tests/criteria/test_C1.py", "cyc_inc"),
+        artifact_type="test",
+        metadata={"producing_task_type": "qa.test"},
+    )
+    routes = dataclasses.replace(
+        _ref("i_routes", "backend/routes.py", "cyc_inc"),
+        metadata={"producing_task_type": "development.develop"},
+    )
+    stored = {
+        "i_routes": (routes, b"increment routes"),
+        "i_c1": (suite, b"def test_c1(): ..."),
+        "a_routes": (_ref("a_routes", "backend/routes.py", "cyc_accepted"), b"accepted routes"),
+    }
+    executor = DispatchedFlowExecutor(
+        cycle_registry=AsyncMock(),
+        artifact_vault=_Vault(stored),
+        queue=AsyncMock(),
+        squad_profile=AsyncMock(),
+        task_timeout=5.0,
+    )
+    executor._cycle_event_bus = MagicMock()
+    plan = _implementation(True, STORED)
+    [evaluation] = [e for e in plan if e.task_type == "qa.evaluate_increment"]
+    [develop] = [e for e in plan if e.task_type == "development.develop"]
+    listed = [(i, r) for i, (r, _) in stored.items() if r.cycle_id == "cyc_inc"]
+
+    judged = await executor._enrich_envelope(evaluation, {}, [i for i, _ in listed], listed)
+    built = await executor._enrich_envelope(develop, {}, [i for i, _ in listed], listed)
+
+    candidate = judged.inputs["acceptance_workspace_files"]
+    assert candidate["backend/tests/criteria/test_C1.py"] == "def test_c1(): ..."
+    assert candidate["backend/routes.py"] == "increment routes"
+    assert "backend/tests/criteria/test_C1.py" not in built.inputs["acceptance_workspace_files"]
