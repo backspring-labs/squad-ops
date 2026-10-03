@@ -1731,6 +1731,39 @@ failed build (`cyc_d4438834b2c3`, with its assessment).
 - **Not decided:** whether an increment's build should skip the tail's assembly. It costs one
   builder task per increment, and nothing measured so far says it does harm.
 
+
+### 24ac. An increment's accepted tree is the whole app (2026-10-03, §12a, §24f, #1887; decided under the 2.0 charter)
+
+§24f said the accepted tree is the files the cycle delivered. For a calibration, that is the app.
+For an increment it is not.
+
+**The evidence:** shakeout 3 (`cmp_3cd057058851`) promoted its first increment (`cyc_df019ef84ca4`).
+Its second increment then spent five correction rounds on a list view that its correction decision
+called "a stub". The calibration had implemented that view, and the first increment never touched
+it.
+- An increment's run is seeded with the tree it builds on, but those seeds stay the accepted
+  cycle's artifacts.
+- So the increment's own artifacts are only its change and its skeleton's stubs.
+- The promotion read those, so its tree and identity were partial. The next increment was seeded
+  from them, and so was its evaluation's baseline.
+
+**As built:**
+- **A promotion composes the whole tree** (`compose_accepted_tree`): the tree the cycle was built on
+  (its accepted cycle's), overlaid with what it delivered, by #881's rule across cycles.
+  - Produced content wins over what it replaces.
+  - A scaffold-seeded file never shadows produced content, so a stub for a slot the increment did
+    not touch keeps the accepted implementation.
+  - Among seeded versions the latest wins: the frozen file the candidate regenerated (#1876).
+  - A calibration builds on nothing.
+- **The promotion records that tree** as an artifact (`accepted_tree`, `path → artifact id`) and
+  names it on the PROMOTE row (`tree_ref`). The identity is the composed tree's.
+- **Every reader of an accepted tree reads the record:** the next increment's seed and its
+  evaluation's baseline. A cycle promoted before the record existed, or never promoted (a reference
+  baseline), keeps the delivered-files reading.
+
+**Not repaired:** shakeout 3's increment 1 was promoted before this fix, so its recorded identity is
+the partial tree. The campaign's later increments are judged against that partial record.
+
 ---
 
 ## Revision history

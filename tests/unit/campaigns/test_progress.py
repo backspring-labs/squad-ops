@@ -508,9 +508,9 @@ def _evaluation(verdict: str) -> bytes:
     ).encode()
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def stored(monkeypatch):
-    """A vault per test that can also store (the promotion writes bundles)."""
+    """A vault per test that can also store (the promotion writes bundles and its tree)."""
     contents = dict(_STORED)
     # This module's own globals: ``_Vault`` reads ``_STORED`` by name at call time.
     monkeypatch.setitem(globals(), "_STORED", contents)
@@ -552,6 +552,10 @@ async def test_an_accepted_increment_is_promoted_and_its_criteria_frozen_for_the
     ]
     [frozen] = promote.binding["frozen_criteria"]
     bundle_ref, bundle = stored[frozen["bundle_ref"]]
+    # #1887: the promotion records the whole tree, and names the record on its row.
+    tree_ref, tree = stored[promote.binding["tree_ref"]]
+    assert tree_ref.artifact_type == "accepted_tree"
+    assert {"backend/routes.py", "frontend/src/App.jsx"} <= set(json.loads(tree))
     assert campaign_now.accepted.cycle_id == "cyc_inc"
     assert (frozen["criterion_id"], frozen["test_path"]) == ("C1", _C1)
     assert (bundle_ref.artifact_type, json.loads(bundle)["files"]) == (

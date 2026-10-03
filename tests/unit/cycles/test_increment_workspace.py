@@ -8,6 +8,7 @@ test reads is what the development task would be given.
 
 from __future__ import annotations
 
+import dataclasses
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
@@ -269,3 +270,133 @@ async def test_an_increment_s_frozen_files_are_its_candidate_s_not_the_accepted_
     assert "class " in tree["backend/models.py"]  # the candidate skeleton's model
     assert tree["backend/models.py"] != "# the baseline's model\n"
     assert tree["backend/routes.py"] == "# the accepted routes\n"
+
+
+def _put(vault, art_id, filename, cycle_id, created, content, **meta):
+    vault.put(
+        dataclasses.replace(
+            _ref(art_id, filename, "source", cycle_id=cycle_id, created=created, **meta),
+            run_id=f"run_{cycle_id}",
+        ),
+        content,
+    )
+
+
+async def test_an_increments_tree_is_the_app_it_built_on_overlaid_with_its_change(vault):
+    """#1887, the composition every reader of the accepted tree now shares. Shakeout 3's first
+    increment stored only its own outputs and the skeleton's stubs; its promoted tree held a
+    stub ``RunListView`` the calibration had implemented, and the second increment built against
+    it. Bugs caught: an untouched slot's stub shadowing the accepted implementation; the
+    increment's own change lost under the accepted copy; or the candidate's regenerated frozen
+    file losing to the baseline's (#1876)."""
+    from squadops.campaigns.increment_tree import compose_accepted_tree
+
+    view = "frontend/src/views/RunListView.jsx"
+    _put(
+        vault,
+        "c_view",
+        view,
+        "cyc_cal",
+        2,
+        "// the accepted list view\n",
+        producing_task_type="development.develop",
+    )
+    _put(
+        vault,
+        "c_models",
+        "backend/models.py",
+        "cyc_cal",
+        0,
+        "# baseline models\n",
+        producing_task_type="scaffold.expand",
+        scaffold_seeded=True,
+    )
+    # The increment: its change, its skeleton's stub for the slot it did not touch, and its
+    # skeleton's regenerated model.
+    _put(
+        vault,
+        "i_routes",
+        "backend/routes.py",
+        "cyc_inc1",
+        30,
+        "# the increment's routes\n",
+        producing_task_type="development.develop",
+    )
+    _put(
+        vault,
+        "i_view_stub",
+        view,
+        "cyc_inc1",
+        20,
+        "// stub\n",
+        producing_task_type="scaffold.expand",
+        scaffold_seeded=True,
+    )
+    _put(
+        vault,
+        "i_models",
+        "backend/models.py",
+        "cyc_inc1",
+        20,
+        "# regenerated models\n",
+        producing_task_type="scaffold.expand",
+        scaffold_seeded=True,
+    )
+
+    tree = await compose_accepted_tree(
+        vault, "cyc_cal", await vault.list_artifacts(cycle_id="cyc_inc1")
+    )
+
+    assert tree[view] == "c_view"
+    assert tree["backend/routes.py"] == "i_routes"
+    assert tree["backend/models.py"] == "i_models"
+
+
+async def test_the_next_increment_seeds_from_the_recorded_whole_tree(vault):
+    """#1887, entered at the run's seeding and composition: increment 2 builds on increment 1,
+    whose promotion recorded the whole tree. Bug caught: the seed read from increment 1's own
+    artifacts, handing the developer a stub where the accepted app had an implementation."""
+    import json
+
+    from squadops.campaigns.increment_tree import ACCEPTED_TREE_ARTIFACT_TYPE
+
+    view = "frontend/src/views/RunListView.jsx"
+    _put(
+        vault,
+        "c_view",
+        view,
+        "cyc_cal",
+        2,
+        "// the accepted list view\n",
+        producing_task_type="development.develop",
+    )
+    _put(
+        vault,
+        "i_view_stub",
+        view,
+        "cyc_inc1",
+        20,
+        "// stub\n",
+        producing_task_type="scaffold.expand",
+        scaffold_seeded=True,
+    )
+    tree = {view: "c_view", "backend/routes.py": "art_routes"}
+    vault.put(
+        dataclasses.replace(
+            _ref(
+                "i_tree",
+                "accepted_tree.json",
+                ACCEPTED_TREE_ARTIFACT_TYPE,
+                cycle_id="cyc_inc1",
+                created=40,
+            ),
+            run_id="run_cyc_inc1",
+        ),
+        json.dumps(tree),
+    )
+
+    seeds, _ = await _seed_and_compose(vault, _cycle("increment", "cyc_inc1"))
+    workspace = await _workspace(vault, seeds, "qa.test")
+
+    assert workspace[view] == "// the accepted list view\n"
+    assert "i_view_stub" not in seeds
