@@ -377,3 +377,42 @@ async def test_a_campaigns_launch_intents_read_back_in_order_in_any_state(campai
         (True, LaunchIntentState.LAUNCHED),
         (False, LaunchIntentState.PENDING),
     ]
+
+
+async def test_a_ruling_overdue_row_is_stored_and_the_gate_is_listed_by_state(campaigns):
+    """§9.2, §9.5 on the database (§24ae): the sweep reads the campaigns waiting on a ruling,
+    and writes the bound's row. Bugs caught: a migration whose CHECK omits ``ruling_overdue``, so
+    every overdue gate fails at the database; a listing that misses a campaign in the state, or
+    returns one that is not."""
+    from datetime import timedelta
+
+    from squadops.campaigns.gate import gate_opened_at, ruling_overdue_transitions
+
+    binding = ProposalBinding("prop_1", 1, "hash-v1", "sha-cal")
+    await campaigns.transition(
+        CID,
+        move(
+            S.CALIBRATING,
+            "k-promote",
+            operation=ControlOperation.PROMOTE,
+            accepted=AcceptedTree("sha-cal", "cyc_cal000000001"),
+        ),
+    )
+    await campaigns.transition(CID, move(S.AT_PROPOSAL, "k-prop"))
+    await campaigns.transition(
+        CID, submission(S.AT_PROPOSAL, SubmittedProposal(binding, "cyc_inc", "run_p1"))
+    )
+
+    [waiting] = await campaigns.campaigns_in_state(S.AWAITING_RULING)
+    log = await campaigns.control_log(CID)
+    [crew] = ruling_overdue_transitions(
+        waiting, log, gate_opened_at(log) + timedelta(seconds=waiting.policy.crew_ruling_bound_s)
+    )
+    result = await campaigns.transition(CID, crew)
+
+    assert (result.entry.operation, result.entry.binding["seat"]) == (
+        ControlOperation.RULING_OVERDUE,
+        "crew",
+    )
+    assert [c.campaign_id for c in await campaigns.campaigns_in_state(S.AWAITING_RULING)] == [CID]
+    assert await campaigns.campaigns_in_state(S.BUILDING) == []

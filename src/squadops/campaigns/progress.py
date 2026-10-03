@@ -36,6 +36,7 @@ from squadops.campaigns.continuation import (
 )
 from squadops.campaigns.evaluator_trees import FileTree
 from squadops.campaigns.evidence import CycleRecords, digest, package
+from squadops.campaigns.gate import ruling_overdue_transitions
 from squadops.campaigns.increment_tree import (
     ACCEPTED_TREE_ARTIFACT_TYPE,
     ACCEPTED_TREE_FILENAME,
@@ -51,6 +52,7 @@ from squadops.campaigns.models import (
     Campaign,
     CampaignState,
     CampaignTransition,
+    ControlLogEntry,
     ControlOperation,
     ControlOperationRefused,
     ControlOutcome,
@@ -486,6 +488,31 @@ class CampaignProgress:
             except Exception:
                 logger.exception("campaign_rehear_failed", extra={"cycle_id": cycle_id})
         return decided
+
+    async def sweep_ruling_bounds(self) -> list[ControlLogEntry]:
+        """§9.2, §9.5 (§24ae): each campaign whose increment gate has waited past a seat's ruling
+        bound gets that seat's ``ruling_overdue`` row, once per proposal version. Nothing rules
+        on the gate, and the campaign stays ``awaiting_ruling``. A row refused because the
+        campaign moved in the meantime (a ruling landed) is logged; one campaign that cannot be
+        swept does not stop the rest. Returns the rows written."""
+        written = []
+        for campaign in await self._campaigns.campaigns_in_state(CampaignState.AWAITING_RULING):
+            try:
+                log = await self._campaigns.control_log(campaign.campaign_id)
+                for transition in ruling_overdue_transitions(campaign, log, self._clock()):
+                    result = await self._campaigns.transition(campaign.campaign_id, transition)
+                    if not result.replayed:
+                        written.append(result.entry)
+            except ControlOperationRefused as refused:
+                logger.info(
+                    "campaign_ruling_overdue_refused",
+                    extra={"campaign_id": campaign.campaign_id, "refusal": refused.entry.refusal},
+                )
+            except Exception:
+                logger.exception(
+                    "campaign_ruling_sweep_failed", extra={"campaign_id": campaign.campaign_id}
+                )
+        return written
 
     async def owner_action(
         self,

@@ -133,6 +133,7 @@ _STATE_SLOTS = (
     "duty_scheduler",  # SIP-0089 §2.4, opt-in; stopped on shutdown
     "runtime_coordinator",  # SIP-0089 §3.5 (#233) single-writer (D16), shared by executor + scheduler
     "campaign_launch_task",  # SIP-0109 §12b: the startup drain of pending launch intents
+    "campaign_sweep_task",  # SIP-0109 §9.2 (§24ae): the ruling-bound sweep; cancelled on shutdown
 )
 
 
@@ -670,6 +671,23 @@ async def _startup(app: FastAPI) -> None:
     # SIP-0109 §12a/§12b: what a crash left undone is done now. Every subsystem is up, and the
     # startup sweeps ran before the executor existed.
     state.campaign_launch_task = asyncio.create_task(_resume_campaigns(state))
+    state.campaign_sweep_task = asyncio.create_task(_sweep_campaigns(state))
+
+
+#: How often the campaign sweep reads the gates waiting on a ruling. A bound is recorded at most
+#: this late, against bounds of 30 minutes and more (§9.2's defaults).
+_CAMPAIGN_SWEEP_INTERVAL_S = 60
+
+
+async def _sweep_campaigns(state) -> None:
+    """§9.2, §9.5 (§24ae): every interval, each increment gate waiting past a seat's ruling bound
+    is recorded as overdue. A sweep that fails is logged and the next one runs."""
+    while True:
+        await asyncio.sleep(_CAMPAIGN_SWEEP_INTERVAL_S)
+        try:
+            await state.campaign_progress.sweep_ruling_bounds()
+        except Exception:
+            logger.exception("campaign_sweep_failed")
 
 
 async def _resume_campaigns(state) -> None:
@@ -692,6 +710,8 @@ async def _shutdown(app: FastAPI) -> None:
         state.health_checker._reconciliation_running = False
     if state.reconciliation_task:
         state.reconciliation_task.cancel()
+    if state.campaign_sweep_task:
+        state.campaign_sweep_task.cancel()
     if state.health_checker:
         await state.health_checker.close()
     if state.redis_client:
