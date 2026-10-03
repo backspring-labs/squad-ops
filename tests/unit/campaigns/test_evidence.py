@@ -132,6 +132,41 @@ async def test_a_closed_campaign_leaves_its_package_and_digest_once(closed):
     assert all(r.artifact_type == EVIDENCE_ARTIFACT_TYPE for r, _ in vault.stored.values())
 
 
+async def test_the_package_carries_each_runs_revision_forms_from_its_persisted_summary(closed):
+    """#1710, entered at ``materialize_package``. Bugs caught: the forms left in the agents' logs,
+    which the next rebuild destroys; or a run whose summary predates them read as one that took
+    no revision form."""
+    from squadops.cycles.llm_usage import RunUsageAccumulator
+    from squadops.cycles.run_loop_summary import RunLoopSummary
+
+    progress, _campaigns, vault = closed
+    forms = ({"kind": "repair", "task_id": "t-1", "task_type": "qa.test_repair", "form": "edits"},)
+    at_close = {
+        json.loads(c)["identity"]: json.loads(c)
+        for r, c in vault.stored.values()
+        if r.metadata["part"] == "package"
+    }
+    await progress._cycles.record_run_loop_summary(
+        "run_impl",
+        RunLoopSummary(
+            run_id="run_impl", usage=RunUsageAccumulator().summary(), revision_forms=forms
+        ),
+    )
+
+    identity, _package_id, _digest_id = await progress.materialize_package(CID)
+
+    [(before,)] = [[c["revision_forms"] for c in d["cycles"]] for d in at_close.values()]
+    after = {
+        json.loads(c)["identity"]: json.loads(c)
+        for r, c in vault.stored.values()
+        if r.metadata["part"] == "package"
+    }[identity]
+    assert before == [{"run_id": "run_impl", "workload_type": "implementation", "forms": None}]
+    assert after["cycles"][0]["revision_forms"] == [
+        {"run_id": "run_impl", "workload_type": "implementation", "forms": list(forms)}
+    ]
+
+
 async def test_the_digest_says_how_the_campaign_ended_and_what_failed(closed):
     _progress, _campaigns, vault = closed
 

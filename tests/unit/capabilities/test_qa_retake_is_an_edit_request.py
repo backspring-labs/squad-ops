@@ -96,6 +96,8 @@ async def test_a_re_take_is_shown_its_suite_and_edits_it(caplog, monkeypatch):
     assert "status_code == 201" in stored["tests/test_runs.py"]
     (form,) = forms
     assert (form["form"], form["edited"]) == ("edits", ["tests/test_runs.py"])
+    # #1710: the form is the task's record, so the run keeps it after the agent's log is gone.
+    assert result.outputs["qa_retake_revision_form"] == form
 
 
 async def test_a_re_take_that_re_emits_the_suite_whole_is_recorded_as_such(caplog, monkeypatch):

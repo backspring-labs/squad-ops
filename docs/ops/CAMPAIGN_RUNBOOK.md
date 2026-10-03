@@ -31,7 +31,14 @@ the campaign launches: the calibration, each increment, each repair and each ret
 ```bash
 squadops campaigns create --file var/campaigns/<name>.yaml --reason "<why>"
 squadops campaigns start <campaign_id> --reason "<why>"      # the calibration cycle launches
+python scripts/dev/campaign_log_archive.py <campaign_id> --follow   # beside it, until it closes
 ```
+
+**Start the log archive with the campaign** (#1710). The containers' logs are the triage
+evidence, and the next rebuild destroys them. The archive keeps each cycle's window under
+`var/campaigns/<campaign_id>/logs/<cycle_id>/`, with a manifest naming its window, each file's
+sha256, and any window already lost to a rebuild. A run's revision forms do not depend on it: they
+are kept on the run's summary and carried in the evidence package.
 
 ---
 

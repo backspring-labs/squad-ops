@@ -46,6 +46,7 @@ from adapters.cycles.execution_errors import _CancellationError
 from adapters.cycles.task_naming import build_task_name
 from squadops.comms.run_cancellation import RUN_ID_METADATA_KEY
 from squadops.cycles.llm_usage import RunUsage, RunUsageAccumulator
+from squadops.cycles.run_loop_summary import revision_forms_of
 from squadops.events.types import EventType
 from squadops.runtime import reasons
 from squadops.tasks.models import TaskResult, TaskResultStatus
@@ -125,10 +126,16 @@ class TaskDispatcher:
         # dispatch returns — tasks, retries, correction steps and retests alike — and
         # finalization takes the sum for the run's durable summary.
         self._run_usage: dict[str, RunUsageAccumulator] = {}
+        # #1710: every reply's revision forms, kept for the run's durable summary beside its usage.
+        self._run_revision_forms: dict[str, list[dict]] = {}
 
     def take_run_usage(self, run_id: str) -> RunUsage:
         """The run's LLM usage so far, released — called once, at run finalization."""
         return self._run_usage.pop(run_id, RunUsageAccumulator()).summary()
+
+    def take_run_revision_forms(self, run_id: str) -> tuple[dict, ...]:
+        """The run's revision forms so far, released — called once, at run finalization."""
+        return tuple(self._run_revision_forms.pop(run_id, []))
 
     # SIP-0087: task-run lifecycle lives here (moved out of WorkflowTrackerBridge) so
     # the task_run_id is known before the agent starts producing logs.
@@ -304,6 +311,13 @@ class TaskDispatcher:
                     str(envelope.task_type),
                     envelope.task_id,
                     result.llm_usage if result is not None else None,
+                )
+                self._run_revision_forms.setdefault(run_id, []).extend(
+                    revision_forms_of(
+                        envelope.task_id,
+                        str(envelope.task_type),
+                        result.outputs if result is not None else None,
+                    )
                 )
                 await self._finish_task_activity(activity_id, result)
                 if result is not None and result.status == TaskResultStatus.SUCCEEDED:

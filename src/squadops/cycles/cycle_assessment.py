@@ -801,7 +801,11 @@ def evidence_identity(outcome: CycleOutcome, evidence: CycleEvidence) -> str:
 
 def _canonical(obj: Any) -> Any:
     if isinstance(obj, RunLoopSummary):
-        return obj.to_dict()
+        # #1710: a run's revision forms are its record, not evidence the assessment reads, and
+        # were added after identities were first recorded; they never move an identity.
+        summary = obj.to_dict()
+        summary.pop("revision_forms", None)
+        return summary
     if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
         return {f.name: _canonical(getattr(obj, f.name)) for f in dataclasses.fields(obj)}
     if isinstance(obj, Mapping):

@@ -22,7 +22,8 @@ from typing import Any
 from squadops.campaigns.models import CampaignState, ControlOperation, ControlOutcome
 
 #: Bumped when the package's shape changes; a reader checks it before reading further.
-PACKAGE_VERSION = 1
+#: 2: each cycle carries its runs' revision forms (#1710).
+PACKAGE_VERSION = 2
 
 
 def _plain(value: Any) -> Any:
@@ -49,6 +50,9 @@ class CycleRecords:
     assessment: Any
     #: The latest persisted set; ``None`` when none was ever written.
     failure_records: tuple | None
+    #: #1710: per run, the revision forms its tasks took, read from the run's persisted summary;
+    #: a run whose summary predates them reads ``None``.
+    revision_forms: tuple = ()
 
 
 def package(campaign: Any, log: list, launches: list, cycles: list[CycleRecords]) -> dict:
@@ -69,6 +73,7 @@ def package(campaign: Any, log: list, launches: list, cycles: list[CycleRecords]
                 "kind": c.kind,
                 "assessment": _plain(c.assessment),
                 "failure_records": _plain(c.failure_records),
+                "revision_forms": _plain(c.revision_forms),
                 "decision": decisions.get(c.cycle_id),
             }
             for c in cycles

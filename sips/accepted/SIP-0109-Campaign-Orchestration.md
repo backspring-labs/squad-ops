@@ -2012,6 +2012,37 @@ record, so a campaign could sit on it unseen. #1708's "no gate waits without bou
 move to `paused`. In 2.0 every gate stays the supervisor's or the owner's (the plan's decision 4).
 The auto-decision tier and the escalation queue are placed in 2.2.0.
 
+### 24ak. What died with the logs is kept: the revision forms, and the log windows (2026-10-03, §14, §24h's not-yet, #1710; ruled by the owner)
+
+§24h's package lacked the per-round revision forms and the log lines the readouts read. Both lived
+only in the containers' logs, and a rebuild destroys those. Shakeout 5's cycles show the loss:
+archived after rebuild 16, every container's window is empty. The owner ruled this capture built
+before the loop's exit shakeout (2.0 plan rev 9, §5a.5).
+
+**As built:**
+- **The revision forms are the run's record.** A task's outputs now carry every form it took:
+  - a repair's `revision_form`, as before;
+  - each self-evaluation pass's (`self_eval_revision_forms`);
+  - a qa re-take's (`qa_retake_revision_form`), on both the accepted and the refused branch.
+
+  The task dispatcher reads each reply through `run_loop_summary.revision_forms_of`, keeping the
+  run's forms beside its usage. Finalization persists them on the run's loop summary
+  (`revision_forms`; a row written before reads `None`). They never move an assessment's identity:
+  they are the run's record, not evidence the assessment reads.
+- **The package carries them.** Each cycle lists its runs' forms from their persisted summaries
+  (`PACKAGE_VERSION` 2).
+- **The log windows are kept on the Spark** (the triage tier of #1710's two tiers).
+  `scripts/dev/campaign_log_archive.py <campaign> --follow` runs beside a campaign. It writes each
+  cycle's window per container under the main checkout's `var/campaigns/<campaign>/logs/`: from the
+  first run's start to the last run's end, with a margin.
+  - A manifest names each file's window and sha256.
+  - It marks a window **lost** when its container is newer than the cycle's first run, so an empty
+    file never reads as a quiet cycle.
+  - An ended cycle is archived once.
+
+**Not built:** the package's size bound, the app's evolution with screenshots, and the squad's first
+pass. All three are after the set, rendered from durable records (plan rev 9, §5a.4).
+
 ---
 
 ## Revision history
