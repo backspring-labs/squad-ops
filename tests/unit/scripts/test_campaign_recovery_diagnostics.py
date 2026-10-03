@@ -1,11 +1,15 @@
 """The recovery diagnostics' verdicts (#1803): each reads a record field, and each fails on the
-shape it exists to catch."""
+shape it exists to catch. The decision shapes are the ones a live campaign wrote
+(``cmp_9757603322b1``): a healthy increment cycle has two ``decide`` rows, its end heard into
+``evaluating`` and its continuation out of it."""
 
 from __future__ import annotations
 
 import importlib.util
 import sys
 from pathlib import Path
+
+import pytest
 
 _SPEC = importlib.util.spec_from_file_location(
     "campaign_recovery_diagnostics",
@@ -23,16 +27,63 @@ def _row(
     return Row(seq, op, outcome, prior, nxt, target, key or f"k{seq}", launch)
 
 
-def test_a_restart_that_loses_or_changes_a_row_fails():
+#: An increment cycle decided as cmp_9757603322b1's seq 12–14 were.
+_DECIDED = [
+    _row(12, "decide", prior="building", nxt="evaluating", target="cyc_1"),
+    _row(13, "decide", prior="evaluating", nxt="at_proposal", target="cyc_1", launch="lnc_a"),
+    _row(
+        14, "mark_launched", prior="at_proposal", nxt="at_proposal", target="lnc_a", launch="lnc_a"
+    ),
+]
+
+
+def test_a_restart_that_loses_a_row_or_resumes_elsewhere_fails():
     """Bug caught: a ruling lost across a restart (§12a: a ruling is committed before it is
-    acknowledged), read as a pass because the state still looks plausible."""
+    acknowledged), or a campaign that comes back in a state its log never committed."""
     before = [_row(1, "submit", nxt="awaiting_ruling"), _row(2, "rule", prior="awaiting_ruling")]
 
-    kept = diag.restart_kept_the_log("restart-at-gate", before, [*before, _row(3, "lease_acquire")])
-    lost = diag.restart_kept_the_log("restart-at-gate", before, before[:1])
+    kept = diag.restart_kept_the_log(
+        "restart-at-gate", before, [*before, _row(3, "lease_acquire")], "building"
+    )
+    lost = diag.restart_kept_the_log("restart-at-gate", before, before[:1], "building")
+    elsewhere = diag.restart_kept_the_log(
+        "restart-at-gate", before, [*before, _row(3, "decide", prior="at_proposal")], "building"
+    )
+    stale = diag.restart_kept_the_log("restart-at-gate", before, before, "awaiting_ruling")
 
     assert (kept.passed, lost.passed) == (True, False)
     assert "a ruling was lost" in lost.failures
+    assert elsewhere.failures == ["resumed from at_proposal, not the last committed building"]
+    assert stale.failures == ["the campaign is awaiting_ruling, not the last committed building"]
+
+
+def test_a_healthy_decision_passes_and_a_cycle_heard_twice_fails():
+    """Bug caught: the startup re-hearing deciding a cycle the completion hook already decided,
+    which launches a second cycle. The healthy shape is two decide rows: the first verdict
+    written read it as a double decision and would have failed every live increment."""
+    reheard = [
+        *_DECIDED,
+        _row(15, "decide", prior="evaluating", nxt="at_proposal", target="cyc_1", launch="lnc_b"),
+    ]
+
+    assert diag.decided_once(_DECIDED, {"lnc_a": 1}) == []
+    assert diag.decided_once(reheard, {"lnc_a": 1, "lnc_b": 1}) == [
+        "cyc_1: the decision from evaluating taken 2 times",
+        "cyc_1: 2 continuation decisions",
+    ]
+    assert diag.decided_once(_DECIDED, {"lnc_a": 2}) == ["lnc_a: launched as 2 cycles"]
+
+
+def test_the_re_heard_cycle_needs_its_one_continuation_launched_once():
+    """Bug caught: a restart between the decision and the launch that loses the launch (the
+    intent never becomes a cycle), or a re-hearing that stops before the continuation."""
+    healthy = diag.duplicate_completion_verdict(_DECIDED, "cyc_1", {"lnc_a": 1})
+    unlaunched = diag.duplicate_completion_verdict(_DECIDED, "cyc_1", {})
+    undecided = diag.duplicate_completion_verdict(_DECIDED[:1], "cyc_1", {})
+
+    assert healthy.passed is True
+    assert unlaunched.failures == ["lnc_a: launched as 0 cycles, not 1"]
+    assert undecided.failures == ["0 continuation decisions for cyc_1, not 1"]
 
 
 def test_a_repeated_ruling_is_one_row_and_its_conflict_one_refusal():
@@ -48,27 +99,16 @@ def test_a_repeated_ruling_is_one_row_and_its_conflict_one_refusal():
     ]
 
 
-def test_a_cycle_heard_twice_decides_once():
-    """Bug caught: the startup re-hearing deciding a cycle the completion hook already decided,
-    which launches a second cycle."""
-    once = [_row(9, "decide", prior="evaluating", nxt="repairing", target="cyc_1", launch="lnc_a")]
-    twice = [
-        *once,
-        _row(11, "decide", prior="repairing", nxt="repairing", target="cyc_1"),
-        _row(12, "decide", prior="evaluating", nxt="repairing", target="cyc_1", launch="lnc_b"),
-    ]
-
-    assert diag.one_decision_verdict(once, "cyc_1").passed is True
-    assert diag.one_decision_verdict(twice, "cyc_1").passed is False
-
-
-def test_an_identity_moved_without_a_promote_row_is_a_partial_promotion():
-    """Bug caught: an interrupted evaluation that left a new accepted identity with no promotion
-    transition recording its bundles (§12a)."""
-    assert diag.no_partial_promotion_verdict("sha-a", "sha-a", []).passed is True
-    assert diag.no_partial_promotion_verdict("sha-a", "sha-b", [_row(4, "promote")]).passed is True
-    assert diag.no_partial_promotion_verdict("sha-a", "sha-b", []).failures == [
+def test_an_identity_moved_without_a_promote_row_or_a_missed_window_fails():
+    """Bug caught: an interrupted promotion that left a new accepted identity with no promotion
+    transition (§12a); and a kill that landed after the promotion committed, read as a pass."""
+    assert diag.no_partial_promotion_verdict("sha-a", "sha-a", [], True).passed is True
+    assert diag.no_partial_promotion_verdict("sha-a", "sha-b", [_row(4, "promote")], True).passed
+    assert diag.no_partial_promotion_verdict("sha-a", "sha-b", [], True).failures == [
         "the accepted identity changed with no promote row"
+    ]
+    assert diag.no_partial_promotion_verdict("sha-a", "sha-a", [], False).failures == [
+        "the promotion committed before the kill: the window was not hit"
     ]
 
 
@@ -82,3 +122,19 @@ def test_an_abort_followed_by_a_launch_fails():
         "1 launch intent(s) after the abort",
         "no run was cancelled",
     ]
+
+
+@pytest.mark.parametrize(
+    "spec", ["restart-pasued", "restart-at:awaiting-ruling", "restart-at:completed"]
+)
+def test_a_mistyped_sequence_is_refused_before_the_first_injection(spec, monkeypatch):
+    """Bug caught: a typo found only when the sequence reaches it, after earlier diagnostics
+    restarted the runtime mid-campaign; or a state no campaign restarts in, waited on for
+    hours."""
+    monkeypatch.setattr(diag, "restart_runtime", lambda: pytest.fail("injected"))
+    monkeypatch.setattr(diag, "campaign_state", lambda _c: pytest.fail("read the deploy"))
+
+    with pytest.raises(SystemExit) as exit_:
+        diag.main(["cmp_abc", "restart-at:building", spec])
+
+    assert exit_.value.code == 2
