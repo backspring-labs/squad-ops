@@ -156,3 +156,19 @@ def test_every_cli_call_logs_in_first(monkeypatch):
     diag.squadops("campaigns", "pause", "cmp_abc")
 
     assert calls == [("login", str(diag.SQUADOPS)), ("run", ["campaigns", "pause"])]
+
+
+def test_the_kill_reads_the_records_while_the_process_is_down(monkeypatch):
+    """Bug caught: the first live run read what was committed at the kill after the restart and
+    its settle, and so counted the restarted process's own promotion as committed before the
+    kill. A window it had hit was recorded as missed (2026-10-03, ``cmp_e39d5b9c24c6``)."""
+    events: list[str] = []
+    monkeypatch.setattr(
+        diag.subprocess, "run", lambda cmd, **kw: events.append(" ".join(cmd[:2])) or None
+    )
+    monkeypatch.setattr(diag, "_healthy", lambda: events.append("healthy"))
+
+    _since, read = diag.kill_runtime(lambda: events.append("read") or "rows at the kill")
+
+    assert events == ["docker kill", "read", "docker start", "healthy"]
+    assert read == "rows at the kill"
