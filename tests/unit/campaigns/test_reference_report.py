@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from squadops.campaigns.reference import mechanism_report
 
 _FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "campaigns"
@@ -121,3 +123,103 @@ def test_the_report_names_which_increment_it_reads():
     ]
     assert (reference["campaign_id"], reference["kind"]) == (None, None)
     assert script._markdown(reference).splitlines()[2] == "- the reference scenario (no campaign)"
+
+
+# --- §24af (#1804): the proposal half, proposed and rated, never built -----------------------
+
+_CHANGE_REQUEST = (_FIXTURES / "change-request-prop_567c4915dbc0.yaml").read_text()
+
+
+def test_the_proposal_half_runs_the_proposal_workload_alone_and_seeds_nothing():
+    """Bug caught: the proposal half launched on the build half's profile (it would build), or
+    under the pre-authored request's id (its proposal read as the reference request), or with
+    seeds that make a cycle meant to propose behave as one meant to build."""
+    from squadops.campaigns.reference import reference_proposal_block, reference_proposal_request
+
+    block = reference_proposal_block(
+        baseline_tree="sha-base",
+        accepted_cycle_id="cyc_base",
+        baseline_manifest="version: 1\n",
+        objective={"statement": "evolve group_run"},
+    )
+
+    body = reference_proposal_request(block, squad_profile_id="full-38", notes="n")
+
+    assert body["request_profile"] == "campaign-proposal"
+    assert [(w["type"], w["gate"]) for w in body["applied_defaults"]["workload_sequence"]] == [
+        ("proposal", None)
+    ]
+    proposal = body["execution_overrides"]["campaign_proposal"]
+    assert proposal == {**block, "proposal_id": "ref_rated_proposal"}
+    assert not {"plan_artifact_refs", "contract_ref"} & set(body["execution_overrides"])
+
+
+def _rating(content_hash: str) -> str:
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
+
+    from squadops.campaigns.proposal_rating import rating_document, rating_from_request
+
+    return rating_document(
+        rating_from_request(
+            {
+                "content_hash": content_hash,
+                "verdict": "would_approve",
+                "reason": "one feature",
+                "ratings": {
+                    "scope_fit": {"score": 3, "note": "fits"},
+                    "criteria_discriminability": {"score": 3, "note": "each fails on base"},
+                    "footprint_size": {"score": 2, "note": "five files"},
+                },
+            },
+            change_request=SimpleNamespace(
+                proposal_id="prop_567c4915dbc0", version=1, content_hash=content_hash
+            ),
+            rated_by="user-campaign-supervisor",
+            rated_at=datetime(2026, 10, 3, 6, 0, tzinfo=UTC),
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    ("change_request", "rating", "verdict", "note"),
+    [
+        (_CHANGE_REQUEST, "own", "would_approve", ""),
+        (_CHANGE_REQUEST, None, None, "not rated"),
+        (
+            _CHANGE_REQUEST,
+            "other",
+            None,
+            "the stored rating is bound to 'sha-v0', not this version",
+        ),
+    ],
+    ids=["rated", "unrated", "rated-another-version"],
+)
+def test_the_report_shows_the_rating_only_of_the_version_it_rated(
+    change_request, rating, verdict, note
+):
+    """Shakeout 4's real change request. Bug caught: a rating of an earlier version shown as
+    this one's, or an unrated proposal shown as rated."""
+    import yaml
+
+    from squadops.campaigns.reference import rated_proposal
+
+    own = yaml.safe_load(_CHANGE_REQUEST)["content_hash"]
+    text = {"own": _rating(own), "other": _rating("sha-v0"), None: None}[rating]
+
+    section = rated_proposal(change_request, text)
+
+    assert (section["proposal_id"], section["criteria"]) == (
+        "prop_567c4915dbc0",
+        ["T1", "T2", "T3"],
+    )
+    assert ((section["rating"] or {}).get("verdict"), section["rating_note"]) == (verdict, note)
+
+
+def test_a_proposal_cycle_that_stored_nothing_is_reported_unread():
+    from squadops.campaigns.reference import rated_proposal
+
+    assert rated_proposal(None, None) == {
+        "read": False,
+        "reason": "the proposal cycle stored no change request",
+    }

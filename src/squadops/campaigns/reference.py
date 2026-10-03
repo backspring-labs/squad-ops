@@ -116,6 +116,63 @@ def reference_proposal_block(
     }
 
 
+#: The proposal half's id (§11a; §24af): the strategy role's own proposal on the same baseline and
+#: objective, rated and never built, so it is never read as the pre-authored request.
+REFERENCE_RATED_PROPOSAL_ID = "ref_rated_proposal"
+#: The proposal workload alone, with no gate: the proposal is recorded and nothing follows it.
+REFERENCE_PROPOSAL_PROFILE = "campaign-proposal"
+
+
+def reference_proposal_request(
+    block: Mapping[str, Any], *, squad_profile_id: str, notes: str
+) -> dict[str, Any]:
+    """The cycle request for the proposal half (§11a; §24af): ``campaign-proposal`` carrying the
+    build half's block under its own proposal id. Nothing is seeded (no candidate manifest, no
+    contract, no change request), because nothing is built."""
+    from squadops.contracts.cycle_request_profiles import cycle_request_body
+
+    return cycle_request_body(
+        REFERENCE_PROPOSAL_PROFILE,
+        squad_profile_id=squad_profile_id,
+        user_values={"campaign_proposal": {**block, "proposal_id": REFERENCE_RATED_PROPOSAL_ID}},
+        notes=notes,
+    )
+
+
+def rated_proposal(change_request: str | None, rating: str | None) -> dict[str, Any]:
+    """The proposal half as the report shows it: what was proposed and how the supervisor rated
+    it. Read from the stored documents only; a rating bound to another version than the stored
+    change request is reported as such, never as this proposal's rating."""
+    import yaml
+
+    from squadops.campaigns.change_request import load_stored_change_request
+
+    if change_request is None:
+        return {"read": False, "reason": "the proposal cycle stored no change request"}
+    request = load_stored_change_request(change_request)
+    section: dict[str, Any] = {
+        "read": True,
+        "proposal_id": request.proposal_id,
+        "version": request.version,
+        "criteria": [c.id for c in request.criteria],
+        "footprint": list(request.footprint),
+        "rating": None,
+        "rating_note": "not rated",
+    }
+    if rating is not None:
+        doc = yaml.safe_load(rating) or {}
+        if doc.get("content_hash") != request.content_hash:
+            section["rating_note"] = (
+                f"the stored rating is bound to {doc.get('content_hash')!r}, not this version"
+            )
+        else:
+            section["rating"] = {
+                k: doc.get(k) for k in ("verdict", "reason", "ratings", "rated_by")
+            }
+            section["rating_note"] = ""
+    return section
+
+
 def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 

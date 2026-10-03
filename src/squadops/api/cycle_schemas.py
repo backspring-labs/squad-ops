@@ -65,6 +65,24 @@ class ProposalBindingDTO(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class ProposalRatingRequest(BaseModel):
+    """The supervisor's rating of a proposal nothing builds (SIP-0109 §11a; §24af): bound to the
+    change request's ``content_hash``, the verdict the ruling would have been, its reason, and
+    ``ratings`` keyed by dimension, each ``{"score": 1-3, "note": ...}``."""
+
+    content_hash: str
+    verdict: str
+    reason: str
+    ratings: dict[str, dict] = Field(default_factory=dict)
+
+
+class ProposalRatingResponse(BaseModel):
+    artifact_id: str
+    proposal_id: str
+    version: int
+    verdict: str
+
+
 class GateDecisionRequest(BaseModel):
     """Gate decision (T4+T13: normalized vocab, typed).
 

@@ -344,6 +344,50 @@ def show_cycle_alias(
     show_cycle(ctx, project_id, cycle_id)
 
 
+@app.command("rate")
+def rate_proposal(
+    ctx: typer.Context,
+    project_id: str = typer.Argument(...),
+    cycle_id: str = typer.Argument(...),
+    rating_file: Path = typer.Option(..., "--rating-file", help="The rating, as YAML"),
+):
+    """Rate a proposal nothing builds: the reference scenario's proposal half (SIP-0109 §11a).
+
+    The file holds `content_hash` (the stored change request's), `verdict` (would_approve,
+    would_return or would_reject), `reason`, and `ratings` for scope_fit,
+    criteria_discriminability and footprint_size, each `{score: 1-3, note: ...}`. A campaign's
+    proposals are ruled at the increment gate, never rated.
+    """
+    import yaml
+
+    fmt = ctx.obj.get("format", "table") if ctx.obj else "table"
+    try:
+        body = yaml.safe_load(rating_file.read_text())
+    except (OSError, yaml.YAMLError) as e:
+        print_error(f"cannot read the rating file: {e}")
+        raise typer.Exit(code=exit_codes.VALIDATION_ERROR) from e
+    if not isinstance(body, dict):
+        print_error("the rating file is a mapping")
+        raise typer.Exit(code=exit_codes.VALIDATION_ERROR)
+    try:
+        client = _get_client(ctx)
+        data = client.post(
+            f"/api/v1/projects/{project_id}/cycles/{cycle_id}/proposal-rating", json=body
+        )
+        client.close()
+    except CLIError as e:
+        print_error(str(e))
+        raise typer.Exit(code=e.exit_code) from e
+
+    if fmt == "json":
+        print_json(data)
+    else:
+        print_success(
+            f"Rated {data['proposal_id']} v{data['version']}: {data['verdict']} "
+            f"({data['artifact_id']})"
+        )
+
+
 @app.command("cancel")
 def cancel_cycle(
     ctx: typer.Context,

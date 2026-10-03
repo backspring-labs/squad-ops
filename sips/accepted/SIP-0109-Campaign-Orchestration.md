@@ -1841,6 +1841,45 @@ within the bound "pauses the campaign (`awaiting_ruling`)". §9.5's row says the
 the launch-blocked retries (§9.3). Each needs its own concurrency reading against the live
 completion hook before it joins.
 
+### 24af. The reference scenario's proposal half, as built (2026-10-03, §11a, §24q's not-built, #1804; decided under the 2.0 charter)
+
+§11a: "The strategy role also runs a proposal against the same baseline and objective. That
+proposal is recorded and **rated by the supervisor, not built**." The build half shipped as §24q,
+and the report as §24aa. This half was drafted on #1804 and held for a ruling it did not need.
+
+**The snag it answers:** the sequence loop ends before its last workload's gate (§24f), so a
+proposal-only cycle cannot reach a gate to be ruled at.
+
+**As built:**
+- **The proposal runs on `campaign-proposal`:** the proposal workload alone, with no gate. It is
+  the profile the first live proposals ran on.
+  - It is launched by `launch_reference_increment.py --proposal`, through
+    `reference_proposal_request`.
+  - It carries the build half's pinned baseline and objective under its own id
+    (`ref_rated_proposal`).
+  - Nothing is seeded: no candidate manifest, contract or change request. The cycle ends with its
+    change request stored, and nothing builds.
+- **The rating is a typed record, not a ruling** (`campaigns/proposal_rating.py`). A ruling decides
+  what happens next, nothing does here, and this cycle has no accepted identity to bind one to.
+  - **Its verdict** uses the ruling's three outcomes, as what the supervisor would have ruled:
+    `would_approve`, `would_return` or `would_reject`.
+  - **It carries a reason**, and three ratings from 1 to 3, each with a note: `scope_fit`,
+    `criteria_discriminability` and `footprint_size`.
+  - **It is bound to the stored change request's `content_hash`.** A rating of any other document
+    is refused, as a stale ruling is.
+- **`POST /api/v1/projects/{p}/cycles/{c}/proposal-rating`** (`campaigns:supervise`) stores the
+  rating beside the change request, as a `proposal_rating` artifact.
+  - It refuses a campaign's cycle, since a campaign's proposals are ruled at the increment gate.
+  - It also refuses a cycle that stored no change request, and an incomplete rating, naming every
+    reason at once.
+  - **The CLI verb** is `squadops cycles rate <project> <cycle> --rating-file …`.
+- **The per-mechanism report** takes `--proposal-cycle` and shows the proposal beside the build
+  half's mechanisms (`rated_proposal`): its criteria, its footprint, and the rating of exactly that
+  version. A rating of another version is named as such, and never shown as this one's.
+
+**Not built:** a dummy workload after a gate so that the proposal could be ruled. That cycle would
+pretend it might build, and its ruling would arm a gate that launches nothing.
+
 ---
 
 ## Revision history
