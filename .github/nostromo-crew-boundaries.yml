@@ -39,6 +39,13 @@ roles:
       - "sips/**"
       - "docs/architecture/**"
 
+  # Adversarial reviewer: reads everything, changes nothing. An empty allowlist rather than a
+  # denylist, and the strictest entry in the file — a reviewer who can edit the thing reviewed is
+  # not a reviewer. Dallas returns seam tables, objections and questions through Buzz and pull
+  # request review, never through a diff.
+  dallas:
+    allowed: []
+
   # Science Officer: proof only. The author of a proof must not be able to modify
   # the thing proved, so this is an allowlist rather than a denylist.
   ash:

@@ -73,7 +73,10 @@ def violations(files: list[str], role: str, rules: dict) -> list[str]:
         allowed = spec["allowed"]
         for f in files:
             if not any(matches(f, p) for p in allowed):
-                out.append(f"{f} — {role} may only touch: {', '.join(allowed)}")
+                # An empty allowlist is a real configuration, not a mistake: a reviewer may touch
+                # nothing. "may only touch: " with nothing after it reads like a bug in the check.
+                where = ", ".join(allowed) if allowed else "no path in this repository"
+                out.append(f"{f} — {role} may only touch: {where}")
     else:
         for pattern in spec.get("forbidden", []):
             for f in files:
