@@ -970,13 +970,15 @@ def log_since(moment: datetime) -> str:
     return moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def login() -> None:
+def login(squadops: str = SQUADOPS) -> None:
     """Refresh the token immediately before any state-changing call — it expires in minutes,
     and gate approvals land hours after launch. Do NOT pass --keycloak-url (the override
-    logs in at Keycloak and then 401s on every API call; silent at login)."""
+    logs in at Keycloak and then 401s on every API call; silent at login). ``squadops`` is
+    the CLI to log in with: another script's resolves the main checkout's (the recovery
+    diagnostics, #1803), where this one's is its own tree's."""
     user = os.environ.get("SQUADOPS_DRIVER_USER", "squadops-admin")
     password = os.environ.get("SQUADOPS_DRIVER_PASSWORD", "admin123")
-    sh(f"{SQUADOPS} login -u {shlex.quote(user)} -p {shlex.quote(password)}")
+    sh(f"{squadops} login -u {shlex.quote(user)} -p {shlex.quote(password)}")
 
 
 def image_id(service: str) -> str:
