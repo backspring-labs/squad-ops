@@ -181,11 +181,9 @@ def _plan_gate_waiting(applied: list[dict]) -> str | None:
     if not since:
         return None
     gate, run = since[0]["binding"]["gate"], since[0]["target"]
-    seats = sorted({r["binding"]["seat"] for r in since if r["target"] == run})
     return (
-        f"The `{gate}` gate on run `{run}` waits on an answer to its design question, past the "
-        f"{' and the '.join(seats)} ruling bound. Answer it (the runbook's §4), or abort the "
-        f"campaign."
+        f"The `{gate}` gate on run `{run}` waits on an answer to its design question, past its "
+        f"ruling bound. Answer it (the runbook's §4), or abort the campaign."
     )
 
 
@@ -193,14 +191,13 @@ def _awaiting_ruling(campaign: dict, applied: list[dict]) -> str:
     """The gate's ask, with each ruling bound it has already waited past (§9.2; §24ae)."""
     proposal = campaign.get("proposal") or {}
     binding = proposal.get("binding") or {}
-    overdue = [
-        r["binding"]["seat"]
-        for r in applied
-        if r["operation"] == ControlOperation.RULING_OVERDUE
+    overdue = any(
+        r["operation"] == ControlOperation.RULING_OVERDUE
         and r["target"] == proposal.get("run_id")
         and r["binding"].get("version") == binding.get("version")
-    ]
-    late = f", past the {' and the '.join(overdue)} ruling bound" if overdue else ""
+        for r in applied
+    )
+    late = ", past its ruling bound" if overdue else ""
     return (
         f"The increment gate waits on a ruling for `{binding.get('proposal_id')}` "
         f"v{binding.get('version')}{late}. Rule it, or abort the campaign."

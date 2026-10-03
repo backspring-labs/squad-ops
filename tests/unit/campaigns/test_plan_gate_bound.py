@@ -23,7 +23,7 @@ from tests.unit.campaigns.builders import campaign, cycle_for, move
 
 S = CampaignState
 CID = "cmp_plangate0001"
-CREW, OWNER = 1800, 12 * 3600
+BOUND = 1800  # the builders' policy: the supervisor's ruling bound (§24al)
 OPENED = datetime(2026, 10, 3, 15, 0, tzinfo=UTC)
 SEQUENCE = [
     {"type": "proposal", "gate": "progress_increment_ruling"},
@@ -112,7 +112,7 @@ async def _world():
         _run("run_f", 2, "framing"),
     ):
         await cycles.create_run(dataclasses.replace(run, cycle_id=cycle.cycle_id))
-    now = [OPENED + timedelta(seconds=CREW)]
+    now = [OPENED + timedelta(seconds=BOUND)]
     progress = CampaignProgress(
         campaigns=campaigns,
         cycles=cycles,
@@ -124,13 +124,13 @@ async def _world():
     return campaigns, cycles, progress, now
 
 
-async def test_the_sweep_bounds_a_plan_gate_once_per_seat_and_answers_nothing():
+async def test_the_sweep_bounds_a_plan_gate_once_and_answers_nothing():
     """Entered at ``CampaignProgress.sweep_ruling_bounds``, the call ``main._sweep_campaigns`` makes
     every interval. Bugs caught: a plan gate left waiting with no record (#1708); a row written
     every sweep; the campaign moved by the bound; the gate decided by it."""
     campaigns, cycles, progress, now = await _world()
 
-    crew = await progress.sweep_ruling_bounds()
+    first = await progress.sweep_ruling_bounds()
     again = await progress.sweep_ruling_bounds()
     # The reading itself owes only what is unwritten: no transaction per sweep for a row on record.
     gate = waiting_gate(
@@ -145,16 +145,13 @@ async def test_the_sweep_bounds_a_plan_gate_once_per_seat_and_answers_nothing():
         await campaigns.get_campaign(CID), await campaigns.control_log(CID), gate, now[0]
     )
     assert owed == []
-    now[0] = OPENED + timedelta(seconds=OWNER)
-    owner = await progress.sweep_ruling_bounds()
+    now[0] = OPENED + timedelta(seconds=24 * BOUND)
+    later = await progress.sweep_ruling_bounds()
 
-    assert [
-        (e.operation, e.binding["seat"], e.binding["gate"], e.target) for e in crew + owner
-    ] == [
-        (ControlOperation.RULING_OVERDUE, "crew", "progress_plan_review", "run_f"),
-        (ControlOperation.RULING_OVERDUE, "owner", "progress_plan_review", "run_f"),
+    assert [(e.operation, e.binding["gate"], e.target) for e in first] == [
+        (ControlOperation.RULING_OVERDUE, "progress_plan_review", "run_f"),
     ]
-    assert again == []
+    assert again == [] and later == []
     assert (await campaigns.get_campaign(CID)).state is S.BUILDING
     assert (await cycles.get_run("run_f")).gate_decisions == ()
 
@@ -178,7 +175,7 @@ async def test_the_digest_asks_for_the_answer_until_the_campaign_moves_on():
 
     ask = (
         "- The `progress_plan_review` gate on run `run_f` waits on an answer to its design "
-        "question, past the crew ruling bound."
+        "question, past its ruling bound."
     )
     assert ask in waiting
     assert "progress_plan_review" not in moved

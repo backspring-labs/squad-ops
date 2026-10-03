@@ -51,8 +51,8 @@ class RunAdmission:
         It waits, still queued, reading the lease every ``BOX_POLL_S``, and starts once the
         lease is released or has expired. A wait, not a failure (§24l), so an approval granted
         while the supervisor held the box does not become a dead increment. Its ceiling is the
-        holding campaign's ``owner_ruling_bound_s``, the longest any ruling may take: a lease
-        renewed past it fails the run with the reason. An executor with no campaign registry
+        holding campaign's ``lease_expiry_s``, one full lease: a supervisor renewing past it fails
+        the run with the reason (§24al: the bound no longer names a seat). An executor with no campaign registry
         has no lease to read.
         """
         registry = self._campaign_registry
@@ -75,7 +75,7 @@ class RunAdmission:
                 started = now
                 if lease.campaign_id:
                     campaign = await registry.get_campaign(lease.campaign_id)
-                    bound_s = float(campaign.policy.owner_ruling_bound_s)
+                    bound_s = float(campaign.policy.lease_expiry_s)
                 logger.warning(
                     "run_start_waiting_for_box run=%s held_by=%s campaign=%s until=%s bound_s=%.0f",
                     run_id,
@@ -86,8 +86,8 @@ class RunAdmission:
                 )
             if (now - started).total_seconds() >= bound_s:
                 raise _ExecutionError(
-                    f"run {run_id} waited {bound_s:.0f}s for the box, the holding campaign's "
-                    f"owner ruling bound, and the supervisor ({lease.held_by}) still holds it "
+                    f"run {run_id} waited {bound_s:.0f}s for the box, one full lease of the holding "
+                    f"campaign, and the supervisor ({lease.held_by}) still holds it "
                     f"(SIP-0109 §9.3)"
                 )
             await asyncio.sleep(BOX_POLL_S)

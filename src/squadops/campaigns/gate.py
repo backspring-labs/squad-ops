@@ -16,7 +16,6 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from enum import StrEnum
 from typing import Any
 
 import yaml
@@ -47,13 +46,6 @@ EXECUTOR_ROLE = "executor"
 
 #: The role on the rows the campaign sweep writes (§24ae).
 SWEEP_ROLE = "sweep"
-
-
-class RulingSeat(StrEnum):
-    """Whose ruling bound the gate passed (§9.2): the crew's supervisor first, then the owner."""
-
-    CREW = "crew"
-    OWNER = "owner"
 
 
 def increment_sequence_refusal(defaults: Mapping[str, Any]) -> str | None:
@@ -179,12 +171,13 @@ def gate_opened_at(log: Sequence[ControlLogEntry]) -> datetime | None:
 def ruling_overdue_transitions(
     campaign: Campaign, log: Sequence[ControlLogEntry], now: datetime
 ) -> list[CampaignTransition]:
-    """The ``ruling_overdue`` rows the gate is owed at ``now`` (§9.2, §9.5; §24ae): one per seat
-    whose bound has passed since the gate opened, each written once per proposal version.
+    """The ``ruling_overdue`` row the gate is owed at ``now`` (§9.2, §9.5; §24ae, §24al): one,
+    once the supervisor's bound has passed since the gate opened, written once per proposal
+    version. The bound is the supervisor's, whoever holds the seat.
 
-    Each keeps the campaign ``awaiting_ruling``, which is the bound's pause, and nothing rules
-    on the gate: a ruling still resolves it, the owner's or the crew's (§9.5's row), and the
-    campaign never proceeds unapproved. Pure, so the sweep writes exactly what this decides.
+    It keeps the campaign ``awaiting_ruling``, which is the bound's pause, and nothing rules on
+    the gate: a ruling still resolves it, and the campaign never proceeds unapproved. Pure, so the
+    sweep writes exactly what this decides.
     """
     proposal = campaign.proposal
     if campaign.state is not CampaignState.AWAITING_RULING or proposal is None:
@@ -193,40 +186,33 @@ def ruling_overdue_transitions(
     if opened is None:
         return []
     written = {e.idempotency_key for e in log if e.outcome is ControlOutcome.APPLIED}
-    waited = (now - opened).total_seconds()
-    owed = []
-    for seat, bound in (
-        (RulingSeat.CREW, campaign.policy.crew_ruling_bound_s),
-        (RulingSeat.OWNER, campaign.policy.owner_ruling_bound_s),
-    ):
-        binding = proposal.binding
-        key = f"ruling_overdue:{seat}:{proposal.run_id}:v{binding.version}"
-        if waited < bound or key in written:
-            continue
-        owed.append(
-            CampaignTransition(
-                operation=ControlOperation.RULING_OVERDUE,
-                actor="squadops",
-                actor_role=SWEEP_ROLE,
-                reason=(
-                    f"the increment gate opened at {opened.isoformat()} and the {seat}'s ruling "
-                    f"bound of {bound}s has passed; the campaign stays awaiting_ruling and "
-                    f"nothing proceeds unapproved"
-                ),
-                idempotency_key=key,
-                expected_state=CampaignState.AWAITING_RULING,
-                next_state=CampaignState.AWAITING_RULING,
-                target=proposal.run_id,
-                binding={
-                    "seat": seat.value,
-                    "proposal_id": binding.proposal_id,
-                    "version": binding.version,
-                    "opened_at": opened.isoformat(),
-                    "bound_s": bound,
-                },
-            )
+    bound = campaign.policy.ruling_bound_s
+    binding = proposal.binding
+    key = f"ruling_overdue:{proposal.run_id}:v{binding.version}"
+    if (now - opened).total_seconds() < bound or key in written:
+        return []
+    return [
+        CampaignTransition(
+            operation=ControlOperation.RULING_OVERDUE,
+            actor="squadops",
+            actor_role=SWEEP_ROLE,
+            reason=(
+                f"the increment gate opened at {opened.isoformat()} and its ruling bound of "
+                f"{bound}s has passed; the campaign stays awaiting_ruling and nothing proceeds "
+                f"unapproved"
+            ),
+            idempotency_key=key,
+            expected_state=CampaignState.AWAITING_RULING,
+            next_state=CampaignState.AWAITING_RULING,
+            target=proposal.run_id,
+            binding={
+                "proposal_id": binding.proposal_id,
+                "version": binding.version,
+                "opened_at": opened.isoformat(),
+                "bound_s": bound,
+            },
         )
-    return owed
+    ]
 
 
 # =============================================================================
@@ -270,52 +256,45 @@ def plan_gate_overdue_transitions(
     waiting: WaitingGate | None,
     now: datetime,
 ) -> list[CampaignTransition]:
-    """The ``ruling_overdue`` rows a cycle's plan gate is owed at ``now`` (#1708): one per seat
-    whose ruling bound has passed since the gate opened, each written once per run and gate.
+    """The ``ruling_overdue`` row a cycle's plan gate is owed at ``now`` (#1708, §24al): one, once
+    the supervisor's bound has passed since the gate opened, written once per run and gate.
 
     The same bound the increment gate has (§24ae), applied to the gate a framing stops at when its
-    plan asks a design question. Each row keeps the campaign in the state it is in, and nothing
-    decides the gate: the supervisor's or the owner's answer still resolves it, and nothing is
-    approved by the bound. Pure, so the sweep writes exactly what this decides.
+    plan asks a design question. The row keeps the campaign in the state it is in, and nothing
+    decides the gate: the supervisor's answer still resolves it, and nothing is approved by the
+    bound. Pure, so the sweep writes exactly what this decides.
     """
     if waiting is None or waiting.gate_name == INCREMENT_RULING_GATE:
         return []
     if campaign.state not in _GATE_WAITING_STATES:
         return []
     written = {e.idempotency_key for e in log if e.outcome is ControlOutcome.APPLIED}
-    waited = (now - waiting.opened_at).total_seconds()
-    owed = []
-    for seat, bound in (
-        (RulingSeat.CREW, campaign.policy.crew_ruling_bound_s),
-        (RulingSeat.OWNER, campaign.policy.owner_ruling_bound_s),
-    ):
-        key = f"gate_overdue:{seat}:{waiting.run_id}:{waiting.gate_name}"
-        if waited < bound or key in written:
-            continue
-        owed.append(
-            CampaignTransition(
-                operation=ControlOperation.RULING_OVERDUE,
-                actor="squadops",
-                actor_role=SWEEP_ROLE,
-                reason=(
-                    f"the {waiting.gate_name} gate on run {waiting.run_id} opened at "
-                    f"{waiting.opened_at.isoformat()} and the {seat}'s ruling bound of {bound}s has "
-                    f"passed; it waits on an answer and nothing proceeds without one"
-                ),
-                idempotency_key=key,
-                expected_state=campaign.state,
-                next_state=campaign.state,
-                target=waiting.run_id,
-                binding={
-                    "seat": seat.value,
-                    "gate": waiting.gate_name,
-                    "cycle_id": waiting.cycle_id,
-                    "opened_at": waiting.opened_at.isoformat(),
-                    "bound_s": bound,
-                },
-            )
+    bound = campaign.policy.ruling_bound_s
+    key = f"gate_overdue:{waiting.run_id}:{waiting.gate_name}"
+    if (now - waiting.opened_at).total_seconds() < bound or key in written:
+        return []
+    return [
+        CampaignTransition(
+            operation=ControlOperation.RULING_OVERDUE,
+            actor="squadops",
+            actor_role=SWEEP_ROLE,
+            reason=(
+                f"the {waiting.gate_name} gate on run {waiting.run_id} opened at "
+                f"{waiting.opened_at.isoformat()} and its ruling bound of {bound}s has passed; it "
+                f"waits on an answer and nothing proceeds without one"
+            ),
+            idempotency_key=key,
+            expected_state=campaign.state,
+            next_state=campaign.state,
+            target=waiting.run_id,
+            binding={
+                "gate": waiting.gate_name,
+                "cycle_id": waiting.cycle_id,
+                "opened_at": waiting.opened_at.isoformat(),
+                "bound_s": bound,
+            },
         )
-    return owed
+    ]
 
 
 #: The states in which a campaign's cycle can wait at a gate after framing: the calibration, an

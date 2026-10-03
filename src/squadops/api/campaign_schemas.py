@@ -32,8 +32,7 @@ class CampaignPolicyDTO(BaseModel):
     max_proposal_revisions: int
     max_rejected_proposals_in_row: int
     max_unaccepted_increments: int
-    crew_ruling_bound_s: int
-    owner_ruling_bound_s: int
+    ruling_bound_s: int
     lease_expiry_s: int
     launch_blocked_interval_s: int
     launch_blocked_attempts: int

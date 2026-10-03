@@ -1793,17 +1793,17 @@ class TestGateRejectsAQaSuiteOutsideTheStacksNamespace:
 class TestNoRunStartsWhileTheSupervisorHoldsTheBox:
     """SIP-0109 §9.3 (#1802), entering at ``execute_run``: a run does not go ``running`` while the
     supervisor holds the box. It waits queued and starts once the lease is given back, and past
-    the holding campaign's owner ruling bound it fails without starting."""
+    one full lease of the holding campaign (``lease_expiry_s``) it fails without starting."""
 
     @staticmethod
-    async def _held(owner_ruling_bound_s: int = 43200):
+    async def _held(lease_expiry_s: int = 3600):
         from adapters.cycles.memory_campaign_registry import MemoryCampaignRegistry
         from squadops.campaigns.models import CampaignState, CampaignTransition, ControlOperation
         from tests.unit.campaigns.builders import campaign, move, policy
 
         reg = MemoryCampaignRegistry()
         await reg.create_campaign(
-            campaign("cmp_c", policy=policy(owner_ruling_bound_s=owner_ruling_bound_s)),
+            campaign("cmp_c", policy=policy(lease_expiry_s=lease_expiry_s)),
             actor="o",
             actor_role="o",
             reason="r",
@@ -1852,12 +1852,12 @@ class TestNoRunStartsWhileTheSupervisorHoldsTheBox:
         assert waits == [[]]  # it waited once, and nothing had started the run
         assert (statuses[0], statuses[-1]) == (RunStatus.RUNNING, RunStatus.COMPLETED)
 
-    async def test_a_box_held_past_the_owners_ruling_bound_fails_the_run_unstarted(
+    async def test_a_box_held_past_one_full_lease_fails_the_run_unstarted(
         self, executor, mock_registry
     ):
         from datetime import UTC, datetime, timedelta
 
-        reg, _release = await self._held(owner_ruling_bound_s=60)
+        reg, _release = await self._held(lease_expiry_s=60)
         executor._campaign_registry = reg
 
         class Clock:

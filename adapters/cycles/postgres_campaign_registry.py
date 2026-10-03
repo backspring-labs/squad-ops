@@ -503,7 +503,7 @@ def _row_to_campaign(row: asyncpg.Record) -> Campaign:
             # §24ah: absent on a campaign stored before the field existed.
             target_accepted_increments=objective.get("target_accepted_increments"),
         ),
-        policy=CampaignPolicy(**row["policy"]),
+        policy=CampaignPolicy.from_stored(row["policy"]),
         state=CampaignState(row["state"]),
         created_at=row["created_at"],
         created_by=row["created_by"],

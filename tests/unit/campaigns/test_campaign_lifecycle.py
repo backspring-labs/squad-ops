@@ -159,7 +159,7 @@ def test_a_record_cannot_launch():
     ("override", "message"),
     [
         (dict(max_cycles=0), "max_cycles must be >= 1"),
-        (dict(crew_ruling_bound_s=0), "crew_ruling_bound_s must be >= 1"),
+        (dict(ruling_bound_s=0), "ruling_bound_s must be >= 1"),
         # Reached at zero: the campaign would stop or pause on its first decision.
         (dict(max_unaccepted_increments=0), "max_unaccepted_increments must be >= 1"),
         (dict(max_repair_cycles_per_increment=-1), "must be >= 0"),
@@ -189,3 +189,19 @@ def test_the_launch_id_is_derived_from_the_deciding_row():
     assert launch_id_for("ctl_3f9a0c1b2d4e") == "lnc_3f9a0c1b2d4e"
     with pytest.raises(ValueError, match="not a control-log entry id"):
         launch_id_for("cyc_3f9a0c1b2d4e")
+
+
+def test_a_policy_stored_with_two_seat_bounds_reads_as_one_supervisors():
+    """§24al: the ruling bound is the supervisor's, whoever holds the seat. Bug caught: every
+    campaign stored before the change unreadable (the Postgres loader builds its policy from the
+    stored row), or its bound read from the fallback seat instead of the supervisor's."""
+    import dataclasses
+
+    from squadops.campaigns.models import CampaignPolicy
+
+    current = dataclasses.asdict(policy(ruling_bound_s=900))
+    legacy = {k: v for k, v in current.items() if k != "ruling_bound_s"}
+    legacy |= {"crew_ruling_bound_s": 1800, "owner_ruling_bound_s": 43200}
+
+    assert CampaignPolicy.from_stored(legacy).ruling_bound_s == 1800
+    assert CampaignPolicy.from_stored(current) == policy(ruling_bound_s=900)
