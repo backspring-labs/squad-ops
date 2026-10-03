@@ -19,6 +19,7 @@ from squadops.cycles.models import (
     Cycle,
     CycleNotFoundError,
     ProjectNotFoundError,
+    Run,
     RunStatus,
     SquadProfile,
     TaskFlowPolicy,
@@ -712,3 +713,79 @@ class TestCreateCyclePreflight:
         # Scoped to availability for the reason above: `gpt-4` is pulled here but has no
         # MODEL_SPECS entry, which #1145's check reports separately and correctly.
         assert [w for w in resp.json()["warnings"] if w["code"] != "model_unregistered"] == []
+
+
+class TestListCyclesPages:
+    """#1891: the list returned the newest 50 cycles with no way to ask for more, and
+    ``?status=`` filtered within them. Entered at the HTTP route over a real memory registry."""
+
+    @pytest.fixture
+    async def paged(self, mock_project_registry, mock_squad_profile, mock_flow_executor):
+        from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
+        from squadops.cycles.models import RunStatus
+
+        registry = MemoryCycleRegistry()
+        start = datetime(2026, 9, 1, tzinfo=UTC)
+        for i in range(60):
+            await registry.create_cycle(
+                Cycle(
+                    cycle_id=f"cyc_{i:03d}",
+                    project_id="hello_squad",
+                    created_at=start + timedelta(hours=i),
+                    created_by="t",
+                    prd_ref=None,
+                    squad_profile_id="full",
+                    squad_profile_snapshot_ref="sha256:abc",
+                    task_flow_policy=TaskFlowPolicy(mode="sequential"),
+                    build_strategy="fresh",
+                )
+            )
+            run = await registry.create_run(
+                Run(
+                    run_id=f"run_{i:03d}",
+                    cycle_id=f"cyc_{i:03d}",
+                    run_number=1,
+                    status="queued",
+                    initiated_by="api",
+                    resolved_config_hash="h",
+                )
+            )
+            await registry.update_run_status(run.run_id, RunStatus.RUNNING)
+            # every tenth cycle failed: cyc_000 is the only one older than the newest 50
+            failed = i % 10 == 0
+            await registry.update_run_status(
+                run.run_id, RunStatus.FAILED if failed else RunStatus.COMPLETED
+            )
+        app = FastAPI()
+        app.include_router(router)
+        register_domain_error_handlers(app)
+        app.state.project_registry = mock_project_registry
+        app.state.cycle_registry = registry
+        app.state.squad_profile = mock_squad_profile
+        app.state.flow_executor = mock_flow_executor
+        return TestClient(app)
+
+    def _ids(self, client, query: str = "") -> list[str]:
+        resp = client.get(f"/api/v1/projects/hello_squad/cycles{query}")
+        assert resp.status_code == 200, resp.text
+        return [c["cycle_id"] for c in resp.json()]
+
+    async def test_a_page_and_the_next_reach_the_whole_history(self, paged):
+        """Bug caught: no way to reach cycle 51, so the oldest history was unreadable."""
+        first = self._ids(paged)
+        older = self._ids(paged, "?limit=50&offset=50")
+
+        assert (len(first), first[0], first[-1]) == (50, "cyc_059", "cyc_010")
+        assert older == [f"cyc_{i:03d}" for i in range(9, -1, -1)]
+
+    async def test_a_status_filter_reads_past_the_newest_page(self, paged):
+        """Bug caught: ``?status=failed`` answering "which of the newest 50 failed", so the
+        failed cycle older than them was never listed."""
+        assert self._ids(paged, "?status=failed") == [
+            f"cyc_{i:03d}" for i in (50, 40, 30, 20, 10, 0)
+        ]
+        assert self._ids(paged, "?status=failed&limit=2&offset=5") == ["cyc_000"]
+
+    @pytest.mark.parametrize("query", ["?limit=0", "?limit=501", "?offset=-1"])
+    async def test_a_page_outside_the_bounds_is_refused(self, paged, query):
+        assert paged.get(f"/api/v1/projects/hello_squad/cycles{query}").status_code == 422

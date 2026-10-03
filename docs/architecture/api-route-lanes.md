@@ -76,6 +76,16 @@ Every router registered in `src/squadops/api/runtime/main.py`:
 - `docs/ideas/pre_1_0_hardening.md` claimed the `/api/v1/` prefix was "consistent"; corrected
   to point here.
 
+## Paging a list (#1891)
+
+A list route that can outgrow one response takes `limit` (a stated default and a maximum) and
+`offset`, and returns its page newest first. A filter applies **before** the page: `?status=failed`
+is the newest failed cycles, never the failed ones among the newest `limit`. A full page means
+there may be more, so ask again from `offset + limit`. The response stays the bare list; no total
+is returned, because a derived filter would have to read the whole history to count it. The cycles
+list (`GET /api/v1/projects/{project_id}/cycles`, default 50, maximum 500) is the first route on
+this convention, and the CLI says so when a page is full.
+
 ## Adding a route — the checklist
 
 1. Which lane? If you cannot answer from the table, stop and propose.

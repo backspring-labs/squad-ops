@@ -69,6 +69,9 @@ class CycleRegistryPort(ABC):
         page over that ordering, so a bounded read returns the most recent
         cycles (#684's inert-detection history walk depends on this).
 
+        ``status`` filters *before* the page (#1891): a bounded read with a status returns the
+        newest cycles in that status, never the matches among the newest ``limit`` cycles.
+
         ``created_before`` anchors that window at a point in time instead of at now
         (#1526): with it, a bounded read returns the cycles most recent *as of* that
         instant. A history walk about a perspective cycle must pass the cycle's own

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 
 from squadops import __version__ as SQUADOPS_VERSION
 from squadops._version import resolve_git_sha
@@ -518,11 +518,19 @@ async def create_cycle(
 
 
 @router.get("", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
-async def list_cycles(request: Request, project_id: str, status: CycleStatus | None = None):
+async def list_cycles(
+    request: Request,
+    project_id: str,
+    status: CycleStatus | None = None,
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+):
+    """A page of the project's cycles, newest first; ``status`` filters before the page
+    (#1891). A full page means there may be more: ask again from ``offset + limit``."""
     from squadops.api.runtime.deps import get_cycle_registry
 
     registry = get_cycle_registry(request)
-    cycles = await registry.list_cycles(project_id, status=status)
+    cycles = await registry.list_cycles(project_id, status=status, limit=limit, offset=offset)
     results = []
     for c in cycles:
         runs = await registry.list_runs(c.cycle_id)

@@ -56,6 +56,9 @@ from squadops.ports.cycles.cycle_registry import CycleRegistryPort
 
 logger = logging.getLogger(__name__)
 
+#: Rows read per batch while a status filter fills a page (#1891).
+_STATUS_SCAN_BATCH = 200
+
 
 #: Every column a cycle row is created with, in ``_cycle_insert_args``' order. One list, so
 #: ``create_cycle`` and ``create_cycle_for_launch`` cannot store a cycle differently.
@@ -160,40 +163,54 @@ class PostgresCycleRegistry(CycleRegistryPort):
         offset: int = 0,
         created_before: datetime | None = None,
     ) -> list[Cycle]:
-        async with self._pool.acquire() as conn:
-            if created_before is None:
-                rows = await conn.fetch(
-                    "SELECT * FROM cycle_registry WHERE project_id = $1 "
-                    "ORDER BY created_at DESC LIMIT $2 OFFSET $3",
-                    project_id,
-                    limit,
-                    offset,
-                )
-            else:
-                rows = await conn.fetch(
-                    "SELECT * FROM cycle_registry WHERE project_id = $1 "
-                    "AND created_at < $4 "
-                    "ORDER BY created_at DESC LIMIT $2 OFFSET $3",
-                    project_id,
-                    limit,
-                    offset,
-                    created_before,
-                )
         if status is None:
+            rows = await self._cycle_rows(project_id, limit, offset, created_before)
             return [self._row_to_cycle(r) for r in rows]
 
-        # N+1 correctness path (D6): derive status via _latest_run_for_cycle
-        result = []
-        for row in rows:
-            cycle = self._row_to_cycle(row)
-            latest = await self._latest_run_for_cycle(cycle.cycle_id)
-            derived = derive_cycle_status(
-                [latest] if latest else [],
-                cycle_cancelled=row["cancelled"],
+        # #1891: the filter comes before the page, as the port says. Status is derived from
+        # each cycle's latest run (N+1, D6), so the project is read newest first in batches
+        # until the page is filled; filtering one LIMIT'd page returned "the matches among the
+        # newest 50", which the API showed as the project's history (11 of 156 failed cycles).
+        matched: list[Cycle] = []
+        read = 0
+        while len(matched) < offset + limit:
+            rows = await self._cycle_rows(project_id, _STATUS_SCAN_BATCH, read, created_before)
+            if not rows:
+                break
+            read += len(rows)
+            for row in rows:
+                latest = await self._latest_run_for_cycle(row["cycle_id"])
+                derived = derive_cycle_status(
+                    [latest] if latest else [], cycle_cancelled=row["cancelled"]
+                )
+                if derived == status:
+                    matched.append(self._row_to_cycle(row))
+            if len(rows) < _STATUS_SCAN_BATCH:
+                break  # a short batch is the project's last
+        return matched[offset : offset + limit]
+
+    async def _cycle_rows(
+        self, project_id: str, limit: int, offset: int, created_before: datetime | None
+    ) -> list:
+        """One page of the project's cycle rows, newest first, as of ``created_before``."""
+        async with self._pool.acquire() as conn:
+            if created_before is None:
+                return await conn.fetch(
+                    "SELECT * FROM cycle_registry WHERE project_id = $1 "
+                    "ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+                    project_id,
+                    limit,
+                    offset,
+                )
+            return await conn.fetch(
+                "SELECT * FROM cycle_registry WHERE project_id = $1 "
+                "AND created_at < $4 "
+                "ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+                project_id,
+                limit,
+                offset,
+                created_before,
             )
-            if derived == status:
-                result.append(cycle)
-        return result
 
     async def cancel_cycle(self, cycle_id: str) -> None:
         async with self._pool.acquire() as conn:
