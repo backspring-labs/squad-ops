@@ -2367,3 +2367,54 @@ apart.
   - the convergence replay's reading (#1764): scoped never converged worse than whole-file and
     regressed in no sample, against 1 and 8. Its one open question is nine empty scoped dev repairs
     on Next.js, which the harness cannot explain because it keeps no raw response (#1788).
+
+## 46s. 2026-10-03 — §38 step 7, the flip, as built: a repair's whole re-emission of an offered file is refused
+
+**What changed.** Step 7 lands. Before it, a repair's whole-file response to a file it was offered
+for editing was accepted and recorded as an unauthorized fallback (§46a). From this change it is
+**refused with a typed policy outcome** (§9.4, §21, §39.5).
+- **What is refused:** a repair response that re-emits, whole, any file it was offered for editing
+  (`_anchorable_files`: an existing file the repair may write, minus scaffold shells). The whole
+  response is refused, edits included, as one invalid revision refuses its transaction (§14).
+  - Its typed refusal is `whole_file_without_fallback_authority`, under the `emission_failure`
+    reason `whole_file_refused`.
+- **How it is handled:** like a refused anchored edit (§22).
+  - The repair is re-prompted once, inside its step, with the refusal line.
+  - The retry template now explains this reason.
+  - A refusal that stands is a repair that failed. It is never refunded as an absent emission.
+- **What is still admitted:** a file the repair creates. A scaffold shell is still filled by slot.
+- **What the record keeps:** the revision form still reads such a response as `whole_file`, with
+  `whole_file_offered` and `whole_file_refused` naming the files. Its `replaced` reading counts
+  nothing, because nothing was applied.
+- **The prompt now says it:** the scoped output section states that a whole re-emission of an
+  offered file is refused, and nothing from it is used.
+- **Fallback authority has no producer.** §9.4 admits a whole-file fallback with explicit authority
+  or a typed policy decision, plus a grant and recorded reasons. Nothing produces that authority on
+  main (§46q), so **the refusal is unconditional** until a producer exists. Building one is a later,
+  separate change.
+- **Not in step 7's scope:** a self-evaluation pass and a qa re-take (SIP-0086 §12a change 3) are
+  not repairs. Their edit forms are unchanged and still accept a whole re-emission.
+
+**The evidence (step 7's proof, §46a item 5).**
+- **The pre-flip window replayed through the refusal.** Every repair revision form in the stored
+  set records (`var/verification_sets/**`, 1.8.1 through 1.9) was read. Of 120 repair forms:
+  - 62 `edits`, 30 `none`, 26 `new_files_only`, 2 `fill`;
+  - **0 `whole_file`.**
+
+  The refusal turns away no recorded repair. The only recorded whole-file re-emissions are two in
+  the aborted scoped-repair readiness probe of 2026-09-15
+  (`var/probes/2026-09-15-scoped-repair-readiness/`): an instrument run, not a set record.
+- **#1788's re-run** (`var/convergence-replay/replay-1788.jsonl`, 12 samples on rebuild 13) explains
+  the nine empty scoped Next.js repairs:
+  - nine are correct abstentions or disputes: a dev repair was routed at a defect in the qa-owned
+    suite;
+  - two are reasoning that ran to the 12,288-token completion cap;
+  - one is an anchored edit.
+
+  None is scoped revision failing to edit (#1788's comment of 2026-10-03).
+- **The checkpoint pair on the deploy that carries the flip** is read there and appended here.
+
+**Who ruled.** The owner, 2026-10-03, on the 2.0 plan's decision 1 ("flip, once #1788 has
+explained the nine empty scoped Next.js repairs") and #1788's reading: "go with your
+recommendation on the flip". N is read as texture, not as a gate, as the 2.0 plan's decision 1
+ruled.

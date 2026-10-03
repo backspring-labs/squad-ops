@@ -418,6 +418,46 @@ def fragment_anchor_count(parse: AnchoredEditParse, base_files: Mapping[str, str
 #: (SIP-0107 §22; #1053 refunds only an absent emission).
 EMISSION_FAILURE_ANCHORED_EDIT_REFUSED = "anchored_edit_refused"
 
+#: SIP-0107 §9.4, from §38 step 7 (§46s): the ``emission_failure`` reason a repair carries when it
+#: re-emitted, whole, an existing file it was offered for editing. Whole-file replacement of an
+#: existing artifact needs explicit fallback authority, and nothing grants it, so none is
+#: admitted: a repair that failed, never an absent one, and never refunded.
+EMISSION_FAILURE_WHOLE_FILE_REFUSED = "whole_file_refused"
+
+#: The typed refusal named on each refused whole-file re-emission (§9.4, §21, §39.5).
+REFUSAL_WHOLE_FILE_WITHOUT_AUTHORITY = "whole_file_without_fallback_authority"
+
+#: The emission failures that mean a repair's revision was refused rather than absent: the
+#: in-step retry answers both, and neither round is refunded (§22).
+REVISION_REFUSED_FAILURES = frozenset(
+    {EMISSION_FAILURE_ANCHORED_EDIT_REFUSED, EMISSION_FAILURE_WHOLE_FILE_REFUSED}
+)
+
+
+def whole_file_refusals(
+    artifacts: Iterable[Mapping[str, Any]], offered: Iterable[str]
+) -> list[str]:
+    """The paths of the artifacts that re-emit, whole, an existing file the repair was offered for
+    editing (§9.4, from §38 step 7). A file the repair creates is not refused, and the
+    extractor's no-file marker (``emission_fallback``) is not a file."""
+    offered_paths = {p for p in (normalize_ws_path(str(o)) for o in offered) if p}
+    return sorted(
+        {
+            path
+            for artifact in artifacts
+            if not artifact.get("emission_fallback")
+            and (path := normalize_ws_path(str(artifact.get("name") or ""))) in offered_paths
+        }
+    )
+
+
+def whole_file_refusal_line(path: str) -> str:
+    """The typed refusal the repair is told, and the record keeps, for one refused file."""
+    return (
+        f"{path}: {REFUSAL_WHOLE_FILE_WITHOUT_AUTHORITY}: the file exists, so revise it with edit "
+        "blocks; re-emitting it whole is refused (SIP-0107 §9.4)"
+    )
+
 
 @dataclass(frozen=True)
 class AnchoredApplication:
@@ -591,6 +631,9 @@ def revision_form_reading(
         outputs.get("anchored_edits") if isinstance(outputs.get("anchored_edits"), dict) else None
     )
     edited = sorted({str(e.get("path")) for e in (record or {}).get("edits") or []})
+    # §46s: a whole re-emission refused by the flip yields no artifact, but it is still the form
+    # the response took, so it is read as one.
+    refused_whole = sorted(str(p) for p in outputs.get("whole_file_refused") or [])
     emitted = [
         a
         for a in outputs.get("artifacts") or []
@@ -599,7 +642,7 @@ def revision_form_reading(
     fills = [a for a in emitted if a.get("type") == "fill"]
     files = sorted({str(a["name"]) for a in emitted if a.get("type") != "fill"} - set(edited))
     sizes = dict(base_chars or {})
-    whole_offered = [f for f in files if f in offered]
+    whole_offered = sorted({f for f in files if f in offered} | set(refused_whole))
     # §46p (#1583): a file that exists in the base and comes back whole is a whole-file
     # response whether or not the edit form offered it — deploy D's Next.js qa repair
     # re-emitted the defective suite whole in fill mode, where nothing was offered, and read
@@ -636,7 +679,8 @@ def revision_form_reading(
                 "of": of,
                 "pct": round(100 * chars / of) if of else None,
             }
-    for path in whole_offered + whole_unoffered:
+    # A refused re-emission replaced nothing: it was never applied.
+    for path in [p for p in whole_offered if p not in refused_whole] + whole_unoffered:
         of = sizes.get(path)
         replaced[path] = {"chars": of, "of": of, "pct": 100}
     return {
@@ -647,6 +691,8 @@ def revision_form_reading(
         "failure_reason": failure.get("reason"),
         "edited": edited,
         "whole_file_offered": whole_offered,
+        # §46s: the offered files whose whole re-emission the flip refused.
+        "whole_file_refused": refused_whole,
         # §46p: base files re-emitted whole that the edit form never offered.
         "whole_file_unoffered": whole_unoffered,
         "new_files": new_files,

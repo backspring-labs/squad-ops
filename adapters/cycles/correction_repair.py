@@ -309,13 +309,13 @@ def _qa_scaffold_repair_inputs(
 
 
 def _anchored_edits_refused(result: Any) -> bool:
-    """Whether a repair step's anchored edits were refused on its retry too (SIP-0107 §22)."""
-    from squadops.capabilities.anchored_edits import EMISSION_FAILURE_ANCHORED_EDIT_REFUSED
+    """Whether a repair step's revision was refused on its retry too: its anchored edits, or a
+    whole re-emission of an existing file (SIP-0107 §22, §46s). A refused repair failed; it is
+    never an absent one, so its round is not refunded."""
+    from squadops.capabilities.anchored_edits import REVISION_REFUSED_FAILURES
 
     marker = (getattr(result, "outputs", None) or {}).get("emission_failure")
-    return (
-        isinstance(marker, dict) and marker.get("reason") == EMISSION_FAILURE_ANCHORED_EDIT_REFUSED
-    )
+    return isinstance(marker, dict) and marker.get("reason") in REVISION_REFUSED_FAILURES
 
 
 def _empty_emission_signature(result: Any) -> list[str]:
