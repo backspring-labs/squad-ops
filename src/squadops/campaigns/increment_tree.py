@@ -134,6 +134,9 @@ class IncrementSeed:
     #: The candidate manifest, then the approved change request when stored.
     plan_refs: tuple[str, ...]
     contract_ref: str | None
+    #: The approved change request on its own (#1938): what the promotion reads each criterion's
+    #: statement from. ``None`` when the proposal stored none.
+    change_request_ref: str | None = None
 
 
 async def increment_seed(vault: Any, registry: Any, cycle: Any, completed_run: Any) -> Any:
@@ -176,6 +179,7 @@ async def increment_seed(vault: Any, registry: Any, cycle: Any, completed_run: A
     return IncrementSeed(
         plan_refs=(manifest, *((request,) if request else ())),
         contract_ref=latest(CONTRACT_ARTIFACT_TYPE),
+        change_request_ref=request,
     )
 
 

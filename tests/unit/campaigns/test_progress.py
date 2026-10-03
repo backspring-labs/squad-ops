@@ -587,10 +587,15 @@ async def test_an_accepted_increment_is_promoted_and_its_criteria_frozen_for_the
 
 
 async def test_a_frozen_criterion_carries_what_it_asserts_to_the_next_proposal(calibrating, stored):
-    """#1938, entered at the completion hook. Bug caught: the next proposal told only the frozen
-    criteria's ids. Shakeout 6's strategy role, told "do not break T3", re-proposed the feature T3
-    froze. The promotion freezes each criterion's statement and surface from the approved change
-    request, and the next increment's launch carries them."""
+    """#1938, entered at the completion hook, on the live shape. Bug caught: the next proposal
+    told only the frozen criteria's ids. Shakeout 6's strategy role, told "do not break T3",
+    re-proposed the feature T3 froze. The promotion freezes each criterion's statement and surface
+    from the approved change request, and the next increment's launch carries them.
+
+    The live shape matters: an increment cycle's row carries no plan refs, which ride each run's
+    forwarding. The request is on the approved proposal run, promoted, where the seed finds it.
+    The first build of this fix read the cycle's refs, passed a test that put them there, and
+    on shakeout 6's real records would have frozen ids only."""
     from squadops.campaigns.change_request import (
         ProposalContext,
         stored_change_request,
@@ -610,6 +615,10 @@ async def test_a_frozen_criterion_carries_what_it_asserts_to_the_next_proposal(c
             (),
         ),
     ).change_request
+    stored["art_candidate"] = (
+        _ref("art_candidate", "interface_manifest.yaml", "interface_manifest", -2),
+        MANIFEST.encode(),
+    )
     stored["art_cr"] = (
         _ref("art_cr", "change_request.yaml", "change_request", -1),
         stored_change_request(request).encode(),
@@ -632,7 +641,18 @@ async def test_a_frozen_criterion_carries_what_it_asserts_to_the_next_proposal(c
         "cyc_inc",
         "implementation",
         "completed",
-        overrides={"campaign_proposal": block, "plan_artifact_refs": ["art_cr"]},
+        overrides={"campaign_proposal": block},
+    )
+    await w.cycles.create_run(
+        Run(
+            run_id="run_prop",
+            cycle_id="cyc_inc",
+            run_number=0,
+            status="completed",
+            initiated_by="system",
+            resolved_config_hash="cfg",
+            workload_type="proposal",
+        )
     )
     await w.end("cyc_inc", increment_run, CycleStopReason.SEQUENCE_COMPLETED)
 

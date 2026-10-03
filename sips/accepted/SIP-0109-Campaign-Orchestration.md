@@ -2224,9 +2224,14 @@ framework's context, not the squad's judgement.
 
 **As built:**
 - **The promotion freezes what a criterion asserts.** Each frozen record carries the criterion's
-  `statement` and `surface` from the approved change request (`approved_change_request`, the reader
-  the framing already uses). A request that cannot be read leaves the record as before, by id, and
-  never stops the promotion.
+  `statement` and `surface` from the approved change request. The request is found through the
+  increment's seed (`increment_seed`, which now names `change_request_ref`), the way every later
+  workload finds it: the approved proposal run's promoted request. A request that cannot be read
+  leaves the record as before, by id, and never stops the promotion.
+- **Read against shakeout 6's real records first.** The first build read the request from the
+  cycle's `plan_artifact_refs`. The live cycle row carries none, because the refs ride each run's
+  forwarding, so it would have frozen ids only, and it passed a unit test that put the refs on the
+  cycle. On increment 2's records the corrected read freezes T3's statement.
 - **The proposal renders it.** Each frozen criterion shows as
   `- `T3`: <statement> (on `<surface>`)`. The request template says that each is something the
   application already does, and that restating one adds nothing a test can fail on before the
