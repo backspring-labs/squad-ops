@@ -263,6 +263,9 @@ class RunLoopSummary:
     #: ``None`` on a row written before each was recorded; ``()`` when the run had none.
     round_failures: tuple[RoundFailure, ...] | None = ()
     absent_emissions: tuple[AbsentEmission, ...] | None = ()
+    #: #1710: every revision form a task of the run took (a repair's, a self-evaluation pass's,
+    #: a qa re-take's), each with its task. ``None`` on a row written before they were recorded.
+    revision_forms: tuple[dict[str, Any], ...] | None = ()
     summary_version: int = RUN_LOOP_SUMMARY_VERSION
 
     def to_dict(self) -> dict[str, Any]:
@@ -280,6 +283,9 @@ class RunLoopSummary:
                 None
                 if self.absent_emissions is None
                 else [a.to_dict() for a in self.absent_emissions]
+            ),
+            "revision_forms": (
+                None if self.revision_forms is None else [dict(f) for f in self.revision_forms]
             ),
         }
 
@@ -307,5 +313,34 @@ class RunLoopSummary:
                 if data.get("absent_emissions") is None
                 else tuple(AbsentEmission.from_dict(a) for a in data["absent_emissions"])
             ),
+            revision_forms=(
+                None
+                if data.get("revision_forms") is None
+                else tuple(dict(f) for f in data["revision_forms"])
+            ),
             summary_version=int(data.get("summary_version") or RUN_LOOP_SUMMARY_VERSION),
         )
+
+
+#: Where each kind of revision form rides in a task's outputs (#1710): a repair's single form,
+#: a self-evaluation's one per pass, a qa re-take's single form.
+REVISION_FORM_OUTPUTS: tuple[tuple[str, str], ...] = (
+    ("revision_form", "repair"),
+    ("self_eval_revision_forms", "self_eval"),
+    ("qa_retake_revision_form", "qa_retake"),
+)
+
+
+def revision_forms_of(
+    task_id: str, task_type: str, outputs: Mapping[str, Any] | None
+) -> list[dict]:
+    """The revision forms a task's outputs carry, each named by its kind and its task (#1710).
+    Pure: the dispatcher reads every reply through it, so the run's record holds what the agents'
+    logs held."""
+    forms: list[dict] = []
+    for key, kind in REVISION_FORM_OUTPUTS:
+        value = (outputs or {}).get(key)
+        for form in value if isinstance(value, list) else [value] if value else []:
+            if isinstance(form, Mapping):
+                forms.append({"kind": kind, "task_id": task_id, "task_type": task_type, **form})
+    return forms

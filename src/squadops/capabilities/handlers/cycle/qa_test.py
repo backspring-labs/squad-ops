@@ -951,10 +951,11 @@ class QATestHandler(_CycleTaskHandler):
         inputs: dict[str, Any],
         shape: _WholeFileTests,
         offered: dict[str, int],
-    ) -> tuple[str, list[dict], dict[str, Any] | None]:
+    ) -> tuple[str, list[dict], dict[str, Any] | None, dict[str, Any] | None]:
         """A re-take's edits applied to the suite it was shown, in one transaction (SIP-0107 §14):
         ``(the response for file extraction, the suite's files it yields, the failure's outputs if
-        refused)``.
+        refused, the form the re-take took)``. The form is the task's record (#1710), carried in
+        its outputs whether the re-take was refused or not.
 
         The files it yields are the edited ones and, once the response produced anything, every
         offered file it neither edited nor re-emitted, byte for byte (§17's preservation, #1755).
@@ -966,7 +967,7 @@ class QATestHandler(_CycleTaskHandler):
         A saw on every such re-take, and the files it carried unchanged.
         """
         if not offered:
-            return content, [], None
+            return content, [], None, None
         import json
 
         from squadops.capabilities.anchored_edits import (
@@ -1049,19 +1050,16 @@ class QATestHandler(_CycleTaskHandler):
             if produced and refused is None
             else []
         )
-        logger.info(
-            "qa_retake_revision_form %s",
-            json.dumps(
-                {
-                    "handler": self._handler_name,
-                    "task_type": str(self._task_type),
-                    **reading,
-                    "carried": [a["name"] for a in carried],
-                },
-                sort_keys=True,
-            ),
-        )
-        return body, edited + carried, refused
+        form = {
+            "handler": self._handler_name,
+            "task_type": str(self._task_type),
+            **reading,
+            "carried": [a["name"] for a in carried],
+        }
+        logger.info("qa_retake_revision_form %s", json.dumps(form, sort_keys=True))
+        if refused is not None:
+            refused["qa_retake_revision_form"] = form
+        return body, edited + carried, refused, form
 
     async def _assembly_notes_section(
         self, context: ExecutionContext, inputs: dict[str, Any]
@@ -1789,7 +1787,7 @@ class QATestHandler(_CycleTaskHandler):
 
         # SIP-0086 §12a change 3: a re-take's edits apply to the suite it was shown, in one
         # transaction; a refused one fails the task with the refusal, as a repair's does.
-        content, retake_edited, retake_refused = self._apply_retake_edits(
+        content, retake_edited, retake_refused, retake_form = self._apply_retake_edits(
             context, content, inputs, shape, retake_offered
         )
         if retake_refused is not None:
@@ -1830,6 +1828,9 @@ class QATestHandler(_CycleTaskHandler):
 
         # SIP-0086: Output validation + self-evaluation
         evidence_extra: dict[str, Any] = {}
+        if retake_form is not None:
+            # #1710: the form the re-take took is the task's record, not only a log line.
+            evidence_extra["qa_retake_revision_form"] = retake_form
         output_validation_enabled = resolved_config.get("output_validation", False)
 
         artifacts = shape.merge(artifacts, evidence_extra)

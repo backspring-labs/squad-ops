@@ -629,6 +629,20 @@ class CampaignProgress:
             launch=built,
         )
 
+    async def _revision_forms(self, cycle_id: str) -> tuple:
+        """#1710: each run's revision forms, from its persisted summary, in run order."""
+        forms = []
+        for run in sorted(await self._cycles.list_runs(cycle_id), key=lambda r: r.run_number):
+            summary = await self._cycles.get_run_loop_summary(run.run_id)
+            forms.append(
+                {
+                    "run_id": run.run_id,
+                    "workload_type": run.workload_type,
+                    "forms": None if summary is None else summary.revision_forms,
+                }
+            )
+        return tuple(forms)
+
     async def materialize_package(self, campaign_id: str) -> tuple[str, str, str]:
         """Store the campaign's evidence package and its digest (§14, #1710): a projection of
         its records, idempotent by the package's identity. Returns (identity, the package's
@@ -651,6 +665,7 @@ class CampaignProgress:
                     kind=intent.cycle_kind.value,
                     assessment=assessment,
                     failure_records=await self._cycles.get_failure_records(intent.cycle_id),
+                    revision_forms=await self._revision_forms(intent.cycle_id),
                 )
             )
         doc = package(campaign, log, launches, records)

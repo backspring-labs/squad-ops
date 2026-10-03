@@ -1232,6 +1232,11 @@ class _CycleTaskHandler(CapabilityHandler):
             outputs["failure_classification"] = FailureClassification.WORK_PRODUCT
         if "validation_result" in evidence_extra:
             outputs["validation_result"] = evidence_extra["validation_result"]
+        # #1710: the revision forms a task's own passes took are its record, carried in its
+        # outputs on both branches so the run keeps them; a log line dies with the container.
+        for key in ("self_eval_revision_forms", "qa_retake_revision_form"):
+            if key in evidence_extra:
+                outputs[key] = evidence_extra[key]
 
     def _finish(
         self,

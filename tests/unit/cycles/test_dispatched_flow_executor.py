@@ -259,6 +259,36 @@ class TestSequentialHappyPath:
         # SIP-0108 §4.1: a run that reached the end of its tasks records that it completed.
         assert summary.terminal == RunTerminalDecision(kind=TerminalKind.COMPLETED)
 
+    async def test_finalization_persists_every_revision_form_the_runs_tasks_took(
+        self, executor, mock_registry, mock_queue
+    ) -> None:
+        """#1710, entered at ``execute_run``: the forms a run's tasks took reach its persisted
+        summary, each named by its kind and task. Bug caught: the forms only in the agents' logs,
+        which the next rebuild destroys, so a campaign's package can never carry them."""
+        dispatched: list[tuple[str, str]] = []
+
+        def responder(env):
+            dispatched.append((env["task_id"], env["task_type"]))
+            return TaskResult(
+                task_id=env["task_id"],
+                status="SUCCEEDED",
+                outputs={"summary": "stub", "artifacts": [], "revision_form": {"form": "edits"}},
+            )
+
+        mock_queue.reply_router.responder = responder
+        with patch(
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        _run_id, summary = mock_registry.record_run_loop_summary.await_args.args
+        assert dispatched, "the plan dispatched its tasks"
+        assert list(summary.revision_forms) == [
+            {"kind": "repair", "task_id": task_id, "task_type": task_type, "form": "edits"}
+            for task_id, task_type in dispatched
+        ]
+
     async def test_publish_called_5_times(self, executor, mock_queue) -> None:
         """queue.publish called once per pipeline step (5 total)."""
         self._wire_canned_replies(mock_queue)

@@ -220,6 +220,7 @@ class RunCompletion:
         contract: Any | None = None,
         usage: RunUsage | None = None,
         terminal: RunTerminalDecision | None = None,
+        revision_forms: tuple[dict, ...] = (),
     ) -> None:
         """Close observability traces and generate run report.
 
@@ -287,6 +288,7 @@ class RunCompletion:
                             terminal=terminal,
                             round_failures=ledger.round_failures if ledger else (),
                             absent_emissions=ledger.absent_emissions if ledger else (),
+                            revision_forms=tuple(revision_forms),
                         ),
                     )
                 except Exception:

@@ -124,6 +124,9 @@ async def test_a_pass_sees_the_failing_check_and_the_file_and_fixes_it_with_an_e
     assert stored["backend/routes.py"] == "import fastapi\n" + _ROUTES.rstrip("\n")
     (form,) = forms
     assert (form["pass"], form["form"], form["edited"]) == (1, "edits", ["backend/routes.py"])
+    # #1710: carried in the task's outputs, so the run keeps it after the agent's log is gone.
+    (kept,) = result.outputs["self_eval_revision_forms"]
+    assert (kept["pass"], kept["form"], kept["edited"]) == (1, "edits", ["backend/routes.py"])
 
 
 async def test_a_pass_that_re_emits_a_shown_file_whole_is_recorded_as_such(caplog):
