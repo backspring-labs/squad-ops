@@ -51,6 +51,7 @@ from adapters.cycles.task_naming import build_task_name
 from adapters.cycles.workload_gate import GateOutcome, WorkloadGate
 from squadops.capabilities.context_assembly import (
     ACCEPTANCE_WORKSPACE_FILTER,
+    INCREMENT_CANDIDATE_FILTER,
     LANDING_PRIOR_OUTPUTS,
     RETAKE_CURRENT_FILES_KEY,
     dispatch_artifact_filter_spec,
@@ -2563,11 +2564,19 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # curated prompt context — evaluation needs the full accepted tree
             # (scaffold siblings included) or runtime-level checks false-fail
             # correct fill files on their own contract-mandated imports.
+            # SIP-0109 §8 (#1880): an increment's evaluation judges the candidate with its qa
+            # suites, whose criterion files it freezes and runs; every other task, the tree
+            # its typed acceptance reads.
+            workspace_filter = (
+                INCREMENT_CANDIDATE_FILTER
+                if contract.increment_evaluation
+                else ACCEPTANCE_WORKSPACE_FILTER
+            )
             workspace_files = await self._resolve_artifact_contents(
                 envelope.task_type,
                 stored_artifacts,
                 include_repair_candidates=False,
-                filter_spec=ACCEPTANCE_WORKSPACE_FILTER.to_spec(),
+                filter_spec=workspace_filter.to_spec(),
             )
             if workspace_files:
                 extra_inputs["acceptance_workspace_files"] = workspace_files

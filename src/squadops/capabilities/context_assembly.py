@@ -154,6 +154,16 @@ ACCEPTANCE_WORKSPACE_FILTER = ArtifactFilter(
     by_type_fallback=("document",),
 )
 
+#: SIP-0109 §8: the tree an increment's evaluation judges — the candidate as built, with its qa
+#: suites. Discrimination freezes each criterion's own test file from it and runs it on both
+#: trees, so a workspace cut to source and config (the filter above) leaves every criterion
+#: ``not_run`` (#1880, the reference increment).
+INCREMENT_CANDIDATE_FILTER = ArtifactFilter(
+    by_producing_task=ACCEPTANCE_WORKSPACE_FILTER.by_producing_task,
+    by_type=(*ACCEPTANCE_WORKSPACE_FILTER.by_type, "test"),
+    by_type_fallback=ACCEPTANCE_WORKSPACE_FILTER.by_type_fallback,
+)
+
 _DEV_SURFACES = (
     SURFACE_ERROR_CONTRACT,
     SURFACE_MODEL,
