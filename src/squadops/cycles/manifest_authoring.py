@@ -119,6 +119,42 @@ def open_questions(manifest_content: str | None) -> tuple[str, ...]:
     )
 
 
+def resolve_answered_questions(
+    manifest_content: str, *, answer: str, answered_by: str, answered_at: str, where: str
+) -> str:
+    """The manifest with each question it declined to answer resolved by the answer its plan
+    gate recorded (SIP-0109 §24ad, #1885).
+
+    A question is asked once. The gate that stopped for it recorded the answer in its notes, and
+    the cycle was accepted on that answer. A campaign's next increment frames the accepted
+    manifest plus a delta; carrying the question over unresolved stopped every increment's gate
+    for a question already ruled. The decision now holds the answer as its ``choice`` and says
+    where it came from, and what was asked, in its ``warrant``.
+
+    Content with no open question comes back unchanged, byte for byte. Decisions sit outside
+    the manifest's structural projection (``Decision``), so no contract binding moves.
+    """
+    if not open_questions(manifest_content):
+        return manifest_content
+    import yaml
+
+    data = yaml.safe_load(manifest_content)
+    for decision in data.get("decisions") or []:
+        if not isinstance(decision, dict) or not decision.get("unresolved"):
+            continue
+        question = str(decision.get("question") or "").strip()
+        if not question:
+            continue
+        for key in ("unresolved", "question"):
+            decision.pop(key, None)
+        decision["choice"] = answer
+        decision["warrant"] = (
+            f"answered at {where}'s plan gate by {answered_by} at {answered_at}; "
+            f"the question was: {question}"
+        )
+    return yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
+
+
 def authors_interface_manifest(resolved_config: Mapping[str, Any] | None) -> bool:
     """True when the squad writes the manifest rather than binding a seeded one.
 

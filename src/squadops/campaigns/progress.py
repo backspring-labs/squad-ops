@@ -62,9 +62,12 @@ from squadops.campaigns.prior_cycle import prior_cycle_brief
 from squadops.cycles.contract_derivation import is_interface_manifest
 from squadops.cycles.cycle_assessment import CycleAssessment
 from squadops.cycles.cycle_end import CycleStopReason
+from squadops.cycles.gate_attribution import is_machine_decision
+from squadops.cycles.manifest_authoring import resolve_answered_questions
 from squadops.cycles.models import (
     ArtifactRef,
     Cycle,
+    GateDecision,
     GateDecisionValue,
     Run,
     RunStatus,
@@ -849,11 +852,37 @@ class CampaignProgress:
         if not manifests:
             return f"the accepted cycle {campaign.accepted.cycle_id} stored no interface manifest"
         _ref, content = await self._vault.retrieve(manifests[-1].artifact_id)
+        baseline = content.decode("utf-8")
+        # §24ad (#1885): a question the accepted cycle's gate answered is not asked again.
+        answer = await self._question_answer(campaign.accepted.cycle_id)
+        if answer is not None:
+            baseline = resolve_answered_questions(
+                baseline,
+                answer=str(answer.notes).strip(),
+                answered_by=answer.decided_by,
+                answered_at=answer.decided_at.isoformat(),
+                where=campaign.accepted.cycle_id,
+            )
         frozen = frozen_criteria(await self._campaigns.control_log(campaign.campaign_id))
         try:
-            return increment_launch(campaign, content.decode("utf-8"), frozen, abandoned)
+            return increment_launch(campaign, baseline, frozen, abandoned)
         except FileNotFoundError as e:
             return f"the policy's proposal profile cannot be loaded: {e}"
+
+    async def _question_answer(self, cycle_id: str) -> GateDecision | None:
+        """The answer a person gave at the cycle's framing gate: its latest approval that a
+        principal made, with notes. A machine pass-through answered nothing, and an approval
+        with no notes stated no answer, so neither resolves a question (§24ad)."""
+        answers = [
+            decision
+            for run in sorted(await self._cycles.list_runs(cycle_id), key=lambda r: r.run_number)
+            if run.workload_type == WorkloadType.FRAMING
+            for decision in run.gate_decisions
+            if decision.decision == GateDecisionValue.APPROVED
+            and not is_machine_decision(decision.decided_by)
+            and (decision.notes or "").strip()
+        ]
+        return answers[-1] if answers else None
 
     async def _evaluating(self, campaign: Campaign, cycle: Cycle) -> Campaign:
         result = await self._campaigns.transition(

@@ -1764,6 +1764,44 @@ it.
 **Not repaired:** shakeout 3's increment 1 was promoted before this fix, so its recorded identity is
 the partial tree. The campaign's later increments are judged against that partial record.
 
+### 24ad. A question the accepted cycle's gate answered is not asked again (2026-10-03, §7.3, §12a, #1885; decided under the 2.0 charter)
+
+An increment frames the accepted manifest plus its approved delta (§7.3). The manifest's open
+questions (`unresolved: true` decisions, SIP-0103 §5c.10) are what its plan gate stops for. The
+answer to one is recorded only in the approving gate decision's notes. The accepted manifest kept the
+question open.
+
+**The evidence:** shakeout 3's calibration was asked `datetime-format` and answered at 22:14 ET.
+Increment 1's candidate asked it again, and its plan gate stopped for a human at 23:03 ET. Shakeout
+4's calibration was asked `run-list-ordering`, answered at 01:41 ET; replayed on the stored records,
+increment 1's candidate (the accepted manifest plus `prop_567c4915dbc0`'s delta) still carries it. An
+unattended campaign would stop at every increment's gate for a question already ruled.
+
+**As built:** carried forward at the proposal, from the record.
+- **The proposal launch** reads the accepted manifest, then the accepted cycle's answer: the latest
+  approval on one of its framing runs that a principal made and that has notes
+  (`CampaignProgress._question_answer`).
+- **Each open question is resolved by it** (`resolve_answered_questions`). The decision's `choice` is
+  the gate's notes. Its `warrant` names the cycle, the actor and the time, and keeps the question
+  that was asked.
+- The resolved manifest is the proposal's baseline, so the candidate carries the answer. The
+  increment's gate then passes as `system:no_open_questions`. When that increment is accepted, its
+  manifest already holds the answer, so later increments inherit it with nothing to resolve.
+
+**What does not count as an answer:**
+- A machine pass-through answered nothing.
+- An approval with blank notes stated nothing. Its question stays open and is asked again, rather
+  than a ruling being invented.
+
+**Not chosen:**
+- **Rewriting the accepted manifest at promotion.** It would be a new write on a completed cycle, for
+  what one read at the proposal already gives.
+- **A campaign-level register of ruled questions.** It would be a second home for a decision the
+  manifest already models.
+
+Decisions sit outside the manifest's structural projection, so no contract binding or skeleton
+moves.
+
 ---
 
 ## Revision history
