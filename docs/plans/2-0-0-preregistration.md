@@ -23,10 +23,12 @@ are appended, and if the deploy moves, this registration is void and re-made.
 
    **The flip is merged (#1909, SIP-0107 §46s):** a repair's whole re-emission of an offered file is
    refused, typed, and retried once. Proof part 1: 0 of 120 recorded repair forms were `whole_file`.
-   **Proof part 2 must read before this registers:** a checkpoint pair (React and Next.js regression
-   rolls, #1910) on the deploy carrying the flip. The loop's exit shakeout then runs on that deploy.
-3. **The crew's commissioning evidence** decides who supervises (decision 2). Absent it, the owner
-   supervises through the same interface, and the record says so.
+   **Proof part 2 read (2026-10-03, SIP-0107 §46s):** the checkpoint pair on rebuild 16 had both
+   stacks accepted (`cyc_559e19c582d6` 21/21; `cyc_025e085a22b1` 16/16), and no repair was refused.
+3. **Who supervises is not a precondition** (SIP-0109 §24al, the owner's ruling of 2026-10-03:
+   "consider me or the crew as requiring the same need to supervise. it shouldn't impact squad ops
+   design"). The supervisor's seat is one seat with one ruling bound. Whoever holds it rules
+   through the same interface, and each ruling records its actor.
 4. **The box lease is enforced and proven on the registered deploy (#1802; the crew's review of this
    draft, 2026-10-03).** The guarantee "no launch beside a crew model" in §3 needs this. Until then,
    SIP-0109 §24l built the decisions and the reads, and nothing enforces them.
@@ -46,6 +48,14 @@ are appended, and if the deploy moves, this registration is void and re-made.
    - **The check is model-only (§24l).** It reads every engine's resident models, not the GPU's
      compute processes, until the runtime-api is granted the GPU (a `docker-compose.yml` change, the
      owner's). The guarantee is read as no launch beside an undeclared resident model.
+
+5. **#1803's recovery diagnostics have run on the registered deploy**, as the validation plan's §3
+   (#1807) designs them. The live launch-blocked diagnostic ran in #1802's proof. Left: a restart
+   at each state, a duplicate completion, a repeated ruling, an interruption during evaluation, and
+   an abort.
+6. **The evidence that dies with the logs is kept** (#1710, §24ak): each run's revision forms are on
+   its persisted summary and in the package. `scripts/dev/campaign_log_archive.py <campaign> --follow`
+   runs beside every campaign of the set.
 
 ---
 
@@ -105,7 +115,8 @@ are appended, and if the deploy moves, this registration is void and re-made.
 - **Data, not failure:** rejected proposals, repaired or abandoned increments, and an escalation that
   the owner resolves through the interface. Each is read by its signature.
 - **Interventions:**
-  - the owner ruling as fallback supervisor is reported separately from crew supervision;
+  - each ruling is through the supervision interface, and its actor is recorded. Who supervised is
+    read from the rulings, not claimed in advance (§24al);
   - any owner action outside the interface (a manual repair, a manual restart) voids that campaign's
     claim of unattended operation;
   - a `resume` naming an action on an escalation is inside the interface, and is reported per
@@ -154,7 +165,7 @@ The crew's conditions (plan §7):
 | `max_proposal_revisions` | **2** | no revision was needed in the shakeouts. The SIP's value |
 | `max_rejected_proposals_in_row` | **2** | conservative |
 | `max_unaccepted_increments` | **2** | the no-progress rule |
-| `crew_ruling_bound_s` / `owner_ruling_bound_s` | **1800 / 43200** | §9.2's defaults. Shakeout rulings took 0–30 min |
+| `ruling_bound_s` | **1800** | the supervisor's bound, whoever holds the seat (§24al). Shakeout rulings took 0–30 min. It records and asks; it never rules |
 | `lease_expiry_s` | **3600** | §9.3. Enforced only once #1802 lands (precondition 4); shakeout 6 runs with the lease enforced |
 | `launch_blocked_interval_s` / `launch_blocked_attempts` | **300 / 6** | §9.3; not reached in the shakeouts |
 | `calibration_profile` / `proposal_profile` / `squad_profile` | `validated-fullstack` / `campaign-increment` / `full-38` | every shakeout |
@@ -194,5 +205,5 @@ The crew's conditions (plan §7):
 
 1. Register as drafted, or amend.
 2. ~~Decision 1: flip or not.~~ Ruled 2026-10-03: flip (#1909). Its checkpoint pair is read before registering.
-3. Decision 2: who supervises.
+3. ~~Decision 2: who supervises.~~ Not a SquadOps decision (§24al): whoever holds the seat rules.
 4. The policy values in §5.
