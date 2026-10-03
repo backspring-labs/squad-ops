@@ -25,7 +25,7 @@ from squadops.campaigns.models import (
     LaunchRequest,
 )
 from squadops.cycles.models import Cycle, ValidationError
-from tests.unit.campaigns.builders import campaign, cycle_for, move
+from tests.unit.campaigns.builders import campaign, cycle_for, move, quiet_box
 
 S = CampaignState
 CID = "cmp_aaaaaaaaaaaa"
@@ -93,14 +93,21 @@ async def test_a_drained_intent_becomes_one_cycle_that_carries_its_campaign(camp
     cycles = MemoryCycleRegistry()
     launch_id = await _decide_launch(campaigns)
 
-    [launched] = await CampaignLauncher(campaigns, cycles, _builder(), actor="l1").drain()
+    [launched] = await CampaignLauncher(
+        campaigns, cycles, _builder(), actor="l1", box_verdict=quiet_box
+    ).drain()
 
     [cycle] = await _cycles_of(cycles)
     intent = await campaigns.get_launch_intent(launch_id)
     assert (cycle.campaign_id, cycle.kind) == (CID, "increment")
     assert (intent.state, intent.cycle_id) == (LaunchIntentState.LAUNCHED, cycle.cycle_id)
     assert launched.created and launched.cycle_id == cycle.cycle_id
-    assert await CampaignLauncher(campaigns, cycles, _builder(), actor="l1").drain() == []
+    assert (
+        await CampaignLauncher(
+            campaigns, cycles, _builder(), actor="l1", box_verdict=quiet_box
+        ).drain()
+        == []
+    )
 
 
 async def test_a_crash_before_the_cycle_is_created_is_relaunched_once(campaigns):
@@ -109,11 +116,11 @@ async def test_a_crash_before_the_cycle_is_created_is_relaunched_once(campaigns)
     build = _builder(fail_times=1)
 
     with pytest.raises(_Crash):
-        await CampaignLauncher(campaigns, cycles, build, actor="l1").drain()
+        await CampaignLauncher(campaigns, cycles, build, actor="l1", box_verdict=quiet_box).drain()
     assert await _cycles_of(cycles) == []
     assert (await campaigns.get_launch_intent(launch_id)).state is LaunchIntentState.PENDING
 
-    await CampaignLauncher(campaigns, cycles, build, actor="l1").drain()
+    await CampaignLauncher(campaigns, cycles, build, actor="l1", box_verdict=quiet_box).drain()
     assert len(await _cycles_of(cycles)) == 1
 
 
@@ -125,11 +132,15 @@ async def test_a_crash_after_the_cycle_is_created_finds_it_instead_of_creating_a
     launch_id = await _decide_launch(campaigns)
 
     with pytest.raises(_Crash):
-        await CampaignLauncher(campaigns, cycles, _builder(), actor="l1").drain()
+        await CampaignLauncher(
+            campaigns, cycles, _builder(), actor="l1", box_verdict=quiet_box
+        ).drain()
     [first] = await _cycles_of(cycles)
     assert (await campaigns.get_launch_intent(launch_id)).state is LaunchIntentState.PENDING
 
-    [launched] = await CampaignLauncher(campaigns, cycles, _builder(), actor="l1").drain()
+    [launched] = await CampaignLauncher(
+        campaigns, cycles, _builder(), actor="l1", box_verdict=quiet_box
+    ).drain()
 
     assert [c.cycle_id for c in await _cycles_of(cycles)] == [first.cycle_id]
     assert launched.cycle_id == first.cycle_id and not launched.created
@@ -142,8 +153,8 @@ async def test_two_launchers_on_one_intent_create_one_cycle(campaigns):
     build = _builder(yield_first=True)
 
     first, second = await asyncio.gather(
-        CampaignLauncher(campaigns, cycles, build, actor="l1").drain(),
-        CampaignLauncher(campaigns, cycles, build, actor="l2").drain(),
+        CampaignLauncher(campaigns, cycles, build, actor="l1", box_verdict=quiet_box).drain(),
+        CampaignLauncher(campaigns, cycles, build, actor="l2", box_verdict=quiet_box).drain(),
     )
 
     [cycle] = await _cycles_of(cycles)
@@ -174,7 +185,7 @@ async def test_a_launch_an_abort_overtook_is_cancelled_as_soon_as_it_exists(camp
         )
 
     [launched] = await CampaignLauncher(
-        campaigns, cycles, _builder(before_return=abort), actor="l1"
+        campaigns, cycles, _builder(before_return=abort), actor="l1", box_verdict=quiet_box
     ).drain()
 
     [cycle] = await _cycles_of(cycles)
@@ -192,7 +203,9 @@ async def test_a_built_cycle_that_does_not_name_the_intents_campaign_is_refused(
         return Cycle(**{**cycle.__dict__, "campaign_id": None})
 
     with pytest.raises(ValueError, match="the built cycle names campaign None"):
-        await CampaignLauncher(campaigns, cycles, unstamped, actor="l1").drain()
+        await CampaignLauncher(
+            campaigns, cycles, unstamped, actor="l1", box_verdict=quiet_box
+        ).drain()
     assert await _cycles_of(cycles) == []
 
 

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 
 from squadops import __version__ as SQUADOPS_VERSION
 from squadops._version import resolve_git_sha
@@ -456,15 +456,39 @@ async def prepare_cycle(
     return PreparedCycle(cycle, first_run(cycle, initiated_by=initiated_by), preflight_warnings)
 
 
-@router.post("", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
+@router.post("")
 async def create_cycle(
-    request: Request, project_id: str, body: CycleCreateRequest, background_tasks: BackgroundTasks
+    request: Request,
+    project_id: str,
+    body: CycleCreateRequest,
+    background_tasks: BackgroundTasks,
+    identity: Identity | None = Depends(require_scopes(Scope.CYCLES_WRITE)),
 ):
     """Create a Cycle + first Run (T17: atomic).
 
     SIP-0066: After persisting, enqueues execute_run as a background task.
+
+    SIP-0109 §9.3 (#1802): the box is read first. While the supervisor holds it, or an engine
+    holds a model the active deploy did not declare, the launch is refused with a 409 that
+    names the refusal and its reasons, and the refusal is a security-audit event. A campaign's
+    own launches are refused by its launcher instead, as a ``launch_blocked`` row.
     """
-    from squadops.api.runtime.deps import get_flow_executor
+    from squadops.api.runtime.deps import get_box_reader, get_flow_executor
+
+    verdict = await get_box_reader(request).verdict()
+    if not verdict.allowed:
+        _audit_launch_refused(request, identity, project_id, verdict)
+        raise HTTPException(
+            409,
+            {
+                "error": {
+                    "code": "BOX_REFUSED",
+                    "message": f"the box refuses a launch ({verdict.refusal}): "
+                    + "; ".join(verdict.reasons),
+                    "details": {"refusal": str(verdict.refusal), "reasons": list(verdict.reasons)},
+                }
+            },
+        )
 
     ports = CreationPorts.of_request(request)
     prepared = await prepare_cycle(ports, project_id, body)
@@ -514,6 +538,32 @@ async def create_cycle(
         task_flow_policy=body.task_flow_policy,
         resolved_config_hash=config_hash,
         warnings=[PreflightWarningDTO(code=w.code, message=w.message) for w in preflight_warnings],
+    )
+
+
+def _audit_launch_refused(
+    request: Request, identity: Identity | None, project_id: str, verdict
+) -> None:
+    """A launch the box refused, to the security audit (§9.3). Fail-open: the refusal stands
+    whether or not it is recorded."""
+    from squadops.api.runtime.deps import get_audit_port
+    from squadops.auth.models import AuditEvent
+
+    audit = get_audit_port(request)
+    if audit is None:
+        return
+    audit.record(
+        AuditEvent(
+            action="cycle.launch_refused",
+            actor_id=identity.user_id if identity is not None else "anonymous",
+            actor_type=identity.identity_type if identity is not None else "unknown",
+            resource_type="project",
+            resource_id=project_id,
+            result="denied",
+            denial_reason=str(verdict.refusal),
+            metadata=tuple(("reason", r) for r in verdict.reasons),
+            request_id=request.headers.get("X-Request-ID"),
+        )
     )
 
 

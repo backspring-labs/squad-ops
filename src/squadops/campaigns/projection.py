@@ -141,6 +141,16 @@ class ProjectingCampaignRegistry(CampaignRegistryPort):
             self._inner.mark_launch_intent_launched(launch_id, cycle_id, actor=actor)
         )
 
+    async def change_box_lease(
+        self, campaign_id: str, transition: CampaignTransition, *, runs_in_flight: tuple[str, ...]
+    ) -> TransitionResult:
+        return await self._projected(
+            self._inner.change_box_lease(campaign_id, transition, runs_in_flight=runs_in_flight)
+        )
+
+    async def box_lease(self):
+        return await self._inner.box_lease()
+
     async def create_campaign(self, campaign: Campaign, **kwargs) -> TransitionResult:
         return await self._projected(self._inner.create_campaign(campaign, **kwargs))
 

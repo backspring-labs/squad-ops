@@ -13,7 +13,8 @@ from datetime import UTC, datetime
 
 import asyncpg
 
-from squadops.campaigns import lifecycle
+from squadops.campaigns import box, lifecycle
+from squadops.campaigns.box import BoxLease, LeaseHolder
 from squadops.campaigns.models import (
     AcceptedTree,
     Campaign,
@@ -107,6 +108,13 @@ class PostgresCampaignRegistry(CampaignRegistryPort):
             )
         return [_row_to_entry(r) for r in rows]
 
+    async def box_lease(self) -> BoxLease | None:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                f"SELECT {_LEASE_COLUMNS} FROM box_lease WHERE box_id = 'box'"
+            )
+        return _row_to_lease(row) if row else None
+
     async def pending_launch_intents(self) -> list[LaunchIntent]:
         columns = ", ".join(f"i.{c.strip()}" for c in _INTENT_COLUMNS.split(","))
         async with self._pool.acquire() as conn:
@@ -189,10 +197,34 @@ class PostgresCampaignRegistry(CampaignRegistryPort):
     async def transition(
         self, campaign_id: str, transition: CampaignTransition
     ) -> TransitionResult:
+        if transition.operation.changes_the_lease:
+            raise ValueError(f"{transition.operation} is committed by change_box_lease")
         async with self._pool.acquire() as conn:
             async with conn.transaction():
                 campaign = await _locked_campaign(conn, campaign_id)
                 outcome = await _commit(conn, campaign, transition, marks=None)
+        return _result_or_raise(outcome)
+
+    async def change_box_lease(
+        self, campaign_id: str, transition: CampaignTransition, *, runs_in_flight: tuple[str, ...]
+    ) -> TransitionResult:
+        if not transition.operation.changes_the_lease:
+            raise ValueError(f"{transition.operation} does not change the box lease")
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                # The campaign's lock first, as every control operation takes it, then the
+                # lease's: its one row is seeded by the migration, so FOR UPDATE always locks.
+                campaign = await _locked_campaign(conn, campaign_id)
+                row = await conn.fetchrow(
+                    f"SELECT {_LEASE_COLUMNS} FROM box_lease WHERE box_id = 'box' FOR UPDATE"
+                )
+                outcome = await _commit(
+                    conn,
+                    campaign,
+                    transition,
+                    marks=None,
+                    lease_change=(_row_to_lease(row) if row else None, tuple(runs_in_flight)),
+                )
         return _result_or_raise(outcome)
 
     async def mark_launch_intent_launched(
@@ -248,6 +280,7 @@ async def _commit(
     transition: CampaignTransition,
     *,
     marks: tuple[LaunchIntent, str] | None,
+    lease_change: tuple[BoxLease | None, tuple[str, ...]] | None = None,
 ) -> TransitionResult | ControlLogEntry:
     """Adjudicate and write, inside the caller's transaction and under the campaign's lock.
     Returns the result, or the refusal's row for the caller to raise after commit."""
@@ -278,14 +311,30 @@ async def _commit(
         "SELECT COALESCE(MAX(seq), 0) + 1 FROM campaign_control_log WHERE campaign_id = $1",
         campaign.campaign_id,
     )
-    if verdict.refusal is not None:
+    refusal = verdict.refusal
+    lease = None
+    if refusal is None and lease_change is not None:
+        current, runs_in_flight = lease_change
+        refusal = box.lease_refusal(
+            transition.operation,
+            current,
+            campaign,
+            str(transition.binding["held_by"]),
+            now,
+            runs_in_flight,
+        )
+        if refusal is None:
+            lease = box.leased(
+                transition.operation, current, campaign.campaign_id, transition.binding, now
+            )
+    if refusal is not None:
         entry = lifecycle.control_log_entry(
             campaign,
             transition,
             entry_id=entry_id,
             seq=seq,
             committed_at=now,
-            refusal=verdict.refusal,
+            refusal=refusal,
             launch_id=None,
         )
         await _insert_entry(conn, entry)
@@ -334,7 +383,35 @@ async def _commit(
             f"VALUES ({_placeholders(_INTENT_COLUMNS)})",
             *_intent_args(intent),
         )
+    if lease is not None:
+        # An upsert, not an update: a lease row that went missing (a truncated campaigns table
+        # cascades to it) must not turn a committed change into one that wrote nothing.
+        await conn.execute(
+            "INSERT INTO box_lease (box_id, holder, held_by, campaign_id, acquired_at, expires_at) "
+            "VALUES ('box', $1, $2, $3, $4, $5) ON CONFLICT (box_id) DO UPDATE SET "
+            "holder = EXCLUDED.holder, held_by = EXCLUDED.held_by, "
+            "campaign_id = EXCLUDED.campaign_id, acquired_at = EXCLUDED.acquired_at, "
+            "expires_at = EXCLUDED.expires_at",
+            lease.holder.value,
+            lease.held_by,
+            lease.campaign_id,
+            lease.acquired_at,
+            lease.expires_at,
+        )
     return TransitionResult(entry=entry, campaign=updated, intent=intent, replayed=False)
+
+
+_LEASE_COLUMNS = "holder, held_by, campaign_id, acquired_at, expires_at"
+
+
+def _row_to_lease(row: asyncpg.Record) -> BoxLease:
+    return BoxLease(
+        holder=LeaseHolder(row["holder"]),
+        held_by=row["held_by"],
+        acquired_at=row["acquired_at"],
+        expires_at=row["expires_at"],
+        campaign_id=row["campaign_id"],
+    )
 
 
 async def _insert_entry(conn: asyncpg.Connection, entry: ControlLogEntry) -> None:

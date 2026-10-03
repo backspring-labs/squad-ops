@@ -27,7 +27,7 @@ from squadops.api.routes.campaigns import campaigns_router
 from squadops.api.routes.cycles.cycles import CreationPorts
 from squadops.auth.models import Identity, IdentityType, Role, scopes_for_roles
 from squadops.campaigns.models import CampaignState, LaunchIntentState
-from tests.unit.campaigns.builders import campaign, policy
+from tests.unit.campaigns.builders import campaign, policy, quiet_box
 
 pytestmark = pytest.mark.auth
 
@@ -62,6 +62,7 @@ class _World:
             ),
             flow_executor=self.executor,
             event_bus=MagicMock(),
+            box_verdict=quiet_box,
         )
         app = FastAPI()
 
@@ -220,6 +221,7 @@ async def test_a_restarted_process_starts_a_first_run_left_queued(world):
         creation=world.launch._creation,
         flow_executor=world.executor,
         event_bus=MagicMock(),
+        box_verdict=quiet_box,
     )
 
     await restarted.drain()

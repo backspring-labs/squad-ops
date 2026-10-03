@@ -98,3 +98,20 @@ def cycle_for(intent, *, project_id: str = "group_run"):
         campaign_id=intent.campaign_id,
         kind=intent.cycle_kind.value,
     )
+
+
+async def quiet_box():
+    """A box that allows every launch (SIP-0109 §9.3): no lease held, nothing loud resident."""
+    from squadops.campaigns.box import LaunchVerdict
+
+    return LaunchVerdict(None)
+
+
+class QuietBox:
+    """The runtime's box reader, for a world whose box is quiet and idle."""
+
+    async def verdict(self):
+        return await quiet_box()
+
+    async def runs_in_flight(self) -> tuple[str, ...]:
+        return ()

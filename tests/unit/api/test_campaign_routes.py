@@ -8,6 +8,8 @@ refusal not recorded, a resume to the wrong state, an abort that leaves a launch
 
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
@@ -27,7 +29,7 @@ from squadops.campaigns.models import (
     CycleKind,
     LaunchRequest,
 )
-from tests.unit.campaigns.builders import cycle_for, move
+from tests.unit.campaigns.builders import cycle_for, move, quiet_box
 
 pytestmark = pytest.mark.auth
 
@@ -323,7 +325,9 @@ async def test_abort_cancels_the_launched_cycle_by_the_existing_path(world):
     async def build(intent):
         return cycle_for(intent)
 
-    [launched] = await CampaignLauncher(world.campaigns, world.cycles, build, actor="l1").drain()
+    [launched] = await CampaignLauncher(
+        world.campaigns, world.cycles, build, actor="l1", box_verdict=quiet_box
+    ).drain()
 
     resp = _control(world, "abort", "k-abort").json()
 
@@ -409,3 +413,99 @@ def test_a_campaign_whose_measurement_has_no_reader_is_refused(world):
 
     assert response.status_code == 422
     assert "target_accepted_increments is required" in response.json()["detail"]["error"]["message"]
+
+
+# --- the box lease (SIP-0109 §9.3; #1802) ---------------------------------------------------------
+
+
+async def _at_the_gate(world: _World) -> None:
+    assert _create(world).status_code == 200
+    for i, state in enumerate(("calibrating", "at_proposal", "awaiting_ruling")):
+        await world.campaigns.transition("cmp_api000000001", move(CampaignState(state), f"g{i}"))
+
+
+async def test_the_supervisor_takes_and_returns_the_box_through_its_routes(world):
+    """Bug caught: a lease route that changes nothing, an acquire past the policy's expiry, or
+    a lease change that never reaches the security audit."""
+    from tests.unit.campaigns.builders import QuietBox
+
+    world.client.app.state.box_reader = QuietBox()
+    await _at_the_gate(world)
+    world.as_(_identity(Role.CAMPAIGN_SUPERVISOR, user="crew"))
+    url = "/api/v1/campaigns/cmp_api000000001/lease"
+
+    too_long = world.client.post(
+        url, json={"reason": "r", "idempotency_key": "l0", "expires_in_s": 3601}
+    )
+    taken = world.client.post(
+        url, json={"reason": "review", "idempotency_key": "l1", "expires_in_s": 900}
+    )
+    read = world.client.get(url)
+    returned = world.client.post(f"{url}/release", json={"reason": "done", "idempotency_key": "l2"})
+
+    assert too_long.status_code == 422
+    assert taken.status_code == 200
+    assert (taken.json()["lease"]["held_by"], taken.json()["lease"]["supervisor_holds"]) == (
+        "crew",
+        True,
+    )
+    assert read.json()["supervisor_holds"] is True
+    assert (returned.json()["lease"]["holder"], returned.json()["lease"]["supervisor_holds"]) == (
+        "squad",
+        False,
+    )
+    assert [e.action for e in world.audit.events if "lease" in e.action] == [
+        "campaign.lease_acquire",
+        "campaign.lease_release",
+    ]
+
+
+async def test_a_lease_asked_for_while_a_run_is_in_flight_is_refused_with_its_reason(world):
+    """Bug caught: the supervisor taking the box while a cycle's run is still executing."""
+
+    class Busy:
+        async def runs_in_flight(self):
+            return ("run_live",)
+
+    world.client.app.state.box_reader = Busy()
+    await _at_the_gate(world)
+    resp = world.client.post(
+        "/api/v1/campaigns/cmp_api000000001/lease",
+        json={"reason": "review", "idempotency_key": "l1", "expires_in_s": 900},
+    )
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["error"]["details"]["refusal"] == "run_in_flight"
+    assert await world.campaigns.box_lease() is None
+
+
+async def test_the_owners_resume_of_a_blocked_launch_escalation_retries_the_launch(world):
+    """Bug caught: an escalation over a blocked launch that the owner can only resume by naming
+    an action, which would write a second intent beside the one still pending."""
+    from squadops.campaigns.box import LaunchRefusal, LaunchVerdict
+    from squadops.campaigns.launch_blocking import first_refusal
+    from squadops.campaigns.models import CycleKind, LaunchRequest
+
+    assert _create(world).status_code == 200
+    cid = "cmp_api000000001"
+    await world.campaigns.transition(cid, move(CampaignState.CALIBRATING, "c"))
+    intent = (
+        await world.campaigns.transition(
+            cid, move(CampaignState.AT_PROPOSAL, "d", launch=LaunchRequest(CycleKind.INCREMENT))
+        )
+    ).intent
+    blocked = first_refusal(
+        await world.campaigns.get_campaign(cid),
+        intent,
+        LaunchVerdict(LaunchRefusal.SUPERVISOR_HOLDS_THE_BOX, ("held",)),
+        actor="launcher",
+    )
+    await world.campaigns.transition(
+        cid,
+        dataclasses.replace(blocked, next_state=CampaignState.ESCALATED, idempotency_key="esc"),
+    )
+
+    resp = _control(world, "resume", "r1")
+
+    assert resp.status_code == 200
+    assert resp.json()["campaign"]["state"] == "launch_blocked"
+    assert [i.state.value for i in await world.campaigns.launch_intents(cid)] == ["pending"]

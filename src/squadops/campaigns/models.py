@@ -63,8 +63,8 @@ class ControlOperation(StrEnum):
     Every member is an operation the SIP names: the supervision surface's create, pause, resume
     and abort (§13), the owner's start (draft → calibrating, launching the calibration cycle), a proposal submitted to the increment gate and the ruling on it (§9.2), the
     continuation decision (§10), the promotion transition (§10), and the launcher marking an
-    intent launched (§12b). Later steps add theirs (the lease, launch-blocked) as they gain
-    behaviour.
+    intent launched (§12b), the box lease's acquisition and release, and a launch the box
+    refused and its retry (§9.3, #1802).
     """
 
     CREATE = "create"
@@ -82,6 +82,15 @@ class ControlOperation(StrEnum):
     #: The increment gate has waited past a seat's ruling bound (§9.2, §9.5; §24ae). The campaign
     #: stays ``awaiting_ruling``, which is the bound's pause; nothing proceeds unapproved.
     RULING_OVERDUE = "ruling_overdue"
+    #: The supervisor takes the box at the increment gate, or gives it back (§9.3; #1802). A
+    #: record of the lease's change, committed with it; the campaign's state does not move.
+    LEASE_ACQUIRE = "lease_acquire"
+    LEASE_RELEASE = "lease_release"
+    #: The box refused a launch: the campaign waits in ``launch_blocked``, re-attempted at the
+    #: policy's interval, and escalates after its count (§9.3). The unblock returns it to the
+    #: state its launch was written from, and the launcher launches the held intent.
+    LAUNCH_BLOCKED = "launch_blocked"
+    LAUNCH_UNBLOCKED = "launch_unblocked"
 
     @property
     def records_only(self) -> bool:
@@ -91,7 +100,17 @@ class ControlOperation(StrEnum):
         made before an abort committed is still a cycle that exists, and its record must say so;
         a proposal's classification is read the morning after, when the campaign may have ended.
         """
-        return self in (ControlOperation.MARK_LAUNCHED, ControlOperation.CLASSIFY)
+        return self in (
+            ControlOperation.MARK_LAUNCHED,
+            ControlOperation.CLASSIFY,
+            ControlOperation.LEASE_ACQUIRE,
+            ControlOperation.LEASE_RELEASE,
+        )
+
+    @property
+    def changes_the_lease(self) -> bool:
+        """An operation committed with the box lease's change, by ``change_box_lease`` alone."""
+        return self in (ControlOperation.LEASE_ACQUIRE, ControlOperation.LEASE_RELEASE)
 
 
 class ProposalClassification(StrEnum):
@@ -129,6 +148,13 @@ class RefusalReason(StrEnum):
     #: A ruling the increment gate does not take: ``approved_with_refinements`` would make the
     #: supervisor an author (§9.2).
     ILLEGAL_RULING = "illegal_ruling"
+    #: The box lease (§9.3; #1802). The supervisor takes it only at the increment gate, while no
+    #: run is in flight on the box, and only when no other supervisor holds it; only its holder
+    #: gives it back.
+    GATE_NOT_OPEN = "gate_not_open"
+    RUN_IN_FLIGHT = "run_in_flight"
+    BOX_HELD = "box_held"
+    NOT_LEASE_HOLDER = "not_lease_holder"
 
 
 class LaunchIntentState(StrEnum):

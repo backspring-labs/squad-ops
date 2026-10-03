@@ -10,12 +10,13 @@ It borrows late (defended-bespoke-decisions §38), by the executor's own names.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
-from adapters.cycles.execution_errors import _RecruitmentRejectedError
+from adapters.cycles.execution_errors import _ExecutionError, _RecruitmentRejectedError
 from adapters.cycles.run_provisioning import RunInProgress
 from squadops.runtime import reasons
 from squadops.runtime.admission import admit_participants, release_participants
@@ -26,12 +27,15 @@ from squadops.runtime.recruitment import reserve_buffer_decision
 # come from, and an extraction changes no line anyone reads.
 logger = logging.getLogger("adapters.cycles.dispatched_flow_executor")
 
+#: How often a run waiting for the box reads the lease again (SIP-0109 §9.3; #1802).
+BOX_POLL_S = 15.0
+
 
 class RunAdmission:
     """Admits a run's participants before it seeds, and releases them when it ends."""
 
     #: What admission borrows from the executor, read at call time (§38).
-    BORROWED = ("_assignment_port", "_coordinator", "_focus_lease_port")
+    BORROWED = ("_assignment_port", "_coordinator", "_focus_lease_port", "_campaign_registry")
 
     def __init__(self, *, executor: Callable[[], Any]) -> None:
         self._executor = executor
@@ -40,6 +44,53 @@ class RunAdmission:
         if name in RunAdmission.BORROWED:
             return getattr(self._executor(), name)
         raise AttributeError(name)
+
+    async def await_box(self, run_id: str) -> None:
+        """SIP-0109 §9.3 (#1802): a run does not start while the supervisor holds the box.
+
+        It waits, still queued, reading the lease every ``BOX_POLL_S``, and starts once the
+        lease is released or has expired. A wait, not a failure (§24l), so an approval granted
+        while the supervisor held the box does not become a dead increment. Its ceiling is the
+        holding campaign's ``owner_ruling_bound_s``, the longest any ruling may take: a lease
+        renewed past it fails the run with the reason. An executor with no campaign registry
+        has no lease to read.
+        """
+        registry = self._campaign_registry
+        if registry is None:
+            return
+        started: datetime | None = None
+        bound_s = 0.0
+        while True:
+            lease = await registry.box_lease()
+            now = datetime.now(UTC)
+            if lease is None or not lease.supervisor_holds(now):
+                if started is not None:
+                    logger.info(
+                        "run_start_box_free run=%s waited_s=%.0f",
+                        run_id,
+                        (now - started).total_seconds(),
+                    )
+                return
+            if started is None:
+                started = now
+                if lease.campaign_id:
+                    campaign = await registry.get_campaign(lease.campaign_id)
+                    bound_s = float(campaign.policy.owner_ruling_bound_s)
+                logger.warning(
+                    "run_start_waiting_for_box run=%s held_by=%s campaign=%s until=%s bound_s=%.0f",
+                    run_id,
+                    lease.held_by,
+                    lease.campaign_id,
+                    lease.expires_at,
+                    bound_s,
+                )
+            if (now - started).total_seconds() >= bound_s:
+                raise _ExecutionError(
+                    f"run {run_id} waited {bound_s:.0f}s for the box, the holding campaign's "
+                    f"owner ruling bound, and the supervisor ({lease.held_by}) still holds it "
+                    f"(SIP-0109 §9.3)"
+                )
+            await asyncio.sleep(BOX_POLL_S)
 
     async def admit(
         self, state: RunInProgress, participating_agent_ids: set[str], run_id: str

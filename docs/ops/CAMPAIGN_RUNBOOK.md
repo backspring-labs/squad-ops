@@ -45,7 +45,7 @@ A campaign needs a human only in these states. Everything else is the campaign w
 | an open plan gate (`progress_plan_review` with no decision) | the framing asked a design question the manifest left `unresolved` | answer it (§4) |
 | `escalated` | the decision named an action it could not launch, or a row that needs the owner | read why, fix if it is the framework, resume with an action (§5) |
 | `paused` | a limit held the next action (§9.5), or the supervisor paused it | the owner's resume executes the held action |
-| `launch_blocked` | the box was not quiet at a launch (§9.3) | it retries on its own, then escalates |
+| `launch_blocked` | the box refused a launch (§9.3): the supervisor holds it, or a model the deploy did not load is resident | it retries every `launch_blocked_interval_s`, then escalates; after the escalation, `resume` with no `--action` retries it once the box is free |
 | `completed` | the campaign ended by its own rules | read the digest (§8) |
 
 ```bash
@@ -68,6 +68,20 @@ failed reads in a row.
 ## 3. Ruling at the increment gate
 
 The proposal is a typed change request, stored on the proposal run as `change_request.yaml`.
+
+**A supervisor that runs inference on the Spark takes the box first** (§9.3, §24ai). While it holds
+the lease, no cycle launches and no run starts; a launch is refused (a 409 from the CLI, a
+`launch_blocked` row in a campaign), and a run waits queued. Give it back, with the models unloaded,
+before ruling:
+
+```bash
+squadops campaigns lease acquire <campaign_id> --expires-in 1800 --reason "reviewing prop_… v1"
+squadops campaigns lease show <campaign_id>
+squadops campaigns lease release <campaign_id> --reason "ruled; models unloaded"
+```
+
+The lease is taken only at an open increment gate, only with no run in flight, and only from the
+squad. It expires on its own, so a supervisor that crashes cannot hold the box.
 
 ```bash
 squadops artifacts list --project <project> --cycle <cycle_id> --run <proposal_run_id>
