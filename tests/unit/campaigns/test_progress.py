@@ -1048,3 +1048,103 @@ def test_a_manifest_with_no_open_question_is_carried_byte_for_byte():
     )
 
     assert again is resolved
+
+
+async def test_an_accepted_repair_proposes_from_the_manifest_it_ran_against(
+    calibrating, stored, monkeypatch
+):
+    """#1902, shakeout 4 (control-log seq 14): the repair cycle was accepted and promoted, and
+    the next proposal escalated, "the accepted cycle stored no interface manifest". A repair
+    reuses its increment's approved seeds and stores none of its own, and the proposal read the
+    accepted cycle's own artifacts only. Entered at ``CycleCompletion.end`` for the repair, over
+    a vault that answers by cycle, as the live one does (this module's ``_Vault`` hands every
+    artifact to every cycle, which is how the defect passed). Bugs caught: an accepted repair
+    escalating instead of proposing; the increment's answered question asked again because the
+    repair, which runs no framing, has no gate of its own to read the answer from."""
+    import dataclasses as _dc
+
+    from squadops.cycles.manifest_authoring import open_questions
+    from squadops.cycles.models import GateDecision
+
+    stored["art_plan"] = (
+        _dc.replace(
+            _ref("art_plan", "implementation_plan.yaml", "control_implementation_plan", 5),
+            promotion_status="promoted",
+        ),
+        b"version: 1",
+    )
+    w = await _increment_failed_by_the_environment(calibrating, stored, environment=False)
+    # The approved seed, as the gate stored it under the increment: shakeout 4's real manifest.
+    stored["art_candidate"] = (
+        _dc.replace(
+            _ref("art_candidate", "interface_manifest.yaml", "interface_manifest", -2),
+            cycle_id="cyc_inc",
+        ),
+        _OPEN_MANIFEST.encode(),
+    )
+    # The increment's framing gate answered the open question.
+    await w.cycles.create_run(
+        Run(
+            run_id="run_inc_frame",
+            cycle_id="cyc_inc",
+            run_number=0,
+            status="completed",
+            initiated_by="system",
+            resolved_config_hash="cfg",
+            workload_type="framing",
+        )
+    )
+    await w.cycles.record_gate_decision(
+        "run_inc_frame",
+        GateDecision(
+            gate_name="progress_plan_review",
+            decision="approved",
+            decided_by="agent:005159fd",
+            decided_at=datetime(2026, 10, 3, 6, 35, tzinfo=UTC),
+            notes=_ANSWER,
+        ),
+    )
+    *_, repair = await w.campaigns.launch_intents(CID)
+    stored["art_eval"] = (
+        _dc.replace(
+            _ref("art_eval", "increment_evaluation.json", "increment_evaluation", 30),
+            cycle_id="cyc_rep",
+        ),
+        _evaluation("accepted"),
+    )
+
+    async def by_cycle(self, *, cycle_id=None, run_id=None, **_):
+        return [
+            ref
+            for ref, _content in _STORED.values()
+            if cycle_id in (None, ref.cycle_id) and run_id in (None, ref.run_id)
+        ]
+
+    monkeypatch.setattr(_Vault, "list_artifacts", by_cycle)
+    repair_run = await w.launched_cycle(
+        "repair",
+        "cyc_rep",
+        "implementation",
+        "completed",
+        overrides=repair.cycle_request["body"]["execution_overrides"],
+    )
+    w._assess = lambda cycle_id: _async(_assessment(cycle_id, RunVerdict.ACCEPTED))
+    w.progress._assess = w._assess
+
+    await w.end("cyc_rep", repair_run, CycleStopReason.SEQUENCE_COMPLETED)
+
+    stored_campaign = await w.campaigns.get_campaign(CID)
+    decision = (await w.campaigns.control_log(CID))[-1]
+    assert stored_campaign.accepted.cycle_id == "cyc_rep"
+    assert (decision.binding["row"], decision.binding["action"]) == (7, "propose")
+    assert "unbuilt" not in decision.binding
+    assert stored_campaign.state is CampaignState.AT_PROPOSAL
+    *_, increment = await w.campaigns.launch_intents(CID)
+    baseline = increment.cycle_request["body"]["execution_overrides"]["campaign_proposal"][
+        "baseline_manifest"
+    ]
+    assert open_questions(baseline) == ()
+    [decision] = [
+        d for d in yaml.safe_load(baseline)["decisions"] if d["id"] == "run-list-ordering"
+    ]
+    assert decision["warrant"].startswith("answered at cyc_inc's plan gate by agent:005159fd")
