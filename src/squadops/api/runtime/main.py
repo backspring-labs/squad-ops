@@ -715,6 +715,8 @@ async def _resume_campaigns(state) -> None:
     drain, which holds its lock."""
     await state.campaign_launch.drain()
     await state.campaign_progress.rehear_ended(await state.campaign_launch.launched_cycles())
+    # #1922: what the dying process was running, or waiting on at a gate, is taken up again.
+    await state.campaign_launch.reattach()
 
 
 async def _shutdown(app: FastAPI) -> None:

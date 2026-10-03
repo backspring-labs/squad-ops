@@ -97,6 +97,44 @@ class CampaignLaunchService:
             await self.drain()
         return rows
 
+    async def reattach(self) -> list[str]:
+        """SIP-0109 §12a (#1922), at startup only: each live campaign's launched cycle that the
+        process died inside is taken up where it stopped.
+
+        - **A run left ``running``** resumes from its checkpoint, as ``runs resume`` does.
+        - **A completed run with a gate after it, and no successor,** is re-entered at its gate:
+          the gate is open again, and a decision already recorded on it is not asked again.
+        - **A completed last run whose ending was never recorded** is re-entered at the cycle's
+          end, so its completion is heard.
+        - A cycle whose ending is recorded is left to the startup re-hearing; a failed,
+          cancelled or paused run is the campaign's or the owner's to act on.
+
+        Only at startup: a later drain would find successor runs this process is already
+        executing. Returns the cycles taken up."""
+        from squadops.cycles.models import RunStatus
+
+        cycles = self._creation.cycle_registry
+        taken_up = []
+        for cycle_id in await self.launched_cycles():
+            runs = [r for r in await cycles.list_runs(cycle_id) if r.status != RunStatus.CANCELLED]
+            if not runs:
+                continue
+            latest = max(runs, key=lambda r: r.run_number)
+            if latest.run_id in self._started or await cycles.get_cycle_end(cycle_id) is not None:
+                continue
+            if latest.status not in (RunStatus.RUNNING.value, RunStatus.COMPLETED.value):
+                continue
+            cycle = await cycles.get_cycle(cycle_id)
+            logger.warning(
+                "campaign_cycle_reattached cycle=%s run=%s status=%s (#1922)",
+                cycle_id,
+                latest.run_id,
+                latest.status,
+            )
+            self._execute(cycle, latest, reentry=True)
+            taken_up.append(cycle_id)
+        return taken_up
+
     async def launched_cycles(self) -> list[str]:
         """The cycles every live campaign's launched intents created."""
         cycle_ids = []
@@ -143,10 +181,15 @@ class CampaignLaunchService:
         self._execute(cycle, run)
         return run
 
-    def _execute(self, cycle: Cycle, run: Run) -> None:
+    def _execute(self, cycle: Cycle, run: Run, *, reentry: bool = False) -> None:
         self._started.add(run.run_id)
-        task = asyncio.create_task(
-            self._executor.execute_cycle(cycle.cycle_id, run.run_id, cycle.squad_profile_id)
+        execution = (
+            self._executor.execute_cycle(
+                cycle.cycle_id, run.run_id, cycle.squad_profile_id, reentry=True
+            )
+            if reentry
+            else self._executor.execute_cycle(cycle.cycle_id, run.run_id, cycle.squad_profile_id)
         )
+        task = asyncio.create_task(execution)
         self._running.add(task)
         task.add_done_callback(self._running.discard)

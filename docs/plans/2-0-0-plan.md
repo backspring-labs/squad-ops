@@ -397,7 +397,11 @@ Fifteen issues carry the title. Three are closed: #1728, #1802 and #1804.
 2. **The exit shakeout:** shakeout 6, on the deploy that carries them, with the log archive beside
    it. It also reads #1802's live-lease proof (the quiet-box half ran on 2026-10-03).
 3. **On the registered deploy, before registration:** #1803's recovery diagnostics, as the
-   validation plan's §3 (#1807) designs them.
+   validation plan's §3 (#1807) designs them. **#1922** (found 2026-10-03 by reading the code
+   ahead of the restart diagnostic): a restart mid-cycle left a campaign's gate decision unacted
+   on and its run stuck `running`. The fix (#1923, SIP-0109 §24am) re-attaches campaign cycles at
+   startup. It lands before rebuild 17, so the exit shakeout and the diagnostics run on a deploy
+   that carries it.
 4. **The owner's stop:** registration (#1908), after the crew's re-review. **Who supervises is not a
    SquadOps decision** (§24al): decision 2 resolves to whoever rules, recorded as each ruling's
    actor, and decision 6 belongs to the crew's access, not to the set.

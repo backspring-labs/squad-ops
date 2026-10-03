@@ -10,7 +10,7 @@ first run, and what was started.
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import FastAPI, Request
@@ -37,8 +37,14 @@ CID = "cmp_start0000001"
 class _Executor:
     def __init__(self) -> None:
         self.started: list[tuple[str, str, str]] = []
+        self.reentered: list[tuple[str, str]] = []
 
-    async def execute_cycle(self, cycle_id: str, run_id: str, squad_profile_id: str) -> None:
+    async def execute_cycle(
+        self, cycle_id: str, run_id: str, squad_profile_id: str, *, reentry: bool = False
+    ) -> None:
+        if reentry:
+            self.reentered.append((cycle_id, run_id))
+            return
         self.started.append((cycle_id, run_id, squad_profile_id))
 
 
@@ -232,3 +238,43 @@ async def test_a_restarted_process_starts_a_first_run_left_queued(world):
     [run] = await world.cycles.list_runs(cycle.cycle_id)
     # Once by the process that died before its run moved, once by the restart, never again.
     assert world.executor.started == [(cycle.cycle_id, run.run_id, "full-38")] * 2
+
+
+@pytest.mark.parametrize(
+    ("left", "taken_up"),
+    [
+        (("running", "completed"), True),  # stopped at its gate: the poller died with the process
+        (("running",), True),  # a run in flight: resumed from its checkpoint
+        (("running", "failed"), False),  # the campaign's to decide, by the re-hearing
+    ],
+    ids=["at-its-gate", "run-in-flight", "failed"],
+)
+async def test_a_restart_takes_up_the_campaign_cycle_it_died_inside(world, left, taken_up):
+    """SIP-0109 §12a (#1922), entered at ``main._resume_campaigns``, the startup the runtime
+    runs. Bugs caught: a campaign cycle whose gate poller, or whose run, died with the process,
+    left with nothing to move it but ``runs retry`` or ``runs resume`` outside the interface; or a
+    failed run re-run behind the campaign's decision."""
+    from types import SimpleNamespace
+
+    from squadops.api.runtime.main import _resume_campaigns
+    from squadops.cycles.models import RunStatus
+
+    world.start()
+    await asyncio.sleep(0)
+    [cycle] = await world.cycles.list_cycles("group_run")
+    [run] = await world.cycles.list_runs(cycle.cycle_id)
+    for status in left:
+        await world.cycles.update_run_status(run.run_id, RunStatus(status))
+    restarted = CampaignLaunchService(
+        campaigns=world.campaigns,
+        creation=world.launch._creation,
+        flow_executor=world.executor,
+        event_bus=MagicMock(),
+        box_verdict=quiet_box,
+    )
+    progress = SimpleNamespace(rehear_ended=AsyncMock(return_value=[]))
+
+    await _resume_campaigns(SimpleNamespace(campaign_launch=restarted, campaign_progress=progress))
+    await asyncio.sleep(0)
+
+    assert world.executor.reentered == ([(cycle.cycle_id, run.run_id)] if taken_up else [])

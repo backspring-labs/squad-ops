@@ -108,6 +108,7 @@ class WorkloadGate:
         framing_revisions: int,
         max_framing_rerolls: int,
         max_framing_revisions: int,
+        reentry: bool = False,
     ) -> GateStep:
         def step(outcome: GateOutcome, stopped_because: CycleStopReason | None = None) -> GateStep:
             return GateStep(
@@ -119,157 +120,180 @@ class WorkloadGate:
                 framing_revisions,
             )
 
-        # #464: the inter-workload gate is the plan gate our cycle
-        # shapes actually traverse (the mid-run _handle_gate path only
-        # fires for task_flow_policy gates) — validate the authored
-        # plan BEFORE asking the operator to review it. A doomed plan
-        # gets a rejection, not a review request.
-        #
-        # #473: mechanical rejection is congruent with a human
-        # --reject: a REJECTED gate decision is recorded (visible in
-        # `runs show` / gate_decisions), GATE_DECIDED is emitted, and
-        # the sequence stops cleanly — never a silent orchestrator
-        # death the operator can only diagnose by re-reviewing the
-        # manifest by hand (the 3.13 stall).
-        #
-        # The plan is judged against the cycle as this run saw it: what forwarding handed the
-        # run — an increment's seeded contract and manifest (SIP-0109 §7.3) — is not on the
-        # registry's cycle, and without it every bind-mode net reads author mode.
-        run_cycle = cycle.with_overrides(forwarding_overrides)
-        plan_errors = await self._reject_invalid_plan_before_workload_gate(
-            run, run_cycle, gate_name
+        # #1922: on a re-entry after a restart, a gate that already holds its decision is not
+        # asked again. Its poller died with the process, the decision landed meanwhile (or
+        # before), and the sequence goes on from it as the poller would have.
+        recorded = (
+            next((d for d in reversed(run.gate_decisions) if d.gate_name == gate_name), None)
+            if reentry
+            else None
         )
-        if plan_errors:
-            rejection = GateDecision(
-                gate_name=gate_name,
-                decision=GateDecisionValue.REJECTED.value,
-                decided_by="system:plan_validation",
-                decided_at=datetime.now(UTC),
-                notes="; ".join(plan_errors),
-            )
-            await self._cycle_registry.record_gate_decision(current_run_id, rejection)
-            self._cycle_event_bus.emit(
-                EventType.GATE_DECIDED,
-                entity_type="run",
-                entity_id=current_run_id,
-                context={"cycle_id": cycle_id, "run_id": current_run_id},
-                payload={
-                    "gate_name": gate_name,
-                    "decision": GateDecisionValue.REJECTED.value,
-                    "decided_by": "system:plan_validation",
-                },
-            )
-            logger.error(
-                "Plan auto-rejected at gate %r on run %s: %s",
+        if recorded is not None:
+            decision = recorded
+            run_cycle = cycle.with_overrides(forwarding_overrides)
+            logger.info(
+                "Gate %r on run %s already holds its decision (%s by %s): re-entered after a "
+                "restart, it is not asked again (#1922)",
                 gate_name,
                 current_run_id,
-                "; ".join(plan_errors),
+                recorded.decision,
+                recorded.decided_by,
             )
-            # #522: a *system* plan-validation rejection is a stochastic
-            # framing fault (the rule the model tripped is already in its
-            # prompt), not an operator's verdict — the retry a human would
-            # grant instantly. Re-roll framing, bounded by
-            # ``framing_max_rerolls``, rather than killing the cycle. The
-            # rejection stays in gate_decisions (evidence, #473); the
-            # superseded framing run is CANCELLED so the positional
-            # run↔workload invariant (#257/D14) holds — exactly one
-            # non-cancelled run per position. A human --reject is a
-            # different decided_by and never reaches this branch.
-            if workload_entry.get("type") == "framing" and framing_rerolls < max_framing_rerolls:
-                framing_rerolls += 1
-                await self._cycle_registry.cancel_run(current_run_id)
-                # #669: the re-roll must revise, not re-dice — thread
-                # what died and why into the new framing's authoring
-                # prompts on the §6.6 forwarding rail. The rail is
-                # rebuilt at the next workload advance, so the context
-                # never leaks past framing; a second re-roll replaces
-                # the first's context with the latest rejection.
-                rejected_plan_yaml = await self._load_rejected_plan_yaml(run)
-                rejection_context: dict[str, Any] = {"rejection_reasons": list(plan_errors)}
-                if rejected_plan_yaml:
-                    rejection_context["rejected_plan_yaml"] = rejected_plan_yaml
-                forwarding_overrides = {
-                    **(forwarding_overrides or {}),
-                    "framing_rejection_context": rejection_context,
-                }
-                reroll_run = await self._create_next_workload_run(
-                    cycle,
-                    run,
-                    workload_entry,
-                    config_hash=run.resolved_config_hash,
+        else:
+            # #464: the inter-workload gate is the plan gate our cycle
+            # shapes actually traverse (the mid-run _handle_gate path only
+            # fires for task_flow_policy gates) — validate the authored
+            # plan BEFORE asking the operator to review it. A doomed plan
+            # gets a rejection, not a review request.
+            #
+            # #473: mechanical rejection is congruent with a human
+            # --reject: a REJECTED gate decision is recorded (visible in
+            # `runs show` / gate_decisions), GATE_DECIDED is emitted, and
+            # the sequence stops cleanly — never a silent orchestrator
+            # death the operator can only diagnose by re-reviewing the
+            # manifest by hand (the 3.13 stall).
+            #
+            # The plan is judged against the cycle as this run saw it: what forwarding handed the
+            # run — an increment's seeded contract and manifest (SIP-0109 §7.3) — is not on the
+            # registry's cycle, and without it every bind-mode net reads author mode.
+            run_cycle = cycle.with_overrides(forwarding_overrides)
+            plan_errors = await self._reject_invalid_plan_before_workload_gate(
+                run, run_cycle, gate_name
+            )
+            if plan_errors:
+                rejection = GateDecision(
+                    gate_name=gate_name,
+                    decision=GateDecisionValue.REJECTED.value,
+                    decided_by="system:plan_validation",
+                    decided_at=datetime.now(UTC),
+                    notes="; ".join(plan_errors),
                 )
-                current_run_id = reroll_run.run_id
+                await self._cycle_registry.record_gate_decision(current_run_id, rejection)
                 self._cycle_event_bus.emit(
-                    EventType.WORKLOAD_ADVANCED,
-                    entity_type="workload",
+                    EventType.GATE_DECIDED,
+                    entity_type="run",
                     entity_id=current_run_id,
                     context={"cycle_id": cycle_id, "run_id": current_run_id},
                     payload={
-                        "workload_type": "framing",
-                        "reason": "framing_reroll_on_system_rejection",
-                        "reroll": framing_rerolls,
+                        "gate_name": gate_name,
+                        "decision": GateDecisionValue.REJECTED.value,
+                        "decided_by": "system:plan_validation",
                     },
                 )
-                logger.info(
-                    "Framing re-roll %d/%d on cycle %s: new framing run %s",
-                    framing_rerolls,
-                    max_framing_rerolls,
-                    cycle_id,
-                    current_run_id,
-                )
-                return step(GateOutcome.RE_EXECUTE)  # same index — re-execute framing
-            return step(GateOutcome.STOP, CycleStopReason.PLAN_REJECTED)
-        # M4 (#807): the gate stops only when the DESIGN asks a question. A
-        # manifest that declares no unresolved decision has already been approved by
-        # the deterministic gates, and a review that adds nothing is worse than no
-        # review — it manufactures the appearance of one. Keyed on the design, never
-        # on who wrote it (Guard 1a).
-        if gate_name == INCREMENT_RULING_GATE:
-            # SIP-0109 §9.2: the supervisor's ruling alone moves this gate. An increment cycle
-            # carries its baseline's manifest, which asks nothing, so #807's pass-through would
-            # approve the increment unread; the proposal is submitted to the campaign instead.
-            await self._submit_proposal(cycle, run)
-            questions = None
-        else:
-            # #1905: the cycle as this run saw it, as the plan check above reads it. An
-            # increment's seeded manifest reached its framing through the forwarded overrides,
-            # which the stored cycle does not carry, so the question check found no design and
-            # every increment's plan gate asked a human.
-            questions = await self._design_questions_for_gate(run, run_cycle)
-        if questions is not None and not questions:
-            # Synthesized, not short-circuited: the decision runs through the SAME
-            # exhaustive dispatch below that a human's answer does, so a
-            # pass-through cannot reach a path an approval would not.
-            decision = await self._approve_gate_without_questions(
-                current_run_id, cycle_id, gate_name
-            )
-        else:
-            self._cycle_event_bus.emit(
-                EventType.WORKLOAD_GATE_AWAITING,
-                entity_type="workload",
-                entity_id=current_run_id,
-                context={"cycle_id": cycle_id, "run_id": current_run_id},
-                # The questions ARE the review request (§5c.10): an operator shown
-                # "approve?" reviews nothing; one shown "the PRD does not define the
-                # expansion checkpoint — which is it?" answers what only they know.
-                payload={
-                    "gate_name": gate_name,
-                    "open_questions": list(questions or ()),
-                },
-            )
-            if questions:
-                logger.info(
-                    "Gate %r on run %s is waiting on %d design question(s): %s",
+                logger.error(
+                    "Plan auto-rejected at gate %r on run %s: %s",
                     gate_name,
                     current_run_id,
-                    len(questions),
-                    "; ".join(questions),
+                    "; ".join(plan_errors),
                 )
-            decision = await self._poll_inter_workload_gate(
-                current_run_id,
-                cycle,
-                gate_name,
-            )
+                # #522: a *system* plan-validation rejection is a stochastic
+                # framing fault (the rule the model tripped is already in its
+                # prompt), not an operator's verdict — the retry a human would
+                # grant instantly. Re-roll framing, bounded by
+                # ``framing_max_rerolls``, rather than killing the cycle. The
+                # rejection stays in gate_decisions (evidence, #473); the
+                # superseded framing run is CANCELLED so the positional
+                # run↔workload invariant (#257/D14) holds — exactly one
+                # non-cancelled run per position. A human --reject is a
+                # different decided_by and never reaches this branch.
+                if (
+                    workload_entry.get("type") == "framing"
+                    and framing_rerolls < max_framing_rerolls
+                ):
+                    framing_rerolls += 1
+                    await self._cycle_registry.cancel_run(current_run_id)
+                    # #669: the re-roll must revise, not re-dice — thread
+                    # what died and why into the new framing's authoring
+                    # prompts on the §6.6 forwarding rail. The rail is
+                    # rebuilt at the next workload advance, so the context
+                    # never leaks past framing; a second re-roll replaces
+                    # the first's context with the latest rejection.
+                    rejected_plan_yaml = await self._load_rejected_plan_yaml(run)
+                    rejection_context: dict[str, Any] = {"rejection_reasons": list(plan_errors)}
+                    if rejected_plan_yaml:
+                        rejection_context["rejected_plan_yaml"] = rejected_plan_yaml
+                    forwarding_overrides = {
+                        **(forwarding_overrides or {}),
+                        "framing_rejection_context": rejection_context,
+                    }
+                    reroll_run = await self._create_next_workload_run(
+                        cycle,
+                        run,
+                        workload_entry,
+                        config_hash=run.resolved_config_hash,
+                    )
+                    current_run_id = reroll_run.run_id
+                    self._cycle_event_bus.emit(
+                        EventType.WORKLOAD_ADVANCED,
+                        entity_type="workload",
+                        entity_id=current_run_id,
+                        context={"cycle_id": cycle_id, "run_id": current_run_id},
+                        payload={
+                            "workload_type": "framing",
+                            "reason": "framing_reroll_on_system_rejection",
+                            "reroll": framing_rerolls,
+                        },
+                    )
+                    logger.info(
+                        "Framing re-roll %d/%d on cycle %s: new framing run %s",
+                        framing_rerolls,
+                        max_framing_rerolls,
+                        cycle_id,
+                        current_run_id,
+                    )
+                    return step(GateOutcome.RE_EXECUTE)  # same index — re-execute framing
+                return step(GateOutcome.STOP, CycleStopReason.PLAN_REJECTED)
+            # M4 (#807): the gate stops only when the DESIGN asks a question. A
+            # manifest that declares no unresolved decision has already been approved by
+            # the deterministic gates, and a review that adds nothing is worse than no
+            # review — it manufactures the appearance of one. Keyed on the design, never
+            # on who wrote it (Guard 1a).
+            if gate_name == INCREMENT_RULING_GATE:
+                # SIP-0109 §9.2: the supervisor's ruling alone moves this gate. An increment cycle
+                # carries its baseline's manifest, which asks nothing, so #807's pass-through would
+                # approve the increment unread; the proposal is submitted to the campaign instead.
+                await self._submit_proposal(cycle, run)
+                questions = None
+            else:
+                # #1905: the cycle as this run saw it, as the plan check above reads it. An
+                # increment's seeded manifest reached its framing through the forwarded overrides,
+                # which the stored cycle does not carry, so the question check found no design and
+                # every increment's plan gate asked a human.
+                questions = await self._design_questions_for_gate(run, run_cycle)
+            if questions is not None and not questions:
+                # Synthesized, not short-circuited: the decision runs through the SAME
+                # exhaustive dispatch below that a human's answer does, so a
+                # pass-through cannot reach a path an approval would not.
+                decision = await self._approve_gate_without_questions(
+                    current_run_id, cycle_id, gate_name
+                )
+            else:
+                self._cycle_event_bus.emit(
+                    EventType.WORKLOAD_GATE_AWAITING,
+                    entity_type="workload",
+                    entity_id=current_run_id,
+                    context={"cycle_id": cycle_id, "run_id": current_run_id},
+                    # The questions ARE the review request (§5c.10): an operator shown
+                    # "approve?" reviews nothing; one shown "the PRD does not define the
+                    # expansion checkpoint — which is it?" answers what only they know.
+                    payload={
+                        "gate_name": gate_name,
+                        "open_questions": list(questions or ()),
+                    },
+                )
+                if questions:
+                    logger.info(
+                        "Gate %r on run %s is waiting on %d design question(s): %s",
+                        gate_name,
+                        current_run_id,
+                        len(questions),
+                        "; ".join(questions),
+                    )
+                decision = await self._poll_inter_workload_gate(
+                    current_run_id,
+                    cycle,
+                    gate_name,
+                )
 
         if decision.decision == GateDecisionValue.REJECTED:
             return step(
