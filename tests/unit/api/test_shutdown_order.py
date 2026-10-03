@@ -38,4 +38,3 @@ async def test_the_executor_is_told_before_the_pool_closes_and_the_reply_waits_f
     await _shutdown(SimpleNamespace(state=state))
 
     assert order == ["executor told", "pool closed", "reply waits failed"]
-
