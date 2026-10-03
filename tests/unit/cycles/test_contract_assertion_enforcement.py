@@ -60,7 +60,38 @@ async def _evaluate(tmp_path, source: str, params: dict | None = None):
     )
 
 
+_CREATE_THEN = (
+    "def test_capacity_reached(client):\n"
+    '    resp = client.post("/runs", json={"title": "x", "capacity": 2})\n'
+    "    assert resp.status_code == 201\n"
+    '    run_id = resp.json()["id"]\n'
+    "{rebinding}"
+    "    assert resp.status_code == 200\n"
+)
+
+
 class TestEvaluator:
+    @pytest.mark.parametrize(
+        ("rebinding", "status"),
+        [
+            # Shakeout 4's increment 1 (#1898): the join, by an f-string path, asserted 200.
+            ('    resp = client.post(f"/runs/{run_id}/join", json={"name": "A"})\n', "passed"),
+            ("    resp = make_response()\n", "passed"),
+            # The control: a readable rebinding to the create, asserting 200, is still caught.
+            ('    resp = client.post("/runs", json={"title": "y"})\n', "failed"),
+        ],
+        ids=["an-f-string-call", "a-non-call", "a-readable-create"],
+    )
+    async def test_a_reused_name_means_its_latest_call(self, tmp_path, rebinding, status):
+        """#1898: ``resp`` rebound to a call the check cannot read stayed bound to the create,
+        so the join's correct 200 was flagged as ``POST /runs asserts 200``, and the pass that
+        followed deleted the join's status assertions to satisfy it."""
+        outcome = await _evaluate(tmp_path, _CREATE_THEN.replace("{rebinding}", rebinding))
+
+        assert outcome.status == status, outcome.reason
+        if status == "failed":
+            assert "line 6: POST /runs asserts 200" in outcome.reason
+
     async def test_pf54_exhibit_wrong_create_status_fails(self, tmp_path):
         # the canonical true positive: 200 asserted where the probe pins 201
         outcome = await _evaluate(
