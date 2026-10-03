@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from squadops.campaigns.box import LeaseHolder
 from squadops.campaigns.models import (
     CampaignOutcome,
     CampaignState,
@@ -40,10 +41,11 @@ def _check_values(sql: str, column: str) -> set[str]:
         ("1600_campaigns.sql", "state", CampaignState),
         ("1600_campaigns.sql", "outcome", CampaignOutcome),
         # Replaced whole by 1640 (the increment gate's submit, stale_binding, illegal_ruling).
-        # Replaced whole again by 1650 (the owner's start), 1660 (the classification) and 1680
-        # (the ruling bound).
-        ("1680_campaign_ruling_overdue.sql", "operation", ControlOperation),
-        ("1640_campaign_increment_gate.sql", "refusal", RefusalReason),
+        # Replaced whole again by 1650 (the owner's start), 1660 (the classification), 1680
+        # (the ruling bound) and 1690 (the box lease and a blocked launch, #1802).
+        ("1690_box_lease.sql", "operation", ControlOperation),
+        ("1690_box_lease.sql", "refusal", RefusalReason),
+        ("1690_box_lease.sql", "holder", LeaseHolder),
         ("1600_campaigns.sql", "cycle_kind", CycleKind),
         ("1610_cycle_campaign_columns.sql", "kind", CycleKind),
     ],

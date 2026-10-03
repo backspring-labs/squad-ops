@@ -30,6 +30,9 @@ from squadops.api.campaign_schemas import (
     ControlLogEntryResponse,
     ControlRequest,
     ControlResultResponse,
+    LeaseRequest,
+    LeaseResponse,
+    LeaseResultResponse,
     ResumeRequest,
 )
 from squadops.api.middleware.auth import require_scopes
@@ -375,6 +378,20 @@ async def resume_campaign(
         except ValueError as e:
             raise HTTPException(422, _validation(f"unknown action {body.action!r}")) from e
     if campaign.state is CampaignState.ESCALATED and named is None:
+        from squadops.campaigns.launch_blocking import escalated_by_a_blocked_launch
+
+        if escalated_by_a_blocked_launch(campaign, log):
+            # §9.3 (#1802): the launch it escalated over is still pending. The owner's word
+            # returns it to launch_blocked, re-attempted at once and counted afresh.
+            transition = _transition(
+                ControlOperation.RESUME,
+                CampaignState.LAUNCH_BLOCKED,
+                body,
+                actor,
+                role,
+                expected_state=CampaignState.ESCALATED,
+            )
+            return _result(await apply_control(request, campaign_id, transition, identity))
         raise HTTPException(422, _validation("an escalated campaign resumes on a named action"))
     if held is not None and named is not None and named is not held:
         raise HTTPException(
@@ -409,6 +426,120 @@ async def resume_campaign(
         expected_state=CampaignState.PAUSED,
     )
     return _result(await apply_control(request, campaign_id, transition, identity))
+
+
+@router.get("/{campaign_id}/lease")
+async def get_lease(
+    request: Request,
+    campaign_id: str,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_READ)),
+) -> LeaseResponse | None:
+    """The box's lease (§9.3; #1802), or ``null`` before any was recorded. The box is one, so
+    every campaign reads the same lease; the campaign must exist."""
+    await _registry(request).get_campaign(campaign_id)
+    lease = await _registry(request).box_lease()
+    return _lease(lease) if lease is not None else None
+
+
+@router.post("/{campaign_id}/lease")
+async def acquire_lease(
+    request: Request,
+    campaign_id: str,
+    body: LeaseRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_SUPERVISE)),
+) -> LeaseResultResponse:
+    """The supervisor takes the box for this campaign's increment gate (§9.3).
+
+    Refused, and recorded, outside the gate (``gate_not_open``), while any run is in flight on
+    the box (``run_in_flight``), or while another supervisor holds it (``box_held``). While it
+    holds the box, every cycle launch is refused and every run start waits.
+    """
+    from squadops.api.runtime.deps import get_box_reader
+
+    campaign = await _registry(request).get_campaign(campaign_id)
+    if body.expires_in_s > campaign.policy.lease_expiry_s:
+        raise HTTPException(
+            422,
+            _validation(
+                f"expires_in_s {body.expires_in_s} exceeds the policy's lease_expiry_s "
+                f"{campaign.policy.lease_expiry_s}"
+            ),
+        )
+    actor, role = actor_from(identity)
+    transition = _lease_transition(
+        ControlOperation.LEASE_ACQUIRE,
+        body,
+        actor,
+        role,
+        {"held_by": actor, "expires_in_s": body.expires_in_s},
+    )
+    runs = await get_box_reader(request).runs_in_flight()
+    return await _change_lease(request, campaign_id, transition, identity, runs)
+
+
+@router.post("/{campaign_id}/lease/release")
+async def release_lease(
+    request: Request,
+    campaign_id: str,
+    body: ControlRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_SUPERVISE)),
+) -> LeaseResultResponse:
+    """The supervisor gives the box back, its models unloaded (§9.3). Only the holder of a live
+    lease may; an expired lease holds nothing, and releasing it records the return."""
+    actor, role = actor_from(identity)
+    transition = _lease_transition(
+        ControlOperation.LEASE_RELEASE, body, actor, role, {"held_by": actor}
+    )
+    return await _change_lease(request, campaign_id, transition, identity, ())
+
+
+def _lease_transition(
+    operation: ControlOperation, body: ControlRequest, actor: str, role: str, binding: dict
+) -> CampaignTransition:
+    return CampaignTransition(
+        operation=operation,
+        actor=actor,
+        actor_role=role,
+        reason=body.reason,
+        idempotency_key=body.idempotency_key,
+        next_state=None,
+        binding=binding,
+    )
+
+
+async def _change_lease(
+    request: Request,
+    campaign_id: str,
+    transition: CampaignTransition,
+    identity: Identity | None,
+    runs_in_flight: tuple[str, ...],
+) -> LeaseResultResponse:
+    registry = _registry(request)
+    try:
+        result = await registry.change_box_lease(
+            campaign_id, transition, runs_in_flight=runs_in_flight
+        )
+    except ControlOperationRefused as refused:
+        _project_to_audit(request, refused.entry, identity)
+        raise
+    _project(request, result, identity)
+    lease = await registry.box_lease()
+    return LeaseResultResponse(
+        entry=_entry(result.entry), replayed=result.replayed, lease=_lease(lease)
+    )
+
+
+def _lease(lease) -> LeaseResponse:
+    from datetime import UTC, datetime
+
+    return LeaseResponse(
+        holder=str(lease.holder),
+        held_by=lease.held_by,
+        campaign_id=lease.campaign_id,
+        acquired_at=lease.acquired_at,
+        expires_at=lease.expires_at,
+        supervisor_holds=lease.supervisor_holds(datetime.now(UTC)),
+    )
 
 
 def _require_profiles(policy: CampaignPolicy) -> None:

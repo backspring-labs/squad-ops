@@ -266,7 +266,9 @@ def resume(
         "--action",
         help=(
             "The action the owner names: required to resume an escalated campaign (propose, "
-            "abandon_and_propose, repair, retry); a paused one resumes into its held action"
+            "abandon_and_propose, repair, retry), except one escalated over a launch the box "
+            "kept refusing, which resumes into launch_blocked; a paused one resumes into its "
+            "held action"
         ),
     ),
 ):
@@ -284,3 +286,72 @@ def abort(
 ):
     """Abort a campaign: terminal, and its running cycle is cancelled."""
     _control(ctx, "abort", campaign_id, reason, idempotency_key, expected_state)
+
+
+# --- the box lease (SIP-0109 §9.3; #1802) ---------------------------------------------------------
+
+lease_app = typer.Typer(
+    name="lease", help="The box lease: the supervisor holds the Spark at a gate"
+)
+app.add_typer(lease_app)
+
+
+def _show_lease(ctx: typer.Context, lease: dict | None) -> None:
+    fmt, _quiet = _fmt(ctx)
+    if fmt == "json":
+        print_json(lease)
+        return
+    if lease is None:
+        print_success("no lease recorded: the squad holds the box")
+        return
+    holds = "holds the box" if lease["supervisor_holds"] else "does not hold the box"
+    print_success(
+        f"{lease['holder']} ({lease['held_by']}) {holds}; campaign {lease['campaign_id']}, "
+        f"acquired {lease['acquired_at']}, expires {lease['expires_at']}"
+    )
+
+
+@lease_app.command("show")
+def lease_show(ctx: typer.Context, campaign_id: str = typer.Argument(...)):
+    """Who holds the box now (one lease, read through any campaign)."""
+    _show_lease(ctx, _call(ctx, "get", f"/api/v1/campaigns/{campaign_id}/lease"))
+
+
+@lease_app.command("acquire")
+def lease_acquire(
+    ctx: typer.Context,
+    campaign_id: str = typer.Argument(...),
+    expires_in: int = typer.Option(
+        ..., "--expires-in", help="Seconds to hold the box, at most the policy's lease_expiry_s"
+    ),
+    reason: str = _REASON,
+    idempotency_key: str | None = _KEY,
+):
+    """Take the box for this campaign's increment gate; while held, no cycle launches and no
+    run starts. Refused outside the gate, while a run is in flight, or while another holds it."""
+    key = _key(idempotency_key)
+    data = _call(
+        ctx,
+        "post",
+        f"/api/v1/campaigns/{campaign_id}/lease",
+        json={"reason": reason, "idempotency_key": key, "expires_in_s": expires_in},
+    )
+    _show_lease(ctx, data["lease"])
+
+
+@lease_app.command("release")
+def lease_release(
+    ctx: typer.Context,
+    campaign_id: str = typer.Argument(...),
+    reason: str = _REASON,
+    idempotency_key: str | None = _KEY,
+):
+    """Give the box back to the squad, the crew's models unloaded."""
+    key = _key(idempotency_key)
+    data = _call(
+        ctx,
+        "post",
+        f"/api/v1/campaigns/{campaign_id}/lease/release",
+        json={"reason": reason, "idempotency_key": key},
+    )
+    _show_lease(ctx, data["lease"])

@@ -18,10 +18,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import UTC, datetime
 
 from squadops.api.cycle_schemas import CycleCreateRequest
 from squadops.api.routes.cycles.cycles import CreationPorts, first_run, prepare_cycle
-from squadops.campaigns.launcher import CampaignLauncher
+from squadops.campaigns.launcher import BoxVerdict, CampaignLauncher, unblocked
 from squadops.campaigns.models import CampaignState, LaunchIntent, LaunchIntentState
 from squadops.cycles.models import Cycle, Run, RunInitiator, RunStatus
 from squadops.events.types import EventType
@@ -33,13 +34,25 @@ LAUNCHER_ACTOR = "campaign-launcher"
 
 
 class CampaignLaunchService:
-    def __init__(self, *, campaigns, creation: CreationPorts, flow_executor, event_bus) -> None:
+    def __init__(
+        self,
+        *,
+        campaigns,
+        creation: CreationPorts,
+        flow_executor,
+        event_bus,
+        box_verdict: BoxVerdict,
+    ) -> None:
         self._campaigns = campaigns
         self._creation = creation
         self._executor = flow_executor
         self._event_bus = event_bus
         self._launcher = CampaignLauncher(
-            campaigns, creation.cycle_registry, self._build_cycle, actor=LAUNCHER_ACTOR
+            campaigns,
+            creation.cycle_registry,
+            self._build_cycle,
+            actor=LAUNCHER_ACTOR,
+            box_verdict=box_verdict,
         )
         self._lock = asyncio.Lock()
         self._running: set[asyncio.Task] = set()
@@ -74,6 +87,15 @@ class CampaignLaunchService:
                 if run is not None:
                     started.append(run)
             return started
+
+    async def retry_blocked(self) -> list:
+        """§9.3 (#1802): each blocked campaign whose attempt is due reads the box again; one
+        the box now allows returns to work, and its held intent is launched at once."""
+        async with self._lock:
+            rows = await self._launcher.retry_blocked(datetime.now(UTC))
+        if unblocked(rows):
+            await self.drain()
+        return rows
 
     async def launched_cycles(self) -> list[str]:
         """The cycles every live campaign's launched intents created."""

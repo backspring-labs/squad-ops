@@ -72,6 +72,34 @@ class ResumeRequest(ControlRequest):
     action: str | None = None
 
 
+class LeaseRequest(ControlRequest):
+    """The supervisor takes the box at the increment gate (§9.3; #1802). ``expires_in_s`` is
+    how long it holds it, at most the campaign policy's ``lease_expiry_s``: a supervisor that
+    crashes cannot hold the box forever. Asking again before it expires renews it."""
+
+    expires_in_s: int = Field(gt=0)
+
+
+class LeaseResponse(BaseModel):
+    """The box's lease: who holds it, for which campaign, until when."""
+
+    holder: str
+    held_by: str
+    campaign_id: str | None
+    acquired_at: datetime
+    expires_at: datetime | None
+    #: Whether the supervisor holds the box now (a supervisor's lease past its expiry does not).
+    supervisor_holds: bool
+
+
+class LeaseResultResponse(BaseModel):
+    """An applied (or replayed) lease change: its control-log row and the lease it left."""
+
+    entry: ControlLogEntryResponse
+    replayed: bool
+    lease: LeaseResponse
+
+
 class ClassificationRequest(ControlRequest):
     """The supervisor's classification of what went wrong with one proposal version (§9.4)."""
 

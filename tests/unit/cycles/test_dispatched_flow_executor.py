@@ -1758,3 +1758,96 @@ class TestGateRejectsAQaSuiteOutsideTheStacksNamespace:
         assert "'tests/test_runs.py'" in str(exc_info.value)
         assert "backend/tests/" in str(exc_info.value)
         assert exc_info.value.terminal.refused_validators == ("validate_qa_suite_namespace",)
+
+
+class TestNoRunStartsWhileTheSupervisorHoldsTheBox:
+    """SIP-0109 §9.3 (#1802), entering at ``execute_run``: a run does not go ``running`` while the
+    supervisor holds the box. It waits queued and starts once the lease is given back, and past
+    the holding campaign's owner ruling bound it fails without starting."""
+
+    @staticmethod
+    async def _held(owner_ruling_bound_s: int = 43200):
+        from adapters.cycles.memory_campaign_registry import MemoryCampaignRegistry
+        from squadops.campaigns.models import CampaignState, CampaignTransition, ControlOperation
+        from tests.unit.campaigns.builders import campaign, move, policy
+
+        reg = MemoryCampaignRegistry()
+        await reg.create_campaign(
+            campaign("cmp_c", policy=policy(owner_ruling_bound_s=owner_ruling_bound_s)),
+            actor="o",
+            actor_role="o",
+            reason="r",
+            idempotency_key="c",
+        )
+        for i, s in enumerate(("calibrating", "at_proposal", "awaiting_ruling")):
+            await reg.transition("cmp_c", move(CampaignState(s), f"k{i}"))
+
+        def lease(op, key, **extra):
+            return CampaignTransition(
+                operation=op,
+                actor="crew",
+                actor_role="campaign-supervisor",
+                reason="gate",
+                idempotency_key=key,
+                next_state=None,
+                binding={"held_by": "crew", **extra},
+            )
+
+        await reg.change_box_lease(
+            "cmp_c", lease(ControlOperation.LEASE_ACQUIRE, "a", expires_in_s=900), runs_in_flight=()
+        )
+        return reg, lease(ControlOperation.LEASE_RELEASE, "r")
+
+    async def test_a_run_waits_queued_until_the_supervisor_gives_the_box_back(
+        self, executor, mock_registry, mock_queue
+    ):
+        from datetime import UTC, datetime
+
+        reg, release = await self._held()
+        executor._campaign_registry = reg
+        TestSequentialHappyPath._wire_canned_replies(mock_queue)
+        waits: list[list] = []
+
+        async def sleep(_seconds):
+            # asyncio.sleep is one function wherever it is patched; this is the box wait's only
+            # while the lease is held, and a no-op for every other sleeper.
+            if (await reg.box_lease()).supervisor_holds(datetime.now(UTC)):
+                waits.append([c.args[1] for c in mock_registry.update_run_status.call_args_list])
+                await reg.change_box_lease("cmp_c", release, runs_in_flight=())
+
+        with patch("adapters.cycles.run_admission.asyncio.sleep", side_effect=sleep):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        statuses = [c.args[1] for c in mock_registry.update_run_status.call_args_list]
+        assert waits == [[]]  # it waited once, and nothing had started the run
+        assert (statuses[0], statuses[-1]) == (RunStatus.RUNNING, RunStatus.COMPLETED)
+
+    async def test_a_box_held_past_the_owners_ruling_bound_fails_the_run_unstarted(
+        self, executor, mock_registry
+    ):
+        from datetime import UTC, datetime, timedelta
+
+        reg, _release = await self._held(owner_ruling_bound_s=60)
+        executor._campaign_registry = reg
+
+        class Clock:
+            """Each read is 45 s on: the second poll is past the 60 s bound. The lease (900 s)
+            is still held at both."""
+
+            at = datetime.now(UTC)
+
+            @classmethod
+            def now(cls, tz=None):
+                cls.at += timedelta(seconds=45)
+                return cls.at
+
+        with (
+            patch("adapters.cycles.run_admission.datetime", Clock),
+            patch("adapters.cycles.run_admission.asyncio.sleep", new_callable=AsyncMock),
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        calls = mock_registry.update_run_status.call_args_list
+        assert RunStatus.RUNNING not in [c.args[1] for c in calls]
+        assert calls[-1].args[1] == RunStatus.FAILED
+        assert "the supervisor (crew) still holds it" in calls[-1].kwargs["failure_reason"]

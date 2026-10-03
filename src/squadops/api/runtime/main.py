@@ -529,6 +529,18 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     except Exception as e:
         logger.warning("LLM port not registered (non-fatal): %s", e)
 
+    # SIP-0109 §9.3 (#1802): the box, as every launch path and every lease change reads it.
+    # The engine is the configured provider: its resident models are read through its port.
+    from squadops.campaigns.box_reading import BoxReader
+
+    state.box_reader = BoxReader(
+        campaigns=projected_campaigns,
+        deploy_registry=deploy_registry,
+        engines={config.llm.provider: llm_adapter},
+        project_registry=project_registry,
+        cycle_registry=cycle_registry,
+    )
+
     # SIP-0109 §12b: a campaign's launches become cycles by the cycle-create path itself.
     from squadops.api.campaign_launch import CampaignLaunchService
     from squadops.api.routes.cycles.cycles import CreationPorts
@@ -545,6 +557,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         ),
         flow_executor=flow_executor,
         event_bus=event_bus,
+        box_verdict=state.box_reader.verdict,
     )
 
 
@@ -681,13 +694,18 @@ _CAMPAIGN_SWEEP_INTERVAL_S = 60
 
 async def _sweep_campaigns(state) -> None:
     """§9.2, §9.5 (§24ae): every interval, each increment gate waiting past a seat's ruling bound
-    is recorded as overdue. A sweep that fails is logged and the next one runs."""
+    is recorded as overdue; §9.3 (#1802): each launch the box refused is re-attempted when due.
+    A sweep that fails is logged and the next one runs."""
     while True:
         await asyncio.sleep(_CAMPAIGN_SWEEP_INTERVAL_S)
         try:
             await state.campaign_progress.sweep_ruling_bounds()
         except Exception:
             logger.exception("campaign_sweep_failed")
+        try:
+            await state.campaign_launch.retry_blocked()
+        except Exception:
+            logger.exception("campaign_launch_retry_sweep_failed")
 
 
 async def _resume_campaigns(state) -> None:

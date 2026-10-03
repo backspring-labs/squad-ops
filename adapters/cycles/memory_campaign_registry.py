@@ -11,7 +11,8 @@ import asyncio
 import copy
 from datetime import UTC, datetime
 
-from squadops.campaigns import lifecycle
+from squadops.campaigns import box, lifecycle
+from squadops.campaigns.box import BoxLease
 from squadops.campaigns.models import (
     Campaign,
     CampaignExistsError,
@@ -38,6 +39,7 @@ class MemoryCampaignRegistry(CampaignRegistryPort):
         self._campaigns: dict[str, Campaign] = {}
         self._log: dict[str, list[ControlLogEntry]] = {}
         self._intents: dict[str, LaunchIntent] = {}
+        self._lease: BoxLease | None = None
         self._lock = asyncio.Lock()
 
     # --- reads ---
@@ -58,6 +60,9 @@ class MemoryCampaignRegistry(CampaignRegistryPort):
     async def control_log(self, campaign_id: str) -> list[ControlLogEntry]:
         self._campaign(campaign_id)
         return copy.deepcopy(self._log[campaign_id])
+
+    async def box_lease(self) -> BoxLease | None:
+        return self._lease
 
     async def pending_launch_intents(self) -> list[LaunchIntent]:
         pending = [
@@ -124,8 +129,20 @@ class MemoryCampaignRegistry(CampaignRegistryPort):
     async def transition(
         self, campaign_id: str, transition: CampaignTransition
     ) -> TransitionResult:
+        if transition.operation.changes_the_lease:
+            raise ValueError(f"{transition.operation} is committed by change_box_lease")
         async with self._lock:
             return self._commit(campaign_id, transition, marks=None)
+
+    async def change_box_lease(
+        self, campaign_id: str, transition: CampaignTransition, *, runs_in_flight: tuple[str, ...]
+    ) -> TransitionResult:
+        if not transition.operation.changes_the_lease:
+            raise ValueError(f"{transition.operation} does not change the box lease")
+        async with self._lock:
+            return self._commit(
+                campaign_id, transition, marks=None, runs_in_flight=tuple(runs_in_flight)
+            )
 
     async def mark_launch_intent_launched(
         self, launch_id: str, cycle_id: str, *, actor: str
@@ -161,6 +178,7 @@ class MemoryCampaignRegistry(CampaignRegistryPort):
         transition: CampaignTransition,
         *,
         marks: tuple[LaunchIntent, str] | None,
+        runs_in_flight: tuple[str, ...] | None = None,
     ) -> TransitionResult:
         campaign = self._campaign(campaign_id)
         recorded = self._applied_with_key(campaign_id, transition.idempotency_key)
@@ -177,14 +195,25 @@ class MemoryCampaignRegistry(CampaignRegistryPort):
         now = _now()
         entry_id = lifecycle.new_entry_id()
         seq = len(self._log[campaign_id]) + 1
-        if verdict.refusal is not None:
+        refusal = verdict.refusal
+        lease = None
+        if refusal is None and transition.operation.changes_the_lease:
+            held_by = str(transition.binding["held_by"])
+            refusal = box.lease_refusal(
+                transition.operation, self._lease, campaign, held_by, now, runs_in_flight or ()
+            )
+            if refusal is None:
+                lease = box.leased(
+                    transition.operation, self._lease, campaign_id, transition.binding, now
+                )
+        if refusal is not None:
             entry = lifecycle.control_log_entry(
                 campaign,
                 transition,
                 entry_id=entry_id,
                 seq=seq,
                 committed_at=now,
-                refusal=verdict.refusal,
+                refusal=refusal,
                 launch_id=None,
             )
             self._log[campaign_id].append(entry)
@@ -210,6 +239,8 @@ class MemoryCampaignRegistry(CampaignRegistryPort):
         self._log[campaign_id].append(entry)
         if intent is not None:
             self._intents[intent.launch_id] = copy.deepcopy(intent)
+        if lease is not None:
+            self._lease = lease
         return TransitionResult(
             entry=copy.deepcopy(entry),
             campaign=copy.deepcopy(updated),

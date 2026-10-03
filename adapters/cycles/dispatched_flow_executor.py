@@ -639,6 +639,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         state = RunInProgress()
 
         try:
+            # SIP-0109 §9.3 (#1802): no run starts while the supervisor holds the box.
+            await self._run_admission.await_box(run_id)
             provisioned = await self._run_provisioning.prepare(
                 state, cycle_id, run_id, profile_id, forwarding_overrides=forwarding_overrides
             )

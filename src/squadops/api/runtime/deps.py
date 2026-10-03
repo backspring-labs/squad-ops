@@ -132,6 +132,11 @@ def get_campaign_launch(request: Request):
     return _required(request, "campaign_launch", "CampaignLaunchService")
 
 
+def get_box_reader(request: Request):
+    """Return the box reader (SIP-0109 §9.3; #1802): its lease, its quietness, its runs."""
+    return _required(request, "box_reader", "BoxReader")
+
+
 def get_deploy_registry(request: Request) -> DeployRegistryPort:
     """Return the DeployRegistryPort (#1720): what each deploy put in service."""
     return _required(request, "deploy_registry", "DeployRegistryPort")

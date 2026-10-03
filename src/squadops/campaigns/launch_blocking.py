@@ -1,0 +1,161 @@
+"""A launch the box refused, and its retries (SIP-0109 §9.3; #1802).
+
+Pure decisions. When the box refuses a campaign's launch (the supervisor holds it, or it is not
+quiet), the campaign waits in ``launch_blocked`` with the intent still pending. The sweep
+re-attempts at the policy's ``launch_blocked_interval_s``: a box that now allows it returns the
+campaign to the state its launch was written from, and the launcher launches the intent; a box
+that still refuses writes the next attempt's row; and the attempt that reaches
+``launch_blocked_attempts`` escalates. After an escalation only the owner resumes, and that
+resume returns the campaign to ``launch_blocked`` with its attempts counted afresh.
+
+Every attempt is a control-log row carrying its attempt number, the refusal and its reasons, so
+the guarantee "no launch beside a crew model" is read from the log.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+
+from squadops.campaigns.box import LaunchVerdict
+from squadops.campaigns.lifecycle import LAUNCHER_ROLE
+from squadops.campaigns.models import (
+    Campaign,
+    CampaignState,
+    CampaignTransition,
+    ControlLogEntry,
+    ControlOperation,
+    ControlOutcome,
+    LaunchIntent,
+)
+
+
+def _applied(log: list[ControlLogEntry]) -> list[ControlLogEntry]:
+    return [e for e in log if e.outcome is ControlOutcome.APPLIED]
+
+
+def _episode(log: list[ControlLogEntry]) -> list[ControlLogEntry]:
+    """The blocked rows since the campaign last entered ``launch_blocked`` from outside it: an
+    owner's resume after an escalation starts the count afresh."""
+    rows: list[ControlLogEntry] = []
+    for entry in reversed(_applied(log)):
+        if entry.operation is ControlOperation.LAUNCH_BLOCKED:
+            rows.append(entry)
+            continue
+        if entry.operation.records_only:
+            continue
+        break
+    return list(reversed(rows))
+
+
+def _last_blocked(log: list[ControlLogEntry]) -> ControlLogEntry | None:
+    return next(
+        (e for e in reversed(_applied(log)) if e.operation is ControlOperation.LAUNCH_BLOCKED),
+        None,
+    )
+
+
+def _blocked(
+    campaign: Campaign,
+    verdict: LaunchVerdict,
+    *,
+    launch_id: str,
+    blocked_from: str,
+    attempt: int,
+    actor: str,
+    key_seq: int,
+) -> CampaignTransition:
+    escalates = attempt >= campaign.policy.launch_blocked_attempts
+    return CampaignTransition(
+        operation=ControlOperation.LAUNCH_BLOCKED,
+        actor=actor,
+        actor_role=LAUNCHER_ROLE,
+        reason=(
+            f"the box refused launch {launch_id} ({verdict.refusal}), attempt {attempt} of "
+            f"{campaign.policy.launch_blocked_attempts}"
+            + ("; escalated to the owner" if escalates else "")
+        ),
+        idempotency_key=f"{launch_id}:blocked:{key_seq}",
+        next_state=CampaignState.ESCALATED if escalates else CampaignState.LAUNCH_BLOCKED,
+        expected_state=campaign.state,
+        target=launch_id,
+        binding={
+            "launch_id": launch_id,
+            "attempt": attempt,
+            "blocked_from": blocked_from,
+            "refusal": str(verdict.refusal),
+            "reasons": list(verdict.reasons),
+        },
+    )
+
+
+def first_refusal(
+    campaign: Campaign, intent: LaunchIntent, verdict: LaunchVerdict, *, actor: str
+) -> CampaignTransition:
+    """The box refused a pending intent's launch: attempt 1, from the state that wrote it."""
+    if verdict.allowed:
+        raise ValueError("an allowed launch is not blocked")
+    return _blocked(
+        campaign,
+        verdict,
+        launch_id=intent.launch_id,
+        blocked_from=campaign.state.value,
+        attempt=1,
+        actor=actor,
+        key_seq=1,
+    )
+
+
+def retry_due(campaign: Campaign, log: list[ControlLogEntry], now: datetime) -> bool:
+    """A blocked campaign's next attempt is due: at once after the owner's resume, otherwise
+    ``launch_blocked_interval_s`` after the last attempt."""
+    if campaign.state is not CampaignState.LAUNCH_BLOCKED:
+        return False
+    episode = _episode(log)
+    if not episode:
+        return True
+    elapsed = (now - episode[-1].committed_at).total_seconds()
+    return elapsed >= campaign.policy.launch_blocked_interval_s
+
+
+def blocked_launch_step(
+    campaign: Campaign, log: list[ControlLogEntry], verdict: LaunchVerdict, *, actor: str
+) -> CampaignTransition:
+    """The due attempt's row: the unblock when the box now allows the launch, otherwise the
+    next refused attempt, which escalates at the policy's count."""
+    last = _last_blocked(log)
+    if last is None:
+        raise ValueError(f"campaign {campaign.campaign_id} is blocked with no blocked launch")
+    launch_id = str(last.binding["launch_id"])
+    blocked_from = str(last.binding["blocked_from"])
+    seq = sum(1 for e in _applied(log) if e.operation is ControlOperation.LAUNCH_BLOCKED) + 1
+    if verdict.allowed:
+        return CampaignTransition(
+            operation=ControlOperation.LAUNCH_UNBLOCKED,
+            actor=actor,
+            actor_role=LAUNCHER_ROLE,
+            reason=f"the box now allows launch {launch_id}",
+            idempotency_key=f"{launch_id}:unblocked:{seq}",
+            next_state=CampaignState(blocked_from),
+            expected_state=CampaignState.LAUNCH_BLOCKED,
+            target=launch_id,
+            binding={"launch_id": launch_id, "blocked_from": blocked_from},
+        )
+    return _blocked(
+        campaign,
+        verdict,
+        launch_id=launch_id,
+        blocked_from=blocked_from,
+        attempt=len(_episode(log)) + 1,
+        actor=actor,
+        key_seq=seq,
+    )
+
+
+def escalated_by_a_blocked_launch(campaign: Campaign, log: list[ControlLogEntry]) -> bool:
+    """The campaign is escalated because its launch stayed blocked past the policy's count. The
+    owner's resume then returns it to ``launch_blocked`` rather than naming an action: the
+    intent it would launch is still pending."""
+    if campaign.state is not CampaignState.ESCALATED:
+        return False
+    moved = [e for e in _applied(log) if not e.operation.records_only]
+    return bool(moved) and moved[-1].operation is ControlOperation.LAUNCH_BLOCKED

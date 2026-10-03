@@ -24,6 +24,7 @@ from squadops.cycles.models import (
     SquadProfile,
     TaskFlowPolicy,
 )
+from tests.unit.campaigns.builders import QuietBox
 
 pytestmark = [pytest.mark.domain_orchestration]
 
@@ -104,6 +105,7 @@ def client(
     app.state.deploy_registry = MemoryDeployRegistry()  # #1720: no deploy recorded yet
     app.state.squad_profile = mock_squad_profile
     app.state.flow_executor = mock_flow_executor
+    app.state.box_reader = QuietBox()  # SIP-0109 §9.3: every create reads the box
     # #1568: the create-time sandbox preflight reads the provider from the process env, and
     # the provider is required; compose sets it on the runtime API.
     monkeypatch.setenv("SQUADOPS__SANDBOX__PROVIDER", "noop")
@@ -715,6 +717,111 @@ class TestCreateCyclePreflight:
         assert [w for w in resp.json()["warnings"] if w["code"] != "model_unregistered"] == []
 
 
+class TestCreateReadsTheBox:
+    """SIP-0109 §9.3 (#1802), entering at the create route with the runtime's own box reader:
+    the lease from the campaign registry, the declared models from the active deploy record,
+    and the resident models from a real Ollama adapter's ``/api/ps``. Bug caught: a CLI or
+    driver launch beside a crew model, or while the supervisor holds the box, or a refusal that
+    leaves no audit event."""
+
+    _REQUEST = {"squad_profile_id": "full", "task_flow_policy": {"mode": "sequential"}}
+    _DECLARED = "22130167c4c20e20c7b71454612966ca8e8171e9b3cc8ab6ce8aa6cbfec79643"
+
+    @staticmethod
+    async def _reader(resident: str, digest: str, *, supervisor_holds: bool):
+        import httpx
+
+        from adapters.cycles.memory_campaign_registry import MemoryCampaignRegistry
+        from adapters.llm.ollama import OllamaAdapter
+        from squadops.campaigns.box_reading import BoxReader
+        from squadops.campaigns.models import CampaignState, CampaignTransition, ControlOperation
+        from squadops.cycles.deploy_record import DeployRecord, ModelWeights
+        from tests.unit.campaigns.builders import campaign, move
+
+        campaigns = MemoryCampaignRegistry()
+        if supervisor_holds:
+            await campaigns.create_campaign(
+                campaign("cmp_c"), actor="o", actor_role="o", reason="r", idempotency_key="c"
+            )
+            for i, s in enumerate(("calibrating", "at_proposal", "awaiting_ruling")):
+                await campaigns.transition("cmp_c", move(CampaignState(s), f"k{i}"))
+            await campaigns.change_box_lease(
+                "cmp_c",
+                CampaignTransition(
+                    operation=ControlOperation.LEASE_ACQUIRE,
+                    actor="crew",
+                    actor_role="campaign-supervisor",
+                    reason="gate",
+                    idempotency_key="lease",
+                    next_state=None,
+                    binding={"held_by": "crew", "expires_in_s": 600},
+                ),
+                runs_in_flight=(),
+            )
+        deploys = MemoryDeployRegistry()
+        await deploys.record(
+            DeployRecord(
+                deploy_id="dep_x",
+                recorded_at=datetime(2026, 10, 3, tzinfo=UTC),
+                recorded_by="rebuild",
+                source_revision="abc",
+                services=(),
+                models=(ModelWeights("qwen3.8:27b", TestCreateReadsTheBox._DECLARED),),
+            )
+        )
+        ollama = OllamaAdapter(base_url="http://ollama:11434", default_model="qwen3.8:27b")
+        ollama._client = httpx.AsyncClient(
+            base_url="http://ollama:11434",
+            transport=httpx.MockTransport(
+                lambda r: httpx.Response(
+                    200, json={"models": [{"name": resident, "digest": digest}]}
+                )
+            ),
+        )
+        return BoxReader(
+            campaigns=campaigns,
+            deploy_registry=deploys,
+            engines={"ollama": ollama},
+            project_registry=None,
+            cycle_registry=None,
+        )
+
+    @pytest.mark.parametrize(
+        ("resident", "digest", "holds", "status", "refusal"),
+        [
+            ("qwen3.8:27b", _DECLARED, True, 409, "supervisor_holds_the_box"),
+            ("qwen2.5:3b-instruct", "9" * 64, False, 409, "box_not_quiet"),
+            ("qwen3.8:27b", _DECLARED, False, 200, None),
+        ],
+        ids=["the-supervisor-holds-it", "a-crew-model-is-resident", "quiet"],
+    )
+    async def test_a_create_is_refused_on_a_held_or_loud_box_and_audited(
+        self, client, mock_cycle_registry, resident, digest, holds, status, refusal
+    ):
+        audit = SimpleNamespace(events=[])
+        audit.record = audit.events.append
+        client.app.state.audit_port = audit
+        client.app.state.box_reader = await self._reader(resident, digest, supervisor_holds=holds)
+
+        resp = client.post("/api/v1/projects/hello_squad/cycles", json=self._REQUEST)
+
+        assert resp.status_code == status
+        if refusal is None:
+            assert audit.events == []
+            return
+        error = resp.json()["detail"]["error"]
+        assert (error["code"], error["details"]["refusal"]) == ("BOX_REFUSED", refusal)
+        assert mock_cycle_registry.create_cycle.await_count == 0
+        [event] = audit.events
+        assert (event.action, event.result, event.denial_reason) == (
+            "cycle.launch_refused",
+            "denied",
+            refusal,
+        )
+        if refusal == "box_not_quiet":
+            assert "qwen2.5:3b-instruct" in error["message"]
+
+
 class TestListCyclesPages:
     """#1891: the list returned the newest 50 cycles with no way to ask for more, and
     ``?status=`` filtered within them. Entered at the HTTP route over a real memory registry."""
@@ -763,6 +870,7 @@ class TestListCyclesPages:
         app.state.cycle_registry = registry
         app.state.squad_profile = mock_squad_profile
         app.state.flow_executor = mock_flow_executor
+        app.state.box_reader = QuietBox()  # SIP-0109 §9.3: every create reads the box
         return TestClient(app)
 
     def _ids(self, client, query: str = "") -> list[str]:

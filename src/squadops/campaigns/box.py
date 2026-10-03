@@ -13,8 +13,10 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import StrEnum
+
+from squadops.campaigns.models import Campaign, CampaignState, ControlOperation, RefusalReason
 
 
 class LeaseHolder(StrEnum):
@@ -120,3 +122,70 @@ def launch_verdict(lease: BoxLease | None, quietness: Quietness, now: datetime) 
     if not quietness.quiet:
         return LaunchVerdict(LaunchRefusal.BOX_NOT_QUIET, quietness.reasons)
     return LaunchVerdict(None)
+
+
+# =============================================================================
+# The lease's changes (§9.3; #1802): who may take it, who may give it back
+# =============================================================================
+
+#: Who holds the box between supervisor leases.
+SQUAD_HOLDER_ID = "squadops"
+
+
+def lease_refusal(
+    operation: ControlOperation,
+    current: BoxLease | None,
+    campaign: Campaign,
+    held_by: str,
+    now: datetime,
+    runs_in_flight: tuple[str, ...],
+) -> RefusalReason | None:
+    """Whether the lease may change as asked, read against the committed lease.
+
+    - **Acquire:** only at the campaign's increment gate (its proposal run has ended); only
+      while no run is in flight on the box; and only when no other supervisor holds it. The
+      same holder for the same campaign renews.
+    - **Release:** only the holder of a live supervisor lease gives it back. A lease that has
+      expired, or the squad's own, is released by anyone: it holds nothing.
+    """
+    holds = current is not None and current.supervisor_holds(now)
+    mine = holds and current.campaign_id == campaign.campaign_id and current.held_by == held_by
+    if operation is ControlOperation.LEASE_ACQUIRE:
+        if campaign.state is not CampaignState.AWAITING_RULING:
+            return RefusalReason.GATE_NOT_OPEN
+        if runs_in_flight:
+            return RefusalReason.RUN_IN_FLIGHT
+        if holds and not mine:
+            return RefusalReason.BOX_HELD
+        return None
+    if operation is ControlOperation.LEASE_RELEASE:
+        return RefusalReason.NOT_LEASE_HOLDER if holds and not mine else None
+    raise ValueError(f"{operation} does not change the lease")
+
+
+def leased(
+    operation: ControlOperation,
+    current: BoxLease | None,
+    campaign_id: str,
+    binding: dict,
+    now: datetime,
+) -> BoxLease:
+    """The lease an applied change leaves. An acquire holds the box until ``expires_in_s`` from
+    now; a renewal keeps its first acquisition time. A release returns the box to the squad."""
+    if operation is ControlOperation.LEASE_ACQUIRE:
+        renewing = (
+            current is not None
+            and current.supervisor_holds(now)
+            and current.campaign_id == campaign_id
+            and current.held_by == binding["held_by"]
+        )
+        return BoxLease(
+            holder=LeaseHolder.SUPERVISOR,
+            held_by=binding["held_by"],
+            acquired_at=current.acquired_at if renewing else now,
+            expires_at=now + timedelta(seconds=int(binding["expires_in_s"])),
+            campaign_id=campaign_id,
+        )
+    if operation is ControlOperation.LEASE_RELEASE:
+        return BoxLease(holder=LeaseHolder.SQUAD, held_by=SQUAD_HOLDER_ID, acquired_at=now)
+    raise ValueError(f"{operation} does not change the lease")

@@ -223,3 +223,50 @@ def test_resume_names_the_owners_action_only_when_given(get_client):
         {"reason": "rule", "idempotency_key": "k-9", "action": "abandon_and_propose"},
         {"reason": "rule", "idempotency_key": "k-9"},
     ]
+
+
+@patch("squadops.cli.commands.campaigns._get_client")
+def test_the_lease_commands_send_the_hold_and_its_return_to_their_routes(get_client):
+    """SIP-0109 §9.3 (#1802). Bugs caught: the hold's length dropped (the API would refuse a
+    lease with no expiry, so the supervisor could not take the box from the CLI), or a release
+    sent to the acquire route, which would renew the lease instead of returning it."""
+    lease = {
+        "holder": "supervisor",
+        "held_by": "crew",
+        "campaign_id": "cmp_1",
+        "acquired_at": "2026-10-03T14:00:00Z",
+        "expires_at": "2026-10-03T14:15:00Z",
+        "supervisor_holds": True,
+    }
+    client = _client(post={"entry": _RESULT["entry"], "replayed": False, "lease": lease})
+    get_client.return_value = client
+
+    took = runner.invoke(
+        app,
+        [
+            "campaigns",
+            "lease",
+            "acquire",
+            "cmp_1",
+            "--expires-in",
+            "900",
+            "--reason",
+            "gate",
+            "--idempotency-key",
+            "k-1",
+        ],
+    )
+    gave = runner.invoke(
+        app,
+        ["campaigns", "lease", "release", "cmp_1", "--reason", "done", "--idempotency-key", "k-2"],
+    )
+
+    assert (took.exit_code, gave.exit_code) == (0, 0), took.output + gave.output
+    assert [(c.args[0], c.kwargs["json"]) for c in client.post.call_args_list] == [
+        (
+            "/api/v1/campaigns/cmp_1/lease",
+            {"reason": "gate", "idempotency_key": "k-1", "expires_in_s": 900},
+        ),
+        ("/api/v1/campaigns/cmp_1/lease/release", {"reason": "done", "idempotency_key": "k-2"}),
+    ]
+    assert "holds the box" in took.output

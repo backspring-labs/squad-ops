@@ -30,6 +30,8 @@ MODULES = (
     "squadops.campaigns.continuation",
     # SIP-0109 §9.3: the lease and the box's quietness; the caller reads the engines.
     "squadops.campaigns.box",
+    # #1802: a refused launch, its retries and its escalation; the launcher reads the box.
+    "squadops.campaigns.launch_blocking",
 )
 
 #: Prefixes the closure must not reach: stores and their ports, the wiring, the network, the

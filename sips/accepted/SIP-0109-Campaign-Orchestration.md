@@ -1926,6 +1926,66 @@ increments each (decision 3). Without a reader, each would propose increments pa
 Row 3 is checked before row 4, so a campaign whose last allowed cycle meets the target ends in
 success, not exhaustion.
 
+### 24ai. The box lease, enforced (2026-10-03, §9.3, §19 item 9, §24l's still-to-build, #1802; decided under the 2.0 charter)
+
+§24l built the lease's decisions and the quiet-box reads, and nothing called them. Its still-to-build
+list was the lease's persistence and API, and enforcement at the cycle-create preflight, the launcher
+and run starts.
+
+**The evidence:** the crew's review of the 2.0 pre-registration draft (#1908, 2026-10-03,
+changes requested). The draft counts "no launch beside a crew model" among the set's safety
+guarantees, and on main that guarantee rested on operator discipline, with nothing in the control
+log to read it from.
+
+**As built:**
+- **The lease is stored** (migration 1690, `box_lease`): one row, seeded as the squad's, so every
+  change takes its row lock. A supervisor's lease, and only one, carries an expiry.
+  - Each change is a control-log row (`lease_acquire`, `lease_release`), committed with the lease by
+    `CampaignRegistryPort.change_box_lease` and never by `transition`. Each row is projected to the
+    security audit like every other row.
+  - Its rules are pure (`box.lease_refusal`, `box.leased`):
+    - **acquire** only at the campaign's increment gate (`gate_not_open`), only while no run is in
+      flight on the box (`run_in_flight`), and only when no other supervisor holds it (`box_held`);
+      the same holder renews;
+    - **release** only by the holder of a live lease (`not_lease_holder`). An expired lease holds
+      nothing.
+- **The API:** `GET`/`POST /api/v1/campaigns/{id}/lease` and `POST …/lease/release`, under
+  `campaigns:supervise` (read under `campaigns:read`). An acquire past the policy's `lease_expiry_s`
+  is refused (422).
+  - The CLI: `squadops campaigns lease show|acquire|release`.
+- **One reader of the box,** `BoxReader`: the lease, the active deploy record's declared models, and
+  the configured engine's resident models. Every launch path asks it.
+- **Enforcement at the three points:**
+  - **The cycle-create route** refuses with a 409 (`BOX_REFUSED`, naming the refusal and its reasons)
+    and a security-audit event (`cycle.launch_refused`). This covers the CLI and the set driver.
+  - **The launcher** launches nothing for a campaign in a holding state. An intent the box refuses
+    moves its campaign to `launch_blocked` with a `launch_blocked` row (the attempt, the refusal, the
+    reasons, the state it was launched from), and the intent stays pending.
+    - The campaign sweep re-attempts it every `launch_blocked_interval_s`: allowed, a
+      `launch_unblocked` row returns the campaign to that state and the held intent launches;
+      refused at the `launch_blocked_attempts`th attempt, the campaign escalates.
+    - The owner's resume of that escalation names no action: it returns the campaign to
+      `launch_blocked`, re-attempted at once and counted afresh (an action would write a second
+      intent beside the pending one).
+  - **A run start** waits, queued, while the supervisor holds the box, reading the lease every 15 s,
+    and starts once it is released or expires (§24l's "waits, not fails"). Its ceiling is the
+    holding campaign's `owner_ruling_bound_s`; a lease renewed past it fails the run unstarted, with
+    the reason.
+
+**Not built, and why:**
+- **The check stays model-only (§24l).** The GPU's compute processes are not read until the
+  runtime-api is granted the device, which is a `docker-compose.yml` change and the owner's. The
+  guarantee is therefore "no launch beside an undeclared resident model", and the pre-registration
+  says so.
+- **The acquire reads the runs in flight before its transaction.** A run whose start read a free
+  lease, and that marks itself running between that read and the acquire's commit, is not seen.
+  The window is a run's lease read to its `running` write. Closing it would put the run start under
+  the lease's row lock, a change to every run's start for a race that needs a run and a supervisor
+  to land in the same instant. Recorded, not built.
+
+**Deployed proof:** the pre-registration's precondition 4 (#1908), read on the deploy that carries
+this, and appended here.
+
 ---
 
 ## Revision history

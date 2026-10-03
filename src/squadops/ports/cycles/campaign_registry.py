@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from squadops.campaigns.box import BoxLease
 from squadops.campaigns.models import (
     Campaign,
     CampaignState,
@@ -72,6 +73,27 @@ class CampaignRegistryPort(ABC):
             CampaignNotFoundError: If the campaign_id is not found.
             ControlOperationRefused: If the operation is refused. The refusal is recorded as a
                 control-log row before this is raised.
+            ValueError: If the operation changes the box lease: ``change_box_lease`` commits it.
+        """
+
+    @abstractmethod
+    async def box_lease(self) -> BoxLease | None:
+        """The box's one lease (§9.3; #1802), or ``None`` before any was recorded."""
+
+    @abstractmethod
+    async def change_box_lease(
+        self, campaign_id: str, transition: CampaignTransition, *, runs_in_flight: tuple[str, ...]
+    ) -> TransitionResult:
+        """Acquire or release the box lease for a campaign, with its control-log row, in one
+        transaction that holds the lease's lock (§9.3; #1802).
+
+        ``runs_in_flight`` is what the caller read of the box's running runs: an acquire is
+        refused while any is. The lease's rules are ``squadops.campaigns.box``'s.
+
+        Raises:
+            CampaignNotFoundError: If the campaign_id is not found.
+            ControlOperationRefused: If the change is refused, recorded as a row first.
+            ValueError: If the operation is not a lease change.
         """
 
     @abstractmethod

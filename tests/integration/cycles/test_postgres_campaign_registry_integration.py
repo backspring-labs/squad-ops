@@ -38,7 +38,7 @@ from squadops.campaigns.models import (
 )
 from squadops.cycles.models import GateDecisionValue
 from tests.integration.conftest import integration_postgres_dsn
-from tests.unit.campaigns.builders import campaign, cycle_for, move
+from tests.unit.campaigns.builders import campaign, cycle_for, move, quiet_box
 
 pytestmark = [pytest.mark.docker, pytest.mark.domain_orchestration]
 
@@ -282,12 +282,19 @@ async def test_two_launchers_on_their_own_connections_create_one_cycle(campaigns
     other_pool = await create_pool(POSTGRES_URL, min_size=1, max_size=2)
     try:
         launchers = [
-            CampaignLauncher(campaigns, PostgresCycleRegistry(pool=pool), _build, actor="l1"),
+            CampaignLauncher(
+                campaigns,
+                PostgresCycleRegistry(pool=pool),
+                _build,
+                actor="l1",
+                box_verdict=quiet_box,
+            ),
             CampaignLauncher(
                 PostgresCampaignRegistry(pool=other_pool),
                 PostgresCycleRegistry(pool=other_pool),
                 _build,
                 actor="l2",
+                box_verdict=quiet_box,
             ),
         ]
         results = await asyncio.gather(*(launcher.drain() for launcher in launchers))
@@ -318,10 +325,12 @@ async def test_a_crash_after_creation_is_found_by_the_next_drain(campaigns, pool
     cycles = _CrashAfterCreate(pool=pool)
 
     with pytest.raises(RuntimeError, match="injected"):
-        await CampaignLauncher(campaigns, cycles, _build, actor="l1").drain()
+        await CampaignLauncher(campaigns, cycles, _build, actor="l1", box_verdict=quiet_box).drain()
     [first] = await _cycle_rows(pool, decided.intent.launch_id)
 
-    [launched] = await CampaignLauncher(campaigns, cycles, _build, actor="l1").drain()
+    [launched] = await CampaignLauncher(
+        campaigns, cycles, _build, actor="l1", box_verdict=quiet_box
+    ).drain()
 
     assert [r["cycle_id"] for r in await _cycle_rows(pool, decided.intent.launch_id)] == [
         first["cycle_id"]
@@ -365,7 +374,9 @@ async def test_no_launch_is_drained_after_an_abort(campaigns):
 async def test_a_campaigns_launch_intents_read_back_in_order_in_any_state(campaigns, pool):
     """An abort reads these to cancel what the campaign launched (§12a)."""
     first = await campaigns.transition(CID, _launching("k-1"))
-    await CampaignLauncher(campaigns, PostgresCycleRegistry(pool=pool), _build, actor="l1").drain()
+    await CampaignLauncher(
+        campaigns, PostgresCycleRegistry(pool=pool), _build, actor="l1", box_verdict=quiet_box
+    ).drain()
     await campaigns.transition(CID, move(S.AWAITING_RULING, "k-2"))
     await campaigns.transition(
         CID, move(S.AT_PROPOSAL, "k-3", launch=LaunchRequest(CycleKind.INCREMENT))
@@ -416,3 +427,92 @@ async def test_a_ruling_overdue_row_is_stored_and_the_gate_is_listed_by_state(ca
     )
     assert [c.campaign_id for c in await campaigns.campaigns_in_state(S.AWAITING_RULING)] == [CID]
     assert await campaigns.campaigns_in_state(S.BUILDING) == []
+
+
+# --- the box lease (SIP-0109 §9.3; #1802, migration 1690) -----------------------------------------
+
+
+def _lease_change(op, held_by: str, key: str):
+    from squadops.campaigns.models import CampaignTransition, ControlOperation
+
+    binding = {"held_by": held_by}
+    if op is ControlOperation.LEASE_ACQUIRE:
+        binding["expires_in_s"] = 900
+    return CampaignTransition(
+        operation=op,
+        actor=held_by,
+        actor_role="campaign-supervisor",
+        reason="the increment gate",
+        idempotency_key=key,
+        next_state=None,
+        binding=binding,
+    )
+
+
+async def _two_at_the_gate(pool) -> PostgresCampaignRegistry:
+    reg = PostgresCampaignRegistry(pool=pool)
+    for cid in ("cmp_lease0000001", "cmp_lease0000002"):
+        await reg.create_campaign(
+            campaign(cid, project_id=PROJECT),
+            actor="o",
+            actor_role="o",
+            reason="r",
+            idempotency_key=cid,
+        )
+        for i, state in enumerate((S.CALIBRATING, S.AT_PROPOSAL, S.AWAITING_RULING)):
+            await reg.transition(cid, move(state, f"{cid}-{i}"))
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO box_lease (box_id, holder, held_by, acquired_at) "
+            "VALUES ('box', 'squad', 'squadops', now()) ON CONFLICT (box_id) DO NOTHING"
+        )
+    return reg
+
+
+async def test_two_supervisors_racing_for_the_box_leave_exactly_one_holding_it(pool):
+    """Bug caught: two acquires that both read a free box and both commit, so two supervisors
+    each believe they hold it. The lease's row lock serializes them: one applies, the other is
+    refused as box_held and recorded."""
+    from squadops.campaigns.models import ControlOperation, ControlOperationRefused
+
+    reg = await _two_at_the_gate(pool)
+    other = PostgresCampaignRegistry(pool=pool)
+    outcomes = await asyncio.gather(
+        reg.change_box_lease(
+            "cmp_lease0000001",
+            _lease_change(ControlOperation.LEASE_ACQUIRE, "crew-a", "a"),
+            runs_in_flight=(),
+        ),
+        other.change_box_lease(
+            "cmp_lease0000002",
+            _lease_change(ControlOperation.LEASE_ACQUIRE, "crew-b", "b"),
+            runs_in_flight=(),
+        ),
+        return_exceptions=True,
+    )
+
+    refused = [o for o in outcomes if isinstance(o, ControlOperationRefused)]
+    assert len(refused) == 1 and str(refused[0].entry.refusal) == "box_held"
+    holder = (await reg.box_lease()).held_by
+    winner = "cmp_lease0000001" if holder == "crew-a" else "cmp_lease0000002"
+    assert (await reg.box_lease()).campaign_id == winner
+
+
+async def test_the_holder_gives_the_box_back_and_the_lease_reads_back_as_the_squads(pool):
+    """Bug caught: a release that records its row but leaves the stored lease as it was."""
+    from squadops.campaigns.box import LeaseHolder
+    from squadops.campaigns.models import ControlOperation
+
+    reg = await _two_at_the_gate(pool)
+    await reg.change_box_lease(
+        "cmp_lease0000001",
+        _lease_change(ControlOperation.LEASE_ACQUIRE, "crew", "a"),
+        runs_in_flight=(),
+    )
+    await reg.change_box_lease(
+        "cmp_lease0000001",
+        _lease_change(ControlOperation.LEASE_RELEASE, "crew", "r"),
+        runs_in_flight=(),
+    )
+    lease = await PostgresCampaignRegistry(pool=pool).box_lease()
+    assert (lease.holder, lease.held_by, lease.expires_at) == (LeaseHolder.SQUAD, "squadops", None)
