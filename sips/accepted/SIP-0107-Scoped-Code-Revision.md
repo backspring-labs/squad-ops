@@ -2412,7 +2412,27 @@ for editing was accepted and recorded as an unauthorized fallback (§46a). From 
   - one is an anchored edit.
 
   None is scoped revision failing to edit (#1788's comment of 2026-10-03).
-- **The checkpoint pair on the deploy that carries the flip** is read there and appended here.
+- **The checkpoint pair on the deploy that carries the flip (step 7's proof, part 2; read
+  2026-10-03).** Rebuild 16 (`dep_869ff237a822`, from `12cc508e`) carries the flip (#1909). Its
+  loaded checks read the refusal live in every repair container, and the runner spends a refused
+  round (`1909-dev`, `1909-qa`, `1909-runner`). Both regression rolls ran through the set driver,
+  uncounted, on the pinned configuration hashes:
+
+  | roll | cycle | verdict | correction rounds | repairs, by form |
+  |---|---|---|---|---|
+  | FastAPI + React | `cyc_559e19c582d6` | **accepted**, 21/21, boot audit PASS, functional | 1 | one dev repair took the **edit** form (anchored, offered 3, accepted); one self-evaluation pass took edits |
+  | Next.js + TypeScript | `cyc_025e085a22b1` | **accepted**, 16/16, boot audit PASS, functional | 0 | none: a clean roll leaves the flip nothing to act on |
+
+  **No whole re-emission was refused in either roll.** Every revision form logged
+  `whole_file_refused: []`, and no `whole_file_without_fallback_authority` line was written.
+
+  **What the pair shows:** the flip turned away no repair, and a repair under it converged by edits
+  on an accepted roll.
+
+  **What it does not show:** a refusal in a live repair and its retry. Neither roll produced a
+  whole-file re-emission, the shape the window's 120 recorded repair forms never produced either
+  (part 1). The refusal and its told retry are held by the wiring tests at the repair's `handle`
+  (#1909).
 
 **Who ruled.** The owner, 2026-10-03, on the 2.0 plan's decision 1 ("flip, once #1788 has
 explained the nine empty scoped Next.js repairs") and #1788's reading: "go with your
