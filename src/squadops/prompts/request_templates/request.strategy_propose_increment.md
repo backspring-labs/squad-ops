@@ -1,6 +1,6 @@
 ---
 template_id: request.strategy_propose_increment
-version: "2"
+version: "3"
 required_variables:
   - objective_statement
   - objective_measurement
@@ -26,8 +26,9 @@ A supervisor rules on your proposal; only an approved proposal is built.
 not trimmed):
 {{allowed_scope_lines}}
 
-**Criteria earlier increments froze** (every one keeps passing unless you retire it, with a reason,
-and the supervisor rules on the retirement):
+**Criteria earlier increments froze**: each is something the application already does. Every one
+keeps passing unless you retire it, with a reason, and the supervisor rules on the retirement. A
+proposal that asserts one of them again adds nothing a test can fail on before the change:
 {{prior_criteria_lines}}
 {{supervisor_note_section}}
 {{abandoned_increment_section}}

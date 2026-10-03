@@ -157,6 +157,32 @@ async def test_a_proposal_after_an_abandoned_increment_is_shown_why_it_was_aband
     assert "abandoned" not in _prompts(first)[0]
 
 
+async def test_the_proposal_is_shown_what_each_frozen_criterion_asserts():
+    """#1938, through the real render. Bug caught: frozen criteria rendered as bare ids. Shakeout
+    6's strategy role, told only "`T3`", re-proposed the date sort T3 had frozen one increment
+    earlier. A record frozen before statements were kept still renders, by its id."""
+    inputs = _inputs()
+    block = inputs["resolved_config"]["campaign_proposal"]
+    block["prior_criteria"] = ["S1", "S2"]
+    block["frozen_criteria"] = [
+        {
+            "criterion_id": "S1",
+            "statement": "GET /runs returns runs sorted by datetime, ascending",
+            "surface": "GET /runs",
+            "test_path": "backend/tests/criteria/test_S1.py",
+        },
+        {"criterion_id": "S2", "test_path": "backend/tests/criteria/test_S2.py"},
+    ]
+    ctx = _ctx(_fenced(_REFERENCE))
+
+    await StrategyProposeIncrementHandler().handle(ctx, inputs)
+
+    [prompt] = _prompts(ctx)
+    assert "- `S1`: GET /runs returns runs sorted by datetime, ascending (on `GET /runs`)" in prompt
+    assert "- `S2`\n" in prompt
+    assert "each is something the application already does" in prompt
+
+
 async def test_a_refusal_comes_back_with_every_reason_and_the_revision_is_judged_afresh():
     """Bug caught: the model revising blind — told only that it failed — or the second attempt
     judged against the first attempt's verdict."""

@@ -258,8 +258,26 @@ def _render_variables(block: dict, context: ProposalContext) -> dict[str, str]:
         "allowed_scope_lines": "\n".join(f"- `{s}`" for s in context.allowed_scope),
         "baseline_manifest": context.baseline_manifest.strip(),
         "prior_criteria_lines": (
-            "\n".join(f"- `{c}`" for c in context.prior_criteria)
+            "\n".join(_frozen_line(c) for c in _frozen(block, context))
             or "- none yet: this is the first increment after calibration"
         ),
     }
     return variables
+
+
+def _frozen(block: dict, context: ProposalContext) -> list[dict]:
+    """Each frozen criterion's record, or its id alone where the block carries no records."""
+    records = [c for c in block.get("frozen_criteria") or () if isinstance(c, dict)]
+    return records or [{"criterion_id": c} for c in context.prior_criteria]
+
+
+def _frozen_line(criterion: dict) -> str:
+    """A frozen criterion as the proposal sees it: what it asserts, where (#1938). An id alone
+    told the strategy role "do not break T3" without saying T3 was the feature it then
+    re-proposed. A record frozen before statements were kept shows its id only."""
+    line = f"- `{criterion['criterion_id']}`"
+    statement = str(criterion.get("statement") or "").strip()
+    if not statement:
+        return line
+    surface = str(criterion.get("surface") or "").strip()
+    return f"{line}: {statement}" + (f" (on `{surface}`)" if surface else "")

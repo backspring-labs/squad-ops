@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -583,6 +584,66 @@ async def test_an_accepted_increment_is_promoted_and_its_criteria_frozen_for_the
     assert proposal["prior_criteria"] == ["C1"]
     assert proposal["frozen_criteria"][0]["bundle_ref"] == frozen["bundle_ref"]
     assert proposal["accepted_cycle_id"] == "cyc_inc"
+
+
+async def test_a_frozen_criterion_carries_what_it_asserts_to_the_next_proposal(calibrating, stored):
+    """#1938, entered at the completion hook. Bug caught: the next proposal told only the frozen
+    criteria's ids. Shakeout 6's strategy role, told "do not break T3", re-proposed the feature T3
+    froze. The promotion freezes each criterion's statement and surface from the approved change
+    request, and the next increment's launch carries them."""
+    from squadops.campaigns.change_request import (
+        ProposalContext,
+        stored_change_request,
+        validate_proposal,
+    )
+
+    fixtures = Path(__file__).resolve().parents[2] / "fixtures" / "campaigns"
+    request = validate_proposal(
+        yaml.safe_load((fixtures / "reference-capacity-change-request.yaml").read_text()),
+        ProposalContext(
+            "prop_cap",
+            1,
+            "sha-accepted",
+            (fixtures / "baseline-cyc_7a4b7a6fbf0e-interface_manifest.yaml").read_text(),
+            "fullstack_fastapi_react",
+            ("backend/**", "frontend/**"),
+            (),
+        ),
+    ).change_request
+    stored["art_cr"] = (
+        _ref("art_cr", "change_request.yaml", "change_request", -1),
+        stored_change_request(request).encode(),
+    )
+    stored["art_eval"] = (
+        _ref("art_eval", "increment_evaluation.json", "increment_evaluation", 20),
+        _evaluation("accepted"),
+    )
+    w, run = await calibrating(RunVerdict.ACCEPTED)
+    await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
+    block = {
+        "proposal_id": "prop_cap",
+        "version": 1,
+        "baseline_tree": (await w.campaigns.get_campaign(CID)).accepted.identity,
+        "accepted_cycle_id": "cyc_cal",
+        "baseline_manifest": MANIFEST,
+    }
+    increment_run = await w.launched_cycle(
+        "increment",
+        "cyc_inc",
+        "implementation",
+        "completed",
+        overrides={"campaign_proposal": block, "plan_artifact_refs": ["art_cr"]},
+    )
+    await w.end("cyc_inc", increment_run, CycleStopReason.SEQUENCE_COMPLETED)
+
+    *_, next_increment = await w.campaigns.launch_intents(CID)
+    proposal = next_increment.cycle_request["body"]["execution_overrides"]["campaign_proposal"]
+    [frozen] = proposal["frozen_criteria"]
+    assert (frozen["criterion_id"], frozen["statement"], frozen["surface"]) == (
+        "C1",
+        "A run created with capacity 2 is returned with capacity 2",
+        "POST /runs",
+    )
 
 
 @pytest.mark.parametrize(

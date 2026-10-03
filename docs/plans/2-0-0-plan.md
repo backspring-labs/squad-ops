@@ -430,7 +430,16 @@ Fifteen issues carry the title. Three are closed: #1728, #1802 and #1804.
      runtime asks for again is answered, not run twice (§24ao).
    - **The diagnostics re-run on rebuild 18.** Those on rebuild 17 were the restart paths' first
      live read, and precondition 5 asks for the registered deploy.
-3. **The exit shakeout:** shakeout 6 on rebuild 18, with the log archive beside it. At its first
+3. **The exit shakeout, round 1:** shakeout 6 on rebuild 18, with the log archive beside it.
+   - **It found #1938** (2026-10-03). The proposal is told frozen criteria by id only, so increment
+     3's first proposal re-proposed increment 2's feature. Fixed in SIP-0109 §24ap, which lands
+     before **rebuild 19.**
+   - By the owner's ruling, #1803's 12/12 on rebuild 18 stand for rebuild 19, which differs only by
+     #1938's fix. **Shakeout 7 on rebuild 19** is the exit run.
+   - Shakeout 6 also ran precondition 4's live-lease proof at its first gate: 5 of 5 passed
+     (SIP-0109 §24ai).
+   - **The original plan for this step, kept for the record:** shakeout 6 on rebuild 18, with the
+     log archive beside it. At its first
    increment gate it reads #1802's live-lease proof (the quiet-box half ran on 2026-10-03), with the
    crew's second ask added. An acquire needs the gate open, so the expired lease comes first:
    1. a short lease: a create is refused (`supervisor_holds_the_box`);
