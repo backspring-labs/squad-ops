@@ -143,17 +143,17 @@ def test_a_screenshot_is_written_only_when_its_view_rendered(
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
     monkeypatch.setattr(capture.subprocess, "run", fake_chromium)
-    monkeypatch.setattr(capture, "rendered_testids", lambda port, route: rendered)
+    monkeypatch.setattr(capture, "rendered_testids", lambda browser, port, route: rendered)
     monkeypatch.setattr(capture, "REPO", tmp_path)
     assets = tmp_path / "assets"
     routes = [("/runs", "delivered-app-run-list")]
 
     if written:
-        out = capture.shoot(5199, routes, assets, 1180, {"/runs": ["runs-view"]})
+        out = capture.shoot("chromium", 5199, routes, assets, 1180, {"/runs": ["runs-view"]})
         assert [p.name for p in out] == ["delivered-app-run-list.png"]
     else:
         with pytest.raises(SystemExit, match="rendered none of its view's test ids"):
-            capture.shoot(5199, routes, assets, 1180, {"/runs": ["runs-view"]})
+            capture.shoot("chromium", 5199, routes, assets, 1180, {"/runs": ["runs-view"]})
         assert not (assets / "delivered-app-run-list.png").exists()
 
 
