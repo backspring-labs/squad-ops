@@ -461,3 +461,37 @@ class TestCyclesRate:
 
         assert result.exit_code == exit_codes.VALIDATION_ERROR
         mock_get_client.return_value.post.assert_not_called()
+
+
+class TestCyclesListPages:
+    """#1891: `cycles list` ended silently at the API's newest 50."""
+
+    @staticmethod
+    def _page(n: int) -> list[dict]:
+        return [
+            {"cycle_id": f"cyc_{i}", "status": "failed", "build_strategy": "fresh"}
+            for i in range(n)
+        ]
+
+    @patch("squadops.cli.commands.cycles._get_client")
+    def test_a_full_page_says_there_may_be_more(self, mock_get_client):
+        mock_get_client.return_value = _mock_client(get_val=self._page(10))
+
+        result = runner.invoke(
+            app,
+            ["cycles", "list", "p", "--status", "failed", "--limit", "10", "--offset", "20"],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "10 shown; there may be more: --offset 30" in result.output
+        call = mock_get_client.return_value.get.call_args
+        assert call.kwargs["params"] == {"limit": 10, "offset": 20, "status": "failed"}
+
+    @patch("squadops.cli.commands.cycles._get_client")
+    def test_a_short_page_is_the_end(self, mock_get_client):
+        mock_get_client.return_value = _mock_client(get_val=self._page(3))
+
+        result = runner.invoke(app, ["cycles", "list", "p", "--limit", "10"])
+
+        assert result.exit_code == 0, result.output
+        assert "there may be more" not in result.output

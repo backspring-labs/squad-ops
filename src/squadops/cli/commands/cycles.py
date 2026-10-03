@@ -182,12 +182,14 @@ def list_cycles(
     ctx: typer.Context,
     project_id: str = typer.Argument(...),
     status: str | None = typer.Option(None, "--status", help="Filter by status"),
+    limit: int = typer.Option(50, "--limit", min=1, max=500, help="Cycles per page"),
+    offset: int = typer.Option(0, "--offset", min=0, help="Skip this many, newest first"),
 ):
-    """List cycles for a project."""
+    """List a page of a project's cycles, newest first (--status filters before the page)."""
     fmt = ctx.obj.get("format", "table") if ctx.obj else "table"
     quiet = ctx.obj.get("quiet", False) if ctx.obj else False
 
-    params = {}
+    params: dict = {"limit": limit, "offset": offset}
     if status:
         params["status"] = status
 
@@ -212,6 +214,9 @@ def list_cycles(
             for c in data
         ]
         print_table(["Cycle ID", "Status", "Strategy", "Created"], rows, quiet=quiet)
+        if len(data) == limit and not quiet:
+            # #1891: a full page is not the project's history; say so rather than end silently.
+            typer.echo(f"{limit} shown; there may be more: --offset {offset + limit}")
 
 
 @app.command("ls", hidden=True)
@@ -219,9 +224,11 @@ def list_cycles_alias(
     ctx: typer.Context,
     project_id: str = typer.Argument(...),
     status: str | None = typer.Option(None, "--status"),
+    limit: int = typer.Option(50, "--limit", min=1, max=500),
+    offset: int = typer.Option(0, "--offset", min=0),
 ):
     """Alias for list."""
-    list_cycles(ctx, project_id, status)
+    list_cycles(ctx, project_id, status, limit, offset)
 
 
 @app.command("show")

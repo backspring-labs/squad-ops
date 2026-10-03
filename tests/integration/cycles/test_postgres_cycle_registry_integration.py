@@ -17,6 +17,7 @@ import pytest_asyncio
 from adapters.persistence.pool import create_pool
 from squadops.cycles.models import (
     Cycle,
+    CycleStatus,
     FlowMode,
     Gate,
     GateAlreadyDecidedError,
@@ -381,6 +382,36 @@ class TestPagination:
 
         all_cycles = await registry.list_cycles(project_id, limit=50, offset=0)
         assert len(all_cycles) == 10
+
+
+class TestStatusFiltersBeforeThePage:
+    """#1891: ``?status=`` filtered one LIMIT'd page, so the API answered "which of the newest
+    50 cycles failed" — 11 of the deploy's 156 failed cycles. The filter now reads the project
+    newest first in batches until the page is filled, as the memory adapter always did."""
+
+    async def test_failed_cycles_older_than_the_page_are_found(self, registry, monkeypatch):
+        from datetime import timedelta
+
+        from adapters.cycles import postgres_cycle_registry
+
+        monkeypatch.setattr(postgres_cycle_registry, "_STATUS_SCAN_BATCH", 3)
+        project_id = f"status-{uuid.uuid4().hex[:8]}"
+        for i in range(8):
+            cycle = _make_cycle(
+                cycle_id=f"st-{i:03d}", project_id=project_id, created_at=_NOW + timedelta(i)
+            )
+            await registry.create_cycle(cycle)
+            run = await registry.create_run(_make_run(cycle.cycle_id))
+            await registry.update_run_status(run.run_id, RunStatus.RUNNING)
+            # the two OLDEST fail: past a limit of 2 and past the first batch of 3
+            ending = RunStatus.FAILED if i < 2 else RunStatus.COMPLETED
+            await registry.update_run_status(run.run_id, ending)
+
+        page = await registry.list_cycles(project_id, status=CycleStatus.FAILED, limit=2)
+        rest = await registry.list_cycles(project_id, status=CycleStatus.FAILED, limit=2, offset=1)
+
+        assert [c.cycle_id for c in page] == ["st-001", "st-000"]
+        assert [c.cycle_id for c in rest] == ["st-000"]
 
 
 class TestConcurrentRunCreation:
