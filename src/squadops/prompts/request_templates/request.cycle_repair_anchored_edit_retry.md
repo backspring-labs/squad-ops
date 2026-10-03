@@ -1,6 +1,6 @@
 ---
 template_id: request.cycle_repair_anchored_edit_retry
-version: "3"
+version: "4"
 required_variables:
   - refusal_lines
 optional_variables: []
@@ -26,5 +26,8 @@ file from it was used. The framework refused it for these reasons:
   your lines.
 - `overlapping_ranges`: two blocks in one file cover the same lines. Merge them into one block.
 - A malformed block names the marker that is missing or misplaced.
+- `whole_file_without_fallback_authority`: you re-emitted a file that already exists, whole.
+  An existing file is never replaced whole: change it with edit blocks, as described above, and
+  emit nothing for a file you are not changing.
 
 Emit the repair again now, following the edit rules above.

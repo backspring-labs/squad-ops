@@ -157,17 +157,35 @@ async def test_a_retry_refused_too_returns_the_refusal_and_nothing_else():
     assert "repair_typed_checks" not in result.outputs
 
 
-async def test_a_whole_file_repair_reads_exactly_as_before():
-    """§46a: before the flip a whole-file response is accepted. Bug caught: the anchored reading
-    changing a response that carries no edit fence."""
-    whole = "```python:backend/routes.py\nrouter = 1\n```\n"
-    ctx = _context(whole)
+_WHOLE_ROUTES = "```python:backend/routes.py\nrouter = 1\n```\n"
+
+
+@pytest.mark.parametrize(
+    ("retry", "applied"),
+    [(_WHOLE_ROUTES, False), (_GOOD_EDIT, True)],
+    ids=["re-emitted-whole-again", "edited-on-the-retry"],
+)
+async def test_a_whole_re_emission_of_an_offered_file_is_refused_and_told_why(retry, applied):
+    """SIP-0107 §9.4, from §38 step 7 (§46s; the owner's ruling of 2026-10-03). Before the flip
+    a whole-file response was accepted and recorded (§46a). Entered at the dev repair's
+    ``handle``. Bugs caught: an existing file replaced whole without fallback authority; the
+    refusal not told to the model, so its one retry repeats it; or a refused repair read as an
+    absent one."""
+    ctx = _context(_WHOLE_ROUTES, retry)
 
     result = await DevelopmentCorrectionRepairHandler().handle(ctx, _inputs())
 
-    assert [a["name"] for a in result.outputs["artifacts"]] == ["backend/routes.py"]
-    assert result.outputs["artifacts"][0]["content"] == "router = 1"
-    assert "anchored_edits" not in result.outputs
+    retry_prompt = _user_prompt(ctx, 1)
+    assert (
+        "backend/routes.py: whole_file_without_fallback_authority: the file exists" in retry_prompt
+    )
+    if applied:
+        assert result.outputs["anchored_edits"]["accepted"] is True
+        assert [a["name"] for a in result.outputs["artifacts"]] == ["backend/routes.py"]
+    else:
+        assert result.outputs["artifacts"] == []
+        assert result.outputs["emission_failure"]["reason"] == "whole_file_refused"
+        assert result.outputs["whole_file_refused"] == ["backend/routes.py"]
 
 
 async def test_a_repair_with_no_existing_named_file_is_not_offered_the_edit_form():
@@ -282,17 +300,19 @@ async def test_an_entity_that_does_not_exist_is_retried_with_its_reason():
     ("responses", "extra", "expected"),
     [
         (
-            ("```python:backend/routes.py\nrouter = 1\n```\n",),
+            # §46s: refused by the flip, told why, refused again on the retry. Still read as the
+            # whole-file form it took, and as having replaced nothing.
+            ("```python:backend/routes.py\nrouter = 1\n```\n",) * 2,
             {},
             {
                 "form": "whole_file",
                 "whole_file_offered": ["backend/routes.py"],
+                "whole_file_refused": ["backend/routes.py"],
                 "accepted": None,
                 "modes": [],
-                # §46o: re-emitted whole = the whole file, from the base the edits resolve on.
-                "replaced": {
-                    "backend/routes.py": {"chars": len(_ROUTES), "of": len(_ROUTES), "pct": 100}
-                },
+                "retried": True,
+                "failure_reason": "whole_file_refused",
+                "replaced": {},
             },
         ),
         (

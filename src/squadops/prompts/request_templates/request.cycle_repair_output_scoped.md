@@ -1,6 +1,6 @@
 ---
 template_id: request.cycle_repair_output_scoped
-version: "2"
+version: "3"
 required_variables:
   - editable_files
   - new_files
@@ -16,7 +16,7 @@ section below.
 
 - **Do not emit a ` ```language:<path> ` fence for any of these files.** Re-emitting an existing
   file whole is not a repair: every line you did not mean to change is written again, and any of
-  them can break.
+  them can break. **A response that does is refused, and none of it is used.**
 - A file above that you are not fixing: emit nothing for it. It stays exactly as it is.
 - A file the task names that does not exist yet is emitted whole, with a
   ` ```language:<path> ` fence:

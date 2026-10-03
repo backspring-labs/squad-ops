@@ -7326,12 +7326,14 @@ class TestRefusedAnchoredRepairIsSpent:
     _make_runner = TestCorrectionRunnerStandalone._make_runner
     _failed_envelope = TestCorrectionRunnerStandalone._failed_envelope
 
-    async def test_the_refusal_is_not_an_empty_emission(self, cycle):
+    @pytest.mark.parametrize(
+        "reason", ["anchored_edit_refused", "whole_file_refused"], ids=["edits", "whole-file"]
+    )
+    async def test_the_refusal_is_not_an_empty_emission(self, cycle, reason):
         """Bug caught: #1053's refund handing the round back — a model that keeps missing its
-        anchor would repair forever on the refund allowance."""
+        anchor, or (SIP-0107 §46s, the flip) keeps re-emitting an offered file whole, would
+        repair forever on the refund allowance."""
         import dataclasses as _dc
-
-        from squadops.capabilities.anchored_edits import EMISSION_FAILURE_ANCHORED_EDIT_REFUSED
 
         def responder(envelope):
             if envelope.task_type == "governance.correction_decision":
@@ -7350,7 +7352,7 @@ class TestRefusedAnchoredRepairIsSpent:
                     status="SUCCEEDED",
                     outputs={
                         "artifacts": [],
-                        "emission_failure": {"reason": EMISSION_FAILURE_ANCHORED_EDIT_REFUSED},
+                        "emission_failure": {"reason": reason},
                     },
                 )
             return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})

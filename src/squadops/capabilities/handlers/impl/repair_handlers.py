@@ -623,19 +623,35 @@ class _RepairPromptMixin:
         """
         from squadops.capabilities.anchored_edits import (
             EMISSION_FAILURE_ANCHORED_EDIT_REFUSED,
+            EMISSION_FAILURE_WHOLE_FILE_REFUSED,
             apply_anchored_edits,
             parse_anchored_edits,
             strip_edit_blocks,
+            whole_file_refusal_line,
+            whole_file_refusals,
         )
 
         parse = parse_anchored_edits(content)
+        emitted = self._build_artifacts_from_content(
+            strip_edit_blocks(content) if parse.found else content
+        )
+        # SIP-0107 §9.4, from §38 step 7 (§46s): an existing file the repair was offered for
+        # editing is never replaced whole without fallback authority, and nothing grants it. The
+        # whole response is refused, edits included, as one invalid revision refuses its
+        # transaction (§14).
+        refused = whole_file_refusals(emitted, self._anchorable_files(inputs))
+        if refused:
+            return [], {
+                "whole_file_refused": refused,
+                "emission_failure": {
+                    "reason": EMISSION_FAILURE_WHOLE_FILE_REFUSED,
+                    "refusals": [whole_file_refusal_line(path) for path in refused],
+                    "expected_artifacts": list(inputs.get("expected_artifacts") or []),
+                },
+            }
         if not parse.found:
-            return self._build_artifacts_from_content(content), {}
-        whole = [
-            a
-            for a in self._build_artifacts_from_content(strip_edit_blocks(content))
-            if not a.get("emission_fallback")
-        ]
+            return emitted, {}
+        whole = [a for a in emitted if not a.get("emission_fallback")]
         application = apply_anchored_edits(
             parse,
             self._repair_base_files(inputs),
@@ -671,13 +687,14 @@ class _RepairPromptMixin:
         too stands: the step returns the refusal, the round is spent, and the next response
         consumes an attempt. Without a renderer the retry cannot say why, so it is not made.
         """
-        from squadops.capabilities.anchored_edits import EMISSION_FAILURE_ANCHORED_EDIT_REFUSED
+        from squadops.capabilities.anchored_edits import REVISION_REFUSED_FAILURES
 
         outputs = getattr(result, "outputs", None)
         if not isinstance(outputs, dict):
             return result
         marker = outputs.get("emission_failure") or {}
-        if marker.get("reason") != EMISSION_FAILURE_ANCHORED_EDIT_REFUSED:
+        # Refused edits, or a refused whole re-emission (§46s): both are told why, once.
+        if marker.get("reason") not in REVISION_REFUSED_FAILURES:
             self._log_anchored_edits(outputs, retried=False)
             return result
         renderer = getattr(context.ports, "request_renderer", None)
