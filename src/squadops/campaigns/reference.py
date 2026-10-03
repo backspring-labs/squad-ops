@@ -118,3 +118,98 @@ def reference_proposal_block(
 
 def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+#: The assessment indicators that say how the implementation's correction loop went (§11a's
+#: scoped repair): what each round moved, and the rounds refunded.
+_REPAIR_INDICATORS = ("correction_movements", "refunded_rounds")
+
+
+def mechanism_report(
+    cycle: Mapping[str, Any], assessment: Mapping[str, Any] | None, evaluation: Mapping | None
+) -> dict[str, Any]:
+    """The reference increment's record, each brownfield mechanism reported separately (§11a):
+    delta framing, scoped repair, accumulated acceptance and baseline discrimination, with route
+    rendering and the verdict beside them.
+
+    Read from the record only: the cycle and its runs' gate decisions, its assessment, and its
+    evaluation artifact. Nothing is recomputed, and what the record does not hold is reported
+    as absent, never as a pass."""
+    runs = list(cycle.get("runs") or ())
+    framings = [r for r in runs if r.get("workload_type") == "framing"]
+    implementations = [r for r in runs if r.get("workload_type") == "implementation"]
+    return {
+        "cycle_id": cycle.get("cycle_id"),
+        "status": cycle.get("status"),
+        "delta_framing": {
+            "attempts": len(framings),
+            "gates": [_gate(r) for r in framings],
+        },
+        "scoped_repair": _repair(implementations, assessment),
+        "accumulated_acceptance": _section(evaluation, "frozen", "no frozen criteria were pinned"),
+        "baseline_discrimination": _section(evaluation, "discriminations", "no new criteria"),
+        "route_rendering": _section(evaluation, "routes", "no declared routes"),
+        "verdict": {
+            "increment": (evaluation or {}).get("verdict"),
+            "unmet": list((evaluation or {}).get("unmet") or ()),
+            "blocked": list((evaluation or {}).get("blocked") or ()),
+            "cycle": ((cycle.get("cycle_outcome") or {}).get("verdict")),
+        },
+    }
+
+
+def _gate(run: Mapping[str, Any]) -> dict[str, Any]:
+    from squadops.cycles.models import GateDecisionValue
+
+    decisions = list(run.get("gate_decisions") or ())
+    last = decisions[-1] if decisions else {}
+    return {
+        "run_id": run.get("run_id"),
+        "status": run.get("status"),
+        "decision": last.get("decision"),
+        "decided_by": last.get("decided_by"),
+        # A refusal's notes are its reasons, whole: the gate joins them with "; ", and a reason
+        # can carry "; " itself, so the record cannot be split back into them.
+        "notes": str(last.get("notes") or "")
+        if last.get("decision") == GateDecisionValue.REJECTED
+        else "",
+    }
+
+
+def _repair(implementations: list, assessment: Mapping[str, Any] | None) -> dict[str, Any]:
+    if not implementations:
+        return {"ran": False, "reason": "no implementation run: the framing never passed"}
+    if assessment is None:
+        return {"ran": True, "reason": "the assessment could not be read"}
+    indicators = {
+        i["name"]: i
+        for dimension in ("outcome", "quality", "coordination", "efficiency")
+        for i in assessment.get(dimension) or ()
+    }
+    attribution = assessment.get("attribution") or {}
+    return {
+        "ran": True,
+        **{name: _indicator(indicators.get(name)) for name in _REPAIR_INDICATORS},
+        "primary_cause": attribution.get("primary"),
+    }
+
+
+def _indicator(indicator: Mapping[str, Any] | None) -> Any:
+    """An assessment indicator in its three states (#1445): its value when observed, ``none``
+    when it was asked and there were none, and ``not recorded`` with the reason otherwise — an
+    absence is never read as either of the first two."""
+    from squadops.cycles.cycle_assessment import IndicatorState
+
+    state = (indicator or {}).get("state")
+    if state == IndicatorState.OBSERVED:
+        return indicator.get("value")
+    if state == IndicatorState.ASKED_NONE:
+        return "none"
+    return f"not recorded ({(indicator or {}).get('reason') or 'absent'})"
+
+
+def _section(evaluation: Mapping | None, key: str, empty: str) -> dict[str, Any]:
+    if evaluation is None:
+        return {"read": False, "reason": "no evaluation artifact: the increment was never judged"}
+    rows = list(evaluation.get(key) or ())
+    return {"read": True, "rows": rows} if rows else {"read": True, "rows": [], "note": empty}

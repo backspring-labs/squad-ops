@@ -298,3 +298,14 @@ async def test_every_author_a_bound_cycle_runs_is_shown_the_failed_cycle(
     assert "THIS INCREMENT WAS ATTEMPTED BEFORE, AND FAILED" in prompt
     assert "- failed checks: `tests_pass`" in prompt
     assert "ATTEMPTED BEFORE" not in "\n".join(str(m.content) for m in plain[0])
+
+
+def test_an_indicator_asked_with_none_is_shown_as_none_not_dropped():
+    """#1445's third state in the brief. Bug caught: ``asked_none`` dropped from the brief, so
+    the reader cannot tell "nothing went unverified" from "never asked"."""
+    from squadops.cycles.cycle_assessment import IndicatorState
+
+    latest = _failed()
+    assert latest.indicator("unverified_by_reason").state is IndicatorState.ASKED_NONE
+
+    assert "- unverified by reason: none" in brief_lines(prior_cycle_brief(latest))

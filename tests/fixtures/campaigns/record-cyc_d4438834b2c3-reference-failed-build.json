@@ -1,0 +1,108 @@
+{
+  "cycle_id": "cyc_d4438834b2c3",
+  "cycle_outcome": {
+    "failed": [
+      "vc-probe-runs",
+      "vc-probe-runs-join",
+      "vc-probe-runs-join-duplicate",
+      "vc-probe-runs-leave",
+      "tests_pass"
+    ],
+    "inert": [],
+    "replay": null,
+    "required_unmet": [],
+    "run_count": 3,
+    "unverified": [],
+    "verdict": "rejected",
+    "verified": [
+      "expected_artifacts",
+      "non_stub_files",
+      "acceptance_criteria_prose",
+      "acceptance:endpoint_defined",
+      "acceptance:import_present",
+      "acceptance:command_exit_zero",
+      "acceptance:module_imports",
+      "acceptance:fill_slot_signature",
+      "acceptance:undefined_names",
+      "acceptance:unterminated_source",
+      "acceptance:frontend_compiles",
+      "acceptance:declared_imports",
+      "required_files",
+      "acceptance:function_defined",
+      "acceptance:count_at_least",
+      "acceptance:harness_boundary",
+      "acceptance:contract_assertions_match",
+      "acceptance:assertion_kinds_match",
+      "no_stub_fallback_tests",
+      "no_self_mocking_tests",
+      "frontend_build",
+      "vc-probe-runs-rejects-blank"
+    ],
+    "waived": []
+  },
+  "runs": [
+    {
+      "cycle_id": "cyc_d4438834b2c3",
+      "failure_reason": null,
+      "finished_at": "2026-10-02T22:41:36.078595Z",
+      "gate_decisions": [
+        {
+          "decided_at": "2026-10-02T22:41:36.334404Z",
+          "decided_by": "system:plan_validation",
+          "decision": "rejected",
+          "gate_name": "progress_plan_review",
+          "notes": "Criterion C1 (endpoint POST /runs) is proven in its own test file 'backend/tests/criteria/test_C1.py', and no qa task's expected_artifacts include it. Add it to a qa task; the file holds that criterion's tests and no other's; Criterion C2 (endpoint POST /runs/{run_id}/join) is proven in its own test file 'backend/tests/criteria/test_C2.py', and no qa task's expected_artifacts include it. Add it to a qa task; the file holds that criterion's tests and no other's; Criterion C3 (client_route /runs/:run_id) is proven in its own test file 'frontend/src/__tests__/criteria/C3.test.jsx', and no qa task's expected_artifacts include it. Add it to a qa task; the file holds that criterion's tests and no other's",
+          "waived_checks": [],
+          "waiver_reason": null
+        }
+      ],
+      "initiated_by": "api",
+      "resolved_config_hash": "edfde4687eb0743186dd91f8412c7e3dc768666af502f77bddcffcd46afa11ac",
+      "resolved_config_ref": null,
+      "run_id": "run_fc62b9054377",
+      "run_number": 1,
+      "started_at": "2026-10-02T22:18:39.443893Z",
+      "status": "cancelled",
+      "workload_type": "framing"
+    },
+    {
+      "cycle_id": "cyc_d4438834b2c3",
+      "failure_reason": null,
+      "finished_at": "2026-10-02T23:11:27.141589Z",
+      "gate_decisions": [
+        {
+          "decided_at": "2026-10-02T23:11:27.440565Z",
+          "decided_by": "system:no_open_questions",
+          "decision": "approved",
+          "gate_name": "progress_plan_review",
+          "notes": "The manifest declares no unresolved decision, so the design asked nothing a human uniquely answers. Schema and winnability gates are the approval; plan validation passed at this gate.",
+          "waived_checks": [],
+          "waiver_reason": null
+        }
+      ],
+      "initiated_by": "system",
+      "resolved_config_hash": "edfde4687eb0743186dd91f8412c7e3dc768666af502f77bddcffcd46afa11ac",
+      "resolved_config_ref": null,
+      "run_id": "run_2b5f83604259",
+      "run_number": 2,
+      "started_at": "2026-10-02T22:41:36.404148Z",
+      "status": "completed",
+      "workload_type": "framing"
+    },
+    {
+      "cycle_id": "cyc_d4438834b2c3",
+      "failure_reason": "plan_defect: correction terminated at round 1 \u2014 failure signature repeated from round 0, structural plan-change candidates on both decisions (terminal: 'tighten_acceptance'); the plan, not the work product, is the defect (see term_-qa.test_01)",
+      "finished_at": "2026-10-02T23:29:17.319444Z",
+      "gate_decisions": [],
+      "initiated_by": "system",
+      "resolved_config_hash": "edfde4687eb0743186dd91f8412c7e3dc768666af502f77bddcffcd46afa11ac",
+      "resolved_config_ref": null,
+      "run_id": "run_be3caea2c20f",
+      "run_number": 3,
+      "started_at": "2026-10-02T23:11:30.202012Z",
+      "status": "failed",
+      "workload_type": "implementation"
+    }
+  ],
+  "status": "failed"
+}
