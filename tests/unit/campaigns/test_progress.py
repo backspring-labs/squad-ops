@@ -28,9 +28,10 @@ from squadops.campaigns.models import (
     LaunchIntentState,
 )
 from squadops.campaigns.progress import CampaignProgress, CycleRecord, cycle_ending, derive_counters
+from squadops.contracts.cycle_request_profiles import load_profile
 from squadops.cycles.cycle_assessment import AssessorIdentity, CycleEvidence, RunRecord, assess
 from squadops.cycles.cycle_end import CycleStopReason, RecordedEnd
-from squadops.cycles.models import ArtifactRef, Cycle, Run, TaskFlowPolicy
+from squadops.cycles.models import ArtifactRef, Cycle, Gate, Run, TaskFlowPolicy
 from squadops.cycles.verification_integrity import CycleOutcome, RunVerdict
 from tests.unit.campaigns.builders import campaign, move, policy
 
@@ -94,6 +95,18 @@ _STORED = {
 }
 
 
+def _flow_policy(profile: str) -> TaskFlowPolicy:
+    """The task-flow policy a cycle launched on ``profile`` carries, gates included."""
+    raw = load_profile(profile).defaults["task_flow_policy"]
+    return TaskFlowPolicy(
+        mode=raw["mode"],
+        gates=tuple(
+            Gate(g["name"], g["description"], tuple(g["after_task_types"]))
+            for g in raw.get("gates") or ()
+        ),
+    )
+
+
 class _Vault:
     async def list_artifacts(self, *, cycle_id=None, run_id=None, **_):
         return [ref for ref, _ in _STORED.values()]
@@ -145,7 +158,8 @@ class _World:
                 prd_ref=None,
                 squad_profile_id="full-38",
                 squad_profile_snapshot_ref="sha256:abc",
-                task_flow_policy=TaskFlowPolicy(mode="sequential"),
+                # The calibration profile's policy, its plan gate included.
+                task_flow_policy=_flow_policy("framing"),
                 build_strategy="fresh",
                 campaign_id=CID,
                 kind=kind,
@@ -916,3 +930,121 @@ async def test_a_repair_with_no_approved_plan_escalates(calibrating, stored):
     decision = (await w.campaigns.control_log(CID))[-1]
     assert (await w.campaigns.get_campaign(CID)).state is CampaignState.ESCALATED
     assert "no approved implementation plan" in decision.binding["unbuilt"]
+
+
+# --- §24ad (#1885): a question the accepted cycle's gate answered is not asked again ---------
+
+_FIXTURES = __import__("pathlib").Path(__file__).resolve().parents[2] / "fixtures" / "campaigns"
+#: Shakeout 4's calibration (``cyc_cc0909f2689a``): its manifest left ``run-list-ordering``
+#: open, and its plan gate was answered at 05:41Z with these notes.
+_OPEN_MANIFEST = (_FIXTURES / "manifest-cyc_cc0909f2689a-open-question.yaml").read_text()
+_ANSWER = (
+    "Campaign shakeout cmp_be852b0f08f0 calibration (uncounted). Approved under the 2.0 "
+    "regression set's gate policy: system plan validation passed; no additional judgment "
+    "applied. The open design question (run-list-ordering) is left to the implementation, as "
+    "on every roll."
+)
+
+
+async def _answered_calibration(calibrating, monkeypatch, *, decided_by: str, notes: str | None):
+    from squadops.cycles.models import GateDecision
+
+    monkeypatch.setitem(
+        _STORED,
+        "art_manifest",
+        (
+            _ref("art_manifest", "interface_manifest.yaml", "interface_manifest", 0),
+            _OPEN_MANIFEST.encode(),
+        ),
+    )
+    w, run = await calibrating(RunVerdict.ACCEPTED)
+    await w.cycles.create_run(
+        Run(
+            run_id="run_frame",
+            cycle_id="cyc_cal",
+            run_number=0,
+            status="completed",
+            initiated_by="system",
+            resolved_config_hash="cfg",
+            workload_type="framing",
+        )
+    )
+    await w.cycles.record_gate_decision(
+        "run_frame",
+        GateDecision(
+            gate_name="progress_plan_review",
+            decision="approved",
+            decided_by=decided_by,
+            decided_at=datetime(2026, 10, 3, 5, 41, 35, tzinfo=UTC),
+            notes=notes,
+        ),
+    )
+    await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
+    [_, increment] = await w.campaigns.launch_intents(CID)
+    return increment.cycle_request["body"]["execution_overrides"]["campaign_proposal"]
+
+
+async def test_an_answered_question_reaches_the_increment_resolved(calibrating, monkeypatch):
+    """#1885, read in shakeouts 3 and 4: the accepted manifest kept its answered question
+    ``unresolved``, so every increment's candidate (the accepted manifest plus its delta) asked
+    it again and its plan gate stopped for a human. Entered at ``CycleCompletion.end`` on the
+    real records: shakeout 4's calibration manifest and its increment 1's approved delta. Bug
+    caught: the proposal's baseline carrying the question, so the candidate does too."""
+    from squadops.campaigns.change_request import (
+        apply_manifest_delta,
+        load_stored_change_request,
+    )
+    from squadops.cycles.manifest_authoring import open_questions
+
+    proposal = await _answered_calibration(
+        calibrating, monkeypatch, decided_by="agent:005159fd", notes=_ANSWER
+    )
+
+    baseline = proposal["baseline_manifest"]
+    [decision] = [
+        d for d in yaml.safe_load(baseline)["decisions"] if d["id"] == "run-list-ordering"
+    ]
+    assert decision["choice"] == _ANSWER
+    assert decision["warrant"].startswith(
+        "answered at cyc_cal's plan gate by agent:005159fd at 2026-10-03T05:41:35+00:00; "
+        "the question was: PRD does not specify a guaranteed sort order"
+    )
+    assert "unresolved" not in decision and "question" not in decision
+    delta = load_stored_change_request(
+        (_FIXTURES / "change-request-prop_567c4915dbc0.yaml").read_text()
+    ).manifest_delta
+    assert open_questions(apply_manifest_delta(baseline, delta)) == ()
+
+
+@pytest.mark.parametrize(
+    ("decided_by", "notes"),
+    [("system:no_open_questions", _ANSWER), ("agent:005159fd", None), ("agent:005159fd", " ")],
+    ids=["a machine pass-through", "an approval with no notes", "blank notes"],
+)
+async def test_no_stated_answer_leaves_the_question_open(
+    calibrating, monkeypatch, decided_by, notes
+):
+    """The edge: only a principal's approval that states something answers a question. Bug
+    caught: a question resolved by a decision that answered nothing, so a human ruling is
+    invented and the increment never asks."""
+    proposal = await _answered_calibration(
+        calibrating, monkeypatch, decided_by=decided_by, notes=notes
+    )
+
+    assert proposal["baseline_manifest"] == _OPEN_MANIFEST
+
+
+def test_a_manifest_with_no_open_question_is_carried_byte_for_byte():
+    """The other edge: an answer on record and nothing left to resolve, as on every increment
+    after the first. Bug caught: a manifest re-dumped (key order, quoting) on every proposal,
+    so the accepted manifest's text drifts with no change to the design."""
+    from squadops.cycles.manifest_authoring import resolve_answered_questions
+
+    resolved = resolve_answered_questions(
+        _OPEN_MANIFEST, answer=_ANSWER, answered_by="agent:a", answered_at="t", where="cyc_cal"
+    )
+    again = resolve_answered_questions(
+        resolved, answer="a later answer", answered_by="agent:b", answered_at="u", where="cyc_x"
+    )
+
+    assert again is resolved

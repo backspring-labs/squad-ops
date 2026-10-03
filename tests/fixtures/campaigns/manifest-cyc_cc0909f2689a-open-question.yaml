@@ -1,0 +1,100 @@
+version: 1
+kind: interface_manifest
+project_id: group_run
+source_prd: "PRD: group_run (1-Hour Cycle MVP+) v0.5"
+stack: fullstack_fastapi_react
+scope: "Five REST endpoints and three React views for creating, listing, viewing, joining, and leaving group run events with in-memory persistence. Deliberately excludes authentication, persistent storage, external integrations, WebSocket features, and any item not enumerated in PRD §4 core stories or §4.1 pre-approved expansion tiers."
+entities:
+  - name: Run
+    fields:
+      - { name: id, type: string, required: true, generated: true }
+      - { name: title, type: string, required: true }
+      - { name: datetime, type: string, required: true }
+      - { name: location, type: string, required: true }
+      - { name: distance, type: string, required: false, default: null }
+      - { name: pace_target, type: string, required: false, default: null }
+      - { name: route_notes, type: string, required: false, default: null }
+      - { name: participants, type: "list[str]", required: true, default: [] }
+      - { name: participant_count, type: integer, required: true }
+api:
+  base_path: ""
+  request_shapes:
+    RunCreate:
+      required: [title, datetime, location]
+      optional: [distance, pace_target, route_notes]
+    JoinRequest:
+      required: [name]
+    LeaveRequest:
+      required: [name]
+  endpoints:
+    - method: POST
+      path: /runs
+      summary: "Create a run event"
+      request: RunCreate
+      response: Run
+      success_status: 201
+      errors: [validation_error]
+    - method: GET
+      path: /runs
+      summary: "List all runs with participant counts"
+      response: "list[Run]"
+    - method: GET
+      path: "/runs/{run_id}"
+      summary: "Get a single run with its participant list"
+      response: Run
+      errors: [run_not_found]
+    - method: POST
+      path: "/runs/{run_id}/join"
+      summary: "Join a run with a participant name"
+      request: JoinRequest
+      response: Run
+      errors: [run_not_found, duplicate_participant, validation_error]
+    - method: POST
+      path: "/runs/{run_id}/leave"
+      summary: "Leave a run by participant name"
+      request: LeaveRequest
+      response: Run
+      errors: [run_not_found, participant_not_found, validation_error]
+  error_contract:
+    shape: '{"error": {"code": "...", "message": "..."}}'
+    codes:
+      validation_error: { http: 422 }
+      run_not_found: { http: 404 }
+      participant_not_found: { http: 404 }
+      duplicate_participant: { http: 409 }
+frontend:
+  framework: react_vite
+  routes:
+    - path: /
+      view: RunList
+      purpose: "List all runs (title, datetime, location, participant count) with an empty-state message and links to create a new run or view run details"
+      testids: [run-list-view, run-list, run-row, run-row-title, run-row-datetime, run-row-location, run-row-count, create-run-link, empty-state]
+    - path: /runs/new
+      view: RunCreate
+      purpose: "Form for creating a run with required fields (title, datetime, location) and optional fields (distance, pace_target, route_notes); client-side required-field validation before submit"
+      testids: [run-create-view, run-create-form, run-create-title, run-create-datetime, run-create-location, run-create-distance, run-create-pace, run-create-notes, run-create-submit, run-create-error]
+    - path: /runs/:run_id
+      view: RunDetail
+      purpose: "Display all run details, participant name list with count, a join form (name input), and a leave form (name input); shows not-found state for unknown run_id"
+      testids: [run-detail-view, run-detail-title, run-detail-datetime, run-detail-location, run-detail-distance, run-detail-pace, run-detail-notes, participant-list, participant-item, participant-count, join-form, join-name-input, join-submit, join-error, leave-form, leave-name-input, leave-submit, leave-error, not-found]
+persistence: in_memory
+decisions:
+  - id: participant-uniqueness-case
+    choice: "Case-insensitive uniqueness on participant name within a single run (e.g. 'Alice' and 'alice' are the same participant)"
+    warrant: "PRD §5.4 — 'case sensitivity behavior should be defined in implementation; default recommendation: case-insensitive uniqueness'"
+  - id: leave-not-found-behavior
+    choice: "POST /runs/{run_id}/leave with a name not on the run returns 404 with code participant_not_found"
+    warrant: "PRD §5.5 — 'If participant name does not exist on the run, backend returns clear error (or no-op with clear response; choose one and document in QA handoff)'; objective frame D1 selects explicit 404 over 200 no-op for testability and UI error display"
+  - id: participant-count-derived
+    choice: "participant_count is computed as len(participants) at serialization time, not stored as an independent mutable field"
+    warrant: "Technical design §2.2 — 'No extra field in the store. RunOut.participant_count = len(record.participants)'; avoids a second source of truth that join/leave must keep in sync"
+  - id: run-list-ordering
+    unresolved: true
+    question: "PRD does not specify a guaranteed sort order for GET /runs (insertion order, datetime-ascending, or newest-first). Expansion Tier 1 item 2 introduces optional datetime sorting, implying no ordering guarantee in the base MVP. Confirmation needed on whether the base list is insertion-order or requires explicit sorting."
+
+provenance:
+  mode: authored
+  cycle_id: cyc_cc0909f2689a
+  task_id: task-run_b5adcd1b-003-development.author_manifest
+  attempts: 1
+  revisions: []

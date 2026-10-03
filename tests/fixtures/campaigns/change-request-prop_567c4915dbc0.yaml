@@ -1,0 +1,174 @@
+proposal_id: prop_567c4915dbc0
+version: 1
+baseline_tree: 351aa11e1d411d39c84ec25daa15eb9b20010ea3de408f3d3c2eba4a777caf2e
+kind: feature
+prd_delta:
+- id: capacity-limit
+  op: add
+  text: A run may carry an optional positive-integer capacity (null = unlimited).
+    When capacity is set and participant_count has reached it, the join endpoint rejects
+    with a 409 capacity_reached error. The run detail view renders a capacity-status
+    string (e.g. '3 / 8 joined').
+manifest_delta:
+- op: modify
+  target: entity
+  key: Run
+  definition:
+    name: Run
+    fields:
+    - name: id
+      type: string
+      required: true
+      generated: true
+    - name: title
+      type: string
+      required: true
+    - name: datetime
+      type: string
+      required: true
+    - name: location
+      type: string
+      required: true
+    - name: distance
+      type: string
+      required: false
+      default: null
+    - name: pace_target
+      type: string
+      required: false
+      default: null
+    - name: route_notes
+      type: string
+      required: false
+      default: null
+    - name: capacity
+      type: integer
+      required: false
+      default: null
+    - name: participants
+      type: list[str]
+      required: true
+      default: []
+    - name: participant_count
+      type: integer
+      required: true
+- op: modify
+  target: request_shape
+  key: RunCreate
+  definition:
+    required:
+    - title
+    - datetime
+    - location
+    optional:
+    - distance
+    - pace_target
+    - route_notes
+    - capacity
+- op: modify
+  target: endpoint
+  key: POST /runs/{run_id}/join
+  definition:
+    method: POST
+    path: /runs/{run_id}/join
+    summary: Join a run with a participant name; rejected when the run is at capacity
+    request: JoinRequest
+    response: Run
+    errors:
+    - run_not_found
+    - duplicate_participant
+    - capacity_reached
+    - validation_error
+- op: add
+  target: error_code
+  key: capacity_reached
+  definition:
+    http: 409
+- op: modify
+  target: client_route
+  key: /runs/new
+  definition:
+    path: /runs/new
+    view: RunCreate
+    purpose: Form for creating a run with required fields (title, datetime, location)
+      and optional fields (distance, pace_target, route_notes, capacity); client-side
+      required-field validation before submit
+    testids:
+    - run-create-view
+    - run-create-form
+    - run-create-title
+    - run-create-datetime
+    - run-create-location
+    - run-create-distance
+    - run-create-pace
+    - run-create-notes
+    - run-create-capacity
+    - run-create-submit
+    - run-create-error
+- op: modify
+  target: client_route
+  key: /runs/:run_id
+  definition:
+    path: /runs/:run_id
+    view: RunDetail
+    purpose: Display all run details including capacity status when set (e.g. '3 /
+      8 joined' or 'Full'), participant name list with count, a join form (name input),
+      and a leave form (name input); shows not-found state for unknown run_id
+    testids:
+    - run-detail-view
+    - run-detail-title
+    - run-detail-datetime
+    - run-detail-location
+    - run-detail-distance
+    - run-detail-pace
+    - run-detail-notes
+    - run-detail-capacity
+    - participant-list
+    - participant-item
+    - participant-count
+    - join-form
+    - join-name-input
+    - join-submit
+    - join-error
+    - leave-form
+    - leave-name-input
+    - leave-submit
+    - leave-error
+    - not-found
+criteria:
+- id: T1
+  statement: A run created with a numeric capacity is returned with that capacity
+    value and accepts joins until participant_count equals capacity
+  surface_kind: endpoint
+  surface: POST /runs
+  observable: 'the 201 response body includes capacity: 3 (for a run created with
+    capacity 3), and a subsequent POST to join succeeds while participant_count <
+    capacity'
+- id: T2
+  statement: Joining a run whose participant_count already equals its capacity is
+    rejected with a capacity_reached error
+  surface_kind: endpoint
+  surface: POST /runs/{run_id}/join
+  observable: 'the 409 response body matches {"error": {"code": "capacity_reached",
+    "message": "..."}}'
+- id: T3
+  statement: The run detail view renders a human-readable capacity status when capacity
+    is non-null
+  surface_kind: client_route
+  surface: /runs/:run_id
+  observable: the element [data-testid='run-detail-capacity'] is present and its text
+    content matches the pattern '<participant_count> / <capacity> joined' (e.g. '3
+    / 5 joined') or 'Full' when at capacity
+must_not_break: []
+retires: []
+replaces_verifiers: []
+footprint:
+- backend/errors.py
+- backend/models.py
+- backend/routes.py
+- frontend/src/views/RunCreate.jsx
+- frontend/src/views/RunDetail.jsx
+- backend/tests/**
+- frontend/src/__tests__/**
+- frontend/src/tests/**
+content_hash: 04927a47818b59b6a6783d8f012ce4ce498629c0c79e422c5f9eb6b1dc7b0f22
