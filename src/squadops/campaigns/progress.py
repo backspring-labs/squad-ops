@@ -36,7 +36,11 @@ from squadops.campaigns.continuation import (
 )
 from squadops.campaigns.evaluator_trees import FileTree
 from squadops.campaigns.evidence import CycleRecords, digest, package
-from squadops.campaigns.gate import ruling_overdue_transitions
+from squadops.campaigns.gate import (
+    plan_gate_overdue_transitions,
+    ruling_overdue_transitions,
+    waiting_gate,
+)
 from squadops.campaigns.increment_tree import (
     ACCEPTED_TREE_ARTIFACT_TYPE,
     ACCEPTED_TREE_FILENAME,
@@ -539,7 +543,59 @@ class CampaignProgress:
                 logger.exception(
                     "campaign_ruling_sweep_failed", extra={"campaign_id": campaign.campaign_id}
                 )
+        written.extend(await self._sweep_plan_gates())
         return written
+
+    async def _sweep_plan_gates(self) -> list[ControlLogEntry]:
+        """#1708: a campaign's cycle waiting at a gate after framing (a plan that asked a design
+        question) is bounded as the increment gate is: one ``ruling_overdue`` row per seat whose
+        bound has passed, keeping the campaign where it is. Nothing answers the gate."""
+        written = []
+        for state in (
+            CampaignState.CALIBRATING,
+            CampaignState.BUILDING,
+            CampaignState.REPAIRING,
+            CampaignState.RETRYING,
+        ):
+            for campaign in await self._campaigns.campaigns_in_state(state):
+                try:
+                    waiting = await self._waiting_gate(campaign)
+                    if waiting is None:
+                        continue
+                    log = await self._campaigns.control_log(campaign.campaign_id)
+                    for transition in plan_gate_overdue_transitions(
+                        campaign, log, waiting, self._clock()
+                    ):
+                        result = await self._campaigns.transition(campaign.campaign_id, transition)
+                        if not result.replayed:
+                            written.append(result.entry)
+                except ControlOperationRefused as refused:
+                    logger.info(
+                        "campaign_gate_overdue_refused",
+                        extra={
+                            "campaign_id": campaign.campaign_id,
+                            "refusal": refused.entry.refusal,
+                        },
+                    )
+                except Exception:
+                    logger.exception(
+                        "campaign_gate_sweep_failed", extra={"campaign_id": campaign.campaign_id}
+                    )
+        return written
+
+    async def _waiting_gate(self, campaign: Campaign):
+        """The gate the campaign's newest launched cycle waits at, if any."""
+        launched = [
+            i
+            for i in await self._campaigns.launch_intents(campaign.campaign_id)
+            if i.state is LaunchIntentState.LAUNCHED and i.cycle_id
+        ]
+        if not launched:
+            return None
+        cycle_id = max(launched, key=lambda i: i.created_at).cycle_id
+        cycle = await self._cycles.get_cycle(cycle_id)
+        runs = await self._cycles.list_runs(cycle_id)
+        return waiting_gate(cycle_id, cycle.resolved_config().get("workload_sequence") or [], runs)
 
     async def owner_action(
         self,
