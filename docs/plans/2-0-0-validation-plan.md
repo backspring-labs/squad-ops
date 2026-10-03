@@ -88,6 +88,21 @@ completion, a repeated ruling on the deploy, an interruption during the incremen
 an abort. Each is injected from outside the runtime (a restart, the CLI), so the harness lives in
 `scripts/dev` and does not move the deploy.
 
+**How the harness injects** (`scripts/dev/campaign_recovery_diagnostics.py`, #1924). Two live
+injections differ from the table, each for a stated reason:
+- **A duplicate completion is a restart, not a re-published event.** Nothing outside the runtime
+  can publish a completion, because the completion hook is in-process. The startup re-hearing
+  (`rehear_ended`) hears every launched cycle of a live campaign again, so every restart is a
+  duplicate completion for every cycle already decided. Each restart's record carries that check
+  over the whole log. `duplicate-completion` targets the cycle decided just before it.
+- **The evaluator's last line is the run's `Run <id> completed successfully`.** The harness follows
+  the log and sends SIGKILL on that line, because a poll misses a window that short. A kill that
+  lands after the promotion committed is recorded as not exercised, never as a pass.
+
+Read against a live campaign's records (`cmp_9757603322b1`), the harness's first decision verdict
+failed every healthy increment, which writes two `decide` rows. It was fixed before any live run.
+The two diagnostic campaigns and their sequences are in the script's docstring.
+
 **One risk, stated:** the live launch-blocked diagnostic loads a model the deploy did not. The Spark has
 a record of swap thrash with two large models resident (`reference_spark_crash_history`). It uses the
 **smallest available model**, and is pre-registered with the box's free memory read before and after.
