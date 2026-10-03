@@ -446,3 +446,54 @@ async def test_the_qa_proposer_is_shown_each_criterions_own_test_file():
     # #1884: three live launches of the capacity change planned tests for rules it never stated.
     assert "What this increment's tests assert" in prompt
     assert "- F1: `backend/tests/criteria/test_F1.py`" in prompt
+
+
+async def test_an_increment_plan_with_a_suiteless_qa_task_is_rejected_at_its_gate():
+    """#1912, at the seam campaign shakeout 5's increment plan gate went through. Bug caught: a
+    "full-suite regression" qa task with nothing expected passes the gate, fails whatever it
+    returns, and ends the increment blocked_unverified. The control is the same plan with the
+    task naming its suite."""
+    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+
+    def plan(qa_expected: list[str]) -> str:
+        d = yaml.safe_load(_plan("backend/routes.py"))
+        d["tasks"].append(
+            {
+                "task_index": 1,
+                "task_type": "qa.test",
+                "role": "qa",
+                "focus": "Full-suite regression and sort-mutation verification",
+                "description": "verify",
+                "expected_artifacts": qa_expected,
+                "acceptance_criteria": [],
+            }
+        )
+        return yaml.safe_dump(d)
+
+    async def errors(qa_expected: list[str]) -> list[str]:
+        executor = DispatchedFlowExecutor(
+            cycle_registry=AsyncMock(),
+            artifact_vault=_Vault(plan(qa_expected)),
+            queue=AsyncMock(),
+            squad_profile=AsyncMock(),
+            task_timeout=5.0,
+        )
+        executor._cycle_event_bus = MagicMock()
+        run = Run(
+            "run_f",
+            "cyc_inc",
+            2,
+            "completed",
+            "system",
+            "cfg",
+            workload_type="framing",
+            artifact_refs=("art_plan",),
+        )
+        found = await executor._reject_invalid_plan_before_workload_gate(
+            run, _cycle(True), "progress_plan_review"
+        )
+        return [e for e in found if "declares no expected artifact" in e]
+
+    [error] = await errors([])
+    assert error.startswith("Task 1 (Full-suite regression and sort-mutation verification)")
+    assert await errors(["backend/tests/test_runs.py"]) == []

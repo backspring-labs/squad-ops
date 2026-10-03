@@ -1622,6 +1622,12 @@ def _replace_build_steps_with_plan(
         raise CycleError(
             "Plan validation failed (duplicate expected artifacts): " + "; ".join(duplicate_errors)
         )
+    # #1912: the raising backstop for a qa.test task that declares no suite.
+    suiteless_errors = plan.validate_qa_tasks_author_a_suite()
+    if suiteless_errors:
+        raise CycleError(
+            "Plan validation failed (qa task authors no suite): " + "; ".join(suiteless_errors)
+        )
 
     # SIP-0098 98.3 bind-mode dispatch net: when a contract is seeded, the plan
     # must bind the contract's covered-file criteria by id rather than author

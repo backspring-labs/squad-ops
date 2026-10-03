@@ -383,9 +383,8 @@ class ImplementationPlan:
         through ``ScaffoldStack.development_profile`` (#832) — an explicit declared pointer
         rather than a naming convention, which is the distinction Stage 2a exists to close.
 
-        Verification-only tasks (``expected_artifacts: []``) are exempt — they emit
-        nothing for the runner to judge. Only applies when ``tests_pass`` is actually
-        required by the resolved config.
+        A task that declares nothing is ``validate_qa_tasks_author_a_suite``'s to refuse
+        (#1912). Only applies when ``tests_pass`` is actually required by the resolved config.
 
         **Every declared suite must be one the runner collects (#1534), not just one of
         them.** A task declaring a collected suite beside an uncollected one passed, and the
@@ -422,8 +421,7 @@ class ImplementationPlan:
                     f"{task.expected_artifacts} but no file this stack's test runner "
                     f"discovers ({shown}) — the required tests_pass check judges this task's "
                     f"emission by those conventions, so it fails for any possible content. "
-                    f"Name at least one expected artifact matching {shown}, or make this a "
-                    f"verification-only task (expected_artifacts: [])"
+                    f"Name at least one expected artifact matching {shown}"
                 )
                 continue
             uncollected = [
@@ -621,8 +619,7 @@ class ImplementationPlan:
         The presence check compares entries against emitted artifact *names*; a
         directory entry (``backend/tests/``) can never appear there, so the task
         fails on every attempt — fay-9 went 16/17 with frontend built, suite
-        passing, and both probes green, rejected solely on this shape. A
-        verification-only task declares ``[]``.
+        passing, and both probes green, rejected solely on this shape.
         """
         errors: list[str] = []
         for task in self.tasks:
@@ -632,10 +629,37 @@ class ImplementationPlan:
                         f"Task {task.task_index} ({task.focus}): expected artifact "
                         f"{name!r} is a directory — expected_artifacts are the FILES "
                         f"the task emits, and the presence check reads a directory as "
-                        f"a permanently missing file. A verification-only task "
-                        f"declares expected_artifacts: []"
+                        f"a permanently missing file. Name the files themselves"
                     )
         return errors
+
+    def validate_qa_tasks_author_a_suite(self) -> list[str]:
+        """#1912: a ``qa.test`` task declares the suite it authors; one that declares nothing is
+        refused.
+
+        The "verification-only" task (``expected_artifacts: []``) was a legal shape, and nothing
+        downstream handles it any more. Campaign shakeout 5's second increment carried one, a
+        "full-suite regression" task. Its report's quoted excerpt was extracted as
+        ``backend/routes.py`` and run as the suite; the retry, a report with no fences, read as
+        an emission failure; and once the excerpt was dropped as unauthorized, the task had no
+        test file, so ``tests_pass`` had no subject and the run read ``blocked_unverified``.
+        Thirty-two stored cycles carried the shape up to 2026-08-19, before emission integrity,
+        scaffold integrity and failed-emission authorization landed. None exercised it after.
+
+        The verification such a task stood for already happens: the run's ``tests_pass`` runs
+        every collected suite, and a campaign increment's evaluation re-runs every frozen
+        criterion (SIP-0109 §8). A criterion it would have carried binds to the task that
+        authors the file.
+        """
+        return [
+            f"Task {task.task_index} ({task.focus}): qa.test declares no expected artifact. A "
+            f"qa.test task authors a test suite, and one that writes none fails whatever it "
+            f"returns. Name the test file it writes, or drop the task: the run's tests_pass "
+            f"already runs every collected suite, and an increment's evaluation re-runs every "
+            f"frozen criterion. Bind any criterion it carried to the task that authors the file"
+            for task in self.tasks
+            if authors_qa_suite(task.task_type) and not task.expected_artifacts
+        ]
 
     def validate_unique_expected_artifacts(self) -> list[str]:
         """#673: an artifact path may appear in only one task's ``expected_artifacts``.
@@ -650,10 +674,10 @@ class ImplementationPlan:
         fay-18's approved framing-2 plan carried the shape live: qa task 5
         declared dev task 4's ``backend/tests/test_runs.py`` with an explicit
         do-not-produce instruction. The dice were kind (zero corrections); the
-        hazard rode anyway. There is no legitimate dual-claim the artifact-less
-        form doesn't cover, so no warn tier — the legal shape for a
-        verification-only task is ``expected_artifacts: []`` plus
-        ``criteria_refs`` (the fay-13 framing-2 receipt).
+        hazard rode anyway. There is no legitimate dual claim, so no warn tier: the task
+        that does not produce the file drops it, and binds its acceptance to the owner's
+        file through ``criteria_refs``. (This said "``expected_artifacts: []``" until #1912
+        refused a qa task that declares nothing.)
 
         Plan-wide cross-task pass — the first of its kind in this family; the
         per-task rules above stay per-task. A path repeated *within* one task
@@ -673,8 +697,8 @@ class ImplementationPlan:
             f"expected artifact {name!r} — expected artifacts are load-bearing task identity "
             f"(write authorization, repair scoping, missing-artifact routing), so a dual claim "
             f"aims repairs at another task's file and lets last-wins ordering decide whose "
-            f"emission ships. Exactly one task owns each file; a verification-only task "
-            f"declares expected_artifacts: [] and binds acceptance via criteria_refs"
+            f"emission ships. Exactly one task owns each file; the other drops it and binds "
+            f"its acceptance to the owner's file via criteria_refs"
             for name, tasks in claimants.items()
             if len(tasks) > 1
         ]

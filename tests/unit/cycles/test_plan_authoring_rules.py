@@ -89,14 +89,16 @@ def test_covered_elsewhere_names_an_asset_that_exists():
         )
 
 
-def test_the_asset_teaches_the_shk1_defect_and_its_legitimate_alternative():
-    """The specific shape that cost shk-1 a re-roll: two tasks claiming one file. Stating
-    the ban without the verification-only alternative would push authors toward dropping
-    the verification task instead of declaring an empty artifact list."""
+def test_the_asset_teaches_the_shk1_defect_and_never_invites_a_suiteless_qa_task():
+    """The specific shape that cost shk-1 a re-roll: two tasks claiming one file. Its
+    alternative is that the task that only verifies a file does not list it. Until #1912 the
+    asset also invited a qa task with ``expected_artifacts: []``, which fails whatever it
+    returns on the current tree; the invitation coming back would re-teach that shape."""
     asset = _ASSET.read_text(encoding="utf-8")
     assert "one-file-one-owner" in asset
-    assert "expected_artifacts: []" in asset
-    assert "verif" in asset.lower()
+    assert "only *verifies* a file does not list it" in asset
+    assert "qa-tasks-author-a-suite" in asset
+    assert "expected_artifacts: []" not in asset
 
 
 #: Assets that name concrete `command_exit_zero` forms to an author. Prose, so they must

@@ -28,6 +28,9 @@ AUTHOR_FACING: dict[str, str] = {
     "validate_expected_artifact_shapes": "artifacts-are-files",
     "validate_frozen_artifact_ownership": "no-frozen-claims",
     "validate_qa_artifact_ownership": "qa-owns-only-tests",
+    # #1912: the "verification-only" qa task this replaced fails at three seams on the
+    # current tree, whatever the model writes; the author is told before it writes one.
+    "validate_qa_tasks_author_a_suite": "qa-tasks-author-a-suite",
     # #1587: the stack's qa test namespace is the one declaration the binder, the runner and
     # the locus router read to say a file is qa's; the runner's collection rules are wider,
     # so a suite the runner collects can still be one nobody owns.

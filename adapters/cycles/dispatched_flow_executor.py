@@ -4126,6 +4126,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             "validate_qa_suite_namespace",
             plan.validate_qa_suite_namespace(cycle.resolved_config()),
         )
+        # #1912: a qa.test task that declares no suite fails whatever it returns.
+        errors += classifier.collect(
+            "validate_qa_tasks_author_a_suite", plan.validate_qa_tasks_author_a_suite()
+        )
         if errors:
             raise _ExecutionError(
                 f"Plan rejected at gate(s) {gate_names}: the materialized implementation "

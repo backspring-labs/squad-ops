@@ -166,6 +166,14 @@ class FramingGateCheck:
                             parsed_plan.validate_unique_expected_artifacts(),
                         )
                     )
+                    # #1912: a qa.test task that declares no suite fails whatever it
+                    # returns and ends the run blocked_unverified; a re-roll is free here.
+                    errors.extend(
+                        classifier.collect(
+                            "validate_qa_tasks_author_a_suite",
+                            parsed_plan.validate_qa_tasks_author_a_suite(),
+                        )
+                    )
                     # #715: a qa.test task whose declared artifacts can never
                     # satisfy required tests_pass fails on any content — shk-4
                     # burned three correction rounds on one. #426: builder

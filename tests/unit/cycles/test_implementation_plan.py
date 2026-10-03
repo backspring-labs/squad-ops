@@ -1303,7 +1303,7 @@ class TestValidateExpectedArtifactShapes:
         )
         errors = plan.validate_expected_artifact_shapes()
         assert len(errors) == 1
-        assert "'backend/tests/'" in errors[0] and "expected_artifacts: []" in errors[0]
+        assert "'backend/tests/'" in errors[0] and "Name the files themselves" in errors[0]
 
     def test_file_entries_and_empty_list_pass(self):
         plan = ImplementationPlan.from_yaml(VALID_MANIFEST_YAML)
@@ -1317,6 +1317,81 @@ class TestValidateExpectedArtifactShapes:
             expected="[]",
         )
         assert empty.validate_expected_artifact_shapes() == []
+
+
+class TestValidateQaTasksAuthorASuite:
+    """#1912: a qa.test task that declares no expected file fails whatever it returns, and ends
+    the run blocked_unverified. Campaign shakeout 5's second increment carried one."""
+
+    # The stored plan of cyc_1994f0007eef's framing (run_332b6682a689), its tasks as authored:
+    # the dev change, two qa suites, and the "verification-only" regression task.
+    _SHAKEOUT_5_PLAN = """\
+version: 1
+project_id: group_run
+cycle_id: cyc_1994f0007eef
+prd_hash: abc123
+tasks:
+  - task_index: 0
+    task_type: development.develop
+    role: dev
+    focus: "GET /runs datetime sort"
+    description: "sort"
+    expected_artifacts: ["backend/routes.py"]
+    depends_on: []
+  - task_index: 1
+    task_type: qa.test
+    role: qa
+    focus: "T4 datetime sort-order acceptance test"
+    description: "t4"
+    expected_artifacts: ["backend/tests/criteria/test_T4.py"]
+    depends_on: [0]
+  - task_index: 2
+    task_type: qa.test
+    role: qa
+    focus: "Frontend render-order preservation test"
+    description: "order"
+    expected_artifacts: ["frontend/src/__tests__/runs-list-order.test.jsx"]
+    depends_on: [0]
+  - task_index: 3
+    task_type: qa.test
+    role: qa
+    focus: "Full-suite regression and sort-mutation verification"
+    description: "verify"
+    expected_artifacts: []
+    depends_on: [1, 2]
+summary:
+  total_tasks: 4
+"""
+
+    def test_the_live_plans_suiteless_qa_task_is_the_one_refused(self):
+        errors = ImplementationPlan.from_yaml(
+            self._SHAKEOUT_5_PLAN
+        ).validate_qa_tasks_author_a_suite()
+        assert len(errors) == 1
+        assert errors[0].startswith(
+            "Task 3 (Full-suite regression and sort-mutation verification): qa.test declares "
+            "no expected artifact"
+        )
+
+    @pytest.mark.parametrize(
+        ("task_type", "role", "expected", "refused"),
+        [
+            ("qa.test", "qa", "[]", True),
+            ("qa.test", "qa", '["backend/tests/test_x.py"]', False),
+            # The rule reads the property (authors_qa_suite), not a role: a dev task's empty
+            # list is not this rule's to judge.
+            ("development.develop", "dev", "[]", False),
+        ],
+    )
+    def test_only_a_qa_task_with_no_suite_is_refused(self, task_type, role, expected, refused):
+        plan = ImplementationPlan.from_yaml(
+            self._SHAKEOUT_5_PLAN.split("  - task_index: 1")[0]
+            .replace("task_type: development.develop", f"task_type: {task_type}")
+            .replace("role: dev", f"role: {role}")
+            .replace('expected_artifacts: ["backend/routes.py"]', f"expected_artifacts: {expected}")
+            + "summary:\n  total_tasks: 1\n"
+        )
+        assert bool(plan.validate_qa_tasks_author_a_suite()) is refused
 
 
 class TestValidateBuildConfig:

@@ -1,6 +1,6 @@
 ---
 template_id: request.plan_authoring_rules_appendix
-version: "7"
+version: "8"
 required_variables: []
 ---
 ## PLAN SHAPE RULES (authoritative — a plan that breaks one is rejected)
@@ -80,8 +80,7 @@ not the work, is the failure — and a declared suite the runner never collects 
 while the collected suites read green. Follow the file-naming and directory conventions
 your stack's guidance states, not a test tool's defaults: a scaffold's runner config can
 collect less than the tool would, and the rejection names this stack's exact patterns. A
-directory named `__tests__/` is not itself enough. Express verification that produces no
-such file through the acceptance criteria of a verification-only task instead.
+directory named `__tests__/` is not itself enough.
 
 **builder-floor-coverage** — When the plan carries a builder task, every file the build
 profile's `required_files` lists appears in SOME task's `expected_artifacts` (usually the
@@ -102,5 +101,9 @@ If you do name a status anyway, it must match what the contract will enforce, or
 teaches the developer to build something the contract then rejects. But the right move is
 to leave it out — there is nothing to keep in step with if you never wrote it down.
 
-A verification-only task is legitimate and common: declare `expected_artifacts: []` and
-express what it checks through its acceptance criteria.
+**qa-tasks-author-a-suite** — Every `qa.test` task names, in `expected_artifacts`, the test
+file it writes. A qa task that writes no file fails whatever it returns, so do not plan one
+to "run the full suite" or "verify nothing regressed": the run's own suite check already
+runs every collected suite, and in an increment every frozen criterion is re-run on the
+candidate. A check you wanted such a task to carry binds to the task that authors the file
+it reads.
