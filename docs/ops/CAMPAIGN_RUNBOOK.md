@@ -90,6 +90,12 @@ squadops campaigns lease release <campaign_id> --reason "ruled; models unloaded"
 The lease is taken only at an open increment gate, only with no run in flight, and only from the
 squad. It expires on its own, so a supervisor that crashes cannot hold the box.
 
+**A run starts only when a launch could** (§24an, #1928). If the lease comes back, released or expired,
+with a model the deploy does not declare still resident, the next run keeps waiting, queued, until the
+model is unloaded. Usually that is the framing run your ruling approved. Past one full lease
+(`lease_expiry_s`) it fails unstarted, with the reason. The runtime-api log names the wait
+(`run_start_waiting_for_box … refusal=box_not_quiet`) and its end (`run_start_box_free`).
+
 ```bash
 squadops artifacts list --project <project> --cycle <cycle_id> --run <proposal_run_id>
 squadops artifacts download <artifact_id> --out change_request.yaml

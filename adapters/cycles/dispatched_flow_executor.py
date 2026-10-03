@@ -117,6 +117,7 @@ from squadops.telemetry.models import CorrelationContext
 
 if TYPE_CHECKING:
     from adapters.cycles.reply_router import ReplyRouter
+    from squadops.campaigns.launcher import BoxVerdict
     from squadops.campaigns.progress import CampaignProgress
     from squadops.cycles.models import SquadProfile
     from squadops.ports.comms.queue import QueuePort
@@ -479,6 +480,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         correction_repair: CorrectionRepair | None = None,
         campaign_registry: CampaignRegistryPort | None = None,
         campaign_progress: CampaignProgress | None = None,
+        box_verdict: BoxVerdict | None = None,
     ) -> None:
         self._cycle_registry = cycle_registry
         # SIP-0109 §9.2: the campaign a cycle belongs to hears its increment gate open. A
@@ -486,6 +488,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         self._campaign_registry = campaign_registry
         # SIP-0109 §10: what a campaign does when one of its cycles ends (CycleCompletion).
         self._campaign_progress = campaign_progress
+        # SIP-0109 §9.3 (#1802, #1928): whether a launch is allowed now, which a run start
+        # also waits on. ``None`` reads no box.
+        self._box_verdict = box_verdict
         self._artifact_vault = artifact_vault
         self._queue = queue
         self._reply_router = reply_router
@@ -639,8 +644,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         state = RunInProgress()
 
         try:
-            # SIP-0109 §9.3 (#1802): no run starts while the supervisor holds the box.
-            await self._run_admission.await_box(run_id)
+            # SIP-0109 §9.3 (#1802, #1928): no run starts when a launch would be refused.
+            await self._run_admission.await_box(run_id, cycle_id)
             provisioned = await self._run_provisioning.prepare(
                 state, cycle_id, run_id, profile_id, forwarding_overrides=forwarding_overrides
             )

@@ -1790,10 +1790,15 @@ class TestGateRejectsAQaSuiteOutsideTheStacksNamespace:
         assert exc_info.value.terminal.refused_validators == ("validate_qa_suite_namespace",)
 
 
-class TestNoRunStartsWhileTheSupervisorHoldsTheBox:
-    """SIP-0109 §9.3 (#1802), entering at ``execute_run``: a run does not go ``running`` while the
-    supervisor holds the box. It waits queued and starts once the lease is given back, and past
-    one full lease of the holding campaign (``lease_expiry_s``) it fails without starting."""
+class TestARunStartsOnlyWhenALaunchCould:
+    """SIP-0109 §9.3 (#1802, #1928), entering at ``execute_run``: a run does not go ``running``
+    when a launch would be refused, whether the supervisor holds the box or a model the deploy
+    does not declare is resident. It waits queued and starts once a launch is allowed. Past one
+    full lease (``lease_expiry_s``) of the campaign it waits on, it fails without starting; a run
+    outside every campaign is refused at once, as its launch is.
+
+    The verdict is the launch's own (``launch_verdict``) over the registry's lease and one
+    engine's resident models, against a deploy declaring only the squad's model."""
 
     @staticmethod
     async def _held(lease_expiry_s: int = 3600):
@@ -1828,13 +1833,29 @@ class TestNoRunStartsWhileTheSupervisorHoldsTheBox:
         )
         return reg, lease(ControlOperation.LEASE_RELEASE, "r")
 
+    @staticmethod
+    def _verdict(reg, resident: list[str]):
+        from squadops.campaigns.box import EngineReading, Model, box_quietness, launch_verdict
+
+        async def verdict():
+            loaded = tuple(Model(name) for name in resident)
+            quietness = box_quietness([Model("qwen3.8:27b")], [EngineReading("ollama", loaded)])
+            return launch_verdict(await reg.box_lease(), quietness, datetime.now(UTC))
+
+        return verdict
+
+    @staticmethod
+    def _in_campaign(mock_registry, cycle, campaign_id):
+        import dataclasses
+
+        mock_registry.get_cycle.return_value = dataclasses.replace(cycle, campaign_id=campaign_id)
+
     async def test_a_run_waits_queued_until_the_supervisor_gives_the_box_back(
         self, executor, mock_registry, mock_queue
     ):
-        from datetime import UTC, datetime
-
         reg, release = await self._held()
         executor._campaign_registry = reg
+        executor._box_verdict = self._verdict(reg, [])
         TestSequentialHappyPath._wire_canned_replies(mock_queue)
         waits: list[list] = []
 
@@ -1852,17 +1873,46 @@ class TestNoRunStartsWhileTheSupervisorHoldsTheBox:
         assert waits == [[]]  # it waited once, and nothing had started the run
         assert (statuses[0], statuses[-1]) == (RunStatus.RUNNING, RunStatus.COMPLETED)
 
-    async def test_a_box_held_past_one_full_lease_fails_the_run_unstarted(
-        self, executor, mock_registry
+    async def test_a_crew_model_left_resident_when_the_lease_returns_keeps_the_run_queued(
+        self, executor, mock_registry, mock_queue, cycle
     ):
-        from datetime import UTC, datetime, timedelta
+        """#1928: the framing run after a ruling waited only on the lease, so a release with the
+        crew's model still loaded started it beside that model. It waits for the unload now."""
+        from squadops.campaigns.box import LaunchRefusal
 
-        reg, _release = await self._held(lease_expiry_s=60)
+        reg, release = await self._held()
+        resident = ["llama3.1:8b"]
         executor._campaign_registry = reg
+        executor._box_verdict = verdict = self._verdict(reg, resident)
+        self._in_campaign(mock_registry, cycle, "cmp_c")
+        TestSequentialHappyPath._wire_canned_replies(mock_queue)
+        refusals: list[tuple] = []
 
+        async def sleep(_seconds):
+            now = await verdict()
+            if now.allowed:  # another sleeper
+                return
+            started = [c.args[1] for c in mock_registry.update_run_status.call_args_list]
+            refusals.append((now.refusal, started))
+            if now.refusal is LaunchRefusal.SUPERVISOR_HOLDS_THE_BOX:
+                await reg.change_box_lease("cmp_c", release, runs_in_flight=())  # model still in
+            else:
+                resident.clear()  # the supervisor unloads it
+
+        with patch("adapters.cycles.run_admission.asyncio.sleep", side_effect=sleep):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        statuses = [c.args[1] for c in mock_registry.update_run_status.call_args_list]
+        assert refusals == [
+            (LaunchRefusal.SUPERVISOR_HOLDS_THE_BOX, []),
+            (LaunchRefusal.BOX_NOT_QUIET, []),
+        ]
+        assert (statuses[0], statuses[-1]) == (RunStatus.RUNNING, RunStatus.COMPLETED)
+
+    @staticmethod
+    def _clock():
         class Clock:
-            """Each read is 45 s on: the second poll is past the 60 s bound. The lease (900 s)
-            is still held at both."""
+            """Each read is 45 s on: the second poll is past a 60 s bound."""
 
             at = datetime.now(UTC)
 
@@ -1871,8 +1921,29 @@ class TestNoRunStartsWhileTheSupervisorHoldsTheBox:
                 cls.at += timedelta(seconds=45)
                 return cls.at
 
+        return Clock
+
+    @pytest.mark.parametrize(
+        ("released", "resident", "reason"),
+        [
+            (False, [], "the supervisor (crew) holds the box until"),
+            (True, ["llama3.1:8b"], "engine ollama has llama3.1:8b loaded, which the deploy"),
+        ],
+        ids=["the lease held", "the lease returned with a crew model resident"],
+    )
+    async def test_a_box_refused_past_one_full_lease_fails_the_run_unstarted(
+        self, executor, mock_registry, cycle, released, resident, reason
+    ):
+        """Bound by the holding campaign while the lease is held, else by the run's own."""
+        reg, release = await self._held(lease_expiry_s=60)
+        if released:
+            await reg.change_box_lease("cmp_c", release, runs_in_flight=())
+        executor._campaign_registry = reg
+        executor._box_verdict = self._verdict(reg, resident)
+        self._in_campaign(mock_registry, cycle, "cmp_c")
+
         with (
-            patch("adapters.cycles.run_admission.datetime", Clock),
+            patch("adapters.cycles.run_admission.datetime", self._clock()),
             patch("adapters.cycles.run_admission.asyncio.sleep", new_callable=AsyncMock),
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -1880,4 +1951,58 @@ class TestNoRunStartsWhileTheSupervisorHoldsTheBox:
         calls = mock_registry.update_run_status.call_args_list
         assert RunStatus.RUNNING not in [c.args[1] for c in calls]
         assert calls[-1].args[1] == RunStatus.FAILED
-        assert "the supervisor (crew) still holds it" in calls[-1].kwargs["failure_reason"]
+        failure = calls[-1].kwargs["failure_reason"]
+        assert "waited 60s for the box, one full lease of its campaign" in failure
+        assert reason in failure
+
+    async def test_a_run_outside_every_campaign_is_refused_at_once_on_a_box_not_quiet(
+        self, executor, mock_registry, cycle
+    ):
+        """No lease to wait out: refused as its launch is (the create route's 409), not left
+        queued with nothing that will ever release it."""
+        from adapters.cycles.memory_campaign_registry import MemoryCampaignRegistry
+
+        reg = MemoryCampaignRegistry()
+        executor._campaign_registry = reg
+        executor._box_verdict = self._verdict(reg, ["llama3.1:8b"])
+        self._in_campaign(mock_registry, cycle, None)
+        box_sleep = AsyncMock()
+
+        with patch("adapters.cycles.run_admission.asyncio.sleep", box_sleep):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        calls = mock_registry.update_run_status.call_args_list
+        assert [c.args[1] for c in calls] == [RunStatus.FAILED]
+        assert "is refused: engine ollama has llama3.1:8b" in calls[-1].kwargs["failure_reason"]
+        assert "outside every campaign" in calls[-1].kwargs["failure_reason"]
+        box_sleep.assert_not_awaited()
+
+    def test_the_composition_root_wires_the_box_verdict_through_the_factory(
+        self, mock_registry, mock_vault
+    ):
+        """Bug caught: ``main.py`` or the factory dropping ``box_verdict``. Every run start would
+        read no box at all, the #373 silent-no-op class, with every test above still green."""
+        import ast
+        from pathlib import Path
+
+        from adapters.cycles.factory import create_flow_executor
+
+        main = Path(__file__).resolve().parents[3] / "src/squadops/api/runtime/main.py"
+        [call] = [
+            node
+            for node in ast.walk(ast.parse(main.read_text()))
+            if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "create_flow_executor"
+        ]
+        verdict = AsyncMock()
+        built = create_flow_executor(
+            "dispatched",
+            cycle_registry=mock_registry,
+            artifact_vault=mock_vault,
+            squad_profile=MagicMock(),
+            project_registry=MagicMock(),
+            task_timeout=60,
+            box_verdict=verdict,
+        )
+
+        assert "box_verdict" in {k.arg for k in call.keywords}
+        assert built._box_verdict is verdict

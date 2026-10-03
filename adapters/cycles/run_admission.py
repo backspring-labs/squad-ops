@@ -35,7 +35,14 @@ class RunAdmission:
     """Admits a run's participants before it seeds, and releases them when it ends."""
 
     #: What admission borrows from the executor, read at call time (§38).
-    BORROWED = ("_assignment_port", "_coordinator", "_focus_lease_port", "_campaign_registry")
+    BORROWED = (
+        "_assignment_port",
+        "_coordinator",
+        "_focus_lease_port",
+        "_campaign_registry",
+        "_cycle_registry",
+        "_box_verdict",
+    )
 
     def __init__(self, *, executor: Callable[[], Any]) -> None:
         self._executor = executor
@@ -45,25 +52,29 @@ class RunAdmission:
             return getattr(self._executor(), name)
         raise AttributeError(name)
 
-    async def await_box(self, run_id: str) -> None:
-        """SIP-0109 §9.3 (#1802): a run does not start while the supervisor holds the box.
+    async def await_box(self, run_id: str, cycle_id: str) -> None:
+        """SIP-0109 §9.3 (#1802, #1928): a run starts only when a launch could. The supervisor
+        does not hold the box, and the box is quiet: every resident model is one the active
+        deploy record declares. It is the launch's own verdict (``launch_verdict``, read
+        through the box reader), so a run start refuses what a launch refuses.
 
-        It waits, still queued, reading the lease every ``BOX_POLL_S``, and starts once the
-        lease is released or has expired. A wait, not a failure (§24l), so an approval granted
-        while the supervisor held the box does not become a dead increment. Its ceiling is the
-        holding campaign's ``lease_expiry_s``, one full lease: a supervisor renewing past it fails
-        the run with the reason (§24al: the bound no longer names a seat). An executor with no campaign registry
-        has no lease to read.
+        It waits, still queued, reading the box every ``BOX_POLL_S``, and starts once a launch
+        would be allowed. A wait, not a failure (§24l), so an approval granted while the
+        supervisor held the box, or before its model was unloaded, does not become a dead
+        increment. Its ceiling is one full lease (``lease_expiry_s``) of the campaign whose box
+        it waits on: the holding campaign while the lease is held, else the run's own. Past it
+        the run fails unstarted, with the reasons. A run outside every campaign has no lease to
+        wait out, and on a box that is not quiet it is refused at once, as its launch is (the
+        create route's 409). An executor with no box reader has no box to read.
         """
-        registry = self._campaign_registry
-        if registry is None:
+        if self._box_verdict is None:
             return
         started: datetime | None = None
         bound_s = 0.0
         while True:
-            lease = await registry.box_lease()
+            verdict = await self._box_verdict()
             now = datetime.now(UTC)
-            if lease is None or not lease.supervisor_holds(now):
+            if verdict.allowed:
                 if started is not None:
                     logger.info(
                         "run_start_box_free run=%s waited_s=%.0f",
@@ -73,24 +84,35 @@ class RunAdmission:
                 return
             if started is None:
                 started = now
-                if lease.campaign_id:
-                    campaign = await registry.get_campaign(lease.campaign_id)
-                    bound_s = float(campaign.policy.lease_expiry_s)
+                campaign_id = await self._waited_on(cycle_id, now)
+                bound_s = await self._one_lease_s(campaign_id)
                 logger.warning(
-                    "run_start_waiting_for_box run=%s held_by=%s campaign=%s until=%s bound_s=%.0f",
+                    "run_start_waiting_for_box run=%s refusal=%s campaign=%s bound_s=%.0f: %s",
                     run_id,
-                    lease.held_by,
-                    lease.campaign_id,
-                    lease.expires_at,
+                    verdict.refusal,
+                    campaign_id,
                     bound_s,
+                    "; ".join(verdict.reasons),
                 )
             if (now - started).total_seconds() >= bound_s:
-                raise _ExecutionError(
-                    f"run {run_id} waited {bound_s:.0f}s for the box, one full lease of the holding "
-                    f"campaign, and the supervisor ({lease.held_by}) still holds it "
-                    f"(SIP-0109 §9.3)"
-                )
+                raise _ExecutionError(_box_refused(run_id, verdict, bound_s))
             await asyncio.sleep(BOX_POLL_S)
+
+    async def _waited_on(self, cycle_id: str, now: datetime) -> str | None:
+        """The campaign whose box a refused run start waits on: the lease's holder while the
+        supervisor holds it, else the run's own campaign; ``None`` outside every campaign."""
+        registry = self._campaign_registry
+        if registry is not None:
+            lease = await registry.box_lease()
+            if lease is not None and lease.supervisor_holds(now) and lease.campaign_id:
+                return lease.campaign_id
+        return (await self._cycle_registry.get_cycle(cycle_id)).campaign_id
+
+    async def _one_lease_s(self, campaign_id: str | None) -> float:
+        if campaign_id is None or self._campaign_registry is None:
+            return 0.0
+        campaign = await self._campaign_registry.get_campaign(campaign_id)
+        return float(campaign.policy.lease_expiry_s)
 
     async def admit(
         self, state: RunInProgress, participating_agent_ids: set[str], run_id: str
@@ -154,3 +176,16 @@ class RunAdmission:
                 )
             except Exception:
                 logger.warning("Stranded-lease sweep failed for run %s", run_id, exc_info=True)
+
+
+def _box_refused(run_id: str, verdict: Any, bound_s: float) -> str:
+    why = "; ".join(verdict.reasons) or str(verdict.refusal)
+    if bound_s <= 0:
+        return (
+            f"run {run_id} is refused: {why}. A run outside every campaign has no lease to wait "
+            "out, and is refused at once, as its launch is (SIP-0109 §9.3, #1928)"
+        )
+    return (
+        f"run {run_id} waited {bound_s:.0f}s for the box, one full lease of its campaign, and a "
+        f"launch is still refused: {why} (SIP-0109 §9.3, #1928)"
+    )
