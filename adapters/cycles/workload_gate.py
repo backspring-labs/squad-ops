@@ -17,7 +17,6 @@ It borrows late (defended-bespoke-decisions §38), by an explicit list of the ex
 
 from __future__ import annotations
 
-import dataclasses
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -136,14 +135,7 @@ class WorkloadGate:
         # The plan is judged against the cycle as this run saw it: what forwarding handed the
         # run — an increment's seeded contract and manifest (SIP-0109 §7.3) — is not on the
         # registry's cycle, and without it every bind-mode net reads author mode.
-        run_cycle = (
-            dataclasses.replace(
-                cycle,
-                execution_overrides={**cycle.execution_overrides, **forwarding_overrides},
-            )
-            if forwarding_overrides
-            else cycle
-        )
+        run_cycle = cycle.with_overrides(forwarding_overrides)
         plan_errors = await self._reject_invalid_plan_before_workload_gate(
             run, run_cycle, gate_name
         )
@@ -239,7 +231,11 @@ class WorkloadGate:
             await self._submit_proposal(cycle, run)
             questions = None
         else:
-            questions = await self._design_questions_for_gate(run, cycle)
+            # #1905: the cycle as this run saw it, as the plan check above reads it. An
+            # increment's seeded manifest reached its framing through the forwarded overrides,
+            # which the stored cycle does not carry, so the question check found no design and
+            # every increment's plan gate asked a human.
+            questions = await self._design_questions_for_gate(run, run_cycle)
         if questions is not None and not questions:
             # Synthesized, not short-circuited: the decision runs through the SAME
             # exhaustive dispatch below that a human's answer does, so a
@@ -342,7 +338,7 @@ class WorkloadGate:
                 # §5c.6's "revise, don't re-roll": without the prior manifest the new
                 # framing re-authors from scratch with a hint attached, which is the
                 # fay-6 new-dice failure in disguise.
-                prior_manifest = await self._run_manifest_content(run, cycle)
+                prior_manifest = await self._run_manifest_content(run, run_cycle)
                 if prior_manifest:
                     revision_context["prior_manifest_yaml"] = prior_manifest
                 forwarding_overrides = {

@@ -462,3 +462,81 @@ async def test_a_change_request_altered_after_its_ruling_is_refused_at_the_seed(
 
     with pytest.raises(ChangeRequestError, match="does not match its hash"):
         await executor._workload_gate._seed_increment(_cycle(CID), _PROPOSAL_RUN)
+
+
+# --- #1905: an increment's plan gate reads the seed its framing was handed -------------------
+
+_OPEN = (_FIXTURES / "manifest-cyc_cc0909f2689a-open-question.yaml").read_text()
+#: Shakeout 4's increment 2 candidate (``cyc_39df987d4ba3``): every decision answered (§24ad).
+_ANSWERED = (_FIXTURES / "manifest-cyc_39df987d4ba3-candidate.yaml").read_text()
+
+_FRAMING_RUN = Run(
+    run_id="run_frame",
+    cycle_id="cyc_inc",
+    run_number=2,
+    status="completed",
+    initiated_by="system",
+    resolved_config_hash="cfg",
+    workload_type="framing",
+    artifact_refs=(),  # its own outputs only: the seed is not among them
+)
+
+
+@pytest.mark.parametrize(
+    ("seed", "asks_a_human"),
+    [(_ANSWERED, False), (_OPEN, True)],
+    ids=["a-seed-that-asks-nothing", "a-seed-with-an-open-question"],
+)
+async def test_the_plan_gate_reads_the_seed_forwarded_to_framing(executor, seed, asks_a_human):
+    """#1905, shakeout 4's increment 2: its candidate manifest asked nothing, and its plan gate
+    stopped for a human anyway. The seed reaches framing through the run's forwarded overrides
+    (SIP-0083); the cycle as the launcher stores it carries none, and the question check read
+    that. Entered at ``WorkloadGate.decide`` for the framing gate. Bugs caught: no increment's
+    plan gate ever passing by itself; or the open question not reaching the human."""
+    executor._artifact_vault.stored["art_seed"] = _ref(
+        "art_seed", "interface_manifest", "interface_manifest.yaml", seed
+    )
+    executor._reject_invalid_plan_before_workload_gate = AsyncMock(return_value=[])
+    executor._approve_gate_without_questions = AsyncMock(
+        return_value=GateDecision(
+            gate_name="progress_plan_review",
+            decision=GateDecisionValue.APPROVED.value,
+            decided_by="system:no_open_questions",
+            decided_at=NOW,
+        )
+    )
+    executor._create_next_workload_run = AsyncMock(return_value="run_impl")
+    stored = dataclasses.replace(
+        _cycle(CID),
+        execution_overrides={
+            k: v for k, v in _cycle(CID).execution_overrides.items() if k != "plan_artifact_refs"
+        },
+    )
+
+    await executor._workload_gate.decide(
+        cycle=stored,
+        cycle_id="cyc_inc",
+        run=_FRAMING_RUN,
+        workload_entry={"type": "framing", "gate": "progress_plan_review"},
+        gate_name="progress_plan_review",
+        current_run_id="run_frame",
+        forwarding_overrides={"plan_artifact_refs": ["art_seed", "art_cr"]},
+        framing_rerolls=0,
+        framing_revisions=0,
+        max_framing_rerolls=0,
+        max_framing_revisions=0,
+    )
+
+    asked = executor._poll_inter_workload_gate.await_count == 1
+    assert (asked, executor._approve_gate_without_questions.await_count) == (
+        asks_a_human,
+        0 if asks_a_human else 1,
+    )
+    if asks_a_human:
+        [awaiting] = [
+            c.kwargs["payload"]
+            for c in executor._cycle_event_bus.emit.call_args_list
+            if c.kwargs.get("payload", {}).get("gate_name") == "progress_plan_review"
+            and "open_questions" in c.kwargs.get("payload", {})
+        ]
+        assert awaiting["open_questions"][0].startswith("PRD does not specify a guaranteed sort")

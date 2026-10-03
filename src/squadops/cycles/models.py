@@ -411,6 +411,18 @@ class Cycle:
     # regardless of run state.
     cancelled: bool = False
 
+    def with_overrides(self, extra: dict | None) -> Cycle:
+        """The cycle as one of its runs sees it: ``extra``, a multi-workload run's forwarded
+        overrides (SIP-0083), merged over its own. The persisted cycle carries none of them,
+        so a reader of what a run was seeded with reads this, never the stored row (#1905: an
+        increment's plan gate looked for its seeded manifest on the stored row, found none,
+        and asked a human)."""
+        if not extra:
+            return self
+        import dataclasses as _dc
+
+        return _dc.replace(self, execution_overrides={**self.execution_overrides, **extra})
+
     def resolved_config(self) -> dict:
         """The cycle's effective execution config: overrides win over defaults.
 
