@@ -775,6 +775,7 @@ class CampaignProgress:
         the bundle already stored under its address and reuses it."""
         if not evaluation:
             return []
+        stated = await self._criteria_stated(cycle, run)
         stored = {
             r.metadata.get("bundle_address"): r.artifact_id
             for r in await self._vault.list_artifacts(cycle_id=cycle.cycle_id, run_id=run.run_id)
@@ -792,9 +793,35 @@ class CampaignProgress:
                     "test_path": str(bundle.get("test_path") or ""),
                     "bundle_ref": artifact_id,
                     "bundle_address": address,
+                    **stated.get(criterion_id, {}),
                 }
             )
         return frozen
+
+    async def _criteria_stated(self, cycle: Cycle, run: Run) -> dict[str, dict]:
+        """What each of the increment's criteria asserts (#1938): its statement and surface, from
+        the approved change request, frozen beside its bundle. Every later proposal is then told
+        what the application already does, not only the ids it may not reuse (a proposal told
+        "do not break T3" re-proposed T3's feature). Found through the increment's seed, as every
+        later workload finds it: the cycle row carries no plan refs, which ride each run's
+        forwarding. A change request that cannot be read leaves the record as it was, ids only,
+        and never stops the promotion."""
+        from squadops.campaigns.change_request import load_stored_change_request
+
+        try:
+            seed = await increment_seed(self._vault, self._cycles, cycle, run)
+            if seed is None or seed.change_request_ref is None:
+                return {}
+            _ref, content = await self._vault.retrieve(seed.change_request_ref)
+            request = load_stored_change_request(content.decode("utf-8"))
+        except Exception:
+            logger.warning(
+                "criteria_statements_unread cycle=%s: frozen by id only (#1938)",
+                cycle.cycle_id,
+                exc_info=True,
+            )
+            return {}
+        return {c.id: {"statement": c.statement, "surface": c.surface} for c in request.criteria}
 
     async def _store_bundle(self, cycle: Cycle, run: Run, criterion_id: str, bundle: dict) -> str:
         content = json.dumps(

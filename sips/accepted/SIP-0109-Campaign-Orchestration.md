@@ -2205,6 +2205,46 @@ this change, now only in that case.
   only: the original's reply is dropped as unknown, and the copy's reply answers the new wait.
   Deterministic ids for every workload are placed in 2.1.0.
 
+### 24ap. A proposal is told what each frozen criterion asserts (2026-10-03, §7.3, §8.1, §9.1, #1938; found in the exit shakeout)
+
+**What was built, and what it hid.** A promotion froze each new criterion as its id, test path and
+verifier bundle (§8.1). The next proposal's launch carried those records, but the proposal prompt
+rendered only the ids (`- `T3``), with no statement and no accepted increment's feature text. The
+strategy role was told "do not break T3" and never told that T3 was the date sort.
+
+**Found in shakeout 6** (`cmp_58d4e3b0a5d3`, rebuild 18):
+- Increment 2 froze T3, "GET /runs returns runs sorted by datetime in ascending lexical order".
+- Increment 3's first proposal asserted the same thing as T4.
+- The supervisor returned it for revision (§9.4: a conflict with an earlier increment). Its
+  version 2 proposed Tier 1 item 3.
+
+In the counted set every increment after the first proposes against this context, and repeated
+duplicates spend revisions and rejections until an increment is abandoned. That cost would be the
+framework's context, not the squad's judgement.
+
+**As built:**
+- **The promotion freezes what a criterion asserts.** Each frozen record carries the criterion's
+  `statement` and `surface` from the approved change request. The request is found through the
+  increment's seed (`increment_seed`, which now names `change_request_ref`), the way every later
+  workload finds it: the approved proposal run's promoted request. A request that cannot be read
+  leaves the record as before, by id, and never stops the promotion.
+- **Read against shakeout 6's real records first.** The first build read the request from the
+  cycle's `plan_artifact_refs`. The live cycle row carries none, because the refs ride each run's
+  forwarding, so it would have frozen ids only, and it passed a unit test that put the refs on the
+  cycle. On increment 2's records the corrected read freezes T3's statement.
+- **The proposal renders it.** Each frozen criterion shows as
+  `- `T3`: <statement> (on `<surface>`)`. The request template says that each is something the
+  application already does, and that restating one adds nothing a test can fail on before the
+  change. A record frozen before this change renders by its id.
+
+**Not built:** the accepted increments' `prd_delta` text. The criteria carry what a test checks,
+which is what a duplicate needs to be seen. The feature prose beside them is a 2.4 question, for
+when the squad authors its own backlog.
+
+**The deploy it lands on (the owner's ruling, 2026-10-03):** rebuild 19 differs from rebuild 18 only
+by this change. #1803's recovery diagnostics, 12/12 on rebuild 18, stand for it: no restart,
+re-attach, kill or abort path changed. The exit shakeout re-runs on rebuild 19.
+
 ---
 
 ## Revision history
