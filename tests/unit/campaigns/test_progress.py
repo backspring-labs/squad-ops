@@ -188,7 +188,7 @@ class _World:
 
 @pytest.fixture
 async def calibrating() -> _World:
-    async def make(verdict, **policy_overrides):
+    async def make(verdict, objective=None, **policy_overrides):
         w = _World(verdict)
         draft = campaign(
             CID,
@@ -197,6 +197,7 @@ async def calibrating() -> _World:
                 proposal_profile="campaign-increment",
                 **policy_overrides,
             ),
+            **({"objective": objective} if objective is not None else {}),
         )
         await w.campaigns.create_campaign(
             draft, actor="owner", actor_role="admin", reason="r", idempotency_key="create"
@@ -1148,3 +1149,74 @@ async def test_an_accepted_repair_proposes_from_the_manifest_it_ran_against(
         d for d in yaml.safe_load(baseline)["decisions"] if d["id"] == "run-list-ordering"
     ]
     assert decision["warrant"].startswith("answered at cyc_inc's plan gate by agent:005159fd")
+
+
+@pytest.mark.parametrize(
+    ("target", "row", "state"),
+    [(1, 3, CampaignState.COMPLETED), (2, 7, CampaignState.AT_PROPOSAL)],
+    ids=["the-target-reached", "one-short-of-it"],
+)
+async def test_an_accepted_increment_that_meets_the_target_ends_the_campaign_in_success(
+    calibrating, stored, target, row, state
+):
+    """§10 row 3, §24ah: shakeout 4 accepted its second increment and ended ``exhausted`` on
+    row 4, because the measurement had no reader; a campaign set with a target of three would
+    propose a fourth, fifth and sixth increment until its cycles ran out. Entered at
+    ``CycleCompletion.end``. Bugs caught: the target never read; or the calibration's
+    promotion counted as an increment, stopping the campaign one increment early."""
+    from squadops.campaigns.models import CampaignObjective
+
+    objective = CampaignObjective(
+        statement="evolve group_run",
+        allowed_scope=("backend", "frontend"),
+        measurement=f"{target} accepted increment(s)",
+        target_accepted_increments=target,
+    )
+    w, run = await calibrating(RunVerdict.ACCEPTED, objective=objective)
+    await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
+    stored["art_eval"] = (
+        _ref("art_eval", "increment_evaluation.json", "increment_evaluation", 20),
+        _evaluation("accepted"),
+    )
+    increment_run = await w.launched_cycle("increment", "cyc_inc", "implementation", "completed")
+
+    await w.end("cyc_inc", increment_run, CycleStopReason.SEQUENCE_COMPLETED)
+
+    final = await w.campaigns.get_campaign(CID)
+    decision = (await w.campaigns.control_log(CID))[-1]
+    assert (decision.binding["row"], final.state) == (row, state)
+    if row == 3:
+        assert (final.outcome, decision.binding["cause"]) == (
+            CampaignOutcome.SUCCESS,
+            "objective_met",
+        )
+
+
+def test_the_accepted_increments_count_each_increment_family_cycle_once():
+    """The edges: a replayed promotion row counted twice, a refused one counted, or the
+    calibration's counted as an increment."""
+    from types import SimpleNamespace
+
+    from squadops.campaigns.models import ControlOutcome
+    from squadops.campaigns.progress import accepted_increments
+
+    def promote(cycle_id, outcome=ControlOutcome.APPLIED):
+        return SimpleNamespace(
+            operation=ControlOperation.PROMOTE, outcome=outcome, binding={"cycle_id": cycle_id}
+        )
+
+    intents = [
+        SimpleNamespace(cycle_id="cyc_cal", cycle_kind=CycleKind.CALIBRATION),
+        SimpleNamespace(cycle_id="cyc_inc", cycle_kind=CycleKind.INCREMENT),
+        SimpleNamespace(cycle_id="cyc_rep", cycle_kind=CycleKind.REPAIR),
+        SimpleNamespace(cycle_id=None, cycle_kind=CycleKind.INCREMENT),
+    ]
+    log = [
+        promote("cyc_cal"),
+        promote("cyc_rep"),
+        promote("cyc_rep"),
+        promote("cyc_inc", ControlOutcome.REFUSED),
+        promote("cyc_unknown"),
+    ]
+
+    assert accepted_increments(log, intents) == 1

@@ -338,6 +338,26 @@ def derive_counters(
     )
 
 
+def accepted_increments(log: list, intents: list) -> int:
+    """The increments the campaign has accepted (§24ah): the applied PROMOTE rows of its
+    increment-family cycles, each cycle once. The calibration's promotion is the accepted
+    baseline, not an increment; a cycle no intent launched is not counted."""
+    kinds = {i.cycle_id: i.cycle_kind for i in intents if i.cycle_id}
+    return len(
+        {
+            e.binding.get("cycle_id")
+            for e in log
+            if e.operation == ControlOperation.PROMOTE
+            and e.outcome == ControlOutcome.APPLIED
+            and kinds.get(e.binding.get("cycle_id")) in _INCREMENT_FAMILY
+        }
+    )
+
+
+#: The kinds whose acceptance is an increment's: the increment itself, or its repair or retry.
+_INCREMENT_FAMILY = frozenset({CycleKind.INCREMENT, CycleKind.REPAIR, CycleKind.RETRY})
+
+
 #: Reads a cycle's assessment from the stores: ``adapters.cycles.cycle_evidence.assess_cycle``.
 Assess = Callable[[str], Awaitable[CycleAssessment]]
 
@@ -400,7 +420,7 @@ class CampaignProgress:
                 launched,
                 ending=ending,
                 now=self._clock(),
-                objective_met=False,
+                objective_met=await self._objective_met(campaign),
             ),
             ended,
             latest,
@@ -964,6 +984,19 @@ class CampaignProgress:
             ),
         )
         return result.campaign
+
+    async def _objective_met(self, campaign: Campaign) -> bool:
+        """§10 row 3's reading (§24ah): the increments accepted so far, this one counted, have
+        reached the objective's target. Read from the PROMOTE rows of the campaign's increment,
+        repair and retry cycles, after this cycle's own promotion has committed; the
+        calibration's promotion is the baseline, not an increment. A campaign stored with no
+        target has no reader, and is never met."""
+        target = campaign.objective.target_accepted_increments
+        if target is None:
+            return False
+        intents = await self._campaigns.launch_intents(campaign.campaign_id)
+        log = await self._campaigns.control_log(campaign.campaign_id)
+        return accepted_increments(log, intents) >= target
 
     async def _launched_cycles(self, campaign: Campaign) -> list[CycleRecord]:
         records = []

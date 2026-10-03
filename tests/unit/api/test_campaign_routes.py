@@ -111,6 +111,7 @@ def _create(world: _World, key: str = "create-1", **overrides):
             "statement": "evolve group_run toward its PRD's expansion scope",
             "allowed_scope": ["backend", "frontend"],
             "measurement": "two accepted increments",
+            "target_accepted_increments": 2,
         },
         "policy": _POLICY,
         "reason": "the 2.0 shakeout",
@@ -392,3 +393,19 @@ async def test_a_failing_event_bus_fails_no_operation(world):
     resp = _control(world, "pause", "k-1")
 
     assert resp.status_code == 200 and resp.json()["campaign"]["state"] == "paused"
+
+
+def test_a_campaign_whose_measurement_has_no_reader_is_refused(world):
+    """§24ah. Bug caught: a campaign created with no target, which row 3 can never stop in
+    success, so it proposes past its objective until a limit stops it, and reads exhausted."""
+    body_objective = {
+        "statement": "evolve group_run",
+        "allowed_scope": ["backend"],
+        "measurement": "two accepted increments",
+        "target_accepted_increments": None,
+    }
+
+    response = _create(world, objective=body_objective)
+
+    assert response.status_code == 422
+    assert "target_accepted_increments is required" in response.json()["detail"]["error"]["message"]

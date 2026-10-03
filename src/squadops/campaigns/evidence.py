@@ -93,7 +93,12 @@ def digest(doc: dict) -> str:
         + (f" ({c['outcome']})" if c.get("outcome") else ""),
         "",
         f"**Objective:** {c['objective']['statement']}",
-        f"**Measured by:** {c['objective']['measurement']}",
+        f"**Measured by:** {c['objective']['measurement']}"
+        + (
+            f" (met at {c['objective']['target_accepted_increments']} accepted increments)"
+            if c["objective"].get("target_accepted_increments")
+            else ""
+        ),
         f"**Package:** `{doc['identity'][:16]}` (version {doc['package_version']})",
         "",
         "## Accepted",

@@ -1901,6 +1901,31 @@ stores none of its own. The proposal read only the accepted cycle's own artifact
 any accepted cycle "stored" the calibration's manifest. The new test answers by cycle, as the live
 vault does.
 
+### 24ah. The objective's measurement has a reader, so row 3 can stop a campaign in success (2026-10-03, §10 row 3, §15, §24b's not-built; decided under the 2.0 charter)
+
+§24b recorded that `objective_met` was always false. `CampaignObjective.measurement` is free text and
+nothing read it, so row 3 could never fire, and a campaign ended by exhaustion, failure, escalation
+or abort, never in success.
+
+**The evidence:** shakeout 4 (`cmp_be852b0f08f0`) accepted its second increment at control-log seq
+19, with every frozen criterion held, which was its measurement ("two accepted increments"). It then
+ended on row 4 (total cycles), outcome `exhausted`. The 2.0 plan's set is two campaigns of three
+increments each (decision 3). Without a reader, each would propose increments past its objective until
+`max_cycles` stopped it, and it would read exhausted.
+
+**As built:**
+- **`CampaignObjective.target_accepted_increments`:** the measurement's one machine reading, the
+  accepted increments that meet it. It is required of every new campaign (the create route refuses
+  it missing). A campaign stored before the field existed reads `None` and has no reader, as before.
+- **Row 3's `objective_met`** holds when the campaign's accepted increments, this one counted, reach
+  the target. The count is the applied PROMOTE rows of its increment, repair and retry cycles, each
+  cycle once, read after this cycle's own promotion commits. The calibration's promotion is the
+  accepted baseline, not an increment.
+- **The measurement's text stays the human statement;** the digest prints the target beside it.
+
+Row 3 is checked before row 4, so a campaign whose last allowed cycle meets the target ends in
+success, not exhaustion.
+
 ---
 
 ## Revision history
