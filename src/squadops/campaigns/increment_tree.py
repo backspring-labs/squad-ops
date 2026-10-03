@@ -28,11 +28,39 @@ def accepted_cycle_of(cycle: Any) -> str | None:
     return block.get("accepted_cycle_id") or None
 
 
+#: The accepted tree a promotion recorded (#1887): ``path -> artifact id`` for the whole app.
+ACCEPTED_TREE_ARTIFACT_TYPE = "accepted_tree"
+ACCEPTED_TREE_FILENAME = "accepted_tree.json"
+
+
 async def _delivered(vault: Any, cycle_id: str) -> dict[str, str]:
-    """A cycle's delivered files, ``path -> artifact id``, by the one rule every reader shares
-    (#1832)."""
+    """The accepted tree of ``cycle_id``, ``path -> artifact id``: what its promotion recorded
+    (#1887), or — for a cycle promoted before the record existed, or never promoted, like a
+    reference baseline — its own delivered files, by the one rule every reader shares (#1832)."""
     refs = await vault.list_artifacts(cycle_id=cycle_id)
+    recorded = sorted(
+        (r for r in refs if r.artifact_type == ACCEPTED_TREE_ARTIFACT_TYPE),
+        key=lambda r: str(r.created_at),
+    )
+    if recorded:
+        _ref, content = await vault.retrieve(recorded[-1].artifact_id)
+        return dict(json.loads(content))
     return delivered_files(StoredArtifact.from_record(dataclasses.asdict(r)) for r in refs)
+
+
+async def compose_accepted_tree(vault: Any, built_on: str | None, own_refs: list) -> dict[str, str]:
+    """The whole app a cycle delivered (#1887): the accepted tree it was built on (``built_on``,
+    the accepted cycle), overlaid with its own delivered files by #881's rule across cycles —
+    produced content wins over what it replaces; a scaffold-seeded file never shadows produced
+    content (an increment's stub for a slot it did not touch keeps the accepted implementation);
+    and among seeded versions the latest wins (the frozen file its candidate regenerated, #1876).
+    A calibration builds on nothing, and its tree is what it delivered."""
+    inherited = []
+    for art_id in (await _delivered(vault, built_on) if built_on else {}).values():
+        ref, _content = await vault.retrieve(art_id)
+        inherited.append(StoredArtifact.from_record(dataclasses.asdict(ref)))
+    own = [StoredArtifact.from_record(dataclasses.asdict(r)) for r in own_refs]
+    return delivered_files([*inherited, *own])
 
 
 async def accepted_tree_refs(

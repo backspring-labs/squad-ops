@@ -15,7 +15,6 @@ decision already recorded for the cycle is returned, not recomputed (§8.4).
 
 from __future__ import annotations
 
-import dataclasses
 import hashlib
 import json
 import logging
@@ -38,8 +37,12 @@ from squadops.campaigns.continuation import (
 from squadops.campaigns.evaluator_trees import FileTree
 from squadops.campaigns.evidence import CycleRecords, digest, package
 from squadops.campaigns.increment_tree import (
+    ACCEPTED_TREE_ARTIFACT_TYPE,
+    ACCEPTED_TREE_FILENAME,
     INCREMENT_EVALUATION_ARTIFACT_TYPE,
     VERIFIER_BUNDLE_ARTIFACT_TYPE,
+    accepted_cycle_of,
+    compose_accepted_tree,
     increment_seed,
 )
 from squadops.campaigns.launch_requests import bound_launch, increment_launch
@@ -59,7 +62,6 @@ from squadops.campaigns.prior_cycle import prior_cycle_brief
 from squadops.cycles.contract_derivation import is_interface_manifest
 from squadops.cycles.cycle_assessment import CycleAssessment
 from squadops.cycles.cycle_end import CycleStopReason
-from squadops.cycles.delivered_tree import StoredArtifact, delivered_files
 from squadops.cycles.models import (
     ArtifactRef,
     Cycle,
@@ -427,12 +429,15 @@ class CampaignProgress:
         criteria are frozen with it (§8.1): each bundle stored, and named on the row, so every
         later increment is launched with it."""
         refs = await self._vault.list_artifacts(cycle_id=cycle.cycle_id, run_id=last_run.run_id)
-        chosen = delivered_files(StoredArtifact.from_record(dataclasses.asdict(r)) for r in refs)
+        # #1887: an increment delivered its change, not the app — the whole tree is the one it
+        # was built on, overlaid with what it delivered.
+        chosen = await compose_accepted_tree(self._vault, accepted_cycle_of(cycle), refs)
         files = {}
         for name, art_id in chosen.items():
             _ref, content = await self._vault.retrieve(art_id)
             files[name] = content
         identity = FileTree.of(files).identity
+        tree_ref = await self._store_accepted_tree(cycle, last_run, chosen)
         frozen = await self._freeze_bundles(cycle, last_run, evaluation)
         result = await self._campaigns.transition(
             campaign.campaign_id,
@@ -450,6 +455,7 @@ class CampaignProgress:
                     "files": len(files),
                     "frozen_criteria": frozen,
                     "retired_criteria": list((evaluation or {}).get("retired") or ()),
+                    "tree_ref": tree_ref,
                 },
                 accepted=AcceptedTree(identity, cycle.cycle_id),
             ),
@@ -611,6 +617,30 @@ class CampaignProgress:
             logger.error("increment_evaluation_unreadable", extra={"run_id": run.run_id})
             return None
         return document if isinstance(document, dict) else None
+
+    async def _store_accepted_tree(self, cycle: Cycle, run: Run, tree: dict[str, str]) -> str:
+        """Record the promoted tree, ``path -> artifact id`` (#1887), once: a replayed promotion
+        finds the same record and reuses it. The next increment seeds from it, and its
+        evaluation's baseline is read from it."""
+        content = json.dumps(dict(sorted(tree.items())), indent=2).encode("utf-8")
+        digest = hashlib.sha256(content).hexdigest()
+        for r in await self._vault.list_artifacts(cycle_id=cycle.cycle_id, run_id=run.run_id):
+            if r.artifact_type == ACCEPTED_TREE_ARTIFACT_TYPE and r.content_hash == digest:
+                return r.artifact_id
+        ref = ArtifactRef(
+            artifact_id=f"art_{uuid.uuid4().hex[:12]}",
+            project_id=cycle.project_id,
+            artifact_type=ACCEPTED_TREE_ARTIFACT_TYPE,
+            filename=ACCEPTED_TREE_FILENAME,
+            content_hash=digest,
+            size_bytes=len(content),
+            media_type="application/json",
+            created_at=self._clock(),
+            cycle_id=cycle.cycle_id,
+            run_id=run.run_id,
+        )
+        await self._vault.store(ref, content)
+        return ref.artifact_id
 
     async def _freeze_bundles(self, cycle: Cycle, run: Run, evaluation: dict | None) -> list[dict]:
         """Store each new criterion's verifier bundle (§8.1), once: a replayed promotion finds
