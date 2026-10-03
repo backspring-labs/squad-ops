@@ -30,6 +30,11 @@ Prefect here is **2.14.21**, whose flow-run route is ``/flow-runs/flow-run/<id>`
 path, a wrong route cannot be detected by status code. The tab strip below the timeline is not
 URL-addressable in this version, so the capture is the timeline and the header, cropped by
 window height.
+
+**It refuses a page the browser could not load.** The flow-run page is loaded first and refused
+when it is the browser's own error page (``capture_browser.py``, #1793): only a written file
+was checked before, so a browser that loads nothing would have put its error page on the release
+as the timeline. ``--browser`` names the binary.
 """
 
 from __future__ import annotations
@@ -37,9 +42,12 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
-import subprocess
+import sys
 import urllib.request
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from capture_browser import add_browser_argument, loaded_dom, screenshot  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
 RELEASES = REPO / "site/content/releases"
@@ -97,30 +105,18 @@ def repair_tasks(flow_run_id: str) -> list[str]:
     ]
 
 
-def shoot(flow_run_id: str, dest: Path, width: int, height: int) -> None:
+def shoot(browser: str, flow_run_id: str, dest: Path, width: int, height: int) -> None:
+    url = f"{PREFECT}/flow-runs/flow-run/{flow_run_id}"
+    loaded_dom(browser, url, 30000)  # refused when the page is the browser's own error page
     # Snap-confined chromium cannot write to /tmp/claude-* or to dot-directories: permission
     # denied, no file, and no message on stdout. Stage in a plain $HOME directory and move.
     staging = Path.home() / "squadops-capture-staging"
     staging.mkdir(exist_ok=True)
     try:
         tmp = staging / dest.name
-        subprocess.run(
-            [
-                "chromium",
-                "--headless",
-                "--disable-gpu",
-                "--no-sandbox",
-                "--hide-scrollbars",
-                f"--window-size={width},{height}",
-                "--virtual-time-budget=30000",
-                f"--screenshot={tmp}",
-                f"{PREFECT}/flow-runs/flow-run/{flow_run_id}",
-            ],
-            capture_output=True,
-            text=True,
-        )
+        screenshot(browser, url, tmp, width, height, 30000)
         if not tmp.exists() or tmp.stat().st_size == 0:
-            raise SystemExit("chromium wrote no file — snap confinement, or Prefect is down")
+            raise SystemExit(f"{browser} wrote no file — snap confinement, or Prefect is down")
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(tmp), dest)
     finally:
@@ -147,6 +143,7 @@ def main() -> int:
         action="store_true",
         help="capture a run that has not finished (shows a blue RUNNING bar)",
     )
+    add_browser_argument(p)
     args = p.parse_args()
 
     run = resolve(args.cycle) if args.cycle else api(f"/flow_runs/{args.flow_run}")
@@ -168,7 +165,7 @@ def main() -> int:
         print("  no correction tasks — a clean run's timeline shows no repair to look at")
 
     dest = RELEASES / f"v{args.version}" / "assets" / f"{args.label}.png"
-    shoot(run["id"], dest, args.width, args.height)
+    shoot(args.browser, run["id"], dest, args.width, args.height)
     print(f"\n  {dest.relative_to(REPO)} ({dest.stat().st_size} bytes)")
     return 0
 

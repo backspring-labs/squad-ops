@@ -44,6 +44,10 @@ Two environment facts this encodes, both learned the hard way:
   poking at by hand.
 * **Snap-confined chromium cannot write to ``/tmp/claude-*`` or to dot-directories.** It writes
   to a plain directory under ``$HOME`` and the files are moved into place afterwards.
+
+The browser is ``--browser``, and a page it could not load is refused as the browser's failure,
+never the app's (``capture_browser.py``, #1793). The vault is the main checkout's, so a capture
+run from the release package's worktree reads the deploy's artifacts (#1793).
 """
 
 from __future__ import annotations
@@ -63,8 +67,15 @@ import yaml
 
 from squadops.cycles.delivered_tree import StoredArtifact, delivered_files
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from capture_browser import add_browser_argument, loaded_dom, screenshot  # noqa: E402
+from checkouts import main_checkout  # noqa: E402
+
+#: The checkout the package is written into (a release branch's worktree), and the main one
+#: whose ``data/`` the deploy writes: the vault is only ever there.
 REPO = Path(__file__).resolve().parents[2]
-VAULT = REPO / "data/artifacts"
+MAIN = main_checkout(REPO)
+VAULT = MAIN / "data/artifacts"
 RELEASES = REPO / "site/content/releases"
 SANDBOX_IMAGE = "squadops-sandbox-env:py3.12-node20-1.4"
 CONTAINER = "squadops-delivered-app-capture"
@@ -132,7 +143,7 @@ def load_manifest(project: str, cycle: str) -> dict:
     for meta_path in (VAULT / project / cycle).glob("run_*/art_*/metadata.json"):
         meta = json.loads(meta_path.read_text())
         if meta.get("filename") == "interface_manifest.yaml":
-            found.append((meta.get("created_at", ""), REPO / meta["vault_uri"]))
+            found.append((meta.get("created_at", ""), MAIN / meta["vault_uri"]))
     if not found:
         raise SystemExit(
             f"no interface_manifest.yaml stored for {project}/{cycle}: the capture maps the seed "
@@ -255,21 +266,9 @@ def declared_routes(manifest: dict, routes: list[tuple[str, str]]) -> dict[str, 
     return {path: declared[_norm(path)] for path, _ in routes}
 
 
-def rendered_testids(ui_port: int, route: str) -> set[str]:
+def rendered_testids(browser: str, ui_port: int, route: str) -> set[str]:
     """The ``data-testid`` values the page at ``route`` actually rendered."""
-    dom = subprocess.run(
-        [
-            "chromium",
-            "--headless",
-            "--disable-gpu",
-            "--no-sandbox",
-            "--virtual-time-budget=8000",
-            "--dump-dom",
-            f"http://localhost:{ui_port}{route}",
-        ],
-        capture_output=True,
-        text=True,
-    ).stdout
+    dom = loaded_dom(browser, f"http://localhost:{ui_port}{route}", 8000)
     return set(re.findall(r'data-testid="([^"]+)"', dom))
 
 
@@ -351,6 +350,7 @@ def first_id(port: int, path: str) -> str:
 
 
 def shoot(
+    browser: str,
     ui_port: int,
     routes: list[tuple[str, str]],
     assets: Path,
@@ -365,27 +365,13 @@ def shoot(
     try:
         for route, label in routes:
             target = staging / f"{label}.png"
-            subprocess.run(
-                [
-                    "chromium",
-                    "--headless",
-                    "--disable-gpu",
-                    "--no-sandbox",
-                    "--hide-scrollbars",
-                    f"--window-size={width},940",
-                    "--virtual-time-budget=8000",
-                    f"--screenshot={target}",
-                    f"http://localhost:{ui_port}{route}",
-                ],
-                capture_output=True,
-                text=True,
-            )
+            screenshot(browser, f"http://localhost:{ui_port}{route}", target, width, 940, 8000)
             if not target.exists() or target.stat().st_size == 0:
-                raise SystemExit(f"chromium wrote no file for {route} — is it snap-confined?")
+                raise SystemExit(f"{browser} wrote no file for {route} — is it snap-confined?")
             # A screenshot of a page that rendered none of its view is a picture of nothing,
             # and its filename is a caption promising something (#1665).
             expected = testids.get(route) or []
-            seen = rendered_testids(ui_port, route)
+            seen = rendered_testids(browser, ui_port, route)
             if not (seen & set(expected) if expected else seen):
                 raise SystemExit(
                     f"the page at {route} rendered none of its view's test ids {expected} "
@@ -432,6 +418,7 @@ def main() -> int:
     p.add_argument("--width", type=int, default=1180)
     p.add_argument("--wait", type=int, default=180)
     p.add_argument("--keep-up", action="store_true", help="leave the container running afterwards")
+    add_browser_argument(p)
     args = p.parse_args()
 
     routes = []
@@ -475,7 +462,7 @@ def main() -> int:
             route_testids = {r.replace("{id}", ident): t for r, t in route_testids.items()}
             routes = [(r.replace("{id}", ident), label) for r, label in routes]
         assets = RELEASES / f"v{args.version}" / "assets"
-        written = shoot(args.ui_port, routes, assets, args.width, route_testids)
+        written = shoot(args.browser, args.ui_port, routes, assets, args.width, route_testids)
     finally:
         if not args.keep_up:
             sh("docker", "rm", "-f", CONTAINER, check=False)
