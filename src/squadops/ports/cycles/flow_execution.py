@@ -24,6 +24,12 @@ class FlowExecutionPort(ABC):
     async def cancel_run(self, run_id: str) -> None:
         """Cancel an in-progress run execution."""
 
+    def begin_shutdown(self) -> None:
+        """The process is stopping (#1929): a run interrupted from here on is left as it was,
+        for the startup re-attach (SIP-0109 §24am), not recorded as ended. The default holds
+        no run across a restart, so it has nothing to leave."""
+        return None
+
     async def execute_cycle(
         self, cycle_id: str, first_run_id: str, profile_id: str | None = None
     ) -> None:

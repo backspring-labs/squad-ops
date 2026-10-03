@@ -26,6 +26,7 @@ import sys
 from collections.abc import Awaitable, Iterable
 from typing import TYPE_CHECKING, Any
 
+from squadops.comms.task_replay import DISPATCH_BOOT_METADATA_KEY, FinishedTasks
 from squadops.tasks.models import TaskEnvelope, TaskResultStatus
 
 # Configure logging early.
@@ -675,6 +676,14 @@ class AgentRunner:
             state = self.__dict__["_cancelled_runs_state"] = CancelledRuns()
         return state
 
+    @property
+    def _finished_tasks(self) -> FinishedTasks:
+        # Lazily, as ``_cancelled_runs``: a runner built without __init__ still has one.
+        state = self.__dict__.get("_finished_tasks_state")
+        if state is None:
+            state = self.__dict__["_finished_tasks_state"] = FinishedTasks()
+        return state
+
     async def _process_control_message(self, message: QueueMessage) -> None:
         """A cancel notice for runs this agent may hold (#1648). Never raises, like the comms
         callback: a malformed control message is logged and acked."""
@@ -1017,6 +1026,22 @@ class AgentRunner:
             )
             return
 
+        # #1929: a restarted runtime's re-attach asks again for the task it was waiting on. A
+        # task finished here for an earlier boot is answered with the reply it sent, not run twice.
+        boot = (envelope.metadata or {}).get(DISPATCH_BOOT_METADATA_KEY)
+        replay = self._finished_tasks.replay_for(envelope.task_id, boot)
+        if replay is not None:
+            logger.warning(
+                "task_reply_replayed: task=%s — finished here for an earlier runtime boot; a "
+                "restarted runtime asked again, so it is answered with the reply sent, not run "
+                "twice (#1929)",
+                envelope.task_id,
+                extra={"agent_id": self.agent_id, "task_id": envelope.task_id},
+            )
+            if reply_queue:
+                await self._queue.publish(reply_queue, replay)
+            return
+
         # Build correlation context for LLM-observability tracing and
         # task-scoped log forwarding (SIP-0087).
         from squadops.telemetry.context import use_correlation_context, use_run_ids
@@ -1091,7 +1116,9 @@ class AgentRunner:
                 "metadata": {"correlation_id": envelope.correlation_id},
                 "payload": result.to_dict(),
             }
-            await self._queue.publish(reply_queue, json.dumps(response))
+            reply = json.dumps(response)
+            await self._queue.publish(reply_queue, reply)
+            self._finished_tasks.record(envelope.task_id, reply, boot)
         else:
             logger.warning(
                 "No reply_queue in metadata, result dropped",

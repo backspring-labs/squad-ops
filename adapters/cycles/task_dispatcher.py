@@ -40,11 +40,13 @@ import dataclasses
 import json
 import logging
 import time
+import uuid
 from typing import TYPE_CHECKING
 
 from adapters.cycles.execution_errors import _CancellationError
 from adapters.cycles.task_naming import build_task_name
 from squadops.comms.run_cancellation import RUN_ID_METADATA_KEY
+from squadops.comms.task_replay import DISPATCH_BOOT_METADATA_KEY
 from squadops.cycles.llm_usage import RunUsage, RunUsageAccumulator
 from squadops.cycles.run_loop_summary import revision_forms_of
 from squadops.events.types import EventType
@@ -122,6 +124,9 @@ class TaskDispatcher:
         # idiom as ``store_artifact`` / ``handle_task_outcome``: the transport
         # asks "is this run cancelled?" without taking a registry dependency.
         self._is_cancelled = is_cancelled
+        # #1929: this process's boot. Every dispatch carries it, so an agent can tell a restarted
+        # runtime asking again for a task it finished from this process's own retry.
+        self._boot = uuid.uuid4().hex
         # SIP-0108 §4.1: every reply of a run adds its task's LLM usage here, where every
         # dispatch returns — tasks, retries, correction steps and retests alike — and
         # finalization takes the sum for the run's durable summary.
@@ -410,11 +415,16 @@ class TaskDispatcher:
         queue_name = f"{envelope.agent_id}_comms"
         # 1.8.2 item 15: the declared per-task wait travels with the task, so the agent bounds
         # its handler by the same value this side waits on — not by its model-call timeout.
-        # #1648: and its run, so the agent can drop it when that run is cancelled.
+        # #1648: and its run, so the agent can drop it when that run is cancelled. #1929: and
+        # this process's boot, so a task finished for an earlier boot is answered, not re-run.
         envelope = dataclasses.replace(
             envelope,
             timeout=self._task_timeout,
-            metadata={**(envelope.metadata or {}), RUN_ID_METADATA_KEY: run_id},
+            metadata={
+                **(envelope.metadata or {}),
+                RUN_ID_METADATA_KEY: run_id,
+                DISPATCH_BOOT_METADATA_KEY: self._boot,
+            },
         )
 
         # Open the agent's reply subscription and register our future BEFORE

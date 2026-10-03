@@ -491,6 +491,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # SIP-0109 §9.3 (#1802, #1928): whether a launch is allowed now, which a run start
         # also waits on. ``None`` reads no box.
         self._box_verdict = box_verdict
+        # #1929: set when the process begins to stop. A run interrupted from then on is left
+        # as it was, for the startup re-attach (SIP-0109 §24am), never recorded as ended.
+        self._stopping = False
         self._artifact_vault = artifact_vault
         self._queue = queue
         self._reply_router = reply_router
@@ -642,6 +645,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # recruited_agent_ids (SIP-0089 §3.5, #233) stays empty when recruitment defers or no
         # coordinator is wired.
         state = RunInProgress()
+        # #1929: what failed was the process stopping (its pool closing, its reply waits
+        # failed), not the run. The finally then leaves the run exactly as it was.
+        interrupted = False
 
         try:
             # SIP-0109 §9.3 (#1802, #1928): no run starts when a launch would be refused.
@@ -736,7 +742,23 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 )
                 logger.info("Run %s completed successfully", run_id)
 
+        except asyncio.CancelledError:
+            interrupted = self._stopping
+            raise
         except Exception as exc:
+            if self._stopping:
+                # #1929: the shutdown's own failure, read as the run's, recorded a restart as a
+                # run failure whenever the write reached an open pool, and the re-attach then
+                # skipped the run. Raised as a cancellation, so the cycle loop records no end.
+                interrupted = True
+                logger.warning(
+                    "run_left_for_reattach run=%s: the process is stopping (%s: %s); the run is "
+                    "left as it was, for the startup re-attach (#1929, SIP-0109 §24am)",
+                    run_id,
+                    type(exc).__name__,
+                    exc,
+                )
+                raise asyncio.CancelledError(f"process stopping: {exc}") from exc
             # SIP-0097 §6.4: the exception→status mapping is owned by the
             # run-completion module; this block persists, emits, and logs
             # what the mapping decides (behavior-preserving collapse of the
@@ -762,21 +784,30 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 logger.info(outcome.log_message)
 
         finally:
-            await self._run_admission.release(run_id, state.recruited_agent_ids)
-            await self._run_completion.finalize(
-                cycle_id,
-                run_id,
-                run_status,
-                obs_ctx,
-                flow_run_id,
-                cycle=state.cycle,
-                plan=state.plan,
-                ledger=ledger,
-                contract=state.verification_contract,
-                usage=self._task_dispatcher.take_run_usage(run_id),
-                revision_forms=self._task_dispatcher.take_run_revision_forms(run_id),
-                terminal=terminal,
-            )
+            # #1929: an interrupted run is left exactly as it was. Its recruits' leases are the
+            # startup reaper's, and its finalization the run's own, once the re-attach ends it.
+            if not interrupted:
+                await self._run_admission.release(run_id, state.recruited_agent_ids)
+                await self._run_completion.finalize(
+                    cycle_id,
+                    run_id,
+                    run_status,
+                    obs_ctx,
+                    flow_run_id,
+                    cycle=state.cycle,
+                    plan=state.plan,
+                    ledger=ledger,
+                    contract=state.verification_contract,
+                    usage=self._task_dispatcher.take_run_usage(run_id),
+                    revision_forms=self._task_dispatcher.take_run_revision_forms(run_id),
+                    terminal=terminal,
+                )
+
+    def begin_shutdown(self) -> None:
+        """The process is stopping (#1929). A run interrupted from here on is left as it was,
+        for the startup re-attach, never recorded as failed by its own shutdown."""
+        self._stopping = True
+        logger.info("flow_executor_stopping: runs interrupted from here are left for re-attach")
 
     async def cancel_run(self, run_id: str) -> None:
         """Cancel an in-progress run."""
