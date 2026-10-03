@@ -51,6 +51,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TypeVar
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from checkouts import main_checkout  # noqa: E402
@@ -63,6 +64,7 @@ SQUADOPS = REPO / ".venv" / "bin" / "squadops"
 PROJECT = "group_run"
 RUNTIME = "squadops-runtime-api"
 POLL_S = 15
+T = TypeVar("T")
 #: The states a campaign holds while a run of it is in flight: a restart there must take it up.
 _RUN_IN_FLIGHT = frozenset({"calibrating", "at_proposal", "building", "repairing", "retrying"})
 
@@ -396,13 +398,18 @@ def restart_runtime() -> str:
     return since
 
 
-def kill_runtime() -> str:
-    """A crash: SIGKILL, no shutdown path, then a start. Returns when it was killed."""
+def kill_runtime(read_at_kill: Callable[[], T]) -> tuple[str, T]:
+    """A crash: SIGKILL, no shutdown path, then a start. ``read_at_kill`` reads the records
+    while the process is down, before the start: what the dead process committed, and nothing
+    the restarted one did. Read after the start, it saw the re-attach's own promotion, and the
+    first live run recorded a hit window as missed (2026-10-03, ``cmp_e39d5b9c24c6``).
+    Returns when it was killed, and that read."""
     since = _now()
     subprocess.run(["docker", "kill", RUNTIME], check=True, capture_output=True)
+    at_kill = read_at_kill()
     subprocess.run(["docker", "start", RUNTIME], check=True, capture_output=True)
     _healthy()
-    return since
+    return since, at_kill
 
 
 def _taken_up(since: str, runs: Sequence[str], timeout_s: int = 300) -> list[str]:
@@ -576,9 +583,12 @@ def kill_before_promotion(campaign_id: str) -> Verdict:
             checked = time.monotonic()
             if run_id not in _running(campaign_id):
                 break
-    killed_at = kill_runtime() if completed else _now()
+
+    def committed() -> list[Row]:
+        return control_log(campaign_id)[seq_before:]
+
+    killed_at, at_kill = kill_runtime(committed) if completed else (_now(), committed())
     follow.kill()
-    at_kill = control_log(campaign_id)[seq_before:]
     exercised = completed and not any(
         r.target == cycle_id and r.operation in ("promote", "decide") for r in _applied(at_kill)
     )
