@@ -124,6 +124,38 @@ are appended, and if the deploy moves, this registration is void and re-made.
 - **A framework fix during the set:** nothing merges while the set is open (1.9's rule). A fix voids
   the set, and it restarts on a new deploy after a shakeout.
 
+
+### 3a. The supervision policy (declared before the first launch)
+
+**Who supervises:** Claude Code, as the owner's delegate (the owner, 2026-10-03: "I don't need to
+be a supervisor of the counted set; you can do that and use good judgement"). The seat is the one
+seat of SIP-0109 §24al. Each ruling's actor is the identity the delegate rules with, and this
+record names the delegate. Because the supervisor also built the framework, it rules by these
+criteria, declared before the first launch, and each ruling's reason cites the criterion it
+applied.
+
+- **Approve,** when all of these hold:
+  - the change request stays inside the objective's `allowed_scope`;
+  - each criterion is concrete and checkable against a named surface, and asserts only what the
+    request states (P9);
+  - the footprint is no wider than the change needs;
+  - `must_not_break` names the earlier criteria the change touches.
+- **Request a revision,** naming exactly what to fix, when the request:
+  - is internally inconsistent (shakeout 5's v1: the observable said `CAPACITY_REACHED` and the
+    delta declared `capacity_reached`);
+  - states a rule in a criterion that the request itself does not state;
+  - has an observable a test could not check.
+- **Reject,** when the request is outside the objective's scope, or reworks an accepted increment
+  without a `retires` entry.
+- **Plan-gate answers** come from the PRD, the accepted manifest, or an earlier answer (§24ad).
+  When none of these settles a question, the answer is the narrowest one consistent with them, and
+  the ruling records it as a judgement.
+- **Never:**
+  - edit a proposal (§9.2);
+  - rule to steer a measurement or a prediction;
+  - act outside the interface.
+- **Classify** a returned or rejected proposal (§9.4) when the cause is one of §9.4's classes.
+
 ---
 
 ## 4. The predictions: each names a mechanism and how it is falsified
