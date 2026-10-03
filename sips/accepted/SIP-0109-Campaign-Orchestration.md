@@ -2043,6 +2043,34 @@ before the loop's exit shakeout (2.0 plan rev 9, §5a.5).
 **Not built:** the package's size bound, the app's evolution with screenshots, and the squad's first
 pass. All three are after the set, rendered from durable records (plan rev 9, §5a.4).
 
+### 24al. One supervisor, whoever holds the seat (2026-10-03, §9.2, §9.5, §24ae, §24aj; ruled by the owner)
+
+**The ruling.** The owner, 2026-10-03: "consider me or the crew as requiring the same need to
+supervise. it shouldn't impact squad ops design." The supervisor's seat is one seat. Whether the
+owner or the crew holds it is the record's actor on each ruling, not a distinction in SquadOps.
+
+**What changed.**
+- **One ruling bound.** `CampaignPolicy.crew_ruling_bound_s` and `owner_ruling_bound_s`, a crew
+  first and the owner as fallback, become `ruling_bound_s`, the supervisor's.
+  - The increment gate's (§24ae) and the plan gate's (§24aj) overdue rows are each written once,
+    when that bound passes. Their binding carries the bound, not a seat.
+  - The digest says "past its ruling bound".
+- **Stored campaigns read as written.** A policy stored with the two seat bounds is read through
+  `CampaignPolicy.from_stored`, its supervisor's bound being the first of them (the crew's). A
+  terminal row needs no migration, and its control-log rows keep the seats they were written with.
+- **A run start's ceiling (§24ai)** was "the holding campaign's owner ruling bound". It becomes one
+  full lease, `lease_expiry_s`: a supervisor renewing past it fails the run unstarted. The ceiling
+  no longer names a seat.
+
+**What did not change.** The owner's own powers are authority, not supervision: creating a
+campaign, the owner's word on a pause or an escalation, an abort (`campaigns:control`). They keep
+their scope. A supervisor rules through `campaigns:supervise`, whoever it is.
+
+**Consequence for the 2.0 set.** Who supervises is no longer a SquadOps decision. The 2.0 plan's
+decision 2 (who supervises) and decision 6 (the crew's network path) are the supervisor's
+concerns, not the framework's. The set claims supervision through the interface, and each
+ruling records its actor.
+
 ---
 
 ## Revision history

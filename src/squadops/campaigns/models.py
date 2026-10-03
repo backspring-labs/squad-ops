@@ -10,9 +10,11 @@ without a consumer.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
 
 from squadops.cycles.models import GateDecisionValue
 
@@ -245,8 +247,7 @@ _POSITIVE_POLICY_FIELDS = frozenset(
         "budget_tokens",
         "max_rejected_proposals_in_row",
         "max_unaccepted_increments",
-        "crew_ruling_bound_s",
-        "owner_ruling_bound_s",
+        "ruling_bound_s",
         "lease_expiry_s",
         "launch_blocked_interval_s",
         "launch_blocked_attempts",
@@ -269,9 +270,10 @@ class CampaignPolicy:
     max_proposal_revisions: int
     max_rejected_proposals_in_row: int
     max_unaccepted_increments: int
-    # §9.2's ruling bounds
-    crew_ruling_bound_s: int
-    owner_ruling_bound_s: int
+    # §9.2's ruling bound: one supervisor's, whoever holds the seat (the owner's ruling of
+    # 2026-10-03, §24al). The owner's own powers (create, resume, abort, an escalation's word)
+    # are authority, not supervision, and have no bound here.
+    ruling_bound_s: int
     # §9.3's lease and launch-blocked handling
     lease_expiry_s: int
     launch_blocked_interval_s: int
@@ -281,6 +283,17 @@ class CampaignPolicy:
     calibration_profile: str
     proposal_profile: str
     squad_profile: str
+
+    @classmethod
+    def from_stored(cls, data: Mapping[str, Any]) -> CampaignPolicy:
+        """A stored policy, as written. One stored before §24al carries two seat bounds, a crew's
+        and an owner's; its supervisor's bound is the first of them, the crew's. A terminal row
+        needs no migration, and its record keeps the values it ran under."""
+        values = dict(data)
+        if "ruling_bound_s" not in values and "crew_ruling_bound_s" in values:
+            values["ruling_bound_s"] = values.pop("crew_ruling_bound_s")
+            values.pop("owner_ruling_bound_s", None)
+        return cls(**values)
 
     def __post_init__(self) -> None:
         for f in fields(self):

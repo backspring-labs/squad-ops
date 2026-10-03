@@ -49,7 +49,7 @@ A campaign needs a human only in these states. Everything else is the campaign w
 | state, or what to look for | what it means | what to do |
 |---|---|---|
 | `awaiting_ruling` | the increment gate is open: a proposal waits (§9.2) | rule it (§3) |
-| an open plan gate (`progress_plan_review` with no decision) | the framing asked a design question the manifest left `unresolved` | answer it (§4). Past the crew's and the owner's ruling bounds it is recorded as `ruling_overdue`, and the digest asks for it; it is never answered for you |
+| an open plan gate (`progress_plan_review` with no decision) | the framing asked a design question the manifest left `unresolved` | answer it (§4). Past its ruling bound it is recorded as `ruling_overdue`, and the digest asks for it; it is never answered for you |
 | `escalated` | the decision named an action it could not launch, or a row that needs the owner | read why, fix if it is the framework, resume with an action (§5) |
 | `paused` | a limit held the next action (§9.5), or the supervisor paused it | the owner's resume executes the held action |
 | `launch_blocked` | the box refused a launch (§9.3): the supervisor holds it, or a model the deploy did not load is resident | it retries every `launch_blocked_interval_s`, then escalates; after the escalation, `resume` with no `--action` retries it once the box is free |
@@ -118,8 +118,9 @@ squadops runs gate <project> <cycle_id> <proposal_run_id> progress_increment_rul
   which writes the next version.
 - **Reject** (`--reject`) ends the cycle `rejected_at_gate`; it counts toward `max_rejected_proposals_in_row`.
 - **Never edit the proposal.** The supervisor is not an author (§9.2).
-- **The ruling bound** (`crew_ruling_bound_s`, then `owner_ruling_bound_s`) records a
-  `ruling_overdue` row as each passes, and the digest names it. Nothing rules for you (§24ae).
+- **The ruling bound** (`ruling_bound_s`) is the supervisor's, whoever holds the seat, the
+  owner or the crew (§24al). Once it passes, a `ruling_overdue` row is recorded and the digest
+  names it. Nothing rules for you (§24ae).
 
 ---
 

@@ -37,7 +37,7 @@ CID = "cmp_bound0000001"
 BASE = "sha-accepted"
 V1 = ProposalBinding("prop_1", 1, "hash-v1", BASE)
 V2 = ProposalBinding("prop_1", 2, "hash-v2", BASE)
-CREW, OWNER = 1800, 12 * 3600  # the builders' policy: §9.2's defaults
+BOUND = 1800  # the builders' policy: the supervisor's ruling bound (§24al)
 
 
 async def _submit(reg, binding, run_id):
@@ -71,18 +71,23 @@ async def _owed(reg, waited: float) -> list[str]:
     log = await reg.control_log(CID)
     now = gate_opened_at(log) + timedelta(seconds=waited)
     return [
-        t.binding["seat"] for t in ruling_overdue_transitions(await reg.get_campaign(CID), log, now)
+        t.idempotency_key for t in ruling_overdue_transitions(await reg.get_campaign(CID), log, now)
     ]
 
 
 @pytest.mark.parametrize(
-    ("waited", "seats"),
-    [(CREW - 1, []), (CREW, ["crew"]), (OWNER - 1, ["crew"]), (OWNER, ["crew", "owner"])],
-    ids=["inside-the-crews-bound", "the-crews-bound", "inside-the-owners", "the-owners-bound"],
+    ("waited", "keys"),
+    [
+        (BOUND - 1, []),
+        (BOUND, ["ruling_overdue:run_p1:v1"]),
+        (24 * BOUND, ["ruling_overdue:run_p1:v1"]),
+    ],
+    ids=["inside-the-bound", "the-bound", "long-past-it"],
 )
-async def test_each_seat_is_owed_its_row_once_its_bound_passes(at_the_gate, waited, seats):
-    """Bug caught: a bound read off by one, or read from the wrong seat's field."""
-    assert await _owed(at_the_gate, waited) == seats
+async def test_the_gate_is_owed_one_row_once_its_bound_passes(at_the_gate, waited, keys):
+    """One bound, the supervisor's, whoever holds the seat (§24al). Bug caught: a bound read off
+    by one, or a second row owed for the same version as the wait grows."""
+    assert await _owed(at_the_gate, waited) == keys
 
 
 async def test_the_sweep_records_each_bound_once_and_a_ruling_still_resolves_the_gate(
@@ -93,7 +98,7 @@ async def test_the_sweep_records_each_bound_once_and_a_ruling_still_resolves_the
     criterion 10); a row written every sweep; the campaign moved off the gate, or a ruling
     after a bound refused, when §9.5 says a ruling resolves it; a bound that rules."""
     opened = gate_opened_at(await at_the_gate.control_log(CID))
-    now = [opened + timedelta(seconds=CREW)]
+    now = [opened + timedelta(seconds=BOUND)]
     progress = CampaignProgress(
         campaigns=at_the_gate,
         cycles=AsyncMock(),
@@ -103,18 +108,17 @@ async def test_the_sweep_records_each_bound_once_and_a_ruling_still_resolves_the
         clock=lambda: now[0],
     )
 
-    crew = await progress.sweep_ruling_bounds()
+    first = await progress.sweep_ruling_bounds()
     again = await progress.sweep_ruling_bounds()
     # The reading itself owes only what is unwritten: no transaction per sweep for a row on record.
-    assert await _owed(at_the_gate, OWNER) == ["owner"]
-    now[0] = opened + timedelta(seconds=OWNER)
-    owner = await progress.sweep_ruling_bounds()
+    assert await _owed(at_the_gate, 24 * BOUND) == []
+    now[0] = opened + timedelta(seconds=24 * BOUND)
+    later = await progress.sweep_ruling_bounds()
 
-    assert [(e.operation, e.binding["seat"], e.binding["version"]) for e in crew + owner] == [
-        (ControlOperation.RULING_OVERDUE, "crew", 1),
-        (ControlOperation.RULING_OVERDUE, "owner", 1),
+    assert [(e.operation, e.binding["version"], e.binding["bound_s"]) for e in first] == [
+        (ControlOperation.RULING_OVERDUE, 1, BOUND),
     ]
-    assert again == []
+    assert again == [] and later == []
     assert (await at_the_gate.get_campaign(CID)).state is S.AWAITING_RULING
     ruled = await at_the_gate.transition(
         CID,
@@ -124,7 +128,7 @@ async def test_the_sweep_records_each_bound_once_and_a_ruling_still_resolves_the
             run_id="run_p1",
             actor="crew-supervisor",
             actor_role="campaign-supervisor",
-            reason="read late, after both bounds",
+            reason="read late, after the bound",
             idempotency_key="k-rule",
         ),
     )
@@ -143,7 +147,7 @@ async def test_a_gate_that_reopens_is_timed_from_its_reopening(at_the_gate):
     )
     resumed = await at_the_gate.control_log(CID)
     assert gate_opened_at(resumed) == resumed[-1].committed_at
-    assert await _owed(at_the_gate, CREW - 1) == []
+    assert await _owed(at_the_gate, BOUND - 1) == []
 
     await at_the_gate.transition(
         CID,
@@ -159,12 +163,12 @@ async def test_a_gate_that_reopens_is_timed_from_its_reopening(at_the_gate):
     )
     await _submit(at_the_gate, V2, "run_p2")
     log = await at_the_gate.control_log(CID)
-    [crew] = ruling_overdue_transitions(
-        await at_the_gate.get_campaign(CID), log, gate_opened_at(log) + timedelta(seconds=CREW)
+    [row] = ruling_overdue_transitions(
+        await at_the_gate.get_campaign(CID), log, gate_opened_at(log) + timedelta(seconds=BOUND)
     )
-    assert (gate_opened_at(log), crew.idempotency_key) == (
+    assert (gate_opened_at(log), row.idempotency_key) == (
         log[-1].committed_at,
-        "ruling_overdue:crew:run_p2:v2",
+        "ruling_overdue:run_p2:v2",
     )
 
 
@@ -214,15 +218,15 @@ async def test_the_runtime_sweeps_every_interval_and_survives_a_failed_sweep():
 
 async def test_the_digest_asks_for_the_ruling_and_says_which_bounds_it_has_passed(at_the_gate):
     """The overdue row's reader: the owner's morning digest. Bug caught: a bound recorded where
-    nobody reads it, so the owner is not told a gate has waited past the crew's bound."""
+    nobody reads it, so the owner is not told a gate has waited past its bound."""
     from squadops.campaigns.evidence import digest, package
 
     log = await at_the_gate.control_log(CID)
-    [crew] = ruling_overdue_transitions(
-        await at_the_gate.get_campaign(CID), log, gate_opened_at(log) + timedelta(seconds=CREW)
+    [row] = ruling_overdue_transitions(
+        await at_the_gate.get_campaign(CID), log, gate_opened_at(log) + timedelta(seconds=BOUND)
     )
     before = digest(package(await at_the_gate.get_campaign(CID), log, [], []))
-    await at_the_gate.transition(CID, crew)
+    await at_the_gate.transition(CID, row)
 
     after = digest(
         package(await at_the_gate.get_campaign(CID), await at_the_gate.control_log(CID), [], [])
@@ -230,6 +234,6 @@ async def test_the_digest_asks_for_the_ruling_and_says_which_bounds_it_has_passe
 
     assert "- The increment gate waits on a ruling for `prop_1` v1. Rule it" in before
     assert (
-        "- The increment gate waits on a ruling for `prop_1` v1, past the crew ruling bound. "
+        "- The increment gate waits on a ruling for `prop_1` v1, past its ruling bound. "
         "Rule it, or abort the campaign." in after
     )
