@@ -1,0 +1,67 @@
+{
+  "accepted_tree": "dcff44b833ce1d1d0e54c63748dec34731fca8c5bdee221642ace0406bc3fb9f",
+  "blocked": [
+    "criterion C1: not run",
+    "criterion C2: not run",
+    "criterion C3: not run"
+  ],
+  "candidate_tree": "68b81fa90265b4276fae5605345938733a7479ca5dc1f311f1fbf439d14a9d0a",
+  "discriminations": [
+    {
+      "criterion_id": "C1",
+      "discriminating": [],
+      "met": false,
+      "reason": "not_run"
+    },
+    {
+      "criterion_id": "C2",
+      "discriminating": [],
+      "met": false,
+      "reason": "not_run"
+    },
+    {
+      "criterion_id": "C3",
+      "discriminating": [],
+      "met": false,
+      "reason": "not_run"
+    }
+  ],
+  "frozen": [],
+  "increment_id": "ref_capacity_limit",
+  "new_bundles": {},
+  "replaced": [],
+  "retired": [],
+  "routes": [
+    {
+      "held": "held",
+      "missing": [],
+      "not_shown": [
+        "run-list",
+        "run-row"
+      ],
+      "path": "/"
+    },
+    {
+      "held": "held",
+      "missing": [],
+      "not_shown": [
+        "run-detail-participants",
+        "run-detail-participant",
+        "run-detail-error",
+        "run-detail-not-found",
+        "capacity-status"
+      ],
+      "path": "/runs/:run_id"
+    },
+    {
+      "held": "held",
+      "missing": [],
+      "not_shown": [
+        "run-create-error"
+      ],
+      "path": "/runs/new"
+    }
+  ],
+  "unmet": [],
+  "verdict": "blocked_unverified"
+}

@@ -1,0 +1,494 @@
+{
+  "assessment_version": 1,
+  "assessor_framework_version": "1.9.0",
+  "assessor_git_sha": "8f2910a0",
+  "attribution": {
+    "contributing": [],
+    "primary": null,
+    "reason": null,
+    "refs": [
+      {
+        "id": "run_7d7938e68cdf",
+        "kind": "registry_run"
+      },
+      {
+        "id": "run_7d7938e68cdf",
+        "kind": "verification_summary"
+      },
+      {
+        "id": "run_fb8c205dfc0c",
+        "kind": "verification_summary"
+      }
+    ],
+    "registry_version": 1,
+    "state": "observed",
+    "terminal_kind": "completed",
+    "unrecorded": []
+  },
+  "attribution_registry_version": 1,
+  "coordination": [
+    {
+      "name": "correction_rounds",
+      "reason": null,
+      "refs": [
+        {
+          "id": "art_3158646270e6",
+          "kind": "vault_artifact"
+        }
+      ],
+      "state": "observed",
+      "value": 1
+    },
+    {
+      "name": "failed_emission_artifacts",
+      "reason": null,
+      "refs": [
+        {
+          "id": "art_502cb2323868",
+          "kind": "vault_artifact"
+        },
+        {
+          "id": "art_54425c7095ab",
+          "kind": "vault_artifact"
+        },
+        {
+          "id": "art_c0416c601740",
+          "kind": "vault_artifact"
+        }
+      ],
+      "state": "observed",
+      "value": 3
+    },
+    {
+      "name": "failed_emissions",
+      "reason": null,
+      "refs": [
+        {
+          "id": "art_502cb2323868",
+          "kind": "vault_artifact"
+        },
+        {
+          "id": "art_54425c7095ab",
+          "kind": "vault_artifact"
+        },
+        {
+          "id": "art_c0416c601740",
+          "kind": "vault_artifact"
+        }
+      ],
+      "state": "observed",
+      "value": 1
+    },
+    {
+      "name": "contentless_emissions",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": {
+        "repair_rounds": 0,
+        "task_attempts": 0
+      }
+    },
+    {
+      "name": "framing_rerolls",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": 0
+    },
+    {
+      "name": "plan_defect_terminations",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": 0
+    },
+    {
+      "name": "refunded_rounds",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": []
+    },
+    {
+      "name": "correction_movements",
+      "reason": null,
+      "refs": [
+        {
+          "id": "run_7d7938e68cdf",
+          "kind": "run_summary"
+        }
+      ],
+      "state": "observed",
+      "value": [
+        {
+          "movement": "new",
+          "round_index": 0,
+          "run_id": "run_7d7938e68cdf",
+          "task_id": "task-run_7d7938e6-m002-qa.test"
+        }
+      ]
+    }
+  ],
+  "cycle_id": "cyc_257539e64218",
+  "efficiency": [
+    {
+      "name": "wall_clock_seconds_by_run",
+      "reason": null,
+      "refs": [
+        {
+          "id": "run_7d7938e68cdf",
+          "kind": "registry_run"
+        },
+        {
+          "id": "run_fb8c205dfc0c",
+          "kind": "registry_run"
+        }
+      ],
+      "state": "observed",
+      "value": {
+        "run_7d7938e68cdf": 1259.44544,
+        "run_fb8c205dfc0c": 1413.169127
+      }
+    },
+    {
+      "name": "wall_clock_seconds",
+      "reason": null,
+      "refs": [
+        {
+          "id": "run_7d7938e68cdf",
+          "kind": "registry_run"
+        },
+        {
+          "id": "run_fb8c205dfc0c",
+          "kind": "registry_run"
+        }
+      ],
+      "state": "observed",
+      "value": 2672.6145669999996
+    },
+    {
+      "name": "tokens_by_run",
+      "reason": null,
+      "refs": [
+        {
+          "id": "run_7d7938e68cdf",
+          "kind": "run_summary"
+        },
+        {
+          "id": "run_fb8c205dfc0c",
+          "kind": "run_summary"
+        }
+      ],
+      "state": "observed",
+      "value": {
+        "run_7d7938e68cdf": {
+          "completion": 31232,
+          "prompt": 102107,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 10
+        },
+        "run_fb8c205dfc0c": {
+          "completion": 32640,
+          "prompt": 77837,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 7
+        }
+      }
+    },
+    {
+      "name": "tokens_by_task_type",
+      "reason": null,
+      "refs": [
+        {
+          "id": "run_7d7938e68cdf",
+          "kind": "run_summary"
+        },
+        {
+          "id": "run_fb8c205dfc0c",
+          "kind": "run_summary"
+        }
+      ],
+      "state": "observed",
+      "value": {
+        "builder.assemble": {
+          "completion": 20,
+          "prompt": 15628,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 1
+        },
+        "data.analyze_failure": {
+          "completion": 2681,
+          "prompt": 8881,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 1
+        },
+        "development.correction_repair": {
+          "completion": 1485,
+          "prompt": 10774,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 1
+        },
+        "development.design_plan": {
+          "completion": 4405,
+          "prompt": 5638,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 1
+        },
+        "development.develop": {
+          "completion": 4476,
+          "prompt": 25650,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 2
+        },
+        "development.propose_plan_tasks": {
+          "completion": 4881,
+          "prompt": 15725,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 1
+        },
+        "governance.correction_decision": {
+          "completion": 243,
+          "prompt": 4258,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 1
+        },
+        "governance.define_done": {
+          "completion": 1974,
+          "prompt": 3457,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 1
+        },
+        "governance.merge_plan": {
+          "completion": 0,
+          "prompt": 0,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 0
+        },
+        "governance.prepare_plan_authoring_brief": {
+          "completion": 2753,
+          "prompt": 15339,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 1
+        },
+        "governance.review_plan": {
+          "completion": 3171,
+          "prompt": 5854,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 1
+        },
+        "qa.define_test_strategy": {
+          "completion": 4489,
+          "prompt": 5671,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 1
+        },
+        "qa.evaluate_increment": {
+          "completion": 0,
+          "prompt": 0,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 0
+        },
+        "qa.propose_plan_tasks": {
+          "completion": 8333,
+          "prompt": 21562,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 1
+        },
+        "qa.test": {
+          "completion": 20353,
+          "prompt": 33459,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 3
+        },
+        "strategy.propose_plan_guidance": {
+          "completion": 4608,
+          "prompt": 8048,
+          "reasoning": 0,
+          "unreported_completion": 0,
+          "unreported_prompt": 0,
+          "unreported_reasoning": 1
+        }
+      }
+    },
+    {
+      "name": "llm_calls",
+      "reason": null,
+      "refs": [
+        {
+          "id": "run_7d7938e68cdf",
+          "kind": "run_summary"
+        },
+        {
+          "id": "run_fb8c205dfc0c",
+          "kind": "run_summary"
+        }
+      ],
+      "state": "observed",
+      "value": {
+        "calls": 17,
+        "failed_calls": 0,
+        "tasks_unreported": []
+      }
+    }
+  ],
+  "evidence_identity": "a1dae774b9c696fd81447939251df058c14d1b215abb01f686f586ce408faeae",
+  "outcome": [
+    {
+      "name": "verdict",
+      "reason": null,
+      "refs": [
+        {
+          "id": "run_7d7938e68cdf",
+          "kind": "verification_summary"
+        },
+        {
+          "id": "run_fb8c205dfc0c",
+          "kind": "verification_summary"
+        }
+      ],
+      "state": "observed",
+      "value": "accepted"
+    },
+    {
+      "name": "criteria_coverage",
+      "reason": null,
+      "refs": [
+        {
+          "id": "run_7d7938e68cdf",
+          "kind": "verification_summary"
+        },
+        {
+          "id": "run_fb8c205dfc0c",
+          "kind": "verification_summary"
+        }
+      ],
+      "state": "observed",
+      "value": {
+        "total": 24,
+        "verified": 24
+      }
+    },
+    {
+      "name": "required_unverified_by_reason",
+      "reason": null,
+      "refs": [
+        {
+          "id": "run_7d7938e68cdf",
+          "kind": "verification_summary"
+        },
+        {
+          "id": "run_fb8c205dfc0c",
+          "kind": "verification_summary"
+        }
+      ],
+      "state": "asked_none",
+      "value": {}
+    },
+    {
+      "name": "inert",
+      "reason": null,
+      "refs": [
+        {
+          "id": "run_7d7938e68cdf",
+          "kind": "verification_summary"
+        },
+        {
+          "id": "run_fb8c205dfc0c",
+          "kind": "verification_summary"
+        }
+      ],
+      "state": "asked_none",
+      "value": []
+    },
+    {
+      "name": "waived",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": []
+    }
+  ],
+  "quality": [
+    {
+      "name": "failed_checks",
+      "reason": null,
+      "refs": [
+        {
+          "id": "run_7d7938e68cdf",
+          "kind": "verification_summary"
+        },
+        {
+          "id": "run_fb8c205dfc0c",
+          "kind": "verification_summary"
+        }
+      ],
+      "state": "asked_none",
+      "value": []
+    },
+    {
+      "name": "unverified_by_reason",
+      "reason": null,
+      "refs": [
+        {
+          "id": "run_7d7938e68cdf",
+          "kind": "verification_summary"
+        },
+        {
+          "id": "run_fb8c205dfc0c",
+          "kind": "verification_summary"
+        }
+      ],
+      "state": "asked_none",
+      "value": {}
+    },
+    {
+      "name": "verified_executable",
+      "reason": "sip_0102_step_5_not_landed",
+      "refs": [],
+      "state": "unaskable",
+      "value": null
+    },
+    {
+      "name": "verified_functional",
+      "reason": "sip_0102_step_5_not_landed",
+      "refs": [],
+      "state": "unaskable",
+      "value": null
+    }
+  ]
+}
