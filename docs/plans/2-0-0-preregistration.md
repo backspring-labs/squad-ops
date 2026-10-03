@@ -37,22 +37,48 @@ are appended, and if the deploy moves, this registration is void and re-made.
        and each change is audited;
      - every enforcement point is wired: the cycle-create preflight (409 plus an audit event), the
        launcher (`launch_blocked`, re-attempted at the policy's interval, escalating after its
-       count), and each run start (it waits while the supervisor holds the box, up to the ruling
-       bound).
-   - **Deployed proof, on an idle box:**
-     - a refusal under a live supervisor lease: a CLI create refused, and a campaign launch recorded
-       as `launch_blocked`;
-     - with the lease expired and an undeclared model resident, a refusal as not quiet, and the
-       campaign's escalation;
-     - with the model unloaded, the launch proceeds.
-   - **The check is model-only (§24l).** It reads every engine's resident models, not the GPU's
-     compute processes, until the runtime-api is granted the GPU (a `docker-compose.yml` change, the
-     owner's). The guarantee is read as no launch beside an undeclared resident model.
+       count), and each run start. **A run start refuses what a launch refuses** (§24an, #1928, the
+       owner's ruling of 2026-10-03, found re-reading the crew's review). It waits, queued, while
+       the supervisor holds the box **or** an undeclared model is resident, up to one full lease of
+       its campaign. A run outside every campaign is refused at once. Before §24an a run start read
+       only the lease, so a crew model left resident when the lease returned (released or expired)
+       was run beside by the framing run the ruling had just approved.
+     - **Built and deployed:** #1915 (§24ai) since rebuild 16; §24an (#1931) from rebuild 18.
+   - **Deployed proof, the quiet-box half (rebuild 16, 2026-10-03 10:38–10:39 ET, `cmp_969baa78fd39`):**
+     with `llama3.1:8b` resident, a CLI create was refused (409 `box_not_quiet`, with an audit
+     event), and the campaign's launch went `launch_blocked`, then escalated. With the model
+     unloaded and a resume, the launch proceeded.
+   - **Deployed proof, the live-lease half (shakeout 6's first increment gate, rebuild 18).** An
+     acquire needs the gate open, so the expired lease comes first:
+     1. a short lease: a CLI create is refused, `supervisor_holds_the_box`;
+     2. the lease left to expire with a stand-in crew model resident: a CLI create is refused,
+        `box_not_quiet`;
+     3. the lease re-acquired and the ruling approved while held: the framing run waits, queued;
+     4. the lease released with the model still resident: the framing run keeps waiting
+        (`box_not_quiet`, §24an);
+     5. the model unloaded: the framing run starts.
+   - **Not proven live: a campaign launch under a live lease.** It cannot arise. An acquire needs the
+     increment gate open and no run in flight, and a campaign launches only when a cycle ends. It is
+     held in the launcher's tests.
+   - **What the check sees, stated as the guarantee's limit:**
+     - **Model-only (§24l).** It reads every declared engine's resident models, not the GPU's compute
+       processes, until the runtime-api is granted the GPU (a `docker-compose.yml` change, the
+       owner's). A crew workload outside a declared engine is not seen.
+     - **Declared per model.** A crew session on a model the deploy declares (one a squad profile
+       names) reads as quiet.
+     - **So the guarantee is:** no launch and no run start beside an undeclared model resident in a
+       declared engine, and none while the supervisor holds the box.
 
 5. **#1803's recovery diagnostics have run on the registered deploy**, as the validation plan's §3
-   (#1807) designs them. The live launch-blocked diagnostic ran in #1802's proof. Left: a restart
-   at each state, a duplicate completion, a repeated ruling, an interruption during evaluation, and
-   an abort.
+   (#1807) designs them, with the harness from #1924 and #1927.
+   - **First live read, rebuild 17 (2026-10-03).** The blocked legs passed 4/4 (`cmp_575115942556`).
+     The increment legs (`cmp_e39d5b9c24c6`) passed the restarts at `at_proposal`,
+     `awaiting_ruling`, `paused` and `building`, and the repeated ruling.
+   - **What that read found:** #1929. A graceful stop was handled as a run failure, and the
+     re-attach dispatched the in-flight task twice. It is fixed in #1932 (§24ao), placed in 2.0 by
+     the owner.
+   - **Re-run on rebuild 18,** the deploy the set registers. #1928 and #1929 change the run-start
+     and restart paths.
 6. **The evidence that dies with the logs is kept** (#1710, §24ak): each run's revision forms are on
    its persisted summary and in the package. `scripts/dev/campaign_log_archive.py <campaign> --follow`
    runs beside every campaign of the set.
@@ -103,9 +129,10 @@ are appended, and if the deploy moves, this registration is void and re-made.
     - no duplicate launch (one cycle per launch intent);
     - no partial promotion (every PROMOTE row carries its `tree_ref` and bundles);
     - no launch beside a crew model: no cycle launched or run started while the supervisor holds
-      the box, or while an engine holds a model the deploy record does not declare (model-only,
-      precondition 4). Read from the `launch_blocked` rows, the lease rows and the refusal audit
-      events;
+      the box, or while an engine holds a model the deploy record does not declare (§24an; the
+      limits in precondition 4: model-only, declared per model). Read from the `launch_blocked`
+      rows, the lease rows, the refusal audit events, and the runtime's `run_start_waiting_for_box`
+      lines;
     - an evidence package complete at close;
   - **at least one campaign advances its app through two or more accepted increments** with every
     earlier frozen criterion passing on each.
@@ -198,7 +225,7 @@ The crew's conditions (plan §7):
 | `max_rejected_proposals_in_row` | **2** | conservative |
 | `max_unaccepted_increments` | **2** | the no-progress rule |
 | `ruling_bound_s` | **1800** | the supervisor's bound, whoever holds the seat (§24al). Shakeout rulings took 0–30 min. It records and asks; it never rules |
-| `lease_expiry_s` | **3600** | §9.3. Enforced only once #1802 lands (precondition 4); shakeout 6 runs with the lease enforced |
+| `lease_expiry_s` | **3600** | §9.3. Enforced (#1802). A waiting run start's ceiling is one full lease (§24al, §24an) |
 | `launch_blocked_interval_s` / `launch_blocked_attempts` | **300 / 6** | §9.3; not reached in the shakeouts |
 | `calibration_profile` / `proposal_profile` / `squad_profile` | `validated-fullstack` / `campaign-increment` / `full-38` | every shakeout |
 
