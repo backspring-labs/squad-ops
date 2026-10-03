@@ -1,0 +1,85 @@
+{
+  "cycle_id": "cyc_257539e64218",
+  "cycle_outcome": {
+    "failed": [],
+    "inert": [],
+    "replay": null,
+    "required_unmet": [],
+    "run_count": 2,
+    "unverified": [],
+    "verdict": "accepted",
+    "verified": [
+      "expected_artifacts",
+      "non_stub_files",
+      "acceptance_criteria_prose",
+      "acceptance:endpoint_defined",
+      "acceptance:import_present",
+      "acceptance:command_exit_zero",
+      "acceptance:module_imports",
+      "acceptance:fill_slot_signature",
+      "acceptance:undefined_names",
+      "acceptance:unterminated_source",
+      "acceptance:frontend_compiles",
+      "acceptance:declared_imports",
+      "required_files",
+      "acceptance:function_defined",
+      "acceptance:harness_boundary",
+      "acceptance:contract_assertions_match",
+      "acceptance:assertion_kinds_match",
+      "no_stub_fallback_tests",
+      "no_self_mocking_tests",
+      "frontend_build",
+      "vc-probe-runs",
+      "vc-probe-runs-rejects-blank",
+      "vc-probe-runs-join",
+      "vc-probe-runs-join-duplicate",
+      "vc-probe-runs-leave",
+      "tests_pass",
+      "acceptance:dom_anchor_queries",
+      "acceptance:client_mock_surface",
+      "acceptance:additive_containment"
+    ],
+    "waived": []
+  },
+  "runs": [
+    {
+      "cycle_id": "cyc_257539e64218",
+      "failure_reason": null,
+      "finished_at": "2026-10-03T00:15:05.708256Z",
+      "gate_decisions": [
+        {
+          "decided_at": "2026-10-03T00:15:06.031799Z",
+          "decided_by": "system:no_open_questions",
+          "decision": "approved",
+          "gate_name": "progress_plan_review",
+          "notes": "The manifest declares no unresolved decision, so the design asked nothing a human uniquely answers. Schema and winnability gates are the approval; plan validation passed at this gate.",
+          "waived_checks": [],
+          "waiver_reason": null
+        }
+      ],
+      "initiated_by": "api",
+      "resolved_config_hash": "566dd14d573e4e5d38f2ca599cb81e315e90a32ece8820fef118272a1b105117",
+      "resolved_config_ref": null,
+      "run_id": "run_fb8c205dfc0c",
+      "run_number": 1,
+      "started_at": "2026-10-02T23:51:32.539129Z",
+      "status": "completed",
+      "workload_type": "framing"
+    },
+    {
+      "cycle_id": "cyc_257539e64218",
+      "failure_reason": null,
+      "finished_at": "2026-10-03T00:36:08.272390Z",
+      "gate_decisions": [],
+      "initiated_by": "system",
+      "resolved_config_hash": "566dd14d573e4e5d38f2ca599cb81e315e90a32ece8820fef118272a1b105117",
+      "resolved_config_ref": null,
+      "run_id": "run_7d7938e68cdf",
+      "run_number": 2,
+      "started_at": "2026-10-03T00:15:08.826950Z",
+      "status": "completed",
+      "workload_type": "implementation"
+    }
+  ],
+  "status": "completed"
+}

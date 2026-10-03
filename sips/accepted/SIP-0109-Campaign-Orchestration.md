@@ -1712,7 +1712,8 @@ failed build (`cyc_d4438834b2c3`, with its assessment).
 **Not built:**
 - **the proposal half** (the owner's ruling is asked on #1804);
 - **validation on an evaluated increment's record.** None has completed yet: the reference build
-  failed on #1876/#1877.
+  failed on #1876/#1877. *(Validated since, on the completed reference `cyc_257539e64218`: routes
+  held, criteria `not_run` on #1880.)*
 
 ---
 

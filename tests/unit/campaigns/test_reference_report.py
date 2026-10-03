@@ -65,3 +65,31 @@ def test_an_unreadable_assessment_is_reported_as_unread_not_as_a_quiet_repair():
     )
 
     assert report["scoped_repair"] == {"ran": True, "reason": "the assessment could not be read"}
+
+
+def test_an_evaluated_increment_reports_each_mechanism_from_its_evaluation():
+    """The completed reference increment (``cyc_257539e64218``), the first evaluated on a live
+    stack: its routes rendered, and every criterion was ``not_run`` (#1880, the candidate lacked
+    the qa suites). Bugs caught: an unrun criterion read as unmet or as met; a route judged on an
+    anchor it did not show; an evaluation's verdict replaced by the cycle's, which was accepted."""
+    report = mechanism_report(
+        _record("record-cyc_257539e64218-reference-evaluated.json"),
+        _record("assessment-cyc_257539e64218.json"),
+        _record("evaluation-cyc_257539e64218.json"),
+    )
+
+    assert [g["decision"] for g in report["delta_framing"]["gates"]] == ["approved"]
+    assert [
+        (d["criterion_id"], d["met"], d["reason"])
+        for d in report["baseline_discrimination"]["rows"]
+    ] == [("C1", False, "not_run"), ("C2", False, "not_run"), ("C3", False, "not_run")]
+    routes = {r["path"]: r for r in report["route_rendering"]["rows"]}
+    assert {path: r["held"] for path, r in routes.items()} == {
+        "/": "held",
+        "/runs/:run_id": "held",
+        "/runs/new": "held",
+    }
+    assert "capacity-status" in routes["/runs/:run_id"]["not_shown"]
+    assert report["accumulated_acceptance"]["note"] == "no frozen criteria were pinned"
+    assert report["verdict"]["increment"] == "blocked_unverified"
+    assert report["verdict"]["cycle"] == "accepted"
