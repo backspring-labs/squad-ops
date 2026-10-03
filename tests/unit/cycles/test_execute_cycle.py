@@ -2415,3 +2415,23 @@ class TestReentryAfterARestart:
 
         executed = [c.args[1] for c in executor.execute_run.await_args_list]
         assert executed[0] == "run_001" and len(executed) == 2
+
+
+async def test_a_run_the_shutdown_interrupts_ends_no_cycle(executor, mock_registry):
+    """#1929: a run interrupted by the process stopping leaves ``execute_run`` as a cancellation.
+    The cycle loop must not read it as an uncompleted run and hand it to cycle completion, which
+    a campaign hears as a decided ending. Bug caught: a restart turned into a cycle the campaign
+    retried or escalated, with no decision anyone made."""
+    import asyncio
+
+    mock_registry.get_cycle.return_value = _make_cycle(
+        workload_sequence=[{"type": "framing"}, {"type": "implementation"}]
+    )
+    mock_registry.get_run.return_value = _make_run("run_001", 1, "running", "framing")
+    executor.execute_run = AsyncMock(side_effect=asyncio.CancelledError("process stopping"))
+    executor._cycle_completion.end = AsyncMock()
+
+    with pytest.raises(asyncio.CancelledError):
+        await executor.execute_cycle("cyc_001", "run_001")
+
+    executor._cycle_completion.end.assert_not_awaited()

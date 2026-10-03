@@ -722,9 +722,12 @@ async def _resume_campaigns(state) -> None:
     await state.campaign_launch.reattach()
 
 
-async def _shutdown(app: FastAPI) -> None:
-    """Clean up connections, in the order their dependencies require."""
-    state = app.state
+async def _stop_work(state) -> None:
+    """Before any connection closes: what runs or schedules work is told to stop."""
+    # #1929: first. Each run the closing then interrupts is left as it was, for the startup
+    # re-attach, instead of being recorded as failed by the shutdown.
+    if state.flow_executor is not None:
+        state.flow_executor.begin_shutdown()
     # SIP-0089 §2.4: stop the duty scheduler before the pool closes so its final
     # tick can't race a closing connection.
     if state.duty_scheduler is not None:
@@ -735,6 +738,12 @@ async def _shutdown(app: FastAPI) -> None:
         state.reconciliation_task.cancel()
     if state.campaign_sweep_task:
         state.campaign_sweep_task.cancel()
+
+
+async def _shutdown(app: FastAPI) -> None:
+    """Clean up connections, in the order their dependencies require."""
+    state = app.state
+    await _stop_work(state)
     if state.health_checker:
         await state.health_checker.close()
     if state.redis_client:

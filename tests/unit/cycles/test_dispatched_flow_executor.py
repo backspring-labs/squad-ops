@@ -2006,3 +2006,40 @@ class TestARunStartsOnlyWhenALaunchCould:
 
         assert "box_verdict" in {k.arg for k in call.keywords}
         assert built._box_verdict is verdict
+
+
+class TestARunTheShutdownInterruptsIsLeftForReattach:
+    """#1929, entering at ``execute_run``. A graceful stop closes the pool and fails the reply
+    waits, and the run read that as its own failure. Its ``failed`` write survived only because
+    the pool was already closed; reaching an open pool, it would record a restart as a failed
+    run, which the re-attach (§24am) then skips and the campaign retries. Once the executor is
+    told the process is stopping, the run is left exactly as it was."""
+
+    @pytest.mark.parametrize(
+        "stopping", [True, False], ids=["the process stopping", "a run failing"]
+    )
+    async def test_the_same_failure_is_left_when_stopping_and_recorded_otherwise(
+        self, executor, mock_registry, stopping
+    ):
+        import asyncio
+
+        async def interrupted(*args, **kwargs):
+            if stopping:
+                executor.begin_shutdown()
+            raise RuntimeError("pool is closed")
+
+        executor._task_dispatcher.dispatch_task = AsyncMock(side_effect=interrupted)
+        finalize = AsyncMock()
+        executor._run_completion.finalize = finalize
+
+        if stopping:
+            with pytest.raises(asyncio.CancelledError):
+                await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+        else:
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        statuses = [c.args[1] for c in mock_registry.update_run_status.call_args_list]
+        if stopping:
+            assert (statuses, finalize.await_count) == ([RunStatus.RUNNING], 0)
+        else:
+            assert (statuses[-1], finalize.await_count) == (RunStatus.FAILED, 1)

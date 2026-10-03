@@ -400,8 +400,10 @@ Fifteen issues carry the title. Three are closed: #1728, #1802 and #1804.
   - **#1913** (the qa agent's checks read a file the runtime drops): its live trigger is removed by
     #1912. **2.1.0.**
   - **#1929** (a graceful runtime restart is handled as a run failure, and re-attach dispatches the
-    in-flight task twice): both seen in the restart diagnostic, and neither changed its outcome. They
-    appear only on a restart mid-cycle, which the set does not do. **2.1.0.**
+    in-flight task twice): both seen in the restart diagnostic, where neither changed its outcome.
+    **Placed in 2.0 by the owner** (2026-10-03). The set runs unattended overnight on a box with a
+    crash record, so a restart there would turn into a failure that looks like the squad's.
+    Built (SIP-0109 §24ao), before rebuild 18.
   - **#1930** (an OpenTelemetry console exporter thread crashed an xdist worker at shutdown, with the
     run green): test infrastructure. **2.1.0.**
 
@@ -421,6 +423,8 @@ Fifteen issues carry the title. Three are closed: #1728, #1802 and #1804.
      run start read only the lease, so a crew model left resident when the lease returned was run
      beside. The owner ruled option 1, a run start refuses what a launch refuses (SIP-0109 §24an).
      It lands before **rebuild 18, the deploy the set registers.**
+   - **#1929** lands with it: a restart leaves its runs for the re-attach, and a task a restarted
+     runtime asks for again is answered, not run twice (§24ao).
    - **The diagnostics re-run on rebuild 18.** Those on rebuild 17 were the restart paths' first
      live read, and precondition 5 asks for the registered deploy.
 3. **The exit shakeout:** shakeout 6 on rebuild 18, with the log archive beside it. At its first

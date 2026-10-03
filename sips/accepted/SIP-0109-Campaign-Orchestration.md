@@ -2145,6 +2145,36 @@ model is installed, and no agent has logged an embedding call. Every campaign la
 made right after a cycle ended, passed the quiet check. So a squad run waits only on what the
 check exists to refuse.
 
+### 24ao. A restart leaves its runs, and a task asked again is answered (2026-10-03, §12a, §24am, #1929; placed in 2.0 by the owner)
+
+**What #1803's restart diagnostic showed on rebuild 17.** §24am's re-attach took each interrupted run
+up again, and every restart passed. The records showed two costs behind the passes:
+- **A graceful stop was handled as a run failure.** The shutdown closed the pool, then failed every
+  pending reply wait. The run read either as its own failure and wrote `failed`, which was lost only
+  because the pool was already closed. Reaching an open pool, that write would record a restart as a
+  failed run. The re-attach takes up only `running` and `completed`, so it would skip the run, and
+  the campaign would spend a retry on a restart.
+- **The re-attach dispatched the in-flight task a second time.** The agent was still working on the
+  original. It takes one message at a time, so the copy arrived after the original had finished and
+  replied, and the agent ran it in full. One framing task was sent three times, and the copies ran
+  while the run's real next task shared the GPU (`cmp_e39d5b9c24c6`).
+
+**As built:**
+- **The executor is told first.** Shutdown calls `begin_shutdown()` before anything closes. A run
+  interrupted from then on is left exactly as it was. Its failure is raised as a cancellation, so
+  the cycle loop records no ending, and neither the release nor the finalization runs. The startup
+  reaper frees the run's leases, and the re-attach ends the run.
+- **A task a restarted runtime asks for again is answered.** Every dispatch carries the dispatcher's
+  boot id. An agent keeps, for its last 16 finished tasks, the reply it sent and the boot it
+  answered. The same task id from a different boot is answered with that reply, and the asker's boot
+  is recorded. The same id from the same boot is that runtime's retry: `dispatch_with_retry` re-sends
+  the identical envelope, and it runs fresh. A replayed failure is still the receiving runtime's to
+  retry.
+
+**Not built:** an agent restarted since holds no replies, and runs the task, as before. A task whose
+original reply reached no one and whose agent has since restarted is run again: the cost before
+this change, now only in that case.
+
 ---
 
 ## Revision history

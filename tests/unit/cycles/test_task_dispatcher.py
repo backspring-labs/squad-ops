@@ -1039,3 +1039,67 @@ class TestTheDeclaredWaitTravelsWithTheTask:
         assert line.startswith(
             "task_timeout task=task_abc type=development.design agent=neo seconds=0.1"
         )
+
+
+class TestARestartedRuntimesRedispatchIsAnsweredNotRerun:
+    """#1929, across the real boundary: the message ``dispatch_task`` publishes is the one the
+    agent's handler reads. A second dispatcher is a restarted runtime: its re-dispatch of a task
+    the agent finished is answered with the agent's reply. Its own retry runs fresh.
+
+    Bug caught: the re-attach's copy of the in-flight task run in full by the agent (live on
+    2026-10-03: one framing task sent three times, the copies run while the real next task
+    shared the GPU). And the over-correction, a retry answered from the store with its own
+    failure, so a failed task never ran again."""
+
+    @staticmethod
+    def _agent():
+        from squadops.agents.entrypoint import AgentRunner
+        from squadops.tasks.models import TaskResult
+
+        with patch.object(AgentRunner, "__init__", lambda self, *a, **kw: None):
+            agent = AgentRunner.__new__(AgentRunner)
+        agent.agent_id, agent.role = "neo", "dev"
+        agent._queue = AsyncMock()
+        agent._config = MagicMock()
+        agent.system = MagicMock()
+        agent.system.orchestrator = AsyncMock()
+        agent.system.orchestrator.submit_task.return_value = TaskResult(
+            task_id="task_abc", status="SUCCEEDED", outputs={"summary": "designed"}
+        )
+        agent.system.ports.llm_observability = None
+        return agent
+
+    @staticmethod
+    async def _sent(dispatcher, mock_queue, envelope) -> dict:
+        with patch("adapters.cycles.task_dispatcher.asyncio.sleep", new_callable=AsyncMock):
+            await dispatcher.dispatch_task(envelope, "run_001")
+        return json.loads(mock_queue.publish.call_args.args[1])
+
+    async def test_the_restarted_runtime_is_answered_and_its_retry_runs(
+        self, mock_queue, reply_router
+    ):
+        envelope = TaskEnvelope(
+            task_id="task_abc",
+            agent_id="neo",
+            cycle_id="cyc_001",
+            pulse_id="p1",
+            project_id="proj_001",
+            task_type="development.design_plan",
+            correlation_id="corr",
+            causation_id="cause",
+            trace_id="trace",
+            span_id="span",
+        )
+        before = TaskDispatcher(queue=mock_queue, reply_router=reply_router, task_timeout=5.0)
+        restarted = TaskDispatcher(queue=mock_queue, reply_router=reply_router, task_timeout=5.0)
+        agent = self._agent()
+
+        runs, replies = [], []
+        for dispatcher in (before, restarted, restarted):  # the original, the copy, a retry
+            message = await self._sent(dispatcher, mock_queue, envelope)
+            await agent._handle_task_envelope(message, message["metadata"])
+            runs.append(agent.system.orchestrator.submit_task.await_count)
+            replies.append(agent._queue.publish.call_args.args[1])
+
+        assert runs == [1, 1, 2]  # the copy is answered, the retry runs
+        assert replies[1] == replies[0]  # with the reply the original sent
