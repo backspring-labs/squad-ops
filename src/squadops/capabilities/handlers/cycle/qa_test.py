@@ -953,11 +953,17 @@ class QATestHandler(_CycleTaskHandler):
         offered: dict[str, int],
     ) -> tuple[str, list[dict], dict[str, Any] | None]:
         """A re-take's edits applied to the suite it was shown, in one transaction (SIP-0107 §14):
-        ``(the response for file extraction, the edited files, the failure's outputs if refused)``.
+        ``(the response for file extraction, the suite's files it yields, the failure's outputs if
+        refused)``.
+
+        The files it yields are the edited ones and, once the response produced anything, every
+        offered file it neither edited nor re-emitted, byte for byte (§17's preservation, #1755).
+        The transaction is over the suite it was shown: an untouched file is part of its
+        candidate, not dropped from the tree the checks read, to be regenerated unverified.
 
         Every re-take offered the form records the form it took (``qa_retake_revision_form``,
         read like a repair's, SIP-0107 §46a/§46o): an edit, or the whole-suite re-emission deploy
-        A saw on every such re-take.
+        A saw on every such re-take, and the files it carried unchanged.
         """
         if not offered:
             return content, [], None
@@ -1013,20 +1019,49 @@ class QATestHandler(_CycleTaskHandler):
                         "expected_artifacts": list(inputs.get("expected_artifacts") or []),
                     },
                 }
+        # The form reads what the response produced; the carried files are not part of it.
         outputs: dict[str, Any] = {"artifacts": [] if refused else edited + whole}
         if record is not None:
             outputs["anchored_edits"] = record
         reading = revision_form_reading(
             offered, outputs, {path: len(text) for path, text in suite.items()}
         )
+        # What ``handle`` will extract from the response, read the way it reads it (#566 maps a
+        # lone filename-less fence onto the expected artifact), so a carried file never shadows
+        # or duplicates one the response re-emitted.
+        produced = {str(a["name"]) for a in edited} | {
+            f["filename"]
+            for f in extract_fenced_files(
+                shape.split(body), expected_artifacts=inputs.get("expected_artifacts")
+            )
+        }
+        carried = (
+            [
+                {
+                    "name": path,
+                    "content": suite[path],
+                    "media_type": _classify_file(path)[1],
+                    "type": "test",
+                }
+                for path in sorted(offered)
+                if path not in produced and path in suite
+            ]
+            if produced and refused is None
+            else []
+        )
         logger.info(
             "qa_retake_revision_form %s",
             json.dumps(
-                {"handler": self._handler_name, "task_type": str(self._task_type), **reading},
+                {
+                    "handler": self._handler_name,
+                    "task_type": str(self._task_type),
+                    **reading,
+                    "carried": [a["name"] for a in carried],
+                },
                 sort_keys=True,
             ),
         )
-        return body, edited, refused
+        return body, edited + carried, refused
 
     async def _assembly_notes_section(
         self, context: ExecutionContext, inputs: dict[str, Any]

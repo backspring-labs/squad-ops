@@ -30,9 +30,18 @@ _EDIT = (
     "== 200\n=======\n    assert client.post('/api/runs').status_code == 201\n>>>>>>> REPLACE\n```\n"
 )
 _WHOLE = "```python:tests/test_runs.py\n" + _SUITE.replace("200", "201") + "```\n"
+_PARTICIPANTS = (
+    "def test_join_run(client):\n"
+    "    assert client.post('/api/runs/r1/join', json={'name': 'ann'}).status_code == 200\n"
+)
+_ONE_SUITE = {"tests/test_runs.py": _SUITE}
+_TWO_FILE_SUITE = {"tests/test_runs.py": _SUITE, "tests/test_participants.py": _PARTICIPANTS}
 
 
-async def _retake(answer: str, caplog, monkeypatch, *, carried: bool = True):
+async def _retake(
+    answer: str, caplog, monkeypatch, *, carried: bool = True, suite: dict | None = None
+):
+    suite = _ONE_SUITE if suite is None else suite
     monkeypatch.setattr(
         "squadops.capabilities.handlers.test_runner.run_generated_tests",
         AsyncMock(return_value=RunTestsResult(executed=True, exit_code=0, stdout="1 passed")),
@@ -60,10 +69,10 @@ async def _retake(answer: str, caplog, monkeypatch, *, carried: bool = True):
         "prd": "Runs API",
         "artifact_contents": {"backend/routes.py": "def create():\n    return {}\n"},
         "subtask_focus": "the runs suite",
-        "expected_artifacts": ["tests/test_runs.py"],
+        "expected_artifacts": sorted(suite),
     }
     if carried:
-        inputs["retake_current_files"] = {"tests/test_runs.py": _SUITE}
+        inputs["retake_current_files"] = dict(suite)
     with caplog.at_level(logging.INFO):
         result = await QATestHandler().handle(ctx, inputs)
     forms = [
@@ -107,3 +116,36 @@ async def test_a_first_attempt_is_offered_no_edit_form(caplog, monkeypatch):
     assert "A Re-take" not in prompt
     assert forms == []
     assert result.success, result.error
+
+
+@pytest.mark.parametrize(
+    "answer", [_EDIT, _WHOLE], ids=["edits one file", "re-emits one file whole"]
+)
+async def test_a_re_take_keeps_the_suite_files_it_leaves_alone(caplog, monkeypatch, answer):
+    """#1755, read on 1.8.2 deploy A′ (``cyc_96656c0e48be``): offered two suite files, the
+    re-take edited one, and the other vanished from the tree the checks read; self-evaluation
+    then regenerated it whole, unverified against the file it replaced. Bug caught: the task's
+    output is only the files the response touched, not the transaction's candidate."""
+    result, _prompt, forms, stored = await _retake(
+        answer, caplog, monkeypatch, suite=_TWO_FILE_SUITE
+    )
+
+    assert result.success, result.error
+    assert "status_code == 201" in stored["tests/test_runs.py"]
+    assert stored["tests/test_participants.py"] == _PARTICIPANTS, "byte for byte"
+    (form,) = forms
+    assert form["carried"] == ["tests/test_participants.py"]
+
+
+async def test_the_carried_suite_never_stands_in_for_an_empty_re_take(caplog, monkeypatch):
+    """The edge: a re-take that answers with no edit and no file still fails as having emitted
+    nothing. Bug caught: the carried suite filling the output, so an empty answer passes as the
+    suite it was shown."""
+    result, _prompt, forms, stored = await _retake(
+        "I could not find anything to change.", caplog, monkeypatch, suite=_TWO_FILE_SUITE
+    )
+
+    assert not result.success
+    assert not set(stored) & set(_TWO_FILE_SUITE), "no suite file in the failed output"
+    (form,) = forms
+    assert form["carried"] == []
