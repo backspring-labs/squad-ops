@@ -786,9 +786,20 @@ class DispatchedFlowExecutor(FlowExecutionPort):
     # ------------------------------------------------------------------
 
     async def execute_cycle(
-        self, cycle_id: str, first_run_id: str, profile_id: str | None = None
+        self,
+        cycle_id: str,
+        first_run_id: str,
+        profile_id: str | None = None,
+        *,
+        reentry: bool = False,
     ) -> None:
         """Execute a full cycle by iterating over workload_sequence.
+
+        ``reentry`` is an adapter-internal keyword extension, as ``execute_run``'s
+        ``forwarding_overrides`` is (port callers use the positional signature). Only the
+        campaign's startup re-attach passes it (#1922): ``first_run_id`` is the run the cycle
+        stopped at when the process died, and a completed one is taken from its gate (or the
+        cycle's end), never run again.
 
         execute_run() returns once the run has ended or been deferred: completed, failed,
         cancelled, or paused (#1754). Only a completed run advances the sequence; any other
@@ -814,6 +825,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # workloads aren't re-run and the resumed run isn't double-executed.
         # Cycle-create passes the first run, which resolves to index 0.
         start_index = await self._starting_workload_index(cycle_id, first_run_id)
+        entered_completed = (
+            reentry
+            and (await self._cycle_registry.get_run(first_run_id)).status
+            == RunStatus.COMPLETED.value
+        )
         current_run_id = first_run_id
         # SIP-0097 §6.6: forwarding overrides are a cycle-scoped value threaded
         # into each run invocation, not executor state. Built at the end of
@@ -852,12 +868,17 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         stopped_because = CycleStopReason.SEQUENCE_COMPLETED
         while i < len(workload_sequence):
             workload_entry = workload_sequence[i]
-            await self.execute_run(
-                cycle_id,
-                current_run_id,
-                profile_id,
-                forwarding_overrides=forwarding_overrides,
-            )
+            # #1922: the first gate of a re-entry reads the decision already recorded on it.
+            reentered_at_gate = entered_completed
+            if entered_completed:
+                entered_completed = False
+            else:
+                await self.execute_run(
+                    cycle_id,
+                    current_run_id,
+                    profile_id,
+                    forwarding_overrides=forwarding_overrides,
+                )
 
             # Check terminal status (compare persisted string values). #1754: anything but a
             # completed run stops the sequence. A paused run read as completed was gated, its
@@ -908,6 +929,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     framing_revisions=framing_revisions,
                     max_framing_rerolls=max_framing_rerolls,
                     max_framing_revisions=max_framing_revisions,
+                    reentry=reentered_at_gate,
                 )
                 current_run_id, forwarding_overrides = (
                     gate.current_run_id,

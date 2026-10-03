@@ -2071,6 +2071,41 @@ decision 2 (who supervises) and decision 6 (the crew's network path) are the sup
 concerns, not the framework's. The set claims supervision through the interface, and each
 ruling records its actor.
 
+### 24am. A restart takes up the campaign cycle it died inside (2026-10-03, §12a, §19 item 1, #1922; decided under the 2.0 charter)
+
+**What §12a says, and what was built.** "awaiting ruling: the gate is open again"; "running an
+increment: the run's ordinary recovery". As built, a cycle's sequence moved only through the
+executor's in-process loop: its gate's poll and its run's execution. Both died with the process.
+- A decision recorded after a restart was never acted on.
+- A run in flight stayed `running`.
+- The startup sweep said so ("approval alone will not resume it: approve, then squadops runs
+  retry").
+
+So every restart mid-cycle needed `runs retry` or `runs resume`, operator steps outside the
+campaign's interface. Found by reading the code before #1803's restart diagnostic, which would
+have found it after the exit shakeout and cost another shakeout round.
+
+**As built:**
+- **At startup** (`main._resume_campaigns`, after the drain and the re-hearing),
+  `CampaignLaunchService.reattach` takes up each live campaign's launched cycle whose ending is not
+  recorded. It reads the cycle's newest run:
+  - **`running`:** resumed from its checkpoint, as `runs resume` does;
+  - **`completed`:** re-entered at its gate, or at the cycle's end;
+  - **failed, cancelled or paused:** left alone. The re-hearing or the owner acts on it.
+- **`execute_cycle(…, reentry=True)`** is an adapter-internal keyword, like `execute_run`'s
+  `forwarding_overrides`, and only the re-attach passes it.
+  - A completed run at entry is not run again: the loop takes it from its gate.
+  - The first gate of a re-entry reads a decision already recorded on it: no second system
+    approval, and no re-submitted proposal. A gate still undecided is polled again: the gate is open
+    again.
+- **Only at startup, and only campaign cycles.** A later drain would find successor runs the
+  process is already executing. A cycle no campaign launched stays operator-owned, as the startup
+  sweep treats it.
+
+**Not built:** a re-attach while the process stays up. A cycle stops inside a live process only
+by the process failing, and the restart is what this answers. The proof live is #1803's restart
+diagnostic, on the registered deploy.
+
 ---
 
 ## Revision history

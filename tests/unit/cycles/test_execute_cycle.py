@@ -2359,3 +2359,59 @@ class TestARunThatDidNotCompleteEndsTheSequence:
         ]
         assert completed == [status.value]
         assert EventType.WORKLOAD_ADVANCED not in _emit_types(mock_event_bus)
+
+
+class TestReentryAfterARestart:
+    """#1922: the campaign's startup re-attach re-enters a cycle at the run it stopped at. A
+    completed run is taken from its gate, never run again, and a decision already recorded on
+    the gate is not asked again."""
+
+    async def test_a_completed_run_is_taken_from_its_recorded_approval_and_never_rerun(
+        self, executor, mock_registry
+    ):
+        """Bugs caught: the framing run executed a second time (its completed status flipped
+        back to running); or the gate asked again, a second system approval or a re-submitted
+        proposal, instead of reading the approval that landed while the process was down."""
+        cycle = _make_cycle(
+            workload_sequence=[
+                {"type": "framing", "gate": "progress_plan_review"},
+                {"type": "implementation"},
+            ]
+        )
+        mock_registry.get_cycle.return_value = cycle
+        framing = _make_run(
+            "run_001",
+            1,
+            "completed",
+            "framing",
+            gate_decisions=(_gate_decision("progress_plan_review", "approved"),),
+        )
+        implementation = _make_run("run_002", 2, "completed", "implementation")
+        mock_registry.get_run.side_effect = [framing, framing, implementation]
+        mock_registry.list_runs.return_value = [framing]
+        mock_registry.create_run.side_effect = lambda r: r
+        executor._workload_gate._poll_inter_workload_gate = AsyncMock(
+            side_effect=AssertionError("asked again")
+        )
+
+        await executor.execute_cycle("cyc_001", "run_001", reentry=True)
+
+        executed = [c.args[1] for c in executor.execute_run.await_args_list]
+        [successor] = [c.args[0] for c in mock_registry.create_run.call_args_list]
+        assert executed == [successor.run_id] and successor.workload_type == "implementation"
+        assert mock_registry.record_gate_decision.await_count == 0
+
+    async def test_without_reentry_a_run_is_executed_as_before(self, executor, mock_registry):
+        """The control: the create and retry paths never skip their first run."""
+        cycle = _make_cycle(workload_sequence=[{"type": "framing"}, {"type": "implementation"}])
+        mock_registry.get_cycle.return_value = cycle
+        run1 = _make_run("run_001", 1, "completed", "framing")
+        run2 = _make_run("run_002", 2, "completed", "implementation")
+        mock_registry.get_run.side_effect = [run1, run2]
+        mock_registry.list_runs.return_value = [run1]
+        mock_registry.create_run.side_effect = lambda r: r
+
+        await executor.execute_cycle("cyc_001", "run_001")
+
+        executed = [c.args[1] for c in executor.execute_run.await_args_list]
+        assert executed[0] == "run_001" and len(executed) == 2
