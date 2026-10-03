@@ -27,6 +27,25 @@ are appended, and if the deploy moves, this registration is void and re-made.
    rolls, #1910) on the deploy carrying the flip. The loop's exit shakeout then runs on that deploy.
 3. **The crew's commissioning evidence** decides who supervises (decision 2). Absent it, the owner
    supervises through the same interface, and the record says so.
+4. **The box lease is enforced and proven on the registered deploy (#1802; the crew's review of this
+   draft, 2026-10-03).** The guarantee "no launch beside a crew model" in §3 needs this. Until then,
+   SIP-0109 §24l built the decisions and the reads, and nothing enforces them.
+   - **Completion:**
+     - the lease is persisted, with its API (`/api/v1/campaigns/{id}/lease`, `campaigns:supervise`),
+       and each change is audited;
+     - every enforcement point is wired: the cycle-create preflight (409 plus an audit event), the
+       launcher (`launch_blocked`, re-attempted at the policy's interval, escalating after its
+       count), and each run start (it waits while the supervisor holds the box, up to the ruling
+       bound).
+   - **Deployed proof, on an idle box:**
+     - a refusal under a live supervisor lease: a CLI create refused, and a campaign launch recorded
+       as `launch_blocked`;
+     - with the lease expired and an undeclared model resident, a refusal as not quiet, and the
+       campaign's escalation;
+     - with the model unloaded, the launch proceeds.
+   - **The check is model-only (§24l).** It reads every engine's resident models, not the GPU's
+     compute processes, until the runtime-api is granted the GPU (a `docker-compose.yml` change, the
+     owner's). The guarantee is read as no launch beside an undeclared resident model.
 
 ---
 
@@ -73,7 +92,10 @@ are appended, and if the deploy moves, this registration is void and re-made.
     - no ruling lost;
     - no duplicate launch (one cycle per launch intent);
     - no partial promotion (every PROMOTE row carries its `tree_ref` and bundles);
-    - no launch beside a crew model;
+    - no launch beside a crew model: no cycle launched or run started while the supervisor holds
+      the box, or while an engine holds a model the deploy record does not declare (model-only,
+      precondition 4). Read from the `launch_blocked` rows, the lease rows and the refusal audit
+      events;
     - an evidence package complete at close;
   - **at least one campaign advances its app through two or more accepted increments** with every
     earlier frozen criterion passing on each.
@@ -133,7 +155,7 @@ The crew's conditions (plan §7):
 | `max_rejected_proposals_in_row` | **2** | conservative |
 | `max_unaccepted_increments` | **2** | the no-progress rule |
 | `crew_ruling_bound_s` / `owner_ruling_bound_s` | **1800 / 43200** | §9.2's defaults. Shakeout rulings took 0–30 min |
-| `lease_expiry_s` | **3600** | §9.3; the lease is not yet persisted (§24l) |
+| `lease_expiry_s` | **3600** | §9.3. Enforced only once #1802 lands (precondition 4); shakeout 6 runs with the lease enforced |
 | `launch_blocked_interval_s` / `launch_blocked_attempts` | **300 / 6** | §9.3; not reached in the shakeouts |
 | `calibration_profile` / `proposal_profile` / `squad_profile` | `validated-fullstack` / `campaign-increment` / `full-38` | every shakeout |
 
