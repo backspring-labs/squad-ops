@@ -1,0 +1,304 @@
+{
+  "applied_defaults": {
+    "build_profile": "fullstack_fastapi_react",
+    "build_strategy": "fresh",
+    "build_tasks": true,
+    "command_acceptance_checks": true,
+    "correction_steps": [
+      "analyze",
+      "decide",
+      "repair"
+    ],
+    "development_profile": "fullstack_fastapi_react",
+    "expected_artifact_types": [
+      "document",
+      "source",
+      "test",
+      "config"
+    ],
+    "experiment_context": {},
+    "implementation_plan": true,
+    "manifest_max_attempts": 4,
+    "max_build_subtasks": 15,
+    "max_correction_attempts": 3,
+    "max_self_eval_passes": 3,
+    "notes": "Campaign increment cycle (SIP-0109 \u00a77.3)",
+    "output_validation": true,
+    "plan_authoring_contributors": [
+      "development",
+      "qa",
+      "strategy"
+    ],
+    "proposal_max_attempts": 3,
+    "required_checks": [
+      "tests_pass",
+      "frontend_build",
+      "required_files"
+    ],
+    "task_flow_policy": {
+      "gates": [
+        {
+          "after_task_types": [],
+          "description": "The supervisor rules on the proposed change \u2014 approve, request revision, or reject.",
+          "name": "progress_increment_ruling"
+        },
+        {
+          "after_task_types": [
+            "governance.review"
+          ],
+          "description": "Review planning artifacts and build manifest before implementation begins.",
+          "name": "progress_plan_review"
+        }
+      ],
+      "mode": "sequential"
+    },
+    "time_budget_seconds": 10800,
+    "typed_acceptance": true,
+    "workload_sequence": [
+      {
+        "gate": "progress_increment_ruling",
+        "type": "proposal"
+      },
+      {
+        "gate": "progress_plan_review",
+        "type": "framing"
+      },
+      {
+        "gate": null,
+        "type": "implementation"
+      }
+    ]
+  },
+  "build_strategy": "fresh",
+  "campaign_id": "cmp_3cd057058851",
+  "created_at": "2026-10-03T02:34:23.827488Z",
+  "created_by": "campaign-launcher",
+  "cycle_id": "cyc_df019ef84ca4",
+  "cycle_outcome": {
+    "failed": [],
+    "inert": [],
+    "replay": null,
+    "required_unmet": [],
+    "run_count": 3,
+    "unverified": [],
+    "verdict": "accepted",
+    "verified": [
+      "expected_artifacts",
+      "non_stub_files",
+      "acceptance_criteria_prose",
+      "acceptance:endpoint_defined",
+      "acceptance:import_present",
+      "acceptance:command_exit_zero",
+      "acceptance:module_imports",
+      "acceptance:fill_slot_signature",
+      "acceptance:undefined_names",
+      "acceptance:unterminated_source",
+      "acceptance:frontend_compiles",
+      "acceptance:declared_imports",
+      "required_files",
+      "acceptance:function_defined",
+      "acceptance:harness_boundary",
+      "acceptance:contract_assertions_match",
+      "acceptance:assertion_kinds_match",
+      "no_stub_fallback_tests",
+      "no_self_mocking_tests",
+      "frontend_build",
+      "vc-probe-runs",
+      "vc-probe-runs-rejects-blank",
+      "vc-probe-runs-join",
+      "vc-probe-runs-join-duplicate",
+      "vc-probe-runs-leave",
+      "tests_pass",
+      "acceptance:dom_anchor_queries",
+      "acceptance:client_mock_surface",
+      "acceptance:additive_containment"
+    ],
+    "waived": []
+  },
+  "deploy_id": "dep_84ec5743b14c",
+  "execution_overrides": {
+    "campaign_proposal": {
+      "accepted_cycle_id": "cyc_bfeda47c4100",
+      "baseline_manifest": "version: 1\nkind: interface_manifest\nproject_id: group_run\nsource_prd: \"PRD group_run v0.5 (SIP-0098 \u00a76.7)\"\nstack: fullstack_fastapi_react\nscope: \"Full-stack MVP for creating, listing, viewing, joining, and leaving group run events with in-memory storage; excludes authentication, persistent storage, capacity enforcement, and datetime parsing\"\nentities:\n  - name: Run\n    fields:\n      - { name: id, type: string, required: true, generated: true }\n      - { name: title, type: string, required: true }\n      - { name: datetime, type: string, required: true }\n      - { name: meeting_location, type: string, required: true }\n      - { name: distance, type: string, required: false, default: null }\n      - { name: pace_target, type: string, required: false, default: null }\n      - { name: route_notes, type: string, required: false, default: null }\n      - { name: participants, type: \"list[string]\", required: true, default: [] }\n  - name: RunListItem\n    fields:\n      - { name: id, type: string, required: true }\n      - { name: title, type: string, required: true }\n      - { name: datetime, type: string, required: true }\n      - { name: meeting_location, type: string, required: true }\n      - { name: distance, type: string, required: false, default: null }\n      - { name: participant_count, type: integer, required: true }\napi:\n  base_path: /api\n  request_shapes:\n    RunCreate:\n      required: [title, datetime, meeting_location]\n      optional: [distance, pace_target, route_notes]\n    ParticipantAction:\n      required: [name]\n  endpoints:\n    - method: POST\n      path: /runs\n      summary: create a run event\n      request: RunCreate\n      response: Run\n      success_status: 201\n      errors: [validation_error]\n    - method: GET\n      path: /runs\n      summary: list all runs with participant counts\n      response: \"list[RunListItem]\"\n    - method: GET\n      path: /runs/{run_id}\n      summary: get run details and participant list\n      response: Run\n      errors: [run_not_found]\n    - method: POST\n      path: /runs/{run_id}/join\n      summary: join a run by participant name\n      request: ParticipantAction\n      response: Run\n      errors: [run_not_found, duplicate_participant, validation_error]\n    - method: POST\n      path: /runs/{run_id}/leave\n      summary: leave a run by participant name\n      request: ParticipantAction\n      response: Run\n      errors: [run_not_found, participant_not_found, validation_error]\n  error_contract:\n    codes:\n      validation_error: { http: 422 }\n      run_not_found: { http: 404 }\n      duplicate_participant: { http: 409 }\n      participant_not_found: { http: 404 }\nfrontend:\n  framework: react_vite\n  routes:\n    - path: /\n      view: RunListView\n      purpose: display all runs with participant counts and a link to create a new run\n      testids: [run-list-view, run-list, run-row, create-run-link]\n    - path: /runs/new\n      view: CreateRunView\n      purpose: form to create a new run event with required and optional fields\n      testids: [create-run-view, create-run-form, create-run-title, create-run-datetime, create-run-location, create-run-submit, create-run-error]\n    - path: /runs/:run_id\n      view: RunDetailView\n      purpose: view run details, participant list, and join/leave forms\n      testids: [run-detail-view, run-detail-title, participant-list, participant-name, join-form, join-name, join-submit, leave-form, leave-name, leave-submit, run-error]\npersistence: in_memory\ndecisions:\n  - id: duplicate-name-case-sensitivity\n    choice: \"Duplicate participant name check is case-insensitive; 'Alice' and 'alice' are treated as the same participant on the same run\"\n    warrant: \"PRD \u00a75.4 \u2014 'case sensitivity behavior should be defined in implementation; default recommendation: case-insensitive uniqueness'\"\n  - id: leave-unknown-participant\n    choice: \"Leaving with a name not on the run returns HTTP 404 with a descriptive message, not a silent 200 no-op\"\n    warrant: \"PRD \u00a75.5 \u2014 'choose one and document in QA handoff'; 404 chosen for explicit error signaling the UI can render\"\n  - id: join-leave-response-shape\n    choice: \"POST /runs/{run_id}/join and POST /runs/{run_id}/leave both return the full updated Run entity identical in shape to GET /runs/{run_id}\"\n    warrant: \"PRD \u00a75.4\u20135.5 require the participant list and count to update immediately; returning the full run lets the UI re-render without a second fetch\"\n  - id: list-projection\n    choice: \"GET /runs returns RunListItem (title, datetime, meeting_location, distance, participant_count) \u2014 not pace_target, route_notes, or the full participant array\"\n    warrant: \"PRD \u00a75.2 lists minimum fields for the list: title, date/time, meeting location, participant count\"\n  - id: datetime-format\n    unresolved: true\n    question: \"PRD \u00a75.1 requires a date/time field as string input but does not specify a format (ISO 8601, free-text, datepicker value); the backend stores and echoes the string verbatim \u2014 is a canonical format expected, or is free-form acceptable for MVP?\"\n\nprovenance:\n  mode: authored\n  cycle_id: cyc_bfeda47c4100\n  task_id: task-run_3ebf5433-003-development.author_manifest\n  attempts: 1\n  revisions: []\n",
+      "baseline_tree": "610e6a78ec5fe4a8d394587fbc0adc97e66421e55728fd7a216e88f86fd003d8",
+      "frozen_criteria": [],
+      "max_revisions": 2,
+      "objective": {
+        "allowed_scope": [
+          "backend/**",
+          "frontend/**"
+        ],
+        "measurement": "two accepted increments",
+        "statement": "evolve group_run toward its PRD's expansion scope, one increment at a time"
+      },
+      "prior_criteria": [],
+      "proposal_id": "prop_8038a153e33c",
+      "version": 1
+    }
+  },
+  "expected_artifact_types": [
+    "document",
+    "source",
+    "test",
+    "config"
+  ],
+  "experiment_context": {},
+  "framework_git_sha": "8d33fe09",
+  "framework_version": "1.9.0",
+  "kind": "increment",
+  "notes": "campaign cmp_3cd057058851: increment (SIP-0109 \u00a77.3)",
+  "prd_ref": null,
+  "project_id": "group_run",
+  "request_profile": "campaign-increment",
+  "runs": [
+    {
+      "artifact_refs": [
+        "art_0159221f114a",
+        "art_e3758df8577d"
+      ],
+      "cycle_id": "cyc_df019ef84ca4",
+      "failure_reason": null,
+      "finished_at": "2026-10-03T02:35:57.818308Z",
+      "gate_decisions": [
+        {
+          "decided_at": "2026-10-03T02:37:36.295938Z",
+          "decided_by": "human:005159fd-7461-45e4-b4f5-b2c9f868161b",
+          "decision": "approved",
+          "gate_name": "progress_increment_ruling",
+          "notes": "Ruled as the shakeout's delegated supervisor (uncounted, 2.0 charter). Approved: a feature in scope toward the PRD's Expansion Tier 1 (capacity limit per run). T1 (POST /runs echoes capacity), T2 (join at capacity -> 409 capacity_reached) and T3 (run-capacity shows count / capacity) each fail on the baseline for a behavioural reason. Footprint: five product files plus test dirs; manifest delta additive; no frozen criteria yet, no retirements.",
+          "waived_checks": [],
+          "waiver_reason": null
+        }
+      ],
+      "initiated_by": "system",
+      "resolved_config_hash": "b0654068b3871532cfd907dadb30377a07946f33f8f18d1e4d9895df4199a945",
+      "resolved_config_ref": null,
+      "run_id": "run_c72111e266b7",
+      "run_number": 1,
+      "started_at": "2026-10-03T02:34:23.839416Z",
+      "status": "completed",
+      "workload_type": "proposal"
+    },
+    {
+      "artifact_refs": [
+        "art_499a73adc029",
+        "art_ea59127a8a80",
+        "art_bd8228bd1b7f",
+        "art_876881211289",
+        "art_9c8b04f5fb28",
+        "art_dd6608bdd79e",
+        "art_893cab39150b",
+        "art_b1be1352b61f",
+        "art_0daae3ccda62",
+        "art_e17e6dfdfb4d"
+      ],
+      "cycle_id": "cyc_df019ef84ca4",
+      "failure_reason": null,
+      "finished_at": "2026-10-03T03:01:57.648688Z",
+      "gate_decisions": [
+        {
+          "decided_at": "2026-10-03T03:03:57.299227Z",
+          "decided_by": "agent:005159fd-7461-45e4-b4f5-b2c9f868161b",
+          "decision": "approved",
+          "gate_name": "progress_plan_review",
+          "notes": "Campaign shakeout cmp_3cd057058851 increment 1 (uncounted). Approved under the 2.0 regression set's gate policy: system plan validation passed; no additional judgment applied. The open design question (datetime-format) is inherited from the accepted manifest and answered as at the calibration's gate: stored and echoed verbatim.",
+          "waived_checks": [],
+          "waiver_reason": null
+        }
+      ],
+      "initiated_by": "system",
+      "resolved_config_hash": "b0654068b3871532cfd907dadb30377a07946f33f8f18d1e4d9895df4199a945",
+      "resolved_config_ref": null,
+      "run_id": "run_19b392e6184d",
+      "run_number": 2,
+      "started_at": "2026-10-03T02:37:43.423461Z",
+      "status": "completed",
+      "workload_type": "framing"
+    },
+    {
+      "artifact_refs": [
+        "art_497546e29289",
+        "art_484fe25b0dc0",
+        "art_5503517a530f",
+        "art_5449e2e82cd0",
+        "art_0ccabc8ff098",
+        "art_6b380cfc24ba",
+        "art_c4ed1416b212",
+        "art_011891b99fda",
+        "art_43cf30ff6302",
+        "art_025c867b6367",
+        "art_5f14ed53d22d",
+        "art_28ddc7f358c7",
+        "art_00f061bfcc3c",
+        "art_2e3701bffade",
+        "art_6eaf5541ee3c",
+        "art_a6eb0b41d6b0",
+        "art_df3814e6c93d",
+        "art_f12130d95d65",
+        "art_551a6c418ed6",
+        "art_5ec29651caa2",
+        "art_20c11ac9f47e",
+        "art_2fa40a04f939",
+        "art_055b842ca1d2",
+        "art_6a462830f212",
+        "art_636feebbd154",
+        "art_bedca1dfe94b",
+        "art_5889a9f1444e",
+        "art_28f53c8c75cb",
+        "art_1115ae3c7e91"
+      ],
+      "cycle_id": "cyc_df019ef84ca4",
+      "failure_reason": null,
+      "finished_at": "2026-10-03T03:36:32.476504Z",
+      "gate_decisions": [],
+      "initiated_by": "system",
+      "resolved_config_hash": "b0654068b3871532cfd907dadb30377a07946f33f8f18d1e4d9895df4199a945",
+      "resolved_config_ref": null,
+      "run_id": "run_417cd570a102",
+      "run_number": 3,
+      "started_at": "2026-10-03T03:04:01.281627Z",
+      "status": "completed",
+      "workload_type": "implementation"
+    }
+  ],
+  "squad_profile_id": "full-38",
+  "squad_profile_snapshot_ref": "2d8d4feb3519a7ec7609c82ff502941b84ae3b8aceaec3688af0826f5200ac5a",
+  "status": "completed",
+  "task_flow_policy": {
+    "gates": [
+      {
+        "after_task_types": [],
+        "description": "The supervisor rules on the proposed change \u2014 approve, request revision, or reject.",
+        "name": "progress_increment_ruling"
+      },
+      {
+        "after_task_types": [
+          "governance.review"
+        ],
+        "description": "Review planning artifacts and build manifest before implementation begins.",
+        "name": "progress_plan_review"
+      }
+    ],
+    "mode": "sequential"
+  },
+  "workload_progress": [
+    {
+      "index": 0,
+      "run_id": "run_c72111e266b7",
+      "status": "completed",
+      "workload_type": "proposal"
+    },
+    {
+      "index": 1,
+      "run_id": "run_19b392e6184d",
+      "status": "completed",
+      "workload_type": "framing"
+    },
+    {
+      "index": 2,
+      "run_id": "run_417cd570a102",
+      "status": "completed",
+      "workload_type": "implementation"
+    }
+  ]
+}

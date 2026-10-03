@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""The brownfield reference increment's per-mechanism report (SIP-0109 §11a; #1804).
+"""An increment's per-mechanism report (SIP-0109 §11a; #1804).
 
-Reads one reference increment's record through the runtime API — the cycle and its runs' gate
-decisions, its assessment, and its evaluation artifact — and reports each brownfield mechanism
-separately: delta framing, scoped repair, accumulated acceptance and baseline discrimination,
-with route rendering and the verdict. The derivation is ``campaigns.reference.mechanism_report``;
-this script only fetches. Read-only.
+Reads one increment's record through the runtime API: the brownfield reference scenario's, or a
+campaign's. From the cycle and its runs' gate decisions, its assessment, and its evaluation
+artifact, it reports each brownfield mechanism separately: delta framing, scoped repair,
+accumulated acceptance and baseline discrimination, with route rendering and the verdict. The
+derivation is ``campaigns.reference.mechanism_report``; this script only fetches. Read-only.
 
 Usage:
     python scripts/dev/reference_report.py --cycle CYCLE_ID [--project group_run] [--json]
@@ -35,7 +35,12 @@ def _evaluation(client, project: str, cycle_id: str) -> dict | None:
 
 
 def _markdown(report: dict) -> str:
-    lines = [f"# Reference increment {report['cycle_id']} ({report['status']})", ""]
+    launched = (
+        f"campaign `{report['campaign_id']}`, {report['kind']} cycle"
+        if report.get("campaign_id")
+        else "the reference scenario (no campaign)"
+    )
+    lines = [f"# Increment {report['cycle_id']} ({report['status']})", "", f"- {launched}", ""]
     framing = report["delta_framing"]
     lines += [f"## Delta framing: {framing['attempts']} attempt(s)"]
     for gate in framing["gates"]:
