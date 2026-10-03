@@ -410,3 +410,54 @@ class TestCyclesCancel:
         mock_get_client.return_value = mock
         result = runner.invoke(app, ["cycles", "cancel", "proj1", "cyc_1"])
         assert result.exit_code == exit_codes.CONFLICT
+
+
+class TestCyclesRate:
+    """`squadops cycles rate` (SIP-0109 §11a; #1804): the reference proposal's rating."""
+
+    @patch("squadops.cli.commands.cycles._get_client")
+    def test_the_rating_file_reaches_the_route_as_written(self, mock_get_client, tmp_path):
+        """Bug caught: the file's fields dropped or renamed on the way to the route, so the
+        rating stored is not the one the supervisor wrote."""
+        rating = {
+            "content_hash": "04927a47",
+            "verdict": "would_return",
+            "reason": "the footprint reaches past the change",
+            "ratings": {
+                "scope_fit": {"score": 3, "note": "fits"},
+                "criteria_discriminability": {"score": 2, "note": "T3 is loose"},
+                "footprint_size": {"score": 1, "note": "touches the list view"},
+            },
+        }
+        path = tmp_path / "rating.yaml"
+        path.write_text(json.dumps(rating))
+        mock_get_client.return_value = _mock_client(
+            post_val={
+                "artifact_id": "art_r1",
+                "proposal_id": "prop_1",
+                "version": 1,
+                "verdict": "would_return",
+            }
+        )
+
+        result = runner.invoke(
+            app, ["cycles", "rate", "group_run", "cyc_p", "--rating-file", str(path)]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "Rated prop_1 v1: would_return (art_r1)" in result.output
+        call = mock_get_client.return_value.post.call_args
+        assert call.args[0] == "/api/v1/projects/group_run/cycles/cyc_p/proposal-rating"
+        assert call.kwargs["json"] == rating
+
+    @patch("squadops.cli.commands.cycles._get_client")
+    def test_an_unreadable_file_is_refused_before_any_request(self, mock_get_client, tmp_path):
+        path = tmp_path / "rating.yaml"
+        path.write_text("- a list, not a rating\n")
+
+        result = runner.invoke(
+            app, ["cycles", "rate", "group_run", "cyc_p", "--rating-file", str(path)]
+        )
+
+        assert result.exit_code == exit_codes.VALIDATION_ERROR
+        mock_get_client.return_value.post.assert_not_called()

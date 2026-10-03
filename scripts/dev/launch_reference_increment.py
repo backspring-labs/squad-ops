@@ -8,7 +8,11 @@ the seeds and creates the cycle on the `campaign-reference` profile.
 
 Usage:
     .venv/bin/python scripts/dev/launch_reference_increment.py [--dry-run] [--write-pins]
-        [--squad-profile full-38] [--notes TEXT]
+        [--proposal] [--squad-profile full-38] [--notes TEXT]
+
+--proposal launches the proposal half instead (§11a, §24af): the strategy role proposes against
+the same pinned baseline and objective on `campaign-proposal`, nothing is seeded and nothing is
+built, and the supervisor rates the stored change request with `squadops cycles rate`.
 
 --dry-run prints the pins and the cycle request without creating anything. --write-pins records
 the current inputs' hashes as the scenario's pins (freezing it); it refuses to overwrite pins
@@ -68,6 +72,7 @@ def main() -> int:
         check_pins,
         reference_increment,
         reference_proposal_block,
+        reference_proposal_request,
     )
     from squadops.contracts.cycle_request_profiles import cycle_request_body
 
@@ -78,6 +83,9 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--vault", type=Path, default=VAULT, help="the deploy's artifact vault")
     parser.add_argument("--write-pins", action="store_true")
+    parser.add_argument(
+        "--proposal", action="store_true", help="launch the proposal half: proposed and rated"
+    )
     args = parser.parse_args()
 
     scenario = yaml.safe_load(SCENARIO.read_text())
@@ -137,6 +145,13 @@ def main() -> int:
     from squadops.cli.commands.cycles import _get_client
 
     client = _get_client(None)
+    if args.proposal:
+        body = reference_proposal_request(
+            block, squad_profile_id=args.squad_profile, notes=f"{args.notes} (proposal half)"
+        )
+        created = client.post(f"/api/v1/projects/{args.project}/cycles", json=body)
+        print(json.dumps({"cycle_id": created.get("cycle_id"), "half": "proposal"}, indent=2))
+        return 0
     refs = {}
     for name, content, kind, filename, media in (
         (

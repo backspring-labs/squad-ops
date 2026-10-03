@@ -17,14 +17,17 @@ from squadops.api.cycle_schemas import (
     CycleCreateRequest,
     CycleCreateResponse,
     PreflightWarningDTO,
+    ProposalRatingRequest,
+    ProposalRatingResponse,
 )
 from squadops.api.middleware.auth import require_scopes
 from squadops.api.routes.cycles.mapping import assessment_to_response, cycle_to_response
-from squadops.auth.models import Scope
+from squadops.auth.models import Identity, Scope
 from squadops.cycles.check_tooling import resolve_provisioned_tooling
 from squadops.cycles.cycle_outcome import resolve_cycle_outcome
 from squadops.cycles.lifecycle import compute_config_hash
 from squadops.cycles.models import (
+    ArtifactRef,
     Cycle,
     CycleStatus,
     Gate,
@@ -32,6 +35,7 @@ from squadops.cycles.models import (
     Run,
     SquadProfile,
     TaskFlowPolicy,
+    ValidationError,
     resolve_config,
 )
 from squadops.cycles.preflight import (
@@ -558,6 +562,92 @@ async def get_cycle_assessment(
     from squadops.api.runtime.deps import assess_cycle_from_stores
 
     return assessment_to_response(await assess_cycle_from_stores(request, cycle_id))
+
+
+@router.post("/{cycle_id}/proposal-rating")
+async def rate_proposal(
+    request: Request,
+    project_id: str,
+    cycle_id: str,
+    body: ProposalRatingRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_SUPERVISE)),
+) -> ProposalRatingResponse:
+    """The supervisor's rating of a proposal nothing builds (SIP-0109 §11a; §24af).
+
+    The reference scenario's proposal runs on ``campaign-proposal``: the proposal workload with
+    no gate, so there is nothing to rule. The rating is stored beside the change request it is
+    bound to. A campaign's proposals are ruled at the increment gate (§9.2), never rated here.
+    """
+    import hashlib
+
+    from squadops.api.routes.campaigns.campaigns import actor_from
+    from squadops.api.runtime.deps import get_artifact_vault, get_cycle_registry
+    from squadops.campaigns.change_request import load_stored_change_request
+    from squadops.campaigns.proposal_rating import (
+        PROPOSAL_RATING_ARTIFACT_TYPE,
+        PROPOSAL_RATING_FILENAME,
+        rating_document,
+        rating_from_request,
+    )
+    from squadops.capabilities.handlers.planning.proposal import CHANGE_REQUEST_ARTIFACT_TYPE
+
+    cycle = await get_cycle_registry(request).get_cycle(cycle_id)
+    if cycle.campaign_id:
+        raise ValidationError(
+            f"cycle {cycle_id} belongs to campaign {cycle.campaign_id}: its proposals are ruled "
+            f"at the increment gate, not rated"
+        )
+    vault = get_artifact_vault(request)
+    stored = sorted(
+        (
+            r
+            for r in await vault.list_artifacts(cycle_id=cycle_id)
+            if r.artifact_type == CHANGE_REQUEST_ARTIFACT_TYPE
+        ),
+        key=lambda r: str(r.created_at),
+    )
+    if not stored:
+        raise ValidationError(f"cycle {cycle_id} stored no change request to rate")
+    ref, content = await vault.retrieve(stored[-1].artifact_id)
+    change_request = load_stored_change_request(content.decode("utf-8"))
+    now = datetime.now(UTC)
+    try:
+        rating = rating_from_request(
+            body.model_dump(),
+            change_request=change_request,
+            rated_by=actor_from(identity)[0],
+            rated_at=now,
+        )
+    except ValueError as e:
+        raise ValidationError(str(e)) from e
+    document = rating_document(rating).encode("utf-8")
+    artifact_id = f"art_{uuid.uuid4().hex[:12]}"
+    await vault.store(
+        ArtifactRef(
+            artifact_id=artifact_id,
+            project_id=project_id,
+            artifact_type=PROPOSAL_RATING_ARTIFACT_TYPE,
+            filename=PROPOSAL_RATING_FILENAME,
+            content_hash=hashlib.sha256(document).hexdigest(),
+            size_bytes=len(document),
+            media_type="text/yaml",
+            created_at=now,
+            cycle_id=cycle_id,
+            run_id=ref.run_id,
+            metadata={
+                "proposal_id": rating.proposal_id,
+                "version": rating.version,
+                "change_request_hash": rating.content_hash,
+            },
+        ),
+        document,
+    )
+    return ProposalRatingResponse(
+        artifact_id=artifact_id,
+        proposal_id=rating.proposal_id,
+        version=rating.version,
+        verdict=rating.verdict.value,
+    )
 
 
 @router.post("/{cycle_id}/cancel", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
