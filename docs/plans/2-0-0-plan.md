@@ -438,6 +438,14 @@ Fifteen issues carry the title. Three are closed: #1728, #1802 and #1804.
      #1938's fix. **Shakeout 7 on rebuild 19** is the exit run.
    - Shakeout 6 also ran precondition 4's live-lease proof at its first gate: 5 of 5 passed
      (SIP-0109 §24ai).
+   - **Shakeout 7 on rebuild 19:** its proposals were told what frozen criteria assert (#1938
+     working). Then the crew's review of #1908 noted that #1938 touched the kill-before-promotion
+     window. Tracing that found **#1943**: #1938's exception-contained lookup let a promotion's
+     binding vary between attempts, so a replay after a restart could be refused and leave the
+     campaign undecided.
+   - **Fixed before registration, in rebuild 20.** The diagnostics that cover the window (the kill
+     before promotion, the duplicate completion and the abort) re-run on it, and shakeout 8 is the
+     exit run.
    - **The original plan for this step, kept for the record:** shakeout 6 on rebuild 18, with the
      log archive beside it. At its first
    increment gate it reads #1802's live-lease proof (the quiet-box half ran on 2026-10-03), with the
