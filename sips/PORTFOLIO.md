@@ -150,6 +150,7 @@ dated amendment.
 | Q20 | SIP-0102 | in-agent execution is the accepted path for campaign evaluation; steps 3, 5, 6 and 7 unplaced until a clean-room requirement returns | SIP-0102 §11c |
 | Q21 | SIP-0105 | the table brought current; fields deleted by #1975 (2.1.0); packs to a successor; #1967 | SIP-0105 §A2 |
 | Q22 | implemented SIPs' stale text | corrected in SIP-0103, 0096, 0083 and 0089 (the `queued` lease → 3.x) | each SIP's dated amendment |
+| Q23 | the `capabilities` package name (the structure audit, ruled the same day: "go ahead, file them and add to the 2.1 plan, plus the 2.3 recommended items") | the package keeps its name; Capability-Backed Agents takes a distinct package, and packs never bind into the task-type registry | Capability-Backed Agents' note; #1993 |
 
 **Two readings the supervisor made, told to the owner when they were recorded:**
 - **§24b–§24i are "ratified as written".**
@@ -189,3 +190,4 @@ All four are placed early in 2.1.0.
 | 2026-10-04 | the Nostromo crew's enablers (#1959, #1960) | phase 0 of Outcome Evaluation; #1959 generalizes SIP-0109's reference launcher | the 2.1 plan §2.0 |
 | 2026-10-04 | Cross-Cycle Memory's 2.1 part (#1964) | placed by the owner's ruling of 2026-09-12, missed in the 2.1 plan's first draft | the 2.1 plan §2.6 |
 | 2026-10-04 | the owner's rulings on the whole queue (§4) | runtime modes, duty work and Capability-Backed Agents to 3.x; every other recommendation accepted | §4; each SIP; the ROADMAP horizon |
+| 2026-10-04 | the code structure audit (not a SIP) | **one conflict:** Capability-Backed Agents (3.x) reserves the word *capability*, and the 32k-line package still carries it (Q23). **Complements:** #1985's direction guard and #1989's architecture map are the code's version of #1969's ledger guard; #1986's single gate recorder is the seam #1940 and #1708's auto tier decide through | Q23; the 2.1 plan §2.8 |

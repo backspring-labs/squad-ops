@@ -12,6 +12,7 @@ created_at: '2026-07-01'
 > - **Before 3.0's plan, correct its premise:** §5 extends a skills layer that was deleted (#400, #401).
 > - **Memory:** Cross-Cycle Memory owns memory's scopes, lifecycle and payload, and this SIP's §11 defers to it.
 > - **It absorbs** the Skill Layer proposal (its §21) and Intelligent Delegation's residue (§15).
+> - **Its package is not `squadops.capabilities`** (the structure audit, ruled 2026-10-04, #1993). #922 gave this SIP the word *capability* and renamed the identifiers that collided. The package `src/squadops/capabilities/` keeps its name: 1,209 import sites would move for no behaviour change, and after #1993's `stacks` extraction (2.3) it holds task contracts and handlers only. This SIP's bindable-competence model takes a distinct package (e.g. `squadops/capability_packs/`), named when 3.0's plan places it. A pack must never be wired into `HandlerRegistry`, the task-type registry, which is #922's original hazard.
 
 
 **Status:** Proposed (2.0 umbrella / architecture target)

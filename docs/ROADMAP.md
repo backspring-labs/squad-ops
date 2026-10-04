@@ -745,9 +745,9 @@ The following areas are identified for future work but do not block 1.0 readines
 | release | headline | carries |
 |---|---|---|
 | 2.0 | Campaign (SIP-0109) | the counted set, registered 2026-10-04 (#1908) |
-| 2.1 | stabilization | the 2.0 set's findings; the optimization crew's enablers (#1940, #1956, #1959, #1960); the plan is PR #1955 |
+| 2.1 | stabilization | the 2.0 set's findings; the optimization crew's enablers (#1940, #1956, #1959, #1960); the structure audit's defects and ground-clearing (#1982–#1991); the plan is PR #1955 |
 | 2.2 | Cross-Cycle Memory | the line's **only** change to squad behaviour, beside #1708's auto tier and escalation queue |
-| 2.3 | stabilization | Outcome Evaluation's reporting-only instruments; the comms (#1977) and API contract (#1976) hardening |
+| 2.3 | stabilization | Outcome Evaluation's reporting-only instruments; the comms (#1977) and API contract (#1976) hardening; the structure audit's batch: orchestration out of `adapters/cycles` (#1992), a `stacks` package (#1993), the largest units split (#1994) |
 | 2.4 | Outcome Evaluation's feature half (proposed) | Verification Yield's risk-first instructions (#1966); then the judgement steps it measures (#557, #949, #950) |
 | 2.6 | the squad-authored backlog (no SIP yet) | features from the strategy role, debt refactors from the lead; Test-First's greenfield gate (#1978) |
 
