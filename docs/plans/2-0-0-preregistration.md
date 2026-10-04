@@ -20,14 +20,27 @@ are appended, and if the deploy moves, this registration is void and re-made.
      with the live-lease proof at its first gate. **It found #1938:** the proposal was told frozen
      criteria by id only, so increment 3's first proposal restated increment 2's feature. Fixed in
      #1939 (SIP-0109 §24ap), which is rebuild 19.
-   - **Shakeout 7** (rebuild 19, `cmp_b3a681c4f994`): its result is *read at registration*.
+   - **Shakeout 7** (rebuild 19, `cmp_b3a681c4f994`): **success, three accepted increments.**
      - Its gates showed #1938 working. Increment 1's promotion froze its criteria with their statements,
        and increment 2 proposed a feature not yet built.
      - **The crew's review of this draft** (2026-10-04) traced #1938 into the kill-before-promotion
        window, and that trace found **#1943**: #1938's exception-contained lookup let a promotion's
        binding vary between attempts. A replay after a restart could then be refused, leaving the
        campaign undecided. Fixed in #1944, which is rebuild 20.
-   - **Shakeout 8** (rebuild 20) **is the exit run on the deploy the set registers.** Its result: *read
+     - Its first proposal was returned for a criterion the accepted app already met (T2, the default
+       case of the feature). That became the first instance of #1946.
+   - **Shakeout 8** (rebuild 20, `cmp_51919765933d`): **stopped at its first increment gate for #1946.**
+     The calibration was accepted. Increment 1's first proposal again carried the default case (T3, "a
+     run without capacity takes a tenth join"), two of three first proposals: the proposal prompt
+     never stated that a new criterion must fail on the accepted tree (§8.2). Fixed in SIP-0109 §24aq,
+     which is rebuild 21.
+   - **Shakeout 9** (rebuild 21, `cmp_9b1025685bea`): **found #1948 at its first increment gate.** T1
+     asserted that a run created without a capacity returns no capacity key. The FastAPI stack's frozen
+     models return an optional field a request left out as `null` (#1125), so a correct build would
+     have failed it, and the proposer is never told the convention. Returned for revision (§3a); version
+     2 was approved. Fixed in SIP-0109 §24ar, which is rebuild 22. Precondition 4's live-lease proof ran
+     at this gate.
+   - **Shakeout 10** (rebuild 22) **is the exit run on the deploy the set registers.** Its result: *read
      at registration*.
 2. **Decision 1, the SIP-0107 flip: RULED (owner, 2026-10-03, "go with your recommendation on the
    flip").** #1788's re-run explained the nine empty scoped Next.js repairs:
@@ -58,20 +71,25 @@ are appended, and if the deploy moves, this registration is void and re-made.
        only the lease, so a crew model left resident when the lease returned (released or expired)
        was run beside by the framing run the ruling had just approved.
      - **Built and deployed:** #1915 (§24ai) since rebuild 16; §24an (#1931) from rebuild 18. **The set
-       registers on rebuild 20** (`b0c25360` plus #1943), which carries both.
+       registers on rebuild 22**, which carries both.
    - **Deployed proof, the quiet-box half (rebuild 16, 2026-10-03 10:38–10:39 ET, `cmp_969baa78fd39`):**
      with `llama3.1:8b` resident, a CLI create was refused (409 `box_not_quiet`, with an audit
      event), and the campaign's launch went `launch_blocked`, then escalated. With the model
      unloaded and a resume, the launch proceeded.
-   - **Deployed proof, the live-lease half.** Run twice, each time at a shakeout's first increment
-     gate, 5 of 5 both times. Each refused create was audited (`cycle.launch_refused`, `denied`):
+   - **Deployed proof, the live-lease half.** Run three times, each time at a shakeout's first
+     increment gate, 5 of 5 every time. Each refused create was audited (`cycle.launch_refused`,
+     `denied`, in the runtime's audit sink, `data/audit/runtime-api.jsonl`):
      - **rebuild 18** (`5f46d946`, shakeout 6, `cmp_58d4e3b0a5d3`, 2026-10-03 22:05–22:09 UTC); the
        framing run started 3.6 s after the unload (`waited_s=120`);
      - **rebuild 19** (`b0c25360`, shakeout 7, `cmp_b3a681c4f994`, 2026-10-04 01:10–01:13 UTC); the
        framing run started 4.4 s after the unload (`waited_s=90`). Log:
        `var/campaigns/cmp_b3a681c4f994/proofs/1802-live-lease-proof.log`.
-     - **rebuild 20, the deploy the set registers:** repeated at shakeout 8's first increment gate.
-       *Read at registration.*
+     - **rebuild 21** (`3f6551d8`, shakeout 9, `cmp_9b1025685bea`, 2026-10-04 08:24–08:28 UTC); the
+       framing run started 4.7 s after the unload (`waited_s=90`). Log:
+       `var/campaigns/cmp_9b1025685bea/proofs/1802-live-lease-proof.log`.
+     - **rebuild 22, the deploy the set registers:** repeated at shakeout 10's first increment gate.
+       *Read at registration.* (Shakeout 8 on rebuild 20 was stopped at its first gate, before the
+       proof ran.)
 
      An acquire needs the gate open, so the expired lease comes first:
      1. a short lease: a CLI create is refused, `supervisor_holds_the_box`;
@@ -109,13 +127,41 @@ are appended, and if the deploy moves, this registration is void and re-made.
      - The increment legs 8/8 (`cmp_c380058c647f`), the kill before promotion exercised.
      - #1929's two halves were seen working (`run_left_for_reattach`; `task_reply_replayed` ×2).
      - #1803 was closed on it.
-   - **The registered deploy is rebuild 20** (`b0c25360` plus #1943). Rebuild 18 differs from it by
-     #1938 (`increment_tree.py`, `progress.py`, `proposal.py`, the proposal's request template) and
-     #1943 (`progress.py`). The commit and exact diff are *read at registration*.
-   - **The increment legs re-run on rebuild 20, all eight.** The proposal's context (#1938) and the
-     promotion window (#1938, #1943) both changed, and these legs exercise both: the restart at
-     `at_proposal` (a proposal run in flight), the repeated ruling, the kill before promotion and the
-     duplicate completion. Their result: *read at registration*.
+   - **The registered deploy is rebuild 22.** Its deployed-code diff from rebuild 18:
+     - #1938: `increment_tree.py`, `progress.py`, `proposal.py`, the proposal's request template;
+     - #1943: `progress.py`;
+     - #1946: the proposal's request template (v4);
+     - #1948: the proposal's request template (v5), a new section template, `proposal.py`, and one
+       field on the stack table (`ScaffoldStack.unset_optional_response`), read only by the proposal
+       handler.
+
+     The commit and the exact diff are *read at registration*.
+   - **The increment legs re-ran on rebuild 20** (`75a4b7b8`, `cmp_c3b60dd6889d`, 2026-10-04): **8 of 8.**
+     - **What they did not reach, declared.** The kill before promotion and the duplicate completion
+       both landed on an increment its cycle rejected (its catch-all route lacked the not-found view).
+       So no promotion ran in either: `promotes: 0` with the accepted tree unchanged, and a repair
+       continuation. The #1938/#1943 lookup runs only inside a promotion, so no restart exercised
+       it. Rebuild 18's kill before promotion did promote (`promotes: 1`), but that was before the
+       statements were in the binding.
+     - **What holds it instead:**
+       - #1944's test: a promotion whose lookup fails commits nothing, and its retry commits once;
+       - a live replay read before registration. Each applied promotion of shakeout 10 has its frozen
+         statements recomputed twice from the deploy's stored data, through the runtime's own lookup,
+         and compared with the binding the row committed. Its result: *read at registration*.
+   - **The proposal-path legs re-run on each deploy that changes the proposal prompt:**
+     `restart-at:at_proposal`, and `abort-in-flight`, which lands in that proposal run.
+     - Rebuild 21 (`3f6551d8`, `cmp_5247f81c2ea9`): 2 of 2, for #1946.
+     - Rebuild 22, for #1948: *read at registration*.
+   - **The other six increment legs are carried from rebuild 20:** the restarts at `awaiting_ruling`,
+     `paused` and `building`, the repeated ruling, the kill before promotion and the duplicate
+     completion. This is the case the owner's "go with b" ruled on: a diff that changes only how the
+     proposal prompt is rendered. Each overlap with the diff from rebuild 20 (#1946, #1948), declared:
+     **none of these legs renders a proposal prompt.**
+     - `awaiting_ruling` and `paused` have no run in flight.
+     - The repeated ruling starts a framing run.
+     - `building`, the kill before promotion and the duplicate completion run an implementation or a
+       repair.
+     - The stack table's new field is read only by the proposal handler.
    - **The blocked legs are carried forward from rebuild 18** (4/4, `cmp_678167dcd86a`), by the
      owner-approved change to this precondition (the owner, 2026-10-03: "go with b", and the standing
      instruction of the same evening to re-run any diagnostic a fix overlaps). Each overlap, declared:
@@ -124,6 +170,7 @@ are appended, and if the deploy moves, this registration is void and re-made.
      - `restart-at:calibrating` and `abort-in-flight`: both land in the calibration's framing run,
        before any promotion. A calibration's promotion carries no increment evaluation, so
        `_freeze_bundles` returns before the #1938/#1943 lookup is reached.
+     - #1946 and #1948 touch none of them: a calibration's framing run renders no proposal prompt.
      - None of the diff changes the restart, re-attach, kill or abort mechanism, or the recovery
        invariant on these paths.
 
