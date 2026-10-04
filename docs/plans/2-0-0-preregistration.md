@@ -14,7 +14,14 @@ are appended, and if the deploy moves, this registration is void and re-made.
      a calibration, increment 1 rejected and then **accepted through its repair**, and increment 2
      accepted, with every frozen criterion (T1–T3) held and T4 discriminating. That is two accepted
      increments on one tree.
-   - **Shakeout 5** runs on the deploy carrying shakeout 4's fixes and §24ah.
+   - **Shakeout 5** (rebuild 14, `cmp_9757603322b1`): success, three accepted increments. It found #1912
+     (a verification-only qa task fails whatever the model writes), fixed in #1914.
+   - **Shakeout 6** (rebuild 18, `cmp_58d4e3b0a5d3`, 2026-10-03): success, three accepted increments,
+     with the live-lease proof at its first gate. **It found #1938:** the proposal was told frozen
+     criteria by id only, so increment 3's first proposal restated increment 2's feature. Fixed in
+     #1939 (SIP-0109 §24ap), which is rebuild 19.
+   - **Shakeout 7** (rebuild 19, `cmp_b3a681c4f994`) **is the exit run on the deploy the set registers.**
+     Its result: *read at registration*.
 2. **Decision 1, the SIP-0107 flip: RULED (owner, 2026-10-03, "go with your recommendation on the
    flip").** #1788's re-run explained the nine empty scoped Next.js repairs:
    - 9 were correct dev abstentions or disputes on qa-owned defects;
@@ -43,13 +50,21 @@ are appended, and if the deploy moves, this registration is void and re-made.
        its campaign. A run outside every campaign is refused at once. Before §24an a run start read
        only the lease, so a crew model left resident when the lease returned (released or expired)
        was run beside by the framing run the ruling had just approved.
-     - **Built and deployed:** #1915 (§24ai) since rebuild 16; §24an (#1931) from rebuild 18.
+     - **Built and deployed:** #1915 (§24ai) since rebuild 16; §24an (#1931) from rebuild 18. **The set
+       registers on rebuild 19** (`b0c25360`), which carries both.
    - **Deployed proof, the quiet-box half (rebuild 16, 2026-10-03 10:38–10:39 ET, `cmp_969baa78fd39`):**
      with `llama3.1:8b` resident, a CLI create was refused (409 `box_not_quiet`, with an audit
      event), and the campaign's launch went `launch_blocked`, then escalated. With the model
      unloaded and a resume, the launch proceeded.
-   - **Deployed proof, the live-lease half (shakeout 6's first increment gate, rebuild 18).** An
-     acquire needs the gate open, so the expired lease comes first:
+   - **Deployed proof, the live-lease half.** Run twice, each time at a shakeout's first increment
+     gate, 5 of 5 both times. Each refused create was audited (`cycle.launch_refused`, `denied`):
+     - **rebuild 18** (`5f46d946`, shakeout 6, `cmp_58d4e3b0a5d3`, 2026-10-03 22:05–22:09 UTC); the
+       framing run started 3.6 s after the unload (`waited_s=120`);
+     - **rebuild 19, the deploy the set registers** (`b0c25360`, shakeout 7, `cmp_b3a681c4f994`,
+       2026-10-04 01:10–01:13 UTC); the framing run started 4.4 s after the unload (`waited_s=90`).
+       Log: `var/campaigns/cmp_b3a681c4f994/proofs/1802-live-lease-proof.log`.
+
+     An acquire needs the gate open, so the expired lease comes first:
      1. a short lease: a CLI create is refused, `supervisor_holds_the_box`;
      2. the lease left to expire with a stand-in crew model resident: a CLI create is refused,
         `box_not_quiet`;
@@ -69,16 +84,31 @@ are appended, and if the deploy moves, this registration is void and re-made.
      - **So the guarantee is:** no launch and no run start beside an undeclared model resident in a
        declared engine, and none while the supervisor holds the box.
 
-5. **#1803's recovery diagnostics have run on the registered deploy**, as the validation plan's §3
-   (#1807) designs them, with the harness from #1924 and #1927.
+5. **#1803's recovery diagnostics have run on the registered deploy, or on a deploy whose difference
+   from it is declared and touches no path a diagnostic exercises** (the owner-approved change below),
+   as the validation plan's §3 (#1807) designs them, with the harness from #1924, #1927 and #1933.
    - **First live read, rebuild 17 (2026-10-03).** The blocked legs passed 4/4 (`cmp_575115942556`).
      The increment legs (`cmp_e39d5b9c24c6`) passed the restarts at `at_proposal`,
      `awaiting_ruling`, `paused` and `building`, and the repeated ruling.
    - **What that read found:** #1929. A graceful stop was handled as a run failure, and the
      re-attach dispatched the in-flight task twice. It is fixed in #1932 (§24ao), placed in 2.0 by
      the owner.
-   - **Re-run on rebuild 18,** the deploy the set registers. #1928 and #1929 change the run-start
-     and restart paths.
+   - **Re-run on rebuild 18** (`5f46d946`, 2026-10-03): **12 of 12.**
+     - The blocked legs 4/4 (`cmp_678167dcd86a`).
+     - The increment legs 8/8 (`cmp_c380058c647f`), the kill before promotion exercised.
+     - #1929's two halves were seen working (`run_left_for_reattach`; `task_reply_replayed` ×2).
+     - #1803 was closed on it.
+   - **The registered deploy is rebuild 19, and the diagnostics are not repeated on it, by an
+     owner-approved change to this precondition** (the owner, 2026-10-03: "go with b"). Rebuild 18's
+     12/12 stand for rebuild 19, because rebuild 19 differs from it only by #1938's fix.
+     - The deployed-code diff `5f46d946..b0c25360` is four files: `src/squadops/campaigns/increment_tree.py`,
+       `src/squadops/campaigns/progress.py`, `src/squadops/capabilities/handlers/planning/proposal.py`
+       and `src/squadops/prompts/request_templates/request.strategy_propose_increment.md`.
+     - That diff touches the proposal's context: what a promotion freezes and what the proposal
+       renders. It touches no restart, re-attach, kill or abort path.
+     - The other commits in the range are docs and a dev script, which no image carries.
+     - The rule as amended: the diagnostics ran on the deploy the set registers, or on one whose
+       deployed-code difference from it is declared here and touches no path a diagnostic exercises.
 6. **The evidence that dies with the logs is kept** (#1710, §24ak): each run's revision forms are on
    its persisted summary and in the package. `scripts/dev/campaign_log_archive.py <campaign> --follow`
    runs beside every campaign of the set.
@@ -239,7 +269,7 @@ The crew's conditions (plan §7):
 | image ids (runtime-api, max, neo, nat, bob, eve, data) | *read at registration* |
 | deploy record | *read at registration*, referenced by every cycle of the set |
 | loaded checks | *read at registration*: a live fact per change since the last counted set, each with its control |
-| policy files | `var/campaigns/2-0-0-set-1.yaml`, `-set-2.yaml`, hashed |
+| policy files | `examples/03_group_run/campaigns/2-0-0-set-1.yaml` sha256 `74cb2f031c055fc250937c8282be66c0cb25a3d0fef6752762fdf91d129d27fe`; `…/2-0-0-set-2.yaml` sha256 `c43dbb4fe216f0fca8ae2291b5527a9256282a8e8bd361f0f7da09ede2cf48dc`; both at commit `34b242a7` (#1942, #1941). Each carries shakeout 7's objective and policy exactly, and its provenance is reconciled in `examples/03_group_run/campaigns/provenance.yaml` |
 | the reference scenario's pins | `examples/03_group_run/reference_scenario.yaml` (#1853), checked by the launcher |
 
 ---
