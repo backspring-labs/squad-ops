@@ -1,11 +1,16 @@
 # Campaign runbook: running, supervising and recovering a campaign
 
-The minimum runbook the 2.0 plan asks for before the campaign set (§6 step 12, #1711). It covers
-running a SIP-0109 campaign on the Spark, ruling at its gates, recovering when it stops, and the outer
-loop around it: evidence, then triage, then a fix, then a redeploy, then the next campaign.
+The runbook the 2.0 plan asks for (§6 steps 12 and 15, #1711). It covers running a SIP-0109 campaign
+on the Spark, ruling at its gates, recovering when it stops, and the outer loop around it: evidence,
+then triage (§6), then a fix, a redeploy and the next campaign (§9), within the approval boundary (§10).
 
-It is written from the four shakeout campaigns of 2026-10-02/03, `cmp_…` shakeouts 1–4. Those surfaced
-thirteen seam defects, each fixed between cycles, and every procedure below is one that ran.
+It is written from what ran:
+- the ten shakeout campaigns of 2026-10-02/04, whose first four surfaced thirteen seam defects, each
+  fixed between cycles;
+- the 2.0 counted set, two campaigns supervised by these procedures with every safety guarantee held
+  (`docs/plans/2-0-0-preregistration.md` §10).
+
+Every procedure below is one that ran.
 `docs/ops/NIGHT_TRIAGE_RUNBOOK.md` is the standard for diagnosing a failed cycle; this runbook points
 at it rather than repeating it.
 
@@ -112,6 +117,29 @@ squadops artifacts download <artifact_id> --out change_request.yaml
    are normal.
 4. **`must_not_break`:** the earlier criteria this change could touch. Every criterion a promotion
    froze runs anyway (§8.1).
+5. **Internal consistency:** the PRD delta states only what the manifest delta, the criteria and the
+   footprint carry. The 2.0 set's campaign 2 returned a v1 whose PRD text added a display that nothing
+   else in the request delivered (#1995).
+
+**Check the accepted code, not only the accepted manifest.** A manifest says what was declared. The
+delivered tree says what the app does, and the criteria are judged on that tree (§8.2). Each of these
+cost a revision in the 2.0 set or its shakeouts:
+- **a capability the accepted manifest already declares is usually already built.** Campaign 1's
+  calibration had built capacity, so a capacity-enforcement criterion could not fail on it (returned,
+  `criteria_not_checkable`);
+- **the stack's frozen models already do some things.** On FastAPI, a required request string is
+  trimmed and refused blank (#593), and an unset optional field comes back `null` (§24ar, #1948). A
+  criterion asserting either holds already (#1962);
+- **a new endpoint's path may already answer.** `POST /runs/seed` against a tree with
+  `GET /runs/{run_id}` is a 405 today, which is the failure that makes it discriminate.
+
+Read the tree in the runtime container, as root, by the rule every delivered-tree reader uses
+(`squadops.cycles.delivered_tree.delivered_files`). An increment's composed tree is the PROMOTE row's
+`tree_ref` (`accepted_tree.json`), which holds the whole app.
+
+**Classify every return or rejection** (§9.4): `squadops campaigns classify <campaign_id> --proposal
+<id> --version <n> --as <class> --reason "…"`. When no class fits exactly, name the nearest and say
+why in the reason. The ledger is what the next pre-registration reads.
 
 ```bash
 squadops runs gate <project> <cycle_id> <proposal_run_id> progress_increment_ruling \
@@ -247,7 +275,17 @@ squadops campaigns ledger <campaign_id>     # each proposal version, its ruling 
 ```
 
 **The evidence package** is materialized at close from records alone. Its identity is the hash of its
-canonical form, so materializing it again is idempotent.
+canonical form, so materializing it again is idempotent. **Check it is complete:** one record per
+launch intent, none `unreadable`, and as many control-log rows as the database holds for the campaign.
+
+**The safety reads** (the 2.0 pre-registration §3; each ran at both counted campaigns' close):
+- one cycle per launch intent;
+- every `rule` row binds the `content_hash` of the version its `submit` row put at the gate;
+- every entry into `building` is an approving `rule`;
+- every PROMOTE row carries `tree_ref`, and a `bundle_ref` on each frozen criterion;
+- no `refused` row, no `ruling_overdue`, no lease or `launch_blocked` row you did not expect;
+- the audit sink (`data/audit/runtime-api.jsonl`) holds the same campaign events as the control log,
+  and no `cycle.launch_refused`; the runtime log holds no `run_start_waiting_for_box`.
 
 **Record the campaign's run in your log:**
 - its cycles and decisions;
@@ -256,3 +294,56 @@ canonical form, so materializing it again is idempotent.
 - what it showed about each mechanism.
 
 That record is what the next campaign's pre-registration reads.
+
+---
+
+## 9. The outer loop's second half: fix, redeploy, the next campaign
+
+The first half is triage (§6): a finding with a file, a line and the evidence, filed. The second half
+turns findings into a framework change and measures it.
+
+1. **Batch the fixes.** Each finding's fix is its own branch and PR, with a wiring test entered at the
+   caller the live cycle uses, and the evidence table CLAUDE.md asks for when it binds a typed check.
+   Merge on full green and read every job of main's run after each merge.
+2. **Rebuild once per batch, never mid-cycle.** `rebuild_and_deploy.sh`, then verify the new code is
+   loaded in each container (§1). A rebuild between two campaigns is free. A rebuild inside one is
+   safe only while it is `escalated` or `paused` with no run in flight (§6).
+3. **Run the reference scenario on the new deploy**, before and after a counted set if one is coming:
+   ```bash
+   python scripts/dev/launch_reference_increment.py --notes "<why>"             # the build half
+   python scripts/dev/launch_reference_increment.py --proposal --notes "<why>"  # the proposal half
+   squadops cycles rate <project> <cycle_id> --rating-file <rating.yaml>      # rate what it proposed
+   python scripts/dev/reference_report.py --cycle <cycle_id>                   # what each mechanism did
+   ```
+   It is one fixed increment on a pinned baseline, outside any campaign (SIP-0109 §11a). The same
+   outcome on two deploys says the mechanisms held, and a different one is a finding. The 2.0 set
+   ran it before and after its two campaigns with the same result both times.
+4. **The next campaign starts from the same pinned definition.** Its **calibration cycle is the
+   baseline**: it builds the app the increments then evolve, on the new deploy. Compare it with the last
+   campaign's calibration, by verdict, framing attempts, correction movements and wall clock, before
+   reading any increment. A calibration that reads differently is the framework change showing, and
+   nothing the increments do is comparable until it is understood.
+5. **Compare like with like.** The same objective, policy and squad profile, and the definition's
+   sha256 in the create `--reason` (#1954 will record it on the create row). Per-increment replay on
+   the new deploy (#1959) and the per-increment scorecard (#1960) are 2.1's. Until they land, compare
+   the digests, the ledgers and `reference_report.py`'s readings.
+6. **Record the loop:** the findings, their fixes, the deploy each stretch ran on, and what the next
+   campaign showed about each fix. Write each prediction before the campaign that tests it.
+
+---
+
+## 10. The approval boundary
+
+What the supervisor (the crew, or whoever holds the seat, §24al) does alone, and what stops for the owner.
+
+| alone | stops for the owner |
+|---|---|
+| rule increment gates and answer plan gates; pause a campaign; classify a proposal; take the lease at an open gate with no run in flight (all `campaigns:supervise`, which the `campaign-supervisor` role holds) | a pre-registration, or any material change to one (a policy value, a prediction, the set's size or frame) |
+| create, start and abort campaigns (`campaigns:control`: the admin role today; #1940 gives it to the supervisor role in 2.1) | resuming an escalation: the owner's word (§10's rows, `campaigns resume --action`) |
+| file findings; fix them on branches; merge on full green, reading main's run | an unexplained red on main |
+| rebuild between campaigns, verifying the new code is loaded | a fix needed while a counted set is open: it voids the set |
+| run the reference scenario and the recovery diagnostics outside a counted set | anything touching security, and any public Release (tag, Release notes, records upload) |
+| triage from records, which never loads the box | |
+
+**During a counted set nothing merges and nothing rebuilds** (2.0 pre-registration §7). Findings
+are filed and placed, and every fix waits for the set's close.
