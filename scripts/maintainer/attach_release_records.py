@@ -15,6 +15,13 @@ It does three things:
 1. **Tar the line's records.** Every entry in the main checkout's ``var/verification_sets/``
    named for the line (``1-8-1`` or ``1-8-1-*``, never ``1-8-10``). With ``--archive-root``, it
    also takes the line's records preserved there by the worktree sweep (cut step 8).
+
+   **And its campaigns' outputs** (#1941 item 6): ``var/campaigns/<campaign>/`` (the log
+   windows, the recovery diagnostics' records, the live-lease proofs) and the campaign's
+   ``<campaign>.archive.log``. A campaign's id names no line, so the line's campaigns are the
+   ones a tracked ``examples/*/campaigns/provenance.yaml`` names (the campaigns SquadOps runs to
+   verify itself) created after the previous tag and up to this one. A campaign directory that
+   no provenance names is an operator's, or provenance is stale: it is named, never carried.
 2. **Scan every line of every file** before anything leaves the box, for:
    - the values of the deploy's secrets: ``secrets/*``, which is what ``secret://`` expands to
    - secret-named values in the repo's ``.env``
@@ -57,6 +64,8 @@ sys.path.insert(0, str(REPO_ROOT / "scripts" / "dev"))
 from checkouts import main_checkout  # noqa: E402
 
 RECORDS = Path("var") / "verification_sets"
+CAMPAIGNS = Path("var") / "campaigns"
+PROVENANCE = "examples/*/campaigns/provenance.yaml"
 RELEASES = Path("site") / "content" / "releases"
 #: A variable whose NAME says it holds a secret. The value of anything else (a model name, a
 #: URL) appears in records legitimately and would bury a real hit.
@@ -116,6 +125,64 @@ def collect_records(main: Path, line: str, archive_root: Path | None) -> list[tu
             )
             out += [((prefix / f.relative_to(root)).as_posix(), f) for f in files]
     return out
+
+
+@dataclass(frozen=True)
+class CampaignRecords:
+    members: list[tuple[str, Path]]
+    carried: list[str]  # the line's campaigns whose outputs the tarball carries, by id
+    no_outputs: list[str]  # named by provenance for the line, with nothing on this box
+    unnamed: list[str]  # outputs on this box that no provenance names: never carried
+
+
+def tag_window(main: Path, tag: str) -> tuple[datetime | None, datetime]:
+    """The line's window: after the previous tag's commit, up to and including this tag's. A
+    campaign belongs to the line whose window holds its creation, as a verification set belongs
+    to the line it is named for. The records attach after the tag (cut step 6), so a missing
+    tag is refused."""
+
+    def git(*args: str) -> str:
+        done = subprocess.run(["git", "-C", str(main), *args], capture_output=True, text=True)
+        if done.returncode != 0:
+            raise SystemExit(f"git {' '.join(args)} failed: {done.stderr.strip()}")
+        return done.stdout.strip()
+
+    tags = git("tag", "--sort=-v:refname").split()
+    if tag not in tags:
+        raise SystemExit(f"tag {tag} not found: the records attach after the tag (cut step 6)")
+    index = tags.index(tag)
+    previous = tags[index + 1] if index + 1 < len(tags) else None
+
+    def date(t: str) -> datetime:
+        return datetime.fromisoformat(git("log", "-1", "--format=%cI", t))
+
+    return (date(previous) if previous else None), date(tag)
+
+
+def collect_campaigns(main: Path, tag: str) -> CampaignRecords:
+    """The line's campaigns' outputs, ``(name in the tarball, source file)``, sorted."""
+    named: dict[str, datetime] = {}
+    for prov in sorted(main.glob(PROVENANCE)):
+        for c in (yaml.safe_load(prov.read_text(encoding="utf-8")) or {}).get("campaigns") or []:
+            named[str(c["campaign_id"])] = datetime.fromisoformat(str(c["created"]))
+    root = main / CAMPAIGNS
+    on_box = sorted(p.name for p in root.iterdir() if p.is_dir()) if root.is_dir() else []
+    unnamed = [cid for cid in on_box if cid not in named]
+    if not named:
+        return CampaignRecords([], [], [], unnamed)
+    since, until = tag_window(main, tag)
+    members: list[tuple[str, Path]] = []
+    carried: list[str] = []
+    no_outputs: list[str] = []
+    for cid in sorted(
+        c for c, at in named.items() if (since is None or at > since) and at <= until
+    ):
+        files = sorted(p for p in (root / cid).rglob("*") if p.is_file())
+        log = root / f"{cid}.archive.log"
+        files += [log] if log.is_file() else []
+        (carried if files else no_outputs).append(cid)
+        members += [((CAMPAIGNS / f.relative_to(root)).as_posix(), f) for f in files]
+    return CampaignRecords(members, carried, no_outputs, unnamed)
 
 
 def _env_secrets(pairs: Iterable[tuple[str, str]], source: str) -> list[Secret]:
@@ -231,9 +298,13 @@ def main(argv: Sequence[str] | None = None, *, deploy_pairs: Sequence | None = N
     tag = f"v{args.version}"
     main_path = main_checkout(REPO_ROOT)
     package = main_path / RELEASES / tag / "package.yaml"
-    members = collect_records(main_path, line, args.archive_root)
+    campaigns = collect_campaigns(main_path, tag)
+    members = collect_records(main_path, line, args.archive_root) + campaigns.members
     if not members:
-        print(f"no records named for {line} under {main_path / RECORDS}; nothing to attach")
+        print(
+            f"no records named for {line} under {main_path / RECORDS}, and no campaign of the "
+            "line; nothing to attach"
+        )
         return 1
     secrets = known_secrets(main_path, deploy_env_pairs() if deploy_pairs is None else deploy_pairs)
     unscanned = [s.source for s in secrets if len(s.value) < MIN_SECRET_LEN]
@@ -244,6 +315,11 @@ def main(argv: Sequence[str] | None = None, *, deploy_pairs: Sequence | None = N
     digest = build_tarball(members, out, top)
     size = out.stat().st_size
     print(f"{len(members)} files from {line} → {out} ({size:,} bytes, sha256 {digest})")
+    print(f"campaigns carried: {len(campaigns.carried)} ({', '.join(campaigns.carried) or 'none'})")
+    for cid in campaigns.no_outputs:
+        print(f"  named by provenance for {line}, but no outputs on this box: {cid}")
+    for cid in campaigns.unnamed:
+        print(f"  not carried, named by no provenance.yaml: {cid}")
     print(
         f"scanned against {len(secrets) - len(unscanned)} known secret values + {len(PATTERNS)} patterns"
     )
@@ -280,6 +356,7 @@ def main(argv: Sequence[str] | None = None, *, deploy_pairs: Sequence | None = N
             "asset": out.name,
             "sha256": digest,
             "files": len(members),
+            "campaigns": campaigns.carried,
             "bytes": size,
             "attached_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "scanned": {"secret_values": len(secrets) - len(unscanned), "patterns": list(PATTERNS)},
