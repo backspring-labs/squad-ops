@@ -196,7 +196,9 @@ Deploy-moving work batches into rebuilds, and each structural refactor gets a ba
 3. **Defects, batch 1, with the crew's authority:**
    - #1940, #1934, #1950, #1913, #1930 and #1954 (deploy-moving, small), and #1960's box-wait field
      if taken;
-   - #1957 and #1958 (tooling, no deploy).
+   - #1957 and #1958 (tooling, no deploy);
+   - #1964's inert recall port and its call site: a seam that answers empty, so nothing it touches
+     changes behaviour.
 
    Then a rebuild, the regression pair, and the overlapping recovery diagnostics
    (`restart-at:at_proposal` for #1934). **The crew's first campaign can run on this deploy** (§2.0).
@@ -209,7 +211,9 @@ Deploy-moving work batches into rebuilds, and each structural refactor gets a ba
 7. **Generation quality:** #1031 and #1692's remainder. These change what the model is shown, so they
    go last and are read on the cut's evidence, not mixed into a refactor's batch.
 8. **The cut:** a regression set on both stacks, one campaign shakeout on the final deploy, and the
-   release cut procedure (CLAUDE.md).
+   release cut procedure (CLAUDE.md). **#1964's re-read** of memory's Phase-1 hypothesis happens here,
+   against the evidence the line produced, and is recorded as an amendment to that SIP before 2.2
+   begins.
 
 ---
 
