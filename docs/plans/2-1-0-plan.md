@@ -4,7 +4,8 @@
 recommendations in §5: "go ahead, record them and file the three issues". They are recorded there as
 rulings, and §3's three issues are filed (#1956, #1957, #1958). The plan merges after the set closes,
 since nothing merges while it is open (#1908 §7). Every issue it names was read in full, and its
-placement is quoted from the issue.
+placement is quoted from the issue. **Amended the same day** with the structure audit's ten issues
+(§2.8) and its three for 2.3 (§6), on the owner's word (§5 ruling 11).
 
 **What 2.1 is.** An odd minor, a stabilization release (CLAUDE.md, #281): **feature-free by rule.** It
 is the home for:
@@ -53,7 +54,9 @@ new issues placed since:
 - the memory SIP's 2.1 part (§2.6: #1964);
 - **the SIP-portfolio rulings' nine** (§2.7): the anti-drift guards #1969, #1979, #1980, #1981; SIP-0109's
   #1971, #1972, #1973; SIP-0101's #1974; SIP-0105's #1975, with #1967 and #1968;
-- the 2.0 set's findings so far (§4 step 1: #1961, #1962).
+- the 2.0 set's findings so far (§4 step 1: #1961, #1962);
+- **the structure audit's ten** (§2.8): two latent defects (#1982, #1983) and eight structural issues
+  (#1984–#1991).
 
 #1756 is the crew's, and #1039 rides any release.
 
@@ -153,7 +156,7 @@ and the ruling places it here. Filed as **#1964**.
 ### 2.7 From the SIP-portfolio rulings (2026-10-04)
 
 The owner ruled on the read-only audit of every accepted, proposed and implemented SIP
-(`sips/PORTFOLIO.md`, PR #1970): "I accept all your other recommendations to keep SIPs current,
+(the SIP portfolio, PR #1970): "I accept all your other recommendations to keep SIPs current,
 reflecting what gets delivered, and where the work is targeted". He also asked how to prevent the
 drift the audit found.
 
@@ -173,6 +176,51 @@ drift the audit found.
 
 **The anti-drift four lead,** with #1956, before 2.1 ships any SIP part: this line is the first to be
 held to the ledgers.
+
+### 2.8 From the structure audit (2026-10-04)
+
+A read-only audit of `src/` (99k lines) and `adapters/` (28k) checked for best practice, drift, dead
+code and structure, with 2.x and 3.x in view. Every number below was measured on `b09883c9`. **What
+held:**
+- the 24 architecture guards;
+- no real `TODO` in source;
+- no blocking subprocess call in async code;
+- the route lanes, with zero recorded deviations.
+
+**What did not hold** is where no guard reaches.
+
+| issue | what | size | deploy |
+|---|---|---|---|
+| #1982 | **defect:** the sandbox service crashes at startup when its token is a `secret://` reference (`SecretManager()` with no provider). Latent: compose passes a literal. Found by the audit's mypy run | S | yes |
+| #1983 | **defect (plausible, not observed live):** a timed-out `npm` or test subprocess is killed without its children; 14 sites re-implement the timeout by hand. One bounded-run helper with a process-group kill | S | yes |
+| #1984 | **dead code, about 1,900 lines no composition root builds:** the in-process flow executor (and its 18 tests of a path production never runs), the SIP-0.8.8 task and agent services every agent constructs and never calls, the task registry port and its adapters, the health auth deps | M | yes, neutral |
+| #1985 | **the package root's eager import** makes any `squadops.*` import load ~144 modules (4–20 with it thinned), hiding the `capabilities` ↔ `cycles` graph behind 91 deferred imports. Thin the root and two package `__init__`s; a direction guard | M | yes, neutral |
+| #1986 | **three hand-assembled gate-decision recorders,** and `gate.decided` already has two shapes (keyed on the gate from the route, on the run from the machine paths). One recorder, before #1940 and #1708's auto tier add deciders | S–M | yes |
+| #1987 | **the executor's wiring:** dependencies pass through `**kwargs` and default to `None`, and `box_verdict=None` reads no box. Typed parameters; safety-relevant dependencies required (the 1.8.2 `task_timeout` treatment) | S | yes, neutral |
+| #1988 | **tooling:** ruff and mypy target Python 3.11 under a 3.12 project, `[tool.black]` is dead config, and mypy never runs (451 errors on one run, #1982 among them). 3.12 targets; mypy in CI as a ratchet | S–M | no |
+| #1989 | **the architecture map:** CLAUDE.md omits 9 of 25 core packages (`campaigns` among them) and names closed issues as open deviations; three architecture docs date from 2025. One overview with a two-sided guard, the #1969 pattern | S | no |
+| #1990 | **small duplicates:** CLI `_get_client` ×10, `_sha256` ×4, `_parse_str_list` ×3, the scaffold-integrity emitter ×2 (a 1.7.5 landmine never filed), and the unreadable-vault-ref rule ×5, silent where the rule is a warning | S | yes, neutral |
+| #1991 | **environment variables outside the config loader:** ~15 with no inventory, `LLM_MODEL` as a model selection path, `SQUADOPS_BASE_PATH` read around `PathResolver`. An inventory and a guard | S | yes, small |
+
+**Folded into existing issues, not filed:**
+- **#1976 (API contract hardening, 2.3):**
+  - the cycle list's documented N+1 (one query per cycle, 694 cycles today, and campaigns multiply them);
+  - the three per-router error-envelope builders;
+  - the plain-string error bodies left on the health, agent-status and auth routes;
+  - 500 responses that carry the exception's text.
+- **#1983:** the 14 subprocess sites.
+
+**Placed in 2.3, not here:** the structural batch (#1992, #1993, #1994; §6). Each is L or M–L and
+depends on #1985's direction guard.
+
+**Not worth doing, and why:**
+- **Blocking file reads in async code (43 sites):** KB-sized files on one box, and no stall has been
+  measured.
+- **Import time (168 ms):** irrelevant to long-running processes, and #1985 fixes it anyway.
+- **Regrouping `cycles/` (78 flat modules) for navigation alone:** only the moves with a
+  dependency-direction payoff earn their churn.
+- **The 307 broad `except` blocks:** mostly deliberate fail-open observability. The 25 silent ones were
+  read; the vault ones are #1990's.
 
 ---
 
@@ -216,7 +264,8 @@ Deploy-moving work batches into rebuilds, and each structural refactor gets a ba
      proposal was new behaviour only on paper. Same campaign and increment, version 2. Built with
      #1950, as one declaration.
 2. **The SIP record's guards** (#1969, #1979, #1980, #1981, #1967, #1968: tooling, no deploy), so every
-   later step updates the ledgers it touches. Then **the crew's tooling and the instruments, before
+   later step updates the ledgers it touches. **The audit's tooling rides with them:** #1988 (3.12 targets,
+   the mypy ratchet) and #1989 (the architecture overview and its guard). Then **the crew's tooling and the instruments, before
    anything they would measure:**
    - #1956 (the supervisor's instruments, tracked), #1959 (the increment replay) and #1960 (the
      per-increment scorecard);
@@ -230,7 +279,11 @@ Deploy-moving work batches into rebuilds, and each structural refactor gets a ba
    - #1957 and #1958 (tooling, no deploy);
    - #1964's inert recall port and its call site: a seam that answers empty, so nothing it touches
      changes behaviour;
-   - #1971, #1972 and #1975 (small, deploy-moving), and #1974 (a test).
+   - #1971, #1972 and #1975 (small, deploy-moving), and #1974 (a test);
+   - **the audit's defects and ground-clearing:** #1982 and #1983 (the two latent defects); #1984 (dead
+     code, behaviour-neutral) and then #1987 (the executor's typed wiring, which #1984's deletion
+     simplifies); **#1986 (one gate-decision recorder) lands before #1940** in this batch, so the supervisor's
+     authority arrives on one recording path.
 
    Then a rebuild, the regression pair, and the overlapping recovery diagnostics
    (`restart-at:at_proposal` for #1934). **The crew's first campaign can run on this deploy** (§2.0).
@@ -238,9 +291,11 @@ Deploy-moving work batches into rebuilds, and each structural refactor gets a ba
    with #1913). Each becomes a SIP amendment in the PR that implements it.
 5. **Verification gaps:** #1796, #1937 (reporting-only), #1824's attribution locus, #1469's
    per-module elements, and #1973 (a Next.js render profile, with #1950 and #1962), with a rebuild and
-   the regression pair.
-6. **Refactors, one per batch, each with its replay proof:** #414, then #567, then #316 (after its SIP
-   is accepted). Each gets a rebuild and the regression pair before the next begins.
+   the regression pair. **The audit's small consolidations ride here:** #1990 (duplicated helpers; adds
+   a warning where the vault rule was silent) and #1991 (the environment inventory and guard).
+6. **Refactors, one per batch, each with its replay proof:** #1985 first (the package imports and the
+   direction guard, so later refactors' import moves are visible), then #414, then #567, then #316 (after
+   its SIP is accepted). Each gets a rebuild and the regression pair before the next begins.
 7. **Generation quality:** #1031 and #1692's remainder. These change what the model is shown, so they
    go last and are read on the cut's evidence, not mixed into a refactor's batch.
 8. **The cut:** a regression set on both stacks, one campaign shakeout on the final deploy, and the
@@ -283,6 +338,15 @@ The supervisor recommended, and the owner agreed: "go ahead, record them and fil
       supervisor steers through notes and the objective's bounds. Changing that is a design change,
       2.2 at the earliest;
     - a ship's recorder inside SquadOps. It is the crew's (Mother), over SquadOps' API.
+11. **The structure audit's placements are adopted.** The owner, on the audit: "go ahead, file them and add
+    to the 2.1 plan, plus the 2.3 recommended items". Placed:
+    - **in 2.1:** #1982–#1991 (§2.8), sequenced in §4;
+    - **in 2.3:** #1992–#1994 (§6);
+    - **into #1976:** the small API items.
+
+    **The `capabilities` package keeps its name.** 1,209 import sites would move for no behaviour. 3.x's
+    bindable-competence work (Capability-Backed Agents) takes a distinct package, recorded in that SIP's
+    intake note.
 
 ## 6. What this plan does not decide
 
@@ -292,8 +356,11 @@ The supervisor recommended, and the owner agreed: "go ahead, record them and fil
 - **The line after 2.1**, ruled 2026-10-04 and recorded in the ROADMAP's horizon:
   - **2.2:** Cross-Cycle Memory, the line's only change to squad behaviour, with #1708's auto tier and
     escalation queue;
-  - **2.3:** Outcome Evaluation's reporting-only instruments, and the comms (#1977) and API-contract
-    (#1976) hardening;
+  - **2.3:** Outcome Evaluation's reporting-only instruments, the comms (#1977) and API-contract
+    (#1976) hardening, and **the structure audit's batch**, ahead of 2.4's executor-heavy feature work:
+    - the orchestration move out of `adapters/cycles` (#1992);
+    - the `stacks` extraction (#1993);
+    - the largest units split by the 1.7.5 method (#1994);
   - **2.4:** Outcome Evaluation's feature half, with #1966 and then #557, #949 and #950;
   - **2.6:** the squad-authored backlog (no SIP yet), and Test-First's greenfield gate (#1978);
   - **3.x:** the runtime-mode family (SIP-0088, 0090, 0091), duty work, and Capability-Backed Agents.
