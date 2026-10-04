@@ -1,17 +1,17 @@
 ---
 sip_uid: '17883224960412001'
-status: accepted
+status: implemented
 title: Scoped Code Revision
 author: SquadOps Architecture
 created_at: '2026-09-06T00:00:00Z'
 sip_number: 107
-updated_at: '2026-09-13T09:54:01.036245Z'
+updated_at: '2026-10-04T19:21:14.424078Z'
 ---
 # SIP-0107: Scoped Code Revision
 
 ## Status
 
-**Accepted** 2026-09-13, at design review with required revision. **Revision 4.**
+**Implemented:** promoted after the v2.0.0 tag (2026-10-04), with step 7, the flip, shipped in v2.0.0 (§46s, §46t). Accepted 2026-09-13, at design review with required revision. **Revision 4.**
 
 | Rev | Date | What changed |
 |---|---|---|
@@ -39,7 +39,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 |---|---|---|
 | precondition #1444 | **shipped** | v1.8.0 |
 | steps 1–6 (candidate identity → Next.js) | **shipped** | v1.8.0 (§46b–§46j) |
-| step 7: the flip | **shipped on main** → **2.0.0** | PR #1909 (§46s); not in v1.9.0 |
+| step 7: the flip | **shipped** | v2.0.0 (PR #1909, §46s) |
 | §39.8 N gate | **replaced by ruling** (N read as texture) | §46s |
 | §43.4 first-class `move` | not in 1.8 by ruling; on evidence later | §43.4 |
 | §20 on the qa re-take path | **placed** | 2.1.0, #1727 (ruled 2026-10-04: assert it; the transaction is the re-take plus the pass) |
@@ -47,7 +47,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | §15 scope requests and same-role regrant | **dropped** (§46t) | — |
 | the self-evaluation pass and re-take still accept a whole re-emission | scoped out of step 7 | §46s |
 
-**What closes this SIP:** **Promoted after the 2.0.0 tag** (step 7 ships there), with §46t (ruled 2026-10-04). #1727 (2.1.0) follows as a named amendment.
+**What closes this SIP:** **Promoted to implemented after the v2.0.0 tag (2026-10-04)**, with §46t's rulings. #1727 (2.1.0) follows as a named amendment to the implemented SIP, a text change and not a status change.
 
 ## Summary
 
