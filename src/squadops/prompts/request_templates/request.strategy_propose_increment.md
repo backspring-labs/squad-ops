@@ -1,6 +1,6 @@
 ---
 template_id: request.strategy_propose_increment
-version: "3"
+version: "4"
 required_variables:
   - objective_statement
   - objective_measurement
@@ -30,6 +30,13 @@ not trimmed):
 keeps passing unless you retire it, with a reason, and the supervisor rules on the retirement. A
 proposal that asserts one of them again adds nothing a test can fail on before the change:
 {{prior_criteria_lines}}
+
+**Each criterion you add names something the application does not do yet.** The evaluation runs its
+test against the accepted application before your change, and the test must fail there, then pass
+after it. A criterion the accepted application already meets cannot be proven, and the proposal is
+returned. The usual miss is the default case of the feature you add. For a capacity limit, "a run
+created without a capacity still accepts a tenth join" holds today, before any capacity exists, so it
+is not a criterion. "A third join to a run with capacity 2 is refused" is, because today it succeeds.
 {{supervisor_note_section}}
 {{abandoned_increment_section}}
 {{prd_section}}

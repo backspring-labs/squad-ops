@@ -446,6 +446,11 @@ Fifteen issues carry the title. Three are closed: #1728, #1802 and #1804.
    - **Fixed before registration, in rebuild 20.** The diagnostics that cover the window (the kill
      before promotion, the duplicate completion and the abort) re-run on it, and shakeout 8 is the
      exit run.
+   - **Rebuild 20** (`75a4b7b8`) re-ran the increment-leg diagnostics, 8 of 8. **Shakeout 8 on it was
+     stopped at its first gate** for **#1946**: the proposal prompt never stated that a new criterion
+     must fail on the accepted tree (§8.2), and two of three first proposals were returned for it.
+     Fixed in SIP-0109 §24aq before **rebuild 21**. Its overlapping diagnostic leg
+     (`restart-at:at_proposal`) re-runs on rebuild 21, and **shakeout 9** is the exit run.
    - **The original plan for this step, kept for the record:** shakeout 6 on rebuild 18, with the
      log archive beside it. At its first
    increment gate it reads #1802's live-lease proof (the quiet-box half ran on 2026-10-03), with the

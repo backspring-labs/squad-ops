@@ -2252,6 +2252,31 @@ when the squad authors its own backlog.
 by this change. #1803's recovery diagnostics, 12/12 on rebuild 18, stand for it: no restart,
 re-attach, kill or abort path changed. The exit shakeout re-runs on rebuild 19.
 
+### 24aq. The proposer is told the rule a new criterion is judged by (2026-10-04, §8.2, §9.1, #1946; found in the exit shakeouts)
+
+**What was enforced, and never said.** §8.2 requires every new criterion's test to fail on the
+accepted tree and pass on the candidate. The increment's evaluation enforces it as discrimination, and
+the supervisor's policy enforces it at the gate (#1908 §3a, "an observable a test could not check").
+The proposal prompt stated it only for frozen criteria (§24ap).
+
+**Seen live: two of the 2.0 shakeouts' three first proposals** carried a criterion the accepted app
+already met, each the default case of the feature it added:
+- shakeout 7's T2, "the second join to a capacity-2 run succeeds";
+- shakeout 8's T3, "a run without capacity takes a tenth join".
+
+Both were returned, and each version 2 dropped the criterion. A gate that polices a rule the author was
+never given is a missing derivation. In the counted set it would also have measured a prompt gap as
+the strategy role's proposal quality.
+
+**As built:** the request template (v4) states the rule, shown with the shape that missed: a criterion
+the accepted application already meets cannot be proven. "A run created without a capacity still
+accepts a tenth join" is the example of what is not a criterion, and "a third join to a run with
+capacity 2 is refused" the example of what is.
+
+**The deploy it lands on:** a prompt asset in the agent images, so it needs a rebuild. Its only overlap
+with a recovery diagnostic is the proposal run's content in `restart-at:at_proposal`, and that leg
+re-runs on the new deploy. Shakeout 8 was stopped for it, and shakeout 9 is the exit run.
+
 ---
 
 ## Revision history
