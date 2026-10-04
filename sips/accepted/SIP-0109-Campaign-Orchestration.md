@@ -92,8 +92,8 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 |---|---|---|
 | §18 steps 1–8 (control log through recovery diagnostics) | **shipped** | **v2.0.0**; the counted set read PASS (§24at) |
 | package renderings: the size bound and the digest's what-shipped and proposals sections | **shipped** | v2.0.0 (#1998) |
-| package renderings: the app's evolution with screenshots | **placed** | the v2.0.0 release package (cut step 7), #1710 |
-| package renderings: the squad's first pass | **unplaced**: who writes it is the owner's open question | #1710 |
+| package renderings: the app's evolution with screenshots | **shipped** | the v2.0.0 release package: campaign 2 at each of its four accepted trees (#1710, with #2000's capture fix) |
+| package renderings: the squad's first pass | **dropped** (the owner chose to drop it at the v2.0.0 cut, 2026-10-04; the digest and package carry the close) | #1710, closed |
 | the outer-loop runbook's second half | **shipped** | v2.0.0 (#1997, closed #1711) |
 | criterion files freeze rules the approved request never stated (the set's P9) | **placed** | 2.1.0, #1884 |
 | a proposal's PRD delta can state more than its manifest delta carries | **placed** | 2.1.0, #1995 |
@@ -2445,8 +2445,9 @@ were complete, and there was no owner action.
 **Open, each placed in the ledger above:**
 - **2.1.0:** #1824, #1884, #1934, #1950, #1961, #1962, #1995, the prior-cycle brief's remainder
   (#1692), #1940 (revises §24al), #1954, #1956, #1959, #1960, #1971, #1972, #1973;
-- **#1710's remainder:** the evolution screenshots, in the 2.0.0 release package, and the squad's
-  first pass, which is unplaced until the owner rules who writes it;
+- **#1710's remainder:** closed at the cut. The evolution screenshots are in the 2.0.0 release package,
+  and the squad's first pass is **dropped**: the owner chose to drop it at the cut, so the digest and
+  package carry a campaign's close;
 - **2.2.0:** #1708's auto-decision tier and escalation queue (outside this SIP's scope, §5).
 
 **Status: stays `accepted`.** CLAUDE.md's cut step 5: a phased SIP with open children stays accepted,

@@ -1,0 +1,1366 @@
+version: 2.0.0
+tag: v2.0.0
+previous_tag: v1.9.0
+date: '2026-10-04'
+commit: 962e62a90bc948bc0b785c04192097ec1cf878fa
+narrative: "**Campaign: the squad evolves one delivered app increment by increment,\
+  \ unattended between one\nsupervised gate per increment.** SIP-0109 (Campaign Orchestration),\
+  \ the 2.x line's headline. Plan:\n`docs/plans/2-0-0-plan.md` (rev 10). Record: `docs/plans/2-0-0-preregistration.md`\
+  \ §10.\n\n**The claim, measured on rebuild 22 (`b09883c9`, `dep_bb1eadeac4e7`):\
+  \ PASS.** Two pre-registered\ncampaigns ran group_run from a calibration cycle through\
+  \ three accepted increments each, with a\nsupervisor ruling each proposal through\
+  \ the interface and no owner action.\n- **Both campaigns completed by their objective**\
+  \ (§10 row 3). Every increment was built on the one\n  before it, and every earlier\
+  \ frozen criterion passed on each later increment.\n- **Every safety guarantee held\
+  \ in both:**\n  - no build without an approving ruling bound to its proposal version\
+  \ and accepted tree;\n  - no stale, conflicting or lost ruling;\n  - one cycle per\
+  \ launch intent;\n  - every promotion carries its whole tree (`tree_ref`) and its\
+  \ criteria's bundles;\n  - no launch beside a crew model.\n- **Both evidence packages\
+  \ were complete at close.** No escalation, no limit reached, no framework fix\n\
+  \  during the set.\n- **Five predictions held** (P1, P2, P3, P6, P7) and three were\
+  \ not exercised (P4, P5, P8), since no\n  increment failed. **P9 is falsified:**\
+  \ each approved request stated only its feature, but two\n  criterion files frozen\
+  \ at promotion add rules none stated (a tie order; a white-box store check).\n \
+  \ #1884 moves to 2.1.\n- **The reference scenario,** a fixed increment on a pinned\
+  \ baseline outside any campaign, gave the\n  same outcome before and after the two\
+  \ campaigns.\n- **The shakeout loop took ten campaigns.** The first four each found\
+  \ the next seam defect, and the\n  tenth found none on the registered deploy.\n\n\
+  **The campaign (SIP-0109).**\n- **The campaign object:** its lifecycle, control\
+  \ log and launch outbox, in Postgres, with\n  `/api/v1/campaigns`, the supervisor\
+  \ and triage roles, the `squadops campaigns` commands, and every\n  control-log\
+  \ row projected as an event and an audit record (#1808, #1809, #1815, #1816, #1838).\n\
+  - **The continuation decision:** §10's fourteen rows as a pure function; the completion\
+  \ hook that\n  hears a cycle end; the owner's word on a held or escalated action;\
+  \ the objective's measurement,\n  read so row 3 can end a campaign in success (#1825,\
+  \ #1834, #1835, #1907).\n- **The increment proposal and its gate:** a typed change\
+  \ request with its rails, written by the\n  strategy role's proposal run (#1818,\
+  \ #1820, #1821). At the increment gate the submission is\n  recorded, and the ruling\
+  \ is bound to the version and accepted tree, recorded before it acts\n  (#1828).\
+  \ A returned proposal is revised in a new run from the version it returned (#1830),\
+  \ and a\n  supervisor rules from the change request they reviewed (#1836). The proposal\
+  \ ledger and the\n  supervisor's classification (#1841); the ruling bound, recorded\
+  \ as it passes, for whoever holds the\n  seat (#1895, #1920).\n- **The brownfield\
+  \ increment cycle:** an approved increment binds its framing to the candidate\n\
+  \  manifest and frames only its approved change; its implementation starts from\
+  \ the accepted tree and\n  writes only the slots its change touches; each new criterion\
+  \ is proven in its own test file; the\n  increment ends in its evaluation, and an\
+  \ accepted one is promoted with its criteria frozen; every\n  declared route renders,\
+  \ read in the qa container (#1840, #1842–#1844, #1847–#1852, #1854).\n- **Accumulated\
+  \ acceptance:** the evaluator trees, verifier bundles and test identity; discrimination,\n\
+  \  frozen criteria and route rendering, executed on the stack's runner; frozen verifiers\
+  \ protected,\n  retired criteria leaving the frozen set, a replaced verifier frozen\
+  \ anew (#1822, #1823, #1839,\n  #1855, #1863).\n- **Repair and retry:** a rejected\
+  \ increment is repaired from its own candidate under its approved\n  plan; a retry\
+  \ reuses the increment's bound request, ruling, baseline and footprint; each is\
+  \ shown\n  the failed cycle's own record (the prior-cycle brief), and a proposal\
+  \ after an abandoned increment\n  is shown why it was abandoned (#1856, #1858, #1861,\
+  \ #1862).\n- **Recovery:** a cycle whose completion hook did not decide is re-heard\
+  \ at startup; a restart takes\n  up the campaign cycle it died inside; a task a\
+  \ restarted runtime asks for again is answered, not run\n  twice; the recovery diagnostics\
+  \ harness (#1860, #1923, #1924, #1932).\n- **The box lease and the quiet-box check:**\
+  \ stored, with its API, and refused at every launch path.\n  A run start waits for\
+  \ a quiet box as a launch does (#1829, #1915, #1931).\n- **Evidence:** a cycle's\
+  \ failure records persisted at its ending, and the attribution read from them;\n\
+  \  the package and morning digest materialized at close; what died with the container\
+  \ logs (the runs'\n  revision forms, each cycle's log window) kept (#1811, #1813,\
+  \ #1837, #1919). **After the set,** the\n  digest says what each increment shipped,\
+  \ how each proposal was ruled, and the package's size against\n  its bound (#1998).\n\
+  - **The reference scenario's build and proposal halves,** with a per-mechanism report\
+  \ and a typed\n  rating (#1853, #1879, #1882, #1896).\n- **Campaign definitions\
+  \ are tracked with their project,** each reconciled against the stored\n  campaign,\
+  \ and the records tarball carries the line's campaigns' outputs through the same\
+  \ scan\n  (#1942, #1953).\n- **The runbook:** running, supervising and recovering\
+  \ a campaign (#1904). After the set, it gained the\n  outer loop's second half and\
+  \ the approval boundary (#1997).\n\n**What the proposer is told, each from a shakeout's\
+  \ finding.** Each frozen criterion's assertion,\nnot only its id (#1939). The rule\
+  \ a new criterion is judged by: it must fail on the accepted tree\n(#1947). What\
+  \ an optional field left out comes back as on the stack (#1949). An increment's\
+  \ plan asks\nonly for tests of what the approved change states (#1886).\n\n**SIP-0107's\
+  \ flip** (step 7): a repair's whole re-emission of an offered file is refused (#1909),\n\
+  read on its checkpoint pair before registration (#1910).\n\n**Found by the shakeouts,\
+  \ each fixed and closed:**\n- the completion hook counts a cycle's stored usage\
+  \ instead of crashing on it (#1857);\n- the plan check judges only the workloads\
+  \ whose gate judges the plan (#1864);\n- an escalated campaign can be resumed with\
+  \ the owner's action (#1866);\n- an increment's plan authors are told which footprint\
+  \ files the scaffold writes (#1868);\n- an increment's framing runs the plan proposers\
+  \ (#1870);\n- the startup sweep skips a cycle that ended through the completion\
+  \ boundary (#1872);\n- an increment's proposers see every surface the merger does\
+  \ (#1874);\n- an increment builds on its candidate's frozen files, and request models\
+  \ take their entities' types\n  (#1876, #1877);\n- an increment's evaluation judges\
+  \ the candidate with its qa suites (#1880);\n- a question the accepted cycle's gate\
+  \ answered is not asked again (#1885);\n- an increment's accepted tree is the whole\
+  \ app, recorded at promotion (#1887);\n- the cycles list pages, and a status filter\
+  \ reads past the newest page (#1891);\n- a self-evaluation pass's edit keeps the\
+  \ type of the file it edits (#1897);\n- `contract_assertions_match` reads a reused\
+  \ name as its latest call (#1898);\n- an accepted repair proposes from the manifest\
+  \ it ran against (#1902);\n- an increment's plan gate reads the seed forwarded to\
+  \ its framing (#1905);\n- a qa test task declares the suite it authors (#1912);\n\
+  - the frozen-statement lookup is a function of stored data alone (#1943).\n\n**Carried\
+  \ in from 1.9, landed.**\n- The two jsdom-safe forms are shown to the develop and\
+  \ qa roles (#1785).\n- A manifest route's parameter renders in the stack's router\
+  \ syntax (#1794).\n- An endpoint error the contract does not define is unwinnable\
+  \ (#1819).\n- The technical design shows the revision request it is handed (#1845).\n\
+  - One rule for the files a run delivered (#1833).\n- A qa re-take keeps the suite\
+  \ files it leaves alone (#1755).\n- The replay keeps each repair's responses (#1788).\n\
+  - `campaign:` and `deploy:` Prefect flow-run tags (#1728).\n\n**Records.**\n- Every\
+  \ accepted SIP carries a delivery ledger, and `sips/PORTFOLIO.md` tracks overlap\
+  \ and\n  reconciliation (#1970).\n- SIP-Outcome-Evaluation is proposed (#1963).\n\
+  - The 2.1.0 plan is adopted (#1955).\n\n**Not landed, stated.**\n- **#1884 stays\
+  \ open:** the set read P9 falsified. The fix is on the qa author's side, or in what\
+  \ the\n  evaluation freezes (2.1.0).\n- **The set's other findings,** #1961, #1962\
+  \ and #1995, are placed in 2.1.0. Each was caught by the\n  supervisor at the gate,\
+  \ and none was fixed during the set.\n- **#1708's auto-decision tier and escalation\
+  \ queue** are 2.2.0.\n- **#1710's squad first pass** is not built: who writes it\
+  \ is the owner's open question.\n- **#1824:** §10's retry rows stay unreachable,\
+  \ since no cycle produces an environment-attributed\n  rejection (2.1.0).\n- **SIP-0109's\
+  \ unbuilt items** are placed: #1971, #1972, #1973 (2.1.0).\n\n**Drift from the registered\
+  \ deploy, declared.** After the set: the digest's renderings (#1998, digest\ntext\
+  \ only, with no verdict, gate or package identity), the runbook (#1997), the records\
+  \ tool (#1953),\nand docs and SIP records. None of the set's evidence depends on\
+  \ them."
+pull_requests:
+- number: 1999
+  title: 'chore(release): 2.0.0 - Campaign'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-04'
+- number: 1998
+  title: 'feat(campaigns): the morning digest says what each increment shipped, how
+    each proposal was ruled, and the package''s size against its bound'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-04'
+- number: 1997
+  title: 'docs(ops): the campaign runbook''s second half - fix, redeploy, the next
+    campaign, the approval boundary'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1711
+  merged_at: '2026-10-04'
+- number: 1996
+  title: 'docs(plans): the 2.0 counted set''s readings - PASS; P9 falsified, so the
+    criterion-file finding moves to 2.1'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-04'
+- number: 1953
+  title: 'feat(release): the records tarball carries the line''s campaigns'' outputs,
+    through the same scan (#1941 item 6)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1941
+  merged_at: '2026-10-04'
+- number: 1963
+  title: 'sips: SIP-Outcome-Evaluation (proposed) - outcome evidence beside output
+    evidence, from the owner''s idea'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-04'
+- number: 1955
+  title: 'docs(plans): the 2.1.0 plan - ADOPTED: hardening after Campaign, the optimization
+    crew''s enablers first, 23 issues'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-04'
+- number: 1970
+  title: 'sips: delivery ledgers in every accepted SIP, sips/PORTFOLIO.md, and the
+    ledger-and-intake rule'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-04'
+- number: 1908
+  title: 'docs(plans): the 2.0 campaign set''s pre-registration - REGISTERED on rebuild
+    22'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-04'
+- number: 1952
+  title: 'examples(campaigns): provenance regenerated - shakeouts 8-10 and the rebuild
+    20-22 diagnostics reconciled (#1941)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-04'
+- number: 1951
+  title: 'docs(plans): 2.0 plan ledger - #1938 #1943 #1946 #1948 closed; #1950 placed
+    in 2.1.0'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-04'
+- number: 1949
+  title: 'fix(campaigns): the proposer is told what an optional field left out comes
+    back as - the stack''s frozen null (SIP-0109 §24ar)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1948
+  merged_at: '2026-10-04'
+- number: 1947
+  title: 'fix(campaigns): the proposer is told the rule a new criterion is judged
+    by - it must fail on the accepted tree'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1946
+  merged_at: '2026-10-04'
+- number: 1945
+  title: 'examples(campaigns): shakeout 8''s definition, shakeout 7''s objective and
+    policy exactly'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-04'
+- number: 1944
+  title: 'fix(campaigns): the frozen-statement lookup is a function of stored data
+    alone, so a promotion''s replay computes the same binding'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1943
+  merged_at: '2026-10-04'
+- number: 1942
+  title: 'feat(campaigns): campaign definitions tracked with their project, each reconciled
+    against the stored campaign'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-04'
+- number: 1939
+  title: 'fix(campaigns): a proposal is told what each frozen criterion asserts, not
+    only its id'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1938
+  merged_at: '2026-10-03'
+- number: 1936
+  title: 'docs(sip-0109): the box lease''s deployed proof read, both halves; §24an
+    proven live'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-03'
+- number: 1935
+  title: 'docs(2.0): #1934 placed - a proposal task is not recognised by the restart
+    replay'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-03'
+- number: 1933
+  title: 'fix(scripts): the kill before promotion reads what was committed while the
+    process is down'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-03'
+- number: 1932
+  title: 'fix(campaigns): a restart leaves its runs for the re-attach, and a task
+    a restarted runtime asks for again is answered, not run twice'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1929
+  merged_at: '2026-10-03'
+- number: 1931
+  title: 'fix(campaigns): a run start refuses what a launch refuses - it waits for
+    a quiet box, not only the lease (owner''s ruling)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1928
+  merged_at: '2026-10-03'
+- number: 1926
+  title: 'docs(2.0): plan §3.6 amended by the owner''s ruling, and the diagnostics
+    run before the exit shakeout'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-03'
+- number: 1927
+  title: 'fix(scripts): the recovery diagnostics log in before every CLI call, by
+    the driver''s rule'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-03'
+- number: 1925
+  title: 'fix(scripts): the release captures read the main checkout''s vault and name
+    the browser''s own error page'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1793
+  merged_at: '2026-10-03'
+- number: 1924
+  title: 'feat(scripts): the campaign recovery diagnostics harness - a restart at
+    each state, the kill before promotion, each a pure verdict over the records'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-03'
+- number: 1923
+  title: 'fix(campaigns): a restart takes up the campaign cycle it died inside - its
+    gate open again, its run resumed'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1922
+  merged_at: '2026-10-03'
+- number: 1920
+  title: 'feat(campaigns): one supervisor''s ruling bound, whoever holds the seat'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-03'
+- number: 1807
+  title: 'docs(2.0): the validation plan — verification matrix, recovery diagnostics,
+    reference scenario inputs'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-03'
+- number: 1921
+  title: 'docs(2.0): the flip''s checkpoint pair read (SIP-0107 §46s), and plan rev
+    10 - §5a current'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1788
+  merged_at: '2026-10-03'
+- number: 1919
+  title: 'feat(campaigns): what died with the logs is kept - the runs'' revision forms,
+    and each cycle''s log window'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-03'
+- number: 1918
+  title: 'feat(campaigns): a plan gate waiting on a design question is bounded as
+    the increment gate is'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-03'
+- number: 1917
+  title: 'docs(plans): 2.0 plan rev 9 - every 2.0 issue''s status after the shakeout
+    loop, what remains, and proposed re-placements'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1799
+  merged_at: '2026-10-03'
+- number: 1915
+  title: 'feat(campaigns): the box lease, enforced - stored, its API, and refused
+    at every launch path'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1802
+  merged_at: '2026-10-03'
+- number: 1914
+  title: 'fix(plans): a qa.test task declares the suite it authors - a suiteless one
+    is refused at both plan gates and at dispatch'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1912
+  merged_at: '2026-10-03'
+- number: 1910
+  title: 'plans(verification-sets): the flip''s checkpoint pair - React and Next.js
+    regression configs with the flip loaded'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-03'
+- number: 1909
+  title: 'feat(repair): SIP-0107 step 7, the flip — a repair''s whole re-emission
+    of an offered file is refused'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-03'
+- number: 1907
+  title: 'feat(campaigns): the objective''s measurement has a reader, so row 3 can
+    end a campaign in success'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-03'
+- number: 1906
+  title: 'fix(cycles): an increment''s plan gate reads the seed forwarded to its framing'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1905
+  merged_at: '2026-10-03'
+- number: 1904
+  title: 'docs(ops): the campaign runbook — running, supervising and recovering a
+    campaign'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-03'
+- number: 1901
+  title: 'fix(cycles): the cycles list pages, and a status filter reads past the newest
+    page'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1891
+  merged_at: '2026-10-03'
+- number: 1903
+  title: 'fix(campaigns): an accepted repair proposes from the manifest it ran against'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1902
+  merged_at: '2026-10-03'
+- number: 1900
+  title: 'fix(checks): contract_assertions_match reads a reused name as its latest
+    call'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1898
+  merged_at: '2026-10-03'
+- number: 1896
+  title: 'feat(campaigns): the reference scenario''s proposal half, proposed and rated'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-03'
+- number: 1899
+  title: 'fix(handlers): a self-evaluation pass''s edit keeps the type of the file
+    it edits'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1897
+  merged_at: '2026-10-03'
+- number: 1895
+  title: 'feat(campaigns): the increment gate''s ruling bound is recorded as it passes'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-03'
+- number: 1894
+  title: 'fix(campaigns): a question the accepted cycle''s gate answered is not asked
+    again'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1885
+  merged_at: '2026-10-03'
+- number: 1893
+  title: 'fix(campaigns): the per-mechanism report names which increment it reads'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-03'
+- number: 1892
+  title: 'feat(replay): a sample keeps each repair''s responses, their parse and usage'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-03'
+- number: 1890
+  title: 'fix(qa): a re-take keeps the suite files it leaves alone'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1755
+  merged_at: '2026-10-03'
+- number: 1889
+  title: 'feat(cycles): campaign: and deploy: Prefect flow-run tags'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1728
+  merged_at: '2026-10-03'
+- number: 1888
+  title: 'fix(campaigns): an increment''s accepted tree is the whole app, recorded
+    at promotion'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1887
+  merged_at: '2026-10-03'
+- number: 1886
+  title: 'fix(campaigns): an increment''s plan asks only for tests of what the approved
+    change states'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-03'
+- number: 1883
+  title: 'docs(sip-0109): §24ab — the builder still assembles an increment''s build'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-03'
+- number: 1882
+  title: 'test(campaigns): the per-mechanism report, on the first evaluated increment''s
+    record'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-03'
+- number: 1881
+  title: 'fix(campaigns): an increment''s evaluation judges the candidate with its
+    qa suites'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1880
+  merged_at: '2026-10-03'
+- number: 1879
+  title: 'feat(campaigns): the reference scenario''s per-mechanism report, read from
+    the record — SIP-0109 §11a'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-03'
+- number: 1878
+  title: 'fix(campaigns): an increment builds on its candidate''s frozen files, and
+    request models take their entities'' types'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1876
+  - 1877
+  merged_at: '2026-10-02'
+- number: 1875
+  title: 'fix(campaigns): an increment''s proposers are shown every increment surface
+    the merger is'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1874
+  merged_at: '2026-10-02'
+- number: 1873
+  title: 'fix(api): the startup sweep skips a cycle that ended through the completion
+    boundary'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1872
+  merged_at: '2026-10-02'
+- number: 1871
+  title: 'fix(campaigns): an increment''s framing runs the plan proposers — both campaign
+    profiles name their contributors'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1870
+  merged_at: '2026-10-02'
+- number: 1869
+  title: 'fix(campaigns): an increment''s plan authors are told which footprint files
+    the scaffold writes, and are not offered a builder'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1868
+  merged_at: '2026-10-02'
+- number: 1867
+  title: 'fix(cli): campaigns resume can name the owner''s action — an escalated campaign
+    can be resumed'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1866
+  merged_at: '2026-10-02'
+- number: 1865
+  title: 'fix(cycles): the plan check judges only the workloads whose gate judges
+    the plan — an increment''s proposal is ruled, not refused'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1864
+  merged_at: '2026-10-02'
+- number: 1863
+  title: 'feat(campaigns): a replaced verifier is frozen anew from the candidate —
+    SIP-0109 §8.1'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1862
+  title: 'feat(campaigns): a proposal after an abandoned increment is shown why it
+    was abandoned — SIP-0109 §7, row 13'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1861
+  title: 'feat(campaigns): a retry or repair is shown the failed cycle''s own record
+    — the prior-cycle brief'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1860
+  title: 'feat(campaigns): a cycle whose completion hook did not decide is re-heard
+    at startup — SIP-0109 §12a'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1858
+  title: 'feat(campaigns): a rejected increment is repaired from its own candidate
+    under its approved plan — SIP-0109 §10a'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1859
+  title: 'fix(campaigns): the completion hook counts a cycle''s stored usage instead
+    of crashing on it'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1857
+  merged_at: '2026-10-02'
+- number: 1856
+  title: 'feat(campaigns): retry cycles reuse the increment''s bound request, ruling
+    and baseline (SIP-0109 §10a)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1853
+  title: 'feat(campaigns): the brownfield reference scenario — a fixed, pinned increment
+    (SIP-0109 #1804)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1855
+  title: 'feat(campaigns): frozen verifiers are protected, and retired criteria leave
+    the frozen set (SIP-0109 §19 items 7, 12e)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1854
+  title: 'feat(campaigns): every declared route renders, read in the qa container
+    (SIP-0109 step e, part 3)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1852
+  title: 'feat(campaigns): an accepted increment is promoted and its criteria frozen
+    (SIP-0109 step e, part 2)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1851
+  title: 'feat(campaigns): an increment''s implementation ends in its evaluation (SIP-0109
+    step e, part 1)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1850
+  title: 'feat(campaigns): each new criterion is proven in its own test file (SIP-0109
+    step e, part 0)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1849
+  title: 'fix(cycles): the plan gate judges a plan against the cycle the run saw'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1848
+  title: 'feat(campaigns): an increment''s producers write only the slots its change
+    touches (SIP-0109 step c2)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1829
+  title: 'feat(campaigns): the box lease and the quiet-box check — decisions and reads
+    (SIP-0109 #1802)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1847
+  title: 'feat(campaigns): an increment''s framing frames its approved change request,
+    and its seed binds every workload (SIP-0109 step d)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1846
+  title: 'fix(framing): the technical design shows the revision request it is handed'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1845
+  merged_at: '2026-10-02'
+- number: 1844
+  title: 'feat(campaigns): the campaign-increment profile — a campaign''s increments
+    reach their ruling (SIP-0109 step b)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1843
+  title: 'feat(campaigns): an increment''s plan covers only its approved change —
+    taught, then enforced at the plan gate — SIP-0109 #1705, step d'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1842
+  title: 'feat(campaigns): an increment''s implementation starts from the accepted
+    tree — SIP-0109 #1705, step c1'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1840
+  title: 'feat(campaigns): an approved increment binds its framing to the candidate
+    manifest — SIP-0109 #1705, step a (draft)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1841
+  title: 'feat(campaigns): the proposal ledger, read from the control log, and the
+    supervisor''s classification — SIP-0109 §9.4'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1839
+  title: 'feat(campaigns): an increment''s acceptance, executed on the stack''s runner
+    — SIP-0109 step 4, part b'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1838
+  title: 'feat(campaigns): every control-log row projected — the non-route writers
+    through a projecting registry — SIP-0109 step 6'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1837
+  title: 'feat(campaigns): the evidence package and morning digest, materialized at
+    a campaign''s close — SIP-0109 step 7, part a'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1836
+  title: 'feat(cli): rule the increment gate from the change request you reviewed
+    — squadops runs gate … --change-request'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1835
+  title: 'feat(campaigns): the owner''s word — a held action resumed as recorded,
+    an escalation ruled by its named action — SIP-0109 step 5, part e'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1834
+  title: 'feat(campaigns): a campaign hears its cycle end — promotion, the counters,
+    the decision''s row — SIP-0109 step 5, part d-ii'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1833
+  title: 'fix(cycles): one rule for the files a run delivered — the assembly and the
+    screenshots no longer take rejected repairs or failed emissions'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1832
+  merged_at: '2026-10-02'
+- number: 1831
+  title: 'feat(campaigns): a campaign starts — its calibration cycle launched by the
+    cycle-create path — SIP-0109 step 5, part d-i'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1830
+  title: 'feat(campaigns): a returned proposal is revised in a new proposal run, from
+    the version it returned — SIP-0109 step 5, part b-iii'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1828
+  title: 'feat(campaigns): the increment gate — the proposal submitted, the ruling
+    bound and recorded first — SIP-0109 step 5, part b-ii'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1827
+  title: 'feat(campaigns): the campaign''s accepted tree, moved only by a promotion
+    — SIP-0109 step 5, part b-i'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1826
+  title: 'test(cli): the integration test''s vault lives in a temporary directory,
+    not the live one'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1825
+  title: 'feat(campaigns): the continuation decision — §10''s fourteen rows, pure
+    — SIP-0109 step 5, part a'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1823
+  title: 'feat(campaigns): an increment''s acceptance — discrimination, frozen criteria,
+    route rendering — SIP-0109 step 4, decisions'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1822
+  title: 'feat(campaigns): the evaluator trees, verifier bundles and test identity
+    — SIP-0109 step 3'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1821
+  title: 'fix(campaigns): the proposal''s accepted manifest travels in its persisted
+    inputs, not through a vault the agent lacks'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1820
+  title: 'feat(campaigns): the proposal run — strategy.propose_increment, its prompt,
+    the proposal workload — SIP-0109 step 2, part b'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1819
+  title: 'fix(manifest gates): an endpoint error the contract does not define is unwinnable'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1817
+  merged_at: '2026-10-02'
+- number: 1818
+  title: 'feat(campaigns): the typed change request and its rails — SIP-0109 step
+    2, part a'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1816
+  title: 'feat(cli,campaigns): squadops campaigns commands, and each control-log row
+    projected as an event — SIP-0109 §13'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1815
+  title: 'feat(campaigns): /api/v1/campaigns with the owner''s supervisor and triage
+    roles — SIP-0109 §13'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1814
+  title: 'fix(scripts): the snapshot and the backfill refuse evidence they could not
+    read'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1813
+  title: 'feat(assessment): a cycle''s failure records persisted at its ending, and
+    the attribution read from them — SIP-0109 step 1a, part 2'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1812
+  title: 'fix(prompts): show the two jsdom-safe forms — a form''s values from state
+    or FormData, a route-param view mounted under its route'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1785
+  merged_at: '2026-10-02'
+- number: 1811
+  title: 'refactor(assessment): failure_events(outcome, evidence), the one failure
+    producer, with the attribution computed from it — SIP-0109 step 1a, part 1'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1810
+  title: 'docs(verification sets): the 2.0 regression roll''s config — the 1.9 React
+    roll''s, uncounted, with loaded checks for what the first 2.0 deploy adds'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1809
+  title: 'feat(campaigns): campaigns in Postgres, a cycle''s campaign columns, idempotent
+    creation by launch, and the launcher — SIP-0109 step 1, part B'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1808
+  title: 'feat(campaigns): the campaign object, its lifecycle, the control log and
+    the launch outbox — SIP-0109 step 1, part A'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1719
+  title: 'docs(roadmap reconciliation): the squad takes the first pass; the crew triages
+    between campaigns, through the CLI'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1798
+  title: 'docs(2.0): the 2.0.0 plan draft and the Campaign SIP''s revision 2 — for
+    review'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1805
+  title: 'docs(sips): Cross-Cycle Memory revision 3 — the v4 draft''s additions, reconciled
+    (split from #1798)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-02'
+- number: 1797
+  title: 'fix(scaffold): a manifest route''s parameter renders in the stack''s router
+    syntax, so React''s detail route matches'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1794
+  merged_at: '2026-10-02'
+- number: 1795
+  title: 'docs(release): the v1.9.0 release package, its records, and roll 4''s rounds
+    in order'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-01'
+sip_moves:
+- sip: SIP-0104-Deterministic-Verification-Scaffolding-with
+  from: accepted
+  to: implemented
+- sip: SIP-0109-Campaign-Orchestration
+  from: proposed
+  to: accepted
+- sip: SIP-Outcome-Evaluation
+  from: null
+  to: proposed
+- sip: SIP-Verification-Yield
+  from: null
+  to: proposed
+sip_amendments:
+- sip: SIP-0083-Multi-Run-Cycle-Orchestration
+  status: implemented
+- sip: SIP-0088-Agent-Runtime-Modes
+  status: accepted
+- sip: SIP-0089-Agent-Runtime-State
+  status: implemented
+- sip: SIP-0090-Agent-Embodiment-Substrate
+  status: accepted
+- sip: SIP-0091-Duty-Durability-via-Temporal
+  status: accepted
+- sip: SIP-0092-Implementation-Plan-Improvement
+  status: accepted
+- sip: SIP-0093-Multi-Role-Plan-Authoring
+  status: accepted
+- sip: SIP-0096-Verification-Evidence-Integrity
+  status: implemented
+- sip: SIP-0101-Cycle-Replay-Harness
+  status: accepted
+- sip: SIP-0102-Ephemeral-Application-Sandbox
+  status: accepted
+- sip: SIP-0103-Squad-Authored-Manifest
+  status: implemented
+- sip: SIP-0105-Stack-Blueprint-Contract
+  status: accepted
+- sip: SIP-0107-Scoped-Code-Revision
+  status: accepted
+- sip: SIP-0108-Cycle-Evaluation-Scorecard
+  status: implemented
+- sip: SIP-API-Contract-Hardening
+  status: proposed
+- sip: SIP-Agent-Comms-Delivery-Guarantees
+  status: proposed
+- sip: SIP-Agent-Embodiment-Runtime
+  status: proposed
+- sip: SIP-Campaign-Self-Improvement-and-Test-Bay-Requirements
+  status: proposed
+- sip: SIP-Capability-Backed-Agents
+  status: proposed
+- sip: SIP-Continuum-Runtime-Console
+  status: proposed
+- sip: SIP-Cross-Cycle-Memory
+  status: proposed
+- sip: SIP-Cycle-Request-Profile-Naming-Taxonomy
+  status: proposed
+- sip: SIP-Design-Decision-Register
+  status: proposed
+- sip: SIP-Duty-Continuity-and-Handoff-Ledger
+  status: proposed
+- sip: SIP-Edge-Deployment-Profile
+  status: proposed
+- sip: SIP-LLM-Emission-Contracts
+  status: proposed
+- sip: SIP-Post-Retest-Governance-Acceptance-Review
+  status: proposed
+- sip: SIP-Skill-Layer-For-Capabilities
+  status: proposed
+- sip: SIP-Test-First-Verification
+  status: proposed
+cycles:
+- cycle_id: cyc_035199bf8994
+  role: counted
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:regex_match
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_e004181bf968
+  role: counted
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:assertion_kinds_match
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 3
+- cycle_id: cyc_b10247505291
+  role: counted
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:assertion_kinds_match
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  - vc-probe-runs-seed
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 5
+- cycle_id: cyc_0a8a683749a8
+  role: counted
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:frontend_compiles
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  - vc-probe-runs-seed
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 3
+- cycle_id: cyc_6d6b0d848596
+  role: counted
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_359d44170982
+  role: counted
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:assertion_kinds_match
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 4
+- cycle_id: cyc_5c6ad38860f3
+  role: counted
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:assertion_kinds_match
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 3
+- cycle_id: cyc_683247b84a40
+  role: counted
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  - vc-probe-runs-seed
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 3
+screenshots:
+- campaign-2-calibration-the-run-list-in-the-order-the-runs-were-created.png
+- campaign-2-increment-1-capacity-the-backend-refuses-joins-once-full-so-the-list-is-unchanged.png
+- campaign-2-increment-2-datetime-sort-the-same-runs-now-listed-by-date.png
+- campaign-2-increment-3-seed-the-list-gains-its-seed-sample-run-button.png
+- prefect-flow-run-campaign-2-increment-3-framed-built-and-accepted-with-no-correction-round.png
+showcase:
+  cycle_id: cyc_683247b84a40
+  reason: campaign 2 shown at each of its four accepted trees, calibration through
+    this third increment, so the page reads as the app's evolution; the counted set's
+    second campaign, every increment accepted on its first framing
+  role: counted
