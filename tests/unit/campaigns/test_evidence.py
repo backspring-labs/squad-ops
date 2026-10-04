@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
@@ -15,7 +16,7 @@ import pytest
 from adapters.cycles.memory_campaign_registry import MemoryCampaignRegistry
 from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
 from squadops.campaigns.continuation import ContinuationDecision, CycleEnding, PendingAction
-from squadops.campaigns.evidence import CycleRecords, digest, package
+from squadops.campaigns.evidence import CycleRecords, digest, package, serialized, size_bound
 from squadops.campaigns.launch_requests import start_transition
 from squadops.campaigns.models import CampaignState
 from squadops.campaigns.progress import (
@@ -213,3 +214,66 @@ async def test_an_escalated_campaign_tells_the_owner_what_to_rule():
     )
 
     assert "The campaign is escalated (§10 row 9). Resume it naming an action, or abort it." in text
+
+
+#: The 2.0 counted set's campaign 2 package, exactly as stored at its close (art_032ca67041af).
+REAL_PACKAGE = (
+    Path(__file__).resolve().parents[2] / "fixtures" / "campaigns" / "package-cmp_97a4a15f360f.json"
+)
+
+
+def _real_package() -> dict:
+    return json.loads(REAL_PACKAGE.read_text())
+
+
+def test_the_digest_says_what_each_increment_shipped_and_how_each_proposal_was_ruled():
+    """Read from a real package. Bug caught: the 2.0 set's own digests named each accepted increment
+    by its tree hash alone (983 bytes, no feature, no returned proposal), so a morning reader had to
+    open the 110 KB package to learn what shipped or what was sent back."""
+    text = digest(_real_package())
+
+    assert (
+        "- calibration `cyc_6d6b0d848596`: tree `8b03e89612ce`, 26 files\n"
+        "- increment `cyc_359d44170982`: tree `1235e7c9db22`, 30 files\n"
+        "  - froze T1: A run created with capacity 2 returns that capacity in the response\n"
+        "  - froze T2: A third join to a run with capacity 2 is refused with capacity_reached\n"
+        "  - froze T3: A run created without a capacity field returns capacity as null\n"
+    ) in text
+    assert (
+        "- `prop_450986544201` v1: returned_for_revision; classified `ambiguous_manifest_delta`\n"
+        "- `prop_450986544201` v2: approved\n"
+        "- `prop_a9de76329e08` v1: approved\n"
+        "- `prop_af32087c5b6e` v1: approved\n"
+    ) in text
+
+
+def test_a_version_at_the_gate_with_no_ruling_reads_as_waiting():
+    """Bug caught: a submitted version read as ruled, or left out, while the gate still waits."""
+    doc = _real_package()
+    doc["control_log"] = [r for r in doc["control_log"] if r["seq"] <= 7]  # up to v1's submit
+
+    text = digest(doc)
+
+    assert "- `prop_450986544201` v1: awaiting a ruling\n" in text
+    assert "- `prop_450986544201` v2" not in text
+
+
+@pytest.mark.parametrize("max_cycles, over", [(9, False), (1, True)])
+def test_a_package_past_its_size_bound_is_named_and_kept_whole(max_cycles, over):
+    """Bug caught: a size bound that is only a number. The real package (110 KB, four cycles) sits
+    inside its nine-cycle bound and outside a one-cycle one, and over the bound the digest says so
+    while the package keeps every record."""
+    doc = _real_package()
+    doc["campaign"]["policy"]["max_cycles"] = max_cycles
+
+    text = digest(doc)
+
+    bound = size_bound(doc["campaign"]["policy"])
+    assert f"**Size:** 110 KB of its {bound // 1024} KB bound ({max_cycles} cycles at most)" in text
+    assert ("over its" in text) is over
+
+
+def test_the_size_read_is_the_stored_form():
+    """Bug caught: the digest measuring a different serialization than ``materialize_package``
+    stores, so the reported size and the bound check drift from the bytes a reader downloads."""
+    assert serialized(_real_package()) == REAL_PACKAGE.read_bytes()
