@@ -1096,6 +1096,39 @@ class TestFrozenModelOptionalFields:
             del sys.modules[mod.__name__]
         assert (run_event.distance, run_event.pace_target, run_event.route_notes) == (None,) * 3
 
+    def test_the_declared_unset_optional_response_is_what_the_frozen_models_return(self):
+        """#1948: the stack tells a campaign proposal what an optional field a request left out
+        comes back as. Bug caught: the declaration drifting from the bytes it describes (a
+        default added to the branch above, a model that drops None), so the proposal is told a
+        convention the build no longer has, and a criterion written to it fails every correct
+        build. Built as a route builds it: the entity from its required fields only, serialized
+        as the response is."""
+        import json
+        import sys
+        import types
+
+        manifest = _group_run_manifest()
+        entity = next(e for e in manifest.entities if e.name == "RunEvent")
+        left_out = [f.name for f in entity.fields if not f.required and not f.has_default]
+        models = _by_name(expand(manifest))["backend/models.py"]
+        mod = types.ModuleType("frozen_models_1948")
+        sys.modules[mod.__name__] = mod
+        try:
+            exec(compile(models, "backend/models.py", "exec"), mod.__dict__)
+            body = json.loads(
+                mod.RunEvent(
+                    id="r1", title="t", datetime="2026-08-01T08:00:00", location="here"
+                ).model_dump_json()
+            )
+        finally:
+            del sys.modules[mod.__name__]
+        declared = scaffold.unset_optional_response_for(stack_fastapi_react.STACK_NAME)
+        assert left_out == ["distance", "pace_target", "route_notes"]
+        assert {name: json.dumps(body[name]) for name in left_out} == dict.fromkeys(
+            left_out, declared
+        )
+        assert declared == "null"
+
 
 class TestNonBlankRequestFields:
     """#593: the emitted request models must actually enforce the constraint —

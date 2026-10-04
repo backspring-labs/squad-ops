@@ -33,6 +33,7 @@ from squadops.campaigns.change_request import (
 from squadops.campaigns.prior_cycle import brief_lines
 from squadops.capabilities.handlers.base import HandlerEvidence, HandlerResult
 from squadops.capabilities.handlers.planning.base import _PlanningTaskHandler
+from squadops.capabilities.scaffold import unset_optional_response_for
 from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
@@ -108,6 +109,14 @@ class StrategyProposeIncrementHandler(_PlanningTaskHandler):
             return self._failure(start_time, inputs, str(e))
 
         variables = _render_variables(block, proposal_context)
+        unset = unset_optional_response_for(proposal_context.expected_stack)
+        if unset:
+            # #1948: the stack's frozen models decide what an optional field the request left
+            # out returns; shakeout 9's first proposal asserted it absent, against a frozen null.
+            section = await renderer.render(
+                "request.proposal_unset_optional", {"unset_value": unset}
+            )
+            variables["unset_optional_section"] = section.content
         prd = str(inputs.get("prd") or "").strip()
         if prd:
             # The objective points into the product's requirements (its expansion scope, say);

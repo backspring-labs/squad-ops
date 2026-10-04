@@ -197,6 +197,31 @@ async def test_the_proposal_is_told_a_new_criterion_must_fail_before_the_change(
     assert "the test must fail there, then pass" in prompt
 
 
+@pytest.mark.parametrize(
+    ("stack", "told"),
+    [
+        ("fullstack_fastapi_react", True),  # frozen ``<type> | None = None``: null
+        ("nextjs_ts", False),  # declares none: its ``field?: type`` is not FastAPI's null
+        ("no_such_stack", False),  # not registered: told nothing, and the render still runs
+    ],
+)
+async def test_the_proposal_is_told_what_an_optional_field_left_out_returns(stack, told):
+    """#1948, through the real render. Bugs caught: the stack's frozen convention never reaching
+    the proposer (shakeout 9's first proposal asserted "no capacity key" where FastAPI's frozen
+    models return null, so a correct build would have failed it), or one stack's convention told
+    to another stack's proposal."""
+    ctx = _ctx(_fenced(_REFERENCE), _fenced(_REFERENCE))
+    inputs = _inputs()
+    inputs["resolved_config"]["build_profile"] = stack
+
+    await StrategyProposeIncrementHandler().handle(ctx, inputs)
+
+    prompt = _prompts(ctx)[0]
+    assert ("An optional field a request leaves out comes back as `null`" in prompt) is told
+    assert ('`"capacity": null`' in prompt) is told
+    assert "{{unset_optional_section}}" not in prompt
+
+
 async def test_a_refusal_comes_back_with_every_reason_and_the_revision_is_judged_afresh():
     """Bug caught: the model revising blind — told only that it failed — or the second attempt
     judged against the first attempt's verdict."""
