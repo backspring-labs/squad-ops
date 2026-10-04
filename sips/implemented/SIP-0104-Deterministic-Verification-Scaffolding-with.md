@@ -1,15 +1,15 @@
 ---
 title: Deterministic Verification Scaffolding with Semantic Fill Slots
-status: accepted
+status: implemented
 author: jladd
 created_at: '2026-08-13T00:00:00Z'
 sip_number: 104
-updated_at: '2026-08-14T08:49:42.757556Z'
+updated_at: '2026-10-04T17:56:52.584980Z'
 ---
 # SIP-0104: Deterministic Verification Scaffolding with Semantic Fill Slots
 
 ## Status
-Accepted (rev 3 — §10.4 Stage-1e baseline amended at Phase 0; rev 2 design-review feedback in PR #885)
+Implemented: promoted at the v2.0.0 cut's SIP sweep (2026-10-04), by §13c's reading. Accepted at rev 3 (§10.4 Stage-1e baseline amended at Phase 0; rev 2 design-review feedback in PR #885).
 
 **Targets:** acceptance decision in the open, against the 1e ledger through roll 17 — per the §10.4 amendment (2026-08-14); implementation in whatever feature window the owner assigns. The change is qa-surface-scoped and stack-opt-in (§8), so it can ride as an even-minor feature or land per-stack.
 **Builds on:** SIP-0100 (scaffold ownership, fill slots, the frozen harness — this SIP is its test-side counterpart), SIP-0098 (verification contract; shells derive from the same manifest facts as the behavioral probes), #818 (criteria packs — the per-stack seam, including its asymmetric-default ruling), #877 (execution-model guidance — the experiment whose measured result motivates this), #866 (context completeness), #884 (the cross-role suite rewrite this SIP's frozen spine bounds).
@@ -30,7 +30,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | stack #1 parity (#1122) | **dropped** (closed `not_planned` 2026-09-29, the owner's 1.9.0 ruling) | — |
 | §4.3's "any role", re-read by SIP-0107 §46d item 4 (a dev edit to slot bodies is dropped) | **recorded** (§13c) | SIP-0107 §46d |
 
-**What closes this SIP:** **Ready to promote:** §13c records everything the promotion needed (ruled 2026-10-04). It is promoted at the 2.0 cut's SIP sweep.
+**What closes this SIP:** **Closed: promoted to implemented at the v2.0.0 cut's SIP sweep (2026-10-04),** by §13c's reading. Nothing remains placed. The §10.3 economics metric is unverified and is not a promotion criterion.
 
 ## 1. Abstract
 

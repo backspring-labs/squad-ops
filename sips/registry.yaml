@@ -930,12 +930,12 @@ sips:
 - sip_uid: null
   sip_number: 104
   title: Deterministic Verification Scaffolding with Semantic Fill Slots
-  path: sips/accepted/SIP-0104-Deterministic-Verification-Scaffolding-with.md
-  status: accepted
+  path: sips/implemented/SIP-0104-Deterministic-Verification-Scaffolding-with.md
+  status: implemented
   author: jladd
   approver: jladd
   created_at: '2026-08-13T00:00:00Z'
-  updated_at: '2026-08-14T08:49:42.787944Z'
+  updated_at: '2026-10-04T17:56:52.604718Z'
 - sip_uid: null
   sip_number: 105
   title: Stack Blueprint Contract

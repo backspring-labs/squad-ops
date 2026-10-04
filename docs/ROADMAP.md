@@ -23,7 +23,41 @@ Each even-minor consumer sits strictly behind the release that earns its trust: 
 
 ## Release Timeline
 
-### v1.9.0 (2026-10-01) — Current — the completion-boundary release
+### v2.0.0 (2026-10-04) — Current — Campaign
+
+**v2.0.0 — Campaign** (SIP-0109), the 2.x line's headline: the inner of two loops. A campaign opens
+with a calibration cycle, then evolves that app increment by increment:
+- the strategy role proposes a typed change request;
+- a supervisor rules it at one gate;
+- the increment is framed and built from the accepted tree, then evaluated;
+- an accepted increment is promoted with its criteria frozen, and every later increment must pass them.
+
+Repair and retry cycles are briefed on the cycle before. A restart takes up the cycle it died inside.
+A durable evidence package and a morning digest close the campaign.
+
+**Measured on rebuild 22 (`b09883c9`): PASS.** Two pre-registered campaigns each ran a calibration and
+three accepted increments, with every earlier frozen criterion passing on each. Both packages were
+complete at close, there was no owner action, and every safety guarantee held:
+- no build without a bound approving ruling;
+- no stale or lost ruling;
+- one cycle per launch;
+- every promotion whole;
+- no launch beside a crew model.
+
+**Predictions:** P1, P2, P3, P6 and P7 held; P4, P5 and P8 were not exercised. **P9 is falsified:**
+two criterion files frozen at promotion add rules no approved request stated. The reference scenario
+read the same before and after the campaigns.
+
+**Not landed, stated:**
+- **#1884** (P9's finding) and the set's other findings (#1961, #1962, #1995) are **2.1.0**;
+- **#1708's auto tier and escalation queue** are **2.2.0**;
+- **#1710's squad first pass** waits on the owner's question of who writes it.
+
+SIP-0104 is promoted at this cut. SIP-0109 stays accepted, with its 2.1 parts placed (§24at).
+
+Record: `docs/plans/2-0-0-preregistration.md` §10.
+
+### v1.9.0 (2026-10-01) — the completion-boundary release
 
 **v1.9.0 — the completion-boundary release**, the close of the 1.x line. The executor's run spine
 is extracted behind one named completion boundary, `CycleCompletion`, which every way a cycle ends
@@ -731,7 +765,6 @@ The following areas are identified for future work but do not block 1.0 readines
 | **SIP-0093** | Multi-Role Plan Authoring | stays accepted (93.4 + §5.8 merge rules 2–5 + two required tests remain); #194/#949/#950 at design review |
 | **SIP-0101** | Cycle Replay Harness | stays accepted (minimum slice shipped in 1.5); its records are an input to the 1.8 scorecard's benchmark registry — a consumer, not a completion |
 | **SIP-0102** | Ephemeral Application Sandbox (1.4 floor shipped as the v1.4.0 S-lane headline) | migration steps 3–7 open (in-cycle routing, clean-room verdicts, #306 retirement, golden-path validation); **#598's rendered packaging is a §4.2 consequence landing in 1.8's prelude**; step 5 is named absent by SIP-0108, whose clean-room indicators are unaskable until it lands |
-| **SIP-0104** | Deterministic Verification Scaffolding with Semantic Fill Slots | shipped in v1.6.0; stack #1 parity (#1122) closed not-planned 2026-09-29, so that hold no longer applies. **Ready to promote with an amendment**, after the owner reads §10.2 (`sips/PORTFOLIO.md` Q15) |
 | **SIP-0105** | Stack Blueprint Contract | stays accepted — the blueprint rewrite after #1131 open; **amended by #598 in 1.8** (the Dockerfile and nginx config become a rendering of the stack declaration) |
 | **SIP-0107** | Scoped Code Revision | **the 1.8 Lane M headline** — accepted at its design review 2026-09-13 with required revision (rev 4), rolled out by the 1.8 plan §3.3, #1444 first — steps 1–6 in 1.8.0, the default flip in 1.8.1 by design (SIP-0107 §46a) |
 | **SIP-0109** | Campaign Orchestration | **the 2.0 headline**: accepted 2026-10-01 (rev 6); §18 steps 1–8 built; the 2.0 counted set registered 2026-10-04 (#1908). Its delivery ledger is in the SIP. Promotion at or after the 2.0 cut (`sips/PORTFOLIO.md` Q17) |
@@ -799,10 +832,10 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Stats
 
-*As of 2026-09-24 (v1.8.1):*
+*As of 2026-10-04 (v2.0.0):*
 
-- **Framework version**: 1.9.0
-- **SIPs** (2026-10-04): 67 implemented, 11 accepted (SIP-0088, 0090–0093, 0101, 0102, 0104, 0105, 0107, 0109), 20 deprecated, plus the unnumbered proposals indexed in `sips/PORTFOLIO.md`
+- **Framework version**: 2.0.0
+- **SIPs** (2026-10-04, after the 2.0 sweep): 68 implemented, 10 accepted (SIP-0088, 0090–0093, 0101, 0102, 0105, 0107, 0109), 20 deprecated, plus the unnumbered proposals indexed in `sips/PORTFOLIO.md`
 - **Tests**: 10,000+ passing in the regression suite (all of `tests/unit`, #1316)
 - **Python source**: ~109,000 lines measured 2026-09-17 (`src/` ~84,000 + `adapters/` ~25,000; ~168,000 test lines; ~144,000 lines of Markdown under `docs/` and `sips/`)
 - **~6 months** from initial repo (2025-09-20) to 1.0.0 release (2026-03-10)
