@@ -90,9 +90,13 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 
 | part | status | where |
 |---|---|---|
-| §18 steps 1–8 (control log through recovery diagnostics) | **shipped on main** → **2.0.0** (untagged; the counted set is running) | §24a–§24ar |
-| package renderings (size bound, screenshots, the squad's first pass) | **placed** | the 2.0 cut, #1710 |
-| the outer-loop runbook's second half | **placed** | the 2.0 cut, #1711 |
+| §18 steps 1–8 (control log through recovery diagnostics) | **shipped** | **v2.0.0**; the counted set read PASS (§24at) |
+| package renderings: the size bound and the digest's what-shipped and proposals sections | **shipped** | v2.0.0 (#1998) |
+| package renderings: the app's evolution with screenshots | **placed** | the v2.0.0 release package (cut step 7), #1710 |
+| package renderings: the squad's first pass | **unplaced**: who writes it is the owner's open question | #1710 |
+| the outer-loop runbook's second half | **shipped** | v2.0.0 (#1997, closed #1711) |
+| criterion files freeze rules the approved request never stated (the set's P9) | **placed** | 2.1.0, #1884 |
+| a proposal's PRD delta can state more than its manifest delta carries | **placed** | 2.1.0, #1995 |
 | rows 10–11 reachable live (environment attribution) | **placed** | 2.1.0, #1824 |
 | proposal tasks re-run on re-attach (random ids) | **placed** | 2.1.0, #1934 |
 | the stack's frozen conventions told to the proposer (Next.js; the rest) | **placed** | 2.1.0, #1950, #1962 |
@@ -112,7 +116,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | the acquire race window; re-attach with the process up; a task re-asked after an agent restart | **not built, by design** (recorded) | §24ai, §24am, §24ao |
 | §24b–§24i, marked "implementer's reading, not yet ruled" | **ratified as written** (§24as) | — |
 
-**What closes this SIP:** After the 2.0 cut, with a consolidated status amendment replacing the 2.0 plan's §5a as the permanent record. §24b–§24i are ratified, and every unplaced row is placed or ruled (§24as, 2026-10-04).
+**What closes this SIP:** Its 2.1.0 rows closing, #1710's remainder ruled, and #1708's remainder shipped in 2.2.0 or ruled out of scope. §24at, the consolidated status at the v2.0.0 cut, replaces the 2.0 plan's §5a as the permanent record. Promotion follows at the sweep after the last placed row closes.
 
 ## 1. Summary
 
@@ -2414,3 +2418,43 @@ new deploy. Shakeout 9 does not satisfy the exit rule, and shakeout 10 is the ex
 - The quiet-box check and the lease gate beside the cycle-create preflight, and at the run dispatch.
 - CLI: `squadops campaigns create|show|list|log|pause|resume|abort|lease`; rulings through
   `squadops runs gate`.
+
+### 24at. Consolidated status at the v2.0.0 cut (2026-10-04)
+
+**What changed.** This is the permanent record of where SIP-0109 stands at its first release. It
+replaces the 2.0 plan's §5a, which the cut supersedes.
+
+**Shipped in v2.0.0:**
+- §18's eight steps, as §24a–§24ar record them: the campaign object and control log; the continuation
+  decision; the increment proposal and its gate; the brownfield increment cycle; accumulated
+  acceptance; repair, retry and the prior-cycle brief; recovery and its diagnostics; the box lease;
+  the evidence package and digest; the reference scenario;
+- after the set, the runbook's second half (#1997) and the digest's renderings (#1998).
+
+**Measured** (`docs/plans/2-0-0-preregistration.md` §10, rebuild 22 `b09883c9`): two pre-registered
+campaigns, each a calibration and three accepted increments. Both completed by row 3 with every
+earlier frozen criterion passing on each later increment. Every safety guarantee held, both packages
+were complete, and there was no owner action.
+- P1, P2, P3, P6 and P7 held; P4, P5 and P8 were not exercised.
+- **P9 is falsified:** two criterion files frozen at promotion add rules no approved request stated.
+  The supervisor cannot see a criterion file at the gate, because it is authored after approval (§9.2).
+  #1884 carries it to 2.1.0.
+- §10's rows reached live: 3, 4, 8 and 9 in the shakeouts (the 2.0 plan §5a.1's #1800 row), and 5
+  and 7 in the set. Rows 10–11 stay unreachable (#1824).
+
+**Open, each placed in the ledger above:**
+- **2.1.0:** #1824, #1884, #1934, #1950, #1961, #1962, #1995, the prior-cycle brief's remainder
+  (#1692), #1940 (revises §24al), #1954, #1956, #1959, #1960, #1971, #1972, #1973;
+- **#1710's remainder:** the evolution screenshots, in the 2.0.0 release package, and the squad's
+  first pass, which is unplaced until the owner rules who writes it;
+- **2.2.0:** #1708's auto-decision tier and escalation queue (outside this SIP's scope, §5).
+
+**Status: stays `accepted`.** CLAUDE.md's cut step 5: a phased SIP with open children stays accepted,
+with the gap named. The gap is the 2.1.0 rows above.
+
+**Evidence.** The pre-registration's §10 readings; the control logs of `cmp_c4b81554bd59` and
+`cmp_97a4a15f360f`; the ledger above.
+
+**Who ruled it.** The supervisor, as the owner's delegate under the 2.0 standing authority, read the
+set by the pre-registration's frame. The cut itself (the tag, the Release and the records upload) is
+the owner's consolidated approval.
