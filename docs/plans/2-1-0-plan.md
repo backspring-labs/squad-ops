@@ -171,6 +171,10 @@ Deploy-moving work batches into rebuilds, and each structural refactor gets a ba
    - **#1961**: the proposal rails accept a feature whose derived footprint holds no source file (an
      empty manifest delta), so no build could satisfy it. Found at campaign 1's increment 2 gate; the
      supervisor's gate caught it, so nothing was fixed during the set.
+   - **#1962**: the proposer is told one of the stack's frozen conventions (#1948), not the rest. A
+     required request string is already trimmed and refused blank (#593), so a name-normalization
+     proposal was new behaviour only on paper. Same campaign and increment, version 2. Built with
+     #1950, as one declaration.
 2. **The crew's tooling and the instruments, before anything they would measure:**
    - #1956 (the supervisor's instruments, tracked), #1959 (the increment replay) and #1960 (the
      per-increment scorecard);
