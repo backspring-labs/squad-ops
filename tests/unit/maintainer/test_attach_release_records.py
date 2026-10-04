@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -233,3 +234,128 @@ def test_a_line_with_no_records_attaches_nothing(tmp_path, monkeypatch):
 def test_a_version_that_is_not_semver_is_refused():
     with pytest.raises(SystemExit, match="MAJOR.MINOR.PATCH"):
         attach.line_of("1.8")
+
+
+# --- #1941 item 6: the line's campaigns' outputs ride the same tarball and the same scan ---
+
+_SINCE = "2026-10-01T19:05:17-04:00"  # the previous tag's commit
+_UNTIL = "2026-10-06T12:00:00-04:00"  # this tag's commit
+
+
+@pytest.fixture
+def campaigns(box, monkeypatch):
+    """Provenance naming the line's campaign, one before the window and one after it, one the
+    line names with nothing on this box; and an operator's campaign that no provenance names."""
+    from datetime import datetime
+
+    def entry(cid, created):
+        return {"campaign_id": cid, "created": created, "definitions": []}
+
+    _write(
+        box / "examples/03_group_run/campaigns/provenance.yaml",
+        yaml.safe_dump(
+            {
+                "campaigns": [
+                    entry("cmp_line", "2026-10-04T08:58:32.439865+00:00"),
+                    entry("cmp_prior", "2026-09-30T10:00:00+00:00"),
+                    entry("cmp_next", "2026-10-07T10:00:00+00:00"),
+                    entry("cmp_gone", "2026-10-03T10:00:00+00:00"),
+                ]
+            }
+        ),
+    )
+    runs = box / "var" / "campaigns"
+    _write(runs / "cmp_line" / "logs" / "cyc_1" / "runtime-api.log", "a window\n")
+    _write(runs / "cmp_line" / "proofs" / "1802-live-lease-proof.log", "5 of 5\n")
+    _write(runs / "cmp_line.archive.log", "cyc_1: 10 bytes\n")
+    _write(runs / "cmp_prior" / "logs" / "x.log", "an earlier line's\n")
+    _write(runs / "cmp_next" / "logs" / "x.log", "a later line's\n")
+    _write(runs / "cmp_operator" / "logs" / "y.log", "an operator's own\n")
+    window = (datetime.fromisoformat(_SINCE), datetime.fromisoformat(_UNTIL))
+    monkeypatch.setattr(attach, "tag_window", lambda _main, _tag: window)
+    return box
+
+
+def test_the_lines_campaigns_are_carried_and_every_other_is_left_and_named(
+    campaigns, tmp_path, monkeypatch, capsys
+):
+    """Entered at ``main``, preview then upload. Bugs this catches: the 2.0 set's evidence left
+    on one box (the tarball took only ``var/verification_sets/``); another line's campaign
+    carried; an operator's campaign published because it sits in the same directory; and a
+    campaign the line names silently missing."""
+    approved = _approved(campaigns, tmp_path, monkeypatch)
+    out = capsys.readouterr().out
+    monkeypatch.setattr(
+        attach.subprocess, "run", lambda cmd, **k: subprocess.CompletedProcess(cmd, 0, "", "")
+    )
+
+    assert _run(campaigns, tmp_path, "--upload", "--expect-sha256", approved) == 0
+
+    import tarfile
+
+    with tarfile.open(tmp_path / "squadops-1.8.1-records.tar.gz") as tar:
+        names = sorted(n.removeprefix("squadops-1.8.1-records/") for n in tar.getnames())
+    assert [n for n in names if n.startswith("var/campaigns/")] == [
+        "var/campaigns/cmp_line.archive.log",
+        "var/campaigns/cmp_line/logs/cyc_1/runtime-api.log",
+        "var/campaigns/cmp_line/proofs/1802-live-lease-proof.log",
+    ]
+    package = yaml.safe_load((campaigns / "site/content/releases/v1.8.1/package.yaml").read_text())
+    assert package["records"]["campaigns"] == ["cmp_line"]
+    assert package["records"]["files"] == 5
+    assert "campaigns carried: 1 (cmp_line)" in out
+    assert "no outputs on this box: cmp_gone" in out
+    assert "not carried, named by no provenance.yaml: cmp_operator" in out
+
+
+def test_a_credential_in_a_campaigns_log_refuses_the_upload(
+    campaigns, tmp_path, monkeypatch, capsys
+):
+    """Bug this catches: the campaigns' log windows (container logs, the likeliest place for a
+    token) added to a public tarball outside the scan."""
+    jwt = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJhZG1pbiJ9.c2lnbmF0dXJlLXZhbHVl"
+    _write(campaigns / "var/campaigns/cmp_line/logs/cyc_1/runtime-api.log", f"ok\nBearer {jwt}\n")
+    monkeypatch.setattr(attach.subprocess, "run", lambda *a, **k: pytest.fail("uploaded"))
+
+    assert _run(campaigns, tmp_path, "--upload", "--expect-sha256", "any") == 1
+
+    out = capsys.readouterr().out
+    assert "var/campaigns/cmp_line/logs/cyc_1/runtime-api.log:2  jwt" in out
+    assert jwt not in out
+
+
+def test_the_lines_window_runs_from_the_previous_tag_by_version_order(tmp_path):
+    """Read from real tags. Bugs this catches: the previous tag taken by string order (v1.10.0
+    after v1.9.0 is the version that follows; lexically it sorts before), or a records attach
+    before the tag that names the window's end."""
+    from datetime import datetime
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def git(*args, date=None):
+        env = {"GIT_COMMITTER_DATE": date, "GIT_AUTHOR_DATE": date} if date else {}
+        subprocess.run(
+            ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t", *args],
+            check=True,
+            capture_output=True,
+            env={**os.environ, **env},
+        )
+
+    git("init", "-q")
+    for version, date in [
+        ("v1.9.0", "2026-09-01T10:00:00+00:00"),
+        ("v1.10.0", "2026-09-20T10:00:00+00:00"),
+    ]:
+        git("commit", "-q", "--allow-empty", "-m", version, date=date)
+        git("tag", version)
+
+    since, until = attach.tag_window(repo, "v1.10.0")
+
+    assert (since, until) == (
+        datetime.fromisoformat("2026-09-01T10:00:00+00:00"),
+        datetime.fromisoformat("2026-09-20T10:00:00+00:00"),
+    )
+    assert attach.tag_window(repo, "v1.9.0")[0] is None
+    with pytest.raises(SystemExit, match="tag v2.0.0 not found"):
+        attach.tag_window(repo, "v2.0.0")

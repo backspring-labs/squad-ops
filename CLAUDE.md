@@ -328,7 +328,11 @@ roll, shakeout, diagnostic and window record) are write-once evidence whose only
 one box. The 1.7.4 and 1.7.5 records survived only because two worktrees were checked before
 removal. The repository is public, so the Release is too: the tarball is scanned for the
 deploy's secret values, secret-named `.env` and container values, key prefixes and JWTs first,
-and a hit refuses the upload by file and line (decision 7 of the 1.8.2 plan).
+and a hit refuses the upload by file and line (decision 7 of the 1.8.2 plan). **It carries the
+line's campaigns too** (#1941 item 6): `var/campaigns/<campaign>/` and its archive log, for every
+campaign a tracked `provenance.yaml` names created since the previous tag. So regenerate
+`provenance.yaml` after the line's last campaign closes, before the attach. A campaign no
+provenance names is an operator's: it is named and left.
 
 **Nothing else merges between opening the release PR and merging it.** The release branch
 is cut from main at some commit; anything merged after that still lands in the tag, because
