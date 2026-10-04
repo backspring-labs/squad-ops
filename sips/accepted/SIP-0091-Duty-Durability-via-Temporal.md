@@ -19,6 +19,19 @@ updated_at: '2026-04-25T17:57:14.005001Z'
 
 ---
 
+## Delivery ledger (current as of 2026-10-04)
+
+Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
+
+| part | status | where |
+|---|---|---|
+| Phase 1: `DutyDurabilityPort`, run model, idempotency log | **unplaced** (no code; its "v1.6" target passed) | none |
+| Phase 2: Temporal adapter | **unplaced** | none |
+| Phase 3: schedules and recurrence | **unplaced** | none |
+| Phase 4: production hardening | **unplaced** | none |
+
+**What closes this SIP:** Every phase shipped, or the SIP deprecated (`accepted → deprecated` is a valid transition). Note: SIP-0109 met campaign durability with a Postgres control log, launch outbox and sweep (§12b, §24ae, §24am), not Temporal; this SIP is scoped to Duty mode. **Pending:** portfolio Q7, Q8.
+
 ## 1. Summary
 
 This SIP introduces **Temporal as a narrowly-scoped durability layer for Duty mode** — and only Duty mode.

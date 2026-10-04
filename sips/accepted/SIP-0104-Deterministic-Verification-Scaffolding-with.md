@@ -14,6 +14,24 @@ Accepted (rev 3 — §10.4 Stage-1e baseline amended at Phase 0; rev 2 design-re
 **Targets:** acceptance decision in the open, against the 1e ledger through roll 17 — per the §10.4 amendment (2026-08-14); implementation in whatever feature window the owner assigns. The change is qa-surface-scoped and stack-opt-in (§8), so it can ride as an even-minor feature or land per-stack.
 **Builds on:** SIP-0100 (scaffold ownership, fill slots, the frozen harness — this SIP is its test-side counterpart), SIP-0098 (verification contract; shells derive from the same manifest facts as the behavioral probes), #818 (criteria packs — the per-stack seam, including its asymmetric-default ruling), #877 (execution-model guidance — the experiment whose measured result motivates this), #866 (context completeness), #884 (the cross-role suite rewrite this SIP's frozen spine bounds).
 
+## Delivery ledger (current as of 2026-10-04)
+
+Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
+
+| part | status | where |
+|---|---|---|
+| P0: §10.4 amended; acceptance | **shipped** | 2026-08-14 (PR #893) |
+| P1: scaffold emission, frozen/mutable contract | **shipped** | v1.6.0 (PR #894) |
+| P2: executable artifact, validity gate | **shipped** | v1.6.0 (PR #895) |
+| P3–P4: fill-mode `qa.test`, region enforcement, adversarial producers | **shipped** | v1.6.0 (`docs/plans/sip-0104-p6-window-record.md`: "fill protocol is 60 for 60") |
+| P5: per-layer evidence counts | **shipped** | v1.6.x (`scaffold_evidence.py`, #951) |
+| P6: the N=6 window (§10.2) and the §13a audit gate | **ruled complete** 2026-08-17; rolls 1–5 accepted, roll 6 rejected on a fill literal and the repair path, not the suite mechanics | the window record l.100-118, 234 |
+| §10.3 economics metric | *unverified* | — |
+| stack #1 parity (#1122) | **dropped** (closed `not_planned` 2026-09-29, the owner's 1.9.0 ruling) | — |
+| §4.3's "any role", re-read by SIP-0107 §46d item 4 (a dev edit to slot bodies is dropped) | **recorded only in SIP-0107** | — |
+
+**What closes this SIP:** **Ready to promote** once an amendment records the v1.6.0 ship, the window's reading against §10.2/§13a/§13b, #1122's drop and §46d's re-reading. **Pending:** the owner's reading of §10.2 (portfolio Q15).
+
 ## 1. Abstract
 
 **SquadOps should not spend LLM inference on deterministic test mechanics the framework can derive, verify, and freeze. The framework owns the proven mechanical spine; the agent owns the remaining semantic uncertainty. Proven semantic patterns can subsequently be extracted into deterministic verification primitives (§9).**

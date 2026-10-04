@@ -13,6 +13,23 @@ updated_at: '2026-07-25T11:34:32.304767Z'
 **Created:** 2026-07-25
 **Revision:** 3 (review round 1; FAY-enforcement correction + implementation order)
 
+## Delivery ledger (current as of 2026-10-04)
+
+Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
+
+| part | status | where |
+|---|---|---|
+| slice 1: evidence rails (`ReplayProvenance`) | **shipped** | v1.5.0 (PR #735) |
+| slice 2: boundary-checkpoint retention | **shipped** | v1.5.0 (PR #736) |
+| slice 3: mechanism + strict-equality gate | **shipped** | v1.5.0 (PR #737) |
+| Prefect replay tags | **shipped** | v1.9.0 (#1722, PR #1743) |
+| slice 4: per-boundary compatibility policy (§3.5) | **unplaced** | none |
+| slice 5: console visibility (AC 9) | **unplaced** | none |
+| §4.1: the first aggregator excludes replays, with a test | **possibly unmet**: SIP-0108's benchmark registry has no replay exclusion test (*unverified* whether declared membership discharges it) | none |
+| 1.9's finding (replay restores only checkpoints before any correction ids; the driver cannot launch or read a replay) | **unrecorded** here | `docs/plans/1-9-0-plan.md:66-70` |
+
+**What closes this SIP:** Slices 4–5 shipped or dropped, §4.1 discharged, and 1.9's finding amended. **Pending:** portfolio Q19.
+
 ## 1. Abstract
 
 A cycle re-derives every phase from scratch, including phases that have been stable for

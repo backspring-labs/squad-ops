@@ -60,6 +60,26 @@ deferred until a second stack exists — see the §4.2 status note),
 SIP-Edge-Deployment-Profile (remote sandbox adapter target),
 SIP-Capability-Backed-Agents (toolchain-as-capability, 2.0 arc).
 
+## Delivery ledger (current as of 2026-10-04)
+
+Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
+
+| part | status | where |
+|---|---|---|
+| step 1: execution service, workspace provisioning, Docker adapter | **shipped** | v1.4.0 |
+| step 2: pinned canonical environment image | **shipped** | v1.4.0 |
+| step 4: preflight (doctor category) | **shipped** | v1.4.0 |
+| post-hoc clean-room audit | **shipped** | v1.4.0 (`scripts/dev/audit_delivered_app.py`) |
+| §11a stack #2 in the sandbox; §11b packaging rendered | **shipped, amended** | 2026-08-15; v1.8.0 |
+| step 3: route in-process exec sites through typed ops | **unplaced** (its "1.5/1.6" target passed) | none |
+| step 5: clean-room verdicts at finalization | **unplaced**; SIP-0108's clean-room indicators wait on it (`cycle_assessment.py:324-325`) | none |
+| step 6: retire the qa-Node branch | **unplaced** | none |
+| step 7: golden-path live validation (incl. #419) | **unplaced** | none |
+| §5 deferrals: browser probe, probe-as-peer, `expose_application` | **unplaced** | none |
+| SIP-0109's in-agent evaluation and route rendering (in the qa container; runtime-api cannot reach the sandbox) | **a divergence from §1, recorded only in SIP-0109** (§24n, §24p) | — |
+
+**What closes this SIP:** Steps 3, 5, 6, 7 shipped or dropped, and SIP-0109's in-agent path ruled by amendment. **Pending:** portfolio Q20.
+
 ## 1. Abstract
 
 Build, test, and verification execution currently runs **in-process, inside

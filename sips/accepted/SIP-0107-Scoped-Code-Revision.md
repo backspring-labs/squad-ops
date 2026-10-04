@@ -31,6 +31,24 @@ extraction, before the feature's first PR (§3.2, §38). The 1.7.3 plan's earlie
 beside #1213 and #1176 is superseded: #1213 closes with §38 step 4, and #1176 is an
 experiment in that line's idle box, not this SIP's.
 
+## Delivery ledger (current as of 2026-10-04)
+
+Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
+
+| part | status | where |
+|---|---|---|
+| precondition #1444 | **shipped** | v1.8.0 |
+| steps 1–6 (candidate identity → Next.js) | **shipped** | v1.8.0 (§46b–§46j) |
+| step 7: the flip | **shipped on main** → **2.0.0** | PR #1909 (§46s); not in v1.9.0 |
+| §39.8 N gate | **replaced by ruling** (N read as texture) | §46s |
+| §43.4 first-class `move` | not in 1.8 by ruling; on evidence later | §43.4 |
+| §20 on the qa re-take path | **placed** | 2.1.0, #1727 (ruled 2026-10-04: assert it; the transaction is the re-take plus the pass) |
+| §9.4 whole-file fallback with authority | **no producer; unplaced** | §46s says so; no issue |
+| §15 scope requests and same-role regrant | **not built; unplaced; unamended** (§46a–§46s never mention it) | none |
+| the self-evaluation pass and re-take still accept a whole re-emission | scoped out of step 7 | §46s |
+
+**What closes this SIP:** After the 2.0.0 tag, with §15 and §9.4 each built or dropped by amendment; #1727 can follow as a named amendment. **Pending:** portfolio Q16 (the recommendation: drop §15, declare §9.4 without a producer).
+
 ## Summary
 
 An agent asked to change one small part of an existing artifact should not be responsible

@@ -84,6 +84,36 @@ The revision history at the end has the earlier placements.
 
 ---
 
+## Delivery ledger (current as of 2026-10-04)
+
+Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
+
+| part | status | where |
+|---|---|---|
+| §18 steps 1–8 (control log through recovery diagnostics) | **shipped on main** → **2.0.0** (untagged; the counted set is running) | §24a–§24ar |
+| package renderings (size bound, screenshots, the squad's first pass) | **placed** | the 2.0 cut, #1710 |
+| the outer-loop runbook's second half | **placed** | the 2.0 cut, #1711 |
+| rows 10–11 reachable live (environment attribution) | **placed** | 2.1.0, #1824 |
+| proposal tasks re-run on re-attach (random ids) | **placed** | 2.1.0, #1934 |
+| the stack's frozen conventions told to the proposer (Next.js; the rest) | **placed** | 2.1.0, #1950, #1962 |
+| the rails accept an empty manifest delta | **placed** | 2.1.0, #1961 |
+| the prior-cycle brief's remainder | **placed** | 2.1.0, #1692 |
+| the supervisor creates and manages campaigns (revises §24al) | **placed** | 2.1.0, #1940 |
+| a campaign records its definition file's hash | **placed** | 2.1.0, #1954 |
+| supervisor instruments; increment replay; per-increment scorecard | **placed** | 2.1.0, #1956, #1959, #1960 |
+| the auto-decision tier and escalation queue | out of this SIP's scope (§5) | 2.2.0, #1708 |
+| accepted increments' `prd_delta` text to the proposer | deferred | "a 2.4 question" (§24ap) |
+| escalating a launch the cycle-create preflight refuses | **unplaced** | §24e item 5 |
+| re-hearing an ended cycle between restarts | **unplaced** | §24v |
+| a Next.js render profile (a route-declaring Next.js increment is always `blocked_unverified`) | **unplaced** | §24p |
+| an increment that needs packaging changed | **unplaced** | §24y |
+| whether an increment's build skips the builder tail | **unplaced** (a question) | §24ab |
+| the quiet-box check reading GPU compute processes | **unplaced** (needs the owner's `docker-compose.yml` change) | §24l, §24ai, §24an |
+| the acquire race window; re-attach with the process up; a task re-asked after an agent restart | **not built, by design** (recorded) | §24ai, §24am, §24ao |
+| §24b–§24i, marked "implementer's reading, not yet ruled" | **awaiting a recorded ruling** | — |
+
+**What closes this SIP:** After the 2.0 cut: §24b–§24i ruled, every unplaced row placed or dropped, and a consolidated status amendment replacing the 2.0 plan's §5a as the permanent record. **Pending:** portfolio Q17.
+
 ## 1. Summary
 
 A **Campaign** is an objective envelope over a sequence of bounded cycles that **evolves one app**. It

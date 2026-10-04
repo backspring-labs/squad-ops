@@ -15,6 +15,23 @@ updated_at: '2026-05-07T00:00:00Z'
 
 **Relationship:** This SIP **is** the implementation path for SIP-0092 M2. The M1→M2 gate evaluation (`docs/plans/SIP-0092-gate-M1-evaluation.md`, merged in PR #117 on 2026-05-05) selected the multi-role authoring path; SIP-0093 supplants M2-as-originally-written. The original single-author `_produce_plan` body is retained only as the implementation of `PlanAuthoringService` — the function the merger calls when there are no proposals to merge (either by config or by all-proposals-failed). It is not a separate runtime route. SIP-0092 M1 (typed acceptance) and M3 (plan changes) are orthogonal to plan authorship and stand unchanged.
 
+## Delivery ledger (current as of 2026-10-04)
+
+Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
+
+| part | status | where |
+|---|---|---|
+| 93.0 `PlanAuthoringService` + brief | **shipped** | v1.1.0 (PR #139) |
+| 93.1 proposal and merge schemas | **shipped** | v1.1.0 |
+| 93.2 role proposers | **shipped** | v1.1.0 |
+| 93.3 merger + cutover | **shipped** | v1.1.0 |
+| 93.4 gate package, telemetry, degraded-sole-author surfacing, console hooks | **unplaced** | nearest successor #950 (2.2), which does not claim it |
+| §5.8 merge rules 2–5 (compatible-criteria merge, strictest-wins, `rejected_tasks`, conflicts block the gate) | **unplaced** | none |
+| §10 required tests (sole-author handler, gate package) | **unplaced** | none |
+| §5.11 parallel fan-out | **diverged, unamended**: the code is sequential (`task_plan.py:147-149`), recorded only in a plan doc | — |
+
+**What closes this SIP:** 93.4 and rules 2–5 shipped, folded into #950 or dropped, and the fan-out amended. **Pending:** portfolio Q18.
+
 ## 1. Abstract
 
 The implementation plan (SIP-0092) decomposes a build into role-typed subtasks. Today (M1 substrate) one agent — Max, the lead — both produces and approves the plan. SIP-0092 M2 calls for separating the proposer from the reviewer. SIP-0093 implements that separation as **shared brief → parallel domain proposals → governed merge**: a lead-authored brief frames the problem, each contributing role independently proposes plan content for its own domain against the brief, and the lead merges those contributions into the canonical implementation plan.

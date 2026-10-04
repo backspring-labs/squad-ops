@@ -17,6 +17,21 @@ updated_at: '2026-04-29T23:39:19.875323Z'
 
 ---
 
+## Delivery ledger (current as of 2026-10-04)
+
+Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
+
+| part | status | where |
+|---|---|---|
+| M1: typed acceptance | **shipped** | v1.1.0 (PR #75 et al.) |
+| M1's divergences from the spec (`command_exit_zero` not on the ACI executor, out-of-safelist → `error`, file-missing → `failed`, `regex_match` narrowed by #464, parameter names) | **unamended** | `docs/plans/sip-promotion-audit-2026-08-03.md:52-58`; partly overtaken (the safelist removed, #670) |
+| M2: multi-role authoring | **shipped** via SIP-0093 (93.4 open there) | v1.1.0 |
+| the M2→M3 gate | **passed** 2026-08-05 | `docs/plans/SIP-0092-gate-M2-evaluation.md` |
+| M3: plan changes | **unplaced**; no release took it after the gate | none |
+| `handle()` decomposition | **shipped** | v1.8.0 (#1444) |
+
+**What closes this SIP:** M3 shipped or dropped by amendment, and M1's divergences amended. **Pending:** portfolio Q18 (the recommendation: drop M3, citing SIP-0109's cycle-level plan evolution).
+
 ## 1. Abstract
 
 SIP-0086 introduced the implementation plan — a control-plane artifact produced during planning that decomposes a build into focused, role-typed subtasks. Capability A (plan production, materialization, focused prompts, deterministic task IDs) shipped on main: `src/squadops/cycles/implementation_plan.py`, `_produce_plan` in `planning_tasks.py:432`, plan expansion in `task_plan.py:341`. The first reliable group_run cycles to fill a build timebox came from this work.

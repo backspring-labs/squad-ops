@@ -16,6 +16,20 @@ updated_at: '2026-04-25T17:57:04.777541Z'
 
 ---
 
+## Delivery ledger (current as of 2026-10-04)
+
+Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
+
+| part | status | where |
+|---|---|---|
+| child 1: SIP-0089 runtime state | **shipped** | v1.1.0 (`sips/implemented/SIP-0089-…`; this SIP's references still cite `sips/accepted/`) |
+| child 2: SIP-0090 embodiment | Phase 1 **shipped** (v1.2.0); Phases 2–4 **unplaced** | see SIP-0090's ledger |
+| child 3: SIP-0091 Temporal durability | **unplaced** (no code) | see SIP-0091's ledger |
+| package acceptance criteria 5–6 (embodiment, Temporal) | not met | follow children 2 and 3 |
+| "Future considerations" (Patterns B/D/E, multi-embodiment, FocusLease queueing) | future SIPs, not obligations | the `queued` FocusLease outcome is also an unamended gap in SIP-0089 |
+
+**What closes this SIP:** Children 2 and 3 shipped or dropped. **Pending:** the owner's decision on the runtime-mode family and duty work (portfolio Q7, Q8). The children's "v1.1/v1.2/v1.3 candidate" labels are stale.
+
 ## Purpose of this document
 
 This document is the **umbrella vision** for evolving SquadOps from a cycle-only execution framework into a runtime that supports persistent runtime state, scheduled operational responsibilities, and (eventually) embodied presence.

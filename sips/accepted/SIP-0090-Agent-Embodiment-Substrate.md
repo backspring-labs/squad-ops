@@ -20,6 +20,21 @@ updated_at: '2026-04-25T17:57:13.839284Z'
 
 ---
 
+## Delivery ledger (current as of 2026-10-04)
+
+Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
+
+| part | status | where |
+|---|---|---|
+| Phase 1: model, lifecycle, port, events, budgets, `credentials_ref` | **shipped** | v1.2.0 (PRs #308/#312, #317) |
+| Phase 1 deferral: budget persistence (`1141_agent_budgets.sql`) | **unplaced** (recorded only in commit `38597725`, not here) | none |
+| Phase 1 deferral: composition-root wiring | **unplaced** (nothing constructs `EmbodimentCoordinator` outside its module) | none |
+| Phase 2: Discord adapter | **unplaced** (its "v1.6" target passed) | none |
+| Phase 3: `requires_embodiment` integration | **unplaced** | none |
+| Phase 4: narrow browser adapter | **unplaced** | none |
+
+**What closes this SIP:** Phases 2–4 and the Phase-1 deferrals shipped or dropped by amendment. **Pending:** portfolio Q7 (the runtime-mode family's placement). The Phase-1 deferrals need an amendment whatever Q7 decides.
+
 ## 1. Summary
 
 This SIP introduces an **embodiment abstraction** that lets a SquadOps agent act through a runtime surface in a world or system — without making any specific world part of the core domain.

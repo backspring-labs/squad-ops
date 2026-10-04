@@ -26,6 +26,23 @@ answer lives only in a docstring.
 
 ---
 
+## Delivery ledger (current as of 2026-10-04)
+
+Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
+
+| part | status | where |
+|---|---|---|
+| contract + governance; S5 admission gate | **shipped** | the 1.6 line |
+| A1: packaging rendered from the environment contract | **shipped** | v1.8.0 (#598) |
+| stack #1 out of `scaffold.py` | **shipped** | v1.7.1 (#1131, PR #1233); the "does not assert" table still says stack #1 is inline |
+| packs / plugin loading | **unplaced** | none |
+| `check_stack` split (dialect vs framework) | **unplaced**; its "1.7" deferral missed | none |
+| delete the four falsified fields | **unplaced** | none |
+| typed checks on the declared source language (sequencing step 3) | *unverified* | — |
+| the S5 gate's blind spot: a string field empty on one stack reads as set | **placed** | 2.1.0, #1967 |
+
+**What closes this SIP:** Each "does not assert" row built, dropped or moved to a successor (packs). **Pending:** portfolio Q21.
+
 ## Summary
 
 Give a stack a **type**, and govern what may be added to it.
