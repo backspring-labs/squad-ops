@@ -43,7 +43,8 @@ are appended, and if the deploy moves, this registration is void and re-made.
    - **Shakeout 10** (rebuild 22) **is the exit run on the deploy the set registers.** Its result: *read
      at registration*.
 2. **Decision 1, the SIP-0107 flip: RULED (owner, 2026-10-03, "go with your recommendation on the
-   flip").** #1788's re-run explained the nine empty scoped Next.js repairs:
+   flip").** #1788's re-run explained the nine empty scoped Next.js repairs. Of its 12 samples (on
+   rebuild 13; SIP-0107 §46s):
    - 9 were correct dev abstentions or disputes on qa-owned defects;
    - 2 exhausted the 12,288-token completion cap;
    - 1 was an edit.
