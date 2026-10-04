@@ -183,6 +183,20 @@ async def test_the_proposal_is_shown_what_each_frozen_criterion_asserts():
     assert "each is something the application already does" in prompt
 
 
+async def test_the_proposal_is_told_a_new_criterion_must_fail_before_the_change():
+    """#1946, through the real render. Bug caught: the rule a new criterion is judged by (§8.2,
+    the evaluation's discrimination; the supervisor's §3a) never reaching the proposer. Two of the
+    2.0 shakeouts' first proposals carried a criterion the accepted app already met, the default
+    case of the feature, and were returned for it."""
+    ctx = _ctx(_fenced(_REFERENCE))
+
+    await StrategyProposeIncrementHandler().handle(ctx, _inputs())
+
+    [prompt] = _prompts(ctx)
+    assert "Each criterion you add names something the application does not do yet." in prompt
+    assert "the test must fail there, then pass" in prompt
+
+
 async def test_a_refusal_comes_back_with_every_reason_and_the_revision_is_judged_afresh():
     """Bug caught: the model revising blind — told only that it failed — or the second attempt
     judged against the first attempt's verdict."""
