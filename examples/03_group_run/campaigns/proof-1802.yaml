@@ -1,0 +1,29 @@
+# #1802 deployed proof, the quiet-box half (pre-registration precondition 4, SIP-0109 §24ai), with llama3.1:8b
+# resident (no squad profile names it; qwen2.5:3b-instruct is declared by the smoke squad, so it reads quiet). Not a
+# campaign that builds anything: its calibration launch is made while an undeclared model is resident,
+# so the box refuses it, and with launch_blocked_attempts 1 the first refusal escalates. The model is
+# then unloaded and the owner's resume (no action) retries the launch, which proceeds; the campaign is
+# then aborted, cancelling the calibration cycle. Uncounted; within the 2.0 charter.
+project_id: group_run
+objective:
+  statement: "prove the box lease's quiet-box refusal and its recovery on the deployed box (#1802)"
+  allowed_scope: ["backend/**", "frontend/**"]
+  measurement: "none: aborted after its calibration launches"
+  target_accepted_increments: 1
+policy:
+  max_cycles: 1
+  max_elapsed_s: 3600
+  budget_tokens: 1000000
+  max_repair_cycles_per_increment: 1
+  max_retry_cycles_per_increment: 1
+  max_proposal_run_retries: 1
+  max_proposal_revisions: 2
+  max_rejected_proposals_in_row: 2
+  max_unaccepted_increments: 2
+  ruling_bound_s: 1800
+  lease_expiry_s: 3600
+  launch_blocked_interval_s: 300
+  launch_blocked_attempts: 1
+  calibration_profile: validated-fullstack
+  proposal_profile: campaign-increment
+  squad_profile: full-38

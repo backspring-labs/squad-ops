@@ -1,0 +1,27 @@
+# The fourth live campaign shakeout (SIP-0109 §19 item 15: two accepted increments on a live stack), on
+# dep_fd4de43a1f39 (3299ff78): after shakeout 3 promoted its first increment with a partial tree (#1887,
+# fixed by #1888) and was aborted. Also carries #1886 (tests assert only what the change states).
+# Uncounted; within the 2.0 charter.
+project_id: group_run
+objective:
+  statement: "evolve group_run toward its PRD's expansion scope, one increment at a time"
+  allowed_scope: ["backend/**", "frontend/**"]
+  measurement: "two accepted increments"
+policy:
+  max_cycles: 4
+  max_elapsed_s: 28800
+  budget_tokens: 4000000
+  max_repair_cycles_per_increment: 1
+  max_retry_cycles_per_increment: 1
+  max_proposal_run_retries: 1
+  max_proposal_revisions: 2
+  max_rejected_proposals_in_row: 2
+  max_unaccepted_increments: 2
+  crew_ruling_bound_s: 1800
+  owner_ruling_bound_s: 43200
+  lease_expiry_s: 3600
+  launch_blocked_interval_s: 300
+  launch_blocked_attempts: 6
+  calibration_profile: validated-fullstack
+  proposal_profile: campaign-increment
+  squad_profile: full-38

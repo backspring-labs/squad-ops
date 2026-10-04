@@ -1,0 +1,28 @@
+# #1803's recovery diagnostics, the increment legs (validation plan §3; the harness's docstring, sequence 2).
+# A restart at at_proposal, awaiting_ruling, paused and building; the repeated and conflicting ruling; the
+# kill between the evaluator's last line and the promotion; a duplicate completion of the increment's
+# decision; then an abort on the next proposal run. Targets two increments only so that a next proposal
+# run exists to abort. Uncounted; a diagnostic campaign, within the 2.0 charter.
+project_id: group_run
+objective:
+  statement: "evolve group_run toward its PRD's expansion scope, one increment at a time"
+  allowed_scope: ["backend/**", "frontend/**"]
+  measurement: "none: a diagnostic campaign, aborted on its second proposal"
+  target_accepted_increments: 2
+policy:
+  max_cycles: 5
+  max_elapsed_s: 21600
+  budget_tokens: 2000000
+  max_repair_cycles_per_increment: 1
+  max_retry_cycles_per_increment: 1
+  max_proposal_run_retries: 1
+  max_proposal_revisions: 2
+  max_rejected_proposals_in_row: 2
+  max_unaccepted_increments: 2
+  ruling_bound_s: 1800
+  lease_expiry_s: 3600
+  launch_blocked_interval_s: 300
+  launch_blocked_attempts: 6
+  calibration_profile: validated-fullstack
+  proposal_profile: campaign-increment
+  squad_profile: full-38
