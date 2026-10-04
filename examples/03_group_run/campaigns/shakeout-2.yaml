@@ -1,0 +1,32 @@
+# The second live campaign shakeout (SIP-0109), on rebuild 6: the first (cmp_a34deb3d7372) found
+# the completion hook crashing on every live cycle (#1857) and was aborted. This deploy adds the
+# fix, the startup re-entry (§24v), step e (the increment's evaluation, route rendering in the qa
+# image, promotion and freezing), retry and repair (§24s/§24t) and the prior-cycle brief (§24u).
+# start → calibration (validated-fullstack, ~50 min) → promote → propose → increment
+# (campaign-increment): proposal → progress_increment_ruling (ruled as the delegated diagnostic) →
+# framing bound to the candidate manifest → plan review → implementation from the accepted tree →
+# qa.evaluate_increment → promote + freeze, or retry/repair → next decision, until max_cycles.
+# Uncounted; within the 2.0 charter.
+project_id: group_run
+objective:
+  statement: "evolve group_run toward its PRD's expansion scope, one increment at a time"
+  allowed_scope: ["backend/**", "frontend/**"]
+  measurement: "two accepted increments"
+policy:
+  max_cycles: 3
+  max_elapsed_s: 21600
+  budget_tokens: 3000000
+  max_repair_cycles_per_increment: 1
+  max_retry_cycles_per_increment: 1
+  max_proposal_run_retries: 1
+  max_proposal_revisions: 2
+  max_rejected_proposals_in_row: 2
+  max_unaccepted_increments: 2
+  crew_ruling_bound_s: 1800
+  owner_ruling_bound_s: 43200
+  lease_expiry_s: 3600
+  launch_blocked_interval_s: 300
+  launch_blocked_attempts: 6
+  calibration_profile: validated-fullstack
+  proposal_profile: campaign-increment
+  squad_profile: full-38

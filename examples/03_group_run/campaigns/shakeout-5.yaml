@@ -1,0 +1,30 @@
+# The fifth live campaign shakeout (SIP-0109 §19 item 15; plan §6 step 13's loop). Runs on rebuild 14,
+# the deploy carrying shakeout 4's fixes: #1897 (a self-eval edit keeps its file's type), #1898 (the
+# checker reads a reused name's latest call), #1902 (an accepted repair proposes from the manifest it ran
+# against), #1905 (an increment's plan gate reads its forwarded seed), §24ah (row 3 reads the target).
+# The loop's exit rule: a shakeout with no new seam finding. Uncounted; within the 2.0 charter.
+project_id: group_run
+objective:
+  statement: "evolve group_run toward its PRD's expansion scope, one increment at a time"
+  allowed_scope: ["backend/**", "frontend/**"]
+  measurement: "two accepted increments"
+  target_accepted_increments: 2
+policy:
+  # 1 calibration + 2 increments + one repair or retry each + 1 replacement for an abandoned one.
+  max_cycles: 6
+  max_elapsed_s: 28800
+  budget_tokens: 4000000
+  max_repair_cycles_per_increment: 1
+  max_retry_cycles_per_increment: 1
+  max_proposal_run_retries: 1
+  max_proposal_revisions: 2
+  max_rejected_proposals_in_row: 2
+  max_unaccepted_increments: 2
+  crew_ruling_bound_s: 1800
+  owner_ruling_bound_s: 43200
+  lease_expiry_s: 3600
+  launch_blocked_interval_s: 300
+  launch_blocked_attempts: 6
+  calibration_profile: validated-fullstack
+  proposal_profile: campaign-increment
+  squad_profile: full-38

@@ -1,0 +1,29 @@
+# #1803's recovery diagnostics, the blocked legs (validation plan §3; the harness's docstring, sequence 1).
+# Started with llama3.1:8b resident (undeclared by every squad profile), so the box refuses the calibration
+# launch: launch_blocked, held one 300 s interval, then the second refusal escalates. A restart in each of
+# those states; then the model unloaded and the campaign resumed, a restart while calibrating with the run
+# in flight, and an abort mid-run. Free memory read before and after the model load (plan §3's stated risk).
+# Uncounted; a diagnostic campaign, within the 2.0 charter.
+project_id: group_run
+objective:
+  statement: "verify SIP-0109 §12a's recovery guarantees live: restarts while blocked, escalated and calibrating, then an abort (#1803)"
+  allowed_scope: ["backend/**", "frontend/**"]
+  measurement: "none: aborted during its calibration run"
+  target_accepted_increments: 1
+policy:
+  max_cycles: 1
+  max_elapsed_s: 3600
+  budget_tokens: 1000000
+  max_repair_cycles_per_increment: 1
+  max_retry_cycles_per_increment: 1
+  max_proposal_run_retries: 1
+  max_proposal_revisions: 2
+  max_rejected_proposals_in_row: 2
+  max_unaccepted_increments: 2
+  ruling_bound_s: 1800
+  lease_expiry_s: 3600
+  launch_blocked_interval_s: 300
+  launch_blocked_attempts: 2
+  calibration_profile: validated-fullstack
+  proposal_profile: campaign-increment
+  squad_profile: full-38

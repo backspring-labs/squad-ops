@@ -1,0 +1,29 @@
+# The third live campaign shakeout (SIP-0109 §19 item 15: a two-increment campaign on a live stack).
+# After shakeout 2 (cmp_54faaee1ac8c: #1864 #1866 #1868 found) and the reference increment's three
+# launches (#1870 #1874 #1876 #1877 #1880 found), on the deploy carrying all their fixes.
+# start → calibration → promote → propose → increment 1 (proposal → ruling → multi-role framing →
+# build from the accepted tree → evaluation → promote + freeze) → propose → increment 2 (judged
+# with increment 1's criteria frozen) → … until max_cycles. Uncounted; within the 2.0 charter.
+project_id: group_run
+objective:
+  statement: "evolve group_run toward its PRD's expansion scope, one increment at a time"
+  allowed_scope: ["backend/**", "frontend/**"]
+  measurement: "two accepted increments"
+policy:
+  max_cycles: 4
+  max_elapsed_s: 28800
+  budget_tokens: 4000000
+  max_repair_cycles_per_increment: 1
+  max_retry_cycles_per_increment: 1
+  max_proposal_run_retries: 1
+  max_proposal_revisions: 2
+  max_rejected_proposals_in_row: 2
+  max_unaccepted_increments: 2
+  crew_ruling_bound_s: 1800
+  owner_ruling_bound_s: 43200
+  lease_expiry_s: 3600
+  launch_blocked_interval_s: 300
+  launch_blocked_attempts: 6
+  calibration_profile: validated-fullstack
+  proposal_profile: campaign-increment
+  squad_profile: full-38

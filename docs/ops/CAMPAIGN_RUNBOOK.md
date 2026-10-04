@@ -22,14 +22,17 @@ at it rather than repeating it.
 | disk | `df -h /` stays above the 150 GB floor | each full rebuild costs 5–8 GB |
 | the CLI is authenticated | `squadops login` | every command below goes through the runtime API |
 
-**The policy file** (`var/campaigns/<name>.yaml`) holds `project_id`, `objective` (statement,
+**The policy file** holds `project_id`, `objective` (statement,
 `allowed_scope`, measurement, and `target_accepted_increments`, the accepted increments that end the
 campaign in success, §24ah) and every `policy` limit. Each limit is required, never defaulted
-(SIP-0109 §9.5). `var/campaigns/shakeout-4.yaml` is a working example. `max_cycles` counts every cycle
-the campaign launches: the calibration, each increment, each repair and each retry.
+(SIP-0109 §9.5). `max_cycles` counts every cycle the campaign launches: the calibration, each
+increment, each repair and each retry. The campaigns SquadOps runs to verify itself are tracked with
+their project: `examples/03_group_run/campaigns/` (its README states the rule, #1941). Its
+`shakeout-7.yaml` is a working example. A campaign's outputs (log windows, records) go under the main
+checkout's `var/campaigns/<campaign>/`, which is not tracked.
 
 ```bash
-squadops campaigns create --file var/campaigns/<name>.yaml --reason "<why>"
+squadops campaigns create --file examples/<project>/campaigns/<name>.yaml --reason "<why>"
 squadops campaigns start <campaign_id> --reason "<why>"      # the calibration cycle launches
 python scripts/dev/campaign_log_archive.py <campaign_id> --follow   # beside it, until it closes
 ```
