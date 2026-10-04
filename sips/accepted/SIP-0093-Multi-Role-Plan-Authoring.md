@@ -15,6 +15,23 @@ updated_at: '2026-05-07T00:00:00Z'
 
 **Relationship:** This SIP **is** the implementation path for SIP-0092 M2. The M1→M2 gate evaluation (`docs/plans/SIP-0092-gate-M1-evaluation.md`, merged in PR #117 on 2026-05-05) selected the multi-role authoring path; SIP-0093 supplants M2-as-originally-written. The original single-author `_produce_plan` body is retained only as the implementation of `PlanAuthoringService` — the function the merger calls when there are no proposals to merge (either by config or by all-proposals-failed). It is not a separate runtime route. SIP-0092 M1 (typed acceptance) and M3 (plan changes) are orthogonal to plan authorship and stand unchanged.
 
+## Delivery ledger (current as of 2026-10-04)
+
+Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
+
+| part | status | where |
+|---|---|---|
+| 93.0 `PlanAuthoringService` + brief | **shipped** | v1.1.0 (PR #139) |
+| 93.1 proposal and merge schemas | **shipped** | v1.1.0 |
+| 93.2 role proposers | **shipped** | v1.1.0 |
+| 93.3 merger + cutover | **shipped** | v1.1.0 |
+| 93.4 gate package, telemetry, degraded-sole-author surfacing, console hooks | **folded into #950** (§15a) | #950, the plan-gate review packet, placed after Outcome Evaluation (2.4 or later) |
+| §5.8 merge rules 2–5 (compatible-criteria merge, strictest-wins, `rejected_tasks`, conflicts block the gate) | **dropped** (§15a) | re-proposed on evidence |
+| §10 required tests (sole-author handler, gate package) | **folded into #950** with 93.4 (§15a) | #950 |
+| §5.11 parallel fan-out | **amended to sequential** (§15a) | `task_plan.py:147-149` |
+
+**What closes this SIP:** **Ready to promote** with §15a (ruled 2026-10-04): 93.4 and its tests go to #950, rules 2–5 are dropped, and the fan-out is sequential.
+
 ## 1. Abstract
 
 The implementation plan (SIP-0092) decomposes a build into role-typed subtasks. Today (M1 substrate) one agent — Max, the lead — both produces and approves the plan. SIP-0092 M2 calls for separating the proposer from the reviewer. SIP-0093 implements that separation as **shared brief → parallel domain proposals → governed merge**: a lead-authored brief frames the problem, each contributing role independently proposes plan content for its own domain against the brief, and the lead merges those contributions into the canonical implementation plan.
@@ -605,3 +622,16 @@ The SIP-0092 §6.2 spec was rewritten to describe the SIP-0093 design as the M2 
   - §5.7 `merge_decisions.yaml` schema: `authoring_mode` enum updated and `sole_author_reason` field added.
 - **Rev 2 (2026-05-05):** Tightening before acceptance — domain-ownership invariants, brief immutability, parser invariants. Original review feedback bundle. (No flag changes.)
 - **Rev 1 (2026-04-30):** Initial proposal.
+
+## 15. Post-acceptance amendments
+
+### 15a. Fan-out is sequential; 93.4 folds into the plan-gate review packet; merge rules 2–5 are dropped (2026-10-04)
+
+**What changed.**
+- **§5.11's parallel fan-out is sequential.** The proposers run one after another (`src/squadops/cycles/task_plan.py:147-149`, "parallel fan-out deferred"). It was recorded only in a plan-doc amendment, and CLAUDE.md step 5a needs it here. On the single-GPU Spark, parallel inference gives no wall-clock gain.
+- **93.4 (the gate package, telemetry, degraded-sole-author surfacing, console hooks) and the §10 tests it needs fold into #950,** the framework-owned review packet at the plan gate. They serve the same reader at the same gate. #950 is placed after Outcome Evaluation (2.4 or later), by the same day's ruling on 2.2's load.
+- **§5.8 merge rules 2–5 are dropped:** compatible criteria merging, strictest-wins, `rejected_tasks`, and conflicts blocking the gate. The merger has run with `accepted` and `gap_filled` only (`_plan_merger.py:268,333`) since v1.1.0, and no failure since has been traced to their absence. They are re-proposed if one is.
+
+**Evidence.** The read-only SIP-portfolio audit of 2026-10-04.
+
+**Who ruled it.** the owner's rulings of 2026-10-04 on the SIP-portfolio audit (`sips/PORTFOLIO.md`): "yes, move them to 3.x including capability-backed agents. I accept all your other recommendations to keep SIPs current, reflecting what gets delivered, and where the work is targeted". The supervisor's reading of the ruling assigns 93.4 to #950 and drops rules 2–5. The recommendation offered either path for both, and the owner was told this split when it was recorded.

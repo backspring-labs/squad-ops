@@ -56,6 +56,16 @@ proposed → accepted → implemented → deprecated
 | `accepted` | `deprecated` | SIP superseded before implementation |
 | `implemented` | `deprecated` | Implemented SIP superseded by newer version |
 
+## Keeping the record: delivery ledgers and the portfolio
+
+- **A SIP that ships in parts keeps a `Delivery ledger` in the SIP itself.** It has one row per part, each
+  *shipped* (release, PR), *placed* (release and open issue), *unplaced*, *dropped* (by the amendment
+  that dropped it), or *deferred to N.x* (by a dated ruling), and a line saying what closes the SIP. It is updated in the PR that ships or
+  re-places a part, and read by the release cut's SIP sweep. CLAUDE.md, "SIP System", has the rule.
+- **`PORTFOLIO.md` is the cross-SIP view:** every live SIP's next placement and open parts, the overlaps
+  between documents, the reconciliation queue, and the intake log. Every new SIP or idea is checked
+  against it before it is recorded.
+
 ## Status Progression Workflow
 
 ### For Maintainers

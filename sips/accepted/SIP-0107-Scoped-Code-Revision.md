@@ -31,6 +31,24 @@ extraction, before the feature's first PR (§3.2, §38). The 1.7.3 plan's earlie
 beside #1213 and #1176 is superseded: #1213 closes with §38 step 4, and #1176 is an
 experiment in that line's idle box, not this SIP's.
 
+## Delivery ledger (current as of 2026-10-04)
+
+Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
+
+| part | status | where |
+|---|---|---|
+| precondition #1444 | **shipped** | v1.8.0 |
+| steps 1–6 (candidate identity → Next.js) | **shipped** | v1.8.0 (§46b–§46j) |
+| step 7: the flip | **shipped on main** → **2.0.0** | PR #1909 (§46s); not in v1.9.0 |
+| §39.8 N gate | **replaced by ruling** (N read as texture) | §46s |
+| §43.4 first-class `move` | not in 1.8 by ruling; on evidence later | §43.4 |
+| §20 on the qa re-take path | **placed** | 2.1.0, #1727 (ruled 2026-10-04: assert it; the transaction is the re-take plus the pass) |
+| §9.4 whole-file fallback with authority | **declared without a producer** (§46t) | — |
+| §15 scope requests and same-role regrant | **dropped** (§46t) | — |
+| the self-evaluation pass and re-take still accept a whole re-emission | scoped out of step 7 | §46s |
+
+**What closes this SIP:** **Promoted after the 2.0.0 tag** (step 7 ships there), with §46t (ruled 2026-10-04). #1727 (2.1.0) follows as a named amendment.
+
 ## Summary
 
 An agent asked to change one small part of an existing artifact should not be responsible
@@ -2438,3 +2456,15 @@ for editing was accepted and recorded as an unauthorized fallback (§46a). From 
 explained the nine empty scoped Next.js repairs") and #1788's reading: "go with your
 recommendation on the flip". N is read as texture, not as a gate, as the 2.0 plan's decision 1
 ruled.
+
+## 46t. 2026-10-04 — §15 dropped; §9.4's fallback authority has no producer, by ruling
+
+**What changed.**
+- **§15 (scope requests and automatic same-role regrant) is dropped.** It was never built: no `scope_request` or regrant code exists in `src/` or `adapters/`, and §46a–§46s never mention it. Through 1.8, 1.9 and 2.0's campaigns, scoped revision ran without it: a repair outside the offered files is refused typed and retried once (§46s), and no failure since has been traced to its absence. It is re-proposed if one is.
+- **§9.4's whole-file fallback with authority is declared to have no producer.** §46s already says "Fallback authority has no producer … Building one is a later, separate change". This records that as the disposition, not a gap: the flip refuses a whole re-emission, and nothing grants the fallback.
+
+**Evidence.** The read-only SIP-portfolio audit of 2026-10-04 (grep of `src/` and `adapters/`); §46s.
+
+**Who ruled it.** the owner's rulings of 2026-10-04 on the SIP-portfolio audit (`sips/PORTFOLIO.md`): "yes, move them to 3.x including capability-backed agents. I accept all your other recommendations to keep SIPs current, reflecting what gets delivered, and where the work is targeted".
+
+**What remains before promotion:** the 2.0.0 tag. #1727 (§20 on the qa re-take path, 2.1.0) is a named follow-up amendment, not a blocker.

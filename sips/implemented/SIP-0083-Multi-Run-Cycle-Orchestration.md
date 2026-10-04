@@ -613,3 +613,11 @@ Each orchestration loop holds an async task polling for gate decisions. For a 3-
 - **New lifecycle constant:** `GATE_REJECTED_STATES` (narrows gate guard from `TERMINAL_STATES`)
 - **Prerequisite PR:** Fix `_handle_gate()` to handle all 4 `GateDecisionValue` values
 - **No DB migrations, no new ports**
+
+## Post-implementation amendment (2026-10-04): the record corrected
+
+**`returned_for_revision`, "deferred to a follow-on SIP" (D10), has since been built.** At the plan gate it is #811 (SIP-0103 §5c.6): a new framing run in the same cycle, given the reviewer's notes and the prior manifest. At the campaign's increment gate it is SIP-0109 §24d. The "3 of 4 values handled" text describes this SIP's own change, not main today.
+
+**Evidence.** The read-only SIP-portfolio audit of 2026-10-04.
+
+**Who ruled it.** the owner's rulings of 2026-10-04 on the SIP-portfolio audit (`sips/PORTFOLIO.md` Q22): "I accept all your other recommendations to keep SIPs current".

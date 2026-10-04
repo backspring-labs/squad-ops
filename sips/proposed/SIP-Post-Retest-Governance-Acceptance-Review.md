@@ -5,6 +5,9 @@ title: Post-Retest Governance Acceptance Review
 ---
 # SIP: Post-Retest Governance Acceptance Review
 
+> **Placement and delivery (2026-10-04: the owner's rulings on the SIP-portfolio audit, `sips/PORTFOLIO.md`).** **#557 moves from 2.2 to after Outcome Evaluation (2.4 or later).** 2.2 makes one change to squad behaviour (memory), and Outcome Evaluation's held-out scenarios are what would judge this LLM step. One fail-closed rule covers this SIP and the Design Decision Register, stated here once.
+
+
 ## Status
 
 **Proposed** (draft, 2026-08-07). Elaborates #557 (direction marker, deliberately

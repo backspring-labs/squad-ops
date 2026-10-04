@@ -466,3 +466,11 @@ Every step produces a queryable event with a reason code. Nothing is implicit.
 - W3C SCXML — https://www.w3.org/TR/scxml/
 - Kubernetes Leases — https://kubernetes.io/docs/concepts/architecture/leases/
 - BPMN 2.0.2 — https://www.omg.org/spec/BPMN/2.0.2/PDF
+
+## Post-implementation amendment (2026-10-04): the record corrected
+
+**The `queued` FocusLease outcome** is in this SIP's outcome table and its Phase 3 ("granted/rejected/queued/preempting"), and **it is not built.** Its deferral was recorded only in the implementation plan (D5, D20) and in code comments. It is **deferred to 3.x**, with the runtime-mode family and duty work (SIP-0088, ruled 2026-10-04), whose duty mode is where queueing for a lease would be needed.
+
+**Evidence.** The read-only SIP-portfolio audit of 2026-10-04.
+
+**Who ruled it.** the owner's rulings of 2026-10-04 on the SIP-portfolio audit (`sips/PORTFOLIO.md` Q22): "I accept all your other recommendations to keep SIPs current".

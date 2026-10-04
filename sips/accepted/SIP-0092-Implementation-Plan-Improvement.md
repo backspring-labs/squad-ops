@@ -17,6 +17,21 @@ updated_at: '2026-04-29T23:39:19.875323Z'
 
 ---
 
+## Delivery ledger (current as of 2026-10-04)
+
+Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
+
+| part | status | where |
+|---|---|---|
+| M1: typed acceptance | **shipped** | v1.1.0 (PR #75 et al.) |
+| M1's divergences from the spec (`command_exit_zero` not on the ACI executor, out-of-safelist → `error`, file-missing → `failed`, `regex_match` narrowed by #464, parameter names) | **amended** (§14a) | `docs/plans/sip-promotion-audit-2026-08-03.md:52-58`; partly overtaken (the safelist removed, #670) |
+| M2: multi-role authoring | **shipped** via SIP-0093 (93.4 open there) | v1.1.0 |
+| the M2→M3 gate | **passed** 2026-08-05 | `docs/plans/SIP-0092-gate-M2-evaluation.md` |
+| M3: plan changes | **dropped** (§14a) | SIP-0109's increment cycle evolves the plan at cycle level instead |
+| `handle()` decomposition | **shipped** | v1.8.0 (#1444) |
+
+**What closes this SIP:** **Ready to promote** once SIP-0093's remainder closes (M2 runs through it): M3 dropped and M1's divergences recorded (§14a), ruled 2026-10-04.
+
 ## 1. Abstract
 
 SIP-0086 introduced the implementation plan — a control-plane artifact produced during planning that decomposes a build into focused, role-typed subtasks. Capability A (plan production, materialization, focused prompts, deterministic task IDs) shipped on main: `src/squadops/cycles/implementation_plan.py`, `_produce_plan` in `planning_tasks.py:432`, plan expansion in `task_plan.py:341`. The first reliable group_run cycles to fill a build timebox came from this work.
@@ -960,3 +975,22 @@ Raw-YAML hashing is the obvious approach but unstable across whitespace/key-orde
 - `adapters/capabilities/aci_executor.py` — sandbox executor for `command_exit_zero`
 - Memory: `project_sip0086_manifest_handoff_bug.md` — observed plan forwarding bugs that motivate the artifact-type discipline plan changes inherit
 - Memory: `project_spark_cycle_status.md` — observed YAML emission failures motivating M2's authoring-vs-review split
+
+## 14. Post-acceptance amendments
+
+### 14a. M3 is dropped; M1 shipped with recorded divergences (2026-10-04)
+
+**What changed.**
+- **M3 (plan changes) is dropped.** The M2→M3 gate passed on 2026-08-05 (`docs/plans/SIP-0092-gate-M2-evaluation.md`), and no release took M3 in the two months after. SIP-0109's increment cycle now evolves a plan at cycle level, through a typed change request, frozen criteria and delta-scoped framing (SIP-0109 §7). That covers M3's long-horizon motive by another route. If a within-cycle plan change is needed again, it is a new proposal citing this.
+- **M1 shipped in v1.1.0 with these divergences from its specification,** recorded here because they were only in a plan doc:
+  - `command_exit_zero` does not run on the ACI executor;
+  - an out-of-safelist command reads `error`;
+  - a missing file reads `failed`;
+  - `regex_match` was narrowed by #464;
+  - parameter names drifted.
+
+  Since then, the command safelist was removed and the qa exemption closed (#670). The other items were not re-verified for this amendment.
+
+**Evidence.** `docs/plans/sip-promotion-audit-2026-08-03.md:52-60`; the read-only SIP-portfolio audit of 2026-10-04.
+
+**Who ruled it.** the owner's rulings of 2026-10-04 on the SIP-portfolio audit (`sips/PORTFOLIO.md`): "yes, move them to 3.x including capability-backed agents. I accept all your other recommendations to keep SIPs current, reflecting what gets delivered, and where the work is targeted".

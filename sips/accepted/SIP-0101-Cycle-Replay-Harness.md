@@ -13,6 +13,23 @@ updated_at: '2026-07-25T11:34:32.304767Z'
 **Created:** 2026-07-25
 **Revision:** 3 (review round 1; FAY-enforcement correction + implementation order)
 
+## Delivery ledger (current as of 2026-10-04)
+
+Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
+
+| part | status | where |
+|---|---|---|
+| slice 1: evidence rails (`ReplayProvenance`) | **shipped** | v1.5.0 (PR #735) |
+| slice 2: boundary-checkpoint retention | **shipped** | v1.5.0 (PR #736) |
+| slice 3: mechanism + strict-equality gate | **shipped** | v1.5.0 (PR #737) |
+| Prefect replay tags | **shipped** | v1.9.0 (#1722, PR #1743) |
+| slice 4: per-boundary compatibility policy (§3.5) | **dropped** (§11a) | — |
+| slice 5: console visibility (AC 9) | **unplaced, deliberately** (§11a): with the next console work | none |
+| §4.1: the first aggregator excludes replays, with a test | **placed** | 2.1.0, #1974 |
+| 1.9's finding (replay restores only checkpoints before any correction ids; the driver cannot launch or read a replay) | **recorded** (§11a) | `docs/plans/1-9-0-plan.md:66-70` |
+
+**What closes this SIP:** #1974 (§4.1's test) shipped and slice 5 placed or dropped; then promote. Ruled 2026-10-04 (§11a).
+
 ## 1. Abstract
 
 A cycle re-derives every phase from scratch, including phases that have been stable for
@@ -346,3 +363,17 @@ to produce (§2).
 **Explicitly out of scope:** promoting a boundary into a named, curated **fixture** with
 its own lifecycle. Replay references a run. Fixtures are a separate proposal if the need
 proves real.
+
+## 11. Post-acceptance amendments
+
+### 11a. What 1.9 found about replay; slice 4 dropped; slice 5 waits for console work (2026-10-04)
+
+**What changed.**
+- **1.9's finding, recorded here.** Replay can restore only checkpoints taken before any correction ids exist: "SIP-0101's replay could restore only checkpoint 6 … The driver can neither launch a replay nor read one" (`docs/plans/1-9-0-plan.md:66-70`). A replay of a corrected run is therefore a replay of its first round's state, and §3's compatibility gate does not change that.
+- **Slice 4 (the per-boundary compatibility policy, §3.5) is dropped.** The strict-equality gate has held since v1.5.0, and the campaign's increment replay (#1959) compares whole increments outside a campaign instead.
+- **Slice 5 (console visibility, AC 9) is unplaced, deliberately,** until the next console work. The CLI and the run report carry replay provenance today.
+- **§4.1's exclusion test is placed:** #1974 (2.1.0), against SIP-0108's benchmark registry.
+
+**Evidence.** The read-only SIP-portfolio audit of 2026-10-04.
+
+**Who ruled it.** the owner's rulings of 2026-10-04 on the SIP-portfolio audit (`sips/PORTFOLIO.md`): "yes, move them to 3.x including capability-backed agents. I accept all your other recommendations to keep SIPs current, reflecting what gets delivered, and where the work is targeted".

@@ -477,3 +477,11 @@ issue is opened automatically. **Diverges from the text above**, which has the r
 issue: the driver never writes to GitHub, because it's a measurement tool run against a public
 repository. It names the confirmed check, and whoever reads the readout files the issue, as for
 every other readout. The half that matters holds: the cycle opens nothing.
+
+## Post-implementation amendment (2026-10-04): the record corrected
+
+**§17a's sentence "Not built. Until the PR that builds it lands … nothing below describes main" is stale.** §17a's changes 1–5 were built in 1.8.2, and the section's own "As built" text says so. The sentence predates the build and is superseded by this note. Whether a pulse check can be contested ("decided with change 2") has no recorded resolution found. That is unverified, not asserted.
+
+**Evidence.** The read-only SIP-portfolio audit of 2026-10-04.
+
+**Who ruled it.** the owner's rulings of 2026-10-04 on the SIP-portfolio audit (`sips/PORTFOLIO.md` Q22): "I accept all your other recommendations to keep SIPs current".

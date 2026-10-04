@@ -7,6 +7,12 @@ created_at: '2026-07-08T00:00:00Z'
 ---
 # SIP: Agent Comms Delivery Guarantees
 
+> **Placement and delivery (2026-10-04: the owner's rulings on the SIP-portfolio audit, `sips/PORTFOLIO.md`).** **Split.**
+> - **2.0 shipped without this "gate for Campaign".** Campaign durability is a Postgres control log, a launch outbox and a sweep (SIP-0109 §12b, §24ae, §24am), which supersedes that framing.
+> - **Its general messaging hardening is placed:** consumer deduplication, a dead-letter queue and publisher confirms, **#1977, 2.3.0**.
+> - **Its duty-gated parts** (delivery guarantees for paid external duty work) are **deferred to 3.x** with the duty cluster.
+
+
 ## Status
 Proposed
 

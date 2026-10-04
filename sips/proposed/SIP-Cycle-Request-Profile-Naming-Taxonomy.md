@@ -7,6 +7,9 @@ created_at: '2026-07-01T00:00:00Z'
 ---
 # SIP-0XXX: Cycle Request-Profile Naming Taxonomy
 
+> **Placement and delivery (2026-10-04: the owner's rulings on the SIP-portfolio audit, `sips/PORTFOLIO.md`).** **Placed: 2.1.0, via #316.** One constraint is ruled: **pinned campaign definitions keep resolving old profile names indefinitely.** The 2.0 set's pinned files name profiles, and the crew re-runs that set. The constraint goes into #316's acceptance, and the inventory here is refreshed in the implementing PR.
+
+
 **Status:** Proposed
 **Authors:** SquadOps Architecture (Spark lane)
 **Created:** 2026-07-01
