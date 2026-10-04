@@ -451,6 +451,11 @@ Fifteen issues carry the title. Three are closed: #1728, #1802 and #1804.
      must fail on the accepted tree (§8.2), and two of three first proposals were returned for it.
      Fixed in SIP-0109 §24aq before **rebuild 21**. Its overlapping diagnostic leg
      (`restart-at:at_proposal`) re-runs on rebuild 21, and **shakeout 9** is the exit run.
+   - **Shakeout 9 on rebuild 21** found **#1948** at its first gate: the proposer is never told that the
+     FastAPI stack's frozen models return an optional field a request left out as `null`, so its first
+     proposal asserted the field absent and a correct build would have failed it. Fixed in SIP-0109
+     §24ar before **rebuild 22**. The overlapping diagnostic legs (`restart-at:at_proposal`,
+     `abort-in-flight`) re-run on rebuild 22, and **shakeout 10** is the exit run.
    - **The original plan for this step, kept for the record:** shakeout 6 on rebuild 18, with the
      log archive beside it. At its first
    increment gate it reads #1802's live-lease proof (the quiet-box half ran on 2026-10-03), with the

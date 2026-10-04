@@ -2277,6 +2277,35 @@ capacity 2 is refused" the example of what is.
 with a recovery diagnostic is the proposal run's content in `restart-at:at_proposal`, and that leg
 re-runs on the new deploy. Shakeout 8 was stopped for it, and shakeout 9 is the exit run.
 
+### 24ar. The proposer is told what an optional field left out comes back as (2026-10-04, §7.3, §8.2, §9.1, #1948; found in the exit shakeout, decided under the 2.0 charter)
+
+**What the stack decides, and the proposal never saw.** The FastAPI stack's skeleton freezes every
+optional entity field without a default as `<type> | None = None` (#1125), so a response returns a
+field the request left out as `null`. The builder does not choose it. The proposal sees the manifest,
+which says only `required: false`, and nothing it is shown says null rather than absent.
+
+**Seen live: shakeout 9's first proposal** (`prop_58e5e58c3558` v1, rebuild 21). T1 asserted that a run
+created without a capacity "returns a body with no capacity key". The delta defined `capacity`
+exactly as the accepted `distance`, so a correct build returns `"capacity": null` and fails its own
+criterion. The supervisor returned it (#1908 §3a, criteria not checkable), and version 2 asserted
+`capacity: null`. This is §24aq's shape again: a rule enforced on the author that the author was never
+given. Here the rule is the stack's frozen serialization.
+
+**As built:**
+- **The fact is the stack's, declared as data.** `ScaffoldStack.unset_optional_response` holds the
+  JSON value its frozen models return: FastAPI `null`. A test builds the entity from the generated
+  `backend/models.py` and holds the declaration to the bytes.
+- **A stack that declares nothing tells the proposal nothing**, rather than another stack's
+  convention. The Next.js stack freezes `field?: type`, which points to absent. It declares nothing
+  until that is read from a real emission.
+- **The prose is a request template of its own** (`request.proposal_unset_optional`), shown with the
+  observable that failed and the one that is checkable. The proposal request is template v5.
+
+**The deploy it lands on:** a prompt asset and the stack table in the agent images, so it needs a
+rebuild. Its only overlap with a recovery diagnostic is the proposal run's content
+(`restart-at:at_proposal`, and `abort-in-flight` where it lands in a proposal run). Both re-run on the
+new deploy. Shakeout 9 does not satisfy the exit rule, and shakeout 10 is the exit run.
+
 ---
 
 ## Revision history
