@@ -16,6 +16,20 @@ updated_at: '2026-04-25T17:57:04.777541Z'
 
 ---
 
+## Delivery ledger (current as of 2026-10-04)
+
+Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
+
+| part | status | where |
+|---|---|---|
+| child 1: SIP-0089 runtime state | **shipped** | v1.1.0 (`sips/implemented/SIP-0089-…`; this SIP's references still cite `sips/accepted/`) |
+| child 2: SIP-0090 embodiment | Phase 1 **shipped** (v1.2.0); Phases 2–4 **deferred to 3.x** (ruled 2026-10-04) | see SIP-0090's ledger |
+| child 3: SIP-0091 Temporal durability | **deferred to 3.x** (ruled 2026-10-04) (no code) | see SIP-0091's ledger |
+| package acceptance criteria 5–6 (embodiment, Temporal) | not met | follow children 2 and 3 |
+| "Future considerations" (Patterns B/D/E, multi-embodiment, FocusLease queueing) | future SIPs, not obligations | the `queued` FocusLease outcome is also an unamended gap in SIP-0089 |
+
+**What closes this SIP:** Children 2 and 3 shipped or dropped. **Ruled 2026-10-04: the runtime-mode family and duty work are 3.x** (the 2.x line is campaigns, memory, outcome evaluation and the squad-authored backlog). Re-read when 2.x's last plan is written; placed by 3.0's plan. The children's "v1.1/v1.2/v1.3 candidate" labels are superseded by this.
+
 ## Purpose of this document
 
 This document is the **umbrella vision** for evolving SquadOps from a cycle-only execution framework into a runtime that supports persistent runtime state, scheduled operational responsibilities, and (eventually) embodied presence.
@@ -366,7 +380,7 @@ These are smaller scope than the duty/cycle composition question and are flagged
 
 ## References
 
-- `sips/accepted/SIP-0089-Agent-Runtime-State.md` — v1.1 candidate
+- `sips/implemented/SIP-0089-Agent-Runtime-State.md` — v1.1 candidate
 - `sips/accepted/SIP-0090-Agent-Embodiment-Substrate.md` — v1.2 candidate
 - `sips/accepted/SIP-0091-Duty-Durability-via-Temporal.md` — v1.3 candidate
 - Future follow-on: `SIP-Minecraft-Embodiment-Adapter.md` (not in this package)

@@ -7,6 +7,9 @@ created_at: '2026-08-21T00:00:00Z'
 ---
 # SIP: Design Decision Register
 
+> **Placement and delivery (2026-10-04: the owner's rulings on the SIP-portfolio audit, `sips/PORTFOLIO.md`).** **Folds into #950's design**, the plan-gate review packet, placed after Outcome Evaluation (2.4 or later). Its rung 1 is **#1031 (2.1.0)**. The rung targets in 1.6.x and 1.8 are superseded.
+
+
 **Status:** Proposed (2026-08-21)
 **Builds on:** SIP-0103 (Squad-Authored Manifest — the M2 `decisions[]` judgment record,
 #783, is this SIP's foundation), SIP-0104 (deterministic scaffolding — the contract

@@ -51,6 +51,24 @@ author: Backspring Labs / SquadOps
 > | risk-first instructions for qa and builder, with "no new test is justified" a legal outcome (§19) | after the first campaign, as an outer-loop experiment read against the calibration cycle |
 > | the test-value audit, fault corpus, detection matrix and deletion experiment on the framework's suite (§10–§28) | after, as Nostromo crew work. It suits crew local inference between cycles (§34). It is not commissioning work, because deletion decisions take judgement |
 > | verification-cost reporting (§17–§18, §23) | after the first campaign, from the evidence package's cost data |
+>
+> **Placement revised 2026-10-04, by the owner's ruling** (after reviewing the draft again during the 2.0
+> counted set). The 2026-10-01 note above stays as the record. **The delivery ledger, current as of this
+> revision:**
+>
+> | part | status | where |
+> |---|---|---|
+> | demonstrated discrimination for the squad's campaign criteria (§7) | **shipped in 2.0** (validated in the 2.0 set; the tag is pending) | SIP-0109 §8.2, enforced by every increment's evaluation; the proposal prompt states the rule since §24aq (#1946) |
+> | the plausible-fault rule and anti-pattern linter, for the framework's own suite | **shipped before 2.0** | `docs/TEST_QUALITY_STANDARD.md`; its linter runs in the regression gate |
+> | anti-pattern checks on the squad's tests (§39, partial) | **shipped** | #915, #1126, #1153, #668, #1022, #999 |
+> | verification-cost reporting (§17–§18, §23) | **placed: 2.1** | folded into #1960's per-increment scorecard: the qa tasks' tokens, the verification share of an increment, test-file churn. No separate build |
+> | the framework suite's test-value audit, fault corpus, detection matrix and deletion experiment (§10–§28) | **placed: the 2.1 window, as the Nostromo crew's first optimization experiment** | #1965. Measurement only. Each deletion is an owner-approved PR. The corpus also serves `SIP-Outcome-Evaluation`'s first prediction |
+> | risk-first qa and builder instructions (§19, §35–§38) | **placed: an A/B experiment built in 2.1; adopted no earlier than after Cross-Cycle Memory (2.2), by default in 2.4** | #1966, run with #1959 (increment replay) and read with #1960. Never in the same release as memory, so each change's effect stays readable |
+> | the stub-based red gate for greenfield cycles (§7's mechanism there) | **owned by `SIP-Test-First-Verification`** | unchanged from the 2026-10-01 note |
+> | automation of classification, mutation runs and gap detection (§45 phase 4), and the follow-ons (§56) | **unplaced, deliberately** | after #1965 reads. The SIP's own §45 orders it so |
+>
+> **What closes this SIP:** every row above shipped or dropped by an amendment. Today four rows are open:
+> #1960's columns, #1965, #1966, and the unplaced automation.
 
 ---
 

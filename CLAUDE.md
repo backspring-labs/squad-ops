@@ -186,6 +186,23 @@ Key principle: **acceptance is a design commitment on main, not an implementatio
 - **A disposition that is deliberately not built is an amendment too** — silence reads as "shipped."
 - **Do not touch `updated_at`.** It means *last status transition*, not last content change: `update_sip_status.py` is the only writer (frontmatter and registry are stamped separately, hence the millisecond skew between them), so a hand edit invents drift. **The amendment section's own date is the content record** — and it is the better one, since it says *what* changed rather than only when.
 
+**A SIP that ships in parts keeps a delivery ledger** (the owner, 2026-10-04: "the record is maintained as to what remains left to do, where it is to be deployed, so that we can close and progress SIPs"). Large SIPs ship over several releases, and a release plan is superseded at its cut. So the record of what shipped and what remains lives in the SIP:
+- **Every accepted SIP, and every proposed SIP that has been placed, carries a `Delivery ledger`.** It has one row per part that ships separately (a phase, a slice, a section), and each row has a status:
+  - *shipped*: the release and the PR;
+  - *placed*: the release **and the open issue that tracks it**; a part with no open issue is not placed;
+  - *unplaced*: said deliberately;
+  - *dropped*: by the numbered amendment that dropped it.
+  - *deferred to N.x (ruled <date>)*: a ruling moved the part to a later major line. No issue is needed until that line's first plan, which places it, and the last plan of the current line re-reads it.
+
+  It ends with one line saying what closes the SIP.
+- **It is updated in the PR that ships or re-places a part,** and the release cut's SIP sweep (step 5 below) reads it. A SIP is promoted when every row is shipped or dropped. Otherwise the ledger names what remains and where.
+- **The ledger records delivery; it is not a design change.** A design change is still a numbered amendment (step 5a).
+
+**Every new SIP or idea gets an intake check** (the owner, the same day: "keep track of where there is overlap, conflict, and/or where reconciliation is needed"). Before a new draft or idea is recorded, it is checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded idea.
+- **The finding goes in two places:** the new document's header (what it overlaps, at what point, and the boundary between them) and the portfolio's reconciliation queue.
+- **An overlap** gets a boundary statement in both documents.
+- **A conflict,** where two documents prescribe opposite things, waits for the owner's ruling, and both documents name it until then.
+
 ### Key Implemented SIPs
 
 - **SIP-0061** – LangFuse LLM Observability Foundation

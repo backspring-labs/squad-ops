@@ -13,11 +13,24 @@ updated_at: '2026-04-25T17:57:14.005001Z'
 **Created:** 2026-04-25
 **Revision:** 2 (incorporated review feedback on 2026-04-25)
 **Targets:** v1.6 (rider on the Authorship release — moved off v1.4 by the 2026-07-14 arc reconciliation (`docs/plans/1-4-evidence-arc-plan.md`) when 1.4 became the golden-path dual-headline release; reconfirmed by `docs/plans/post-1-4-roadmap-reconciliation.md`. Earlier remapped from the stale v1.3 self-tag, which predated the even/odd convention #281 — see `docs/plans/2-0-roadmap-reconciliation.md` Finding 4, #335)
-**Depends on:** `sips/accepted/SIP-0089-Agent-Runtime-State.md` (v1.1) — must land first
+**Depends on:** `sips/implemented/SIP-0089-Agent-Runtime-State.md` (v1.1) — must land first
 **Parent vision:** `sips/accepted/SIP-0088-Agent-Runtime-Modes.md` (umbrella index)
 **Sibling:** `sips/accepted/SIP-0090-Agent-Embodiment-Substrate.md` (v1.2)
 
 ---
+
+## Delivery ledger (current as of 2026-10-04)
+
+Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
+
+| part | status | where |
+|---|---|---|
+| Phase 1: `DutyDurabilityPort`, run model, idempotency log | **deferred to 3.x** (ruled 2026-10-04) (no code) | none until 3.0's plan |
+| Phase 2: Temporal adapter | **deferred to 3.x** (ruled 2026-10-04); **the engine choice is reopened at 3.0's plan** | none |
+| Phase 3: schedules and recurrence | **deferred to 3.x** (ruled 2026-10-04) | none |
+| Phase 4: production hardening | **deferred to 3.x** (ruled 2026-10-04) | none |
+
+**What closes this SIP:** Every phase shipped, or the SIP deprecated (`accepted → deprecated` is a valid transition). Note: SIP-0109 met campaign durability with a Postgres control log, launch outbox and sweep (§12b, §24ae, §24am), not Temporal; this SIP is scoped to Duty mode. **Ruled 2026-10-04: 3.x**, with the duty work it serves. 3.0's plan re-decides the engine (Temporal against the alternatives the reselling idea raises) before any phase is built.
 
 ## 1. Summary
 
@@ -436,7 +449,7 @@ The SIP is successful when:
 
 ## 17. References
 
-- Depends on: `sips/accepted/SIP-0089-Agent-Runtime-State.md` (v1.1)
+- Depends on: `sips/implemented/SIP-0089-Agent-Runtime-State.md` (v1.1)
 - Parent vision: `sips/accepted/SIP-0088-Agent-Runtime-Modes.md` (canonical reason codes, event names, package invariant)
 - Original full proposal: commit `76a1f90` on main
 - Temporal Workflows — https://docs.temporal.io/workflows

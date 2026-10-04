@@ -7,6 +7,9 @@ created_at: '2026-08-03T00:00:00Z'
 ---
 # SIP: Cross-Cycle Memory
 
+> **Placement and delivery (2026-10-04: the owner's rulings on the SIP-portfolio audit, `sips/PORTFOLIO.md`).** **The 2.2 headline, and 2.2's only change to squad behaviour**, beside #1708's auto tier and escalation queue, which change the control plane, not the squad. #557, #949 and #950 follow Outcome Evaluation's scenarios (2.4 or later). **Its 2.1 part** (the inert recall port, its call site, and the Phase-1 re-read) is **#1964**. **It owns** memory's scopes, lifecycle and payload; Capability-Backed Agents (3.x) defers to it. **A constraint from 3.x:** memory stays addressable as a service, the Embodiment Runtime's invariant 2.
+
+
 ## Status
 Draft (proposed)
 

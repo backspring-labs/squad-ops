@@ -718,20 +718,50 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Accepted (Next Up)
 
+*Each accepted SIP now carries a `Delivery ledger` (2026-10-04), and `sips/PORTFOLIO.md` is the cross-SIP view: what shipped, what remains and where it is placed, the overlaps, and the owner's reconciliation queue.*
+
 *Re-read 2026-09-12 with the 1.8 plan (`docs/plans/1-8-0-plan.md` §6); none of these but SIP-0107 and SIP-0108 is 1.8 work, and the 1.7.5 cut's sweep left every earlier one `accepted` with its gap named. SIP-0107 and SIP-0108 were accepted 2026-09-13.*
 
 | SIP | Title | State, and where it goes next |
 |-----|-------|--------|
-| **SIP-0088** | Agent Runtime Modes (umbrella; runtime arc shipped 1.1–1.2) | stays accepted — children 0090 Phases 2–4 and 0091 untouched since the 2026-08-03 audit (`docs/plans/sip-promotion-audit-2026-08-03.md`); the Embodiment Runtime direction is a post-1.8 extension SIP still to be drafted; target set with the 1.9 and 2.0 plans |
+| **SIP-0088** | Agent Runtime Modes (umbrella; runtime arc shipped 1.1–1.2) | stays accepted — children 0090 Phases 2–4 and 0091 untouched since the 2026-08-03 audit (`docs/plans/sip-promotion-audit-2026-08-03.md`); the Embodiment Runtime direction is drafted as `sips/proposed/SIP-Agent-Embodiment-Runtime.md` (2026-08-18). Neither the 1.9 nor the 2.0 plan set a target, so it is unplaced, pending the owner's decision on the runtime-mode family and duty work (`sips/PORTFOLIO.md` Q7, Q8) |
 | **SIP-0090** | Agent Embodiment Substrate (Phase 1 shipped 1.2.0) | Phases 2+ — as above |
 | **SIP-0091** | Duty Durability via Temporal | zero code — as above |
 | **SIP-0092** | Implementation Plan Improvement — Typed Acceptance, Separated Authoring, and Plan Changes | stays accepted (M1 landed; M2 partial on 93.4; M3 unimplemented); **#1444 executes its `handle()` decomposition direction in 1.8**, re-authored against main |
 | **SIP-0093** | Multi-Role Plan Authoring | stays accepted (93.4 + §5.8 merge rules 2–5 + two required tests remain); #194/#949/#950 at design review |
 | **SIP-0101** | Cycle Replay Harness | stays accepted (minimum slice shipped in 1.5); its records are an input to the 1.8 scorecard's benchmark registry — a consumer, not a completion |
 | **SIP-0102** | Ephemeral Application Sandbox (1.4 floor shipped as the v1.4.0 S-lane headline) | migration steps 3–7 open (in-cycle routing, clean-room verdicts, #306 retirement, golden-path validation); **#598's rendered packaging is a §4.2 consequence landing in 1.8's prelude**; step 5 is named absent by SIP-0108, whose clean-room indicators are unaskable until it lands |
-| **SIP-0104** | Deterministic Verification Scaffolding with Semantic Fill Slots | stays accepted — stack #1 parity (#1122) not scheduled |
+| **SIP-0104** | Deterministic Verification Scaffolding with Semantic Fill Slots | shipped in v1.6.0; stack #1 parity (#1122) closed not-planned 2026-09-29, so that hold no longer applies. **Ready to promote with an amendment**, after the owner reads §10.2 (`sips/PORTFOLIO.md` Q15) |
 | **SIP-0105** | Stack Blueprint Contract | stays accepted — the blueprint rewrite after #1131 open; **amended by #598 in 1.8** (the Dockerfile and nginx config become a rendering of the stack declaration) |
 | **SIP-0107** | Scoped Code Revision | **the 1.8 Lane M headline** — accepted at its design review 2026-09-13 with required revision (rev 4), rolled out by the 1.8 plan §3.3, #1444 first — steps 1–6 in 1.8.0, the default flip in 1.8.1 by design (SIP-0107 §46a) |
+| **SIP-0109** | Campaign Orchestration | **the 2.0 headline**: accepted 2026-10-01 (rev 6); §18 steps 1–8 built; the 2.0 counted set registered 2026-10-04 (#1908). Its delivery ledger is in the SIP. Promotion at or after the 2.0 cut (`sips/PORTFOLIO.md` Q17) |
+
+## Horizon: 2.x and 3.x (ruled 2026-10-04)
+
+*The owner, 2026-10-04: the runtime-mode family and duty work "should go to a 3.x. We have a lot in the 2.x with cross-cycle memory, campaign self-write of features, etc." Each SIP named below records its placement in its own delivery ledger, and `sips/PORTFOLIO.md` is the cross-SIP view.*
+
+**2.x: the squad evolves software autonomously, and is measured doing it.**
+
+| release | headline | carries |
+|---|---|---|
+| 2.0 | Campaign (SIP-0109) | the counted set, registered 2026-10-04 (#1908) |
+| 2.1 | stabilization | the 2.0 set's findings; the optimization crew's enablers (#1940, #1956, #1959, #1960); the structure audit's defects and ground-clearing (#1982–#1991); the plan is PR #1955 |
+| 2.2 | Cross-Cycle Memory | the line's **only** change to squad behaviour, beside #1708's auto tier and escalation queue |
+| 2.3 | stabilization | Outcome Evaluation's reporting-only instruments; the comms (#1977) and API contract (#1976) hardening; the structure audit's batch: orchestration out of `adapters/cycles` (#1992), a `stacks` package (#1993), the largest units split (#1994) |
+| 2.4 | Outcome Evaluation's feature half (proposed) | Verification Yield's risk-first instructions (#1966); then the judgement steps it measures (#557, #949, #950) |
+| 2.6 | the squad-authored backlog (no SIP yet) | features from the strategy role, debt refactors from the lead; Test-First's greenfield gate (#1978) |
+
+**3.x: agents running continuously in the world (duty mode).** Deferred here by ruling, and placed by 3.0's plan:
+- SIP-0088 Agent Runtime Modes (umbrella);
+- SIP-0090 Embodiment, Phases 2–4;
+- SIP-0091 Duty Durability (its engine re-decided at 3.0);
+- Agent Embodiment Runtime;
+- Capability-Backed Agents;
+- the Duty Continuity ledger;
+- the Continuum console's duty view;
+- Edge Deployment;
+- the duty-gated half of Comms Delivery Guarantees;
+- the Nostromo idea's cross-domain phase.
 
 ## Proposals (Backlog)
 
@@ -745,10 +775,11 @@ The following areas are identified for future work but do not block 1.0 readines
 
 | SIP | Title |
 |-----|-------|
-| (unnumbered) | Campaign Orchestration (**v2.0 headline** — owner's ruling 2026-09-12, `docs/plans/1-8-0-plan.md` §8; previously the v1.8 co-headliner) |
+| (unnumbered) | Outcome Evaluation (drafted 2026-10-04, PR #1963: instruments 2.3, feature half heads 2.4) |
+| (unnumbered) | Verification Yield and Test Value (partly shipped in 2.0; delivery ledger in the SIP) |
 | (unnumbered) | Cross-Cycle Memory (**v2.2** — owner's ruling 2026-09-12; the B1 baseline is emitted in 1.8, the rails ship in 2.1) |
 | (unnumbered) | Campaign Self-Improvement and Test Bay Requirements (2.0 vision anchor) |
-| (unnumbered) | Agent Comms Delivery Guarantees (Campaign gate — moves to 1.8 with Campaign, or rides 1.6 as hardening) |
+| (unnumbered) | Agent Comms Delivery Guarantees (was a "Campaign gate"; 2.0 shipped without it, on a Postgres outbox and sweep. Its trigger is to be restated: `sips/PORTFOLIO.md` Q9) |
 | (unnumbered) | Edge Deployment Profile |
 | (unnumbered) | Experiment Queue and Cycle Assessment |
 
@@ -771,7 +802,7 @@ The following areas are identified for future work but do not block 1.0 readines
 *As of 2026-09-24 (v1.8.1):*
 
 - **Framework version**: 1.9.0
-- **SIPs**: 67 implemented, 10 accepted (SIP-0088, 0090–0093, 0101, 0102, 0104, 0105, 0107), 20 deprecated (registry)
+- **SIPs** (2026-10-04): 67 implemented, 11 accepted (SIP-0088, 0090–0093, 0101, 0102, 0104, 0105, 0107, 0109), 20 deprecated, plus the unnumbered proposals indexed in `sips/PORTFOLIO.md`
 - **Tests**: 10,000+ passing in the regression suite (all of `tests/unit`, #1316)
 - **Python source**: ~109,000 lines measured 2026-09-17 (`src/` ~84,000 + `adapters/` ~25,000; ~168,000 test lines; ~144,000 lines of Markdown under `docs/` and `sips/`)
 - **~6 months** from initial repo (2025-09-20) to 1.0.0 release (2026-03-10)
