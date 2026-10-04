@@ -167,7 +167,10 @@ held by memory or by one session's scratch files.
 Deploy-moving work batches into rebuilds, and each structural refactor gets a batch of its own.
 
 1. **Inherit the 2.0 set's findings.** Whatever the set and the cut place in 2.1 goes first: they are
-   live evidence, and their fixes may touch the same seams as the rows above.
+   live evidence, and their fixes may touch the same seams as the rows above. **So far:**
+   - **#1961**: the proposal rails accept a feature whose derived footprint holds no source file (an
+     empty manifest delta), so no build could satisfy it. Found at campaign 1's increment 2 gate; the
+     supervisor's gate caught it, so nothing was fixed during the set.
 2. **The crew's tooling and the instruments, before anything they would measure:**
    - #1956 (the supervisor's instruments, tracked), #1959 (the increment replay) and #1960 (the
      per-increment scorecard);
