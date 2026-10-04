@@ -46,13 +46,44 @@ the next feature release, which carries Cross-Cycle Memory. The squad authoring 
 | **the crew's, listed in 2.1** | 1 | #1756 (the owner's ruling, 2026-10-03: not to be built outside the crew) |
 | **out of 2.1's committed scope** | 1 | #1039 (the docs site's design pass; it rides any release, §5) |
 
-**So 2.1 closes 18 of the 24 that stay open after the 2.0 cut** (17 hardening and #1940), **plus §3's
-three new issues: 21 in all**, with #1756 the crew's and #1039 riding any release. That count does not
-include what the 2.0 set itself will find.
+**So 2.1 closes 18 of the 24 that stay open after the 2.0 cut** (17 hardening and #1940), **plus
+five new issues: 23 in all.** Three are §3's gaps (#1956, #1957, #1958) and two are the optimization
+crew's enablers (§2.0: #1959, #1960). #1756 is the crew's, and #1039 rides any release. That count does
+not include what the 2.0 set itself will find.
 
 ---
 
-## 2. The hardening work, by theme
+## 2. The work, by theme
+
+### 2.0 First: what the optimization crew needs to run the outer loop
+
+The Nostromo IDEA (`docs/ideas/nostromo-framework-optimization-crew.md`) has the crew dispatch a
+campaign, supervise it, and turn its results into framework fixes validated against a preserved
+baseline. 2.0 built most of what that needs:
+- the supervision interface and the box lease;
+- the control log, with actor, reason and key on every operation;
+- the evidence package, with per-cycle tokens and wall clock.
+
+Four things stand between the crew and running that loop end to end. They lead 2.1 because they make
+the rest of 2.1 measurable.
+
+| issue | what it gives the crew | size | deploy |
+|---|---|---|---|
+| #1940 | **authority to dispatch.** Only `admin` holds `campaigns:control` (create, start, resume, abort). `campaign-supervisor` can read and rule, not launch. Without it the owner launches every campaign, and the IDEA's first acceptance criterion fails | S | yes |
+| #1956 | **the supervisor's instruments, tracked:** the watcher, the live-lease proof, the binding replay and the loaded checks, so the crew starts from what supervised 2.0 | M | no |
+| #1959 | **a comparison:** replay any increment of any campaign outside it, on the current deploy, from its composed baseline (the PROMOTE row's `tree_ref`), its approved change request and the frozen criteria in force. The reference launcher (#1804) generalized; a script over the existing API | M | no |
+| #1960 | **comparable numbers:** a per-increment scorecard from the records alone (executing vs waiting, tokens by role, rounds, repairs, criteria). The same arithmetic on a replay and its original | M | no (yes if the run persists its box wait) |
+
+**#1756** (the full rendered prompt kept per generation) stays the crew's commission. The crew's own
+investigations need it first: it has already cost two.
+
+**The crew's first campaign** can run on the first 2.1 rebuild that carries #1940 (§4 step 3). It
+re-runs the 2.0 set's pinned objective and policy, so the 2.0 set is its baseline at no extra cost.
+After that, each framework change the owner approves gets:
+- a prediction, written first (the IDEA's §7 schema);
+- a replay of the same increments (#1959);
+- the scorecards compared (#1960).
+
 
 Size is relative: **S** is one PR, **M** is a few PRs or one with a design note, **L** needs a replay
 proof or a SIP amendment and its own shakeout. Each row says whether it moves the deploy, because
@@ -137,12 +168,20 @@ Deploy-moving work batches into rebuilds, and each structural refactor gets a ba
 
 1. **Inherit the 2.0 set's findings.** Whatever the set and the cut place in 2.1 goes first: they are
    live evidence, and their fixes may touch the same seams as the rows above.
-2. **The instruments, before anything they would measure:** #1956's tracked instruments, #1911's
-   measurement, #1469's corpus count, and #1757's read of the stored model-limitation rewinds. Nothing
-   deploys.
-3. **Defects, batch 1:** #1934, #1950, #1913, #1930, and #1954 (deploy-moving, small), with #1957 and
-   #1958 (tooling, no deploy). Then a rebuild, the regression pair, and the overlapping recovery
-   diagnostics (`restart-at:at_proposal` for #1934).
+2. **The crew's tooling and the instruments, before anything they would measure:**
+   - #1956 (the supervisor's instruments, tracked), #1959 (the increment replay) and #1960 (the
+     per-increment scorecard);
+   - #1911's measurement, #1469's corpus count, and #1757's read of the stored model-limitation
+     rewinds.
+
+   Nothing deploys.
+3. **Defects, batch 1, with the crew's authority:**
+   - #1940, #1934, #1950, #1913, #1930 and #1954 (deploy-moving, small), and #1960's box-wait field
+     if taken;
+   - #1957 and #1958 (tooling, no deploy).
+
+   Then a rebuild, the regression pair, and the overlapping recovery diagnostics
+   (`restart-at:at_proposal` for #1934). **The crew's first campaign can run on this deploy** (§2.0).
 4. **The ruled answers:** #1757 (the third rewind anchor) and #1727 (§20 on the re-take path, read
    with #1913). Each becomes a SIP amendment in the PR that implements it.
 5. **Verification gaps:** #1796, #1937 (reporting-only), #1824's attribution locus, and #1469's
@@ -181,6 +220,14 @@ The supervisor recommended, and the owner agreed: "go ahead, record them and fil
    each with its replay proof; prompt-content items (#1031, #1692) last, never in a refactor's batch.
 9. **#1756 stays the crew's** (the owner's ruling, 2026-10-03). It is listed so that its placement is
    visible, not to be built here.
+10. **The optimization crew's enablers lead 2.1** (§2.0). The owner, on the Nostromo IDEA: "yes, file both
+    and add them to the 2.1 plan". The new issues are #1959 (the increment replay) and #1960 (the
+    per-increment scorecard). They join #1940 and #1956, so the crew can run its first campaign on 2.1's
+    first rebuild, with the 2.0 set as its baseline. Not built for it:
+    - supervisor-authored PRD increments. SIP-0109 keeps proposing with the strategy role, and the
+      supervisor steers through notes and the objective's bounds. Changing that is a design change,
+      2.2 at the earliest;
+    - a ship's recorder inside SquadOps. It is the crew's (Mother), over SquadOps' API.
 
 ## 6. What this plan does not decide
 
