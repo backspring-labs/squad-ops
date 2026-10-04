@@ -666,6 +666,98 @@ async def test_a_frozen_criterion_carries_what_it_asserts_to_the_next_proposal(c
     )
 
 
+async def test_a_promotion_whose_lookup_fails_commits_nothing_and_its_retry_commits_once(
+    calibrating, stored, monkeypatch
+):
+    """#1943, entered at the completion hook and then the startup re-hearing. Bug caught: a lookup
+    that failed degraded the binding to ids only and committed. The replay after a restart then
+    computed the binding with statements: one key, two bindings, refused (§12a), and the campaign
+    never decided. A failing lookup now fails the attempt, which commits nothing, and the
+    re-hearing promotes once, with the statements."""
+    from squadops.campaigns.change_request import (
+        ProposalContext,
+        stored_change_request,
+        validate_proposal,
+    )
+
+    fixtures = Path(__file__).resolve().parents[2] / "fixtures" / "campaigns"
+    request = validate_proposal(
+        yaml.safe_load((fixtures / "reference-capacity-change-request.yaml").read_text()),
+        ProposalContext(
+            "prop_cap",
+            1,
+            "sha-accepted",
+            (fixtures / "baseline-cyc_7a4b7a6fbf0e-interface_manifest.yaml").read_text(),
+            "fullstack_fastapi_react",
+            ("backend/**", "frontend/**"),
+            (),
+        ),
+    ).change_request
+    stored["art_candidate"] = (
+        _ref("art_candidate", "interface_manifest.yaml", "interface_manifest", -2),
+        MANIFEST.encode(),
+    )
+    stored["art_cr"] = (
+        _ref("art_cr", "change_request.yaml", "change_request", -1),
+        stored_change_request(request).encode(),
+    )
+    stored["art_eval"] = (
+        _ref("art_eval", "increment_evaluation.json", "increment_evaluation", 20),
+        _evaluation("accepted"),
+    )
+    w, run = await calibrating(RunVerdict.ACCEPTED)
+    await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
+    block = {
+        "proposal_id": "prop_cap",
+        "version": 1,
+        "baseline_tree": (await w.campaigns.get_campaign(CID)).accepted.identity,
+        "accepted_cycle_id": "cyc_cal",
+        "baseline_manifest": MANIFEST,
+    }
+    increment_run = await w.launched_cycle(
+        "increment",
+        "cyc_inc",
+        "implementation",
+        "completed",
+        overrides={"campaign_proposal": block},
+    )
+    await w.cycles.create_run(
+        Run(
+            run_id="run_prop",
+            cycle_id="cyc_inc",
+            run_number=0,
+            status="completed",
+            initiated_by="system",
+            resolved_config_hash="cfg",
+            workload_type="proposal",
+        )
+    )
+    reads = {"art_cr": 0}
+    real_retrieve = _Vault.retrieve
+
+    async def flaky(self, artifact_id):
+        if artifact_id == "art_cr":
+            reads["art_cr"] += 1
+            if reads["art_cr"] == 1:
+                raise OSError("the vault read failed once")
+        return await real_retrieve(self, artifact_id)
+
+    monkeypatch.setattr(_Vault, "retrieve", flaky)
+
+    def promotions(log):
+        return [e for e in log if e.operation is ControlOperation.PROMOTE and e.target == "cyc_inc"]
+
+    await w.end("cyc_inc", increment_run, CycleStopReason.SEQUENCE_COMPLETED)
+    after_failure = promotions(await w.campaigns.control_log(CID))
+    await w.progress.rehear_ended(["cyc_inc"])
+
+    [promote] = promotions(await w.campaigns.control_log(CID))
+    assert after_failure == []
+    assert [f["statement"] for f in promote.binding["frozen_criteria"]] == [
+        "A run created with capacity 2 is returned with capacity 2"
+    ]
+
+
 @pytest.mark.parametrize(
     "evaluation",
     [_evaluation("blocked_unverified"), None],

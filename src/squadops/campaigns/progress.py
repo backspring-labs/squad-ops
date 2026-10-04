@@ -804,23 +804,21 @@ class CampaignProgress:
         what the application already does, not only the ids it may not reuse (a proposal told
         "do not break T3" re-proposed T3's feature). Found through the increment's seed, as every
         later workload finds it: the cycle row carries no plan refs, which ride each run's
-        forwarding. A change request that cannot be read leaves the record as it was, ids only,
-        and never stops the promotion."""
+        forwarding.
+
+        **A function of stored data alone (#1943).** The binding it feeds is part of the PROMOTE
+        transition's replay identity, so a replay after a restart must compute the same binding.
+        No seed or no stored request is ``{}`` on every attempt. A read that fails raises, failing
+        this promotion attempt as any other vault or registry read in ``_promote`` does, and the
+        re-hearing retries it. It never degrades to ids only: a degraded first attempt and a
+        complete replay were one key with two bindings, refused, and the campaign never decided."""
         from squadops.campaigns.change_request import load_stored_change_request
 
-        try:
-            seed = await increment_seed(self._vault, self._cycles, cycle, run)
-            if seed is None or seed.change_request_ref is None:
-                return {}
-            _ref, content = await self._vault.retrieve(seed.change_request_ref)
-            request = load_stored_change_request(content.decode("utf-8"))
-        except Exception:
-            logger.warning(
-                "criteria_statements_unread cycle=%s: frozen by id only (#1938)",
-                cycle.cycle_id,
-                exc_info=True,
-            )
+        seed = await increment_seed(self._vault, self._cycles, cycle, run)
+        if seed is None or seed.change_request_ref is None:
             return {}
+        _ref, content = await self._vault.retrieve(seed.change_request_ref)
+        request = load_stored_change_request(content.decode("utf-8"))
         return {c.id: {"statement": c.statement, "surface": c.surface} for c in request.criteria}
 
     async def _store_bundle(self, cycle: Cycle, run: Run, criterion_id: str, bundle: dict) -> str:

@@ -2226,8 +2226,15 @@ framework's context, not the squad's judgement.
 - **The promotion freezes what a criterion asserts.** Each frozen record carries the criterion's
   `statement` and `surface` from the approved change request. The request is found through the
   increment's seed (`increment_seed`, which now names `change_request_ref`), the way every later
-  workload finds it: the approved proposal run's promoted request. A request that cannot be read
-  leaves the record as before, by id, and never stops the promotion.
+  workload finds it: the approved proposal run's promoted request. No seed or no stored request
+  freezes ids only, on every attempt.
+- **Amended the same day: the lookup is a function of stored data alone** (#1943, found from the
+  crew's review of #1908). As first built, a read that failed degraded the record to ids only and
+  let the promotion commit. A promotion's binding is part of the PROMOTE transition's replay identity
+  (`transition_request_hash`). So a degraded attempt followed by a restart and a complete replay, or
+  the reverse, was one key with two bindings. It was refused, and the campaign never decided. A
+  failed read now fails the promotion attempt, as every other read in `_promote` does, and the
+  re-hearing retries it.
 - **Read against shakeout 6's real records first.** The first build read the request from the
   cycle's `plan_artifact_refs`. The live cycle row carries none, because the refs ride each run's
   forwarding, so it would have frozen ids only, and it passed a unit test that put the refs on the
