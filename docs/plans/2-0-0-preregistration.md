@@ -77,7 +77,7 @@ are appended, and if the deploy moves, this registration is void and re-made.
      with `llama3.1:8b` resident, a CLI create was refused (409 `box_not_quiet`, with an audit
      event), and the campaign's launch went `launch_blocked`, then escalated. With the model
      unloaded and a resume, the launch proceeded.
-   - **Deployed proof, the live-lease half.** Run three times, each time at a shakeout's first
+   - **Deployed proof, the live-lease half.** Run four times, each time at a shakeout's first
      increment gate, 5 of 5 every time. Each refused create was audited (`cycle.launch_refused`,
      `denied`, in the runtime's audit sink, `data/audit/runtime-api.jsonl`):
      - **rebuild 18** (`5f46d946`, shakeout 6, `cmp_58d4e3b0a5d3`, 2026-10-03 22:05–22:09 UTC); the
@@ -88,9 +88,11 @@ are appended, and if the deploy moves, this registration is void and re-made.
      - **rebuild 21** (`3f6551d8`, shakeout 9, `cmp_9b1025685bea`, 2026-10-04 08:24–08:28 UTC); the
        framing run started 4.7 s after the unload (`waited_s=90`). Log:
        `var/campaigns/cmp_9b1025685bea/proofs/1802-live-lease-proof.log`.
-     - **rebuild 22, the deploy the set registers:** repeated at shakeout 10's first increment gate.
-       *Read at registration.* (Shakeout 8 on rebuild 20 was stopped at its first gate, before the
-       proof ran.)
+     - **rebuild 22, the deploy the set registers** (`b09883c9`, shakeout 10, `cmp_36f0d3b1e98a`,
+       2026-10-04 09:51–09:55 UTC); the framing run started 5.0 s after the unload (`waited_s=90`).
+       Log: `var/campaigns/cmp_36f0d3b1e98a/proofs/1802-live-lease-proof.log`.
+
+       Shakeout 8 on rebuild 20 was stopped at its first gate, before the proof ran.
 
      An acquire needs the gate open, so the expired lease comes first:
      1. a short lease: a CLI create is refused, `supervisor_holds_the_box`;
