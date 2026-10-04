@@ -148,9 +148,12 @@ are appended, and if the deploy moves, this registration is void and re-made.
        statements were in the binding.
      - **What holds it instead:**
        - #1944's test: a promotion whose lookup fails commits nothing, and its retry commits once;
-       - a live replay read before registration. Each applied promotion of shakeout 10 has its frozen
+       - **a live replay, read-only on the registered deploy.** Each applied promotion has its frozen
          statements recomputed twice from the deploy's stored data, through the runtime's own lookup,
-         and compared with the binding the row committed. Its result: *read at registration*.
+         and compared with the binding the row committed.
+         - Shakeout 7's four promotions (committed on rebuild 19): 6 criteria, each recomputed twice,
+           **0 mismatches** (`var/campaigns/cmp_b3a681c4f994/proofs/1943-binding-replay-rebuild22.log`).
+         - Shakeout 10's promotions: *read at registration*.
    - **The proposal-path legs re-run on each deploy that changes the proposal prompt:**
      `restart-at:at_proposal`, and `abort-in-flight`, which lands in that proposal run.
      - Rebuild 21 (`3f6551d8`, `cmp_5247f81c2ea9`): 2 of 2, for #1946.
