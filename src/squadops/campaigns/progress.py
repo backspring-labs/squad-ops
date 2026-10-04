@@ -35,7 +35,7 @@ from squadops.campaigns.continuation import (
     cycle_verdict,
 )
 from squadops.campaigns.evaluator_trees import FileTree
-from squadops.campaigns.evidence import CycleRecords, digest, package
+from squadops.campaigns.evidence import CycleRecords, digest, package, serialized
 from squadops.campaigns.gate import (
     plan_gate_overdue_transitions,
     ruling_overdue_transitions,
@@ -693,7 +693,7 @@ class CampaignProgress:
             doc["identity"],
             "package",
             f"campaign-{campaign_id}-package.json",
-            json.dumps(doc, sort_keys=True, indent=1).encode("utf-8"),
+            serialized(doc),
             "application/json",
             {"digest_artifact_id": digest_ref.artifact_id},
         )

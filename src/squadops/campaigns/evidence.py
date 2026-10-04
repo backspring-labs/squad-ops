@@ -6,8 +6,10 @@ read), its launches, and per cycle the assessment, the persisted failure records
 that followed. Its identity is the hash of its canonical form, so materializing it again from the
 same records is idempotent, and a reader without the producing deploy can act on it.
 
-The digest is rendered from the package alone: what was accepted, how each cycle ended and was
-classified, what escalated or is held and why, and what the owner is asked to rule.
+The digest is rendered from the package alone: what each accepted increment shipped (the criteria
+its promotion froze), each proposal version's ruling and classification, how each cycle ended, the
+package's size against its bound, what escalated or is held and why, and what the owner is asked to
+rule.
 """
 
 from __future__ import annotations
@@ -24,6 +26,15 @@ from squadops.campaigns.models import CampaignState, ControlOperation, ControlOu
 #: Bumped when the package's shape changes; a reader checks it before reading further.
 #: 2: each cycle carries its runs' revision forms (#1710).
 PACKAGE_VERSION = 2
+
+#: The size bound (#1710: "bounded, so a frontier triage of one night fits a metered model
+#: budget"). A package holds records only, never logs or prompts, so it grows only with the cycles
+#: the policy allows. Measured on the 2.0 set's two packages (112 KB each, four cycles): about
+#: 28 KB a cycle (its assessment, its launch request, its control-log rows) and 2 KB besides. The
+#: bound allows over half as much again per cycle. A package past it is named in the digest, never
+#: truncated: the records are the evidence.
+PACKAGE_BASE_BYTES = 8 * 1024
+PACKAGE_BYTES_PER_CYCLE = 48 * 1024
 
 
 def _plain(value: Any) -> Any:
@@ -82,6 +93,16 @@ def package(campaign: Any, log: list, launches: list, cycles: list[CycleRecords]
     return {**body, "identity": package_identity(body)}
 
 
+def serialized(doc: dict) -> bytes:
+    """The package as it is stored and read: the form ``materialize_package`` writes."""
+    return json.dumps(doc, sort_keys=True, indent=1).encode("utf-8")
+
+
+def size_bound(policy: dict) -> int:
+    """The bytes a package may take, from the cycles its campaign's policy allows."""
+    return PACKAGE_BASE_BYTES + PACKAGE_BYTES_PER_CYCLE * int(policy["max_cycles"])
+
+
 def package_identity(body: dict) -> str:
     canonical = json.dumps(
         {k: v for k, v in body.items() if k != "identity"}, sort_keys=True, separators=(",", ":")
@@ -105,19 +126,15 @@ def digest(doc: dict) -> str:
             else ""
         ),
         f"**Package:** `{doc['identity'][:16]}` (version {doc['package_version']})",
+        f"**Size:** {_kb(len(serialized(doc)))} of its {_kb(size_bound(c['policy']))} bound "
+        f"({c['policy']['max_cycles']} cycles at most)",
         "",
         "## Accepted",
     ]
-    promotions = [
-        r
-        for r in rows
-        if r["operation"] == ControlOperation.PROMOTE and r["outcome"] == ControlOutcome.APPLIED
-    ]
-    lines += [
-        f"- cycle `{r['binding']['cycle_id']}`: tree `{r['binding']['identity'][:12]}`, "
-        f"{r['binding'].get('files', '?')} files"
-        for r in promotions
-    ] or ["- nothing was accepted"]
+    lines += _accepted(doc) or ["- nothing was accepted"]
+    lines += ["", "## Proposals", ""] + (
+        _proposals(rows) or ["- no proposal reached the increment gate"]
+    )
     lines += ["", "## Cycles", "", "| cycle | kind | ending | verdict | decided | attribution |"]
     lines.append("|---|---|---|---|---|---|")
     for cyc in doc["cycles"]:
@@ -127,9 +144,70 @@ def digest(doc: dict) -> str:
             f"| `{cyc['cycle_id']}` | {cyc['kind']} | {d.get('ending', '—')} | "
             f"{d.get('verdict') or '—'} | {decided} | {_primary(cyc['assessment'])} |"
         )
-    asks = _questions(c, rows)
+    asks = _questions(c, rows) + _over_bound(doc)
     lines += ["", "## For the owner", ""] + ([f"- {q}" for q in asks] or ["- nothing is waiting"])
     return "\n".join(lines) + "\n"
+
+
+def _kb(size: int) -> str:
+    return f"{size / 1024:.0f} KB"
+
+
+def _accepted(doc: dict) -> list[str]:
+    """Each promotion, with what it shipped: the criteria it froze (the change request's own
+    statements), and any it retired."""
+    kinds = {cyc["cycle_id"]: cyc["kind"] for cyc in doc["cycles"]}
+    lines = []
+    for r in doc["control_log"]:
+        if r["operation"] != ControlOperation.PROMOTE or r["outcome"] != ControlOutcome.APPLIED:
+            continue
+        b = r["binding"]
+        lines.append(
+            f"- {kinds.get(b['cycle_id'], 'cycle')} `{b['cycle_id']}`: tree `{b['identity'][:12]}`, "
+            f"{b.get('files', '?')} files"
+        )
+        lines += [
+            f"  - froze {f['criterion_id']}: {f['statement']}"
+            for f in b.get("frozen_criteria") or ()
+        ]
+        if b.get("retired_criteria"):
+            lines.append(f"  - retired {', '.join(b['retired_criteria'])}")
+    return lines
+
+
+def _proposals(rows: list[dict]) -> list[str]:
+    """Each version that reached the increment gate, with its ruling and its classification."""
+    applied = [r for r in rows if r["outcome"] == ControlOutcome.APPLIED]
+
+    def by_version(operation: ControlOperation, field: str) -> dict:
+        return {
+            (r["binding"]["proposal_id"], r["binding"]["version"]): r["binding"][field]
+            for r in applied
+            if r["operation"] == operation
+        }
+
+    rulings = by_version(ControlOperation.RULE, "decision")
+    classes = by_version(ControlOperation.CLASSIFY, "classification")
+    lines = []
+    for r in applied:
+        if r["operation"] != ControlOperation.SUBMIT:
+            continue
+        key = (r["binding"]["proposal_id"], r["binding"]["version"])
+        line = f"- `{key[0]}` v{key[1]}: {rulings.get(key, 'awaiting a ruling')}"
+        if key in classes:
+            line += f"; classified `{classes[key]}`"
+        lines.append(line)
+    return lines
+
+
+def _over_bound(doc: dict) -> list[str]:
+    size, bound = len(serialized(doc)), size_bound(doc["campaign"]["policy"])
+    if size <= bound:
+        return []
+    return [
+        f"The evidence package is {_kb(size)}, over its {_kb(bound)} bound. It is kept whole; "
+        "say why it grew before the next campaign runs."
+    ]
 
 
 def _primary(assessment: dict | None) -> str:

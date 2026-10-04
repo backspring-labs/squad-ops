@@ -1,0 +1,3369 @@
+{
+ "campaign": {
+  "accepted": {
+   "cycle_id": "cyc_683247b84a40",
+   "identity": "914b88202d92ca15ebc63bf623f7709473a7e99dd6813368d59423b6621b5f64"
+  },
+  "campaign_id": "cmp_97a4a15f360f",
+  "created_at": "2026-10-04T16:23:28.777276+00:00",
+  "created_by": "005159fd-7461-45e4-b4f5-b2c9f868161b",
+  "objective": {
+   "allowed_scope": [
+    "backend/**",
+    "frontend/**"
+   ],
+   "measurement": "three accepted increments",
+   "statement": "evolve group_run toward its PRD's expansion scope, one increment at a time",
+   "target_accepted_increments": 3
+  },
+  "outcome": "success",
+  "policy": {
+   "budget_tokens": 4000000,
+   "calibration_profile": "validated-fullstack",
+   "launch_blocked_attempts": 6,
+   "launch_blocked_interval_s": 300,
+   "lease_expiry_s": 3600,
+   "max_cycles": 9,
+   "max_elapsed_s": 43200,
+   "max_proposal_revisions": 2,
+   "max_proposal_run_retries": 1,
+   "max_rejected_proposals_in_row": 2,
+   "max_repair_cycles_per_increment": 1,
+   "max_retry_cycles_per_increment": 1,
+   "max_unaccepted_increments": 2,
+   "proposal_profile": "campaign-increment",
+   "ruling_bound_s": 1800,
+   "squad_profile": "full-38"
+  },
+  "project_id": "group_run",
+  "proposal": {
+   "binding": {
+    "baseline_tree": "adaebff8db229bd05dd1c2731f0358a3b49b0d659e6cbcfbacc0e6f4560e67fc",
+    "content_hash": "65d6a18358525a3a1ebec6c92bad2bad4c0a8d3e8d183f30d75080f0b760ac1e",
+    "proposal_id": "prop_af32087c5b6e",
+    "version": 1
+   },
+   "cycle_id": "cyc_683247b84a40",
+   "run_id": "run_5b56fee18faa"
+  },
+  "state": "completed",
+  "updated_at": "2026-10-04T19:15:19.440411+00:00"
+ },
+ "control_log": [
+  {
+   "actor": "005159fd-7461-45e4-b4f5-b2c9f868161b",
+   "actor_role": "admin",
+   "binding": {},
+   "campaign_id": "cmp_97a4a15f360f",
+   "committed_at": "2026-10-04T16:23:28.780966+00:00",
+   "entry_id": "ctl_da906a097c06",
+   "idempotency_key": "set2-create",
+   "launch_id": null,
+   "next_state": "draft",
+   "operation": "create",
+   "outcome": "applied",
+   "prior_state": null,
+   "reason": "2.0 counted set, campaign 2 of 2 (#1908, registered 1b14d592 on rebuild 22); definition sha256 c43dbb4fe216f0fca8ae2291b5527a9256282a8e8bd361f0f7da09ede2cf48dc",
+   "refusal": null,
+   "request_hash": "d67a61458bf8797f67da9dcdf857cac0de278fa9ba80e04151a5f4e25d3c4b10",
+   "seq": 1,
+   "target": null
+  },
+  {
+   "actor": "005159fd-7461-45e4-b4f5-b2c9f868161b",
+   "actor_role": "admin",
+   "binding": {},
+   "campaign_id": "cmp_97a4a15f360f",
+   "committed_at": "2026-10-04T16:23:46.994794+00:00",
+   "entry_id": "ctl_51dd55c17926",
+   "idempotency_key": "set2-start",
+   "launch_id": "lnc_51dd55c17926",
+   "next_state": "calibrating",
+   "operation": "start",
+   "outcome": "applied",
+   "prior_state": "draft",
+   "reason": "2.0 counted set, campaign 2 of 2 (#1908): started after campaign 1 (success) and the reference scenario (build half accepted, proposal half rated would_approve)",
+   "refusal": null,
+   "request_hash": "31b6f08731de5ff94738059fe25f2dfa68e434046ccacd362d2fb95a5e5308cf",
+   "seq": 2,
+   "target": null
+  },
+  {
+   "actor": "campaign-launcher",
+   "actor_role": "launcher",
+   "binding": {
+    "cycle_id": "cyc_6d6b0d848596"
+   },
+   "campaign_id": "cmp_97a4a15f360f",
+   "committed_at": "2026-10-04T16:23:47.005501+00:00",
+   "entry_id": "ctl_5730f1465db6",
+   "idempotency_key": "lnc_51dd55c17926:launched",
+   "launch_id": "lnc_51dd55c17926",
+   "next_state": "calibrating",
+   "operation": "mark_launched",
+   "outcome": "applied",
+   "prior_state": "calibrating",
+   "reason": "the launcher created the intent's cycle",
+   "refusal": null,
+   "request_hash": "21ebb2b67d0efce2eb89b71b366e92f5151742d375c0ab4f54de120317c16f98",
+   "seq": 3,
+   "target": "lnc_51dd55c17926"
+  },
+  {
+   "actor": "squadops",
+   "actor_role": "completion",
+   "binding": {
+    "cycle_id": "cyc_6d6b0d848596",
+    "files": 26,
+    "frozen_criteria": [],
+    "identity": "8b03e89612ced51408edb4d05e746c1e650fe29d8cde40ec089a1335f8ffa608",
+    "retired_criteria": [],
+    "tree_ref": "art_f3786dad06cb"
+   },
+   "campaign_id": "cmp_97a4a15f360f",
+   "committed_at": "2026-10-04T17:18:29.775259+00:00",
+   "entry_id": "ctl_14fbf281294f",
+   "idempotency_key": "promote:cyc_6d6b0d848596:8b03e89612ced51408edb4d05e746c1e650fe29d8cde40ec089a1335f8ffa608",
+   "launch_id": null,
+   "next_state": "calibrating",
+   "operation": "promote",
+   "outcome": "applied",
+   "prior_state": "calibrating",
+   "reason": "cycle cyc_6d6b0d848596 accepted: its 26 delivered files",
+   "refusal": null,
+   "request_hash": "d69cfc64188726f579fbc303a379242ce411c7528e38b41cb8a865cfc7ce29e2",
+   "seq": 4,
+   "target": "cyc_6d6b0d848596"
+  },
+  {
+   "actor": "squadops",
+   "actor_role": "completion",
+   "binding": {
+    "action": "propose",
+    "cycle_id": "cyc_6d6b0d848596",
+    "ending": "assessed",
+    "guard": "proceed",
+    "paused_by": null,
+    "row": 5,
+    "verdict": "accepted"
+   },
+   "campaign_id": "cmp_97a4a15f360f",
+   "committed_at": "2026-10-04T17:18:31.196756+00:00",
+   "entry_id": "ctl_85d7240f9288",
+   "idempotency_key": "decide:cyc_6d6b0d848596",
+   "launch_id": "lnc_85d7240f9288",
+   "next_state": "at_proposal",
+   "operation": "decide",
+   "outcome": "applied",
+   "prior_state": "calibrating",
+   "reason": "cycle cyc_6d6b0d848596 ended (assessed); \u00a710 row 5",
+   "refusal": null,
+   "request_hash": "065591ce1cfbb4b2eb25b7b9f4dfde83a1e9ec75797c0d3a26bf0b05d2e479fb",
+   "seq": 5,
+   "target": "cyc_6d6b0d848596"
+  },
+  {
+   "actor": "campaign-launcher",
+   "actor_role": "launcher",
+   "binding": {
+    "cycle_id": "cyc_359d44170982"
+   },
+   "campaign_id": "cmp_97a4a15f360f",
+   "committed_at": "2026-10-04T17:18:31.205815+00:00",
+   "entry_id": "ctl_224e55f251ce",
+   "idempotency_key": "lnc_85d7240f9288:launched",
+   "launch_id": "lnc_85d7240f9288",
+   "next_state": "at_proposal",
+   "operation": "mark_launched",
+   "outcome": "applied",
+   "prior_state": "at_proposal",
+   "reason": "the launcher created the intent's cycle",
+   "refusal": null,
+   "request_hash": "ba04008e9266a9542d3f9aacba56996c1f4d145c64523bf46c2f17e76e809fa7",
+   "seq": 6,
+   "target": "lnc_85d7240f9288"
+  },
+  {
+   "actor": "squadops",
+   "actor_role": "executor",
+   "binding": {
+    "baseline_tree": "8b03e89612ced51408edb4d05e746c1e650fe29d8cde40ec089a1335f8ffa608",
+    "content_hash": "37344a0e5d9cd5284e4b7770b5afab8ad18b633005303c30ca13f48df0b98db8",
+    "cycle_id": "cyc_359d44170982",
+    "proposal_id": "prop_450986544201",
+    "version": 1
+   },
+   "campaign_id": "cmp_97a4a15f360f",
+   "committed_at": "2026-10-04T17:20:59.735543+00:00",
+   "entry_id": "ctl_64e22e143e14",
+   "idempotency_key": "submit:run_cbca8c594871",
+   "launch_id": null,
+   "next_state": "awaiting_ruling",
+   "operation": "submit",
+   "outcome": "applied",
+   "prior_state": "at_proposal",
+   "reason": "proposal prop_450986544201 v1 at the increment gate",
+   "refusal": null,
+   "request_hash": "d77dbf836f6c497448c6cb66119f69e44aaa66bc8393625cc09b3e5821602e42",
+   "seq": 7,
+   "target": "run_cbca8c594871"
+  },
+  {
+   "actor": "005159fd-7461-45e4-b4f5-b2c9f868161b",
+   "actor_role": "admin",
+   "binding": {
+    "baseline_tree": "8b03e89612ced51408edb4d05e746c1e650fe29d8cde40ec089a1335f8ffa608",
+    "content_hash": "37344a0e5d9cd5284e4b7770b5afab8ad18b633005303c30ca13f48df0b98db8",
+    "decision": "returned_for_revision",
+    "proposal_id": "prop_450986544201",
+    "version": 1
+   },
+   "campaign_id": "cmp_97a4a15f360f",
+   "committed_at": "2026-10-04T17:23:34.033252+00:00",
+   "entry_id": "ctl_89d8dd6d8817",
+   "idempotency_key": "set2-rule-prop_450986544201-v1",
+   "launch_id": null,
+   "next_state": "at_proposal",
+   "operation": "rule",
+   "outcome": "applied",
+   "prior_state": "awaiting_ruling",
+   "reason": "Return for revision (#1908 \u00a73a: the request is internally inconsistent). The PRD delta states three changes: 'add optional capacity field on run creation; prevent joins when capacity is reached; show capacity status in run detail'. The rest of the request carries only the first two. The manifest delta modifies no client route (the accepted /runs/:run_id declares no capacity testid), no criterion names the detail view, and the footprint holds no view source (frontend/src/views/RunDetail.jsx is absent). So no build could deliver the third change, yet the candidate PRD would state it. Fix it one of two ways. (a) Narrow the PRD delta's text to the field and the join refusal, leaving the display to a later increment. (b) Carry the display through: a client_route modify of /runs/:run_id adding a capacity-status testid (keeping every accepted testid), frontend/src/views/RunDetail.jsx in the footprint, and a client_route criterion with a concrete observable. Everything else holds and can stay as it is. The manifest delta is the accepted manifest plus capacity exactly (Run field, RunCreate optional, capacity_reached 409, join errors). T1, T2 and T3 each fail on the accepted tree, whose code has no capacity. The error envelope matches the accepted contract. T3's null is the stack's declared unset value (SIP-0109 \u00a724ar). must_not_break is empty, which is correct: nothing is frozen yet.",
+   "refusal": null,
+   "request_hash": "1b280d2db3c3eca992a503168d79ed81249441cc1759db8e256a34851c0c5c8c",
+   "seq": 8,
+   "target": "run_cbca8c594871"
+  },
+  {
+   "actor": "005159fd-7461-45e4-b4f5-b2c9f868161b",
+   "actor_role": "admin",
+   "binding": {
+    "classification": "ambiguous_manifest_delta",
+    "proposal_id": "prop_450986544201",
+    "version": 1
+   },
+   "campaign_id": "cmp_97a4a15f360f",
+   "committed_at": "2026-10-04T17:23:38.883082+00:00",
+   "entry_id": "ctl_6ed2a571005c",
+   "idempotency_key": "cli-3b1c88c422e54727b291964a15aa9fcf",
+   "launch_id": null,
+   "next_state": "at_proposal",
+   "operation": "classify",
+   "outcome": "applied",
+   "prior_state": "at_proposal",
+   "reason": "The request's two deltas disagree on whether the detail view changes. The PRD delta adds 'show capacity status in run detail'; the manifest delta, the criteria and the footprint leave the view untouched. The nearest of \u00a79.4's five readings: the inconsistency is between the PRD delta and the manifest delta, not inside the manifest delta alone.",
+   "refusal": null,
+   "request_hash": "fdb1d647f0b03a57f02e1438f664317c09a2e6fce5788fb0c79c1b6eea7f36d0",
+   "seq": 9,
+   "target": "prop_450986544201"
+  },
+  {
+   "actor": "squadops",
+   "actor_role": "executor",
+   "binding": {
+    "baseline_tree": "8b03e89612ced51408edb4d05e746c1e650fe29d8cde40ec089a1335f8ffa608",
+    "content_hash": "774b018b8f13c0b042c8cbd02b0d9f62d1c322b42e71d66874996f44ffb6714d",
+    "cycle_id": "cyc_359d44170982",
+    "proposal_id": "prop_450986544201",
+    "version": 2
+   },
+   "campaign_id": "cmp_97a4a15f360f",
+   "committed_at": "2026-10-04T17:24:32.326719+00:00",
+   "entry_id": "ctl_616900a67f3f",
+   "idempotency_key": "submit:run_377effe157ab",
+   "launch_id": null,
+   "next_state": "awaiting_ruling",
+   "operation": "submit",
+   "outcome": "applied",
+   "prior_state": "at_proposal",
+   "reason": "proposal prop_450986544201 v2 at the increment gate",
+   "refusal": null,
+   "request_hash": "faaeb5160d5f18252548708e927c7fae9f70d17cef74d83d4d893a876663113f",
+   "seq": 10,
+   "target": "run_377effe157ab"
+  },
+  {
+   "actor": "005159fd-7461-45e4-b4f5-b2c9f868161b",
+   "actor_role": "admin",
+   "binding": {
+    "baseline_tree": "8b03e89612ced51408edb4d05e746c1e650fe29d8cde40ec089a1335f8ffa608",
+    "content_hash": "774b018b8f13c0b042c8cbd02b0d9f62d1c322b42e71d66874996f44ffb6714d",
+    "decision": "approved",
+    "proposal_id": "prop_450986544201",
+    "version": 2
+   },
+   "campaign_id": "cmp_97a4a15f360f",
+   "committed_at": "2026-10-04T17:25:17.550804+00:00",
+   "entry_id": "ctl_2222fefae693",
+   "idempotency_key": "set2-rule-prop_450986544201-v2",
+   "launch_id": null,
+   "next_state": "building",
+   "operation": "rule",
+   "outcome": "applied",
+   "prior_state": "awaiting_ruling",
+   "reason": "Approve (#1908 \u00a73a). v2 makes the one fix v1 was returned for: the PRD delta now states only the field and the join refusal, which is what the manifest delta, the criteria and the footprint carry. The display is left to a later increment. Every approve condition holds. Scope: PRD \u00a74.1 Tier 1 item 1's backend half, inside allowed_scope. Criteria: T1 (capacity echoed), T2 (third join on a capacity-2 run \u2192 409 capacity_reached in the accepted envelope) and T3 (null when omitted, the stack's declared unset value, SIP-0109 \u00a724ar). Each is concrete, asserts only what the request states (P9), and fails on the accepted tree, whose code has no capacity (checked at v1; the baseline_tree is unchanged, 8b03e896\u2026). Footprint: errors.py, models.py, routes.py and the qa namespace, no wider than the change. must_not_break is empty, which is correct because nothing is frozen yet.",
+   "refusal": null,
+   "request_hash": "8667276fc96ba6c598c5d1d9073b376c4fee8c3d6225a31878f74213cd27cc71",
+   "seq": 11,
+   "target": "run_377effe157ab"
+  },
+  {
+   "actor": "squadops",
+   "actor_role": "completion",
+   "binding": {
+    "cycle_id": "cyc_359d44170982",
+    "files": 30,
+    "frozen_criteria": [
+     {
+      "bundle_address": "615c8d04f5043e614401c48fbfea1e40ae9f2e2cfb00e85051f2527c0e591353",
+      "bundle_ref": "art_3e37d6e871f3",
+      "criterion_id": "T1",
+      "statement": "A run created with capacity 2 returns that capacity in the response",
+      "surface": "POST /runs",
+      "test_path": "backend/tests/criteria/test_T1.py"
+     },
+     {
+      "bundle_address": "5823a138d3422b0f83f5a44b30e42ea827c4bc8397246a8b8509d318f37302aa",
+      "bundle_ref": "art_4532b6a80680",
+      "criterion_id": "T2",
+      "statement": "A third join to a run with capacity 2 is refused with capacity_reached",
+      "surface": "POST /runs/{run_id}/join",
+      "test_path": "backend/tests/criteria/test_T2.py"
+     },
+     {
+      "bundle_address": "025af1b4aeeee20fc21a1896eee8b5465fcad707150c200bcf9f227953b28695",
+      "bundle_ref": "art_370c56f4193f",
+      "criterion_id": "T3",
+      "statement": "A run created without a capacity field returns capacity as null",
+      "surface": "POST /runs",
+      "test_path": "backend/tests/criteria/test_T3.py"
+     }
+    ],
+    "identity": "1235e7c9db22be5d3c51a96bb0834dbf9a1c8970b48f578dc612fae602f71368",
+    "retired_criteria": [],
+    "tree_ref": "art_052db09e5abc"
+   },
+   "campaign_id": "cmp_97a4a15f360f",
+   "committed_at": "2026-10-04T18:04:51.954024+00:00",
+   "entry_id": "ctl_7173e37493ed",
+   "idempotency_key": "promote:cyc_359d44170982:1235e7c9db22be5d3c51a96bb0834dbf9a1c8970b48f578dc612fae602f71368",
+   "launch_id": null,
+   "next_state": "building",
+   "operation": "promote",
+   "outcome": "applied",
+   "prior_state": "building",
+   "reason": "cycle cyc_359d44170982 accepted: its 30 delivered files",
+   "refusal": null,
+   "request_hash": "70111fc62caf9737ed4014ccefcabcae9ef6ce3c15e856eeadf90b02b936bed7",
+   "seq": 12,
+   "target": "cyc_359d44170982"
+  },
+  {
+   "actor": "squadops",
+   "actor_role": "completion",
+   "binding": {
+    "cycle_id": "cyc_359d44170982"
+   },
+   "campaign_id": "cmp_97a4a15f360f",
+   "committed_at": "2026-10-04T18:04:51.956305+00:00",
+   "entry_id": "ctl_1f9cd8642460",
+   "idempotency_key": "evaluate:cyc_359d44170982",
+   "launch_id": null,
+   "next_state": "evaluating",
+   "operation": "decide",
+   "outcome": "applied",
+   "prior_state": "building",
+   "reason": "cycle cyc_359d44170982 ended: evaluating",
+   "refusal": null,
+   "request_hash": "d8ccdd460f03cbefde24f977ea7f88110e2fc1a650c68090002ff63ec62c263e",
+   "seq": 13,
+   "target": "cyc_359d44170982"
+  },
+  {
+   "actor": "squadops",
+   "actor_role": "completion",
+   "binding": {
+    "action": "propose",
+    "cycle_id": "cyc_359d44170982",
+    "ending": "assessed",
+    "guard": "proceed",
+    "paused_by": null,
+    "row": 7,
+    "verdict": "accepted"
+   },
+   "campaign_id": "cmp_97a4a15f360f",
+   "committed_at": "2026-10-04T18:04:53.382872+00:00",
+   "entry_id": "ctl_e10ae493f190",
+   "idempotency_key": "decide:cyc_359d44170982",
+   "launch_id": "lnc_e10ae493f190",
+   "next_state": "at_proposal",
+   "operation": "decide",
+   "outcome": "applied",
+   "prior_state": "evaluating",
+   "reason": "cycle cyc_359d44170982 ended (assessed); \u00a710 row 7",
+   "refusal": null,
+   "request_hash": "fa10a080e5f76ca779f8f0a5885542f457604c0fa13bb640ee47804fdb4a2473",
+   "seq": 14,
+   "target": "cyc_359d44170982"
+  },
+  {
+   "actor": "campaign-launcher",
+   "actor_role": "launcher",
+   "binding": {
+    "cycle_id": "cyc_5c6ad38860f3"
+   },
+   "campaign_id": "cmp_97a4a15f360f",
+   "committed_at": "2026-10-04T18:04:53.397431+00:00",
+   "entry_id": "ctl_31299aac3c92",
+   "idempotency_key": "lnc_e10ae493f190:launched",
+   "launch_id": "lnc_e10ae493f190",
+   "next_state": "at_proposal",
+   "operation": "mark_launched",
+   "outcome": "applied",
+   "prior_state": "at_proposal",
+   "reason": "the launcher created the intent's cycle",
+   "refusal": null,
+   "request_hash": "479a328c63b98a36d3c7da6e193732d4aaf7caca916c0e04d91e0b4a7b60c1f4",
+   "seq": 15,
+   "target": "lnc_e10ae493f190"
+  },
+  {
+   "actor": "squadops",
+   "actor_role": "executor",
+   "binding": {
+    "baseline_tree": "1235e7c9db22be5d3c51a96bb0834dbf9a1c8970b48f578dc612fae602f71368",
+    "content_hash": "e741601414dd7087191f911d046733cc055116736ed31fb8057bfc17f3b20321",
+    "cycle_id": "cyc_5c6ad38860f3",
+    "proposal_id": "prop_a9de76329e08",
+    "version": 1
+   },
+   "campaign_id": "cmp_97a4a15f360f",
+   "committed_at": "2026-10-04T18:06:28.468226+00:00",
+   "entry_id": "ctl_59c9cbe7d23a",
+   "idempotency_key": "submit:run_0036d79ee10e",
+   "launch_id": null,
+   "next_state": "awaiting_ruling",
+   "operation": "submit",
+   "outcome": "applied",
+   "prior_state": "at_proposal",
+   "reason": "proposal prop_a9de76329e08 v1 at the increment gate",
+   "refusal": null,
+   "request_hash": "c4332a7d1563540fff126ad6e48bdfa09fff2ec44b84407ccb5e885fc1bb9b9c",
+   "seq": 16,
+   "target": "run_0036d79ee10e"
+  },
+  {
+   "actor": "005159fd-7461-45e4-b4f5-b2c9f868161b",
+   "actor_role": "admin",
+   "binding": {
+    "baseline_tree": "1235e7c9db22be5d3c51a96bb0834dbf9a1c8970b48f578dc612fae602f71368",
+    "content_hash": "e741601414dd7087191f911d046733cc055116736ed31fb8057bfc17f3b20321",
+    "decision": "approved",
+    "proposal_id": "prop_a9de76329e08",
+    "version": 1
+   },
+   "campaign_id": "cmp_97a4a15f360f",
+   "committed_at": "2026-10-04T18:09:11.001897+00:00",
+   "entry_id": "ctl_68b0c5e75c64",
+   "idempotency_key": "set2-rule-prop_a9de76329e08-v1",
+   "launch_id": null,
+   "next_state": "building",
+   "operation": "rule",
+   "outcome": "applied",
+   "prior_state": "awaiting_ruling",
+   "reason": "Approve (#1908 \u00a73a). Scope: PRD \u00a74.1 Tier 1 item 2 (sort the run list by datetime), inside allowed_scope. T4 is concrete and checkable on GET /runs. It asserts only what the request states (ascending, lexical; ISO strings, so lexical is chronological; no tie rule asserted, and none stated). It fails on the accepted tree, whose get_runs returns list(run_store.values()), so B, created second with the earlier datetime, comes second. The request is internally consistent: the PRD text, the endpoint summary and T4 agree. The manifest delta changes only GET /runs' summary, against the accepted definition, and no accepted decision constrains ordering. Footprint: backend/routes.py and the qa namespace, no wider than the change. must_not_break names T1, T2 and T3, whose create and join handlers live in the file this change touches. The accepted tree is increment 1's (1235e7c9\u2026, 30 paths, P7 checked).",
+   "refusal": null,
+   "request_hash": "83bb203472dae1762ff01e89cf5e59d2fe74d1fa3b5a27acd0b0131860bfa656",
+   "seq": 17,
+   "target": "run_0036d79ee10e"
+  },
+  {
+   "actor": "squadops",
+   "actor_role": "completion",
+   "binding": {
+    "cycle_id": "cyc_5c6ad38860f3",
+    "files": 31,
+    "frozen_criteria": [
+     {
+      "bundle_address": "0dddf14478af63adf5ea270a82818ff848dce73ddc3d9d509a9279a33b4928f5",
+      "bundle_ref": "art_d2cc3887a185",
+      "criterion_id": "T4",
+      "statement": "GET /runs returns runs in datetime-ascending order regardless of creation order",
+      "surface": "GET /runs",
+      "test_path": "backend/tests/criteria/test_T4.py"
+     }
+    ],
+    "identity": "adaebff8db229bd05dd1c2731f0358a3b49b0d659e6cbcfbacc0e6f4560e67fc",
+    "retired_criteria": [],
+    "tree_ref": "art_bc70a852eb7f"
+   },
+   "campaign_id": "cmp_97a4a15f360f",
+   "committed_at": "2026-10-04T18:34:21.574764+00:00",
+   "entry_id": "ctl_02eed04626f2",
+   "idempotency_key": "promote:cyc_5c6ad38860f3:adaebff8db229bd05dd1c2731f0358a3b49b0d659e6cbcfbacc0e6f4560e67fc",
+   "launch_id": null,
+   "next_state": "building",
+   "operation": "promote",
+   "outcome": "applied",
+   "prior_state": "building",
+   "reason": "cycle cyc_5c6ad38860f3 accepted: its 31 delivered files",
+   "refusal": null,
+   "request_hash": "3da1cc3da4a8b305d5c540bc3e4f4710392b16283066fd2900bae3674e15a1ec",
+   "seq": 18,
+   "target": "cyc_5c6ad38860f3"
+  },
+  {
+   "actor": "squadops",
+   "actor_role": "completion",
+   "binding": {
+    "cycle_id": "cyc_5c6ad38860f3"
+   },
+   "campaign_id": "cmp_97a4a15f360f",
+   "committed_at": "2026-10-04T18:34:21.577952+00:00",
+   "entry_id": "ctl_38d0cb426843",
+   "idempotency_key": "evaluate:cyc_5c6ad38860f3",
+   "launch_id": null,
+   "next_state": "evaluating",
+   "operation": "decide",
+   "outcome": "applied",
+   "prior_state": "building",
+   "reason": "cycle cyc_5c6ad38860f3 ended: evaluating",
+   "refusal": null,
+   "request_hash": "b021dc1bf0bcb35d2eed3aab376787003910ec0202cb7e44509907080eb2142b",
+   "seq": 19,
+   "target": "cyc_5c6ad38860f3"
+  },
+  {
+   "actor": "squadops",
+   "actor_role": "completion",
+   "binding": {
+    "action": "propose",
+    "cycle_id": "cyc_5c6ad38860f3",
+    "ending": "assessed",
+    "guard": "proceed",
+    "paused_by": null,
+    "row": 7,
+    "verdict": "accepted"
+   },
+   "campaign_id": "cmp_97a4a15f360f",
+   "committed_at": "2026-10-04T18:34:22.999980+00:00",
+   "entry_id": "ctl_3c5a5005c6b2",
+   "idempotency_key": "decide:cyc_5c6ad38860f3",
+   "launch_id": "lnc_3c5a5005c6b2",
+   "next_state": "at_proposal",
+   "operation": "decide",
+   "outcome": "applied",
+   "prior_state": "evaluating",
+   "reason": "cycle cyc_5c6ad38860f3 ended (assessed); \u00a710 row 7",
+   "refusal": null,
+   "request_hash": "65f1f4e9f1def4586535b91474c6ceca1c0da7717e76858fab117c52304fd1fc",
+   "seq": 20,
+   "target": "cyc_5c6ad38860f3"
+  },
+  {
+   "actor": "campaign-launcher",
+   "actor_role": "launcher",
+   "binding": {
+    "cycle_id": "cyc_683247b84a40"
+   },
+   "campaign_id": "cmp_97a4a15f360f",
+   "committed_at": "2026-10-04T18:34:23.010370+00:00",
+   "entry_id": "ctl_6761e37553ee",
+   "idempotency_key": "lnc_3c5a5005c6b2:launched",
+   "launch_id": "lnc_3c5a5005c6b2",
+   "next_state": "at_proposal",
+   "operation": "mark_launched",
+   "outcome": "applied",
+   "prior_state": "at_proposal",
+   "reason": "the launcher created the intent's cycle",
+   "refusal": null,
+   "request_hash": "3d9699ebf2b3844e15fe42b5a275582eba174eb3d22165ca14aad60b3df52462",
+   "seq": 21,
+   "target": "lnc_3c5a5005c6b2"
+  },
+  {
+   "actor": "squadops",
+   "actor_role": "executor",
+   "binding": {
+    "baseline_tree": "adaebff8db229bd05dd1c2731f0358a3b49b0d659e6cbcfbacc0e6f4560e67fc",
+    "content_hash": "65d6a18358525a3a1ebec6c92bad2bad4c0a8d3e8d183f30d75080f0b760ac1e",
+    "cycle_id": "cyc_683247b84a40",
+    "proposal_id": "prop_af32087c5b6e",
+    "version": 1
+   },
+   "campaign_id": "cmp_97a4a15f360f",
+   "committed_at": "2026-10-04T18:36:15.647787+00:00",
+   "entry_id": "ctl_cb3be7f69f44",
+   "idempotency_key": "submit:run_5b56fee18faa",
+   "launch_id": null,
+   "next_state": "awaiting_ruling",
+   "operation": "submit",
+   "outcome": "applied",
+   "prior_state": "at_proposal",
+   "reason": "proposal prop_af32087c5b6e v1 at the increment gate",
+   "refusal": null,
+   "request_hash": "21e0e14eadfa2c9ef926a345ea7c6c3daad9bc84bbb72bd9203c1dd0e7a96b85",
+   "seq": 22,
+   "target": "run_5b56fee18faa"
+  },
+  {
+   "actor": "005159fd-7461-45e4-b4f5-b2c9f868161b",
+   "actor_role": "admin",
+   "binding": {
+    "baseline_tree": "adaebff8db229bd05dd1c2731f0358a3b49b0d659e6cbcfbacc0e6f4560e67fc",
+    "content_hash": "65d6a18358525a3a1ebec6c92bad2bad4c0a8d3e8d183f30d75080f0b760ac1e",
+    "decision": "approved",
+    "proposal_id": "prop_af32087c5b6e",
+    "version": 1
+   },
+   "campaign_id": "cmp_97a4a15f360f",
+   "committed_at": "2026-10-04T18:38:05.653995+00:00",
+   "entry_id": "ctl_1ab4735e2b6d",
+   "idempotency_key": "set2-rule-prop_af32087c5b6e-v1",
+   "launch_id": null,
+   "next_state": "building",
+   "operation": "rule",
+   "outcome": "applied",
+   "prior_state": "awaiting_ruling",
+   "reason": "Approve (#1908 \u00a73a). Scope: PRD \u00a74.1 Tier 1 item 3 ('a simple dev-only button or endpoint to create sample run data'), inside allowed_scope. The request takes both, and carries both consistently: the endpoint in the manifest delta, routes.py and T5; the button as the / route's seed-run-button testid, with RunList.jsx in the footprint. All six accepted / testids are kept. T5 is concrete and checkable on POST /runs/seed, and asserts only what the request states (a created run with non-empty title, datetime and meeting_location; nothing about participants). It fails on the accepted tree: increment 2's router has no seed route, so POST /runs/seed is 405 there. must_not_break names T1 to T4, whose handlers share routes.py. Noted, not grounds: the button is covered by no criterion; the request does not carry the PRD's 'dev-only'. Accepted tree: increment 2's (adaebff8\u2026, 31 paths).",
+   "refusal": null,
+   "request_hash": "7f1f7c49efa3a6dabbeb9990482cfea76ecf473a327da377aa6457326a2d0f11",
+   "seq": 23,
+   "target": "run_5b56fee18faa"
+  },
+  {
+   "actor": "squadops",
+   "actor_role": "completion",
+   "binding": {
+    "cycle_id": "cyc_683247b84a40",
+    "files": 33,
+    "frozen_criteria": [
+     {
+      "bundle_address": "aeef7f4443ce08ace788c46000233845fd8985a46dfa9109af5ea1c91c315626",
+      "bundle_ref": "art_50b6d36d1807",
+      "criterion_id": "T5",
+      "statement": "POST /runs/seed creates a sample run and returns it with non-empty title, datetime, and meeting_location",
+      "surface": "POST /runs/seed",
+      "test_path": "backend/tests/criteria/test_T5.py"
+     }
+    ],
+    "identity": "914b88202d92ca15ebc63bf623f7709473a7e99dd6813368d59423b6621b5f64",
+    "retired_criteria": [],
+    "tree_ref": "art_6ed1c8116402"
+   },
+   "campaign_id": "cmp_97a4a15f360f",
+   "committed_at": "2026-10-04T19:15:19.431431+00:00",
+   "entry_id": "ctl_7f3c30d8ddb7",
+   "idempotency_key": "promote:cyc_683247b84a40:914b88202d92ca15ebc63bf623f7709473a7e99dd6813368d59423b6621b5f64",
+   "launch_id": null,
+   "next_state": "building",
+   "operation": "promote",
+   "outcome": "applied",
+   "prior_state": "building",
+   "reason": "cycle cyc_683247b84a40 accepted: its 33 delivered files",
+   "refusal": null,
+   "request_hash": "49ca40e36654e11f65585c17f5822dc512fc98204c06e2e14b1bd6dd10456ec8",
+   "seq": 24,
+   "target": "cyc_683247b84a40"
+  },
+  {
+   "actor": "squadops",
+   "actor_role": "completion",
+   "binding": {
+    "cycle_id": "cyc_683247b84a40"
+   },
+   "campaign_id": "cmp_97a4a15f360f",
+   "committed_at": "2026-10-04T19:15:19.434118+00:00",
+   "entry_id": "ctl_b43bcd13fca4",
+   "idempotency_key": "evaluate:cyc_683247b84a40",
+   "launch_id": null,
+   "next_state": "evaluating",
+   "operation": "decide",
+   "outcome": "applied",
+   "prior_state": "building",
+   "reason": "cycle cyc_683247b84a40 ended: evaluating",
+   "refusal": null,
+   "request_hash": "50c8089613c176d16ff65054b43f3150e8c786d4880b0a2e79d32986cfdce61f",
+   "seq": 25,
+   "target": "cyc_683247b84a40"
+  },
+  {
+   "actor": "squadops",
+   "actor_role": "completion",
+   "binding": {
+    "cause": "objective_met",
+    "cycle_id": "cyc_683247b84a40",
+    "ending": "assessed",
+    "outcome": "success",
+    "row": 3,
+    "verdict": "accepted"
+   },
+   "campaign_id": "cmp_97a4a15f360f",
+   "committed_at": "2026-10-04T19:15:19.440411+00:00",
+   "entry_id": "ctl_a5ccd977b820",
+   "idempotency_key": "decide:cyc_683247b84a40",
+   "launch_id": null,
+   "next_state": "completed",
+   "operation": "decide",
+   "outcome": "applied",
+   "prior_state": "evaluating",
+   "reason": "cycle cyc_683247b84a40 ended (assessed); \u00a710 row 3",
+   "refusal": null,
+   "request_hash": "1b40af19f41b3cea7a38dc450118c8e792c29c14e10c44e56b049dedfd356624",
+   "seq": 26,
+   "target": "cyc_683247b84a40"
+  }
+ ],
+ "cycles": [
+  {
+   "assessment": {
+    "assessment_version": 1,
+    "assessor": {
+     "framework_version": "1.9.0",
+     "git_sha": "b09883c9"
+    },
+    "attribution": {
+     "attribution": {
+      "contributing": [],
+      "primary": null,
+      "registry_version": 1
+     },
+     "reason": null,
+     "refs": [
+      {
+       "id": "run_2b1452890d94",
+       "kind": "registry_run"
+      },
+      {
+       "id": "run_2b1452890d94",
+       "kind": "verification_summary"
+      },
+      {
+       "id": "run_c2c74d06982f",
+       "kind": "verification_summary"
+      }
+     ],
+     "state": "observed",
+     "terminal_kind": "completed",
+     "unrecorded": []
+    },
+    "attribution_registry_version": 1,
+    "coordination": [
+     {
+      "name": "correction_rounds",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": 0
+     },
+     {
+      "name": "failed_emission_artifacts",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": 0
+     },
+     {
+      "name": "failed_emissions",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": 0
+     },
+     {
+      "name": "contentless_emissions",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": {
+       "repair_rounds": 0,
+       "task_attempts": 0
+      }
+     },
+     {
+      "name": "framing_rerolls",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": 0
+     },
+     {
+      "name": "plan_defect_terminations",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": 0
+     },
+     {
+      "name": "refunded_rounds",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": []
+     },
+     {
+      "name": "correction_movements",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": []
+     }
+    ],
+    "cycle_id": "cyc_6d6b0d848596",
+    "efficiency": [
+     {
+      "name": "wall_clock_seconds_by_run",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_2b1452890d94",
+        "kind": "registry_run"
+       },
+       {
+        "id": "run_c2c74d06982f",
+        "kind": "registry_run"
+       }
+      ],
+      "state": "observed",
+      "value": {
+       "run_2b1452890d94": 1202.641954,
+       "run_c2c74d06982f": 1918.503359
+      }
+     },
+     {
+      "name": "wall_clock_seconds",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_2b1452890d94",
+        "kind": "registry_run"
+       },
+       {
+        "id": "run_c2c74d06982f",
+        "kind": "registry_run"
+       }
+      ],
+      "state": "observed",
+      "value": 3121.145313
+     },
+     {
+      "name": "tokens_by_run",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_2b1452890d94",
+        "kind": "run_summary"
+       },
+       {
+        "id": "run_c2c74d06982f",
+        "kind": "run_summary"
+       }
+      ],
+      "state": "observed",
+      "value": {
+       "run_2b1452890d94": {
+        "completion": 31440,
+        "prompt": 84575,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 8
+       },
+       "run_c2c74d06982f": {
+        "completion": 45088,
+        "prompt": 78630,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 8
+       }
+      }
+     },
+     {
+      "name": "tokens_by_task_type",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_2b1452890d94",
+        "kind": "run_summary"
+       },
+       {
+        "id": "run_c2c74d06982f",
+        "kind": "run_summary"
+       }
+      ],
+      "state": "observed",
+      "value": {
+       "builder.assemble": {
+        "completion": 20,
+        "prompt": 16632,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "data.research_context": {
+        "completion": 6165,
+        "prompt": 4247,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "development.author_manifest": {
+        "completion": 6197,
+        "prompt": 17469,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "development.design_plan": {
+        "completion": 7568,
+        "prompt": 4504,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "development.develop": {
+        "completion": 12076,
+        "prompt": 42185,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 4
+       },
+       "governance.define_done": {
+        "completion": 1892,
+        "prompt": 3457,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "governance.merge_plan": {
+        "completion": 7631,
+        "prompt": 11510,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "governance.prepare_plan_authoring_brief": {
+        "completion": 4675,
+        "prompt": 27309,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "governance.review_plan": {
+        "completion": 3408,
+        "prompt": 4755,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "qa.define_test_strategy": {
+        "completion": 5112,
+        "prompt": 4490,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "qa.test": {
+        "completion": 17452,
+        "prompt": 22301,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 2
+       },
+       "strategy.frame_objective": {
+        "completion": 4332,
+        "prompt": 4346,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       }
+      }
+     },
+     {
+      "name": "llm_calls",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_2b1452890d94",
+        "kind": "run_summary"
+       },
+       {
+        "id": "run_c2c74d06982f",
+        "kind": "run_summary"
+       }
+      ],
+      "state": "observed",
+      "value": {
+       "calls": 16,
+       "failed_calls": 0,
+       "tasks_unreported": []
+      }
+     }
+    ],
+    "evidence_identity": "214dd69b5e982abae371d744c1a943fa1906c78f854a20ec04d691d5c2ffc0e4",
+    "outcome": [
+     {
+      "name": "verdict",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_2b1452890d94",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_c2c74d06982f",
+        "kind": "verification_summary"
+       }
+      ],
+      "state": "observed",
+      "value": "accepted"
+     },
+     {
+      "name": "criteria_coverage",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_2b1452890d94",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_c2c74d06982f",
+        "kind": "verification_summary"
+       }
+      ],
+      "state": "observed",
+      "value": {
+       "total": 21,
+       "verified": 21
+      }
+     },
+     {
+      "name": "required_unverified_by_reason",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_2b1452890d94",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_c2c74d06982f",
+        "kind": "verification_summary"
+       }
+      ],
+      "state": "asked_none",
+      "value": {}
+     },
+     {
+      "name": "inert",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_2b1452890d94",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_c2c74d06982f",
+        "kind": "verification_summary"
+       }
+      ],
+      "state": "asked_none",
+      "value": []
+     },
+     {
+      "name": "waived",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": []
+     }
+    ],
+    "quality": [
+     {
+      "name": "failed_checks",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_2b1452890d94",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_c2c74d06982f",
+        "kind": "verification_summary"
+       }
+      ],
+      "state": "asked_none",
+      "value": []
+     },
+     {
+      "name": "unverified_by_reason",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_2b1452890d94",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_c2c74d06982f",
+        "kind": "verification_summary"
+       }
+      ],
+      "state": "asked_none",
+      "value": {}
+     },
+     {
+      "name": "verified_executable",
+      "reason": "sip_0102_step_5_not_landed",
+      "refs": [],
+      "state": "unaskable",
+      "value": null
+     },
+     {
+      "name": "verified_functional",
+      "reason": "sip_0102_step_5_not_landed",
+      "refs": [],
+      "state": "unaskable",
+      "value": null
+     }
+    ]
+   },
+   "cycle_id": "cyc_6d6b0d848596",
+   "decision": {
+    "action": "propose",
+    "cycle_id": "cyc_6d6b0d848596",
+    "ending": "assessed",
+    "guard": "proceed",
+    "paused_by": null,
+    "row": 5,
+    "verdict": "accepted"
+   },
+   "failure_records": [],
+   "kind": "calibration",
+   "revision_forms": [
+    {
+     "forms": [],
+     "run_id": "run_c2c74d06982f",
+     "workload_type": "framing"
+    },
+    {
+     "forms": [],
+     "run_id": "run_2b1452890d94",
+     "workload_type": "implementation"
+    }
+   ]
+  },
+  {
+   "assessment": {
+    "assessment_version": 1,
+    "assessor": {
+     "framework_version": "1.9.0",
+     "git_sha": "b09883c9"
+    },
+    "attribution": {
+     "attribution": {
+      "contributing": [],
+      "primary": null,
+      "registry_version": 1
+     },
+     "reason": null,
+     "refs": [
+      {
+       "id": "run_2cedb1197658",
+       "kind": "registry_run"
+      },
+      {
+       "id": "run_2cedb1197658",
+       "kind": "verification_summary"
+      },
+      {
+       "id": "run_377effe157ab",
+       "kind": "verification_summary"
+      },
+      {
+       "id": "run_38840984277d",
+       "kind": "verification_summary"
+      },
+      {
+       "id": "run_cbca8c594871",
+       "kind": "verification_summary"
+      }
+     ],
+     "state": "observed",
+     "terminal_kind": "completed",
+     "unrecorded": []
+    },
+    "attribution_registry_version": 1,
+    "coordination": [
+     {
+      "name": "correction_rounds",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": 0
+     },
+     {
+      "name": "failed_emission_artifacts",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": 0
+     },
+     {
+      "name": "failed_emissions",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": 0
+     },
+     {
+      "name": "contentless_emissions",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": {
+       "repair_rounds": 0,
+       "task_attempts": 0
+      }
+     },
+     {
+      "name": "framing_rerolls",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": 0
+     },
+     {
+      "name": "plan_defect_terminations",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": 0
+     },
+     {
+      "name": "refunded_rounds",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": []
+     },
+     {
+      "name": "correction_movements",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": []
+     }
+    ],
+    "cycle_id": "cyc_359d44170982",
+    "efficiency": [
+     {
+      "name": "wall_clock_seconds_by_run",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_2cedb1197658",
+        "kind": "registry_run"
+       },
+       {
+        "id": "run_377effe157ab",
+        "kind": "registry_run"
+       },
+       {
+        "id": "run_38840984277d",
+        "kind": "registry_run"
+       },
+       {
+        "id": "run_cbca8c594871",
+        "kind": "registry_run"
+       }
+      ],
+      "state": "observed",
+      "value": {
+       "run_2cedb1197658": 782.409903,
+       "run_377effe157ab": 56.347786,
+       "run_38840984277d": 1570.922321,
+       "run_cbca8c594871": 148.447568
+      }
+     },
+     {
+      "name": "wall_clock_seconds",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_2cedb1197658",
+        "kind": "registry_run"
+       },
+       {
+        "id": "run_377effe157ab",
+        "kind": "registry_run"
+       },
+       {
+        "id": "run_38840984277d",
+        "kind": "registry_run"
+       },
+       {
+        "id": "run_cbca8c594871",
+        "kind": "registry_run"
+       }
+      ],
+      "state": "observed",
+      "value": 2558.127578
+     },
+     {
+      "name": "tokens_by_run",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_2cedb1197658",
+        "kind": "run_summary"
+       },
+       {
+        "id": "run_377effe157ab",
+        "kind": "run_summary"
+       },
+       {
+        "id": "run_38840984277d",
+        "kind": "run_summary"
+       },
+       {
+        "id": "run_cbca8c594871",
+        "kind": "run_summary"
+       }
+      ],
+      "state": "observed",
+      "value": {
+       "run_2cedb1197658": {
+        "completion": 17931,
+        "prompt": 69175,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 7
+       },
+       "run_377effe157ab": {
+        "completion": 1481,
+        "prompt": 7875,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "run_38840984277d": {
+        "completion": 35908,
+        "prompt": 78770,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 7
+       },
+       "run_cbca8c594871": {
+        "completion": 3822,
+        "prompt": 6490,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       }
+      }
+     },
+     {
+      "name": "tokens_by_task_type",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_2cedb1197658",
+        "kind": "run_summary"
+       },
+       {
+        "id": "run_377effe157ab",
+        "kind": "run_summary"
+       },
+       {
+        "id": "run_38840984277d",
+        "kind": "run_summary"
+       },
+       {
+        "id": "run_cbca8c594871",
+        "kind": "run_summary"
+       }
+      ],
+      "state": "observed",
+      "value": {
+       "builder.assemble": {
+        "completion": 20,
+        "prompt": 14732,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "development.design_plan": {
+        "completion": 5539,
+        "prompt": 5631,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "development.develop": {
+        "completion": 3443,
+        "prompt": 12411,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "development.propose_plan_tasks": {
+        "completion": 6092,
+        "prompt": 16498,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "governance.define_done": {
+        "completion": 1902,
+        "prompt": 3457,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "governance.merge_plan": {
+        "completion": 0,
+        "prompt": 0,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 0
+       },
+       "governance.prepare_plan_authoring_brief": {
+        "completion": 2781,
+        "prompt": 15146,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "governance.review_plan": {
+        "completion": 5636,
+        "prompt": 5847,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "qa.define_test_strategy": {
+        "completion": 4321,
+        "prompt": 5671,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "qa.evaluate_increment": {
+        "completion": 0,
+        "prompt": 0,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 0
+       },
+       "qa.propose_plan_tasks": {
+        "completion": 8694,
+        "prompt": 21661,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "qa.test": {
+        "completion": 12566,
+        "prompt": 38575,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 4
+       },
+       "strategy.propose_increment": {
+        "completion": 5303,
+        "prompt": 14365,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 2
+       },
+       "strategy.propose_plan_guidance": {
+        "completion": 2845,
+        "prompt": 8316,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       }
+      }
+     },
+     {
+      "name": "llm_calls",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_2cedb1197658",
+        "kind": "run_summary"
+       },
+       {
+        "id": "run_377effe157ab",
+        "kind": "run_summary"
+       },
+       {
+        "id": "run_38840984277d",
+        "kind": "run_summary"
+       },
+       {
+        "id": "run_cbca8c594871",
+        "kind": "run_summary"
+       }
+      ],
+      "state": "observed",
+      "value": {
+       "calls": 16,
+       "failed_calls": 0,
+       "tasks_unreported": []
+      }
+     }
+    ],
+    "evidence_identity": "a6386889eb1579da8656b2fab7497bf8839dbf59c8e9b5fd9953da3843379a8b",
+    "outcome": [
+     {
+      "name": "verdict",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_2cedb1197658",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_377effe157ab",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_38840984277d",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_cbca8c594871",
+        "kind": "verification_summary"
+       }
+      ],
+      "state": "observed",
+      "value": "accepted"
+     },
+     {
+      "name": "criteria_coverage",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_2cedb1197658",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_377effe157ab",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_38840984277d",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_cbca8c594871",
+        "kind": "verification_summary"
+       }
+      ],
+      "state": "observed",
+      "value": {
+       "total": 27,
+       "verified": 27
+      }
+     },
+     {
+      "name": "required_unverified_by_reason",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_2cedb1197658",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_377effe157ab",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_38840984277d",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_cbca8c594871",
+        "kind": "verification_summary"
+       }
+      ],
+      "state": "asked_none",
+      "value": {}
+     },
+     {
+      "name": "inert",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_2cedb1197658",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_377effe157ab",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_38840984277d",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_cbca8c594871",
+        "kind": "verification_summary"
+       }
+      ],
+      "state": "asked_none",
+      "value": []
+     },
+     {
+      "name": "waived",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": []
+     }
+    ],
+    "quality": [
+     {
+      "name": "failed_checks",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_2cedb1197658",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_377effe157ab",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_38840984277d",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_cbca8c594871",
+        "kind": "verification_summary"
+       }
+      ],
+      "state": "asked_none",
+      "value": []
+     },
+     {
+      "name": "unverified_by_reason",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_2cedb1197658",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_377effe157ab",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_38840984277d",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_cbca8c594871",
+        "kind": "verification_summary"
+       }
+      ],
+      "state": "asked_none",
+      "value": {}
+     },
+     {
+      "name": "verified_executable",
+      "reason": "sip_0102_step_5_not_landed",
+      "refs": [],
+      "state": "unaskable",
+      "value": null
+     },
+     {
+      "name": "verified_functional",
+      "reason": "sip_0102_step_5_not_landed",
+      "refs": [],
+      "state": "unaskable",
+      "value": null
+     }
+    ]
+   },
+   "cycle_id": "cyc_359d44170982",
+   "decision": {
+    "action": "propose",
+    "cycle_id": "cyc_359d44170982",
+    "ending": "assessed",
+    "guard": "proceed",
+    "paused_by": null,
+    "row": 7,
+    "verdict": "accepted"
+   },
+   "failure_records": [],
+   "kind": "increment",
+   "revision_forms": [
+    {
+     "forms": [],
+     "run_id": "run_cbca8c594871",
+     "workload_type": "proposal"
+    },
+    {
+     "forms": [],
+     "run_id": "run_377effe157ab",
+     "workload_type": "proposal"
+    },
+    {
+     "forms": [],
+     "run_id": "run_38840984277d",
+     "workload_type": "framing"
+    },
+    {
+     "forms": [],
+     "run_id": "run_2cedb1197658",
+     "workload_type": "implementation"
+    }
+   ]
+  },
+  {
+   "assessment": {
+    "assessment_version": 1,
+    "assessor": {
+     "framework_version": "1.9.0",
+     "git_sha": "b09883c9"
+    },
+    "attribution": {
+     "attribution": {
+      "contributing": [],
+      "primary": null,
+      "registry_version": 1
+     },
+     "reason": null,
+     "refs": [
+      {
+       "id": "run_8e2d2b26c5a4",
+       "kind": "registry_run"
+      },
+      {
+       "id": "run_0036d79ee10e",
+       "kind": "verification_summary"
+      },
+      {
+       "id": "run_3f402de9d14f",
+       "kind": "verification_summary"
+      },
+      {
+       "id": "run_8e2d2b26c5a4",
+       "kind": "verification_summary"
+      }
+     ],
+     "state": "observed",
+     "terminal_kind": "completed",
+     "unrecorded": []
+    },
+    "attribution_registry_version": 1,
+    "coordination": [
+     {
+      "name": "correction_rounds",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": 0
+     },
+     {
+      "name": "failed_emission_artifacts",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": 0
+     },
+     {
+      "name": "failed_emissions",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": 0
+     },
+     {
+      "name": "contentless_emissions",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": {
+       "repair_rounds": 0,
+       "task_attempts": 0
+      }
+     },
+     {
+      "name": "framing_rerolls",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": 0
+     },
+     {
+      "name": "plan_defect_terminations",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": 0
+     },
+     {
+      "name": "refunded_rounds",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": []
+     },
+     {
+      "name": "correction_movements",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": []
+     }
+    ],
+    "cycle_id": "cyc_5c6ad38860f3",
+    "efficiency": [
+     {
+      "name": "wall_clock_seconds_by_run",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_0036d79ee10e",
+        "kind": "registry_run"
+       },
+       {
+        "id": "run_3f402de9d14f",
+        "kind": "registry_run"
+       },
+       {
+        "id": "run_8e2d2b26c5a4",
+        "kind": "registry_run"
+       }
+      ],
+      "state": "observed",
+      "value": {
+       "run_0036d79ee10e": 95.015356,
+       "run_3f402de9d14f": 1093.620588,
+       "run_8e2d2b26c5a4": 396.011655
+      }
+     },
+     {
+      "name": "wall_clock_seconds",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_0036d79ee10e",
+        "kind": "registry_run"
+       },
+       {
+        "id": "run_3f402de9d14f",
+        "kind": "registry_run"
+       },
+       {
+        "id": "run_8e2d2b26c5a4",
+        "kind": "registry_run"
+       }
+      ],
+      "state": "observed",
+      "value": 1584.647599
+     },
+     {
+      "name": "tokens_by_run",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_0036d79ee10e",
+        "kind": "run_summary"
+       },
+       {
+        "id": "run_3f402de9d14f",
+        "kind": "run_summary"
+       },
+       {
+        "id": "run_8e2d2b26c5a4",
+        "kind": "run_summary"
+       }
+      ],
+      "state": "observed",
+      "value": {
+       "run_0036d79ee10e": {
+        "completion": 2238,
+        "prompt": 6691,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "run_3f402de9d14f": {
+        "completion": 24506,
+        "prompt": 74349,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 7
+       },
+       "run_8e2d2b26c5a4": {
+        "completion": 8119,
+        "prompt": 40090,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 4
+       }
+      }
+     },
+     {
+      "name": "tokens_by_task_type",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_0036d79ee10e",
+        "kind": "run_summary"
+       },
+       {
+        "id": "run_3f402de9d14f",
+        "kind": "run_summary"
+       },
+       {
+        "id": "run_8e2d2b26c5a4",
+        "kind": "run_summary"
+       }
+      ],
+      "state": "observed",
+      "value": {
+       "builder.assemble": {
+        "completion": 20,
+        "prompt": 14742,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "development.design_plan": {
+        "completion": 4753,
+        "prompt": 5124,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "development.develop": {
+        "completion": 1530,
+        "prompt": 11887,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "development.propose_plan_tasks": {
+        "completion": 2146,
+        "prompt": 16004,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "governance.define_done": {
+        "completion": 2536,
+        "prompt": 3457,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "governance.merge_plan": {
+        "completion": 0,
+        "prompt": 0,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 0
+       },
+       "governance.prepare_plan_authoring_brief": {
+        "completion": 3730,
+        "prompt": 14750,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "governance.review_plan": {
+        "completion": 2703,
+        "prompt": 5340,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "qa.define_test_strategy": {
+        "completion": 4101,
+        "prompt": 5171,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "qa.evaluate_increment": {
+        "completion": 0,
+        "prompt": 0,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 0
+       },
+       "qa.propose_plan_tasks": {
+        "completion": 4759,
+        "prompt": 20113,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "qa.test": {
+        "completion": 4033,
+        "prompt": 10004,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "strategy.propose_increment": {
+        "completion": 2238,
+        "prompt": 6691,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "strategy.propose_plan_guidance": {
+        "completion": 2314,
+        "prompt": 7847,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       }
+      }
+     },
+     {
+      "name": "llm_calls",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_0036d79ee10e",
+        "kind": "run_summary"
+       },
+       {
+        "id": "run_3f402de9d14f",
+        "kind": "run_summary"
+       },
+       {
+        "id": "run_8e2d2b26c5a4",
+        "kind": "run_summary"
+       }
+      ],
+      "state": "observed",
+      "value": {
+       "calls": 12,
+       "failed_calls": 0,
+       "tasks_unreported": []
+      }
+     }
+    ],
+    "evidence_identity": "5a72e20cd6886b12f745b892cae84974fc652bb9c04e89580792d483df50505e",
+    "outcome": [
+     {
+      "name": "verdict",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_0036d79ee10e",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_3f402de9d14f",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_8e2d2b26c5a4",
+        "kind": "verification_summary"
+       }
+      ],
+      "state": "observed",
+      "value": "accepted"
+     },
+     {
+      "name": "criteria_coverage",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_0036d79ee10e",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_3f402de9d14f",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_8e2d2b26c5a4",
+        "kind": "verification_summary"
+       }
+      ],
+      "state": "observed",
+      "value": {
+       "total": 18,
+       "verified": 18
+      }
+     },
+     {
+      "name": "required_unverified_by_reason",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_0036d79ee10e",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_3f402de9d14f",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_8e2d2b26c5a4",
+        "kind": "verification_summary"
+       }
+      ],
+      "state": "asked_none",
+      "value": {}
+     },
+     {
+      "name": "inert",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_0036d79ee10e",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_3f402de9d14f",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_8e2d2b26c5a4",
+        "kind": "verification_summary"
+       }
+      ],
+      "state": "asked_none",
+      "value": []
+     },
+     {
+      "name": "waived",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": []
+     }
+    ],
+    "quality": [
+     {
+      "name": "failed_checks",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_0036d79ee10e",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_3f402de9d14f",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_8e2d2b26c5a4",
+        "kind": "verification_summary"
+       }
+      ],
+      "state": "asked_none",
+      "value": []
+     },
+     {
+      "name": "unverified_by_reason",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_0036d79ee10e",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_3f402de9d14f",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_8e2d2b26c5a4",
+        "kind": "verification_summary"
+       }
+      ],
+      "state": "asked_none",
+      "value": {}
+     },
+     {
+      "name": "verified_executable",
+      "reason": "sip_0102_step_5_not_landed",
+      "refs": [],
+      "state": "unaskable",
+      "value": null
+     },
+     {
+      "name": "verified_functional",
+      "reason": "sip_0102_step_5_not_landed",
+      "refs": [],
+      "state": "unaskable",
+      "value": null
+     }
+    ]
+   },
+   "cycle_id": "cyc_5c6ad38860f3",
+   "decision": {
+    "action": "propose",
+    "cycle_id": "cyc_5c6ad38860f3",
+    "ending": "assessed",
+    "guard": "proceed",
+    "paused_by": null,
+    "row": 7,
+    "verdict": "accepted"
+   },
+   "failure_records": [],
+   "kind": "increment",
+   "revision_forms": [
+    {
+     "forms": [],
+     "run_id": "run_0036d79ee10e",
+     "workload_type": "proposal"
+    },
+    {
+     "forms": [],
+     "run_id": "run_3f402de9d14f",
+     "workload_type": "framing"
+    },
+    {
+     "forms": [],
+     "run_id": "run_8e2d2b26c5a4",
+     "workload_type": "implementation"
+    }
+   ]
+  },
+  {
+   "assessment": {
+    "assessment_version": 1,
+    "assessor": {
+     "framework_version": "1.9.0",
+     "git_sha": "b09883c9"
+    },
+    "attribution": {
+     "attribution": {
+      "contributing": [],
+      "primary": null,
+      "registry_version": 1
+     },
+     "reason": null,
+     "refs": [
+      {
+       "id": "run_06d3ffbadcf9",
+       "kind": "registry_run"
+      },
+      {
+       "id": "run_06d3ffbadcf9",
+       "kind": "verification_summary"
+      },
+      {
+       "id": "run_5b56fee18faa",
+       "kind": "verification_summary"
+      },
+      {
+       "id": "run_cc8c5101f156",
+       "kind": "verification_summary"
+      }
+     ],
+     "state": "observed",
+     "terminal_kind": "completed",
+     "unrecorded": []
+    },
+    "attribution_registry_version": 1,
+    "coordination": [
+     {
+      "name": "correction_rounds",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": 0
+     },
+     {
+      "name": "failed_emission_artifacts",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": 0
+     },
+     {
+      "name": "failed_emissions",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": 0
+     },
+     {
+      "name": "contentless_emissions",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": {
+       "repair_rounds": 0,
+       "task_attempts": 0
+      }
+     },
+     {
+      "name": "framing_rerolls",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": 0
+     },
+     {
+      "name": "plan_defect_terminations",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": 0
+     },
+     {
+      "name": "refunded_rounds",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": []
+     },
+     {
+      "name": "correction_movements",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": []
+     }
+    ],
+    "cycle_id": "cyc_683247b84a40",
+    "efficiency": [
+     {
+      "name": "wall_clock_seconds_by_run",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_06d3ffbadcf9",
+        "kind": "registry_run"
+       },
+       {
+        "id": "run_5b56fee18faa",
+        "kind": "registry_run"
+       },
+       {
+        "id": "run_cc8c5101f156",
+        "kind": "registry_run"
+       }
+      ],
+      "state": "observed",
+      "value": {
+       "run_06d3ffbadcf9": 760.875829,
+       "run_5b56fee18faa": 112.555243,
+       "run_cc8c5101f156": 1451.732704
+      }
+     },
+     {
+      "name": "wall_clock_seconds",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_06d3ffbadcf9",
+        "kind": "registry_run"
+       },
+       {
+        "id": "run_5b56fee18faa",
+        "kind": "registry_run"
+       },
+       {
+        "id": "run_cc8c5101f156",
+        "kind": "registry_run"
+       }
+      ],
+      "state": "observed",
+      "value": 2325.163776
+     },
+     {
+      "name": "tokens_by_run",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_06d3ffbadcf9",
+        "kind": "run_summary"
+       },
+       {
+        "id": "run_5b56fee18faa",
+        "kind": "run_summary"
+       },
+       {
+        "id": "run_cc8c5101f156",
+        "kind": "run_summary"
+       }
+      ],
+      "state": "observed",
+      "value": {
+       "run_06d3ffbadcf9": {
+        "completion": 17341,
+        "prompt": 68593,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 6
+       },
+       "run_5b56fee18faa": {
+        "completion": 2819,
+        "prompt": 6722,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "run_cc8c5101f156": {
+        "completion": 33879,
+        "prompt": 75478,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 7
+       }
+      }
+     },
+     {
+      "name": "tokens_by_task_type",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_06d3ffbadcf9",
+        "kind": "run_summary"
+       },
+       {
+        "id": "run_5b56fee18faa",
+        "kind": "run_summary"
+       },
+       {
+        "id": "run_cc8c5101f156",
+        "kind": "run_summary"
+       }
+      ],
+      "state": "observed",
+      "value": {
+       "builder.assemble": {
+        "completion": 20,
+        "prompt": 15862,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "development.design_plan": {
+        "completion": 5418,
+        "prompt": 5174,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "development.develop": {
+        "completion": 4496,
+        "prompt": 25813,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 2
+       },
+       "development.propose_plan_tasks": {
+        "completion": 6170,
+        "prompt": 16474,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "governance.define_done": {
+        "completion": 2189,
+        "prompt": 3457,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "governance.merge_plan": {
+        "completion": 0,
+        "prompt": 0,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 0
+       },
+       "governance.prepare_plan_authoring_brief": {
+        "completion": 5623,
+        "prompt": 13966,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "governance.review_plan": {
+        "completion": 3486,
+        "prompt": 5390,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "qa.define_test_strategy": {
+        "completion": 3371,
+        "prompt": 5238,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "qa.evaluate_increment": {
+        "completion": 0,
+        "prompt": 0,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 0
+       },
+       "qa.propose_plan_tasks": {
+        "completion": 6877,
+        "prompt": 21018,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "qa.test": {
+        "completion": 10636,
+        "prompt": 23461,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 2
+       },
+       "strategy.propose_increment": {
+        "completion": 2819,
+        "prompt": 6722,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       },
+       "strategy.propose_plan_guidance": {
+        "completion": 2934,
+        "prompt": 8218,
+        "reasoning": 0,
+        "unreported_completion": 0,
+        "unreported_prompt": 0,
+        "unreported_reasoning": 1
+       }
+      }
+     },
+     {
+      "name": "llm_calls",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_06d3ffbadcf9",
+        "kind": "run_summary"
+       },
+       {
+        "id": "run_5b56fee18faa",
+        "kind": "run_summary"
+       },
+       {
+        "id": "run_cc8c5101f156",
+        "kind": "run_summary"
+       }
+      ],
+      "state": "observed",
+      "value": {
+       "calls": 14,
+       "failed_calls": 0,
+       "tasks_unreported": []
+      }
+     }
+    ],
+    "evidence_identity": "d6c094ecf8aac4d2c08beb1b783447076c1e2a056d887cfb4a05c448baaee236",
+    "outcome": [
+     {
+      "name": "verdict",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_06d3ffbadcf9",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_5b56fee18faa",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_cc8c5101f156",
+        "kind": "verification_summary"
+       }
+      ],
+      "state": "observed",
+      "value": "accepted"
+     },
+     {
+      "name": "criteria_coverage",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_06d3ffbadcf9",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_5b56fee18faa",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_cc8c5101f156",
+        "kind": "verification_summary"
+       }
+      ],
+      "state": "observed",
+      "value": {
+       "total": 22,
+       "verified": 22
+      }
+     },
+     {
+      "name": "required_unverified_by_reason",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_06d3ffbadcf9",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_5b56fee18faa",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_cc8c5101f156",
+        "kind": "verification_summary"
+       }
+      ],
+      "state": "asked_none",
+      "value": {}
+     },
+     {
+      "name": "inert",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_06d3ffbadcf9",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_5b56fee18faa",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_cc8c5101f156",
+        "kind": "verification_summary"
+       }
+      ],
+      "state": "asked_none",
+      "value": []
+     },
+     {
+      "name": "waived",
+      "reason": null,
+      "refs": [],
+      "state": "asked_none",
+      "value": []
+     }
+    ],
+    "quality": [
+     {
+      "name": "failed_checks",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_06d3ffbadcf9",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_5b56fee18faa",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_cc8c5101f156",
+        "kind": "verification_summary"
+       }
+      ],
+      "state": "asked_none",
+      "value": []
+     },
+     {
+      "name": "unverified_by_reason",
+      "reason": null,
+      "refs": [
+       {
+        "id": "run_06d3ffbadcf9",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_5b56fee18faa",
+        "kind": "verification_summary"
+       },
+       {
+        "id": "run_cc8c5101f156",
+        "kind": "verification_summary"
+       }
+      ],
+      "state": "asked_none",
+      "value": {}
+     },
+     {
+      "name": "verified_executable",
+      "reason": "sip_0102_step_5_not_landed",
+      "refs": [],
+      "state": "unaskable",
+      "value": null
+     },
+     {
+      "name": "verified_functional",
+      "reason": "sip_0102_step_5_not_landed",
+      "refs": [],
+      "state": "unaskable",
+      "value": null
+     }
+    ]
+   },
+   "cycle_id": "cyc_683247b84a40",
+   "decision": {
+    "cause": "objective_met",
+    "cycle_id": "cyc_683247b84a40",
+    "ending": "assessed",
+    "outcome": "success",
+    "row": 3,
+    "verdict": "accepted"
+   },
+   "failure_records": [],
+   "kind": "increment",
+   "revision_forms": [
+    {
+     "forms": [],
+     "run_id": "run_5b56fee18faa",
+     "workload_type": "proposal"
+    },
+    {
+     "forms": [],
+     "run_id": "run_cc8c5101f156",
+     "workload_type": "framing"
+    },
+    {
+     "forms": [],
+     "run_id": "run_06d3ffbadcf9",
+     "workload_type": "implementation"
+    }
+   ]
+  }
+ ],
+ "identity": "e3c112c45038e8428ac73a5319c5f7cef26224e9e83d7d28a000e6b6232644ea",
+ "launches": [
+  {
+   "campaign_id": "cmp_97a4a15f360f",
+   "created_at": "2026-10-04T16:23:46.994794+00:00",
+   "cycle_id": "cyc_6d6b0d848596",
+   "cycle_kind": "calibration",
+   "cycle_request": {
+    "body": {
+     "applied_defaults": {
+      "build_profile": "fullstack_fastapi_react",
+      "build_strategy": "fresh",
+      "build_tasks": true,
+      "command_acceptance_checks": true,
+      "correction_steps": [
+       "analyze",
+       "decide",
+       "repair"
+      ],
+      "development_profile": "fullstack_fastapi_react",
+      "expected_artifact_types": [
+       "document",
+       "source",
+       "test",
+       "config"
+      ],
+      "experiment_context": {},
+      "implementation_plan": true,
+      "manifest_max_attempts": 4,
+      "max_build_subtasks": 15,
+      "max_correction_attempts": 3,
+      "max_self_eval_passes": 3,
+      "notes": "#279 \u2014 instrumented validation + builder + fullstack_fastapi_react (best-of-both)",
+      "output_validation": true,
+      "required_checks": [
+       "tests_pass",
+       "frontend_build",
+       "required_files"
+      ],
+      "task_flow_policy": {
+       "gates": [
+        {
+         "after_task_types": [
+          "governance.review"
+         ],
+         "description": "Review planning artifacts and build manifest before implementation begins.",
+         "name": "progress_plan_review"
+        }
+       ],
+       "mode": "sequential"
+      },
+      "time_budget_seconds": 10800,
+      "typed_acceptance": true,
+      "workload_sequence": [
+       {
+        "gate": "progress_plan_review",
+        "type": "framing"
+       },
+       {
+        "gate": null,
+        "type": "implementation"
+       }
+      ]
+     },
+     "build_strategy": "fresh",
+     "execution_overrides": {},
+     "expected_artifact_types": [
+      "document",
+      "source",
+      "test",
+      "config"
+     ],
+     "experiment_context": {},
+     "notes": "campaign cmp_97a4a15f360f: calibration (SIP-0109 \u00a711)",
+     "request_profile": "validated-fullstack",
+     "squad_profile_id": "full-38",
+     "task_flow_policy": {
+      "gates": [
+       {
+        "after_task_types": [
+         "governance.review"
+        ],
+        "description": "Review planning artifacts and build manifest before implementation begins.",
+        "name": "progress_plan_review"
+       }
+      ],
+      "mode": "sequential"
+     }
+    }
+   },
+   "decision_entry_id": "ctl_51dd55c17926",
+   "launch_id": "lnc_51dd55c17926",
+   "launched_at": "2026-10-04T16:23:47.005501+00:00",
+   "state": "launched"
+  },
+  {
+   "campaign_id": "cmp_97a4a15f360f",
+   "created_at": "2026-10-04T17:18:31.196756+00:00",
+   "cycle_id": "cyc_359d44170982",
+   "cycle_kind": "increment",
+   "cycle_request": {
+    "body": {
+     "applied_defaults": {
+      "build_profile": "fullstack_fastapi_react",
+      "build_strategy": "fresh",
+      "build_tasks": true,
+      "command_acceptance_checks": true,
+      "correction_steps": [
+       "analyze",
+       "decide",
+       "repair"
+      ],
+      "development_profile": "fullstack_fastapi_react",
+      "expected_artifact_types": [
+       "document",
+       "source",
+       "test",
+       "config"
+      ],
+      "experiment_context": {},
+      "implementation_plan": true,
+      "manifest_max_attempts": 4,
+      "max_build_subtasks": 15,
+      "max_correction_attempts": 3,
+      "max_self_eval_passes": 3,
+      "notes": "Campaign increment cycle (SIP-0109 \u00a77.3)",
+      "output_validation": true,
+      "plan_authoring_contributors": [
+       "development",
+       "qa",
+       "strategy"
+      ],
+      "proposal_max_attempts": 3,
+      "required_checks": [
+       "tests_pass",
+       "frontend_build",
+       "required_files"
+      ],
+      "task_flow_policy": {
+       "gates": [
+        {
+         "after_task_types": [],
+         "description": "The supervisor rules on the proposed change \u2014 approve, request revision, or reject.",
+         "name": "progress_increment_ruling"
+        },
+        {
+         "after_task_types": [
+          "governance.review"
+         ],
+         "description": "Review planning artifacts and build manifest before implementation begins.",
+         "name": "progress_plan_review"
+        }
+       ],
+       "mode": "sequential"
+      },
+      "time_budget_seconds": 10800,
+      "typed_acceptance": true,
+      "workload_sequence": [
+       {
+        "gate": "progress_increment_ruling",
+        "type": "proposal"
+       },
+       {
+        "gate": "progress_plan_review",
+        "type": "framing"
+       },
+       {
+        "gate": null,
+        "type": "implementation"
+       }
+      ]
+     },
+     "build_strategy": "fresh",
+     "execution_overrides": {
+      "campaign_proposal": {
+       "accepted_cycle_id": "cyc_6d6b0d848596",
+       "baseline_manifest": "version: 1\nkind: interface_manifest\nproject_id: group_run\nsource_prd: 'PRD: group_run (1-Hour Cycle MVP+) v0.5'\nstack: fullstack_fastapi_react\nscope: 'Core group_run vertical slice: create/list/detail runs, join and leave participants,\n  in-memory persistence. Deliberately excludes authentication, database, external\n  services, capacity limits, and all PRD \u00a713 post-MVP features.'\nentities:\n- name: Run\n  fields:\n  - name: id\n    type: string\n    required: true\n    generated: true\n  - name: title\n    type: string\n    required: true\n  - name: datetime\n    type: string\n    required: true\n  - name: meeting_location\n    type: string\n    required: true\n  - name: distance\n    type: string\n    required: false\n    default: null\n  - name: pace_target\n    type: string\n    required: false\n    default: null\n  - name: route_notes\n    type: string\n    required: false\n    default: null\n  - name: participant_count\n    type: integer\n    required: true\n  - name: participants\n    type: list[string]\n    required: true\n    default: []\napi:\n  base_path: /api\n  request_shapes:\n    RunCreate:\n      required:\n      - title\n      - datetime\n      - meeting_location\n      optional:\n      - distance\n      - pace_target\n      - route_notes\n    JoinRequest:\n      required:\n      - name\n    LeaveRequest:\n      required:\n      - name\n  endpoints:\n  - method: POST\n    path: /runs\n    summary: create a run event\n    request: RunCreate\n    response: Run\n    success_status: 201\n    errors:\n    - validation_error\n  - method: GET\n    path: /runs\n    summary: list all runs\n    response: list[Run]\n  - method: GET\n    path: /runs/{run_id}\n    summary: get run details including participant list\n    response: Run\n    errors:\n    - run_not_found\n  - method: POST\n    path: /runs/{run_id}/join\n    summary: join a run with a participant name\n    request: JoinRequest\n    response: Run\n    errors:\n    - run_not_found\n    - duplicate_participant\n    - validation_error\n  - method: POST\n    path: /runs/{run_id}/leave\n    summary: leave a run by participant name\n    request: LeaveRequest\n    response: Run\n    errors:\n    - run_not_found\n    - participant_not_found\n    - validation_error\n  error_contract:\n    shape: '{\"error\": {\"code\": \"...\", \"message\": \"...\"}}'\n    codes:\n      validation_error:\n        http: 422\n      run_not_found:\n        http: 404\n      duplicate_participant:\n        http: 409\n      participant_not_found:\n        http: 404\n      internal_error:\n        http: 500\nfrontend:\n  framework: react_vite\n  routes:\n  - path: /\n    view: RunList\n    purpose: browse upcoming runs showing title, datetime, location, and participant\n      count; navigate to create or detail\n    testids:\n    - run-list-view\n    - run-list\n    - run-row\n    - run-row-title\n    - create-run-link\n    - empty-state\n  - path: /runs/new\n    view: RunCreate\n    purpose: form to create a new run with required (title, datetime, meeting_location)\n      and optional (distance, pace_target, route_notes) fields\n    testids:\n    - run-create-view\n    - run-create-form\n    - run-title-input\n    - run-datetime-input\n    - run-location-input\n    - run-distance-input\n    - run-pace-input\n    - run-notes-input\n    - run-create-submit\n    - create-error\n  - path: /runs/:run_id\n    view: RunDetail\n    purpose: display full run details, participant list with count, and join/leave\n      forms\n    testids:\n    - run-detail-view\n    - run-title\n    - run-participant-count\n    - run-participant-list\n    - join-form\n    - join-name-input\n    - join-submit\n    - leave-form\n    - leave-name-input\n    - leave-submit\n    - detail-error\npersistence: in_memory\ndecisions:\n- id: case-insensitive-duplicate-check\n  choice: Participant name uniqueness is case-insensitive; original display casing\n    is preserved\n  warrant: 'PRD \u00a75.4 \u2014 ''case sensitivity behavior should be defined in implementation;\n    default recommendation: case-insensitive uniqueness'''\n- id: leave-not-found-returns-404\n  choice: Leaving with a name not present on the run returns HTTP 404 with code PARTICIPANT_NOT_FOUND,\n    not a 204 no-op\n  warrant: PRD \u00a75.5 \u2014 'If participant name does not exist on the run, backend returns\n    clear error (or no-op with clear response; choose one and document in QA handoff)'\n- id: participants-as-flat-string-list\n  choice: Participants are a flat list of name strings on the Run entity rather than\n    a separate Participant entity\n  warrant: PRD \u00a75.4\u20135.5 \u2014 unauthenticated model; participant name is the sole identifier\n    and no user identity exists\n- id: run-id-is-opaque-string\n  choice: Run IDs are opaque strings (UUID v4 at implementation); the API contract\n    treats them as opaque identifiers with no format guarantee\n  warrant: PRD \u00a75.1 \u2014 'generated id'; no external consumer parses or depends on the\n    format\n- id: capacity-field-excluded\n  choice: 'Answer to the one open question (capacity-field-excluded), from the PRD\n    (SIP-0109 \u00a724ad; #1908 \u00a73a): no manifest amendment. Build the core as the manifest\n    declares it. PRD \u00a74.1 makes expansion work conditional (''allowed only after core\n    scope is stable and integration is working'') and \u00a713 lists capacity limits as\n    a later cycle''s item (''if not implemented as expansion''). In this campaign\n    the expansion scope is what the increments deliver, one change request at a time\n    (the objective). So capacity stays out of this calibration, and a later increment\n    may propose it. No earlier answer covers the question. This is the narrowest answer\n    consistent with the PRD and the manifest as authored, recorded as a judgement\n    (the supervisor, the owner''s delegate).'\n  warrant: 'answered at cyc_6d6b0d848596''s plan gate by human:005159fd-7461-45e4-b4f5-b2c9f868161b\n    at 2026-10-04T16:58:21.020561+00:00; the question was: PRD \u00a74.1 Tier 1 item 1\n    proposes an optional capacity field. It is not declared in this manifest''s Run\n    entity or RunCreate shape. Confirm whether a manifest amendment is required before\n    implementing it, or defer to a post-MVP cycle (PRD \u00a713 ''Capacity limits + waitlist'').'\nprovenance:\n  mode: authored\n  cycle_id: cyc_6d6b0d848596\n  task_id: task-run_c2c74d06-003-development.author_manifest\n  attempts: 1\n  revisions: []\n",
+       "baseline_tree": "8b03e89612ced51408edb4d05e746c1e650fe29d8cde40ec089a1335f8ffa608",
+       "frozen_criteria": [],
+       "max_revisions": 2,
+       "objective": {
+        "allowed_scope": [
+         "backend/**",
+         "frontend/**"
+        ],
+        "measurement": "three accepted increments",
+        "statement": "evolve group_run toward its PRD's expansion scope, one increment at a time"
+       },
+       "prior_criteria": [],
+       "proposal_id": "prop_450986544201",
+       "version": 1
+      }
+     },
+     "expected_artifact_types": [
+      "document",
+      "source",
+      "test",
+      "config"
+     ],
+     "experiment_context": {},
+     "notes": "campaign cmp_97a4a15f360f: increment (SIP-0109 \u00a77.3)",
+     "request_profile": "campaign-increment",
+     "squad_profile_id": "full-38",
+     "task_flow_policy": {
+      "gates": [
+       {
+        "after_task_types": [],
+        "description": "The supervisor rules on the proposed change \u2014 approve, request revision, or reject.",
+        "name": "progress_increment_ruling"
+       },
+       {
+        "after_task_types": [
+         "governance.review"
+        ],
+        "description": "Review planning artifacts and build manifest before implementation begins.",
+        "name": "progress_plan_review"
+       }
+      ],
+      "mode": "sequential"
+     }
+    }
+   },
+   "decision_entry_id": "ctl_85d7240f9288",
+   "launch_id": "lnc_85d7240f9288",
+   "launched_at": "2026-10-04T17:18:31.205815+00:00",
+   "state": "launched"
+  },
+  {
+   "campaign_id": "cmp_97a4a15f360f",
+   "created_at": "2026-10-04T18:04:53.382872+00:00",
+   "cycle_id": "cyc_5c6ad38860f3",
+   "cycle_kind": "increment",
+   "cycle_request": {
+    "body": {
+     "applied_defaults": {
+      "build_profile": "fullstack_fastapi_react",
+      "build_strategy": "fresh",
+      "build_tasks": true,
+      "command_acceptance_checks": true,
+      "correction_steps": [
+       "analyze",
+       "decide",
+       "repair"
+      ],
+      "development_profile": "fullstack_fastapi_react",
+      "expected_artifact_types": [
+       "document",
+       "source",
+       "test",
+       "config"
+      ],
+      "experiment_context": {},
+      "implementation_plan": true,
+      "manifest_max_attempts": 4,
+      "max_build_subtasks": 15,
+      "max_correction_attempts": 3,
+      "max_self_eval_passes": 3,
+      "notes": "Campaign increment cycle (SIP-0109 \u00a77.3)",
+      "output_validation": true,
+      "plan_authoring_contributors": [
+       "development",
+       "qa",
+       "strategy"
+      ],
+      "proposal_max_attempts": 3,
+      "required_checks": [
+       "tests_pass",
+       "frontend_build",
+       "required_files"
+      ],
+      "task_flow_policy": {
+       "gates": [
+        {
+         "after_task_types": [],
+         "description": "The supervisor rules on the proposed change \u2014 approve, request revision, or reject.",
+         "name": "progress_increment_ruling"
+        },
+        {
+         "after_task_types": [
+          "governance.review"
+         ],
+         "description": "Review planning artifacts and build manifest before implementation begins.",
+         "name": "progress_plan_review"
+        }
+       ],
+       "mode": "sequential"
+      },
+      "time_budget_seconds": 10800,
+      "typed_acceptance": true,
+      "workload_sequence": [
+       {
+        "gate": "progress_increment_ruling",
+        "type": "proposal"
+       },
+       {
+        "gate": "progress_plan_review",
+        "type": "framing"
+       },
+       {
+        "gate": null,
+        "type": "implementation"
+       }
+      ]
+     },
+     "build_strategy": "fresh",
+     "execution_overrides": {
+      "campaign_proposal": {
+       "accepted_cycle_id": "cyc_359d44170982",
+       "baseline_manifest": "version: 1\nkind: interface_manifest\nproject_id: group_run\nsource_prd: 'PRD: group_run (1-Hour Cycle MVP+) v0.5'\nstack: fullstack_fastapi_react\nscope: \"Core group_run vertical slice: create/list/detail runs, join and leave participants,\\\n  \\ in-memory persistence. Deliberately excludes authentication, database, external\\\n  \\ services, capacity limits, and all PRD \\xA713 post-MVP features.\"\nentities:\n- name: Run\n  fields:\n  - name: id\n    type: string\n    required: true\n    generated: true\n  - name: title\n    type: string\n    required: true\n  - name: datetime\n    type: string\n    required: true\n  - name: meeting_location\n    type: string\n    required: true\n  - name: distance\n    type: string\n    required: false\n    default: null\n  - name: pace_target\n    type: string\n    required: false\n    default: null\n  - name: route_notes\n    type: string\n    required: false\n    default: null\n  - name: participant_count\n    type: integer\n    required: true\n  - name: participants\n    type: list[string]\n    required: true\n    default: []\n  - name: capacity\n    type: integer\n    required: false\n    default: null\napi:\n  base_path: /api\n  request_shapes:\n    RunCreate:\n      required:\n      - title\n      - datetime\n      - meeting_location\n      optional:\n      - distance\n      - pace_target\n      - route_notes\n      - capacity\n    JoinRequest:\n      required:\n      - name\n    LeaveRequest:\n      required:\n      - name\n  endpoints:\n  - method: POST\n    path: /runs\n    summary: create a run event\n    request: RunCreate\n    response: Run\n    success_status: 201\n    errors:\n    - validation_error\n  - method: GET\n    path: /runs\n    summary: list all runs\n    response: list[Run]\n  - method: GET\n    path: /runs/{run_id}\n    summary: get run details including participant list\n    response: Run\n    errors:\n    - run_not_found\n  - method: POST\n    path: /runs/{run_id}/join\n    summary: join a run with a participant name\n    request: JoinRequest\n    response: Run\n    errors:\n    - run_not_found\n    - duplicate_participant\n    - validation_error\n    - capacity_reached\n  - method: POST\n    path: /runs/{run_id}/leave\n    summary: leave a run by participant name\n    request: LeaveRequest\n    response: Run\n    errors:\n    - run_not_found\n    - participant_not_found\n    - validation_error\n  error_contract:\n    shape: '{\"error\": {\"code\": \"...\", \"message\": \"...\"}}'\n    codes:\n      validation_error:\n        http: 422\n      run_not_found:\n        http: 404\n      duplicate_participant:\n        http: 409\n      participant_not_found:\n        http: 404\n      internal_error:\n        http: 500\n      capacity_reached:\n        http: 409\nfrontend:\n  framework: react_vite\n  routes:\n  - path: /\n    view: RunList\n    purpose: browse upcoming runs showing title, datetime, location, and participant\n      count; navigate to create or detail\n    testids:\n    - run-list-view\n    - run-list\n    - run-row\n    - run-row-title\n    - create-run-link\n    - empty-state\n  - path: /runs/new\n    view: RunCreate\n    purpose: form to create a new run with required (title, datetime, meeting_location)\n      and optional (distance, pace_target, route_notes) fields\n    testids:\n    - run-create-view\n    - run-create-form\n    - run-title-input\n    - run-datetime-input\n    - run-location-input\n    - run-distance-input\n    - run-pace-input\n    - run-notes-input\n    - run-create-submit\n    - create-error\n  - path: /runs/:run_id\n    view: RunDetail\n    purpose: display full run details, participant list with count, and join/leave\n      forms\n    testids:\n    - run-detail-view\n    - run-title\n    - run-participant-count\n    - run-participant-list\n    - join-form\n    - join-name-input\n    - join-submit\n    - leave-form\n    - leave-name-input\n    - leave-submit\n    - detail-error\npersistence: in_memory\ndecisions:\n- id: case-insensitive-duplicate-check\n  choice: Participant name uniqueness is case-insensitive; original display casing\n    is preserved\n  warrant: \"PRD \\xA75.4 \\u2014 'case sensitivity behavior should be defined in implementation;\\\n    \\ default recommendation: case-insensitive uniqueness'\"\n- id: leave-not-found-returns-404\n  choice: Leaving with a name not present on the run returns HTTP 404 with code PARTICIPANT_NOT_FOUND,\n    not a 204 no-op\n  warrant: \"PRD \\xA75.5 \\u2014 'If participant name does not exist on the run, backend\\\n    \\ returns clear error (or no-op with clear response; choose one and document in\\\n    \\ QA handoff)'\"\n- id: participants-as-flat-string-list\n  choice: Participants are a flat list of name strings on the Run entity rather than\n    a separate Participant entity\n  warrant: \"PRD \\xA75.4\\u20135.5 \\u2014 unauthenticated model; participant name is\\\n    \\ the sole identifier and no user identity exists\"\n- id: run-id-is-opaque-string\n  choice: Run IDs are opaque strings (UUID v4 at implementation); the API contract\n    treats them as opaque identifiers with no format guarantee\n  warrant: \"PRD \\xA75.1 \\u2014 'generated id'; no external consumer parses or depends\\\n    \\ on the format\"\n- id: capacity-field-excluded\n  choice: \"Answer to the one open question (capacity-field-excluded), from the PRD\\\n    \\ (SIP-0109 \\xA724ad; #1908 \\xA73a): no manifest amendment. Build the core as\\\n    \\ the manifest declares it. PRD \\xA74.1 makes expansion work conditional ('allowed\\\n    \\ only after core scope is stable and integration is working') and \\xA713 lists\\\n    \\ capacity limits as a later cycle's item ('if not implemented as expansion').\\\n    \\ In this campaign the expansion scope is what the increments deliver, one change\\\n    \\ request at a time (the objective). So capacity stays out of this calibration,\\\n    \\ and a later increment may propose it. No earlier answer covers the question.\\\n    \\ This is the narrowest answer consistent with the PRD and the manifest as authored,\\\n    \\ recorded as a judgement (the supervisor, the owner's delegate).\"\n  warrant: \"answered at cyc_6d6b0d848596's plan gate by human:005159fd-7461-45e4-b4f5-b2c9f868161b\\\n    \\ at 2026-10-04T16:58:21.020561+00:00; the question was: PRD \\xA74.1 Tier 1 item\\\n    \\ 1 proposes an optional capacity field. It is not declared in this manifest's\\\n    \\ Run entity or RunCreate shape. Confirm whether a manifest amendment is required\\\n    \\ before implementing it, or defer to a post-MVP cycle (PRD \\xA713 'Capacity limits\\\n    \\ + waitlist').\"\nprovenance:\n  mode: authored\n  cycle_id: cyc_6d6b0d848596\n  task_id: task-run_c2c74d06-003-development.author_manifest\n  attempts: 1\n  revisions: []\n",
+       "baseline_tree": "1235e7c9db22be5d3c51a96bb0834dbf9a1c8970b48f578dc612fae602f71368",
+       "frozen_criteria": [
+        {
+         "bundle_address": "615c8d04f5043e614401c48fbfea1e40ae9f2e2cfb00e85051f2527c0e591353",
+         "bundle_ref": "art_3e37d6e871f3",
+         "criterion_id": "T1",
+         "statement": "A run created with capacity 2 returns that capacity in the response",
+         "surface": "POST /runs",
+         "test_path": "backend/tests/criteria/test_T1.py"
+        },
+        {
+         "bundle_address": "5823a138d3422b0f83f5a44b30e42ea827c4bc8397246a8b8509d318f37302aa",
+         "bundle_ref": "art_4532b6a80680",
+         "criterion_id": "T2",
+         "statement": "A third join to a run with capacity 2 is refused with capacity_reached",
+         "surface": "POST /runs/{run_id}/join",
+         "test_path": "backend/tests/criteria/test_T2.py"
+        },
+        {
+         "bundle_address": "025af1b4aeeee20fc21a1896eee8b5465fcad707150c200bcf9f227953b28695",
+         "bundle_ref": "art_370c56f4193f",
+         "criterion_id": "T3",
+         "statement": "A run created without a capacity field returns capacity as null",
+         "surface": "POST /runs",
+         "test_path": "backend/tests/criteria/test_T3.py"
+        }
+       ],
+       "max_revisions": 2,
+       "objective": {
+        "allowed_scope": [
+         "backend/**",
+         "frontend/**"
+        ],
+        "measurement": "three accepted increments",
+        "statement": "evolve group_run toward its PRD's expansion scope, one increment at a time"
+       },
+       "prior_criteria": [
+        "T1",
+        "T2",
+        "T3"
+       ],
+       "proposal_id": "prop_a9de76329e08",
+       "version": 1
+      }
+     },
+     "expected_artifact_types": [
+      "document",
+      "source",
+      "test",
+      "config"
+     ],
+     "experiment_context": {},
+     "notes": "campaign cmp_97a4a15f360f: increment (SIP-0109 \u00a77.3)",
+     "request_profile": "campaign-increment",
+     "squad_profile_id": "full-38",
+     "task_flow_policy": {
+      "gates": [
+       {
+        "after_task_types": [],
+        "description": "The supervisor rules on the proposed change \u2014 approve, request revision, or reject.",
+        "name": "progress_increment_ruling"
+       },
+       {
+        "after_task_types": [
+         "governance.review"
+        ],
+        "description": "Review planning artifacts and build manifest before implementation begins.",
+        "name": "progress_plan_review"
+       }
+      ],
+      "mode": "sequential"
+     }
+    }
+   },
+   "decision_entry_id": "ctl_e10ae493f190",
+   "launch_id": "lnc_e10ae493f190",
+   "launched_at": "2026-10-04T18:04:53.397431+00:00",
+   "state": "launched"
+  },
+  {
+   "campaign_id": "cmp_97a4a15f360f",
+   "created_at": "2026-10-04T18:34:22.999980+00:00",
+   "cycle_id": "cyc_683247b84a40",
+   "cycle_kind": "increment",
+   "cycle_request": {
+    "body": {
+     "applied_defaults": {
+      "build_profile": "fullstack_fastapi_react",
+      "build_strategy": "fresh",
+      "build_tasks": true,
+      "command_acceptance_checks": true,
+      "correction_steps": [
+       "analyze",
+       "decide",
+       "repair"
+      ],
+      "development_profile": "fullstack_fastapi_react",
+      "expected_artifact_types": [
+       "document",
+       "source",
+       "test",
+       "config"
+      ],
+      "experiment_context": {},
+      "implementation_plan": true,
+      "manifest_max_attempts": 4,
+      "max_build_subtasks": 15,
+      "max_correction_attempts": 3,
+      "max_self_eval_passes": 3,
+      "notes": "Campaign increment cycle (SIP-0109 \u00a77.3)",
+      "output_validation": true,
+      "plan_authoring_contributors": [
+       "development",
+       "qa",
+       "strategy"
+      ],
+      "proposal_max_attempts": 3,
+      "required_checks": [
+       "tests_pass",
+       "frontend_build",
+       "required_files"
+      ],
+      "task_flow_policy": {
+       "gates": [
+        {
+         "after_task_types": [],
+         "description": "The supervisor rules on the proposed change \u2014 approve, request revision, or reject.",
+         "name": "progress_increment_ruling"
+        },
+        {
+         "after_task_types": [
+          "governance.review"
+         ],
+         "description": "Review planning artifacts and build manifest before implementation begins.",
+         "name": "progress_plan_review"
+        }
+       ],
+       "mode": "sequential"
+      },
+      "time_budget_seconds": 10800,
+      "typed_acceptance": true,
+      "workload_sequence": [
+       {
+        "gate": "progress_increment_ruling",
+        "type": "proposal"
+       },
+       {
+        "gate": "progress_plan_review",
+        "type": "framing"
+       },
+       {
+        "gate": null,
+        "type": "implementation"
+       }
+      ]
+     },
+     "build_strategy": "fresh",
+     "execution_overrides": {
+      "campaign_proposal": {
+       "accepted_cycle_id": "cyc_5c6ad38860f3",
+       "baseline_manifest": "version: 1\nkind: interface_manifest\nproject_id: group_run\nsource_prd: 'PRD: group_run (1-Hour Cycle MVP+) v0.5'\nstack: fullstack_fastapi_react\nscope: \"Core group_run vertical slice: create/list/detail runs, join and leave participants,\\\n  \\ in-memory persistence. Deliberately excludes authentication, database, external\\\n  \\ services, capacity limits, and all PRD \\xA713 post-MVP features.\"\nentities:\n- name: Run\n  fields:\n  - name: id\n    type: string\n    required: true\n    generated: true\n  - name: title\n    type: string\n    required: true\n  - name: datetime\n    type: string\n    required: true\n  - name: meeting_location\n    type: string\n    required: true\n  - name: distance\n    type: string\n    required: false\n    default: null\n  - name: pace_target\n    type: string\n    required: false\n    default: null\n  - name: route_notes\n    type: string\n    required: false\n    default: null\n  - name: participant_count\n    type: integer\n    required: true\n  - name: participants\n    type: list[string]\n    required: true\n    default: []\n  - name: capacity\n    type: integer\n    required: false\n    default: null\napi:\n  base_path: /api\n  request_shapes:\n    RunCreate:\n      required:\n      - title\n      - datetime\n      - meeting_location\n      optional:\n      - distance\n      - pace_target\n      - route_notes\n      - capacity\n    JoinRequest:\n      required:\n      - name\n    LeaveRequest:\n      required:\n      - name\n  endpoints:\n  - method: POST\n    path: /runs\n    summary: create a run event\n    request: RunCreate\n    response: Run\n    success_status: 201\n    errors:\n    - validation_error\n  - method: GET\n    path: /runs\n    summary: list all runs sorted by datetime ascending\n    response: list[Run]\n  - method: GET\n    path: /runs/{run_id}\n    summary: get run details including participant list\n    response: Run\n    errors:\n    - run_not_found\n  - method: POST\n    path: /runs/{run_id}/join\n    summary: join a run with a participant name\n    request: JoinRequest\n    response: Run\n    errors:\n    - run_not_found\n    - duplicate_participant\n    - validation_error\n    - capacity_reached\n  - method: POST\n    path: /runs/{run_id}/leave\n    summary: leave a run by participant name\n    request: LeaveRequest\n    response: Run\n    errors:\n    - run_not_found\n    - participant_not_found\n    - validation_error\n  error_contract:\n    shape: '{\"error\": {\"code\": \"...\", \"message\": \"...\"}}'\n    codes:\n      validation_error:\n        http: 422\n      run_not_found:\n        http: 404\n      duplicate_participant:\n        http: 409\n      participant_not_found:\n        http: 404\n      internal_error:\n        http: 500\n      capacity_reached:\n        http: 409\nfrontend:\n  framework: react_vite\n  routes:\n  - path: /\n    view: RunList\n    purpose: browse upcoming runs showing title, datetime, location, and participant\n      count; navigate to create or detail\n    testids:\n    - run-list-view\n    - run-list\n    - run-row\n    - run-row-title\n    - create-run-link\n    - empty-state\n  - path: /runs/new\n    view: RunCreate\n    purpose: form to create a new run with required (title, datetime, meeting_location)\n      and optional (distance, pace_target, route_notes) fields\n    testids:\n    - run-create-view\n    - run-create-form\n    - run-title-input\n    - run-datetime-input\n    - run-location-input\n    - run-distance-input\n    - run-pace-input\n    - run-notes-input\n    - run-create-submit\n    - create-error\n  - path: /runs/:run_id\n    view: RunDetail\n    purpose: display full run details, participant list with count, and join/leave\n      forms\n    testids:\n    - run-detail-view\n    - run-title\n    - run-participant-count\n    - run-participant-list\n    - join-form\n    - join-name-input\n    - join-submit\n    - leave-form\n    - leave-name-input\n    - leave-submit\n    - detail-error\npersistence: in_memory\ndecisions:\n- id: case-insensitive-duplicate-check\n  choice: Participant name uniqueness is case-insensitive; original display casing\n    is preserved\n  warrant: \"PRD \\xA75.4 \\u2014 'case sensitivity behavior should be defined in implementation;\\\n    \\ default recommendation: case-insensitive uniqueness'\"\n- id: leave-not-found-returns-404\n  choice: Leaving with a name not present on the run returns HTTP 404 with code PARTICIPANT_NOT_FOUND,\n    not a 204 no-op\n  warrant: \"PRD \\xA75.5 \\u2014 'If participant name does not exist on the run, backend\\\n    \\ returns clear error (or no-op with clear response; choose one and document in\\\n    \\ QA handoff)'\"\n- id: participants-as-flat-string-list\n  choice: Participants are a flat list of name strings on the Run entity rather than\n    a separate Participant entity\n  warrant: \"PRD \\xA75.4\\u20135.5 \\u2014 unauthenticated model; participant name is\\\n    \\ the sole identifier and no user identity exists\"\n- id: run-id-is-opaque-string\n  choice: Run IDs are opaque strings (UUID v4 at implementation); the API contract\n    treats them as opaque identifiers with no format guarantee\n  warrant: \"PRD \\xA75.1 \\u2014 'generated id'; no external consumer parses or depends\\\n    \\ on the format\"\n- id: capacity-field-excluded\n  choice: \"Answer to the one open question (capacity-field-excluded), from the PRD\\\n    \\ (SIP-0109 \\xA724ad; #1908 \\xA73a): no manifest amendment. Build the core as\\\n    \\ the manifest declares it. PRD \\xA74.1 makes expansion work conditional ('allowed\\\n    \\ only after core scope is stable and integration is working') and \\xA713 lists\\\n    \\ capacity limits as a later cycle's item ('if not implemented as expansion').\\\n    \\ In this campaign the expansion scope is what the increments deliver, one change\\\n    \\ request at a time (the objective). So capacity stays out of this calibration,\\\n    \\ and a later increment may propose it. No earlier answer covers the question.\\\n    \\ This is the narrowest answer consistent with the PRD and the manifest as authored,\\\n    \\ recorded as a judgement (the supervisor, the owner's delegate).\"\n  warrant: \"answered at cyc_6d6b0d848596's plan gate by human:005159fd-7461-45e4-b4f5-b2c9f868161b\\\n    \\ at 2026-10-04T16:58:21.020561+00:00; the question was: PRD \\xA74.1 Tier 1 item\\\n    \\ 1 proposes an optional capacity field. It is not declared in this manifest's\\\n    \\ Run entity or RunCreate shape. Confirm whether a manifest amendment is required\\\n    \\ before implementing it, or defer to a post-MVP cycle (PRD \\xA713 'Capacity limits\\\n    \\ + waitlist').\"\nprovenance:\n  mode: authored\n  cycle_id: cyc_6d6b0d848596\n  task_id: task-run_c2c74d06-003-development.author_manifest\n  attempts: 1\n  revisions: []\n",
+       "baseline_tree": "adaebff8db229bd05dd1c2731f0358a3b49b0d659e6cbcfbacc0e6f4560e67fc",
+       "frozen_criteria": [
+        {
+         "bundle_address": "615c8d04f5043e614401c48fbfea1e40ae9f2e2cfb00e85051f2527c0e591353",
+         "bundle_ref": "art_3e37d6e871f3",
+         "criterion_id": "T1",
+         "statement": "A run created with capacity 2 returns that capacity in the response",
+         "surface": "POST /runs",
+         "test_path": "backend/tests/criteria/test_T1.py"
+        },
+        {
+         "bundle_address": "5823a138d3422b0f83f5a44b30e42ea827c4bc8397246a8b8509d318f37302aa",
+         "bundle_ref": "art_4532b6a80680",
+         "criterion_id": "T2",
+         "statement": "A third join to a run with capacity 2 is refused with capacity_reached",
+         "surface": "POST /runs/{run_id}/join",
+         "test_path": "backend/tests/criteria/test_T2.py"
+        },
+        {
+         "bundle_address": "025af1b4aeeee20fc21a1896eee8b5465fcad707150c200bcf9f227953b28695",
+         "bundle_ref": "art_370c56f4193f",
+         "criterion_id": "T3",
+         "statement": "A run created without a capacity field returns capacity as null",
+         "surface": "POST /runs",
+         "test_path": "backend/tests/criteria/test_T3.py"
+        },
+        {
+         "bundle_address": "0dddf14478af63adf5ea270a82818ff848dce73ddc3d9d509a9279a33b4928f5",
+         "bundle_ref": "art_d2cc3887a185",
+         "criterion_id": "T4",
+         "statement": "GET /runs returns runs in datetime-ascending order regardless of creation order",
+         "surface": "GET /runs",
+         "test_path": "backend/tests/criteria/test_T4.py"
+        }
+       ],
+       "max_revisions": 2,
+       "objective": {
+        "allowed_scope": [
+         "backend/**",
+         "frontend/**"
+        ],
+        "measurement": "three accepted increments",
+        "statement": "evolve group_run toward its PRD's expansion scope, one increment at a time"
+       },
+       "prior_criteria": [
+        "T1",
+        "T2",
+        "T3",
+        "T4"
+       ],
+       "proposal_id": "prop_af32087c5b6e",
+       "version": 1
+      }
+     },
+     "expected_artifact_types": [
+      "document",
+      "source",
+      "test",
+      "config"
+     ],
+     "experiment_context": {},
+     "notes": "campaign cmp_97a4a15f360f: increment (SIP-0109 \u00a77.3)",
+     "request_profile": "campaign-increment",
+     "squad_profile_id": "full-38",
+     "task_flow_policy": {
+      "gates": [
+       {
+        "after_task_types": [],
+        "description": "The supervisor rules on the proposed change \u2014 approve, request revision, or reject.",
+        "name": "progress_increment_ruling"
+       },
+       {
+        "after_task_types": [
+         "governance.review"
+        ],
+        "description": "Review planning artifacts and build manifest before implementation begins.",
+        "name": "progress_plan_review"
+       }
+      ],
+      "mode": "sequential"
+     }
+    }
+   },
+   "decision_entry_id": "ctl_3c5a5005c6b2",
+   "launch_id": "lnc_3c5a5005c6b2",
+   "launched_at": "2026-10-04T18:34:23.010370+00:00",
+   "state": "launched"
+  }
+ ],
+ "package_version": 2
+}
