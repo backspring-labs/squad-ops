@@ -40,7 +40,7 @@ the next feature release, which carries Cross-Cycle Memory. The squad authoring 
 
 | where | count | issues |
 |---|---|---|
-| **closed at the 2.0 cut** | 4 | #1710 (the package renderings, after the set), #1711 (the runbook, after the set), #1884 (closed when the set reads P9), #1941 (closed by #1953) |
+| **closed at the 2.0 cut** | 3 | #1710 (the package renderings, after the set), #1711 (the runbook, after the set), #1941 (closed by #1953). **#1884 does not close:** the set read P9 falsified (pre-registration §10b), and it is inherited below (§4 step 1) |
 | **features: 2.2 or later** | 4 | #557 (a post-retest governance review: a new LLM step, its SIP drafted), #949 (a revision boundary derived from the note), #950 (a review packet at the plan gate), #1708's remainder (the auto tier and the escalation queue) |
 | **2.1: hardening** | 17 | §2 below |
 | **2.1: the owner's scope request** | 1 | #1940, kept in 2.1 (§5) |
@@ -54,7 +54,7 @@ new issues placed since:
 - the memory SIP's 2.1 part (§2.6: #1964);
 - **the SIP-portfolio rulings' nine** (§2.7): the anti-drift guards #1969, #1979, #1980, #1981; SIP-0109's
   #1971, #1972, #1973; SIP-0101's #1974; SIP-0105's #1975, with #1967 and #1968;
-- the 2.0 set's findings so far (§4 step 1: #1961, #1962);
+- the 2.0 set's findings (§4 step 1: #1961, #1962, #1995, and #1884 from P9);
 - **the structure audit's ten** (§2.8): two latent defects (#1982, #1983) and eight structural issues
   (#1984–#1991).
 
@@ -263,6 +263,15 @@ Deploy-moving work batches into rebuilds, and each structural refactor gets a ba
      required request string is already trimmed and refused blank (#593), so a name-normalization
      proposal was new behaviour only on paper. Same campaign and increment, version 2. Built with
      #1950, as one declaration.
+   - **#1995**: a proposal's PRD delta can state more than its manifest delta, criteria and footprint carry
+     (campaign 2, increment 1 v1: the display in the text, nowhere else). The supervisor returned it; the rails
+     did not notice. Read with #1962: both concern what the proposer is told.
+   - **#1884**: **the set read P9 falsified** (pre-registration §10b). The frozen criterion files add rules the
+     approved requests never stated: campaign 1 T1's tie order, and campaign 2 T4's white-box check that the store's
+     order is untouched. The supervisor cannot see a criterion file at the gate, because it is authored after approval.
+     So the fix is on the qa author's side, or in what the evaluation freezes (#1884's two directions).
+
+   **The set closed PASS** (both campaigns success, every safety guarantee held). These four are its findings.
 2. **The SIP record's guards** (#1969, #1979, #1980, #1981, #1967, #1968: tooling, no deploy), so every
    later step updates the ledgers it touches. **The audit's tooling rides with them:** #1988 (3.12 targets,
    the mypy ratchet) and #1989 (the architecture overview and its guard). Then **the crew's tooling and the instruments, before

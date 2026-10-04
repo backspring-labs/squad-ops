@@ -397,6 +397,9 @@ Fifteen issues carry the title. Three are closed: #1728, #1802 and #1804.
   - **#1884** (criterion files asserting behaviour the change request never stated): the teaching
     shipped (#1886) and held on its first live read. It is read as texture (P9 in the
     pre-registration draft). **Kept open as texture**, closed when the set has read P9.
+    **The set read P9 falsified (2026-10-04, pre-registration §10b),** so it stays open and moves to **2.1.0**.
+    The requests stated only their features, but two frozen criterion files add rules none stated: a tie
+    order (campaign 1 T1) and a white-box non-mutation check (campaign 2 T4).
   - **#1911** (a repair's completion spent on reasoning): measure before changing any budget.
     **2.1.0.**
   - **#1913** (the qa agent's checks read a file the runtime drops): its live trigger is removed by

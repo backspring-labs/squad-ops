@@ -1,6 +1,7 @@
 # 2.0.0 — pre-registration of the campaign set (plan §4, §6 step 14)
 
 **Status: REGISTERED, 2026-10-04, on rebuild 22 (`b09883c9`, deploy record `dep_bb1eadeac4e7`).**
+**The set closed at 16:11 ET the same day: PASS (§10).**
 - **Who registered it:** the supervisor, as the owner's delegate, under the owner's pre-approval of
   2026-10-03 (plan §6 step 14: "pre approve #1"). It was to register when the exit shakeout is clean,
   #1803's diagnostics have run on that deploy, the crew's review is addressed and the pins are read.
@@ -394,3 +395,99 @@ The crew's conditions (plan §7):
 2. ~~Decision 1: flip or not.~~ Ruled 2026-10-03: flip (#1909). Its checkpoint pair is read before registering.
 3. ~~Decision 2: who supervises.~~ Not a SquadOps decision (§24al): whoever holds the seat rules.
 4. ~~The policy values in §5.~~ Covered by the pre-approval; unchanged.
+
+---
+
+## 10. The set's readings (2026-10-04)
+
+Appended after the set closed. Nothing above changed. Every reading below is from the control log, the
+cycle records, the audit sink and the runtime log, on rebuild 22. Times are ET. The supervisor's running log is
+`var/campaigns/cmp_c4b81554bd59/proofs/supervision-log.md`.
+
+### 10a. The frame (§3): PASS
+
+| | campaign 1 `cmp_c4b81554bd59` (`2-0-0-set-1.yaml`) | campaign 2 `cmp_97a4a15f360f` (`2-0-0-set-2.yaml`) |
+|---|---|---|
+| ran | 08:59–11:36 | 12:23–15:15 |
+| end | `completed` / success, §10 row 3 (`objective_met`) | `completed` / success, §10 row 3 (`objective_met`) |
+| accepted increments | 3: datetime sort (T1); seed endpoint (T5); capacity display (T6) | 3: capacity field and join refusal (T1–T3); datetime sort (T4); seed endpoint and button (T5) |
+| every earlier frozen criterion on each later increment | held (T1 at increment 2; T1, T5 at increment 3) | held (T1–T3 at increment 2; T1–T4 at increment 3) |
+| cycles / launch intents | 4 / 4 | 4 / 4 |
+| builds without an approving ruling bound to the version and tree | 0 | 0 |
+| stale, conflicting or lost rulings | 0: every `rule` binds its submitted version's `content_hash`; 0 `ruling_overdue` | 0 (the same reads) |
+| duplicate launches | 0 | 0 |
+| partial promotions | 0: 4 PROMOTE rows, each with `tree_ref` and a `bundle_ref` per frozen criterion | 0: 4 PROMOTE rows (26, 30, 31, 33 files) |
+| launch beside a crew model | 0 lease rows, 0 `launch_blocked`, 0 `cycle.launch_refused`, 0 `run_start_waiting_for_box` | the same, all 0 |
+| evidence package at close | complete: `6b8e3aa8b2b1b199`; 4 cycles, none unreadable; 29 of 29 log rows; 4 launches | complete: `e3c112c45038e842`; 4 cycles; 26 of 26 log rows; 4 launches |
+
+**Both campaigns ran to their end by their own rules. No safety guarantee was violated. Both advanced their app through three
+accepted increments with every earlier frozen criterion passing on each.** The audit sink's campaign events match each
+control log row for row. Since registration (12:58Z), the audit shows 0 launch refusals and the runtime log 0 box waits.
+
+**Interventions (§3).** Every ruling went through the supervision interface, with the squadops-admin identity
+(`005159fd…`) as actor, used by the supervisor as the owner's delegate (§3a). The owner took no action on either
+campaign: there was no escalation, no limit reached and no `resume`. Unattended operation holds for both.
+
+**Rulings.**
+- **Campaign 1: 5.**
+  - Approved at v1 for increments 1 and 3.
+  - Increment 2 returned twice, both classified `criteria_not_checkable`. Each criterion already held on the
+    accepted tree: the calibration had declared and built capacity, and the frozen models trim names. It was
+    approved at v3, the last version the revision budget allowed.
+- **Campaign 2: 4, and one plan-gate answer.**
+  - **The calibration's one design question** was whether the PRD's optional capacity needed a manifest
+    amendment first. It was answered from PRD §4.1 and §13 (§24ad): no amendment, so capacity is a later
+    increment's.
+  - **Increment 1 v1 was returned,** classified `ambiguous_manifest_delta`. Its PRD delta stated a display that
+    its manifest delta, criteria and footprint did not carry. v2 narrowed the text and was approved.
+  - **Increments 2 and 3** were approved at v1.
+
+**Data, not failure.** 3 returned proposals, each classified. 0 repaired, retried or abandoned increments. Every
+increment framed in one attempt and moved through scoped repair with no correction movement.
+
+### 10b. The predictions (§4)
+
+| # | reading | evidence |
+|---|---|---|
+| P1 | **held** (6 of 6 increments) | every increment's plan gate records "plan validation passed", which refuses a plan task outside the footprint; 0 `system:plan_validation` rejections in the set |
+| P2 | **held** (8 of 8 new criteria) | each evaluation's `discriminations`: T1, T5, T6 in campaign 1 and T1–T5 in campaign 2, each with at least one test failing on the accepted tree |
+| P3 | **held** | every frozen criterion ran on each later candidate and passed (10a) |
+| P4 | **not exercised** | no increment failed |
+| P5 | **not exercised** | no repair cycle launched |
+| P6 | **held, exercised once** | campaign 2's calibration question (capacity) was answered at its plan gate, and no later plan gate asked it. Every increment gate, including increment 1 (which added capacity), reads `system:no_open_questions` |
+| P7 | **held** | every PROMOTE row's `tree_ref` holds the whole app. File counts only grow (26→27→28→29; 26→30→31→33), and increment 1's tree in campaign 2 keeps the calibration's own test files |
+| P8 | **not exercised** | no limit reached; both campaigns ended by §10 row 3. Campaign 1's increment 2 used both revisions and was approved at the last |
+| P9 | **falsified** | every approved change request's criteria stated only the request. But the frozen criterion **files** add rules none stated: campaign 1 T1 freezes a tie order (equal datetimes keep creation order), and campaign 2 T4 freezes, white-box, that `GET /runs` leaves the store's insertion order unchanged. Milder: T6's exact text where "includes '5'" was stated, and T5's list and lookup visibility. The table is on #1884 |
+
+**P9's consequence:** #1884 does not close at the 2.0 cut. It moves to 2.1.0 as an inherited set finding. The
+mechanism is #1884's own: the qa author writes the criterion file after approval, so the supervisor's check at the gate
+cannot see what it freezes.
+
+### 10c. The reference scenario (§2), before and after the campaigns
+
+| | opening (after campaign 1) | closing (after campaign 2) |
+|---|---|---|
+| build half | `cyc_b86c4768dd22`, 11:38–12:16: accepted; 1 framing attempt; no movements; C1–C3 discriminate; routes held | `cyc_3b146eddcc77`, 15:17–16:04: the same outcome |
+| proposal half | `cyc_0f67c9be93f6`: capacity with the display; rated `would_approve` 3/3/3 | `cyc_ef2b8236af6e`: capacity's backend half; rated `would_approve` 3/3/3 |
+
+The same pinned baseline and request gave the same outcome both times. The closing build took 47 minutes against 38.
+
+### 10d. Findings, each filed and placed (nothing was fixed during the set)
+
+- **#1961:** the rails accept a feature whose derived footprint holds no source file (campaign 1, increment 2 v1).
+- **#1962:** the proposer is told one of the stack's frozen conventions, not the rest (campaign 1, increment 2 v2).
+- **#1995:** a proposal's PRD delta can state more than its manifest delta, criteria and footprint carry (campaign
+  2, increment 1 v1).
+- **#1884:** stays open, from P9 (10b).
+
+All four are inherited by 2.1.0 (its plan, §4 step 1).
+
+### 10e. Drift the record declares (§8)
+
+- **Code: none.** Main moved past the registered `b09883c9`, and none of it touches what the deploy runs: nothing under
+  `src/`, `adapters/`, `infra/`, `agents/`, compose, requirements, `pyproject.toml` or `config/`.
+  - **During the set:** docs and examples only (`9df8a753`, `fe02ed8a`, `1b14d592`).
+  - **After it closed:** #1970 (SIP records), #1955 (the 2.1 plan), #1963 (a proposed SIP), #1953 (the release
+    records tool and the secret-scan allowlist) and this record.
+- **The set files' header comments name rebuild 19.** The pin is the bytes; #1958 is the rule for this.
+- **Escalations, limits reached, owner actions:** none.
