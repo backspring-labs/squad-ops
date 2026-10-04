@@ -391,7 +391,8 @@ Fifteen issues carry the title. Three are closed: #1728, #1802 and #1804.
 
 - **Found during the build and the shakeouts, each fixed and closed:** #1817, #1832, #1845, #1857, #1864, #1866, #1868,
   #1870, #1872, #1874, #1876, #1877, #1880, #1885, #1887, #1891, #1897, #1898, #1902, #1905, #1912,
-  #1938, #1943, #1946, #1948.
+  #1938, #1943, #1946, #1948, and #1941 (campaign definitions tracked with their project: items 1–4 in
+  #1942, item 6 in #1953, item 5 split to #1954).
 - **Open:**
   - **#1884** (criterion files asserting behaviour the change request never stated): the teaching
     shipped (#1886) and held on its first live read. It is read as texture (P9 in the
@@ -414,6 +415,9 @@ Fifteen issues carry the title. Three are closed: #1728, #1802 and #1804.
     comes back as, so its proposals are told nothing): #1948's other stack. Its frozen `field?: type`
     points to absent, unverified against a real emission. The 2.0 set runs on FastAPI only.
     **2.1.0.**
+  - **#1954** (`campaigns create` records the definition file's hash on the create row): #1941's item 5,
+    split out. It needs an API field, so it is a deploy change; the set's files are pinned by path,
+    commit and sha256 in #1908 §6. **2.1.0.**
 
 ### 5a.4 The path to registration
 
