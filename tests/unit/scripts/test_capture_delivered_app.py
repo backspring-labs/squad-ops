@@ -231,3 +231,59 @@ def test_seed_requests_reach_the_ui_port_with_the_client_facing_path(monkeypatch
     assert seen, "nothing was seeded"
     assert all(u.startswith("http://localhost:5199/api/runs") for u in seen), seen
     assert not any(":8099" in u for u in seen)
+
+
+def _stored(vault: Path, cycle: str, run: str, art_id: str, name: str, body: str, **meta) -> None:
+    d = vault / "group_run" / cycle / run / art_id
+    (d / name).parent.mkdir(parents=True, exist_ok=True)
+    (d / name).write_text(body)
+    (d / "metadata.json").write_text(json.dumps({"artifact_id": art_id, "filename": name, **meta}))
+
+
+def test_a_campaign_increment_is_rebuilt_from_its_accepted_tree_not_its_runs_stubs(
+    tmp_path, monkeypatch
+):
+    """Bug caught (#2000, the 2.0.0 cut): increments 1 and 2 photographed as a page reading only
+    "RunList". The increment's run holds the scaffold's stub for a view its change did not touch;
+    the accepted tree names the real one, stored by an earlier cycle."""
+    vault = tmp_path / "artifacts"
+    monkeypatch.setattr(capture, "VAULT", vault)
+    _stored(vault, "cyc_cal", "run_c", "art_real", "frontend/src/views/RunList.jsx", "REAL")
+    _stored(vault, "cyc_inc", "run_i", "art_stub", "frontend/src/views/RunList.jsx", "STUB")
+    tree = {"frontend/src/views/RunList.jsx": "art_real"}
+    _stored(
+        vault,
+        "cyc_inc",
+        "run_i",
+        "art_tree",
+        "accepted_tree.json",
+        json.dumps(tree),
+        artifact_type="accepted_tree",
+    )
+
+    out = tmp_path / "app"
+    count = capture.reconstruct("group_run", "cyc_inc", "run_i", out)
+
+    assert count == 1
+    assert (out / "frontend/src/views/RunList.jsx").read_text() == "REAL"
+
+
+def test_an_accepted_tree_naming_an_artifact_the_vault_lacks_is_refused_by_name(
+    tmp_path, monkeypatch
+):
+    """Bug caught: a partial tree booted and photographed, with the missing file silently absent."""
+    vault = tmp_path / "artifacts"
+    monkeypatch.setattr(capture, "VAULT", vault)
+    tree = {"backend/routes.py": "art_gone"}
+    _stored(
+        vault,
+        "cyc_inc",
+        "run_i",
+        "art_tree",
+        "accepted_tree.json",
+        json.dumps(tree),
+        artifact_type="accepted_tree",
+    )
+
+    with pytest.raises(SystemExit, match="backend/routes.py"):
+        capture.reconstruct("group_run", "cyc_inc", "run_i", tmp_path / "app")

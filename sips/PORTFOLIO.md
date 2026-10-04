@@ -44,7 +44,7 @@ The per-part record of what shipped where lives **in each SIP**, in its `Deliver
 | **0102** Ephemeral Application Sandbox | steps 1, 2 and 4, plus the clean-room audit (v1.4.0); §11a; §11b (v1.8.0) | steps 3, 5, 6, 7 **unplaced, deliberately**; in-agent execution ruled the accepted path (§11c) | no: waits for a clean-room requirement | added |
 | **0105** Stack Blueprint Contract | the contract and S5 admission gate (1.6); A1 packaging (v1.8.0); stack #1 extracted (v1.7.1) | fields deleted by #1975 (2.1.0); #1967 (2.1.0); packs to a successor; `check_stack` split unplaced, deliberately (§A2) | after #1975 and #1967 | added |
 | **0107** Scoped Code Revision | steps 1–6 (v1.8.0); step 7, the flip (#1909, ships in **2.0.0**) | §20 on the re-take path: **2.1.0, #1727**. §15 **dropped**; §9.4 declared without a producer (§46t) | **after the 2.0.0 tag** | added |
-| **0109** Campaign Orchestration (2.0 headline) | §18 steps 1–8, **v2.0.0**; the set read PASS (§24at); the runbook's second half (#1997) and the digest's renderings (#1998) | **#1710:** the evolution screenshots (the 2.0.0 release package) and the squad's first pass (the owner's open question). **2.1.0:** #1824, #1884, #1934, #1950, #1961, #1962, #1995, #1692, #1940, #1954, #1956, #1959, #1960, #1971, #1972, #1973. **2.2.0:** #1708's remainder. §24b–§24i ratified (§24as) | no: its 2.1 parts are open; §24at is the consolidated status record | added |
+| **0109** Campaign Orchestration (2.0 headline) | §18 steps 1–8, **v2.0.0**; the set read PASS (§24at); the runbook's second half (#1997) and the digest's renderings (#1998) | **#1710:** closed at the cut: the evolution screenshots ship in the 2.0.0 release package; the squad's first pass is dropped (Q24). **2.1.0:** #1824, #1884, #1934, #1950, #1961, #1962, #1995, #1692, #1940, #1954, #1956, #1959, #1960, #1971, #1972, #1973. **2.2.0:** #1708's remainder. §24b–§24i ratified (§24as) | no: its 2.1 parts are open; §24at is the consolidated status record | added |
 
 **Implemented SIPs promoted with open items.** Each needs a text amendment, not a status change. The
 items go to each SIP's next touch, with Q22 for the decisions.
@@ -149,6 +149,7 @@ dated amendment.
 | Q20 | SIP-0102 | in-agent execution is the accepted path for campaign evaluation; steps 3, 5, 6 and 7 unplaced until a clean-room requirement returns | SIP-0102 §11c |
 | Q21 | SIP-0105 | the table brought current; fields deleted by #1975 (2.1.0); packs to a successor; #1967 | SIP-0105 §A2 |
 | Q22 | implemented SIPs' stale text | corrected in SIP-0103, 0096, 0083 and 0089 (the `queued` lease → 3.x) | each SIP's dated amendment |
+| Q24 | #1710's "squad's first pass" (who writes a campaign's first reading at its close) | **dropped**: the owner chose it at the v2.0.0 cut; the digest and package carry the close | SIP-0109's ledger and §24at; #1710 |
 | Q23 | the `capabilities` package name (the structure audit, ruled the same day: "go ahead, file them and add to the 2.1 plan, plus the 2.3 recommended items") | the package keeps its name; Capability-Backed Agents takes a distinct package, and packs never bind into the task-type registry | Capability-Backed Agents' note; #1993 |
 
 **Two readings the supervisor made, told to the owner when they were recorded:**
