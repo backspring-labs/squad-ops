@@ -1,8 +1,10 @@
 # 2.1.0 plan — hardening after Campaign: close the debt 2.0 deferred, no new capability
 
-**Status: DRAFT (2026-10-04), written while the 2.0 counted set runs.** It merges after the set closes,
-since nothing merges while it is open (#1908 §7). It is the owner's to adopt. Every issue it names was
-read in full for this draft, and its placement is quoted from the issue.
+**Status: ADOPTED (2026-10-04), written while the 2.0 counted set ran.** The owner agreed the
+recommendations in §5: "go ahead, record them and file the three issues". They are recorded there as
+rulings, and §3's three issues are filed (#1956, #1957, #1958). The plan merges after the set closes,
+since nothing merges while it is open (#1908 §7). Every issue it names was read in full, and its
+placement is quoted from the issue.
 
 **What 2.1 is.** An odd minor, a stabilization release (CLAUDE.md, #281): **feature-free by rule.** It
 is the home for:
@@ -40,11 +42,13 @@ the next feature release, which carries Cross-Cycle Memory. The squad authoring 
 | **closed at the 2.0 cut** | 4 | #1710 (the package renderings, after the set), #1711 (the runbook, after the set), #1884 (closed when the set reads P9), #1941 (closed by #1953) |
 | **features: 2.2 or later** | 4 | #557 (a post-retest governance review: a new LLM step, its SIP drafted), #949 (a revision boundary derived from the note), #950 (a review packet at the plan gate), #1708's remainder (the auto tier and the escalation queue) |
 | **2.1: hardening** | 17 | §2 below |
-| **2.1: conditional** | 3 | #1940 (the owner's scope request), #1756 (the crew's), #1039 (docs, deferrable) |
+| **2.1: the owner's scope request** | 1 | #1940, kept in 2.1 (§5) |
+| **the crew's, listed in 2.1** | 1 | #1756 (the owner's ruling, 2026-10-03: not to be built outside the crew) |
+| **out of 2.1's committed scope** | 1 | #1039 (the docs site's design pass; it rides any release, §5) |
 
-**So 2.1 can close up to 20 of the 24 that stay open after the 2.0 cut.** 17 are hardening by any
-reading, and 3 depend on a decision in §5. That count does not include what the 2.0 set itself will
-find, nor the three issues §3 proposes to file.
+**So 2.1 closes 18 of the 24 that stay open after the 2.0 cut** (17 hardening and #1940), **plus §3's
+three new issues: 21 in all**, with #1756 the crew's and #1039 riding any release. That count does not
+include what the 2.0 set itself will find.
 
 ---
 
@@ -69,8 +73,8 @@ deploy-moving work batches into rebuilds.
 | issue | the gap | the work | size | deploy |
 |---|---|---|---|---|
 | #1824 | §10's retry rows (10–11) need `rejected` with an environment attribution. No cycle produces that: failed checks carry no locus, and an infrastructure failure ends the run `failed` | give attribution the locus (SIP-0108), so an environment-classed failure reads as one. Until then rows 10–11 stay reachable only by a constructed assessment, as the 2.0 record says | M | yes |
-| #1757 | what `rewind` means for an unattended run: the same classification and equivalent evidence chose `patch` once and ended the run twice | **the owner's answer**, then a SIP-0109 amendment, and the decision made deterministic on equivalent evidence | M | maybe |
-| #1727 | whether the qa re-take path asserts SIP-0107 §20 (verified equals persisted), and what the transaction is when a self-evaluation pass completes a re-take | **the owner's answer**, then a SIP-0107 amendment, and the assertion if the answer is "assert" | S–M | maybe |
+| #1757 | what `rewind` means for an unattended run: the same classification and equivalent evidence chose `patch` once and ended the run twice | **ruled (§5): run death is not its meaning.** A `rewind` on a `model_limitation` with repair unspent resolves to `patch`, a third anchor beside #994's two (`correction_policy.py:124-135`). A run that still ends is absorbed at cycle level by the campaign's repair and retry rows. Measured first: the stored decisions' model-limitation rewinds and what followed. The contentless-builder diagnostic then reaches its failure every time | M | yes |
+| #1727 | whether the qa re-take path asserts SIP-0107 §20 (verified equals persisted), and what the transaction is when a self-evaluation pass completes a re-take | **ruled (§5): assert §20 on the re-take path, as the patch path does.** That also catches #1913's class. **The transaction is the re-take plus the pass**, because §20 is asserted on the tree that passed. The record names each part (the edit, the file the pass added), so an edit-only count stays derivable. A SIP-0107 amendment | S–M | yes |
 
 ### 2.3 Verification and evidence gaps
 
@@ -90,7 +94,7 @@ the release is attributable to one refactor.
 |---|---|---|---|---|
 | #567 | the fenced parser's recognition moves to a CommonMark-spec engine, with the mapping strategies kept on top. Five malformation classes were each found live (#430, #470, #502, #528, #566) | **the owner's gate (2026-09-29):** every stored real emission replayed through the new engine with identical results; a difference is a finding, read before merging | L | yes |
 | #316 | the request-profile taxonomy: 15+ names drawn from four axes. Campaign now selects profiles by name in its policy, the condition the issue set for doing this | `SIP-Cycle-Request-Profile-Naming-Taxonomy` (proposed) accepted first. Persisted names on terminal rows keep their historical labels (no cosmetic migration) | L | yes |
-| #414 | the correction budget is one severity-blind pool. **Its deferral trigger has fired:** "a request profile declaring SIP-0096 `required_checks`". `campaign-increment` and `validated-fullstack` both declare them (`tests_pass`, `frontend_build`, `required_files`), each with 3 attempts | the recommended candidate: a reserved attempt for each required check, so completeness failures cannot take the last one. Proven by replaying stored correction ledgers: which runs would have spent differently | M | yes |
+| #414 | the correction budget is one severity-blind pool. **Its deferral trigger has fired:** "a request profile declaring SIP-0096 `required_checks`". `campaign-increment` and `validated-fullstack` both declare them (`tests_pass`, `frontend_build`, `required_files`), each with 3 attempts | **ruled (§5): the priority reserve.** Each required check keeps one reserved attempt, so completeness failures cannot take the last one. Proven by replaying stored correction ledgers: which runs would have spent differently | M | yes |
 
 ### 2.5 Generation quality, placed here by the owner
 
@@ -101,12 +105,12 @@ the release is attributable to one refactor.
 
 ---
 
-## 3. Gaps the 2.0 run exposed that have no issue yet (to file on adoption)
+## 3. Gaps the 2.0 run exposed, filed on adoption
 
 Found while running the 2.0 shakeout loop and the registration. Each is a guard that today is
 held by memory or by one session's scratch files.
 
-1. **The supervisor's instruments live outside the repository.** The 2.0 record cites outputs whose
+1. **#1956: the supervisor's instruments live outside the repository.** The 2.0 record cites outputs whose
    producing scripts were session-local:
    - the live-lease proof (#1802's five steps, with the audit read);
    - the #1943 binding replay (each promotion's frozen statements recomputed through the runtime's
@@ -116,10 +120,10 @@ held by memory or by one session's scratch files.
 
    A reader of the record cannot re-run them. **The fix:** each under `scripts/dev/`, with tests, and
    the record citing the tracked path. **Size:** M. **Deploy:** no.
-2. **Release-cut steps 4 and 8 are unguarded** (CLAUDE.md says so): the ROADMAP timeline entry and the
+2. **#1957: release-cut steps 4 and 8 are unguarded** (CLAUDE.md says so): the ROADMAP timeline entry and the
    worktree sweep. **The fix:** a check per step, in the shape of `check_release_packages.py`.
    **Size:** S. **Deploy:** no.
-3. **A pinned input carries mutable prose.** The 2.0 set's two policy files name "rebuild 19" in their
+3. **#1958: a pinned input carries mutable prose.** The 2.0 set's two policy files name "rebuild 19" in their
    header comment. They were written before rounds 8–10, and the pin is to their bytes, so the comment
    cannot be corrected without moving the pin. **The fix:** a rule in
    `examples/*/campaigns/README.md`: a pinned definition's comment says what the file is, never which
@@ -133,11 +137,14 @@ Deploy-moving work batches into rebuilds, and each structural refactor gets a ba
 
 1. **Inherit the 2.0 set's findings.** Whatever the set and the cut place in 2.1 goes first: they are
    live evidence, and their fixes may touch the same seams as the rows above.
-2. **The instruments, before anything they would measure:** §3's tracked instruments, #1911's
-   measurement, and #1469's corpus count. Nothing deploys.
-3. **Defects, batch 1:** #1934, #1950, #1913, #1930, and #1954 (deploy-moving, small). Then a rebuild,
-   the regression pair, and the overlapping recovery diagnostics (`restart-at:at_proposal` for #1934).
-4. **The owner's answers:** #1757 and #1727. Each becomes a SIP amendment in the PR that implements it.
+2. **The instruments, before anything they would measure:** #1956's tracked instruments, #1911's
+   measurement, #1469's corpus count, and #1757's read of the stored model-limitation rewinds. Nothing
+   deploys.
+3. **Defects, batch 1:** #1934, #1950, #1913, #1930, and #1954 (deploy-moving, small), with #1957 and
+   #1958 (tooling, no deploy). Then a rebuild, the regression pair, and the overlapping recovery
+   diagnostics (`restart-at:at_proposal` for #1934).
+4. **The ruled answers:** #1757 (the third rewind anchor) and #1727 (§20 on the re-take path, read
+   with #1913). Each becomes a SIP amendment in the PR that implements it.
 5. **Verification gaps:** #1796, #1937 (reporting-only), #1824's attribution locus, and #1469's
    per-module elements, with a rebuild and the regression pair.
 6. **Refactors, one per batch, each with its replay proof:** #414, then #567, then #316 (after its SIP
@@ -149,20 +156,31 @@ Deploy-moving work batches into rebuilds, and each structural refactor gets a ba
 
 ---
 
-## 5. Decisions for the owner at adoption
+## 5. Ruled by the owner, 2026-10-04
 
-1. **Adopt the placements in §1**, or move rows.
-2. **#1940** (the supervisor role creates and manages campaigns; escalation stays the owner's): it is a
-   scope change you asked for, not hardening. **Recommendation:** keep it in 2.1. It is small and moves
-   no verdict. It revises SIP-0109 §24al's split between the owner's authority and the supervisor's
-   seat, so it carries that amendment.
-3. **#1039** (the docs site's design pass): **Recommendation:** 2.1 only if capacity is left after §4
-   step 7; otherwise it rides any release.
-4. **#1757 and #1727:** both answers are yours. The issues lay out the options.
-5. **File §3's three issues.** **Recommendation:** yes. Item 1 is what makes the 2.0 record
-   reproducible by someone other than its author.
-6. **#1756** stays the crew's (your ruling, 2026-10-03). It is listed so that its placement is visible,
-   not to be built here.
+The supervisor recommended, and the owner agreed: "go ahead, record them and file the three issues".
+
+1. **The placements in §1 are adopted as drafted.**
+2. **#1940 stays in 2.1** (the supervisor role creates and manages campaigns; escalation stays the
+   owner's). It is a scope change the owner asked for, small, and moves no verdict. It revises SIP-0109
+   §24al's split between the owner's authority and the supervisor's seat, so it carries that amendment.
+3. **#1039 is out of 2.1's committed scope.** It is not hardening and does not depend on any release;
+   it rides along whenever the docs are next touched.
+4. **#1757: run death is not the meaning of `rewind` for an unattended run.** A `rewind` on a
+   `model_limitation` with repair unspent resolves to `patch`, the same shape as #994's two anchors. A
+   run that still ends is absorbed at cycle level by the campaign. The stored decisions are read first.
+   The second question follows: the contentless-builder diagnostic reaches its failure every time.
+5. **#1727: the re-take path asserts SIP-0107 §20, as the patch path does,** which also catches
+   #1913's class. **The transaction is the re-take plus the self-evaluation pass,** with each part
+   named in the record. The count it was to decide stopped mattering when the flip was ruled; the
+   answer is about the record's correctness.
+6. **§3's three issues are filed** (#1956, #1957, #1958), and **#1956 leads 2.1**: until the
+   instruments are tracked, no one but their author can re-run what #1908 cites.
+7. **#414: the priority reserve**, proven by replaying the stored correction ledgers.
+8. **The order in §4 holds:** measurements before the changes they inform; one refactor per rebuild,
+   each with its replay proof; prompt-content items (#1031, #1692) last, never in a refactor's batch.
+9. **#1756 stays the crew's** (the owner's ruling, 2026-10-03). It is listed so that its placement is
+   visible, not to be built here.
 
 ## 6. What this plan does not decide
 
