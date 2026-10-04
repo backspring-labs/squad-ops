@@ -20,8 +20,15 @@ are appended, and if the deploy moves, this registration is void and re-made.
      with the live-lease proof at its first gate. **It found #1938:** the proposal was told frozen
      criteria by id only, so increment 3's first proposal restated increment 2's feature. Fixed in
      #1939 (SIP-0109 §24ap), which is rebuild 19.
-   - **Shakeout 7** (rebuild 19, `cmp_b3a681c4f994`) **is the exit run on the deploy the set registers.**
-     Its result: *read at registration*.
+   - **Shakeout 7** (rebuild 19, `cmp_b3a681c4f994`): its result is *read at registration*.
+     - Its gates showed #1938 working. Increment 1's promotion froze its criteria with their statements,
+       and increment 2 proposed a feature not yet built.
+     - **The crew's review of this draft** (2026-10-04) traced #1938 into the kill-before-promotion
+       window, and that trace found **#1943**: #1938's exception-contained lookup let a promotion's
+       binding vary between attempts. A replay after a restart could then be refused, leaving the
+       campaign undecided. Fixed in #1944, which is rebuild 20.
+   - **Shakeout 8** (rebuild 20) **is the exit run on the deploy the set registers.** Its result: *read
+     at registration*.
 2. **Decision 1, the SIP-0107 flip: RULED (owner, 2026-10-03, "go with your recommendation on the
    flip").** #1788's re-run explained the nine empty scoped Next.js repairs:
    - 9 were correct dev abstentions or disputes on qa-owned defects;
@@ -51,7 +58,7 @@ are appended, and if the deploy moves, this registration is void and re-made.
        only the lease, so a crew model left resident when the lease returned (released or expired)
        was run beside by the framing run the ruling had just approved.
      - **Built and deployed:** #1915 (§24ai) since rebuild 16; §24an (#1931) from rebuild 18. **The set
-       registers on rebuild 19** (`b0c25360`), which carries both.
+       registers on rebuild 20** (`b0c25360` plus #1943), which carries both.
    - **Deployed proof, the quiet-box half (rebuild 16, 2026-10-03 10:38–10:39 ET, `cmp_969baa78fd39`):**
      with `llama3.1:8b` resident, a CLI create was refused (409 `box_not_quiet`, with an audit
      event), and the campaign's launch went `launch_blocked`, then escalated. With the model
@@ -60,9 +67,11 @@ are appended, and if the deploy moves, this registration is void and re-made.
      gate, 5 of 5 both times. Each refused create was audited (`cycle.launch_refused`, `denied`):
      - **rebuild 18** (`5f46d946`, shakeout 6, `cmp_58d4e3b0a5d3`, 2026-10-03 22:05–22:09 UTC); the
        framing run started 3.6 s after the unload (`waited_s=120`);
-     - **rebuild 19, the deploy the set registers** (`b0c25360`, shakeout 7, `cmp_b3a681c4f994`,
-       2026-10-04 01:10–01:13 UTC); the framing run started 4.4 s after the unload (`waited_s=90`).
-       Log: `var/campaigns/cmp_b3a681c4f994/proofs/1802-live-lease-proof.log`.
+     - **rebuild 19** (`b0c25360`, shakeout 7, `cmp_b3a681c4f994`, 2026-10-04 01:10–01:13 UTC); the
+       framing run started 4.4 s after the unload (`waited_s=90`). Log:
+       `var/campaigns/cmp_b3a681c4f994/proofs/1802-live-lease-proof.log`.
+     - **rebuild 20, the deploy the set registers:** repeated at shakeout 8's first increment gate.
+       *Read at registration.*
 
      An acquire needs the gate open, so the expired lease comes first:
      1. a short lease: a CLI create is refused, `supervisor_holds_the_box`;
@@ -84,9 +93,11 @@ are appended, and if the deploy moves, this registration is void and re-made.
      - **So the guarantee is:** no launch and no run start beside an undeclared model resident in a
        declared engine, and none while the supervisor holds the box.
 
-5. **#1803's recovery diagnostics have run on the registered deploy, or on a deploy whose difference
-   from it is declared and touches no path a diagnostic exercises** (the owner-approved change below),
-   as the validation plan's §3 (#1807) designs them, with the harness from #1924, #1927 and #1933.
+5. **#1803's recovery diagnostics have run on the registered deploy, or a diagnostic's read is carried
+   from an earlier deploy only where the deployed-code diff and every overlap with that diagnostic's
+   path are declared here, and the owner has accepted that none changes the recovery mechanism or
+   invariant** (the owner-approved change below, in the crew's narrower wording). They are run as the
+   validation plan's §3 (#1807) designs them, with the harness from #1924, #1927 and #1933.
    - **First live read, rebuild 17 (2026-10-03).** The blocked legs passed 4/4 (`cmp_575115942556`).
      The increment legs (`cmp_e39d5b9c24c6`) passed the restarts at `at_proposal`,
      `awaiting_ruling`, `paused` and `building`, and the repeated ruling.
@@ -98,17 +109,24 @@ are appended, and if the deploy moves, this registration is void and re-made.
      - The increment legs 8/8 (`cmp_c380058c647f`), the kill before promotion exercised.
      - #1929's two halves were seen working (`run_left_for_reattach`; `task_reply_replayed` ×2).
      - #1803 was closed on it.
-   - **The registered deploy is rebuild 19, and the diagnostics are not repeated on it, by an
-     owner-approved change to this precondition** (the owner, 2026-10-03: "go with b"). Rebuild 18's
-     12/12 stand for rebuild 19, because rebuild 19 differs from it only by #1938's fix.
-     - The deployed-code diff `5f46d946..b0c25360` is four files: `src/squadops/campaigns/increment_tree.py`,
-       `src/squadops/campaigns/progress.py`, `src/squadops/capabilities/handlers/planning/proposal.py`
-       and `src/squadops/prompts/request_templates/request.strategy_propose_increment.md`.
-     - That diff touches the proposal's context: what a promotion freezes and what the proposal
-       renders. It touches no restart, re-attach, kill or abort path.
-     - The other commits in the range are docs and a dev script, which no image carries.
-     - The rule as amended: the diagnostics ran on the deploy the set registers, or on one whose
-       deployed-code difference from it is declared here and touches no path a diagnostic exercises.
+   - **The registered deploy is rebuild 20** (`b0c25360` plus #1943). Rebuild 18 differs from it by
+     #1938 (`increment_tree.py`, `progress.py`, `proposal.py`, the proposal's request template) and
+     #1943 (`progress.py`). The commit and exact diff are *read at registration*.
+   - **The increment legs re-run on rebuild 20, all eight.** The proposal's context (#1938) and the
+     promotion window (#1938, #1943) both changed, and these legs exercise both: the restart at
+     `at_proposal` (a proposal run in flight), the repeated ruling, the kill before promotion and the
+     duplicate completion. Their result: *read at registration*.
+   - **The blocked legs are carried forward from rebuild 18** (4/4, `cmp_678167dcd86a`), by the
+     owner-approved change to this precondition (the owner, 2026-10-03: "go with b", and the standing
+     instruction of the same evening to re-run any diagnostic a fix overlaps). Each overlap, declared:
+     - `restart-at:launch_blocked` and `restart-at:escalated`: none. No proposal, promotion or replay
+       runs.
+     - `restart-at:calibrating` and `abort-in-flight`: both land in the calibration's framing run,
+       before any promotion. A calibration's promotion carries no increment evaluation, so
+       `_freeze_bundles` returns before the #1938/#1943 lookup is reached.
+     - None of the diff changes the restart, re-attach, kill or abort mechanism, or the recovery
+       invariant on these paths.
+
 6. **The evidence that dies with the logs is kept** (#1710, §24ak): each run's revision forms are on
    its persisted summary and in the package. `scripts/dev/campaign_log_archive.py <campaign> --follow`
    runs beside every campaign of the set.
