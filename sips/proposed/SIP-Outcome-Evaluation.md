@@ -42,7 +42,14 @@ that idea's **evaluation half**; the rest stays in the idea as its charter.
 > - **Its motivating example is fixed separately.** The 2.0 set's returned proposals, behaviour the app
 >   already had, are #1961 and #1962 in 2.1. This SIP's case is that a supervisor reading code should not
 >   be the only thing that catches them, not that those two defects stand.
-> - **Open for the owner:** portfolio Q1 (what 2.4 is) and Q3 (the amendment, the 2.3 fit, the name).
+> - **Ruled 2026-10-04** (the owner accepted the portfolio's recommendations):
+>   - **Q1:** this SIP's feature half heads 2.4, with Verification Yield's risk-first experiment (#1966)
+>     riding on it; the squad-authored backlog is 2.6;
+>   - **Q2:** the judgement steps #557, #949 and #950 follow this SIP's scenarios;
+>   - **Q3:** §4.7 lands as a SIP-0109 amendment; phase 1 fits 2.3; this SIP renames its term before
+>     phase 1 ships.
+>
+>   §8's question 5 is answered by Q1.
 
 ## 1. Summary
 
