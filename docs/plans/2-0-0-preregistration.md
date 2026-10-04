@@ -1,9 +1,16 @@
 # 2.0.0 — pre-registration of the campaign set (plan §4, §6 step 14)
 
-**Status: DRAFT, NOT REGISTERED.** This is the owner's stop (plan §6 step 14). Nothing in the set has
-launched. Every pin marked *read at registration* is read from the final deploy when the owner approves.
-None is carried from a superseded deploy. Once registered, the cut criteria do not move: only readings
-are appended, and if the deploy moves, this registration is void and re-made.
+**Status: REGISTERED, 2026-10-04, on rebuild 22 (`b09883c9`, deploy record `dep_bb1eadeac4e7`).**
+- **Who registered it:** the supervisor, as the owner's delegate, under the owner's pre-approval of
+  2026-10-03 (plan §6 step 14: "pre approve #1"). It was to register when the exit shakeout is clean,
+  #1803's diagnostics have run on that deploy, the crew's review is addressed and the pins are read.
+  Each precondition below carries its reading.
+- **The crew's review:** addressed point by point. Their re-review was not awaited (the owner: "do you
+  need a re-review? i havent asked for one", and "there will be no crew reviews").
+- **Before registration:** nothing in the set had launched.
+- **From here:** every pin was read from this deploy, and none is carried from a superseded one. The cut
+  criteria do not move; only readings are appended. If the deploy moves, this registration is void and
+  re-made.
 
 **What must be true before it can be registered:**
 1. **The shakeout loop's exit rule holds:** one shakeout campaign on the registered deploy with **no
@@ -171,7 +178,11 @@ are appended, and if the deploy moves, this registration is void and re-made.
    - **The proposal-path legs re-run on each deploy that changes the proposal prompt:**
      `restart-at:at_proposal`, and `abort-in-flight`, which lands in that proposal run.
      - Rebuild 21 (`3f6551d8`, `cmp_5247f81c2ea9`): 2 of 2, for #1946.
-     - Rebuild 22, for #1948: *read at registration*.
+     - Rebuild 22 (`b09883c9`, `cmp_690067c2b42b`, 2026-10-04): **2 of 2**, for #1948. The restart at
+       `at_proposal` took up its in-flight proposal run (`run_52e486f735c7`), and the abort cancelled
+       the run in flight and completed the campaign. The runtime image is `51f0bcee6404`, the pinned one.
+       The calibration's plan gate asked one design question (the order of the runs list); the
+       supervisor answered it from the PRD and the manifest, as §3a's plan-gate rule says.
    - **The other six increment legs are carried from rebuild 20:** the restarts at `awaiting_ruling`,
      `paused` and `building`, the repeated ruling, the kill before promotion and the duplicate
      completion. This is the case the owner's "go with b" ruled on: a diff that changes only how the
@@ -378,7 +389,8 @@ The crew's conditions (plan §7):
 
 ## 9. The owner's decisions at this stop
 
-1. Register as drafted, or amend.
+1. ~~Register as drafted, or amend.~~ Pre-approved by the owner (2026-10-03); registered as drafted
+   on 2026-10-04, with the readings. No §5 value, prediction, size or frame was changed.
 2. ~~Decision 1: flip or not.~~ Ruled 2026-10-03: flip (#1909). Its checkpoint pair is read before registering.
 3. ~~Decision 2: who supervises.~~ Not a SquadOps decision (§24al): whoever holds the seat rules.
-4. The policy values in §5.
+4. ~~The policy values in §5.~~ Covered by the pre-approval; unchanged.
