@@ -43,6 +43,20 @@ async def ingest_artifact(
 ):
     """Ingest an artifact via multipart/form-data (T16)."""
     from squadops.api.runtime.deps import get_artifact_vault
+    from squadops.cycles.artifact_names import artifact_filename_refusal
+
+    refusal = artifact_filename_refusal(filename)
+    if refusal is not None:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": {
+                    "code": "INVALID_FILENAME",
+                    "message": f"filename {filename!r} refused: {refusal}",
+                    "details": None,
+                }
+            },
+        )
 
     content = await file.read()
     if len(content) > _MAX_UPLOAD_BYTES:
