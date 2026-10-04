@@ -47,8 +47,9 @@ the next feature release, which carries Cross-Cycle Memory. The squad authoring 
 | **out of 2.1's committed scope** | 1 | #1039 (the docs site's design pass; it rides any release, §5) |
 
 **So 2.1 closes 18 of the 24 that stay open after the 2.0 cut** (17 hardening and #1940), **plus
-five new issues: 23 in all.** Three are §3's gaps (#1956, #1957, #1958) and two are the optimization
-crew's enablers (§2.0: #1959, #1960). #1756 is the crew's, and #1039 rides any release. That count does
+six new issues: 24 in all.** Three are §3's gaps, two are the crew's enablers, and #1964 is the
+memory SIP's 2.1 part (§2.6). (§3's are #1956, #1957, #1958; the crew's enablers, §2.0, are #1959 and #1960.) #1756 is the
+crew's, and #1039 rides any release. That count does
 not include what the 2.0 set itself will find.
 
 ---
@@ -133,6 +134,16 @@ the release is attributable to one refactor.
 |---|---|---|---|---|
 | #1031 | the manifest author designs APIs with no conventions in frame (`participant_not_found` → 400, where 404 never entered the decision) | a stack-scoped design primer through PromptService, plus a schema-gate finding for an unexamined deviation | M | yes |
 | #1692 (remainder) | the prior-cycle brief is built for repair, retry and the proposal after an abandoned increment. Not built: the correction chain's own record, and the recurrence measure | both, from typed records only (SIP-0096's integrity rule) | M | yes |
+
+### 2.6 Placed in 2.1 by a SIP, not by an issue
+
+| SIP | what it places in 2.1 | size | deploy |
+|---|---|---|---|
+| `SIP-Cross-Cycle-Memory` (proposed; **#1964**; placement by the owner's ruling of 2026-09-12, the 1.8.0 plan §8 decision 2) | **the recall port, inert:** a NoOp that answers *empty* (not `NoOpMemoryPort`, which raises), injected explicitly by the composition root, and the call site through `plan_rejection_context` (declared on six task types). **And a re-read** of the SIP's Phase-1 value hypothesis against the recurrence evidence available at 2.1's cut, so 2.2 activates memory on a workload that is actually live. The port answers empty, so no verdict, prompt or gate changes | M | yes |
+| `SIP-Outcome-Evaluation` (proposed 2026-10-04, PR #1963) | **phase 0 only:** #1959 and #1960, already in §2.0. Its reporting-only instruments are 2.3's, and its feature half heads 2.4 | — | — |
+
+**Missed in this plan's first draft, found reading the memory SIP on 2026-10-04.** It has no issue,
+and the ruling places it here. Filed as **#1964**.
 
 ---
 
