@@ -46,11 +46,16 @@ the next feature release, which carries Cross-Cycle Memory. The squad authoring 
 | **the crew's, listed in 2.1** | 1 | #1756 (the owner's ruling, 2026-10-03: not to be built outside the crew) |
 | **out of 2.1's committed scope** | 1 | #1039 (the docs site's design pass; it rides any release, §5) |
 
-**So 2.1 closes 18 of the 24 that stay open after the 2.0 cut** (17 hardening and #1940), **plus
-six new issues: 24 in all.** Three are §3's gaps, two are the crew's enablers, and #1964 is the
-memory SIP's 2.1 part (§2.6). (§3's are #1956, #1957, #1958; the crew's enablers, §2.0, are #1959 and #1960.) #1756 is the
-crew's, and #1039 rides any release. That count does
-not include what the 2.0 set itself will find.
+**So 2.1 closes 18 of the 24 that stay open after the 2.0 cut** (17 hardening and #1940), plus the
+new issues placed since:
+- §3's three gaps (#1956, #1957, #1958);
+- the crew's two enablers (§2.0: #1959, #1960);
+- the memory SIP's 2.1 part (§2.6: #1964);
+- **the SIP-portfolio rulings' nine** (§2.7): the anti-drift guards #1969, #1979, #1980, #1981; SIP-0109's
+  #1971, #1972, #1973; SIP-0101's #1974; SIP-0105's #1975, with #1967 and #1968;
+- the 2.0 set's findings so far (§4 step 1: #1961, #1962).
+
+#1756 is the crew's, and #1039 rides any release.
 
 ---
 
@@ -145,6 +150,30 @@ the release is attributable to one refactor.
 **Missed in this plan's first draft, found reading the memory SIP on 2026-10-04.** It has no issue,
 and the ruling places it here. Filed as **#1964**.
 
+### 2.7 From the SIP-portfolio rulings (2026-10-04)
+
+The owner ruled on the read-only audit of every accepted, proposed and implemented SIP
+(`sips/PORTFOLIO.md`, PR #1970): "I accept all your other recommendations to keep SIPs current,
+reflecting what gets delivered, and where the work is targeted". He also asked how to prevent the
+drift the audit found.
+
+| issue | what | size | deploy |
+|---|---|---|---|
+| **#1969** | the ledger guard: every accepted SIP has a delivery ledger; placed rows name open issues; shipped rows name a tag or PR; no header names a tagged release as a future target | S | no |
+| **#1979** | a `sip:NNNN` label per SIP; the guard matches ledgers to labelled issues; closing a `sip:` issue requires the ledger change | S | no |
+| **#1980** | `sip_sweep.py`: the cut's SIP sweep, read from the ledgers | S | no |
+| **#1981** | the SIP template's intake check and ledger, required in new proposals | S | no |
+| #1967 | the S5 admission gate's empty-string blind spot (SIP-0105) | S | no |
+| #1968 | `proposed → deprecated` in `update_sip_status.py`, so the 12 ruled deprecations can execute | S | no |
+| #1971 | a launch the preflight refuses is escalated (SIP-0109 §24e) | S | yes |
+| #1972 | the sweep re-hears an ended cycle between restarts (SIP-0109 §24v) | S | yes |
+| #1973 | a Next.js render profile (SIP-0109 §24p), with #1950 and #1962 | M | yes |
+| #1974 | the benchmark registry's replay-exclusion test (SIP-0101 §4.1) | S | no |
+| #1975 | delete SIP-0105's four falsified fields | S | yes |
+
+**The anti-drift four lead,** with #1956, before 2.1 ships any SIP part: this line is the first to be
+held to the ledgers.
+
 ---
 
 ## 3. Gaps the 2.0 run exposed, filed on adoption
@@ -186,7 +215,9 @@ Deploy-moving work batches into rebuilds, and each structural refactor gets a ba
      required request string is already trimmed and refused blank (#593), so a name-normalization
      proposal was new behaviour only on paper. Same campaign and increment, version 2. Built with
      #1950, as one declaration.
-2. **The crew's tooling and the instruments, before anything they would measure:**
+2. **The SIP record's guards** (#1969, #1979, #1980, #1981, #1967, #1968: tooling, no deploy), so every
+   later step updates the ledgers it touches. Then **the crew's tooling and the instruments, before
+   anything they would measure:**
    - #1956 (the supervisor's instruments, tracked), #1959 (the increment replay) and #1960 (the
      per-increment scorecard);
    - #1911's measurement, #1469's corpus count, and #1757's read of the stored model-limitation
@@ -198,14 +229,16 @@ Deploy-moving work batches into rebuilds, and each structural refactor gets a ba
      if taken;
    - #1957 and #1958 (tooling, no deploy);
    - #1964's inert recall port and its call site: a seam that answers empty, so nothing it touches
-     changes behaviour.
+     changes behaviour;
+   - #1971, #1972 and #1975 (small, deploy-moving), and #1974 (a test).
 
    Then a rebuild, the regression pair, and the overlapping recovery diagnostics
    (`restart-at:at_proposal` for #1934). **The crew's first campaign can run on this deploy** (§2.0).
 4. **The ruled answers:** #1757 (the third rewind anchor) and #1727 (§20 on the re-take path, read
    with #1913). Each becomes a SIP amendment in the PR that implements it.
-5. **Verification gaps:** #1796, #1937 (reporting-only), #1824's attribution locus, and #1469's
-   per-module elements, with a rebuild and the regression pair.
+5. **Verification gaps:** #1796, #1937 (reporting-only), #1824's attribution locus, #1469's
+   per-module elements, and #1973 (a Next.js render profile, with #1950 and #1962), with a rebuild and
+   the regression pair.
 6. **Refactors, one per batch, each with its replay proof:** #414, then #567, then #316 (after its SIP
    is accepted). Each gets a rebuild and the regression pair before the next begins.
 7. **Generation quality:** #1031 and #1692's remainder. These change what the model is shown, so they
@@ -256,5 +289,11 @@ The supervisor recommended, and the owner agreed: "go ahead, record them and fil
 - **The 2.0 set's own findings:** inherited at the cut, placed then.
 - **The cut criteria's exact numbers** (the regression set's size, the shakeout's exit rule): written as
   the pre-registration when 2.1's last batch is built, as 1.9 and 2.0 did.
-- **2.2's scope:** Cross-Cycle Memory, the gate loosening (#949, #950, #1708's remainder, decided from
-  the 2.0 proposal ledger), and #557.
+- **The line after 2.1**, ruled 2026-10-04 and recorded in the ROADMAP's horizon:
+  - **2.2:** Cross-Cycle Memory, the line's only change to squad behaviour, with #1708's auto tier and
+    escalation queue;
+  - **2.3:** Outcome Evaluation's reporting-only instruments, and the comms (#1977) and API-contract
+    (#1976) hardening;
+  - **2.4:** Outcome Evaluation's feature half, with #1966 and then #557, #949 and #950;
+  - **2.6:** the squad-authored backlog (no SIP yet), and Test-First's greenfield gate (#1978);
+  - **3.x:** the runtime-mode family (SIP-0088, 0090, 0091), duty work, and Capability-Backed Agents.
