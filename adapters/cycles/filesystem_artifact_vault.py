@@ -21,6 +21,7 @@ import logging
 import tempfile
 from pathlib import Path
 
+from squadops.cycles.artifact_names import artifact_filename_refusal
 from squadops.cycles.models import ArtifactNotFoundError, ArtifactRef
 from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
 
@@ -77,6 +78,24 @@ class FilesystemArtifactVault(ArtifactVaultPort):
 
     # --- Path helpers ---
 
+    def _contained_content_path(self, art_dir: Path, filename: str) -> Path:
+        """Where an artifact's content is written, refused unless it is inside the artifact's own
+        directory, and that directory inside the vault. Every caller depends on this: a filename
+        or an id that climbs out (``..``, an absolute path) would otherwise be written wherever the
+        process can write."""
+        refusal = artifact_filename_refusal(filename)
+        if refusal is not None:
+            raise ValueError(f"artifact filename {filename!r} refused: {refusal}")
+        base = self._base_dir.resolve()
+        resolved_dir = art_dir.resolve()
+        if not resolved_dir.is_relative_to(base):
+            raise ValueError(f"artifact directory {art_dir} is outside the vault {base}")
+        if not (resolved_dir / filename).resolve().is_relative_to(resolved_dir):
+            raise ValueError(f"artifact filename {filename!r} resolves outside its artifact")
+        # The checks read resolved paths; the path written, and recorded as ``vault_uri``, keeps
+        # the form it always had.
+        return art_dir / filename
+
     def _artifact_dir_for_ref(self, ref: ArtifactRef) -> Path:
         if ref.cycle_id and ref.run_id:
             return self._base_dir / ref.project_id / ref.cycle_id / ref.run_id / ref.artifact_id
@@ -89,11 +108,11 @@ class FilesystemArtifactVault(ArtifactVaultPort):
 
     async def store(self, artifact: ArtifactRef, content: bytes) -> ArtifactRef:
         art_dir = self._artifact_dir_for_ref(artifact)
+        content_path = self._contained_content_path(art_dir, artifact.filename)
         art_dir.mkdir(parents=True, exist_ok=True)
 
         content_hash = hashlib.sha256(content).hexdigest()
 
-        content_path = art_dir / artifact.filename
         content_path.parent.mkdir(parents=True, exist_ok=True)
         content_path.write_bytes(content)
 

@@ -107,6 +107,23 @@ class TestIngestArtifact:
         )
         assert resp.status_code == 413
 
+    @pytest.mark.parametrize("filename", ["../../escaped.txt", "/etc/cron.d/x", "a/../../b"])
+    def test_a_filename_that_leaves_the_artifact_is_refused_before_storing(
+        self, client, mock_artifact_vault, filename
+    ):
+        """Bug caught: the client's filename reaching the vault unvalidated, so an upload is
+        written outside it. The request is refused with the standard envelope, and nothing is
+        stored."""
+        resp = client.post(
+            "/api/v1/projects/hello_squad/artifacts/ingest",
+            files={"file": ("x.txt", b"payload", "text/plain")},
+            data={"artifact_type": "document", "filename": filename, "media_type": "text/plain"},
+        )
+
+        assert resp.status_code == 422
+        assert resp.json()["detail"]["error"]["code"] == "INVALID_FILENAME"
+        mock_artifact_vault.store.assert_not_awaited()
+
 
 class TestGetArtifactMetadata:
     def test_returns_metadata(self, client):
