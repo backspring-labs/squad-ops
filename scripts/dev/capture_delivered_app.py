@@ -65,6 +65,7 @@ from pathlib import Path
 
 import yaml
 
+from squadops.campaigns.increment_tree import ACCEPTED_TREE_ARTIFACT_TYPE
 from squadops.cycles.delivered_tree import StoredArtifact, delivered_files
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -88,11 +89,37 @@ def sh(*args: str, check: bool = True) -> str:
     return r.stdout.strip()
 
 
+def accepted_tree(project: str, cycle: str) -> tuple[str, dict[str, str]] | None:
+    """A campaign increment's whole app: the tree its promotion recorded, file name to artifact id
+    (SIP-0109 §24ac). An increment's own run holds only the files its change touched, plus the
+    scaffold's stubs for the rest, so its latest-per-filename tree photographs a stub page (#2000).
+    ``None`` for a cycle no promotion recorded."""
+    for meta_path in sorted((VAULT / project / cycle).glob("run_*/art_*/metadata.json")):
+        meta = json.loads(meta_path.read_text())
+        if meta.get("artifact_type") == ACCEPTED_TREE_ARTIFACT_TYPE:
+            tree = json.loads((meta_path.parent / meta["filename"]).read_text())
+            return meta["artifact_id"], tree
+    return None
+
+
+def _artifact_dirs(project: str, wanted: set[str]) -> dict[str, Path]:
+    """Where each wanted artifact lives in the project's vault, whichever cycle stored it."""
+    return {
+        d.name: d
+        for d in (VAULT / project).glob("*/run_*/art_*")
+        if d.name in wanted and d.is_dir()
+    }
+
+
 def reconstruct(project: str, cycle: str, run: str, out: Path) -> int:
     """The delivered tree, by the one rule the audit reads too (#1832): per filename, the latest
     workspace artifact the run accepted. A rejected repair candidate or a failed emission is
     never what the run delivered, however recent; this took the newest file by name before, and
     so could photograph a repair the framework had rejected.
+
+    **A campaign increment is the exception** (#2000): its promotion recorded the whole app as an
+    accepted tree, which is what it delivered, so that tree is reconstructed instead, each file from
+    the artifact it names. An artifact the tree names but the vault lacks is refused by name.
     """
     src = VAULT / project / cycle / run
     if not src.is_dir():
@@ -117,12 +144,25 @@ def reconstruct(project: str, cycle: str, run: str, out: Path) -> int:
             )
             if out.exists():
                 raise SystemExit(f"could not clear {out} — remove it by hand and re-run") from None
-    records = {}
-    for meta_path in src.glob("art_*/metadata.json"):
-        meta = json.loads(meta_path.read_text())
-        records[meta["artifact_id"]] = (meta, meta_path.parent)
-    delivered = delivered_files(StoredArtifact.from_record(m) for m, _ in records.values())
-    latest = {name: records[art_id][1] for name, art_id in delivered.items()}
+    tree = accepted_tree(project, cycle)
+    if tree is not None:
+        tree_id, files = tree
+        dirs = _artifact_dirs(project, set(files.values()))
+        missing = sorted(name for name, art_id in files.items() if art_id not in dirs)
+        if missing:
+            raise SystemExit(
+                f"the accepted tree {tree_id} of {cycle} names artifacts the vault does not hold: "
+                f"{', '.join(missing)}"
+            )
+        latest = {name: dirs[art_id] for name, art_id in files.items()}
+        print(f"  the cycle's accepted tree {tree_id}: the whole app its promotion recorded")
+    else:
+        records = {}
+        for meta_path in src.glob("art_*/metadata.json"):
+            meta = json.loads(meta_path.read_text())
+            records[meta["artifact_id"]] = (meta, meta_path.parent)
+        delivered = delivered_files(StoredArtifact.from_record(m) for m, _ in records.values())
+        latest = {name: records[art_id][1] for name, art_id in delivered.items()}
     for name, art_dir in latest.items():
         source = art_dir / name
         if not source.exists():
