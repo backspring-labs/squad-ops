@@ -766,7 +766,6 @@ The following areas are identified for future work but do not block 1.0 readines
 | **SIP-0101** | Cycle Replay Harness | stays accepted (minimum slice shipped in 1.5); its records are an input to the 1.8 scorecard's benchmark registry — a consumer, not a completion |
 | **SIP-0102** | Ephemeral Application Sandbox (1.4 floor shipped as the v1.4.0 S-lane headline) | migration steps 3–7 open (in-cycle routing, clean-room verdicts, #306 retirement, golden-path validation); **#598's rendered packaging is a §4.2 consequence landing in 1.8's prelude**; step 5 is named absent by SIP-0108, whose clean-room indicators are unaskable until it lands |
 | **SIP-0105** | Stack Blueprint Contract | stays accepted — the blueprint rewrite after #1131 open; **amended by #598 in 1.8** (the Dockerfile and nginx config become a rendering of the stack declaration) |
-| **SIP-0107** | Scoped Code Revision | **the 1.8 Lane M headline** — accepted at its design review 2026-09-13 with required revision (rev 4), rolled out by the 1.8 plan §3.3, #1444 first — steps 1–6 in 1.8.0, the default flip in 1.8.1 by design (SIP-0107 §46a) |
 | **SIP-0109** | Campaign Orchestration | **the 2.0 headline**: accepted 2026-10-01 (rev 6); §18 steps 1–8 built; the 2.0 counted set registered 2026-10-04 (#1908). Its delivery ledger is in the SIP. Promotion at or after the 2.0 cut (`sips/PORTFOLIO.md` Q17) |
 
 ## Horizon: 2.x and 3.x (ruled 2026-10-04)
@@ -835,7 +834,7 @@ The following areas are identified for future work but do not block 1.0 readines
 *As of 2026-10-04 (v2.0.0):*
 
 - **Framework version**: 2.0.0
-- **SIPs** (2026-10-04, after the 2.0 sweep): 68 implemented, 10 accepted (SIP-0088, 0090–0093, 0101, 0102, 0105, 0107, 0109), 20 deprecated, plus the unnumbered proposals indexed in `sips/PORTFOLIO.md`
+- **SIPs** (2026-10-04, after the 2.0 sweep and SIP-0107's promotion after the tag): 69 implemented, 9 accepted (SIP-0088, 0090–0093, 0101, 0102, 0105, 0109), 20 deprecated, plus the unnumbered proposals indexed in `sips/PORTFOLIO.md`
 - **Tests**: 10,000+ passing in the regression suite (all of `tests/unit`, #1316)
 - **Python source**: ~109,000 lines measured 2026-09-17 (`src/` ~84,000 + `adapters/` ~25,000; ~168,000 test lines; ~144,000 lines of Markdown under `docs/` and `sips/`)
 - **~6 months** from initial repo (2025-09-20) to 1.0.0 release (2026-03-10)

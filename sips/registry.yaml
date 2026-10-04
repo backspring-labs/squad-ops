@@ -958,12 +958,12 @@ sips:
 - sip_uid: '17883224960412001'
   sip_number: 107
   title: Scoped Code Revision
-  path: sips/accepted/SIP-0107-Scoped-Code-Revision.md
-  status: accepted
+  path: sips/implemented/SIP-0107-Scoped-Code-Revision.md
+  status: implemented
   author: SquadOps Architecture
   approver: jladd
   created_at: '2026-09-06T00:00:00Z'
-  updated_at: '2026-09-13T09:54:01.067677Z'
+  updated_at: '2026-10-04T19:21:14.446346Z'
 - sip_uid: '17883224960396698'
   sip_number: 108
   title: Cycle Evaluation Scorecard

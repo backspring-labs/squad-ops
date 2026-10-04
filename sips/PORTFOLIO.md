@@ -31,7 +31,7 @@ The per-part record of what shipped where lives **in each SIP**, in its `Deliver
 
 ---
 
-## 1. Accepted SIPs (10, after the v2.0.0 sweep)
+## 1. Accepted SIPs (9, after the v2.0.0 sweep and SIP-0107's promotion after the tag)
 
 | SIP | shipped | remaining, and where it is placed | promote? | ledger |
 |---|---|---|---|---|
@@ -43,7 +43,6 @@ The per-part record of what shipped where lives **in each SIP**, in its `Deliver
 | **0101** Cycle Replay Harness | slices 1–3 (v1.5.0); Prefect replay tags (v1.9.0) | slice 4 **dropped**; slice 5 with the next console work; §4.1's test #1974 (2.1.0); 1.9's finding recorded (§11a) | after #1974 | added |
 | **0102** Ephemeral Application Sandbox | steps 1, 2 and 4, plus the clean-room audit (v1.4.0); §11a; §11b (v1.8.0) | steps 3, 5, 6, 7 **unplaced, deliberately**; in-agent execution ruled the accepted path (§11c) | no: waits for a clean-room requirement | added |
 | **0105** Stack Blueprint Contract | the contract and S5 admission gate (1.6); A1 packaging (v1.8.0); stack #1 extracted (v1.7.1) | fields deleted by #1975 (2.1.0); #1967 (2.1.0); packs to a successor; `check_stack` split unplaced, deliberately (§A2) | after #1975 and #1967 | added |
-| **0107** Scoped Code Revision | steps 1–6 (v1.8.0); step 7, the flip (#1909, ships in **2.0.0**) | §20 on the re-take path: **2.1.0, #1727**. §15 **dropped**; §9.4 declared without a producer (§46t) | **after the 2.0.0 tag** | added |
 | **0109** Campaign Orchestration (2.0 headline) | §18 steps 1–8, **v2.0.0**; the set read PASS (§24at); the runbook's second half (#1997) and the digest's renderings (#1998) | **#1710:** closed at the cut: the evolution screenshots ship in the 2.0.0 release package; the squad's first pass is dropped (Q24). **2.1.0:** #1824, #1884, #1934, #1950, #1961, #1962, #1995, #1692, #1940, #1954, #1956, #1959, #1960, #1971, #1972, #1973. **2.2.0:** #1708's remainder. §24b–§24i ratified (§24as) | no: its 2.1 parts are open; §24at is the consolidated status record | added |
 
 **Implemented SIPs promoted with open items.** Each needs a text amendment, not a status change. The
@@ -142,7 +141,7 @@ dated amendment.
 | Q13 | taxonomy aliases | old profile names resolve indefinitely; written into #316 | its note; #316 |
 | Q14 | deprecations | after #1968: the 12 candidates in §2, with API Contract Hardening's residue as #1976 first | the notes; §2 |
 | Q15 | SIP-0104 | §10.2 read as met; **promoted at the v2.0.0 sweep** | SIP-0104 §13c |
-| Q16 | SIP-0107 | §15 dropped; §9.4 declared without a producer; promoted after the 2.0.0 tag | SIP-0107 §46t |
+| Q16 | SIP-0107 | §15 dropped; §9.4 declared without a producer; **promoted after the v2.0.0 tag**; #1727 follows as an amendment | SIP-0107 §46t |
 | Q17 | SIP-0109 | §24b–§24i ratified as written. Unplaced items: #1971, #1972, #1973 (2.1.0); packaging changes and the GPU check unplaced, deliberately; the builder-tail question dropped. A consolidated status amendment at the cut | SIP-0109 §24as |
 | Q18 | SIP-0092 / SIP-0093 | M3 dropped, M1's divergences recorded; 93.4 and its tests fold into #950, merge rules 2–5 dropped, fan-out sequential | SIP-0092 §14a; SIP-0093 §15a |
 | Q19 | SIP-0101 | 1.9's finding recorded; slice 4 dropped; slice 5 with the next console work; §4.1's test is #1974 (2.1.0) | SIP-0101 §11a |
