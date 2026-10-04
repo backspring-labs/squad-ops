@@ -40,8 +40,18 @@ are appended, and if the deploy moves, this registration is void and re-made.
      have failed it, and the proposer is never told the convention. Returned for revision (§3a); version
      2 was approved. Fixed in SIP-0109 §24ar, which is rebuild 22. Precondition 4's live-lease proof ran
      at this gate.
-   - **Shakeout 10** (rebuild 22) **is the exit run on the deploy the set registers.** Its result: *read
-     at registration*.
+   - **Shakeout 10** (rebuild 22, `cmp_36f0d3b1e98a`, 2026-10-04 08:58–11:44 UTC) **is the exit run on
+     the deploy the set registers: success, three accepted increments, and no new seam finding.** The
+     exit rule holds.
+     - Every proposal was approved at version 1 (capacity, then the datetime sort, then the seed
+       endpoint), and no ruling was returned. Neither #1946's miss (a default-case criterion) nor
+       #1948's (an absent-key observable) recurred.
+     - Each increment was accepted on its first cycle, with every earlier frozen criterion held
+       (T1–T4 on one tree).
+     - The runtime and the six agents logged no error. The two warnings were existing guards
+       working: a status code the skeleton enforcement restored (SIP-0100), and the plan-prose check
+       naming a path parameter (pf-31).
+     - The close-time evidence package materialized (`art_e20bc6b5b99f`).
 2. **Decision 1, the SIP-0107 flip: RULED (owner, 2026-10-03, "go with your recommendation on the
    flip").** #1788's re-run explained the nine empty scoped Next.js repairs. Of its 12 samples (on
    rebuild 13; SIP-0107 §46s):
@@ -138,7 +148,10 @@ are appended, and if the deploy moves, this registration is void and re-made.
        field on the stack table (`ScaffoldStack.unset_optional_response`), read only by the proposal
        handler.
 
-     The commit and the exact diff are *read at registration*.
+     **The commit is `b09883c9`** (deploy record `dep_bb1eadeac4e7`). Read from git, the exact
+     deployed-code diff from rebuild 18 (`5f46d946`) is those six files under `src/`:
+     `increment_tree.py`, `progress.py`, `proposal.py`, `scaffold.py`, and the two request templates.
+     Nothing changed under `adapters/`, `infra/`, `config/`, the requirements or the Dockerfiles.
    - **The increment legs re-ran on rebuild 20** (`75a4b7b8`, `cmp_c3b60dd6889d`, 2026-10-04): **8 of 8.**
      - **What they did not reach, declared.** The kill before promotion and the duplicate completion
        both landed on an increment its cycle rejected (its catch-all route lacked the not-found view).
@@ -153,7 +166,8 @@ are appended, and if the deploy moves, this registration is void and re-made.
          and compared with the binding the row committed.
          - Shakeout 7's four promotions (committed on rebuild 19): 6 criteria, each recomputed twice,
            **0 mismatches** (`var/campaigns/cmp_b3a681c4f994/proofs/1943-binding-replay-rebuild22.log`).
-         - Shakeout 10's promotions: *read at registration*.
+         - Shakeout 10's four promotions (rebuild 22): 4 criteria (T1–T4), each recomputed twice,
+           **0 mismatches** (`var/campaigns/cmp_36f0d3b1e98a/proofs/1943-binding-replay.log`).
    - **The proposal-path legs re-run on each deploy that changes the proposal prompt:**
      `restart-at:at_proposal`, and `abort-in-flight`, which lands in that proposal run.
      - Rebuild 21 (`3f6551d8`, `cmp_5247f81c2ea9`): 2 of 2, for #1946.
@@ -336,10 +350,11 @@ The crew's conditions (plan §7):
 
 | pin | value |
 |---|---|
-| deploy commit | *read at registration* |
-| image ids (runtime-api, max, neo, nat, bob, eve, data) | *read at registration* |
-| deploy record | *read at registration*, referenced by every cycle of the set |
-| loaded checks | *read at registration*: a live fact per change since the last counted set, each with its control |
+| deploy commit | `b09883c9` (rebuild 22; main's CI 10/10 green on it) |
+| image ids (runtime-api, max, neo, nat, bob, eve, data) | runtime-api `51f0bcee6404`, max `2c941b1c066e`, neo `9bf9255f3253`, nat `1e2209567a81`, bob `ae08bb9cc501`, eve `3b432c390303`, data `fe095ed432f4` |
+| deploy record | `dep_bb1eadeac4e7` (recorded 2026-10-04 08:57:49 UTC, `source_revision` `b09883c9`: 21 services, 5 models, `Qwen/Qwen3.8-27B-FP8` without a digest), referenced by every cycle of the set |
+| model | `qwen3.8:27b` `22130167c4c20e20c7b71454612966ca8e8171e9b3cc8ab6ce8aa6cbfec79643` (the `full-38` squad) |
+| loaded checks | read in each running container, each as wanted: #1909 (the flip: a whole re-emission refused in the dev, qa and builder repair seams, 9 of 9, with its control, a new file accepted), #1912, #1802, #1920, #1918, #1943, #1938 (promotion and render), #1929 (runtime and agent halves), #1928, #1922, #1919, #1946 (the rule in the template), #1948 (template v5 and its section; the declarations `null` / none / none for FastAPI, Next.js and an unregistered stack; the handler renders it) |
 | policy files | `examples/03_group_run/campaigns/2-0-0-set-1.yaml` sha256 `74cb2f031c055fc250937c8282be66c0cb25a3d0fef6752762fdf91d129d27fe`; `…/2-0-0-set-2.yaml` sha256 `c43dbb4fe216f0fca8ae2291b5527a9256282a8e8bd361f0f7da09ede2cf48dc`; both at commit `34b242a7` (#1942, #1941). Each carries shakeout 7's objective and policy exactly, and its provenance is reconciled in `examples/03_group_run/campaigns/provenance.yaml` |
 | the reference scenario's pins | `examples/03_group_run/reference_scenario.yaml` (#1853), checked by the launcher |
 
