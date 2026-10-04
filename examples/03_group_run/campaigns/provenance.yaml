@@ -133,16 +133,22 @@ campaigns:
     sha256: 74cb2f031c055fc250937c8282be66c0cb25a3d0fef6752762fdf91d129d27fe
   - path: examples/03_group_run/campaigns/2-0-0-set-2.yaml
     sha256: c43dbb4fe216f0fca8ae2291b5527a9256282a8e8bd361f0f7da09ede2cf48dc
+  - path: examples/03_group_run/campaigns/shakeout-10.yaml
+    sha256: 6b65b6d11f53cefa801684b053a96f27f921cf7490de4a5f55a4e88d57069c10
   - path: examples/03_group_run/campaigns/shakeout-6.yaml
     sha256: e242314aa68513aa7e6986a2b849ff42789405b1b384058c93845f1ff08b7f56
   - path: examples/03_group_run/campaigns/shakeout-7.yaml
     sha256: ae1cf46ff0ca1638241d9b51e9cc19dee1229e3b3730023e356e8eec5df45656
+  - path: examples/03_group_run/campaigns/shakeout-8.yaml
+    sha256: 83d072d409e73058579b8ab55f05cbf518fc6aa1f67564e8196c2436b8ee6e43
+  - path: examples/03_group_run/campaigns/shakeout-9.yaml
+    sha256: 5d99384bd446c1072ddcdf175734b8c8919ab2c30f6ee7ba9f8e84a426b19462
   package_identity: 889a32b015a3b54d6f00bd9827fdd787b9ba5510415ded98bae4f1b534b7f183
   package_artifact: art_aa15048aa740
 - campaign_id: cmp_b3a681c4f994
   created: '2026-10-04T00:07:12.410954+00:00'
-  state: building
-  outcome: ''
+  state: completed
+  outcome: success
   create_reason: "shakeout 7: the exit-rule run on rebuild 19 (b0c25360 = rebuild 18 + #1938), supervised\
     \ by #1908 \xA73a; precondition 4's live-lease proof repeated at its first gate"
   definitions:
@@ -150,10 +156,119 @@ campaigns:
     sha256: 74cb2f031c055fc250937c8282be66c0cb25a3d0fef6752762fdf91d129d27fe
   - path: examples/03_group_run/campaigns/2-0-0-set-2.yaml
     sha256: c43dbb4fe216f0fca8ae2291b5527a9256282a8e8bd361f0f7da09ede2cf48dc
+  - path: examples/03_group_run/campaigns/shakeout-10.yaml
+    sha256: 6b65b6d11f53cefa801684b053a96f27f921cf7490de4a5f55a4e88d57069c10
   - path: examples/03_group_run/campaigns/shakeout-6.yaml
     sha256: e242314aa68513aa7e6986a2b849ff42789405b1b384058c93845f1ff08b7f56
   - path: examples/03_group_run/campaigns/shakeout-7.yaml
     sha256: ae1cf46ff0ca1638241d9b51e9cc19dee1229e3b3730023e356e8eec5df45656
-  package_identity: null
-  package_artifact: null
+  - path: examples/03_group_run/campaigns/shakeout-8.yaml
+    sha256: 83d072d409e73058579b8ab55f05cbf518fc6aa1f67564e8196c2436b8ee6e43
+  - path: examples/03_group_run/campaigns/shakeout-9.yaml
+    sha256: 5d99384bd446c1072ddcdf175734b8c8919ab2c30f6ee7ba9f8e84a426b19462
+  package_identity: f14f27fb0a15d93710a64fb193f2d18e84fa0b1236c5ebcd0d8f79cffa81d6fa
+  package_artifact: art_90d6f9604051
+- campaign_id: cmp_c3b60dd6889d
+  created: '2026-10-04T03:33:24.750049+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: '#1803 recovery diagnostics on rebuild 20 (75a4b7b8, the deploy the set registers), the
+    increment legs: all eight, since #1938/#1943 touch the proposal context and the promotion window (#1908
+    precondition 5)'
+  definitions:
+  - path: examples/03_group_run/campaigns/diag-1803-increment.yaml
+    sha256: 8eee81111126c31008d7d96ba1c9e434d89f198d860c8777bbcc5a76619e5e15
+  package_identity: cba2a380949b40c6f1ec25b007e660b599ca5c84f604c5c2e51c72b4f899c1d1
+  package_artifact: art_146a9e2ffa51
+- campaign_id: cmp_51919765933d
+  created: '2026-10-04T05:16:34.850343+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: "shakeout 8: the exit-rule run on rebuild 20 (75a4b7b8 = rebuild 19 + #1943), supervised\
+    \ by #1908 \xA73a; precondition 4's live-lease proof repeated at its first gate"
+  definitions:
+  - path: examples/03_group_run/campaigns/2-0-0-set-1.yaml
+    sha256: 74cb2f031c055fc250937c8282be66c0cb25a3d0fef6752762fdf91d129d27fe
+  - path: examples/03_group_run/campaigns/2-0-0-set-2.yaml
+    sha256: c43dbb4fe216f0fca8ae2291b5527a9256282a8e8bd361f0f7da09ede2cf48dc
+  - path: examples/03_group_run/campaigns/shakeout-10.yaml
+    sha256: 6b65b6d11f53cefa801684b053a96f27f921cf7490de4a5f55a4e88d57069c10
+  - path: examples/03_group_run/campaigns/shakeout-6.yaml
+    sha256: e242314aa68513aa7e6986a2b849ff42789405b1b384058c93845f1ff08b7f56
+  - path: examples/03_group_run/campaigns/shakeout-7.yaml
+    sha256: ae1cf46ff0ca1638241d9b51e9cc19dee1229e3b3730023e356e8eec5df45656
+  - path: examples/03_group_run/campaigns/shakeout-8.yaml
+    sha256: 83d072d409e73058579b8ab55f05cbf518fc6aa1f67564e8196c2436b8ee6e43
+  - path: examples/03_group_run/campaigns/shakeout-9.yaml
+    sha256: 5d99384bd446c1072ddcdf175734b8c8919ab2c30f6ee7ba9f8e84a426b19462
+  package_identity: beadd72c1b5bb201a030cc11c79070fdcc57299e9a705137246c5716b35b7daf
+  package_artifact: art_901814b9b8db
+- campaign_id: cmp_5247f81c2ea9
+  created: '2026-10-04T06:26:55.419114+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: '#1803 recovery diagnostic on rebuild 21 (3f6551d8, the deploy the set registers): restart-at:at_proposal,
+    the one leg #1946''s prompt change overlaps (#1908 precondition 5), then an abort'
+  definitions:
+  - path: examples/03_group_run/campaigns/diag-1803-increment.yaml
+    sha256: 8eee81111126c31008d7d96ba1c9e434d89f198d860c8777bbcc5a76619e5e15
+  package_identity: 4f65ec28df3a62472685acc4de687ade8abb8736f83d66cd3a7385c631f12555
+  package_artifact: art_0bbc93883a4d
+- campaign_id: cmp_9b1025685bea
+  created: '2026-10-04T07:20:44.902247+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: "shakeout 9: the exit-rule run on rebuild 21 (3f6551d8 = rebuild 20 + #1946), supervised\
+    \ by #1908 \xA73a; precondition 4's live-lease proof repeated at its first gate"
+  definitions:
+  - path: examples/03_group_run/campaigns/2-0-0-set-1.yaml
+    sha256: 74cb2f031c055fc250937c8282be66c0cb25a3d0fef6752762fdf91d129d27fe
+  - path: examples/03_group_run/campaigns/2-0-0-set-2.yaml
+    sha256: c43dbb4fe216f0fca8ae2291b5527a9256282a8e8bd361f0f7da09ede2cf48dc
+  - path: examples/03_group_run/campaigns/shakeout-10.yaml
+    sha256: 6b65b6d11f53cefa801684b053a96f27f921cf7490de4a5f55a4e88d57069c10
+  - path: examples/03_group_run/campaigns/shakeout-6.yaml
+    sha256: e242314aa68513aa7e6986a2b849ff42789405b1b384058c93845f1ff08b7f56
+  - path: examples/03_group_run/campaigns/shakeout-7.yaml
+    sha256: ae1cf46ff0ca1638241d9b51e9cc19dee1229e3b3730023e356e8eec5df45656
+  - path: examples/03_group_run/campaigns/shakeout-8.yaml
+    sha256: 83d072d409e73058579b8ab55f05cbf518fc6aa1f67564e8196c2436b8ee6e43
+  - path: examples/03_group_run/campaigns/shakeout-9.yaml
+    sha256: 5d99384bd446c1072ddcdf175734b8c8919ab2c30f6ee7ba9f8e84a426b19462
+  package_identity: 99a42758e327f548b0d28fc92ad1f454854c525a064deca9958a0aee659d910a
+  package_artifact: art_204123942a1c
+- campaign_id: cmp_36f0d3b1e98a
+  created: '2026-10-04T08:58:32.439865+00:00'
+  state: completed
+  outcome: success
+  create_reason: "Shakeout 10: the exit-rule run on rebuild 22 (b09883c9, the deploy the set registers;\
+    \ rebuild 21 + #1948). Objective and policy exactly shakeout 7's. Supervised by #1908 \xA73a."
+  definitions:
+  - path: examples/03_group_run/campaigns/2-0-0-set-1.yaml
+    sha256: 74cb2f031c055fc250937c8282be66c0cb25a3d0fef6752762fdf91d129d27fe
+  - path: examples/03_group_run/campaigns/2-0-0-set-2.yaml
+    sha256: c43dbb4fe216f0fca8ae2291b5527a9256282a8e8bd361f0f7da09ede2cf48dc
+  - path: examples/03_group_run/campaigns/shakeout-10.yaml
+    sha256: 6b65b6d11f53cefa801684b053a96f27f921cf7490de4a5f55a4e88d57069c10
+  - path: examples/03_group_run/campaigns/shakeout-6.yaml
+    sha256: e242314aa68513aa7e6986a2b849ff42789405b1b384058c93845f1ff08b7f56
+  - path: examples/03_group_run/campaigns/shakeout-7.yaml
+    sha256: ae1cf46ff0ca1638241d9b51e9cc19dee1229e3b3730023e356e8eec5df45656
+  - path: examples/03_group_run/campaigns/shakeout-8.yaml
+    sha256: 83d072d409e73058579b8ab55f05cbf518fc6aa1f67564e8196c2436b8ee6e43
+  - path: examples/03_group_run/campaigns/shakeout-9.yaml
+    sha256: 5d99384bd446c1072ddcdf175734b8c8919ab2c30f6ee7ba9f8e84a426b19462
+  package_identity: e497f94b25e5ea9211b874a237cd56bbab33f1000d65a937b27be78715277240
+  package_artifact: art_e20bc6b5b99f
+- campaign_id: cmp_690067c2b42b
+  created: '2026-10-04T11:45:25.140286+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: '#1803 recovery diagnostics on rebuild 22 (b09883c9, the deploy the set registers): restart-at:at_proposal
+    and abort-in-flight, the legs #1948''s proposal-prompt change overlaps (#1908 precondition 5)'
+  definitions:
+  - path: examples/03_group_run/campaigns/diag-1803-increment.yaml
+    sha256: 8eee81111126c31008d7d96ba1c9e434d89f198d860c8777bbcc5a76619e5e15
+  package_identity: 68c2892a1fe0ed02bb78f776fed7b39d97f039124fc46341a2ab286a683b7773
+  package_artifact: art_45ab7c94b69c
 examples_only: []
