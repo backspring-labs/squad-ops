@@ -26,6 +26,24 @@ that idea's **evaluation half**; the rest stays in the idea as its charter.
 
 ---
 
+> **Intake check (2026-10-04, `sips/PORTFOLIO.md`).** What this draft overlaps, and the boundary each gets:
+> - **SIP-0109 §10 row 3 (accepted) owns the campaign's success reading** (portfolio cluster 1). §4.7
+>   changes it, so §4.7 lands as a **numbered amendment to SIP-0109** in the PR that builds it, not as
+>   this SIP's text alone.
+> - **"Outcome" already means something in an implemented SIP** (cluster 2). SIP-0108's `CycleAssessment`
+>   has an *outcome* dimension (verdict and criteria). This draft's outcome is independent scenarios.
+>   Before phase 1 ships, this SIP renames its term (portfolio Q3 recommends "scenario evidence" and
+>   "contribution"); SIP-0108's implemented name stays.
+> - **The evaluation corpora** (cluster 3) share one discipline with Verification Yield's fault corpus
+>   (#1965), SIP-0108's benchmark registry and the reference scenario: content-addressed and versioned,
+>   with different readers.
+> - **Complements Verification Yield** (cluster 4): Verification Yield measures the value of the
+>   squad's own tests; this SIP adds tests the squad never sees.
+> - **Its motivating example is fixed separately.** The 2.0 set's returned proposals, behaviour the app
+>   already had, are #1961 and #1962 in 2.1. This SIP's case is that a supervisor reading code should not
+>   be the only thing that catches them, not that those two defects stand.
+> - **Open for the owner:** portfolio Q1 (what 2.4 is) and Q3 (the amendment, the 2.3 fit, the name).
+
 ## 1. Summary
 
 A campaign today is measured by its **outputs**. Its objective reads "three accepted increments" (the
