@@ -496,3 +496,11 @@ ruling (§5c.9, extension point declared as `INPUT_CONTRACT_EXTENSION_POINTS`), 
 5. Does authored mode enter the golden benchmark as a second measured configuration
    permanently, or does it *replace* seeded mode as the canonical measurement once its
    baseline is banked?
+
+## Post-implementation amendment (2026-10-04): the record corrected
+
+**§3.3's third bullet** (interface self-consistency as an authoring-time check) says "not built … → #820". **It was built:** #820 closed as completed on 2026-09-09, through PR #1457 (the interface-coherence proof). **§5c.5** (the operator edit's own record) and **§5c.3** (the blueprint-owned manifest) remain not built, and are **unplaced, deliberately**. §5c.3 overlaps SIP-0105's blueprint contract, where it would land if it returns.
+
+**Evidence.** The read-only SIP-portfolio audit of 2026-10-04.
+
+**Who ruled it.** the owner's rulings of 2026-10-04 on the SIP-portfolio audit (`sips/PORTFOLIO.md` Q22): "I accept all your other recommendations to keep SIPs current".

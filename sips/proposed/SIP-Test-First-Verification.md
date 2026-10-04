@@ -5,6 +5,9 @@ title: Test-First Verification
 ---
 # SIP: Test-First Verification
 
+> **Placement and delivery (2026-10-04: the owner's rulings on the SIP-portfolio audit, `sips/PORTFOLIO.md`).** **Its greenfield red gate is placed: 2.6, #1978.** It changes verdicts and the calibration cycle's verification, so it lands in a feature release with calibration before and after, following Outcome Evaluation's baseline (2.4). Brownfield discrimination is SIP-0109 §8.2's.
+
+
 ## Status
 Draft (proposed)
 

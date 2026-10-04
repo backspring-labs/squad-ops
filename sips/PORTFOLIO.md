@@ -35,17 +35,17 @@ The per-part record of what shipped where lives **in each SIP**, in its `Deliver
 
 | SIP | shipped | remaining, and where it is placed | promote? | ledger |
 |---|---|---|---|---|
-| **0088** Agent Runtime Modes (umbrella) | child SIP-0089 (v1.1.0) | children SIP-0090 Phases 2–4 and SIP-0091: **unplaced**. The ROADMAP said "target set with the 1.9 and 2.0 plans"; neither did | no: queue Q7 | added 2026-10-04 |
-| **0090** Agent Embodiment Substrate | Phase 1 (v1.2.0), less budget persistence and composition-root wiring | Phases 2–4 and the two Phase-1 deferrals: **unplaced** (the deferrals are recorded only in a commit message) | no: Q7 | added |
-| **0091** Duty Durability via Temporal | nothing | Phases 1–4: **unplaced**. SIP-0109 met campaign durability with a Postgres control log, outbox and sweep instead | no: Q7 (keep or deprecate) | added |
-| **0092** Implementation Plan Improvement | M1 typed acceptance (v1.1.0); M2 via SIP-0093 (v1.1.0); the M2→M3 gate passed (2026-08-05) | M3 plan changes: **unplaced**. M1's divergences from the spec are unamended | no: Q18 | added |
-| **0093** Multi-Role Plan Authoring | 93.0–93.3 (v1.1.0) | 93.4 and §5.8 merge rules 2–5: **unplaced**. The sequential fan-out diverges from §5.11, unamended | no: Q18 | added |
-| **0101** Cycle Replay Harness | slices 1–3 (v1.5.0); Prefect replay tags (v1.9.0) | slice 4 (compatibility policy) and slice 5 (console, AC 9): **unplaced**. §4.1's replay-exclusion test is possibly unmet. 1.9's restore limit is unrecorded | no: Q19 | added |
-| **0102** Ephemeral Application Sandbox | steps 1, 2 and 4, plus the clean-room audit (v1.4.0); §11a; §11b (v1.8.0) | steps 3, 5, 6 and 7, the browser probe and `expose_application`: **unplaced**. SIP-0109 runs evaluation and rendering in the qa agent container instead, and SIP-0102 does not record it | no: Q20 | added |
-| **0104** Verification Scaffolding | P0–P5 (v1.6.0); the P6 window ruled complete (2026-08-17) | stack #1 parity **dropped** (#1122, not planned); the §10.3 economics metric is *unverified* | **yes**, with an amendment, after the owner's reading of §10.2: Q15 | added |
-| **0105** Stack Blueprint Contract | the contract and S5 admission gate (1.6); A1 packaging (v1.8.0); stack #1 extracted (v1.7.1) | packs, the `check_stack` split (its "1.7" deferral missed) and deleting the four falsified fields: **unplaced**. The S5 gate cannot see a string field empty on one stack (#1967) | no: Q21 | added |
-| **0107** Scoped Code Revision | steps 1–6 (v1.8.0); step 7, the flip (#1909, ships in **2.0.0**) | §20 on the re-take path: **2.1.0, #1727**. §15 scope requests and regrant, and §9.4's fallback-authority producer: **unplaced, unamended** | after the 2.0.0 tag, with two amendments: Q16 | added |
-| **0109** Campaign Orchestration (2.0 headline) | §18 steps 1–8 on main (**2.0.0**, untagged) | **2.0 cut:** #1710, #1711. **2.1.0:** #1824, #1934, #1950, #1961, #1962, #1692, #1940, #1954, #1956, #1959, #1960. **2.2.0:** #1708's remainder. **Unplaced:** eight items (its ledger). §24b–§24i are "not yet ruled" | no: the set is open, then Q17 | added |
+| **0088** Agent Runtime Modes (umbrella) | child SIP-0089 (v1.1.0) | children SIP-0090 Phases 2–4 and SIP-0091: **unplaced**. The ROADMAP said "target set with the 1.9 and 2.0 plans"; neither did | no: **3.x** (Q7) | added 2026-10-04 |
+| **0090** Agent Embodiment Substrate | Phase 1 (v1.2.0), less budget persistence and composition-root wiring | Phases 2–4 and the two Phase-1 deferrals: **deferred to 3.x** (§18a records the deferrals) | no: 3.x | added |
+| **0091** Duty Durability via Temporal | nothing | Phases 1–4: **deferred to 3.x**, its engine re-decided at 3.0. SIP-0109 met campaign durability with a Postgres control log, outbox and sweep instead | no: 3.x | added |
+| **0092** Implementation Plan Improvement | M1 typed acceptance (v1.1.0); M2 via SIP-0093 (v1.1.0); the M2→M3 gate passed (2026-08-05) | M3 **dropped**; M1's divergences recorded (§14a) | after SIP-0093 closes | added |
+| **0093** Multi-Role Plan Authoring | 93.0–93.3 (v1.1.0) | 93.4 → #950; rules 2–5 **dropped**; fan-out amended to sequential (§15a) | **yes**, at the next sweep | added |
+| **0101** Cycle Replay Harness | slices 1–3 (v1.5.0); Prefect replay tags (v1.9.0) | slice 4 **dropped**; slice 5 with the next console work; §4.1's test #1974 (2.1.0); 1.9's finding recorded (§11a) | after #1974 | added |
+| **0102** Ephemeral Application Sandbox | steps 1, 2 and 4, plus the clean-room audit (v1.4.0); §11a; §11b (v1.8.0) | steps 3, 5, 6, 7 **unplaced, deliberately**; in-agent execution ruled the accepted path (§11c) | no: waits for a clean-room requirement | added |
+| **0104** Verification Scaffolding | P0–P5 (v1.6.0); the P6 window ruled complete (2026-08-17) | stack #1 parity **dropped** (#1122, not planned); the §10.3 economics metric is *unverified* | **yes**: §13c recorded; promoted at the 2.0 cut's sweep | added |
+| **0105** Stack Blueprint Contract | the contract and S5 admission gate (1.6); A1 packaging (v1.8.0); stack #1 extracted (v1.7.1) | fields deleted by #1975 (2.1.0); #1967 (2.1.0); packs to a successor; `check_stack` split unplaced, deliberately (§A2) | after #1975 and #1967 | added |
+| **0107** Scoped Code Revision | steps 1–6 (v1.8.0); step 7, the flip (#1909, ships in **2.0.0**) | §20 on the re-take path: **2.1.0, #1727**. §15 **dropped**; §9.4 declared without a producer (§46t) | **after the 2.0.0 tag** | added |
+| **0109** Campaign Orchestration (2.0 headline) | §18 steps 1–8 on main (**2.0.0**, untagged) | **2.0 cut:** #1710, #1711. **2.1.0:** #1824, #1934, #1950, #1961, #1962, #1692, #1940, #1954, #1956, #1959, #1960. **2.1.0** also #1971, #1972, #1973. **2.2.0:** #1708's remainder. §24b–§24i ratified (§24as) | after the 2.0 cut, with its consolidated status amendment | added |
 
 **Implemented SIPs promoted with open items.** Each needs a text amendment, not a status change. The
 items go to each SIP's next touch, with Q22 for the decisions.
@@ -74,19 +74,19 @@ Class: **live** (wanted, not built), **partly absorbed** (some built or owned el
 |---|---|---|---|
 | Outcome Evaluation (PR #1963) | live | instruments 2.3; feature half heads 2.4 | Q1, Q3 |
 | Verification Yield | partly absorbed | ledger 2026-10-04: #1960 (2.1), #1965 (crew, 2.1 window), #1966 (after memory) | done 2026-10-04 |
-| Test-First Verification | partly absorbed; target stale | "after the SIP-0104 P6 window" | Q11 |
+| Test-First Verification | partly absorbed | greenfield gate #1978 (2.6) | ruled |
 | Campaign Self-Improvement and Test Bay | partly absorbed | its own 10-01 note supersedes its targets | Q6 |
 | Cross-Cycle Memory | live | **2.2** headline; its 2.1 part is #1964 | Q2, Q4 |
-| Capability-Backed Agents | live, unplaced; premise partly stale (the skills layer it extends was deleted, #400/#401) | 2.0, deferred by 2.0 decision 5 | Q4, Q5 |
-| Agent Embodiment Runtime | live | "v2.2 era", which collides with memory's 2.2 | Q7 |
-| Duty Continuity and Handoff Ledger | live, unplaced; target stale | "v1.2 candidate" | Q8 |
-| Continuum Runtime Console | partly absorbed; target stale | "v1.2 candidate" | Q8 |
-| Edge Deployment Profile | live in concept; design stale in parts | none | Q8 |
-| Post-Retest Governance Acceptance Review | live; target stale | "1.6+"; placed **2.2** via #557 | Q2 |
+| Capability-Backed Agents | **deferred to 3.x**; premise to correct (#400/#401) | 3.x | ruled |
+| Agent Embodiment Runtime | **deferred to 3.x** | 3.x | ruled |
+| Duty Continuity and Handoff Ledger | **deferred to 3.x** | 3.x | ruled |
+| Continuum Runtime Console | partly absorbed; duty view **deferred to 3.x** | 3.x | ruled |
+| Edge Deployment Profile | **deferred to 3.x** | 3.x | ruled |
+| Post-Retest Governance Acceptance Review | live | #557, after Outcome Evaluation (2.4 or later) | ruled |
 | Design Decision Register | live; targets stale | rungs in 1.6.x/1.8; rung 1 is #1031 (2.1) | Q12 |
 | Fine-Grained Issue Enumeration | partly absorbed (vision) | none | keep as vision; fix its stale SIP names |
 | LLM Emission Contracts | partly absorbed; targets stale | P1–P3 in 1.5 | Q10 |
-| Agent Comms Delivery Guarantees | partly absorbed; target stale | "gate for Campaign"; 2.0 shipped without it, unrecorded | Q9 |
+| Agent Comms Delivery Guarantees | split | #1977 (2.3.0); duty-gated parts 3.x | ruled |
 | Cycle Request Profile Naming Taxonomy | live; inventory stale | **2.1.0** via #316 | Q13 |
 | Planning Sequence Strategy-First | live (greenfield only); details stale | none | an outer-loop experiment candidate |
 | API Contract Hardening | partly absorbed | pre-1.0 | file the residue as issues, then deprecate (Q14) |
@@ -119,35 +119,49 @@ Class: **live** (wanted, not built), **partly absorbed** (some built or owned el
 
 ---
 
-## 4. The reconciliation queue: owner decisions, most important first
+## 4. Reconciliations: ruled 2026-10-04
 
-Each has the supervisor's recommendation. The owner's rulings are recorded here and in the SIPs they
-change.
+The owner's words: "yes, move them to 3.x including capability-backed agents. I accept all your other
+recommendations to keep SIPs current, reflecting what gets delivered, and where the work is targeted."
+Each ruling is recorded in the SIPs it changes, as a ledger row and, where it decides something, a
+dated amendment.
 
-| # | decision | recommendation |
-|---|---|---|
-| **Q1** | **What 2.4 is.** Outcome Evaluation's feature half, Verification Yield's risk-first adoption (#1966) and the squad-authored backlog (no SIP yet) all point at it | Outcome Evaluation's feature half heads 2.4, with #1966 riding on it (measured by its scenarios). The squad-authored backlog moves to 2.6 and gets its own SIP, drafted from Outcome Evaluation's phase-1 data |
-| **Q2** | **2.2's load against the one-behaviour-change rule.** 2.2 holds memory, #557 (a new LLM step), #1708's auto tier and queue, and #949/#950. Several change squad behaviour | 2.2 makes **one** squad-behaviour change: memory. #1708's auto tier and queue (control plane, decided from the 2.0 ledger) can ride it. #557, #949 and #950 move after Outcome Evaluation's scenarios exist (2.4 or later), since those are what judge them |
-| **Q3** | Outcome Evaluation's amendment, its 2.3 fit, and its name | Record §4.7 as a SIP-0109 amendment at acceptance. Phase 1 (instruments, reporting-only) fits 2.3. Outcome Evaluation renames its term (for example "scenario evidence" and "contribution"); SIP-0108's implemented *outcome* keeps its name |
-| **Q4** | Who owns the memory model | Cross-Cycle Memory owns scopes, lifecycle and payload; Capability-Backed Agents §11 defers to it |
-| **Q5** | Capability-Backed Agents' placement and stale premise | Correct its premise (the deleted skills layer). It stays unplaced, deliberately, until the duty decision (Q8) |
-| **Q6** | The Self-Improvement / Test Bay anchor | Deprecate after re-homing: its campaign parts are SIP-0109's, experiments are the crew's (ruled), corpora are Outcome Evaluation's and Verification Yield's. Its L6 conflicts with the ruling |
-| **Q7** | The runtime-mode family (SIP-0088, 0090, 0091) and Embodiment Runtime's placement | **Unplaced, deliberately**, until the duty decision. Fix the stale targets and paths now. Record SIP-0090's Phase-1 deferrals as an amendment. Consider deprecating SIP-0091 (Temporal was not the durability 2.0 needed). Embodiment Runtime drops "v2.2 era" |
-| **Q8** | Whether duty work (the duty ledger, the Continuum console's duty view, Edge, the reselling pack) is on the 2.x path | Not before 2.6. Record it as one decision, so the cluster is unplaced together and visibly |
-| **Q9** | Comms Delivery Guarantees' gate | Record that 2.0 shipped without it (Postgres outbox and sweep). Restate its trigger as external paid duty work, and place the residue (dedup, dead-letter queue, publisher confirms) as hardening in 2.3 |
-| **Q10** | LLM Emission Contracts | Amend: P3 → #567 (2.1), P4 → SIP-0107. P1 and P2 unplaced |
-| **Q11** | Test-First's greenfield red gate | It changes verdicts and the calibration cycle's verification, so it needs a feature release with calibration before and after. 2.6 by default, after Outcome Evaluation gives a baseline |
-| **Q12** | Design Decision Register | Fold into #950's design, wherever #950 lands (Q2); its rung 1 is #1031 (2.1) |
-| **Q13** | The profile taxonomy's aliases | Yes: pinned campaign definitions keep resolving old profile names indefinitely, written into #316's acceptance |
-| **Q14** | Deprecations and their mechanics | Add a `proposed → deprecated` transition to `update_sip_status.py` (#1968), then deprecate the 12 candidates in §2, after filing API Contract Hardening's residue as issues |
-| **Q15** | SIP-0104's promotion | Read §10.2 as met for the scaffold's mechanics: roll 6 failed on a fill literal and the repair path, outside the scaffold. Promote at the 2.0 cut's sweep, with the amendment its ledger lists |
-| **Q16** | SIP-0107: §15 and §9.4 | Drop §15 (scope requests and regrant) by amendment: no live need appeared through 1.8–2.0. Declare §9.4's fallback authority without a producer, with that reason. Promote after the 2.0.0 tag; #1727 follows as a named amendment |
-| **Q17** | SIP-0109 before promotion | Rule §24b–§24i (eight amendments marked "implementer's reading") as a batch. Place or drop the eight unplaced items in its ledger. A consolidated status amendment at the 2.0 cut replaces the 2.0 plan's §5a as the permanent record |
-| **Q18** | SIP-0092 M3; SIP-0093's remainder | Drop M3 by amendment, citing SIP-0109's cycle-level plan evolution; amend M1's divergences. For SIP-0093, amend the sequential fan-out and fold 93.4 and merge rules 2–5 into #950, or drop them. Then promote both |
-| **Q19** | SIP-0101 | Amend 1.9's restore limit. Drop slice 4 and place slice 5 with console work (unplaced). Add §4.1's replay-exclusion test, or record why declared membership discharges it. Then promote |
-| **Q20** | SIP-0102 | Rule by amendment that in-agent execution is the accepted path for campaign evaluation, and record SIP-0109 §24n/§24p's divergence. Re-place or drop steps 3, 5, 6 and 7, noting that SIP-0108's clean-room indicators wait on step 5 |
-| **Q21** | SIP-0105 | Refresh its "does not assert" table. Delete the four falsified fields (2.1 hardening, small). Move packs to a successor. Close the S5 gate's empty-string blind spot (#1967) |
-| **Q22** | The implemented SIPs' stale text (§1's second table) | Amend each at its next touch. SIP-0103, 0096 and 0083 are factual corrections, safe to make without a ruling |
+| # | decision | ruled | recorded in |
+|---|---|---|---|
+| Q1 | what 2.4 is | Outcome Evaluation's feature half heads 2.4, with #1966 riding on it. The squad-authored backlog is 2.6, with its own SIP to draft | SIP-0109 §24as; the ROADMAP horizon; Outcome Evaluation's intake note |
+| Q2 | 2.2's load | memory is 2.2's only change to squad behaviour, with #1708's auto tier and queue beside it. #557, #949 and #950 follow Outcome Evaluation (2.4 or later) | SIP-0109 §24as; Cross-Cycle Memory and Post-Retest Review notes; issue comments |
+| Q3 | Outcome Evaluation's amendment, fit and name | §4.7 lands as a SIP-0109 amendment; phase 1 fits 2.3; it renames its term, and SIP-0108's *outcome* stays | Outcome Evaluation's intake note |
+| Q4 | memory ownership | Cross-Cycle Memory owns scopes, lifecycle and payload | Cross-Cycle Memory and Capability-Backed Agents notes |
+| Q5 | Capability-Backed Agents | **3.x**, its premise corrected before 3.0's plan | its note |
+| Q6 | Test Bay | deprecated after re-homing, once #1968 lands | its note |
+| Q7 | the runtime-mode family | **3.x**: SIP-0088, 0090 Phases 2–4 with its Phase-1 deferrals (§18a), and 0091 (engine re-decided at 3.0) | their ledgers; SIP-0090 §18a; the ROADMAP |
+| Q8 | duty work | **3.x**: Embodiment Runtime, the Duty ledger, the Continuum console's duty view, Edge | their notes; the ROADMAP |
+| Q9 | Comms Delivery Guarantees | split: general hardening #1977 (2.3.0); duty-gated parts 3.x | its note |
+| Q10 | LLM Emission Contracts | P3 → #567 (2.1), P4 → SIP-0107, P1/P2 unplaced | its note |
+| Q11 | Test-First's greenfield gate | #1978 (2.6) | its note |
+| Q12 | Design Decision Register | folds into #950 | its note |
+| Q13 | taxonomy aliases | old profile names resolve indefinitely; written into #316 | its note; #316 |
+| Q14 | deprecations | after #1968: the 12 candidates in §2, with API Contract Hardening's residue as #1976 first | the notes; §2 |
+| Q15 | SIP-0104 | §10.2 read as met; promoted at the 2.0 cut's sweep | SIP-0104 §13c |
+| Q16 | SIP-0107 | §15 dropped; §9.4 declared without a producer; promoted after the 2.0.0 tag | SIP-0107 §46t |
+| Q17 | SIP-0109 | §24b–§24i ratified as written. Unplaced items: #1971, #1972, #1973 (2.1.0); packaging changes and the GPU check unplaced, deliberately; the builder-tail question dropped. A consolidated status amendment at the cut | SIP-0109 §24as |
+| Q18 | SIP-0092 / SIP-0093 | M3 dropped, M1's divergences recorded; 93.4 and its tests fold into #950, merge rules 2–5 dropped, fan-out sequential | SIP-0092 §14a; SIP-0093 §15a |
+| Q19 | SIP-0101 | 1.9's finding recorded; slice 4 dropped; slice 5 with the next console work; §4.1's test is #1974 (2.1.0) | SIP-0101 §11a |
+| Q20 | SIP-0102 | in-agent execution is the accepted path for campaign evaluation; steps 3, 5, 6 and 7 unplaced until a clean-room requirement returns | SIP-0102 §11c |
+| Q21 | SIP-0105 | the table brought current; fields deleted by #1975 (2.1.0); packs to a successor; #1967 | SIP-0105 §A2 |
+| Q22 | implemented SIPs' stale text | corrected in SIP-0103, 0096, 0083 and 0089 (the `queued` lease → 3.x) | each SIP's dated amendment |
+
+**Two readings the supervisor made, told to the owner when they were recorded:**
+- **§24b–§24i are "ratified as written".**
+- **SIP-0093's remainder is split:** 93.4 folds into #950, and merge rules 2–5 are dropped.
+
+**Preventing drift** (the owner asked how):
+- **#1969:** the guard, extended to stale targets and the deferred state;
+- **#1979:** `sip:NNNN` labels, with closure requiring the ledger;
+- **#1980:** the cut's sweep script;
+- **#1981:** the template and the intake check.
+
+All four are placed early in 2.1.0.
 
 ---
 
@@ -174,3 +188,4 @@ change.
 | 2026-10-04 | Verification Yield, re-reviewed | its remaining parts placed: #1960, #1965, #1966 | its ledger |
 | 2026-10-04 | the Nostromo crew's enablers (#1959, #1960) | phase 0 of Outcome Evaluation; #1959 generalizes SIP-0109's reference launcher | the 2.1 plan §2.0 |
 | 2026-10-04 | Cross-Cycle Memory's 2.1 part (#1964) | placed by the owner's ruling of 2026-09-12, missed in the 2.1 plan's first draft | the 2.1 plan §2.6 |
+| 2026-10-04 | the owner's rulings on the whole queue (§4) | runtime modes, duty work and Capability-Backed Agents to 3.x; every other recommendation accepted | §4; each SIP; the ROADMAP horizon |

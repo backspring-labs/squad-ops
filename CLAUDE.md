@@ -192,6 +192,7 @@ Key principle: **acceptance is a design commitment on main, not an implementatio
   - *placed*: the release **and the open issue that tracks it**; a part with no open issue is not placed;
   - *unplaced*: said deliberately;
   - *dropped*: by the numbered amendment that dropped it.
+  - *deferred to N.x (ruled <date>)*: a ruling moved the part to a later major line. No issue is needed until that line's first plan, which places it, and the last plan of the current line re-reads it.
 
   It ends with one line saying what closes the SIP.
 - **It is updated in the PR that ships or re-places a part,** and the release cut's SIP sweep (step 5 below) reads it. A SIP is promoted when every row is shipped or dropped. Otherwise the ledger names what remains and where.

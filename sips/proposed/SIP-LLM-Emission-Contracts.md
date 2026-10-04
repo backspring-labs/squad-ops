@@ -8,6 +8,9 @@ created_at: '2026-07-25T00:00:00Z'
 ---
 # SIP-0XXX: LLM Emission Contracts — Typed Response Handling with Provider-Agnostic Structured Output
 
+> **Placement and delivery (2026-10-04: the owner's rulings on the SIP-portfolio audit, `sips/PORTFOLIO.md`).** **Amended placement.** Its P3 (CommonMark recognition) is **#567, 2.1.0**, gated on replaying every stored emission. Its P4 is **owned by SIP-0107** (accepted, §27). **P1 and P2 are unplaced, deliberately.** The "P1–P3 in 1.5" targets are superseded.
+
+
 **Status:** Proposed
 **Authors:** SquadOps Architecture
 **Created:** 2026-07-25

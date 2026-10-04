@@ -71,14 +71,14 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | step 4: preflight (doctor category) | **shipped** | v1.4.0 |
 | post-hoc clean-room audit | **shipped** | v1.4.0 (`scripts/dev/audit_delivered_app.py`) |
 | §11a stack #2 in the sandbox; §11b packaging rendered | **shipped, amended** | 2026-08-15; v1.8.0 |
-| step 3: route in-process exec sites through typed ops | **unplaced** (its "1.5/1.6" target passed) | none |
-| step 5: clean-room verdicts at finalization | **unplaced**; SIP-0108's clean-room indicators wait on it (`cycle_assessment.py:324-325`) | none |
-| step 6: retire the qa-Node branch | **unplaced** | none |
-| step 7: golden-path live validation (incl. #419) | **unplaced** | none |
-| §5 deferrals: browser probe, probe-as-peer, `expose_application` | **unplaced** | none |
-| SIP-0109's in-agent evaluation and route rendering (in the qa container; runtime-api cannot reach the sandbox) | **a divergence from §1, recorded only in SIP-0109** (§24n, §24p) | — |
+| step 3: route in-process exec sites through typed ops | **unplaced, deliberately** (§11c) | none |
+| step 5: clean-room verdicts at finalization | **unplaced, deliberately** (§11c); SIP-0108's clean-room indicators wait on it (`cycle_assessment.py:324-325`) | none |
+| step 6: retire the qa-Node branch | **unplaced, deliberately** (§11c) | none |
+| step 7: golden-path live validation (incl. #419) | **unplaced, deliberately** (§11c) | none |
+| §5 deferrals: browser probe, probe-as-peer, `expose_application` | **unplaced, deliberately** (§11c); `SIP-Outcome-Evaluation` may need `expose_application`-like hosting | none |
+| SIP-0109's in-agent evaluation and route rendering (in the qa container; runtime-api cannot reach the sandbox) | **ruled the accepted path for campaign evaluation** (§11c) | SIP-0109 §24n, §24p |
 
-**What closes this SIP:** Steps 3, 5, 6, 7 shipped or dropped, and SIP-0109's in-agent path ruled by amendment. **Pending:** portfolio Q20.
+**What closes this SIP:** Steps 3, 5, 6, 7 shipped or dropped. Until a clean-room requirement returns, they are unplaced by ruling (§11c, 2026-10-04).
 
 ## 1. Abstract
 
@@ -568,3 +568,13 @@ still run the application directly in the sandbox image, and no sandbox operatio
 rendered image. `package_builds` stays declared unbuilt.
 
 **Evidence and ruling.** Recorded in SIP-0105 A1, where the rule lives.
+
+### 11c. In-agent execution is the accepted path for campaign evaluation; steps 3, 5, 6 and 7 wait for a clean-room requirement (2026-10-04)
+
+**What changed.**
+- **SIP-0109 built its in-cycle evaluation and route rendering in the qa agent container,** not in this sandbox: the runtime-api cannot reach the sandbox (provider `noop`, no client wired; SIP-0109 §24n, §24p). That diverges from §1's boundary, "agents never execute application code directly". It is ruled the accepted path for campaign evaluation, and recorded here so this SIP no longer reads as describing main.
+- **Steps 3, 5, 6 and 7, and the §5 deferrals, are unplaced, deliberately,** until a requirement for clean-room execution returns. The header's "Target: integration steps → 1.5/1.6" is superseded. SIP-0108's clean-room indicators stay unaskable until step 5 (`cycle_assessment.py:324-325`). `SIP-Outcome-Evaluation` (proposed) is the likeliest such requirement: its scenarios run against a stood-up app.
+
+**Evidence.** The read-only SIP-portfolio audit of 2026-10-04; SIP-0109 §24n and §24p.
+
+**Who ruled it.** the owner's rulings of 2026-10-04 on the SIP-portfolio audit (`sips/PORTFOLIO.md`): "yes, move them to 3.x including capability-backed agents. I accept all your other recommendations to keep SIPs current, reflecting what gets delivered, and where the work is targeted".

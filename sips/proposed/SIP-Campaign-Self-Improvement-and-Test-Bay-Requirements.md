@@ -7,6 +7,14 @@ created_at: '2026-07-02T00:00:00Z'
 ---
 # SIP: Campaign-Driven Self-Improvement and Test Bay
 
+> **Placement and delivery (2026-10-04: the owner's rulings on the SIP-portfolio audit, `sips/PORTFOLIO.md`).** **Deprecation ruled, after re-homing.**
+> - **Its campaign parts** are SIP-0109's.
+> - **Its experiments and self-improvement** are the crew's outer loop. The ruling stands that the squad does not improve the framework, and its L6 conflicts with that ruling.
+> - **Its corpora** are Outcome Evaluation's and Verification Yield's (portfolio cluster 3).
+>
+> The deprecation executes once `update_sip_status.py` can retire a proposed SIP (#1968).
+
+
 Status: Proposed (vision anchor — see `docs/plans/2-0-roadmap-reconciliation.md` for the intended split before acceptance)  
 Target Roadmap: SquadOps 2.0.0 direction, with an implementable **Campaign-orchestration** core carved out to **1.6**  
 Author: jladd  

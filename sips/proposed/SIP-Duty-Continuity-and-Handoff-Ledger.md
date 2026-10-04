@@ -7,6 +7,9 @@ created_at: '2026-06-24'
 ---
 # SIP: Duty Continuity & Handoff Ledger (DutyLog)
 
+> **Placement and delivery (2026-10-04: the owner's rulings on the SIP-portfolio audit, `sips/PORTFOLIO.md`).** **Deferred to 3.x** with the duty cluster (the owner: "move them to 3.x"). Its "v1.2 candidate" target is superseded. **Ledger:** every part deferred to 3.x (ruled), with no issue until 3.0's plan.
+
+
 **Status:** Proposed
 **Authors:** Jason Ladd
 **Created:** 2026-06-24

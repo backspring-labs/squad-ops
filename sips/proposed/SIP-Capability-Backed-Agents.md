@@ -8,6 +8,12 @@ created_at: '2026-07-01'
 
 # SIP-XXXX: Capability-Backed Agents
 
+> **Placement and delivery (2026-10-04: the owner's rulings on the SIP-portfolio audit, `sips/PORTFOLIO.md`).** **Deferred to 3.x**, with the duty cluster: "move them to 3.x including capability-backed agents". Its main consumer is the reselling pack, which is duty work, and nothing in 2.x needs it.
+> - **Before 3.0's plan, correct its premise:** §5 extends a skills layer that was deleted (#400, #401).
+> - **Memory:** Cross-Cycle Memory owns memory's scopes, lifecycle and payload, and this SIP's §11 defers to it.
+> - **It absorbs** the Skill Layer proposal (its §21) and Intelligent Delegation's residue (§15).
+
+
 **Status:** Proposed (2.0 umbrella / architecture target)
 **Authors:** Jason Ladd (Backspring Labs / SquadOps)
 **Created:** 2026-07-01

@@ -7,6 +7,9 @@ created_at: '2026-03-16T00:00:00Z'
 ---
 # SIP: Edge Deployment Profile for Lightweight SquadOps Nodes
 
+> **Placement and delivery (2026-10-04: the owner's rulings on the SIP-portfolio audit, `sips/PORTFOLIO.md`).** **Deferred to 3.x** with the duty cluster. If both survive into 3.0's plan, its node registry folds into the Embodiment Runtime's runtime registry, and its health reporting uses the canonical status vocabulary (`docs/agent-runtime-status-model.md`).
+
+
 ## Status
 Proposed
 

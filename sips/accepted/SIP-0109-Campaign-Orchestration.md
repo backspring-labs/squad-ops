@@ -103,16 +103,16 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | supervisor instruments; increment replay; per-increment scorecard | **placed** | 2.1.0, #1956, #1959, #1960 |
 | the auto-decision tier and escalation queue | out of this SIP's scope (§5) | 2.2.0, #1708 |
 | accepted increments' `prd_delta` text to the proposer | deferred | "a 2.4 question" (§24ap) |
-| escalating a launch the cycle-create preflight refuses | **unplaced** | §24e item 5 |
-| re-hearing an ended cycle between restarts | **unplaced** | §24v |
-| a Next.js render profile (a route-declaring Next.js increment is always `blocked_unverified`) | **unplaced** | §24p |
-| an increment that needs packaging changed | **unplaced** | §24y |
-| whether an increment's build skips the builder tail | **unplaced** (a question) | §24ab |
-| the quiet-box check reading GPU compute processes | **unplaced** (needs the owner's `docker-compose.yml` change) | §24l, §24ai, §24an |
+| escalating a launch the cycle-create preflight refuses | **placed** | 2.1.0, #1971 (§24as) |
+| re-hearing an ended cycle between restarts | **placed** | 2.1.0, #1972 (§24as) |
+| a Next.js render profile (a route-declaring Next.js increment is always `blocked_unverified`) | **placed** | 2.1.0, #1973 (§24as) |
+| an increment that needs packaging changed | **unplaced, deliberately** (§24as): re-placed on evidence | §24y |
+| whether an increment's build skips the builder tail | **dropped as a question** (§24as): answered when a campaign raises it | §24ab |
+| the quiet-box check reading GPU compute processes | **unplaced, deliberately** (§24as): until the owner grants the runtime-api the GPU (a `docker-compose.yml` change) | §24l, §24ai, §24an |
 | the acquire race window; re-attach with the process up; a task re-asked after an agent restart | **not built, by design** (recorded) | §24ai, §24am, §24ao |
-| §24b–§24i, marked "implementer's reading, not yet ruled" | **awaiting a recorded ruling** | — |
+| §24b–§24i, marked "implementer's reading, not yet ruled" | **ratified as written** (§24as) | — |
 
-**What closes this SIP:** After the 2.0 cut: §24b–§24i ruled, every unplaced row placed or dropped, and a consolidated status amendment replacing the 2.0 plan's §5a as the permanent record. **Pending:** portfolio Q17.
+**What closes this SIP:** After the 2.0 cut, with a consolidated status amendment replacing the 2.0 plan's §5a as the permanent record. §24b–§24i are ratified, and every unplaced row is placed or ruled (§24as, 2026-10-04).
 
 ## 1. Summary
 
@@ -2335,6 +2335,27 @@ given. Here the rule is the stack's frozen serialization.
 rebuild. Its only overlap with a recovery diagnostic is the proposal run's content
 (`restart-at:at_proposal`, and `abort-in-flight` where it lands in a proposal run). Both re-run on the
 new deploy. Shakeout 9 does not satisfy the exit rule, and shakeout 10 is the exit run.
+
+### 24as. §24b–§24i ratified; the eight unplaced items placed or ruled; the 2.2/2.4 sequence (2026-10-04)
+
+**What changed.**
+- **§24b–§24i, each marked "implementer's reading, not yet ruled", are ratified as written.** CLAUDE.md requires an amendment to name who ruled it, and these named no one until now.
+- **The items unplaced at the 2026-10-04 audit:**
+  - escalating a launch the cycle-create preflight refuses (§24e item 5): **#1971, 2.1.0**;
+  - re-hearing an ended cycle between restarts (§24v): **#1972, 2.1.0**;
+  - a Next.js render profile (§24p): **#1973, 2.1.0**, with #1950 and #1962;
+  - an increment that needs packaging changed (§24y): **unplaced, deliberately**, re-placed on evidence;
+  - whether an increment's build skips the builder tail (§24ab): **dropped as a question**, answered when a campaign raises it;
+  - the quiet-box check reading GPU compute processes (§24l, §24ai, §24an): **unplaced, deliberately**, until the owner grants the runtime-api the GPU.
+- **Downstream placements the same ruling made:**
+  - 2.2 changes one squad behaviour, memory, beside #1708's auto tier and escalation queue;
+  - the other judgement steps (#557, #949, #950) follow `SIP-Outcome-Evaluation`'s scenarios (2.4 or later);
+  - `SIP-Outcome-Evaluation`'s feature half heads 2.4, and its §4.7 lands as an amendment to this SIP's §10 row 3;
+  - the squad-authored backlog is 2.6.
+
+**Evidence.** The read-only SIP-portfolio audit of 2026-10-04; this SIP's delivery ledger.
+
+**Who ruled it.** the owner's rulings of 2026-10-04 on the SIP-portfolio audit (`sips/PORTFOLIO.md`): "yes, move them to 3.x including capability-backed agents. I accept all your other recommendations to keep SIPs current, reflecting what gets delivered, and where the work is targeted". The ratification of §24b–§24i, and the place-or-drop choice for each unplaced item, are the supervisor's readings of "I accept all your other recommendations"; the owner was told both when they were recorded.
 
 ---
 

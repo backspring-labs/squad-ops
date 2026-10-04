@@ -13,7 +13,7 @@ updated_at: '2026-04-25T17:57:13.839284Z'
 **Created:** 2026-04-25
 **Revision:** 2 (incorporated review feedback on 2026-04-25)
 **Targets:** v1.2 (Phase 1 — shipped in 1.2.0; Phases 2+ target v1.6 per `docs/plans/1-4-evidence-arc-plan.md` + `docs/plans/post-1-4-roadmap-reconciliation.md`, first live adapter = Discord)
-**Depends on:** `sips/accepted/SIP-0089-Agent-Runtime-State.md` (v1.1) — must land first
+**Depends on:** `sips/implemented/SIP-0089-Agent-Runtime-State.md` (v1.1) — must land first
 **Parent vision:** `sips/accepted/SIP-0088-Agent-Runtime-Modes.md` (umbrella index)
 **Sibling:** `sips/accepted/SIP-0091-Duty-Durability-via-Temporal.md` (v1.3)
 **Future follow-on:** `SIP-Minecraft-Embodiment-Adapter.md` (not in this package)
@@ -27,13 +27,13 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | part | status | where |
 |---|---|---|
 | Phase 1: model, lifecycle, port, events, budgets, `credentials_ref` | **shipped** | v1.2.0 (PRs #308/#312, #317) |
-| Phase 1 deferral: budget persistence (`1141_agent_budgets.sql`) | **unplaced** (recorded only in commit `38597725`, not here) | none |
-| Phase 1 deferral: composition-root wiring | **unplaced** (nothing constructs `EmbodimentCoordinator` outside its module) | none |
-| Phase 2: Discord adapter | **unplaced** (its "v1.6" target passed) | none |
-| Phase 3: `requires_embodiment` integration | **unplaced** | none |
-| Phase 4: narrow browser adapter | **unplaced** | none |
+| Phase 1 deferral: budget persistence (`1141_agent_budgets.sql`) | **deferred to 3.x** (ruled 2026-10-04); recorded in §18a | none until 3.0's plan |
+| Phase 1 deferral: composition-root wiring | **deferred to 3.x** (ruled 2026-10-04); recorded in §18a | none until 3.0's plan |
+| Phase 2: Discord adapter | **deferred to 3.x** (ruled 2026-10-04) | none until 3.0's plan |
+| Phase 3: `requires_embodiment` integration | **deferred to 3.x** (ruled 2026-10-04) | none until 3.0's plan |
+| Phase 4: narrow browser adapter | **deferred to 3.x** (ruled 2026-10-04) | none until 3.0's plan |
 
-**What closes this SIP:** Phases 2–4 and the Phase-1 deferrals shipped or dropped by amendment. **Pending:** portfolio Q7 (the runtime-mode family's placement). The Phase-1 deferrals need an amendment whatever Q7 decides.
+**What closes this SIP:** Phases 2–4 and the Phase-1 deferrals shipped or dropped. **Ruled 2026-10-04: 3.x**, with the runtime-mode family and duty work; §18a records the Phase-1 deferrals.
 
 ## 1. Summary
 
@@ -439,9 +439,25 @@ The SIP is successful when:
 
 ## 17. References
 
-- Depends on: `sips/accepted/SIP-0089-Agent-Runtime-State.md` (v1.1)
+- Depends on: `sips/implemented/SIP-0089-Agent-Runtime-State.md` (v1.1)
 - Parent vision: `sips/accepted/SIP-0088-Agent-Runtime-Modes.md` (canonical reason codes, event names, terminology, package invariant)
 - Future follow-on: `SIP-Minecraft-Embodiment-Adapter.md`
 - Original full proposal: commit `76a1f90` on main
 - Related: SIP-0061 (LangFuse Observability — telemetry pattern reused for embodiment events), SIP-0042 (memory adapter — pattern for optional integrations), `SecretManager` in `src/squadops/core/`
 - Hexagonal pattern: existing `src/squadops/ports/` and `adapters/` structure
+
+## 18. Post-acceptance amendments
+
+### 18a. Phase 1 shipped without budget persistence or composition-root wiring; Phases 2–4 move to 3.x (2026-10-04)
+
+**What changed.**
+- **Two Phase-1 items were deferred, and the deferral was recorded only in a commit message:**
+  - budget persistence (`1141_agent_budgets.sql`, planned in `docs/plans/SIP-0090-phase-1-plan.md`);
+  - composition-root wiring: nothing outside its own module constructs `EmbodimentCoordinator` or `PostgresEmbodimentState`.
+
+  Commit `38597725` deferred both: "budget persistence (needs a BudgetPort …) + composition-root wiring (no live consumer until Phase 2)". This section is that record in the SIP.
+- **Phases 2–4 (the Discord adapter, `requires_embodiment`, the browser adapter) and the two deferrals move to 3.x.** The header's "Phases 2+ target v1.6" is superseded.
+
+**Evidence.** The read-only SIP-portfolio audit of 2026-10-04: no `1141` migration in `infra/migrations/`, no `adapters/embodiment/` directory, and v1.6.0 shipped without Phase 2.
+
+**Who ruled it.** the owner's rulings of 2026-10-04 on the SIP-portfolio audit (`sips/PORTFOLIO.md`): "yes, move them to 3.x including capability-backed agents. I accept all your other recommendations to keep SIPs current, reflecting what gets delivered, and where the work is targeted".

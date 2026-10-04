@@ -25,12 +25,12 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | P2: executable artifact, validity gate | **shipped** | v1.6.0 (PR #895) |
 | P3–P4: fill-mode `qa.test`, region enforcement, adversarial producers | **shipped** | v1.6.0 (`docs/plans/sip-0104-p6-window-record.md`: "fill protocol is 60 for 60") |
 | P5: per-layer evidence counts | **shipped** | v1.6.x (`scaffold_evidence.py`, #951) |
-| P6: the N=6 window (§10.2) and the §13a audit gate | **ruled complete** 2026-08-17; rolls 1–5 accepted, roll 6 rejected on a fill literal and the repair path, not the suite mechanics | the window record l.100-118, 234 |
+| P6: the N=6 window (§10.2) and the §13a audit gate | **met** (§13c): ruled complete 2026-08-17; §10.2 read as met on 2026-10-04 | the window record l.100-118, 234 |
 | §10.3 economics metric | *unverified* | — |
 | stack #1 parity (#1122) | **dropped** (closed `not_planned` 2026-09-29, the owner's 1.9.0 ruling) | — |
-| §4.3's "any role", re-read by SIP-0107 §46d item 4 (a dev edit to slot bodies is dropped) | **recorded only in SIP-0107** | — |
+| §4.3's "any role", re-read by SIP-0107 §46d item 4 (a dev edit to slot bodies is dropped) | **recorded** (§13c) | SIP-0107 §46d |
 
-**What closes this SIP:** **Ready to promote** once an amendment records the v1.6.0 ship, the window's reading against §10.2/§13a/§13b, #1122's drop and §46d's re-reading. **Pending:** the owner's reading of §10.2 (portfolio Q15).
+**What closes this SIP:** **Ready to promote:** §13c records everything the promotion needed (ruled 2026-10-04). It is promoted at the 2.0 cut's SIP sweep.
 
 ## 1. Abstract
 
@@ -251,3 +251,16 @@ roll numbers it cannot guarantee.
 acceptance evidence will be quoted from, and a silent correction to a quotable claim is
 indistinguishable from the claim having always said this. The 1.6 plan and the
 implementation plan were updated to match.
+
+### 13c. Shipped in v1.6.0; the window met §10.2; stack #1 parity dropped; §4.3 re-read (2026-10-04)
+
+**What changed.** This SIP never recorded that it shipped. It does now.
+- **Shipped in v1.6.0:** P1 (PR #894) and P2 (PR #895), P3–P4 (the fill-mode `qa.test`, region enforcement, adversarial producers) and P5's per-layer evidence counts (`scaffold_evidence.py`, #951).
+- **The P6 window met §10.2.** It was ruled complete on 2026-08-17 (`docs/plans/sip-0104-p6-window-record.md:234`). Rolls 1–5 were accepted. Roll 6 was rejected on a working app, by a fill literal and the repair path, not by the suite mechanics this SIP specifies (the window record, l.100-118). **§10.2 is read as met for the scaffold's mechanics.**
+- **Stack #1 parity (#1122) is dropped.** It was closed `not_planned` on 2026-09-29, by the owner's 1.9.0 ruling: React qa repairs are already scoped without fill slots. This SIP's §8 scope was stack #2 by design.
+- **§4.3's "any role" is re-read by SIP-0107 §46d item 4:** a dev edit to slot bodies is dropped. The rule change lived only in SIP-0107.
+- **The §10.3 economics metric** (before/after round-minutes) has no record found. It is not a promotion criterion.
+
+**Evidence.** The window record; #1122; SIP-0107 §46d; the read-only SIP-portfolio audit of 2026-10-04.
+
+**Who ruled it.** the owner's rulings of 2026-10-04 on the SIP-portfolio audit (`sips/PORTFOLIO.md`): "yes, move them to 3.x including capability-backed agents. I accept all your other recommendations to keep SIPs current, reflecting what gets delivered, and where the work is targeted". The reading of §10.2 is the owner's.

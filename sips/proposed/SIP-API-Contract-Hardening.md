@@ -7,6 +7,9 @@ created_at: '2026-02-28T00:00:00Z'
 ---
 # SIP-0XXX: API Contract Hardening
 
+> **Placement and delivery (2026-10-04: the owner's rulings on the SIP-portfolio audit, `sips/PORTFOLIO.md`).** **Partly absorbed.** The error envelope is owned by the route-lane standard (#218), and `decided_by` is built. The remaining items are **#1976 (2.3.0)**. The SIP is then deprecated (#1968).
+
+
 **Status:** Proposed
 **Authors:** SquadOps Architecture
 **Created:** 2026-02-28

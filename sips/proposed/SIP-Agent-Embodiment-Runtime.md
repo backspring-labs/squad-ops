@@ -7,6 +7,9 @@ created_at: '2026-08-19T00:00:00Z'
 ---
 # SIP: Agent Embodiment Runtime
 
+> **Placement and delivery (2026-10-04: the owner's rulings on the SIP-portfolio audit, `sips/PORTFOLIO.md`).** **Deferred to 3.x**, with the runtime-mode family (SIP-0088, SIP-0090, SIP-0091) and duty work: "yes, move them to 3.x". This supersedes "v2.2 era", which collided with Cross-Cycle Memory as 2.2's headline. One constraint is carried into Cross-Cycle Memory now, so that 2.2 cannot design 3.x out: memory stays addressable as a service (this SIP's invariant 2). **Ledger:** every part deferred to 3.x (ruled), with no issue until 3.0's plan.
+
+
 ## Status
 Draft (proposed)
 

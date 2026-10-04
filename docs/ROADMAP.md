@@ -736,6 +736,33 @@ The following areas are identified for future work but do not block 1.0 readines
 | **SIP-0107** | Scoped Code Revision | **the 1.8 Lane M headline** — accepted at its design review 2026-09-13 with required revision (rev 4), rolled out by the 1.8 plan §3.3, #1444 first — steps 1–6 in 1.8.0, the default flip in 1.8.1 by design (SIP-0107 §46a) |
 | **SIP-0109** | Campaign Orchestration | **the 2.0 headline**: accepted 2026-10-01 (rev 6); §18 steps 1–8 built; the 2.0 counted set registered 2026-10-04 (#1908). Its delivery ledger is in the SIP. Promotion at or after the 2.0 cut (`sips/PORTFOLIO.md` Q17) |
 
+## Horizon: 2.x and 3.x (ruled 2026-10-04)
+
+*The owner, 2026-10-04: the runtime-mode family and duty work "should go to a 3.x. We have a lot in the 2.x with cross-cycle memory, campaign self-write of features, etc." Each SIP named below records its placement in its own delivery ledger, and `sips/PORTFOLIO.md` is the cross-SIP view.*
+
+**2.x: the squad evolves software autonomously, and is measured doing it.**
+
+| release | headline | carries |
+|---|---|---|
+| 2.0 | Campaign (SIP-0109) | the counted set, registered 2026-10-04 (#1908) |
+| 2.1 | stabilization | the 2.0 set's findings; the optimization crew's enablers (#1940, #1956, #1959, #1960); the plan is PR #1955 |
+| 2.2 | Cross-Cycle Memory | the line's **only** change to squad behaviour, beside #1708's auto tier and escalation queue |
+| 2.3 | stabilization | Outcome Evaluation's reporting-only instruments; the comms (#1977) and API contract (#1976) hardening |
+| 2.4 | Outcome Evaluation's feature half (proposed) | Verification Yield's risk-first instructions (#1966); then the judgement steps it measures (#557, #949, #950) |
+| 2.6 | the squad-authored backlog (no SIP yet) | features from the strategy role, debt refactors from the lead; Test-First's greenfield gate (#1978) |
+
+**3.x: agents running continuously in the world (duty mode).** Deferred here by ruling, and placed by 3.0's plan:
+- SIP-0088 Agent Runtime Modes (umbrella);
+- SIP-0090 Embodiment, Phases 2–4;
+- SIP-0091 Duty Durability (its engine re-decided at 3.0);
+- Agent Embodiment Runtime;
+- Capability-Backed Agents;
+- the Duty Continuity ledger;
+- the Continuum console's duty view;
+- Edge Deployment;
+- the duty-gated half of Comms Delivery Guarantees;
+- the Nostromo idea's cross-domain phase.
+
 ## Proposals (Backlog)
 
 ### Post-1.0 Hardening (Deferred from 1.0 Scope)

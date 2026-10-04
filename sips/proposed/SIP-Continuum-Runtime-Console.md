@@ -8,6 +8,9 @@ created_at: '2026-06-30'
 
 # SIP-XXXX: Continuum Runtime Console
 
+> **Placement and delivery (2026-10-04: the owner's rulings on the SIP-portfolio audit, `sips/PORTFOLIO.md`).** **Its duty perspective is deferred to 3.x** with the duty cluster. The rest is partly absorbed by the console as built (SIP-0069 and its successors), so only the residue is live. Its "v1.2 candidate" target is superseded.
+
+
 **Status:** Proposed
 **Authors:** Jason Ladd (Backspring Labs / SquadOps)
 **Created:** 2026-06-30

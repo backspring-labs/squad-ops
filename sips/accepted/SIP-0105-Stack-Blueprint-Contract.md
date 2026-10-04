@@ -35,13 +35,13 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | contract + governance; S5 admission gate | **shipped** | the 1.6 line |
 | A1: packaging rendered from the environment contract | **shipped** | v1.8.0 (#598) |
 | stack #1 out of `scaffold.py` | **shipped** | v1.7.1 (#1131, PR #1233); the "does not assert" table still says stack #1 is inline |
-| packs / plugin loading | **unplaced** | none |
-| `check_stack` split (dialect vs framework) | **unplaced**; its "1.7" deferral missed | none |
-| delete the four falsified fields | **unplaced** | none |
+| packs / plugin loading | **moved to a successor SIP** (§A2), not yet drafted | none |
+| `check_stack` split (dialect vs framework) | **unplaced, deliberately** (§A2); its "1.7" deferral superseded | none |
+| delete the four falsified fields | **placed** | 2.1.0, #1975 |
 | typed checks on the declared source language (sequencing step 3) | *unverified* | — |
 | the S5 gate's blind spot: a string field empty on one stack reads as set | **placed** | 2.1.0, #1967 |
 
-**What closes this SIP:** Each "does not assert" row built, dropped or moved to a successor (packs). **Pending:** portfolio Q21.
+**What closes this SIP:** #1975 and #1967 shipped; packs moved to a successor (§A2). Ruled 2026-10-04.
 
 ## Summary
 
@@ -760,3 +760,16 @@ The pinned reference contract moved to v15 by exactly the four added frozen entr
 **Who ruled it.** The owner, in the accepted 1.8.0 plan (§3.2 row 7): "the Dockerfile and nginx
 config are a rendering of the stack declaration." What the builder authors in its place was ruled
 by the owner on 2026-09-13 (SIP-0071 §12).
+
+### A2. The "does not assert" table, brought current (2026-10-04)
+
+**What changed.** The "what this SIP does not assert" table now reads as follows:
+- **Stack #1 is no longer inline.** It was extracted in v1.7.1 (#1131, PR #1233; `src/squadops/capabilities/stack_fastapi_react.py`). §23's account of why it was inline is the record of that move.
+- **The four falsified fields are deleted** by #1975 (2.1.0).
+- **The `check_stack` split (dialect against framework) is unplaced, deliberately.** Its "deferred to 1.7" target passed with no plan taking it. It is re-placed when a third stack needs the distinction.
+- **Packs and plugin loading move to a successor SIP**, not yet drafted. This SIP owns the contract, not its packaging.
+- **The S5 gate's blind spot** (a string field empty on one stack reads as set, so SIP-0109's one-stack fields passed without a reason) is #1967 (2.1.0).
+
+**Evidence.** The read-only SIP-portfolio audit of 2026-10-04.
+
+**Who ruled it.** the owner's rulings of 2026-10-04 on the SIP-portfolio audit (`sips/PORTFOLIO.md`): "yes, move them to 3.x including capability-backed agents. I accept all your other recommendations to keep SIPs current, reflecting what gets delivered, and where the work is targeted".
