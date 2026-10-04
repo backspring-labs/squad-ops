@@ -271,4 +271,51 @@ campaigns:
     sha256: 8eee81111126c31008d7d96ba1c9e434d89f198d860c8777bbcc5a76619e5e15
   package_identity: 68c2892a1fe0ed02bb78f776fed7b39d97f039124fc46341a2ab286a683b7773
   package_artifact: art_45ab7c94b69c
+- campaign_id: cmp_c4b81554bd59
+  created: '2026-10-04T12:59:04.58265+00:00'
+  state: completed
+  outcome: success
+  create_reason: "2.0 counted set, campaign 1 of 2 (#1908, registered at 1b14d592 on rebuild 22, b09883c9\
+    \ / dep_bb1eadeac4e7). Policy file 2-0-0-set-1.yaml sha256 74cb2f03..., at 34b242a7. Supervised by\
+    \ #1908 \xA73a; the supervisor is the owner's delegate."
+  definitions:
+  - path: examples/03_group_run/campaigns/2-0-0-set-1.yaml
+    sha256: 74cb2f031c055fc250937c8282be66c0cb25a3d0fef6752762fdf91d129d27fe
+  - path: examples/03_group_run/campaigns/2-0-0-set-2.yaml
+    sha256: c43dbb4fe216f0fca8ae2291b5527a9256282a8e8bd361f0f7da09ede2cf48dc
+  - path: examples/03_group_run/campaigns/shakeout-10.yaml
+    sha256: 6b65b6d11f53cefa801684b053a96f27f921cf7490de4a5f55a4e88d57069c10
+  - path: examples/03_group_run/campaigns/shakeout-6.yaml
+    sha256: e242314aa68513aa7e6986a2b849ff42789405b1b384058c93845f1ff08b7f56
+  - path: examples/03_group_run/campaigns/shakeout-7.yaml
+    sha256: ae1cf46ff0ca1638241d9b51e9cc19dee1229e3b3730023e356e8eec5df45656
+  - path: examples/03_group_run/campaigns/shakeout-8.yaml
+    sha256: 83d072d409e73058579b8ab55f05cbf518fc6aa1f67564e8196c2436b8ee6e43
+  - path: examples/03_group_run/campaigns/shakeout-9.yaml
+    sha256: 5d99384bd446c1072ddcdf175734b8c8919ab2c30f6ee7ba9f8e84a426b19462
+  package_identity: 6b8e3aa8b2b1b1992cb08aeb3beeef629a453ecbe1d43a871e69992caba063a6
+  package_artifact: art_e133b06f55d6
+- campaign_id: cmp_97a4a15f360f
+  created: '2026-10-04T16:23:28.777276+00:00'
+  state: completed
+  outcome: success
+  create_reason: 2.0 counted set, campaign 2 of 2 (#1908, registered 1b14d592 on rebuild 22); definition
+    sha256 c43dbb4fe216f0fca8ae2291b5527a9256282a8e8bd361f0f7da09ede2cf48dc
+  definitions:
+  - path: examples/03_group_run/campaigns/2-0-0-set-1.yaml
+    sha256: 74cb2f031c055fc250937c8282be66c0cb25a3d0fef6752762fdf91d129d27fe
+  - path: examples/03_group_run/campaigns/2-0-0-set-2.yaml
+    sha256: c43dbb4fe216f0fca8ae2291b5527a9256282a8e8bd361f0f7da09ede2cf48dc
+  - path: examples/03_group_run/campaigns/shakeout-10.yaml
+    sha256: 6b65b6d11f53cefa801684b053a96f27f921cf7490de4a5f55a4e88d57069c10
+  - path: examples/03_group_run/campaigns/shakeout-6.yaml
+    sha256: e242314aa68513aa7e6986a2b849ff42789405b1b384058c93845f1ff08b7f56
+  - path: examples/03_group_run/campaigns/shakeout-7.yaml
+    sha256: ae1cf46ff0ca1638241d9b51e9cc19dee1229e3b3730023e356e8eec5df45656
+  - path: examples/03_group_run/campaigns/shakeout-8.yaml
+    sha256: 83d072d409e73058579b8ab55f05cbf518fc6aa1f67564e8196c2436b8ee6e43
+  - path: examples/03_group_run/campaigns/shakeout-9.yaml
+    sha256: 5d99384bd446c1072ddcdf175734b8c8919ab2c30f6ee7ba9f8e84a426b19462
+  package_identity: e3c112c45038e8428ac73a5319c5f7cef26224e9e83d7d28a000e6b6232644ea
+  package_artifact: art_032ca67041af
 examples_only: []
