@@ -390,7 +390,8 @@ Fifteen issues carry the title. Three are closed: #1728, #1802 and #1804.
 ### 5a.3 Filed since adoption
 
 - **Found during the build and the shakeouts, each fixed and closed:** #1817, #1832, #1845, #1857, #1864, #1866, #1868,
-  #1870, #1872, #1874, #1876, #1877, #1880, #1885, #1887, #1891, #1897, #1898, #1902, #1905, #1912.
+  #1870, #1872, #1874, #1876, #1877, #1880, #1885, #1887, #1891, #1897, #1898, #1902, #1905, #1912,
+  #1938, #1943, #1946, #1948.
 - **Open:**
   - **#1884** (criterion files asserting behaviour the change request never stated): the teaching
     shipped (#1886) and held on its first live read. It is read as texture (P9 in the
@@ -409,6 +410,10 @@ Fifteen issues carry the title. Three are closed: #1728, #1802 and #1804.
   - **#1934** (proposal runs use random task ids, so #1929's replay cannot recognise a re-attached
     proposal task, which then runs twice): found on rebuild 18. The cost is time only, on a path the
     set reaches only through an unplanned restart during a proposal run. **2.1.0.**
+  - **#1950** (the Next.js stack declares nothing for what an optional field a request left out
+    comes back as, so its proposals are told nothing): #1948's other stack. Its frozen `field?: type`
+    points to absent, unverified against a real emission. The 2.0 set runs on FastAPI only.
+    **2.1.0.**
 
 ### 5a.4 The path to registration
 
