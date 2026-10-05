@@ -2,7 +2,8 @@
 """
 SIP Status Update Script
 Updates SIP status and moves files between lifecycle folders (maintainer-only).
-Handles all transitions: proposed → accepted, accepted → implemented, implemented → deprecated.
+Handles all transitions: proposed → accepted | deprecated, accepted → implemented | deprecated,
+implemented → deprecated.
 """
 
 import os
@@ -24,7 +25,8 @@ DEPRECATED_DIR = REPO_ROOT / "sips" / "deprecated"
 
 # Valid status transitions
 VALID_TRANSITIONS = {
-    "proposed": ["accepted"],
+    # #1968: a superseded draft retires without being accepted first.
+    "proposed": ["accepted", "deprecated"],
     "accepted": ["implemented", "deprecated"],
     "implemented": ["deprecated"],
 }
@@ -404,6 +406,66 @@ def registry_sort_key(row: dict[str, Any]) -> tuple[int, int]:
     return (sip_num if sip_num is not None else 10**6, variant_sort)
 
 
+def _proposal_row(
+    registry: dict[str, Any], sip_file: Path, sip_uid: str | None
+) -> dict[str, Any] | None:
+    """A proposal's registry row, by its path and then by its uid, never by number: proposals are
+    unnumbered, and two warm-boot drafts share the number 18 (#1968)."""
+    rel = str(sip_file.resolve().relative_to(REPO_ROOT.resolve()))
+    for row in registry.get("sips", []):
+        if row.get("path") == rel:
+            return row
+    if sip_uid:
+        for row in registry.get("sips", []):
+            if row.get("sip_uid") == sip_uid:
+                return row
+    return None
+
+
+def deprecate_proposal(sip_file: Path, metadata: dict[str, Any], registry: dict[str, Any]) -> bool:
+    """``proposed → deprecated`` (#1968): moved to ``sips/deprecated/`` under its own name, its
+    frontmatter and body status updated, and its registry row with it. No number is assigned; a
+    numbered warm-boot draft keeps the number it carries. A proposal with no row gets one."""
+    if PROPOSED_DIR not in sip_file.parents and sip_file.parent != PROPOSED_DIR:
+        print(f"Error: Proposed SIP must be in {PROPOSED_DIR}")
+        return False
+    row = _proposal_row(registry, sip_file, metadata.get("sip_uid"))
+    if not update_sip_file_metadata(sip_file, {"status": "deprecated"}):
+        return False
+    if not update_sip_body_status(sip_file, "deprecated"):
+        print(
+            "Warning: no body **Status:** line found to update; check the document body manually."
+        )
+    DEPRECATED_DIR.mkdir(parents=True, exist_ok=True)
+    new_path = DEPRECATED_DIR / sip_file.name
+    if new_path.exists():
+        print(f"Error: {new_path.relative_to(REPO_ROOT)} already exists")
+        return False
+    shutil.copy2(str(sip_file), str(new_path))
+    sip_file.unlink()
+    now = datetime.now().isoformat() + "Z"
+    rel = str(new_path.relative_to(REPO_ROOT))
+    if row is None:
+        registry.setdefault("sips", []).append(
+            {
+                "sip_uid": metadata.get("sip_uid"),
+                "sip_number": metadata.get("sip_number"),
+                "title": metadata.get("title", "Untitled"),
+                "path": rel,
+                "status": "deprecated",
+                "author": metadata.get("author", "Unknown"),
+                "created_at": metadata.get("created_at", now),
+                "updated_at": now,
+            }
+        )
+    else:
+        row.update({"status": "deprecated", "path": rel, "updated_at": now})
+    registry["sips"].sort(key=registry_sort_key)
+    print(f"\n✅ {sip_file.name} status updated: proposed → deprecated")
+    print(f"   Path: {rel}")
+    return True
+
+
 def find_sip_in_registry(
     registry: dict[str, Any], sip_number: int | None = None, sip_uid: str | None = None
 ) -> dict[str, Any] | None:
@@ -780,6 +842,10 @@ def update_sip_status(sip_file: Path, new_status: str) -> bool:
         print(f"   Title: {title}")
         print(f"   Path: {new_path.relative_to(REPO_ROOT)}")
 
+    elif current_status == "proposed" and new_status == "deprecated":
+        if not deprecate_proposal(sip_file, metadata, registry):
+            return False
+
     else:
         # For other transitions, SIP must be numbered
         sip_number = metadata.get("sip_number")
@@ -915,8 +981,8 @@ def main():
     if len(sys.argv) < 3:
         print("Usage: update_sip_status.py <sip_file> <new_status>")
         print("\nValid status transitions:")
-        print("  proposed → accepted")
-        print("  accepted → implemented")
+        print("  proposed → accepted | deprecated")
+        print("  accepted → implemented | deprecated")
         print("  implemented → deprecated")
         print("\nExample:")
         print("  export SQUADOPS_MAINTAINER=1")
