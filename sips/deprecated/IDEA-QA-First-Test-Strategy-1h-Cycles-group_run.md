@@ -1,14 +1,15 @@
 ---
 sip_uid: '17883224960370906'
-status: proposed
+status: deprecated
 title: QA-First Test Strategy for 1-Hour SquadOps Cycles (group_run Focus)
 author: Unknown
 created_at: '2026-02-24T00:00:00Z'
+updated_at: '2026-10-05T00:09:39.235949Z'
 ---
 # IDEA — QA-First Test Strategy for 1-Hour SquadOps Cycles (group_run Focus)
 
 ## Status
-Draft
+Deprecated
 
 ## Summary
 Define a practical QA-first strategy for early **1-hour SquadOps execution cycles** (especially for `group_run`) that avoids rigid “write all tests first” behavior and instead prioritizes **acceptance alignment, fast validation, and low-thrash feedback loops**.

@@ -1,12 +1,13 @@
 ---
 sip_uid: '17883224960419790'
-status: proposed
+status: deprecated
 title: Intelligent Delegation Protocols for SquadOps
+updated_at: '2026-10-05T00:09:40.116951Z'
 ---
 # SIP-0XXX: Intelligent Delegation Protocols for SquadOps
 
 ## Status
-Proposed
+Deprecated
 
 ## Authors
 SquadOps Core Team

@@ -1,18 +1,17 @@
 ---
-sip_uid: "17642554775868264"
+sip_uid: '17642554775868264'
 sip_number: 16
-title: "HumanAgent-Hybrid-Squad-Operations"
-status: "proposed"
-author: "Unknown"
-approver: "None"
+title: HumanAgent-Hybrid-Squad-Operations
+status: deprecated
+author: Unknown
+approver: None
 created_at: '2025-11-27T10:12:48.886498Z'
-updated_at: "2025-11-27T10:12:48.886498Z"
-original_filename: "SIP-016_Human_Agent_Hybrid.md"
+updated_at: '2026-10-05T00:09:39.477920Z'
+original_filename: SIP-016_Human_Agent_Hybrid.md
 ---
-
 # SIP-016: Human–Agent Hybrid Squad Operations
 
-**Status:** Draft  
+**Status:** Deprecated  
 **Owner:** Max (Governance)  
 **Contributors:** Nat (Product), Neo (Dev), EVE (Test), Data (Metrics), Quark (Finance), Joi (Comms), Human Leads  
 **Created:** 2025-09-27  

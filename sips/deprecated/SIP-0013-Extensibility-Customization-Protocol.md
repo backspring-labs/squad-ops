@@ -1,18 +1,17 @@
 ---
-sip_uid: "17642554775859172"
+sip_uid: '17642554775859172'
 sip_number: 13
-title: "Extensibility-Customization-Protocol"
-status: "proposed"
-author: "Unknown"
-approver: "None"
+title: Extensibility-Customization-Protocol
+status: deprecated
+author: Unknown
+approver: None
 created_at: '2025-11-27T10:12:48.884497Z'
-updated_at: "2025-11-27T10:12:48.884497Z"
-original_filename: "SIP-013_Extensibility_Customization.md"
+updated_at: '2026-10-05T00:09:39.395619Z'
+original_filename: SIP-013_Extensibility_Customization.md
 ---
-
 # SIP-013: Extensibility & Customization Protocol
 
-**Status:** Proposed  
+**Status:** Deprecated  
 **Owner:** Max (Governance)  
 **Contributors:** Nat, Neo, Data, EVE, Joi  
 **Created:** 2025-09-27  

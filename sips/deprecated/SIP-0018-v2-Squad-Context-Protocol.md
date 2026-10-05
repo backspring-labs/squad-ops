@@ -1,15 +1,14 @@
 ---
-sip_uid: "17642554775871658"
+sip_uid: '17642554775871658'
 sip_number: 18
-title: "-SIP-018-Squad-Context-Protocol"
-status: "proposed"
-author: "Unknown"
-approver: "None"
-created_at: "2025-10-03T18:44:56.927519Z"
-updated_at: "2025-11-27T10:12:48.888583Z"
-original_filename: "SIP-018_Squad_Context_Protocol.md"
+title: -SIP-018-Squad-Context-Protocol
+status: deprecated
+author: Unknown
+approver: None
+created_at: '2025-10-03T18:44:56.927519Z'
+updated_at: '2026-10-05T00:09:39.664861Z'
+original_filename: SIP-018_Squad_Context_Protocol.md
 ---
-
 # ✅ SIP-018: Squad Context Protocol
 
 ## 📌 Purpose

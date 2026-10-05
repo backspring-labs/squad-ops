@@ -1,21 +1,20 @@
 ---
-sip_uid: "17642554775939927"
+sip_uid: '17642554775939927'
 sip_number: 28
-title: "Hybrid-Deployment-Model-Industry-Aligned-Architecture-for-Multi-Environment-Deployments"
-status: "proposed"
-author: "System Architecture"
-approver: "None"
-created_at: "2025-10-13T00:00:00Z"
-updated_at: "2025-11-27T10:12:48.897306Z"
-original_filename: "SIP-028-Hybrid-Deployment-Model.md"
+title: Hybrid-Deployment-Model-Industry-Aligned-Architecture-for-Multi-Environment-Deployments
+status: deprecated
+author: System Architecture
+approver: None
+created_at: '2025-10-13T00:00:00Z'
+updated_at: '2026-10-05T00:09:39.827456Z'
+original_filename: SIP-028-Hybrid-Deployment-Model.md
 ---
-
 # 🧩 Squad Improvement Proposal (SIP-028)
 ## Title: Hybrid Deployment Model — Industry-Aligned Architecture for Multi-Environment Deployments
 **Author:** System Architecture  
 **Contributors:** Infrastructure, DevOps, Book Editorial  
 **Date:** 2025-10-13  
-**Status:** Proposed  
+**Status:** Deprecated  
 **Version:** 1.0  
 **Priority:** HIGH  
 

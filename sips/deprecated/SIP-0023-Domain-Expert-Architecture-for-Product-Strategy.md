@@ -1,21 +1,20 @@
 ---
-sip_uid: "17642554775906691"
+sip_uid: '17642554775906691'
 sip_number: 23
-title: "Domain-Expert-Architecture-for-Product-Strategy"
-status: "proposed"
-author: "Unknown"
-approver: "None"
+title: Domain-Expert-Architecture-for-Product-Strategy
+status: deprecated
+author: Unknown
+approver: None
 created_at: '2025-11-27T10:12:48.892116Z'
-updated_at: "2025-11-27T10:12:48.892116Z"
-original_filename: "SIP-023-Domain-Expert-Architecture.md"
+updated_at: '2026-10-05T00:09:39.744713Z'
+original_filename: SIP-023-Domain-Expert-Architecture.md
 ---
-
 # SIP-023: Domain Expert Architecture for Product Strategy
 
 **SIP Number**: 023  
 **Title**: Domain Expert Architecture for Enhanced Product Strategy  
 **Author**: AI Assistant  
-**Status**: Draft  
+**Status**: Deprecated  
 **Type**: Architecture  
 **Created**: 2025-10-07  
 **Version**: 1.0  
