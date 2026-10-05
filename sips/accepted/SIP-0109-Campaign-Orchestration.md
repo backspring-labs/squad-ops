@@ -106,7 +106,8 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | the supervisor creates and manages campaigns (revises §24al) | **placed** | 2.1.0, #1940 |
 | a campaign records its definition file's hash | **placed** | 2.1.0, #1954 |
 | supervisor instruments (the lease proof, the binding replay, the loaded checks, the watcher) | **shipped** | 2.1.0, PR #2025, issue #1956 |
-| increment replay; per-increment scorecard | **placed** | 2.1.0, #1959, #1960 |
+| per-increment scorecard | **placed** | 2.1.0, #1960 |
+| increment replay (any increment of any campaign, outside it) | **shipped** | 2.1.0, PR #2026, issue #1959 |
 | the auto-decision tier and escalation queue | **placed**, outside this SIP's scope (§5) | 2.2.0, #1708 |
 | accepted increments' `prd_delta` text to the proposer | **deferred to 2.4** (ruled 2026-10-03, §24ap): "a 2.4 question" | §24ap |
 | escalating a launch the cycle-create preflight refuses | **placed** | 2.1.0, #1971 (§24as) |
