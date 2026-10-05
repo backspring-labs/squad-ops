@@ -10,8 +10,8 @@ from pathlib import Path
 import typer
 
 from squadops.cli import exit_codes
-from squadops.cli.client import APIClient, CLIError
-from squadops.cli.config import load_config
+from squadops.cli.client import CLIError
+from squadops.cli.client import get_client as _get_client
 from squadops.cli.output import (
     print_detail,
     print_error,
@@ -22,11 +22,6 @@ from squadops.cli.output import (
 
 artifacts_app = typer.Typer(name="artifacts", help="Manage artifacts")
 baseline_app = typer.Typer(name="baseline", help="Manage baseline artifacts")
-
-
-def _get_client(ctx: typer.Context) -> APIClient:
-    config = load_config()
-    return APIClient(config)
 
 
 # =============================================================================

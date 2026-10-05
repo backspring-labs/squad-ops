@@ -10,8 +10,8 @@ from pathlib import Path
 import typer
 
 from squadops.cli import exit_codes
-from squadops.cli.client import APIClient, CLIError
-from squadops.cli.config import load_config
+from squadops.cli.client import CLIError
+from squadops.cli.client import get_client as _get_client
 from squadops.cli.output import (
     print_detail,
     print_error,
@@ -27,11 +27,6 @@ from squadops.cycles.cycle_assessment import IndicatorState
 from squadops.cycles.lifecycle import compute_config_hash
 
 app = typer.Typer(name="cycles", help="Manage experiment cycles")
-
-
-def _get_client(ctx: typer.Context) -> APIClient:
-    config = load_config()
-    return APIClient(config)
 
 
 def _resolve_prd_ref(ctx: typer.Context, project_id: str, prd: str) -> str:

@@ -75,10 +75,11 @@ record → **producer edit**, and *which region*).
 
 from __future__ import annotations
 
-import hashlib
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
+
+from squadops.core.hashing import text_sha256
 
 #: Schema version of the test-scaffold manifest this module defines. Bumped when the
 #: manifest's shape changes; the generator's own version lives with the generator.
@@ -112,10 +113,6 @@ class ScaffoldDerivationError(Exception):
 class ScaffoldValidationError(Exception):
     """An emitted scaffold does not match its own manifest — a generator defect, caught
     before the scaffold can become the run's qa artifact (scaffold-invalid, SIP §5)."""
-
-
-def _sha256(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def slot_begin_marker(slot_id: str) -> str:
@@ -234,7 +231,7 @@ def elide_slot_bodies(text: str) -> str:
 
 def spine_hash(text: str) -> str:
     """SHA-256 of the canonical spine text (canonicalization rules 1–5)."""
-    return _sha256(elide_slot_bodies(text))
+    return text_sha256(elide_slot_bodies(text))
 
 
 def expanded_tree_hash(files: Iterable[Mapping[str, str]]) -> str:
@@ -244,8 +241,8 @@ def expanded_tree_hash(files: Iterable[Mapping[str, str]]) -> str:
     order. Recorded in the manifest as the tree imports were resolved against, so a later
     disagreement is attributable to workspace mutation vs. generator drift.
     """
-    lines = sorted(f"{f['name']}:{_sha256(f['content'])}" for f in files)
-    return _sha256("\n".join(lines))
+    lines = sorted(f"{f['name']}:{text_sha256(f['content'])}" for f in files)
+    return text_sha256("\n".join(lines))
 
 
 @dataclass(frozen=True)
@@ -343,7 +340,7 @@ def build_scaffold_file(
     )
     return VerificationScaffoldFile(
         path=path,
-        content_hash=_sha256(content),
+        content_hash=text_sha256(content),
         spine_hash=spine_hash(content),
         slots=bounded,
     )
@@ -368,11 +365,11 @@ class VerificationScaffoldManifest:
 
     def aggregate_spine_hash(self) -> str:
         """SHA-256 over sorted ``path:spine_hash`` lines — the frozen spine's identity."""
-        return _sha256("\n".join(sorted(f"{f.path}:{f.spine_hash}" for f in self.files)))
+        return text_sha256("\n".join(sorted(f"{f.path}:{f.spine_hash}" for f in self.files)))
 
     def scaffold_hash(self) -> str:
         """SHA-256 over sorted ``path:content_hash`` lines — the whole emission's identity."""
-        return _sha256("\n".join(sorted(f"{f.path}:{f.content_hash}" for f in self.files)))
+        return text_sha256("\n".join(sorted(f"{f.path}:{f.content_hash}" for f in self.files)))
 
     def slot_ids(self) -> tuple[str, ...]:
         return tuple(s.slot_id for f in self.files for s in f.slots)

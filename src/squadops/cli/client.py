@@ -13,7 +13,7 @@ import httpx
 
 from squadops import __version__
 from squadops.cli import exit_codes
-from squadops.cli.config import CLIConfig, resolve_token
+from squadops.cli.config import CLIConfig, load_config, resolve_token
 
 
 class CLIError(Exception):
@@ -211,3 +211,10 @@ class APIClient:
                 exit_codes.GENERAL_ERROR,
                 detail=detail,
             )
+
+
+def get_client(ctx: object = None) -> APIClient:
+    """The API client a command talks through, from the CLI's config (#1990: one body, where ten
+    command modules each defined it). Each module imports it as ``_get_client``, which is the
+    seam its tests patch."""
+    return APIClient(load_config())

@@ -19,6 +19,8 @@ from typing import Any
 
 import yaml
 
+from squadops.cycles.yaml_fields import str_list
+
 _REQUIRED_PROPOSING_ROLE = "strategy"
 
 
@@ -102,12 +104,12 @@ class PlanGuidance:
             time_budget_guidance=_parse_mapping_list(
                 data.get("time_budget_guidance", []), "time_budget_guidance"
             ),
-            scope_cut_guidance=_parse_str_list(
-                data.get("scope_cut_guidance", []), "scope_cut_guidance"
+            scope_cut_guidance=str_list(
+                data.get("scope_cut_guidance", []), "plan_guidance scope_cut_guidance"
             ),
-            must_not_skip=_parse_str_list(data.get("must_not_skip", []), "must_not_skip"),
-            defer_if_time_constrained=_parse_str_list(
-                data.get("defer_if_time_constrained", []), "defer_if_time_constrained"
+            must_not_skip=str_list(data.get("must_not_skip", []), "plan_guidance must_not_skip"),
+            defer_if_time_constrained=str_list(
+                data.get("defer_if_time_constrained", []), "plan_guidance defer_if_time_constrained"
             ),
             confidence=str(data.get("confidence", "")).strip(),
         )
@@ -124,11 +126,3 @@ def _parse_mapping_list(raw: object, field_name: str) -> list[dict[str, Any]]:
             raise ValueError(f"plan_guidance {field_name}[{i}] must be a mapping")
         parsed.append(dict(entry))
     return parsed
-
-
-def _parse_str_list(raw: object, field_name: str) -> list[str]:
-    if raw is None or raw == "":
-        return []
-    if not isinstance(raw, list):
-        raise ValueError(f"plan_guidance {field_name} must be a YAML list")
-    return [str(x).strip() for x in raw if str(x).strip()]

@@ -78,6 +78,8 @@ _RUNS_ROUTE = Path("src/squadops/api/routes/cycles/runs.py")
 # #1986: every gate decision is recorded by one function, which emits the one gate.decided.
 _GATE_DECISIONS = Path("src/squadops/cycles/gate_decisions.py")
 _ARTIFACTS_ROUTE = Path("src/squadops/api/routes/cycles/artifacts.py")
+# #1990: the storage path's and the repair path's scaffold-integrity enforcement, one emitter.
+_SCAFFOLD_INTEGRITY = Path("src/squadops/cycles/scaffold_integrity_evidence.py")
 
 _ALL_EMISSION_FILES = [
     _EXECUTOR_PATH,
@@ -94,6 +96,7 @@ _ALL_EMISSION_FILES = [
     _GATE_DECISIONS,
     _ARTIFACTS_ROUTE,
     _CAMPAIGN_LAUNCH,
+    _SCAFFOLD_INTEGRITY,
 ]
 
 
@@ -148,7 +151,6 @@ class TestExecutorEmissionPoints:
             "CHECKPOINT_RESTORED",
             "WORKLOAD_COMPLETED",
             "WORKLOAD_ADVANCED",
-            "ARTIFACT_OWNERSHIP_ENFORCED",
         ],
     )
     def test_executor_emits(self, attr: str, executor_refs: set[str]) -> None:
@@ -182,8 +184,11 @@ class TestExecutorEmissionPoints:
         loop's advance still emit them here).
 
         #1986 moved GATE_DECIDED to the one recorder (``cycles/gate_decisions.py``) — 12 → 11.
+
+        #1990 moved ARTIFACT_OWNERSHIP_ENFORCED to the one emitter
+        (``cycles/scaffold_integrity_evidence.py``) — 11 → 10.
         """
-        assert len(executor_refs) == 11
+        assert len(executor_refs) == 10
 
 
 class TestWorkloadGateEmissionPoints:
@@ -245,9 +250,6 @@ class TestCorrectionRunnerEmissionPoints:
             "TASK_SUCCEEDED",
             "TASK_FAILED",
             "CHECKPOINT_CREATED",
-            # SIP-0100 3.4b: frozen-ownership enforcement on the repair path
-            # surfaces each restore as an event (mirrors the executor's emitter).
-            "ARTIFACT_OWNERSHIP_ENFORCED",
             # pf-31 Fix D: discarded invalid .py emissions are evidenced too.
             "ARTIFACT_EMISSION_REJECTED",
         ],
@@ -318,6 +320,12 @@ class TestRouteEmissionPoints:
     def test_the_one_recorder_emits_gate_decided(self) -> None:
         refs = _find_event_type_refs_in_file(_GATE_DECISIONS)
         assert refs == {"GATE_DECIDED"}
+
+    def test_the_scaffold_integrity_emitter_emits_ownership_enforced(self) -> None:
+        """SIP-0100 3.3/3.4b: the storage path and the repair path both surface an enforcement
+        through it (#1990), so it is the one emission point for the event."""
+        refs = _find_event_type_refs_in_file(_SCAFFOLD_INTEGRITY)
+        assert refs == {"ARTIFACT_OWNERSHIP_ENFORCED"}
 
     def test_artifacts_route_emits_artifact_stored(self) -> None:
         refs = _find_event_type_refs_in_file(_ARTIFACTS_ROUTE)
@@ -421,8 +429,9 @@ class TestEmitCallSitePayloadFields:
         and the campaign launch's CYCLE_CREATED for a launched cycle's first run, 50 → 51.
         #1986 replaced the three hand-assembled GATE_DECIDED emits (the runs route, the
         executor's question-free approval, the workload gate's plan rejection) with the one
-        recorder's, 51 → 49."""
+        recorder's, 51 → 49. #1990 replaced the executor's and the correction runner's two
+        ARTIFACT_OWNERSHIP_ENFORCED emits with the one emitter's, 49 → 48."""
         total = 0
         for path in _ALL_EMISSION_FILES:
             total += len(self._extract_emit_calls(path))
-        assert total == 49
+        assert total == 48

@@ -16,15 +16,11 @@ import typer
 import yaml
 
 from squadops.campaigns.models import ControlOperation
-from squadops.cli.client import APIClient, CLIError
-from squadops.cli.config import load_config
+from squadops.cli.client import CLIError
+from squadops.cli.client import get_client as _get_client
 from squadops.cli.output import print_detail, print_error, print_json, print_success, print_table
 
 app = typer.Typer(name="campaigns", help="Create, read and control campaigns (SIP-0109)")
-
-
-def _get_client(ctx: typer.Context) -> APIClient:
-    return APIClient(load_config())
 
 
 def _fmt(ctx: typer.Context) -> tuple[str, bool]:

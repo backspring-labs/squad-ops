@@ -11,7 +11,6 @@ No wall-clock here (``created_at`` is passed in) — the record must be reproduc
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 from typing import Any
 
@@ -21,10 +20,7 @@ from squadops.capabilities.scaffold import (
     fill_slot_paths,
     qa_test_namespace,
 )
-
-
-def _sha256(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+from squadops.core.hashing import text_sha256
 
 
 def _normalize(path: str) -> str:
@@ -194,11 +190,11 @@ def build_bound_record(
     fill = tuple(_normalize(p) for p in fill_slot_paths(manifest))
     fill_set = set(fill)
     frozen = tuple(
-        FrozenArtifact(path=name, sha256=_sha256(files[name]), content=files[name])
+        FrozenArtifact(path=name, sha256=text_sha256(files[name]), content=files[name])
         for name in sorted(files)
         if name not in fill_set
     )
-    contract_hash = _sha256("\n".join(f"{f.path}:{f.sha256}" for f in frozen))
+    contract_hash = text_sha256("\n".join(f"{f.path}:{f.sha256}" for f in frozen))
     return BoundScaffoldRecord(
         run_id=run_id,
         attempt_id=attempt_id,
@@ -211,7 +207,7 @@ def build_bound_record(
         fill_slots=fill,
         qa_namespace=qa_test_namespace(manifest),
         fill_seeds=tuple(
-            FrozenArtifact(path=name, sha256=_sha256(files[name]), content=files[name])
+            FrozenArtifact(path=name, sha256=text_sha256(files[name]), content=files[name])
             for name in sorted(fill_set)
             if name in files
         ),

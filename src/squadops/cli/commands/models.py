@@ -9,16 +9,11 @@ import time
 
 import typer
 
-from squadops.cli.client import APIClient, CLIError
-from squadops.cli.config import load_config
+from squadops.cli.client import CLIError
+from squadops.cli.client import get_client as _get_client
 from squadops.cli.output import print_error, print_json, print_success, print_table
 
 app = typer.Typer(name="models", help="View and manage models")
-
-
-def _get_client(ctx: typer.Context) -> APIClient:
-    config = load_config()
-    return APIClient(config)
 
 
 @app.command("list")

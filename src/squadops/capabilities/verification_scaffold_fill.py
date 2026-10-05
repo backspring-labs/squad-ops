@@ -463,7 +463,8 @@ def merge_fills(
     all of them or none. The bytes are the ones this function always produced, so the qa lane
     is the transaction's first proof rather than its first casualty.
     """
-    from squadops.capabilities.verification_scaffold import _sha256, slot_body_span
+    from squadops.capabilities.verification_scaffold import slot_body_span
+    from squadops.core.hashing import text_sha256
     from squadops.cycles.revision_transaction import (
         Revision,
         RevisionOperation,
@@ -551,7 +552,7 @@ def merge_fills(
             MergedFile(
                 path=file_record.path,
                 content=merged,
-                content_hash=_sha256(merged),
+                content_hash=text_sha256(merged),
                 spine_hash=merged_spine,
             )
         )

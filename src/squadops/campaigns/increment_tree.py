@@ -11,10 +11,14 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import logging
 from collections.abc import Mapping
 from typing import Any
 
 from squadops.cycles.delivered_tree import StoredArtifact, delivered_files
+from squadops.cycles.vault_reads import retrieve_or_absent
+
+logger = logging.getLogger(__name__)
 
 
 def accepted_cycle_of(cycle: Any) -> str | None:
@@ -287,9 +291,13 @@ async def frozen_bundle_contents(vault: Any, resolved_config: Any) -> dict[str, 
     bundles: dict[str, dict] = {}
     for pin in pinned or ():
         try:
-            _ref, content = await vault.retrieve(pin["bundle_ref"])
-            bundles[str(pin["criterion_id"])] = json.loads(content.decode("utf-8"))
-        except Exception:  # noqa: BLE001 — a bundle that cannot be read is blocked, not a crash
+            got = await retrieve_or_absent(vault, pin["bundle_ref"])
+            if got is not None:
+                bundles[str(pin["criterion_id"])] = json.loads(got[1].decode("utf-8"))
+        except Exception as e:  # noqa: BLE001 — a bundle that cannot be read is blocked, not a crash
+            logger.warning(
+                "frozen criterion pin %s could not be read (%s: %s)", pin, type(e).__name__, e
+            )
             continue
     return bundles
 
