@@ -48,6 +48,7 @@ pytest tests/ --cov=src/squadops --cov-report=term-missing
 ```bash
 ruff check . --fix    # Lint with auto-fix
 ruff format .         # Format code
+python scripts/dev/mypy_ratchet.py   # mypy against its baseline: no new type error (#1988)
 ```
 
 ### Building Agents
