@@ -10,7 +10,7 @@ created_at: '2026-07-10T00:00:00Z'
 ## Status
 Proposed — **vision stub** (early direction, not a committed spec)
 
-**Targets:** vision item — no committed release. The fine-grained successor to the SIP-0086 convergence loop; a candidate for the 2.0 capability/campaign arc once the evidence substrate (SIP-0096) and behavioral build path (Contract-First Scaffolding) are in place.
+**Targets:** vision item — no committed release. The fine-grained successor to the SIP-0086 convergence loop; a candidate for a later line once the evidence substrate (SIP-0096) and behavioral build path (Contract-First Scaffolding) are in place.
 **Builds on:** SIP-0096 (Verification Evidence Integrity — the per-check evidence families + `CheckResult` + the `CycleOutcome` roll-up §10), SIP-0086 (Build Convergence Loop — the coarse predecessor).
 **Coordinates with:** `SIP-Contract-First-Build-Scaffolding` (build/boot so QA reaches behavioral issues) and `SIP-Externalized-Build-Sandbox` (where QA runs the app to find them).
 **Origin:** `docs/ideas/IDEA-Checks-as-Issue-Ledger.md`, distilled from the #374/#379 verification work.

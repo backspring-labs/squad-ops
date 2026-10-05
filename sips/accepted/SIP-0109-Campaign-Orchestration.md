@@ -106,16 +106,16 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | the supervisor creates and manages campaigns (revises §24al) | **placed** | 2.1.0, #1940 |
 | a campaign records its definition file's hash | **placed** | 2.1.0, #1954 |
 | supervisor instruments; increment replay; per-increment scorecard | **placed** | 2.1.0, #1956, #1959, #1960 |
-| the auto-decision tier and escalation queue | out of this SIP's scope (§5) | 2.2.0, #1708 |
-| accepted increments' `prd_delta` text to the proposer | deferred | "a 2.4 question" (§24ap) |
+| the auto-decision tier and escalation queue | **placed**, outside this SIP's scope (§5) | 2.2.0, #1708 |
+| accepted increments' `prd_delta` text to the proposer | **deferred to 2.4** (ruled 2026-10-03, §24ap): "a 2.4 question" | §24ap |
 | escalating a launch the cycle-create preflight refuses | **placed** | 2.1.0, #1971 (§24as) |
 | re-hearing an ended cycle between restarts | **placed** | 2.1.0, #1972 (§24as) |
 | a Next.js render profile (a route-declaring Next.js increment is always `blocked_unverified`) | **placed** | 2.1.0, #1973 (§24as) |
 | an increment that needs packaging changed | **unplaced, deliberately** (§24as): re-placed on evidence | §24y |
 | whether an increment's build skips the builder tail | **dropped as a question** (§24as): answered when a campaign raises it | §24ab |
 | the quiet-box check reading GPU compute processes | **unplaced, deliberately** (§24as): until the owner grants the runtime-api the GPU (a `docker-compose.yml` change) | §24l, §24ai, §24an |
-| the acquire race window; re-attach with the process up; a task re-asked after an agent restart | **not built, by design** (recorded) | §24ai, §24am, §24ao |
-| §24b–§24i, marked "implementer's reading, not yet ruled" | **ratified as written** (§24as) | — |
+| the acquire race window; re-attach with the process up; a task re-asked after an agent restart | **dropped**: not built, by design (recorded) | §24ai, §24am, §24ao |
+| §24b–§24i, marked "implementer's reading, not yet ruled" | **shipped**, ratified as written (§24as) | v2.0.0 |
 
 **What closes this SIP:** Its 2.1.0 rows closing, #1710's remainder ruled, and #1708's remainder shipped in 2.2.0 or ruled out of scope. §24at, the consolidated status at the v2.0.0 cut, replaces the 2.0 plan's §5a as the permanent record. Promotion follows at the sweep after the last placed row closes.
 

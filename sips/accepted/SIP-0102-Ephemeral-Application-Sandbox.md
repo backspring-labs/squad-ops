@@ -16,8 +16,8 @@ live-validation campaign and two second-opinion review rounds; see
 ## Status
 Accepted — **1.4 floor SHIPPED in v1.4.0 (2026-07-31, S-lane headline)**, SIP-0090-Phase-1 precedent: migration steps 1–2 complete (execution service + workspace provisioning + Docker adapter on `ContainerPort`; pinned canonical environment image) plus the clean-room capability as the post-hoc delivered-app audit (`scripts/dev/audit_delivered_app.py` — install/build/boot/HTTP contract probes; the FAY measurement pre-registered audit-not-in-cycle) and the doctor preflight category from step 4. **Open (the SIP stays accepted until these land)**: step 3 (route in-process exec sites — `test_runner`, `CommandExitZeroCheck`, probe runner — through typed sandbox ops), step 5 (clean-room verification at run finalization; `verified_executable`/`verified_functional` into SIP-0096 outcome derivation), step 6 (**retire the #306 qa-Node branch — "the payoff and the regression guard"**; note 1.4 moved further from this by adding Node to the dev image for #648), step 7 (golden-path live validation incl. #419 builder-seam). Target: integration steps → 1.5/1.6 per owner sequencing.
 
-**Targets:** **v1.4 headline component** (re-targeted from the 2.0 vision arc on
-2026-07-14 — see Motivating case). Together with SIP-0099
+**Targets:** **v1.4 headline component, shipped in v1.4.0** (re-targeted from the vision arc on
+2026-07-14 — see Motivating case). The remaining steps are unplaced, deliberately: see the delivery ledger. Together with SIP-0099
 (Contract-First Build Scaffolding, accepted 2026-07-16) it forms the "Verified
 Canonical App Build" vertical slice: *one canonical stack can be
 deterministically composed, executed, and honestly verified without manual
@@ -76,7 +76,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | step 6: retire the qa-Node branch | **unplaced, deliberately** (§11c) | none |
 | step 7: golden-path live validation (incl. #419) | **unplaced, deliberately** (§11c) | none |
 | §5 deferrals: browser probe, probe-as-peer, `expose_application` | **unplaced, deliberately** (§11c); `SIP-Outcome-Evaluation` may need `expose_application`-like hosting | none |
-| SIP-0109's in-agent evaluation and route rendering (in the qa container; runtime-api cannot reach the sandbox) | **ruled the accepted path for campaign evaluation** (§11c) | SIP-0109 §24n, §24p |
+| campaign evaluation through this sandbox | **dropped** by §11c: SIP-0109 evaluates and renders routes in the qa container (runtime-api cannot reach the sandbox), the accepted path | SIP-0109 §24n, §24p |
 
 **What closes this SIP:** Steps 3, 5, 6, 7 shipped or dropped. Until a clean-room requirement returns, they are unplaced by ruling (§11c, 2026-10-04).
 

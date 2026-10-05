@@ -8,7 +8,7 @@ author: Backspring Labs / SquadOps
 
 **Status:** Proposed (the owner's draft, revision 1, under the placement note below)
 **Revision:** 1
-**Target:** placed below: one slice in 2.0, through the Campaign SIP; the rest after the first campaign
+**Target:** re-placed 2026-10-04 (`sips/PORTFOLIO.md` §2): #1960 in 2.1.0, #1965 as crew work in the 2.1 window, #1966 after Cross-Cycle Memory
 **Authors:** Backspring Labs / SquadOps
 **Theme:** Verification quality, test economics, agent efficiency
 
