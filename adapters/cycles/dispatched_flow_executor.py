@@ -88,7 +88,10 @@ from squadops.cycles.models import (
     RunStatus,
 )
 from squadops.cycles.naming import flow_run_name, flow_run_tags
-from squadops.cycles.patch_verification import storage_altered_accepted_patch
+from squadops.cycles.patch_verification import (
+    retake_identity_mismatch,
+    storage_altered_accepted_patch,
+)
 from squadops.cycles.rejection_baseline import (
     RejectionClassifier,
 )
@@ -3636,6 +3639,15 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 self._enforce_compliance_budget(
                     integrity_evidence, cycle, envelope, compliance_counter
                 )
+        # SIP-0107 §20 on the qa re-take path (#1727): the set stored is the set the re-take
+        # evaluated. A mismatch is a framework integrity failure whatever its tests said, as on
+        # the patch path: a verdict about one tree cannot accept another.
+        mismatch = retake_identity_mismatch(outputs, artifacts)
+        if mismatch is not None:
+            raise _ExecutionError(
+                f"artifact storage task={envelope.task_id}: the re-take's stored set is not the "
+                f"set it evaluated (evaluated={mismatch[0]}, stored={mismatch[1]}) — SIP-0107 §20"
+            )
         new_refs: list[str] = []
         for art in artifacts:
             ref = await self._store_artifact(

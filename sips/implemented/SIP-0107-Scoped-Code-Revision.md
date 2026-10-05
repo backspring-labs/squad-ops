@@ -42,7 +42,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | step 7: the flip | **shipped** | v2.0.0 (PR #1909, §46s) |
 | §39.8 N gate | **replaced by ruling** (N read as texture) | §46s |
 | §43.4 first-class `move` | not in 1.8 by ruling; on evidence later | §43.4 |
-| §20 on the qa re-take path | **placed** | 2.1.0, #1727 (ruled 2026-10-04: assert it; the transaction is the re-take plus the pass) |
+| §20 on the qa re-take path | **shipped** (§46u) | 2.1.0, PR #2061, issue #1727 |
 | §9.4 whole-file fallback with authority | **declared without a producer** (§46t) | — |
 | §15 scope requests and same-role regrant | **dropped** (§46t) | — |
 | the self-evaluation pass and re-take still accept a whole re-emission | scoped out of step 7 | §46s |
@@ -2468,3 +2468,42 @@ ruled.
 **Who ruled it.** the owner's rulings of 2026-10-04 on the SIP-portfolio audit (`sips/PORTFOLIO.md`): "yes, move them to 3.x including capability-backed agents. I accept all your other recommendations to keep SIPs current, reflecting what gets delivered, and where the work is targeted".
 
 **What remains before promotion:** the 2.0.0 tag. #1727 (§20 on the qa re-take path, 2.1.0) is a named follow-up amendment, not a blocker.
+
+## 46u. 2026-10-05 — §20 on the qa re-take path, and the re-take's transaction (§20, §12a; #1727, #1913)
+
+**The two questions #1727 carried** (split from #1724, ruled by the owner on the 2.1 plan, §5
+ruling 5):
+1. Does the re-take path assert §20 (verified equals persisted), as the patch path does?
+2. What is the transaction when a self-evaluation pass completes a re-take?
+
+**The ruling:** assert §20 on the re-take path, which also catches #1913's class; the transaction
+is the re-take plus the pass, each part named in the record.
+
+**What changed.**
+- **The re-take records what it evaluated.** At its end, a qa re-take stores on its outputs
+  (`qa_retake_evaluated_revision_id`) the identity, by `candidate_revision_id`, of exactly the set
+  of artifacts its suite and its typed checks read.
+- **Storage proves it.** After it re-applies the producer's grants, storage recomputes that
+  identity over the set it is about to store. A mismatch fails the run as a framework integrity
+  failure, whatever the tests said (`retake_identity_mismatch`, beside §5.5's
+  `storage_altered_accepted_patch`).
+- **#1913, the class §20 catches, is closed at its source.** Before its suite and typed checks run,
+  the qa handler drops any file outside its stack's test namespace that the accepted workspace
+  already holds (another producer's slot, a frozen file, the source under test), which storage
+  would drop. So the suite and the checks read the tree that is stored, and the task's evidence
+  names the drop (`qa_unowned_dropped`). A new file outside the namespace passes, as storage passes
+  it.
+- **The transaction:** the re-take's revision form names the edit (`edited`) and, when a pass
+  completed it, the files the pass added (`completed_by_self_eval`). The identity storage proves is
+  of the completed set, the tree that passed. So an edit-only count stays derivable from the record,
+  and the count's answer no longer needs a decision.
+
+**Evidence.** Each test fails on main:
+- the handler drops a quoted `backend/routes.py` excerpt before its suite reads it, and keeps a new
+  deliverable;
+- a re-take records the identity of exactly the artifacts it returns;
+- a pass that adds the missing file is named on the form;
+- storage, with the grants re-applied, refuses a re-take whose stored set is not its evaluated one,
+  and stores nothing.
+
+**Who ruled it.** The owner, on the 2.1 plan (§5 ruling 5, 2026-10-04).

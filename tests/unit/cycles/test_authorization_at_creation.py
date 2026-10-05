@@ -576,6 +576,42 @@ class TestTheVerifiedCandidateIsTheStoredCandidate:
         with pytest.raises(_ExecutionError, match="SIP-0107 §20"):
             await executor._try_accept_patch(_builder_envelope(), _failed([]), [AUTHORIZED], {})
 
+    async def test_a_re_take_whose_stored_set_is_not_the_one_it_evaluated_stores_nothing(
+        self, executor
+    ):
+        """SIP-0107 §20 on the re-take path (#1727), entered at the storage seam with the grants
+        it re-applies. Bug caught: a re-take that evaluated a file storage then drops (#1913's
+        class) accepted silently, so its verdict describes a tree never persisted."""
+        from squadops.cycles.patch_verification import (
+            RETAKE_EVALUATED_REVISION_KEY,
+            candidate_revision_id,
+        )
+
+        evaluated = [UNAUTHORIZED, AUTHORIZED]
+        retake = TaskResult(
+            task_id="task-run_1-m004-builder.assemble",
+            status="SUCCEEDED",
+            outputs={
+                "artifacts": evaluated,
+                RETAKE_EVALUATED_REVISION_KEY: candidate_revision_id(None, evaluated),
+            },
+        )
+        with pytest.raises(_ExecutionError, match="SIP-0107 §20"):
+            await executor._collect_artifacts_and_checkpoint(
+                retake,
+                _builder_envelope(),
+                _cycle(),
+                "run_1",
+                {},
+                [],
+                [],
+                [],
+                [],
+                bound_record=_record(),
+                compliance_counter={"n": 0},
+            )
+        assert _stored_names(executor) == []
+
     async def test_storage_that_would_alter_an_accepted_patch_stores_nothing(self, executor):
         """Bug caught: the grants storage re-applies dropping a file from an ACCEPTED patch —
         the accepted verdict would describe a tree that was never persisted. The paired
