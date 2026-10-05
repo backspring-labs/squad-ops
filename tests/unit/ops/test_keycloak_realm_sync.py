@@ -69,3 +69,56 @@ def test_a_missing_realm_is_left_to_import_realm_and_an_existing_one_is_partiall
 def test_no_password_is_a_refusal_not_a_blank_login(tmp_path, monkeypatch):
     monkeypatch.delenv("KEYCLOAK_ADMIN_PASSWORD", raising=False)
     assert sync.main([str(tmp_path / "x.json"), "--password-file", str(tmp_path / "nope")]) == 2
+
+
+class _Keycloak:
+    """The admin API's answers for one client, and the requests made of it."""
+
+    def __init__(self, current_secret):
+        self.current_secret = current_secret
+        self.calls = []
+
+    def __call__(self, base_url, token, method, path, body=None):
+        self.calls.append((method, path, body))
+        if method == "GET" and "/clients?" in path:
+            return 200, [{"id": "c-1", "clientId": "squadops-agent", "enabled": True}]
+        if method == "GET" and path.endswith("/client-secret"):
+            return 200, {"type": "secret", "value": self.current_secret}
+        if method == "PUT":
+            return 204, None
+        return 404, None
+
+
+@pytest.mark.parametrize(
+    ("current", "puts", "said"),
+    [
+        ("squadops-agent-secret", 1, "secret set from .env"),
+        ("own-agent-secret", 0, "secret already the deploy's"),
+    ],
+    ids=["the-export-seed-is-replaced", "the-deploys-own-is-left-alone"],
+)
+def test_a_client_secret_is_brought_to_the_deploys_own(monkeypatch, current, puts, said):
+    """#2006: a realm the export created holds the export's seed secret, which every deploy
+    shared. Bug caught: the seed left in place, or a client re-written on every deploy."""
+    keycloak = _Keycloak(current)
+    monkeypatch.setattr(sync, "_request", keycloak)
+
+    out = sync.set_client_secret(
+        "http://kc", "tok", "squadops-local", "squadops-agent", "own-agent-secret"
+    )
+
+    put = [body for method, _path, body in keycloak.calls if method == "PUT"]
+    assert len(put) == puts and out.endswith(said)
+    if put:
+        assert put[0]["secret"] == "own-agent-secret" and put[0]["clientId"] == "squadops-agent"
+
+
+def test_the_secrets_come_from_env_by_the_registrys_client_names():
+    registry = [
+        {"env": "SQUADOPS_AGENT_CLIENT_SECRET", "keycloak_client": "squadops-agent"},
+        {"env": "SQUADOPS_RUNTIME_CLIENT_SECRET", "keycloak_client": "squadops-runtime"},
+        {"env": "POSTGRES_PASSWORD"},
+    ]
+    env = {"SQUADOPS_AGENT_CLIENT_SECRET": "a", "POSTGRES_PASSWORD": "p"}
+
+    assert sync.client_secrets(registry, env) == {"squadops-agent": "a"}

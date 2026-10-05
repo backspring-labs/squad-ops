@@ -13,10 +13,11 @@
 #   scripts/dev/ops/rebuild_and_deploy.sh   the existing deployment, every deploy
 #   .github/workflows/ci.yml                the integration job's postgres service container
 #
-# The test role's password is POSTGRES_TEST_PASSWORD: the environment wins, else .env. A
-# .env that predates the variable gets .env.example's line appended, so an older box needs
-# no manual step (the one-click rule) and the doctor reads the same value. No password is
-# written in this file.
+# The test role's password is POSTGRES_TEST_PASSWORD: the environment wins, else .env. The
+# keycloak and langfuse roles' passwords (KEYCLOAK_DB_PASSWORD, LANGFUSE_DB_PASSWORD, #2006) are
+# read the same way and passed when set, so each deploy sets them from .env. Every one is in .env
+# because scripts/dev/ops/deploy_credentials.py ensure runs first on both paths; .env.example
+# holds no working value to seed from. No password is written in this file.
 #
 # Env: CONTAINER (squadops-postgres), DRY_RUN (0)
 set -euo pipefail
@@ -25,31 +26,29 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 CONTAINER="${CONTAINER:-squadops-postgres}"
 INIT_SCRIPT="$REPO_ROOT/infra/00-create-databases.sh"
 ENV_FILE="$REPO_ROOT/.env"
-ENV_EXAMPLE="$REPO_ROOT/.env.example"
 PASSWORD_VAR="POSTGRES_TEST_PASSWORD"
 
 say() { echo "[ensure_test_database] $*" >&2; }
 die() { echo "[ensure_test_database] ERROR: $*" >&2; exit 1; }
 
-# --- 1. The password: environment > .env > .env.example (appended to .env) -------------
-password="${!PASSWORD_VAR:-}"
-if [[ -z "$password" && -f "$ENV_FILE" ]]; then
-    if ! grep -q "^${PASSWORD_VAR}=" "$ENV_FILE"; then
-        seed="$(grep "^${PASSWORD_VAR}=" "$ENV_EXAMPLE" || true)"
-        [[ -n "$seed" ]] || die "$ENV_EXAMPLE carries no ${PASSWORD_VAR} line to seed .env from"
-        if [[ "${DRY_RUN:-0}" == "1" ]]; then
-            say "[dry-run] append to .env: $seed"
-        else
-            printf '\n# Integration-test role password (#1180) — added by ensure_test_database.sh from .env.example\n%s\n' \
-                "$seed" >> "$ENV_FILE"
-            say "added ${PASSWORD_VAR} to .env (from .env.example)"
-        fi
-        password="${seed#*=}"
-    else
-        password="$(grep "^${PASSWORD_VAR}=" "$ENV_FILE" | tail -1 | cut -d= -f2-)"
+# --- 1. The passwords: the environment, else .env ---------------------------------------
+from_env_or_dotenv() {
+    local name="$1" value="${!1:-}"
+    if [[ -z "$value" && -f "$ENV_FILE" ]]; then
+        value="$(grep "^${name}=" "$ENV_FILE" | tail -1 | cut -d= -f2- || true)"
     fi
-fi
-[[ -n "$password" ]] || die "${PASSWORD_VAR} is not set and there is no .env to read it from"
+    printf '%s' "$value"
+}
+password="$(from_env_or_dotenv "$PASSWORD_VAR")"
+[[ -n "$password" ]] \
+    || die "${PASSWORD_VAR} is not set: run scripts/dev/ops/deploy_credentials.py ensure (#2006)"
+role_passwords=()
+for name in KEYCLOAK_DB_PASSWORD LANGFUSE_DB_PASSWORD; do
+    value="$(from_env_or_dotenv "$name")"
+    if [[ -n "$value" ]]; then
+        role_passwords+=(-e "${name}=${value}")
+    fi
+done
 
 if [[ "${DRY_RUN:-0}" == "1" ]]; then
     say "[dry-run] docker exec -i -e ${PASSWORD_VAR}=… $CONTAINER bash -s < $INIT_SCRIPT"
@@ -76,7 +75,7 @@ docker exec "$CONTAINER" sh -c 'pg_isready -q -h 127.0.0.1 -U "$POSTGRES_USER" -
 # Piped in rather than run from the compose mount, so the checked-out version runs and
 # this does not depend on where docker-compose.yml mounts it.
 say "applying $INIT_SCRIPT in $CONTAINER"
-docker exec -i -e "${PASSWORD_VAR}=${password}" "$CONTAINER" bash -s < "$INIT_SCRIPT"
+docker exec -i -e "${PASSWORD_VAR}=${password}" ${role_passwords[@]+"${role_passwords[@]}"} "$CONTAINER" bash -s < "$INIT_SCRIPT"
 
 # --- 4. What the cluster now says ------------------------------------------------------
 docker exec -i "$CONTAINER" sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA' <<'SQL' \

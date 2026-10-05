@@ -5,6 +5,7 @@ Scans configuration files and docker-compose files to ensure no plaintext secret
 are committed. Enforces secret:// usage for secret-bearing keys.
 """
 
+import json
 import re
 from pathlib import Path
 
@@ -432,3 +433,55 @@ def test_no_url_credentials():
             "URLs with plaintext credentials found (must use secret:// references):\n"
             + "\n".join(f"  - {v}" for v in violations)
         )
+
+
+#: A credential key, judged by its last ``__`` segment: ``SQUADOPS__SECRETS__PROVIDER`` selects a
+#: backend and is no credential; ``SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET`` is one.
+_CREDENTIAL_KEY = re.compile(r"(PASSWORD|SECRET|SALT|TOKEN|SECRET_KEY)$", re.IGNORECASE)
+_URL_PASSWORD = re.compile(r"://[^/:@\s]+:([^@\s]+)@")
+#: Each known exception, with the issue that removes it.
+_KNOWN_DEFAULTED = {
+    # The console's service client exists in no realm export, so its secret has nothing to be.
+    ("squadops-console", "SERVICE_CLIENT_SECRET"): "#2068",
+}
+
+
+def test_every_compose_credential_is_the_deploys_own_with_no_default():
+    """#2006: every service, third-party ones included (the exemption above is how Keycloak's,
+    Langfuse's and Grafana's literals survived). A credential is read from the environment or a
+    secret, never written in, never defaulted; a registry variable compose reads is required.
+    Bug caught: one deploy's credential committed for every deploy."""
+    import yaml
+
+    registry = {
+        c["env"]
+        for c in json.loads((get_repo_root() / "infra" / "deploy_credentials.json").read_text())[
+            "credentials"
+        ]
+    }
+    violations = []
+    for file_path in get_repo_root().glob("docker-compose*.yml"):
+        text = file_path.read_text()
+        for name in registry:
+            for ref in re.findall(r"\$\{" + name + r"(:?[-?])?", text):
+                if ref != ":?":
+                    violations.append(f"{file_path.name}: ${{{name}}} is not required (:?)")
+        services = (yaml.safe_load(text) or {}).get("services") or {}
+        for service, spec in services.items():
+            env = spec.get("environment") or {}
+            items = env.items() if isinstance(env, dict) else (e.partition("=")[::2] for e in env)
+            for key, value in items:
+                value = str(value or "")
+                last = key.rsplit("__", 1)[-1]
+                if _CREDENTIAL_KEY.search(last) and not ("${" in value or "secret://" in value):
+                    violations.append(f"{file_path.name}: {service}.{key} is written in")
+                if (
+                    ":-" in value
+                    and _CREDENTIAL_KEY.search(last)
+                    and (service, key) not in _KNOWN_DEFAULTED
+                ):
+                    violations.append(f"{file_path.name}: {service}.{key} has a default")
+                for password in _URL_PASSWORD.findall(value):
+                    if not (password.startswith("${") or password.startswith("secret://")):
+                        violations.append(f"{file_path.name}: {service}.{key} carries a password")
+    assert violations == []

@@ -2,12 +2,12 @@
 # Docker setup functions for bootstrap (SIP-0081).
 # Sourced by bootstrap.sh — not executed directly.
 
-# Shared secret-provisioning helpers (agent client secret, #326/#371) —
-# single-sourced with the rebuild/deploy path so the two cannot drift.
+# Shared credential provisioning (#371, #2006) — single-sourced with the
+# rebuild/deploy path so the two cannot drift.
 source "$(dirname "${BASH_SOURCE[0]}")/../../dev/ops/secrets.sh"
 
 # Ensure .env and .env.console exist for Docker Compose.
-# Copies .env from .env.example (which contains static dev passwords).
+# Copies .env from .env.example, then generates the deploy's credentials into it (#2006).
 # Generates .env.console from console lock file if missing.
 ensure_env_file() {
     local env_file=".env"
@@ -59,37 +59,15 @@ ensure_env_file() {
         success "Set SQUADOPS_HOST=${host} in .env"
     fi
 
-    # Create Docker secret files from .env passwords
-    if [[ "${DRY_RUN:-0}" == "1" ]]; then
-        info "[dry-run] create secrets/{db_password,rabbitmq_password,keycloak_admin_password,agent_client_secret}.txt"
-    elif [[ -f "$env_file" ]]; then
-        mkdir -p secrets
-        if [[ ! -f "secrets/db_password.txt" ]]; then
-            grep '^POSTGRES_PASSWORD=' "$env_file" | cut -d= -f2- > secrets/db_password.txt
-            success "Created secrets/db_password.txt"
-        fi
-        if [[ ! -f "secrets/rabbitmq_password.txt" ]]; then
-            grep '^RABBITMQ_PASSWORD=' "$env_file" | cut -d= -f2- > secrets/rabbitmq_password.txt
-            success "Created secrets/rabbitmq_password.txt"
-        fi
-        if [[ ! -f "secrets/keycloak_admin_password.txt" ]]; then
-            # Keycloak admin password — matches KEYCLOAK_ADMIN_PASSWORD in docker-compose
-            echo -n "admin123" > secrets/keycloak_admin_password.txt
-            success "Created secrets/keycloak_admin_password.txt"
-        fi
-        if [[ ! -f "secrets/keycloak_db_dsn.txt" ]]; then
-            # Keycloak DB DSN — matches KC_DB_URL credentials in docker-compose
-            echo -n "postgresql://keycloak:keycloak@postgres:5432/keycloak" > secrets/keycloak_db_dsn.txt
-            success "Created secrets/keycloak_db_dsn.txt"
-        fi
-        # Agent client secret (#326) — provisioning single-sourced in
-        # scripts/dev/lib/secrets.sh so bootstrap and rebuild/deploy can't drift (#371).
-        if [[ ! -f "$AGENT_CLIENT_SECRET_FILE" ]]; then
-            if ensure_agent_client_secret; then
-                success "Created $AGENT_CLIENT_SECRET_FILE"
-            else
-                warn "Failed to create $AGENT_CLIENT_SECRET_FILE"
-            fi
+    # #2006: the deploy's own credentials into .env, and secrets/ derived from it. Never
+    # .env.example's values: it holds placeholders, and its old values were the same on
+    # every deploy.
+    if [[ -f "$env_file" || "${DRY_RUN:-0}" == "1" ]]; then
+        if ensure_deploy_credentials; then
+            success "Deploy credentials in .env and secrets/"
+        else
+            warn "Could not ensure the deploy's credentials"
+            return 1
         fi
     fi
 

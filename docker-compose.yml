@@ -31,6 +31,9 @@ services:
       POSTGRES_DB: squadops
       POSTGRES_USER: squadops
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
+      # Read by infra/00-create-databases.sh when initdb creates the keycloak and langfuse roles.
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?required, written by scripts/dev/ops/deploy_credentials.py ensure (#2006)}
+      LANGFUSE_DB_PASSWORD: ${LANGFUSE_DB_PASSWORD:?required, written by scripts/dev/ops/deploy_credentials.py ensure (#2006)}
     command:
     - postgres
     - -c
@@ -109,7 +112,7 @@ services:
       retries: 5
   # SIP-0062: Keycloak OIDC Identity Provider
   # Uses the shared squadops-postgres instance (keycloak database).
-  # LOCAL DEV / CI ONLY — hardcoded secrets below are NOT production-grade.
+  # Its credentials are the deploy's own, from .env (#2006).
   squadops-keycloak:
     image: quay.io/keycloak/keycloak:24.0.5
     container_name: squadops-keycloak
@@ -124,11 +127,11 @@ services:
     command: start-dev --import-realm
     environment:
       KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin123           # local dev only
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?required, written by scripts/dev/ops/deploy_credentials.py ensure (#2006)}
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
       KC_DB_USERNAME: keycloak
-      KC_DB_PASSWORD: keycloak
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?required, written by scripts/dev/ops/deploy_credentials.py ensure (#2006)}
       KC_HEALTH_ENABLED: "true"
     ports:
       - "8180:8080"
@@ -144,7 +147,7 @@ services:
 
   # SIP-0061: LangFuse LLM Observability
   # Uses the shared squadops-postgres instance (langfuse database).
-  # LOCAL DEV / CI ONLY — hardcoded secrets below are NOT production-grade.
+  # Its credentials are the deploy's own, from .env (#2006).
   langfuse:
     container_name: squadops-langfuse
     # #581
@@ -157,10 +160,10 @@ services:
     image: langfuse/langfuse:2
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://langfuse:langfuse@postgres:5432/langfuse
-      NEXTAUTH_SECRET: mysecret            # local dev only
+      DATABASE_URL: postgresql://langfuse:${LANGFUSE_DB_PASSWORD:?required, written by scripts/dev/ops/deploy_credentials.py ensure (#2006)}@postgres:5432/langfuse
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:?required, written by scripts/dev/ops/deploy_credentials.py ensure (#2006)}
       NEXTAUTH_URL: http://localhost:3001
-      SALT: mysalt                         # local dev only
+      SALT: ${LANGFUSE_SALT:?required, written by scripts/dev/ops/deploy_credentials.py ensure (#2006)}
     ports:
       - "3001:3000"
     depends_on:
@@ -926,7 +929,7 @@ services:
       retries: 12
     environment:
       - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?required, written by scripts/dev/ops/deploy_credentials.py ensure (#2006)}
       - GF_INSTALL_PLUGINS=
     volumes:
       - ./infra/grafana/provisioning:/etc/grafana/provisioning
@@ -957,8 +960,9 @@ services:
       SQUADOPS__SANDBOX__IMAGE: ${SQUADOPS_SANDBOX_IMAGE:-}
       SQUADOPS__SANDBOX__WORKSPACE_ROOT: ${SQUADOPS_SANDBOX_ROOT:-/tmp/squadops-sandbox}/cycles
       SQUADOPS__SANDBOX__CACHE_ROOT: ${SQUADOPS_SANDBOX_ROOT:-/tmp/squadops-sandbox}/caches
-      # No default: create_app refuses to start without a token.
-      SQUADOPS__SANDBOX__SERVICE_TOKEN: ${SQUADOPS_SANDBOX_SERVICE_TOKEN:-}
+      # No default: create_app refuses to start without a token, and compose refuses to resolve
+      # without one (#2006: the token had no home, so a recreated service could not start).
+      SQUADOPS__SANDBOX__SERVICE_TOKEN: ${SQUADOPS_SANDBOX_SERVICE_TOKEN:?required, written by scripts/dev/ops/deploy_credentials.py ensure (#2006)}
     volumes:
       # The sandbox service is the ONLY socket holder (SIP-0102 §4.3).
       - /var/run/docker.sock:/var/run/docker.sock
