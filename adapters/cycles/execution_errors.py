@@ -1,9 +1,9 @@
-"""Shared internal control-flow errors for the cycle flow executors.
+"""Shared internal control-flow errors for the cycle flow executor and its collaborators.
 
-Hoisted from ``dispatched_flow_executor.py`` / ``in_process_flow_executor.py``
-(SIP-0097 §6.5 slice 1) — the two executors previously carried duplicate
-definitions. These are adapter-internal control flow, not domain errors;
-the leading underscore is deliberate.
+Hoisted from ``dispatched_flow_executor.py`` and the in-process executor (SIP-0097 §6.5 slice 1),
+which carried duplicate definitions; the in-process one was deleted in #1984. The executor's
+extracted collaborators raise them too. These are adapter-internal control flow, not domain
+errors; the leading underscore is deliberate.
 """
 
 from __future__ import annotations

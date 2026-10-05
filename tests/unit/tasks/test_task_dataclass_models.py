@@ -162,25 +162,3 @@ class TestTaskModelsImport:
         assert TaskEnvelope is not None
         assert TaskIdentity is not None
         assert TaskResult is not None
-
-    def test_import_from_types_bridge(self):
-        """Models can be imported from squadops.tasks.types bridge."""
-        from squadops.tasks.types import TaskEnvelope, TaskIdentity, TaskResult
-
-        assert TaskEnvelope is not None
-        assert TaskIdentity is not None
-        assert TaskResult is not None
-
-    def test_legacy_models_available_from_bridge(self):
-        """Legacy Pydantic models available via types bridge."""
-        from squadops.tasks.types import (
-            LegacyTaskEnvelope,
-            LegacyTaskResult,
-            Task,
-            TaskState,
-        )
-
-        assert LegacyTaskEnvelope is not None
-        assert LegacyTaskResult is not None
-        assert Task is not None
-        assert TaskState is not None

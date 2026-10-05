@@ -14,14 +14,14 @@ pytestmark = pytest.mark.domain_cycles
 @pytest.mark.parametrize(
     ("provider", "expected"),
     [
-        ("in_process", "InProcessFlowExecutor"),
         ("dispatched", "DispatchedFlowExecutor"),
     ],
 )
 def test_provider_key_resolves_to_expected_executor(provider, expected):
     """Bug class: a regression in the factory's provider routing would send a
     valid key to the wrong executor (or fail to construct), breaking cycle
-    execution wiring."""
+    execution wiring. ``"in_process"`` was removed with its executor (#1984), so it is now
+    refused like any unknown provider (``test_unknown_provider_raises`` below)."""
     executor = create_flow_executor(provider, task_timeout=300.0)
     assert type(executor).__name__ == expected
 
@@ -39,9 +39,10 @@ def test_the_declared_task_timeout_reaches_the_dispatcher():
     assert executor._task_dispatcher._task_timeout == 1234.0
 
 
-def test_unknown_provider_raises():
+@pytest.mark.parametrize("provider", ["bogus", "in_process"])
+def test_unknown_provider_raises(provider):
     with pytest.raises(ValueError, match="Unknown flow executor provider"):
-        create_flow_executor("bogus")
+        create_flow_executor(provider)
 
 
 class TestDispatchedWorkflowTrackerWiring:

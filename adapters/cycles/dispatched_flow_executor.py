@@ -5,9 +5,9 @@ Dispatches cycle tasks to agent containers via RabbitMQ instead of
 executing them in-process.  Each agent handles its own task using
 its own LLM model and PromptService.
 
-Mirrors InProcessFlowExecutor structure (SIP-0066) but replaces
-``orchestrator.submit_task()`` with a publish→consume request/reply
-pattern over the ``{agent_id}_comms`` queue.
+Tasks travel as a publish→consume request/reply over the ``{agent_id}_comms`` queue (SIP-0066).
+It is the one ``FlowExecutionPort``: the in-process executor it was first modelled on, which no
+composition root built, was deleted (#1984).
 """
 
 from __future__ import annotations

@@ -13,7 +13,6 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from squadops.agents.base import PortsBundle
-from squadops.api.service import AgentService, TaskService
 from squadops.bootstrap.handlers import create_handler_registry
 from squadops.orchestration.orchestrator import AgentOrchestrator
 
@@ -58,21 +57,16 @@ class SquadOpsSystem:
     Contains all components needed for operation:
     - Handler registry with all handlers
     - Orchestrator for task coordination
-    - API services for external access
 
     Attributes:
         handler_registry: Registry of all handlers
         orchestrator: AgentOrchestrator for coordination
-        task_service: TaskService for API access
-        agent_service: AgentService for API access
         ports: PortsBundle for port access
         config: System configuration
     """
 
     handler_registry: HandlerRegistry
     orchestrator: AgentOrchestrator
-    task_service: TaskService
-    agent_service: AgentService
     ports: PortsBundle
     config: SystemConfig
 
@@ -178,7 +172,7 @@ def create_system(
             config=SystemConfig(role="dev"),
         )
 
-        result = await system.task_service.execute_task(request)
+        result = await system.orchestrator.submit_task(envelope)
     """
 
     # Create ports bundle
@@ -206,10 +200,6 @@ def create_system(
         role=config.role,
     )
 
-    # Create API services
-    task_service = TaskService(orchestrator)
-    agent_service = AgentService(orchestrator)
-
     logger.info(
         "Created SquadOps system",
         extra={
@@ -221,8 +211,6 @@ def create_system(
     return SquadOpsSystem(
         handler_registry=handler_registry,
         orchestrator=orchestrator,
-        task_service=task_service,
-        agent_service=agent_service,
         ports=ports,
         config=config,
     )

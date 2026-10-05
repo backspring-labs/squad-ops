@@ -392,7 +392,6 @@ _FACTORY_SELECTORS = (
     ("adapters.memory.factory", "create_memory_provider", "provider"),
     ("adapters.prompts.factory", "create_prompt_repository", "provider"),
     ("adapters.prompts.factory", "create_prompt_asset_source", "provider"),
-    ("adapters.tasks.factory", "create_task_registry_provider", "provider"),
     # #1568: the auth middleware's provider, a constructor keyword the runtime root names.
     ("squadops.api.middleware.auth", "AuthMiddleware", "provider"),
 )

@@ -4,8 +4,6 @@ Adapter factory for SIP-0064 cycle execution ports.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
 from squadops.ports.cycles.campaign_registry import CampaignRegistryPort
 from squadops.ports.cycles.cycle_registry import CycleRegistryPort
@@ -13,9 +11,6 @@ from squadops.ports.cycles.deploy_registry import DeployRegistryPort
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
 from squadops.ports.cycles.project_registry import ProjectRegistryPort
 from squadops.ports.cycles.squad_profile import SquadProfilePort
-
-if TYPE_CHECKING:
-    from squadops.orchestration.orchestrator import AgentOrchestrator
 
 
 def create_project_registry(provider: str, **kwargs) -> ProjectRegistryPort:
@@ -108,26 +103,16 @@ def create_flow_executor(
     *,
     cycle_registry: CycleRegistryPort | None = None,
     artifact_vault: ArtifactVaultPort | None = None,
-    orchestrator: AgentOrchestrator | None = None,
     squad_profile: SquadProfilePort | None = None,
     project_registry: ProjectRegistryPort | None = None,
     **kwargs,
 ) -> FlowExecutionPort:
     """Create a FlowExecutionPort adapter.
 
-    SIP-0066: Accepts injected dependencies for executor wiring.
+    SIP-0066: Accepts injected dependencies for executor wiring. ``"dispatched"`` is the one
+    provider: the in-process executor no root ever selected was deleted (#1984).
     """
-    if provider == "in_process":
-        from adapters.cycles.in_process_flow_executor import InProcessFlowExecutor
-
-        return InProcessFlowExecutor(
-            cycle_registry=cycle_registry,
-            artifact_vault=artifact_vault,
-            orchestrator=orchestrator,
-            squad_profile=squad_profile,
-            project_registry=project_registry,
-        )
-    elif provider == "dispatched":
+    if provider == "dispatched":
         from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
         workflow_tracker = kwargs.get("workflow_tracker")
