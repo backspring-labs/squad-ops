@@ -16,7 +16,6 @@ declarations can't be found, the resolver returns ``None`` so the pure decision
 from __future__ import annotations
 
 import logging
-import os
 from pathlib import Path
 
 from squadops.cycles.check_registry import TOOL_NODE
@@ -37,11 +36,14 @@ def _find_instances_dir() -> Path | None:
     Mirrors ``entrypoint``'s instances.yaml lookup so the resolver agrees with
     where the roster actually lives in each runtime.
     """
-    candidates = (
-        Path("/app/agents/instances"),
-        Path("agents/instances"),
-        Path(os.getenv("SQUADOPS_BASE_PATH", ".")) / "agents/instances",
-    )
+    from squadops.config.path_resolver import PathResolver
+
+    try:
+        # #1991: the base path is PathResolver's to read (SQUADOPS_BASE_PATH, then detection).
+        base = (PathResolver.get_base_path() / "agents/instances",)
+    except RuntimeError:
+        base = ()
+    candidates = (Path("/app/agents/instances"), Path("agents/instances"), *base)
     for path in candidates:
         if path.is_dir():
             return path
