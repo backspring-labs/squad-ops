@@ -58,6 +58,7 @@ def increment_launch(
     baseline_manifest: str,
     frozen: tuple[dict, ...] = (),
     abandoned: dict | None = None,
+    qa_proposed: list[dict] | None = None,
 ) -> LaunchRequest:
     """An increment cycle (§7.3): the policy's proposal profile, run by its squad, proposing
     against the accepted tree. The ``campaign_proposal`` block carries what the proposal run
@@ -68,7 +69,9 @@ def increment_launch(
     its verifier bundle's artifact: pinned at launch, so the proposal knows the ids it may not
     reuse and the evaluation runs exactly these bundles, whatever is promoted meanwhile.
 
-    ``abandoned`` is the brief of the increment this one replaces (row 13), when there is one."""
+    ``abandoned`` is the brief of the increment this one replaces (row 13), when there is one.
+
+    ``qa_proposed`` is what the qa authors proposed instead of testing (#1884), when anything."""
     policy = campaign.policy
     assert campaign.accepted is not None
     return LaunchRequest(
@@ -97,6 +100,9 @@ def increment_launch(
                         # own key, read by the proposal alone — never ``prior_cycle``, which tells
                         # every author the increment was attempted before.
                         **({"abandoned_increment": dict(abandoned)} if abandoned else {}),
+                        # #1884: behaviour a qa author judged desirable that nothing accepted
+                        # required, returned as a proposal rather than a test.
+                        **({"qa_proposed_behaviours": list(qa_proposed)} if qa_proposed else {}),
                     }
                 },
                 notes=f"campaign {campaign.campaign_id}: increment (SIP-0109 §7.3)",

@@ -1393,3 +1393,67 @@ def test_the_accepted_increments_count_each_increment_family_cycle_once():
     ]
 
     assert accepted_increments(log, intents) == 1
+
+
+_PROPOSED = {
+    "behaviour": "Two runs with the same date keep the order they were created in",
+    "why": "The list reorders between refreshes when dates tie",
+    "surface_kind": "endpoint",
+    "surface": "GET /runs",
+}
+
+
+@pytest.mark.parametrize("proposed", [True, False])
+async def test_the_next_proposal_is_shown_what_the_qa_author_proposed_instead_of_testing(
+    calibrating, stored, proposed
+):
+    """#1884, entered at the completion hook that launches the next proposal. Bugs caught: the
+    outlet's entries stored and never read, so "returned as a proposal" reaches no proposer; or
+    a key launched with nothing in it."""
+    import yaml
+
+    from squadops.campaigns.proposed_behaviours import parse_proposed_behaviours, stored_form
+
+    if proposed:
+        content = stored_form(
+            parse_proposed_behaviours(yaml.safe_dump({"proposed_behaviours": [_PROPOSED]}))
+        )
+        stored["art_pb"] = (
+            _ref("art_pb", "proposed_behaviours.yaml", "qa_proposed_behaviours", 5),
+            content.encode(),
+        )
+    w, run = await calibrating(RunVerdict.ACCEPTED)
+    await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
+
+    *_, proposal = await w.campaigns.launch_intents(CID)
+    block = proposal.cycle_request["body"]["execution_overrides"]["campaign_proposal"]
+    assert block.get("qa_proposed_behaviours") == ([_PROPOSED] if proposed else None)
+
+
+async def test_a_proposal_launch_whose_outlet_read_fails_launches_nothing(
+    calibrating, stored, monkeypatch, caplog
+):
+    """#1943's rule, for the launch the outlet feeds: a vault read that fails raises, the
+    completion hook records the attempt as failed (``campaign_progress_failed``), and no launch is
+    written, so the re-hearing retries it. Bug caught: a degraded launch without the entries,
+    whose replay after a restart would launch a different request."""
+    stored["art_pb"] = (
+        _ref("art_pb", "proposed_behaviours.yaml", "qa_proposed_behaviours", 5),
+        b"proposed_behaviours: []",
+    )
+    real = _Vault.retrieve
+
+    async def failing(self, artifact_id):
+        if artifact_id == "art_pb":
+            raise OSError("vault unreadable")
+        return await real(self, artifact_id)
+
+    monkeypatch.setattr(_Vault, "retrieve", failing)
+    w, run = await calibrating(RunVerdict.ACCEPTED)
+
+    await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
+
+    assert "campaign_progress_failed" in caplog.text
+    assert [
+        i for i in await w.campaigns.launch_intents(CID) if i.cycle_kind is CycleKind.INCREMENT
+    ] == []

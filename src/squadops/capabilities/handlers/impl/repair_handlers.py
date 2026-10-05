@@ -1389,7 +1389,19 @@ class QATestRepairHandler(_RepairPromptMixin, _CycleTaskHandler):
         return fill_artifacts + _artifacts_from_fenced_blocks(rest, self._artifact_name)
 
     async def _after_emission(self, inputs: dict[str, Any], result: HandlerResult) -> None:
-        """Merge the fills into their shells first; the typed checks run on the merged set."""
+        """Merge the fills into their shells first; the typed checks run on the merged set.
+
+        #1884: a repair is not given the proposal outlet (the suite's author is). A
+        ``proposed_behaviours.yaml`` in its emission is kept out of its artifacts, so it reaches
+        no tree, and its evidence names it."""
+        if isinstance(result.outputs, dict):
+            from squadops.campaigns.proposed_behaviours import is_outlet_file
+
+            emitted = list(result.outputs.get("artifacts") or [])
+            ignored = [a for a in emitted if is_outlet_file(str(a.get("name") or ""))]
+            if ignored:
+                result.outputs["artifacts"] = [a for a in emitted if a not in ignored]
+                result.outputs["proposed_behaviours_ignored"] = [a["name"] for a in ignored]
         scaffold_input = inputs.get("verification_scaffold")
         if scaffold_input and isinstance(result.outputs, dict):
             artifacts, evidence = _merge_repair_fills(

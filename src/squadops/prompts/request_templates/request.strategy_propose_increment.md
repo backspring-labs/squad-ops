@@ -1,6 +1,6 @@
 ---
 template_id: request.strategy_propose_increment
-version: "8"
+version: "9"
 required_variables:
   - objective_statement
   - objective_measurement
@@ -12,6 +12,7 @@ optional_variables:
   - supervisor_note_section
   - prd_section
   - abandoned_increment_section
+  - qa_proposed_behaviours_section
 ---
 ## Propose the next increment of this application
 
@@ -51,6 +52,7 @@ criterion on it) or leave it out of the text.
 {{frozen_conventions_section}}
 {{supervisor_note_section}}
 {{abandoned_increment_section}}
+{{qa_proposed_behaviours_section}}
 {{prd_section}}
 **The manifest below is what the application does.** Every endpoint, error code, field and client
 route it declares is built, accepted and running, so a criterion about one of them names nothing new.

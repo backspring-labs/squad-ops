@@ -3226,6 +3226,12 @@ class TestReexecuteRepairedSuite:
                 "content": "{}",
                 "type": "typed_check_evaluation",
             },
+            # #1884: the qa author's proposal outlet is stored and never run.
+            {
+                "name": "proposed_behaviours.yaml",
+                "content": "proposed_behaviours: []",
+                "type": "qa_proposed_behaviours",
+            },
         ]
 
         await runner.reexecute_repaired_suite(
