@@ -1364,3 +1364,33 @@ showcase:
     this third increment, so the page reads as the app's evolution; the counted set's
     second campaign, every increment accepted on its first framing
   role: counted
+records:
+  asset: squadops-2.0.0-records.tar.gz
+  sha256: b8a9bb3cd473ea83362de7ff0b7c63b45f2d9508f8413136151c31f24752c19d
+  files: 446
+  campaigns:
+  - cmp_36f0d3b1e98a
+  - cmp_51919765933d
+  - cmp_5247f81c2ea9
+  - cmp_575115942556
+  - cmp_58d4e3b0a5d3
+  - cmp_678167dcd86a
+  - cmp_690067c2b42b
+  - cmp_969baa78fd39
+  - cmp_9757603322b1
+  - cmp_97a4a15f360f
+  - cmp_9b1025685bea
+  - cmp_b3a681c4f994
+  - cmp_c380058c647f
+  - cmp_c3b60dd6889d
+  - cmp_c4b81554bd59
+  - cmp_e39d5b9c24c6
+  bytes: 652892
+  attached_at: '2026-10-05T00:36:49Z'
+  scanned:
+    secret_values: 32
+    patterns:
+    - langfuse key
+    - api key (sk-)
+    - jwt
+    - private key
