@@ -320,6 +320,7 @@ class RunCompletion:
                             round_failures=ledger.round_failures if ledger else (),
                             absent_emissions=ledger.absent_emissions if ledger else (),
                             revision_forms=tuple(revision_forms),
+                            path_overrides=ledger.path_overrides if ledger else (),
                         ),
                     )
                 except Exception:

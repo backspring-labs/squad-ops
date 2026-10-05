@@ -161,6 +161,44 @@ class RoundFailure:
 
 
 @dataclass(frozen=True)
+class PathOverride:
+    """One correction decision the deterministic policy overrode (#447, pf-45, #994, #1757).
+
+    The stored decision artifact holds the model's proposed path; this is the path the round
+    took, and which anchor changed it. Before #1757 the override rode only the
+    ``CORRECTION_DECIDED`` event and the log, so "an anchor fired" was inferred from what
+    followed rather than read."""
+
+    task_id: str
+    round_index: int
+    proposed: str
+    path: str
+    reason: str
+    checks: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "task_id": self.task_id,
+            "round_index": self.round_index,
+            "proposed": self.proposed,
+            "path": self.path,
+            "reason": self.reason,
+            "checks": list(self.checks),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> PathOverride:
+        return cls(
+            task_id=str(data["task_id"]),
+            round_index=int(data["round_index"]),
+            proposed=str(data["proposed"]),
+            path=str(data["path"]),
+            reason=str(data["reason"]),
+            checks=tuple(str(c) for c in data.get("checks") or ()),
+        )
+
+
+@dataclass(frozen=True)
 class AbsentEmission:
     """One emission that yielded no file (#566's marker, #998's signatures).
 
@@ -266,6 +304,9 @@ class RunLoopSummary:
     #: #1710: every revision form a task of the run took (a repair's, a self-evaluation pass's,
     #: a qa re-take's), each with its task. ``None`` on a row written before they were recorded.
     revision_forms: tuple[dict[str, Any], ...] | None = ()
+    #: #1757: every correction decision the policy overrode. ``None`` on a row written before
+    #: they were recorded.
+    path_overrides: tuple[PathOverride, ...] | None = ()
     summary_version: int = RUN_LOOP_SUMMARY_VERSION
 
     def to_dict(self) -> dict[str, Any]:
@@ -286,6 +327,9 @@ class RunLoopSummary:
             ),
             "revision_forms": (
                 None if self.revision_forms is None else [dict(f) for f in self.revision_forms]
+            ),
+            "path_overrides": (
+                None if self.path_overrides is None else [o.to_dict() for o in self.path_overrides]
             ),
         }
 
@@ -317,6 +361,11 @@ class RunLoopSummary:
                 None
                 if data.get("revision_forms") is None
                 else tuple(dict(f) for f in data["revision_forms"])
+            ),
+            path_overrides=(
+                None
+                if data.get("path_overrides") is None
+                else tuple(PathOverride.from_dict(o) for o in data["path_overrides"])
             ),
             summary_version=int(data.get("summary_version") or RUN_LOOP_SUMMARY_VERSION),
         )

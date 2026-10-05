@@ -1028,6 +1028,66 @@ class TestCorrectionTerminalPaths:
         assert RunStatus.FAILED in terminal_statuses
 
 
+class TestAModelLimitationRewindIsPatched:
+    """#1757 (the 2.1 plan, §5 ruling 4): for an unattended run, run death is not what rewind
+    means. Entered at ``execute_run``: the analyzer says ``model_limitation``, the lead chooses
+    ``rewind``, and the round takes ``patch``, with the override on the run's summary."""
+
+    async def test_the_round_patches_and_the_summary_records_why(
+        self, executor, mock_queue, mock_registry, mock_event_bus
+    ):
+        from squadops.cycles.run_loop_summary import PathOverride
+
+        decision = {
+            "summary": "rewind",
+            "role": "lead",
+            "correction_path": "rewind",
+            "decision_rationale": "the model cannot do this in one call",
+            "affected_task_types": [],
+            "classification": "model_limitation",
+            "analysis_summary": "completion truncated at the token cap",
+        }
+        script = [
+            ("FAILED", {"outcome_class": TaskOutcome.SEMANTIC_FAILURE, "role": "strat"}, "bad"),
+            (
+                "SUCCEEDED",
+                {
+                    "classification": "model_limitation",
+                    "analysis_summary": "completion truncated at the token cap",
+                    "role": "data",
+                },
+                None,
+            ),
+            ("SUCCEEDED", decision, None),
+        ] + [("SUCCEEDED", {"summary": "ok", "role": "dev"}, None)] * 8
+        _script_replies(mock_queue.reply_router, script)
+
+        with patch(
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        [decided] = [
+            c.kwargs["payload"]
+            for c in mock_event_bus.emit.call_args_list
+            if c.args[0] == EventType.CORRECTION_DECIDED
+        ]
+        [summary_call] = mock_registry.record_run_loop_summary.await_args_list
+        [override] = summary_call.args[1].path_overrides
+        assert decided["correction_path"] == "patch"
+        assert decided["policy_override"]["reason"] == (
+            "model_limitation_rewind_with_unspent_repair"
+        )
+        assert override == PathOverride(
+            task_id=override.task_id,
+            round_index=override.round_index,
+            proposed="rewind",
+            path="patch",
+            reason="model_limitation_rewind_with_unspent_repair",
+        )
+
+
 # ---------------------------------------------------------------------------
 # max_correction_attempts
 # ---------------------------------------------------------------------------

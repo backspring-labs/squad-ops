@@ -92,17 +92,30 @@ class TestRewindAnchor:
     unused — on the exact failure shape the repair path was built for.
     """
 
-    def test_work_product_rewind_becomes_patch(self):
-        resolution = resolve_correction_path("rewind", {}, {}, classification="work_product")
+    @pytest.mark.parametrize(
+        ("classification", "reason"),
+        [
+            ("work_product", "work_product_rewind_with_unspent_repair"),
+            # #1757: all 7 stored model-limitation rewinds ended their run with repair budget
+            # left; 25 of the 30 that resolved to patch completed.
+            ("model_limitation", "model_limitation_rewind_with_unspent_repair"),
+        ],
+    )
+    def test_a_rewind_a_patch_can_substitute_for_becomes_patch(self, classification, reason):
+        resolution = resolve_correction_path("rewind", {}, {}, classification=classification)
 
         assert resolution.path == "patch"
         assert resolution.overridden_from == "rewind"
-        assert resolution.override_reason == "work_product_rewind_with_unspent_repair"
+        assert resolution.override_reason == reason
         assert resolution.failed_required_checks == ()
 
-    @pytest.mark.parametrize("classification", ["environment", "infrastructure", "unknown", ""])
+    @pytest.mark.parametrize(
+        "classification",
+        ["execution", "alignment", "decision", "contract_compliance", "unknown", ""],
+    )
     def test_non_work_product_rewind_stands(self, classification):
-        """Patching correct code against a broken world is the opposite failure."""
+        """Patching correct code against a broken world is the opposite failure. Bug caught:
+        the model-limitation anchor widened to every classification."""
         resolution = resolve_correction_path("rewind", {}, {}, classification=classification)
 
         assert resolution.path == "rewind"
