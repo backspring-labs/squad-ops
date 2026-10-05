@@ -172,7 +172,7 @@ Key principle: **acceptance is a design commitment on main, not an implementatio
 
 **A SIP that ships in parts keeps a delivery ledger** (the owner, 2026-10-04: "the record is maintained as to what remains left to do, where it is to be deployed, so that we can close and progress SIPs"). Large SIPs ship over several releases, and a release plan is superseded at its cut. So the record of what shipped and what remains lives in the SIP:
 - **Every accepted SIP, and every proposed SIP that has been placed, carries a `Delivery ledger`.** It has one row per part that ships separately (a phase, a slice, a section), and each row has a status:
-  - *shipped*: the release and the PR;
+  - *shipped*: the release and the PR, and the issue it closed when there was one (the guard reads labelled open issues against the rows, and the issue is still open in the PR that ships it);
   - *placed*: the release **and the open issue that tracks it**; a part with no open issue is not placed;
   - *unplaced*: said deliberately;
   - *dropped*: by the numbered amendment that dropped it.
@@ -181,7 +181,7 @@ Key principle: **acceptance is a design commitment on main, not an implementatio
   It ends with one line saying what closes the SIP.
 - **It is updated in the PR that ships or re-places a part,** and the release cut's SIP sweep (step 5 below) reads it. A SIP is promoted when every row is shipped or dropped. Otherwise the ledger names what remains and where.
 - **The ledger records delivery; it is not a design change.** A design change is still a numbered amendment (step 5a).
-- **Guarded** by `tests/unit/architecture/test_sip_ledgers.py` (#1969): the ledger exists, its statuses are the vocabulary, a shipped row names a tag or PR, a placed row an open issue, every SIP has a portfolio row, and no header targets a released line it did not ship. A placed row's issue is read from `sips/open-issues.json`; refresh it with `scripts/maintainer/refresh_open_issues.py`.
+- **Guarded** by `tests/unit/architecture/test_sip_ledgers.py` (#1969): the ledger exists, its statuses are the vocabulary, a shipped row names a tag or PR, a placed row an open issue, every SIP has a portfolio row, and no header targets a released line it did not ship. A placed row's issue is read from `sips/open-issues.json`; refresh it with `scripts/maintainer/refresh_open_issues.py`. **Every placed issue carries `sip:NNNN`** (#1979; `scripts/maintainer/sync_sip_labels.py` applies them), the guard matches labels to rows both ways, and a PR closing a `sip:` issue changes that SIP's ledger or says `SIP ledger: n/a — <reason>` (`check_pr_closure.sh`).
 
 **Every new SIP or idea gets an intake check** (the owner, the same day: "keep track of where there is overlap, conflict, and/or where reconciliation is needed"). Before a new draft or idea is recorded, it is checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded idea.
 - **The finding goes in two places:** the new document's header (what it overlaps, at what point, and the boundary between them) and the portfolio's reconciliation queue.

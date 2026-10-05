@@ -27,7 +27,7 @@ The same finding goes into the portfolio's reconciliation queue and intake log.
 
 ## Delivery ledger (current as of <YYYY-MM-DD>)
 
-One row per part that ships separately. Statuses: *shipped* (the release and the PR), *placed* (the
+One row per part that ships separately. Statuses: *shipped* (the release, the PR, and the issue it closed), *placed* (the
 release and the open issue tracking it, labelled `sip:NNNN` once numbered), *unplaced* (said
 deliberately), *dropped* (by the numbered amendment that dropped it), or *deferred to N.x (ruled
 <date>)*. Updated in the PR that ships or re-places a part (`tests/unit/architecture/test_sip_ledgers.py`

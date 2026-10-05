@@ -15,15 +15,20 @@ Rules, over the real tree:
    N.x (ruled <date>);
 5. a *shipped* row names a tag or a PR;
 6. no SIP header names a tagged release as a target it has not shipped;
-7. on a ``release/*`` branch, no ledger is "current as of" a date before the latest release.
+7. on a ``release/*`` branch, no ledger is "current as of" a date before the latest release;
+8. (#1979) each SIP's placed rows and its open ``sip:NNNN`` issues match, with no orphan either
+   way. ``scripts/maintainer/sync_sip_labels.py`` applies the labels.
+
+The ledgers are read through ``scripts/maintainer/sip_ledgers.py``, the one parser the label sync
+and the cut's sweep also use.
 """
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -31,13 +36,14 @@ import pytest
 pytestmark = [pytest.mark.domain_contracts]
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-SIPS = REPO_ROOT / "sips"
-_LEDGER = re.compile(r"^## Delivery ledger([^\n]*)\n(.*?)(?=^## |\Z)", re.S | re.M)
-_VOCABULARY = ("shipped", "placed", "unplaced", "dropped", "deferred to")
+sys.path.insert(0, str(REPO_ROOT / "scripts" / "maintainer"))
+import sip_ledgers  # noqa: E402
+
+SIPS = sip_ledgers.SIPS
+_VOCABULARY = sip_ledgers.VOCABULARY
 _RULED = re.compile(r"ruled \d{4}-\d{2}-\d{2}")
 _TAG_OR_PR = re.compile(r"\bv\d+\.\d+\.\d+\b|#\d+")
 _RELEASE = re.compile(r"\b\d+\.\d+(?:\.\d+)?\b")
-_ISSUE = re.compile(r"#(\d+)")
 
 
 def _sips(*folders: str) -> list[Path]:
@@ -45,24 +51,11 @@ def _sips(*folders: str) -> list[Path]:
 
 
 def _rows(path: Path) -> list[tuple[str, str, str]]:
-    """``(part, status, where)`` for each row of a SIP's ledger table, or ``[]``."""
-    m = _LEDGER.search(path.read_text(encoding="utf-8"))
-    if not m:
-        return []
-    rows = []
-    for line in m.group(2).splitlines():
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if not line.startswith("|") or len(cells) < 3 or set(cells[0]) <= {"-", " "}:
-            continue
-        if cells[0].lower() == "part":
-            continue
-        rows.append((cells[0], cells[1], cells[2]))
-    return rows
+    return [(r.part, r.status_cell, r.where) for r in sip_ledgers.rows(path)]
 
 
 def _status(cell: str) -> str:
-    """The status word a cell leads with, markup stripped: ``**placed**: …`` reads ``placed``."""
-    return re.sub(r"[*_`]", "", cell).strip().lower()
+    return sip_ledgers.Row("", cell, "").status
 
 
 def _tagged() -> set[str]:
@@ -106,14 +99,14 @@ def test_a_shipped_row_names_a_tag_or_a_pr():
 
 
 def test_a_placed_row_names_a_release_and_an_open_issue():
-    cache = json.loads((SIPS / "open-issues.json").read_text(encoding="utf-8"))
+    cache = sip_ledgers.open_issues()
     open_issues = set(cache["open"])
 
     def rule(path):
         for part, status, where in _rows(path):
             if not _status(status).startswith("placed"):
                 continue
-            issues = {int(n) for n in _ISSUE.findall(f"{status} {where}")}
+            issues = sip_ledgers.Row(part, status, where).issues
             if not _RELEASE.search(where) or not issues:
                 yield f"row {part!r}: placed rows name a release and the issue tracking it"
             elif not issues & open_issues:
@@ -201,10 +194,35 @@ def test_a_release_branch_refreshes_every_ledger():
     latest = re.search(r"^## \[\d+\.\d+\.\d+\] — (\d{4}-\d{2}-\d{2})", changelog, re.M).group(1)
 
     def rule(path):
-        m = _LEDGER.search(path.read_text(encoding="utf-8"))
-        if m:
-            dated = re.search(r"\d{4}-\d{2}-\d{2}", m.group(1))
+        heading = sip_ledgers.ledger_heading(path)
+        if heading is not None:
+            dated = re.search(r"\d{4}-\d{2}-\d{2}", heading)
             if dated is None or dated.group(0) < latest:
                 yield f"ledger current as of {dated.group(0) if dated else 'no date'}, before {latest}"
 
     assert _violations(rule) == [], "\n".join(_violations(rule))
+
+
+def test_placed_rows_and_sip_labelled_issues_match():
+    """#1979. Bugs caught: an issue carrying a SIP part with no label (so closing it never asks
+    for the ledger change), and a labelled issue no row names (a part the ledger forgot).
+
+    The second direction asks for *a* row, not a placed one. The PR that ships a part moves its
+    row to shipped while the issue is still open (it closes when that PR merges), so requiring a
+    placed row would fail exactly the PR doing the right thing: #2017 shipped #1967's row, and
+    this rule then failed on a tree where nothing was wrong."""
+    cache = sip_ledgers.open_issues()["open"]
+    mismatches = []
+    for path in sip_ledgers.accepted():
+        label = f"sip:{sip_ledgers.sip_number(path)}"
+        placed = {n for n in sip_ledgers.placed_issues(path) if n in cache}
+        named = {n for row in sip_ledgers.rows(path) for n in row.issues}
+        labelled = {n for n, labels in cache.items() if label in labels}
+        for n in sorted(placed - labelled):
+            mismatches.append(f"{path.name}: placed row names #{n}, which lacks {label}")
+        for n in sorted(labelled - named):
+            mismatches.append(f"{path.name}: #{n} carries {label}, but no row names it")
+    assert mismatches == [], (
+        "\n".join(mismatches) + "\n(run scripts/maintainer/sync_sip_labels.py, then "
+        "refresh_open_issues.py)"
+    )

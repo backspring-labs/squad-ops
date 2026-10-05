@@ -105,6 +105,26 @@ for n in $closing_numbers; do
     echo "pr-closure: FAIL — Closes #${n} is already ${state} (typo, duplicate, or stale reference?)" >&2; status=1; continue
   fi
   echo "pr-closure: ok — Closes #${n} (open issue)"
+  # #1979: an issue carrying a SIP part (label sip:NNNN) closes only with that SIP's ledger
+  # changed in the same PR, or a stated reason. A ledger left "placed" on a closed issue is the
+  # drift the label exists to stop.
+  for sip in $(printf '%s' "$json" | python3 -c 'import json,sys; print(" ".join(l["name"][4:] for l in json.load(sys.stdin).get("labels", []) if l["name"].startswith("sip:")))'); do
+    if [ -z "${changed_files+x}" ]; then
+      if [ -n "${PR_NUMBER:-}" ]; then
+        changed_files="$(gh api "repos/${repo}/pulls/${PR_NUMBER}/files" --paginate -q '.[].filename' 2>/dev/null || true)"
+      else
+        changed_files="$(git diff --name-only origin/main...HEAD 2>/dev/null || true)"
+      fi
+    fi
+    if printf '%s\n' "$changed_files" | grep -qE "^sips/[a-z]+/SIP-${sip}-"; then
+      echo "pr-closure: ok — Closes #${n} (sip:${sip}): SIP-${sip}'s ledger changes in this PR"
+    elif printf '%s' "$body" | grep -qiE '^[[:space:]]*SIP ledger: n/a[[:space:]]*[—-][[:space:]]*[^[:space:]]'; then
+      echo "pr-closure: ok — Closes #${n} (sip:${sip}): 'SIP ledger: n/a' with a reason"
+    else
+      echo "pr-closure: FAIL — Closes #${n} carries sip:${sip}, but this PR changes no SIP-${sip} file: update its delivery ledger row, or add 'SIP ledger: n/a — <reason>' (#1979)" >&2
+      status=1
+    fi
+  done
 done
 [ "$status" -eq 0 ] && [ -z "$closing_numbers" ] && echo "pr-closure: ok — explicit opt-out present, no closing reference"
 exit "$status"
