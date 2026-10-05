@@ -25,6 +25,7 @@ from squadops.campaigns.models import (
     CampaignOutcome,
     CampaignState,
     ControlOperation,
+    ControlOutcome,
     CycleKind,
     LaunchIntentState,
 )
@@ -314,6 +315,77 @@ async def test_a_cycle_its_hook_failed_to_decide_is_re_heard_once_at_startup(cal
     ]
     assert (await w.campaigns.get_campaign(CID)).state is CampaignState.AT_PROPOSAL
     w.launches.assert_awaited_once()
+
+
+async def _sweep(w: _World, cycle_ids: list[str], passes: int) -> None:
+    """The runtime's campaign sweep (``main._sweep_campaigns``), run for ``passes`` intervals."""
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    from squadops.api.runtime import main
+
+    launch = AsyncMock()
+    launch.launched_cycles.return_value = cycle_ids
+    ticks = [None] * passes + [asyncio.CancelledError()]
+    with (
+        patch.object(main.asyncio, "sleep", AsyncMock(side_effect=ticks)),
+        pytest.raises(asyncio.CancelledError),
+    ):
+        await main._sweep_campaigns(
+            SimpleNamespace(campaign_launch=launch, campaign_progress=w.progress)
+        )
+
+
+async def test_a_cycle_its_hook_failed_to_decide_is_re_heard_by_the_sweep(calibrating):
+    """§24v, #1972: the same lost hook as above, while the process stays up. Entered at the
+    completion hook and at the runtime's sweep. Bugs caught: the campaign left where the hook
+    left it until the next restart; or a sweep that decides again on every pass."""
+    w, run = await calibrating(RunVerdict.ACCEPTED)
+    working = w.progress._launched_cycles
+    w.progress._launched_cycles = AsyncMock(side_effect=RuntimeError("the hook died"))
+    await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
+    w.progress._launched_cycles = working
+
+    await _sweep(w, ["cyc_cal"], passes=2)
+
+    log = await w.campaigns.control_log(CID)
+    decisions = [e for e in log if e.operation is ControlOperation.DECIDE]
+    assert [(d.target, d.binding["action"]) for d in decisions] == [("cyc_cal", "propose")]
+    assert (await w.campaigns.get_campaign(CID)).state is CampaignState.AT_PROPOSAL
+    w.launches.assert_awaited_once()
+
+
+async def test_a_cycle_heard_by_the_hook_and_the_sweep_at_once_is_decided_once(calibrating):
+    """#1972: the sweep and a hook still deciding the same cycle. Bug caught: both deciding it,
+    so the calibration is promoted twice and the second decision is refused as a conflict and
+    recorded in the campaign's log."""
+    import asyncio
+
+    w, run = await calibrating(RunVerdict.ACCEPTED)
+    await w.cycles.record_cycle_end(
+        RecordedEnd("cyc_cal", run.run_id, CycleStopReason.SEQUENCE_COMPLETED)
+    )
+    real_assess = w._assess
+
+    async def slow_assess(cycle_id):
+        await asyncio.sleep(0)  # the other hearer runs here
+        return await real_assess(cycle_id)
+
+    w.progress._assess = slow_assess
+    cycle = await w.cycles.get_cycle("cyc_cal")
+
+    results = await asyncio.gather(
+        w.progress.cycle_ended(cycle, run, CycleStopReason.SEQUENCE_COMPLETED),
+        w.progress.rehear_ended(["cyc_cal"]),
+    )
+
+    log = await w.campaigns.control_log(CID)
+    operations = [e.operation for e in log]
+    assert operations.count(ControlOperation.PROMOTE) == 1
+    assert operations.count(ControlOperation.DECIDE) == 1
+    assert all(e.outcome is ControlOutcome.APPLIED for e in log)
+    assert results[0] is not None and results[1] == []
 
 
 async def test_startup_leaves_a_paused_or_unrecorded_ending_alone(calibrating):

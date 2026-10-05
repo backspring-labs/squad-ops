@@ -697,8 +697,10 @@ _CAMPAIGN_SWEEP_INTERVAL_S = 60
 
 async def _sweep_campaigns(state) -> None:
     """§9.2, §9.5 (§24ae): every interval, each increment gate waiting past a seat's ruling bound
-    is recorded as overdue; §9.3 (#1802): each launch the box refused is re-attempted when due.
-    A sweep that fails is logged and the next one runs."""
+    is recorded as overdue; §9.3 (#1802): each launch the box refused is re-attempted when due;
+    §24v (#1972): each launched cycle that ended with no decision is re-heard, so a completion
+    hook that failed while the process stayed up is not left until the next restart. A sweep
+    that fails is logged and the next one runs."""
     while True:
         await asyncio.sleep(_CAMPAIGN_SWEEP_INTERVAL_S)
         try:
@@ -709,6 +711,15 @@ async def _sweep_campaigns(state) -> None:
             await state.campaign_launch.retry_blocked()
         except Exception:
             logger.exception("campaign_launch_retry_sweep_failed")
+        try:
+            # Outside the drain, as at startup: a decision launches through the drain's lock.
+            decided = await state.campaign_progress.rehear_ended(
+                await state.campaign_launch.launched_cycles()
+            )
+            if decided:
+                logger.warning("campaign_cycles_reheard_by_the_sweep cycles=%s (#1972)", decided)
+        except Exception:
+            logger.exception("campaign_rehear_sweep_failed")
 
 
 async def _resume_campaigns(state) -> None:
