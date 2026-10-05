@@ -1,0 +1,216 @@
+version: 1
+kind: interface_manifest
+project_id: group-run
+source_prd: "group_run PRD v0.5 (SIP-0098 \xA76.7)"
+stack: fullstack_fastapi_react
+scope: 'Full-stack group_run MVP: create, list, and view run events; join and leave
+  runs by participant name; duplicate-name rejection; in-memory persistence. Excludes
+  authentication, persistent database, external APIs, realtime features, and all post-MVP
+  enhancements (RSVP states, maps, recurring runs, notifications).
+
+  '
+entities:
+- name: Run
+  fields:
+  - name: id
+    type: string
+    required: true
+    generated: true
+  - name: title
+    type: string
+    required: true
+  - name: datetime
+    type: string
+    required: true
+  - name: meeting_location
+    type: string
+    required: true
+  - name: distance
+    type: string
+    required: false
+    default: null
+  - name: pace_target
+    type: string
+    required: false
+    default: null
+  - name: route_notes
+    type: string
+    required: false
+    default: null
+  - name: capacity
+    type: integer
+    required: false
+    default: null
+  - name: participants
+    type: list[Participant]
+    required: true
+    default: []
+  - name: participant_count
+    type: integer
+    required: true
+- name: Participant
+  fields:
+  - name: name
+    type: string
+    required: true
+api:
+  base_path: ''
+  request_shapes:
+    RunCreate:
+      required:
+      - title
+      - datetime
+      - meeting_location
+      optional:
+      - distance
+      - pace_target
+      - route_notes
+      - capacity
+    JoinRequest:
+      required:
+      - name
+    LeaveRequest:
+      required:
+      - name
+  endpoints:
+  - method: POST
+    path: /runs
+    summary: create a run event
+    request: RunCreate
+    response: Run
+    success_status: 201
+    errors:
+    - validation_error
+  - method: GET
+    path: /runs
+    summary: list all run events sorted by datetime ascending (best-effort lexical)
+    response: list[Run]
+  - method: GET
+    path: /runs/{run_id}
+    summary: get run details with participant list
+    response: Run
+    errors:
+    - run_not_found
+  - method: POST
+    path: /runs/{run_id}/join
+    summary: join a run with a participant name
+    request: JoinRequest
+    response: Run
+    errors:
+    - validation_error
+    - run_not_found
+    - duplicate_participant
+    - capacity_reached
+  - method: POST
+    path: /runs/{run_id}/leave
+    summary: leave a run by participant name
+    request: LeaveRequest
+    response: Run
+    errors:
+    - validation_error
+    - run_not_found
+    - participant_not_found
+  error_contract:
+    shape: '{"error": {"code": "...", "message": "..."}}'
+    codes:
+      validation_error:
+        http: 422
+      run_not_found:
+        http: 404
+      participant_not_found:
+        http: 404
+      duplicate_participant:
+        http: 409
+      capacity_reached:
+        http: 409
+frontend:
+  framework: react_vite
+  routes:
+  - path: /
+    view: RunList
+    purpose: list all runs showing title, datetime, location, participant count; empty-state
+      message; links to create and to detail
+    testids:
+    - run-list-view
+    - run-list
+    - run-row
+    - run-title
+    - run-datetime
+    - run-location
+    - participant-count
+    - create-run-link
+    - empty-state
+  - path: /runs/new
+    view: RunCreate
+    purpose: form to create a run event with required fields (title, datetime, meeting_location)
+      and optional fields (distance, pace_target, route_notes, capacity)
+    testids:
+    - run-create-view
+    - run-create-form
+    - run-title-input
+    - run-datetime-input
+    - run-location-input
+    - run-distance-input
+    - run-pace-input
+    - run-notes-input
+    - run-capacity-input
+    - run-create-submit
+    - run-create-error
+  - path: /runs/:run_id
+    view: RunDetail
+    purpose: display full run details, participant list, join form, and leave form;
+      show error state for unknown run
+    testids:
+    - run-detail-view
+    - run-detail-title
+    - run-detail-datetime
+    - run-detail-location
+    - run-detail-distance
+    - run-detail-pace
+    - run-detail-notes
+    - participant-list
+    - participant-item
+    - join-form
+    - join-name-input
+    - join-submit
+    - leave-form
+    - leave-name-input
+    - leave-submit
+    - participant-count
+    - run-error
+persistence: in_memory
+decisions:
+- id: participant-name-uniqueness
+  choice: case-insensitive uniqueness per run
+  warrant: "PRD \xA75.4 \u2014 'case sensitivity behavior should be defined in implementation;\
+    \ default recommendation: case-insensitive uniqueness'"
+- id: leave-unknown-participant
+  choice: POST /runs/{run_id}/leave returns 404 with error envelope when the participant
+    name is not on the run
+  warrant: "PRD \xA75.5 \u2014 'If participant name does not exist on the run, backend\
+    \ returns clear error (or no-op with clear response; choose one and document)'"
+- id: datetime-as-string
+  choice: datetime stored and returned as a plain string; no parsing, normalization,
+    or timezone handling
+  warrant: "PRD \xA75.1 \u2014 'string input acceptable for MVP'"
+- id: participant-count-derivation
+  choice: participant_count is always computed as len(participants) at serialization
+    time, never a stored integer
+  warrant: "PRD \xA75.6 requires participant count to reflect current state; technical\
+    \ design \xA76 invariant 2"
+- id: list-ordering
+  choice: runs returned in insertion order (creation order); no explicit sorting in
+    the core API
+  warrant: PRD does not mandate ordering; Expansion Tier 1 item 2 (datetime sorting)
+    is a post-core enhancement that may be added after core stability
+- id: id-generation
+  choice: server-generated short hex identifier (e.g. 12-char UUID fragment)
+  warrant: "PRD \xA75.1 \u2014 'Successful create returns created run with generated\
+    \ id'; no external dependency permitted (PRD \xA79)"
+provenance:
+  mode: authored
+  cycle_id: cyc_035199bf8994
+  task_id: task-run_17217add-003-development.author_manifest
+  attempts: 1
+  revisions: []
+

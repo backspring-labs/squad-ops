@@ -1,6 +1,6 @@
 ---
 template_id: request.strategy_propose_increment
-version: "5"
+version: "6"
 required_variables:
   - objective_statement
   - objective_measurement
@@ -43,6 +43,14 @@ is not a criterion. "A third join to a run with capacity 2 is refused" is, becau
 {{supervisor_note_section}}
 {{abandoned_increment_section}}
 {{prd_section}}
+**The manifest below is what the application does.** Every endpoint, error code, field and client
+route it declares is built, accepted and running, so a criterion about one of them names nothing new.
+Your change is what `manifest_delta` adds or modifies: the build may touch only the files those
+declarations expand to, and tests. A `feature` or `fix` with an empty `manifest_delta` gives the build
+nothing to change, and is refused. For example: where the manifest already gives Run a `capacity`
+and the join endpoint a `capacity_reached` error, the capacity limit is already enforced, and
+proposing it again with an empty delta has nothing to build.
+
 ### The accepted application's interface manifest, exactly as it stands
 
 ```yaml

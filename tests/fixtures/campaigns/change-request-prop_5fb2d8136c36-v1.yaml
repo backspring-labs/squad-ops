@@ -1,0 +1,27 @@
+proposal_id: prop_5fb2d8136c36
+version: 1
+baseline_tree: 87af258bdd4dc0c01358380c0d8e77cf9dc1294c60f3b4f3bfe016c4b07a9164
+kind: feature
+prd_delta:
+- id: capacity-enforcement
+  op: add
+  text: When a run has a positive integer capacity, a join that would make participant_count
+    exceed that capacity is refused with HTTP 409 and error code capacity_reached.
+manifest_delta: []
+criteria:
+- id: T2
+  statement: A join to a run created with capacity 2, after two participants have
+    already joined, is refused with 409 capacity_reached
+  surface_kind: endpoint
+  surface: POST /runs/{run_id}/join
+  observable: 'the response is 409 and the body matches {"error": {"code": "capacity_reached",
+    "message": "<non-empty string>"}}'
+must_not_break:
+- T1
+retires: []
+replaces_verifiers: []
+footprint:
+- backend/tests/**
+- frontend/src/__tests__/**
+- frontend/src/tests/**
+content_hash: 875c2df2b27b50bf9347df7db91a66cccf04839dc99ad2440ad4d4790635631b

@@ -131,6 +131,7 @@ class RefusalKind(StrEnum):
     KEEP_AND_RETIRE = "keep_and_retire"
     NO_CRITERIA = "no_criteria"
     REUSED_CRITERION = "reused_criterion"
+    NOTHING_TO_BUILD = "nothing_to_build"
 
 
 @dataclass(frozen=True)
@@ -411,6 +412,12 @@ def derive_footprint_from(before: Any, after: Any) -> tuple[str, ...]:
     return tuple(sorted(changed)) + tuple(f"{prefix}**" for prefix in namespace)
 
 
+def footprint_product_files(footprint: tuple[str, ...]) -> tuple[str, ...]:
+    """The product files a footprint admits: every entry but the qa test namespace's ``<dir>**``
+    patterns, which ``derive_footprint_from`` appends whatever the delta (#1961)."""
+    return tuple(p for p in footprint if not p.endswith("**"))
+
+
 def in_footprint(path: str, footprint: tuple[str, ...]) -> bool:
     return any(fnmatch(path, pattern) for pattern in footprint)
 
@@ -484,6 +491,18 @@ def validate_proposal(authored: dict, context: ProposalContext) -> ProposalVerdi
                 RefusalKind.OUT_OF_SCOPE,
                 f"the delta reaches {', '.join(outside)}, outside the objective's allowed scope "
                 f"({', '.join(context.allowed_scope)}); a proposal is refused, never trimmed",
+            )
+        )
+    if request.kind is not ChangeKind.REFACTOR and not footprint_product_files(footprint):
+        # #1961: an empty delta derives a footprint of tests only, so no build could satisfy the
+        # criteria; the 2.0 set's prop_5fb2d8136c36 v1 passed every rail and reached the gate.
+        refusals.append(
+            ProposalRefusal(
+                RefusalKind.NOTHING_TO_BUILD,
+                f"this {request.kind} declares nothing for a build to implement: its manifest "
+                "delta changes no product file, so the build could touch only tests. Everything "
+                "the accepted manifest declares is already built; a behaviour change needs the "
+                "manifest delta that declares it",
             )
         )
     refusals.extend(_surface_refusals(request, candidate))

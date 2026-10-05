@@ -197,6 +197,34 @@ async def test_the_proposal_is_told_a_new_criterion_must_fail_before_the_change(
     assert "the test must fail there, then pass" in prompt
 
 
+async def test_the_proposal_is_told_the_manifest_is_what_the_application_does():
+    """#1961, through the real render. Bug caught: the proposer re-proposing a capability the
+    accepted manifest already declares. The 2.0 set's campaign 1, increment 2, v1 proposed capacity
+    enforcement with an empty delta where ``capacity`` and ``capacity_reached`` were declared."""
+    ctx = _ctx(_fenced(_REFERENCE))
+
+    await StrategyProposeIncrementHandler().handle(ctx, _inputs())
+
+    [prompt] = _prompts(ctx)
+    assert "**The manifest below is what the application does.**" in prompt
+    assert "A `feature` or `fix` with an empty `manifest_delta` gives the build" in prompt
+
+
+async def test_an_empty_delta_feature_is_refused_inside_the_task_and_revised():
+    """#1961, at the live caller. Bug caught: the new rail's refusal not reaching the proposer as
+    a reason it can act on, so the empty-delta proposal is never revised before the gate."""
+    empty = yaml.safe_load(_REFERENCE)
+    empty["manifest_delta"] = []
+    ctx = _ctx(_fenced(yaml.safe_dump(empty)), _fenced(_REFERENCE))
+
+    result = await StrategyProposeIncrementHandler().handle(ctx, _inputs())
+
+    first, second = _prompts(ctx)
+    assert "[nothing_to_build]" not in first
+    assert "[nothing_to_build]" in second
+    assert result.success
+
+
 @pytest.mark.parametrize(
     ("stack", "told"),
     [

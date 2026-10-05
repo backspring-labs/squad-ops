@@ -101,7 +101,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | proposal tasks re-run on re-attach (random ids) | **placed** | 2.1.0, #1934 |
 | a restart leaves the interrupted run's Prefect flow runs open (the re-attach, §24am) | **placed** | 2.1.0, #2007 |
 | the stack's frozen conventions told to the proposer (Next.js; the rest) | **placed** | 2.1.0, #1950, #1962 |
-| the rails accept an empty manifest delta | **placed** | 2.1.0, #1961 |
+| the rails accept an empty manifest delta | **shipped** (§24au) | 2.1.0, #2011 |
 | the prior-cycle brief's remainder | **placed** | 2.1.0, #1692 |
 | the supervisor creates and manages campaigns (revises §24al) | **placed** | 2.1.0, #1940 |
 | a campaign records its definition file's hash | **placed** | 2.1.0, #1954 |
@@ -2460,3 +2460,33 @@ with the gap named. The gap is the 2.1.0 rows above.
 **Who ruled it.** The supervisor, as the owner's delegate under the 2.0 standing authority, read the
 set by the pre-registration's frame. The cut itself (the tag, the Release and the records upload) is
 the owner's consolidated approval.
+
+### 24au. The rails refuse a behaviour change with nothing to build (2026-10-05, §7.2, §9.1, #1961)
+
+**What changed.**
+- **A new rail.** A `feature` or `fix` whose derived footprint holds no product file is refused,
+  as `nothing_to_build`. Such a footprint holds only the qa test namespace's patterns, which an
+  empty `manifest_delta` derives. The refusal returns to the proposer inside its task, as every rail
+  does (§9.1). A `refactor` is unaffected.
+- **The proposal request says what the manifest is** (template v6). The accepted manifest is what the
+  application does: everything it declares is built, and a change is what `manifest_delta` adds or
+  modifies.
+
+**What it does not do.** A behaviour change inside an existing declaration (say, a declared error the
+code misses) cannot be proposed, because the accepted manifest is accepted behaviour. The issue's
+option 2 would admit the fill-slot files a criterion's surface names. It is not built: it widens what
+a build may touch on the criteria's say-so, and would need its own argument.
+
+**Evidence.**
+- **The case:** the 2.0 set's campaign 1, increment 2, `prop_5fb2d8136c36` v1 (`kind: feature`,
+  `manifest_delta: []`). Its footprint was the qa namespace alone. It passed every rail, and the
+  supervisor returned it for another reason: capacity was already declared, so already built.
+- **The replay:** every stored change request carrying a stored proposal context, 40 of them, went
+  through the new rails. 39 accept with their stored footprint unchanged. The one refused is that v1,
+  which was never approved.
+- **The 7 other stored requests** are the reference scenario's seeded request. Its footprint holds
+  four product files.
+
+**Who ruled it.** The owner's approval of the 2.1 plan (§7 item 1, 2026-10-04), which takes the
+issue's recommended option 1.
+
