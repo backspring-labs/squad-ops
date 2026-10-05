@@ -25,6 +25,14 @@ from squadops.campaigns.change_request import (
 _FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "campaigns"
 BASELINE = (_FIXTURES / "baseline-cyc_7a4b7a6fbf0e-interface_manifest.yaml").read_text()
 REFERENCE = yaml.safe_load((_FIXTURES / "reference-capacity-change-request.yaml").read_text())
+#: The 2.0 set's campaign 1, increment 2, version 1 as stored, and the accepted manifest it was
+#: proposed against (read from its proposal cycle's stored ``campaign_proposal`` block).
+EMPTY_DELTA_V1 = yaml.safe_load(
+    (_FIXTURES / "change-request-prop_5fb2d8136c36-v1.yaml").read_text()
+)
+BASELINE_CMP1_INC2 = (
+    _FIXTURES / "baseline-cmp_c4b81554bd59-increment-2-interface_manifest.yaml"
+).read_text()
 
 
 def _context(**overrides) -> ProposalContext:
@@ -206,3 +214,46 @@ def test_applying_the_delta_leaves_the_baseline_text_untouched():
 
     assert yaml.safe_load(BASELINE) == before
     assert "capacity" not in BASELINE
+
+
+def _as_authored(stored: dict) -> dict:
+    """A stored change request as its author wrote it: without the fields the framework derives."""
+    derived = ("footprint", "content_hash", "proposal_id", "version", "baseline_tree")
+    return {k: v for k, v in stored.items() if k not in derived}
+
+
+def test_the_2_0_sets_empty_delta_feature_is_refused_with_nothing_to_build():
+    """#1961, on the stored bytes. ``prop_5fb2d8136c36`` v1 (``kind: feature``,
+    ``manifest_delta: []``) passed every rail in the 2.0 set and reached the supervisor's gate,
+    though its derived footprint held only the qa test namespace. Bug caught: a behaviour change
+    no build could deliver being approved on its criteria."""
+    verdict = validate_proposal(
+        _as_authored(EMPTY_DELTA_V1),
+        _context(
+            proposal_id=EMPTY_DELTA_V1["proposal_id"],
+            baseline_tree=EMPTY_DELTA_V1["baseline_tree"],
+            baseline_manifest=BASELINE_CMP1_INC2,
+            prior_criteria=("T1",),
+        ),
+    )
+
+    assert [r.kind for r in verdict.refusals] == [RefusalKind.NOTHING_TO_BUILD]
+    assert verdict.change_request is None
+    assert "already built" in verdict.refusals[0].detail
+
+
+@pytest.mark.parametrize(
+    ("kind", "refused"),
+    [("feature", True), ("fix", True), ("refactor", False)],
+)
+def test_an_empty_delta_has_nothing_to_build_unless_it_is_a_refactor(kind, refused):
+    """#1961. Bugs caught: a ``fix`` slipping past the rail the ``feature`` meets, or a
+    ``refactor`` (no new behaviour, no criteria, the build may restructure tests alone) refused
+    for a footprint it is entitled to."""
+    doc = _authored(kind=kind, manifest_delta=[])
+    if kind == "refactor":
+        doc["criteria"] = []
+
+    verdict = validate_proposal(doc, _context())
+
+    assert (RefusalKind.NOTHING_TO_BUILD in _kinds(verdict)) is refused
