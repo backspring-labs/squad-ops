@@ -122,6 +122,87 @@ class TestTheOfferedForm:
         assert read.to_dict() == stored
 
 
+class TestTheFailedRowsAccount:
+    """#2028: a failed check's account of why reached no durable store. The frontend build's row
+    carried the bundler's stderr (#1468), and the row ended with the run, so #1469's corpus held
+    one error, repeated, and could not grow."""
+
+    @staticmethod
+    def _build_row(stderr: str) -> dict:
+        from types import SimpleNamespace
+
+        from squadops.capabilities.handlers.cycle.qa_test import _frontend_build_row
+
+        return _frontend_build_row(
+            SimpleNamespace(ran=True, ok=False, exit_code=1, error="", stderr=stderr)
+        )
+
+    def test_a_failed_build_keeps_its_stderr_from_the_real_row(self):
+        """Entered at the producer's own row builder, so a renamed field breaks this."""
+        stderr = "Module not found: Can't resolve './globals.css' in './app/layout.tsx'"
+        evidence = {"validation_result": {"checks": [self._build_row(stderr)]}}
+
+        failure = RoundFailure.from_evidence("t-build", 1, evidence)
+
+        assert failure.failed_detail == (("frontend_build", stderr),)
+
+    @pytest.mark.parametrize(
+        ("row", "expected"),
+        [
+            (
+                {
+                    "check": "acceptance:module_imports",
+                    "passed": False,
+                    "reason": "module_import_failed",
+                    "actual": {"stderr_tail": "NameError: x"},
+                },
+                (("acceptance:module_imports", "NameError: x"),),
+            ),
+            (
+                {"check": "acceptance:file_exists", "passed": False, "reason": "file_not_found"},
+                (("acceptance:file_exists", "file_not_found"),),
+            ),
+            ({"check": "tests_pass", "passed": False, "failing_tests": ["a > b"]}, ()),
+            ({"check": "frontend_build", "passed": True, "detail": "ok"}, ()),
+            ({"check": "frontend_build", "executed": False, "reason": "missing_tooling"}, ()),
+        ],
+        ids=["stderr-tail", "reason-only", "no-account", "passed", "not-executed"],
+    )
+    def test_each_failed_row_keeps_the_best_account_it_has(self, row, expected):
+        """Bug caught: a passing or skipped row recorded as a failure's account."""
+        evidence = {"validation_result": {"checks": [row]}}
+
+        assert RoundFailure.from_evidence("t", 0, evidence).failed_detail == expected
+
+    def test_a_long_account_keeps_its_tail_within_the_bound(self):
+        from squadops.cycles.run_loop_summary import FAILED_DETAIL_LIMIT
+
+        stderr = "x" * 5000 + "the error at the end"
+        evidence = {
+            "validation_result": {
+                "checks": [{"check": "frontend_build", "passed": False, "detail": stderr}]
+            }
+        }
+
+        [(_, kept)] = RoundFailure.from_evidence("t", 0, evidence).failed_detail
+
+        assert len(kept) == FAILED_DETAIL_LIMIT and kept.endswith("the error at the end")
+
+    def test_a_row_stored_before_the_account_writes_back_unchanged(self):
+        """Bug caught: an empty account written as a key, moving the evidence identity of every
+        run assessed before #2028."""
+        stored = {
+            "task_id": "t",
+            "round_index": 0,
+            "category": "executed_and_failed",
+            "locus": "subject",
+            "emission_signature": None,
+            "failed_checks": ["tests_pass"],
+        }
+
+        assert RoundFailure.from_dict(stored).to_dict() == stored
+
+
 class TestFromEvidence:
     @pytest.mark.parametrize(
         ("evidence", "expected"),
