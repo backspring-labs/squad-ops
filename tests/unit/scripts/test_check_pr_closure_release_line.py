@@ -17,6 +17,21 @@ import pytest
 SCRIPT = Path(__file__).resolve().parents[3] / "scripts" / "dev" / "check_pr_closure.sh"
 
 
+@pytest.fixture(autouse=True)
+def _nothing_outstanding(tmp_path, monkeypatch):
+    """A SIP tree whose ledgers leave nothing outstanding, so these tests read the line's
+    presence (#1151) and not the live ledgers (#1980's half is in
+    ``test_sip_sweep.py``)."""
+    accepted = tmp_path / "sips" / "accepted"
+    accepted.mkdir(parents=True)
+    (accepted / "SIP-0001-Done.md").write_text(
+        "# Done\n\n## Delivery ledger (current as of 2026-10-05)\n\n| part | status | where |\n"
+        "|---|---|---|\n| all | **placed** | 9.9.0, #1 |\n"
+    )
+    (tmp_path / "sips" / "open-issues.json").write_text('{"refreshed": "x", "open": {"1": []}}')
+    monkeypatch.setenv("SIP_SWEEP_ROOT", str(tmp_path))
+
+
 def _run(body: str, head_ref: str) -> subprocess.CompletedProcess[str]:
     env = {**os.environ, "PR_HEAD_REF": head_ref, "GH_REPO": "backspring-labs/squad-ops"}
     return subprocess.run(

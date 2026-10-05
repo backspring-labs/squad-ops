@@ -74,8 +74,8 @@ def placed_issues(path: Path) -> set[int]:
     return {n for r in rows(path) if r.status.startswith("placed") for n in r.issues}
 
 
-def open_issues() -> dict:
+def open_issues(path: Path = OPEN_ISSUES) -> dict:
     """The cache ``refresh_open_issues.py`` writes: ``{"refreshed", "open": {number: [labels]}}``."""
-    data = json.loads(OPEN_ISSUES.read_text(encoding="utf-8"))
+    data = json.loads(path.read_text(encoding="utf-8"))
     data["open"] = {int(k): v for k, v in data["open"].items()}
     return data
