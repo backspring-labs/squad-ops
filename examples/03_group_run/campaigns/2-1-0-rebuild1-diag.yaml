@@ -1,4 +1,4 @@
-# 2.1 rebuild 1's recovery diagnostics (2.1.0 plan §4 step 3; campaign_recovery_diagnostics.py,
+# The 2.1 line's first recovery diagnostics (2.1.0 plan §4 step 3; campaign_recovery_diagnostics.py,
 # sequence 3): a restart with the proposal task in flight (#1934), a restart while the ruling's
 # successor waits queued for the box (#2042), and a duplicate completion of the increment's
 # decision, whose record reads every run's flow runs after the restarts (#2007). One increment, so
