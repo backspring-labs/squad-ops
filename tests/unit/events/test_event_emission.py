@@ -75,6 +75,8 @@ _CAMPAIGN_PROJECTION = Path("src/squadops/campaigns/projection.py")
 # it as the create route does (cycle.created).
 _CAMPAIGN_LAUNCH = Path("src/squadops/api/campaign_launch.py")
 _RUNS_ROUTE = Path("src/squadops/api/routes/cycles/runs.py")
+# #1986: every gate decision is recorded by one function, which emits the one gate.decided.
+_GATE_DECISIONS = Path("src/squadops/cycles/gate_decisions.py")
 _ARTIFACTS_ROUTE = Path("src/squadops/api/routes/cycles/artifacts.py")
 
 _ALL_EMISSION_FILES = [
@@ -89,6 +91,7 @@ _ALL_EMISSION_FILES = [
     _CANCELLATION,
     _CAMPAIGN_PROJECTION,
     _RUNS_ROUTE,
+    _GATE_DECISIONS,
     _ARTIFACTS_ROUTE,
     _CAMPAIGN_LAUNCH,
 ]
@@ -145,7 +148,6 @@ class TestExecutorEmissionPoints:
             "CHECKPOINT_RESTORED",
             "WORKLOAD_COMPLETED",
             "WORKLOAD_ADVANCED",
-            "GATE_DECIDED",
             "ARTIFACT_OWNERSHIP_ENFORCED",
         ],
     )
@@ -178,8 +180,10 @@ class TestExecutorEmissionPoints:
         #1507 step 3 moved the inter-workload gate to WorkloadGate — 13 → 12: WORKLOAD_GATE_AWAITING
         left with it; GATE_DECIDED and WORKLOAD_ADVANCED stay (the question-free approval and the
         loop's advance still emit them here).
+
+        #1986 moved GATE_DECIDED to the one recorder (``cycles/gate_decisions.py``) — 12 → 11.
         """
-        assert len(executor_refs) == 12
+        assert len(executor_refs) == 11
 
 
 class TestWorkloadGateEmissionPoints:
@@ -190,9 +194,7 @@ class TestWorkloadGateEmissionPoints:
     def workload_gate_refs(self) -> set[str]:
         return _find_event_type_refs_in_file(_WORKLOAD_GATE_PATH)
 
-    @pytest.mark.parametrize(
-        "attr", ["GATE_DECIDED", "WORKLOAD_GATE_AWAITING", "WORKLOAD_ADVANCED"]
-    )
+    @pytest.mark.parametrize("attr", ["WORKLOAD_GATE_AWAITING", "WORKLOAD_ADVANCED"])
     def test_the_gate_emits(self, attr: str, workload_gate_refs: set[str]) -> None:
         assert attr in workload_gate_refs
 
@@ -313,9 +315,9 @@ class TestRouteEmissionPoints:
         refs = _find_event_type_refs_in_file(_RUNS_ROUTE)
         assert "RUN_CREATED" in refs
 
-    def test_runs_route_emits_gate_decided(self) -> None:
-        refs = _find_event_type_refs_in_file(_RUNS_ROUTE)
-        assert "GATE_DECIDED" in refs
+    def test_the_one_recorder_emits_gate_decided(self) -> None:
+        refs = _find_event_type_refs_in_file(_GATE_DECISIONS)
+        assert refs == {"GATE_DECIDED"}
 
     def test_artifacts_route_emits_artifact_stored(self) -> None:
         refs = _find_event_type_refs_in_file(_ARTIFACTS_ROUTE)
@@ -416,8 +418,11 @@ class TestEmitCallSitePayloadFields:
         CAMPAIGN_TRANSITIONED, 48 → 49 (moved, same total, to the shared campaign projection that
         every control-log writer uses, SIP-0109 step 6). SIP-0109 #1801 added the workload gate's proposal-revision
         WORKLOAD_ADVANCED emit (the supervisor's returned proposal, revised in a new run), 49 → 50;
-        and the campaign launch's CYCLE_CREATED for a launched cycle's first run, 50 → 51."""
+        and the campaign launch's CYCLE_CREATED for a launched cycle's first run, 50 → 51.
+        #1986 replaced the three hand-assembled GATE_DECIDED emits (the runs route, the
+        executor's question-free approval, the workload gate's plan rejection) with the one
+        recorder's, 51 → 49."""
         total = 0
         for path in _ALL_EMISSION_FILES:
             total += len(self._extract_emit_calls(path))
-        assert total == 51
+        assert total == 49

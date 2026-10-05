@@ -36,6 +36,7 @@ from squadops.cycles.models import (
     ValidationError,
     validate_workload_type,
 )
+from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
 
 logger = logging.getLogger(__name__)
 
@@ -330,35 +331,19 @@ async def gate_decision(
         waived_checks=tuple(body.waived_checks),
         waiver_reason=body.waiver_reason,
     )
-    updated = await registry.record_gate_decision(run_id, decision)
-
-    # SIP-0086: auto-promote the run's artifacts on approval so they
-    # flow to the next workload via plan_artifact_refs /
-    # prior_workload_artifact_refs. Without this the manifest stays
-    # at "working" status and the impl workload gets no inputs.
-    if body.decision == GateDecisionValue.APPROVED.value:
-        await _promote_run_artifacts(request, run_id)
-
-    # SIP-0077: gate.decided
+    # #1986: one recorder for every decider: the row, the promotion an approval implies
+    # (SIP-0086), and one `gate.decided` shape (SIP-0077 §7.3).
     from squadops.api.runtime.deps import get_cycle_event_bus
-    from squadops.events.types import EventType
+    from squadops.cycles.gate_decisions import record_gate_decision
 
-    get_cycle_event_bus(request).emit(
-        EventType.GATE_DECIDED,
-        entity_type="gate",
-        entity_id=gate_name,
-        context={
-            "cycle_id": cycle_id,
-            "run_id": run_id,
-            "project_id": project_id,
-        },
-        payload={
-            "gate_name": gate_name,
-            "decision": body.decision,
-            "decided_by": decision.decided_by,
-            "notes": body.notes,
-            **({"waived_checks": list(decision.waived_checks)} if decision.waived_checks else {}),
-        },
+    updated = await record_gate_decision(
+        registry,
+        _artifact_vault_or_none(request, run_id),
+        get_cycle_event_bus(request),
+        project_id=project_id,
+        cycle_id=cycle_id,
+        run_id=run_id,
+        decision=decision,
     )
 
     return run_to_response(updated)
@@ -469,20 +454,16 @@ async def list_checkpoints(request: Request, project_id: str, cycle_id: str, run
     ]
 
 
-async def _promote_run_artifacts(request: Request, run_id: str) -> None:
-    """Promote the run's artifacts on gate approval (SIP-0086).
+def _artifact_vault_or_none(request: Request, run_id: str) -> ArtifactVaultPort | None:
+    """The vault an approval promotes into, or ``None`` when none is wired.
 
-    Thin delegate: the operation moved to ``cycles.gate_promotion`` at #854 because it was
-    reachable only through this route, and the executor's question-gate auto-approval
-    (#807) is a second approval path that never arrives here.
+    A missing vault never fails the decision: it is recorded, and promotion is skipped
+    with a warning (``gate_promotion.promote_run_artifacts``).
     """
     from squadops.api.runtime.deps import get_artifact_vault
-    from squadops.cycles.gate_promotion import promote_run_artifacts
 
     try:
-        vault = get_artifact_vault(request)
+        return get_artifact_vault(request)
     except Exception:
         logger.warning("artifact_vault unavailable; skipping promotion for run %s", run_id)
-        return
-
-    await promote_run_artifacts(vault, run_id)
+        return None

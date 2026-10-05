@@ -78,6 +78,7 @@ from squadops.cycles.manifest_authoring import (
     MANIFEST_ARTIFACT_TYPE,
 )
 from squadops.cycles.models import (
+    APPROVING_DECISIONS,
     ArtifactRef,
     Cycle,
     FlowMode,
@@ -2286,7 +2287,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         )
 
     async def _approve_gate_without_questions(
-        self, run_id: str, cycle_id: str, gate_name: str
+        self, project_id: str, run_id: str, cycle_id: str, gate_name: str
     ) -> GateDecision:
         """Record the pass-through as a decision and return it.
 
@@ -2310,27 +2311,19 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 "plan validation passed at this gate."
             ),
         )
-        await self._cycle_registry.record_gate_decision(run_id, decision)
-        # #854: an approval promotes the run's artifacts, and that is a consequence of the
-        # gate being APPROVED rather than of how it was approved. It lived only in the HTTP
-        # gate route, so this path — the one M4 added — recorded an approval and forwarded
-        # nothing. VS roll 4 is the first cycle to take it: framing passed, the plan
-        # validated, the gate approved, and the implementation run then refused because
-        # `plan_artifact_refs` was never written (#424 correctly declining to build with
-        # its instrumentation contract absent).
-        from squadops.cycles.gate_promotion import promote_run_artifacts
+        # #854: an approval promotes the run's artifacts whoever approved it; this path once
+        # recorded an approval and forwarded nothing. #1986: the one recorder does all three
+        # (row, promotion, event), so a decider cannot drop a step.
+        from squadops.cycles.gate_decisions import record_gate_decision
 
-        await promote_run_artifacts(self._artifact_vault, run_id)
-        self._cycle_event_bus.emit(
-            EventType.GATE_DECIDED,
-            entity_type="run",
-            entity_id=run_id,
-            context={"cycle_id": cycle_id, "run_id": run_id},
-            payload={
-                "gate_name": gate_name,
-                "decision": GateDecisionValue.APPROVED.value,
-                "decided_by": GATE_DECIDED_BY_NO_QUESTIONS,
-            },
+        await record_gate_decision(
+            self._cycle_registry,
+            self._artifact_vault,
+            self._cycle_event_bus,
+            project_id=project_id,
+            cycle_id=cycle_id,
+            run_id=run_id,
+            decision=decision,
         )
         logger.info(
             "Gate %r on run %s auto-approved: the design declares no open question",
@@ -3976,10 +3969,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             for gate_name in gate_names:
                 for decision in run.gate_decisions:
                     if decision.gate_name == gate_name:
-                        if decision.decision in (
-                            GateDecisionValue.APPROVED,
-                            GateDecisionValue.APPROVED_WITH_REFINEMENTS,
-                        ):
+                        if decision.decision in APPROVING_DECISIONS:
                             await self._cycle_registry.update_run_status(run_id, RunStatus.RUNNING)
                             self._cycle_event_bus.emit(
                                 EventType.RUN_RESUMED,
