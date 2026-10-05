@@ -132,6 +132,11 @@ class ContextAssemblyContract:
     #: accepted tree the increment builds on (the accepted cycle's delivered files, as the run
     #: seeded them, #1842), beside the candidate (``acceptance_workspace``).
     increment_evaluation: bool = False
+    #: #1884 (the owner's rule): an increment's test author is handed what its tests may assert
+    #: (``increment_test_scope``: the approved criteria and the frozen ones' statements), and is
+    #: told the rule through ``request.increment_test_scope_appendix``. Declared on the task that
+    #: authors the suite; its repair inherits it through ``REPAIR_PRESENCE_KEYS``.
+    increment_test_scope: bool = False
 
 
 _EMPTY_CONTRACT = ContextAssemblyContract()
@@ -217,6 +222,7 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
         manifest_surfaces=(SURFACE_FROZEN,),
         bind_verification_scaffold=True,
         prior_cycle_brief=True,
+        increment_test_scope=True,
     ),
     # --- planning chain (#657): upstream documents on an envelope-local
     # prior_outputs copy; all four authoring types receive a re-roll's
@@ -466,6 +472,9 @@ def retest_forwarded_inputs(failed_inputs: Mapping[str, Any]) -> dict[str, Any]:
 REPAIR_PRESENCE_KEYS: tuple[str, ...] = (
     "acceptance_workspace_files",
     "workspace_revision_id",
+    # #1884: the correction loop builds a repair's envelope, not ``_increment_inputs``, so a
+    # qa repair re-authoring an increment's suite sees the rule only if the scope rides here.
+    "increment_test_scope",
 )
 
 #: #1264: the failed task's own emitted files, forwarded to its repair from the failed

@@ -675,6 +675,34 @@ async def test_sole_author_prompt_carries_the_criteria_and_frozen_indexes(seeded
     assert "lib/store.ts" in prompt, "the frozen-surface index never arrived"
 
 
+async def test_sole_author_prompt_carries_the_increment_test_scope(seeded_inputs):
+    """#1884: the merger's sole-author fallback is a plan author too, and it reaches the increment
+    surfaces only through here. Bug caught: the scope index injected onto the merge envelope and
+    never rendered, so a plan authored after every proposer failed asks for tests of rules the
+    change never stated."""
+    ctx = _make_context()
+    seeded_inputs = {
+        **seeded_inputs,
+        "increment_test_scope_index": "- T1 (frozen by an earlier increment): runs by date",
+    }
+    ctx.ports.request_renderer.render.side_effect = _fake_render
+
+    result = await produce_plan(
+        ctx,
+        seeded_inputs,
+        planning_content="planning",
+        resolved_config=seeded_inputs["resolved_config"],
+        handler_name="test",
+        chat_kwargs={},
+        **_borrowed(ctx),
+    )
+    assert result is not None
+
+    prompt = _rendered_prompt(ctx)
+    assert "[request.increment_test_scope_appendix]" in prompt
+    assert "- T1 (frozen by an earlier increment): runs by date" in prompt
+
+
 async def test_author_mode_prompt_is_unchanged_without_a_contract(seeded_inputs):
     """No contract, no appendices — author-mode cycles stay byte-identical.
 

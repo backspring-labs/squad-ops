@@ -3860,6 +3860,108 @@ class TestOwnArtifactLocusRouting(TestCorrectionRunnerStandalone):
 
         return responder
 
+    @pytest.mark.parametrize("in_a_campaign", [True, False])
+    async def test_a_qa_repair_carries_the_increment_test_scope_and_is_shown_the_rule(
+        self, cycle, in_a_campaign
+    ):
+        """#1884, at both of the repair's seams. The correction loop builds the repair envelope
+        from a fixed key list and ``REPAIR_PRESENCE_KEYS``, not from ``_increment_inputs``, so
+        the scope must be forwarded there. Then ``QATestRepairHandler.handle()`` on the captured
+        envelope must send the rule and every criterion. Bugs caught: the forwarding dropping
+        the scope, so a repair re-authoring an increment's suite invents rules its author was
+        told not to; and #1289's shape, a section computed in ``handle()`` that never reaches
+        the template. Outside a campaign the envelope carries no scope and the prompt no rule."""
+        import dataclasses as _dc
+
+        from adapters.prompts.filesystem_asset_adapter import FilesystemPromptAssetAdapter
+        from squadops.capabilities.handlers.impl.repair_handlers import QATestRepairHandler
+        from squadops.prompts.renderer import RequestTemplateRenderer
+
+        scope = {
+            "criteria": [
+                {
+                    "id": "C2",
+                    "statement": "a join to a full run is refused",
+                    "observable": "409 capacity_reached",
+                }
+            ],
+            "frozen": [{"criterion_id": "T1", "statement": "runs are listed by date"}],
+        }
+        failed = self._failed_qa_envelope()
+        if in_a_campaign:
+            failed = _dc.replace(failed, inputs={**failed.inputs, "increment_test_scope": scope})
+        captured: list = []
+        runner, _registry, _vault, _bus = self._make_runner(self._patch_responder(captured))
+
+        await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=failed,
+            result=TaskResult(
+                task_id="task_qa_failed",
+                status="FAILED",
+                error="No valid fenced code blocks found",
+                outputs={
+                    "emission_failure": {
+                        "reason": "no_fenced_blocks",
+                        "response_chars": 6203,
+                        "expected_artifacts": ["backend/tests/test_runs.py"],
+                    }
+                },
+            ),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+        [repair] = [e for e in captured if e.task_type == "qa.test_repair"]
+        assert repair.inputs.get("increment_test_scope") == (scope if in_a_campaign else None)
+
+        prompts = Path(__file__).resolve().parents[3] / "src" / "squadops" / "prompts"
+        ctx = MagicMock()
+        ctx.role_id = "qa"
+        ctx.task_id = repair.task_id
+        ctx.correlation_context = None
+        ctx.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=MagicMock(
+                content="no fences", prompt_tokens=1, completion_tokens=1, reasoning_tokens=None
+            )
+        )
+        ctx.ports.llm.default_model = "m"
+        ctx.ports.llm_observability = None
+        ctx.ports.prompt_service.get_system_prompt.return_value = MagicMock(
+            content="system", assembly_hash="h"
+        )
+        ctx.ports.request_renderer = RequestTemplateRenderer(
+            FilesystemPromptAssetAdapter(prompts / "fragments", prompts / "request_templates")
+        )
+        await QATestRepairHandler().handle(ctx, {**repair.inputs, "prd": "Runs"})
+        prompt = ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0][-1].content
+
+        told = [
+            "## What this increment's tests may assert",
+            "- C2 (this change): a join to a full run is refused. Observable: 409 capacity_reached",
+            "- T1 (frozen by an earlier increment): runs are listed by date",
+        ]
+        assert [line in prompt for line in told] == [in_a_campaign] * len(told)
+        assert "{{test_scope_section}}" not in prompt
+
+        if in_a_campaign:
+            # A dev repair of the same failure fixes the application: the rule is the QA
+            # author's (the owner's words), so it is not shown, whatever the envelope carries.
+            from squadops.capabilities.handlers.impl.repair_handlers import (
+                DevelopmentCorrectionRepairHandler,
+            )
+
+            ctx.ports.llm.chat_stream_with_usage.reset_mock()
+            await DevelopmentCorrectionRepairHandler().handle(
+                ctx, {**repair.inputs, "prd": "Runs", "failed_task_type": "qa.test"}
+            )
+            dev_prompt = ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0][-1]
+            assert "## What this increment's tests may assert" not in dev_prompt.content
+
     async def test_emission_failure_routes_to_qa_test_repair(self, cycle):
         """Zero-extraction qa.test failure (the pf-32 class): the repair step
         is qa.test_repair aimed at the failed task's OWN artifact — not a dev

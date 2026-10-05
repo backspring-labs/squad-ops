@@ -660,6 +660,7 @@ def _inject_increment_indexes(
     criterion_files: tuple[Any, ...],
     frozen_files: tuple[tuple[str, str], ...] = (),
     scaffold_frozen: frozenset[str] = frozenset(),
+    test_scope: Mapping[str, Any] | None = None,
 ) -> None:
     """SIP-0109: what an increment's plan authors are shown — data only; each rule's prose is
     its managed appendix (#448), and the plan gate enforces it.
@@ -688,6 +689,13 @@ def _inject_increment_indexes(
         inputs["increment_frozen_files_index"] = "\n".join(
             f"- {criterion_id}: `{path}`" for criterion_id, path in frozen_files
         )
+    # #1884: what any test in this increment may assert, for every increment framing, a
+    # ``refactor`` with no criteria included (#1886's rule rode the criteria appendix, which a
+    # change without criteria never rendered).
+    if test_scope is not None:
+        from squadops.campaigns.increment_tree import test_scope_lines
+
+        inputs["increment_test_scope_index"] = test_scope_lines(test_scope)
 
 
 def _increment_criterion_files(
@@ -758,7 +766,11 @@ def _increment_evaluation(
 
 
 def _increment_inputs(
-    run: Run, task_type: str, change_request: str | None, evaluation: _IncrementEvaluation
+    run: Run,
+    task_type: str,
+    change_request: str | None,
+    evaluation: _IncrementEvaluation,
+    test_scope: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """What one envelope of an increment is handed (SIP-0109): every framing stage the approved
     change request, its framed objective (§7.3); each ``increment_evaluation`` task what its
@@ -767,6 +779,10 @@ def _increment_inputs(
         return {"increment_change_request": change_request}
     if get_context_contract(task_type).increment_evaluation:
         return dict(evaluation.inputs)
+    # #1884: the suite's author is handed what its tests may assert. WHO is the registry's
+    # declaration; its repair inherits the key through REPAIR_PRESENCE_KEYS.
+    if test_scope is not None and get_context_contract(task_type).increment_test_scope:
+        return {"increment_test_scope": dict(test_scope)}
     return {}
 
 
@@ -828,6 +844,7 @@ def inject_contract_inputs(
     footprint: tuple[str, ...] | None = None,
     criterion_files: tuple[Any, ...] = (),
     frozen_files: tuple[tuple[str, str], ...] = (),
+    test_scope: Mapping[str, Any] | None = None,
 ) -> None:
     """Bind-mode envelope inputs derived from the contract (SIP-0098).
 
@@ -876,6 +893,7 @@ def inject_contract_inputs(
             criterion_files,
             frozen_files,
             frozenset(ff.path for ff in contract.frozen_files),
+            test_scope,
         )
     if task_contract.bind_behavioral_surface:
         if contract.behavioral.probes:
@@ -1270,6 +1288,9 @@ def generate_task_plan(
     from squadops.campaigns.increment_tree import increment_frozen_files
 
     frozen_files = increment_frozen_files(resolved_config, change_request)
+    from squadops.campaigns.increment_tree import increment_test_scope
+
+    test_scope = increment_test_scope(resolved_config, change_request)
     _require_change_request_for_increment(run, resolved_config, change_request)
     evaluation = _increment_evaluation(run, resolved_config, change_request, interface_manifest)
 
@@ -1443,9 +1464,10 @@ def generate_task_plan(
             footprint,
             criterion_files,
             frozen_files,
+            test_scope,
         )
         _inject_rejection_context(inputs, framing_rejection_context, task_type)
-        inputs.update(_increment_inputs(run, task_type, change_request, evaluation))
+        inputs.update(_increment_inputs(run, task_type, change_request, evaluation, test_scope))
         inputs.update(_prior_cycle_inputs(resolved_config, task_type))
 
         envelope = TaskEnvelope(
