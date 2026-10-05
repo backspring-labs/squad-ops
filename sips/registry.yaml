@@ -113,22 +113,22 @@ sips:
 - sip_uid: '17642554775857273'
   sip_number: 12
   title: Pattern-First-Development-Escalation-Protocol
-  path: sips/proposed/SIP-0012-Pattern-First-Development-Escalation-Protocol.md
-  status: proposed
+  path: sips/deprecated/SIP-0012-Pattern-First-Development-Escalation-Protocol.md
+  status: deprecated
   author: Unknown
   approver: None
   created_at: '2025-11-27T10:12:48.883929Z'
-  updated_at: '2026-01-10T12:00:00Z'
+  updated_at: '2026-10-05T00:09:39.316428Z'
   variant: null
 - sip_uid: '17642554775859172'
   sip_number: 13
   title: Extensibility-Customization-Protocol
-  path: sips/proposed/SIP-0013-Extensibility-Customization-Protocol.md
-  status: proposed
+  path: sips/deprecated/SIP-0013-Extensibility-Customization-Protocol.md
+  status: deprecated
   author: Unknown
   approver: None
   created_at: '2025-11-27T10:12:48.884497Z'
-  updated_at: '2026-01-10T12:00:00Z'
+  updated_at: '2026-10-05T00:09:39.396196Z'
   variant: null
 - sip_uid: '17642554775863171'
   sip_number: 14
@@ -153,12 +153,12 @@ sips:
 - sip_uid: '17642554775868264'
   sip_number: 16
   title: HumanAgent-Hybrid-Squad-Operations
-  path: sips/proposed/SIP-0016-HumanAgent-Hybrid-Squad-Operations.md
-  status: proposed
+  path: sips/deprecated/SIP-0016-HumanAgent-Hybrid-Squad-Operations.md
+  status: deprecated
   author: Unknown
   approver: None
   created_at: '2025-11-27T10:12:48.886498Z'
-  updated_at: '2026-01-10T12:00:00Z'
+  updated_at: '2026-10-05T00:09:39.478550Z'
   variant: null
 - sip_uid: '17642554775865062'
   sip_number: 17
@@ -173,20 +173,20 @@ sips:
 - sip_uid: '17642554775877898'
   sip_number: 18
   title: -SIP-018-Enterprise-Process-CoE-Enablement
-  path: sips/proposed/SIP-0018-Enterprise-Process-CoE-Enablement.md
-  status: proposed
+  path: sips/deprecated/SIP-0018-Enterprise-Process-CoE-Enablement.md
+  status: deprecated
   author: Unknown
   approver: None
   created_at: '2025-10-03T18:44:56.927287Z'
-  updated_at: '2026-01-10T12:00:00Z'
+  updated_at: '2026-10-05T00:09:39.572422Z'
   variant: v1
 - sip_number: 18
   sip_uid: '17642554775871658'
   title: -SIP-018-Squad-Context-Protocol
-  status: proposed
-  path: sips/proposed/SIP-0018-v2-Squad-Context-Protocol.md
+  status: deprecated
+  path: sips/deprecated/SIP-0018-v2-Squad-Context-Protocol.md
   created_at: '2025-10-03T18:44:56.927519Z'
-  updated_at: '2026-01-10T11:17:26Z'
+  updated_at: '2026-10-05T00:09:39.665486Z'
   variant: v2
 - sip_uid: '17642554775889002'
   sip_number: 19
@@ -231,12 +231,12 @@ sips:
 - sip_uid: '17642554775906691'
   sip_number: 23
   title: Domain-Expert-Architecture-for-Product-Strategy
-  path: sips/proposed/SIP-0023-Domain-Expert-Architecture-for-Product-Strategy.md
-  status: proposed
+  path: sips/deprecated/SIP-0023-Domain-Expert-Architecture-for-Product-Strategy.md
+  status: deprecated
   author: Unknown
   approver: None
   created_at: '2025-11-27T10:12:48.892116Z'
-  updated_at: '2026-01-10T12:00:00Z'
+  updated_at: '2026-10-05T00:09:39.745720Z'
   variant: null
 - sip_uid: '17642554775902673'
   sip_number: 24
@@ -301,12 +301,12 @@ sips:
 - sip_uid: '17642554775939927'
   sip_number: 28
   title: Hybrid-Deployment-Model-Industry-Aligned-Architecture-for-Multi-Environment-Deployments
-  path: sips/proposed/SIP-0028-Hybrid-Deployment-Model-Industry-Aligned-Architecture-for-Multi-Environment-Depl.md
-  status: proposed
+  path: sips/deprecated/SIP-0028-Hybrid-Deployment-Model-Industry-Aligned-Architecture-for-Multi-Environment-Depl.md
+  status: deprecated
   author: System Architecture
   approver: None
   created_at: '2025-10-13T00:00:00Z'
-  updated_at: '2026-01-10T12:00:00Z'
+  updated_at: '2026-10-05T00:09:39.828406Z'
   variant: null
 - sip_uid: '17642554775939368'
   sip_number: 31
@@ -985,21 +985,21 @@ sips:
 - sip_uid: '17883224960370906'
   sip_number: null
   title: QA-First Test Strategy for 1-Hour SquadOps Cycles (group_run Focus)
-  path: sips/proposed/IDEA-QA-First-Test-Strategy-1h-Cycles-group_run.md
-  status: proposed
+  path: sips/deprecated/IDEA-QA-First-Test-Strategy-1h-Cycles-group_run.md
+  status: deprecated
   author: Unknown
   approver: null
   created_at: '2026-02-24T00:00:00Z'
-  updated_at: null
+  updated_at: '2026-10-05T00:09:39.236805Z'
 - sip_uid: '17883224960375774'
   sip_number: null
   title: API Contract Hardening
-  path: sips/proposed/SIP-API-Contract-Hardening.md
-  status: proposed
+  path: sips/deprecated/SIP-API-Contract-Hardening.md
+  status: deprecated
   author: SquadOps Architecture
   approver: null
   created_at: '2026-02-28T00:00:00Z'
-  updated_at: null
+  updated_at: '2026-10-05T00:09:39.930797Z'
 - sip_uid: '17883224960377942'
   sip_number: null
   title: Agent Comms Delivery Guarantees
@@ -1094,12 +1094,12 @@ sips:
 - sip_uid: '17883224960406118'
   sip_number: null
   title: Experiment Queue and Cycle Assessment Framework
-  path: sips/proposed/SIP-Experiment-Queue-and-Cycle-Assessment.md
-  status: proposed
+  path: sips/deprecated/SIP-Experiment-Queue-and-Cycle-Assessment.md
+  status: deprecated
   author: SquadOps Architecture
   approver: null
   created_at: '2026-03-29'
-  updated_at: null
+  updated_at: '2026-10-05T00:09:40.024930Z'
 - sip_uid: '17883224960407968'
   sip_number: null
   title: Fine-Grained Issue Enumeration
@@ -1140,12 +1140,12 @@ sips:
 - sip_uid: '17883224960414984'
   sip_number: null
   title: Skill Layer for Capabilities (Capability → Skill → Tool)
-  path: sips/proposed/SIP-Skill-Layer-For-Capabilities.md
-  status: proposed
+  path: sips/deprecated/SIP-Skill-Layer-For-Capabilities.md
+  status: deprecated
   author: SquadOps Team
   approver: null
   created_at: '2026-07-11T00:00:00Z'
-  updated_at: null
+  updated_at: '2026-10-05T00:09:40.210288Z'
 - sip_uid: '17883224960416254'
   sip_number: null
   title: Test-First Verification
@@ -1159,21 +1159,21 @@ sips:
   sip_number: null
   title: Version Bump Hardening — Single-Sourced Strings, Guardrails, and Automated
     Changelog
-  path: sips/proposed/SIP-Version-Bump-Hardening.md
-  status: proposed
+  path: sips/deprecated/SIP-Version-Bump-Hardening.md
+  status: deprecated
   author: SquadOps Architecture
   approver: null
   created_at: '2026-04-19T00:00:00Z'
-  updated_at: null
+  updated_at: '2026-10-05T00:09:40.302513Z'
 - sip_uid: '17883224960419790'
   sip_number: null
   title: Intelligent Delegation Protocols for SquadOps
-  path: sips/proposed/SIP-intelligent-delegation-protocols.md
-  status: proposed
+  path: sips/deprecated/SIP-intelligent-delegation-protocols.md
+  status: deprecated
   author: Unknown
   approver: null
   created_at: null
-  updated_at: null
+  updated_at: '2026-10-05T00:09:40.117678Z'
 - sip_uid: '17909028044686722'
   sip_number: null
   title: Verification Yield and Test Value

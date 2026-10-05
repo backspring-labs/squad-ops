@@ -1,13 +1,14 @@
 ---
 sip_uid: '17883224960406118'
 title: Experiment Queue and Cycle Assessment Framework
-status: proposed
+status: deprecated
 authors: SquadOps Architecture
 created_at: '2026-03-29'
+updated_at: '2026-10-05T00:09:40.023808Z'
 ---
 # SIP: Experiment Queue and Cycle Assessment Framework
 
-**Status:** Proposed
+**Status:** Deprecated
 **Authors:** SquadOps Architecture
 **Created:** 2026-03-29
 

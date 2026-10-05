@@ -2,16 +2,16 @@
 sip_uid: '17642554775857273'
 sip_number: 12
 title: Pattern-First-Development-Escalation-Protocol
-status: "proposed"
+status: deprecated
 author: Unknown
 approver: None
 created_at: '2025-11-27T10:12:48.883929Z'
-updated_at: '2026-01-10T11:15:40.977978Z'
+updated_at: '2026-10-05T00:09:39.315834Z'
 original_filename: SIP-012_Pattern_First_Dev_Escalation.md
 ---
 # SIP-012: Pattern-First Development & Escalation Protocol
 
-**Status:** Proposed  
+**Status:** Deprecated  
 **Owner:** Max (Governance)  
 **Contributors:** Nat, Neo, EVE, Data, Claude (Expert Model)  
 **Created:** 2025-09-27  

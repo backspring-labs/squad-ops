@@ -63,7 +63,7 @@ items go to each SIP's next touch, with Q22 for the decisions.
 
 ---
 
-## 2. Proposed SIPs (30, with Outcome Evaluation on PR #1963)
+## 2. Proposed SIPs (30 at the audit; 13 deprecated 2026-10-05 by Q14, 17 live)
 
 Class: **live** (wanted, not built), **partly absorbed** (some built or owned elsewhere),
 **superseded**, **stale** (names architecture or releases that no longer exist).
@@ -87,13 +87,13 @@ Class: **live** (wanted, not built), **partly absorbed** (some built or owned el
 | Agent Comms Delivery Guarantees | split | #1977 (2.3.0); duty-gated parts 3.x | ruled |
 | Cycle Request Profile Naming Taxonomy | live; inventory stale | **2.1.0** via #316 | Q13 |
 | Planning Sequence Strategy-First | live (greenfield only); details stale | none | an outer-loop experiment candidate |
-| API Contract Hardening | partly absorbed | pre-1.0 | file the residue as issues, then deprecate (Q14) |
-| Experiment Queue and Cycle Assessment | superseded (by SIP-0108 and SIP-0109) | v1.1/v1.2 | deprecate (Q14) |
-| QA-First Test Strategy (`IDEA-QA-First-Test-Strategy-1h-Cycles-group_run`) | superseded; contradicts SIP-0109 §8.2 | none | deprecate or move to `docs/ideas/` (Q14) |
-| Skill Layer for Capabilities | superseded (into Capability-Backed Agents §21) | none | deprecate once that SIP cites its post-mortem (Q14) |
-| Version Bump Hardening | superseded (#1089, #336, #789, #1061); residue → #1957 | none | deprecate (Q14) |
-| Intelligent Delegation Protocols | superseded; residue → Capability-Backed Agents §15 | none | deprecate (Q14) |
-| SIP-0012, 0013, 0016, 0018, 0018-v2, 0023, 0028 (numbered warm-boot drafts in `proposed/`) | stale | 2025 | deprecate (Q14); two share the number 18 |
+| API Contract Hardening | partly absorbed; residue in #1976 | pre-1.0 | **deprecated** 2026-10-05 (#2023, Q14) |
+| Experiment Queue and Cycle Assessment | superseded (by SIP-0108 and SIP-0109) | v1.1/v1.2 | **deprecated** 2026-10-05 (#2023, Q14) |
+| QA-First Test Strategy (`IDEA-QA-First-Test-Strategy-1h-Cycles-group_run`) | superseded; contradicts SIP-0109 §8.2 | none | **deprecated** 2026-10-05 (#2023, Q14) |
+| Skill Layer for Capabilities | superseded (into Capability-Backed Agents §21, which cites its post-mortem) | none | **deprecated** 2026-10-05 (#2023, Q14) |
+| Version Bump Hardening | superseded (#1089, #336, #789, #1061); residue → #1957 | none | **deprecated** 2026-10-05 (#2023, Q14) |
+| Intelligent Delegation Protocols | superseded; residue → Capability-Backed Agents §15 | none | **deprecated** 2026-10-05 (#2023, Q14) |
+| SIP-0012, 0013, 0016, 0018, 0018-v2, 0023, 0028 (numbered warm-boot drafts in `proposed/`) | stale | 2025 | **deprecated** 2026-10-05 (#2023, Q14); two shared the number 18 |
 
 ---
 
@@ -139,7 +139,7 @@ dated amendment.
 | Q11 | Test-First's greenfield gate | #1978 (2.6) | its note |
 | Q12 | Design Decision Register | folds into #950 | its note |
 | Q13 | taxonomy aliases | old profile names resolve indefinitely; written into #316 | its note; #316 |
-| Q14 | deprecations | after #1968: the 12 candidates in §2, with API Contract Hardening's residue as #1976 first | the notes; §2 |
+| Q14 | deprecations | **done 2026-10-05 (#2023):** the 13 in §2 (the "12" counted SIP-0018's two drafts as one), after #1968; #1976 holds API Contract Hardening's residue, and Capability-Backed Agents cites the Skill Layer's post-mortem | the notes; §2 |
 | Q15 | SIP-0104 | §10.2 read as met; **promoted at the v2.0.0 sweep** | SIP-0104 §13c |
 | Q16 | SIP-0107 | §15 dropped; §9.4 declared without a producer; **promoted after the v2.0.0 tag**; #1727 follows as an amendment | SIP-0107 §46t |
 | Q17 | SIP-0109 | §24b–§24i ratified as written. Unplaced items: #1971, #1972, #1973 (2.1.0); packaging changes and the GPU check unplaced, deliberately; the builder-tail question dropped. A consolidated status amendment at the cut | SIP-0109 §24as |

@@ -1,16 +1,17 @@
 ---
 sip_uid: '17883224960414984'
-status: proposed
+status: deprecated
 title: Skill Layer for Capabilities (Capability → Skill → Tool)
 author: SquadOps Team
 created_at: '2026-07-11T00:00:00Z'
+updated_at: '2026-10-05T00:09:40.209710Z'
 ---
 # SIP: Skill Layer for Capabilities (Capability → Skill → Tool)
 
 > **Placement and delivery (2026-10-04: the owner's rulings on the SIP-portfolio audit, `sips/PORTFOLIO.md`).** **Deprecation ruled**, superseded by Capability-Backed Agents §21. It executes once `update_sip_status.py` can retire a proposed SIP (#1968), and once that SIP's §5 cites this one's post-mortem.
 
 
-**Status**: Proposed (concept reservation — no implementation planned)
+**Status**: Deprecated (concept reservation — no implementation planned)
 **Author**: SquadOps Team
 **Created**: 2026-07-11
 **Related**: #401 (removal of the first incarnation), SIP-0060/SIP-0.8.8 (the first incarnation), SIP-0096 (integration contract a revival must satisfy)
