@@ -224,6 +224,35 @@ async def test_the_proposal_is_told_its_prd_delta_states_only_what_the_request_d
     assert '"show capacity status in run detail"' in prompt
 
 
+@pytest.mark.parametrize("proposed", [True, False])
+async def test_the_proposal_is_shown_what_the_qa_author_proposed_instead_of_testing(proposed):
+    """#1884, through the real render at the live caller. Bug caught: the outlet's entries
+    carried on the launch block and never rendered, so "returned as a proposal" reaches the
+    proposer only on paper; or an empty section rendered when there is nothing."""
+    ctx = _ctx(_fenced(_REFERENCE))
+    inputs = _inputs()
+    if proposed:
+        inputs["resolved_config"]["campaign_proposal"]["qa_proposed_behaviours"] = [
+            {
+                "behaviour": "Two runs with the same date keep the order they were created in",
+                "why": "The list reorders between refreshes when dates tie",
+                "surface_kind": "endpoint",
+                "surface": "GET /runs",
+            }
+        ]
+
+    await StrategyProposeIncrementHandler().handle(ctx, inputs)
+
+    [prompt] = _prompts(ctx)
+    heading = "### What the last increment's qa author proposed instead of testing"
+    line = (
+        "- Two runs with the same date keep the order they were created in (endpoint "
+        "`GET /runs`): The list reorders between refreshes when dates tie"
+    )
+    assert (heading in prompt, line in prompt) == (proposed, proposed)
+    assert "{{qa_proposed_behaviours_section}}" not in prompt
+
+
 async def test_an_empty_delta_feature_is_refused_inside_the_task_and_revised():
     """#1961, at the live caller. Bug caught: the new rail's refusal not reaching the proposer as
     a reason it can act on, so the empty-delta proposal is never revised before the gate."""

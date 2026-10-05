@@ -28,6 +28,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from squadops.campaigns.proposed_behaviours import QA_PROPOSED_BEHAVIOURS_ARTIFACT_TYPE
 from squadops.tasks.task_types import TaskType
 
 # ---------------------------------------------------------------------------
@@ -534,7 +535,8 @@ def failed_task_artifacts(result_outputs: Mapping[str, Any] | None) -> list[dict
     overlays, in the shape the handler materialises. Entries without both are not files."""
     out: list[dict[str, str]] = []
     for art in (result_outputs or {}).get("artifacts") or ():
-        if not isinstance(art, dict):
+        # #1884: the qa author's proposal outlet is stored, never overlaid on a tree.
+        if not isinstance(art, dict) or art.get("type") == QA_PROPOSED_BEHAVIOURS_ARTIFACT_TYPE:
             continue
         name, content = art.get("name"), art.get("content")
         if isinstance(name, str) and name and isinstance(content, str):

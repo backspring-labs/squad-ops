@@ -854,7 +854,9 @@ class CampaignProgress:
         if action is PendingAction.ABANDON_AND_PROPOSE:
             # Row 13 (#1692): the fresh proposal is shown why the increment it replaces failed.
             abandoned = await self._prior_cycle_brief(cycle, latest) if cycle else None
-            return await self._propose_launch(campaign, abandoned)
+            return await self._propose_launch(
+                campaign, abandoned, abandoned_cycle_id=cycle.cycle_id if cycle else None
+            )
         kind = {PendingAction.RETRY: CycleKind.RETRY, PendingAction.REPAIR: CycleKind.REPAIR}.get(
             action
         )
@@ -912,6 +914,31 @@ class CampaignProgress:
             return bound_launch(campaign, kind, block, plan_refs, contract_ref)
         except (FileNotFoundError, ValueError) as e:
             return f"the policy's proposal profile cannot launch a {kind}: {e}"
+
+    async def _qa_proposed_behaviours(self, cycle_ids: list[str]) -> list[dict[str, str]]:
+        """#1884: the entries the qa authors of ``cycle_ids`` stored through the proposal outlet,
+        oldest first, deduplicated, at most ten.
+
+        **A function of stored data alone (#1943's rule).** The launch it feeds is decided once
+        and replayed after a restart, so a vault read that fails raises, failing this attempt as
+        any other read in a launch does, and the re-hearing retries it. It never launches
+        without them."""
+        from squadops.campaigns.proposed_behaviours import (
+            QA_PROPOSED_BEHAVIOURS_ARTIFACT_TYPE,
+            merged_entries,
+        )
+
+        contents: list[str] = []
+        for cycle_id in cycle_ids:
+            refs = [
+                r
+                for r in await self._vault.list_artifacts(cycle_id=cycle_id)
+                if r.artifact_type == QA_PROPOSED_BEHAVIOURS_ARTIFACT_TYPE
+            ]
+            for ref in sorted(refs, key=lambda r: (r.created_at, r.artifact_id)):
+                _ref, content = await self._vault.retrieve(ref.artifact_id)
+                contents.append(content.decode("utf-8"))
+        return merged_entries(contents)
 
     async def _prior_cycle_brief(
         self, cycle: Cycle, latest: CycleAssessment | None
@@ -989,10 +1016,14 @@ class CampaignProgress:
         return await self._cycles.get_cycle(decided[-1].target)
 
     async def _propose_launch(
-        self, campaign: Campaign, abandoned: dict[str, Any] | None = None
+        self,
+        campaign: Campaign,
+        abandoned: dict[str, Any] | None = None,
+        abandoned_cycle_id: str | None = None,
     ) -> LaunchRequest | str:
         """The increment cycle a ``propose`` writes, from the accepted tree's manifest — or why
-        it cannot be launched. ``abandoned``: the brief of the increment it replaces (row 13)."""
+        it cannot be launched. ``abandoned``: the brief of the increment it replaces (row 13),
+        whose cycle ``abandoned_cycle_id`` is."""
         if campaign.accepted is None:
             return "the campaign has no accepted tree to propose against"
         baseline = await self._accepted_manifest(campaign.accepted.cycle_id)
@@ -1013,8 +1044,13 @@ class CampaignProgress:
                 where=where,
             )
         frozen = frozen_criteria(await self._campaigns.control_log(campaign.campaign_id))
+        # #1884: what the qa authors proposed instead of testing, in the accepted increment and
+        # the one this proposal replaces.
+        proposed = await self._qa_proposed_behaviours(
+            [campaign.accepted.cycle_id, *([abandoned_cycle_id] if abandoned_cycle_id else [])]
+        )
         try:
-            return increment_launch(campaign, baseline, frozen, abandoned)
+            return increment_launch(campaign, baseline, frozen, abandoned, proposed)
         except FileNotFoundError as e:
             return f"the policy's proposal profile cannot be loaded: {e}"
 

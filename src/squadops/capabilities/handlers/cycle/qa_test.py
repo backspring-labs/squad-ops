@@ -5,6 +5,7 @@ Split from cycle_tasks.py (#152).
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import logging
 import tempfile
@@ -13,6 +14,15 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from squadops.campaigns.proposed_behaviours import (
+    OUTLET_CHECK,
+    PROPOSED_BEHAVIOURS_FILENAME,
+    QA_PROPOSED_BEHAVIOURS_ARTIFACT_TYPE,
+    ProposedBehavioursError,
+    is_outlet_file,
+    parse_proposed_behaviours,
+    stored_form,
+)
 from squadops.capabilities.app_invocation import AppInvocation
 from squadops.capabilities.development_profiles import (
     DEFAULT_DEVELOPMENT_PROFILE,
@@ -213,12 +223,13 @@ class _WholeFileTests(SelfEvalFollowup):
         return artifacts
 
     def artifact_for(self, file_rec: dict[str, str]) -> dict[str, Any] | None:
-        # Every file a qa emission extracts is a test, whatever its name.
+        # Every file a qa emission extracts is a test, whatever its name, but the proposal
+        # outlet's block (#1884), which is never run.
         return {
             "name": file_rec["filename"],
             "content": file_rec["content"],
             "media_type": _classify_file(file_rec["filename"])[1],
-            "type": "test",
+            "type": _extracted_type(file_rec["filename"]),
         }
 
     def append_evidence(
@@ -379,6 +390,62 @@ class _ScaffoldFill(_WholeFileTests):
         )
 
 
+def _extracted_type(filename: str) -> str:
+    """An extracted file's artifact type: a test, or the proposal outlet's block (#1884)."""
+    return QA_PROPOSED_BEHAVIOURS_ARTIFACT_TYPE if is_outlet_file(filename) else "test"
+
+
+def _outlet_error(outlet: list[dict]) -> str | None:
+    """Why the latest outlet block does not parse, or ``None`` (none emitted, or it parses)."""
+    if not outlet:
+        return None
+    try:
+        parse_proposed_behaviours(str(outlet[-1].get("content") or ""))
+    except ProposedBehavioursError as e:
+        return str(e)
+    return None
+
+
+def _settle_outlet(
+    artifacts: list[dict], validation: ValidationResult, evidence_extra: dict[str, Any]
+) -> tuple[list[dict], ValidationResult]:
+    """#1884: what the proposal outlet leaves once the self-evaluation passes are spent.
+
+    A block that parses is stored once, normalized, as ``qa_proposed_behaviours``. One still
+    malformed is dropped, and the evidence says why. Either way its validation row goes: an
+    optional proposal never fails the task that wrote it, so the verdict is the tests'."""
+    outlet = [a for a in artifacts if a.get("type") == QA_PROPOSED_BEHAVIOURS_ARTIFACT_TYPE]
+    if not outlet:
+        return artifacts, validation
+    kept = [a for a in artifacts if a not in outlet]
+    try:
+        entries = parse_proposed_behaviours(str(outlet[-1].get("content") or ""))
+    except ProposedBehavioursError as e:
+        evidence_extra["proposed_behaviours_dropped"] = str(e)
+    else:
+        evidence_extra["proposed_behaviours"] = len(entries)
+        kept.append(
+            {
+                "name": PROPOSED_BEHAVIOURS_FILENAME,
+                "content": stored_form(entries),
+                "media_type": "application/yaml",
+                "type": QA_PROPOSED_BEHAVIOURS_ARTIFACT_TYPE,
+            }
+        )
+    checks = [c for c in validation.checks if c.get("check") != OUTLET_CHECK]
+    if len(checks) == len(validation.checks):
+        return kept, validation
+    passed = (
+        all(c.get("passed", True) or c.get("evidence_gap", False) for c in checks)
+        and not validation.missing_components
+    )
+    error = evidence_extra.get("proposed_behaviours_dropped")
+    summary = "; ".join(p for p in validation.summary.split("; ") if p != error)
+    return kept, dataclasses.replace(
+        validation, passed=passed, checks=checks, summary=summary or "All checks passed"
+    )
+
+
 class QATestHandler(_CycleTaskHandler):
     """Build handler: generates test files from validation plan + source (D1).
 
@@ -471,8 +538,16 @@ class QATestHandler(_CycleTaskHandler):
             if not test_files:
                 missing.append("test_files")
 
+        # #1884: the proposal outlet's block is not a test. A malformed one is a row, so a
+        # self-evaluation pass returns it to the author; ``_settle_outlet`` removes the row after
+        # the loop, so the block never decides the task.
+        outlet = [a for a in artifacts if a.get("type") == QA_PROPOSED_BEHAVIOURS_ARTIFACT_TYPE]
+        outlet_error = _outlet_error(outlet)
+        if outlet_error is not None:
+            checks.append({"check": OUTLET_CHECK, "passed": False, "reason": outlet_error})
+
         # Non-stub check (both modes)
-        stubs = _detect_stubs(artifacts)
+        stubs = _detect_stubs([a for a in artifacts if a not in outlet])
         checks.append(
             {
                 "check": "non_stub_files",
@@ -501,6 +576,8 @@ class QATestHandler(_CycleTaskHandler):
             summary_parts.append(f"Missing: {', '.join(missing)}")
         if stubs:
             summary_parts.append(f"Stub files: {', '.join(stubs)}")
+        if outlet_error is not None:
+            summary_parts.append(outlet_error)
         # #670 diagnosability parity with dev (pf-33: name what failed)
         typed_failed = [
             c
@@ -1713,6 +1790,12 @@ class QATestHandler(_CycleTaskHandler):
         )
         if scope_section:
             user_prompt = f"{user_prompt}\n{scope_section}"
+            # The rule's other half: where unsupported behaviour goes instead of a test. The
+            # suite's author alone is given the outlet; its repair is not (``repair_handlers``).
+            renderer = getattr(context.ports, "request_renderer", None)
+            if renderer is not None:
+                outlet = await renderer.render("request.qa_test_proposed_behaviours_appendix", {})
+                user_prompt = f"{user_prompt}\n{outlet.content}"
 
         # SIP-0104 P3: fill mode rides both prompt paths; a whole-file task adds nothing.
         fill_section = await shape.prompt_section(context)
@@ -1830,7 +1913,7 @@ class QATestHandler(_CycleTaskHandler):
                 "name": f["filename"],
                 "content": f["content"],
                 "media_type": _classify_file(f["filename"])[1],
-                "type": "test",
+                "type": _extracted_type(f["filename"]),
             }
             for f in extracted
         ] + retake_edited
@@ -1889,6 +1972,7 @@ class QATestHandler(_CycleTaskHandler):
                 )
         else:
             validation = ValidationResult(passed=True, summary="Validation disabled")
+        artifacts, validation = _settle_outlet(artifacts, validation, evidence_extra)
 
         # Run generated tests and build report — on what the task will store (#1109).
         extracted = self._suite_files(artifacts)

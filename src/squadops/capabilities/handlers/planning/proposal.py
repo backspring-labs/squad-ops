@@ -81,6 +81,67 @@ def proposal_context_from(resolved_config: dict, baseline_manifest: str) -> Prop
         raise ProposalContextMissing(f"campaign_proposal is incomplete: {e!r}") from e
 
 
+async def _context_sections(
+    renderer: Any, inputs: dict[str, Any], block: dict[str, Any], proposal_context: ProposalContext
+) -> dict[str, str]:
+    """The proposal request's optional sections, each rendered through its own managed asset
+    (#448), keyed by the request template's variable. Absent context renders no section."""
+    out: dict[str, str] = {}
+    conventions = frozen_conventions_for(proposal_context.expected_stack)
+    if conventions:
+        # #1962: what the stack's frozen bytes decide. Shakeout 9's first proposal asserted
+        # an optional field absent against a frozen null (#1948), and the 2.0 set's asserted
+        # name trimming the frozen request models already did; each cost a revision round.
+        sections = [
+            (
+                await renderer.render(f"request.proposal_convention_{c.kind.value}", dict(c.values))
+            ).content
+            for c in conventions
+        ]
+        section = await renderer.render(
+            "request.proposal_frozen_conventions",
+            {"convention_sections": "\n\n".join(sections)},
+        )
+        out["frozen_conventions_section"] = section.content
+    prd = str(inputs.get("prd") or "").strip()
+    if prd:
+        # The objective points into the product's requirements (its expansion scope, say);
+        # the model is shown them rather than asked to recall them.
+        section = await renderer.render("request.proposal_prd_section", {"prd": prd})
+        out["prd_section"] = section.content
+    note = str(block.get("supervisor_note") or "").strip()
+    if note:
+        # SIP-0109 §9.2: a revision run is shown the note and the version it revises.
+        section = await renderer.render(
+            "request.proposal_supervisor_revision",
+            {
+                "prior_version": str(proposal_context.version - 1),
+                "supervisor_note": note,
+                "prior_change_request": str(block.get("prior_change_request") or "").strip(),
+            },
+        )
+        out["supervisor_note_section"] = section.content
+    proposed = block.get("qa_proposed_behaviours") or []
+    if proposed:
+        # #1884: what the last increment's qa author proposed instead of testing.
+        from squadops.campaigns.proposed_behaviours import proposal_lines
+
+        section = await renderer.render(
+            "request.proposal_qa_proposed_behaviours",
+            {"proposed_lines": proposal_lines(proposed)},
+        )
+        out["qa_proposed_behaviours_section"] = section.content
+    abandoned = brief_lines(block.get("abandoned_increment"))
+    if abandoned:
+        # SIP-0109 §7, row 13 (#1692): a fresh proposal is shown why the last increment was
+        # abandoned, so it does not propose the same failure again unchanged.
+        section = await renderer.render(
+            "request.proposal_abandoned_increment", {"brief_lines": abandoned}
+        )
+        out["abandoned_increment_section"] = section.content
+    return out
+
+
 class StrategyProposeIncrementHandler(_PlanningTaskHandler):
     """Proposal handler: author the typed change request for the next increment."""
 
@@ -109,50 +170,7 @@ class StrategyProposeIncrementHandler(_PlanningTaskHandler):
             return self._failure(start_time, inputs, str(e))
 
         variables = _render_variables(block, proposal_context)
-        conventions = frozen_conventions_for(proposal_context.expected_stack)
-        if conventions:
-            # #1962: what the stack's frozen bytes decide. Shakeout 9's first proposal asserted
-            # an optional field absent against a frozen null (#1948), and the 2.0 set's asserted
-            # name trimming the frozen request models already did; each cost a revision round.
-            sections = [
-                (
-                    await renderer.render(
-                        f"request.proposal_convention_{c.kind.value}", dict(c.values)
-                    )
-                ).content
-                for c in conventions
-            ]
-            section = await renderer.render(
-                "request.proposal_frozen_conventions",
-                {"convention_sections": "\n\n".join(sections)},
-            )
-            variables["frozen_conventions_section"] = section.content
-        prd = str(inputs.get("prd") or "").strip()
-        if prd:
-            # The objective points into the product's requirements (its expansion scope, say);
-            # the model is shown them rather than asked to recall them.
-            section = await renderer.render("request.proposal_prd_section", {"prd": prd})
-            variables["prd_section"] = section.content
-        note = str(block.get("supervisor_note") or "").strip()
-        if note:
-            # SIP-0109 §9.2: a revision run is shown the note and the version it revises.
-            section = await renderer.render(
-                "request.proposal_supervisor_revision",
-                {
-                    "prior_version": str(proposal_context.version - 1),
-                    "supervisor_note": note,
-                    "prior_change_request": str(block.get("prior_change_request") or "").strip(),
-                },
-            )
-            variables["supervisor_note_section"] = section.content
-        abandoned = brief_lines(block.get("abandoned_increment"))
-        if abandoned:
-            # SIP-0109 §7, row 13 (#1692): a fresh proposal is shown why the last increment was
-            # abandoned, so it does not propose the same failure again unchanged.
-            section = await renderer.render(
-                "request.proposal_abandoned_increment", {"brief_lines": abandoned}
-            )
-            variables["abandoned_increment_section"] = section.content
+        variables.update(await _context_sections(renderer, inputs, block, proposal_context))
         rendered = await renderer.render(self._request_template_id, variables)
         assembled = context.ports.prompt_service.assemble(
             role=context.role_id,  # SIP-0108 §10m: the identity layer is what the process IS

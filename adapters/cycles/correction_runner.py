@@ -42,6 +42,7 @@ from typing import TYPE_CHECKING, Any
 from adapters.cycles.correction_ids import correction_task_id
 from adapters.cycles.correction_repair import CorrectionRepair
 from adapters.cycles.execution_errors import _ExecutionError
+from squadops.campaigns.proposed_behaviours import QA_PROPOSED_BEHAVIOURS_ARTIFACT_TYPE
 from squadops.capabilities.context_assembly import (
     retest_forwarded_inputs,
 )
@@ -1501,7 +1502,10 @@ class CorrectionRunner:
     # Artifact types a qa.test task emits *about* its run, not *into* its
     # workspace — excluded from re-execution so the repaired suite matches
     # the original workspace composition (#456).
-    _NON_WORKSPACE_ARTIFACT_TYPES = frozenset({"test_report", "typed_check_evaluation"})
+    # #1884: the qa author's proposal outlet is stored and never run.
+    _NON_WORKSPACE_ARTIFACT_TYPES = frozenset(
+        {"test_report", "typed_check_evaluation", QA_PROPOSED_BEHAVIOURS_ARTIFACT_TYPE}
+    )
 
     async def reexecute_repaired_suite(
         self,

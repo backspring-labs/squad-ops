@@ -95,7 +95,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | package renderings: the app's evolution with screenshots | **shipped** | the v2.0.0 release package: campaign 2 at each of its four accepted trees (#1710, with #2000's capture fix) |
 | package renderings: the squad's first pass | **dropped** (the owner chose to drop it at the v2.0.0 cut, 2026-10-04; the digest and package carry the close) | #1710, closed |
 | the outer-loop runbook's second half | **shipped** | v2.0.0 (#1997, closed #1711) |
-| criterion files freeze rules the approved request never stated (the set's P9) | **placed**: the rule reaches every author of an increment's tests (§24ax, #2012); the proposal outlet is the rest | 2.1.0, #1884 |
+| criterion files freeze rules the approved request never stated (the set's P9) | **shipped** (§24ax, §24ay): the rule reaches every author of an increment's tests, and unsupported behaviour is returned as a proposal | 2.1.0, #2012, #2019 |
 | a proposal's PRD delta can state more than its manifest delta carries | **shipped** (§24aw: the request says so; no rail) | 2.1.0, #2014 |
 | rows 10–11 reachable live (environment attribution) | **placed** | 2.1.0, #1824 |
 | proposal tasks re-run on re-attach (random ids) | **placed** | 2.1.0, #1934 |
@@ -2575,4 +2575,46 @@ proposal (the 2.1 plan, §7 item 4).
 **Who ruled it.** The owner, on PR #2010 (2026-10-05): the rule, its application to both the
 planning and `qa.test` paths, and its acceptance criteria. The supervisor built it to the plan's §7
 item 4.
+
+### 24ay. Behaviour a qa author would test but nothing accepted requires is returned as a proposal (2026-10-05, §8.1, §9.1, #1884, part 2 of 2)
+
+**The rule's other half** (the owner's, §24ax): "Unsupported desirable behavior must be returned as a
+proposal, not encoded in a test that gates or repairs the current run."
+
+**What changed: the proposal outlet.**
+- **Who may emit it.** Only `qa.test` in an increment's implementation run, told how by
+  `request.qa_test_proposed_behaviours_appendix`, which renders beside the rule. `qa.test_repair` is
+  not given it. A block in a repair's emission is kept out of its artifacts and named in its evidence
+  (`proposed_behaviours_ignored`).
+- **The contract:** one fenced `proposed_behaviours.yaml` block with a top-level list of 1 to 10
+  entries, each with exactly `behaviour`, `why`, `surface_kind` (`endpoint` or `client_route`) and
+  `surface`, none blank. `squadops.campaigns.proposed_behaviours` parses it.
+- **Where it goes.**
+  - Extracted as type `qa_proposed_behaviours`, never `test`, so the suite never runs it and the stub
+    check never reads it.
+  - **Malformed:** a validation row that a self-evaluation pass returns to the author. If the block
+    is still malformed when the passes run out, it alone is dropped, the evidence says why, and the
+    row goes, so the verdict is the tests'.
+  - **Valid:** stored once, normalized.
+- **Never in a tree.** Three readers exclude it: the delivered tree's allow-list already did; the
+  correction runner's retest deny-list and `failed_task_artifacts`, which forwards a failed task's
+  files to its repair and the verifier's overlay, now name it. The last one is a reader the plan's
+  seam table did not list.
+- **The next proposal.** `_propose_launch` reads the entries stored on the accepted cycle and, for a
+  proposal replacing an abandoned increment, on that one. They go into the launch block as
+  `qa_proposed_behaviours`, deduplicated, at most ten. The read is a function of stored data alone
+  (#1943's rule): a failed read fails the launch attempt and is logged, and no degraded launch is
+  written. `request.proposal_qa_proposed_behaviours` renders them for the proposer (template v9).
+
+**Evidence.** Each of seven seams fails its test when removed:
+- the retest deny-list;
+- `failed_task_artifacts`;
+- the extraction typing;
+- the row's removal after the passes;
+- the repair's exclusion;
+- the launch read;
+- the proposal render.
+
+**Who ruled it.** The owner, on PR #2010 (2026-10-05), and the 2.1 plan's §7 item 4, which specifies
+the contract.
 
