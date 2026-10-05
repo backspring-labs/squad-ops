@@ -7,7 +7,9 @@ since nothing merges while it is open (#1908 §7). Every issue it names was read
 placement is quoted from the issue. **Amended the same day** with the structure audit's ten issues
 (§2.8) and its three for 2.3 (§6), on the owner's word (§5 ruling 11). **And again after the 2.0
 cut** with the cut's three findings (§2.9, §5 ruling 12). **The line started the evening of 2026-10-04**,
-on the owner's grant and stop list (§5 ruling 13).
+on the owner's grant and stop list (§5 ruling 13). **Amended on 2026-10-05** with the line's own first
+findings (§2.10) and the owner's rulings on the day plan (§5 ruling 14): #316 moves to 2.3, and #1469
+leaves 2.1. The night's record is §7's last part.
 
 **What 2.1 is.** An odd minor, a stabilization release (CLAUDE.md, #281): **feature-free by rule.** It
 is the home for:
@@ -61,7 +63,10 @@ new issues placed since:
 - the 2.0 set's findings (§4 step 1: #1961, #1962, #1995, and #1884 from P9);
 - **the structure audit's ten** (§2.8): two latent defects (#1982, #1983) and eight structural issues
   (#1984–#1991);
-- **the 2.0 cut's three** (§2.9): #2006, #2007, #2008.
+- **the 2.0 cut's three** (§2.9): #2006, #2007, #2008;
+- **the line's own findings** (§2.10): #2028, #2029, #2042.
+
+**Moved out on 2026-10-05** (§5 ruling 14): #316 to 2.3, and #1469 until #2028's corpus exists.
 
 #1756 and #1965 are the crew's, and #1039 rides any release. #1965 (Verification Yield: the test-value
 audit, fault corpus and deletion experiment on the framework's own suite) is the crew's first
@@ -116,6 +121,11 @@ deploy-moving work batches into rebuilds.
 | #1469 | `frontend_build` contributes one aggregate signature element, so a repair that fixes two of three unresolved imports reads as an exact repeat | one element per failing module, parsed from the bundler's output, validated on the corpus #1468 has been keeping since it stopped discarding stderr | M | yes |
 | #1930 | an OpenTelemetry console exporter thread outlives pytest's capture and crashed an xdist worker at shutdown, with the run green | find the test that installs the provider; shut it down in a fixture | S | no |
 
+**#1469 leaves 2.1** (§5 ruling 14). Its corpus count (posted on the issue, 2026-10-05) found one error,
+repeated: three cycles of 2026-09-10, all `./app/layout.tsx` failing to resolve `./globals.css`. A failed
+check's reason is never persisted, so the corpus cannot grow. #2028 persists it, in 2.1 (§2.10). #1469 is
+placed again once that corpus holds failures of more than one module shape, and is re-read at 2.1's cut.
+
 ### 2.2 Campaign decisions that are written but not reachable
 
 | issue | the gap | the work | size | deploy |
@@ -143,6 +153,10 @@ the release is attributable to one refactor.
 | #567 | the fenced parser's recognition moves to a CommonMark-spec engine, with the mapping strategies kept on top. Five malformation classes were each found live (#430, #470, #502, #528, #566) | **the owner's gate (2026-09-29):** every stored real emission replayed through the new engine with identical results; a difference is a finding, read before merging | L | yes |
 | #316 | the request-profile taxonomy: 15+ names drawn from four axes. Campaign now selects profiles by name in its policy, the condition the issue set for doing this | `SIP-Cycle-Request-Profile-Naming-Taxonomy` (proposed) accepted first. Persisted names on terminal rows keep their historical labels (no cosmetic migration) | L | yes |
 | #414 | the correction budget is one severity-blind pool. **Its deferral trigger has fired:** "a request profile declaring SIP-0096 `required_checks`". `campaign-increment` and `validated-fullstack` both declare them (`tests_pass`, `frontend_build`, `required_files`), each with 3 attempts | **ruled (§5): the priority reserve.** Each required check keeps one reserved attempt, so completeness failures cannot take the last one. Proven by replaying stored correction ledgers: which runs would have spent differently | M | yes |
+
+**#316 moves to 2.3** (§5 ruling 14). Its SIP is still proposed, the work is L, and nothing in 2.1
+depends on it. It joins the structure audit's batch (§6). The SIP's placement and its portfolio row move
+with it.
 
 ### 2.5 Generation quality, placed here by the owner
 
@@ -245,6 +259,14 @@ campaign.
 - **#2000:** the capture rebuilt a campaign increment from its run's scaffold stubs rather than its accepted tree. Fixed in #2001.
 - **The records scan's false refusal:** it refused on a secret value the repository already commits. Fixed in #2005.
 
+### 2.10 Found during the line (2026-10-05)
+
+| issue | what | size | deploy |
+|---|---|---|---|
+| #2028 | **a failed check's reason reaches no durable store.** #1470 put the bundler's stderr on the `frontend_build` row's `reason`, and that row is transient: `cycle_failure_records.event` has no reason field, and the run's summaries and reports say "frontend build failed (exit 1)". Found measuring #1469's corpus (§7 item 8). The fix: the failing row's reason, bounded as the row bounds it, on its failure record, every check, with a test at the seam that writes the failure set | S | yes |
+| #2029 | **a gate approved with refinements stores its notes after the run's artifacts are promoted, and nothing reads them.** Found doing #1986. A reader would be a feature, so the 2.1 fix is the smallest: the notes are promoted when they are stored, so they stay on the record and forward with the plan, and the CLI's help says they are recorded for the operator, not acted on | S | yes |
+| #2042 | **a restart between a run's completion and its queued successor's start strands a campaign cycle.** `reattach()` continues only a latest run that is running or completed, `_start_first_run()` only an earliest run that is queued, the sweep looks at neither, and `max_elapsed_s` is read only when a cycle ends. The fix: startup starts a queued run that follows only completed runs, once, and a recovery diagnostic restarts in that window. Rides step 3 with the restart work (#1934, #2007) | S–M | yes |
+
 ---
 
 ## 3. Gaps the 2.0 run exposed, filed on adoption
@@ -323,23 +345,28 @@ Deploy-moving work batches into rebuilds, and each structural refactor gets a ba
      authority arrives on one recording path;
    - **#2007** (a restart's orphaned flow runs), with #1934, since both are the restart re-attach's. The
      batch's overlapping recovery diagnostics restart the runtime mid-cycle, so they read it: no flow run
-     may stay open after its run ends.
+     may stay open after its run ends;
+   - **#2042** (a restart between two runs strands the cycle), with them, and its own diagnostic: a
+     restart after the successor is created and before it starts;
+   - **#2029** (refinement notes promoted when stored), beside #1986.
 
    Then a rebuild, the regression pair, and the overlapping recovery diagnostics
    (`restart-at:at_proposal` for #1934). **The crew's first campaign can run on this deploy** (§2.0).
 4. **The ruled answers:** #1757 (the third rewind anchor) and #1727 (§20 on the re-take path, read
    with #1913). Each becomes a SIP amendment in the PR that implements it.
-5. **Verification gaps:** #1796, #1937 (reporting-only), #1824's attribution locus, #1469's
-   per-module elements, and #1973 (a Next.js render profile, with #1950 and #1962), with a rebuild and
-   the regression pair. **The audit's small consolidations ride here:** #1990 (duplicated helpers; adds
+5. **Verification gaps:** #1796, #1937 (reporting-only), #1824's attribution locus, #2028 (a failed
+   check's reason persisted, which #1469's corpus needs), and #1973 (a Next.js render profile, with #1950
+   and #1962), with a rebuild and the regression pair. **Steps 4 and 5 share that rebuild** (ruling 14):
+   neither is a refactor. **The audit's small consolidations ride here:** #1990 (duplicated helpers; adds
    a warning where the vault rule was silent) and #1991 (the environment inventory and guard). **So
    does #2006** (per-deploy credentials), which #1991's inventory informs. It rotates every credential
    in place before its rebuild. Its compose step has the owner's OK (§5 ruling 13).
 6. **Refactors, one per batch, each with its replay proof:** #1985 first (the package imports and the
-   direction guard, so later refactors' import moves are visible), then #414, then #567, then #316 (after
-   its SIP is accepted). Each gets a rebuild and the regression pair before the next begins.
+   direction guard, so later refactors' import moves are visible), then #414, then #567. Each gets a
+   rebuild and the regression pair before the next begins. #316 moved to 2.3 (ruling 14).
 7. **Generation quality:** #1031 and #1692's remainder. These change what the model is shown, so they
-   go last and are read on the cut's evidence, not mixed into a refactor's batch.
+   go last and are read on the cut's evidence, not mixed into a refactor's batch. **Their rebuild is the
+   final deploy** (ruling 14): the cut's regression set and shakeout run on it.
 8. **The cut:** a regression set on both stacks, one campaign shakeout on the final deploy, and the
    release cut procedure (CLAUDE.md). **#1964's re-read** of memory's Phase-1 hypothesis happens here,
    against the evidence the line produced, and is recorded as an amendment to that SIP before 2.2
@@ -414,6 +441,18 @@ The supervisor recommended, and the owner agreed: "go ahead, record them and fil
     - **The stop list:** a tag, a Release or any public upload; #316 until its SIP is accepted; a
       security finding (handled privately); a red on main that cannot be explained; anything that would
       reverse a ruling above; the crew's items (#1756, #1965, the crew's first campaign).
+14. **The day plan, 2026-10-05.** The supervisor proposed the day's order and four decisions, and the
+    owner answered: "go and good with all your recommendations". Recorded:
+    - **#316 moves to 2.3,** with the structure audit's batch (§2.4). Its SIP is still proposed, the
+      work is L, and nothing in 2.1 depends on it. The stop list's #316 item lapses with it.
+    - **#1469 leaves 2.1** (§2.1). Its corpus is one error repeated, and it cannot grow until #2028
+      persists the check's reason. #2028 ships in 2.1.
+    - **Steps 4 and 5 share one rebuild batch.** Refactors stay one per rebuild (#1985, #414, #567),
+      and step 7's rebuild is the final deploy the cut's set runs on.
+    - **#2006's credential rotation is brought to the owner before it runs,** with a backup written
+      first and the exact commands. Its compose change is under ruling 13.
+    - **The line's own findings are placed** (§2.10): #2028, #2029, #2042.
+    - The tag, the Release and the records upload stay the owner's.
 
 ## 6. What this plan does not decide
 
@@ -425,7 +464,8 @@ The supervisor recommended, and the owner agreed: "go ahead, record them and fil
   - **2.2:** Cross-Cycle Memory, the line's only change to squad behaviour, with #1708's auto tier and
     escalation queue;
   - **2.3:** Outcome Evaluation's reporting-only instruments, the comms (#1977) and API-contract
-    (#1976) hardening, and **the structure audit's batch**, ahead of 2.4's executor-heavy feature work:
+    (#1976) hardening, the request-profile taxonomy (#316, ruling 14), and **the structure audit's
+    batch**, ahead of 2.4's executor-heavy feature work:
     - the orchestration move out of `adapters/cycles` (#1992);
     - the `stacks` extraction (#1993);
     - the largest units split by the 1.7.5 method (#1994);
@@ -685,3 +725,37 @@ left for the writeup, and the work moves on to the next item that does not depen
 **The writeup at 08:00 ET:** what merged, what closed, what was filed, what stopped and why, the
 state of the box and of main, and what comes next. It is written at about 07:45 whatever state the
 work is in, with a push notification when it is posted.
+
+### The night's record (written 2026-10-05, in place of the 08:00 writeup)
+
+**Merged, with main's whole run read green after each (17):** #2010 (this plan), #2011 (#1961), #2013
+(#1962 with #1950), #2014 (#1995), #2012 and #2019 (#1884, in two parts), #2015 (#1968), #2016 (#1969),
+#2017 (#1967), #2018 (#1981), #2021 (#1989), #2022 (#1979), #2023 (the portfolio's ruled deprecations,
+Q14), #2024 (#2008), #2025 (#1956), #2026 (#1959) and #2030 (#1986). **So step 1 is complete; step 2 is
+complete but for #1960 and #1988, both in open PRs; step 3 has #1986.**
+
+**Open at the stop, every check green (12):** #2027 (#1960), #2031 (#1984), #2032 (#1980), #2033 (#1934
+with #2007), #2034 (#1930), #2035 (#1982), #2036 (#1974), #2037 (#1975), #2038 (#1972), #2039 (#1958),
+#2040 (#1957) and #2020 (#1988, which merges last). #1987's branch was pushed, built on #2031.
+
+**Measured and posted (§7 item 8):**
+- **#1911:** a capped reasoning-only generation is rare on live rounds: 3 of 469 runs, all `qa.test`
+  rounds, none since 2026-09-23, and no dev correction repair recorded as capped. Whether the scoped
+  prompt drives it is not readable, because an absent emission does not record its revision form. The
+  replay of #1788's bundles remains, and recording the form is the instrument.
+- **#1469:** one error repeated, blocked on #2028 (§2.1).
+- **#1757:** all 7 of the stored `model_limitation` rewinds ended their run, so the ruled third anchor
+  (§5 ruling 4) stands as ruled.
+
+**Filed:** #2028 and #2029 overnight, and #2042 on the morning of 2026-10-05 (§2.10).
+
+**The stop, and why.** At 02:08 ET the session ran `pytest tests/unit/capabilities` on #1983's
+uncommitted first draft. A test mocked the subprocess, the draft's timeout path passed the mock's `pid`
+to `os.killpg`, a mock's `pid` converts to 1, and `killpg(1)` is `kill(-1)`. Every process of the user
+running the suite was killed: the SSH session, tmux, the session itself, the 07:50 writeup backstop, and
+the Keycloak container, whose process runs under the same uid. A 07:58 resume did the same. Main and the
+open PRs lost nothing, and the 08:00 writeup was not posted. The fix is #2043: the bounded-run helper
+refuses such a target, and `tests/conftest.py` refuses it for every test run. It merges first on
+2026-10-05, before the remaining conversions, whose tests also mock subprocesses.
+
+**The box:** the 2.0.1 deploy, unchanged overnight. No rebuild ran.
