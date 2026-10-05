@@ -172,3 +172,167 @@ def test_the_kill_reads_the_records_while_the_process_is_down(monkeypatch):
 
     assert events == ["docker kill", "read", "docker start", "healthy"]
     assert read == "rows at the kill"
+
+
+# ---- 2.1 rebuild 1: #1934, #2007 and #2042, read live --------------------------------------
+
+#: A runtime line as the 2.0.1 deploy prints it, and the agent's replay line as #1929 writes it.
+_DISPATCH = (
+    "2026-10-05 00:22:12,601 INFO adapters.cycles.task_dispatcher: Dispatched task {id} "
+    "({type}) to nat_comms, awaiting reply on nat_replies\n"
+)
+_REPLAY = (
+    "2026-10-05 00:31:02,410 WARNING squadops.agents.entrypoint: task_reply_replayed: task={id} "
+    "— finished here for an earlier runtime boot; a restarted runtime asked again, so it is "
+    "answered with the reply sent, not run twice (#1929)\n"
+)
+_PROPOSAL = "task-run_c0de7fb7-000-strategy.propose_increment"
+
+
+def test_the_logs_are_read_for_the_task_type_and_the_replays_they_name():
+    """Bug caught: a parser that reads every dispatch as the proposal's, or none of them, so
+    #1934's comparison is made on the wrong ids or on nothing."""
+    log = _DISPATCH.format(
+        id="task-run_c0de7fb7-001-development.design_plan", type="development.design_plan"
+    ) + _DISPATCH.format(id=_PROPOSAL, type="strategy.propose_increment")
+
+    assert diag.dispatched(log, "strategy.propose_increment") == [_PROPOSAL]
+    assert diag.replayed(_REPLAY.format(id=_PROPOSAL) + "INFO unrelated\n") == [_PROPOSAL]
+    assert diag.dispatched("INFO nothing dispatched\n", "strategy.propose_increment") == []
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "from_store", "failures"),
+    [
+        ([_PROPOSAL], [_PROPOSAL], [_PROPOSAL], []),
+        # Rebuild 18's shape: the re-attach minted a new id, so the proposer ran it again.
+        (
+            ["68de55e6f36b"],
+            ["532815c18eb5"],
+            [],
+            ["re-dispatched as 532815c18eb5, an id the proposer was never sent"],
+        ),
+        (
+            [_PROPOSAL],
+            [_PROPOSAL],
+            [],
+            [f"{_PROPOSAL}: the proposer did not answer the copy from its stored reply"],
+        ),
+        (
+            [],
+            [_PROPOSAL],
+            [],
+            ["no proposal task was dispatched before the restart, so the window was missed"],
+        ),
+        ([_PROPOSAL], [], [], ["the re-attach dispatched no proposal task"]),
+    ],
+    ids=[
+        "same-id-answered-from-store",
+        "rebuild-18-new-id",
+        "same-id-run-again",
+        "window-missed",
+        "never-redispatched",
+    ],
+)
+def test_the_proposal_is_asked_for_by_its_id_and_answered_once(before, after, from_store, failures):
+    """#1934: a window the restart missed fails rather than passing on nothing."""
+    assert diag.proposal_answered_once(before, after, from_store) == failures
+
+
+def _runs(*rows):
+    return [("cyc_1", run, "implementation", status) for run, status in rows]
+
+
+@pytest.mark.parametrize(
+    ("runs", "open_by_run", "failures"),
+    [
+        (_runs(("run_a", "completed"), ("run_b", "running")), {"run_b": ["fr_new"]}, []),
+        # The 2.0 diagnostics' shape: an ended run beside the dead process's flow run.
+        (
+            _runs(("run_a", "completed")),
+            {"run_a": ["fr_dead"]},
+            ["run_a is completed and 1 flow run(s) of it are open: ['fr_dead']"],
+        ),
+        (
+            _runs(("run_b", "running")),
+            {"run_b": ["fr_dead", "fr_new"]},
+            ["run_b is running and 2 flow runs of it are open: ['fr_dead', 'fr_new']"],
+        ),
+        (
+            _runs(("run_a", "completed")),
+            None,
+            ["Prefect could not be read, so the open flow runs are unread"],
+        ),
+    ],
+    ids=["clean", "ended-run-left-open", "re-attach-kept-the-dead-one", "prefect-unread"],
+)
+def test_no_flow_run_outlives_its_run(runs, open_by_run, failures):
+    """#2007. Bug caught: a Prefect outage read as "none open", which is the tracker's own
+    answer to a transport failure."""
+    assert diag.flow_runs_left_open(runs, open_by_run) == failures
+
+
+@pytest.mark.parametrize(
+    ("successor", "queued_after", "starts", "at_position", "failures"),
+    [
+        ("run_f", True, 1, 1, []),
+        ("run_f", True, 0, 1, ["run_f was never started after the restart: the cycle is stranded"]),
+        (
+            "run_f",
+            True,
+            2,
+            2,
+            ["run_f was started 2 times after the restart", "2 runs hold the successor's position"],
+        ),
+        (
+            "run_f",
+            False,
+            1,
+            1,
+            ["run_f was not still queued after the restart, so the restart did not hold it"],
+        ),
+        (
+            None,
+            False,
+            0,
+            0,
+            ["no successor was queued when the runtime went down, so the window was missed"],
+        ),
+    ],
+    ids=["started-once", "stranded-2042", "started-twice", "not-held", "window-missed"],
+)
+def test_a_queued_successor_is_started_once_after_the_restart(
+    successor, queued_after, starts, at_position, failures
+):
+    assert diag.queued_successor_verdict(successor, queued_after, starts, at_position) == failures
+
+
+def test_the_foreign_model_is_unloaded_when_the_diagnostic_fails_inside(monkeypatch):
+    """Bug caught: a diagnostic that times out waiting with the model resident leaves the box
+    not quiet, so every launch after it is refused."""
+    kept: list[object] = []
+    monkeypatch.setattr(diag, "_ollama_keep", lambda model, keep: kept.append(keep))
+    monkeypatch.setattr(diag, "_available_gb", lambda: 100)
+
+    with pytest.raises(SystemExit), diag.box_held_by("llama3.1:8b"):
+        raise SystemExit("timed out waiting for the successor")
+
+    assert kept == ["2h", 0]
+
+
+def test_every_record_reads_the_flow_runs_its_campaign_left_open(monkeypatch, tmp_path):
+    """Wiring, entered at ``_record``, which every diagnostic's verdict goes through: a verdict
+    that passed on its own fails when an ended run's flow run is still open."""
+    monkeypatch.setattr(diag, "REPO", tmp_path)
+    monkeypatch.setattr(diag, "runs_of", lambda _c: _runs(("run_a", "completed")))
+    monkeypatch.setattr(diag, "open_flow_runs", lambda runs: {"run_a": ["fr_dead"]})
+    monkeypatch.setattr(
+        diag.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, "sha256:x", "")
+    )
+    verdict = diag.Verdict("restart-at-building", True)
+
+    path = diag._record("cmp_abc", verdict)
+
+    assert verdict.passed is False
+    assert verdict.failures == ["run_a is completed and 1 flow run(s) of it are open: ['fr_dead']"]
+    assert '"flow_runs_left_open"' in path.read_text()
