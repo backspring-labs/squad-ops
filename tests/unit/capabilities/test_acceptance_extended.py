@@ -12,6 +12,7 @@ Tests:
 
 import asyncio
 import json
+import time
 
 import pytest
 
@@ -21,6 +22,7 @@ from squadops.capabilities.models import (
     AcceptanceContext,
     CheckType,
 )
+from squadops.core.bounded_run import TERM_GRACE_S
 
 pytestmark = [pytest.mark.domain_pulse_checks]
 
@@ -400,28 +402,19 @@ class TestCommandExitCode:
         assert result.passed is False
         assert "exit code" in result.error.lower()
 
-    async def test_timeout(self, engine, ctx, monkeypatch):
-        """command_exit_code FAIL on command timeout."""
-
-        async def fake_create(*args, **kwargs):
-            class SlowProc:
-                returncode = None
-
-                async def communicate(self):
-                    raise TimeoutError()
-
-            return SlowProc()
-
-        monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create)
-
+    async def test_timeout(self, engine, ctx):
+        """command_exit_code FAIL on command timeout, a real one: the command is stopped, so the
+        check returns within the stop's bound rather than when ``sleep 999`` ends (#1983)."""
         check = AcceptanceCheck(
             check_type=CheckType.COMMAND_EXIT_CODE,
             target="",
             command=("sleep", "999"),
         )
+        started = time.monotonic()
         result = await engine.evaluate_async(check, ctx, max_check_seconds=0.1)
         assert result.passed is False
         assert "timed out" in result.error.lower()
+        assert time.monotonic() - started < TERM_GRACE_S + 5
 
     async def test_relative_cwd_resolved(self, engine, ctx, temp_chroot, monkeypatch):
         """command_exit_code resolves cwd relative to chroot."""

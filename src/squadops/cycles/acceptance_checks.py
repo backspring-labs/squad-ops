@@ -18,7 +18,6 @@ M1.3 wires it into ``_validate_output_focused``.
 from __future__ import annotations
 
 import ast
-import asyncio
 import json
 import logging
 import re
@@ -29,6 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from squadops.core.bounded_run import run_bounded
 from squadops.cycles.acceptance_check_spec import (
     CHECK_ADDITIVE_CONTAINMENT,
     CHECK_ASSERTION_KINDS,
@@ -179,28 +179,15 @@ async def _run_argv(argv: list[str], cwd: Path, timeout_s: int) -> tuple[int | N
     """Run one tool under the restricted env; ``(returncode, stdout, stderr)``, rc None on
     timeout. Shared by the checks that shell out (the frontend build, tsc)."""
     try:
-        proc = await asyncio.create_subprocess_exec(
-            *argv,
-            cwd=str(cwd),
-            env=_restricted_env(),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
+        run = await run_bounded(argv, cwd=cwd, env=_restricted_env(), timeout=timeout_s)
     except (OSError, ValueError) as exc:
         return 1, "", f"spawn failed: {exc}"
-    try:
-        stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
-    except TimeoutError:
-        proc.kill()
-        try:
-            await proc.wait()
-        except Exception:  # pragma: no cover - best-effort cleanup
-            pass
+    if run.timed_out:
         return None, "", ""
     return (
-        proc.returncode,
-        stdout_b.decode("utf-8", errors="replace"),
-        stderr_b.decode("utf-8", errors="replace"),
+        run.returncode,
+        run.stdout.decode("utf-8", errors="replace"),
+        run.stderr.decode("utf-8", errors="replace"),
     )
 
 
@@ -1920,13 +1907,7 @@ class CommandExitZeroCheck(BaseCheck):
         spawn_argv = _resolve_interpreter(argv)
         env = _restricted_env()
         try:
-            proc = await asyncio.create_subprocess_exec(
-                *spawn_argv,
-                cwd=str(cwd_path),
-                env=env,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
+            run = await run_bounded(spawn_argv, cwd=cwd_path, env=env, timeout=timeout_s)
         except FileNotFoundError as exc:
             # #462: a missing binary is an environment gap, not an app defect —
             # the evaluating role's container simply lacks the tool (e.g. `node`
@@ -1937,20 +1918,12 @@ class CommandExitZeroCheck(BaseCheck):
             return CheckOutcome.skipped(reason="missing_tooling", command=argv[0], detail=str(exc))
         except (OSError, ValueError) as exc:
             return CheckOutcome.error(reason="command_spawn_failed", detail=str(exc))
-
-        try:
-            stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
-        except TimeoutError:
-            proc.kill()
-            try:
-                await proc.wait()
-            except Exception:  # pragma: no cover - best-effort cleanup
-                pass
+        if run.timed_out:
             return CheckOutcome.error(reason="command_timeout", timeout_s=timeout_s)
 
-        exit_code = proc.returncode
-        stdout = stdout_b.decode("utf-8", errors="replace")
-        stderr = stderr_b.decode("utf-8", errors="replace")
+        exit_code = run.returncode
+        stdout = run.stdout.decode("utf-8", errors="replace")
+        stderr = run.stderr.decode("utf-8", errors="replace")
         if exit_code == 0:
             return CheckOutcome.passed(exit_code=exit_code)
         return CheckOutcome.failed(
@@ -2004,31 +1977,21 @@ class ModuleImportsCheck(BaseCheck):
         timeout_s = int(params.get("timeout_s", DEFAULT_COMMAND_TIMEOUT_S))
         timeout_s = max(1, min(timeout_s, MAX_COMMAND_TIMEOUT_S))
         try:
-            proc = await asyncio.create_subprocess_exec(
-                sys.executable,
-                "-c",
-                f"import {module}",
-                cwd=str(root),
+            run = await run_bounded(
+                [sys.executable, "-c", f"import {module}"],
+                cwd=root,
                 env=_restricted_env(),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+                timeout=timeout_s,
             )
         except (OSError, ValueError) as exc:
             return CheckOutcome.error(reason="command_spawn_failed", detail=str(exc))
-        try:
-            _stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
-        except TimeoutError:
-            proc.kill()
-            try:
-                await proc.wait()
-            except Exception:  # pragma: no cover - best-effort cleanup
-                pass
+        if run.timed_out:
             return CheckOutcome.error(reason="command_timeout", timeout_s=timeout_s)
 
-        if proc.returncode == 0:
+        if run.returncode == 0:
             return CheckOutcome.passed(module=module)
 
-        stderr = stderr_b.decode("utf-8", errors="replace")
+        stderr = run.stderr.decode("utf-8", errors="replace")
         not_found = _MODULE_NOT_FOUND_RE.search(stderr)
         if not_found is not None:
             missing_top = not_found.group(1).split(".")[0]

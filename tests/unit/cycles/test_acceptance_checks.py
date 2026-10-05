@@ -11,13 +11,16 @@ from __future__ import annotations
 
 import shutil
 import sys
+import time
 from pathlib import Path
 
 import pytest
 
+from squadops.core.bounded_run import TERM_GRACE_S, BoundedRun
 from squadops.cycles.acceptance_check_spec import CHECK_SPECS, argv_matches_safelist
 from squadops.cycles.acceptance_checks import (
     _CHECK_IMPLS,
+    MAX_COMMAND_TIMEOUT_S,
     _resolve_interpreter,
     _safe_resolve,
     assert_registry_complete,
@@ -846,34 +849,21 @@ class TestCommandExitZero:
         assert "exit_code" in result.actual
 
     async def test_timeout_clamped_below_max(self, tmp_path, monkeypatch):
-        # Verify the clamp logic works without invoking a real long process.
+        # The clamp, read at the bounded run's seam without invoking a real long process.
 
         captured: dict = {}
 
-        async def fake_create_subprocess_exec(*argv, cwd, env, stdout, stderr):
-            captured["argv"] = list(argv)
+        async def fake_run_bounded(argv, *, cwd, timeout, env=None):
+            captured.update(argv=list(argv), timeout=timeout)
+            return BoundedRun(0, b"", b"")
 
-            class FakeProc:
-                returncode = 0
-
-                async def communicate(self):
-                    return (b"", b"")
-
-                def kill(self):
-                    pass
-
-                async def wait(self):
-                    pass
-
-            return FakeProc()
-
-        monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create_subprocess_exec)
+        monkeypatch.setattr("squadops.cycles.acceptance_checks.run_bounded", fake_run_bounded)
         result = await get_check("command_exit_zero").evaluate(
             {"argv": ["pyflakes", "app.py"], "timeout_s": 9999},
             tmp_path,
         )
         assert result.status == "passed"
-        assert captured["argv"] == ["pyflakes", "app.py"]
+        assert captured == {"argv": ["pyflakes", "app.py"], "timeout": MAX_COMMAND_TIMEOUT_S}
 
 
 # ---------------------------------------------------------------------------
@@ -1010,10 +1000,7 @@ class TestCommandMissingTooling:
         async def _no_such_binary(*_a, **_k):
             raise FileNotFoundError(2, "No such file or directory: 'node'")
 
-        monkeypatch.setattr(
-            "squadops.cycles.acceptance_checks.asyncio.create_subprocess_exec",
-            _no_such_binary,
-        )
+        monkeypatch.setattr("squadops.cycles.acceptance_checks.run_bounded", _no_such_binary)
         result = await get_check("command_exit_zero").evaluate(
             {"argv": ["node", "--check", "view.jsx"]}, tmp_path
         )
@@ -1029,10 +1016,7 @@ class TestCommandMissingTooling:
         async def _denied(*_a, **_k):
             raise PermissionError(13, "Permission denied")
 
-        monkeypatch.setattr(
-            "squadops.cycles.acceptance_checks.asyncio.create_subprocess_exec",
-            _denied,
-        )
+        monkeypatch.setattr("squadops.cycles.acceptance_checks.run_bounded", _denied)
         result = await get_check("command_exit_zero").evaluate(
             {"argv": ["node", "--check", "view.jsx"]}, tmp_path
         )
@@ -1365,6 +1349,23 @@ class TestModuleImports:
         (tmp_path / "App.jsx").write_text("export default 1;\n")
         outcome = await get_check("module_imports").evaluate({"file": "App.jsx"}, tmp_path)
         assert outcome.status == "skipped"
+
+    async def test_an_import_that_outlives_its_timeout_errors_and_is_stopped(self, tmp_path):
+        """#1983: the timeout ends the import and everything it started, so the check comes back
+        within the stop's bound, not when the module's own child exits 60 seconds later."""
+        (tmp_path / "hang.py").write_text(
+            "import subprocess, sys, time\n"
+            "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+            "time.sleep(60)\n"
+        )
+        started = time.monotonic()
+
+        outcome = await get_check("module_imports").evaluate(
+            {"file": "hang.py", "timeout_s": 1}, tmp_path
+        )
+
+        assert (outcome.status, outcome.reason) == ("error", "command_timeout")
+        assert time.monotonic() - started < TERM_GRACE_S + 5
 
 
 class TestFrontendCompiles:
