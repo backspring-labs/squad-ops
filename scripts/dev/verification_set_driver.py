@@ -598,11 +598,16 @@ class LoadedCheck:
     says where to ask it. A YAML entry whose value is a plain string keeps the older shape,
     where the name is itself the service — every set through 1.7.3 is written that way and
     records byte-identical keys under this class.
+
+    ``expect`` is set on a row read from the tracked file (``scripts/dev/loaded_checks.yaml``),
+    whose rows say what only the new code prints: preflight refuses a deploy that answers
+    otherwise. A row written in the set file records its answer and asserts nothing.
     """
 
     name: str
     service: str
     source: str
+    expect: str = ""
 
 
 #: The chain's fault kinds (1.8.2 plan §3.2 item 14). ``cancel`` and ``crash`` are injected by
@@ -771,6 +776,34 @@ def parse_chain(path: Path, raw: Any) -> ChainSpec | None:
     return ChainSpec(int(raw["cycles"]), int(raw["quiet_timeout_seconds"]), tuple(faults))
 
 
+#: The release's loaded checks, one row per change (#1956). A set names the rows its rolls
+#: record rather than copying them, so the rows a rebuild is verified by and the rows a roll
+#: records are one text.
+TRACKED_LOADED_CHECKS = REPO / "scripts" / "dev" / "loaded_checks.yaml"
+
+
+def tracked_loaded_checks(path: Path, ids: Sequence[str]) -> list[LoadedCheck]:
+    """The tracked rows a set names, keyed ``#<id>`` and asked in the row's own container."""
+    if not ids:
+        return []
+    rows = {str(r["id"]): r for r in yaml.safe_load(TRACKED_LOADED_CHECKS.read_text())["checks"]}
+    unknown = sorted({str(i) for i in ids} - set(rows))
+    if unknown:
+        raise SystemExit(
+            f"{path}: tracked_loaded_checks names rows {unknown} that "
+            f"{TRACKED_LOADED_CHECKS} does not hold"
+        )
+    return [
+        LoadedCheck(
+            name=f"#{i}",
+            service=str(rows[str(i)]["container"]).removeprefix("squadops-"),
+            source=str(rows[str(i)]["code"]),
+            expect=str(rows[str(i)]["expect"]).strip(),
+        )
+        for i in ids
+    ]
+
+
 def load_set_config(path: Path) -> SetConfig:
     raw = yaml.safe_load(path.read_text()) or {}
     missing = [k for k in _REQUIRED if k not in raw]
@@ -800,6 +833,7 @@ def load_set_config(path: Path) -> SetConfig:
             checks.append(LoadedCheck(name, str(value["service"]), str(value["source"])))
         else:
             checks.append(LoadedCheck(name, name, str(value)))
+    checks.extend(tracked_loaded_checks(path, raw.get("tracked_loaded_checks") or ()))
     unknown_services = sorted({c.service for c in checks} - set(KNOWN_SERVICES))
     if unknown_services:
         raise SystemExit(
@@ -1063,6 +1097,26 @@ def loaded_check_problems(identity: dict[str, str]) -> list[str]:
     ]
 
 
+def loaded_check_mismatches(cfg: SetConfig, identity: Mapping[str, str]) -> list[str]:
+    """Preflight problems for the tracked probes that ran and printed something other than the
+    new code's answer: the deploy does not carry the change. A probe that could not run is
+    ``loaded_check_problems``' to name, so it is not named twice."""
+    wrong = []
+    for check in cfg.loaded_checks:
+        answer = identity.get(f"{check.name}:loaded", "")
+        if not check.expect or answer.startswith("ERROR:"):
+            continue
+        lines = answer.strip().splitlines()
+        if (lines[-1].strip() if lines else "") != check.expect:
+            wrong.append(f"{check.name}:loaded -> {answer!r}, expected {check.expect!r}")
+    if not wrong:
+        return []
+    return [
+        f"§7 LOADED CHECK ANSWERED WITH THE OLD CODE ({len(wrong)}): {'; '.join(wrong)} — the "
+        "deploy does not carry the change the row asks about"
+    ]
+
+
 def framework_drift_problems(cfg: SetConfig) -> list[str]:
     """Problems when the DEPLOY's framework code and the INSTRUMENT's have diverged.
 
@@ -1111,6 +1165,7 @@ def preflight(cfg: SetConfig, *, counting: bool, identity: dict[str, str]) -> li
     # built" is the only evidence that the deploy carries the code the set claims, so an
     # error here stops the launch rather than riding into the record for someone to notice.
     problems.extend(loaded_check_problems(identity))
+    problems.extend(loaded_check_mismatches(cfg, identity))
     # #1632: every collector's marker survives its window's filter and feeds its field, so a
     # dropped marker refuses here by name instead of reading NO through a whole set (#1631).
     problems.extend(marker_self_check_problems())

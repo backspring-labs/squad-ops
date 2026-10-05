@@ -2761,7 +2761,7 @@ class TestALoadedCheckIsAskedWhereItSaysAndAnsweredBeforeLaunch:
     answered one.
     """
 
-    def _cfg(self, driver, tmp_path, checks):
+    def _cfg(self, driver, tmp_path, checks, **extra):
         import yaml
 
         p = tmp_path / "set.yaml"
@@ -2778,6 +2778,7 @@ class TestALoadedCheckIsAskedWhereItSaysAndAnsweredBeforeLaunch:
                     "shakeout_notes": "s",
                     "n_rolls": 2,
                     "loaded_checks": checks,
+                    **extra,
                 }
             )
         )
@@ -2873,6 +2874,71 @@ class TestALoadedCheckIsAskedWhereItSaysAndAnsweredBeforeLaunch:
         )
         assert problems == []
 
+    def _tracked(self, driver, tmp_path, monkeypatch, rows):
+        import yaml
+
+        tracked = tmp_path / "loaded_checks.yaml"
+        tracked.write_text(yaml.safe_dump({"checks": rows}))
+        monkeypatch.setattr(driver, "TRACKED_LOADED_CHECKS", tracked)
+
+    _ROW = {
+        "id": "1971",
+        "what": "a refused launch is its own operation",
+        "container": "squadops-runtime-api",
+        "code": "print('launch_refused')",
+        "expect": "launch_refused",
+    }
+
+    def test_a_set_records_the_tracked_rows_it_names_in_their_own_containers(
+        self, driver, tmp_path, monkeypatch
+    ):
+        """The rows a rebuild is verified by and the rows a roll records are one text. Bug
+        caught: a tracked row asked in a container named after its id, or not asked at all."""
+        self._tracked(driver, tmp_path, monkeypatch, [self._ROW, {**self._ROW, "id": "1954"}])
+        cfg = self._cfg(driver, tmp_path, {"eve": "print(1)"}, tracked_loaded_checks=["1971"])
+
+        seen, ids = self._execs(driver, monkeypatch, cfg)
+
+        assert [a[2] for a in seen] == ["squadops-eve", "squadops-runtime-api"]
+        assert seen[1][-1] == "print('launch_refused')"
+        assert ids["#1971:loaded"] == "answered"
+        assert "#1954:loaded" not in ids
+
+    def test_a_tracked_row_the_file_does_not_hold_is_refused_at_load(
+        self, driver, tmp_path, monkeypatch
+    ):
+        self._tracked(driver, tmp_path, monkeypatch, [self._ROW])
+        with pytest.raises(SystemExit, match=r"names rows \['9999'\]"):
+            self._cfg(driver, tmp_path, {}, tracked_loaded_checks=["1971", "9999"])
+
+    @pytest.mark.parametrize(
+        ("answer", "refused"),
+        [
+            ("launch_refused", False),
+            ("INFO noise\nlaunch_refused", False),
+            ("launch_blocked", True),
+            ("ERROR: exit 1", False),  # could not run: the guard above names it, once
+        ],
+        ids=["new-code", "new-code-after-noise", "old-code", "did-not-run"],
+    )
+    def test_a_tracked_row_answering_with_the_old_code_stops_the_launch(
+        self, driver, tmp_path, monkeypatch, answer, refused
+    ):
+        """A set-file probe's output is a reading; a tracked row says what only the new code
+        prints, so any other answer is a deploy without the change (a rebuild that exited 0 on
+        a stale image). Bug caught: that deploy launching, its roll read against code it never
+        ran."""
+        self._clean_environment(driver, monkeypatch)
+        self._tracked(driver, tmp_path, monkeypatch, [self._ROW])
+        cfg = self._cfg(driver, tmp_path, {}, tracked_loaded_checks=["1971"])
+
+        problems = driver.preflight(cfg, counting=False, identity={"#1971:loaded": answer})
+
+        old = [p for p in problems if "ANSWERED WITH THE OLD CODE" in p]
+        assert bool(old) is refused
+        if refused:
+            assert "'launch_blocked', expected 'launch_refused'" in old[0]
+
     def test_the_shakeout_judges_the_identity_it_records(self, driver, tmp_path, monkeypatch):
         """Wiring, entered where the driver is actually launched (#1250/#1256): preflight
         ran BEFORE the identity was taken, so nothing could have refused on it. Asserts the
@@ -2890,7 +2956,8 @@ class TestALoadedCheckIsAskedWhereItSaysAndAnsweredBeforeLaunch:
     def test_every_committed_probe_names_a_deployed_service(self, driver, filename):
         """Broader than the change that prompted it: every set on disk, counting arms,
         A/B arms and diagnostics alike — the defect reached two files because nothing
-        looked at the rest."""
+        looked at the rest. Loading also refuses a tracked row the committed file no longer
+        holds, so a row renamed there fails here rather than at the launch."""
         cfg = driver.load_set_config(_SETS / filename)
         assert all(c.service in driver.KNOWN_SERVICES for c in cfg.loaded_checks)
 
