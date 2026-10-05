@@ -6,7 +6,8 @@ rulings, and §3's three issues are filed (#1956, #1957, #1958). The plan merges
 since nothing merges while it is open (#1908 §7). Every issue it names was read in full, and its
 placement is quoted from the issue. **Amended the same day** with the structure audit's ten issues
 (§2.8) and its three for 2.3 (§6), on the owner's word (§5 ruling 11). **And again after the 2.0
-cut** with the cut's three findings (§2.9, §5 ruling 12).
+cut** with the cut's three findings (§2.9, §5 ruling 12). **The line started the evening of 2026-10-04**,
+on the owner's grant and stop list (§5 ruling 13).
 
 **What 2.1 is.** An odd minor, a stabilization release (CLAUDE.md, #281): **feature-free by rule.** It
 is the home for:
@@ -60,7 +61,10 @@ new issues placed since:
   (#1984–#1991);
 - **the 2.0 cut's three** (§2.9): #2006, #2007, #2008.
 
-#1756 is the crew's, and #1039 rides any release.
+#1756 and #1965 are the crew's, and #1039 rides any release. #1965 (Verification Yield: the test-value
+audit, fault corpus and deletion experiment on the framework's own suite) is the crew's first
+optimization experiment, placed in the 2.1 window as crew work by the owner's ruling of 2026-10-04. It
+is listed so that its placement is visible, not to be built here.
 
 ---
 
@@ -231,7 +235,7 @@ campaign.
 
 | issue | what | size | deploy |
 |---|---|---|---|
-| #2006 | **a bootstrapped deploy keeps the default credentials the repository commits.** The records scan named fifteen of the deploy's credential values as already public, among them the Keycloak DB password, which `docker-compose.yml` sets as a literal. The work: bootstrap generates per-deploy secrets; compose reads every credential from env or secrets with no literal (**the compose step needs the owner's explicit OK**); `.env.example` keeps placeholders; `doctor` refuses a committed default; a rotation note for existing deploys | M | yes, plus a rotation |
+| #2006 | **a bootstrapped deploy keeps the default credentials the repository commits.** The records scan named fifteen of the deploy's credential values as already public, among them the Keycloak DB password, which `docker-compose.yml` sets as a literal. The work: bootstrap generates per-deploy secrets; compose reads every credential from env or secrets with no literal (**the compose step needs the owner's explicit OK**, given at the line's start, §5 ruling 13); `.env.example` keeps placeholders; `doctor` refuses a committed default; a rotation note for existing deploys | M | yes, plus a rotation |
 | #2007 | **a runtime restart leaves the interrupted run's Prefect flow runs open forever.** Nine stayed `RUNNING` for 20–30 hours after their runs completed: the proposal and framing flow runs of three recovery-diagnostic campaigns, with the framing run duplicated by the re-attach. Cleared by hand on the owner's go-ahead. The fix: the startup re-attach and sweep close the dead process's flow runs | S | yes |
 | #2008 | **the delivered-app capture cannot photograph a reference-scenario cycle:** it stores no `interface_manifest.yaml`, only the seeded candidate manifest, so the v2.0.1 package shows the Prefect run only. The fix: read the seeded manifest, and check the tree for #2000's stub shape on the first capture | S | no |
 
@@ -287,6 +291,10 @@ Deploy-moving work batches into rebuilds, and each structural refactor gets a ba
      approved requests never stated: campaign 1 T1's tie order, and campaign 2 T4's white-box check that the store's
      order is untouched. The supervisor cannot see a criterion file at the gate, because it is authored after approval.
      So the fix is on the qa author's side, or in what the evaluation freezes (#1884's two directions).
+     **Taken: the qa author's side** (§5 ruling 13). The author asserts the criterion's statement and
+     observable only, and any further test goes to a file that is not frozen. Freezing only discriminating
+     tests would need a ruling on what a bundle is (§8.1), and would not catch campaign 1's T1, since an
+     invented tie rule discriminates too.
 
    **The set closed PASS** (both campaigns success, every safety guarantee held). These four are its findings.
 2. **The SIP record's guards** (#1969, #1979, #1980, #1981, #1967, #1968: tooling, no deploy), so every
@@ -324,7 +332,7 @@ Deploy-moving work batches into rebuilds, and each structural refactor gets a ba
    the regression pair. **The audit's small consolidations ride here:** #1990 (duplicated helpers; adds
    a warning where the vault rule was silent) and #1991 (the environment inventory and guard). **So
    does #2006** (per-deploy credentials), which #1991's inventory informs. It rotates every credential
-   in place before its rebuild, and its compose step waits for the owner's explicit OK.
+   in place before its rebuild. Its compose step has the owner's OK (§5 ruling 13).
 6. **Refactors, one per batch, each with its replay proof:** #1985 first (the package imports and the
    direction guard, so later refactors' import moves are visible), then #414, then #567, then #316 (after
    its SIP is accepted). Each gets a rebuild and the regression pair before the next begins.
@@ -383,10 +391,25 @@ The supervisor recommended, and the owner agreed: "go ahead, record them and fil
     "file it for 2.1"; on the three: "go ahead and add them to the 2.1 plan". #2006's compose change
     is still the owner's to approve when it is built (CLAUDE.md: compose is never changed without an
     explicit request).
+13. **The line starts, 2026-10-04 evening.** The owner: "I want to start the 2.1 line and I give you the
+    authority to merge PRs, address issues as you find them and use your best judgement to address the
+    spirit of the fix", and then "yes to rebuilds, stop list approved, can't you also make a docker yaml
+    change?". So:
+    - **Covered:** merging a 2.1 PR when every check is green and its own evidence reads clean (main's
+      whole run read before the next merge); rebuilds; uncounted validation runs (the regression pair,
+      the recovery diagnostics, shakeouts); and a `docker-compose.yml` change where a 2.1 item needs one
+      (#2006's literal credentials first; no service or container renames). That is the explicit request
+      CLAUDE.md requires for compose.
+    - **The stop list:** a tag, a Release or any public upload; #316 until its SIP is accepted; a
+      security finding (handled privately); a red on main that cannot be explained; anything that would
+      reverse a ruling above; the crew's items (#1756, #1965, the crew's first campaign).
+    - **#1884's direction** is the qa author's side (§4 step 1). The supervisor proposed it, and the
+      owner did not object.
 
 ## 6. What this plan does not decide
 
-- **The 2.0 set's own findings:** inherited at the cut, placed then.
+- **The 2.0 set's own findings:** placed in §4 step 1 (#1961, #1962, #1995, #1884). A finding of
+  2.1's own regression set or shakeouts is placed when it is found.
 - **The cut criteria's exact numbers** (the regression set's size, the shakeout's exit rule): written as
   the pre-registration when 2.1's last batch is built, as 1.9 and 2.0 did.
 - **The line after 2.1**, ruled 2026-10-04 and recorded in the ROADMAP's horizon:
