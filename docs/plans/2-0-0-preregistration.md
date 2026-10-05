@@ -491,3 +491,16 @@ All four are inherited by 2.1.0 (its plan, §4 step 1).
     records tool and the secret-scan allowlist) and this record.
 - **The set files' header comments name rebuild 19.** The pin is the bytes; #1958 is the rule for this.
 - **Escalations, limits reached, owner actions:** none.
+
+## 11. Addendum (2026-10-05): the instruments, tracked (#1956)
+
+The proofs this record cites ran from scripts in the supervising session's scratch directory. Their
+ports are tracked, so a reader can re-run what made the logs:
+- the live-lease proof (§6, precondition 4): `scripts/dev/campaign_lease_proof.py`;
+- the #1943 binding replay (precondition 5): `scripts/dev/campaign_binding_replay.py`;
+- the loaded checks (§6): `scripts/dev/verify_loaded.py` over `scripts/dev/loaded_checks.yaml`. 2.0's
+  rows ran from the session script; each release adds its own rows to the file;
+- the campaign watcher: `scripts/dev/campaign_watch.py`.
+
+Each keeps the session version's steps, and its verdict is a tested function. The 2.0 runs used the
+session versions, not these ports.
