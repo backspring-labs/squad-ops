@@ -298,3 +298,52 @@ async def test_a_restart_takes_up_the_campaign_cycle_it_died_inside(world, left,
     await asyncio.sleep(0)
 
     assert world.executor.reentered == ([(cycle.cycle_id, run.run_id)] if taken_up else [])
+
+
+@pytest.mark.parametrize(
+    ("earlier", "started"),
+    [("completed", True), ("failed", False)],
+    ids=["after-a-completed-run", "after-a-failed-run"],
+)
+async def test_a_restart_starts_a_successor_left_queued(world, earlier, started):
+    """#2042, entered at ``main._resume_campaigns``. The process died after a run completed and
+    its gate passed, with the successor created and not yet started: neither the drain (which
+    starts only a first run) nor the re-attach (which took only running or completed runs) took
+    it up, so the cycle never ended and the campaign never paused or escalated. Bugs caught:
+    that stall, or a successor started behind a run that did not complete."""
+    import dataclasses
+    from types import SimpleNamespace
+
+    from squadops.api.runtime.main import _resume_campaigns
+    from squadops.cycles.models import RunStatus
+
+    world.start()
+    await asyncio.sleep(0)
+    [cycle] = await world.cycles.list_cycles("group_run")
+    [first] = await world.cycles.list_runs(cycle.cycle_id)
+    await world.cycles.update_run_status(first.run_id, RunStatus.RUNNING)
+    await world.cycles.update_run_status(first.run_id, RunStatus(earlier))
+    successor = dataclasses.replace(
+        first,
+        run_id="run_successor",
+        run_number=2,
+        status=RunStatus.QUEUED.value,
+        workload_type="implementation",
+    )
+    await world.cycles.create_run(successor)
+    restarted = CampaignLaunchService(
+        campaigns=world.campaigns,
+        creation=world.launch._creation,
+        flow_executor=world.executor,
+        event_bus=MagicMock(),
+        box_verdict=quiet_box,
+    )
+    progress = SimpleNamespace(rehear_ended=AsyncMock(return_value=[]))
+
+    await _resume_campaigns(SimpleNamespace(campaign_launch=restarted, campaign_progress=progress))
+    await _resume_campaigns(SimpleNamespace(campaign_launch=restarted, campaign_progress=progress))
+    await asyncio.sleep(0)
+
+    taken_up = [s for s in world.executor.started if s[1] == "run_successor"]
+    assert taken_up == ([(cycle.cycle_id, "run_successor", "full-38")] if started else [])
+    assert world.executor.reentered == []

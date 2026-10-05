@@ -106,6 +106,10 @@ class CampaignLaunchService:
           the gate is open again, and a decision already recorded on it is not asked again.
         - **A completed last run whose ending was never recorded** is re-entered at the cycle's
           end, so its completion is heard.
+        - **A queued run that follows only completed runs** (#2042): the process died after its
+          gate passed and its successor was created, before the successor started. It is
+          started, once, as the dying process would have. A first run left queued is the
+          drain's (``_start_first_run``).
         - A cycle whose ending is recorded is left to the startup re-hearing; a failed,
           cancelled or paused run is the campaign's or the owner's to act on.
 
@@ -122,16 +126,24 @@ class CampaignLaunchService:
             latest = max(runs, key=lambda r: r.run_number)
             if latest.run_id in self._started or await cycles.get_cycle_end(cycle_id) is not None:
                 continue
-            if latest.status not in (RunStatus.RUNNING.value, RunStatus.COMPLETED.value):
+            queued_successor = (
+                latest.status == RunStatus.QUEUED.value
+                and len(runs) > 1
+                and all(r.status == RunStatus.COMPLETED.value for r in runs if r is not latest)
+            )
+            if (
+                latest.status not in (RunStatus.RUNNING.value, RunStatus.COMPLETED.value)
+                and not queued_successor
+            ):
                 continue
             cycle = await cycles.get_cycle(cycle_id)
             logger.warning(
-                "campaign_cycle_reattached cycle=%s run=%s status=%s (#1922)",
+                "campaign_cycle_reattached cycle=%s run=%s status=%s (#1922, #2042)",
                 cycle_id,
                 latest.run_id,
                 latest.status,
             )
-            self._execute(cycle, latest, reentry=True)
+            self._execute(cycle, latest, reentry=not queued_successor)
             taken_up.append(cycle_id)
         return taken_up
 
