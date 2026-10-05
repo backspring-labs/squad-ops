@@ -33,7 +33,7 @@ from squadops.campaigns.change_request import (
 from squadops.campaigns.prior_cycle import brief_lines
 from squadops.capabilities.handlers.base import HandlerEvidence, HandlerResult
 from squadops.capabilities.handlers.planning.base import _PlanningTaskHandler
-from squadops.capabilities.scaffold import unset_optional_response_for
+from squadops.capabilities.scaffold import frozen_conventions_for
 from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
@@ -109,14 +109,24 @@ class StrategyProposeIncrementHandler(_PlanningTaskHandler):
             return self._failure(start_time, inputs, str(e))
 
         variables = _render_variables(block, proposal_context)
-        unset = unset_optional_response_for(proposal_context.expected_stack)
-        if unset:
-            # #1948: the stack's frozen models decide what an optional field the request left
-            # out returns; shakeout 9's first proposal asserted it absent, against a frozen null.
+        conventions = frozen_conventions_for(proposal_context.expected_stack)
+        if conventions:
+            # #1962: what the stack's frozen bytes decide. Shakeout 9's first proposal asserted
+            # an optional field absent against a frozen null (#1948), and the 2.0 set's asserted
+            # name trimming the frozen request models already did; each cost a revision round.
+            sections = [
+                (
+                    await renderer.render(
+                        f"request.proposal_convention_{c.kind.value}", dict(c.values)
+                    )
+                ).content
+                for c in conventions
+            ]
             section = await renderer.render(
-                "request.proposal_unset_optional", {"unset_value": unset}
+                "request.proposal_frozen_conventions",
+                {"convention_sections": "\n\n".join(sections)},
             )
-            variables["unset_optional_section"] = section.content
+            variables["frozen_conventions_section"] = section.content
         prd = str(inputs.get("prd") or "").strip()
         if prd:
             # The objective points into the product's requirements (its expansion scope, say);
