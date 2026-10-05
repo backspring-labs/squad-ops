@@ -51,11 +51,11 @@ async def run_bounded(
     argv: Sequence[str],
     *,
     cwd: str | Path | None,
-    timeout: float,
+    timeout: float | None,
     env: Mapping[str, str] | None = None,
 ) -> BoundedRun:
-    """Run ``argv`` for at most ``timeout`` seconds, capturing its output. On a timeout, or when
-    the caller is cancelled, every process the command started is ended."""
+    """Run ``argv`` for at most ``timeout`` seconds (``None``: no limit), capturing its output.
+    On a timeout, or when the caller is cancelled, every process the command started is ended."""
     proc = await asyncio.create_subprocess_exec(
         *argv,
         cwd=None if cwd is None else str(cwd),
