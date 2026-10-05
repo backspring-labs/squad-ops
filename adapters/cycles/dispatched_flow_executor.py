@@ -3302,6 +3302,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         task_id=envelope.task_id,
                         signatures=tuple(protocol.empty_emission_signatures),
                         round_index=attempt,
+                        offered_scoped=protocol.empty_emission_offered_scoped,
                     )
                 )
             if refund_empty_emission_attempt(correction_counter, max_corrections, attempt):

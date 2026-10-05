@@ -894,6 +894,9 @@ class RepairOutcome:
     #: SIP-0096 §17a: the checks the repair disputed, each with the role that disputed it.
     #: The next round's evidence reads them, since its analyzer runs before its repair.
     disputes: list[dict[str, Any]] = field(default_factory=list)
+    #: #1911: per repair step that recorded its revision form, whether it was offered the
+    #: scoped edit form (any file listed in the form) or asked for whole files.
+    offered_scoped: list[bool] = field(default_factory=list)
 
 
 class CorrectionRepair:
@@ -963,6 +966,7 @@ class CorrectionRepair:
         anchored_edits_refused = False
         repair_steps_ran = False
         empty_signatures: list[str] = []
+        offered_scoped: list[bool] = []
         if correction_path == "patch":
             failed_inputs = envelope.inputs or {}
             # #667/#663 S2: the anchor surface rides every repair envelope,
@@ -1119,6 +1123,9 @@ class CorrectionRepair:
                 # #998: the handler names what kind of nothing it emitted; keep it for
                 # the round's disclosure below.
                 empty_signatures.extend(_empty_emission_signature(repair_result))
+                form = (repair_result.outputs or {}).get("revision_form")
+                if isinstance(form, dict):
+                    offered_scoped.append(bool(form.get("offered")))
                 anchored_edits_refused = anchored_edits_refused or _anchored_edits_refused(
                     repair_result
                 )
@@ -1168,6 +1175,7 @@ class CorrectionRepair:
             empty_signatures=empty_signatures,
             anchored_edits_refused=anchored_edits_refused,
             disputes=repair_disputes,
+            offered_scoped=offered_scoped,
         )
 
     def judge_emission(self, repair: RepairOutcome, correction_attempts: int) -> bool:

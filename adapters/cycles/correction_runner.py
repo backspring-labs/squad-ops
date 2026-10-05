@@ -322,6 +322,9 @@ class CorrectionProtocolResult:
     #: ``unextractable``. Two empties with opposite remedies must not read the same on
     #: the correction event; before this they did not read at all.
     empty_emission_signatures: tuple[str, ...] = ()
+    #: #1911: whether this round's empty repair was offered the scoped edit form; ``None``
+    #: when the round's emission was not empty or no step recorded its form.
+    empty_emission_offered_scoped: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -1156,6 +1159,9 @@ class CorrectionRunner:
             repair_typed_checks=tuple(repair.typed_checks),
             emission_empty=emission_empty,
             empty_emission_signatures=(tuple(repair.empty_signatures) if emission_empty else ()),
+            empty_emission_offered_scoped=(
+                any(repair.offered_scoped) if emission_empty and repair.offered_scoped else None
+            ),
         )
 
     async def _diagnose(
