@@ -77,6 +77,25 @@ _ASSEMBLY_SENTINELS: dict[str, str] = {
 }
 
 _VAULT_CONTAINER = "squadops-runtime-api"
+#: Where each declared route is rendered (#1796): the qa role's container, the one image that
+#: declares a browser and Node (``agents/instances/qa/system-packages.txt``). The audit's sandbox
+#: image has neither, and on the React stack the sandbox serves only the backend.
+_RENDER_CONTAINER = "squadops-eve"
+#: Install, build and stand-up, then each page: the evaluation allows its preparation 600 s.
+_RENDER_TIMEOUT_S = 1800
+
+#: Run inside the render container with its deployed code: the increment evaluation's own render
+#: (SIP-0109 §24p, ``evaluate_increment._rendered``), so the audit and the evaluation cannot
+#: disagree about how a stack's pages are stood up and read. Reads its input from stdin and
+#: prints one JSON line.
+_RENDER_DRIVER = """
+import asyncio, json, sys
+from squadops.capabilities.handlers.cycle.evaluate_increment import _rendered
+p = json.load(sys.stdin)
+declared = {route: tuple(ids) for route, ids in p["declared"].items()}
+seen = asyncio.run(_rendered(p["stack"], p["files"], declared, {"increment_route_seeds": p["seeds"]}))
+print(json.dumps({route: (sorted(ids) if ids is not None else None) for route, ids in seen.items()}))
+"""
 _AUDIT_ROOT = Path("/tmp/squadops-sandbox-audit")
 
 
@@ -228,6 +247,57 @@ async def _run_probes(contract: VerificationContract, base_url: str) -> list[str
     return failures
 
 
+def render_declared_routes(
+    files: dict[str, str],
+    stack: str,
+    declared: dict[str, tuple[str, ...]],
+    seeds: dict[str, dict],
+    *,
+    container: str = _RENDER_CONTAINER,
+    run=subprocess.run,
+) -> dict[str, frozenset[str] | None]:
+    """Each declared route's rendered test ids, read in the qa container by the evaluation's own
+    render (#1796). Every route is answered: one the container could not read is ``None``."""
+    payload = json.dumps({"stack": stack, "files": files, "declared": declared, "seeds": seeds})
+    try:
+        done = run(  # noqa: S603 - fixed argv, dev tooling
+            ["docker", "exec", "-i", container, "python3", "-c", _RENDER_DRIVER],
+            input=payload,
+            capture_output=True,
+            text=True,
+            timeout=_RENDER_TIMEOUT_S,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        print(f"route rendering could not run in {container}: {e}")
+        return {route: None for route in declared}
+    lines = [line for line in (done.stdout or "").splitlines() if line.startswith("{")]
+    if done.returncode != 0 or not lines:
+        print(f"route rendering failed in {container}: {(done.stderr or '').strip()[-500:]}")
+        return {route: None for route in declared}
+    read = json.loads(lines[-1])
+    return {
+        route: (frozenset(read[route]) if read.get(route) is not None else None)
+        for route in declared
+    }
+
+
+def route_failures(
+    declared: dict[str, tuple[str, ...]], rendered: dict[str, frozenset[str] | None]
+) -> list[str]:
+    """A failure line per declared route that did not render its view's root anchor, judged by
+    the evaluation's own judge (``route_rendering``, §24p). A page that was never read is a
+    failure here too: an audit that could not look has not seen the page render."""
+    from squadops.campaigns.acceptance import Held, route_rendering
+
+    failures = []
+    for result in route_rendering(declared, rendered):
+        if result.held is Held.BROKEN:
+            failures.append(f"{result.path}: rendered without its view's root {result.missing}")
+        elif result.held is not Held.HELD:
+            failures.append(f"{result.path}: not read ({result.held}), so not seen to render")
+    return failures
+
+
 async def _audit(args: argparse.Namespace) -> int:
     contract = VerificationContract.from_yaml(Path(args.contract).read_text(encoding="utf-8"))
 
@@ -291,19 +361,46 @@ async def _audit(args: argparse.Namespace) -> int:
         ui_failures = await _run_ui_data_path(files, stack, base_url)
     finally:
         await backend.stop_application(revision=revision, cleanup_handle=start.cleanup_handle)
+    # #1796: the API calls the UI makes are not its pages. Each route the run's manifest
+    # declares must render its view in a browser; #1794's rolls passed everything above with a
+    # detail page no browser could reach.
+    declared, seeds = _declared_routes(args.project, args.cycle_id)
+    render_failures = (
+        route_failures(
+            declared,
+            render_declared_routes(files, stack, declared, seeds, container=args.render_container),
+        )
+        if declared
+        else []
+    )
     for line in failures:
         print(f"FAIL {line}")
     for line in ui_failures:
         print(f"FAIL ui-data-path {line}")
-    if failures or ui_failures:
+    for line in render_failures:
+        print(f"FAIL route-render {line}")
+    if failures or ui_failures or render_failures:
         return 1
     print(
         f"PASS — delivered app installs, builds, boots, answers "
-        f"{len(contract.behavioral.probes)} contract probe(s), and its UI reaches "
-        f"every path it requests "
-        f"[image {env.image}, contract {env.contract_id()[:12]}]"
+        f"{len(contract.behavioral.probes)} contract probe(s), its UI reaches "
+        f"every path it requests, and each of its {len(declared)} declared route(s) renders "
+        f"its view [image {env.image}, contract {env.contract_id()[:12]}]"
     )
     return 0
+
+
+def _declared_routes(project: str, cycle_id: str) -> tuple[dict, dict]:
+    """The run's declared client routes and their seeds, from the cycle's own manifest, read the
+    way the release capture reads it (``capture_delivered_app.load_manifest``)."""
+    import yaml
+    from capture_delivered_app import load_manifest
+
+    from squadops.campaigns.increment_tree import declared_routes, route_seeds
+    from squadops.capabilities.scaffold import InterfaceManifest
+
+    manifest = InterfaceManifest.from_yaml(yaml.safe_dump(load_manifest(project, cycle_id)))
+    return declared_routes(manifest), route_seeds(manifest)
 
 
 def main() -> int:
@@ -312,6 +409,12 @@ def main() -> int:
     parser.add_argument("run_id")
     parser.add_argument("--contract", required=True, help="the contract the run was seeded with")
     parser.add_argument("--project", default="group_run")
+    parser.add_argument(
+        "--render-container",
+        default=_RENDER_CONTAINER,
+        help="the container each declared route is rendered in (#1796): one with a browser and "
+        "Node, the qa role's by default",
+    )
     return asyncio.run(_audit(parser.parse_args()))
 
 
