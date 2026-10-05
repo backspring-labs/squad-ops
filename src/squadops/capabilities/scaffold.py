@@ -1783,6 +1783,8 @@ _STACKS: dict[str, ScaffoldStack] = {
         criteria_pack=_NEXTJS_TS_NAME,
         error_seam=ERROR_SEAM_NEXTJS_TS,
         probe_profile="nextjs_next_start",
+        # #1973 (SIP-0109 §24p): its pages are read from the app ``next start`` serves.
+        render_profile="next_start",
         app_invocation=_APP_INVOCATION_NEXTJS_TS,
         development_profile=_NEXTJS_TS_NAME,
         # SIP-0104: the first (and so far only) stack with a deterministic test scaffold.

@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 import yaml
 
 from adapters.noop.ports import NoOpFailurePatternRecall
@@ -294,6 +295,7 @@ def test_a_parameterized_route_is_seeded_by_its_collections_create():
             "path": "/runs",
             "json": create_request_body(CANDIDATE, create),
             "param": "run_id",
+            "segment": ":run_id",
         }
     }
     [evaluation] = [
@@ -394,3 +396,35 @@ async def test_the_evaluation_judges_the_candidate_with_its_qa_suites():
     assert candidate["backend/tests/criteria/test_C1.py"] == "def test_c1(): ..."
     assert candidate["backend/routes.py"] == "increment routes"
     assert "backend/tests/criteria/test_C1.py" not in built.inputs["acceptance_workspace_files"]
+
+
+_REPLAYS = Path(__file__).resolve().parents[2] / "fixtures" / "roll_replays"
+
+
+@pytest.mark.parametrize(
+    ("fixture", "path", "segment"),
+    [
+        # 1.9.0 React roll 4: endpoints written without the base path, the page as {run_id}.
+        ("1-9-0-react-roll-4-interface_manifest.yaml", "/runs", "{run_id}"),
+        # The 2.0.0 Next.js regression (cyc_025e085a22b1): endpoints under base_path /api.
+        ("2-0-0-nextjs-regression-interface_manifest.yaml", "/api/runs", "{run_id}"),
+    ],
+    ids=["react-roll-4", "nextjs-regression"],
+)
+def test_a_route_written_as_the_api_writes_it_is_seeded_from_real_manifests(fixture, path, segment):
+    """#1973. Real manifests write a page's parameter as ``{run_id}`` and, behind
+    ``base_path: /api``, may write their endpoints under the base. Bugs caught: such a page never
+    seeded (read at the literal ``/runs/{run_id}``, never the view), or seeded at a collection the
+    app does not serve."""
+    from squadops.campaigns.increment_tree import route_seeds
+
+    manifest = InterfaceManifest.from_yaml((_REPLAYS / fixture).read_text())
+
+    seed = route_seeds(manifest)["/runs/{run_id}"]
+
+    assert (seed["method"], seed["path"], seed["param"], seed["segment"]) == (
+        "POST",
+        path,
+        "run_id",
+        segment,
+    )

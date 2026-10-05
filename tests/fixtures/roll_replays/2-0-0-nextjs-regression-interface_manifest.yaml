@@ -1,0 +1,217 @@
+# The interface manifest of cyc_025e085a22b1 (2.0.0 Next.js regression, 2026-10-03), as stored.
+version: 1
+kind: interface_manifest
+project_id: group_run
+source_prd: 'PRD: group_run (1-Hour Cycle MVP+) v0.5'
+stack: nextjs_ts
+scope: "Full-stack MVP for coordinating a group run: create, list, detail, join, leave,\
+  \ duplicate-name prevention. Deliberately excludes: authentication, persistent storage,\
+  \ external APIs, realtime features, UI component libraries, i18n, and all post-MVP\
+  \ enhancements (PRD \xA79, \xA713, \xA714)."
+entities:
+- name: Run
+  fields:
+  - name: id
+    type: string
+    required: true
+    generated: true
+  - name: title
+    type: string
+    required: true
+  - name: datetime
+    type: string
+    required: true
+  - name: location
+    type: string
+    required: true
+  - name: distance
+    type: string
+    required: false
+  - name: pace_target
+    type: string
+    required: false
+  - name: route_notes
+    type: string
+    required: false
+  - name: participants
+    type: list[string]
+    required: true
+    default: []
+  - name: created_at
+    type: string
+    required: true
+    generated: true
+- name: RunSummary
+  fields:
+  - name: id
+    type: string
+    required: true
+  - name: title
+    type: string
+    required: true
+  - name: datetime
+    type: string
+    required: true
+  - name: location
+    type: string
+    required: true
+  - name: distance
+    type: string
+    required: false
+  - name: participant_count
+    type: number
+    required: true
+api:
+  base_path: /api
+  request_shapes:
+    RunCreate:
+      required:
+      - title
+      - datetime
+      - location
+      optional:
+      - distance
+      - pace_target
+      - route_notes
+    JoinInput:
+      required:
+      - name
+    LeaveInput:
+      required:
+      - name
+  endpoints:
+  - method: GET
+    path: /api/runs
+    summary: List all runs as summary projections
+    response: list[RunSummary]
+  - method: POST
+    path: /api/runs
+    summary: Create a new run event
+    request: RunCreate
+    response: Run
+    success_status: 201
+    errors:
+    - validation_error
+  - method: GET
+    path: /api/runs/{run_id}
+    summary: Get full run details including participant list
+    response: Run
+    errors:
+    - run_not_found
+  - method: POST
+    path: /api/runs/{run_id}/join
+    summary: Join a run with a participant name
+    request: JoinInput
+    response: Run
+    errors:
+    - run_not_found
+    - duplicate_participant
+    - validation_error
+  - method: POST
+    path: /api/runs/{run_id}/leave
+    summary: Leave a run by participant name
+    request: LeaveInput
+    response: Run
+    errors:
+    - run_not_found
+    - participant_not_found
+    - validation_error
+  error_contract:
+    shape: '{"error": {"code": "...", "message": "..."}}'
+    codes:
+      validation_error:
+        http: 400
+      run_not_found:
+        http: 404
+      duplicate_participant:
+        http: 409
+      participant_not_found:
+        http: 404
+frontend:
+  framework: nextjs_app_router
+  routes:
+  - path: /
+    view: RunListView
+    purpose: Display list of runs (title, datetime, location, participant count);
+      empty state; link to create a new run
+    testids:
+    - runs-view
+    - run-list
+    - run-row
+    - create-run-link
+    - empty-state
+  - path: /runs/new
+    view: RunCreateView
+    purpose: Form to create a new run event; required fields (title, datetime, location)
+      and optional fields (distance, pace_target, route_notes)
+    testids:
+    - run-create-view
+    - create-run-form
+    - run-title-input
+    - run-datetime-input
+    - run-location-input
+    - run-distance-input
+    - run-pace-input
+    - run-notes-input
+    - run-submit
+    - create-error-message
+  - path: /runs/{run_id}
+    view: RunDetailView
+    purpose: Full run details, participant list, join form, leave form; not-found
+      state for unknown run
+    testids:
+    - run-detail-view
+    - run-title
+    - run-datetime
+    - run-location
+    - run-distance
+    - run-pace
+    - run-notes
+    - participant-list
+    - join-form
+    - join-name-input
+    - join-submit
+    - leave-form
+    - leave-name-input
+    - leave-submit
+    - error-message
+    - not-found-state
+persistence: in_memory
+decisions:
+- id: duplicate-name-comparison
+  choice: Case-insensitive, trimmed comparison for duplicate participant detection;
+    original casing preserved for display
+  warrant: "PRD \xA75.4 \u2014 'default recommendation: case-insensitive uniqueness'"
+- id: leave-unknown-participant
+  choice: Return 404 with error code participant_not_found; explicit error rather
+    than 200 no-op
+  warrant: "PRD \xA75.5 \u2014 'choose one and document'; 404 is REST-idiomatic and\
+    \ deterministic for test assertion"
+- id: participants-as-strings
+  choice: Participants stored as a flat list of display-name strings on the Run entity,
+    not as separate entities with their own IDs
+  warrant: "PRD \xA75.4\u2013\xA75.5 \u2014 join and leave are name-string operations;\
+    \ no auth or user identity in scope (PRD \xA79 scope constraints)"
+- id: no-pagination
+  choice: Runs list returns all runs in a single unpaginated response
+  warrant: "PRD \xA712 \u2014 'Keep the API contract simple and explicit'; scope lock\
+    \ (\xA714) targets a small local group, not a public catalog"
+- id: run-list-ordering
+  unresolved: true
+  question: "PRD does not specify a sort order for the runs list. Expansion Tier 1\
+    \ item 2 (PRD \xA74.1) mentions best-effort lexical datetime sort, but core scope\
+    \ does not mandate any particular ordering."
+provenance:
+  mode: authored
+  cycle_id: cyc_025e085a22b1
+  task_id: task-run_eff88d40-003-development.author_manifest
+  attempts: 2
+  revisions:
+  - attempt: 1
+    classes:
+      authoring_defect: 1
+      derivation_defect: 1
+      prd_insufficiency: 1
+    proofs:
+    - contract_derives
+    - expands

@@ -112,7 +112,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | accepted increments' `prd_delta` text to the proposer | **deferred to 2.4** (ruled 2026-10-03, §24ap): "a 2.4 question" | §24ap |
 | escalating a launch the cycle-create preflight refuses | **shipped** (§24ba) | 2.1.0, PR #2052, issue #1971 |
 | re-hearing an ended cycle between restarts | **shipped**: the campaign sweep re-hears on its interval, and a cycle is heard by one hearer at a time | 2.1.0, PR #2038, issue #1972 (§24as) |
-| a Next.js render profile (a route-declaring Next.js increment is always `blocked_unverified`) | **placed** | 2.1.0, #1973 (§24as) |
+| a Next.js render profile (a route-declaring Next.js increment is always `blocked_unverified`) | **shipped** (§24bd) | 2.1.0, PR #2059, issue #1973 |
 | an increment that needs packaging changed | **unplaced, deliberately** (§24as): re-placed on evidence | §24y |
 | whether an increment's build skips the builder tail | **dropped as a question** (§24as): answered when a campaign raises it | §24ab |
 | the quiet-box check reading GPU compute processes | **unplaced, deliberately** (§24as): until the owner grants the runtime-api the GPU (a `docker-compose.yml` change) | §24l, §24ai, §24an |
@@ -2749,3 +2749,34 @@ carries the override. Both tests fail with the anchor reverted.
 meaning of `rewind` for an unattended run", the stored decisions read first. The
 contentless-builder diagnostic follows: it now reaches its failure through the patch path every
 time.
+
+### 24bd. A Next.js increment's pages are read, and a page written as the API writes it is seeded (2026-10-05, §8.3, §24p, #1973; the owner's portfolio rulings, Q17)
+
+**What §24p left.** Route rendering needs a stack's `render_profile`, and `nextjs_ts` declared
+none, so every declared route of a Next.js increment read `blocked_unverified`. A route-declaring
+Next.js increment could never be promoted.
+
+**What changed.**
+- **A render profile for an app that serves its own pages** (`next_start`). The app is stood up by
+  the stack's probe profile, prepared first within the probe profile's own limit (`npm install`
+  and `next build`, #827), then started with `next start`. Pages are read from that port, and no
+  frontend is started beside it. `render_routes` now takes the probe profile itself, so its
+  preparation, boot and readiness path come from one source.
+- **A page's parameter is read either way a manifest writes it**: `:run_id`, or `{run_id}` as the
+  API writes it. Both the Next.js manifests and the React roll manifests write `{run_id}`, so on
+  main such a page was never seeded and was read at its literal path. **On both stacks.**
+- **A page's collection is matched under the API's base path** when the manifest writes its
+  endpoints there (`/api/runs` for `/runs/{run_id}`, as Next.js's do). The seed posts to the
+  endpoint as written.
+
+**Evidence.** The delivered tree of `cyc_025e085a22b1` (the 2.0.0 Next.js regression, accepted
+2026-10-03) was rendered in the qa container with this code, and judged by `route_rendering`:
+- `/` and `/runs/new` held;
+- `/runs/{run_id}` held after its seed (`POST /api/runs`, 201).
+
+Before the base-path and parameter changes, the detail page read `blocked_unverified`. Unit tests
+cover both stacks' real manifests (React roll 4 and that Next.js regression), the build-then-serve
+order, and a build that fails.
+
+**Who ruled it.** The owner, on the SIP-portfolio audit (2026-10-04, queue Q17), placing #1973 in
+2.1 with #1950 and #1962.
