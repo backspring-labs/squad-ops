@@ -10,8 +10,8 @@ from pathlib import Path
 import typer
 import yaml
 
-from squadops.cli.client import APIClient, CLIError
-from squadops.cli.config import load_config
+from squadops.cli.client import CLIError
+from squadops.cli.client import get_client as _get_client
 from squadops.cli.output import (
     print_detail,
     print_error,
@@ -21,11 +21,6 @@ from squadops.cli.output import (
 )
 
 app = typer.Typer(name="squad-profiles", help="Manage squad profiles")
-
-
-def _get_client(ctx: typer.Context) -> APIClient:
-    config = load_config()
-    return APIClient(config)
 
 
 @app.command("list")

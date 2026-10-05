@@ -21,7 +21,6 @@ probe runner (§6.1/§6.4).
 
 from __future__ import annotations
 
-import hashlib
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -36,6 +35,7 @@ from squadops.capabilities.scaffold import (
     fill_slot_paths,
     success_status_for,
 )
+from squadops.core.hashing import text_sha256
 
 CONTRACT_VERSION = 1
 CAP_PYTHON = "python"
@@ -100,7 +100,7 @@ def emit_contract_dict(manifest: InterfaceManifest) -> dict[str, Any]:
     fill_set = set(fill)
 
     frozen = [
-        {"path": name, "sha256": _sha256(files[name])}
+        {"path": name, "sha256": text_sha256(files[name])}
         for name in sorted(files)
         if name not in fill_set
     ]
@@ -136,10 +136,6 @@ def emit_contract_yaml(manifest: InterfaceManifest) -> str:
 
 
 # --------------------------------------------------------------------------- helpers
-
-
-def _sha256(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _slug(name: str) -> str:

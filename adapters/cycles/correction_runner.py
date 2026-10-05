@@ -71,6 +71,7 @@ from squadops.cycles.run_loop_summary import (
     RoundFailure,
     RunTerminalDecision,
 )
+from squadops.cycles.scaffold_integrity_evidence import emit_enforcement
 from squadops.cycles.task_outcome import (
     CORRECTION_TERMINATION_ARTIFACT_TYPE,
     CorrectionTermination,
@@ -482,21 +483,8 @@ class CorrectionRunner:
         )
 
     def _emit_scaffold_integrity_evidence(self, record: Any, envelope: TaskEnvelope) -> None:
-        """SIP-0100 3.3/3.4b: surface one repair-path enforcement as a structured event + log
-        (best-effort — observability must never break the correction loop). Mirrors the
-        executor's emitter for the regular storage path."""
-        payload = record.to_dict()
-        logger.warning("SIP-0100 scaffold_integrity (repair path): %s", payload)
-        try:
-            self._event_bus.emit(
-                EventType.ARTIFACT_OWNERSHIP_ENFORCED,
-                entity_type="artifact",
-                entity_id=record.normalized_path or record.attempted_path,
-                context={"cycle_id": envelope.cycle_id, "run_id": record.bound_run_id},
-                payload=payload,
-            )
-        except Exception:
-            logger.debug("SIP-0100: scaffold_integrity event emit failed", exc_info=True)
+        """SIP-0100 3.3: one enforcement event and log line (``emit_enforcement``, #1990)."""
+        emit_enforcement(self._event_bus, record, envelope.cycle_id, where="repair path")
 
     def _enforce_step_emissions(
         self,

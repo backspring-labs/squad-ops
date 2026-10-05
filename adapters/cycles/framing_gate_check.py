@@ -32,6 +32,7 @@ from squadops.cycles.rejection_baseline import (
     REJECTION_FILENAME,
     RejectionClassifier,
 )
+from squadops.cycles.vault_reads import retrieve_or_absent
 
 logger = logging.getLogger(__name__)
 
@@ -112,10 +113,10 @@ class FramingGateCheck:
         classifier = RejectionClassifier()
         contract = None  # set in bind mode below; feeds the soft-violation log
         for ref_id in tuple(run.artifact_refs or ()):
-            try:
-                ref, content_bytes = await self._artifact_vault.retrieve(ref_id)
-            except Exception:
+            got = await retrieve_or_absent(self._artifact_vault, ref_id)
+            if got is None:
                 continue
+            ref, content_bytes = got
             artifact_type = getattr(ref, "artifact_type", None)
             if ref.filename == "implementation_plan.yaml" or (
                 artifact_type == "control_implementation_plan"

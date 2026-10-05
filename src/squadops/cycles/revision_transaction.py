@@ -29,12 +29,12 @@ two resolved ranges overlap. One failure refuses the whole transaction with ever
 
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Protocol
 
+from squadops.core.hashing import text_sha256
 from squadops.cycles.write_authorization import (
     AuthzDecision,
     WorkspaceOwnership,
@@ -205,10 +205,6 @@ class RegionResolver(Protocol):
         """``(start, end)`` character offsets of the region's body, end exclusive."""
 
 
-def _sha256(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
 def base_revision_id(base_files: Mapping[str, str]) -> str:
     """The identity of a base tree — ``compute_revision_id``, the same content addressing every
     revision in the framework uses."""
@@ -297,11 +293,11 @@ def resolve_and_apply(
         edits.append(
             RangeEdit(
                 artifact_path=revision.artifact_path,
-                base_artifact_sha256=_sha256(content),
+                base_artifact_sha256=text_sha256(content),
                 region_id=revision.region_id,
                 start=start,
                 end=end,
-                pre_sha256=_sha256(content[start:end]),
+                pre_sha256=text_sha256(content[start:end]),
                 replacement=(
                     ""
                     if revision.operation == RevisionOperation.REMOVE_ENTITY
@@ -408,10 +404,10 @@ def preservation_proof(
             return PreservationProof(
                 holds=False, detail=f"{path} is missing from base or candidate"
             )
-        if any(e.base_artifact_sha256 != _sha256(base) for e in path_edits):
+        if any(e.base_artifact_sha256 != text_sha256(base) for e in path_edits):
             return PreservationProof(holds=False, detail=f"{path}: an edit names another base")
         for edit in path_edits:
-            if _sha256(base[edit.start : edit.end]) != edit.pre_sha256:
+            if text_sha256(base[edit.start : edit.end]) != edit.pre_sha256:
                 return PreservationProof(
                     holds=False,
                     detail=f"{path}: the span {edit.start}-{edit.end} is not the one resolved",

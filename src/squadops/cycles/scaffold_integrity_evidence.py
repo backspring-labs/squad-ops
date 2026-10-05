@@ -23,12 +23,16 @@ from ``task_outcome.ContractComplianceViolation`` — this module never mints it
 from __future__ import annotations
 
 import hashlib
+import logging
 from dataclasses import dataclass
 from typing import Any
 
 from squadops.cycles.bound_scaffold_record import BoundScaffoldRecord
 from squadops.cycles.task_outcome import ContractComplianceViolation
 from squadops.cycles.write_authorization import normalize_ws_path
+from squadops.events.types import EventType
+
+logger = logging.getLogger(__name__)
 
 # ``kind`` values — the event-class axis (Review #10). Kept distinct from the 0.5
 # reason codes (which say *why* a path was unauthorized) and from ``disposition``
@@ -260,3 +264,25 @@ def shell_region_evidence(
         siblings_retained=siblings_retained,
         detail=detail,
     )
+
+
+def emit_enforcement(bus: Any, record: Any, cycle_id: str, *, where: str = "") -> None:
+    """SIP-0100 3.3: surface one enforcement as a structured event and a log line. Best-effort:
+    observability never breaks artifact storage or the correction loop. ``where`` names the path
+    in the log line (``"repair path"`` for the correction runner's).
+
+    #1990: the executor and the correction runner each held this body, differing only in the
+    bus attribute's name and the log prefix (recorded as a landmine in the #1152 extraction).
+    """
+    payload = record.to_dict()
+    logger.warning("SIP-0100 scaffold_integrity%s: %s", f" ({where})" if where else "", payload)
+    try:
+        bus.emit(
+            EventType.ARTIFACT_OWNERSHIP_ENFORCED,
+            entity_type="artifact",
+            entity_id=record.normalized_path or record.attempted_path,
+            context={"cycle_id": cycle_id, "run_id": record.bound_run_id},
+            payload=payload,
+        )
+    except Exception:
+        logger.debug("SIP-0100: scaffold_integrity event emit failed", exc_info=True)

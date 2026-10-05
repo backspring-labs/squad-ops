@@ -32,6 +32,7 @@ from squadops.cycles.implementation_plan import (
     TypedCheck,
     _parse_acceptance_criteria,
 )
+from squadops.cycles.yaml_fields import str_list
 
 logger = logging.getLogger(__name__)
 
@@ -290,12 +291,12 @@ class ProposedRoleTasks:
             scope_statement=scope_statement,
             tasks=parsed,
             brief_conflicts=brief_conflicts,
-            source_artifact_refs=_parse_str_list(
+            source_artifact_refs=_advisory_str_list(
                 data.get("source_artifact_refs", []), "source_artifact_refs", degraded
             ),
-            assumptions=_parse_str_list(data.get("assumptions", []), "assumptions", degraded),
-            risks=_parse_str_list(data.get("risks", []), "risks", degraded),
-            gaps_not_covered=_parse_str_list(
+            assumptions=_advisory_str_list(data.get("assumptions", []), "assumptions", degraded),
+            risks=_advisory_str_list(data.get("risks", []), "risks", degraded),
+            gaps_not_covered=_advisory_str_list(
                 data.get("gaps_not_covered", []), "gaps_not_covered", degraded
             ),
             confidence=str(data.get("confidence", "")).strip(),
@@ -374,7 +375,7 @@ def _parse_proposed_task(td: object, i: int, seen_keys: set[str]) -> ProposedTas
     )
 
 
-def _parse_str_list(raw: object, section: str, degraded: list[str]) -> list[str]:
+def _advisory_str_list(raw: object, section: str, degraded: list[str]) -> list[str]:
     """Coerce an optional YAML list field to a list of strings.
 
     Tolerant (issue #187): a wrong-typed advisory section is an LLM-output
@@ -382,17 +383,16 @@ def _parse_str_list(raw: object, section: str, degraded: list[str]) -> list[str]
     ``degraded``) rather than failing the whole proposal. ``None``/empty →
     ``[]``; a list gets stringified element-wise.
     """
-    if raw is None or raw == "":
+    try:
+        return str_list(raw, section)
+    except ValueError:
+        logger.warning(
+            "Proposal: dropping malformed optional section %r — expected a YAML list, got %s",
+            section,
+            type(raw).__name__,
+        )
+        degraded.append(section)
         return []
-    if isinstance(raw, list):
-        return [str(x).strip() for x in raw if str(x).strip()]
-    logger.warning(
-        "Proposal: dropping malformed optional section %r — expected a YAML list, got %s",
-        section,
-        type(raw).__name__,
-    )
-    degraded.append(section)
-    return []
 
 
 def _parse_brief_conflicts(raw: object, degraded: list[str]) -> list[BriefConflict]:

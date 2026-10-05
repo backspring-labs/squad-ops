@@ -26,6 +26,8 @@ from dataclasses import dataclass
 
 import yaml
 
+from squadops.cycles.yaml_fields import str_list
+
 _VALID_AUTHORING_MODES = frozenset({"multi_role", "sole_author"})
 _VALID_SOLE_AUTHOR_REASONS = frozenset({"no_contributors_configured", "all_proposals_failed"})
 _VALID_PROPOSAL_COMPLETENESS = frozenset({"complete", "partial", "sole_author"})
@@ -184,8 +186,8 @@ class MergeDecisions:
 
         _validate_rc26(authoring_mode, sole_author_reason, proposal_completeness)
 
-        proposal_ids = _parse_str_list(data.get("proposal_ids", []), "proposal_ids")
-        guidance_ids = _parse_str_list(data.get("guidance_ids", []), "guidance_ids")
+        proposal_ids = str_list(data.get("proposal_ids", []), "merge_decisions proposal_ids")
+        guidance_ids = str_list(data.get("guidance_ids", []), "merge_decisions guidance_ids")
         missing_proposals = _parse_missing_proposals(data.get("missing_proposals", []))
         canonical_tasks = _parse_canonical_tasks(data.get("canonical_tasks", []))
         brief_conflicts_disposition = _parse_brief_conflicts_disposition(
@@ -254,14 +256,6 @@ def _validate_enum(raw: object, valid: frozenset[str], field_name: str) -> str:
             f"merge_decisions {field_name} must be one of {sorted(valid)}, got {raw!r}"
         )
     return value
-
-
-def _parse_str_list(raw: object, field_name: str) -> list[str]:
-    if raw is None or raw == "":
-        return []
-    if not isinstance(raw, list):
-        raise ValueError(f"merge_decisions {field_name} must be a YAML list")
-    return [str(x).strip() for x in raw if str(x).strip()]
 
 
 def _parse_missing_proposals(raw: object) -> list[MissingProposal]:

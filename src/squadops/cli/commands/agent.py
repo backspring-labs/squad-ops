@@ -10,16 +10,11 @@ from __future__ import annotations
 import typer
 
 from squadops.cli import exit_codes
-from squadops.cli.client import APIClient, CLIError
-from squadops.cli.config import load_config
+from squadops.cli.client import CLIError
+from squadops.cli.client import get_client as _get_client
 from squadops.cli.output import print_detail, print_error, print_json
 
 app = typer.Typer(name="agent", help="Inspect agent runtime state (SIP-0089)")
-
-
-def _get_client(ctx: typer.Context) -> APIClient:
-    config = load_config()
-    return APIClient(config)
 
 
 def _derived_availability(state: dict) -> str:

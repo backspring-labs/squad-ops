@@ -15,8 +15,8 @@ import yaml
 
 from squadops.campaigns.gate import INCREMENT_RULING_GATE, binding_from_change_request
 from squadops.cli import exit_codes
-from squadops.cli.client import APIClient, CLIError
-from squadops.cli.config import load_config
+from squadops.cli.client import CLIError
+from squadops.cli.client import get_client as _get_client
 from squadops.cli.output import (
     print_detail,
     print_error,
@@ -45,11 +45,6 @@ def _format_duration(started: str | None, finished: str | None) -> str:
 
 
 app = typer.Typer(name="runs", help="Manage execution runs within cycles")
-
-
-def _get_client(ctx: typer.Context) -> APIClient:
-    config = load_config()
-    return APIClient(config)
 
 
 @app.command("list")

@@ -101,9 +101,11 @@ from squadops.cycles.run_loop_summary import (
 )
 from squadops.cycles.scaffold_integrity_evidence import (
     STAGE_FAILED_EMISSION,
+    emit_enforcement,
 )
 from squadops.cycles.task_outcome import CorrectionTerminationReason, TaskOutcome
 from squadops.cycles.task_plan import inject_contract_inputs
+from squadops.cycles.vault_reads import retrieve_or_absent
 from squadops.cycles.verification_normalize import normalize_task_checks
 from squadops.events.types import EventType
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
@@ -1279,10 +1281,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         never blocks the re-roll.
         """
         for ref_id in tuple(run.artifact_refs or ()):
-            try:
-                ref, content_bytes = await self._artifact_vault.retrieve(ref_id)
-            except Exception:
+            got = await retrieve_or_absent(self._artifact_vault, ref_id)
+            if got is None:
                 continue
+            ref, content_bytes = got
             if (
                 ref.filename == "implementation_plan.yaml"
                 or getattr(ref, "artifact_type", None) == "control_implementation_plan"
@@ -2286,10 +2288,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # The completed run the caller already fetched — re-reading it here would add a
         # registry round-trip per gate for a value the loop is holding.
         for ref_id in tuple(run.artifact_refs or ()):
-            try:
-                ref, content_bytes = await self._artifact_vault.retrieve(ref_id)
-            except Exception:
+            got = await retrieve_or_absent(self._artifact_vault, ref_id)
+            if got is None:
                 continue
+            ref, content_bytes = got
             if is_interface_manifest(ref):
                 return content_bytes.decode(errors="replace")
 
@@ -3464,20 +3466,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         )
 
     def _emit_scaffold_integrity_evidence(self, record: Any, envelope: TaskEnvelope) -> None:
-        """SIP-0100 3.3: surface one enforcement event as a structured event + log (best-effort —
-        observability must never break artifact storage)."""
-        payload = record.to_dict()
-        logger.warning("SIP-0100 scaffold_integrity: %s", payload)
-        try:
-            self._cycle_event_bus.emit(
-                EventType.ARTIFACT_OWNERSHIP_ENFORCED,
-                entity_type="artifact",
-                entity_id=record.normalized_path or record.attempted_path,
-                context={"cycle_id": envelope.cycle_id, "run_id": record.bound_run_id},
-                payload=payload,
-            )
-        except Exception:
-            logger.debug("SIP-0100: scaffold_integrity event emit failed", exc_info=True)
+        """SIP-0100 3.3: one enforcement event and log line (``emit_enforcement``, #1990)."""
+        emit_enforcement(self._cycle_event_bus, record, envelope.cycle_id)
 
     def _enforce_compliance_budget(
         self,

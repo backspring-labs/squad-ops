@@ -83,6 +83,7 @@ from squadops.cycles.models import (
     RunStatus,
     WorkloadType,
 )
+from squadops.cycles.vault_reads import retrieve_or_absent
 from squadops.cycles.verification_integrity import RunVerdict
 
 logger = logging.getLogger(__name__)
@@ -1018,10 +1019,10 @@ class CampaignProgress:
             return plans[-1].artifact_id
         forwarded = list((cycle.execution_overrides or {}).get("plan_artifact_refs") or ())
         for ref_id in reversed(forwarded):
-            try:
-                ref, _content = await self._vault.retrieve(ref_id)
-            except Exception:  # noqa: BLE001 — an unreadable ref is absent, never a crash
+            got = await retrieve_or_absent(self._vault, ref_id)
+            if got is None:
                 continue
+            ref, _content = got
             if ref.artifact_type == "control_implementation_plan":
                 return ref_id
         return None

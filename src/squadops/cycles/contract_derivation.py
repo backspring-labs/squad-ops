@@ -28,6 +28,8 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from squadops.cycles.vault_reads import retrieve_or_absent
+
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from collections.abc import Iterable
 
@@ -92,10 +94,10 @@ async def load_seeded_manifest_content(
     rejection).
     """
     for ref_id in refs or []:
-        try:
-            ref, content_bytes = await vault.retrieve(ref_id)
-        except Exception:
+        got = await retrieve_or_absent(vault, ref_id)
+        if got is None:
             continue
+        ref, content_bytes = got
         if is_interface_manifest(ref):
             return content_bytes.decode(errors="replace")
     return None
