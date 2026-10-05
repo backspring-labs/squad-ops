@@ -5,7 +5,8 @@ recommendations in §5: "go ahead, record them and file the three issues". They 
 rulings, and §3's three issues are filed (#1956, #1957, #1958). The plan merges after the set closes,
 since nothing merges while it is open (#1908 §7). Every issue it names was read in full, and its
 placement is quoted from the issue. **Amended the same day** with the structure audit's ten issues
-(§2.8) and its three for 2.3 (§6), on the owner's word (§5 ruling 11).
+(§2.8) and its three for 2.3 (§6), on the owner's word (§5 ruling 11). **And again after the 2.0
+cut** with the cut's three findings (§2.9, §5 ruling 12).
 
 **What 2.1 is.** An odd minor, a stabilization release (CLAUDE.md, #281): **feature-free by rule.** It
 is the home for:
@@ -56,7 +57,8 @@ new issues placed since:
   #1971, #1972, #1973; SIP-0101's #1974; SIP-0105's #1975, with #1967 and #1968;
 - the 2.0 set's findings (§4 step 1: #1961, #1962, #1995, and #1884 from P9);
 - **the structure audit's ten** (§2.8): two latent defects (#1982, #1983) and eight structural issues
-  (#1984–#1991).
+  (#1984–#1991);
+- **the 2.0 cut's three** (§2.9): #2006, #2007, #2008.
 
 #1756 is the crew's, and #1039 rides any release.
 
@@ -222,6 +224,21 @@ depends on #1985's direction guard.
 - **The 307 broad `except` blocks:** mostly deliberate fail-open observability. The 25 silent ones were
   read; the vault ones are #1990's.
 
+### 2.9 From the 2.0 cut (2026-10-04)
+
+Found while cutting v2.0.0 and v2.0.1. Each surfaced from a step of the release cut, not from a
+campaign.
+
+| issue | what | size | deploy |
+|---|---|---|---|
+| #2006 | **a bootstrapped deploy keeps the default credentials the repository commits.** The records scan named fifteen of the deploy's credential values as already public, among them the Keycloak DB password, which `docker-compose.yml` sets as a literal. The work: bootstrap generates per-deploy secrets; compose reads every credential from env or secrets with no literal (**the compose step needs the owner's explicit OK**); `.env.example` keeps placeholders; `doctor` refuses a committed default; a rotation note for existing deploys | M | yes, plus a rotation |
+| #2007 | **a runtime restart leaves the interrupted run's Prefect flow runs open forever.** Nine stayed `RUNNING` for 20–30 hours after their runs completed: the proposal and framing flow runs of three recovery-diagnostic campaigns, with the framing run duplicated by the re-attach. Cleared by hand on the owner's go-ahead. The fix: the startup re-attach and sweep close the dead process's flow runs | S | yes |
+| #2008 | **the delivered-app capture cannot photograph a reference-scenario cycle:** it stores no `interface_manifest.yaml`, only the seeded candidate manifest, so the v2.0.1 package shows the Prefect run only. The fix: read the seeded manifest, and check the tree for #2000's stub shape on the first capture | S | no |
+
+**Fixed at the cut, not here:**
+- **#2000:** the capture rebuilt a campaign increment from its run's scaffold stubs rather than its accepted tree. Fixed in #2001.
+- **The records scan's false refusal:** it refused on a secret value the repository already commits. Fixed in #2005.
+
 ---
 
 ## 3. Gaps the 2.0 run exposed, filed on adoption
@@ -274,7 +291,8 @@ Deploy-moving work batches into rebuilds, and each structural refactor gets a ba
    **The set closed PASS** (both campaigns success, every safety guarantee held). These four are its findings.
 2. **The SIP record's guards** (#1969, #1979, #1980, #1981, #1967, #1968: tooling, no deploy), so every
    later step updates the ledgers it touches. **The audit's tooling rides with them:** #1988 (3.12 targets,
-   the mypy ratchet) and #1989 (the architecture overview and its guard). Then **the crew's tooling and the instruments, before
+   the mypy ratchet) and #1989 (the architecture overview and its guard). So does #2008, the
+   reference cycle's capture, which is a release script. Then **the crew's tooling and the instruments, before
    anything they would measure:**
    - #1956 (the supervisor's instruments, tracked), #1959 (the increment replay) and #1960 (the
      per-increment scorecard);
@@ -292,7 +310,10 @@ Deploy-moving work batches into rebuilds, and each structural refactor gets a ba
    - **the audit's defects and ground-clearing:** #1982 and #1983 (the two latent defects); #1984 (dead
      code, behaviour-neutral) and then #1987 (the executor's typed wiring, which #1984's deletion
      simplifies); **#1986 (one gate-decision recorder) lands before #1940** in this batch, so the supervisor's
-     authority arrives on one recording path.
+     authority arrives on one recording path;
+   - **#2007** (a restart's orphaned flow runs), with #1934, since both are the restart re-attach's. The
+     batch's overlapping recovery diagnostics restart the runtime mid-cycle, so they read it: no flow run
+     may stay open after its run ends.
 
    Then a rebuild, the regression pair, and the overlapping recovery diagnostics
    (`restart-at:at_proposal` for #1934). **The crew's first campaign can run on this deploy** (§2.0).
@@ -301,7 +322,9 @@ Deploy-moving work batches into rebuilds, and each structural refactor gets a ba
 5. **Verification gaps:** #1796, #1937 (reporting-only), #1824's attribution locus, #1469's
    per-module elements, and #1973 (a Next.js render profile, with #1950 and #1962), with a rebuild and
    the regression pair. **The audit's small consolidations ride here:** #1990 (duplicated helpers; adds
-   a warning where the vault rule was silent) and #1991 (the environment inventory and guard).
+   a warning where the vault rule was silent) and #1991 (the environment inventory and guard). **So
+   does #2006** (per-deploy credentials), which #1991's inventory informs. It rotates every credential
+   in place before its rebuild, and its compose step waits for the owner's explicit OK.
 6. **Refactors, one per batch, each with its replay proof:** #1985 first (the package imports and the
    direction guard, so later refactors' import moves are visible), then #414, then #567, then #316 (after
    its SIP is accepted). Each gets a rebuild and the regression pair before the next begins.
@@ -356,6 +379,10 @@ The supervisor recommended, and the owner agreed: "go ahead, record them and fil
     **The `capabilities` package keeps its name.** 1,209 import sites would move for no behaviour. 3.x's
     bindable-competence work (Capability-Backed Agents) takes a distinct package, recorded in that SIP's
     intake note.
+12. **The 2.0 cut's three findings are placed here** (§2.9). The owner, on the default credentials:
+    "file it for 2.1"; on the three: "go ahead and add them to the 2.1 plan". #2006's compose change
+    is still the owner's to approve when it is built (CLAUDE.md: compose is never changed without an
+    explicit request).
 
 ## 6. What this plan does not decide
 

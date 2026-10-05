@@ -99,6 +99,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a proposal's PRD delta can state more than its manifest delta carries | **placed** | 2.1.0, #1995 |
 | rows 10–11 reachable live (environment attribution) | **placed** | 2.1.0, #1824 |
 | proposal tasks re-run on re-attach (random ids) | **placed** | 2.1.0, #1934 |
+| a restart leaves the interrupted run's Prefect flow runs open (the re-attach, §24am) | **placed** | 2.1.0, #2007 |
 | the stack's frozen conventions told to the proposer (Next.js; the rest) | **placed** | 2.1.0, #1950, #1962 |
 | the rails accept an empty manifest delta | **placed** | 2.1.0, #1961 |
 | the prior-cycle brief's remainder | **placed** | 2.1.0, #1692 |
