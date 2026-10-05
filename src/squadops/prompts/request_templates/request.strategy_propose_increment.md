@@ -1,6 +1,6 @@
 ---
 template_id: request.strategy_propose_increment
-version: "6"
+version: "7"
 required_variables:
   - objective_statement
   - objective_measurement
@@ -8,7 +8,7 @@ required_variables:
   - baseline_manifest
   - prior_criteria_lines
 optional_variables:
-  - unset_optional_section
+  - frozen_conventions_section
   - supervisor_note_section
   - prd_section
   - abandoned_increment_section
@@ -39,7 +39,7 @@ returned. The usual miss is the default case of the feature you add. For a capac
 created without a capacity still accepts a tenth join" holds today, before any capacity exists, so it
 is not a criterion. "A third join to a run with capacity 2 is refused" is, because today it succeeds.
 
-{{unset_optional_section}}
+{{frozen_conventions_section}}
 {{supervisor_note_section}}
 {{abandoned_increment_section}}
 {{prd_section}}

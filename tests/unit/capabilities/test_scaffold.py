@@ -1122,7 +1122,11 @@ class TestFrozenModelOptionalFields:
             )
         finally:
             del sys.modules[mod.__name__]
-        declared = scaffold.unset_optional_response_for(stack_fastapi_react.STACK_NAME)
+        [declared] = [
+            dict(c.values)["unset_value"]
+            for c in scaffold.frozen_conventions_for(stack_fastapi_react.STACK_NAME)
+            if c.kind is scaffold.ConventionKind.UNSET_OPTIONAL_VALUE
+        ]
         assert left_out == ["distance", "pace_target", "route_notes"]
         assert {name: json.dumps(body[name]) for name in left_out} == dict.fromkeys(
             left_out, declared
@@ -1168,6 +1172,107 @@ class TestNonBlankRequestFields:
             title="  Morning 5K  ", datetime="2026-08-01T08:00:00", location="Park"
         )
         assert run.title == "Morning 5K"
+
+
+class TestFrozenConventionsHoldOnTheBytes:
+    """#1962, #1950: what a campaign proposal is told a stack's frozen bytes decide, held to the
+    bytes in both directions. A declared convention the bytes no longer hold misleads every
+    proposal into a criterion a correct build fails. One the bytes hold but the stack does not
+    declare costs a revision round: the 2.0 set's campaign 1 proposed name trimming the frozen
+    ``NonBlankStr`` already did."""
+
+    _STACKS = ("fullstack_fastapi_react", "nextjs_ts")
+
+    @staticmethod
+    def _tree(stack: str) -> tuple[InterfaceManifest, dict[str, str]]:
+        from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+        manifest = manifest_for_stack(stack)
+        return manifest, _by_name(expand(manifest))
+
+    @staticmethod
+    def _declared(stack: str) -> dict:
+        return {c.kind: dict(c.values) for c in scaffold.frozen_conventions_for(stack)}
+
+    @pytest.mark.parametrize("stack", _STACKS)
+    def test_trimming_is_declared_exactly_where_the_frozen_models_do_it(self, stack):
+        manifest, files = self._tree(stack)
+        frozen = scaffold.frozen_paths(manifest)
+        trims = any(
+            "strip_whitespace=True" in body and "min_length=1" in body
+            for name, body in files.items()
+            if name in frozen
+        )
+        assert (scaffold.ConventionKind.REQUIRED_STRING_TRIMMED in self._declared(stack)) is trims
+
+    def test_the_declared_blank_string_code_is_the_one_the_frozen_handler_writes(self):
+        """Bug caught: the proposal told one code while the frozen validation handler answers
+        with another, so a criterion naming the told code fails every correct build."""
+        _, files = self._tree("fullstack_fastapi_react")
+        code = self._declared("fullstack_fastapi_react")[
+            scaffold.ConventionKind.REQUIRED_STRING_TRIMMED
+        ]["code"]
+        handler = next(body for body in files.values() if "RequestValidationError" in body)
+        assert f'_envelope("{code}"' in handler
+
+    @pytest.mark.parametrize("stack", _STACKS)
+    def test_a_pinned_success_status_is_declared_exactly_where_a_frozen_route_pins_it(self, stack):
+        """The reference declares ``POST /runs`` → 201. FastAPI writes it into the route's
+        decorator, which a fill does not replace (fills write handler bodies). Next.js writes it
+        nowhere but a stub's ``TODO`` comment, in a file the fill replaces whole."""
+        _, files = self._tree(stack)
+        pinned = any(
+            "status_code=201" in line or "status: 201" in line
+            for body in files.values()
+            for line in body.splitlines()
+            if not line.lstrip().startswith(("#", "//"))
+        )
+        declared = scaffold.ConventionKind.SUCCESS_STATUS_PINNED in self._declared(stack)
+        assert declared is pinned
+
+    @pytest.mark.parametrize("stack", _STACKS)
+    def test_the_declared_error_envelope_is_the_one_the_frozen_module_writes(self, stack):
+        manifest, files = self._tree(stack)
+        values = self._declared(stack)[scaffold.ConventionKind.ERROR_ENVELOPE]
+        [module] = [n for n in files if n.endswith("/" + values["module"]) or n == values["module"]]
+        assert module in scaffold.frozen_paths(manifest)
+        assert values["envelope"] == '{"error": {"code": "<code>", "message": "..."}}'
+        assert re.search(r"error[\"']?\s*:\s*\{[^}]*code[^}]*message", files[module])
+
+    @pytest.mark.parametrize(
+        ("stack", "kind"),
+        [
+            ("fullstack_fastapi_react", scaffold.ConventionKind.UNSET_OPTIONAL_VALUE),
+            ("nextjs_ts", scaffold.ConventionKind.UNSET_OPTIONAL_UNFIXED),
+        ],
+    )
+    def test_each_stack_says_exactly_one_thing_about_an_optional_field_left_out(self, stack, kind):
+        """#1950. Bugs caught: Next.js told FastAPI's null (a criterion asserting it fails the
+        builds that leave the field out, 187 of 225 stored), or told nothing, so its proposals
+        repeat #1948 in mirror form."""
+        declared = self._declared(stack)
+        unset_kinds = {
+            scaffold.ConventionKind.UNSET_OPTIONAL_VALUE,
+            scaffold.ConventionKind.UNSET_OPTIONAL_UNFIXED,
+        }
+        assert set(declared) & unset_kinds == {kind}
+
+    def test_next_js_leaves_an_omitted_optional_field_to_the_build(self):
+        """The bytes behind ``unset_optional_unfixed``: the frozen types only mark the field
+        optional, and the frozen store names no field, so no default comes from the scaffold. If
+        a later scaffold freezes a value, this fails and the declaration changes with it."""
+        manifest, files = self._tree("nextjs_ts")
+        run = next(e for e in manifest.entities if e.name == "RunEvent")
+        optional = [f.name for f in run.fields if not f.required]
+        assert optional
+        for name in optional:
+            assert f"  {name}?: " in files["lib/models.ts"]
+            assert name not in files["lib/store.ts"]
+        handlers = [p for p in scaffold.fill_slot_paths(manifest) if p.startswith("app/api/")]
+        assert "app/api/runs/route.ts" in handlers
+
+    def test_an_unregistered_stack_declares_nothing(self):
+        assert scaffold.frozen_conventions_for("no_such_stack") == ()
 
 
 # --------------------------------------------------------------------------- #

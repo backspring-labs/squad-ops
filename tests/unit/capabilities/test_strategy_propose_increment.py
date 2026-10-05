@@ -225,19 +225,29 @@ async def test_an_empty_delta_feature_is_refused_inside_the_task_and_revised():
     assert result.success
 
 
+_CONVENTION_LINES = {
+    "null": "An optional field a request leaves out comes back as `null`",
+    "unfixed": "What an optional field a request leaves out comes back as is not fixed.",
+    "trimmed": "A required string in a request is trimmed, and a blank one is refused",
+    "pinned": "An endpoint's declared `success_status` is fixed in its frozen route.",
+    "envelope": 'Every contract error comes back as the frozen envelope** `{"error": {"code"',
+}
+
+
 @pytest.mark.parametrize(
     ("stack", "told"),
     [
-        ("fullstack_fastapi_react", True),  # frozen ``<type> | None = None``: null
-        ("nextjs_ts", False),  # declares none: its ``field?: type`` is not FastAPI's null
-        ("no_such_stack", False),  # not registered: told nothing, and the render still runs
+        ("fullstack_fastapi_react", {"null", "trimmed", "pinned", "envelope"}),
+        ("nextjs_ts", {"unfixed", "envelope"}),
+        ("no_such_stack", set()),  # not registered: told nothing, and the render still runs
     ],
 )
-async def test_the_proposal_is_told_what_an_optional_field_left_out_returns(stack, told):
-    """#1948, through the real render. Bugs caught: the stack's frozen convention never reaching
-    the proposer (shakeout 9's first proposal asserted "no capacity key" where FastAPI's frozen
-    models return null, so a correct build would have failed it), or one stack's convention told
-    to another stack's proposal."""
+async def test_the_proposal_is_told_its_stacks_frozen_conventions_and_no_others(stack, told):
+    """#1962, #1950, through the real render at the live caller. Bugs caught: a frozen
+    convention never reaching the proposer (shakeout 9's "no capacity key" against FastAPI's
+    null; the 2.0 set's name trimming the frozen models already did), or one stack's convention
+    told to another's proposal (FastAPI's null told to Next.js, whose builds leave the field out,
+    return null or return "")."""
     ctx = _ctx(_fenced(_REFERENCE), _fenced(_REFERENCE))
     inputs = _inputs()
     inputs["resolved_config"]["build_profile"] = stack
@@ -245,9 +255,9 @@ async def test_the_proposal_is_told_what_an_optional_field_left_out_returns(stac
     await StrategyProposeIncrementHandler().handle(ctx, inputs)
 
     prompt = _prompts(ctx)[0]
-    assert ("An optional field a request leaves out comes back as `null`" in prompt) is told
-    assert ('`"capacity": null`' in prompt) is told
-    assert "{{unset_optional_section}}" not in prompt
+    assert {k for k, line in _CONVENTION_LINES.items() if line in prompt} == told
+    assert ("What the application's frozen code already decides" in prompt) is bool(told)
+    assert "{{" not in prompt
 
 
 async def test_a_refusal_comes_back_with_every_reason_and_the_revision_is_judged_afresh():
