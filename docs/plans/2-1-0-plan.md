@@ -6,7 +6,8 @@ rulings, and §3's three issues are filed (#1956, #1957, #1958). The plan merges
 since nothing merges while it is open (#1908 §7). Every issue it names was read in full, and its
 placement is quoted from the issue. **Amended the same day** with the structure audit's ten issues
 (§2.8) and its three for 2.3 (§6), on the owner's word (§5 ruling 11). **And again after the 2.0
-cut** with the cut's three findings (§2.9, §5 ruling 12).
+cut** with the cut's three findings (§2.9, §5 ruling 12). **The line started the evening of 2026-10-04**,
+on the owner's grant and stop list (§5 ruling 13).
 
 **What 2.1 is.** An odd minor, a stabilization release (CLAUDE.md, #281): **feature-free by rule.** It
 is the home for:
@@ -31,7 +32,9 @@ than by the framework:
 instrument (reporting-only), a design question answered as a SIP amendment, or a guard on a step that
 is guarded today only by memory. **Not 2.1:** any new capability a user or role gains. Those go to 2.2,
 the next feature release, which carries Cross-Cycle Memory. The squad authoring its own backlog is
-2.4.
+2.4. **The one exception is #1940** (§5 ruling 13): the `campaign-supervisor` role gains `create`,
+`start`, `resume` and `abort` on a campaign, and nothing else. No other item may grant a capability
+under it.
 
 ---
 
@@ -60,7 +63,10 @@ new issues placed since:
   (#1984–#1991);
 - **the 2.0 cut's three** (§2.9): #2006, #2007, #2008.
 
-#1756 is the crew's, and #1039 rides any release.
+#1756 and #1965 are the crew's, and #1039 rides any release. #1965 (Verification Yield: the test-value
+audit, fault corpus and deletion experiment on the framework's own suite) is the crew's first
+optimization experiment, placed in the 2.1 window as crew work by the owner's ruling of 2026-10-04. It
+is listed so that its placement is visible, not to be built here.
 
 ---
 
@@ -80,7 +86,7 @@ the rest of 2.1 measurable.
 
 | issue | what it gives the crew | size | deploy |
 |---|---|---|---|
-| #1940 | **authority to dispatch.** Only `admin` holds `campaigns:control` (create, start, resume, abort). `campaign-supervisor` can read and rule, not launch. Without it the owner launches every campaign, and the IDEA's first acceptance criterion fails | S | yes |
+| #1940 | **authority to dispatch.** Only `admin` holds `campaigns:control` (create, start, resume, abort). `campaign-supervisor` can read and rule, not launch. Without it the owner launches every campaign, and the IDEA's first acceptance criterion fails. **2.1's one feature exception, bounded to those four operations** (§5 ruling 13) | S | yes |
 | #1956 | **the supervisor's instruments, tracked:** the watcher, the live-lease proof, the binding replay and the loaded checks, so the crew starts from what supervised 2.0 | M | no |
 | #1959 | **a comparison:** replay any increment of any campaign outside it, on the current deploy, from its composed baseline (the PROMOTE row's `tree_ref`), its approved change request and the frozen criteria in force. The reference launcher (#1804) generalized; a script over the existing API | M | no |
 | #1960 | **comparable numbers:** a per-increment scorecard from the records alone (executing vs waiting, tokens by role, rounds, repairs, criteria). The same arithmetic on a replay and its original | M | no (yes if the run persists its box wait) |
@@ -231,7 +237,7 @@ campaign.
 
 | issue | what | size | deploy |
 |---|---|---|---|
-| #2006 | **a bootstrapped deploy keeps the default credentials the repository commits.** The records scan named fifteen of the deploy's credential values as already public, among them the Keycloak DB password, which `docker-compose.yml` sets as a literal. The work: bootstrap generates per-deploy secrets; compose reads every credential from env or secrets with no literal (**the compose step needs the owner's explicit OK**); `.env.example` keeps placeholders; `doctor` refuses a committed default; a rotation note for existing deploys | M | yes, plus a rotation |
+| #2006 | **a bootstrapped deploy keeps the default credentials the repository commits.** The records scan named fifteen of the deploy's credential values as already public, among them the Keycloak DB password, which `docker-compose.yml` sets as a literal. The work: bootstrap generates per-deploy secrets; compose reads every credential from env or secrets with no literal (**the compose step needs the owner's explicit OK**, given at the line's start, §5 ruling 13); `.env.example` keeps placeholders; `doctor` refuses a committed default; a rotation note for existing deploys | M | yes, plus a rotation |
 | #2007 | **a runtime restart leaves the interrupted run's Prefect flow runs open forever.** Nine stayed `RUNNING` for 20–30 hours after their runs completed: the proposal and framing flow runs of three recovery-diagnostic campaigns, with the framing run duplicated by the re-attach. Cleared by hand on the owner's go-ahead. The fix: the startup re-attach and sweep close the dead process's flow runs | S | yes |
 | #2008 | **the delivered-app capture cannot photograph a reference-scenario cycle:** it stores no `interface_manifest.yaml`, only the seeded candidate manifest, so the v2.0.1 package shows the Prefect run only. The fix: read the seeded manifest, and check the tree for #2000's stub shape on the first capture | S | no |
 
@@ -287,6 +293,10 @@ Deploy-moving work batches into rebuilds, and each structural refactor gets a ba
      approved requests never stated: campaign 1 T1's tie order, and campaign 2 T4's white-box check that the store's
      order is untouched. The supervisor cannot see a criterion file at the gate, because it is authored after approval.
      So the fix is on the qa author's side, or in what the evaluation freezes (#1884's two directions).
+     **Ruled by the owner (§5 ruling 13):** a qa author may add tests only for behaviour already
+     required by the frozen criteria or another explicitly accepted artifact. Behaviour it judges
+     desirable but unsupported is returned as a proposal, never encoded in a test that gates or repairs
+     the current run, and where the test file lives does not change that. §7 item 4 says how.
 
    **The set closed PASS** (both campaigns success, every safety guarantee held). These four are its findings.
 2. **The SIP record's guards** (#1969, #1979, #1980, #1981, #1967, #1968: tooling, no deploy), so every
@@ -324,7 +334,7 @@ Deploy-moving work batches into rebuilds, and each structural refactor gets a ba
    the regression pair. **The audit's small consolidations ride here:** #1990 (duplicated helpers; adds
    a warning where the vault rule was silent) and #1991 (the environment inventory and guard). **So
    does #2006** (per-deploy credentials), which #1991's inventory informs. It rotates every credential
-   in place before its rebuild, and its compose step waits for the owner's explicit OK.
+   in place before its rebuild. Its compose step has the owner's OK (§5 ruling 13).
 6. **Refactors, one per batch, each with its replay proof:** #1985 first (the package imports and the
    direction guard, so later refactors' import moves are visible), then #414, then #567, then #316 (after
    its SIP is accepted). Each gets a rebuild and the regression pair before the next begins.
@@ -383,10 +393,32 @@ The supervisor recommended, and the owner agreed: "go ahead, record them and fil
     "file it for 2.1"; on the three: "go ahead and add them to the 2.1 plan". #2006's compose change
     is still the owner's to approve when it is built (CLAUDE.md: compose is never changed without an
     explicit request).
+13. **The line starts, 2026-10-04 evening.** The owner: "I want to start the 2.1 line and I give you the
+    authority to merge PRs, address issues as you find them and use your best judgement to address the
+    spirit of the fix", and then "yes to rebuilds, stop list approved, can't you also make a docker yaml
+    change?". The owner's decisions on this PR's review (2026-10-05, recorded on PR #2010) settle three
+    points the review raised:
+    - **Covered:** merging a 2.1 PR when every check is green and its own evidence reads clean (main's
+      whole run read before the next merge); rebuilds; and uncounted validation runs (the regression
+      pair, the recovery diagnostics, shakeouts).
+    - **`docker-compose.yml`: an explicit owner exception for the whole 2.1 line,** not derived from
+      #2006. A compose change a 2.1 item needs is made under it, and the PR names this ruling. Service
+      and container names stay as they are, since nothing in 2.1 needs a rename.
+    - **#1940 is 2.1's one feature exception,** bounded to the `campaign-supervisor` role's `create`,
+      `start`, `resume` and `abort` on a campaign. The odd minor's feature-free rule otherwise holds.
+    - **#1884's rule:** "a QA author may add tests only for behavior already required by frozen
+      criteria or another explicitly accepted artifact. Unsupported desirable behavior must be returned
+      as a proposal, not encoded in a test that gates or repairs the current run. Test-file placement
+      does not alter the rule." It applies to both the planning and the `qa.test` render paths, with
+      testable refusal and proposal behaviour (§7 item 4).
+    - **The stop list:** a tag, a Release or any public upload; #316 until its SIP is accepted; a
+      security finding (handled privately); a red on main that cannot be explained; anything that would
+      reverse a ruling above; the crew's items (#1756, #1965, the crew's first campaign).
 
 ## 6. What this plan does not decide
 
-- **The 2.0 set's own findings:** inherited at the cut, placed then.
+- **The 2.0 set's own findings:** placed in §4 step 1 (#1961, #1962, #1995, #1884). A finding of
+  2.1's own regression set or shakeouts is placed when it is found.
 - **The cut criteria's exact numbers** (the regression set's size, the shakeout's exit rule): written as
   the pre-registration when 2.1's last batch is built, as 1.9 and 2.0 did.
 - **The line after 2.1**, ruled 2026-10-04 and recorded in the ROADMAP's horizon:
@@ -400,3 +432,256 @@ The supervisor recommended, and the owner agreed: "go ahead, record them and fil
   - **2.4:** Outcome Evaluation's feature half, with #1966 and then #557, #949 and #950;
   - **2.6:** the squad-authored backlog (no SIP yet), and Test-First's greenfield gate (#1978);
   - **3.x:** the runtime-mode family (SIP-0088, 0090, 0091), duty work, and Capability-Backed Agents.
+
+## 7. The first night (2026-10-04 → 2026-10-05)
+
+The order the line starts in, under ruling 13. The owner reviews this section before any of it merges.
+It covers more than one night holds, on purpose: the measured steps set the pace (a PR's CI takes
+4–9 minutes, and main's run after each merge is read before the next merge), not the writing.
+**Expected by 08:00 ET:** step 1 merged, and step 2 under way. #1884's outlet and #1961's vault
+replay make step 1 larger than it read before the review. The first rebuild comes after 08:00.
+
+**How each PR is held:**
+- **One issue per PR,** or the pair §4 names together. The PR body carries `Closes #N` (or
+  `Refs #N — remaining: …`). Every test answers "what bug would this catch". A changed seam
+  gets a wiring test that enters at the live caller.
+- **Gate before merging:** the full local regression, run with `pipefail`, and its count line read.
+  A prompt change goes through PromptService, with the template's version bumped and a render test.
+- **A change to SIP-0109 behaviour carries its amendment and ledger row in the same PR.** That
+  covers the rails, what the proposer is told, and what the qa author asserts.
+- **Merge** when every check is green and the PR's own evidence reads clean, squashed, with the
+  branch deleted. Then main's whole run is read before the next merge. A red on main stops merging
+  until it is explained.
+
+**Step 1: the 2.0 set's findings.** These are deploy-moving, so they ride step 3's rebuild.
+
+**The seams step 1 touches, and what each sees.** The 2.0 rework clustered where one fact has several
+readers, so each item below names the seams it changes, and the table says what each seam reads today.
+
+| seam | where | what it sees | step 1 changes it? | when the declaration or file is absent |
+|---|---|---|---|---|
+| proposal rails | `validate_proposal`, `campaigns/change_request.py:438`; the footprint, `:398` | the authored request and its context: the accepted manifest's text, the allowed scope, the prior criteria ids. No tree | #1961: a new refusal | a `feature` or `fix` whose footprint is only the qa test namespace is accepted today. After #1961 it is refused, and the refusal returns to the proposer inside its task. A `refactor` is unaffected |
+| proposal rendering | `StrategyProposeIncrementHandler.handle`, `handlers/planning/proposal.py:112-119` | the run's `campaign_proposal` block (the manifest's text, the objective, the prior criteria with their statements, the PRD, a supervisor note) and the stack, by `build_profile` | #1962 and #1950 (conventions); #1961 and #1995 (template lines); #1884 (a section of proposed behaviours) | a stack that declares no convention, or is not registered, gets no section, as #1948's line does today. A campaign with no stored proposed behaviours gets no section |
+| plan-author rendering | `render_surfaces`, `handlers/_plan_authoring.py:89-99`; its indexes, `cycles/task_plan.py:681-690` | in a framing run: the approved change request (`increment_change_request`), each new criterion's file, the frozen files | #1884: a new `INCREMENT_SURFACES` entry (`_plan_authoring.py:65`) renders `request.increment_test_scope_appendix` from `increment_test_scope`, which `_inject_increment_indexes` (`task_plan.py:657`) composes for every increment framing. #1886's section leaves the criteria appendix | **#1886's rule rides inside the criteria appendix, which renders only when the change has criteria (`:96`).** So a `refactor` increment's plan authors never see it. After: it renders for every increment framing, and for no framing outside a campaign |
+| `qa.test` author | `QATestHandler.handle`, `handlers/cycle/qa_test.py:1614` (`request.qa_test.test_validate` and its appendices); its increment inputs, `task_plan.py:760-770` | the plan's task, the frozen surface, the behaviour contract, its own earlier attempt on a self-evaluation pass (`cycle/base.py:1078`). **Nothing of the change request:** an implementation run's `qa.test` gets `{}` from `_increment_inputs` | #1884: `increment_test_scope`, composed by `_increment_inputs` for each task type that declares the new context-contract property (`TaskType.QA_TEST`, `context_assembly.py:213`), and rendered through `request.increment_test_scope_appendix`. A re-take re-dispatches this same envelope (`dispatched_flow_executor.py:186`), so it carries the key. **It is the one author that may emit the proposal block** | absent from every run today. After: a run outside a campaign still gets none of it |
+| `qa.test_repair` author | `QATestRepairHandler`, `handlers/impl/repair_handlers.py:1316`, through `_RepairPromptMixin` | reached only on the own-artifact locus (the suite missing, unparseable or uncollectable, never a behavioural failure): the failed task's suite and its failure evidence, re-authored as files or fills (`:1343`). **Its envelope is built by the correction loop** (`adapters/cycles/correction_repair.py:1021-1080`), **not by `_increment_inputs`.** It forwards the failed task's inputs only through a fixed key list and `REPAIR_PRESENCE_KEYS` (`context_assembly.py:466`, applied at `correction_repair.py:1058`) | #1884: `increment_test_scope` joins `REPAIR_PRESENCE_KEYS`, and the same asset renders through `_RepairPromptMixin` (`repair_handlers.py:253`). **It may not emit the proposal block:** a repair re-authors a broken suite, and proposing belongs to the authoring task | **without the forwarding, a repair never sees the rule.** A repair outside a campaign carries no key. A block in a repair's emission is kept out of its artifacts (never a workspace file) and named in its evidence as ignored |
+| the proposal block's parser | new: `squadops.campaigns.proposed_behaviours`, called where `QATestHandler` splits its emission into files | one fenced block, `yaml:proposed_behaviours.yaml`, in the `qa.test` emission | #1884: new | **absent:** nothing stored, no row. **Valid:** one artifact of type `qa_proposed_behaviours`. **Malformed:** see item 4 |
+| which artifacts enter a tree | two rules: the allow-list `WORKSPACE_ARTIFACT_TYPES` (`cycles/delivered_tree.py:29`), and the correction runner's deny-list `_NON_WORKSPACE_ARTIFACT_TYPES` (`adapters/cycles/correction_runner.py:1504`), which picks a repaired suite's retest files | a run's stored artifacts by type | #1884: the deny-list gains `qa_proposed_behaviours` | **the allow-list already excludes the new type. The deny-list does not:** without the change, a retest would run the proposal file as a test |
+| the next proposal's launch | `_propose_launch`, `campaigns/progress.py:991` → `increment_launch`, `campaigns/launch_requests.py:56` | the accepted cycle, the control log's frozen criteria, the abandoned increment's brief | #1884: the stored entries join the `campaign_proposal` block | no stored entries: no key. **A vault read that fails raises,** and the re-hearing retries it. It never launches without them (the launch is a function of stored data alone, #1943's rule) |
+| baseline evaluation | `discrimination`, `campaigns/acceptance.py:89`; the verdict, `:238` | the accepted tree as seeded and the candidate, each running the criterion's own file alone | no | a criterion file collected on neither tree reads `not run`, so the increment is blocked, never accepted (`:247-252`) |
+| criterion freezing | `freeze_bundle`, `campaigns/evaluator_trees.py:153`; `_freeze_bundles`, `campaigns/progress.py:773` | the candidate tree: the criterion's file, the test-surface files it imports, the stack's config files | no. #1884 changes what a file asserts, not how it is frozen | a missing file or import raises `BundleIncomplete`, and nothing is frozen. The increment is blocked (`campaigns/acceptance_run.py:118`, `:154`) |
+
+1. **#1961, the issue's option 1.**
+   - **The rail:** after the footprint is derived, a `feature` or `fix` whose footprint holds nothing
+     outside the qa test namespace is refused with a new kind, `nothing_to_build`: "this change
+     declares nothing for a build to implement; a behaviour change needs the manifest delta that
+     declares it".
+   - **The template** adds one line: the accepted manifest is what the application does, so every
+     endpoint, error code and field it declares is already implemented.
+   - **Acceptance:**
+     - the stored bytes of `prop_5fb2d8136c36` v1 (campaign 1, increment 2: empty delta, criterion T2),
+       copied as a fixture with its baseline manifest, are refused `nothing_to_build`;
+     - the same request carrying a delta that declares its change passes this rail, and a `refactor`
+       with an empty delta is not refused by it;
+     - every stored `change_request` artifact in the vault is replayed through `validate_proposal` with
+       its stored context, on the box, and listed in the PR by artifact id. An approved request the new
+       rail refuses is a finding, read before merging;
+     - a wiring test through the proposal handler's `handle()` finds the template line in the prompt
+       sent.
+2. **#1962 with #1950: one declaration of a stack's frozen conventions,** as data on `ScaffoldStack`.
+   It replaces `unset_optional_response`, so there is one mechanism, not two. Each convention renders
+   through one managed asset that replaces `request.proposal_unset_optional`, and each is held to the
+   generated bytes by a test.
+   - **FastAPI declares four:**
+     - an optional field left out comes back as `null` (today's test);
+     - a required request string is trimmed, and refused with 422 `validation_error` when blank (#593).
+       Held by the generated model declaring it `NonBlankStr` (`stack_fastapi_react.py:164`) and the
+       frozen validation handler (`:315-326`);
+     - a declared `success_status` is pinned in the route decorator, held by `status_code=` in the
+       generated route (`:266`);
+     - an error comes back as the frozen envelope `{"error": {"code", "message"}}` with the contract's
+       status, held by the frozen error seam's source (`_envelope`, `:312`).
+   - **Next.js declares two.**
+     - **The value an optional field left out comes back as is not fixed:** it depends on the build.
+       A criterion does not depend on it unless the change itself requires a value, and then the
+       criterion states that value.
+       - The evidence is on #1950 (comment of 2026-10-05). The proof is structural: the frozen types
+         write `field?:`, the frozen store adds no default, and every route handler is a fill slot.
+       - The corpus shows the consequence. Of the 225 distinct stored `POST /runs` handlers (402 files,
+         corpus pin `c5c5ca6b…`), 187 leave the field out, 17 return `null`, 17 return `""`, and 4
+         never handle it. All three representations occur in runs that completed.
+       - Held by a test that the frozen types still write `field?:` and the store still adds no
+         default. If the scaffold ever freezes a value, the test fails and the declaration changes
+         with it.
+     - **The frozen error envelope,** `{error: {code, message}}` through `errorResponse`, held to
+       `_errors_source`'s bytes.
+   - **Acceptance:**
+     - each convention's byte test above;
+     - a wiring test through the proposal handler's `handle()` for each stack finds that stack's
+       conventions and no other's;
+     - an unregistered stack gets no section.
+3. **#1995: template-only.**
+   - **The template** says the PRD delta states only what the manifest delta, criteria and footprint
+     carry.
+   - **Its example is the stored case:** `prop_450986544201` v1 stated a capacity display in run
+     detail that no client-route change, criterion or footprint file carried. Version 2 narrowed the
+     text and was approved.
+   - **No rail, because the disagreement is in prose.** A deterministic predicate needs a typed link
+     from each PRD delta item to the manifest entries and criteria that carry it. That is a change to
+     the change request's schema (SIP-0109 §9), so it is a design change, not a 2.1 fix.
+   - **Who catches it until then:** the supervisor reads every PRD delta through 2.1 (§3a). The typed
+     link is recorded on #1708, because the auto tier (2.2) is when nobody reads them.
+   - **Acceptance:** a wiring test through the proposal handler's `handle()` finds the rule and its
+     example in the prompt sent.
+4. **#1884, by the owner's rule (§5 ruling 13).**
+   - **"Explicitly accepted" means:**
+     - the approved change request (its criteria and its PRD delta);
+     - the frozen criteria (their statements, stored beside each bundle since #1938);
+     - the accepted PRD;
+     - the accepted interface manifest.
+   - **What changes beyond #1886,** which put a narrower rule in the criteria appendix for plan
+     authors only. Each change names the component that makes it.
+     - **One asset states the rule for every reader:** `request.increment_test_scope_appendix`
+       (new). It carries:
+       - the ruled rule;
+       - its example: campaign 1 T1's tie order, a rule T1's statement never made, so it is
+         proposed, not tested;
+       - the approved criteria (id, statement, observable);
+       - the frozen criteria's statements.
+
+       #1886's section leaves `request.plan_increment_criteria_appendix` (v3), so the rule has
+       one author. It covers any test in any file, not only "every test the plan asks for".
+     - **One input key carries its data:** `increment_test_scope` =
+       `{criteria: [{id, statement, observable}], frozen: [{criterion_id, statement}]}`.
+       - It is composed from the approved change request and `campaign_proposal.frozen_criteria`,
+         where each entry carries its statement since #1938.
+       - It is present for every increment, with `criteria` empty for a `refactor`, and absent
+         outside a campaign.
+     - **Planning:** a new `INCREMENT_SURFACES` entry (`_plan_authoring.py:65`), whose index
+       `_inject_increment_indexes` (`task_plan.py:657`) composes for every increment framing. The
+       qa and dev proposers and the merger then see it whether or not the change has criteria.
+     - **`qa.test`:**
+       - a new context-contract property, `increment_test_scope`, on `ContextAssemblyContract`
+         (`context_assembly.py:89`), declared on `TaskType.QA_TEST` (`:213`). `_increment_inputs`
+         (`task_plan.py:760`) composes the key for an increment's implementation-run envelopes
+         whose task type declares it: a property, not an identity check (CLAUDE.md's task-type
+         rule 3);
+       - `QATestHandler` renders the asset when the key is present;
+       - a re-take re-dispatches the same envelope (`dispatched_flow_executor.py:186`), so it
+         carries the key;
+       - the retest (`_handle_retest`, `qa_test.py:1452`) generates nothing, and renders nothing.
+     - **`qa.test_repair`:**
+       - its envelope is built by the correction loop (`correction_repair.py:1021-1080`), which
+         forwards the failed task's inputs only through a fixed key list and `REPAIR_PRESENCE_KEYS`
+         (`context_assembly.py:466`, applied at `correction_repair.py:1058`). Without a change
+         there, the repair never sees the rule;
+       - `increment_test_scope` joins `REPAIR_PRESENCE_KEYS`. It is presence-keyed, so a repair
+         outside a campaign carries none;
+       - `QATestRepairHandler` renders the same asset through `_RepairPromptMixin`
+         (`repair_handlers.py:253`) when the key is present.
+     - **The proposal outlet,** specified below.
+     - **Outside the rule's text: dev-role emissions.** The owner's rule names the QA author, and
+       what a dev task may write is its SIP-0100 write grant, which this does not change.
+   - **The outlet: who may emit it.** Only `qa.test` in an increment's implementation run.
+     `qa.test_repair` is told the rule but not given the outlet. A repair re-authors a suite that was
+     missing, unparseable or uncollectable, and proposing belongs to the authoring task. A block in a
+     repair's emission is kept out of its artifacts and named in its evidence as ignored.
+   - **The block's contract:** one fenced block whose header carries `proposed_behaviours.yaml`:
+
+     ```yaml
+     proposed_behaviours:          # a list of 1 to 10 entries; no other top-level key
+       - behaviour: "..."          # required, non-blank: what the application should do, one sentence
+         why: "..."                # required, non-blank: why it matters, one sentence
+         surface_kind: endpoint    # required: endpoint | client_route
+         surface: "GET /runs"      # required, non-blank: "METHOD /path", or a client route's path
+     ```
+
+     An unknown key, a missing or blank field, a `surface_kind` outside the two, or more than 10
+     entries is malformed. The surface is not checked against the manifest: a proposal is judged
+     later, by the proposer's rails.
+   - **The parser and where it is stored.** `squadops.campaigns.proposed_behaviours` parses the
+     block. `QATestHandler` calls it at the point it splits its emission into files, so the block is
+     taken out before any file is extracted.
+     - **Absent:** nothing is stored, and there is no row.
+     - **Valid:** the handler returns one artifact, `proposed_behaviours.yaml`, of type
+       `qa_proposed_behaviours`, holding the parsed entries. The executor stores it as it stores
+       every artifact. Of the final emission only, so it is stored once per task execution.
+     - **Malformed:** a blocking validation row carrying the parse error, so the self-evaluation
+       pass returns it to the author inside the task's `max_self_eval_passes` (`cycle/base.py:1078`).
+       If the passes run out with the block still malformed, the block alone is dropped. The task's
+       evidence records why, and its verdict is decided by its tests as if the block were absent. An
+       optional proposal never fails the task that wrote it.
+   - **Never in a tree.** The allow-list (`delivered_tree.py:29`) already excludes the new type. The
+     correction runner's deny-list (`correction_runner.py:1504`) gains it, or a retest would run it.
+   - **The next proposal.** `_propose_launch` reads the stored entries of the cycle whose tree is
+     accepted and, for a proposal that replaces an abandoned increment, of that increment's cycle.
+     They go into the `campaign_proposal` block as `qa_proposed_behaviours`, deduplicated by
+     `behaviour`, at most 10. The read is a function of stored data alone: a failed read raises, and
+     the re-hearing retries it. `StrategyProposeIncrementHandler` renders them in a section of their
+     own (a new asset, `request.proposal_qa_proposed_behaviours`). The supervisor reads them as the
+     run's artifact.
+   - **What stays with the author:** the judgement that a test invents a rule. No deterministic check
+     can make it without guessing (#1884, comment of 2026-10-03), so it is measured, not gated.
+   - **Acceptance, each failing on today's main:**
+     - **planning:** a wiring test through the qa proposer's and the merger's real `handle()`, on a
+       `refactor` increment's framing with no criteria, finds the rule and each frozen criterion's
+       statement in the prompt sent. A framing outside a campaign finds neither;
+     - **`qa.test`:** a wiring test builds an increment's implementation plan from
+       `load_profile("campaign-increment")` defaults, with a stored change request and frozen
+       criteria. It calls `QATestHandler.handle()` on the plan's `qa.test` envelope. The prompt sent
+       carries the rule, each approved criterion's id, statement and observable, and each frozen
+       criterion's statement;
+     - **`qa.test_repair`, at both of its seams:**
+       - **the forwarding:** a test drives the correction loop's repair dispatch for a failed
+         increment `qa.test` whose locus is its own suite. It follows the pattern of
+         `test_correction_runner.py::test_repair_envelopes_carry_failed_task_contract`. The captured
+         repair envelope carries `increment_test_scope`, equal to the failed envelope's. A failed
+         `qa.test` outside a campaign gives a repair envelope without the key;
+       - **the render:** `QATestRepairHandler.handle()` on that captured envelope, with a stubbed
+         emission that also carries a `proposed_behaviours.yaml` block. The prompt sent carries the
+         rule, each approved criterion's id, statement and observable, and each frozen criterion's
+         statement. The block is not among its artifacts, and its evidence names it ignored;
+     - **no leakage:** `QATestHandler.handle()` on a `qa.test` envelope of a cycle outside a campaign
+       renders none of it;
+     - **the outlet, entered through each real handler:**
+       - `QATestHandler.handle()` with a valid block returns exactly one `qa_proposed_behaviours`
+         artifact holding each entry, and no `proposed_behaviours.yaml` among its workspace-typed
+         artifacts;
+       - the same handler with a malformed block, corrected on the self-evaluation pass: the pass's
+         prompt carries the parse error, and the corrected block is stored once;
+       - malformed on every pass: no proposal artifact, the evidence names the drop, and the task's
+         verdict equals the same run's verdict without the block;
+       - the executor stores the qa task's proposal artifact once, and `reexecute_repaired_suite`
+         excludes it from the retest files;
+       - `_propose_launch` with a stored proposal artifact on the accepted cycle puts its entries in
+         the launch block. A vault read that fails raises, and with none there is no key;
+       - `StrategyProposeIncrementHandler.handle()` renders the entries when the block carries them,
+         and nothing when it does not;
+     - **live, measured and not gated:** 2.1's shakeout repeats P9's read on every test file each
+       increment's qa author wrote, and reports the unsupported rules per increment. The 2.0 set's two
+       (campaign 1 T1's tie order, campaign 2 T4's non-mutation) are the comparison.
+
+**Step 2: tooling and measurements, with no deploy.**
+5. The SIP guards: #1969, then #1979, #1980, #1981, #1967 and #1968.
+6. #1988 (3.12 targets, and mypy in CI as a ratchet at today's count), #1989 (the architecture
+   overview and its guard), and #2008 (the reference cycle's capture).
+7. The crew's tooling: #1956 (the four instruments under `scripts/dev/`, with tests), #1959 (the
+   increment replay, as a script over the API) and #1960 (the per-increment scorecard, from the
+   records).
+8. The measurements, each posted on its issue with its numbers and query: #1911 (reasoning-only
+   repairs), #1469 (the bundler-stderr corpus) and #1757 (the stored model-limitation rewinds).
+
+**Step 3: defects batch 1, in §4's order** (if the night reaches it).
+9. #1986 before #1940; #1984 before #1987; #1934 with #2007.
+10. Then the rest: #1913, #1930, #1954, #1957, #1958, #1964, #1971, #1972, #1974, #1975, #1982
+    and #1983.
+11. Then a rebuild, the regression pair, and the `restart-at:at_proposal` diagnostic. The crew's
+    first campaign is the crew's, and is not launched here.
+
+**Stops (ruling 13):** a tag, a Release or any public upload; #316; a security finding; a red on main
+that cannot be explained; anything reversing a ruling in §5; the crew's items. A stop is recorded and
+left for the writeup, and the work moves on to the next item that does not depend on it.
+
+**The writeup at 08:00 ET:** what merged, what closed, what was filed, what stopped and why, the
+state of the box and of main, and what comes next. It is written at about 07:45 whatever state the
+work is in, with a push notification when it is posted.
