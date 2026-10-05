@@ -18,7 +18,6 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from squadops.agents.base import PortsBundle
 from squadops.comms.queue_message import QueueMessage
 from squadops.llm.models import ChatMessage, LLMRequest, LLMResponse
 from squadops.memory.models import MemoryEntry, MemoryQuery, MemoryResult
@@ -219,25 +218,3 @@ class NoOpQueuePort(QueuePort):
         # #572: delay/priority describe operations no shipped provider performs.
         # `fifo` gates no operation, so it stays as-is.
         return {"delay": False, "fifo": True, "priority": False}
-
-
-# ---------------------------------------------------------------------------
-# Factory
-# ---------------------------------------------------------------------------
-
-
-def create_noop_ports_bundle() -> PortsBundle:
-    """Create PortsBundle with NoOp stubs for orchestrator bootstrap.
-
-    Cycle task handlers don't use external ports.
-    These stubs exist only to satisfy the PortsBundle dataclass.
-    """
-    return PortsBundle(
-        llm=NoOpLLMPort(),
-        memory=NoOpMemoryPort(),
-        prompt_service=NoOpPromptService(),
-        queue=NoOpQueuePort(),
-        metrics=NoOpMetricsPort(),
-        events=NoOpEventPort(),
-        filesystem=NoOpFileSystemPort(),
-    )

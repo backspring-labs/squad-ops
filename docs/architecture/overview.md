@@ -189,10 +189,6 @@ The sandbox's container adapters (SIP-0102).
 ### `adapters.secrets`
 Secret providers: environment variables, files and Docker secrets, chosen by the factory.
 
-### `adapters.tasks`
-A SQL task registry and a Prefect stub, neither built by any composition root: dead code that #1984
-deletes in 2.1.
-
 ### `adapters.telemetry`
 Telemetry exporters: OpenTelemetry, a development console adapter, a null adapter, and the LangFuse
 LLM observability adapter, buffered and redacting (SIP-0061).

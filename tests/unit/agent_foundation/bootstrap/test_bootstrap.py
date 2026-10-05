@@ -221,8 +221,6 @@ class TestSystemBootstrap:
         assert isinstance(system, SquadOpsSystem)
         assert system.handler_registry is not None
         assert system.orchestrator is not None
-        assert system.task_service is not None
-        assert system.agent_service is not None
 
     def test_create_system_with_config(self, mock_ports):
         """Should create system with custom config."""

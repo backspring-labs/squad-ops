@@ -2,31 +2,7 @@
 
 A hexagonal architecture (ports & adapters) framework for
 orchestrating AI agent squads in software development workflows.
-
-SIP-0.8.8 Agent Migration + SIP-0.8.9 Test Suite Modernization complete.
-
-Quick Start:
-    from squadops.bootstrap import create_system
-
-    system = create_system(
-        llm=llm_adapter,
-        memory=memory_adapter,
-        prompt_service=prompt_service,
-        queue=queue_adapter,
-        metrics=metrics_adapter,
-        events=events_adapter,
-        filesystem=filesystem_adapter,
-        config=SystemConfig(role="lead"),
-    )
-
-    # Execute a task
-    from squadops.api import TaskRequestDTO
-    request = TaskRequestDTO(
-        task_type="governance.review",
-        source_agent="user",
-        inputs={"description": "Review the delivered artifacts"},
-    )
-    result = await system.task_service.execute_task(request)
+``docs/architecture/overview.md`` maps every package.
 """
 
 from squadops._version import resolve_version as _resolve_version
@@ -37,13 +13,6 @@ __version__ = _resolve_version()
 from squadops.agents import (
     BaseAgent,
     PortsBundle,
-)
-from squadops.api import (
-    AgentService,
-    TaskRequestDTO,
-    TaskResponseDTO,
-    TaskResultDTO,
-    TaskService,
 )
 from squadops.bootstrap import (
     SquadOpsSystem,
@@ -69,12 +38,6 @@ __all__ = [
     # Agents
     "BaseAgent",
     "PortsBundle",
-    # API
-    "TaskRequestDTO",
-    "TaskResponseDTO",
-    "TaskResultDTO",
-    "TaskService",
-    "AgentService",
     # Tasks
     "TaskEnvelope",
     "TaskResult",

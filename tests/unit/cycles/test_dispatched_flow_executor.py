@@ -922,6 +922,100 @@ class TestArtifactStorage:
 
 
 # ---------------------------------------------------------------------------
+# Ported from the in-process executor's suite when it was deleted (#1984)
+# ---------------------------------------------------------------------------
+
+
+def _one_artifact_reply(env, role: str = "strat") -> TaskResult:
+    return TaskResult(
+        task_id=env["task_id"],
+        status="SUCCEEDED",
+        outputs={
+            "summary": "ok",
+            "role": role,
+            "artifacts": [
+                {
+                    "name": "output.md",
+                    "content": "# Output",
+                    "media_type": "text/markdown",
+                    "type": "document",
+                }
+            ],
+        },
+    )
+
+
+async def _execute(executor) -> None:
+    with patch(
+        "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+        new_callable=AsyncMock,
+    ):
+        await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+
+class TestOutputChaining:
+    """Each task sees the outputs of the tasks before it, keyed by the role that produced them.
+
+    Bug caught: a downstream task authored blind to its upstream (an empty or cumulative-by-
+    accident ``prior_outputs``), or outputs keyed by something other than the producing role."""
+
+    async def test_each_task_sees_its_predecessors_outputs_keyed_by_role(
+        self, executor, reply_router
+    ) -> None:
+        import copy
+
+        seen: list[set[str]] = []
+
+        def responder(env):
+            seen.append(set(copy.deepcopy(env["inputs"].get("prior_outputs") or {})))
+            return _one_artifact_reply(env)
+
+        reply_router.responder = responder
+        await _execute(executor)
+
+        # strategy.analyze_prd (strat), development.design (dev), qa.validate (qa),
+        # data.report (data), governance.review (lead)
+        assert seen == [
+            set(),
+            {"strat"},
+            {"strat", "dev"},
+            {"strat", "dev", "qa"},
+            {"strat", "dev", "qa", "data"},
+        ]
+
+
+class TestArtifactRefsPerStep:
+    async def test_each_append_carries_only_that_steps_refs(
+        self, executor, mock_registry, reply_router
+    ) -> None:
+        """Bug caught: the run's refs re-appended cumulatively each step, so the row holds
+        duplicates and the next workload's forwarding sees one artifact several times."""
+        reply_router.responder = _one_artifact_reply
+        await _execute(executor)
+
+        appended = [c.args[1] for c in mock_registry.append_artifact_refs.call_args_list]
+        flat = [ref for refs in appended for ref in refs]
+        assert len(flat) == len(set(flat))
+        assert len(appended) >= 5 and all(len(refs) == 1 for refs in appended[:5])
+
+    @pytest.mark.parametrize("outputs", [{"summary": "done"}, None])
+    async def test_a_task_with_no_artifacts_stores_nothing_and_the_run_completes(
+        self, executor, mock_registry, mock_vault, reply_router, outputs
+    ) -> None:
+        """Bug caught: a reply with no ``artifacts`` key (or no outputs at all) crashing the
+        loop, or storing an empty artifact."""
+        reply_router.responder = lambda env: TaskResult(
+            task_id=env["task_id"], status="SUCCEEDED", outputs=outputs
+        )
+        await _execute(executor)
+
+        stored = [c.args[0].filename for c in mock_vault.store.call_args_list]
+        assert stored == ["run_report.md"]
+        statuses = [c.args[1] for c in mock_registry.update_run_status.call_args_list]
+        assert statuses[-1] == RunStatus.COMPLETED
+
+
+# ---------------------------------------------------------------------------
 # Cancellation probe wiring (#586)
 # ---------------------------------------------------------------------------
 
