@@ -60,8 +60,7 @@ async def _rendered(
         declared,
         inputs.get("increment_route_seeds") or {},
         profile=profile,
-        backend_argv=probe.boot_argv,
-        backend_ready_path=probe.ready_path,
+        backend=probe,
     )
 
 

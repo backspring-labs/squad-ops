@@ -312,20 +312,36 @@ def route_seeds(manifest: Any) -> dict[str, dict[str, Any]]:
     seeds: dict[str, dict[str, Any]] = {}
     for path in declared_routes(manifest):
         segments = path.split("/")
-        params = [s for s in segments if s.startswith(":")]
+        params = [s for s in segments if route_param(s) is not None]
         if len(params) != 1:
             continue
         collection = "/".join(segments[: segments.index(params[0])]) or "/"
-        endpoint = creates.get(collection)
+        # A manifest with an API base path writes its endpoints under it (a Next.js app's
+        # ``/api/runs`` for its ``/runs/{run_id}`` page, #1973); the collection is either.
+        base = str(getattr(api, "base_path", "") or "").rstrip("/")
+        endpoint = creates.get(collection) or (creates.get(base + collection) if base else None)
         if endpoint is None:
             continue
         seeds[path] = {
             "method": "POST",
-            "path": collection,
+            "path": endpoint.path,
             "json": create_request_body(manifest, endpoint),
-            "param": params[0][1:],
+            "param": route_param(params[0]),
+            # The segment as the manifest writes it, which the rendered path replaces (#1973).
+            "segment": params[0],
         }
     return seeds
+
+
+def route_param(segment: str) -> str | None:
+    """A client route segment's parameter name, or ``None`` for a literal segment. A manifest
+    writes a parameter either way, ``:run_id`` (the router's syntax) or ``{run_id}`` (the API's;
+    the Next.js manifests do, #1973), and both are one parameter."""
+    if segment.startswith(":") and len(segment) > 1:
+        return segment[1:]
+    if segment.startswith("{") and segment.endswith("}") and len(segment) > 2:
+        return segment[1:-1]
+    return None
 
 
 def retired_criteria(change_request: str) -> tuple[str, ...]:

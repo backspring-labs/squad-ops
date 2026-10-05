@@ -130,10 +130,6 @@ _DECLARED_OPTIONAL = {
         "the typed-check evaluators are Python AST implementations never verified against "
         "TypeScript, so on nextjs_ts they skip rather than read a guess (#503, #822 bend 6)"
     ),
-    ("ScaffoldStack", "render_profile"): (
-        "no Next.js render profile exists yet (#1973, placed in 2.1.0): until it lands a "
-        "route-declaring Next.js increment is blocked_unverified, never passed (SIP-0109 §24p)"
-    ),
 }
 
 #: What the pass concluded about one declared field. Both the gate and the coverage
@@ -564,8 +560,9 @@ def test_the_gate_rejects_an_unrecorded_field(
 def test_an_empty_string_reads_as_unset(baseline, stack, unset):
     """#1967. Bug caught: a string field set on one stack and left ``""`` on the other read by
     observation instead of as unset, so it passed the gate with no recorded reason
-    (``render_profile`` did, and ``unset_optional_response`` before #1962 replaced it)."""
-    disposition = _classify("ScaffoldStack", stack, "render_profile", baseline)
+    (``render_profile`` did until #1973 gave Next.js one, and ``unset_optional_response`` before
+    #1962 replaced it). ``check_stack`` is the field left empty on nextjs_ts today."""
+    disposition = _classify("ScaffoldStack", stack, "check_stack", baseline)
 
     assert (disposition == "ALREADY_EMPTY") is unset
 

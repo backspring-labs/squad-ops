@@ -5,11 +5,13 @@ from __future__ import annotations
 
 import pytest
 
+from squadops.capabilities.handlers.probe_runner import DEFAULT_PROFILE, profile_for_stack
 from squadops.capabilities.handlers.route_rendering import (
     RenderSteps,
     render_profile_for,
     render_routes,
 )
+from squadops.capabilities.scaffold import render_profile_name_for
 
 PROFILE = render_profile_for("vite_dev_proxy")
 ROUTES = {"/": ("run-list-view",), "/runs/:run_id": ("run-detail-view", "capacity-status")}
@@ -60,8 +62,7 @@ def _render(steps: RenderSteps, routes=ROUTES, seeds=SEEDS):
         routes,
         seeds,
         profile=PROFILE,
-        backend_argv=("python", "-m", "uvicorn", "backend.main:app", "--port", "{port}"),
-        backend_ready_path="/health",
+        backend=DEFAULT_PROFILE,
         steps=steps,
     )
 
@@ -113,3 +114,59 @@ def test_no_declared_routes_reads_nothing():
     steps, seen = _steps()
     assert _render(steps, routes={}) == {}
     assert seen["started"] == []
+
+
+# --- #1973: a Next.js app serves its own pages ------------------------------------------------
+
+NEXT = render_profile_for(render_profile_name_for("nextjs_ts"))
+NEXT_PROBE = profile_for_stack("nextjs_ts")
+
+
+def _render_next(steps: RenderSteps):
+    return render_routes(
+        {"package.json": "{}"}, ROUTES, SEEDS, profile=NEXT, backend=NEXT_PROBE, steps=steps
+    )
+
+
+def test_a_nextjs_app_is_built_then_read_from_the_port_it_serves():
+    """SIP-0109 §24p for the second stack. Bugs caught: the app booted unbuilt (``next start``
+    serves only what ``next build`` produced), a frontend dev server started beside an app that
+    has none, or pages read from a port nothing serves."""
+    prepared = []
+    steps, seen = _steps(
+        install_frontend=lambda path: pytest.fail("a Next.js app has no separate frontend"),
+        prepare=lambda cwd, argv, timeout: prepared.append((argv, timeout)) or None,
+    )
+
+    rendered = _render_next(steps)
+
+    [boot] = seen["started"]
+    port = boot[boot.index("--port") + 1]
+    assert prepared == [(NEXT_PROBE.prepare_argv, NEXT_PROBE.prepare_timeout_s)]
+    assert boot[:3] == ["npx", "next", "start"]
+    assert [url for url, _ in seen["seeded"]] == [f"http://127.0.0.1:{port}/runs"]
+    assert rendered == {
+        "/": frozenset({"run-list-view", "run-list"}),
+        "/runs/:run_id": frozenset({"run-detail-view", "capacity-status"}),
+    }
+    assert seen["stopped"] == 2  # the server, and the absent frontend stopped as a no-op
+
+
+def test_an_app_that_does_not_build_reads_every_route_unread_and_starts_nothing():
+    steps, seen = _steps(prepare=lambda cwd, argv, timeout: "Type error: x is not assignable")
+
+    assert _render_next(steps) == {route: None for route in ROUTES}
+    assert seen["started"] == []
+
+
+def test_a_page_written_with_a_braced_parameter_is_read_at_its_created_id():
+    """#1973: ``/runs/{run_id}`` is one parameter, as ``/runs/:run_id`` is. Bug caught: the page
+    read at the literal ``{run_id}`` path because only the router's syntax was recognised."""
+    steps, seen = _steps()
+    braced = {"/runs/{run_id}": ("run-detail-view",)}
+    seeds = {"/runs/{run_id}": {**SEEDS["/runs/:run_id"], "segment": "{run_id}"}}
+
+    rendered = _render(steps, routes=braced, seeds=seeds)
+
+    assert seen["read"] == ["/runs/r-7"]
+    assert rendered == {"/runs/{run_id}": frozenset({"run-detail-view", "capacity-status"})}
