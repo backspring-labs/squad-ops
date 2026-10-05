@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from adapters.noop.ports import NoOpFailurePatternRecall
 from squadops.cycles.models import ArtifactRef
 from squadops.tasks.models import TaskResult
 
@@ -46,6 +47,7 @@ def executor(reply_router):
         campaign_registry=None,
         campaign_progress=None,
         box_verdict=None,
+        failure_recall=NoOpFailurePatternRecall(),
     )
 
 

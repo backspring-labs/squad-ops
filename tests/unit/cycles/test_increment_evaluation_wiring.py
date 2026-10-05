@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import yaml
 
+from adapters.noop.ports import NoOpFailurePatternRecall
 from squadops.campaigns.change_request import (
     ProposalContext,
     apply_manifest_delta,
@@ -210,6 +211,7 @@ async def test_the_evaluation_is_handed_the_accepted_tree_as_the_increment_seede
         campaign_registry=None,
         campaign_progress=None,
         box_verdict=None,
+        failure_recall=NoOpFailurePatternRecall(),
     )
     executor._cycle_event_bus = MagicMock()
     [evaluation] = [
@@ -254,6 +256,7 @@ async def test_the_evaluation_is_handed_the_bundles_its_launch_pinned():
         campaign_registry=None,
         campaign_progress=None,
         box_verdict=None,
+        failure_recall=NoOpFailurePatternRecall(),
     )
     executor._cycle_event_bus = MagicMock()
     [evaluation] = [
@@ -376,6 +379,7 @@ async def test_the_evaluation_judges_the_candidate_with_its_qa_suites():
         campaign_registry=None,
         campaign_progress=None,
         box_verdict=None,
+        failure_recall=NoOpFailurePatternRecall(),
     )
     executor._cycle_event_bus = MagicMock()
     plan = _implementation(True, STORED)

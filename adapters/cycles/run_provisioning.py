@@ -25,7 +25,7 @@ from typing import Any
 
 from adapters.cycles.execution_errors import _ExecutionError
 from squadops.cycles.models import Cycle, RunStatus, WorkloadType
-from squadops.cycles.task_plan import generate_task_plan
+from squadops.cycles.task_plan import generate_task_plan, recalled_patterns_for
 from squadops.events.types import EventType
 
 
@@ -63,6 +63,7 @@ class RunProvisioning:
         "_artifact_vault",
         "_cycle_event_bus",
         "_cycle_registry",
+        "_failure_recall",
         "_load_contract_for_run",
         "_load_interface_manifest_for_run",
         "_load_plan_for_run",
@@ -169,6 +170,11 @@ class RunProvisioning:
 
             change_request = await approved_change_request(self._artifact_vault, cycle)
 
+        # #1964 (SIP-Cross-Cycle-Memory §5): each plan-authoring task type the context registry
+        # hands rejection context to asks the recall what this project has failed before. 2.1's
+        # recall answers empty, so nothing is handed and no prompt changes.
+        recalled = await recalled_patterns_for(self._failure_recall, cycle.project_id)
+
         plan = generate_task_plan(
             cycle,
             run,
@@ -177,6 +183,7 @@ class RunProvisioning:
             contract=verification_contract,
             interface_manifest=interface_manifest,
             change_request=change_request,
+            recalled_patterns=recalled,
         )
         state.plan = plan
         participating_agent_ids = {e.agent_id for e in plan}

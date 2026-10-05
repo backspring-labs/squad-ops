@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from adapters.cycles.run_provisioning import ProvisionedRun, RunInProgress
+from adapters.noop.ports import NoOpFailurePatternRecall
 from squadops.cycles.models import ArtifactRef, Cycle, Run, TaskFlowPolicy
 
 NOW = datetime(2026, 10, 2, 13, 0, tzinfo=UTC)
@@ -140,6 +141,7 @@ async def _seed_and_compose(vault, cycle: Cycle) -> tuple[list[str], dict[str, s
         campaign_registry=None,
         campaign_progress=None,
         box_verdict=None,
+        failure_recall=NoOpFailurePatternRecall(),
     )
     executor._cycle_event_bus = MagicMock()
     run = Run("run_impl", "cyc_inc", 2, "running", "system", "cfg", workload_type="implementation")
@@ -167,6 +169,7 @@ async def _workspace(vault, seeds: list[str], task_type: str) -> dict[str, str]:
         campaign_registry=None,
         campaign_progress=None,
         box_verdict=None,
+        failure_recall=NoOpFailurePatternRecall(),
     )
     stored = [(art_id, vault.stored[art_id][0]) for art_id in seeds]
     return await executor._resolve_artifact_contents(task_type, stored)

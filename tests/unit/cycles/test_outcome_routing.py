@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from adapters.noop.ports import NoOpFailurePatternRecall
 from squadops.cycles.models import (
     AgentProfileEntry,
     Cycle,
@@ -187,6 +188,7 @@ def executor(mock_registry, mock_vault, mock_queue, mock_squad_profile, cycle, r
         campaign_registry=None,
         campaign_progress=None,
         box_verdict=None,
+        failure_recall=NoOpFailurePatternRecall(),
     )
 
 

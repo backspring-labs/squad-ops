@@ -21,8 +21,10 @@ from uuid import uuid4
 from squadops.comms.queue_message import QueueMessage
 from squadops.llm.models import ChatMessage, LLMRequest, LLMResponse
 from squadops.memory.models import MemoryEntry, MemoryQuery, MemoryResult
+from squadops.memory.recall import RecalledPattern, RecallQuery
 from squadops.ports.comms.queue import QueuePort
 from squadops.ports.llm.provider import LLMPort
+from squadops.ports.memory.recall import FailurePatternRecallPort
 from squadops.ports.memory.store import MemoryPort
 from squadops.ports.prompts.service import PromptService
 from squadops.ports.telemetry.events import EventPort
@@ -91,6 +93,15 @@ class NoOpMemoryPort(MemoryPort):
 
     async def delete(self, memory_id: str) -> bool:
         raise NotImplementedError("NoOpMemoryPort: memory not expected in cycle task handlers")
+
+
+class NoOpFailurePatternRecall(FailurePatternRecallPort):
+    """The inert recall 2.1 ships (#1964): it answers empty, so a plan-authoring task is handed
+    nothing and no prompt changes. Not ``NoOpMemoryPort``, which raises on every call: the call
+    site is live, and an answer of "none" is what it must get until 2.2's adapter."""
+
+    async def recall(self, query: RecallQuery) -> tuple[RecalledPattern, ...]:
+        return ()
 
 
 class NoOpPromptService(PromptService):

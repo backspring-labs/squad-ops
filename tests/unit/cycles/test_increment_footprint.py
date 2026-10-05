@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import yaml
 
+from adapters.noop.ports import NoOpFailurePatternRecall
 from squadops.campaigns.change_request import (
     ProposalContext,
     apply_manifest_delta,
@@ -146,6 +147,7 @@ async def _gate_errors(plan: str, increment: bool = True) -> list[str]:
         campaign_registry=None,
         campaign_progress=None,
         box_verdict=None,
+        failure_recall=NoOpFailurePatternRecall(),
     )
     executor._cycle_event_bus = MagicMock()
     run = Run(
@@ -486,6 +488,7 @@ async def test_an_increment_plan_with_a_suiteless_qa_task_is_rejected_at_its_gat
             campaign_registry=None,
             campaign_progress=None,
             box_verdict=None,
+            failure_recall=NoOpFailurePatternRecall(),
         )
         executor._cycle_event_bus = MagicMock()
         run = Run(

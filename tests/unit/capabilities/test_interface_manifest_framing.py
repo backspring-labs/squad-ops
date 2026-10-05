@@ -31,6 +31,7 @@ import pytest
 import yaml
 
 from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+from adapters.noop.ports import NoOpFailurePatternRecall
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
 from squadops.capabilities.scaffold import InterfaceManifest, is_scaffoldable_stack
 from squadops.cycles.manifest_authoring import MANIFEST_ARTIFACT_TYPE
@@ -195,6 +196,7 @@ def _executor_for(manifest_yaml: str | None) -> tuple[DispatchedFlowExecutor, An
         campaign_registry=None,
         campaign_progress=None,
         box_verdict=None,
+        failure_recall=NoOpFailurePatternRecall(),
     )
     run = MagicMock()
     run.artifact_refs = refs
@@ -273,6 +275,7 @@ async def _forwarded(*artifacts: Any) -> dict[str, Any]:
         campaign_registry=None,
         campaign_progress=None,
         box_verdict=None,
+        failure_recall=NoOpFailurePatternRecall(),
     )
 
     cycle = MagicMock()

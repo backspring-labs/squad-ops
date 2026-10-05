@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from adapters.noop.ports import NoOpFailurePatternRecall
 from squadops.cycles.models import (
     AgentProfileEntry,
     Cycle,
@@ -163,6 +164,7 @@ def executor(mock_registry, mock_vault, mock_queue, mock_squad_profile, reply_ro
         campaign_registry=None,
         campaign_progress=None,
         box_verdict=None,
+        failure_recall=NoOpFailurePatternRecall(),
     )
 
 
@@ -235,6 +237,7 @@ class TestPulseVerificationMilestone:
             campaign_registry=None,
             campaign_progress=None,
             box_verdict=None,
+            failure_recall=NoOpFailurePatternRecall(),
         )
 
     async def test_milestone_pass_continues(
@@ -365,6 +368,7 @@ class TestPulseVerificationCadence:
             campaign_registry=None,
             campaign_progress=None,
             box_verdict=None,
+            failure_recall=NoOpFailurePatternRecall(),
         )
 
     async def test_cadence_close_by_task_count(
@@ -588,6 +592,7 @@ class TestPulseVerificationTelemetry:
             campaign_registry=None,
             campaign_progress=None,
             box_verdict=None,
+            failure_recall=NoOpFailurePatternRecall(),
         ), obs
 
     async def test_boundary_decision_event_emitted(
@@ -807,6 +812,7 @@ class TestPulseVerificationCombined:
             campaign_registry=None,
             campaign_progress=None,
             box_verdict=None,
+            failure_recall=NoOpFailurePatternRecall(),
         )
 
     async def test_both_cadence_and_milestone_fire(
@@ -902,6 +908,7 @@ class TestPulseVerificationRecordPersistence:
             campaign_registry=None,
             campaign_progress=None,
             box_verdict=None,
+            failure_recall=NoOpFailurePatternRecall(),
         )
 
     async def test_records_persisted_via_registry(
@@ -989,6 +996,7 @@ class TestPulseRepairLoop:
             campaign_registry=None,
             campaign_progress=None,
             box_verdict=None,
+            failure_recall=NoOpFailurePatternRecall(),
         )
 
     async def test_fail_repair_pass_continues(
@@ -1570,6 +1578,7 @@ class TestPulseRepairTelemetry:
             campaign_registry=None,
             campaign_progress=None,
             box_verdict=None,
+            failure_recall=NoOpFailurePatternRecall(),
         ), obs
 
     async def test_repair_started_event(

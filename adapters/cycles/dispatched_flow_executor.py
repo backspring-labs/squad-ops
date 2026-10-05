@@ -129,6 +129,7 @@ if TYPE_CHECKING:
     from squadops.ports.cycles.squad_profile import SquadProfilePort
     from squadops.ports.cycles.workflow_tracker import WorkflowTrackerPort
     from squadops.ports.events.cycle_event_bus import CycleEventBusPort
+    from squadops.ports.memory.recall import FailurePatternRecallPort
     from squadops.ports.runtime.activity import RuntimeActivityPort
     from squadops.ports.runtime.assignments import AssignmentPort
     from squadops.ports.runtime.focus_lease import FocusLeasePort
@@ -470,6 +471,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         campaign_registry: CampaignRegistryPort | None,
         campaign_progress: CampaignProgress | None,
         box_verdict: BoxVerdict | None,
+        # #1964: Cross-Cycle Memory's recall, asked before a plan's authoring tasks are built.
+        # Required with no ``None`` meaning: 2.1's roots inject the inert recall that answers
+        # empty, so the call site is live and nothing is handed until 2.2's adapter.
+        failure_recall: FailurePatternRecallPort,
         # 1.8.2 item 15: the per-task wait is declared by the composition root, never
         # defaulted here — a default is the hung-agent detector nobody chose.
         task_timeout: float,
@@ -489,6 +494,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         correction_repair: CorrectionRepair | None = None,
     ) -> None:
         self._cycle_registry = cycle_registry
+        self._failure_recall = failure_recall
         # SIP-0109 §9.2: the campaign a cycle belongs to hears its increment gate open. A
         # campaign cycle run by an executor without one fails at that gate, loudly.
         self._campaign_registry = campaign_registry

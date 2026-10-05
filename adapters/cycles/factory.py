@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from squadops.ports.comms.queue import QueuePort
     from squadops.ports.cycles.workflow_tracker import WorkflowTrackerPort
     from squadops.ports.events.cycle_event_bus import CycleEventBusPort
+    from squadops.ports.memory.recall import FailurePatternRecallPort
     from squadops.ports.runtime.activity import RuntimeActivityPort
     from squadops.ports.runtime.assignments import AssignmentPort
     from squadops.ports.runtime.focus_lease import FocusLeasePort
@@ -124,6 +125,7 @@ def create_flow_executor(
     campaign_registry: CampaignRegistryPort | None,
     campaign_progress: CampaignProgress | None,
     box_verdict: BoxVerdict | None,
+    failure_recall: FailurePatternRecallPort,
     task_timeout: float,
     llm_observability: LLMObservabilityPort | None = None,
     workflow_tracker: WorkflowTrackerPort | None = None,
@@ -173,6 +175,7 @@ def create_flow_executor(
         campaign_registry=campaign_registry,
         campaign_progress=campaign_progress,
         box_verdict=box_verdict,
+        failure_recall=failure_recall,
         task_timeout=task_timeout,
         llm_observability=llm_observability,
         workflow_tracker=workflow_tracker,

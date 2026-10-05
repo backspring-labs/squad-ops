@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from adapters.noop.ports import NoOpFailurePatternRecall
 from squadops.cycles.models import (
     ArtifactRef,
     Cycle,
@@ -120,6 +121,7 @@ def executor(mock_registry, mock_event_bus):
         campaign_registry=None,
         campaign_progress=None,
         box_verdict=None,
+        failure_recall=NoOpFailurePatternRecall(),
     )
     exec_._cycle_event_bus = mock_event_bus
     # Patch execute_run to track calls without real dispatch
@@ -260,6 +262,7 @@ class TestStartingWorkloadIndex:
             campaign_registry=None,
             campaign_progress=None,
             box_verdict=None,
+            failure_recall=NoOpFailurePatternRecall(),
         )
 
     @pytest.mark.parametrize(

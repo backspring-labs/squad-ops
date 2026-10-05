@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from adapters.noop.ports import NoOpFailurePatternRecall
 from squadops.cycles.models import AgentProfileEntry, Cycle, SquadProfile, TaskFlowPolicy
 from squadops.cycles.run_ledger import RunLedger
 from squadops.events.types import EventType
@@ -139,6 +140,7 @@ def _make_executor(mock_prefect_workflow_tracker, reply_router):
         campaign_registry=None,
         campaign_progress=None,
         box_verdict=None,
+        failure_recall=NoOpFailurePatternRecall(),
     )
     return ex
 

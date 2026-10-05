@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor, _ExecutionError
+from adapters.noop.ports import NoOpFailurePatternRecall
 from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.models import Run
 from squadops.cycles.replay import (
@@ -192,6 +193,7 @@ class TestExecutorReplayResolution:
             campaign_registry=None,
             campaign_progress=None,
             box_verdict=None,
+            failure_recall=NoOpFailurePatternRecall(),
         )
 
     def _cycle(self, overrides) -> MagicMock:
