@@ -101,7 +101,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | proposal tasks re-run on re-attach (random ids) | **placed** | 2.1.0, #1934 |
 | a restart leaves the interrupted run's Prefect flow runs open (the re-attach, §24am) | **placed** | 2.1.0, #2007 |
 | the stack's frozen conventions told to the proposer (Next.js; the rest) | **placed** | 2.1.0, #1950, #1962 |
-| the rails accept an empty manifest delta | **shipped** (§24au) | 2.1.0, #PRNUM |
+| the rails accept an empty manifest delta | **shipped** (§24au) | 2.1.0, #2011 |
 | the prior-cycle brief's remainder | **placed** | 2.1.0, #1692 |
 | the supervisor creates and manages campaigns (revises §24al) | **placed** | 2.1.0, #1940 |
 | a campaign records its definition file's hash | **placed** | 2.1.0, #1954 |
