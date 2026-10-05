@@ -238,7 +238,7 @@ def start(
     reason: str = _REASON,
     idempotency_key: str | None = _KEY,
 ):
-    """Start a draft campaign: its calibration cycle launches (the owner's word)."""
+    """Start a draft campaign: its calibration cycle launches (the owner or the supervisor)."""
     _control(ctx, "start", campaign_id, reason, idempotency_key, None)
 
 
@@ -272,7 +272,8 @@ def resume(
         ),
     ),
 ):
-    """Resume a paused or escalated campaign (the owner's word, §10)."""
+    """Resume a paused or escalated campaign. An escalation, a limit's pause and the owner's own
+    pause need the owner's word (§10, §24az); the supervisor resumes its own pause."""
     _control(ctx, "resume", campaign_id, reason, idempotency_key, expected_state, action)
 
 

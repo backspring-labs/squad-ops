@@ -187,6 +187,17 @@ class LaunchIntentNotFoundError(CampaignError):
     """Raised when a launch_id cannot be found."""
 
 
+class ResumeReservedToOwner(CampaignError):
+    """A resume only the owner may make (#1940, SIP-0109 §24az): the campaign is escalated, or
+    paused by a limit or by the owner. Refused before anything is written."""
+
+    def __init__(self, campaign_id: str, held: str) -> None:
+        self.held = held
+        super().__init__(
+            f"campaign {campaign_id} is {held}: resuming it is the owner's (campaigns:control)"
+        )
+
+
 class ControlOperationRefused(CampaignError):
     """A control operation the registry refused, and recorded. ``entry`` is the refusal's row."""
 

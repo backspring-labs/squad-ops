@@ -8,11 +8,13 @@ from squadops.campaigns.models import (
     CampaignNotFoundError,
     ControlOperationRefused,
     LaunchIntentNotFoundError,
+    ResumeReservedToOwner,
 )
 
 _ERROR_MAP: list[tuple[type[CampaignError], int, str]] = [
     (CampaignNotFoundError, 404, "CAMPAIGN_NOT_FOUND"),
     (LaunchIntentNotFoundError, 404, "LAUNCH_INTENT_NOT_FOUND"),
+    (ResumeReservedToOwner, 403, "OWNER_AUTHORITY_REQUIRED"),
     (CampaignExistsError, 409, "CAMPAIGN_EXISTS"),
     (ControlOperationRefused, 409, "CONTROL_OPERATION_REFUSED"),
 ]

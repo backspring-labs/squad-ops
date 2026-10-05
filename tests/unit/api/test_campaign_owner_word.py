@@ -66,20 +66,22 @@ class _World:
     def __init__(self) -> None:
         self.campaigns = MemoryCampaignRegistry()
         self.launch = AsyncMock()
+        self.seat = Role.ADMIN
         app = FastAPI()
+        world = self
 
-        class Owner(BaseHTTPMiddleware):
+        class Seat(BaseHTTPMiddleware):
             async def dispatch(self, request: Request, call_next):
                 request.state.identity = Identity(
-                    user_id="owner",
-                    display_name="owner",
-                    roles=(Role.ADMIN,),
-                    scopes=tuple(sorted(scopes_for_roles((Role.ADMIN,)))),
+                    user_id=world.seat,
+                    display_name=world.seat,
+                    roles=(world.seat,),
+                    scopes=tuple(sorted(scopes_for_roles((world.seat,)))),
                     identity_type=IdentityType.HUMAN,
                 )
                 return await call_next(request)
 
-        app.add_middleware(Owner)
+        app.add_middleware(Seat)
         app.include_router(campaigns_router)
         register_domain_error_handlers(app)
         app.state.campaign_registry = self.campaigns
@@ -180,6 +182,30 @@ async def test_a_held_action_is_executed_once_by_the_resume_as_recorded(world):
     )
     assert second.status_code == 409
     world.launch.drain.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    ("decision", "named", "held"),
+    [(_HELD, None, "paused by a limit"), (_ESCALATED, "propose", "escalated")],
+    ids=["limit-pause", "escalation"],
+)
+async def test_the_supervisor_cannot_give_the_owners_word(world, decision, named, held):
+    """#1940, the owner's rulings of 2026-10-03: "keep escalations with me", "keep limit pauses
+    with me". Bugs caught: the manage scope letting the supervisor execute a held launch or rule
+    an escalation. The refusal writes nothing, and the owner's word then proceeds."""
+    await world.decided(decision)
+    rows = len(await world.campaigns.control_log(CID))
+    world.seat = Role.CAMPAIGN_SUPERVISOR
+
+    refused = world.resume("sup-1", **({"action": named} if named else {}))
+
+    error = refused.json()["detail"]["error"]
+    assert (refused.status_code, error["code"]) == (403, "OWNER_AUTHORITY_REQUIRED")
+    assert held in error["message"]
+    assert len(await world.campaigns.control_log(CID)) == rows
+    assert await world.campaigns.launch_intents(CID) == []
+    world.seat = Role.ADMIN
+    assert world.resume("owner-1", **({"action": named} if named else {})).status_code == 200
 
 
 async def test_a_resume_cannot_swap_the_held_action(world):

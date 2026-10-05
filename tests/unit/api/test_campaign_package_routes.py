@@ -101,9 +101,15 @@ async def test_an_abort_leaves_the_package_and_the_supervisor_reads_its_digest(w
     assert len(vault.stored) == 2
 
 
-async def test_only_the_owners_seat_materializes_a_package(world):
+@pytest.mark.parametrize(
+    ("seat", "status", "stored"),
+    [(Role.CAMPAIGN_SUPERVISOR, 200, 2), (Role.CAMPAIGN_TRIAGE, 403, 0), (Role.OPERATOR, 403, 0)],
+)
+async def test_the_managing_seats_materialize_a_package_and_no_other(world, seat, status, stored):
+    """#1940: the supervisor manages a campaign, its package included. Bugs caught: the
+    supervisor still refused, or a read-only seat writing the package."""
     client, vault, role = world
-    role["now"] = Role.CAMPAIGN_SUPERVISOR
+    role["now"] = seat
 
-    assert client.post(f"/api/v1/campaigns/{CID}/package").status_code == 403
-    assert vault.stored == {}
+    assert client.post(f"/api/v1/campaigns/{CID}/package").status_code == status
+    assert len(vault.stored) == stored

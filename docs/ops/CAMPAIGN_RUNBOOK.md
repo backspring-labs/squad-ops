@@ -339,7 +339,7 @@ What the supervisor (the crew, or whoever holds the seat, §24al) does alone, an
 | alone | stops for the owner |
 |---|---|
 | rule increment gates and answer plan gates; pause a campaign; classify a proposal; take the lease at an open gate with no run in flight (all `campaigns:supervise`, which the `campaign-supervisor` role holds) | a pre-registration, or any material change to one (a policy value, a prediction, the set's size or frame) |
-| create, start and abort campaigns (`campaigns:control`: the admin role today; #1940 gives it to the supervisor role in 2.1) | resuming an escalation: the owner's word (§10's rows, `campaigns resume --action`) |
+| create, start and abort campaigns, materialize a package, and resume its own pause (`campaigns:manage`, which the `campaign-supervisor` role holds since 2.1, #1940, SIP-0109 §24az) | resuming an escalation, a limit's pause or the owner's own pause: the owner's word (§10's rows, `campaigns resume --action`; `campaigns:control`, the admin role alone) |
 | file findings; fix them on branches; merge on full green, reading main's run | an unexplained red on main |
 | rebuild between campaigns, verifying the new code is loaded | a fix needed while a counted set is open: it voids the set |
 | run the reference scenario and the recovery diagnostics outside a counted set | anything touching security, and any public Release (tag, Release notes, records upload) |
