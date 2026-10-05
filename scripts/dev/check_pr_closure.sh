@@ -59,6 +59,23 @@ pr-closure: FAIL — a release PR must record cut step 5 in its body:
 MSG
   exit 1
 fi
+# #1980: the line names everything the ledgers say is outstanding at this cut: each promotable
+# SIP, each part placed in this release and not shipped, each placed row whose issue has closed.
+if [[ "$head_ref" == release/* ]]; then
+  version="${head_ref#release/}"
+  sweep_line="$(printf '%s' "$body" | grep -iE '^[[:space:]]*SIP sweep:' | head -1)"
+  outstanding="$(cd "$here/../maintainer" && python3 sip_sweep.py "$version" --outstanding)" || {
+    echo "pr-closure: FAIL — scripts/maintainer/sip_sweep.py could not read the ledgers" >&2; exit 1; }
+  missing=""
+  for id in $outstanding; do
+    printf '%s' "$sweep_line" | grep -qF -- "$id" || missing="$missing $id"
+  done
+  if [ -n "$missing" ]; then
+    echo "pr-closure: FAIL — the SIP sweep: line does not name what the ledgers say is outstanding:${missing}" >&2
+    echo "  (python scripts/maintainer/sip_sweep.py ${version} reports each one; #1980)" >&2
+    exit 1
+  fi
+fi
 
 # #1621: what the squash merge itself will close. The commit messages are fetched only for a
 # numbered PR; a failed read refuses, because the merge closes what they say either way.
