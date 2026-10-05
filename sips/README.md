@@ -52,6 +52,7 @@ proposed → accepted → implemented → deprecated
 | From | To | Description |
 |------|-----|-------------|
 | `proposed` | `accepted` | Maintainer approves and assigns SIP number |
+| `proposed` | `deprecated` | A superseded draft retires without a number (#1968) |
 | `accepted` | `implemented` | Implementation complete, framework matches spec |
 | `accepted` | `deprecated` | SIP superseded before implementation |
 | `implemented` | `deprecated` | Implemented SIP superseded by newer version |
@@ -248,9 +249,9 @@ The registry is updated automatically by `update_sip_status.py`:
    python3 scripts/dev/generate_sip_uid.py
    ```
 
-2. Create SIP file in `sips/proposed/`:
+2. Create the SIP file in `sips/proposed/` from the template:
    ```bash
-   touch sips/proposed/SIP-My-Idea.md
+   cp sips/TEMPLATE.md sips/proposed/SIP-My-Idea.md
    ```
 
 3. Add YAML frontmatter:
@@ -268,7 +269,9 @@ The registry is updated automatically by `update_sip_status.py`:
    ---
    ```
 
-4. Write SIP content following standard format
+4. Write the SIP, keeping the template's **Intake check** (what it overlaps in `PORTFOLIO.md`,
+   at what point, and the boundary) and **Delivery ledger** sections. A proposal created after
+   2026-10-04 without either fails `tests/unit/architecture/test_sip_template.py` (#1981).
 
 5. Open PR for review
 
