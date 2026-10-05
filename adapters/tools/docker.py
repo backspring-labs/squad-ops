@@ -6,15 +6,23 @@ Part of SIP-0.8.7 Infrastructure Ports Migration.
 
 from __future__ import annotations
 
-import asyncio
+import logging
+import uuid
 from typing import Any
 
+from squadops.core.bounded_run import run_bounded
 from squadops.ports.tools.container import ContainerPort
 from squadops.tools.exceptions import ToolContainerError
 from squadops.tools.models import ContainerResult, ContainerSpec
 
 # #158: default timeout for the docker daemon health probe (`docker info`).
 _DEFAULT_HEALTH_TIMEOUT = 5.0
+
+
+logger = logging.getLogger(__name__)
+
+#: How long a timed-out run's kill may take: ``docker kill`` returns once the signal is sent.
+_KILL_TIMEOUT_S = 30.0
 
 
 class DockerAdapter(ContainerPort):
@@ -58,26 +66,18 @@ class DockerAdapter(ContainerPort):
         cmd.extend(args)
 
         try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(),
-                timeout=timeout,
-            )
-
-            return (
-                proc.returncode or 0,
-                stdout.decode("utf-8", errors="replace"),
-                stderr.decode("utf-8", errors="replace"),
-            )
-        except TimeoutError as e:
-            raise ToolContainerError(f"Docker command timed out after {timeout}s") from e
+            # #2045: the client runs in a group of its own, ended whole on a timeout, so a
+            # timed-out command never leaves its docker client running.
+            run = await run_bounded(cmd, cwd=None, timeout=timeout)
         except Exception as e:
             raise ToolContainerError(f"Docker command failed: {e}") from e
+        if run.timed_out:
+            raise ToolContainerError(f"Docker command timed out after {timeout}s")
+        return (
+            run.returncode or 0,
+            run.stdout.decode("utf-8", errors="replace"),
+            run.stderr.decode("utf-8", errors="replace"),
+        )
 
     @staticmethod
     def _render_hardening_args(spec: ContainerSpec) -> list[str]:
@@ -132,13 +132,27 @@ class DockerAdapter(ContainerPort):
         return args
 
     async def run(self, spec: ContainerSpec) -> ContainerResult:
-        """Run a container."""
-        exit_code, stdout, stderr = await self._run_docker(
-            "run",
-            "--rm",
-            *self._render_run_args(spec),
-            timeout=spec.timeout_seconds,
-        )
+        """Run a container to completion.
+
+        #2045: the container is named, so a run that outlives ``spec.timeout_seconds`` is killed
+        by that name before the timeout is raised. Stopping the docker client alone does not stop
+        the container: the daemon owns it, and it ran on, holding its CPU, memory and workspace
+        mount, while the next operation started.
+        """
+        name = f"squadops-run-{uuid.uuid4().hex[:12]}"
+        try:
+            exit_code, stdout, stderr = await self._run_docker(
+                "run",
+                "--rm",
+                "--name",
+                name,
+                *self._render_run_args(spec),
+                timeout=spec.timeout_seconds,
+            )
+        except ToolContainerError as e:
+            if "timed out" in str(e):
+                await self._kill_quietly(name)
+            raise
 
         return ContainerResult(
             container_id="",  # Container is removed after run (--rm)
@@ -166,6 +180,18 @@ class DockerAdapter(ContainerPort):
         if not container_id:
             raise ToolContainerError("docker run -d returned no container id")
         return container_id
+
+    async def _kill_quietly(self, name: str) -> None:
+        """Kill a timed-out run's container by name. Best effort: a container that already ended
+        (and was removed by ``--rm``) is not an error, and a kill that fails is logged, since the
+        timeout it follows is what the caller must hear."""
+        try:
+            exit_code, _, stderr = await self._run_docker("kill", name, timeout=_KILL_TIMEOUT_S)
+        except ToolContainerError as e:
+            logger.warning("docker kill %s after a timeout failed: %s", name, e)
+            return
+        if exit_code != 0 and "no such container" not in stderr.lower():
+            logger.warning("docker kill %s after a timeout failed: %s", name, stderr.strip())
 
     async def has_image(self, image: str) -> bool:
         """Whether the image exists locally (distinguishes absent from
