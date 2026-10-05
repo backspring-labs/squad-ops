@@ -190,7 +190,17 @@ def _checkpoint(index: int, task_ids: tuple[str, ...]) -> Any:
 def _executor_with_checkpoints(checkpoints: list[Any]) -> Any:
     from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
-    executor = DispatchedFlowExecutor(task_timeout=300.0, artifact_vault=AsyncMock())
+    executor = DispatchedFlowExecutor(
+        task_timeout=300.0,
+        artifact_vault=AsyncMock(),
+        cycle_registry=None,
+        queue=None,
+        squad_profile=None,
+        project_registry=None,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
+    )
     executor._cycle_registry = AsyncMock()
     executor._cycle_registry.list_checkpoints.return_value = checkpoints
     return executor

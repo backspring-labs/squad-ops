@@ -165,6 +165,9 @@ async def build_bundles(dsn: str, vault_dir: Path, corpus: Path, out: Path) -> d
         queue=RefusingQueue(),
         squad_profile=profiles,
         task_timeout=1800.0,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
     )
     out.mkdir(parents=True, exist_ok=True)
     tally: collections.Counter[str] = collections.Counter()

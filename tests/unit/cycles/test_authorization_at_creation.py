@@ -149,6 +149,9 @@ def executor(reply_router):
         squad_profile=AsyncMock(),
         project_registry=AsyncMock(),
         reply_router=reply_router,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
     )
     ex._store_artifact = AsyncMock(side_effect=lambda art, *a, **k: _ref(art["name"]))
     ex._emit_scaffold_integrity_evidence = MagicMock()

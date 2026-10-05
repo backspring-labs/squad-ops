@@ -128,6 +128,9 @@ def executor(reply_router):
         squad_profile=AsyncMock(),
         project_registry=AsyncMock(),
         reply_router=reply_router,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
     )
     return ex
 

@@ -81,6 +81,10 @@ def executor(mock_registry, mock_event_bus, reply_router):
         squad_profile=AsyncMock(),
         task_timeout=5.0,
         reply_router=reply_router,
+        project_registry=None,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
     )
     exec_._cycle_event_bus = mock_event_bus
     return exec_

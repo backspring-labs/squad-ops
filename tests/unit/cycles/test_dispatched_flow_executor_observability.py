@@ -161,6 +161,10 @@ def executor(
         llm_observability=mock_llm_obs,
         workflow_tracker=mock_prefect,
         reply_router=mock_queue.reply_router,
+        project_registry=None,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
     )
 
 
@@ -176,6 +180,10 @@ def executor_no_obs(mock_registry, mock_vault, mock_queue, mock_squad_profile, c
         squad_profile=mock_squad_profile,
         task_timeout=5.0,
         reply_router=mock_queue.reply_router,
+        project_registry=None,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
     )
 
 

@@ -169,6 +169,10 @@ def _make_executor(registry, cycle):
         squad_profile=mock_squad_profile,
         task_timeout=5.0,
         reply_router=_E2EReplyRouter(),
+        project_registry=None,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
     )
     return executor, mock_queue
 

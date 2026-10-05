@@ -47,7 +47,17 @@ def _manifest(stack: str) -> InterfaceManifest:
 def _executor():
     from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
-    return DispatchedFlowExecutor(task_timeout=300.0, artifact_vault=AsyncMock())
+    return DispatchedFlowExecutor(
+        task_timeout=300.0,
+        artifact_vault=AsyncMock(),
+        cycle_registry=None,
+        queue=None,
+        squad_profile=None,
+        project_registry=None,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
+    )
 
 
 # --------------------------------------------------------------------------- #

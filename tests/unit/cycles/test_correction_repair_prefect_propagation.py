@@ -135,6 +135,10 @@ def _make_executor(mock_prefect_workflow_tracker, reply_router):
         workflow_tracker=mock_prefect_workflow_tracker,
         reply_router=reply_router,
         event_bus=MagicMock(),
+        project_registry=None,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
     )
     return ex
 

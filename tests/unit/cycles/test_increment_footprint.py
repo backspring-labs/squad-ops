@@ -142,6 +142,10 @@ async def _gate_errors(plan: str, increment: bool = True) -> list[str]:
         queue=AsyncMock(),
         squad_profile=AsyncMock(),
         task_timeout=5.0,
+        project_registry=None,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
     )
     executor._cycle_event_bus = MagicMock()
     run = Run(
@@ -478,6 +482,10 @@ async def test_an_increment_plan_with_a_suiteless_qa_task_is_rejected_at_its_gat
             queue=AsyncMock(),
             squad_profile=AsyncMock(),
             task_timeout=5.0,
+            project_registry=None,
+            campaign_registry=None,
+            campaign_progress=None,
+            box_verdict=None,
         )
         executor._cycle_event_bus = MagicMock()
         run = Run(

@@ -142,6 +142,8 @@ class _World:
             task_timeout=5.0,
             campaign_registry=self.campaigns,
             campaign_progress=self.progress,
+            project_registry=None,
+            box_verdict=None,
         )
         self.executor._cycle_event_bus = MagicMock()
 

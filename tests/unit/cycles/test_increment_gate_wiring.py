@@ -189,6 +189,9 @@ def executor(campaigns):
         squad_profile=AsyncMock(),
         task_timeout=5.0,
         campaign_registry=campaigns,
+        project_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
     )
     exec_._cycle_event_bus = MagicMock()
     exec_._approve_gate_without_questions = AsyncMock()

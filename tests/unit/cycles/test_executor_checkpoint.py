@@ -162,6 +162,10 @@ def executor(mock_registry, mock_vault, mock_queue, mock_squad_profile, impl_cyc
         task_timeout=5.0,
         event_bus=mock_event_bus,
         reply_router=mock_queue.reply_router,
+        project_registry=None,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
     )
 
 

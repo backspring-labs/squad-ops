@@ -206,6 +206,10 @@ async def test_the_evaluation_is_handed_the_accepted_tree_as_the_increment_seede
         queue=AsyncMock(),
         squad_profile=AsyncMock(),
         task_timeout=5.0,
+        project_registry=None,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
     )
     executor._cycle_event_bus = MagicMock()
     [evaluation] = [
@@ -246,6 +250,10 @@ async def test_the_evaluation_is_handed_the_bundles_its_launch_pinned():
         queue=AsyncMock(),
         squad_profile=AsyncMock(),
         task_timeout=5.0,
+        project_registry=None,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
     )
     executor._cycle_event_bus = MagicMock()
     [evaluation] = [
@@ -364,6 +372,10 @@ async def test_the_evaluation_judges_the_candidate_with_its_qa_suites():
         queue=AsyncMock(),
         squad_profile=AsyncMock(),
         task_timeout=5.0,
+        project_registry=None,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
     )
     executor._cycle_event_bus = MagicMock()
     plan = _implementation(True, STORED)

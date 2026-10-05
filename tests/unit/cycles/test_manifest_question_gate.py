@@ -87,7 +87,17 @@ def _executor(run_manifest: str | None = None, seeded_manifest: str | None = Non
         return store[artifact_id]
 
     vault.retrieve.side_effect = _retrieve
-    executor = DispatchedFlowExecutor(task_timeout=300.0, artifact_vault=vault)
+    executor = DispatchedFlowExecutor(
+        task_timeout=300.0,
+        artifact_vault=vault,
+        cycle_registry=None,
+        queue=None,
+        squad_profile=None,
+        project_registry=None,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
+    )
     executor._cycle_registry = AsyncMock()
     executor._cycle_event_bus = MagicMock()
 

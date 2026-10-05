@@ -183,6 +183,10 @@ def executor(mock_registry, mock_vault, mock_queue, mock_squad_profile, cycle, r
         squad_profile=mock_squad_profile,
         task_timeout=5.0,
         reply_router=mock_queue.reply_router,
+        project_registry=None,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
     )
 
 

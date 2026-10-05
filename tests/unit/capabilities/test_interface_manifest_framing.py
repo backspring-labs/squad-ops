@@ -185,7 +185,17 @@ def _executor_for(manifest_yaml: str | None) -> tuple[DispatchedFlowExecutor, An
 
     vault.retrieve.side_effect = _retrieve
 
-    executor = DispatchedFlowExecutor(task_timeout=300.0, artifact_vault=vault)
+    executor = DispatchedFlowExecutor(
+        task_timeout=300.0,
+        artifact_vault=vault,
+        cycle_registry=None,
+        queue=None,
+        squad_profile=None,
+        project_registry=None,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
+    )
     run = MagicMock()
     run.artifact_refs = refs
     run.workload_type = "framing"  # the plan gate judges the run that authored the plan (#1864)
@@ -253,7 +263,17 @@ def _promoted(artifact_id: str, artifact_type: str) -> Any:
 async def _forwarded(*artifacts: Any) -> dict[str, Any]:
     vault = AsyncMock()
     vault.list_artifacts.return_value = list(artifacts)
-    executor = DispatchedFlowExecutor(task_timeout=300.0, artifact_vault=vault)
+    executor = DispatchedFlowExecutor(
+        task_timeout=300.0,
+        artifact_vault=vault,
+        cycle_registry=None,
+        queue=None,
+        squad_profile=None,
+        project_registry=None,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
+    )
 
     cycle = MagicMock()
     cycle.execution_overrides = {}

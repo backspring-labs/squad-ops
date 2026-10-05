@@ -166,6 +166,10 @@ def executor(mock_registry, mock_vault, mock_queue, mock_squad_profile, reply_ro
         squad_profile=mock_squad_profile,
         task_timeout=5.0,  # Short timeout for tests
         reply_router=reply_router,
+        project_registry=None,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
     )
 
 
@@ -574,6 +578,10 @@ class TestReserveBufferGuard:
             reply_router=reply_router,
             event_bus=event_bus,
             assignment_port=assignment_port,
+            project_registry=None,
+            campaign_registry=None,
+            campaign_progress=None,
+            box_verdict=None,
         )
 
     async def test_imminent_hard_duty_pauses_run_before_dispatch(
@@ -769,6 +777,10 @@ class TestRecruitmentCoordinatorAdmission:
             reply_router=reply_router,
             event_bus=event_bus,
             coordinator=coordinator,
+            project_registry=None,
+            campaign_registry=None,
+            campaign_progress=None,
+            box_verdict=None,
         )
 
     async def test_lease_conflict_defers_run_before_dispatch(
@@ -1092,6 +1104,10 @@ class TestCancellationProbeWiring:
             squad_profile=mock_squad_profile,
             task_timeout=5.0,
             reply_router=reply_router,
+            project_registry=None,
+            campaign_registry=None,
+            campaign_progress=None,
+            box_verdict=None,
         )
         envelope = TaskEnvelope(
             task_id="task-run_001-m000-development.develop",
@@ -1276,6 +1292,10 @@ class TestRunCompletionActivityWiring:
             task_timeout=5.0,
             reply_router=reply_router,
             activity_port=activity_port,
+            project_registry=None,
+            campaign_registry=None,
+            campaign_progress=None,
+            box_verdict=None,
         )
 
         assert executor._run_completion._activity_port is activity_port
@@ -1295,6 +1315,12 @@ class TestRunCompletionActivityWiring:
             task_timeout=300.0,
             cycle_registry=mock_registry,
             artifact_vault=mock_vault,
+            queue=None,
+            squad_profile=None,
+            project_registry=None,
+            campaign_registry=None,
+            campaign_progress=None,
+            box_verdict=None,
             focus_lease_port=focus_lease_port,
         )
 
@@ -2071,35 +2097,9 @@ class TestARunStartsOnlyWhenALaunchCould:
         assert "outside every campaign" in calls[-1].kwargs["failure_reason"]
         box_sleep.assert_not_awaited()
 
-    def test_the_composition_root_wires_the_box_verdict_through_the_factory(
-        self, mock_registry, mock_vault
-    ):
-        """Bug caught: ``main.py`` or the factory dropping ``box_verdict``. Every run start would
-        read no box at all, the #373 silent-no-op class, with every test above still green."""
-        import ast
-        from pathlib import Path
-
-        from adapters.cycles.factory import create_flow_executor
-
-        main = Path(__file__).resolve().parents[3] / "src/squadops/api/runtime/main.py"
-        [call] = [
-            node
-            for node in ast.walk(ast.parse(main.read_text()))
-            if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "create_flow_executor"
-        ]
-        verdict = AsyncMock()
-        built = create_flow_executor(
-            "dispatched",
-            cycle_registry=mock_registry,
-            artifact_vault=mock_vault,
-            squad_profile=MagicMock(),
-            project_registry=MagicMock(),
-            task_timeout=60,
-            box_verdict=verdict,
-        )
-
-        assert "box_verdict" in {k.arg for k in call.keywords}
-        assert built._box_verdict is verdict
+    # The root's box_verdict wiring is now proven with every other required dependency, from
+    # main.py's own call: test_flow_executor_factory.py::
+    # test_the_runtime_root_wires_every_required_dependency_to_an_object (#1987).
 
 
 class TestARunTheShutdownInterruptsIsLeftForReattach:
