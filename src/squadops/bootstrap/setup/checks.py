@@ -54,6 +54,7 @@ VALID_CATEGORIES = frozenset(
         "broker",
         "verification",
         "sandbox",
+        "credentials",
     }
 )
 
@@ -1436,6 +1437,34 @@ def _collect_sandbox_checks(profile: BootstrapProfile) -> list[CheckResult]:
     return results
 
 
+def check_deploy_credentials(env_path: Path | None = None) -> CheckResult:
+    """#2006: every credential the deploy holds is its own. Fails naming each one that is missing
+    from ``.env`` or holds a value the repository has committed: the same on every deploy, and
+    readable by anyone who can read the repository."""
+    from squadops.bootstrap.setup.credentials import REPO, load_registry, problems, read_env
+
+    found = problems(load_registry(), read_env(env_path or REPO / ".env"))
+    if not found:
+        return CheckResult(
+            name="deploy_credentials",
+            category="credentials",
+            passed=True,
+            message="every credential is the deploy's own",
+        )
+    return CheckResult(
+        name="deploy_credentials",
+        category="credentials",
+        passed=False,
+        message=f"{len(found)} credential(s) are not the deploy's own",
+        detail="\n".join(found),
+        fix_command="see docs/ops/credential_rotation.md",
+    )
+
+
+def _collect_credentials_checks(profile: BootstrapProfile) -> list[CheckResult]:
+    return [check_deploy_credentials()]
+
+
 _CHECK_REGISTRY: list[tuple[str, object]] = [
     ("python", _collect_python_checks),
     ("platform", _collect_platform_checks),
@@ -1450,6 +1479,7 @@ _CHECK_REGISTRY: list[tuple[str, object]] = [
     ("broker", _collect_broker_checks),
     ("verification", _collect_verification_checks),
     ("sandbox", _collect_sandbox_checks),
+    ("credentials", _collect_credentials_checks),
 ]
 
 

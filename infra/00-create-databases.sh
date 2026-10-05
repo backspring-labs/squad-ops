@@ -12,6 +12,12 @@
 # from .env. Without it the role is not created here and only the grant is applied (it
 # needs no password), so a plain `docker compose up` on a fresh volume still closes the
 # hole and the bootstrap/deploy path supplies the role. No password is written in here.
+#
+# KEYCLOAK_DB_PASSWORD and LANGFUSE_DB_PASSWORD are those roles' passwords (#2006: they were
+# 'keycloak' and 'langfuse', written here, the same on every deploy). Compose passes both at
+# initdb and the helper on every deploy, and each run sets them, so .env is the truth and a
+# rotation is .env plus a deploy. Without one (CI's database, which needs neither service) the
+# role is created with no password, so it owns its database and cannot sign in.
 
 set -e
 
@@ -19,30 +25,42 @@ have_test_password=0
 if [[ -n "${POSTGRES_TEST_PASSWORD:-}" ]]; then
     have_test_password=1
 fi
+have_keycloak_password=0
+if [[ -n "${KEYCLOAK_DB_PASSWORD:-}" ]]; then
+    have_keycloak_password=1
+fi
+have_langfuse_password=0
+if [[ -n "${LANGFUSE_DB_PASSWORD:-}" ]]; then
+    have_langfuse_password=1
+fi
 
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
      -v deployment_db="$POSTGRES_DB" \
      -v have_test_password="$have_test_password" \
-     -v test_password="${POSTGRES_TEST_PASSWORD:-}" <<-EOSQL
-    -- Keycloak database and role (SIP-0062)
-    DO \$\$
-    BEGIN
-        IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'keycloak') THEN
-            CREATE USER keycloak WITH PASSWORD 'keycloak';
-        END IF;
-    END
-    \$\$;
+     -v test_password="${POSTGRES_TEST_PASSWORD:-}" \
+     -v have_keycloak_password="$have_keycloak_password" \
+     -v keycloak_password="${KEYCLOAK_DB_PASSWORD:-}" \
+     -v have_langfuse_password="$have_langfuse_password" \
+     -v langfuse_password="${LANGFUSE_DB_PASSWORD:-}" <<-EOSQL
+    -- Keycloak database and role (SIP-0062); the password is the deploy's own (#2006).
+    SELECT 'CREATE ROLE keycloak LOGIN'
+        WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'keycloak')\gexec
+    \if :have_keycloak_password
+        SELECT format('ALTER ROLE keycloak PASSWORD %L', :'keycloak_password')\gexec
+    \else
+        \echo 'KEYCLOAK_DB_PASSWORD not set: the keycloak role has no password here'
+    \endif
     SELECT 'CREATE DATABASE keycloak OWNER keycloak'
         WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'keycloak')\gexec
 
-    -- LangFuse database and role (SIP-0061)
-    DO \$\$
-    BEGIN
-        IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'langfuse') THEN
-            CREATE USER langfuse WITH PASSWORD 'langfuse';
-        END IF;
-    END
-    \$\$;
+    -- LangFuse database and role (SIP-0061); the password is the deploy's own (#2006).
+    SELECT 'CREATE ROLE langfuse LOGIN'
+        WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'langfuse')\gexec
+    \if :have_langfuse_password
+        SELECT format('ALTER ROLE langfuse PASSWORD %L', :'langfuse_password')\gexec
+    \else
+        \echo 'LANGFUSE_DB_PASSWORD not set: the langfuse role has no password here'
+    \endif
     SELECT 'CREATE DATABASE langfuse OWNER langfuse'
         WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'langfuse')\gexec
 

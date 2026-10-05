@@ -9,6 +9,11 @@ the deploy: for every export the compose mounts, if its realm exists, ``partialI
 the export with ``ifResourceExists=SKIP`` — idempotent and non-destructive (adds what is
 missing, leaves existing resources and users alone).
 
+#2006: then each confidential client's secret is set from ``.env`` (the registry,
+``infra/deploy_credentials.json``, names which variable holds which client's). The exports carry
+a seed value, which every deploy used to keep; now a realm the export created is brought to the
+deploy's own secret the first time this runs, and a rotation is ``.env`` plus a deploy.
+
 stdlib only, so any deploy pipeline can call it. Usage:
 
     keycloak_realm_sync.py [--base-url http://localhost:8180] [--admin admin]
@@ -25,6 +30,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from deploy_credentials import REPO, load_registry, read_env  # noqa: E402
 
 #: What a partial import carries. Users are deliberately absent: a realm export's users
 #: are dev seeds, and re-importing them would be the one destructive thing this can do.
@@ -99,6 +107,32 @@ def sync_export(base_url: str, token: str, export_path: Path) -> str:
     )
 
 
+def client_secrets(registry: list[dict], env: dict[str, str]) -> dict[str, str]:
+    """Each Keycloak client's secret as ``.env`` holds it, by clientId (#2006)."""
+    return {
+        c["keycloak_client"]: env[c["env"]]
+        for c in registry
+        if c.get("keycloak_client") and env.get(c["env"])
+    }
+
+
+def set_client_secret(base_url: str, token: str, realm: str, client_id: str, secret: str) -> str:
+    """Bring one client's secret to ``secret``; a client already holding it is left alone."""
+    query = urllib.parse.urlencode({"clientId": client_id})
+    status, found = _request(base_url, token, "GET", f"/admin/realms/{realm}/clients?{query}")
+    if status != 200 or not found:
+        return f"{realm}/{client_id}: not found ({status})"
+    client = found[0]
+    path = f"/admin/realms/{realm}/clients/{client['id']}"
+    status, current = _request(base_url, token, "GET", f"{path}/client-secret")
+    if status == 200 and (current or {}).get("value") == secret:
+        return f"{realm}/{client_id}: secret already the deploy's"
+    status, _ = _request(base_url, token, "PUT", path, {**client, "secret": secret})
+    if status not in (200, 204):
+        return f"{realm}/{client_id}: setting the secret returned {status}"
+    return f"{realm}/{client_id}: secret set from .env"
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -126,8 +160,15 @@ def main(argv: list[str] | None = None) -> int:
     except (urllib.error.URLError, KeyError, ValueError) as exc:
         print(f"keycloak_realm_sync: admin token failed: {exc}", file=sys.stderr)
         return 1
+    secrets_by_client = client_secrets(load_registry(), read_env(REPO / ".env"))
     for export in args.exports:
         print(sync_export(args.base_url, token, export))
+        realm = json.loads(export.read_text())["realm"]
+        status, _ = _request(args.base_url, token, "GET", f"/admin/realms/{realm}")
+        if status != 200:
+            continue
+        for client_id, secret in sorted(secrets_by_client.items()):
+            print(set_client_secret(args.base_url, token, realm, client_id, secret))
     return 0
 
 

@@ -107,10 +107,24 @@ def load_test_config():
 # role that owns `squadops_test` and nothing else, and the deployment database refuses
 # it at the server (REVOKE CONNECT … FROM PUBLIC). The names come from the module the
 # doctor check and the provisioning drift test read, so the three cannot disagree. The
-# password below is `.env.example`'s POSTGRES_TEST_PASSWORD, the same dev default the
-# deployment password gets; env and test_config.env still win.
+# password is the deploy's own POSTGRES_TEST_PASSWORD (#2006): the environment's (CI sets it
+# on its postgres service), else the repository's .env, else the value every deploy shared
+# before #2006, which a deploy that has not rotated still holds. env and test_config.env
+# still win over the whole DSN.
 
-DEFAULT_TEST_POSTGRES_URL = test_role_dsn("squadops-test")
+
+def _test_role_password() -> str:
+    if os.environ.get("POSTGRES_TEST_PASSWORD"):
+        return os.environ["POSTGRES_TEST_PASSWORD"]
+    env_file = Path(__file__).resolve().parents[2] / ".env"
+    if env_file.exists():
+        for line in reversed(env_file.read_text().splitlines()):
+            if line.startswith("POSTGRES_TEST_PASSWORD=") and line.partition("=")[2].strip():
+                return line.partition("=")[2].strip()
+    return "squadops-test"
+
+
+DEFAULT_TEST_POSTGRES_URL = test_role_dsn(_test_role_password())
 
 
 def integration_postgres_dsn() -> str:

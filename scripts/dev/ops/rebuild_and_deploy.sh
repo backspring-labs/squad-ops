@@ -168,6 +168,14 @@ if ! check_ollama; then
     fi
 fi
 
+# #2006: every credential compose reads is the deploy's own, held in .env, and compose refuses
+# to resolve without one, so this runs before the first compose call. A deploy that predates
+# #2006 adopts the values it already runs with (docs/ops/credential_rotation.md rotates them).
+if ! ensure_deploy_credentials; then
+    echo -e "${RED}❌ Could not ensure the deploy's credentials (scripts/dev/ops/deploy_credentials.py)${NC}"
+    exit 1
+fi
+
 # Step 2: Ensure Docker Compose infrastructure is running
 echo ""
 echo -e "${BLUE}📊 Step 2: Ensuring Docker Compose infrastructure is running...${NC}"
@@ -183,10 +191,10 @@ docker compose up -d --wait rabbitmq postgres redis prefect-server
 # exports never reaches an environment whose realm is already there. Re-sync the mounted
 # exports into existing realms (partialImport, ifResourceExists=SKIP — idempotent,
 # non-destructive); a realm that does not exist yet is left to --import-realm.
+# #2006: the sync also sets each client's secret from .env (sync_keycloak_realms, secrets.sh).
 if docker compose config --services | grep -q '^squadops-keycloak$'; then
-    docker compose up -d --wait squadops-keycloak && \
-    python3 scripts/dev/ops/keycloak_realm_sync.py infra/auth/squadops-realm.json infra/auth/squadops-realm-local.json \
-        || echo -e "${YELLOW}⚠️  Keycloak realm sync failed — existing realms may lack new clients/roles (#372)${NC}"
+    sync_keycloak_realms \
+        || echo -e "${YELLOW}⚠️  Keycloak realm sync failed — existing realms may lack new clients/roles (#372) or the deploy's client secrets (#2006)${NC}"
 fi
 
 # Back up the database before anything else touches it (#1181). Cheap insurance at the
@@ -385,19 +393,6 @@ print(" ".join(sorted(n for n, v in services.items() if (v.get("build") or {}).g
             echo -e "     ${GREEN}✅ ${agent} built successfully${NC}"
         fi
     done
-
-    # Ensure the #326 agent client secret exists before (re)starting agents.
-    # Only bootstrap used to create it, so a pull+rebuild on an already-
-    # bootstrapped box left agents unable to start — the mounted secret file
-    # was simply absent (#371).
-    if [ ! -f "$AGENT_CLIENT_SECRET_FILE" ]; then
-        if ensure_agent_client_secret; then
-            echo -e "${GREEN}✅ Provisioned ${AGENT_CLIENT_SECRET_FILE} (agent auth secret)${NC}"
-        else
-            echo -e "${RED}  ❌ Could not create ${AGENT_CLIENT_SECRET_FILE} — agents will fail to start${NC}"
-            exit 1
-        fi
-    fi
 
     # Step 4 (#327, #1691): sync the governed prompt assets to LangFuse BEFORE the agents
     # restart. Agents resolve prompts from the registry when

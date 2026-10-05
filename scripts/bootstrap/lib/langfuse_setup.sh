@@ -10,7 +10,8 @@ LANGFUSE_PORT="3001"
 LANGFUSE_URL="http://${LANGFUSE_HOST}:${LANGFUSE_PORT}"
 LANGFUSE_INTERNAL_URL="http://localhost:${LANGFUSE_PORT}"
 LANGFUSE_EMAIL="admin@squadops.local"
-LANGFUSE_PASSWORD="admin123"
+# The UI user's password is the deploy's own (#2006), read from .env by provision_langfuse.
+LANGFUSE_PASSWORD=""
 LANGFUSE_USER_NAME="SquadOps Admin"
 LANGFUSE_ORG_NAME="SquadOps"
 LANGFUSE_PROJECT_NAME="squadops"
@@ -248,6 +249,14 @@ _upload_prompts() {
 # Main entry point: provision LangFuse end-to-end.
 provision_langfuse() {
     info "=== LangFuse Provisioning ==="
+
+    # #2006: .env holds it (scripts/dev/ops/deploy_credentials.py ensure wrote it), never a
+    # value written here.
+    LANGFUSE_PASSWORD="$(grep '^LANGFUSE_ADMIN_PASSWORD=' .env 2>/dev/null | tail -1 | cut -d= -f2-)"
+    if [[ -z "$LANGFUSE_PASSWORD" && "${DRY_RUN:-0}" != "1" ]]; then
+        warn "LANGFUSE_ADMIN_PASSWORD is not in .env — run scripts/dev/ops/deploy_credentials.py ensure"
+        return 1
+    fi
 
     # Check if keys already exist in .env
     if [[ "${DRY_RUN:-0}" != "1" ]] && [[ -f ".env" ]]; then

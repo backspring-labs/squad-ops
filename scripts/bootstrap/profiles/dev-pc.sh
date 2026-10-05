@@ -49,6 +49,7 @@ run_bootstrap() {
         return 0  # --skip-docker
     fi
     wait_for_services 60 || warn "Some services may not be ready"
+    sync_keycloak_realms || warn "Keycloak realm sync failed — agents cannot authenticate until it runs (#2006)"
 
     # ── Ollama models ──────────────────────────────────────────────
     info "=== Ollama Models ==="
