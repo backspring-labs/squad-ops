@@ -1327,10 +1327,11 @@ def generate_task_plan(
     # cost a full 58-minute re-execution. Ids stay unique within a run and now carry their
     # position and type, which is also what makes a checkpoint boundary selectable by task
     # type rather than by guesswork.
-    use_deterministic_ids = run.workload_type in (
-        WorkloadType.IMPLEMENTATION,
-        WorkloadType.FRAMING,
-    )
+    #
+    # #1934: every workload, not only those two. #1929's replay recognises a task a restarted
+    # runtime re-dispatches by its id, so a proposal run's random ids made the re-attached
+    # `strategy.propose_increment` a stranger to the agent that had already run it, and it ran
+    # twice (rebuild 18, `cmp_c380058c647f`). Ids are unique within a run whatever the workload.
 
     envelopes: list[TaskEnvelope] = []
     prev_task_id: str | None = None
@@ -1372,10 +1373,8 @@ def generate_task_plan(
         if plan_task is not None:
             # SIP-0086 RC-2: deterministic plan-task namespace
             task_id = f"task-{run.run_id[:12]}-m{plan_task.task_index:03d}-{task_type}"
-        elif use_deterministic_ids:
-            task_id = f"task-{run.run_id[:12]}-{step_index:03d}-{task_type}"
         else:
-            task_id = uuid4().hex
+            task_id = f"task-{run.run_id[:12]}-{step_index:03d}-{task_type}"
 
         pulse_id = uuid4().hex
         span_id = uuid4().hex
