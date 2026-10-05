@@ -1,3 +1,5 @@
+> **History, superseded (archived 2026-10-05, #1989).** A 2025 design document kept as the warm-boot-era record. The current architecture is `docs/architecture/overview.md`; agents are named by role, not by name (Max, Neo).
+
 # Max → Neo Handoff Templates & Rubrics
 
 This pack standardizes how **Max** specifies work for **Neo** across any app.
