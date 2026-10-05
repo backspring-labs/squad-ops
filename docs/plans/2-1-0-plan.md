@@ -32,7 +32,9 @@ than by the framework:
 instrument (reporting-only), a design question answered as a SIP amendment, or a guard on a step that
 is guarded today only by memory. **Not 2.1:** any new capability a user or role gains. Those go to 2.2,
 the next feature release, which carries Cross-Cycle Memory. The squad authoring its own backlog is
-2.4.
+2.4. **The one exception is #1940** (§5 ruling 13): the `campaign-supervisor` role gains `create`,
+`start`, `resume` and `abort` on a campaign, and nothing else. No other item may grant a capability
+under it.
 
 ---
 
@@ -84,7 +86,7 @@ the rest of 2.1 measurable.
 
 | issue | what it gives the crew | size | deploy |
 |---|---|---|---|
-| #1940 | **authority to dispatch.** Only `admin` holds `campaigns:control` (create, start, resume, abort). `campaign-supervisor` can read and rule, not launch. Without it the owner launches every campaign, and the IDEA's first acceptance criterion fails | S | yes |
+| #1940 | **authority to dispatch.** Only `admin` holds `campaigns:control` (create, start, resume, abort). `campaign-supervisor` can read and rule, not launch. Without it the owner launches every campaign, and the IDEA's first acceptance criterion fails. **2.1's one feature exception, bounded to those four operations** (§5 ruling 13) | S | yes |
 | #1956 | **the supervisor's instruments, tracked:** the watcher, the live-lease proof, the binding replay and the loaded checks, so the crew starts from what supervised 2.0 | M | no |
 | #1959 | **a comparison:** replay any increment of any campaign outside it, on the current deploy, from its composed baseline (the PROMOTE row's `tree_ref`), its approved change request and the frozen criteria in force. The reference launcher (#1804) generalized; a script over the existing API | M | no |
 | #1960 | **comparable numbers:** a per-increment scorecard from the records alone (executing vs waiting, tokens by role, rounds, repairs, criteria). The same arithmetic on a replay and its original | M | no (yes if the run persists its box wait) |
@@ -291,10 +293,10 @@ Deploy-moving work batches into rebuilds, and each structural refactor gets a ba
      approved requests never stated: campaign 1 T1's tie order, and campaign 2 T4's white-box check that the store's
      order is untouched. The supervisor cannot see a criterion file at the gate, because it is authored after approval.
      So the fix is on the qa author's side, or in what the evaluation freezes (#1884's two directions).
-     **Taken: the qa author's side** (§5 ruling 13). The author asserts the criterion's statement and
-     observable only, and any further test goes to a file that is not frozen. Freezing only discriminating
-     tests would need a ruling on what a bundle is (§8.1), and would not catch campaign 1's T1, since an
-     invented tie rule discriminates too.
+     **Ruled by the owner (§5 ruling 13):** a qa author may add tests only for behaviour already
+     required by the frozen criteria or another explicitly accepted artifact. Behaviour it judges
+     desirable but unsupported is returned as a proposal, never encoded in a test that gates or repairs
+     the current run, and where the test file lives does not change that. §7 item 4 says how.
 
    **The set closed PASS** (both campaigns success, every safety guarantee held). These four are its findings.
 2. **The SIP record's guards** (#1969, #1979, #1980, #1981, #1967, #1968: tooling, no deploy), so every
@@ -394,17 +396,24 @@ The supervisor recommended, and the owner agreed: "go ahead, record them and fil
 13. **The line starts, 2026-10-04 evening.** The owner: "I want to start the 2.1 line and I give you the
     authority to merge PRs, address issues as you find them and use your best judgement to address the
     spirit of the fix", and then "yes to rebuilds, stop list approved, can't you also make a docker yaml
-    change?". So:
+    change?". The owner's decisions on this PR's review (2026-10-05, recorded on PR #2010) settle three
+    points the review raised:
     - **Covered:** merging a 2.1 PR when every check is green and its own evidence reads clean (main's
-      whole run read before the next merge); rebuilds; uncounted validation runs (the regression pair,
-      the recovery diagnostics, shakeouts); and a `docker-compose.yml` change where a 2.1 item needs one
-      (#2006's literal credentials first; no service or container renames). That is the explicit request
-      CLAUDE.md requires for compose.
+      whole run read before the next merge); rebuilds; and uncounted validation runs (the regression
+      pair, the recovery diagnostics, shakeouts).
+    - **`docker-compose.yml`: an explicit owner exception for the whole 2.1 line,** not derived from
+      #2006. A compose change a 2.1 item needs is made under it, and the PR names this ruling. Service
+      and container names stay as they are, since nothing in 2.1 needs a rename.
+    - **#1940 is 2.1's one feature exception,** bounded to the `campaign-supervisor` role's `create`,
+      `start`, `resume` and `abort` on a campaign. The odd minor's feature-free rule otherwise holds.
+    - **#1884's rule:** "a QA author may add tests only for behavior already required by frozen
+      criteria or another explicitly accepted artifact. Unsupported desirable behavior must be returned
+      as a proposal, not encoded in a test that gates or repairs the current run. Test-file placement
+      does not alter the rule." It applies to both the planning and the `qa.test` render paths, with
+      testable refusal and proposal behaviour (§7 item 4).
     - **The stop list:** a tag, a Release or any public upload; #316 until its SIP is accepted; a
       security finding (handled privately); a red on main that cannot be explained; anything that would
       reverse a ruling above; the crew's items (#1756, #1965, the crew's first campaign).
-    - **#1884's direction** is the qa author's side (§4 step 1). The supervisor proposed it, and the
-      owner did not object.
 
 ## 6. What this plan does not decide
 
@@ -429,8 +438,8 @@ The supervisor recommended, and the owner agreed: "go ahead, record them and fil
 The order the line starts in, under ruling 13. The owner reviews this section before any of it merges.
 It covers more than one night holds, on purpose: the measured steps set the pace (a PR's CI takes
 4–9 minutes, and main's run after each merge is read before the next merge), not the writing.
-**Expected by 08:00 ET:** steps 1 and 2 merged, and step 3 under way. The first rebuild probably
-comes after.
+**Expected by 08:00 ET:** step 1 merged, and step 2 under way. #1884's outlet and #1961's vault
+replay make step 1 larger than it read before the review. The first rebuild comes after 08:00.
 
 **How each PR is held:**
 - **One issue per PR,** or the pair §4 names together. The PR body carries `Closes #N` (or
@@ -446,31 +455,118 @@ comes after.
 
 **Step 1: the 2.0 set's findings.** These are deploy-moving, so they ride step 3's rebuild.
 
-1. **#1961, the issue's option 1.** The rails refuse a `feature` or `fix` whose derived footprint
-   holds nothing outside the qa test namespace. The refusal is typed and returns to the proposer
-   inside its task. The proposal template also says the accepted manifest is what the application
-   does.
-2. **#1962 with #1950: the stack's frozen conventions, as data on `ScaffoldStack`.** Each convention
-   is rendered into the proposal request and held to the generated bytes by a test.
+**The seams step 1 touches, and what each sees.** The 2.0 rework clustered where one fact has several
+readers, so each item below names the seams it changes, and the table says what each seam reads today.
+
+| seam | where | what it sees | step 1 changes it? | when the declaration or file is absent |
+|---|---|---|---|---|
+| proposal rails | `validate_proposal`, `campaigns/change_request.py:438`; the footprint, `:398` | the authored request and its context: the accepted manifest's text, the allowed scope, the prior criteria ids. No tree | #1961: a new refusal | a `feature` or `fix` whose footprint is only the qa test namespace is accepted today. After #1961 it is refused, and the refusal returns to the proposer inside its task. A `refactor` is unaffected |
+| proposal rendering | `StrategyProposeIncrementHandler.handle`, `handlers/planning/proposal.py:112-119` | the run's `campaign_proposal` block (the manifest's text, the objective, the prior criteria with their statements, the PRD, a supervisor note) and the stack, by `build_profile` | #1962 and #1950 (conventions); #1961 and #1995 (template lines); #1884 (a section of proposed behaviours) | a stack that declares no convention, or is not registered, gets no section, as #1948's line does today. A campaign with no stored proposed behaviours gets no section |
+| plan-author rendering | `render_surfaces`, `handlers/_plan_authoring.py:89-99`; its indexes, `cycles/task_plan.py:681-690` | in a framing run: the approved change request (`increment_change_request`), each new criterion's file, the frozen files | #1884: the rule becomes a surface of its own | **#1886's rule rides inside the criteria appendix, which renders only when the change has criteria (`:96`).** So a `refactor` increment's plan authors never see it. After: it renders for every increment framing |
+| `qa.test` author rendering | `QATestHandler`, `handlers/cycle/qa_test.py` (`request.qa_test.test_validate` and its appendices); its increment inputs, `task_plan.py:760-770` | the plan's task, the frozen surface, the behaviour contract. **Nothing of the change request:** an implementation run's `qa.test` gets `{}` from `_increment_inputs` | #1884: the approved criteria, the frozen criteria's statements, and the rule, on every `qa.test` and `qa.test_repair` envelope of an increment's implementation run | absent from every run today. After: a run outside a campaign still gets none of it |
+| baseline evaluation | `discrimination`, `campaigns/acceptance.py:89`; the verdict, `:238` | the accepted tree as seeded and the candidate, each running the criterion's own file alone | no | a criterion file collected on neither tree reads `not run`, so the increment is blocked, never accepted (`:247-252`) |
+| criterion freezing | `freeze_bundle`, `campaigns/evaluator_trees.py:153`; `_freeze_bundles`, `campaigns/progress.py:773` | the candidate tree: the criterion's file, the test-surface files it imports, the stack's config files | no. #1884 changes what a file asserts, not how it is frozen | a missing file or import raises `BundleIncomplete`, and nothing is frozen. The increment is blocked (`campaigns/acceptance_run.py:118`, `:154`) |
+
+1. **#1961, the issue's option 1.**
+   - **The rail:** after the footprint is derived, a `feature` or `fix` whose footprint holds nothing
+     outside the qa test namespace is refused with a new kind, `nothing_to_build`: "this change
+     declares nothing for a build to implement; a behaviour change needs the manifest delta that
+     declares it".
+   - **The template** adds one line: the accepted manifest is what the application does, so every
+     endpoint, error code and field it declares is already implemented.
+   - **Acceptance:**
+     - the stored bytes of `prop_5fb2d8136c36` v1 (campaign 1, increment 2: empty delta, criterion T2),
+       copied as a fixture with its baseline manifest, are refused `nothing_to_build`;
+     - the same request carrying a delta that declares its change passes this rail, and a `refactor`
+       with an empty delta is not refused by it;
+     - every stored `change_request` artifact in the vault is replayed through `validate_proposal` with
+       its stored context, on the box, and listed in the PR by artifact id. An approved request the new
+       rail refuses is a finding, read before merging;
+     - a wiring test through the proposal handler's `handle()` finds the template line in the prompt
+       sent.
+2. **#1962 with #1950: one declaration of a stack's frozen conventions,** as data on `ScaffoldStack`.
+   It replaces `unset_optional_response`, so there is one mechanism, not two. Each convention renders
+   through one managed asset that replaces `request.proposal_unset_optional`, and each is held to the
+   generated bytes by a test.
    - **FastAPI declares four:**
-     - an optional field left out comes back as `null` (today's single line, generalized);
-     - a required request string is trimmed, and refused with 422 when blank;
-     - a declared success status is pinned in the route decorator;
-     - the error body takes the contract's shape, through the frozen seam.
-   - **Next.js: the stored emissions answer #1950, and the answer is that nothing is frozen to
-     declare.** A first read by pattern covered the 237 stored `POST /runs` handlers that touch an
-     optional field. Three representations occur: left out (74 pass it straight through), `null` (13)
-     and the empty string (5). So the value is the builder's choice, not the scaffold's.
-   - **So Next.js declares that the value is unfixed:** a criterion asserts neither presence nor
-     absence. It also declares the frozen error envelope (`{error: {code, message}}` through
-     `errorResponse`), which is frozen.
-3. **#1995: the template says the PRD delta states only what the manifest delta, criteria and
-   footprint carry.** A rail is added only if the stored proposals of the 2.0 set and its shakeouts
-   show it would refuse the bad versions and none of the good ones.
-4. **#1884, the qa author's side (ruling 13).** The criteria appendix and the qa author's prompt
-   assert the criterion's statement and observable only. A further test goes to a file outside the
-   criterion's, which is not frozen. Proven on the 2.0 set's stored criterion files: the two the issue
-   names are the cases.
+     - an optional field left out comes back as `null` (today's test);
+     - a required request string is trimmed, and refused with 422 `validation_error` when blank (#593).
+       Held by the generated model declaring it `NonBlankStr`;
+     - a declared `success_status` is pinned in the route decorator, held by `status_code=` in the
+       generated route;
+     - the error body takes the manifest's `error_contract.shape`, held by the frozen error seam's
+       source.
+   - **Next.js declares two.**
+     - **The value an optional field left out comes back as is not fixed:** it depends on the build.
+       A criterion does not depend on it unless the change itself requires a value, and then the
+       criterion states that value.
+       - The evidence is on #1950 (comment of 2026-10-05). The proof is structural: the frozen types
+         write `field?:`, the frozen store adds no default, and every route handler is a fill slot.
+       - The corpus shows the consequence. Of the 225 distinct stored `POST /runs` handlers (402 files,
+         corpus pin `c5c5ca6b…`), 187 leave the field out, 17 return `null`, 17 return `""`, and 4
+         never handle it. All three representations occur in runs that completed.
+       - Held by a test that the frozen types still write `field?:` and the store still adds no
+         default. If the scaffold ever freezes a value, the test fails and the declaration changes
+         with it.
+     - **The frozen error envelope,** `{error: {code, message}}` through `errorResponse`, held to
+       `_errors_source`'s bytes.
+   - **Acceptance:**
+     - each convention's byte test above;
+     - a wiring test through the proposal handler's `handle()` for each stack finds that stack's
+       conventions and no other's;
+     - an unregistered stack gets no section.
+3. **#1995: template-only.**
+   - **The template** says the PRD delta states only what the manifest delta, criteria and footprint
+     carry.
+   - **Its example is the stored case:** `prop_450986544201` v1 stated a capacity display in run
+     detail that no client-route change, criterion or footprint file carried. Version 2 narrowed the
+     text and was approved.
+   - **No rail, because the disagreement is in prose.** A deterministic predicate needs a typed link
+     from each PRD delta item to the manifest entries and criteria that carry it. That is a change to
+     the change request's schema (SIP-0109 §9), so it is a design change, not a 2.1 fix.
+   - **Who catches it until then:** the supervisor reads every PRD delta through 2.1 (§3a). The typed
+     link is recorded on #1708, because the auto tier (2.2) is when nobody reads them.
+   - **Acceptance:** a wiring test through the proposal handler's `handle()` finds the rule and its
+     example in the prompt sent.
+4. **#1884, by the owner's rule (§5 ruling 13).**
+   - **"Explicitly accepted" means:**
+     - the approved change request (its criteria and its PRD delta);
+     - the frozen criteria (their statements, stored beside each bundle since #1938);
+     - the accepted PRD;
+     - the accepted interface manifest.
+   - **What changes beyond #1886,** which put a narrower rule in the criteria appendix for plan
+     authors only:
+     - the ruled rule replaces it, and it covers any test in any file, not only "every test the plan
+       asks for";
+     - it becomes a surface of its own on every increment framing, with or without criteria;
+     - it reaches `qa.test` and `qa.test_repair` in an increment's implementation run, together with
+       the criteria and frozen criteria it judges against. Today none of it arrives;
+     - **the proposal outlet:** the qa author may emit a `proposed_behaviours.yaml` block, each entry a
+       behaviour, why it matters, and its surface. It is stored as a run artifact of its own type,
+       never written to the workspace and never run. The campaign's next proposal run is shown the
+       previous increment's entries in a section of their own, and the supervisor reads them as the
+       run's artifact.
+   - **What is refused, deterministically:**
+     - a `proposed_behaviours.yaml` that does not parse is returned to the author with its error,
+       inside the attempt budget, never dropped silently;
+     - nothing under that name enters the workspace.
+   - **What stays with the author:** the judgement that a test invents a rule. No deterministic check
+     can make it without guessing (#1884, comment of 2026-10-03), so it is measured, not gated.
+   - **Acceptance, each failing on today's main:**
+     - **planning:** a wiring test through the qa proposer's and the merger's real `handle()` on a
+       `refactor` increment, with no criteria, finds the rule in the prompt sent;
+     - **`qa.test`:** a wiring test builds an increment's implementation plan from
+       `load_profile("campaign-increment")` defaults with a stored change request. It calls
+       `QATestHandler.handle()` on the plan's `qa.test` envelope, and the prompt sent carries the rule,
+       each criterion's id, statement and observable, and each frozen criterion's statement. The same
+       holds for `qa.test_repair`;
+     - **no leakage:** the same handler on a non-campaign cycle's envelope renders none of it;
+     - **the outlet:** a well-formed block stores one artifact holding each entry and adds no
+       workspace file. A malformed block is returned once, with its error. The next proposal run's
+       `handle()` renders the stored entries;
+     - **live, measured and not gated:** 2.1's shakeout repeats P9's read on every test file each
+       increment's qa author wrote, and reports the unsupported rules per increment. The 2.0 set's two
+       (campaign 1 T1's tie order, campaign 2 T4's non-mutation) are the comparison.
 
 **Step 2: tooling and measurements, with no deploy.**
 5. The SIP guards: #1969, then #1979, #1980, #1981, #1967 and #1968.
