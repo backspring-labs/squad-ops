@@ -6,9 +6,9 @@ an implementation plan for the Campaign engine.
 
 ## Rule
 
-**The first Nostromo-run 2.1 campaign repeats the 2.0 counted set's objective and policy as a
-baseline; codebase-review findings may select later hypotheses, but they do not alter this first
-campaign's objective, policy, or accepted-app scope.**
+**The first 2.1 diagnostic campaign reuses the pinned 2.0 counted-set definition as its baseline;
+codebase-review findings may select later hypotheses, but they do not alter this campaign's
+objective, policy or accepted-app scope.**
 
 This preserves a comparison. A new objective on a new 2.1 deploy would change the framework and
 the workload at once, so a result could not be attributed to either.
@@ -69,29 +69,28 @@ The inert recall port, NoOp implementation and call site are 2.1 ground preparat
    adopted 2.1 plan are clearer and should be treated as the current placement.
 2. Cross-Cycle Memory is proposed, not accepted. The 2.1 cut-time evidence re-read is an entry gate
    to its design review, not permission to implement memory.
-3. The 2.1 plan says the first crew campaign may run on the first rebuild carrying #1940, while its
-   outer-loop section also makes #1960 part of the comparison instrument set. For tonight, require
-   both: authority without comparable readings proves operation, not optimization.
+3. The 2.1 plan says the first crew-controlled campaign may run on the first rebuild carrying #1940,
+   while its outer-loop section also makes #1960 part of the comparison instrument set. #1960 is
+   required for this comparison. Whether tonight is owner/admin-operated or waits for #1940 is an
+   owner decision; an admin-operated run cannot claim it tested supervisor authority.
 4. #1756's complete rendered-prompt record is crew-owned and still open. Its absence does not block
    a baseline campaign, but it blocks a strong diagnosis of prompt-information loss. Any such finding
    must be labelled incomplete until #1756 exists.
 
-## B. Proposed campaign-objective PR
+## B. Campaign input decision
 
-### PR purpose
+### No new objective PR
 
-Register one reproducible input for Nostromo's first 2.1 baseline campaign. The PR does not change
-Campaign mechanics, permissions, prompts, profiles or continuation policy.
+Do not add a new campaign definition. Use the existing pinned
+`examples/03_group_run/campaigns/2-0-0-set-1.yaml` at sha256
+`74cb2f031c055fc250937c8282be66c0cb25a3d0fef6752762fdf91d129d27fe`.
 
-This is a **definition-only PR**: its permitted production inputs are the new definition and local
-documentation under `examples/03_group_run/campaigns/`. A deterministic check may exercise the
-existing loader, but the PR must not change `src/`, `adapters/`, runtime configuration or a deployed
-artifact. Merging this PR therefore does not trigger a rebuild. Any runtime prerequisite is a
-separate PR and follows the deploy gate below.
-
-Suggested title:
-
-> `examples(campaigns): register Nostromo's first 2.1 baseline campaign`
+The existing definition is already the exact workload contract the rule selects. Copying it would
+add no information, and the provenance generator deliberately reconciles every semantic match rather
+than assigning identical content to one campaign. The create reason, not a duplicate filename, names
+this diagnostic run. This architecture PR is the complete pre-run GitHub record; no Parker
+implementation PR is warranted for the objective itself. Runtime prerequisites remain separate PRs
+and follow the deploy gate below.
 
 ### Objective contract
 
@@ -113,52 +112,60 @@ Suggested title:
 Owner acceptance of this plan, before creation of the stored campaign, registers this prediction:
 
 > On the named deploy, the repeated 2.0 objective will reach three accepted cumulative increments
-> without framework repair or manual intervention; each gate decision will have one durable record,
-> recovery will preserve campaign attachment, and the archive, replay, digest and per-increment
+> without framework repair, lease takeover, campaign resume, abort, rebuild, runtime-configuration
+> change or accepted-app edit; authorized increment and plan-gate rulings are expected supervision,
+> not intervention. Each gate decision will have one durable record, the named pre-run recovery
+> diagnostics will preserve campaign attachment, and the archive, replay, digest and per-increment
 > scorecard will all be derivable from stored records.
 
 The close-time review tests each clause separately. A failure is diagnostic evidence, not a failed
-counted set. If the named deploy lacks a property in the prediction, this campaign does not start; a
-reduced shakeout would need its own property list and pre-registered prediction. No second campaign
-is proposed by this plan.
+counted set. "Recovery" here means only the diagnostics named in the launch record; it is not a claim
+that every crash window recovers. In particular, in the paths reviewed no recovery path picks up a
+successor left `QUEUED` by a process death after insertion and before execution; `max_elapsed_s` is
+evaluated only after a cycle ends, so it does not bound this state. No restart is planned during this
+supervised run. After every completed run, the supervisor queries the next run at the first
+300-second watcher interval. If it remains `QUEUED`, the supervisor issues a campaign pause with the
+stuck run in the reason and escalates the known framework finding; silence must not be read as an
+empty or slow result. A reduced shakeout or a second campaign would need its own property list and
+pre-registered prediction.
 
-### PR structure
+### Launch-input record
 
-1. One campaign definition beside the `group_run` project definitions. Its comments identify its
-   purpose and sources, never a mutable deploy or round.
-2. A short objective note naming the baseline definitions, semantic-equality requirement and the
-   pre-run gates below.
-3. Deterministic validation that the new definition parses to the same objective and policy domain
-   objects as the two 2.0 counted definitions. Byte equality is not required; semantic drift is
-   forbidden.
-4. No provenance claim in the pre-run PR. After the stored campaign exists, provenance is regenerated
-   and merged with the close-time package identity as the run's record.
+1. The create command reads the pinned existing definition without modifying it.
+2. Its `--reason` names the diagnostic purpose, definition path and sha256, deployed commit and
+   `dep_...` identity.
+3. The launch record carries the accepted prediction and the completed B1–B4 fields below.
+4. After the stored campaign exists, provenance is regenerated and merged with the close-time package
+   identity. It may list other semantically identical definitions; the create reason disambiguates
+   the run's selected input.
 
 ### Acceptance criteria
 
-The PR is acceptable only if a test or deterministic check can establish all of these:
+The launch input is acceptable only if a deterministic check can establish all of these:
 
-1. The definition loads successfully and its project is `group_run`.
-2. Objective and policy reconcile domain-equal with both 2.0 counted-set definitions.
+1. The tracked file's sha256 equals the pinned value above, it loads successfully and its project is
+   `group_run`.
+2. Objective and policy remain domain-equal with the second 2.0 counted-set definition.
 3. `allowed_scope` contains only `backend/**` and `frontend/**`, and the target is exactly three
    accepted increments.
-4. The PR changes no Campaign engine, prompt, request-profile, permission or continuation-policy
-   file.
-5. The definition contains no deploy, rebuild, campaign id or other future mutable fact.
-6. The post-run record can bind the definition hash to one stored campaign and its close-time evidence
-   package; until then it is labelled an input, not evidence.
+4. The create reason records the diagnostic class, definition path and hash, deploy commit and
+   deployment identity before creation.
+5. No new definition is added and the pinned definition contains no mutable fact about this deploy or
+   run.
+6. Post-run provenance lists the stored campaign, the selected definition among all semantic matches,
+   and the close-time evidence package; the create reason identifies which input the operator chose.
 
-Campaign success is separate from PR acceptance. The run succeeds only if it opens with calibration,
+Campaign success is separate from launch-input acceptance. The run succeeds only if it opens with calibration,
 accepts three cumulative increments, preserves all earlier frozen criteria, closes by the objective
 row, emits its bounded evidence package and digest, and yields per-increment scorecards comparable
-with the 2.0 baseline. Manual intervention voids the comparison claim. A merge to GitHub does not
-change the subject, but a rebuild, configuration change or mutation of the accepted app during the
-run does; all conclusions are attributed to the recorded deploy SHA, never to whatever `main` points
-to in the morning.
+with the 2.0 baseline. Any intervention enumerated in the prediction voids the comparison claim;
+authorized objective-bound gate rulings do not. A merge to GitHub does not change the subject, but a
+rebuild, configuration change or mutation of the accepted app during the run does; all conclusions
+are attributed to the recorded deploy SHA, never to whatever `main` points to in the morning.
 
 ### Target components
 
-- **Input:** `examples/03_group_run/campaigns/` — the new definition and its local documentation.
+- **Input:** the pinned existing `2-0-0-set-1.yaml` definition.
 - **Subject:** the deployed Campaign and cycle paths against the accepted `group_run` app.
 - **Observers:** the tracked watcher, lease proof, binding replay and loaded checks (#1956).
 - **Comparison:** increment replay (#1959) and per-increment scorecards (#1960).
@@ -171,7 +178,7 @@ to in the morning.
 
 | Evaluator | Tree or record it sees | If the definition or evidence is absent |
 |---|---|---|
-| PR checks | the proposed Git tree | the objective PR fails because its required definition or semantic-equality check is absent |
+| pre-run input check | the operator's pinned Git tree | launch is blocked if the tracked definition, expected hash or semantic contract is absent |
 | `campaigns create --file` | the operator checkout plus the deployed API's schema | no campaign is created; a schema-invalid or drifted definition is refused |
 | Campaign runtime | the stored objective, policy and control log | after creation, deleting the checkout file does not change execution, but destroys reproducible provenance |
 | definition-provenance generator | tracked definitions plus stored campaigns and close-time package identities | the campaign is unmatched and the file is an example, not evidence |
@@ -180,14 +187,14 @@ to in the morning.
 
 ### Launch gates resolving B1–B4
 
-These are launch gates, not facts established by the objective PR:
+These are launch gates, not facts established by this architecture PR:
 
 | Gate | Required recorded answer | Current disposition |
 |---|---|---|
-| **B1 — change and rebuild boundary** | Objective PR diff is definition-only. For any separate runtime PR, record its full-green merge, rebuild owner, scheduled window, 150 GB disk-floor check, loaded-code check and post-deploy reference run. | Objective PR needs no rebuild. The runtime batch's owner, window and environment readings remain open. |
+| **B1 — change and rebuild boundary** | No objective implementation PR exists. For every separate runtime PR, record its full-green merge, rebuild owner, scheduled window, 150 GB disk-floor check, loaded-code check and post-deploy reference run. | The architecture PR needs no rebuild. The runtime batch's owner, window and idleness reading remain open; Parker measured 483 GB available, above the floor. |
 | **B2 — execution identity** | Record the deployed commit and its `dep_...` identity before creation. From certification through evidence closure, do not rebuild or mutate runtime configuration. Later GitHub merges are allowed only if morning analysis remains explicitly pinned to the deployed SHA rather than `main`. | Deploy SHA and deployment record can exist only after the prerequisite batch lands; until then launch is blocked. |
 | **B3 — supervision and reachability** | Name the holder who can create/start, the person who rules increment and plan gates, the owner who may authorize and resume an escalation, and each reachability window. Prove the operator can reach the Spark API and holds the required current role; do not infer either from crew membership. | Owner decision requested. The current rule is `campaigns:control` on the admin role; actual holders and API reachability are unknown. |
-| **B4 — claim and prediction** | Record the campaign as diagnostic, bind it to the objective and prediction above before creation, and list which predicted 2.1 properties are actually present on the deploy. A counted run would require a separate owner-approved registration. | The design supplies the class and proposed prediction; owner acceptance and deploy binding remain open. |
+| **B4 — claim and prediction** | Record the campaign as diagnostic, bind it to the pinned input and prediction above before creation, and list which predicted 2.1 properties are actually present on the deploy. A counted run would require a separate owner-approved registration. | The design supplies the class and proposed prediction; owner acceptance and deploy binding remain open. |
 
 Operational readiness is an additional launch gate: the box is idle and above the disk floor; the
 log archiver starts with the campaign; no Buzz rebuild competes for the box; and rollback language
@@ -205,19 +212,20 @@ campaigns, or while the campaign is paused or escalated with nothing in flight.
 3. **Dallas returns before implementation prep is accepted.** A blocking objection is one that shows
    the repeat is not comparable, cannot be supervised safely, or cannot produce attributable evidence.
    Preference for a different feature objective is non-blocking for this baseline run.
-4. **Parker prepares the objective PR only after the design review.** It contains the input contract
-   and deterministic checks above, no engine changes and therefore no rebuild. Parker may prepare it
-   while the prerequisite implementation PRs finish, but it does not authorize a launch.
+4. **Do not prepare an objective implementation PR.** Parker verifies the pinned file and records its
+   hash in readiness evidence while the separate prerequisite implementation PRs finish.
 5. **Land and verify prerequisites in the adopted 2.1 order:** #1960, #1934/#2007 and the first
-   batch's overlapping recovery checks, then #1940 on the single decision recorder. Read main's full
-   CI after each merge; rebuild once the deploy-moving batch is complete.
+   batch's overlapping recovery checks. #1940 is required if this is the first crew-controlled
+   baseline. If the owner instead chooses a current-admin-operated diagnostic, record that exception
+   to the intended operator mode and do not claim the run tests #1940. Read main's full CI after each
+   merge; rebuild once the deploy-moving batch is complete.
 6. **Certify and freeze that one deploy:** record the commit and `dep_...` identity; verify main's
    full run is green; loaded checks match the commit; the regression pair is green; recovery
-   diagnostics including `restart-at:at_proposal` are green; supervisor instruments pass; #1940
-   authority works and remains bounded; the scorecard renders from records alone; the box is idle and
-   above the disk floor; and the definition is semantically equal to the 2.0 baseline. Name the
-   rebuild operator and window. No rebuild or runtime mutation follows certification until evidence
-   closure.
+   diagnostics including `restart-at:at_proposal` are green; supervisor instruments pass; the
+   selected current-admin or #1940 authority path works and remains bounded; the scorecard renders
+   from records alone; the box is idle and above the disk floor; and the pinned definition still has
+   the registered hash. Name the rebuild operator and window. No rebuild or runtime mutation follows
+   certification until evidence closure.
 7. **Resolve the owner-operated launch gate:** record the B3 names, reachability windows, API-access
    proof and the owner's acceptance of the diagnostic prediction. Start the log archiver with the
    campaign. If any field is absent, do not start tonight.
@@ -227,9 +235,10 @@ campaigns, or while the campaign is paused or escalated with nothing in flight.
    proposals only against the accepted objective and records every ruling.
 9. **Close before changing anything:** materialize the package and digest, regenerate provenance,
    compute scorecards and replay comparisons, then classify findings. Framework fixes become separate
-   2.1 PRs with predictions written before the edit. Any proposed new rule returns to architecture
-   before Parker implements it.
+   2.1 PRs with predictions written before the edit. The comparison report names #1611's changed
+   profile resolution as a framework difference from 2.0. Any proposed new rule returns to
+   architecture before Parker implements it.
 
-The sequence deliberately separates three claims: the objective PR is reproducible, the deploy is
+The sequence deliberately separates three claims: the launch input is pinned, the deploy is
 safe enough to run, and the campaign result is comparable. Passing one does not imply either of the
 others.
