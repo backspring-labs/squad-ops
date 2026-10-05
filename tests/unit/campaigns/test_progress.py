@@ -938,7 +938,15 @@ def _environment_failure(cycle_id):
 
 
 async def _increment_failed_by_the_environment(
-    calibrating, stored, *, ruled="approved", moved=False, environment=True, reasons=(), **policy
+    calibrating,
+    stored,
+    *,
+    ruled="approved",
+    moved=False,
+    environment=True,
+    reasons=(),
+    loop_summary=None,
+    **policy,
 ):
     """An accepted calibration, an increment proposed against its tree and ruled on, built, and
     rejected for a cause outside the work. Its approved seeds are stored, as the gate stores
@@ -989,6 +997,8 @@ async def _increment_failed_by_the_environment(
                 failed_detail=tuple(reasons),
             ),
         )
+    if loop_summary is not None:
+        await w.cycles.record_run_loop_summary(increment_run.run_id, loop_summary)
     binding = ProposalBinding("prop_cap", 1, "hash-1", accepted)
     state = (await w.campaigns.get_campaign(CID)).state
     await w.campaigns.transition(
@@ -1533,3 +1543,70 @@ async def test_a_proposal_launch_whose_outlet_read_fails_launches_nothing(
     assert [
         i for i in await w.campaigns.launch_intents(CID) if i.cycle_kind is CycleKind.INCREMENT
     ] == []
+
+
+async def test_a_retry_is_told_what_each_correction_round_of_the_failed_cycle_tried(
+    calibrating, stored
+):
+    """#1692's remainder, entered where the campaign launches the retry: the failed cycle's
+    correction chain reaches the retry's brief round by round, from its run's stored loop
+    summary. Bug caught: the successor told the round counts and not their content, so it
+    repeats a repair that was already refused."""
+    from squadops.cycles.failure_attribution import TerminalKind
+    from squadops.cycles.llm_usage import RunUsage
+    from squadops.cycles.run_loop_summary import (
+        MovementRecord,
+        RoundFailure,
+        RunLoopSummary,
+        RunTerminalDecision,
+    )
+
+    loop = RunLoopSummary(
+        run_id="run_inc",
+        usage=RunUsage(by_task_type={}, tasks_reported=0, tasks_unreported=()),
+        round_failures=(
+            RoundFailure(
+                "task-run_0123456789ab-m007-qa.test",
+                0,
+                "executed_and_failed",
+                "subject",
+                failed_checks=("tests_pass",),
+            ),
+        ),
+        movements=(MovementRecord("task-run_0123456789ab-m007-qa.test", 0, "repeat"),),
+        revision_forms=(
+            {
+                "task_id": "repair-run_0123456789ab-00-s00-development.correction_repair",
+                "task_type": "development.correction_repair",
+                "accepted": False,
+                "edited": ["backend/routes.py"],
+                "failure_reason": "the patch's retest added a failure",
+            },
+        ),
+        terminal=RunTerminalDecision(
+            kind=TerminalKind.CORRECTION_TERMINATED, termination_reason="exhausted"
+        ),
+    )
+
+    w = await _increment_failed_by_the_environment(calibrating, stored, loop_summary=loop)
+
+    *_, retry = await w.campaigns.launch_intents(CID)
+    prior = retry.cycle_request["body"]["execution_overrides"]["campaign_proposal"]["prior_cycle"]
+    assert prior["correction_rounds"] == [
+        {
+            "round": 0,
+            "task_type": "qa.test",
+            "failed_checks": ["tests_pass"],
+            "category": "executed_and_failed",
+            "repairs": [
+                {
+                    "task_type": "development.correction_repair",
+                    "kept": False,
+                    "edited": ["backend/routes.py"],
+                    "refused_because": "the patch's retest added a failure",
+                }
+            ],
+            "movement": "repeat",
+        }
+    ]
+    assert prior["correction_ended"] == "exhausted"

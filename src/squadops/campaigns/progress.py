@@ -995,7 +995,12 @@ class CampaignProgress:
             if latest is None:
                 latest = await self._assess(cycle.cycle_id)
             summaries = await self._cycles.list_run_verification_summaries(cycle.cycle_id)
-            return prior_cycle_brief(latest, [f for s in summaries for f in s.failed_detail])
+            loops = [
+                loop
+                for run in await self._cycles.list_runs(cycle.cycle_id)
+                if (loop := await self._cycles.get_run_loop_summary(run.run_id)) is not None
+            ]
+            return prior_cycle_brief(latest, [f for s in summaries for f in s.failed_detail], loops)
         except Exception:  # noqa: BLE001 — an unreadable record is absent, never a blocked launch
             logger.warning(
                 "cycle %s: no prior-cycle brief: its records are unreadable", cycle.cycle_id

@@ -87,6 +87,37 @@ def _merge(cards: Iterable[Mapping]) -> dict[str, Any]:
     return total
 
 
+def brief_recurrence(doc: Mapping, cycle_ids: Iterable[str]) -> list[dict[str, Any]]:
+    """#1692's recurrence measure: for each recovery cycle shown a prior-cycle brief, which of
+    the checks the brief listed as failed failed again, and which cleared. ``unread`` when the
+    recovery cycle's own failed checks were not observed: an absence is never read as cleared."""
+    launches = {la["cycle_id"]: la for la in doc["launches"]}
+    assessments = {c["cycle_id"]: c.get("assessment") for c in doc["cycles"]}
+    out = []
+    for cycle_id in cycle_ids:
+        block = (
+            (((launches.get(cycle_id) or {}).get("cycle_request") or {}).get("body") or {})
+            .get("execution_overrides", {})
+            .get("campaign_proposal", {})
+        )
+        shown = (block.get("prior_cycle") or {}).get("failed_checks")
+        if not isinstance(shown, list) or not shown:
+            continue
+        own = _indicator(assessments.get(cycle_id), "quality", "failed_checks")
+        if not isinstance(own, list):
+            out.append({"cycle_id": cycle_id, "shown": shown, "unread": True})
+            continue
+        out.append(
+            {
+                "cycle_id": cycle_id,
+                "shown": shown,
+                "recurred": [c for c in shown if c in own],
+                "cleared": [c for c in shown if c not in own],
+            }
+        )
+    return out
+
+
 def increment_scorecards(doc: Mapping) -> list[dict[str, Any]]:
     """One row per increment launch, in launch order, from the package document."""
     log = list(doc["control_log"])
@@ -170,6 +201,7 @@ def increment_scorecards(doc: Mapping) -> list[dict[str, Any]]:
                 "proposal_rounds": len(rulings),
                 "rulings": rulings,
                 "repair_retry_cycles": len(cycles) - 1,
+                "brief_recurrence": brief_recurrence(doc, cycles[1:]),
                 "criteria_added": len(
                     (promote or {}).get("binding", {}).get("frozen_criteria") or []
                 ),
@@ -205,4 +237,21 @@ def scorecard_lines(doc: Mapping) -> list[str]:
         "Waiting is elapsed time minus the cycles' run wall clock (the ruling, the plan gate, "
         "the box and dispatch together)."
     )
+    shown = [(r["increment"], b) for r in rows for b in r["brief_recurrence"]]
+    if shown:
+        out.append("")
+        out.append(
+            "A recovery cycle's brief (#1692): the checks it was shown failed, and after it:"
+        )
+        for n, b in shown:
+            if b.get("unread"):
+                out.append(
+                    f"- increment {n}, `{b['cycle_id']}`: its own failed checks were not recorded"
+                )
+            else:
+                out.append(
+                    f"- increment {n}, `{b['cycle_id']}`: recurred {len(b['recurred'])} "
+                    f"({', '.join(b['recurred']) or 'none'}), cleared {len(b['cleared'])} of "
+                    f"{len(b['shown'])}"
+                )
     return out
