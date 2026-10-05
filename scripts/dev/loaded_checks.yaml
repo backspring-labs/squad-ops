@@ -1,0 +1,37 @@
+# What a rebuild must have loaded, read in each running container (#1956; #1908 §6's "loaded
+# checks"). One row per change: the container that runs it, a snippet that prints what only the new
+# code prints, and that output. A release adds its rows here rather than copying a script.
+#
+#   python scripts/dev/verify_loaded.py [--only ISSUE]
+#
+# A row's snippet runs as `python -` inside the container (docker exec -i). Keep it to imports and
+# pure calls: it must never write.
+checks:
+  - id: "1961"
+    what: the rails refuse a behaviour change with nothing to build
+    container: squadops-nat
+    code: |
+      from squadops.campaigns.change_request import RefusalKind
+      print(RefusalKind.NOTHING_TO_BUILD.value)
+    expect: nothing_to_build
+  - id: "1962"
+    what: each stack's frozen conventions, told to the proposer
+    container: squadops-nat
+    code: |
+      from squadops.capabilities.scaffold import frozen_conventions_for
+      print(sorted(c.kind.value for c in frozen_conventions_for("nextjs_ts")))
+    expect: "['error_envelope', 'unset_optional_unfixed']"
+  - id: "1884"
+    what: a qa repair inherits the increment's test scope
+    container: squadops-runtime-api
+    code: |
+      from squadops.capabilities.context_assembly import REPAIR_PRESENCE_KEYS
+      print("increment_test_scope" in REPAIR_PRESENCE_KEYS)
+    expect: "True"
+  - id: "1884-outlet"
+    what: the qa author's proposal outlet parses its block
+    container: squadops-eve
+    code: |
+      from squadops.campaigns.proposed_behaviours import QA_PROPOSED_BEHAVIOURS_ARTIFACT_TYPE
+      print(QA_PROPOSED_BEHAVIOURS_ARTIFACT_TYPE)
+    expect: qa_proposed_behaviours
