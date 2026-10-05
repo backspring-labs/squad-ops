@@ -229,6 +229,9 @@ python scripts/maintainer/update_sip_status.py sips/proposed/SIP-MyIdea.md accep
 
 # Promote an accepted SIP to implemented (after code is merged)
 python scripts/maintainer/update_sip_status.py sips/accepted/SIP-0067-My-Feature.md implemented
+
+# Retire a superseded proposal without accepting it (#1968): no number is assigned
+python scripts/maintainer/update_sip_status.py sips/proposed/SIP-Superseded-Draft.md deprecated
 ```
 
 ## Versioning & Release Cadence
