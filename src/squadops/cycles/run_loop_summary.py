@@ -205,20 +205,31 @@ class AbsentEmission:
     A task's own attempt carries ``attempt`` (1-based); a correction round's empty repair
     carries ``round_index`` (#1053). ``signatures`` are the #998 shapes — ``cap_exhausted``,
     ``empty`` or ``unextractable`` — empty when the producer named none.
+
+    ``offered_scoped`` (#1911): whether the empty repair was offered the scoped edit form
+    (SIP-0107), ``False`` when it was asked for whole files, ``None`` for a task's own attempt
+    or a round that recorded no form. It is what a count of capped repairs is split by: whether
+    scoped revision drives a repair to spend its completion on reasoning.
     """
 
     task_id: str
     signatures: tuple[str, ...] = ()
     attempt: int | None = None
     round_index: int | None = None
+    offered_scoped: bool | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        record: dict[str, Any] = {
             "task_id": self.task_id,
             "signatures": list(self.signatures),
             "attempt": self.attempt,
             "round_index": self.round_index,
         }
+        # Omitted when unknown, so a summary stored before #1911 keeps the evidence identity it
+        # was assessed with.
+        if self.offered_scoped is not None:
+            record["offered_scoped"] = self.offered_scoped
+        return record
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> AbsentEmission:
@@ -227,6 +238,9 @@ class AbsentEmission:
             signatures=tuple(str(s) for s in data.get("signatures") or ()),
             attempt=None if data.get("attempt") is None else int(data["attempt"]),
             round_index=None if data.get("round_index") is None else int(data["round_index"]),
+            offered_scoped=(
+                None if data.get("offered_scoped") is None else bool(data["offered_scoped"])
+            ),
         )
 
 

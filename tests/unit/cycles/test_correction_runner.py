@@ -5430,6 +5430,48 @@ class TestEmptyRepairEmission:
             plan_delta_refs=[],
         )
 
+    @pytest.mark.parametrize(
+        ("form", "offered_scoped"),
+        [
+            ({"offered": {"backend/routes.py": 2}, "form": "none"}, True),
+            ({"offered": {}, "form": "none"}, False),
+            (None, None),
+        ],
+        ids=["offered-the-edit-form", "asked-for-whole-files", "no-form-recorded"],
+    )
+    async def test_an_empty_repair_says_which_form_it_was_offered(
+        self, cycle, form, offered_scoped
+    ):
+        """#1911: a capped repair could not be split by its form, because an absent emission
+        carried none. Bug caught: the form dropped between the repair's outputs and the round's
+        result, or a repair that recorded no form read as one asked for whole files."""
+        import dataclasses as _dc
+
+        def responder(envelope):
+            if envelope.task_type.endswith("correction_repair"):
+                outputs = {"artifacts": [{"name": "repair_output.md", "content": ""}]}
+                if form is not None:
+                    outputs["revision_form"] = form
+                return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs=outputs)
+            return self._responder([])(envelope)
+
+        runner, _r, _v, _b = self._make_runner(responder)
+        protocol = await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=_dc.replace(self._failed_envelope(), task_type="qa.test"),
+            result=TaskResult(task_id="task_failed", status="FAILED", error="suite failed"),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+
+        assert protocol.emission_empty is True
+        assert protocol.empty_emission_offered_scoped is offered_scoped
+
     async def test_a_zero_byte_emission_is_flagged_empty(self, cycle):
         """The banked shape, exactly: one artifact, no content."""
         protocol = await self._run(cycle, [{"name": "repair_output.md", "content": ""}])
@@ -7425,6 +7467,7 @@ class TestLoopFactsReachTheRunLedger:
             correction_path="continue",
             emission_empty=True,
             empty_emission_signatures=("cap_exhausted",),
+            empty_emission_offered_scoped=True,
         )
         await executor._route_correction_path(
             _CorrectionRound(protocol=protocol, attempt=1, max_attempts=2),
@@ -7455,8 +7498,9 @@ class TestLoopFactsReachTheRunLedger:
         # SIP-0108 §4.1: the empty repair itself is recorded either way — a spent round's
         # emptiness is as much a coordination fact as a refunded one's.
         assert [
-            (a.task_id, a.round_index, a.attempt, a.signatures) for a in ledger.absent_emissions
-        ] == [("task-qa-4", 1, None, ("cap_exhausted",))]
+            (a.task_id, a.round_index, a.attempt, a.signatures, a.offered_scoped)
+            for a in ledger.absent_emissions
+        ] == [("task-qa-4", 1, None, ("cap_exhausted",), True)]
 
     async def test_finalization_persists_the_ledgers_loop_facts(self, run):
         """Entry point: ``RunCompletion.finalize`` with the run's ledger — the row carries

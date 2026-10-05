@@ -97,6 +97,31 @@ class TestPathOverrides:
         assert RunLoopSummary.from_dict(row).path_overrides is None
 
 
+class TestTheOfferedForm:
+    """#1911: whether an empty repair was offered the scoped edit form."""
+
+    @pytest.mark.parametrize("offered_scoped", [True, False])
+    def test_the_form_survives_the_row(self, offered_scoped):
+        emission = AbsentEmission(
+            task_id="t-dev",
+            signatures=("cap_exhausted",),
+            round_index=1,
+            offered_scoped=offered_scoped,
+        )
+
+        assert AbsentEmission.from_dict(emission.to_dict()) == emission
+
+    def test_a_row_stored_before_the_form_reads_unknown_and_writes_back_unchanged(self):
+        """Bug caught: an unknown form written back as a key, which moves the evidence identity
+        of every run assessed before #1911."""
+        stored = {"task_id": "t-dev", "signatures": ["empty"], "attempt": None, "round_index": 0}
+
+        read = AbsentEmission.from_dict(stored)
+
+        assert read.offered_scoped is None
+        assert read.to_dict() == stored
+
+
 class TestFromEvidence:
     @pytest.mark.parametrize(
         ("evidence", "expected"),
