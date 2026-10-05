@@ -23,6 +23,13 @@ is reachable by a patch. Non-work_product classifications (environment,
 infrastructure, unknown) keep their rewind: patching correct code against
 a broken world is the opposite failure.
 
+Third anchor (#1757, ruled by the owner in the 2.1 plan, §5 ruling 4): a ``rewind`` on a
+**model_limitation** classification is escalated to ``patch`` the same way. For an unattended
+run, run death is not what rewind means. Measured on the deploy's 737 stored decisions
+(2026-10-05): all 7 model-limitation rewinds ended their run, each with repair budget left, while
+25 of the 30 model-limitation rounds that resolved to ``patch`` went on to complete. A run that
+still ends is absorbed at cycle level by the campaign's repair and retry rows (SIP-0109 §10).
+
 This module is the intended home for the #435 convergence policy
 (signature strikes, progress requirement, artifact-delta guard).
 """
@@ -32,12 +39,19 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from squadops.cycles.task_outcome import FailureClassification
+
 #: Correction paths the guard may escalate. ``abort`` is deliberately absent.
 _ESCALATABLE_PATHS = frozenset({"continue", "rewind"})
 
-#: ``data.analyze_failure``'s classification meaning "the defect is in emitted
-#: code" — the one classification whose rewind a patch can always substitute for.
-_WORK_PRODUCT_CLASSIFICATION = "work_product"
+#: The classifications whose rewind is escalated to a patch while the repair slot is unspent,
+#: each with the reason the override records: the defect is in emitted code (pf-45), or the model
+#: fell short of the task in one call (#1757). Both are what a repair is for, and a rewind is run
+#: death for either.
+_PATCHABLE_REWIND_CLASSIFICATIONS: dict[str, str] = {
+    FailureClassification.WORK_PRODUCT: "work_product_rewind_with_unspent_repair",
+    FailureClassification.MODEL_LIMITATION: "model_limitation_rewind_with_unspent_repair",
+}
 
 
 @dataclass(frozen=True)
@@ -128,11 +142,11 @@ def resolve_correction_path(
                 overridden_from="rewind",
                 override_reason="rewind_would_discard_accepted_repair",
             )
-        if classification == _WORK_PRODUCT_CLASSIFICATION:
+        if classification in _PATCHABLE_REWIND_CLASSIFICATIONS:
             return CorrectionPathResolution(
                 path="patch",
                 overridden_from="rewind",
-                override_reason="work_product_rewind_with_unspent_repair",
+                override_reason=_PATCHABLE_REWIND_CLASSIFICATIONS[classification],
             )
         return CorrectionPathResolution(path=decision_path)
 

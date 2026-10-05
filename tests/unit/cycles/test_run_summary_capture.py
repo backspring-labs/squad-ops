@@ -12,7 +12,12 @@ import pytest
 
 from squadops.cycles.failure_evidence import FailureEvidenceCategory, FailureLocus
 from squadops.cycles.llm_usage import RunUsage
-from squadops.cycles.run_loop_summary import AbsentEmission, RoundFailure, RunLoopSummary
+from squadops.cycles.run_loop_summary import (
+    AbsentEmission,
+    PathOverride,
+    RoundFailure,
+    RunLoopSummary,
+)
 
 pytestmark = [pytest.mark.domain_orchestration]
 
@@ -61,6 +66,35 @@ class TestTheStoredShape:
         read = RunLoopSummary.from_dict(row)
 
         assert (read.round_failures, read.absent_emissions) == (expected, expected)
+
+
+class TestPathOverrides:
+    """#1757: the path the policy took, and which anchor changed it, persisted with the run. It
+    rode only the event and the log, so "an anchor fired" had to be inferred from what followed."""
+
+    def test_an_override_survives_the_row(self):
+        summary = RunLoopSummary(
+            run_id="run_1",
+            usage=_USAGE,
+            path_overrides=(
+                PathOverride(
+                    task_id="t-build",
+                    round_index=0,
+                    proposed="rewind",
+                    path="patch",
+                    reason="model_limitation_rewind_with_unspent_repair",
+                ),
+            ),
+        )
+
+        assert RunLoopSummary.from_dict(summary.to_dict()) == summary
+
+    def test_a_row_written_before_the_field_reads_none_not_no_overrides(self):
+        """Bug caught: an old row read as "no anchor fired", which it never said."""
+        row = RunLoopSummary(run_id="run_1", usage=_USAGE).to_dict()
+        row.pop("path_overrides")
+
+        assert RunLoopSummary.from_dict(row).path_overrides is None
 
 
 class TestFromEvidence:

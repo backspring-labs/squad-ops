@@ -67,6 +67,7 @@ from squadops.cycles.plan_delta import PlanDelta
 from squadops.cycles.run_loop_summary import (
     REFUND_CONFIRMED_DISPUTE,
     MovementRecord,
+    PathOverride,
     RefundedRound,
     RoundFailure,
     RunTerminalDecision,
@@ -1076,7 +1077,13 @@ class CorrectionRunner:
         )
 
         correction_path = self._resolve_correction_path(
-            diagnosis, cycle, run_id, has_accepted_repair=has_accepted_repair
+            diagnosis,
+            cycle,
+            run_id,
+            has_accepted_repair=has_accepted_repair,
+            ledger=ledger,
+            task_id=envelope.task_id,
+            round_index=correction_attempts,
         )
 
         await self._bank_delta_and_check_termination(
@@ -1323,11 +1330,15 @@ class CorrectionRunner:
         run_id: str,
         *,
         has_accepted_repair: bool,
+        ledger: RunLedger | None,
+        task_id: str,
+        round_index: int,
     ) -> str:
         """Step 2 — the deterministic policy guard, then ``CORRECTION_DECIDED``.
 
         The model's original rationale stays intact in the decision artifact; an override
-        is disclosed in the event payload rather than silently replacing it (#447).
+        is disclosed in the event payload rather than silently replacing it (#447), and
+        recorded on the run's ledger, which the run summary persists (#1757).
         """
         # What the earlier steps produced, read off the value they returned —
         # never reached backward into their locals (map §4 step 4).
@@ -1362,6 +1373,17 @@ class CorrectionRunner:
             has_accepted_repair=has_accepted_repair,
         )
         correction_path = resolution.path
+        if resolution.overridden_from and ledger is not None:
+            ledger.record_path_override(
+                PathOverride(
+                    task_id=task_id,
+                    round_index=round_index,
+                    proposed=resolution.overridden_from,
+                    path=resolution.path,
+                    reason=resolution.override_reason,
+                    checks=resolution.failed_required_checks,
+                )
+            )
         if resolution.overridden_from:
             logger.warning(
                 "correction_policy_override: %s -> %s (%s%s)",

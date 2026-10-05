@@ -2720,3 +2720,32 @@ increment.
 **Who ruled it.** The owner's adoption of the 2.1 plan (§2.0, the crew's enablers), and the folding of
 Verification Yield's cost measures into this table (2026-10-04).
 
+### 24bc. A rewind the model's limits chose is a patch (2026-10-05, §10, §10a, #1757; ruled by the owner)
+
+**The question #1723 left.** The same classification and equivalent evidence had chosen `patch`
+once and ended the run twice. A `rewind` is implemented as run death, so for an unattended run it
+discarded every correction attempt the run had left, and the campaign then had to read a failed
+cycle where a repair was still possible.
+
+**What changed.** A third anchor in the deterministic correction policy
+(`correction_policy.py`), beside #994's and pf-45's: a `rewind` on a `model_limitation`
+classification, with the repair slot unspent, resolves to `patch`. A run that still ends is
+absorbed at cycle level by the campaign's repair and retry rows (§10a), as before.
+`execution`, `alignment`, `decision` and `contract_compliance` rewinds stand.
+
+**The override is now durable.** It rode only the `CORRECTION_DECIDED` event and the log, so the
+measurement below had to infer "an anchor fired" from the artifact that followed. Every override
+is now recorded on the run's loop summary (`path_overrides`: the task, the round, the proposed
+path, the path taken, the anchor), which the run persists at finalization. A summary written
+before this reads `None`, not "no overrides".
+
+**Evidence.** The deploy's 737 stored correction decisions, read on 2026-10-05 (posted on #1757):
+all 7 model-limitation rewinds ended their run, each with repair budget left, and 25 of the 30
+model-limitation rounds that resolved to `patch` went on to complete. Entered at `execute_run`, a
+model-limitation analysis and a rewind decision now take the patch path, and the run's summary
+carries the override. Both tests fail with the anchor reverted.
+
+**Who ruled it.** The owner, on the 2.1 plan (§5 ruling 4, 2026-10-04): "run death is not the
+meaning of `rewind` for an unattended run", the stored decisions read first. The
+contentless-builder diagnostic follows: it now reaches its failure through the patch path every
+time.

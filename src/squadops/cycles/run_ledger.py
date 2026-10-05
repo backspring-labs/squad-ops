@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from squadops.cycles.run_loop_summary import (
         AbsentEmission,
         MovementRecord,
+        PathOverride,
         RefundedRound,
         RoundFailure,
     )
@@ -42,6 +43,7 @@ class RunLedger:
         "_movements",
         "_round_failures",
         "_absent_emissions",
+        "_path_overrides",
     )
 
     def __init__(self) -> None:
@@ -51,6 +53,7 @@ class RunLedger:
         self._movements: list[MovementRecord] = []
         self._round_failures: list[RoundFailure] = []
         self._absent_emissions: list[AbsentEmission] = []
+        self._path_overrides: list[PathOverride] = []
 
     def record_refunded_round(self, record: RefundedRound) -> None:
         """Record one correction round handed back rather than spent (#1053, append-only)."""
@@ -75,6 +78,14 @@ class RunLedger:
     @property
     def round_failures(self) -> tuple[RoundFailure, ...]:
         return tuple(self._round_failures)
+
+    def record_path_override(self, record: PathOverride) -> None:
+        """Record one correction decision the policy overrode (#1757, append-only)."""
+        self._path_overrides.append(record)
+
+    @property
+    def path_overrides(self) -> tuple[PathOverride, ...]:
+        return tuple(self._path_overrides)
 
     def record_absent_emission(self, record: AbsentEmission) -> None:
         """Record one emission that yielded no file (#566/#1053, append-only)."""
