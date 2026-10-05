@@ -10,6 +10,7 @@ without a consumer.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
 from datetime import datetime
@@ -217,6 +218,29 @@ def _require_text(owner: str, **values: str | None) -> None:
     for name, value in values.items():
         if not value or not value.strip():
             raise ValueError(f"{owner}.{name} is required")
+
+
+@dataclass(frozen=True)
+class CampaignDefinition:
+    """The file a campaign was created from (#1954): its path as the operator gave it, and the
+    sha256 of its bytes. Recorded on the creation row, so a stored campaign names the file that
+    made it, rather than leaving it to a reconciliation that cannot tell identical files apart."""
+
+    path: str
+    sha256: str
+
+    def __post_init__(self) -> None:
+        if not self.path or not self.path.strip():
+            raise ValueError("definition.path is required")
+        if not re.fullmatch(r"[0-9a-f]{64}", self.sha256):
+            raise ValueError("definition.sha256 is the file's sha256: 64 lowercase hex characters")
+
+    @classmethod
+    def from_binding(cls, binding: Mapping[str, Any]) -> CampaignDefinition | None:
+        """The definition a creation row's binding records, or ``None`` for a campaign created
+        before #1954 or without a file."""
+        recorded = binding.get("definition")
+        return cls(**recorded) if recorded else None
 
 
 @dataclass(frozen=True)

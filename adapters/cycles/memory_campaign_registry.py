@@ -15,6 +15,7 @@ from squadops.campaigns import box, lifecycle
 from squadops.campaigns.box import BoxLease
 from squadops.campaigns.models import (
     Campaign,
+    CampaignDefinition,
     CampaignExistsError,
     CampaignNotFoundError,
     CampaignState,
@@ -93,6 +94,7 @@ class MemoryCampaignRegistry(CampaignRegistryPort):
         actor_role: str,
         reason: str,
         idempotency_key: str,
+        definition: CampaignDefinition | None = None,
     ) -> TransitionResult:
         async with self._lock:
             now = _now()
@@ -102,6 +104,7 @@ class MemoryCampaignRegistry(CampaignRegistryPort):
                 actor_role=actor_role,
                 reason=reason,
                 idempotency_key=idempotency_key,
+                definition=definition,
                 entry_id=lifecycle.new_entry_id(),
                 committed_at=now,
             )

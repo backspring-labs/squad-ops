@@ -133,6 +133,35 @@ async def test_a_restart_reads_the_campaign_its_log_and_its_intent_back(campaign
     assert [e.seq for e in log] == [1, 2, 3]
 
 
+async def test_the_definition_file_is_stored_on_the_creation_row_and_a_retry_replays(pool):
+    """#1954, through the real registry: the creation row's binding carries the file, read back,
+    and a retry with the same file replays while one with another file is refused."""
+    from squadops.campaigns.models import CampaignDefinition, CampaignExistsError
+
+    reg = PostgresCampaignRegistry(pool=pool)
+    made = campaign("cmp_definition01", project_id=PROJECT)
+    sent = CampaignDefinition("examples/03_group_run/campaigns/set-1.yaml", "d" * 64)
+
+    async def create(definition):
+        return await reg.create_campaign(
+            made,
+            actor="owner",
+            actor_role="admin",
+            reason="r",
+            idempotency_key="create-def",
+            definition=definition,
+        )
+
+    await create(sent)
+    replay = await create(sent)
+    with pytest.raises(CampaignExistsError):
+        await create(CampaignDefinition(sent.path, "e" * 64))
+
+    [created] = await reg.control_log("cmp_definition01")
+    assert replay.replayed
+    assert CampaignDefinition.from_binding(created.binding) == sent
+
+
 async def test_a_promoted_tree_survives_a_restart_and_is_stored_whole(campaigns, pool):
     """§12a. Bug caught: the accepted columns left out of the transition's UPDATE, so the tree
     reads ``None`` after a restart; or half a tree stored."""

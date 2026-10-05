@@ -7,9 +7,12 @@ failing to reconcile with the campaign it ran (the registry maps its two seat bo
 
 from __future__ import annotations
 
+import dataclasses
 import importlib.util
 import sys
 from pathlib import Path
+
+import pytest
 
 _SPEC = importlib.util.spec_from_file_location(
     "campaign_definition_provenance",
@@ -112,3 +115,29 @@ def test_the_set_files_carry_exactly_the_exit_shakeouts_content():
 
     assert prov.differences(by_name["2-0-0-set-1.yaml"].spec, as_stored) == []
     assert prov.differences(by_name["2-0-0-set-2.yaml"].spec, as_stored) == []
+
+
+@pytest.mark.parametrize(
+    ("recorded", "reconciles"),
+    [
+        ({"path": "set-1.yaml", "sha256": "sha-set-1"}, True),
+        ({"path": "edited.yaml", "sha256": "sha-edited"}, False),
+        (None, None),
+    ],
+    ids=["names-a-file-that-reconciles", "names-a-file-that-does-not", "created-before-1954"],
+)
+def test_a_recorded_definition_is_the_lookup_and_the_reconciliation_its_check(recorded, reconciles):
+    """#1954: two files with the same content both reconcile, and only the record says which one
+    made the campaign. Bugs caught: the record dropped from the document, or a recorded file that
+    no longer reconciles (edited since, or untracked) reported as if it did."""
+    twins = [
+        prov.Definition("set-1.yaml", "sha-set-1", _spec()),
+        prov.Definition("shakeout-7.yaml", "sha-shakeout-7", _spec()),
+    ]
+    stored = dataclasses.replace(_stored(), recorded=recorded)
+
+    [campaign] = prov.reconcile(twins, [stored], {})["campaigns"]
+
+    assert len(campaign["definitions"]) == 2
+    assert campaign["recorded_definition"] == recorded
+    assert campaign["recorded_reconciles"] is reconciles

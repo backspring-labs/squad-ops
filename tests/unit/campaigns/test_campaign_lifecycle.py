@@ -205,3 +205,40 @@ def test_a_policy_stored_with_two_seat_bounds_reads_as_one_supervisors():
 
     assert CampaignPolicy.from_stored(legacy).ruling_bound_s == 1800
     assert CampaignPolicy.from_stored(current) == policy(ruling_bound_s=900)
+
+
+def test_a_creation_without_a_definition_keeps_the_hash_it_was_stored_with():
+    """#1954 adds the definition to a creation's content only when one is given. Bug caught: the
+    hash of every definition-less creation changing, so a retried create of a campaign stored
+    before #1954 reads as a different creation and is refused. The literal is the hash main
+    computed for this creation before the change."""
+    from squadops.campaigns.lifecycle import creation_request_hash
+    from squadops.campaigns.models import CampaignDefinition
+
+    created = campaign("cmp_hash0000001")
+    before = creation_request_hash(created, actor="owner", actor_role="admin", reason="r")
+    with_file = creation_request_hash(
+        created,
+        actor="owner",
+        actor_role="admin",
+        reason="r",
+        definition=CampaignDefinition("set-1.yaml", "a" * 64),
+    )
+
+    assert before == "08aecfc79fc10fe8afb1f8f158f9df08b14e1bba092ef0a0bc0743e2b7d7e76f"
+    assert with_file != before
+
+
+@pytest.mark.parametrize(
+    ("path", "sha256", "message"),
+    [
+        ("", "a" * 64, "definition.path is required"),
+        ("set-1.yaml", "A" * 64, "64 lowercase hex"),
+        ("set-1.yaml", "a" * 63, "64 lowercase hex"),
+    ],
+)
+def test_a_definition_that_names_no_file_or_no_hash_is_refused(path, sha256, message):
+    from squadops.campaigns.models import CampaignDefinition
+
+    with pytest.raises(ValueError, match=message):
+        CampaignDefinition(path, sha256)

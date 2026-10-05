@@ -195,6 +195,30 @@ async def test_the_supervisor_cannot_lift_the_owners_own_pause(world):
     assert _control(world, "resume", "k-owner-resume").status_code == 200
 
 
+async def test_the_creation_row_records_the_definition_file_and_a_replay_needs_the_same_one(world):
+    """#1954: a stored campaign names the file that made it. Bugs caught: the definition dropped
+    between the request and the row; or a retry under the same key with a different file read as
+    the same creation, so the row names a file the campaign did not come from."""
+    sent = {"path": "examples/03_group_run/campaigns/set-1.yaml", "sha256": "b" * 64}
+
+    first = _create(world, definition=sent)
+    again = _create(world, definition=sent)
+    other_file = _create(world, definition={**sent, "sha256": "c" * 64})
+
+    [created] = await world.campaigns.control_log("cmp_api000000001")
+    assert first.status_code == 200
+    assert created.binding == {"definition": sent}
+    assert (again.status_code, again.json()["replayed"]) == (200, True)
+    assert other_file.status_code == 409
+
+
+def test_a_definition_with_a_malformed_hash_is_a_422_and_creates_nothing(world):
+    resp = _create(world, definition={"path": "set-1.yaml", "sha256": "not-a-hash"})
+
+    assert resp.status_code == 422
+    assert world.client.get("/api/v1/campaigns/cmp_api000000001").status_code == 404
+
+
 def test_no_identity_is_refused_once_authorization_is_configured(world):
     assert _create(world.as_(None)).status_code == 401
 

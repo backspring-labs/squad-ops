@@ -18,6 +18,7 @@ from datetime import datetime
 from squadops.campaigns.models import (
     RULING_MOVES,
     Campaign,
+    CampaignDefinition,
     CampaignState,
     CampaignTransition,
     ControlLogEntry,
@@ -148,20 +149,30 @@ def transition_request_hash(transition: CampaignTransition) -> str:
     return _digest(payload)
 
 
-def creation_request_hash(campaign: Campaign, *, actor: str, actor_role: str, reason: str) -> str:
-    return _digest(
-        {
-            "operation": ControlOperation.CREATE,
-            "campaign_id": campaign.campaign_id,
-            "project_id": campaign.project_id,
-            "objective": dataclasses.asdict(campaign.objective),
-            "policy": dataclasses.asdict(campaign.policy),
-            "created_by": campaign.created_by,
-            "actor": actor,
-            "actor_role": actor_role,
-            "reason": reason,
-        }
-    )
+def creation_request_hash(
+    campaign: Campaign,
+    *,
+    actor: str,
+    actor_role: str,
+    reason: str,
+    definition: CampaignDefinition | None = None,
+) -> str:
+    """The creation's content, for its replay. The definition (#1954) enters only when given,
+    so a creation stored before it, or made without a file, keeps the hash it was stored with."""
+    content = {
+        "operation": ControlOperation.CREATE,
+        "campaign_id": campaign.campaign_id,
+        "project_id": campaign.project_id,
+        "objective": dataclasses.asdict(campaign.objective),
+        "policy": dataclasses.asdict(campaign.policy),
+        "created_by": campaign.created_by,
+        "actor": actor,
+        "actor_role": actor_role,
+        "reason": reason,
+    }
+    if definition is not None:
+        content["definition"] = dataclasses.asdict(definition)
+    return _digest(content)
 
 
 # =============================================================================
@@ -273,8 +284,10 @@ def creation_entry(
     idempotency_key: str,
     entry_id: str,
     committed_at: datetime,
+    definition: CampaignDefinition | None = None,
 ) -> ControlLogEntry:
-    """The campaign's first row: from no state to ``draft``.
+    """The campaign's first row: from no state to ``draft``. A campaign created from a file
+    records it in the row's binding (#1954).
 
     Raises:
         ValueError: If the campaign is not a fresh draft, or a required field is blank.
@@ -300,9 +313,9 @@ def creation_entry(
         target=None,
         idempotency_key=idempotency_key,
         request_hash=creation_request_hash(
-            campaign, actor=actor, actor_role=actor_role, reason=reason
+            campaign, actor=actor, actor_role=actor_role, reason=reason, definition=definition
         ),
-        binding={},
+        binding={"definition": dataclasses.asdict(definition)} if definition else {},
         outcome=ControlOutcome.APPLIED,
         refusal=None,
         prior_state=None,

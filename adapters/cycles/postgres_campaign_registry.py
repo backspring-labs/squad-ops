@@ -18,6 +18,7 @@ from squadops.campaigns.box import BoxLease, LeaseHolder
 from squadops.campaigns.models import (
     AcceptedTree,
     Campaign,
+    CampaignDefinition,
     CampaignExistsError,
     CampaignNotFoundError,
     CampaignObjective,
@@ -160,6 +161,7 @@ class PostgresCampaignRegistry(CampaignRegistryPort):
         actor_role: str,
         reason: str,
         idempotency_key: str,
+        definition: CampaignDefinition | None = None,
     ) -> TransitionResult:
         entry = lifecycle.creation_entry(
             campaign,
@@ -167,6 +169,7 @@ class PostgresCampaignRegistry(CampaignRegistryPort):
             actor_role=actor_role,
             reason=reason,
             idempotency_key=idempotency_key,
+            definition=definition,
             entry_id=lifecycle.new_entry_id(),
             committed_at=_now(),
         )
