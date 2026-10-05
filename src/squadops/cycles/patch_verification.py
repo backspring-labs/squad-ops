@@ -359,6 +359,26 @@ def storage_altered_accepted_patch(
     return None if before_id == after_id else (before_id, after_id)
 
 
+#: SIP-0107 §20 on the qa re-take path (#1727): the identity of the set a re-take evaluated (its
+#: suite and its typed checks), recorded by the handler on its outputs and proven at storage.
+RETAKE_EVALUATED_REVISION_KEY = "qa_retake_evaluated_revision_id"
+
+
+def retake_identity_mismatch(
+    outputs: Mapping[str, Any] | None, stored: Sequence[Mapping[str, Any]]
+) -> tuple[str, str] | None:
+    """``(evaluated_id, stored_id)`` when a qa re-take's stored set is not the set it evaluated,
+    else ``None`` (SIP-0107 §20, #1727: ``verified_revision_id == persisted_revision_id`` on the
+    re-take path, as on the patch path). Taken after storage enforces the producer's grants, so it
+    catches both a set changed in transit and a file the agent evaluated that storage then drops
+    (#1913's class). Only a result that recorded its evaluated identity is judged."""
+    evaluated = (outputs or {}).get(RETAKE_EVALUATED_REVISION_KEY)
+    if not evaluated:
+        return None
+    stored_id = candidate_revision_id(None, stored)
+    return None if stored_id == evaluated else (str(evaluated), stored_id)
+
+
 @dataclass(frozen=True)
 class MaterializeResult:
     """Outcome of a unified ``materialize`` (SIP-0100 2.2)."""

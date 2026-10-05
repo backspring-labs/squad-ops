@@ -170,6 +170,35 @@ def _authenticity_row(check: str, offenders: list[str], inspected: list[str]) ->
     return row
 
 
+def _drop_unowned_overwrites(
+    artifacts: list[dict], inputs: dict[str, Any]
+) -> tuple[list[dict], list[str]]:
+    """#1913: the files a qa author may not write, dropped before its suite and typed checks.
+
+    A qa emission outside its stack's test namespace of a path the accepted workspace already
+    holds belongs to another producer (a fill slot, a frozen file, the source under test), and
+    storage drops it (SIP-0100 3.1, #1323). Run on, the suite and the checks read a tree the
+    record never keeps: #1912's run evaluated a quoted ``backend/routes.py`` excerpt, then had it
+    dropped as unauthorized half a second later. So it is dropped here first, the same way, and
+    both read the tree that will be stored. A new path outside the namespace (a deliverable such
+    as ``test_report.md``) passes, as storage passes it. Returns ``(kept, dropped paths)``."""
+    from squadops.cycles.write_authorization import normalize_ws_path
+
+    owned = _qa_owned_for(inputs)
+    held = {
+        n for p in (inputs.get("acceptance_workspace_files") or {}) if (n := normalize_ws_path(p))
+    }
+    kept: list[dict] = []
+    dropped: list[str] = []
+    for art in artifacts:
+        name = normalize_ws_path(str(art.get("name") or ""))
+        if name is not None and name in held and not owned(name):
+            dropped.append(name)
+        else:
+            kept.append(art)
+    return kept, dropped
+
+
 def _qa_owned_for(inputs: dict[str, Any]) -> Callable[[str], bool]:
     """The stack's own test-namespace predicate, bound to this cycle's stack (#1130).
 
@@ -1926,6 +1955,7 @@ class QATestHandler(_CycleTaskHandler):
         output_validation_enabled = resolved_config.get("output_validation", False)
 
         artifacts = shape.merge(artifacts, evidence_extra)
+        artifacts = self._authorized(artifacts, inputs, evidence_extra)
 
         # #670 / RC-9b: shared across self-eval passes so per-criterion
         # evaluator-error counts accumulate (2-strikes escalation), dev parity
@@ -1957,6 +1987,7 @@ class QATestHandler(_CycleTaskHandler):
                     validation.missing_components,
                     validation.summary,
                 )
+                before_passes = {str(a.get("name")) for a in artifacts}
                 validation, artifacts = await self._self_evaluate(
                     context,
                     inputs,
@@ -1970,6 +2001,14 @@ class QATestHandler(_CycleTaskHandler):
                     rendered=rendered,
                     followup=shape,
                 )
+                artifacts = self._authorized(artifacts, inputs, evidence_extra)
+                if retake_form is not None:
+                    # #1727 (the owner's ruling): the transaction is the re-take plus the pass
+                    # that completed it, each part named — the edit above, and what the pass
+                    # added, so an edit-only count stays derivable.
+                    retake_form["completed_by_self_eval"] = sorted(
+                        {str(a.get("name")) for a in artifacts} - before_passes
+                    )
         else:
             validation = ValidationResult(passed=True, summary="Validation disabled")
         artifacts, validation = _settle_outlet(artifacts, validation, evidence_extra)
@@ -2146,7 +2185,33 @@ class QATestHandler(_CycleTaskHandler):
         # SIP-0104 P5: the scaffold evidence, after the probes (register entry 43).
         shape.append_evidence(outputs, test_result, artifacts)
 
+        if retake_form is not None:
+            # SIP-0107 §20 on the re-take path (#1727): the identity of exactly the set this
+            # re-take's suite and checks read, which storage proves it stores.
+            from squadops.cycles.patch_verification import (
+                RETAKE_EVALUATED_REVISION_KEY,
+                candidate_revision_id,
+            )
+
+            outputs[RETAKE_EVALUATED_REVISION_KEY] = candidate_revision_id(None, artifacts)
+
         return self._finish(start_time, inputs, outputs, validation, evidence_extra)
+
+    def _authorized(
+        self, artifacts: list[dict], inputs: dict[str, Any], evidence_extra: dict[str, Any]
+    ) -> list[dict]:
+        """``_drop_unowned_overwrites``, with what it dropped named in the task's evidence."""
+        kept, dropped = _drop_unowned_overwrites(artifacts, inputs)
+        if dropped:
+            logger.warning(
+                "%s dropped %d file(s) outside its namespace that another producer owns, before "
+                "its suite and checks run: %s (#1913)",
+                self._handler_name,
+                len(dropped),
+                ", ".join(dropped),
+            )
+            evidence_extra.setdefault("qa_unowned_dropped", []).extend(dropped)
+        return kept
 
     async def _build_qa_prompt(
         self,
