@@ -27,6 +27,7 @@ from squadops.cycles.manifest_gates import (
     PROOF_CONTRACT_DERIVES,
     PROOF_DECISION_RECORD,
     PROOF_ERROR_SHAPE,
+    PROOF_ERROR_STATUS_WARRANTED,
     PROOF_EXPANDS,
     PROOF_INTERFACE_COHERENT,
     PROOF_LINT,
@@ -58,6 +59,8 @@ AUTHOR_FACING: dict[str, tuple[str, ...]] = {
     # one; teaching the author to override it deliberately — or not at all — is what
     # collapses the copies.
     PROOF_STATUS_WARRANTED: ("warrant-a-status-that-breaks-convention",),
+    # #1031: the same discipline for error codes. Taught before it gates, as #686 ordered.
+    PROOF_ERROR_STATUS_WARRANTED: ("map-each-error-to-its-convention",),
     # #795: the envelope is blueprint-owned; a declared shape rooted anywhere but
     # `error` describes a body no response will carry (V4 declared FastAPI's default).
     PROOF_ERROR_SHAPE: ("error-shape-is-the-blueprints",),
