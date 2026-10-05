@@ -84,6 +84,10 @@ class PreflightRefusal(StrEnum):
     STACK_DISAGREES = "stack_disagrees"
     NO_RUNS = "no_runs"
     NO_VERIFICATION_SUMMARY = "no_verification_summary"
+    #: SIP-0101 §4.1 (#1974): a replayed cycle inherits its prefix's evidence from the source
+    #: run, so it is never graded as evidence that the system works. This registry is the first
+    #: aggregator, and §4.1 binds it to the exclusion and to this test.
+    REPLAYED = "replayed"
 
 
 class LineageSource(StrEnum):
@@ -240,6 +244,19 @@ def cycle_stack(cycle: Cycle) -> str | None:
     return str(stack) if stack else None
 
 
+def _replay_of(cycle: Cycle) -> str | None:
+    """What a replayed cycle replays, or ``None`` for a cycle that is not one. A declaration
+    too malformed to parse still declares a replay, so it is refused too: a half-declared replay
+    is never read as an ordinary run (``replay.parse_replay_declaration``)."""
+    from squadops.cycles.replay import parse_replay_declaration
+
+    try:
+        request = parse_replay_declaration(cycle.execution_overrides or {})
+    except ValueError as e:
+        return f"malformed declaration: {e}"
+    return None if request is None else f"of {request.source_run_id} at {request.boundary_index}"
+
+
 def preflight(
     roll: BenchmarkRoll, cycle: Cycle | None, evidence: CycleEvidence | None
 ) -> Preflight:
@@ -256,6 +273,10 @@ def preflight(
     if stack != roll.stack:
         refusals.append(PreflightRefusal.STACK_DISAGREES)
         detail.append(f"declared stack {roll.stack}; the cycle ran {stack}")
+    replay = _replay_of(cycle)
+    if replay is not None:
+        refusals.append(PreflightRefusal.REPLAYED)
+        detail.append(f"a replay ({replay}): its evidence is inherited, not earned (SIP-0101 §4.1)")
     if evidence is None or not evidence.runs:
         refusals.append(PreflightRefusal.NO_RUNS)
     elif not evidence.verification_summary_runs:
