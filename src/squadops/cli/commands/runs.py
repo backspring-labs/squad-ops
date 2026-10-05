@@ -208,7 +208,10 @@ def gate_decision(
     approve: bool = typer.Option(False, "--approve", help="Approve the gate"),
     reject: bool = typer.Option(False, "--reject", help="Reject the gate"),
     with_refinements: bool = typer.Option(
-        False, "--with-refinements", help="Approve with refinements needed"
+        False,
+        "--with-refinements",
+        help="Approve, storing --notes as refinement_notes.md beside the plan: a record for "
+        "the operator, which no agent is shown",
     ),
     return_for_revision: bool = typer.Option(
         False, "--return-for-revision", help="Return for revision on same workload path"
