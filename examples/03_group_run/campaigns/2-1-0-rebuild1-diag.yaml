@@ -1,0 +1,28 @@
+# 2.1 rebuild 1's recovery diagnostics (2.1.0 plan §4 step 3; campaign_recovery_diagnostics.py,
+# sequence 3): a restart with the proposal task in flight (#1934), a restart while the ruling's
+# successor waits queued for the box (#2042), and a duplicate completion of the increment's
+# decision, whose record reads every run's flow runs after the restarts (#2007). One increment, so
+# the increment's cycle ends by its own rules and the campaign completes. Uncounted.
+project_id: group_run
+objective:
+  statement: "evolve group_run toward its PRD's expansion scope, one increment at a time"
+  allowed_scope: ["backend/**", "frontend/**"]
+  measurement: "none: a diagnostic campaign of one increment"
+  target_accepted_increments: 1
+policy:
+  max_cycles: 4
+  max_elapsed_s: 21600
+  budget_tokens: 2000000
+  max_repair_cycles_per_increment: 1
+  max_retry_cycles_per_increment: 1
+  max_proposal_run_retries: 1
+  max_proposal_revisions: 2
+  max_rejected_proposals_in_row: 2
+  max_unaccepted_increments: 1
+  ruling_bound_s: 1800
+  lease_expiry_s: 3600
+  launch_blocked_interval_s: 300
+  launch_blocked_attempts: 6
+  calibration_profile: validated-fullstack
+  proposal_profile: campaign-increment
+  squad_profile: full-38
