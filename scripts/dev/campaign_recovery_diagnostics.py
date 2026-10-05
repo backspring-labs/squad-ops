@@ -68,7 +68,6 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TypeVar
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from checkouts import main_checkout  # noqa: E402
@@ -93,7 +92,6 @@ _TERMINAL = frozenset({"completed", "failed", "cancelled"})
 _DISPATCHED = re.compile(r"Dispatched task (\S+) \((\S+)\) to ")
 _REPLAYED = re.compile(r"task_reply_replayed: task=(\S+)")
 POLL_S = 15
-T = TypeVar("T")
 #: The states a campaign holds while a run of it is in flight: a restart there must take it up.
 _RUN_IN_FLIGHT = frozenset({"calibrating", "at_proposal", "building", "repairing", "retrying"})
 
@@ -564,7 +562,7 @@ def restart_runtime() -> str:
     return since
 
 
-def kill_runtime(read_at_kill: Callable[[], T]) -> tuple[str, T]:
+def kill_runtime[T](read_at_kill: Callable[[], T]) -> tuple[str, T]:
     """A crash: SIGKILL, no shutdown path, then a start. ``read_at_kill`` reads the records
     while the process is down, before the start: what the dead process committed, and nothing
     the restarted one did. Read after the start, it saw the re-attach's own promotion, and the
