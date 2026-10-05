@@ -98,8 +98,8 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | criterion files freeze rules the approved request never stated (the set's P9) | **shipped** (§24ax, §24ay): the rule reaches every author of an increment's tests, and unsupported behaviour is returned as a proposal | 2.1.0, PRs #2012 and #2019, issue #1884 |
 | a proposal's PRD delta can state more than its manifest delta carries | **shipped** (§24aw: the request says so; no rail) | 2.1.0, #2014 |
 | rows 10–11 reachable live (environment attribution) | **placed** | 2.1.0, #1824 |
-| proposal tasks re-run on re-attach (random ids) | **placed** | 2.1.0, #1934 |
-| a restart leaves the interrupted run's Prefect flow runs open (the re-attach, §24am) | **placed** | 2.1.0, #2007 |
+| proposal tasks re-run on re-attach (random ids) | **shipped**: every workload's task ids are deterministic | 2.1.0, PR #2033, issue #1934 |
+| a restart leaves the interrupted run's Prefect flow runs open (the re-attach, §24am) | **shipped**: a dead process's flow runs are ended when the run re-attaches and when it ends | 2.1.0, PR #2033, issue #2007 |
 | the stack's frozen conventions told to the proposer (Next.js; the rest) | **shipped** (§24av) | 2.1.0, #2013 |
 | the rails accept an empty manifest delta | **shipped** (§24au) | 2.1.0, #2011 |
 | the prior-cycle brief's remainder | **placed** | 2.1.0, #1692 |
