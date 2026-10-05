@@ -3786,6 +3786,20 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
         # Prefect: create flow run
         if self._workflow_tracker:
+            # #2007: an open flow run with this run's name belongs to a process that died (a
+            # restart, then this re-attach). Ended first, so the run shows one live flow run.
+            from squadops.cycles.flow_runs import end_open_flow_runs
+
+            left = await end_open_flow_runs(
+                self._workflow_tracker, [flow_run_name(cycle.project_id, cycle_id, run_id)]
+            )
+            if left:
+                logger.warning(
+                    "flow_runs_left_open_ended run=%s count=%d: a previous process opened them "
+                    "and died (#2007)",
+                    run_id,
+                    len(left),
+                )
             try:
                 flow_id = await self._workflow_tracker.ensure_flow()
                 flow_run_id = await self._workflow_tracker.create_flow_run(

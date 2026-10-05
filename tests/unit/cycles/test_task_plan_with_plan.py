@@ -315,7 +315,9 @@ class TestGenerateTaskPlanWithManifest:
             generate_task_plan(cycle, run, profile, plan=manifest)
 
     def test_task_id_namespaces_do_not_collide(self):
-        """Planning (UUID), manifest (-m{idx}-), correction (corr-) are distinct."""
+        """Static steps (``-{idx}-``), manifest tasks (``-m{idx}-``) and corrections (``corr-``)
+        are distinct namespaces. Static steps were UUIDs until #1934 made every workload's ids
+        deterministic, so the namespaces must now stay apart by their shape."""
         manifest = ImplementationPlan.from_yaml(MANIFEST_YAML)
         cycle = _make_cycle()
         run = _make_run()
@@ -326,9 +328,12 @@ class TestGenerateTaskPlanWithManifest:
         planning_ids = [e.task_id for e in envelopes[:5]]
         manifest_ids = [e.task_id for e in envelopes[5:]]
 
-        # Planning IDs are UUIDs (hex), manifest IDs start with "task-"
+        import re
+
+        prefix = f"task-{run.run_id[:12]}-"
         for pid in planning_ids:
-            assert not pid.startswith("task-"), f"Planning ID should be UUID: {pid}"
+            assert re.match(rf"{re.escape(prefix)}\d{{3}}-", pid), f"static step id: {pid}"
+        assert len(set(planning_ids + manifest_ids)) == len(envelopes)
         for mid in manifest_ids:
             assert mid.startswith("task-"), f"Manifest ID should be deterministic: {mid}"
             assert "-m" in mid, f"Manifest ID should use -m namespace: {mid}"
