@@ -9,6 +9,7 @@ acceptance criterion 5.
 
 from __future__ import annotations
 
+import dataclasses
 import importlib.util
 import json
 import re
@@ -81,6 +82,19 @@ def _cycle(cycle_id="cyc_1", *, notes="1.7.5 set — COUNTED roll 2 of 6.", stac
         request_profile="validated-fullstack",
         notes=notes,
         **kw,
+    )
+
+
+def _replayed(cycle_id="cyc_1", replay=None, **kw):
+    """A cycle launched as a SIP-0101 replay, otherwise a gradeable counted roll."""
+    cycle = _cycle(cycle_id, **kw)
+    return dataclasses.replace(
+        cycle,
+        execution_overrides={
+            **cycle.execution_overrides,
+            "execution_mode": "replay",
+            "replay": replay or {"source_run_id": "run_src", "boundary_index": 2},
+        },
     )
 
 
@@ -197,6 +211,13 @@ class TestPreflight:
                 _evidence(summaries=()),
                 (PreflightRefusal.NO_VERIFICATION_SUMMARY,),
             ),
+            (_replayed(), _roll(), _evidence(), (PreflightRefusal.REPLAYED,)),
+            (
+                _replayed(replay={"boundary_index": 2}),
+                _roll(),
+                _evidence(),
+                (PreflightRefusal.REPLAYED,),
+            ),
         ],
         ids=[
             "gradeable",
@@ -207,6 +228,8 @@ class TestPreflight:
             "the other stack",
             "no runs",
             "no summary",
+            "a replay (SIP-0101 §4.1, #1974)",
+            "a malformed replay declaration",
         ],
     )
     def test_the_preflight_names_every_reason_a_declared_roll_cannot_be_graded(
@@ -278,7 +301,9 @@ async def test_the_regrade_keeps_every_declared_roll_and_grades_only_what_its_pr
     await deploys.record(DEPLOY)
     await registry.create_cycle(_cycle(framework_git_sha="8e2c2e87", deploy_id=DEPLOY.deploy_id))
     await registry.create_cycle(_cycle("cyc_shakeout", notes="SHAKEOUT — NON-COUNTING"))
-    for cycle_id in ("cyc_1", "cyc_shakeout"):
+    # SIP-0101 §4.1 (#1974): a replay declared as a counted roll, with a summary to grade.
+    await registry.create_cycle(_replayed("cyc_replay"))
+    for cycle_id in ("cyc_1", "cyc_shakeout", "cyc_replay"):
         run_id = f"run_{cycle_id}"
         await registry.create_run(
             Run(
@@ -298,7 +323,7 @@ async def test_the_regrade_keeps_every_declared_roll_and_grades_only_what_its_pr
     rows = await regrade(
         registry,
         vault,
-        [_roll(), _roll("cyc_shakeout"), _roll("cyc_gone")],
+        [_roll(), _roll("cyc_shakeout"), _roll("cyc_gone"), _roll("cyc_replay")],
         assessor=ASSESSOR,
         deploys=deploys,
     )
@@ -307,24 +332,31 @@ async def test_the_regrade_keeps_every_declared_roll_and_grades_only_what_its_pr
         ("cyc_1", ()),
         ("cyc_shakeout", (PreflightRefusal.NOT_LAUNCHED_AS_DECLARED,)),
         ("cyc_gone", (PreflightRefusal.NOT_IN_REGISTRY,)),
+        ("cyc_replay", (PreflightRefusal.REPLAYED,)),
     ]
     live = await assess_cycle(registry, vault, "cyc_1", assessor=ASSESSOR)
     assert rows[0].assessment.evidence_identity == live.evidence_identity
     assert rows[0].series.squad_profile_id == "full-38" and rows[0].unresolved_refs == ()
     assert rows[1].assessment is None and rows[2].assessment is None
+    assert rows[3].assessment is None, "a replay is never graded (SIP-0101 §4.1)"
 
     versions = {"assessment_version": 1, "attribution_registry_version": 1}
     document = json.loads(
         render_capture(capture_document(rows, versions=versions, assessor=ASSESSOR))
     )
     assert document["preflight"] == {
-        "declared": 3,
-        "by_role": {"counted": 3},
+        "declared": 4,
+        "by_role": {"counted": 4},
         "gradeable": 1,
-        "refused_by_reason": {"not_launched_as_declared": 1, "not_in_registry": 1},
+        "refused_by_reason": {"not_launched_as_declared": 1, "not_in_registry": 1, "replayed": 1},
     }
     assert document["sets"]["1.7.5 Next.js"]["pins"]["deploy_commit"] == "8fd30eb8"
-    assert [r["cycle_id"] for r in document["rows"]] == ["cyc_1", "cyc_shakeout", "cyc_gone"]
+    assert [r["cycle_id"] for r in document["rows"]] == [
+        "cyc_1",
+        "cyc_shakeout",
+        "cyc_gone",
+        "cyc_replay",
+    ]
     # #1720: the registry's deploy record reaches the capture, the agents' commit beside the API's.
     lineage = document["rows"][0]["lineage"]
     assert (lineage["source"], lineage["deploy_id"]) == ("deploy_record", "dep_a0prime0000")
