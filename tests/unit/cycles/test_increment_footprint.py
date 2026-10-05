@@ -443,8 +443,9 @@ async def test_the_qa_proposer_is_shown_each_criterions_own_test_file():
     prompt = "\n".join(str(m.content) for m in messages)
     assert "Each new criterion is proven in its own test file" in prompt
     assert "`backend/tests/criteria/test_C1.py`" in prompt
-    # #1884: three live launches of the capacity change planned tests for rules it never stated.
-    assert "What this increment's tests assert" in prompt
+    # #1884: the rule left this appendix for its own surface, which renders whether or not the
+    # change has criteria (``tests/unit/campaigns/test_increment_test_scope.py``).
+    assert "What this increment's tests assert" not in prompt
     assert "- F1: `backend/tests/criteria/test_F1.py`" in prompt
 
 

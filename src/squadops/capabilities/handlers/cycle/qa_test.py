@@ -24,6 +24,7 @@ from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
 )
+from squadops.capabilities.handlers.increment_test_scope import increment_test_scope_section
 from squadops.capabilities.handlers.prior_cycle import prior_cycle_section
 from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
 from squadops.cycles.check_registry import (
@@ -1704,6 +1705,14 @@ class QATestHandler(_CycleTaskHandler):
         # The output this generation produces (#1285, #1444): whole suite files, or fills
         # under a verification scaffold. Every step where the two differ is the shape's.
         shape = self._SHAPES[self._output_shape(inputs)](self, inputs)
+
+        # #1884 (the owner's rule): what an increment's tests may assert, on both prompt paths,
+        # before the fill appendix so the output form stays the last instruction.
+        scope_section = await increment_test_scope_section(
+            getattr(context.ports, "request_renderer", None), inputs
+        )
+        if scope_section:
+            user_prompt = f"{user_prompt}\n{scope_section}"
 
         # SIP-0104 P3: fill mode rides both prompt paths; a whole-file task adds nothing.
         fill_section = await shape.prompt_section(context)

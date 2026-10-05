@@ -375,6 +375,52 @@ def increment_frozen_files(
     )
 
 
+def increment_test_scope(
+    resolved_config: Any, change_request: str | None
+) -> dict[str, list[dict[str, str]]] | None:
+    """What a test in this increment may assert (#1884, the owner's rule): the approved change's
+    criteria (id, statement, observable) and the statements of the criteria this increment's
+    launch pinned as frozen and the change does not retire. Present for every increment, a
+    ``refactor`` with no criteria included; ``None`` for any other cycle.
+
+    The statements of the frozen ones come from the pins (#1938 stores each beside its bundle); a
+    pin from before #1938 carries none, and its statement is ``""``."""
+    if not change_request or increment_baseline(resolved_config) is None:
+        return None
+    from squadops.campaigns.change_request import load_stored_change_request
+
+    request = load_stored_change_request(change_request)
+    block = resolved_config.get("campaign_proposal") or {}
+    retired = set(retired_criteria(change_request))
+    return {
+        "criteria": [
+            {"id": c.id, "statement": c.statement, "observable": c.observable}
+            for c in request.criteria
+        ],
+        "frozen": [
+            {"criterion_id": str(pin["criterion_id"]), "statement": str(pin.get("statement") or "")}
+            for pin in block.get("frozen_criteria") or ()
+            if pin["criterion_id"] not in retired
+        ],
+    }
+
+
+def test_scope_lines(scope: Mapping[str, Any]) -> str:
+    """The scope as ``request.increment_test_scope_appendix``'s index: data only, one line per
+    criterion, the prose the asset's (#448). Never empty, so the rule renders for an increment
+    that has no criterion at all."""
+    lines = [
+        f"- {c['id']} (this change): {c['statement']}. Observable: {c['observable']}"
+        for c in scope.get("criteria") or ()
+    ]
+    lines += [
+        f"- {f['criterion_id']} (frozen by an earlier increment): "
+        f"{f['statement'] or 'statement not recorded'}"
+        for f in scope.get("frozen") or ()
+    ]
+    return "\n".join(lines) or "- none"
+
+
 async def starting_tree_refs(
     vault: Any, cycle: Any, frozen: frozenset[str] = frozenset()
 ) -> list[str]:

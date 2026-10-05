@@ -25,6 +25,7 @@ from squadops.capabilities.context_assembly import (
 from squadops.capabilities.disputed_checks import failing_row_identities
 from squadops.capabilities.handlers.cycle_tasks import _classify_file, _CycleTaskHandler
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
+from squadops.capabilities.handlers.increment_test_scope import increment_test_scope_section
 from squadops.cycles.failure_evidence import failing_case_lines, failing_cases_from_evidence
 from squadops.cycles.verification_integrity import ResultStatus
 from squadops.tasks.task_types import TaskType
@@ -306,6 +307,8 @@ class _RepairPromptMixin:
             # surface), rendered in handle() for qa repairs; dev repairs receive the
             # same block inside fill_only_section. "" when no surface was threaded.
             "frozen_surface_section": str(inputs.get("frozen_surface_section") or ""),
+            # #1884: rendered in handle() for a qa repair of an increment's suite; "" otherwise.
+            "test_scope_section": str(inputs.get("test_scope_section") or ""),
             # #1015 part C: the repair could not see the loop. No attempt counter, no
             # statement that rounds are finite — each round rendered only the fresh
             # failure, so a dev with no reason to think anything was running out
@@ -383,6 +386,10 @@ class _RepairPromptMixin:
         frozen = await self._render_qa_frozen_surface_section(context, inputs)
         if frozen:
             inputs = {**inputs, "frozen_surface_section": frozen}
+        inputs = {
+            **inputs,
+            "test_scope_section": await self._render_test_scope_section(context, inputs),
+        }
         loop_state = await self._render_loop_state_section(context, inputs)
         if loop_state:
             inputs = {**inputs, "loop_state_section": loop_state}
@@ -1036,6 +1043,18 @@ class _RepairPromptMixin:
             {"frozen_lines": "\n".join(lines)},
         )
         return rendered.content
+
+    async def _render_test_scope_section(
+        self, context: ExecutionContext, inputs: dict[str, Any]
+    ) -> str:
+        """#1884: the increment test-scope rule for a qa repair re-authoring an increment's suite,
+        or "". The scope rides ``REPAIR_PRESENCE_KEYS`` from the failed ``qa.test``; a dev repair
+        of the same failure fixes the application, so the QA author's rule is not shown to it."""
+        if self._role != "qa":
+            return ""
+        return await increment_test_scope_section(
+            getattr(context.ports, "request_renderer", None), inputs
+        )
 
     async def _render_qa_frozen_surface_section(
         self, context: ExecutionContext, inputs: dict[str, Any]

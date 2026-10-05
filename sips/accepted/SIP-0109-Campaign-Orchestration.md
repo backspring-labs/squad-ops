@@ -95,7 +95,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | package renderings: the app's evolution with screenshots | **shipped** | the v2.0.0 release package: campaign 2 at each of its four accepted trees (#1710, with #2000's capture fix) |
 | package renderings: the squad's first pass | **dropped** (the owner chose to drop it at the v2.0.0 cut, 2026-10-04; the digest and package carry the close) | #1710, closed |
 | the outer-loop runbook's second half | **shipped** | v2.0.0 (#1997, closed #1711) |
-| criterion files freeze rules the approved request never stated (the set's P9) | **placed** | 2.1.0, #1884 |
+| criterion files freeze rules the approved request never stated (the set's P9) | **placed**: the rule reaches every author of an increment's tests (§24ax, #2012); the proposal outlet is the rest | 2.1.0, #1884 |
 | a proposal's PRD delta can state more than its manifest delta carries | **shipped** (§24aw: the request says so; no rail) | 2.1.0, #2014 |
 | rows 10–11 reachable live (environment attribution) | **placed** | 2.1.0, #1824 |
 | proposal tasks re-run on re-attach (random ids) | **placed** | 2.1.0, #1934 |
@@ -2538,4 +2538,41 @@ the detail view, and its footprint held no view source. The supervisor returned 
 
 **Who ruled it.** The owner's approval of the 2.1 plan (§7 item 3, 2026-10-04), which decides
 template-only.
+### 24ax. Every author of an increment's tests is held to the owner's rule (2026-10-05, §8.1, §8.2, #1884, part 1 of 2)
+
+**The rule (the owner's, recorded on PR #2010 and in the 2.1 plan's §5 ruling 13):** "a QA author
+may add tests only for behavior already required by frozen criteria or another explicitly accepted
+artifact. Unsupported desirable behavior must be returned as a proposal, not encoded in a test that
+gates or repairs the current run. Test-file placement does not alter the rule."
+
+**What changed (part 1: the rule reaches every author).**
+- **One asset, `request.increment_test_scope_appendix`,** states the rule, with campaign 1 T1's tie
+  order as the example, and lists the criteria the increment is held to. #1886's narrower section
+  left `request.plan_increment_criteria_appendix` (v3), so the rule has one author.
+- **One key, `increment_test_scope`:** the approved criteria (id, statement, observable) and the
+  frozen criteria's statements, composed by `increment_test_scope` from the change request and the
+  launch's pins. It is present for every increment, a `refactor` with no criteria included.
+- **Its readers:**
+  - the plan authors, through a new `INCREMENT_SURFACES` entry (the dev and qa proposers, and the
+    merger's sole-author fallback);
+  - `qa.test`, by a new context-contract property, `increment_test_scope`;
+  - `qa.test_repair`, by `REPAIR_PRESENCE_KEYS`, because the correction loop builds a repair's
+    envelope and forwards nothing else. It renders through `request.cycle_repair_task` v12. A dev
+    repair of the same failure is not shown it: the rule is the QA author's.
+
+**Part 2** is the proposal outlet: `proposed_behaviours.yaml`, stored and never run, shown to the next
+proposal (the 2.1 plan, §7 item 4).
+
+**Evidence.**
+- **The set read P9 falsified:** campaign 1 T1's tie order and campaign 2 T4's non-mutation were
+  frozen with their criteria.
+- **#1886's rule never reached the author who wrote them.** It rendered only to plan authors, and
+  only when the change had criteria. An implementation run's `qa.test` was handed nothing of the
+  change request (`_increment_inputs` returned `{}`).
+- **Mutation:** each of the four seams (the repair forwarding, the contract property, the planning
+  surface, the repair template variable) fails its test when removed.
+
+**Who ruled it.** The owner, on PR #2010 (2026-10-05): the rule, its application to both the
+planning and `qa.test` paths, and its acceptance criteria. The supervisor built it to the plan's §7
+item 4.
 

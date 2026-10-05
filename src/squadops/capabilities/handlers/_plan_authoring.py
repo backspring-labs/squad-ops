@@ -83,6 +83,13 @@ INCREMENT_SURFACES = (
         "frozen_files_index",
         "increment_frozen_files_index",
     ),
+    # #1884: what any test in the increment may assert (the owner's rule), on every increment
+    # framing, with or without criteria.
+    (
+        "request.increment_test_scope_appendix",
+        "scope_lines",
+        "increment_test_scope_index",
+    ),
 )
 
 
