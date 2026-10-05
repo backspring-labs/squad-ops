@@ -68,13 +68,20 @@ def create_execution_sandbox(config: SandboxConfig) -> ExecutionSandboxPort:
     return create_sandbox_service(config)
 
 
-def resolve_service_token(
-    config: SandboxConfig, secret_manager: SecretManager | None = None
-) -> str:
-    """Resolve the service token, honoring secret:// references."""
+def resolve_service_token(config: SandboxConfig, secret_manager: SecretManager | None) -> str:
+    """Resolve the service token, honoring secret:// references.
+
+    ``secret_manager`` is required, and ``None`` only where no secrets provider is configured
+    (#1982). This built ``SecretManager()`` itself when given none, which raises ``TypeError``
+    (a manager needs a provider), so a ``secret://`` token failed the sandbox at startup.
+    A reference with no manager to resolve it is refused with the reason.
+    """
     token = config.service_token
     if token.startswith("secret://"):
         if secret_manager is None:
-            secret_manager = SecretManager()
+            raise ValueError(
+                "the sandbox service token is a secret:// reference, and no secrets provider "
+                "is configured to resolve it (set SQUADOPS__SECRETS__PROVIDER)"
+            )
         token = secret_manager.resolve(token)
     return token
