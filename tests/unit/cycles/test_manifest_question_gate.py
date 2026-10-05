@@ -169,7 +169,7 @@ async def test_the_pass_through_records_a_decision_a_reader_can_tell_apart():
     executor, _, _ = _executor()
 
     decision = await executor._approve_gate_without_questions(
-        "run_1", "cyc_1", "progress_plan_review"
+        "proj_1", "run_1", "cyc_1", "progress_plan_review"
     )
 
     assert decision.decision == GateDecisionValue.APPROVED.value
@@ -240,7 +240,9 @@ async def test_the_pass_through_promotes_the_runs_artifacts(monkeypatch):
         promote_artifact=AsyncMock(side_effect=lambda aid: promoted.append(aid)),
     )
 
-    await executor._approve_gate_without_questions("run_1", "cyc_1", "progress_plan_review")
+    await executor._approve_gate_without_questions(
+        "proj_1", "run_1", "cyc_1", "progress_plan_review"
+    )
 
     assert promoted == ["art_plan", "art_manifest"], (
         "the approval must promote the run's working artifacts — without this the next "
@@ -263,7 +265,7 @@ async def test_a_vault_failure_does_not_lose_the_approval():
     )
 
     decision = await executor._approve_gate_without_questions(
-        "run_1", "cyc_1", "progress_plan_review"
+        "proj_1", "run_1", "cyc_1", "progress_plan_review"
     )
 
     assert decision.decision == GateDecisionValue.APPROVED.value

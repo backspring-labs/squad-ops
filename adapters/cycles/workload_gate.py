@@ -35,7 +35,9 @@ from squadops.campaigns.gate import (
 from squadops.campaigns.models import ControlOperationRefused, SubmittedProposal
 from squadops.capabilities.handlers.planning.proposal import CHANGE_REQUEST_ARTIFACT_TYPE
 from squadops.cycles.cycle_end import CycleStopReason
+from squadops.cycles.gate_decisions import record_gate_decision
 from squadops.cycles.models import (
+    APPROVING_DECISIONS,
     ArtifactRef,
     Cycle,
     GateDecision,
@@ -168,17 +170,14 @@ class WorkloadGate:
                     decided_at=datetime.now(UTC),
                     notes="; ".join(plan_errors),
                 )
-                await self._cycle_registry.record_gate_decision(current_run_id, rejection)
-                self._cycle_event_bus.emit(
-                    EventType.GATE_DECIDED,
-                    entity_type="run",
-                    entity_id=current_run_id,
-                    context={"cycle_id": cycle_id, "run_id": current_run_id},
-                    payload={
-                        "gate_name": gate_name,
-                        "decision": GateDecisionValue.REJECTED.value,
-                        "decided_by": "system:plan_validation",
-                    },
+                await record_gate_decision(
+                    self._cycle_registry,
+                    self._artifact_vault,
+                    self._cycle_event_bus,
+                    project_id=cycle.project_id,
+                    cycle_id=cycle_id,
+                    run_id=current_run_id,
+                    decision=rejection,
                 )
                 logger.error(
                     "Plan auto-rejected at gate %r on run %s: %s",
@@ -265,7 +264,7 @@ class WorkloadGate:
                 # exhaustive dispatch below that a human's answer does, so a
                 # pass-through cannot reach a path an approval would not.
                 decision = await self._approve_gate_without_questions(
-                    current_run_id, cycle_id, gate_name
+                    cycle.project_id, current_run_id, cycle_id, gate_name
                 )
             else:
                 self._cycle_event_bus.emit(
@@ -413,10 +412,7 @@ class WorkloadGate:
             )
             return step(GateOutcome.STOP, CycleStopReason.REVISION_UNAVAILABLE)
 
-        if decision.decision not in (
-            GateDecisionValue.APPROVED,
-            GateDecisionValue.APPROVED_WITH_REFINEMENTS,
-        ):
+        if decision.decision not in APPROVING_DECISIONS:
             # #466: exhaustive dispatch — an unknown/future decision
             # value must never silently act as an approval.
             logger.warning(
