@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
+import subprocess
 import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
@@ -20,7 +21,13 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from squadops.core import bounded_run
-from squadops.core.bounded_run import TERM_GRACE_S, run_bounded, signal_group
+from squadops.core.bounded_run import (
+    TERM_GRACE_S,
+    run_bounded,
+    run_bounded_sync,
+    signal_group,
+    stop_group,
+)
 
 #: The grandchild sleeps far longer than any stop may take, so a stop that waits for it is seen.
 _SLEEP_S = 60
@@ -35,6 +42,16 @@ def _alive(pid: int) -> bool:
     except (FileNotFoundError, ProcessLookupError, IndexError):
         return False
     return state != "Z"
+
+
+def _ended(pid: int, within: float = 2.0) -> bool:
+    """A signal is delivered asynchronously, so the process ends shortly after the kill returns."""
+    deadline = time.monotonic() + within
+    while _alive(pid):
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(0.02)
+    return True
 
 
 def _forking(pidfile: Path) -> list[str]:
@@ -57,7 +74,7 @@ async def test_a_timeout_ends_the_grandchildren_too(tmp_path):
 
     assert run.timed_out
     assert time.monotonic() - started < _STOP_BOUND_S
-    assert not _alive(int(pidfile.read_text()))
+    assert _ended(int(pidfile.read_text()))
 
 
 async def test_a_cancelled_caller_ends_the_command_and_its_grandchildren(tmp_path):
@@ -69,7 +86,7 @@ async def test_a_cancelled_caller_ends_the_command_and_its_grandchildren(tmp_pat
     with pytest.raises(asyncio.CancelledError):
         await asyncio.wait_for(task, timeout=_STOP_BOUND_S)
 
-    assert not _alive(grandchild)
+    assert _ended(grandchild)
 
 
 async def test_a_command_that_finishes_returns_its_code_and_output(tmp_path):
@@ -87,6 +104,50 @@ async def test_a_missing_binary_raises_for_the_caller_to_name(tmp_path):
     """Each caller says what a missing tool means for its own check, so spawning still raises."""
     with pytest.raises(FileNotFoundError):
         await run_bounded(["no-such-binary-1983"], cwd=tmp_path, timeout=1)
+
+
+# The synchronous pair: the probe runner and route rendering build, boot and browse from a thread.
+
+
+def _grandchild_sync(pidfile: Path) -> int:
+    for _ in range(100):
+        if pidfile.exists() and pidfile.read_text().strip():
+            return int(pidfile.read_text())
+        time.sleep(0.02)
+    raise AssertionError("the command never started its grandchild")
+
+
+def test_a_sync_timeout_ends_the_grandchildren_too(tmp_path):
+    pidfile = tmp_path / "pid"
+    started = time.monotonic()
+
+    run = run_bounded_sync(_forking(pidfile), cwd=tmp_path, timeout=0.5)
+
+    assert run.timed_out
+    assert time.monotonic() - started < _STOP_BOUND_S
+    assert _ended(int(pidfile.read_text()))
+
+
+def test_a_grandchild_that_ignores_sigterm_is_stopped_after_its_leader_exits(tmp_path):
+    """The leader exits on SIGTERM; a grandchild that ignores it keeps the group alive. A stop
+    that sends SIGKILL only when the leader outlives the grace period (route rendering's, before
+    #1983) returns with that grandchild still running."""
+    pidfile = tmp_path / "pid"
+    proc = subprocess.Popen(
+        ["sh", "-c", f"(trap '' TERM; exec sleep {_SLEEP_S}) & echo $! > {pidfile}; wait"],
+        start_new_session=True,
+    )
+    grandchild = _grandchild_sync(pidfile)
+
+    stop_group(proc)
+
+    assert proc.returncode is not None
+    assert _ended(grandchild)
+
+
+def test_a_sync_missing_binary_raises_for_the_caller_to_name(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        run_bounded_sync(["no-such-binary-1983"], cwd=tmp_path, timeout=1)
 
 
 # ``killpg(pgid)`` is ``kill(-pgid)``: 1 is every process the caller may signal, 0 its own group.

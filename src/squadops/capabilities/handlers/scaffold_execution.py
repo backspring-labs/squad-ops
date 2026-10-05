@@ -21,7 +21,6 @@ let a broken toolchain condemn a correct generator.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
@@ -29,6 +28,8 @@ import re
 import shutil
 import tempfile
 from dataclasses import dataclass
+
+from squadops.core.bounded_run import run_bounded
 
 logger = logging.getLogger(__name__)
 
@@ -173,24 +174,16 @@ async def run_skeleton_execution_gate(
         )
 
         try:
-            install = await asyncio.create_subprocess_exec(
-                "npm",
-                "install",
-                "--no-audit",
-                "--no-fund",
+            install = await run_bounded(
+                ["npm", "install", "--no-audit", "--no-fund"],
                 cwd=workspace,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+                timeout=timeout_seconds,
             )
         except FileNotFoundError:
             return SkeletonExecutionVerdict(
                 executed=False, error="npm not found — Node.js is not installed"
             )
-        try:
-            await asyncio.wait_for(install.communicate(), timeout=timeout_seconds)
-        except TimeoutError:
-            install.kill()
-            await install.wait()
+        if install.timed_out:
             return SkeletonExecutionVerdict(
                 executed=False, error=f"npm install timed out after {timeout_seconds}s"
             )
@@ -201,25 +194,16 @@ async def run_skeleton_execution_gate(
 
         report_path = os.path.join(workspace, _REPORT_FILENAME)
         try:
-            proc = await asyncio.create_subprocess_exec(
-                "npx",
-                "vitest",
-                "run",
-                "--reporter=json",
-                f"--outputFile={report_path}",
+            vitest = await run_bounded(
+                ["npx", "vitest", "run", "--reporter=json", f"--outputFile={report_path}"],
                 cwd=workspace,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+                timeout=timeout_seconds,
             )
         except FileNotFoundError:
             return SkeletonExecutionVerdict(
                 executed=False, error="npx not found — Node.js is not installed"
             )
-        try:
-            _, raw_stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_seconds)
-        except TimeoutError:
-            proc.kill()
-            await proc.wait()
+        if vitest.timed_out:
             return SkeletonExecutionVerdict(
                 executed=False, error=f"vitest timed out after {timeout_seconds}s"
             )
@@ -234,7 +218,7 @@ async def run_skeleton_execution_gate(
                 executed=False,
                 error=(
                     "vitest produced no JSON report — runner-level failure: "
-                    + _first_line(raw_stderr.decode(errors="replace"))
+                    + _first_line(vitest.stderr.decode(errors="replace"))
                 ),
             )
         return classify_vitest_report(report, scaffold_paths)

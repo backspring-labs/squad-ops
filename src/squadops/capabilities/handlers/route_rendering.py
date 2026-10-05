@@ -15,7 +15,6 @@ from __future__ import annotations
 import contextlib
 import logging
 import re
-import signal
 import subprocess
 import tempfile
 import time
@@ -26,12 +25,14 @@ from typing import Any
 
 import httpx
 
-from squadops.core.bounded_run import signal_group
+from squadops.core.bounded_run import run_bounded_sync, stop_group
 
 logger = logging.getLogger(__name__)
 
 #: The headless browser the qa role's image declares (``agents/instances/qa/system-packages.txt``).
 BROWSER = "chromium"
+_NPM_INSTALL_TIMEOUT_S = 600
+_DUMP_DOM_TIMEOUT_S = 60
 _TESTID = re.compile(r'data-testid="([^"]+)"')
 
 
@@ -164,15 +165,13 @@ def _reachable_path(
 
 
 def _npm_install(frontend: Path) -> str | None:
+    argv = ["npm", "install", "--no-audit", "--no-fund", "--loglevel=error"]
     try:
-        completed = subprocess.run(  # noqa: S603 — fixed argv, workspace-scoped
-            ["npm", "install", "--no-audit", "--no-fund", "--loglevel=error"],
-            cwd=str(frontend),
-            capture_output=True,
-            timeout=600,
-        )
-    except (OSError, subprocess.TimeoutExpired) as e:
+        completed = run_bounded_sync(argv, cwd=frontend, timeout=_NPM_INSTALL_TIMEOUT_S)
+    except OSError as e:
         return f"{type(e).__name__}: {e}"
+    if completed.timed_out:
+        return f"{' '.join(argv)} timed out after {_NPM_INSTALL_TIMEOUT_S}s"
     if completed.returncode != 0:
         return " ".join(completed.stderr.decode("utf-8", "replace").split())[-500:]
     return None
@@ -197,15 +196,8 @@ def _start(cwd: Path, argv: list[str]) -> subprocess.Popen | None:
 
 def _stop(proc: subprocess.Popen | None) -> None:
     """The server's whole process group: the launcher and everything it started."""
-    if proc is None:
-        return
-    signal_group(proc.pid, signal.SIGTERM)
-    try:
-        proc.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        signal_group(proc.pid, signal.SIGKILL)
-        with contextlib.suppress(subprocess.TimeoutExpired):
-            proc.wait(timeout=5)
+    if proc is not None:
+        stop_group(proc)
 
 
 def _ready(url: str, timeout_s: float) -> bool:
@@ -227,25 +219,29 @@ def _seed(url: str, body: Mapping[str, Any]) -> Any:
 
 
 def _dump_dom(url: str) -> str | None:
+    argv = [
+        BROWSER,
+        "--headless",
+        "--disable-gpu",
+        "--no-sandbox",
+        "--virtual-time-budget=8000",
+        "--dump-dom",
+        url,
+    ]
     try:
-        completed = subprocess.run(  # noqa: S603 — fixed argv
-            [
-                BROWSER,
-                "--headless",
-                "--disable-gpu",
-                "--no-sandbox",
-                "--virtual-time-budget=8000",
-                "--dump-dom",
-                url,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-    except (OSError, subprocess.TimeoutExpired) as e:
+        completed = run_bounded_sync(argv, cwd=None, timeout=_DUMP_DOM_TIMEOUT_S)
+    except OSError as e:
         logger.warning("route rendering: %s could not read %s: %s", BROWSER, url, e)
         return None
-    return completed.stdout or None
+    if completed.timed_out:
+        logger.warning(
+            "route rendering: %s could not read %s: no exit within %ss",
+            BROWSER,
+            url,
+            _DUMP_DOM_TIMEOUT_S,
+        )
+        return None
+    return completed.stdout.decode("utf-8", "replace") or None
 
 
 def _free_port() -> int:

@@ -40,6 +40,7 @@ from typing import Any
 
 import httpx
 
+from squadops.core.bounded_run import run_bounded_sync, stop_group
 from squadops.cycles.verification_contract import (
     Probe,
     capture_probe_values,
@@ -325,21 +326,18 @@ def _prepare(workspace: Path, profile: ExecutionProfile) -> str | None:
     if not profile.prepare_argv:
         return None
     try:
-        completed = subprocess.run(  # noqa: S603 — fixed profile argv, workspace-scoped
-            list(profile.prepare_argv),
-            cwd=str(workspace),
-            capture_output=True,
-            timeout=profile.prepare_timeout_s,
-        )
-    except subprocess.TimeoutExpired:
-        return (
-            f"{PREPARE_FAILURE_PREFIX} (no exit within {profile.prepare_timeout_s}s): "
-            f"{' '.join(profile.prepare_argv)}"
+        completed = run_bounded_sync(
+            profile.prepare_argv, cwd=workspace, timeout=profile.prepare_timeout_s
         )
     except OSError as exc:
         # The build tool is not on PATH, or the workspace is gone. Same class as a boot
         # launch failure, reported at the stage that actually hit it.
         return f"{PREPARE_FAILURE_PREFIX} (could not launch): {exc}"
+    if completed.timed_out:
+        return (
+            f"{PREPARE_FAILURE_PREFIX} (no exit within {profile.prepare_timeout_s}s): "
+            f"{' '.join(profile.prepare_argv)}"
+        )
     if completed.returncode == 0:
         return None
     tail = _output_tail(completed.stderr) or _output_tail(completed.stdout)
@@ -370,6 +368,9 @@ def _boot(workspace: Path, profile: ExecutionProfile, port: int) -> tuple[subpro
             cwd=str(workspace),
             stdout=subprocess.DEVNULL,
             stderr=stderr_spool,
+            # Its own group, so _terminate reaches the server ``npm``/``npx`` start beneath it
+            # (#1983; route rendering's servers found the same, roll 4).
+            start_new_session=True,
         )
     except OSError:
         stderr_spool.close()
@@ -560,13 +561,7 @@ def _run_one(
 
 def _terminate(proc: subprocess.Popen) -> None:
     with contextlib.suppress(Exception):
-        proc.terminate()
-        try:
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            with contextlib.suppress(Exception):
-                proc.wait(timeout=5)
+        stop_group(proc)
 
 
 def _json_or_none(resp: httpx.Response) -> Any:

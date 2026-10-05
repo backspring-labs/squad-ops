@@ -13,6 +13,10 @@ the same reason (a stopped ``npx`` left its dev server serving), and stops them 
 
 Spawning still raises as ``asyncio.create_subprocess_exec`` does (``FileNotFoundError`` for a
 missing binary), because each caller says what a missing tool means for its own check.
+
+``run_bounded_sync`` and ``stop_group`` are the same for synchronous callers: the probe runner and
+route rendering build, boot and browse from a worker thread, where ``subprocess.run(timeout=)``
+and ``Popen.kill()`` likewise reached the direct child only.
 """
 
 from __future__ import annotations
@@ -21,6 +25,7 @@ import asyncio
 import contextlib
 import os
 import signal
+import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -83,6 +88,48 @@ async def end_group(proc: asyncio.subprocess.Process) -> None:
     signal_group(proc.pid, signal.SIGKILL)
     with contextlib.suppress(ProcessLookupError):
         await proc.wait()
+
+
+def run_bounded_sync(
+    argv: Sequence[str],
+    *,
+    cwd: str | Path | None,
+    timeout: float,
+    env: Mapping[str, str] | None = None,
+) -> BoundedRun:
+    """``run_bounded`` for a synchronous caller. Spawning raises as ``subprocess.Popen`` does."""
+    proc = subprocess.Popen(  # noqa: S603 — every caller passes a fixed argv
+        list(argv),
+        cwd=None if cwd is None else str(cwd),
+        env=None if env is None else dict(env),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    )
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        stop_group(proc)
+        # Close the pipes: the group is gone, so nothing holds them open any more.
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            proc.communicate(timeout=TERM_GRACE_S)
+        return BoundedRun(None, b"", b"")
+    except BaseException:
+        stop_group(proc)
+        raise
+    return BoundedRun(proc.returncode, stdout, stderr)
+
+
+def stop_group(proc: subprocess.Popen) -> None:
+    """End the group of a process started with ``start_new_session=True``, as ``end_group``
+    does for an asyncio one: SIGTERM, a grace period, SIGKILL, then reap ``proc``. A process
+    started without its own session leads no group, and this would signal nothing."""
+    signal_group(proc.pid, signal.SIGTERM)
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        proc.wait(timeout=TERM_GRACE_S)
+    signal_group(proc.pid, signal.SIGKILL)
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        proc.wait(timeout=TERM_GRACE_S)
 
 
 def signal_group(pgid: int, sig: signal.Signals) -> None:

@@ -33,6 +33,7 @@ from squadops.capabilities.models import (
     CheckType,
     ValidationReport,
 )
+from squadops.core.bounded_run import run_bounded
 
 logger = logging.getLogger(__name__)
 
@@ -446,24 +447,26 @@ class AcceptanceCheckEngine:
         """Evaluate process_running check via docker inspect."""
         container = self.resolve_template(check.container_name, context)
         try:
-            proc = await asyncio.create_subprocess_exec(
-                "docker",
-                "inspect",
-                "--format",
-                "{{json .State}}",
-                container,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            run = await run_bounded(
+                ["docker", "inspect", "--format", "{{json .State}}", container],
+                cwd=None,
+                timeout=timeout,
             )
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-            if proc.returncode != 0:
+            if run.timed_out:
+                return AcceptanceResult(
+                    check=check,
+                    passed=False,
+                    resolved_path=container,
+                    error=f"Docker inspect timed out after {timeout}s",
+                )
+            if run.returncode != 0:
                 return AcceptanceResult(
                     check=check,
                     passed=False,
                     resolved_path=container,
                     error=f"Container not found: {container}",
                 )
-            state = json.loads(stdout.decode())
+            state = json.loads(run.stdout.decode())
             running = state.get("Running", False)
             health = state.get("Health", {})
             health_status = health.get("Status") if health else None
@@ -491,13 +494,6 @@ class AcceptanceCheckEngine:
                 passed=True,
                 resolved_path=container,
                 actual_value={"running": True, "health": health_status},
-            )
-        except TimeoutError:
-            return AcceptanceResult(
-                check=check,
-                passed=False,
-                resolved_path=container,
-                error=f"Docker inspect timed out after {timeout}s",
             )
         except Exception as e:
             return AcceptanceResult(
@@ -587,21 +583,7 @@ class AcceptanceCheckEngine:
             cwd = str(self.chroot / resolved_cwd)
 
         try:
-            proc = await asyncio.create_subprocess_exec(
-                *check.command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=cwd,
-                env=cmd_env,
-            )
-            stdout_data, stderr_data = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-        except TimeoutError:
-            return AcceptanceResult(
-                check=check,
-                passed=False,
-                resolved_path=" ".join(check.command),
-                error=f"Command timed out after {timeout}s",
-            )
+            run = await run_bounded(check.command, cwd=cwd, env=cmd_env, timeout=timeout)
         except FileNotFoundError:
             return AcceptanceResult(
                 check=check,
@@ -616,6 +598,14 @@ class AcceptanceCheckEngine:
                 resolved_path=" ".join(check.command),
                 error=f"Command execution error: {e}",
             )
+        if run.timed_out:
+            return AcceptanceResult(
+                check=check,
+                passed=False,
+                resolved_path=" ".join(check.command),
+                error=f"Command timed out after {timeout}s",
+            )
+        stdout_data, stderr_data = run.stdout, run.stderr
 
         # Truncation metadata (D20)
         stdout_bytes = len(stdout_data)
@@ -636,10 +626,10 @@ class AcceptanceCheckEngine:
                 "stderr_truncated": stderr_truncated,
             }
 
-        passed = proc.returncode == check.expected_exit_code
+        passed = run.returncode == check.expected_exit_code
         error = None
         if not passed:
-            error = f"Expected exit code {check.expected_exit_code}, got {proc.returncode}"
+            error = f"Expected exit code {check.expected_exit_code}, got {run.returncode}"
             if stderr_text.strip():
                 error += f"\nstderr: {stderr_text.strip()[:500]}"
 
@@ -647,7 +637,7 @@ class AcceptanceCheckEngine:
             check=check,
             passed=passed,
             resolved_path=" ".join(check.command),
-            actual_value=proc.returncode,
+            actual_value=run.returncode,
             error=error,
             metadata=meta,
         )
