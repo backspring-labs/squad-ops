@@ -383,14 +383,28 @@ class CampaignProgress:
         self._assess = assess
         self._launch = launch
         self._clock = clock
+        # #1972: the cycles being heard now. The completion hook and the sweep's re-hearing share
+        # this instance, so a cycle the hook is still deciding is not decided a second time
+        # alongside it (two promotions, then a conflicting decision row refused and recorded).
+        self._hearing: set[str] = set()
 
     async def cycle_ended(
         self, cycle: Cycle, last_run: Run, stopped_because: CycleStopReason
     ) -> ContinuationDecision | None:
         """Decide the campaign's next step for an ended cycle. ``None`` when the cycle did not
-        end, the campaign has completed, or the decision was already recorded."""
-        if stopped_because in _NOT_ENDED:
+        end, the campaign has completed, the decision was already recorded, or the cycle is being
+        heard already (#1972: the hook and the sweep, at once)."""
+        if stopped_because in _NOT_ENDED or cycle.cycle_id in self._hearing:
             return None
+        self._hearing.add(cycle.cycle_id)
+        try:
+            return await self._hear(cycle, last_run, stopped_because)
+        finally:
+            self._hearing.discard(cycle.cycle_id)
+
+    async def _hear(
+        self, cycle: Cycle, last_run: Run, stopped_because: CycleStopReason
+    ) -> ContinuationDecision | None:
         campaign = await self._campaigns.get_campaign(cycle.campaign_id)
         if campaign.state is CampaignState.COMPLETED:
             return None

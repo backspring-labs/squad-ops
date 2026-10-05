@@ -111,7 +111,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | the auto-decision tier and escalation queue | **placed**, outside this SIP's scope (§5) | 2.2.0, #1708 |
 | accepted increments' `prd_delta` text to the proposer | **deferred to 2.4** (ruled 2026-10-03, §24ap): "a 2.4 question" | §24ap |
 | escalating a launch the cycle-create preflight refuses | **placed** | 2.1.0, #1971 (§24as) |
-| re-hearing an ended cycle between restarts | **placed** | 2.1.0, #1972 (§24as) |
+| re-hearing an ended cycle between restarts | **shipped**: the campaign sweep re-hears on its interval, and a cycle is heard by one hearer at a time | 2.1.0, PR #2038, issue #1972 (§24as) |
 | a Next.js render profile (a route-declaring Next.js increment is always `blocked_unverified`) | **placed** | 2.1.0, #1973 (§24as) |
 | an increment that needs packaging changed | **unplaced, deliberately** (§24as): re-placed on evidence | §24y |
 | whether an increment's build skips the builder tail | **dropped as a question** (§24as): answered when a campaign raises it | §24ab |
@@ -1627,7 +1627,9 @@ from logs, and the recorded ending is the record.
 
 **Not built:**
 - **A re-hear between restarts.** A hook that fails while the process stays up leaves its campaign
-  until the next restart.
+  until the next restart. *Built in 2.1.0 (#1972): the campaign sweep re-hears every launched
+  cycle on its 60-second interval, through the same idempotent path, and a cycle the hook is still
+  hearing is not heard alongside it.*
 - **The fault-injected diagnostic** §12a requires for this row.
 - **Any recovery for a cycle that ended before this record existed.** It is left alone. The
   shakeout's campaign was aborted for that reason.
