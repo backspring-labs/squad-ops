@@ -8,6 +8,8 @@ created_at: '2026-07-01T00:00:00Z'
 # SIP-0XXX: Cycle Request-Profile Naming Taxonomy
 
 > **Placement and delivery (2026-10-04: the owner's rulings on the SIP-portfolio audit, `sips/PORTFOLIO.md`).** **Placed: 2.1.0, via #316.** One constraint is ruled: **pinned campaign definitions keep resolving old profile names indefinitely.** The 2.0 set's pinned files name profiles, and the crew re-runs that set. The constraint goes into #316's acceptance, and the inventory here is refreshed in the implementing PR.
+>
+> **Moved to 2.3.0 (2026-10-05, the owner's ruling on the 2.1 day plan, 2.1 plan §5 ruling 14).** This SIP is still proposed, #316 is large, and nothing in 2.1 depends on it. It joins 2.3's structural batch, and the constraint above stands.
 
 
 **Status:** Proposed
