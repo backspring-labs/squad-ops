@@ -6,6 +6,10 @@
 #
 # A row's snippet runs as `python -` inside the container (docker exec -i). Keep it to imports and
 # pure calls: it must never write.
+#
+# A verification set names the rows its rolls record (`tracked_loaded_checks:` in its config,
+# recorded as `#<id>`), and the driver refuses to launch on a row that answers anything but
+# `expect`. So a row's last printed line is what only the new code prints.
 checks:
   - id: "1961"
     what: the rails refuse a behaviour change with nothing to build
@@ -35,3 +39,208 @@ checks:
       from squadops.campaigns.proposed_behaviours import QA_PROPOSED_BEHAVIOURS_ARTIFACT_TYPE
       print(QA_PROPOSED_BEHAVIOURS_ARTIFACT_TYPE)
     expect: qa_proposed_behaviours
+  # ---- 2.1, rebuild 1 (2.1.0 plan §4 steps 1-3): every deploy-moving change since v2.0.1 -------
+  # The 2.0.1 deploy is each row's control: on it, every row below prints something else or fails.
+  - id: "1975"
+    what: the stack blueprint's four falsified fields are gone, and the profiles still answer
+    container: squadops-runtime-api
+    code: |
+      import squadops.capabilities.handlers.build_profiles as bp
+      from squadops.capabilities.development_profiles import get_development_profile
+      dev, build = get_development_profile("fullstack_fastapi_react"), bp.get_profile("fullstack_fastapi_react")
+      print(dev.name, hasattr(dev, "expected_extensions"), hasattr(build, "validation_rules"),
+            hasattr(build, "artifact_output_mode"), hasattr(bp, "ARTIFACT_MODE_MULTI_FILE"))
+    expect: fullstack_fastapi_react False False False False
+  - id: "2036"
+    what: the benchmark registry refuses a replayed cycle (SIP-0101 §4.1)
+    container: squadops-runtime-api
+    code: |
+      from squadops.cycles.benchmark_registry import PreflightRefusal
+      print(PreflightRefusal.REPLAYED.value)
+    expect: replayed
+  - id: "1972"
+    what: the sweep re-hears an ended cycle, one hearing at a time (SIP-0109 §24v)
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.progress import CampaignProgress
+      print(hasattr(CampaignProgress, "_hear"), hasattr(CampaignProgress, "rehear_ended"))
+    expect: True True
+  - id: "1934"
+    what: every workload's task ids are deterministic, so a re-attached proposal task is recognised
+    container: squadops-runtime-api
+    code: |
+      # A source read: the per-workload switch the fix deleted (the plan's minting needs a whole run).
+      import inspect, squadops.cycles.task_plan as t
+      print("use_deterministic_ids" in inspect.getsource(t))
+    expect: "False"
+  - id: "2007"
+    what: a run's flow runs that a dead process left open are ended, the caller's own kept
+    container: squadops-runtime-api
+    code: |
+      import asyncio
+      from squadops.cycles.flow_runs import end_open_flow_runs
+      class Tracker:
+          async def find_active_flow_run_ids(self, names): return ["mine", "orphan"]
+          async def set_flow_run_state(self, flow_run_id, status): pass
+      print(asyncio.run(end_open_flow_runs(Tracker(), ["run-x"], keep="mine")))
+    expect: "['orphan']"
+  - id: "1986"
+    what: one recorder for every gate decision, keyed on the gate, and a refinement approval promotes
+    container: squadops-runtime-api
+    code: |
+      import asyncio
+      from datetime import UTC, datetime
+      from squadops.cycles.gate_decisions import record_gate_decision
+      from squadops.cycles.models import APPROVING_DECISIONS, GateDecision
+      class Registry:
+          async def record_gate_decision(self, run_id, decision): return run_id
+      class Bus:
+          def emit(self, event_type, **kw): self.seen = (kw["entity_type"], kw["payload"]["decision"])
+      bus = Bus()
+      d = GateDecision("g", "approved_with_refinements", "supervisor", datetime.now(UTC), "n")
+      asyncio.run(record_gate_decision(Registry(), None, bus, project_id="p", cycle_id="c", run_id="r", decision=d))
+      print(bus.seen, "approved_with_refinements" in APPROVING_DECISIONS)
+    expect: "('gate', 'approved_with_refinements') True"
+  - id: "1983"
+    what: a bounded run ends its command's group, and the guard refuses a group that is no child's
+    container: squadops-runtime-api
+    code: |
+      from squadops.core.bounded_run import run_bounded_sync, signal_group
+      ran = run_bounded_sync(["sh", "-c", "exit 3"], cwd=None, timeout=10)
+      slept = run_bounded_sync(["sleep", "5"], cwd=None, timeout=0.2)
+      try:
+          signal_group(1, 0)  # signal 0 sends nothing, so a broken guard still harms nothing
+          refused = False
+      except ValueError:
+          refused = True
+      print(ran.returncode, ran.timed_out, slept.timed_out, refused)
+    expect: 3 False True True
+  - id: "1983-eve"
+    what: the qa agent's checks, builds, boots and renders run through the bounded helper
+    container: squadops-eve
+    code: &agents_1983 |
+      from squadops.core.bounded_run import run_bounded_sync
+      from squadops.capabilities.handlers import probe_runner, route_rendering, scaffold_execution, test_runner
+      from squadops.cycles import acceptance_checks
+      print("run_bounded" in vars(test_runner), "run_bounded" in vars(acceptance_checks),
+            "run_bounded" in vars(scaffold_execution), "run_bounded_sync" in vars(probe_runner),
+            "stop_group" in vars(route_rendering), run_bounded_sync(["sh", "-c", "exit 4"], cwd=None, timeout=10).returncode)
+    expect: True True True True True 4
+  - id: "1983-bob"
+    what: the builder's checks, builds and boots run through the bounded helper
+    container: squadops-bob
+    code: *agents_1983
+    expect: True True True True True 4
+  - id: "1983-neo"
+    what: the developer's checks run through the bounded helper
+    container: squadops-neo
+    code: *agents_1983
+    expect: True True True True True 4
+  - id: "1984"
+    what: the four layers no composition root built are gone; the executor that replaced them is not
+    container: squadops-runtime-api
+    code: |
+      import importlib.util as u
+      def gone(name):  # the module itself: a leftover __pycache__ makes its package a namespace
+          try:
+              return u.find_spec(name) is None
+          except ModuleNotFoundError:
+              return True
+      print(gone("adapters.cycles.in_process_flow_executor"), gone("adapters.tasks.prefect"),
+            not gone("adapters.cycles.dispatched_flow_executor"))
+    expect: True True True
+  - id: "1987"
+    what: the flow executor's safety dependencies and the recall have no default; a test seam keeps its own
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+      ps = inspect.signature(DispatchedFlowExecutor.__init__).parameters
+      print(ps["box_verdict"].default is inspect.Parameter.empty,
+            ps["failure_recall"].default is inspect.Parameter.empty, ps["task_dispatcher"].default is None)
+    expect: True True True
+  - id: "1964"
+    what: the inert failure-pattern recall answers empty, where the memory port's no-op raises
+    container: squadops-runtime-api
+    code: |
+      import asyncio
+      from adapters.noop.ports import NoOpFailurePatternRecall
+      from squadops.memory.recall import RecallQuery
+      print(asyncio.run(NoOpFailurePatternRecall().recall(RecallQuery("group_run", "development.design_plan"))))
+    expect: ()
+  - id: "1940"
+    what: the campaign supervisor manages a campaign; only the owner controls one
+    container: squadops-runtime-api
+    code: |
+      from squadops.auth.models import scopes_for_roles
+      sup, own = scopes_for_roles(("campaign-supervisor",)), scopes_for_roles(("admin",))
+      print("campaigns:manage" in sup, "campaigns:control" in sup, "campaigns:control" in own)
+    expect: True False True
+  - id: "1971"
+    what: a launch the cycle-create path refuses is its own control operation, beside a blocked one
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.models import ControlOperation
+      print(ControlOperation("launch_refused").value, ControlOperation("launch_blocked").value)
+    expect: launch_refused launch_blocked
+  - id: "1954"
+    what: a campaign's creation records its definition file by path and sha256; a bad hash is refused
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.models import CampaignDefinition
+      try:
+          CampaignDefinition("set-1.yaml", "x")
+          refused = False
+      except ValueError:
+          refused = True
+      print(CampaignDefinition("set-1.yaml", "a" * 64).sha256[:4], refused)
+    expect: aaaa True
+  - id: "2042"
+    what: a restart's re-attach starts a successor run left queued
+    container: squadops-runtime-api
+    code: |
+      # A source read: re-attaching needs a live registry and executor.
+      import inspect
+      from squadops.api.campaign_launch import CampaignLaunchService
+      print("queued_successor" in inspect.getsource(CampaignLaunchService.reattach))
+    expect: "True"
+  - id: "2029"
+    what: a refinement approval's notes are promoted when they are stored
+    container: squadops-runtime-api
+    code: |
+      # A source read: the gate's dispatch needs a whole cycle. Two calls: the recorder's, and the notes'.
+      import inspect, adapters.cycles.workload_gate as w
+      print(inspect.getsource(w).count("await promote_run_artifacts("))
+    expect: "2"
+  - id: "1960"
+    what: the digest scores each cycle from its assessment alone
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.scorecard import cycle_scorecard
+      scored = cycle_scorecard({"coordination": [{"name": "correction_rounds", "value": 2}]})
+      print(cycle_scorecard(None)["llm_calls"], scored["correction_rounds"])
+    expect: 0 2
+  - id: "1995"
+    what: the proposer is told a PRD delta states only what the request delivers
+    container: squadops-nat
+    code: |
+      import pathlib, squadops.prompts as p
+      text = (pathlib.Path(p.__file__).parent / "request_templates" / "request.strategy_propose_increment.md").read_text()
+      print("states only what the rest of your request delivers" in text)
+    expect: "True"
+  - id: "2045"
+    what: a sandbox run is named, so one that outlives its limit is killed by name
+    container: squadops-bob
+    code: |
+      import inspect
+      from adapters.tools.docker import DockerAdapter
+      print("squadops-run-" in inspect.getsource(DockerAdapter.run), hasattr(DockerAdapter, "_kill_quietly"))
+    expect: True True
+  - id: "1982"
+    what: the sandbox resolves a secret:// service token through the provider the secrets section selects
+    container: squadops-sandbox-service
+    code: |
+      import inspect
+      from adapters.sandbox.factory import resolve_service_token
+      print(inspect.signature(resolve_service_token).parameters["secret_manager"].default is inspect.Parameter.empty)
+    expect: "True"
