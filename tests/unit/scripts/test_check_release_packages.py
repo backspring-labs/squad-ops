@@ -291,3 +291,77 @@ def test_the_rule_takes_no_view_on_which_cycle_is_shown(tmp_path):
             )
             == []
         )
+
+
+# --- cut steps 4 and 8 (#1957) ---------------------------------------------------------
+
+
+def test_the_cli_reads_the_roadmap_for_every_tag_it_checks(tmp_path, capsys):
+    """Rule 4, entered at ``main`` as CI's ``release-packages`` job runs it (that job, which
+    fetches the tags, is what checks the real tree). Bug caught: the rule written and never
+    called, so a release with no ROADMAP entry passes."""
+    _write_package(tmp_path, "v1.6.1", [])
+    roadmap = tmp_path / "ROADMAP.md"
+    roadmap.write_text("## Release Timeline\n\n### v1.6.0 (2026-08-21)\n", encoding="utf-8")
+
+    rc = guard.main(["--tag", "v1.6.1", "--releases-dir", str(tmp_path), "--roadmap", str(roadmap)])
+
+    assert rc == 1
+    assert "no '### v1.6.1 (…)' timeline entry" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("roadmap", "problems"),
+    [
+        ("## Release Timeline\n\n### v2.1.0 (2026-10-10) — the line\n", 0),
+        ("## Release Timeline\n\n### v2.0.1 (2026-10-04) — a patch\n", 1),
+        ("## Release Timeline\n\n### v2.1.01 (a typo)\n", 1),
+    ],
+    ids=["present", "absent", "a longer version is not this one"],
+)
+def test_a_release_with_no_roadmap_entry_fails(tmp_path, roadmap, problems):
+    path = tmp_path / "ROADMAP.md"
+    path.write_text(roadmap, encoding="utf-8")
+    found = guard.roadmap_problems("v2.1.0", path)
+    assert len(found) == problems
+    assert not found or "cut step 4" in found[0]
+
+
+def _v2_1_package(releases: Path, housekeeping: dict | None) -> list[str]:
+    """A v2.1.0 package that satisfies rules 1–3, so only rule 5 can fail it."""
+    _write_package(
+        releases,
+        "v2.1.0",
+        [_GOOD_CYCLE],
+        screenshots=["delivered-app-run-list.png"],
+        showcase=_SHOWCASE,
+    )
+    if housekeeping is not None:
+        (releases / "v2.1.0" / "housekeeping.yaml").write_text(
+            yaml.safe_dump(housekeeping), encoding="utf-8"
+        )
+    return guard.package_problems("v2.1.0", releases)
+
+
+@pytest.mark.parametrize(
+    ("housekeeping", "expected"),
+    [
+        ({"tag": "v2.1.0", "problems": []}, []),
+        (None, ["cut step 8 was not recorded", "--record-release v2.1.0"]),
+        ({"tag": "v2.1.0", "problems": ["/w/driver kept: a record differs"]}, ["kept: a record"]),
+        ({"tag": "v2.0.1", "problems": []}, ["names tag 'v2.0.1'"]),
+    ],
+    ids=["recorded clean", "not recorded", "a problem left", "another release's record"],
+)
+def test_the_cut_is_unfinished_until_its_housekeeping_is_recorded_clean(
+    tmp_path, housekeeping, expected
+):
+    """Rule 5. Bug caught: step 8 skipped, or run with a worktree whose records were not
+    preserved, while every other step reads done."""
+    problems = _v2_1_package(tmp_path, housekeeping)
+    assert all(any(e in p for p in problems) for e in expected) and bool(problems) == bool(expected)
+
+
+def test_housekeeping_is_not_asked_of_releases_before_2_1(tmp_path):
+    _write_package(tmp_path, "v2.0.1", [_GOOD_CYCLE], screenshots=["a.png"], showcase=_SHOWCASE)
+    assert guard.package_problems("v2.0.1", tmp_path) == []

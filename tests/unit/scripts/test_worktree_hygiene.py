@@ -240,3 +240,34 @@ def test_a_failed_pr_lookup_refuses_rather_than_guessing(monkeypatch, tmp_path):
     )
     with pytest.raises(SystemExit, match="auth required"):
         hygiene.gh_pr_lookup(tmp_path)("feature/x")
+
+
+def test_an_applied_run_records_its_verdict_beside_the_release(cleanup, tmp_path):
+    """Cut step 8's record (#1957), entered at ``main`` as the cut runs it. Bug caught: a record
+    that omits a problem the run left, so the release check reads a finished cut that is not."""
+    import yaml
+
+    main, _, lookup = cleanup
+    archive = tmp_path / "archive"
+    _write(archive / "driver-1-7-4-var/verification_sets/1-7-4-fastapi-react/roll-03.json", "other")
+
+    rc = hygiene.main(
+        ["--apply", "--archive-root", str(archive), "--record-release", "v2.1.0"],
+        cwd=main,
+        pr_lookup=lookup,
+    )
+
+    record = yaml.safe_load(
+        (main / "site/content/releases/v2.1.0/housekeeping.yaml").read_text(encoding="utf-8")
+    )
+    assert rc == 1
+    assert record["tag"] == "v2.1.0"
+    assert [p for p in record["problems"] if "roll-03.json exists and differs" in p]
+    assert "old/merged-pr" in record["branches_deleted"]
+
+
+def test_recording_a_release_needs_an_applied_run(cleanup):
+    main, _, lookup = cleanup
+    with pytest.raises(SystemExit):
+        hygiene.main(["--record-release", "v2.1.0"], cwd=main, pr_lookup=lookup)
+    assert not (main / "site").exists()

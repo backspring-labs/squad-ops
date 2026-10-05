@@ -245,13 +245,15 @@ procedure costs: six consecutive releases tagged but never advertised.
 | 5 | SIP promotion sweep — promote what is genuinely implemented; a phased or umbrella SIP with open children stays `accepted`, with the gap named |
 | 6 | `git tag vX.Y.Z && git push origin vX.Y.Z` — the Release publishes itself from the CHANGELOG section (`.github/workflows/release.yml`, #1061) |
 | 7 | **Capture the screenshots, then the package** — `capture_delivered_app.py` and `capture_prefect_run.py` into `assets/` first, then `build_release_package.py <version> --cycle <id>:<role> --showcase <id>:<reason>` to PREVIEW, read the cycle evidence, then re-run with `--write` and commit `site/content/releases/vX.Y.Z/`; **then attach the line's records** — `scripts/maintainer/attach_release_records.py X.Y.Z` to build and credential-scan the tarball, then `--upload --expect-sha256 <the preview's>` to attach exactly the approved bytes to the Release and record its sha256 in the package (the tarball is byte-stable, and a rebuild that differs is refused, #1732) |
-| 8 | **Housekeeping** — `scripts/dev/worktree_hygiene.py` to preview, then `--apply --archive-root <a directory outside every checkout>`: each merged worktree's `var/` records are preserved into the main checkout's `var/` and archived, then the worktree and its branch are removed; merged branches no worktree holds are deleted; anything unmerged, dirty or holding a real `data/` is named and left |
+| 8 | **Housekeeping** — `scripts/dev/worktree_hygiene.py` to preview, then `--apply --archive-root <a directory outside every checkout> --record-release vX.Y.Z` (the record, `site/content/releases/vX.Y.Z/housekeeping.yaml`, is committed): each merged worktree's `var/` records are preserved into the main checkout's `var/` and archived, then the worktree and its branch are removed; merged branches no worktree holds are deleted; anything unmerged, dirty or holding a real `data/` is named and left |
 
 Steps 1–3 are guarded by `tests/unit/architecture/test_docs_version_sync.py`, and step 6's
 Release is now automated on tag push. Step 5 is checked by the `SIP sweep:` line a
-`release/*` PR body must carry (`check_pr_closure.sh`, #1151) and step 7 by
-`scripts/dev/check_release_packages.py` on every push (#1151). **Steps 4 and 8 remain
-unguarded**, which is why they are written down.
+`release/*` PR body must carry (`check_pr_closure.sh`, #1151) and steps 4, 7 and 8 by
+`scripts/dev/check_release_packages.py` on every push (#1151, #1957): a release with no
+ROADMAP timeline entry, no package, or (from v2.1.0) no clean `housekeeping.yaml` beside its
+package turns main red until it lands. Steps 4 and 8 were unguarded until 2.1, which is why they
+are still written down.
 
 **Why step 6 is automated rather than listed.** Across v1.4.0–v1.6.1, *zero* releases were
 published at cut time — every one was backfilled later. The step sat in the cut checklist
