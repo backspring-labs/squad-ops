@@ -462,9 +462,9 @@ readers, so each item below names the seams it changes, and the table says what 
 |---|---|---|---|---|
 | proposal rails | `validate_proposal`, `campaigns/change_request.py:438`; the footprint, `:398` | the authored request and its context: the accepted manifest's text, the allowed scope, the prior criteria ids. No tree | #1961: a new refusal | a `feature` or `fix` whose footprint is only the qa test namespace is accepted today. After #1961 it is refused, and the refusal returns to the proposer inside its task. A `refactor` is unaffected |
 | proposal rendering | `StrategyProposeIncrementHandler.handle`, `handlers/planning/proposal.py:112-119` | the run's `campaign_proposal` block (the manifest's text, the objective, the prior criteria with their statements, the PRD, a supervisor note) and the stack, by `build_profile` | #1962 and #1950 (conventions); #1961 and #1995 (template lines); #1884 (a section of proposed behaviours) | a stack that declares no convention, or is not registered, gets no section, as #1948's line does today. A campaign with no stored proposed behaviours gets no section |
-| plan-author rendering | `render_surfaces`, `handlers/_plan_authoring.py:89-99`; its indexes, `cycles/task_plan.py:681-690` | in a framing run: the approved change request (`increment_change_request`), each new criterion's file, the frozen files | #1884: the rule becomes a surface of its own | **#1886's rule rides inside the criteria appendix, which renders only when the change has criteria (`:96`).** So a `refactor` increment's plan authors never see it. After: it renders for every increment framing |
-| `qa.test` author | `QATestHandler.handle`, `handlers/cycle/qa_test.py:1614` (`request.qa_test.test_validate` and its appendices); its increment inputs, `task_plan.py:760-770` | the plan's task, the frozen surface, the behaviour contract, its own earlier attempt on a self-evaluation pass (`cycle/base.py:1078`). **Nothing of the change request:** an implementation run's `qa.test` gets `{}` from `_increment_inputs` | #1884: the approved criteria, the frozen criteria's statements, and the rule. **It is the one author that may emit the proposal block** | absent from every run today. After: a run outside a campaign still gets none of it |
-| `qa.test_repair` author | `QATestRepairHandler`, `handlers/impl/repair_handlers.py:1316`, through `_RepairPromptMixin` | reached only on the own-artifact locus (the suite missing, unparseable or uncollectable, never a behavioural failure): the failed task's suite and its failure evidence, re-authored as files or fills (`:1343`) | #1884: the rule and the same criteria. **It may not emit the proposal block:** a repair re-authors a broken suite, and proposing belongs to the authoring task | a block in a repair's emission is kept out of its artifacts (never a workspace file) and named in its evidence as ignored |
+| plan-author rendering | `render_surfaces`, `handlers/_plan_authoring.py:89-99`; its indexes, `cycles/task_plan.py:681-690` | in a framing run: the approved change request (`increment_change_request`), each new criterion's file, the frozen files | #1884: a new `INCREMENT_SURFACES` entry (`_plan_authoring.py:65`) renders `request.increment_test_scope_appendix` from `increment_test_scope`, which `_inject_increment_indexes` (`task_plan.py:657`) composes for every increment framing. #1886's section leaves the criteria appendix | **#1886's rule rides inside the criteria appendix, which renders only when the change has criteria (`:96`).** So a `refactor` increment's plan authors never see it. After: it renders for every increment framing, and for no framing outside a campaign |
+| `qa.test` author | `QATestHandler.handle`, `handlers/cycle/qa_test.py:1614` (`request.qa_test.test_validate` and its appendices); its increment inputs, `task_plan.py:760-770` | the plan's task, the frozen surface, the behaviour contract, its own earlier attempt on a self-evaluation pass (`cycle/base.py:1078`). **Nothing of the change request:** an implementation run's `qa.test` gets `{}` from `_increment_inputs` | #1884: `increment_test_scope`, composed by `_increment_inputs` for each task type that declares the new context-contract property (`TaskType.QA_TEST`, `context_assembly.py:213`), and rendered through `request.increment_test_scope_appendix`. A re-take re-dispatches this same envelope (`dispatched_flow_executor.py:186`), so it carries the key. **It is the one author that may emit the proposal block** | absent from every run today. After: a run outside a campaign still gets none of it |
+| `qa.test_repair` author | `QATestRepairHandler`, `handlers/impl/repair_handlers.py:1316`, through `_RepairPromptMixin` | reached only on the own-artifact locus (the suite missing, unparseable or uncollectable, never a behavioural failure): the failed task's suite and its failure evidence, re-authored as files or fills (`:1343`). **Its envelope is built by the correction loop** (`adapters/cycles/correction_repair.py:1021-1080`), **not by `_increment_inputs`.** It forwards the failed task's inputs only through a fixed key list and `REPAIR_PRESENCE_KEYS` (`context_assembly.py:466`, applied at `correction_repair.py:1058`) | #1884: `increment_test_scope` joins `REPAIR_PRESENCE_KEYS`, and the same asset renders through `_RepairPromptMixin` (`repair_handlers.py:253`). **It may not emit the proposal block:** a repair re-authors a broken suite, and proposing belongs to the authoring task | **without the forwarding, a repair never sees the rule.** A repair outside a campaign carries no key. A block in a repair's emission is kept out of its artifacts (never a workspace file) and named in its evidence as ignored |
 | the proposal block's parser | new: `squadops.campaigns.proposed_behaviours`, called where `QATestHandler` splits its emission into files | one fenced block, `yaml:proposed_behaviours.yaml`, in the `qa.test` emission | #1884: new | **absent:** nothing stored, no row. **Valid:** one artifact of type `qa_proposed_behaviours`. **Malformed:** see item 4 |
 | which artifacts enter a tree | two rules: the allow-list `WORKSPACE_ARTIFACT_TYPES` (`cycles/delivered_tree.py:29`), and the correction runner's deny-list `_NON_WORKSPACE_ARTIFACT_TYPES` (`adapters/cycles/correction_runner.py:1504`), which picks a repaired suite's retest files | a run's stored artifacts by type | #1884: the deny-list gains `qa_proposed_behaviours` | **the allow-list already excludes the new type. The deny-list does not:** without the change, a retest would run the proposal file as a test |
 | the next proposal's launch | `_propose_launch`, `campaigns/progress.py:991` → `increment_launch`, `campaigns/launch_requests.py:56` | the accepted cycle, the control log's frozen criteria, the abandoned increment's brief | #1884: the stored entries join the `campaign_proposal` block | no stored entries: no key. **A vault read that fails raises,** and the re-hearing retries it. It never launches without them (the launch is a function of stored data alone, #1943's rule) |
@@ -495,11 +495,12 @@ readers, so each item below names the seams it changes, and the table says what 
    - **FastAPI declares four:**
      - an optional field left out comes back as `null` (today's test);
      - a required request string is trimmed, and refused with 422 `validation_error` when blank (#593).
-       Held by the generated model declaring it `NonBlankStr`;
+       Held by the generated model declaring it `NonBlankStr` (`stack_fastapi_react.py:164`) and the
+       frozen validation handler (`:315-326`);
      - a declared `success_status` is pinned in the route decorator, held by `status_code=` in the
-       generated route;
-     - the error body takes the manifest's `error_contract.shape`, held by the frozen error seam's
-       source.
+       generated route (`:266`);
+     - an error comes back as the frozen envelope `{"error": {"code", "message"}}` with the contract's
+       status, held by the frozen error seam's source (`_envelope`, `:312`).
    - **Next.js declares two.**
      - **The value an optional field left out comes back as is not fixed:** it depends on the build.
        A criterion does not depend on it unless the change itself requires a value, and then the
@@ -539,13 +540,48 @@ readers, so each item below names the seams it changes, and the table says what 
      - the accepted PRD;
      - the accepted interface manifest.
    - **What changes beyond #1886,** which put a narrower rule in the criteria appendix for plan
-     authors only:
-     - the ruled rule replaces it, and it covers any test in any file, not only "every test the plan
-       asks for";
-     - it becomes a surface of its own on every increment framing, with or without criteria;
-     - it reaches `qa.test` and `qa.test_repair` in an increment's implementation run, together with
-       the criteria and frozen criteria it judges against. Today none of it arrives;
-     - **the proposal outlet,** specified below.
+     authors only. Each change names the component that makes it.
+     - **One asset states the rule for every reader:** `request.increment_test_scope_appendix`
+       (new). It carries:
+       - the ruled rule;
+       - its example: campaign 1 T1's tie order, a rule T1's statement never made, so it is
+         proposed, not tested;
+       - the approved criteria (id, statement, observable);
+       - the frozen criteria's statements.
+
+       #1886's section leaves `request.plan_increment_criteria_appendix` (v3), so the rule has
+       one author. It covers any test in any file, not only "every test the plan asks for".
+     - **One input key carries its data:** `increment_test_scope` =
+       `{criteria: [{id, statement, observable}], frozen: [{criterion_id, statement}]}`.
+       - It is composed from the approved change request and `campaign_proposal.frozen_criteria`,
+         where each entry carries its statement since #1938.
+       - It is present for every increment, with `criteria` empty for a `refactor`, and absent
+         outside a campaign.
+     - **Planning:** a new `INCREMENT_SURFACES` entry (`_plan_authoring.py:65`), whose index
+       `_inject_increment_indexes` (`task_plan.py:657`) composes for every increment framing. The
+       qa and dev proposers and the merger then see it whether or not the change has criteria.
+     - **`qa.test`:**
+       - a new context-contract property, `increment_test_scope`, on `ContextAssemblyContract`
+         (`context_assembly.py:89`), declared on `TaskType.QA_TEST` (`:213`). `_increment_inputs`
+         (`task_plan.py:760`) composes the key for an increment's implementation-run envelopes
+         whose task type declares it: a property, not an identity check (CLAUDE.md's task-type
+         rule 3);
+       - `QATestHandler` renders the asset when the key is present;
+       - a re-take re-dispatches the same envelope (`dispatched_flow_executor.py:186`), so it
+         carries the key;
+       - the retest (`_handle_retest`, `qa_test.py:1452`) generates nothing, and renders nothing.
+     - **`qa.test_repair`:**
+       - its envelope is built by the correction loop (`correction_repair.py:1021-1080`), which
+         forwards the failed task's inputs only through a fixed key list and `REPAIR_PRESENCE_KEYS`
+         (`context_assembly.py:466`, applied at `correction_repair.py:1058`). Without a change
+         there, the repair never sees the rule;
+       - `increment_test_scope` joins `REPAIR_PRESENCE_KEYS`. It is presence-keyed, so a repair
+         outside a campaign carries none;
+       - `QATestRepairHandler` renders the same asset through `_RepairPromptMixin`
+         (`repair_handlers.py:253`) when the key is present.
+     - **The proposal outlet,** specified below.
+     - **Outside the rule's text: dev-role emissions.** The owner's rule names the QA author, and
+       what a dev task may write is its SIP-0100 write grant, which this does not change.
    - **The outlet: who may emit it.** Only `qa.test` in an increment's implementation run.
      `qa.test_repair` is told the rule but not given the outlet. A repair re-authors a suite that was
      missing, unparseable or uncollectable, and proposing belongs to the authoring task. A block in a
@@ -587,14 +623,26 @@ readers, so each item below names the seams it changes, and the table says what 
    - **What stays with the author:** the judgement that a test invents a rule. No deterministic check
      can make it without guessing (#1884, comment of 2026-10-03), so it is measured, not gated.
    - **Acceptance, each failing on today's main:**
-     - **planning:** a wiring test through the qa proposer's and the merger's real `handle()` on a
-       `refactor` increment, with no criteria, finds the rule in the prompt sent;
+     - **planning:** a wiring test through the qa proposer's and the merger's real `handle()`, on a
+       `refactor` increment's framing with no criteria, finds the rule and each frozen criterion's
+       statement in the prompt sent. A framing outside a campaign finds neither;
      - **`qa.test`:** a wiring test builds an increment's implementation plan from
-       `load_profile("campaign-increment")` defaults with a stored change request. It calls
-       `QATestHandler.handle()` on the plan's `qa.test` envelope, and the prompt sent carries the rule,
-       each criterion's id, statement and observable, and each frozen criterion's statement. The same
-       holds for `qa.test_repair`;
-     - **no leakage:** the same handler on a non-campaign cycle's envelope renders none of it;
+       `load_profile("campaign-increment")` defaults, with a stored change request and frozen
+       criteria. It calls `QATestHandler.handle()` on the plan's `qa.test` envelope. The prompt sent
+       carries the rule, each approved criterion's id, statement and observable, and each frozen
+       criterion's statement;
+     - **`qa.test_repair`, at both of its seams:**
+       - **the forwarding:** a test drives the correction loop's repair dispatch for a failed
+         increment `qa.test` whose locus is its own suite. It follows the pattern of
+         `test_correction_runner.py::test_repair_envelopes_carry_failed_task_contract`. The captured
+         repair envelope carries `increment_test_scope`, equal to the failed envelope's. A failed
+         `qa.test` outside a campaign gives a repair envelope without the key;
+       - **the render:** `QATestRepairHandler.handle()` on that captured envelope, with a stubbed
+         emission that also carries a `proposed_behaviours.yaml` block. The prompt sent carries the
+         rule, each approved criterion's id, statement and observable, and each frozen criterion's
+         statement. The block is not among its artifacts, and its evidence names it ignored;
+     - **no leakage:** `QATestHandler.handle()` on a `qa.test` envelope of a cycle outside a campaign
+       renders none of it;
      - **the outlet, entered through each real handler:**
        - `QATestHandler.handle()` with a valid block returns exactly one `qa_proposed_behaviours`
          artifact holding each entry, and no `proposed_behaviours.yaml` among its workspace-typed
@@ -603,8 +651,6 @@ readers, so each item below names the seams it changes, and the table says what 
          prompt carries the parse error, and the corrected block is stored once;
        - malformed on every pass: no proposal artifact, the evidence names the drop, and the task's
          verdict equals the same run's verdict without the block;
-       - `QATestRepairHandler.handle()` with a block in its emission: not among its artifacts, and
-         named in its evidence;
        - the executor stores the qa task's proposal artifact once, and `reexecute_repaired_suite`
          excludes it from the retest files;
        - `_propose_launch` with a stored proposal artifact on the accepted cycle puts its entries in
