@@ -135,6 +135,10 @@ def digest(doc: dict) -> str:
     lines += ["", "## Proposals", ""] + (
         _proposals(rows) or ["- no proposal reached the increment gate"]
     )
+    # #1960: what each increment cost, from the package alone.
+    from squadops.campaigns.scorecard import scorecard_lines
+
+    lines += ["", "## Per increment", ""] + scorecard_lines(doc)
     lines += ["", "## Cycles", "", "| cycle | kind | ending | verdict | decided | attribution |"]
     lines.append("|---|---|---|---|---|---|")
     for cyc in doc["cycles"]:
