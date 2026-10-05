@@ -152,6 +152,10 @@ def _executor(bus: MagicMock, vault: SimpleNamespace, registry: AsyncMock):
         queue=AsyncMock(),
         squad_profile=AsyncMock(),
         task_timeout=5.0,
+        project_registry=None,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
     )
     executor._cycle_event_bus = bus
     return executor
