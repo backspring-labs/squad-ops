@@ -3,42 +3,12 @@
 A hexagonal architecture (ports & adapters) framework for
 orchestrating AI agent squads in software development workflows.
 ``docs/architecture/overview.md`` maps every package.
+
+#1985: this package root imports nothing but the version. It used to re-export the agents, the
+bootstrap and the task models, so importing any ``squadops`` module, even a leaf, loaded about 144
+of them and hid the real dependency graph. Import from the module that defines a name.
 """
 
 from squadops._version import resolve_version as _resolve_version
 
 __version__ = _resolve_version()
-
-# Core exports for quick access
-from squadops.agents import (
-    BaseAgent,
-    PortsBundle,
-)
-from squadops.bootstrap import (
-    SquadOpsSystem,
-    SystemConfig,
-    create_handler_registry,
-    create_orchestrator,
-    create_system,
-)
-from squadops.tasks.models import (
-    TaskEnvelope,
-    TaskResult,
-)
-
-__all__ = [
-    # Version
-    "__version__",
-    # Bootstrap
-    "create_system",
-    "create_orchestrator",
-    "create_handler_registry",
-    "SystemConfig",
-    "SquadOpsSystem",
-    # Agents
-    "BaseAgent",
-    "PortsBundle",
-    # Tasks
-    "TaskEnvelope",
-    "TaskResult",
-]
