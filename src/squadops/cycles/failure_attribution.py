@@ -424,6 +424,8 @@ class FailureEvent:
     path); ``check_id`` names the check when the event is a check's. ``emission_signature`` is
     the #998 signature of an absent emission (``cap_exhausted`` / ``empty`` /
     ``unextractable``); ``not_executed_reason`` is set for a check that did not execute.
+    ``failed_detail`` (#2028) is the round's failed rows' own account of why, ``(check, text)``:
+    evidence for a reader of the record, never read by composition.
     """
 
     run_id: str
@@ -434,6 +436,13 @@ class FailureEvent:
     locus: str | None = None
     emission_signature: str | None = None
     not_executed_reason: str | None = None
+    failed_detail: tuple[tuple[str, str], ...] = ()
+
+    def __post_init__(self) -> None:
+        # Read back from a JSON column the pairs arrive as lists; the record holds tuples.
+        object.__setattr__(
+            self, "failed_detail", tuple((str(c), str(t)) for c, t in self.failed_detail)
+        )
 
     def sort_key(self) -> tuple:
         return (

@@ -227,6 +227,21 @@ async def test_the_attribution_is_read_from_the_persisted_records_not_rederived(
     ]
 
 
+async def test_a_rounds_account_reaches_the_cycles_failure_record(tmp_path):
+    """#2028, entered at ``record_cycle_failures``, the completion's writer: the round's failed
+    rows' account rides its event onto ``cycle_failure_records``, the store #1469's corpus reads.
+    Bug caught: the account kept on the run summary and dropped on the way to the record."""
+    import dataclasses
+
+    stderr = "Module not found: Can't resolve './globals.css' in './app/layout.tsx'"
+    with_account = dataclasses.replace(_EXEC, failed_detail=(("frontend_build", stderr),))
+    registry, vault, _ = await _failed_cycle(tmp_path, round_failures=(with_account,))
+
+    [record] = await record_cycle_failures(registry, vault, "cyc_1", "run_i1")
+
+    assert record.event.failed_detail == (("frontend_build", stderr),)
+
+
 async def test_an_unrecorded_input_is_an_unaskable_record(tmp_path):
     registry, vault, _ = await _failed_cycle(tmp_path, round_failures=None)
 
@@ -282,3 +297,48 @@ async def test_a_failed_write_is_logged_and_the_cycle_still_ends(tmp_path, caplo
 
     assert end.cycle_id == "cyc_1"
     assert "failure_records_not_written" in caplog.text
+
+
+def test_a_failure_event_keeps_its_account_through_the_records_json_column():
+    """#2028: the record is the durable store. Postgres writes the event with
+    ``dataclasses.asdict`` into JSONB and reads it back with ``FailureEvent(**row)``, where the
+    pairs arrive as lists. Bug caught: an event that does not equal itself after the round trip."""
+    import dataclasses
+    import json
+
+    event = FailureEvent(
+        run_id="run_1",
+        task_id="t-build",
+        round_index=1,
+        category="executed_and_failed",
+        locus="subject",
+        failed_detail=(("frontend_build", "Module not found: './globals.css'"),),
+    )
+
+    assert FailureEvent(**json.loads(json.dumps(dataclasses.asdict(event)))) == event
+
+
+def test_an_identity_with_events_that_carry_no_account_is_unchanged():
+    """Bug caught: #2028's field moving the identity of every cycle whose records were persisted
+    before it. The value is the identity main computed for this evidence before the field."""
+    import dataclasses
+
+    from tests.unit.cycles.test_cycle_assessment import _accepted_cycle
+
+    outcome, evidence = _accepted_cycle()
+    with_events = dataclasses.replace(
+        evidence,
+        persisted_failure_events=(
+            FailureEvent(
+                run_id="run_1",
+                task_id="t-qa",
+                round_index=1,
+                category="executed_and_failed",
+                locus="subject",
+            ),
+        ),
+    )
+
+    assert evidence_identity(outcome, with_events) == (
+        "d6c2f71e62ea848db694ed60f462b1220e62a40d8ceb83cb135353322bee0e10"
+    )

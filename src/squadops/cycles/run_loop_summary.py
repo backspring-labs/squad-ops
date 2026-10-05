@@ -89,6 +89,26 @@ class MovementRecord:
         )
 
 
+#: How much of a failed row's account a round failure keeps (#2028): the frontend build's row
+#: already bounds its stderr tail to 2048 characters (#1468), and this is that bound.
+FAILED_DETAIL_LIMIT = 2048
+
+
+def failed_detail_of(rows: Any) -> tuple[tuple[str, str], ...]:
+    """Each blocking failed row's own account of why, ``(check, text)``, in row order (#2028)."""
+    from squadops.cycles.verification_normalize import row_is_blocking_failure
+
+    detail = []
+    for row in rows or ():
+        if not (isinstance(row, Mapping) and row.get("check") and row_is_blocking_failure(row)):
+            continue
+        actual = row.get("actual") if isinstance(row.get("actual"), Mapping) else {}
+        text = row.get("detail") or actual.get("stderr_tail") or row.get("reason")
+        if text:
+            detail.append((str(row["check"]), str(text)[-FAILED_DETAIL_LIMIT:]))
+    return tuple(detail)
+
+
 @dataclass(frozen=True)
 class RoundFailure:
     """One correction round's failure, as the round's evidence classified it (SIP-0108 §4.2).
@@ -96,6 +116,11 @@ class RoundFailure:
     ``category`` is ``derive_failure_category``'s and ``locus`` is ``classify_failure_locus``'s —
     the deterministic classification of the evidence, not the routing decision a correction
     may override. ``failed_checks`` are the blocking failed rows' check ids.
+
+    ``failed_detail`` (#2028) is each of those rows' own account of why, ``(check, text)``:
+    its ``detail`` (a build's stderr tail, #1468), else its ``stderr_tail``, else its ``reason``,
+    cut to ``FAILED_DETAIL_LIMIT``. The row is transient, so before this the reason a check
+    failed in a round was gone when the run ended, and #1469's bundler corpus could not accrue.
     """
 
     task_id: str
@@ -104,9 +129,10 @@ class RoundFailure:
     locus: str
     emission_signature: str | None = None
     failed_checks: tuple[str, ...] = ()
+    failed_detail: tuple[tuple[str, str], ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        record: dict[str, Any] = {
             "task_id": self.task_id,
             "round_index": self.round_index,
             "category": self.category,
@@ -114,6 +140,10 @@ class RoundFailure:
             "emission_signature": self.emission_signature,
             "failed_checks": list(self.failed_checks),
         }
+        # Omitted when empty, so a summary stored before #2028 keeps its evidence identity.
+        if self.failed_detail:
+            record["failed_detail"] = [list(pair) for pair in self.failed_detail]
+        return record
 
     @classmethod
     def from_evidence(
@@ -146,6 +176,7 @@ class RoundFailure:
                     }
                 )
             ),
+            failed_detail=failed_detail_of(rows),
         )
 
     @classmethod
@@ -157,6 +188,9 @@ class RoundFailure:
             locus=str(data["locus"]),
             emission_signature=_optional_str(data.get("emission_signature")),
             failed_checks=tuple(str(c) for c in data.get("failed_checks") or ()),
+            failed_detail=tuple(
+                (str(check), str(text)) for check, text in data.get("failed_detail") or ()
+            ),
         )
 
 

@@ -617,6 +617,7 @@ def failure_events(outcome: CycleOutcome, evidence: CycleEvidence) -> tuple[Fail
                 category=r.category,
                 locus=r.locus,
                 emission_signature=r.emission_signature,
+                failed_detail=r.failed_detail,
             )
             for r in summary.round_failures
         )
@@ -808,6 +809,13 @@ def _canonical(obj: Any) -> Any:
         summary.pop("revision_forms", None)
         summary.pop("path_overrides", None)
         return summary
+    if isinstance(obj, FailureEvent) and not obj.failed_detail:
+        # #2028: added after identities were first recorded; an event without it keeps its own.
+        return {
+            f.name: _canonical(getattr(obj, f.name))
+            for f in dataclasses.fields(obj)
+            if f.name != "failed_detail"
+        }
     if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
         return {f.name: _canonical(getattr(obj, f.name)) for f in dataclasses.fields(obj)}
     if isinstance(obj, Mapping):
