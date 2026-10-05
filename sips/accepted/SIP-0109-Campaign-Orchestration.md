@@ -106,7 +106,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | the supervisor creates and manages campaigns (revises §24al) | **shipped** (§24az) | 2.1.0, PR #2047, issue #1940 |
 | a campaign records its definition file's hash | **shipped** | 2.1.0, PR #2050, issue #1954 |
 | supervisor instruments (the lease proof, the binding replay, the loaded checks, the watcher) | **shipped** | 2.1.0, PR #2025, issue #1956 |
-| per-increment scorecard | **placed** | 2.1.0, #1960 |
+| per-increment scorecard in the digest (§24bb) | **shipped** | 2.1.0, PR #2027, issue #1960 |
 | increment replay (any increment of any campaign, outside it) | **shipped** | 2.1.0, PR #2026, issue #1959 |
 | the auto-decision tier and escalation queue | **placed**, outside this SIP's scope (§5) | 2.2.0, #1708 |
 | accepted increments' `prd_delta` text to the proposer | **deferred to 2.4** (ruled 2026-10-03, §24ap): "a 2.4 question" | §24ap |
@@ -2692,3 +2692,31 @@ the launcher's or the digest's change reverted.
 **Who ruled it.** The owner, on the SIP-portfolio audit (2026-10-04, queue Q17), placing #1971 in
 2.1. The rule that a resume of a launch escalation names no action follows §9.3's for a blocked
 launch (#1802).
+
+### 24bb. The digest scores each increment, from the package alone (2026-10-05, §14, #1960)
+
+**What changed.** The morning digest gains a **Per increment** table, computed by
+`squadops.campaigns.scorecard` from the package's records and nothing else, so the same arithmetic
+reads a replay and its original (#1959). For each increment launch, with any repair or retry cycles
+it launched before the next increment:
+- elapsed time (from the launch to the last decision), split into executing (the cycles' run wall
+  clock) and waiting (the rest);
+- tokens, by task-type family, and the qa share (verification's cost, SIP-Verification-Yield §17);
+- LLM calls, correction rounds, proposal rounds with each ruling, repair and retry cycles, criteria
+  added, and the outcome (accepted, abandoned, rejected or open).
+
+It is reporting only: no verdict, decision or prompt reads it. It is computed when the digest renders
+and is not stored in the package, which keeps only records.
+
+**Not split yet, and why.**
+- **The cause of a wait** (ruling, gate, box) needs per-run starts and the box's persisted `waited_s`,
+  and neither is in the package.
+- **Test-file churn and test-check correction rounds** need the vault and the correction ledger.
+
+**Evidence.** The 2.0 set's campaign 2 package reads as its record says: three increments accepted,
+the first on its second version (v1 returned, v2 approved), with waiting of 2 to 4 minutes per
+increment.
+
+**Who ruled it.** The owner's adoption of the 2.1 plan (§2.0, the crew's enablers), and the folding of
+Verification Yield's cost measures into this table (2026-10-04).
+
