@@ -463,7 +463,11 @@ readers, so each item below names the seams it changes, and the table says what 
 | proposal rails | `validate_proposal`, `campaigns/change_request.py:438`; the footprint, `:398` | the authored request and its context: the accepted manifest's text, the allowed scope, the prior criteria ids. No tree | #1961: a new refusal | a `feature` or `fix` whose footprint is only the qa test namespace is accepted today. After #1961 it is refused, and the refusal returns to the proposer inside its task. A `refactor` is unaffected |
 | proposal rendering | `StrategyProposeIncrementHandler.handle`, `handlers/planning/proposal.py:112-119` | the run's `campaign_proposal` block (the manifest's text, the objective, the prior criteria with their statements, the PRD, a supervisor note) and the stack, by `build_profile` | #1962 and #1950 (conventions); #1961 and #1995 (template lines); #1884 (a section of proposed behaviours) | a stack that declares no convention, or is not registered, gets no section, as #1948's line does today. A campaign with no stored proposed behaviours gets no section |
 | plan-author rendering | `render_surfaces`, `handlers/_plan_authoring.py:89-99`; its indexes, `cycles/task_plan.py:681-690` | in a framing run: the approved change request (`increment_change_request`), each new criterion's file, the frozen files | #1884: the rule becomes a surface of its own | **#1886's rule rides inside the criteria appendix, which renders only when the change has criteria (`:96`).** So a `refactor` increment's plan authors never see it. After: it renders for every increment framing |
-| `qa.test` author rendering | `QATestHandler`, `handlers/cycle/qa_test.py` (`request.qa_test.test_validate` and its appendices); its increment inputs, `task_plan.py:760-770` | the plan's task, the frozen surface, the behaviour contract. **Nothing of the change request:** an implementation run's `qa.test` gets `{}` from `_increment_inputs` | #1884: the approved criteria, the frozen criteria's statements, and the rule, on every `qa.test` and `qa.test_repair` envelope of an increment's implementation run | absent from every run today. After: a run outside a campaign still gets none of it |
+| `qa.test` author | `QATestHandler.handle`, `handlers/cycle/qa_test.py:1614` (`request.qa_test.test_validate` and its appendices); its increment inputs, `task_plan.py:760-770` | the plan's task, the frozen surface, the behaviour contract, its own earlier attempt on a self-evaluation pass (`cycle/base.py:1078`). **Nothing of the change request:** an implementation run's `qa.test` gets `{}` from `_increment_inputs` | #1884: the approved criteria, the frozen criteria's statements, and the rule. **It is the one author that may emit the proposal block** | absent from every run today. After: a run outside a campaign still gets none of it |
+| `qa.test_repair` author | `QATestRepairHandler`, `handlers/impl/repair_handlers.py:1316`, through `_RepairPromptMixin` | reached only on the own-artifact locus (the suite missing, unparseable or uncollectable, never a behavioural failure): the failed task's suite and its failure evidence, re-authored as files or fills (`:1343`) | #1884: the rule and the same criteria. **It may not emit the proposal block:** a repair re-authors a broken suite, and proposing belongs to the authoring task | a block in a repair's emission is kept out of its artifacts (never a workspace file) and named in its evidence as ignored |
+| the proposal block's parser | new: `squadops.campaigns.proposed_behaviours`, called where `QATestHandler` splits its emission into files | one fenced block, `yaml:proposed_behaviours.yaml`, in the `qa.test` emission | #1884: new | **absent:** nothing stored, no row. **Valid:** one artifact of type `qa_proposed_behaviours`. **Malformed:** see item 4 |
+| which artifacts enter a tree | two rules: the allow-list `WORKSPACE_ARTIFACT_TYPES` (`cycles/delivered_tree.py:29`), and the correction runner's deny-list `_NON_WORKSPACE_ARTIFACT_TYPES` (`adapters/cycles/correction_runner.py:1504`), which picks a repaired suite's retest files | a run's stored artifacts by type | #1884: the deny-list gains `qa_proposed_behaviours` | **the allow-list already excludes the new type. The deny-list does not:** without the change, a retest would run the proposal file as a test |
+| the next proposal's launch | `_propose_launch`, `campaigns/progress.py:991` → `increment_launch`, `campaigns/launch_requests.py:56` | the accepted cycle, the control log's frozen criteria, the abandoned increment's brief | #1884: the stored entries join the `campaign_proposal` block | no stored entries: no key. **A vault read that fails raises,** and the re-hearing retries it. It never launches without them (the launch is a function of stored data alone, #1943's rule) |
 | baseline evaluation | `discrimination`, `campaigns/acceptance.py:89`; the verdict, `:238` | the accepted tree as seeded and the candidate, each running the criterion's own file alone | no | a criterion file collected on neither tree reads `not run`, so the increment is blocked, never accepted (`:247-252`) |
 | criterion freezing | `freeze_bundle`, `campaigns/evaluator_trees.py:153`; `_freeze_bundles`, `campaigns/progress.py:773` | the candidate tree: the criterion's file, the test-surface files it imports, the stack's config files | no. #1884 changes what a file asserts, not how it is frozen | a missing file or import raises `BundleIncomplete`, and nothing is frozen. The increment is blocked (`campaigns/acceptance_run.py:118`, `:154`) |
 
@@ -541,15 +545,45 @@ readers, so each item below names the seams it changes, and the table says what 
      - it becomes a surface of its own on every increment framing, with or without criteria;
      - it reaches `qa.test` and `qa.test_repair` in an increment's implementation run, together with
        the criteria and frozen criteria it judges against. Today none of it arrives;
-     - **the proposal outlet:** the qa author may emit a `proposed_behaviours.yaml` block, each entry a
-       behaviour, why it matters, and its surface. It is stored as a run artifact of its own type,
-       never written to the workspace and never run. The campaign's next proposal run is shown the
-       previous increment's entries in a section of their own, and the supervisor reads them as the
-       run's artifact.
-   - **What is refused, deterministically:**
-     - a `proposed_behaviours.yaml` that does not parse is returned to the author with its error,
-       inside the attempt budget, never dropped silently;
-     - nothing under that name enters the workspace.
+     - **the proposal outlet,** specified below.
+   - **The outlet: who may emit it.** Only `qa.test` in an increment's implementation run.
+     `qa.test_repair` is told the rule but not given the outlet. A repair re-authors a suite that was
+     missing, unparseable or uncollectable, and proposing belongs to the authoring task. A block in a
+     repair's emission is kept out of its artifacts and named in its evidence as ignored.
+   - **The block's contract:** one fenced block whose header carries `proposed_behaviours.yaml`:
+
+     ```yaml
+     proposed_behaviours:          # a list of 1 to 10 entries; no other top-level key
+       - behaviour: "..."          # required, non-blank: what the application should do, one sentence
+         why: "..."                # required, non-blank: why it matters, one sentence
+         surface_kind: endpoint    # required: endpoint | client_route
+         surface: "GET /runs"      # required, non-blank: "METHOD /path", or a client route's path
+     ```
+
+     An unknown key, a missing or blank field, a `surface_kind` outside the two, or more than 10
+     entries is malformed. The surface is not checked against the manifest: a proposal is judged
+     later, by the proposer's rails.
+   - **The parser and where it is stored.** `squadops.campaigns.proposed_behaviours` parses the
+     block. `QATestHandler` calls it at the point it splits its emission into files, so the block is
+     taken out before any file is extracted.
+     - **Absent:** nothing is stored, and there is no row.
+     - **Valid:** the handler returns one artifact, `proposed_behaviours.yaml`, of type
+       `qa_proposed_behaviours`, holding the parsed entries. The executor stores it as it stores
+       every artifact. Of the final emission only, so it is stored once per task execution.
+     - **Malformed:** a blocking validation row carrying the parse error, so the self-evaluation
+       pass returns it to the author inside the task's `max_self_eval_passes` (`cycle/base.py:1078`).
+       If the passes run out with the block still malformed, the block alone is dropped. The task's
+       evidence records why, and its verdict is decided by its tests as if the block were absent. An
+       optional proposal never fails the task that wrote it.
+   - **Never in a tree.** The allow-list (`delivered_tree.py:29`) already excludes the new type. The
+     correction runner's deny-list (`correction_runner.py:1504`) gains it, or a retest would run it.
+   - **The next proposal.** `_propose_launch` reads the stored entries of the cycle whose tree is
+     accepted and, for a proposal that replaces an abandoned increment, of that increment's cycle.
+     They go into the `campaign_proposal` block as `qa_proposed_behaviours`, deduplicated by
+     `behaviour`, at most 10. The read is a function of stored data alone: a failed read raises, and
+     the re-hearing retries it. `StrategyProposeIncrementHandler` renders them in a section of their
+     own (a new asset, `request.proposal_qa_proposed_behaviours`). The supervisor reads them as the
+     run's artifact.
    - **What stays with the author:** the judgement that a test invents a rule. No deterministic check
      can make it without guessing (#1884, comment of 2026-10-03), so it is measured, not gated.
    - **Acceptance, each failing on today's main:**
@@ -561,9 +595,22 @@ readers, so each item below names the seams it changes, and the table says what 
        each criterion's id, statement and observable, and each frozen criterion's statement. The same
        holds for `qa.test_repair`;
      - **no leakage:** the same handler on a non-campaign cycle's envelope renders none of it;
-     - **the outlet:** a well-formed block stores one artifact holding each entry and adds no
-       workspace file. A malformed block is returned once, with its error. The next proposal run's
-       `handle()` renders the stored entries;
+     - **the outlet, entered through each real handler:**
+       - `QATestHandler.handle()` with a valid block returns exactly one `qa_proposed_behaviours`
+         artifact holding each entry, and no `proposed_behaviours.yaml` among its workspace-typed
+         artifacts;
+       - the same handler with a malformed block, corrected on the self-evaluation pass: the pass's
+         prompt carries the parse error, and the corrected block is stored once;
+       - malformed on every pass: no proposal artifact, the evidence names the drop, and the task's
+         verdict equals the same run's verdict without the block;
+       - `QATestRepairHandler.handle()` with a block in its emission: not among its artifacts, and
+         named in its evidence;
+       - the executor stores the qa task's proposal artifact once, and `reexecute_repaired_suite`
+         excludes it from the retest files;
+       - `_propose_launch` with a stored proposal artifact on the accepted cycle puts its entries in
+         the launch block. A vault read that fails raises, and with none there is no key;
+       - `StrategyProposeIncrementHandler.handle()` renders the entries when the block carries them,
+         and nothing when it does not;
      - **live, measured and not gated:** 2.1's shakeout repeats P9's read on every test file each
        increment's qa author wrote, and reports the unsupported rules per increment. The 2.0 set's two
        (campaign 1 T1's tie order, campaign 2 T4's non-mutation) are the comparison.
