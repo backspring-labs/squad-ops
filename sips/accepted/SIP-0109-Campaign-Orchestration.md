@@ -96,7 +96,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | package renderings: the squad's first pass | **dropped** (the owner chose to drop it at the v2.0.0 cut, 2026-10-04; the digest and package carry the close) | #1710, closed |
 | the outer-loop runbook's second half | **shipped** | v2.0.0 (#1997, closed #1711) |
 | criterion files freeze rules the approved request never stated (the set's P9) | **placed** | 2.1.0, #1884 |
-| a proposal's PRD delta can state more than its manifest delta carries | **placed** | 2.1.0, #1995 |
+| a proposal's PRD delta can state more than its manifest delta carries | **shipped** (§24aw: the request says so; no rail) | 2.1.0, #2014 |
 | rows 10–11 reachable live (environment attribution) | **placed** | 2.1.0, #1824 |
 | proposal tasks re-run on re-attach (random ids) | **placed** | 2.1.0, #1934 |
 | a restart leaves the interrupted run's Prefect flow runs open (the re-attach, §24am) | **placed** | 2.1.0, #2007 |
@@ -2519,4 +2519,23 @@ out. That declaration is generalized and replaced:
   stack's tree shows it (`TestFrozenConventionsHoldOnTheBytes`).
 
 **Who ruled it.** The owner's approval of the 2.1 plan (§7 item 2, 2026-10-04).
+
+### 24aw. The proposer is told a PRD delta states only what the request delivers (2026-10-05, §9.1, #1995)
+
+**What changed.** The proposal request (template v8) says that `prd_delta` states only what the
+`manifest_delta`, criteria and footprint carry. Its example is the stored case below. **No rail is
+added.**
+
+**Why no rail.** The disagreement lives in prose. A deterministic predicate needs a typed link from
+each PRD delta item to the manifest entries and criteria that carry it, which is a change to the change
+request's schema (§9): a design change, not a 2.1 fix. Through 2.1 the supervisor reads every PRD delta
+(#1908 §3a). The typed link is recorded on #1708, because the auto tier (2.2) is when nobody reads them.
+
+**Evidence.** The 2.0 set's campaign 2, increment 1, `prop_450986544201` v1. Its PRD delta stated
+"show capacity status in run detail". Its manifest delta changed no client route, no criterion named
+the detail view, and its footprint held no view source. The supervisor returned it
+(`ambiguous_manifest_delta`), and v2 narrowed the text.
+
+**Who ruled it.** The owner's approval of the 2.1 plan (§7 item 3, 2026-10-04), which decides
+template-only.
 
