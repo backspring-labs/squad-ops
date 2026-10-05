@@ -62,7 +62,9 @@ author will hit them.** None is hypothetical; every one produced a wrong finding
 
 The honest result after all four: **101 of 107 field-checks falsify, three fields have no
 consumer of any kind, and one has a consumer no stack feeds.** The first number was 98 and
-was wrong.
+was wrong. Those four fields (`artifact_output_mode`, `validation_rules`, `expected_extensions`,
+`default_task_tags`) were deleted in 2.1.0 (#1975), so the two lists below are empty: they stay
+for the next finding.
 """
 
 from __future__ import annotations
@@ -153,34 +155,16 @@ _RUNTIME_ONLY = "RUNTIME_ONLY"  # runtime-only reader, nothing in this file exer
 
 #: 2c's product: fields with NO consumer of any kind, found by this pass on 2026-08-17.
 #:
-#: Recorded rather than deleted here because deletion is a code change with its own review,
-#: and the plan assigns it to "before the schema is frozen" — i.e. before 2g. The entries stay
+#: Its three entries were deleted in 2.1.0 (#1975), with ``_UNEVIDENCED``'s one; both lists
+#: stay for the next finding. Recorded rather than deleted at the time because deletion is a
+#: code change with its own review, assigned "before the schema is frozen". The entries stay
 #: pinned so a later reader cannot promote one into the blueprint on the strength of its
 #: existing, and `test_the_decorative_fields_are_still_unread` fails if one gains a consumer,
 #: which is the signal to remove it from this list rather than leave a stale exemption.
-_DECORATIVE_FOUND = {
-    ("BuildProfile", "artifact_output_mode"): (
-        "declared on all five build profiles, zero reads. The schema draft hoists it into "
-        "Tier 3 as core-owned — a default for a fact nothing consults"
-    ),
-    ("BuildProfile", "validation_rules"): (
-        "populated with real content on every profile, zero reads. The schema draft lists it "
-        "in Tier 1 as packaging.validation_rules, 'demonstrated'"
-    ),
-    ("DevelopmentProfile", "expected_extensions"): (
-        "populated per stack, zero reads — and TWO docstrings assert it is 'what a dev agent "
-        "is given' (scaffold.py:1899, preflight.py:216). Documented as read, read by nothing. "
-        "The schema draft lists it in Tier 1 as authored_extensions, 'demonstrated'"
-    ),
-}
+_DECORATIVE_FOUND: dict[tuple[str, str], str] = {}
 
 #: A real reader, and no declaration anywhere supplies data. See the module docstring.
-_UNEVIDENCED = {
-    ("BuildProfile", "default_task_tags"): (
-        "builder._resolve_task_tags merges it with experiment_context, which supplies every "
-        "tag in practice; empty on all five build profiles"
-    ),
-}
+_UNEVIDENCED: dict[tuple[str, str], str] = {}
 
 
 def _corrupt(value):
@@ -244,7 +228,6 @@ def _observe(stack_name: str) -> dict[str, str]:
     # change trivially "differed", so a deliberately decorative probe field was reported as
     # falsified. Observing the declaration is circular — it proves the field changed, not that
     # anything reads it. The negative control below exists because that got past me once.
-    from squadops.capabilities.handlers.cycle.builder import BuilderAssembleHandler
 
     capability = development_profiles.get_development_profile(stack.development_profile)
     out["capability_test_matching"] = json.dumps(
@@ -252,11 +235,6 @@ def _observe(stack_name: str) -> dict[str, str]:
             name: development_profiles.matches_test_file_patterns(name, capability.name)
             for name in ("a.test.ts", "test_a.py", "a.spec.tsx", "a_test.py", "a.ts", "a.py")
         },
-        sort_keys=True,
-    )
-    profile = build_profiles.get_profile(stack.name)
-    out["builder_task_tags"] = json.dumps(
-        BuilderAssembleHandler._resolve_task_tags(profile, {"experiment_context": {}}),
         sort_keys=True,
     )
     out["probe_boot_plan"] = json.dumps(
@@ -433,20 +411,6 @@ def test_a_declared_optional_is_populated_by_some_stack():
         assert populated, (
             f"{registry}.{field} is empty on every stack, yet recorded as optional: {reason}"
         )
-
-
-def test_the_unevidenced_fields_are_still_unevidenced():
-    """Pinned so this cannot be quietly resolved by promotion instead of by evidence.
-
-    `default_task_tags` is `{}` on all five build profiles and its reader merges it with
-    `experiment_context`, which supplies every tag in practice. If a stack ever populates it,
-    this test fails and the field graduates — on evidence, which is the whole point of S5's
-    admission rule. Until then it must not enter the blueprint.
-    """
-    assert all(not p.default_task_tags for p in build_profiles.BUILD_PROFILES.values()), (
-        "a build profile now populates default_task_tags — the field is evidenced, so move it "
-        "out of _UNEVIDENCED and into the blueprint schema deliberately"
-    )
 
 
 def test_check_stack_is_falsified_at_the_acceptance_layer():

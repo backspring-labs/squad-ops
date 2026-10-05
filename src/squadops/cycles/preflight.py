@@ -215,7 +215,7 @@ def stack_development_profile_decision(config: Mapping[str, Any]) -> PreflightDe
 
     A cycle names its stack twice: ``build_profile`` selects the expander, fill slots,
     criteria pack and probe profile; ``development_profile`` selects the dev agent's prompt text,
-    ``expected_extensions``, ``source_filter`` and ``test_framework``. The CRP sets both to
+    ``source_filter`` and ``test_framework``. The CRP sets both to
     the same literal on adjacent lines, and until this check nothing verified that.
 
     The failure it prevents is not a crash. The skeleton expands for one stack while the dev

@@ -1627,7 +1627,7 @@ class ScaffoldStack:
     #: entry point are stack-specific.
     probe_profile: str = ""
     #: #832: the ``DEVELOPMENT_PROFILES`` entry this stack requires — the prompt text,
-    #: ``expected_extensions``, ``source_filter`` and ``test_framework`` a dev agent is given.
+    #: ``source_filter`` and ``test_framework`` a dev agent is given.
     #: A *name*, like the two fields above, so the capability vocabulary stays in its layer.
     #:
     #: Exists because a cycle declared its stack **twice**: ``build_profile`` selecting this

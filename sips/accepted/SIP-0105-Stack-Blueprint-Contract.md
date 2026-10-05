@@ -37,7 +37,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | stack #1 out of `scaffold.py` | **shipped** | v1.7.1 (#1131, PR #1233); the "does not assert" table still says stack #1 is inline |
 | packs / plugin loading | **dropped** by §A2: moved to a successor SIP, not yet drafted | none |
 | `check_stack` split (dialect vs framework) | **unplaced, deliberately** (§A2); its "1.7" deferral superseded | none |
-| delete the four falsified fields | **placed** | 2.1.0, #1975 |
+| delete the four falsified fields | **shipped**: `artifact_output_mode`, `validation_rules`, `default_task_tags` (and its reader's merge) and `expected_extensions`, with the QA-workspace guard that read the last one rewritten to name its exceptions | 2.1.0, PR #2037, issue #1975 |
 | typed checks on the declared source language (sequencing step 3) | **unplaced**: whether it shipped is unverified (the 2026-10-04 audit could not read it); read before promotion | — |
 | the S5 gate's blind spot: a string field empty on one stack reads as set | **shipped** | 2.1.0, PR #2017, issue #1967 |
 
@@ -249,7 +249,7 @@ demonstrated on two stacks. Those rest on two real stacks and are enforced by
 | **Packs / plugin loading** | Not built, and the durable reason to keep this document. A stack is still registered in-tree, not loaded as a pack. |
 | **`check_stack` split into language dialect vs framework requirement** | Not built. Deferred to **1.7** — it touches the evaluator contract. The current field carries two questions on one field and works only while exactly one framework-specific evaluator exists. |
 | **Where a blueprint lives** | Not decided. `stack_nextjs_ts.py` is already a pack shipping its own expander while stack #1 is inline in `scaffold.py`; resolving the asymmetry moves bytes the reference contract is pinned to. Trigger: the packs work. |
-| **Deleting the four fields 2c falsified** | Not done. Recorded and pinned in the falsification gate, to be removed before the schema freezes rather than after it accretes meaning. |
+| **Deleting the four fields 2c falsified** | Done in 2.1.0 (#1975). They were recorded and pinned in the falsification gate until then; its two finding lists are now empty. |
 
 **And one limit on the evidence itself:** `nextjs_ts` is only *partially* the "maximally
 different" second stack this SIP asked for — non-Python runner and server-rendered, but it has

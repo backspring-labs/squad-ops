@@ -13,7 +13,6 @@ from squadops.capabilities.assembly_notes import (
     already_supplied_lines,
 )
 from squadops.capabilities.handlers.build_profiles import (
-    ARTIFACT_MODE_MULTI_FILE,
     BUILD_PROFILES,
     ROUTING_BUILDER_PRESENT,
     ROUTING_FALLBACK_NO_BUILDER,
@@ -44,11 +43,6 @@ class TestBuildProfileImmutability:
         with pytest.raises(AttributeError):
             profile.name = "hacked"
 
-    def test_frozen_dataclass_rejects_field_assignment(self):
-        profile = get_profile("python_cli_builder")
-        with pytest.raises(AttributeError):
-            profile.artifact_output_mode = "single_file"
-
 
 class TestPythonCliBuilderProfile:
     def test_required_files_include_dockerfile(self):
@@ -62,10 +56,6 @@ class TestPythonCliBuilderProfile:
     def test_required_files_include_main_entry(self):
         profile = get_profile("python_cli_builder")
         assert "__main__.py" in profile.required_files
-
-    def test_artifact_output_mode_is_multi_file(self):
-        profile = get_profile("python_cli_builder")
-        assert profile.artifact_output_mode == ARTIFACT_MODE_MULTI_FILE
 
     def test_has_system_prompt_template(self):
         profile = get_profile("python_cli_builder")
@@ -130,10 +120,6 @@ class TestStaticWebBuilderProfile:
         profile = get_profile("static_web_builder")
         assert "main.js" in profile.required_files
 
-    def test_artifact_output_mode_is_multi_file(self):
-        profile = get_profile("static_web_builder")
-        assert profile.artifact_output_mode == ARTIFACT_MODE_MULTI_FILE
-
     def test_has_system_prompt_template(self):
         profile = get_profile("static_web_builder")
         assert len(profile.system_prompt_template) > 0
@@ -169,10 +155,6 @@ class TestFullstackFastapiReactProfile:
     def test_has_system_prompt_template(self):
         profile = get_profile("fullstack_fastapi_react")
         assert "fullstack" in profile.system_prompt_template.lower()
-
-    def test_artifact_output_mode_is_multi_file(self):
-        profile = get_profile("fullstack_fastapi_react")
-        assert profile.artifact_output_mode == ARTIFACT_MODE_MULTI_FILE
 
 
 class TestBuildProfilesRegistry:

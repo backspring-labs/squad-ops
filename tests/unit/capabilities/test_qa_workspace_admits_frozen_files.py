@@ -18,10 +18,13 @@ Bug classes guarded:
 - **a frozen file the build needs dropped by the workspace filter.** The wiring test enters at
   `_get_source_artifacts` with the real profiles, not at a copy of its predicate;
 - **the next such file.** The guard is parametrized over the registered scaffold stacks and
-  asks, for every frozen file the expander actually emits whose suffix the profile itself
-  declares in `expected_extensions`, whether the QA workspace admits it. That is a rule over
-  the profile's own declarations, not a list of filenames — a frozen `.json` fixture or a
-  second stylesheet is covered the day it lands;
+  asks, for every frozen file the expander actually emits, whether the QA workspace admits it.
+  The exceptions are named, never inferred: the container packaging the scaffold renders
+  (`BuildProfile.scaffold_provided_files`, which no build or suite reads) and each file in
+  `_NOT_IN_THE_QA_WORKSPACE` with its reason. So a frozen `.json` fixture or a second
+  stylesheet is covered the day it lands, and a file the workspace drops must be named here.
+  (Until #1975 the rule read `expected_extensions`, a field no production code read, which
+  covered only the suffixes it happened to list.)
 - **the filter widening past its purpose.** The control asserts an unrelated stylesheet that
   no frozen file imports is still excluded — the fix is two basenames, not `.css` in
   `source_filter`, because `source_filter` also decides what the qa author is SHOWN as source
@@ -33,6 +36,7 @@ from __future__ import annotations
 import pytest
 
 from squadops.capabilities.development_profiles import get_development_profile
+from squadops.capabilities.handlers.build_profiles import get_profile
 from squadops.capabilities.handlers.cycle.qa_test import _is_test_file
 from squadops.capabilities.handlers.cycle_tasks import QATestHandler
 from squadops.capabilities.scaffold import _STACKS, expand, fill_slot_paths
@@ -73,12 +77,26 @@ def test_an_unrelated_stylesheet_is_still_excluded():
     assert kept == set()
 
 
+#: Frozen files the QA workspace leaves out, each with its reason. The guard below fails on any
+#: other dropped file, so the next exception is a decision recorded here, not a silent drop.
+_NOT_IN_THE_QA_WORKSPACE: dict[str, dict[str, str]] = {
+    "fullstack_fastapi_react": {
+        "backend/requirements.txt": (
+            "dropped by the filter (`.txt` is in neither `source_filter` nor "
+            "`build_support_files`) since before #1476, and named here by #1975 rather than "
+            "exempted by a suffix list. Whether the QA workspace should carry the backend's "
+            "dependency manifest is not this guard's question"
+        ),
+    },
+}
+
+
 @pytest.mark.parametrize("stack", sorted(_STACKS))
-def test_every_frozen_file_the_profile_expects_is_admitted(stack):
-    """Parametrized over the LIVE stack registry. For each frozen file the expander emits
-    whose suffix the profile declares in `expected_extensions`, the QA workspace must admit
-    it. `.css` is declared on both stacks, so this fails on the pre-fix profiles — and it
-    covers the next frozen non-source file without anyone adding a name."""
+def test_every_frozen_file_is_admitted_or_named(stack):
+    """Parametrized over the LIVE stack registry. Every frozen file the expander emits is in
+    the QA workspace, except a suite (below), the scaffold's container packaging, and a file
+    named in `_NOT_IN_THE_QA_WORKSPACE`. This fails on the pre-#1476 profiles (each stack's
+    stylesheet), and on the next frozen file the filter drops, without anyone adding a name."""
     manifest = manifest_for_stack(stack)
     profile = get_development_profile(stack)
     fills = set(fill_slot_paths(manifest))
@@ -87,16 +105,18 @@ def test_every_frozen_file_the_profile_expects_is_admitted(stack):
     # (`_is_test_file`): a suite is the qa author's OUTPUT, not the source under test, and the
     # frozen harness proof has been excluded this way since before any stylesheet existed —
     # 1.7.4 passed with it excluded. It is not this defect and is not this guard's subject.
+    packaging = set(get_profile(stack).scaffold_provided_files())
+    named = set(_NOT_IN_THE_QA_WORKSPACE.get(stack, {}))
     expected = {
         p
         for p in frozen
-        if p.endswith(tuple(profile.expected_extensions))
-        and not _is_test_file(p, profile.test_file_patterns)
+        if not _is_test_file(p, profile.test_file_patterns) and p not in packaging | named
     }
 
     kept = _admitted(stack, frozen)
     dropped = sorted(expected - kept)
 
-    assert not dropped, (
-        f"{stack}: frozen files the profile expects but the QA workspace drops: {dropped}"
-    )
+    assert not dropped, f"{stack}: frozen files the QA workspace drops, unnamed: {dropped}"
+    # A named exception that the workspace now admits, or the scaffold no longer emits, is
+    # stale: the list must say what is true.
+    assert not named & kept and named <= set(frozen), sorted(named & kept or named - set(frozen))
