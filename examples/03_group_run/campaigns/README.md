@@ -22,6 +22,15 @@ files, which carry shakeout 7's policy exactly, so the set runs what the exit sh
 these reconciles with every campaign of that content. That is the claim the reconciliation makes: this
 file's content produced that campaign. The create reason says which run it was.
 
+**A definition's comment says what the file is, never which deploy or round it will run on**
+(#1958). Those facts belong to the pre-registration, which records them when they are read; a
+definition is pinned by path, commit and sha256 before the run, so a comment naming its deploy is
+already stale when a later round moves the deploy. The 2.0 set's two files say "rebuild 19, b0c25360"
+and the set registered on rebuild 22. A comment may name the campaign, the issue it serves and what
+it is meant to show. `tests/unit/campaigns/test_definition_comments.py` refuses a `rebuild N`, a
+`round N`, a deploy id or a commit sha in the comment of any definition whose bytes `provenance.yaml`
+has not pinned. A pinned file stays as it was written: editing it would break the reconciliation.
+
 **Outputs stay under the main checkout's `var/campaigns/<campaign>/`:** the log windows
 (`campaign_log_archive.py`), the diagnostics' records, the proof logs. They are not inputs, and are not
 tracked here. The canonical evidence of a campaign is its close-time package and digest in the vault.
