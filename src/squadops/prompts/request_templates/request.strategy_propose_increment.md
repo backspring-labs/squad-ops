@@ -1,6 +1,6 @@
 ---
 template_id: request.strategy_propose_increment
-version: "7"
+version: "8"
 required_variables:
   - objective_statement
   - objective_measurement
@@ -38,6 +38,15 @@ after it. A criterion the accepted application already meets cannot be proven, a
 returned. The usual miss is the default case of the feature you add. For a capacity limit, "a run
 created without a capacity still accepts a tenth join" holds today, before any capacity exists, so it
 is not a criterion. "A third join to a run with capacity 2 is refused" is, because today it succeeds.
+
+**Your `prd_delta` states only what the rest of your request delivers.** The build implements the
+`manifest_delta` inside the files it derives, and the evaluation checks your criteria. The PRD text is
+read afterwards as true of the application. So a sentence in `prd_delta` that no `manifest_delta`
+entry, criterion or footprint file carries describes something no build will do. For example, a
+capacity change whose `prd_delta` said "show capacity status in run detail", while its
+`manifest_delta` changed no client route and no criterion named the detail view, asked for a display
+nothing would build, and it was returned. Either carry the display (the client route's change and a
+criterion on it) or leave it out of the text.
 
 {{frozen_conventions_section}}
 {{supervisor_note_section}}

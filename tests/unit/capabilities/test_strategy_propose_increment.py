@@ -210,6 +210,20 @@ async def test_the_proposal_is_told_the_manifest_is_what_the_application_does():
     assert "A `feature` or `fix` with an empty `manifest_delta` gives the build" in prompt
 
 
+async def test_the_proposal_is_told_its_prd_delta_states_only_what_the_request_delivers():
+    """#1995, through the real render. Bug caught: a PRD delta stating more than the manifest
+    delta, criteria and footprint carry. The 2.0 set's campaign 2, increment 1, v1 (stored as
+    ``prop_450986544201``) stated a capacity display in run detail that no client-route change,
+    criterion or footprint file carried, and only the supervisor's return caught it."""
+    ctx = _ctx(_fenced(_REFERENCE))
+
+    await StrategyProposeIncrementHandler().handle(ctx, _inputs())
+
+    [prompt] = _prompts(ctx)
+    assert "**Your `prd_delta` states only what the rest of your request delivers.**" in prompt
+    assert '"show capacity status in run detail"' in prompt
+
+
 async def test_an_empty_delta_feature_is_refused_inside_the_task_and_revised():
     """#1961, at the live caller. Bug caught: the new rail's refusal not reaching the proposer as
     a reason it can act on, so the empty-delta proposal is never revised before the gate."""
