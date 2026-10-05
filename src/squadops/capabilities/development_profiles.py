@@ -65,7 +65,6 @@ class DevelopmentProfile:
     system_prompt_supplement: str
     file_structure_guidance: str
     example_structure: str
-    expected_extensions: tuple[str, ...]
     test_framework: str
     test_prompt_supplement: str
     source_filter: tuple[str, ...]
@@ -152,7 +151,6 @@ DEVELOPMENT_PROFILES: dict[str, DevelopmentProfile] = {
             "  <module>.py\n"
             "requirements.txt"
         ),
-        expected_extensions=(".py",),
         test_framework=TEST_FRAMEWORK_PYTEST,
         test_prompt_supplement=(
             "You are generating pytest test files. "
@@ -198,7 +196,6 @@ DEVELOPMENT_PROFILES: dict[str, DevelopmentProfile] = {
         example_structure=(
             "<project_name>/\n  main.py\n  models.py\n  routes.py\nrequirements.txt"
         ),
-        expected_extensions=(".py",),
         test_framework=TEST_FRAMEWORK_PYTEST,
         test_prompt_supplement=(
             "You are generating pytest test files for a FastAPI application. "
@@ -240,7 +237,6 @@ DEVELOPMENT_PROFILES: dict[str, DevelopmentProfile] = {
             "- vite.config.js imports and uses @vitejs/plugin-react"
         ),
         example_structure=("index.html\npackage.json\nvite.config.js\nsrc/\n  main.jsx\n  App.jsx"),
-        expected_extensions=(".js", ".jsx", ".html", ".css"),
         test_framework=TEST_FRAMEWORK_VITEST,
         test_prompt_supplement=(
             "You are generating vitest test files for a React application. "
@@ -349,7 +345,6 @@ DEVELOPMENT_PROFILES: dict[str, DevelopmentProfile] = {
             "    main.jsx\n"
             "    App.jsx"
         ),
-        expected_extensions=(".py", ".js", ".jsx", ".html", ".css"),
         test_framework=TEST_FRAMEWORK_BOTH,
         test_prompt_supplement=(
             "You are generating test files for a fullstack application.\n\n"
@@ -457,7 +452,6 @@ DEVELOPMENT_PROFILES: dict[str, DevelopmentProfile] = {
             "  models.ts\n"
             "  store.ts"
         ),
-        expected_extensions=(".ts", ".tsx", ".json", ".css"),
         test_framework=TEST_FRAMEWORK_VITEST,
         test_prompt_supplement=(
             "You are generating vitest test files for a Next.js TypeScript application.\n\n"

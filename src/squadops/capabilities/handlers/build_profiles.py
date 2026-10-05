@@ -23,7 +23,7 @@ test (the #452 hard acceptance gate).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 import squadops.prompts as _prompts_pkg
@@ -55,15 +55,6 @@ ROUTING_BUILDER_PRESENT = "builder_role_present"
 ROUTING_FALLBACK_NO_BUILDER = "fallback_no_builder"
 
 # ---------------------------------------------------------------------------
-# Artifact output mode constants
-# ---------------------------------------------------------------------------
-
-ARTIFACT_MODE_MULTI_FILE = "multi_file"
-ARTIFACT_MODE_SINGLE_FILE = "single_file"
-ARTIFACT_MODE_STRUCTURED_BUNDLE = "structured_bundle"
-
-
-# ---------------------------------------------------------------------------
 # Build profile dataclass (D2)
 # ---------------------------------------------------------------------------
 
@@ -86,9 +77,6 @@ class BuildProfile:
     system_prompt_template: str
     required_files: tuple[str, ...]
     optional_files: tuple[str, ...] = ()
-    validation_rules: tuple[str, ...] = ()
-    artifact_output_mode: str = ARTIFACT_MODE_MULTI_FILE
-    default_task_tags: dict[str, str] = field(default_factory=dict)
 
     def scaffold_provided_files(self) -> tuple[str, ...]:
         """Files the stack's scaffold renders for this profile, which the builder must not emit.
@@ -198,22 +186,12 @@ BUILD_PROFILES: dict[str, BuildProfile] = {
         system_prompt_template=_narrative("python_cli_builder"),
         required_files=("Dockerfile", "__main__.py", "requirements.txt"),
         optional_files=(ASSEMBLY_NOTES_DOCUMENT,),
-        validation_rules=(
-            "Dockerfile must be valid",
-            "__main__.py must wire to developer's entry point",
-        ),
-        artifact_output_mode=ARTIFACT_MODE_MULTI_FILE,
     ),
     "static_web_builder": BuildProfile(
         name="static_web_builder",
         system_prompt_template=_narrative("static_web_builder"),
         required_files=("index.html", "styles.css", "main.js"),
         optional_files=("favicon.ico", "manifest.json", ASSEMBLY_NOTES_DOCUMENT),
-        validation_rules=(
-            "index.html must be valid HTML5",
-            "All asset references must use relative paths",
-        ),
-        artifact_output_mode=ARTIFACT_MODE_MULTI_FILE,
     ),
     "web_app_builder": BuildProfile(
         name="web_app_builder",
@@ -225,11 +203,6 @@ BUILD_PROFILES: dict[str, BuildProfile] = {
             "templates/",
             ASSEMBLY_NOTES_DOCUMENT,
         ),
-        validation_rules=(
-            "app.py must be valid Python",
-            "requirements.txt must list all dependencies",
-        ),
-        artifact_output_mode=ARTIFACT_MODE_MULTI_FILE,
     ),
     # #598 (owner ruling 2026-09-13): the packaging set — Dockerfile, nginx.conf, start.sh,
     # .dockerignore — is rendered by the scaffold and frozen, so the builder authors the notes
@@ -241,10 +214,6 @@ BUILD_PROFILES: dict[str, BuildProfile] = {
         system_prompt_template=_narrative("fullstack_fastapi_react"),
         required_files=(ASSEMBLY_NOTES_DOCUMENT,),
         optional_files=(".env.example",),
-        validation_rules=(
-            "the container packaging is the scaffold's rendering; no packaging file is emitted",
-        ),
-        artifact_output_mode=ARTIFACT_MODE_MULTI_FILE,
     ),
     # #838 stack #2. The SIXTH per-stack registry, and the one VS found by its absence:
     # `_seed_skeleton_artifacts` resolves `get_profile(manifest.stack)`, which raises for an
@@ -258,10 +227,6 @@ BUILD_PROFILES: dict[str, BuildProfile] = {
         # builder authors the notes, required, and an optional `.env.example`.
         required_files=(ASSEMBLY_NOTES_DOCUMENT,),
         optional_files=(".env.example",),
-        validation_rules=(
-            "the container packaging is the scaffold's rendering; no packaging file is emitted",
-        ),
-        artifact_output_mode=ARTIFACT_MODE_MULTI_FILE,
     ),
 }
 

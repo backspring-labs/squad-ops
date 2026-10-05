@@ -94,9 +94,10 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         return None
 
     @staticmethod
-    def _resolve_task_tags(profile: Any, resolved_config: dict) -> dict[str, str]:
-        """Merge profile default tags with experiment_context overrides."""
-        task_tags = dict(profile.default_task_tags)
+    def _resolve_task_tags(resolved_config: dict) -> dict[str, str]:
+        """The task's tags, from ``experiment_context``. A profile declared none (#1975: its
+        ``default_task_tags`` was empty on every profile and was deleted)."""
+        task_tags: dict[str, str] = {}
         experiment_ctx = resolved_config.get("experiment_context", {})
         if isinstance(experiment_ctx, dict):
             for key, value in experiment_ctx.items():
@@ -367,7 +368,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
             return self._fail_result(start_time, inputs, str(exc))
 
         # Step 1b: Resolve task tags (profile defaults + experiment_context overrides)
-        task_tags = self._resolve_task_tags(profile, resolved_config)
+        task_tags = self._resolve_task_tags(resolved_config)
 
         # Issue #107: when framing decomposed builder work, the active
         # task's expected_artifacts is the source of truth for what must

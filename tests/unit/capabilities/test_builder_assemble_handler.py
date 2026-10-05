@@ -577,63 +577,6 @@ class TestTagInterpolation:
         assert "style" in user_msg.content
         assert "minimal" in user_msg.content
 
-    async def test_default_task_tags_applied(self, mock_context, builder_inputs):
-        """Profile default_task_tags appear in prompt when no experiment_context."""
-        from squadops.capabilities.handlers.build_profiles import BUILD_PROFILES, BuildProfile
-
-        original = BUILD_PROFILES.get("python_cli_builder")
-        patched = BuildProfile(
-            name="python_cli_builder",
-            system_prompt_template=original.system_prompt_template,
-            required_files=original.required_files,
-            optional_files=original.optional_files,
-            validation_rules=original.validation_rules,
-            artifact_output_mode=original.artifact_output_mode,
-            default_task_tags={"target_python": "3.11"},
-        )
-        BUILD_PROFILES["python_cli_builder"] = patched
-        try:
-            handler = BuilderAssembleHandler()
-            await handler.handle(mock_context, builder_inputs)
-
-            call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
-            messages = call_args[0][0]
-            user_msg = [m for m in messages if m.role == "user"][0]
-            assert "target_python" in user_msg.content
-            assert "3.11" in user_msg.content
-        finally:
-            BUILD_PROFILES["python_cli_builder"] = original
-
-    async def test_experiment_context_overrides_default_tags(self, mock_context, builder_inputs):
-        """experiment_context tags override profile default_task_tags."""
-        from squadops.capabilities.handlers.build_profiles import BUILD_PROFILES, BuildProfile
-
-        original = BUILD_PROFILES.get("python_cli_builder")
-        patched = BuildProfile(
-            name="python_cli_builder",
-            system_prompt_template=original.system_prompt_template,
-            required_files=original.required_files,
-            optional_files=original.optional_files,
-            validation_rules=original.validation_rules,
-            artifact_output_mode=original.artifact_output_mode,
-            default_task_tags={"target_python": "3.11"},
-        )
-        BUILD_PROFILES["python_cli_builder"] = patched
-        try:
-            builder_inputs["resolved_config"]["experiment_context"] = {
-                "target_python": "3.12",
-            }
-            handler = BuilderAssembleHandler()
-            await handler.handle(mock_context, builder_inputs)
-
-            call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
-            messages = call_args[0][0]
-            user_msg = [m for m in messages if m.role == "user"][0]
-            assert "3.12" in user_msg.content
-            assert "3.11" not in user_msg.content
-        finally:
-            BUILD_PROFILES["python_cli_builder"] = original
-
     async def test_tags_cannot_remove_required_files(self, mock_context, builder_inputs):
         """Tags in experiment_context cannot weaken profile required_files."""
         builder_inputs["resolved_config"]["experiment_context"] = {
