@@ -1210,6 +1210,51 @@ class TestRefinementArtifactWriting:
         assert call_args[0][0] == "run_001"
         assert stored_ref.artifact_id in call_args[0][1]
 
+    async def test_the_notes_are_promoted_and_forwarded_with_the_plan(
+        self, executor, mock_registry, tmp_path
+    ):
+        """#2029: the decision promotes the run's artifacts when it is recorded, and the notes
+        are written later, when the gate reads it. Bug caught: notes stored ``working``, which
+        the next workload's forwarding (promoted artifacts only) never carries, so the record
+        of what the operator asked for stops at the framing run. Entered at ``execute_cycle``
+        with a real vault; the next workload's forwarding is read as ``execute_run`` gets it."""
+        from adapters.cycles.filesystem_artifact_vault import FilesystemArtifactVault
+
+        vault = FilesystemArtifactVault(tmp_path)
+        executor._artifact_vault = vault
+        mock_registry.get_cycle.return_value = _make_cycle(
+            workload_sequence=[
+                {"type": "framing", "gate": "progress_plan_review"},
+                {"type": "implementation"},
+            ]
+        )
+        run1 = _make_run("run_001", 1, "completed", "framing")
+        run1_decided = _make_run(
+            "run_001",
+            1,
+            "completed",
+            "framing",
+            gate_decisions=(
+                _gate_decision(
+                    "progress_plan_review",
+                    GateDecisionValue.APPROVED_WITH_REFINEMENTS,
+                    notes="Add error handling to the parser",
+                ),
+            ),
+        )
+        run2 = _make_run("run_002", 2, "completed", "implementation")
+        mock_registry.get_run.side_effect = [run1, run1, run1_decided, run2]
+        mock_registry.list_runs.side_effect = [[run1_decided], [run1_decided]]
+        mock_registry.create_run.side_effect = lambda r: r
+
+        with patch.object(asyncio, "sleep", new_callable=AsyncMock):
+            await executor.execute_cycle("cyc_001", "run_001")
+
+        [notes] = await vault.list_artifacts(run_id="run_001", promotion_status="promoted")
+        forwarded = executor.execute_run.await_args_list[-1].kwargs["forwarding_overrides"]
+        assert notes.filename == "refinement_notes.md"
+        assert forwarded["prior_workload_artifact_refs"] == [notes.artifact_id]
+
     @pytest.mark.parametrize("notes", [None, ""])
     async def test_empty_notes_does_not_write_artifact(
         self, executor, mock_registry, mock_event_bus, notes
