@@ -72,4 +72,14 @@ def test_service_token_passthrough_for_plain_values(tmp_path):
     """Bug caught: token mangling on the non-secret path — every request
     would 401 against a service configured with the same literal."""
     config = SandboxConfig(provider="noop", workspace_root=tmp_path, service_token="tok-123")
-    assert resolve_service_token(config) == "tok-123"
+    assert resolve_service_token(config, secret_manager=None) == "tok-123"
+
+
+def test_a_secret_reference_with_no_provider_is_refused_with_the_reason(tmp_path):
+    """#1982. Bug caught: the resolver building ``SecretManager()`` itself, which raises
+    ``TypeError`` (a manager needs a provider) and says nothing about the token."""
+    config = SandboxConfig(
+        provider="noop", workspace_root=tmp_path, service_token="secret://sandbox_token"
+    )
+    with pytest.raises(ValueError, match="SQUADOPS__SECRETS__PROVIDER"):
+        resolve_service_token(config, secret_manager=None)

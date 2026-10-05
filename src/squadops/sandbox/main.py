@@ -17,30 +17,51 @@ Run with:  uvicorn --factory squadops.sandbox.main:build_app --port 8002
 from __future__ import annotations
 
 import os
+from collections.abc import Iterable
 
 from fastapi import FastAPI
 
-from squadops.config.schema import SandboxConfig
+from squadops.config.schema import SandboxConfig, SecretsConfig
+from squadops.core.secrets import SecretManager
 from squadops.sandbox.api import create_app
 
 _ENV_PREFIX = "SQUADOPS__SANDBOX__"
+_SECRETS_PREFIX = "SQUADOPS__SECRETS__"
+
+
+def _section_from_env(prefix: str, fields: Iterable[str]) -> dict[str, str]:
+    """One config section's env vars, keyed by field. Unknown fields fail loudly rather than
+    being silently dropped: a typo would otherwise deploy as an unconfigured default."""
+    values = {
+        key[len(prefix) :].lower(): value
+        for key, value in os.environ.items()
+        if key.startswith(prefix)
+    }
+    unknown = set(values) - set(fields)
+    if unknown:
+        raise ValueError(
+            f"unknown {prefix} settings: {sorted(unknown)} "
+            "(a typo here would otherwise be silently ignored)"
+        )
+    return values
 
 
 def sandbox_config_from_env() -> SandboxConfig:
-    """Build the execution section from its env vars (pydantic coerces types;
-    unknown fields fail loudly rather than being silently dropped)."""
-    values = {
-        key[len(_ENV_PREFIX) :].lower(): value
-        for key, value in os.environ.items()
-        if key.startswith(_ENV_PREFIX)
-    }
-    unknown = set(values) - set(SandboxConfig.model_fields)
-    if unknown:
-        raise ValueError(
-            f"unknown SQUADOPS__SANDBOX__ settings: {sorted(unknown)} "
-            "(a typo here would otherwise be silently ignored)"
-        )
-    return SandboxConfig(**values)
+    """Build the execution section from its env vars (pydantic coerces types)."""
+    return SandboxConfig(**_section_from_env(_ENV_PREFIX, SandboxConfig.model_fields))
+
+
+def secret_manager_from_env() -> SecretManager | None:
+    """The secrets provider the ``SQUADOPS__SECRETS__*`` section selects, or ``None`` when it
+    selects none (#1982). Only the provider's selection is read: no other platform secret is
+    resolved here, so the sandbox still holds none it does not use."""
+    values = _section_from_env(_SECRETS_PREFIX, SecretsConfig.model_fields)
+    if not values:
+        return None
+    from squadops.bootstrap.secrets import secret_provider_for
+
+    secrets = SecretsConfig(**values)
+    return SecretManager(provider=secret_provider_for(secrets), name_map=secrets.name_map or {})
 
 
 def build_app() -> FastAPI:
@@ -49,4 +70,5 @@ def build_app() -> FastAPI:
 
     config = sandbox_config_from_env()
     service = create_sandbox_service(config)
-    return create_app(service, service_token=resolve_service_token(config))
+    token = resolve_service_token(config, secret_manager=secret_manager_from_env())
+    return create_app(service, service_token=token)
