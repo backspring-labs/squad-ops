@@ -124,10 +124,11 @@ that every crash window recovers. In particular, in the paths reviewed no recove
 successor left `QUEUED` by a process death after insertion and before execution; `max_elapsed_s` is
 evaluated only after a cycle ends, so it does not bound this state. No restart is planned during this
 supervised run. After every completed run, the supervisor queries the next run at the first
-300-second watcher interval. If it remains `QUEUED`, the supervisor issues a campaign pause with the
-stuck run in the reason and escalates the known framework finding; silence must not be read as an
-empty or slow result. A reduced shakeout or a second campaign would need its own property list and
-pre-registered prediction.
+300-second watcher interval. The supervisor makes the same check after every gate decision that lets
+the cycle continue, because that ruling may be what creates the successor. If it remains `QUEUED`,
+the supervisor issues a campaign pause with the stuck run in the reason and escalates the known
+framework finding; silence must not be read as an empty or slow result. A reduced shakeout or a
+second campaign would need its own property list and pre-registered prediction.
 
 ### Launch-input record
 
