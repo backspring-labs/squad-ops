@@ -5,6 +5,26 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [2.0.1] — 2026-10-04
+
+**Security: an artifact is written inside its own directory, whatever filename or id it carries**
+(advisory GHSA-3rw2-35gr-mvh3, #2003). The artifact ingest route passed a client-supplied `filename`
+unvalidated to the filesystem vault, so an absolute name or one with a `..` segment was written
+outside the vault. Exploiting it needed `cycles:write`.
+- **One rule:** a filename is relative, has no `..` segment, is not blank and has no NUL.
+- **The route** refuses a name that breaks it (`422 INVALID_FILENAME`), and nothing is stored.
+- **The vault** refuses it too, for every caller, and checks that the artifact's directory and file
+  both resolve inside the vault.
+- **Model emissions were already guarded** by the fenced parser.
+
+None of the deploy's 35,522 stored filenames is refused by the rule. **Upgrade from 2.0.0.**
+
+**Also since 2.0.0:**
+- the release capture rebuilds a campaign increment from the accepted tree its promotion recorded,
+  not from its run's scaffold stubs (#2000);
+- the v2.0.0 release package (#2001);
+- SIP-0107 is promoted to implemented, its step 7 having shipped in 2.0.0 (#2002).
+
 ## [2.0.0] — 2026-10-04
 
 **Campaign: the squad evolves one delivered app increment by increment, unattended between one

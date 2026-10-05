@@ -23,7 +23,19 @@ Each even-minor consumer sits strictly behind the release that earns its trust: 
 
 ## Release Timeline
 
-### v2.0.0 (2026-10-04) — Current — Campaign
+### v2.0.1 (2026-10-04) — Current — a security patch
+
+**v2.0.1**, the 2.0 line's first patch: **an artifact is written inside its own directory, whatever
+filename or id it carries** (advisory GHSA-3rw2-35gr-mvh3, #2003).
+- **The defect:** the ingest route wrote a client-supplied filename into the vault unvalidated.
+- **The fix:** one rule (relative, no `..`, not blank, no NUL), enforced by the route (`422`) and by
+  the vault for every caller.
+- **Also:** the release capture rebuilds a campaign increment from its accepted tree (#2000), and
+  SIP-0107 is promoted to implemented (#2002).
+
+**Upgrade from 2.0.0.**
+
+### v2.0.0 (2026-10-04) — Campaign
 
 **v2.0.0 — Campaign** (SIP-0109), the 2.x line's headline: the inner of two loops. A campaign opens
 with a calibration cycle, then evolves that app increment by increment:
@@ -831,9 +843,9 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Stats
 
-*As of 2026-10-04 (v2.0.0):*
+*As of 2026-10-04 (v2.0.1):*
 
-- **Framework version**: 2.0.0
+- **Framework version**: 2.0.1
 - **SIPs** (2026-10-04, after the 2.0 sweep and SIP-0107's promotion after the tag): 69 implemented, 9 accepted (SIP-0088, 0090–0093, 0101, 0102, 0105, 0109), 20 deprecated, plus the unnumbered proposals indexed in `sips/PORTFOLIO.md`
 - **Tests**: 10,000+ passing in the regression suite (all of `tests/unit`, #1316)
 - **Python source**: ~109,000 lines measured 2026-09-17 (`src/` ~84,000 + `adapters/` ~25,000; ~168,000 test lines; ~144,000 lines of Markdown under `docs/` and `sips/`)
