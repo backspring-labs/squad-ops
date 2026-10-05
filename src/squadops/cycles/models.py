@@ -64,8 +64,8 @@ class GateDecisionValue(StrEnum):
 
 
 # The decisions a gate proceeds on, and so the ones that promote the run's artifacts to the
-# next workload (#1986). One set for both readers: the workload gate's dispatch and the
-# recorder's promotion. A refinement approval proceeds, so it promotes too; before #1986 it
+# next workload (#1986). One set for every reader: the workload gate's dispatch, the executor's
+# mid-run gate (`_handle_gate`), the stranding read (`lifecycle.py`) and the recorder's promotion. A refinement approval proceeds, so it promotes too; before #1986 it
 # was recorded over HTTP, proceeded, and forwarded nothing. Anything outside the set,
 # including an unknown value, never acts as an approval (#466).
 APPROVING_DECISIONS: frozenset[str] = frozenset(

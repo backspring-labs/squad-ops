@@ -78,6 +78,7 @@ from squadops.cycles.manifest_authoring import (
     MANIFEST_ARTIFACT_TYPE,
 )
 from squadops.cycles.models import (
+    APPROVING_DECISIONS,
     ArtifactRef,
     Cycle,
     FlowMode,
@@ -3968,10 +3969,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             for gate_name in gate_names:
                 for decision in run.gate_decisions:
                     if decision.gate_name == gate_name:
-                        if decision.decision in (
-                            GateDecisionValue.APPROVED,
-                            GateDecisionValue.APPROVED_WITH_REFINEMENTS,
-                        ):
+                        if decision.decision in APPROVING_DECISIONS:
                             await self._cycle_registry.update_run_status(run_id, RunStatus.RUNNING)
                             self._cycle_event_bus.emit(
                                 EventType.RUN_RESUMED,

@@ -12,6 +12,7 @@ from collections.abc import Sequence
 from enum import Enum
 
 from squadops.cycles.models import (
+    APPROVING_DECISIONS,
     CycleStatus,
     GateDecisionValue,
     IllegalStateTransitionError,
@@ -236,7 +237,7 @@ def classify_workload_stranding(
     # contradictory decisions somehow coexist, the conservative read wins.
     if GateDecisionValue.REJECTED in decisions:
         return WorkloadStranding.GATE_REJECTED
-    if decisions & {GateDecisionValue.APPROVED, GateDecisionValue.APPROVED_WITH_REFINEMENTS}:
+    if decisions & APPROVING_DECISIONS:
         return WorkloadStranding.STRANDED
     if not decisions:
         return WorkloadStranding.GATE_PENDING

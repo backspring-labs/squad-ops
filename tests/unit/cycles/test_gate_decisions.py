@@ -308,3 +308,28 @@ def test_no_decider_records_or_announces_a_decision_by_hand():
         for hit in _hand_assembled_steps(path)
     ]
     assert offenders == []
+
+
+def _approval_pairs(path: Path) -> list[str]:
+    """Collection literals naming both approving values: a private copy of the approving set."""
+    found = []
+    for node in ast.walk(ast.parse(path.read_text(), filename=str(path))):
+        if isinstance(node, ast.Tuple | ast.List | ast.Set):
+            names = {e.attr for e in node.elts if isinstance(e, ast.Attribute)}
+            if {"APPROVED", "APPROVED_WITH_REFINEMENTS"} <= names:
+                found.append(f"{path.relative_to(_ROOT)}:{node.lineno}")
+    return found
+
+
+def test_what_counts_as_an_approval_is_answered_once():
+    """Three readers decide whether a decision approves: the workload gate, the executor's mid-run
+    gate and the recorder. The route once answered differently from the gate, and a refinement
+    approval proceeded with nothing promoted (#1986). Each reads ``APPROVING_DECISIONS``."""
+    copies = [
+        hit
+        for tree in ("src", "adapters")
+        for path in sorted((_ROOT / tree).rglob("*.py"))
+        if path != _ROOT / "src/squadops/cycles/models.py"
+        for hit in _approval_pairs(path)
+    ]
+    assert copies == []
