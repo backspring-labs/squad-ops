@@ -207,6 +207,36 @@ class RunCompletion:
         self._workflow_tracker = workflow_tracker
         self._activity_port = activity_port
 
+    async def _end_flow_runs_left_open(
+        self, cycle_id: str, run_id: str, cycle: Cycle | None, own: str | None
+    ) -> None:
+        """#2007: the run has ended, so no flow run of its name may stay open. One a process
+        that died left open (the run was re-attached after a restart) is ended here, beside
+        the run's own, which ``finalize`` has just ended with the run's status."""
+        if self._workflow_tracker is None:
+            return
+        from squadops.cycles.flow_runs import end_open_flow_runs
+        from squadops.cycles.naming import flow_run_name
+
+        project_id = cycle.project_id if cycle is not None else None
+        if project_id is None and self._cycle_registry is not None:
+            try:
+                project_id = (await self._cycle_registry.get_cycle(cycle_id)).project_id
+            except Exception:
+                logger.warning("no cycle %s to name run %s's flow runs", cycle_id, run_id)
+                return
+        if project_id is None:
+            return
+        left = await end_open_flow_runs(
+            self._workflow_tracker, [flow_run_name(project_id, cycle_id, run_id)], keep=own
+        )
+        if left:
+            logger.warning(
+                "flow_runs_left_open_ended run=%s count=%d at the run's end (#2007)",
+                run_id,
+                len(left),
+            )
+
     async def finalize(
         self,
         cycle_id: str,
@@ -254,6 +284,7 @@ class RunCompletion:
                 await self._workflow_tracker.set_flow_run_state(flow_run_id, run_status)
             except Exception:
                 logger.warning("Prefect terminal state update failed", exc_info=True)
+        await self._end_flow_runs_left_open(cycle_id, run_id, cycle, flow_run_id)
 
         # SIP-0096 §6.4: the pure verification-integrity choke point. finalize is
         # the single site that sees the run's RunLedger at run end; run the

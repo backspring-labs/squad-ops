@@ -267,12 +267,53 @@ class TestDeterministicTaskIds:
         ids_b = [e.task_id for e in plan_b]
         assert ids_a == ids_b
 
-    def test_non_implementation_uses_uuid_ids(self, impl_cycle, legacy_run, profile):
-        """Non-implementation runs still use UUID-based task IDs (backward compat)."""
-        plan = generate_task_plan(impl_cycle, legacy_run, profile)
-        for envelope in plan:
-            # UUID hex is 32 chars, no hyphens
-            assert not envelope.task_id.startswith("task-")
+    @pytest.mark.parametrize(
+        "workload_type", [None, WorkloadType.PROPOSAL, WorkloadType.EVALUATION]
+    )
+    def test_every_workloads_ids_survive_a_second_plan_generation(
+        self, impl_cycle, legacy_run, profile, workload_type
+    ):
+        """#1934. Bug this catches: a workload whose ids are drawn at random. A restarted
+        runtime re-attaches its run and generates the plan again, and #1929's replay recognises
+        a task the agent already ran only by its id. The proposal run's random ids made the
+        re-dispatched ``strategy.propose_increment`` a new task, which ran twice."""
+        import dataclasses
+
+        run = dataclasses.replace(legacy_run, workload_type=workload_type)
+        first = [e.task_id for e in generate_task_plan(impl_cycle, run, profile)]
+        again = [e.task_id for e in generate_task_plan(impl_cycle, run, profile)]
+
+        assert first and first == again
+        assert all(t.startswith(f"task-{run.run_id[:12]}-") for t in first)
+        assert len(set(first)) == len(first)
+
+    def test_a_re_attached_proposal_task_is_answered_by_the_agent_that_ran_it(
+        self, impl_cycle, legacy_run, profile
+    ):
+        """#1934, both seams: the runtime's plan for a proposal run, generated again by the
+        re-attach after a restart, and the agent's store of tasks it finished (#1929). Bug this
+        catches: the copy dispatched under a new id, run in full while the original's reply is
+        dropped as unknown (rebuild 18, ``cmp_c380058c647f``)."""
+        import dataclasses
+
+        from squadops.comms.task_replay import FinishedTasks
+
+        run = dataclasses.replace(legacy_run, workload_type=WorkloadType.PROPOSAL)
+        [before] = [
+            e
+            for e in generate_task_plan(impl_cycle, run, profile)
+            if e.task_type == "strategy.propose_increment"
+        ]
+        finished = FinishedTasks()
+        finished.record(before.task_id, "the proposal", "boot-before-restart")
+
+        [after] = [
+            e
+            for e in generate_task_plan(impl_cycle, run, profile)
+            if e.task_type == "strategy.propose_increment"
+        ]
+
+        assert finished.replay_for(after.task_id, "boot-after-restart") == "the proposal"
 
     def test_deterministic_ids_include_task_type(self, impl_cycle, impl_run, profile):
         plan = generate_task_plan(impl_cycle, impl_run, profile)
