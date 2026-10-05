@@ -83,12 +83,19 @@ The inert recall port, NoOp implementation and call site are 2.1 ground preparat
 Register one reproducible input for Nostromo's first 2.1 baseline campaign. The PR does not change
 Campaign mechanics, permissions, prompts, profiles or continuation policy.
 
+This is a **definition-only PR**: its permitted production inputs are the new definition and local
+documentation under `examples/03_group_run/campaigns/`. A deterministic check may exercise the
+existing loader, but the PR must not change `src/`, `adapters/`, runtime configuration or a deployed
+artifact. Merging this PR therefore does not trigger a rebuild. Any runtime prerequisite is a
+separate PR and follows the deploy gate below.
+
 Suggested title:
 
 > `examples(campaigns): register Nostromo's first 2.1 baseline campaign`
 
 ### Objective contract
 
+- **Class:** diagnostic baseline, not a counted campaign and not a release-acceptance run.
 - **Statement:** exactly the 2.0 counted objective: evolve `group_run` toward its PRD's expansion
   scope, one increment at a time.
 - **Allowed scope:** `backend/**` and `frontend/**` only.
@@ -97,6 +104,23 @@ Suggested title:
   bounds, repair/retry limits, ruling and lease bounds, and the same profiles.
 - **Baseline:** the pinned 2.0 counted set is the comparison; this run changes the deployed framework,
   not the workload contract.
+- **Bounded claim:** the result may diagnose already-deployed 2.1 Campaign paths and the fitness of
+  their instruments. It cannot confirm an unmerged 2.1 change, accept 2.1, or establish that the
+  proposed 2.2 Cross-Cycle Memory feature is ready to implement.
+
+### Pre-registered prediction
+
+Owner acceptance of this plan, before creation of the stored campaign, registers this prediction:
+
+> On the named deploy, the repeated 2.0 objective will reach three accepted cumulative increments
+> without framework repair or manual intervention; each gate decision will have one durable record,
+> recovery will preserve campaign attachment, and the archive, replay, digest and per-increment
+> scorecard will all be derivable from stored records.
+
+The close-time review tests each clause separately. A failure is diagnostic evidence, not a failed
+counted set. If the named deploy lacks a property in the prediction, this campaign does not start; a
+reduced shakeout would need its own property list and pre-registered prediction. No second campaign
+is proposed by this plan.
 
 ### PR structure
 
@@ -127,7 +151,10 @@ The PR is acceptable only if a test or deterministic check can establish all of 
 Campaign success is separate from PR acceptance. The run succeeds only if it opens with calibration,
 accepts three cumulative increments, preserves all earlier frozen criteria, closes by the objective
 row, emits its bounded evidence package and digest, and yields per-increment scorecards comparable
-with the 2.0 baseline. Manual intervention or a merge during the run voids the comparison claim.
+with the 2.0 baseline. Manual intervention voids the comparison claim. A merge to GitHub does not
+change the subject, but a rebuild, configuration change or mutation of the accepted app during the
+run does; all conclusions are attributed to the recorded deploy SHA, never to whatever `main` points
+to in the morning.
 
 ### Target components
 
@@ -151,6 +178,22 @@ with the 2.0 baseline. Manual intervention or a merge during the run voids the c
 | close-time evaluator | stored cycles, control log, frozen criteria and evidence records | a missing tracked definition does not change the verdict, but the result cannot support the reproducible-baseline claim |
 | replay and scorecard readers | accepted tree, approved request, frozen criteria and close-time package | missing inputs produce no comparison; they must not be inferred from prose or raw logs |
 
+### Launch gates resolving B1–B4
+
+These are launch gates, not facts established by the objective PR:
+
+| Gate | Required recorded answer | Current disposition |
+|---|---|---|
+| **B1 — change and rebuild boundary** | Objective PR diff is definition-only. For any separate runtime PR, record its full-green merge, rebuild owner, scheduled window, 150 GB disk-floor check, loaded-code check and post-deploy reference run. | Objective PR needs no rebuild. The runtime batch's owner, window and environment readings remain open. |
+| **B2 — execution identity** | Record the deployed commit and its `dep_...` identity before creation. From certification through evidence closure, do not rebuild or mutate runtime configuration. Later GitHub merges are allowed only if morning analysis remains explicitly pinned to the deployed SHA rather than `main`. | Deploy SHA and deployment record can exist only after the prerequisite batch lands; until then launch is blocked. |
+| **B3 — supervision and reachability** | Name the holder who can create/start, the person who rules increment and plan gates, the owner who may authorize and resume an escalation, and each reachability window. Prove the operator can reach the Spark API and holds the required current role; do not infer either from crew membership. | Owner decision requested. The current rule is `campaigns:control` on the admin role; actual holders and API reachability are unknown. |
+| **B4 — claim and prediction** | Record the campaign as diagnostic, bind it to the objective and prediction above before creation, and list which predicted 2.1 properties are actually present on the deploy. A counted run would require a separate owner-approved registration. | The design supplies the class and proposed prediction; owner acceptance and deploy binding remain open. |
+
+Operational readiness is an additional launch gate: the box is idle and above the disk floor; the
+log archiver starts with the campaign; no Buzz rebuild competes for the box; and rollback language
+names either final campaign abort or an older-code rebuild. An older-code rebuild occurs only between
+campaigns, or while the campaign is paused or escalated with nothing in flight.
+
 ## C. Recommended sequence for tonight
 
 1. **Freeze the baseline now.** Accept or reject this rule and PR outline before Parker prepares an
@@ -163,19 +206,26 @@ with the 2.0 baseline. Manual intervention or a merge during the run voids the c
    the repeat is not comparable, cannot be supervised safely, or cannot produce attributable evidence.
    Preference for a different feature objective is non-blocking for this baseline run.
 4. **Parker prepares the objective PR only after the design review.** It contains the input contract
-   and deterministic checks above, no engine changes. Parker may prepare it while the prerequisite
-   implementation PRs finish, but it does not authorize a launch.
+   and deterministic checks above, no engine changes and therefore no rebuild. Parker may prepare it
+   while the prerequisite implementation PRs finish, but it does not authorize a launch.
 5. **Land and verify prerequisites in the adopted 2.1 order:** #1960, #1934/#2007 and the first
    batch's overlapping recovery checks, then #1940 on the single decision recorder. Read main's full
    CI after each merge; rebuild once the deploy-moving batch is complete.
-6. **Pre-run gate on that one deploy:** main green; loaded checks match the commit; regression pair
-   green; recovery diagnostics including `restart-at:at_proposal` green; supervisor instruments pass;
-   #1940 authority works and remains bounded; the scorecard renders from records alone; the box is
-   idle and the definition is semantically equal to the 2.0 baseline.
-7. **Run one campaign, not a set.** No merges during it. Dallas may observe adversarially; Ash may
-   classify findings; Parker does not repair a live run. The supervisor rules proposals only against
-   the accepted objective and records every ruling.
-8. **Close before changing anything:** materialize the package and digest, regenerate provenance,
+6. **Certify and freeze that one deploy:** record the commit and `dep_...` identity; verify main's
+   full run is green; loaded checks match the commit; the regression pair is green; recovery
+   diagnostics including `restart-at:at_proposal` are green; supervisor instruments pass; #1940
+   authority works and remains bounded; the scorecard renders from records alone; the box is idle and
+   above the disk floor; and the definition is semantically equal to the 2.0 baseline. Name the
+   rebuild operator and window. No rebuild or runtime mutation follows certification until evidence
+   closure.
+7. **Resolve the owner-operated launch gate:** record the B3 names, reachability windows, API-access
+   proof and the owner's acceptance of the diagnostic prediction. Start the log archiver with the
+   campaign. If any field is absent, do not start tonight.
+8. **Run one diagnostic campaign, not a set.** GitHub work may continue, but results remain pinned to
+   the certified deploy and no merge may trigger a rebuild during the run. Dallas may observe
+   adversarially; Ash may classify findings; Parker does not repair a live run. The supervisor rules
+   proposals only against the accepted objective and records every ruling.
+9. **Close before changing anything:** materialize the package and digest, regenerate provenance,
    compute scorecards and replay comparisons, then classify findings. Framework fixes become separate
    2.1 PRs with predictions written before the edit. Any proposed new rule returns to architecture
    before Parker implements it.
