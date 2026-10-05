@@ -15,6 +15,7 @@ from pathlib import Path
 import typer
 import yaml
 
+from squadops.campaigns.models import ControlOperation
 from squadops.cli.client import APIClient, CLIError
 from squadops.cli.config import load_config
 from squadops.cli.output import print_detail, print_error, print_json, print_success, print_table
@@ -113,7 +114,7 @@ def show_campaign(ctx: typer.Context, campaign_id: str = typer.Argument(...)):
     """Show a campaign, and the definition file its creation row records (#1954)."""
     data = _call(ctx, "get", f"/api/v1/campaigns/{campaign_id}")
     log = _call(ctx, "get", f"/api/v1/campaigns/{campaign_id}/control-log")
-    created = next((e for e in log if e["operation"] == "create"), None)
+    created = next((e for e in log if e["operation"] == ControlOperation.CREATE), None)
     recorded = (created or {}).get("binding", {}).get("definition")
     data = {**data, "definition": recorded}
     fmt, quiet = _fmt(ctx)
