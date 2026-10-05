@@ -93,6 +93,9 @@ class CorrectionTerminationReason:
     #: ``blocked_unverified`` is (§6.5); no agent waives it.
     CONTESTED_CHECK = "contested_check"
     EXHAUSTED = "exhausted"
+    #: #414 (the 2.1.0 plan's ruling): the run's last correction attempt is held for a required
+    #: check, and this round failed none. Ended here, one round before ``EXHAUSTED`` would be.
+    RESERVED_FOR_REQUIRED = "reserved_for_required"
     CONVERGED = "converged"
     INFRASTRUCTURE_FAILURE = "infrastructure_failure"
 

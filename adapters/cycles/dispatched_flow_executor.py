@@ -3208,6 +3208,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             envelope=enriched_envelope if enriched_envelope is not None else envelope,
             result=result,
             correction_attempts=attempt,
+            correction_budget=max_corrections,
             round_seq=round_seq,
             prior_outputs=prior_outputs,
             all_artifact_refs=all_artifact_refs,

@@ -206,6 +206,7 @@ class TestCorrectionTaskRunPropagation:
             completed_task_ids=[],
             plan_delta_refs=[],
             flow_run_id="fr_main",
+            correction_budget=3,
         )
 
         # Each correction step gets its own Prefect task_run.
@@ -261,6 +262,7 @@ class TestCorrectionTaskRunPropagation:
             completed_task_ids=[],
             plan_delta_refs=[],
             flow_run_id=None,
+            correction_budget=3,
         )
 
         mock_prefect_workflow_tracker.create_task_run.assert_not_awaited()
@@ -324,6 +326,7 @@ class TestCorrectionPatchRepairTaskRunPropagation:
             completed_task_ids=[],
             plan_delta_refs=[],
             flow_run_id="fr_main",
+            correction_budget=3,
         )
 
         # At least one repair task was dispatched and carries both IDs.

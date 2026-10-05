@@ -278,10 +278,11 @@ DISPOSITIONS: tuple[Disposition, ...] = (
         None,
         primary_eligible=False,
     ),
-    # CorrectionTerminationReason
+    # CorrectionTerminationReason. #414: a round refused at the reserve ran out of the budget it
+    # may use, since the one attempt left is held for a required check.
     *_each(
         Vocabulary.CORRECTION_TERMINATION_REASON,
-        (CorrectionTerminationReason.EXHAUSTED,),
+        (CorrectionTerminationReason.EXHAUSTED, CorrectionTerminationReason.RESERVED_FOR_REQUIRED),
         _A,
         _C.BUDGET_EXHAUSTION,
         primary_eligible=True,

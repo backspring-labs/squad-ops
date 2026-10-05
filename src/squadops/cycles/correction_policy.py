@@ -36,6 +36,7 @@ This module is the intended home for the #435 convergence policy
 
 from __future__ import annotations
 
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -163,4 +164,30 @@ def resolve_correction_path(
         overridden_from=decision_path,
         override_reason="executed_failed_required_checks",
         failed_required_checks=failed_required,
+    )
+
+
+def last_attempt_reserved(
+    failed_checks: Collection[str],
+    resolved_config: Mapping[str, Any],
+    *,
+    attempt: int,
+    budget: int,
+) -> bool:
+    """#414, the priority reserve (the 2.1.0 plan's ruling): the run's last correction attempt is
+    held for a SIP-0096 required check, so a round that failed only completeness checks cannot
+    take it.
+
+    True when ``attempt`` (0-based) is the last of ``budget``, the profile declares required
+    checks, the round's failed checks are known, and none is required. A round whose failure
+    names no check (an absent emission, an app error) is not refused: nothing says it is
+    completeness. The budget was one severity-blind pool drawn down in arrival order, and
+    completeness checks arrive first (#389).
+    """
+    required = frozenset(resolved_config.get("required_checks") or ())
+    return (
+        bool(required)
+        and attempt == budget - 1
+        and bool(failed_checks)
+        and not required.intersection(failed_checks)
     )

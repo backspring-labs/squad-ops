@@ -1368,3 +1368,58 @@ round.
   (`test_correction_runner.py`);
 - mutation checks on each;
 - decision 3's counted roll, still to run, predicted silent unless a reduction occurs.
+
+### 12c. 2026-10-05 — the last correction attempt is held for a required check (#414)
+
+**Ruled.** The 2.1.0 plan's ruling on #414: "the priority reserve. Each required check keeps one
+reserved attempt, so completeness failures cannot take the last one. Proven by replaying stored
+correction ledgers: which runs would have spent differently." The issue's deferral trigger had
+fired: `campaign-increment` and `validated-fullstack` both declare SIP-0096 `required_checks`
+(`tests_pass`, `frontend_build`, `required_files`), each with three attempts.
+
+**What was built before.** `max_correction_attempts` is one run-level pool, drawn down in arrival
+order by every task and every failure class. Completeness checks arrive first, so a cheap early
+failure could take the attempt a late, critical one needed: #389's `cyc_60eb5a481b5b` spent 3/3 on
+two markdown headings, and its unbuildable frontend got none.
+
+**What changes.** A round at the run's last attempt is refused when the profile declares required
+checks, the round's failed checks are known, and none of them is required. It ends as a typed
+correction termination, `reserved_for_required`, stored and recorded as every other one is
+(`correction_policy.last_attempt_reserved`, read in the correction runner right after the round's
+failure is recorded and before any step dispatches, so a refused round costs nothing). Not refused:
+- a round at any earlier attempt;
+- a round failing a required check alongside completeness checks;
+- a round whose failure names no check (an absent emission, an app error): nothing says it is
+  completeness;
+- any round of a profile that declares no required checks.
+
+The budget is still one pool and still the executor's (`max_correction_attempts`). The executor
+now passes it to the runner (`correction_budget`, a required keyword), so the rule reads the budget
+the executor enforces, never a default of its own.
+
+**The replay.** The stored correction ledgers (`run_loop_summaries`, 469 runs from 2026-09-15 to
+2026-10-05, 106 with correction rounds) were replayed against the rule:
+- **two runs would have spent differently.** `run_33a98e71a7c8` and `run_b2a737465ec7` each spent
+  their last attempt on a round failing only `acceptance:regex_match`, with no required check
+  failing. Each would have ended one round sooner, as `reserved_for_required` instead of
+  `exhausted`;
+- **no run lost a required repair to completeness rounds.** One run (`run_a1e8f6dab695`) spent an
+  earlier round on `acceptance:fill_slot_signature` alone and ended on `tests_pass`. That round was
+  not its last attempt, so the rule leaves it as it was;
+- 46 of the corpus's rounds failed only non-required checks. 125 of its failed-check rows are
+  `tests_pass`.
+
+So on today's corpus the reserve is insurance against #389's shape rather than a change in
+outcomes: in the three weeks the summaries cover (they were first recorded on 2026-09-15, well
+after #413 removed the oscillation that amplified demand), the starvation it guards against did not
+recur. That reading is evidence, not a reason to drop the rule. The demand
+side (deterministic scaffolding, #376) shrank the completeness churn, and nothing guarantees it
+stays shrunk.
+
+**Verified by:**
+- the rule's edges, one test each (`test_priority_reserve.py`);
+- a wiring test entering at `run_correction_protocol`, the executor's caller: a completeness-only
+  round at the last attempt raises `reserved_for_required` with nothing dispatched and the
+  termination stored; the control, a `tests_pass` failure at the same attempt, proceeds to analysis
+  (`test_correction_runner.py`);
+- a mutation check: with the runner's call removed, the refusal test fails.
