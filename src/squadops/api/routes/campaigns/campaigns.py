@@ -3,9 +3,13 @@
 Each operation is a control-log transition through ``CampaignRegistryPort``, acknowledged only
 after its row commits. The scopes are the owner's ruling of 2026-10-02:
 - **read** (``campaigns:read``): the campaign and its control log;
-- **supervise** (``campaigns:supervise``, the crew's supervisor): pause. Ruling at the increment
-  gate and the box lease arrive with step 5;
-- **control** (``campaigns:control``, the owner): create, resume, abort.
+- **supervise** (``campaigns:supervise``, the crew's supervisor): pause, classify, the box lease,
+  and ruling at the increment gate;
+- **manage** (``campaigns:manage``, the supervisor and the owner; #1940, SIP-0109 §24az, revising
+  that ruling at the owner's request of 2026-10-03): create, start, abort, materialize the package,
+  and resume a pause the supervisor made;
+- **control** (``campaigns:control``, the owner alone): resume an escalation, a limit's pause or
+  the owner's own pause. The resume route reads which one from the row that held the campaign.
 
 The actor and role on every row come from the caller's verified token, never from the request
 body. Each row is projected to ``AuditPort``, and each applied row to the cycle event bus as
@@ -35,7 +39,7 @@ from squadops.api.campaign_schemas import (
     LeaseResultResponse,
     ResumeRequest,
 )
-from squadops.api.middleware.auth import require_scopes
+from squadops.api.middleware.auth import holds_scopes, require_scopes
 from squadops.auth.models import Identity, Role, Scope
 from squadops.campaigns import lifecycle
 from squadops.campaigns.models import (
@@ -49,6 +53,7 @@ from squadops.campaigns.models import (
     ControlOperation,
     ControlOperationRefused,
     ControlOutcome,
+    ResumeReservedToOwner,
     TransitionResult,
 )
 from squadops.cycles.lifecycle import derive_cycle_status
@@ -168,7 +173,7 @@ async def launch_pending(request: Request, result: TransitionResult) -> list[str
 async def create_campaign(
     request: Request,
     body: CampaignCreateRequest,
-    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_CONTROL)),
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_MANAGE)),
 ) -> ControlResultResponse:
     actor, role = actor_from(identity)
     now = datetime.now(UTC)
@@ -243,9 +248,9 @@ async def start_campaign(
     request: Request,
     campaign_id: str,
     body: ControlRequest,
-    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_CONTROL)),
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_MANAGE)),
 ) -> ControlResultResponse:
-    """The owner's start (§17): the draft moves to calibrating, its calibration cycle's launch
+    """The start (§17), the owner's or the supervisor's (#1940): the draft moves to calibrating, its calibration cycle's launch
     intent written in the same row (§12b), and the cycle is launched by the cycle-create path.
     A campaign that is not a draft refuses the start as stale, and the refusal is recorded."""
     from squadops.campaigns.launch_requests import start_transition
@@ -351,9 +356,13 @@ async def resume_campaign(
     request: Request,
     campaign_id: str,
     body: ResumeRequest,
-    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_CONTROL)),
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_MANAGE)),
 ) -> ControlResultResponse:
-    """The owner's word (§10, §17).
+    """The owner's word (§10, §17), or the supervisor's on its own pause (#1940, §24az).
+
+    Who may resume is read from the row that held the campaign (``owner_held``): an escalation,
+    a limit's pause and the owner's pause need ``campaigns:control``, and a supervisor asking is
+    refused 403 before anything is written.
 
     - **Paused by a limit:** the action the decision held is executed as recorded, never
       recomputed, and a launch action's intent is written in this row.
@@ -364,12 +373,15 @@ async def resume_campaign(
     """
     from squadops.api.runtime.deps import get_campaign_progress
     from squadops.campaigns.continuation import PendingAction
-    from squadops.campaigns.progress import CannotLaunch, held_action
+    from squadops.campaigns.progress import CannotLaunch, held_action, owner_held
 
     actor, role = actor_from(identity)
     registry = _registry(request)
     log = await registry.control_log(campaign_id)
     campaign = await registry.get_campaign(campaign_id)
+    held_by_owner = owner_held(campaign, log)
+    if held_by_owner is not None and not holds_scopes(request, Scope.CAMPAIGNS_CONTROL):
+        raise ResumeReservedToOwner(campaign_id, held_by_owner)
     held = held_action(log) if campaign.state is CampaignState.PAUSED else None
     named = None
     if body.action is not None:
@@ -583,7 +595,7 @@ async def abort_campaign(
     request: Request,
     campaign_id: str,
     body: ControlRequest,
-    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_CONTROL)),
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_MANAGE)),
 ) -> ControlResultResponse:
     """Abort: terminal (§12a). Every cycle the campaign launched that has not ended is
     cancelled by the existing cancel path, and no continuation follows."""
@@ -607,7 +619,7 @@ async def abort_campaign(
 async def materialize_package(
     request: Request,
     campaign_id: str,
-    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_CONTROL)),
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_MANAGE)),
 ) -> dict:
     """Materialize the campaign's evidence package and digest now (§14, #1710): a projection
     of its records, idempotent by identity. A campaign's close materializes it on its own."""

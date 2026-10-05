@@ -26,7 +26,7 @@ from squadops.api.error_handlers import register_domain_error_handlers
 from squadops.api.routes.campaigns import campaigns_router
 from squadops.api.routes.cycles.cycles import CreationPorts
 from squadops.auth.models import Identity, IdentityType, Role, scopes_for_roles
-from squadops.campaigns.models import CampaignState, LaunchIntentState
+from squadops.campaigns.models import CampaignState, ControlOperation, LaunchIntentState
 from tests.unit.campaigns.builders import campaign, policy, quiet_box
 
 pytestmark = pytest.mark.auth
@@ -70,15 +70,18 @@ class _World:
             event_bus=MagicMock(),
             box_verdict=quiet_box,
         )
+        self.seat = (Role.ADMIN, "owner")
         app = FastAPI()
+        world = self
 
         class InjectIdentity(BaseHTTPMiddleware):
             async def dispatch(self, request: Request, call_next):
+                role, user = world.seat
                 request.state.identity = Identity(
-                    user_id="owner",
-                    display_name="owner",
-                    roles=(Role.ADMIN,),
-                    scopes=tuple(sorted(scopes_for_roles((Role.ADMIN,)))),
+                    user_id=user,
+                    display_name=user,
+                    roles=(role,),
+                    scopes=tuple(sorted(scopes_for_roles((role,)))),
                     identity_type=IdentityType.HUMAN,
                 )
                 return await call_next(request)
@@ -138,6 +141,23 @@ async def test_a_start_launches_the_calibration_cycle_by_the_cycle_create_path(w
     assert (cycle.squad_profile_id, cycle.created_by) == ("full-38", "campaign-launcher")
     assert (run.run_number, run.status, run.workload_type) == (1, "queued", "framing")
     assert world.executor.started == [(cycle_id, run.run_id, "full-38")]
+
+
+async def test_the_supervisor_starts_a_campaign_and_its_row_names_the_supervisor(world):
+    """#1940: the crew dispatches. Bug caught: the supervisor's start refused, or recorded under
+    another actor than the token's. Entered at the start route, through the real launch service."""
+    world.seat = (Role.CAMPAIGN_SUPERVISOR, "ripley")
+
+    resp = world.start()
+    await asyncio.sleep(0)
+
+    [cycle_id] = resp.json()["launched_cycles"]
+    [started] = [
+        e for e in await world.campaigns.control_log(CID) if e.operation is ControlOperation.START
+    ]
+    assert resp.status_code == 200
+    assert (started.actor, started.actor_role) == ("ripley", Role.CAMPAIGN_SUPERVISOR)
+    assert world.executor.started[0][0] == cycle_id
 
 
 async def test_a_repeated_start_and_a_second_drain_launch_nothing_more(world):

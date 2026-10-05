@@ -103,7 +103,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | the stack's frozen conventions told to the proposer (Next.js; the rest) | **shipped** (§24av) | 2.1.0, #2013 |
 | the rails accept an empty manifest delta | **shipped** (§24au) | 2.1.0, #2011 |
 | the prior-cycle brief's remainder | **placed** | 2.1.0, #1692 |
-| the supervisor creates and manages campaigns (revises §24al) | **placed** | 2.1.0, #1940 |
+| the supervisor creates and manages campaigns (revises §24al) | **shipped** (§24az) | 2.1.0, PR #2047, issue #1940 |
 | a campaign records its definition file's hash | **placed** | 2.1.0, #1954 |
 | supervisor instruments (the lease proof, the binding replay, the loaded checks, the watcher) | **shipped** | 2.1.0, PR #2025, issue #1956 |
 | per-increment scorecard | **placed** | 2.1.0, #1960 |
@@ -2622,3 +2622,37 @@ proposal, not encoded in a test that gates or repairs the current run."
 **Who ruled it.** The owner, on PR #2010 (2026-10-05), and the 2.1 plan's §7 item 4, which specifies
 the contract.
 
+### 24az. The supervisor creates and manages a campaign; escalations and limit pauses stay the owner's (2026-10-05, §13, §24al, #1940; the owner's scope request)
+
+**What §24al said.** "The owner's own powers are authority, not supervision: creating a campaign,
+the owner's word on a pause or an escalation, an abort (`campaigns:control`). They keep their
+scope." Only `admin` held that scope, so the owner launched every campaign.
+
+**What changed.** A new scope, `campaigns:manage`, held by `admin` and `campaign-supervisor`:
+- **it covers:** create, start, abort, materializing the package, and resuming a pause the
+  supervisor made;
+- **`campaigns:control` stays the owner's alone,** and the resume route requires it when the
+  campaign is escalated, paused by a limit (§9.5: such a pause "resumes only on the owner's
+  recorded word", unchanged), or paused by the owner;
+- **which one is read from the row that held the campaign** (`owner_held`, `campaigns/progress.py`),
+  never from the request. A supervisor asking for an owner's resume is refused 403
+  (`OWNER_AUTHORITY_REQUIRED`) before anything is written. A resume in any other state is nobody's
+  hold, and is refused as stale and recorded, whoever asks (§12a, unchanged);
+- **every row still carries the token's actor and role,** so a supervisor's create, start or
+  abort reads as the supervisor's.
+
+**One reading the issue left open, decided here.** A pause the *owner* made is the owner's hold,
+and the supervisor does not lift it. The issue's words were "resume a campaign the supervisor
+paused"; the reverse reading would let the supervisor undo the owner's brake.
+
+**Evidence.** Route tests through the real authorization adapter, each failing on main:
+- the supervisor creates, starts (through the real launch service), pauses, resumes its own pause,
+  aborts and materializes a package, and each row names it;
+- the supervisor resuming an escalation, a limit's pause or the owner's pause is refused 403 with
+  nothing written, and the owner's resume of the same campaign then proceeds;
+- the read-only seats still steer nothing.
+
+**Who ruled it.** The owner, 2026-10-03: "I think I need the campaign supervisor granted the
+ability to create and manage campaigns", "keep escalations with me", and "keep limit pauses with
+me". Kept in 2.1 as its one feature exception, bounded to these operations (the 2.1 plan, §5
+rulings 2 and 13).

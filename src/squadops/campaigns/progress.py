@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from squadops.auth.models import Role
 from squadops.campaigns.continuation import (
     CampaignCounters,
     ContinuationDecision,
@@ -194,21 +195,49 @@ OWNER_ACTIONS = frozenset(
 )
 
 
-def held_action(log: list) -> PendingAction | None:
-    """The action a pausing limit holds (§10): the one recorded on the latest applied row into
-    ``paused``, when that row was a decision whose guard paused it. A supervisor's pause holds
-    nothing, and its resume returns the campaign where it was."""
+def _pausing_row(log: list) -> ControlLogEntry | None:
+    """The latest applied row that moved the campaign into ``paused``."""
     for entry in reversed(log):
         if entry.outcome != ControlOutcome.APPLIED or entry.next_state != CampaignState.PAUSED:
             continue
         if entry.prior_state == CampaignState.PAUSED:
             continue
-        if (
-            entry.operation == ControlOperation.DECIDE
-            and entry.binding.get("guard") == Guard.PAUSED
-        ):
-            return PendingAction(entry.binding["action"])
+        return entry
+    return None
+
+
+def held_action(log: list) -> PendingAction | None:
+    """The action a pausing limit holds (§10): the one recorded on the latest applied row into
+    ``paused``, when that row was a decision whose guard paused it. A supervisor's pause holds
+    nothing, and its resume returns the campaign where it was."""
+    entry = _pausing_row(log)
+    if (
+        entry is not None
+        and entry.operation == ControlOperation.DECIDE
+        and entry.binding.get("guard") == Guard.PAUSED
+    ):
+        return PendingAction(entry.binding["action"])
+    return None
+
+
+def owner_held(campaign: Campaign, log: list) -> str | None:
+    """Why resuming ``campaign`` is the owner's alone (#1940, §24az), or ``None`` when the
+    supervisor may resume it too. Read from the row that held it, never from the request:
+    - **escalated** (§10): the owner's word names the action;
+    - **paused by a limit** (§9.5): such a pause "resumes only on the owner's recorded word";
+    - **paused by the owner**: the owner's hold, which the supervisor does not lift.
+
+    A pause the supervisor made is the supervisor's to lift. Every other state is nobody's hold,
+    and a resume there is refused as stale and recorded, whoever asks."""
+    if campaign.state is CampaignState.ESCALATED:
+        return "escalated"
+    if campaign.state is not CampaignState.PAUSED:
         return None
+    if held_action(log) is not None:
+        return "paused by a limit"
+    pausing = _pausing_row(log)
+    if pausing is None or pausing.actor_role != Role.CAMPAIGN_SUPERVISOR:
+        return "paused by the owner"
     return None
 
 

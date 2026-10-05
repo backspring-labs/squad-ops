@@ -30,8 +30,9 @@ class Role:
     AGENT = "agent"
     # SIP-0109 §13 (#1799): the crew's two seats. The supervisor supervises a campaign —
     # reads it, rules at its increment gate, takes and releases the box lease, and pauses
-    # it — but cannot create one, resume one a limit paused, or abort one: those are the
-    # owner's (``admin``). Triage reads, and nothing else (#1719).
+    # it — and manages it (#1940, §24az): creates, starts and aborts it, materializes its
+    # package, and resumes its own pause. Resuming an escalation, a limit's pause or the
+    # owner's pause stays the owner's (``admin``). Triage reads, and nothing else (#1719).
     CAMPAIGN_SUPERVISOR = "campaign-supervisor"
     CAMPAIGN_TRIAGE = "campaign-triage"
 
@@ -47,9 +48,12 @@ class Scope:
     TASKS_WRITE = "tasks:write"
     ADMIN_WRITE = "admin:write"
     # SIP-0109 §13: read a campaign and its control log; supervise it (rule, lease, pause);
-    # control it (create, resume, abort) — the last is the owner's alone.
+    # manage it (create, start, abort, package, resume the supervisor's pause; #1940, §24az);
+    # control it (resume an escalation, a limit's pause or the owner's pause) — the last is the
+    # owner's alone.
     CAMPAIGNS_READ = "campaigns:read"
     CAMPAIGNS_SUPERVISE = "campaigns:supervise"
+    CAMPAIGNS_MANAGE = "campaigns:manage"
     CAMPAIGNS_CONTROL = "campaigns:control"
 
 
@@ -72,6 +76,7 @@ ROLE_SCOPES: dict[str, frozenset[str]] = {
             Scope.ADMIN_WRITE,
             Scope.CAMPAIGNS_READ,
             Scope.CAMPAIGNS_SUPERVISE,
+            Scope.CAMPAIGNS_MANAGE,
             Scope.CAMPAIGNS_CONTROL,
         }
     ),
@@ -103,6 +108,7 @@ ROLE_SCOPES: dict[str, frozenset[str]] = {
             Scope.CYCLES_READ,
             Scope.CAMPAIGNS_READ,
             Scope.CAMPAIGNS_SUPERVISE,
+            Scope.CAMPAIGNS_MANAGE,
         }
     ),
     Role.CAMPAIGN_TRIAGE: frozenset(

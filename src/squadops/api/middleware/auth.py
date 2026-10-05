@@ -285,6 +285,21 @@ async def _enforce_access(
     return identity
 
 
+def holds_scopes(request: Request, *scopes: str) -> bool:
+    """Whether the caller holds every one of ``scopes``, by the check :func:`require_scopes`
+    makes, for a route whose required scope depends on the resource's state (#1940). True when
+    authorization is not configured, since :func:`require_scopes` passes every caller then."""
+    from squadops.api.runtime.deps import get_authz_port
+
+    authz = get_authz_port(request)
+    if authz is None:
+        return True
+    identity: Identity | None = getattr(request.state, "identity", None)
+    if identity is None:
+        return False
+    return authz.check_access(identity, required_roles=[], required_scopes=list(scopes)).granted
+
+
 def require_roles(*roles: str) -> Callable:
     """FastAPI dependency: identity has at least one of the required roles.
 

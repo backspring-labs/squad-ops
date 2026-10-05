@@ -137,7 +137,7 @@ def _control(world: _World, op: str, key: str, **extra):
     ("role", "create", "pause", "resume", "abort", "read"),
     [
         (Role.ADMIN, 200, 200, 200, 200, 200),
-        (Role.CAMPAIGN_SUPERVISOR, 403, 200, 403, 403, 200),
+        (Role.CAMPAIGN_SUPERVISOR, 200, 200, 200, 200, 200),
         (Role.CAMPAIGN_TRIAGE, 403, 403, 403, 403, 200),
         (Role.OPERATOR, 403, 403, 403, 403, 200),
     ],
@@ -145,8 +145,10 @@ def _control(world: _World, op: str, key: str, **extra):
 async def test_each_role_holds_exactly_the_operations_the_ruling_gives_it(
     world, role, create, pause, resume, abort, read
 ):
-    """Bug caught: the crew's supervisor able to create, resume after a limit, or abort — or
-    the read-only seats able to steer. The owner's ruling of 2026-10-02, route by route."""
+    """Bug caught: the supervisor unable to manage a campaign it was given (#1940: create, its
+    own pause's resume, abort), or the read-only seats able to steer. The owner's ruling of
+    2026-10-02, as #1940 revised it, route by route. The resume here lifts the caller's own
+    pause; the owner's holds are the next tests'."""
     assert _create(world.as_(_identity(role, user="x"))).status_code == create
     world.as_(_identity(Role.ADMIN))
     if create != 200:
@@ -163,18 +165,34 @@ async def test_each_role_holds_exactly_the_operations_the_ruling_gives_it(
     assert _control(world, "abort", "k-abort").status_code == abort
 
 
-@pytest.mark.parametrize(
-    "role", [Role.CAMPAIGN_SUPERVISOR, Role.CAMPAIGN_TRIAGE, Role.OPERATOR, Role.VIEWER]
-)
-async def test_only_the_owners_seat_starts_a_campaign(world, role):
-    """The owner's ruling (10-02): starting a campaign launches cycles, which is the owner's
-    (campaigns:control), never the supervisor's. Bug caught: the start guarded by
-    campaigns:supervise, letting the crew launch a campaign."""
+@pytest.mark.parametrize("role", [Role.CAMPAIGN_TRIAGE, Role.OPERATOR, Role.VIEWER])
+async def test_only_the_managing_seats_start_a_campaign(world, role):
+    """Starting a campaign launches cycles: the owner's and, since #1940, the supervisor's
+    (campaigns:manage). Bug caught: a read-only seat able to launch a campaign."""
     _create(world)
     world.as_(_identity(role, user="x"))
 
     assert _control(world, "start", "k-start").status_code == 403
     assert (await world.campaigns.get_campaign("cmp_api000000001")).state is CampaignState.DRAFT
+
+
+async def test_the_supervisor_cannot_lift_the_owners_own_pause(world):
+    """#1940: the supervisor lifts its own pause, not the owner's. Bug caught: the manage scope
+    letting the supervisor resume a campaign the owner held. Refused before anything is written."""
+    _create(world)
+    await world.campaigns.transition("cmp_api000000001", move(CampaignState.CALIBRATING, "k-run"))
+    assert _control(world, "pause", "k-owner-pause").status_code == 200
+    rows = len(await world.campaigns.control_log("cmp_api000000001"))
+    world.as_(_identity(Role.CAMPAIGN_SUPERVISOR, user="ripley"))
+
+    refused = _control(world, "resume", "k-sup-resume")
+
+    error = refused.json()["detail"]["error"]
+    assert (refused.status_code, error["code"]) == (403, "OWNER_AUTHORITY_REQUIRED")
+    assert "paused by the owner" in error["message"]
+    assert len(await world.campaigns.control_log("cmp_api000000001")) == rows
+    world.as_(_identity(Role.ADMIN))
+    assert _control(world, "resume", "k-owner-resume").status_code == 200
 
 
 def test_no_identity_is_refused_once_authorization_is_configured(world):
