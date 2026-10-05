@@ -11,7 +11,6 @@ the handler — callers always get a ``RunTestsResult``.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import re
@@ -23,6 +22,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from squadops.capabilities.app_invocation import JS_SUITE_SUFFIXES
+from squadops.core.bounded_run import run_bounded
 
 logger = logging.getLogger(__name__)
 
@@ -232,27 +232,13 @@ async def run_generated_tests(
         _materialize_files(workspace, all_files)
 
         env = {**os.environ, "PYTHONPATH": _source_dir_pythonpath(workspace, source_files)}
-        proc = await asyncio.create_subprocess_exec(
-            sys.executable,
-            "-m",
-            "pytest",
-            ".",
-            "--tb=short",
-            "-q",
+        run = await run_bounded(
+            [sys.executable, "-m", "pytest", ".", "--tb=short", "-q"],
             cwd=workspace,
             env=env,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+            timeout=timeout_seconds,
         )
-
-        try:
-            raw_stdout, raw_stderr = await asyncio.wait_for(
-                proc.communicate(),
-                timeout=timeout_seconds,
-            )
-        except TimeoutError:
-            proc.kill()
-            await proc.wait()
+        if run.timed_out:
             return RunTestsResult(
                 executed=False,
                 error=f"pytest timed out after {timeout_seconds}s",
@@ -260,10 +246,10 @@ async def run_generated_tests(
                 source_file_count=len(source_files),
             )
 
-        stdout = raw_stdout.decode(errors="replace")[:_STDOUT_LIMIT]
-        stderr = raw_stderr.decode(errors="replace")[:_STDOUT_LIMIT]
+        stdout = run.stdout.decode(errors="replace")[:_STDOUT_LIMIT]
+        stderr = run.stderr.decode(errors="replace")[:_STDOUT_LIMIT]
 
-        exit_code = proc.returncode or 0
+        exit_code = run.returncode or 0
         failure_rows = parse_pytest_failure_rows(stdout, [f["path"] for f in test_files])
         return RunTestsResult(
             executed=True,
@@ -334,23 +320,10 @@ async def run_node_tests(
 
         # npm install
         try:
-            install_proc = await asyncio.create_subprocess_exec(
-                "npm",
-                "install",
-                "--no-audit",
-                "--no-fund",
-                cwd=cwd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            install = await run_bounded(
+                ["npm", "install", "--no-audit", "--no-fund"], cwd=cwd, timeout=timeout_seconds
             )
-            try:
-                await asyncio.wait_for(
-                    install_proc.communicate(),
-                    timeout=timeout_seconds,
-                )
-            except TimeoutError:
-                install_proc.kill()
-                await install_proc.wait()
+            if install.timed_out:
                 return RunTestsResult(
                     executed=False,
                     error=f"npm install timed out after {timeout_seconds}s",
@@ -358,7 +331,7 @@ async def run_node_tests(
                     source_file_count=len(source_files),
                 )
 
-            if install_proc.returncode != 0:
+            if install.returncode != 0:
                 return RunTestsResult(
                     executed=False,
                     error="npm install failed (dependency resolution error)",
@@ -379,16 +352,17 @@ async def run_node_tests(
         # test_failures=() (SIP-0104 P5: observation is additive, never load-bearing).
         report_path = os.path.join(cwd, _VITEST_REPORT_FILENAME)
         try:
-            proc = await asyncio.create_subprocess_exec(
-                "npx",
-                "vitest",
-                "run",
-                "--reporter=verbose",
-                "--reporter=json",
-                f"--outputFile.json={report_path}",
+            run = await run_bounded(
+                [
+                    "npx",
+                    "vitest",
+                    "run",
+                    "--reporter=verbose",
+                    "--reporter=json",
+                    f"--outputFile.json={report_path}",
+                ],
                 cwd=cwd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+                timeout=timeout_seconds,
             )
         except FileNotFoundError:
             return RunTestsResult(
@@ -398,14 +372,7 @@ async def run_node_tests(
                 source_file_count=len(source_files),
             )
 
-        try:
-            raw_stdout, raw_stderr = await asyncio.wait_for(
-                proc.communicate(),
-                timeout=timeout_seconds,
-            )
-        except TimeoutError:
-            proc.kill()
-            await proc.wait()
+        if run.timed_out:
             return RunTestsResult(
                 executed=False,
                 error=f"vitest timed out after {timeout_seconds}s",
@@ -413,8 +380,8 @@ async def run_node_tests(
                 source_file_count=len(source_files),
             )
 
-        stdout = raw_stdout.decode(errors="replace")[:_STDOUT_LIMIT]
-        stderr = raw_stderr.decode(errors="replace")[:_STDOUT_LIMIT]
+        stdout = run.stdout.decode(errors="replace")[:_STDOUT_LIMIT]
+        stderr = run.stderr.decode(errors="replace")[:_STDOUT_LIMIT]
 
         report = _read_vitest_report(report_path)
         # #1123: the JSON report is the machine report; when it was not written (a
@@ -435,7 +402,7 @@ async def run_node_tests(
                 ", ".join(uncollected),
             )
 
-        exit_code = proc.returncode or 0
+        exit_code = run.returncode or 0
         return RunTestsResult(
             executed=True,
             exit_code=exit_code,
@@ -545,20 +512,10 @@ async def run_frontend_build(
         build_cmd = ["npm", "run", "build"] if "build" in scripts else ["npx", "vite", "build"]
 
         try:
-            install = await asyncio.create_subprocess_exec(
-                "npm",
-                "install",
-                "--no-audit",
-                "--no-fund",
-                cwd=cwd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            install = await run_bounded(
+                ["npm", "install", "--no-audit", "--no-fund"], cwd=cwd, timeout=timeout_seconds
             )
-            try:
-                _, inst_err = await asyncio.wait_for(install.communicate(), timeout=timeout_seconds)
-            except TimeoutError:
-                install.kill()
-                await install.wait()
+            if install.timed_out:
                 return BuildCheckResult(
                     ran=False, error=f"npm install timed out after {timeout_seconds}s"
                 )
@@ -566,36 +523,26 @@ async def run_frontend_build(
                 return BuildCheckResult(
                     ran=False,
                     error="npm install failed (dependency resolution) — cannot assess build",
-                    stderr=inst_err.decode(errors="replace")[:_STDOUT_LIMIT],
+                    stderr=install.stderr.decode(errors="replace")[:_STDOUT_LIMIT],
                 )
         except FileNotFoundError:
             return BuildCheckResult(ran=False, error="npm not found — Node.js not installed")
 
         try:
-            proc = await asyncio.create_subprocess_exec(
-                *build_cmd,
-                cwd=cwd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
+            run = await run_bounded(build_cmd, cwd=cwd, timeout=timeout_seconds)
         except FileNotFoundError:
             return BuildCheckResult(
                 ran=False, error=f"{build_cmd[0]} not found — Node.js not installed"
             )
-
-        try:
-            _, raw_stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_seconds)
-        except TimeoutError:
-            proc.kill()
-            await proc.wait()
+        if run.timed_out:
             return BuildCheckResult(ran=False, error=f"build timed out after {timeout_seconds}s")
 
-        exit_code = proc.returncode or 0
+        exit_code = run.returncode or 0
         return BuildCheckResult(
             ran=True,
             ok=exit_code == 0,
             exit_code=exit_code,
-            stderr=raw_stderr.decode(errors="replace")[:_STDOUT_LIMIT],
+            stderr=run.stderr.decode(errors="replace")[:_STDOUT_LIMIT],
             error="" if exit_code == 0 else f"frontend build failed (exit {exit_code})",
         )
     except Exception as exc:  # never raise — a runner error is a skip, not a failure
@@ -716,24 +663,15 @@ async def run_backend_import_check(
         outfile = os.path.join(workspace, "__qa_import_result.json")
         env = {**os.environ, "PYTHONPATH": _source_dir_pythonpath(workspace, backend_py)}
         try:
-            proc = await asyncio.create_subprocess_exec(
-                sys.executable,
-                "-c",
-                _BACKEND_IMPORT_DRIVER,
-                outfile,
+            run = await run_bounded(
+                [sys.executable, "-c", _BACKEND_IMPORT_DRIVER, outfile],
                 cwd=workspace,
                 env=env,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+                timeout=timeout_seconds,
             )
         except FileNotFoundError:
             return BuildCheckResult(ran=False, error="python interpreter not found")
-
-        try:
-            _, raw_err = await asyncio.wait_for(proc.communicate(), timeout=timeout_seconds)
-        except TimeoutError:
-            proc.kill()
-            await proc.wait()
+        if run.timed_out:
             return BuildCheckResult(
                 ran=False, error=f"backend import check timed out after {timeout_seconds}s"
             )
@@ -748,7 +686,7 @@ async def run_backend_import_check(
             # import): can't assess, so skip rather than fabricate a failure.
             logger.warning(
                 "backend import check produced no result; stderr: %s",
-                raw_err.decode(errors="replace")[:500],
+                run.stderr.decode(errors="replace")[:500],
             )
             return BuildCheckResult(ran=False, error="backend import check produced no result")
 

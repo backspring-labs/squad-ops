@@ -15,6 +15,7 @@ from squadops.capabilities.handlers.test_runner import (
     run_fullstack_tests,
     run_node_tests,
 )
+from squadops.core.bounded_run import BoundedRun
 
 pytestmark = [pytest.mark.domain_capabilities]
 
@@ -215,24 +216,23 @@ class TestRunNodeTestsTimeout:
     @patch("tempfile.mkdtemp", return_value="/tmp/qa_node_test")
     @patch("shutil.rmtree")
     async def test_npm_install_timeout(self, _rmtree, _mkdtemp, _isfile, _mat):
-        import asyncio
+        # The timeout is faked at ``run_bounded``, the handler's seam, never below it: a mocked
+        # subprocess on the timeout path hands its mock ``pid`` (1) to the group kill, and
+        # ``killpg(1)`` is ``kill(-1)`` (#1983; ``test_bounded_run`` owns the kill itself).
+        bounded = AsyncMock(return_value=BoundedRun(returncode=None, stdout=b"", stderr=b""))
 
-        proc = MagicMock()
-        proc.communicate = AsyncMock(side_effect=asyncio.TimeoutError)
-        proc.kill = MagicMock()
-        proc.wait = AsyncMock()
-
-        with patch("asyncio.create_subprocess_exec", return_value=proc):
-            # Use a very short timeout but we're mocking anyway
-            with patch("asyncio.wait_for", side_effect=asyncio.TimeoutError):
-                result = await run_node_tests(
-                    _SOURCE_FILES,
-                    _TEST_FILES,
-                    timeout_seconds=1,
-                )
+        with patch("squadops.capabilities.handlers.test_runner.run_bounded", bounded):
+            result = await run_node_tests(
+                _SOURCE_FILES,
+                _TEST_FILES,
+                timeout_seconds=1,
+            )
 
         assert result.executed is False
-        assert "timed out" in result.error
+        assert result.error == "npm install timed out after 1s"
+        assert bounded.await_count == 1
+        assert bounded.await_args.args[0][:2] == ["npm", "install"]
+        assert bounded.await_args.kwargs["timeout"] == 1
 
 
 # ---------------------------------------------------------------------------

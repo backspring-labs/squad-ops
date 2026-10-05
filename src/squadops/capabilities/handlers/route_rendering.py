@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import contextlib
 import logging
-import os
 import re
 import signal
 import subprocess
@@ -26,6 +25,8 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+
+from squadops.core.bounded_run import signal_group
 
 logger = logging.getLogger(__name__)
 
@@ -198,13 +199,11 @@ def _stop(proc: subprocess.Popen | None) -> None:
     """The server's whole process group: the launcher and everything it started."""
     if proc is None:
         return
-    with contextlib.suppress(ProcessLookupError, PermissionError):
-        os.killpg(proc.pid, signal.SIGTERM)
+    signal_group(proc.pid, signal.SIGTERM)
     try:
         proc.wait(timeout=5)
     except subprocess.TimeoutExpired:
-        with contextlib.suppress(ProcessLookupError, PermissionError):
-            os.killpg(proc.pid, signal.SIGKILL)
+        signal_group(proc.pid, signal.SIGKILL)
         with contextlib.suppress(subprocess.TimeoutExpired):
             proc.wait(timeout=5)
 
