@@ -30,6 +30,16 @@ the packaging convention and are not releases in this sense):
    prose. The rule takes NO view on WHICH cycle to show — that judgement is the
    maintainer's and changes per release — only that the page states it, because an
    unexplained screenshot invites the flattering pick.
+4. From ``v1.0.0`` (cut step 4, #1957): ``docs/ROADMAP.md`` carries the release's timeline
+   entry, a ``### vX.Y.Z`` heading.
+5. From ``v2.1.0`` (cut step 8, #1957): the package's directory carries ``housekeeping.yaml``,
+   which ``scripts/dev/worktree_hygiene.py --apply --archive-root <dir> --record-release <tag>``
+   writes, naming the tag with no problems. A worktree whose records could not be preserved is
+   a problem the cut has not finished.
+
+Steps 4 and 8 were the cut's two unguarded steps, "written down" because nothing checked them.
+Step 8 runs after the tag, as step 7 does, so it is checked the same way: main is red from the
+tag until its record lands.
 
 Usage:
     python scripts/dev/check_release_packages.py            # every semver tag in the repo
@@ -46,6 +56,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RELEASES = REPO_ROOT / "site" / "content" / "releases"
+ROADMAP = REPO_ROOT / "docs" / "ROADMAP.md"
 
 SEMVER_TAG = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 
@@ -60,6 +71,13 @@ PACKAGED_SINCE = (1, 0, 0)
 #: ``assets/`` while cut step 7 asked for them in prose — the #789/#1061 shape, a manual
 #: step that reads as done because nothing reports its absence. From here it is checked.
 SHOWCASE_SINCE = (1, 7, 5)
+#: The first release whose cut records its housekeeping (step 8, #1957). Earlier cuts ran it, or
+#: did not, with nothing written down; they are not re-litigated.
+HOUSEKEEPING_SINCE = (2, 1, 0)
+HOUSEKEEPING_COMMAND = (
+    "python scripts/dev/worktree_hygiene.py --apply --archive-root <dir outside every checkout> "
+    "--record-release {tag}   # preview without --apply first"
+)
 
 CAPTURE_COMMAND = (
     "python scripts/maintainer/build_release_package.py {version} --cycle <cycle-id> "
@@ -129,6 +147,40 @@ def package_problems(tag: str, releases: Path = RELEASES) -> list[str]:
     # question with no answer while the citations themselves are wrong.
     if version >= SHOWCASE_SINCE and not problems:
         problems.extend(_screenshot_problems(tag, rel, version_text, target, package))
+    if version >= HOUSEKEEPING_SINCE and not problems:
+        problems.extend(_housekeeping_problems(tag, rel, target))
+    return problems
+
+
+def roadmap_problems(tag: str, roadmap: Path = ROADMAP) -> list[str]:
+    """Rule 4 (cut step 4): the ROADMAP's timeline names the release."""
+    version = version_of(tag)
+    if version is None or version < PACKAGED_SINCE:
+        return []
+    try:
+        text = roadmap.read_text(encoding="utf-8")
+    except OSError as exc:
+        return [f"{tag}: docs/ROADMAP.md cannot be read: {exc}"]
+    if re.search(rf"^### {re.escape(tag)}\b", text, re.MULTILINE):
+        return []
+    return [f"{tag}: docs/ROADMAP.md has no '### {tag} (…)' timeline entry — cut step 4"]
+
+
+def _housekeeping_problems(tag: str, rel: str, target: Path) -> list[str]:
+    """Rule 5 (cut step 8): the hygiene run recorded beside the package, clean."""
+    record = target / "housekeeping.yaml"
+    command = HOUSEKEEPING_COMMAND.format(tag=tag)
+    if not record.is_file():
+        return [f"{tag}: no {rel}/housekeeping.yaml — cut step 8 was not recorded:\n    {command}"]
+    try:
+        data = _load_yaml(record)
+    except Exception as exc:  # noqa: BLE001 - a record that does not parse is a finding
+        return [f"{tag}: {rel}/housekeeping.yaml does not parse: {exc}"]
+    problems = []
+    if data.get("tag") != tag:
+        problems.append(f"{tag}: {rel}/housekeeping.yaml names tag {data.get('tag')!r}")
+    for problem in data.get("problems") or []:
+        problems.append(f"{tag}: housekeeping left a problem: {problem}")
     return problems
 
 
@@ -244,20 +296,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--releases-dir", type=Path, default=RELEASES, help=argparse.SUPPRESS
     )  # for tests
+    parser.add_argument("--roadmap", type=Path, default=ROADMAP, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
     tags = args.tag or semver_tags(repo_tags())
     problems: list[str] = []
     for tag in tags:
         problems.extend(package_problems(tag, args.releases_dir))
+        problems.extend(roadmap_problems(tag, args.roadmap))
 
     if problems:
         print("release-packages: FAIL", file=sys.stderr)
         for problem in problems:
             print(f"  - {problem}", file=sys.stderr)
         print(
-            "  (CLAUDE.md, Release cut, step 7 — the package is captured AFTER the tag "
-            "and committed; main stays red until it lands)",
+            "  (CLAUDE.md, Release cut, steps 4, 7 and 8 — the package and the housekeeping "
+            "record land AFTER the tag; main stays red until they do)",
             file=sys.stderr,
         )
         return 1

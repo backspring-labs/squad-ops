@@ -38,6 +38,7 @@ import subprocess
 import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -373,9 +374,17 @@ def main(
         type=Path,
         help="required with --apply: where each worktree's var/ is archived, outside any checkout",
     )
+    ap.add_argument(
+        "--record-release",
+        metavar="TAG",
+        help="with --apply, at a release cut (step 8): write the verdict to "
+        "site/content/releases/TAG/housekeeping.yaml, which check_release_packages.py reads",
+    )
     args = ap.parse_args(argv)
     if args.apply and args.archive_root is None:
         ap.error("--apply requires --archive-root")
+    if args.record_release and not args.apply:
+        ap.error("--record-release records an applied run: it requires --apply")
     main_path = main_checkout(cwd or Path.cwd())
     trees, branches = survey(main_path, pr_lookup or gh_pr_lookup(main_path))
     print(render(trees, branches))
@@ -386,7 +395,34 @@ def main(
     for p in problems:
         print(f"  ✗ {p}")
     print(f"\napplied; {len(problems)} problems")
+    if args.record_release:
+        path = record_release(main_path, args.record_release, trees, branches, problems)
+        print(f"recorded: {path.relative_to(main_path)}")
     return 1 if problems else 0
+
+
+def record_release(
+    main: Path,
+    tag: str,
+    trees: Sequence[WorktreeFinding],
+    branches: Sequence[BranchFinding],
+    problems: Sequence[str],
+) -> Path:
+    """Cut step 8's record (#1957), beside the release package: what this run removed, and every
+    problem it left. ``check_release_packages.py`` refuses the release until it exists, clean."""
+    import yaml
+
+    target = main / "site" / "content" / "releases" / tag / "housekeeping.yaml"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    record = {
+        "tag": tag,
+        "applied_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "worktrees_removed": sorted(str(f.worktree.path) for f in trees if f.remove),
+        "branches_deleted": sorted(b.branch for b in branches if b.delete),
+        "problems": list(problems),
+    }
+    target.write_text(yaml.safe_dump(record, sort_keys=False), encoding="utf-8")
+    return target
 
 
 if __name__ == "__main__":
