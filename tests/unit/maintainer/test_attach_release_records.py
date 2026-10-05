@@ -55,8 +55,12 @@ def box(tmp_path, monkeypatch):
     return main
 
 
-def _run(box, tmp_path, *args, deploy=()):
-    return attach.main(["1.8.1", "--out-dir", str(tmp_path), *args], deploy_pairs=list(deploy))
+def _run(box, tmp_path, *args, deploy=(), public=None):
+    return attach.main(
+        ["1.8.1", "--out-dir", str(tmp_path), *args],
+        deploy_pairs=list(deploy),
+        public_in=lambda value: list((public or {}).get(value, ())),
+    )
 
 
 def _approved(box, tmp_path, monkeypatch) -> str:
@@ -359,3 +363,37 @@ def test_the_lines_window_runs_from_the_previous_tag_by_version_order(tmp_path):
     assert attach.tag_window(repo, "v1.9.0")[0] is None
     with pytest.raises(SystemExit, match="tag v2.0.0 not found"):
         attach.tag_window(repo, "v2.0.0")
+
+
+@pytest.mark.parametrize(
+    ("public", "rc"), [({}, 1), ({"provider-word": ["docker-compose.yml"]}, 0)]
+)
+def test_a_secret_the_repository_already_carries_is_named_not_refused(
+    box, tmp_path, monkeypatch, capsys, public, rc
+):
+    """The 2.0.0 cut's refusal: the Keycloak database password, committed in docker-compose.yml,
+    is also the auth provider's name that every runtime log prints, so every campaign log was
+    "a credential". Bug this catches: either that false refusal, or the value silently dropped.
+    A value the public repository carries cannot leak through the tarball; one it does not carry
+    still refuses."""
+    _write(box / "var/verification_sets/1-8-1-diagnostics/redelivery/driver.log", "provider-word\n")
+    monkeypatch.setattr(attach.subprocess, "run", lambda *a, **k: pytest.fail("preview acted"))
+
+    assert _run(box, tmp_path, deploy=[("KC_DB_PASSWORD", "provider-word")], public=public) == rc
+
+    out = capsys.readouterr().out
+    named = "not scanned, already public: the value of deploy env KC_DB_PASSWORD is committed in docker-compose.yml"
+    assert (named in out) is bool(public)
+
+
+def test_only_a_tracked_file_makes_a_value_public(tmp_path):
+    """Bug this catches: the deploy's own untracked ``.env`` counted as "the repository", so every
+    real secret it holds would be skipped as public. Read from a real git repository."""
+    repo = tmp_path / "repo"
+    _write(repo / "docker-compose.yml", "KC_DB_PASSWORD: provider-word\n")
+    _write(repo / ".env", "REAL_SECRET=never-committed-value\n")
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(["git", "-C", str(repo), "add", "docker-compose.yml"], check=True)
+
+    assert attach.tracked_files_with(repo, "provider-word") == ["docker-compose.yml"]
+    assert attach.tracked_files_with(repo, "never-committed-value") == []

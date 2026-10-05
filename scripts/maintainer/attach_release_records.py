@@ -52,7 +52,7 @@ import re
 import subprocess
 import sys
 import tarfile
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -235,6 +235,30 @@ def known_secrets(main: Path, deploy_pairs: Sequence[tuple[str, str]]) -> list[S
     return secrets
 
 
+def tracked_files_with(main: Path, value: str) -> list[str]:
+    """The repository's tracked files whose text holds ``value`` (``git grep -F``). A value
+    committed there is public already, so the tarball cannot leak it. An untracked file (the
+    deploy's ``.env``) never counts: only what the public repository already carries is public."""
+    done = subprocess.run(
+        ["git", "-C", str(main), "grep", "-F", "-l", "-z", "-e", value, "--"],
+        capture_output=True,
+        text=True,
+    )
+    return [path for path in done.stdout.split("\0") if path] if done.returncode == 0 else []
+
+
+def split_public(
+    secrets: Sequence[Secret], find: Callable[[str], list[str]]
+) -> tuple[list[Secret], dict[str, str]]:
+    """The secrets to scan, and those whose value the public repository already carries, each
+    with the tracked file that carries it. The 2.0.0 cut's scan refused every campaign log: the
+    Keycloak database password, committed in docker-compose.yml, is also the auth provider's name
+    the runtime logs print. A public value cannot leak through the tarball; it is named, never
+    silently dropped."""
+    public = {s.source: paths[0] for s in secrets if (paths := find(s.value))}
+    return [s for s in secrets if s.source not in public], public
+
+
 def scan(members: Sequence[tuple[str, Path]], secrets: Sequence[Secret]) -> list[Hit]:
     literals = [s for s in secrets if len(s.value) >= MIN_SECRET_LEN]
     hits: list[Hit] = []
@@ -273,7 +297,12 @@ def record_in_package(package: Path, block: dict) -> None:
     package.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
 
 
-def main(argv: Sequence[str] | None = None, *, deploy_pairs: Sequence | None = None) -> int:
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    deploy_pairs: Sequence | None = None,
+    public_in: Callable[[str], list[str]] | None = None,
+) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("version", help="the released version, e.g. 1.8.1")
     ap.add_argument(
@@ -306,8 +335,16 @@ def main(argv: Sequence[str] | None = None, *, deploy_pairs: Sequence | None = N
             "line; nothing to attach"
         )
         return 1
-    secrets = known_secrets(main_path, deploy_env_pairs() if deploy_pairs is None else deploy_pairs)
-    unscanned = [s.source for s in secrets if len(s.value) < MIN_SECRET_LEN]
+    secrets, public = split_public(
+        known_secrets(main_path, deploy_env_pairs() if deploy_pairs is None else deploy_pairs),
+        public_in or (lambda value: tracked_files_with(main_path, value)),
+    )
+    short = [s.source for s in secrets if len(s.value) < MIN_SECRET_LEN]
+    unscanned = [f"unscanned (shorter than {MIN_SECRET_LEN} chars): {source}" for source in short]
+    unscanned += [
+        f"not scanned, already public: the value of {source} is committed in {path}"
+        for source, path in public.items()
+    ]
     hits = scan(members, secrets)
 
     top = f"squadops-{args.version}-records"
@@ -321,10 +358,10 @@ def main(argv: Sequence[str] | None = None, *, deploy_pairs: Sequence | None = N
     for cid in campaigns.unnamed:
         print(f"  not carried, named by no provenance.yaml: {cid}")
     print(
-        f"scanned against {len(secrets) - len(unscanned)} known secret values + {len(PATTERNS)} patterns"
+        f"scanned against {len(secrets) - len(short)} known secret values + {len(PATTERNS)} patterns"
     )
-    for source in unscanned:
-        print(f"  unscanned (shorter than {MIN_SECRET_LEN} chars): {source}")
+    for note in unscanned:
+        print(f"  {note}")
     if hits:
         print(f"\nREFUSED — {len(hits)} credential hit(s); nothing uploaded:")
         for h in hits:
@@ -359,7 +396,7 @@ def main(argv: Sequence[str] | None = None, *, deploy_pairs: Sequence | None = N
             "campaigns": campaigns.carried,
             "bytes": size,
             "attached_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "scanned": {"secret_values": len(secrets) - len(unscanned), "patterns": list(PATTERNS)},
+            "scanned": {"secret_values": len(secrets) - len(short), "patterns": list(PATTERNS)},
         },
     )
     print(f"attached to {tag}; recorded in {package}")
