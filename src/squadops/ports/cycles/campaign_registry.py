@@ -13,6 +13,7 @@ from abc import ABC, abstractmethod
 from squadops.campaigns.box import BoxLease
 from squadops.campaigns.models import (
     Campaign,
+    CampaignDefinition,
     CampaignState,
     CampaignTransition,
     ControlLogEntry,
@@ -33,8 +34,10 @@ class CampaignRegistryPort(ABC):
         actor_role: str,
         reason: str,
         idempotency_key: str,
+        definition: CampaignDefinition | None = None,
     ) -> TransitionResult:
-        """Persist a new campaign in ``draft`` with its creation row.
+        """Persist a new campaign in ``draft`` with its creation row. ``definition``, the file it
+        was created from (#1954), is recorded in that row's binding.
 
         A repeat of the same creation (same id, key and content) replays it.
 

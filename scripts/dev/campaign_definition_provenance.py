@@ -12,6 +12,12 @@ For each campaign the script records the definitions that reconcile with it, eac
 the identity of the campaign's close-time evidence package (``campaign_evidence``, ``part=package``),
 the canonical record the definition is matched to. A campaign still running has no package yet.
 
+**A campaign created since #1954 names its file:** its creation row records the path and sha256
+``campaigns create --file`` read. Then provenance is that lookup, and the reconciliation is its
+check: ``recorded_reconciles`` says whether a definition with the recorded sha256 reconciles with
+the campaign. ``false`` is a finding (the file was edited since, or is not tracked here); ``null``
+means nothing was recorded.
+
     python scripts/dev/campaign_definition_provenance.py examples/03_group_run/campaigns          # print
     python scripts/dev/campaign_definition_provenance.py examples/03_group_run/campaigns --write  # provenance.yaml
 
@@ -55,6 +61,8 @@ class StoredCampaign:
     state: str
     outcome: str
     reason: str
+    #: The definition the creation row records (#1954): ``{path, sha256}``, or ``None``.
+    recorded: dict | None = None
 
 
 def _objective(data: Mapping[str, Any]) -> CampaignObjective:
@@ -100,6 +108,9 @@ def reconcile(
         hits = [d for d in definitions if not differences(d.spec, c)]
         matched |= {d.path for d in hits}
         package = packages.get(c.campaign_id) or {}
+        recorded_reconciles = (
+            None if c.recorded is None else any(d.sha256 == c.recorded["sha256"] for d in hits)
+        )
         records.append(
             {
                 "campaign_id": c.campaign_id,
@@ -107,6 +118,8 @@ def reconcile(
                 "state": c.state,
                 "outcome": c.outcome,
                 "create_reason": c.reason,
+                "recorded_definition": c.recorded,
+                "recorded_reconciles": recorded_reconciles,
                 "definitions": [{"path": d.path, "sha256": d.sha256} for d in hits],
                 "package_identity": package.get("identity"),
                 "package_artifact": package.get("artifact_id"),
@@ -147,7 +160,8 @@ def stored_campaigns() -> list[StoredCampaign]:
     sql = (
         "select json_build_object('campaign_id', c.campaign_id, 'project_id', c.project_id, "
         "'objective', c.objective, 'policy', c.policy, 'created', c.created_at, "
-        "'state', c.state, 'outcome', coalesce(c.outcome, ''), 'reason', l.reason) "
+        "'state', c.state, 'outcome', coalesce(c.outcome, ''), 'reason', l.reason, "
+        "'recorded', l.binding -> 'definition') "
         "from campaigns c join campaign_control_log l on l.campaign_id = c.campaign_id and l.seq = 1 "
         "order by c.created_at"
     )
@@ -171,6 +185,7 @@ def stored_campaigns() -> list[StoredCampaign]:
                 r["state"],
                 r["outcome"],
                 r["reason"],
+                r.get("recorded"),
             )
         )
     return rows

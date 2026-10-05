@@ -7,6 +7,7 @@ than act twice.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
 from pathlib import Path
@@ -14,6 +15,7 @@ from pathlib import Path
 import typer
 import yaml
 
+from squadops.campaigns.models import ControlOperation
 from squadops.cli.client import APIClient, CLIError
 from squadops.cli.config import load_config
 from squadops.cli.output import print_detail, print_error, print_json, print_success, print_table
@@ -72,14 +74,21 @@ def create_campaign(
     idempotency_key: str | None = typer.Option(None, "--idempotency-key"),
     campaign_id: str | None = typer.Option(None, "--campaign-id"),
 ):
-    """Create a campaign, in draft. Every policy limit is required."""
+    """Create a campaign, in draft. Every policy limit is required. The file's path and sha256
+    are recorded on the creation row (#1954), so the campaign names the file that made it."""
     try:
-        spec = yaml.safe_load(file.read_text())
+        raw = file.read_bytes()
+        spec = yaml.safe_load(raw)
     except (OSError, yaml.YAMLError) as e:
         print_error(f"cannot read {file}: {e}")
         raise typer.Exit(code=2) from e
     key = _key(idempotency_key)
-    body = {**spec, "reason": reason, "idempotency_key": key}
+    body = {
+        **spec,
+        "reason": reason,
+        "idempotency_key": key,
+        "definition": {"path": str(file), "sha256": hashlib.sha256(raw).hexdigest()},
+    }
     if campaign_id:
         body["campaign_id"] = campaign_id
     _show_result(ctx, _call(ctx, "post", "/api/v1/campaigns", json=body), key)
@@ -102,8 +111,12 @@ def list_campaigns(
 
 @app.command("show")
 def show_campaign(ctx: typer.Context, campaign_id: str = typer.Argument(...)):
-    """Show a campaign."""
+    """Show a campaign, and the definition file its creation row records (#1954)."""
     data = _call(ctx, "get", f"/api/v1/campaigns/{campaign_id}")
+    log = _call(ctx, "get", f"/api/v1/campaigns/{campaign_id}/control-log")
+    created = next((e for e in log if e["operation"] == ControlOperation.CREATE), None)
+    recorded = (created or {}).get("binding", {}).get("definition")
+    data = {**data, "definition": recorded}
     fmt, quiet = _fmt(ctx)
     if fmt == "json":
         print_json(data)
@@ -113,6 +126,11 @@ def show_campaign(ctx: typer.Context, campaign_id: str = typer.Argument(...)):
                 **data,
                 "objective": json.dumps(data["objective"]),
                 "policy": json.dumps(data["policy"]),
+                "definition": (
+                    f"{recorded['path']} (sha256 {recorded['sha256']})"
+                    if recorded
+                    else "not recorded (created before #1954, or without a file)"
+                ),
             },
             quiet=quiet,
         )

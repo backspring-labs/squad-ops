@@ -41,6 +41,13 @@ class CampaignPolicyDTO(BaseModel):
     squad_profile: str
 
 
+class CampaignDefinitionDTO(BaseModel):
+    """The file a campaign is created from (#1954): its path as given, and its bytes' sha256."""
+
+    path: str
+    sha256: str
+
+
 class CampaignCreateRequest(BaseModel):
     """A new campaign, in ``draft``. Starting it (its calibration cycle) is a later operation."""
 
@@ -52,6 +59,9 @@ class CampaignCreateRequest(BaseModel):
     idempotency_key: str
     #: Optional: a caller that retries passes the id it minted, so a retry names the same campaign.
     campaign_id: str | None = None
+    #: Optional (#1954): the definition file, recorded on the creation row. ``campaigns create
+    #: --file`` always sends it; a caller with no file sends none.
+    definition: CampaignDefinitionDTO | None = None
 
 
 class ControlRequest(BaseModel):

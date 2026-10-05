@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from unittest.mock import MagicMock, patch
 
@@ -100,8 +101,8 @@ def test_create_sends_the_files_spec_with_the_reason_and_key(get_client, tmp_pat
     client = _client(post={**_RESULT, "entry": {**_RESULT["entry"], "operation": "create"}})
     get_client.return_value = client
     spec = tmp_path / "campaign.yaml"
-    spec.write_text(
-        "project_id: group_run\nobjective: {statement: s, measurement: m}\npolicy: {max_cycles: 6}\n"
+    spec.write_bytes(
+        b"project_id: group_run\nobjective: {statement: s, measurement: m}\npolicy: {max_cycles: 6}\n"
     )
 
     result = runner.invoke(
@@ -115,6 +116,11 @@ def test_create_sends_the_files_spec_with_the_reason_and_key(get_client, tmp_pat
         "policy": {"max_cycles": 6},
         "reason": "r",
         "idempotency_key": "k",
+        # #1954: the bytes the campaign was made from, so its creation row names this file.
+        "definition": {
+            "path": str(spec),
+            "sha256": hashlib.sha256(spec.read_bytes()).hexdigest(),
+        },
     }
 
 
@@ -270,3 +276,24 @@ def test_the_lease_commands_send_the_hold_and_its_return_to_their_routes(get_cli
         ("/api/v1/campaigns/cmp_1/lease/release", {"reason": "done", "idempotency_key": "k-2"}),
     ]
     assert "holds the box" in took.output
+
+
+@patch("squadops.cli.commands.campaigns._get_client")
+def test_show_names_the_definition_its_creation_row_records(get_client):
+    """#1954. Bug caught: the record kept but never shown, so the operator still reconciles."""
+    client = MagicMock()
+    client.get.side_effect = [
+        {"campaign_id": "cmp_1", "state": "draft", "objective": {}, "policy": {}},
+        [
+            {
+                "operation": "create",
+                "binding": {"definition": {"path": "s.yaml", "sha256": "f" * 64}},
+            }
+        ],
+    ]
+    get_client.return_value = client
+
+    result = runner.invoke(app, ["--format", "json", "campaigns", "show", "cmp_1"])
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)["definition"] == {"path": "s.yaml", "sha256": "f" * 64}

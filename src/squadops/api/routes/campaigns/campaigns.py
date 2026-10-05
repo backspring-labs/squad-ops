@@ -44,6 +44,7 @@ from squadops.auth.models import Identity, Role, Scope
 from squadops.campaigns import lifecycle
 from squadops.campaigns.models import (
     Campaign,
+    CampaignDefinition,
     CampaignObjective,
     CampaignOutcome,
     CampaignPolicy,
@@ -201,12 +202,14 @@ async def create_campaign(
             updated_at=now,
         )
         _require_profiles(campaign.policy)
+        definition = CampaignDefinition(**body.definition.model_dump()) if body.definition else None
         result = await _registry(request).create_campaign(
             campaign,
             actor=actor,
             actor_role=role,
             reason=body.reason,
             idempotency_key=body.idempotency_key,
+            definition=definition,
         )
     except ValueError as e:
         raise HTTPException(

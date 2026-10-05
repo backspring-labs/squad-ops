@@ -104,7 +104,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | the rails accept an empty manifest delta | **shipped** (§24au) | 2.1.0, #2011 |
 | the prior-cycle brief's remainder | **placed** | 2.1.0, #1692 |
 | the supervisor creates and manages campaigns (revises §24al) | **shipped** (§24az) | 2.1.0, PR #2047, issue #1940 |
-| a campaign records its definition file's hash | **placed** | 2.1.0, #1954 |
+| a campaign records its definition file's hash | **shipped** | 2.1.0, PR #2050, issue #1954 |
 | supervisor instruments (the lease proof, the binding replay, the loaded checks, the watcher) | **shipped** | 2.1.0, PR #2025, issue #1956 |
 | per-increment scorecard | **placed** | 2.1.0, #1960 |
 | increment replay (any increment of any campaign, outside it) | **shipped** | 2.1.0, PR #2026, issue #1959 |
