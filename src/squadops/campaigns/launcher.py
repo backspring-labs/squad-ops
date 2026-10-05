@@ -17,6 +17,9 @@ The box comes first (§9.3; #1802). A campaign in a holding state launches nothi
 the box refuses (the supervisor holds it, or a model the deploy did not load is resident) is not
 launched: the campaign moves to ``launch_blocked`` with the intent still pending, and
 ``retry_blocked`` re-attempts it at the policy's interval, escalating after its count.
+
+An intent whose cycle the cycle-create path refuses (``LaunchRefused``) escalates its campaign at
+once, with the intent still pending (§24e item 5, #1971): the same intent would be refused again.
 """
 
 from __future__ import annotations
@@ -51,6 +54,16 @@ BoxVerdict = Callable[[], Awaitable[LaunchVerdict]]
 logger = logging.getLogger(__name__)
 
 
+class LaunchRefused(Exception):
+    """The cycle-create path refused a launch's cycle: its preflight blocked it, or its request
+    names something that does not exist. A refusal of the request, never a transient fault:
+    building the same intent again is refused the same way (#1971)."""
+
+    def __init__(self, refusal: str) -> None:
+        self.refusal = refusal
+        super().__init__(refusal)
+
+
 @dataclass(frozen=True)
 class Launched:
     """One intent's launch: its cycle, whether this call created it, and whether an abort that
@@ -81,7 +94,8 @@ class CampaignLauncher:
     async def drain(self) -> list[Launched]:
         """Launch every pending intent the box allows, oldest first. An intent that fails stays
         pending, and the failure propagates: the next drain repeats it. One the box refuses
-        blocks its campaign (§9.3), and one whose campaign is holding waits for it."""
+        blocks its campaign (§9.3), one the cycle-create path refuses escalates it (#1971), and
+        one whose campaign is holding waits for it."""
         launched = []
         for intent in await self._campaigns.pending_launch_intents():
             campaign = await self._campaigns.get_campaign(intent.campaign_id)
@@ -91,8 +105,32 @@ class CampaignLauncher:
             if not verdict.allowed:
                 await self._block(campaign, intent, verdict)
                 continue
-            launched.append(await self.launch(intent))
+            try:
+                launched.append(await self.launch(intent))
+            except LaunchRefused as refused:
+                await self._escalate_refused(campaign, intent, refused)
         return launched
+
+    async def _escalate_refused(self, campaign, intent: LaunchIntent, refused: LaunchRefused):
+        log = await self._campaigns.control_log(campaign.campaign_id)
+        transition = launch_blocking.refused_launch(
+            campaign, log, intent, refused.refusal, actor=self._actor
+        )
+        try:
+            await self._campaigns.transition(campaign.campaign_id, transition)
+        except ControlOperationRefused as stale:
+            # The campaign moved since it was read (a pause, an abort): its own row says why,
+            # and the intent waits for whatever the campaign does next.
+            logger.info(
+                "campaign_launch_refusal_not_recorded",
+                extra={"campaign_id": campaign.campaign_id, "refusal": stale.entry.refusal},
+            )
+        logger.warning(
+            "campaign_launch_refused campaign=%s launch=%s refusal=%s",
+            campaign.campaign_id,
+            intent.launch_id,
+            refused.refusal,
+        )
 
     async def _block(self, campaign, intent: LaunchIntent, verdict: LaunchVerdict) -> None:
         transition = launch_blocking.first_refusal(campaign, intent, verdict, actor=self._actor)

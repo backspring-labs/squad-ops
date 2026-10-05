@@ -110,7 +110,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | increment replay (any increment of any campaign, outside it) | **shipped** | 2.1.0, PR #2026, issue #1959 |
 | the auto-decision tier and escalation queue | **placed**, outside this SIP's scope (§5) | 2.2.0, #1708 |
 | accepted increments' `prd_delta` text to the proposer | **deferred to 2.4** (ruled 2026-10-03, §24ap): "a 2.4 question" | §24ap |
-| escalating a launch the cycle-create preflight refuses | **placed** | 2.1.0, #1971 (§24as) |
+| escalating a launch the cycle-create preflight refuses | **shipped** (§24ba) | 2.1.0, PR #2052, issue #1971 |
 | re-hearing an ended cycle between restarts | **shipped**: the campaign sweep re-hears on its interval, and a cycle is heard by one hearer at a time | 2.1.0, PR #2038, issue #1972 (§24as) |
 | a Next.js render profile (a route-declaring Next.js increment is always `blocked_unverified`) | **placed** | 2.1.0, #1973 (§24as) |
 | an increment that needs packaging changed | **unplaced, deliberately** (§24as): re-placed on evidence | §24y |
@@ -2656,3 +2656,39 @@ paused"; the reverse reading would let the supervisor undo the owner's brake.
 ability to create and manage campaigns", "keep escalations with me", and "keep limit pauses with
 me". Kept in 2.1 as its one feature exception, bounded to these operations (the 2.1 plan, §5
 rulings 2 and 13).
+
+### 24ba. A launch the cycle-create path refuses escalates to the owner (2026-10-05, §12a, §24e item 5, #1971; placed by the owner's portfolio rulings, Q17)
+
+**What §24e item 5 said.** "Not built: escalating a launch the preflight refuses. Such a launch
+stays pending and is logged." Every later drain refused it again, logged and unasked, so an
+unattended campaign stalled with nothing asking the owner. A refused intent also raised out of
+the launcher's drain, so the pending intents queued behind it in the same drain waited too.
+
+**What changed.**
+- **What counts as a refusal:** what the cycle-create path refuses as a client error, its 4xx
+  (`cycle_error_envelope`): a preflight block (SIP-0095), a project or profile that does not
+  exist, a request it cannot validate. The launch service raises `LaunchRefused` for these. Any
+  other failure is a fault: it propagates, the intent stays pending, and the next drain repeats
+  it, as before.
+- **A new operation, `launch_refused`** (migration 1695): the campaign moves to `escalated` with
+  the intent still pending. The row's binding names the launch, the state it was written from and
+  the refusal, cut to 500 characters. It is keyed by the launch and its refusal count, so a drain
+  that dies before the row commits replays it, and a refusal after the owner's resume is a new row.
+- **The owner's word:** a resume without an action returns the campaign to the state the launch
+  was written from and drains at once. The launch goes ahead if what refused it is fixed, and
+  escalates again if not. A resume naming an action is refused (422): it would write a second
+  launch beside the pending one. Abort is unchanged.
+- **The digest asks the right question** for each kind of launch escalation: a refused launch
+  names its refusal, and a blocked one its attempts. Both say to resume without an action. It had
+  told the owner to name an action and quoted "§10 row None" for a blocked launch's escalation,
+  a gap found here and fixed with it.
+
+**Evidence.** Entered at the start route with the real launch service: the preflight refuses,
+the campaign escalates with one `launch_refused` row and the intent pending, a second drain asks
+nothing again, a resume naming an action is refused, and once the refusal is lifted the owner's
+resume launches the cycle. A transient fault leaves the campaign unescalated. Each test fails with
+the launcher's or the digest's change reverted.
+
+**Who ruled it.** The owner, on the SIP-portfolio audit (2026-10-04, queue Q17), placing #1971 in
+2.1. The rule that a resume of a launch escalation names no action follows §9.3's for a blocked
+launch (#1802).

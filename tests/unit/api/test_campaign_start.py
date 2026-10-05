@@ -347,3 +347,80 @@ async def test_a_restart_starts_a_successor_left_queued(world, earlier, started)
     taken_up = [s for s in world.executor.started if s[1] == "run_successor"]
     assert taken_up == ([(cycle.cycle_id, "run_successor", "full-38")] if started else [])
     assert world.executor.reentered == []
+
+
+def _refusing_preflight(monkeypatch, state: dict) -> None:
+    """The cycle-create path as the launch uses it, refusing while ``state["refuse"]`` holds: a
+    preflight block an operator can fix (a model the backend has not pulled)."""
+    from squadops.api import campaign_launch
+    from squadops.cycles.models import PreflightRejectedError
+
+    real = campaign_launch.prepare_cycle
+
+    async def prepare(*args, **kwargs):
+        if state["refuse"]:
+            raise PreflightRejectedError("model qwen2.5:72b is not pulled")
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(campaign_launch, "prepare_cycle", prepare)
+
+
+async def test_a_launch_the_preflight_refuses_escalates_and_the_owners_resume_retries_it(
+    world, monkeypatch
+):
+    """#1971, SIP-0109 §24e item 5. Entered at the start route with the real launch service.
+    Bugs caught: a refused launch left pending with nothing asking the owner, so an unattended
+    campaign stalls; a resume that names an action, writing a second launch beside the pending
+    one; or a resume that does not retry the launch once what refused it is fixed."""
+    from squadops.campaigns.models import ControlOperation
+
+    state = {"refuse": True}
+    _refusing_preflight(monkeypatch, state)
+
+    world.start()
+    await world.launch.drain()  # a second drain while escalated asks nothing again
+
+    log = await world.campaigns.control_log(CID)
+    [refused] = [e for e in log if e.operation is ControlOperation.LAUNCH_REFUSED]
+    [intent] = await world.campaigns.launch_intents(CID)
+    assert (await world.campaigns.get_campaign(CID)).state is CampaignState.ESCALATED
+    assert refused.binding["refused_from"] == "calibrating"
+    assert refused.binding["refusal"] == "PREFLIGHT_REJECTED: model qwen2.5:72b is not pulled"
+    assert intent.state is LaunchIntentState.PENDING
+    assert await world.cycles.list_cycles("group_run") == []
+
+    with_action = world.client.post(
+        f"/api/v1/campaigns/{CID}/resume",
+        json={"reason": "r", "idempotency_key": "r-1", "action": "propose"},
+    )
+    state["refuse"] = False  # the operator pulls the model
+    resumed = world.client.post(
+        f"/api/v1/campaigns/{CID}/resume", json={"reason": "pulled", "idempotency_key": "r-2"}
+    )
+    await asyncio.sleep(0)
+
+    [cycle] = await world.cycles.list_cycles("group_run")
+    assert with_action.status_code == 422
+    assert resumed.status_code == 200
+    assert resumed.json()["launched_cycles"] == [cycle.cycle_id]
+    assert (await world.campaigns.get_campaign(CID)).state is CampaignState.CALIBRATING
+    [intent] = await world.campaigns.launch_intents(CID)
+    assert (intent.state, intent.cycle_id) == (LaunchIntentState.LAUNCHED, cycle.cycle_id)
+
+
+async def test_a_launch_that_fails_for_another_reason_stays_pending_unescalated(world, monkeypatch):
+    """Only the cycle-create path's refusal of the request escalates (#1971). Bug caught: a
+    transient fault (a vault or registry error) escalating a campaign the next drain would have
+    launched."""
+    from squadops.api import campaign_launch
+
+    async def fault(*args, **kwargs):
+        raise RuntimeError("the artifact vault is unreachable")
+
+    monkeypatch.setattr(campaign_launch, "prepare_cycle", fault)
+
+    world.start()
+
+    [intent] = await world.campaigns.launch_intents(CID)
+    assert intent.state is LaunchIntentState.PENDING
+    assert (await world.campaigns.get_campaign(CID)).state is CampaignState.CALIBRATING

@@ -392,6 +392,33 @@ async def resume_campaign(
             named = PendingAction(body.action)
         except ValueError as e:
             raise HTTPException(422, _validation(f"unknown action {body.action!r}")) from e
+    from squadops.campaigns.launch_blocking import escalated_by_a_refused_launch
+
+    refused = escalated_by_a_refused_launch(campaign, log)
+    if refused is not None:
+        refused_from, launch_id = refused
+        # #1971: the cycle-create path refused the launch, which is still pending. The owner's
+        # word returns the campaign to the state it was written from, and the drain re-attempts
+        # it: launched if what refused it is fixed, escalated again if not. An action would write
+        # a second launch beside the pending one.
+        if named is not None:
+            raise HTTPException(
+                422,
+                _validation(
+                    "the refused launch is still pending: resume without an action to retry it "
+                    "once what refused it is fixed, or abort the campaign"
+                ),
+            )
+        transition = _transition(
+            ControlOperation.RESUME,
+            refused_from,
+            body,
+            actor,
+            role,
+            expected_state=CampaignState.ESCALATED,
+        )
+        result = await apply_control(request, campaign_id, transition, identity)
+        return _result(result, launched_cycles=await _retry_launch(request, launch_id, result))
     if campaign.state is CampaignState.ESCALATED and named is None:
         from squadops.campaigns.launch_blocking import escalated_by_a_blocked_launch
 
@@ -587,6 +614,19 @@ async def _materialize_after_close(request: Request, campaign_id: str) -> None:
         await get_campaign_progress(request).materialize_package(campaign_id)
     except Exception:
         logger.exception("campaign_package_not_materialized", extra={"campaign_id": campaign_id})
+
+
+async def _retry_launch(request: Request, launch_id: str, result: TransitionResult) -> list[str]:
+    """After the owner's resume of a refused launch (#1971): drain, so the pending intent is
+    attempted again now, and name its cycle when it launched. When it was refused again it names
+    none, and the drain's own row has escalated the campaign anew. A replay drains nothing."""
+    from squadops.api.runtime.deps import get_campaign_launch
+
+    if result.replayed:
+        return []
+    await get_campaign_launch(request).drain()
+    intent = await _registry(request).get_launch_intent(launch_id)
+    return [intent.cycle_id] if intent.cycle_id else []
 
 
 def _validation(message: str) -> dict:
