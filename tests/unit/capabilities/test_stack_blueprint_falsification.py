@@ -119,6 +119,19 @@ _DECLARED_OPTIONAL = {
         "it declares no store paragraph rather than inheriting stack #1's"
     ),
     ("probe profile", "prepare_argv"): "uvicorn needs no build step before boot",
+    # #1967: three string fields the empty-string blind spot had passed without a reason.
+    ("ScaffoldStack", "verification_scaffold"): (
+        "SIP-0104: a deterministic test scaffold is opt-in per stack, never inherited; only "
+        "nextjs_ts declares one"
+    ),
+    ("ScaffoldStack", "check_stack"): (
+        "the typed-check evaluators are Python AST implementations never verified against "
+        "TypeScript, so on nextjs_ts they skip rather than read a guess (#503, #822 bend 6)"
+    ),
+    ("ScaffoldStack", "render_profile"): (
+        "no Next.js render profile exists yet (#1973, placed in 2.1.0): until it lands a "
+        "route-declaring Next.js increment is blocked_unverified, never passed (SIP-0109 §24p)"
+    ),
 }
 
 #: What the pass concluded about one declared field. Both the gate and the coverage
@@ -336,7 +349,10 @@ def _classify(registry: str, stack_name: str, field: str, baseline: dict) -> str
     key = resolve(scaffold._STACKS[stack_name])
     value = getattr(mapping[key], field)
     corrupted = _corrupt(value)
-    if corrupted == value:
+    # #1967: an empty string is unset too. It corrupts to "__corrupted__", so it used to be read
+    # by observation and a string set on one stack only passed with no recorded reason
+    # (``render_profile``, ``unset_optional_response``).
+    if corrupted == value or value == "":
         return "ALREADY_EMPTY"
     with _patched(mapping, key, field, corrupted):
         for probe_stack in _STACKS:
@@ -575,6 +591,19 @@ def test_the_gate_rejects_an_unrecorded_field(
         test_every_declared_field_is_accounted_for(registry, stack, field, baseline)
     assert must_say in str(excinfo.value)
     assert f"{registry}.{field}" in str(excinfo.value)
+
+
+@pytest.mark.parametrize(
+    ("stack", "unset"),
+    [("nextjs_ts", True), ("fullstack_fastapi_react", False)],
+)
+def test_an_empty_string_reads_as_unset(baseline, stack, unset):
+    """#1967. Bug caught: a string field set on one stack and left ``""`` on the other read by
+    observation instead of as unset, so it passed the gate with no recorded reason
+    (``render_profile`` did, and ``unset_optional_response`` before #1962 replaced it)."""
+    disposition = _classify("ScaffoldStack", stack, "render_profile", baseline)
+
+    assert (disposition == "ALREADY_EMPTY") is unset
 
 
 def test_the_gate_accepts_a_field_the_exemption_list_records(monkeypatch, baseline):
