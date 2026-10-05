@@ -66,8 +66,8 @@ class ControlOperation(StrEnum):
     Every member is an operation the SIP names: the supervision surface's create, pause, resume
     and abort (§13), the owner's start (draft → calibrating, launching the calibration cycle), a proposal submitted to the increment gate and the ruling on it (§9.2), the
     continuation decision (§10), the promotion transition (§10), and the launcher marking an
-    intent launched (§12b), the box lease's acquisition and release, and a launch the box
-    refused and its retry (§9.3, #1802).
+    intent launched (§12b), the box lease's acquisition and release, a launch the box
+    refused and its retry (§9.3, #1802), and a launch the cycle-create path refused (#1971).
     """
 
     CREATE = "create"
@@ -94,6 +94,11 @@ class ControlOperation(StrEnum):
     #: state its launch was written from, and the launcher launches the held intent.
     LAUNCH_BLOCKED = "launch_blocked"
     LAUNCH_UNBLOCKED = "launch_unblocked"
+    #: The cycle-create path refused a launch's cycle (its preflight, or a request it cannot
+    #: build): the campaign escalates with the intent still pending, since re-draining the same
+    #: intent refuses it again. The owner fixes what it names and resumes, or aborts (§24e item 5,
+    #: §24ba; #1971).
+    LAUNCH_REFUSED = "launch_refused"
 
     @property
     def records_only(self) -> bool:

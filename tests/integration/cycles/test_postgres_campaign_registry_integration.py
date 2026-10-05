@@ -162,6 +162,27 @@ async def test_the_definition_file_is_stored_on_the_creation_row_and_a_retry_rep
     assert CampaignDefinition.from_binding(created.binding) == sent
 
 
+async def test_a_refused_launch_is_stored_and_escalates(campaigns):
+    """#1971, migration 1695: the control log's CHECK list admits ``launch_refused``. Bug caught:
+    the operation added in Python but not in the schema, so the first refusal on a deploy fails
+    its own row and the campaign stalls exactly as before."""
+    from squadops.campaigns.launch_blocking import refused_launch
+
+    decided = await campaigns.transition(CID, _launching("k-decide"))
+    stored = await campaigns.get_campaign(CID)
+    log = await campaigns.control_log(CID)
+
+    result = await campaigns.transition(
+        CID,
+        refused_launch(stored, log, decided.intent, "PREFLIGHT_REJECTED: no model", actor="l"),
+    )
+
+    assert result.campaign.state is S.ESCALATED
+    assert (await campaigns.control_log(CID))[-1].binding["refusal"] == (
+        "PREFLIGHT_REJECTED: no model"
+    )
+
+
 async def test_a_promoted_tree_survives_a_restart_and_is_stored_whole(campaigns, pool):
     """§12a. Bug caught: the accepted columns left out of the transition's UPDATE, so the tree
     reads ``None`` after a restart; or half a tree stored."""

@@ -216,13 +216,33 @@ def _primary(assessment: dict | None) -> str:
     return attribution.get("primary") or reading.get("state") or "—"
 
 
+def _escalation_question(last: dict) -> str:
+    """What the owner is asked about an escalation, by the row that escalated it. A launch the
+    cycle-create path refused (#1971) or the box kept refusing (§9.3) resumes without an action:
+    the launch is still pending, and an action would write a second one."""
+    binding = last["binding"]
+    if last["operation"] == ControlOperation.LAUNCH_REFUSED:
+        return (
+            f"The campaign is escalated: the cycle-create path refused launch "
+            f"`{binding.get('launch_id')}` ({binding.get('refusal')}). Fix what it names and "
+            "resume without an action to retry it, or abort."
+        )
+    if last["operation"] == ControlOperation.LAUNCH_BLOCKED:
+        return (
+            f"The campaign is escalated: the box refused launch `{binding.get('launch_id')}` "
+            f"{binding.get('attempt')} times ({binding.get('refusal')}). Resume without an "
+            "action to retry it, or abort."
+        )
+    why = binding.get("unbuilt") or f"§10 row {binding.get('row')}"
+    return f"The campaign is escalated ({why}). Resume it naming an action, or abort it."
+
+
 def _questions(campaign: dict, rows: list[dict]) -> list[str]:
     applied = [r for r in rows if r["outcome"] == ControlOutcome.APPLIED]
     last = applied[-1] if applied else None
     asks = []
     if campaign["state"] == CampaignState.ESCALATED and last is not None:
-        why = last["binding"].get("unbuilt") or f"§10 row {last['binding'].get('row')}"
-        asks.append(f"The campaign is escalated ({why}). Resume it naming an action, or abort it.")
+        asks.append(_escalation_question(last))
     if (
         campaign["state"] == CampaignState.PAUSED
         and last is not None

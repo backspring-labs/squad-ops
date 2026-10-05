@@ -42,8 +42,9 @@ def _check_values(sql: str, column: str) -> set[str]:
         ("1600_campaigns.sql", "outcome", CampaignOutcome),
         # Replaced whole by 1640 (the increment gate's submit, stale_binding, illegal_ruling).
         # Replaced whole again by 1650 (the owner's start), 1660 (the classification), 1680
-        # (the ruling bound) and 1690 (the box lease and a blocked launch, #1802).
-        ("1690_box_lease.sql", "operation", ControlOperation),
+        # (the ruling bound), 1690 (the box lease and a blocked launch, #1802) and 1695 (a
+        # launch the cycle-create path refused, #1971).
+        ("1695_campaign_launch_refused.sql", "operation", ControlOperation),
         ("1690_box_lease.sql", "refusal", RefusalReason),
         ("1690_box_lease.sql", "holder", LeaseHolder),
         ("1600_campaigns.sql", "cycle_kind", CycleKind),

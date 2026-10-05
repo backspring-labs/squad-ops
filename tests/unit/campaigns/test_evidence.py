@@ -277,3 +277,35 @@ def test_the_size_read_is_the_stored_form():
     """Bug caught: the digest measuring a different serialization than ``materialize_package``
     stores, so the reported size and the bound check drift from the bytes a reader downloads."""
     assert serialized(_real_package()) == REAL_PACKAGE.read_bytes()
+
+
+@pytest.mark.parametrize(
+    ("operation", "binding", "asked"),
+    [
+        (
+            "launch_refused",
+            {"launch_id": "lnc_1", "refusal": "PREFLIGHT_REJECTED: model x is not pulled"},
+            "the cycle-create path refused launch `lnc_1` (PREFLIGHT_REJECTED: model x is not "
+            "pulled). Fix what it names and resume without an action to retry it, or abort.",
+        ),
+        (
+            "launch_blocked",
+            {"launch_id": "lnc_2", "attempt": 6, "refusal": "box_held"},
+            "the box refused launch `lnc_2` 6 times (box_held). Resume without an action to "
+            "retry it, or abort.",
+        ),
+    ],
+    ids=["refused-launch", "blocked-launch"],
+)
+def test_a_launch_escalation_asks_for_a_resume_without_an_action(operation, binding, asked):
+    """#1971. A launch escalation resumes without an action: the launch is still pending, and an
+    action would write a second one. Bug caught: the digest telling the owner to name an action,
+    and quoting a §10 row that does not exist ("§10 row None")."""
+    from squadops.campaigns.evidence import _questions
+
+    [question] = _questions(
+        {"state": CampaignState.ESCALATED, "policy": {}},
+        [{"operation": operation, "outcome": "applied", "binding": binding}],
+    )
+
+    assert question == f"The campaign is escalated: {asked}"

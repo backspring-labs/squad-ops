@@ -20,11 +20,14 @@ import asyncio
 import logging
 from datetime import UTC, datetime
 
+import pydantic
+
 from squadops.api.cycle_schemas import CycleCreateRequest
 from squadops.api.routes.cycles.cycles import CreationPorts, first_run, prepare_cycle
-from squadops.campaigns.launcher import BoxVerdict, CampaignLauncher, unblocked
+from squadops.api.routes.cycles.errors import cycle_error_envelope
+from squadops.campaigns.launcher import BoxVerdict, CampaignLauncher, LaunchRefused, unblocked
 from squadops.campaigns.models import CampaignState, LaunchIntent, LaunchIntentState
-from squadops.cycles.models import Cycle, Run, RunInitiator, RunStatus
+from squadops.cycles.models import Cycle, CycleError, Run, RunInitiator, RunStatus
 from squadops.events.types import EventType
 
 logger = logging.getLogger(__name__)
@@ -60,16 +63,30 @@ class CampaignLaunchService:
         self._started: set[str] = set()
 
     async def _build_cycle(self, intent: LaunchIntent) -> Cycle:
+        """The intent's cycle, built and preflighted by the cycle-create path. What that path
+        refuses as a client error (its 4xx: a preflight block, a project or profile that does not
+        exist, a request it cannot validate) is ``LaunchRefused``, which escalates the campaign
+        (#1971). Anything else is a fault, and propagates for the next drain to repeat."""
         campaign = await self._campaigns.get_campaign(intent.campaign_id)
-        prepared = await prepare_cycle(
-            self._creation,
-            campaign.project_id,
-            CycleCreateRequest(**intent.cycle_request["body"]),
-            created_by=LAUNCHER_ACTOR,
-            initiated_by=RunInitiator.SYSTEM,
-            campaign_id=campaign.campaign_id,
-            kind=intent.cycle_kind.value,
-        )
+        try:
+            request = CycleCreateRequest(**intent.cycle_request["body"])
+        except pydantic.ValidationError as e:
+            raise LaunchRefused(f"VALIDATION_ERROR: {e}") from e
+        try:
+            prepared = await prepare_cycle(
+                self._creation,
+                campaign.project_id,
+                request,
+                created_by=LAUNCHER_ACTOR,
+                initiated_by=RunInitiator.SYSTEM,
+                campaign_id=campaign.campaign_id,
+                kind=intent.cycle_kind.value,
+            )
+        except CycleError as e:
+            status, detail = cycle_error_envelope(e)
+            if status >= 500:
+                raise
+            raise LaunchRefused(f"{detail['error']['code']}: {e}") from e
         return prepared.cycle
 
     async def drain(self) -> list[Run]:
