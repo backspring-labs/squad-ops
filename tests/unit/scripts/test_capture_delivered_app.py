@@ -108,7 +108,8 @@ def test_the_old_request_list_seed_is_refused():
 def test_an_undeclared_route_is_refused_before_anything_boots(monkeypatch):
     """Wiring, entered at ``main``. Bug this catches: the v1.8.1 blank run-list shot at ``/``
     on an app routed at ``/runs``, found only after booting and photographing."""
-    monkeypatch.setattr(capture, "load_manifest", lambda project, cycle: SQUAD)
+    monkeypatch.setattr(capture, "load_manifest", lambda project, cycle, plan_refs=None: SQUAD)
+    monkeypatch.setattr(capture, "cycle_row", lambda project, cycle: {})
     monkeypatch.setattr(capture, "reconstruct", lambda *a: pytest.fail("reconstructed"))
     monkeypatch.setattr(capture, "boot", lambda *a: pytest.fail("booted"))
     monkeypatch.setattr(
@@ -195,7 +196,8 @@ def test_seed_requests_reach_the_ui_port_with_the_client_facing_path(monkeypatch
         seen.append(url)
         return _Resp(b'[{"id": "run-1"}]')
 
-    monkeypatch.setattr(capture, "load_manifest", lambda project, cycle: BEHIND_API)
+    monkeypatch.setattr(capture, "load_manifest", lambda project, cycle, plan_refs=None: BEHIND_API)
+    monkeypatch.setattr(capture, "cycle_row", lambda project, cycle: {})
     monkeypatch.setattr(capture, "reconstruct", lambda *a: 0)
     monkeypatch.setattr(capture, "boot", lambda *a: None)
     monkeypatch.setattr(capture, "shoot", lambda *a, **k: [])
@@ -287,3 +289,74 @@ def test_an_accepted_tree_naming_an_artifact_the_vault_lacks_is_refused_by_name(
 
     with pytest.raises(SystemExit, match="backend/routes.py"):
         capture.reconstruct("group_run", "cyc_inc", "run_i", tmp_path / "app")
+
+
+# --------------------------------------------------------------------------- #
+# #2008: a reference increment stores no manifest, and its run holds stubs
+# --------------------------------------------------------------------------- #
+
+
+def _artifact(vault, cycle, run, art_id, filename, content, created, *, seeded=False):
+    d = vault / "group_run" / cycle / run / art_id if run else vault / "group_run" / cycle / art_id
+    (d / filename).parent.mkdir(parents=True, exist_ok=True)
+    (d / filename).write_text(content)
+    meta = {
+        "artifact_id": art_id,
+        "project_id": "group_run",
+        "artifact_type": "interface_manifest" if filename.endswith(".yaml") else "source",
+        "filename": filename,
+        "content_hash": "h",
+        "size_bytes": len(content),
+        "media_type": "text/plain",
+        "created_at": created,
+        "cycle_id": cycle,
+        "run_id": run,
+        "metadata": {"scaffold_seeded": True} if seeded else {},
+        "vault_uri": str((d / filename).relative_to(vault.parent.parent)),
+    }
+    for field in ("promotion_status", "system_prompt_bundle_hash", "request_template_id"):
+        meta[field] = None
+    for field in ("system_fragment_ids", "system_fragment_versions", "capability_supplement_ids"):
+        meta[field] = []
+    for field in ("request_template_version", "request_render_hash", "full_invocation_bundle_hash"):
+        meta[field] = None
+    meta["prompt_environment"] = None
+    (d / "metadata.json").write_text(json.dumps(meta))
+
+
+@pytest.fixture
+def vault(tmp_path, monkeypatch):
+    root = tmp_path / "data" / "artifacts"
+    monkeypatch.setattr(capture, "VAULT", root)
+    monkeypatch.setattr(capture, "MAIN", tmp_path)
+    return root
+
+
+def test_a_reference_cycles_manifest_is_the_seeded_one_its_plan_refs_name(vault):
+    """Bug caught: the v2.0.1 cut's "no interface_manifest.yaml stored" for the reference build
+    half, whose candidate manifest was ingested before the cycle existed and stored unattached."""
+    _artifact(vault, "_unattached", None, "art_cand", "interface_manifest.yaml", "api: {}\n", "t1")
+    _artifact(vault, "cyc_ref", "run_impl", "art_src", "backend/main.py", "app\n", "t2")
+
+    assert capture.load_manifest("group_run", "cyc_ref", ["art_cand", "art_cr"]) == {"api": {}}
+    with pytest.raises(SystemExit, match="none named by its plan_artifact_refs"):
+        capture.load_manifest("group_run", "cyc_ref", ["art_cr"])
+
+
+def test_a_cycle_built_on_an_accepted_one_is_photographed_whole_never_its_stubs(vault, tmp_path):
+    """#2008, #2000's shape on a reference increment: its run holds the view it changed and a
+    scaffold stub for one it did not. Bug caught: the latest-per-filename tree photographing the
+    stub page; the composed tree keeps the accepted view and takes the changed one."""
+    _artifact(vault, "cyc_base", "run_b", "art_list", "src/List.jsx", "accepted list\n", "t1")
+    _artifact(vault, "cyc_base", "run_b", "art_det", "src/Detail.jsx", "accepted detail\n", "t1")
+    _artifact(
+        vault, "cyc_ref", "run_r", "art_stub", "src/List.jsx", "FILL SLOT\n", "t2", seeded=True
+    )
+    _artifact(vault, "cyc_ref", "run_r", "art_new", "src/Detail.jsx", "capacity detail\n", "t3")
+    out = tmp_path / "app"
+
+    count = capture.reconstruct("group_run", "cyc_ref", "run_r", out, built_on="cyc_base")
+
+    assert count == 2
+    assert (out / "src/List.jsx").read_text() == "accepted list\n"
+    assert (out / "src/Detail.jsx").read_text() == "capacity detail\n"

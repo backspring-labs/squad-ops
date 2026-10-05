@@ -111,7 +111,30 @@ def _artifact_dirs(project: str, wanted: set[str]) -> dict[str, Path]:
     }
 
 
-def reconstruct(project: str, cycle: str, run: str, out: Path) -> int:
+class _VaultDir:
+    """The filesystem vault, read-only, in the two calls ``compose_accepted_tree`` makes (#2008):
+    each ``metadata.json`` is an ``ArtifactRef``, field for field."""
+
+    def __init__(self, project: str) -> None:
+        self.root = VAULT / project
+
+    async def list_artifacts(self, *, cycle_id: str | None = None, **_: object) -> list:
+        from squadops.cycles.models import ArtifactRef
+
+        paths = self.root.glob(f"{cycle_id or '*'}/run_*/art_*/metadata.json")
+        return [ArtifactRef(**json.loads(p.read_text())) for p in paths]
+
+    async def retrieve(self, artifact_id: str) -> tuple:
+        from squadops.cycles.models import ArtifactRef
+
+        for pattern in (f"*/run_*/{artifact_id}/metadata.json", f"*/{artifact_id}/metadata.json"):
+            for p in self.root.glob(pattern):
+                ref = ArtifactRef(**json.loads(p.read_text()))
+                return ref, (MAIN / ref.vault_uri).read_bytes()
+        raise SystemExit(f"the vault holds no {artifact_id}")
+
+
+def reconstruct(project: str, cycle: str, run: str, out: Path, built_on: str | None = None) -> int:
     """The delivered tree, by the one rule the audit reads too (#1832): per filename, the latest
     workspace artifact the run accepted. A rejected repair candidate or a failed emission is
     never what the run delivered, however recent; this took the newest file by name before, and
@@ -120,6 +143,12 @@ def reconstruct(project: str, cycle: str, run: str, out: Path) -> int:
     **A campaign increment is the exception** (#2000): its promotion recorded the whole app as an
     accepted tree, which is what it delivered, so that tree is reconstructed instead, each file from
     the artifact it names. An artifact the tree names but the vault lacks is refused by name.
+
+    **A cycle built on an accepted one without a promotion** (``built_on``, the reference
+    increment, #2008) is composed the way a promotion composes it, by ``compose_accepted_tree``:
+    the accepted tree it was built on, overlaid with its own files, a scaffold stub never
+    shadowing produced content. Its own run holds only its footprint and stubs for the rest, so
+    the latest-per-filename tree photographed a stub page, #2000's shape.
     """
     src = VAULT / project / cycle / run
     if not src.is_dir():
@@ -156,6 +185,17 @@ def reconstruct(project: str, cycle: str, run: str, out: Path) -> int:
             )
         latest = {name: dirs[art_id] for name, art_id in files.items()}
         print(f"  the cycle's accepted tree {tree_id}: the whole app its promotion recorded")
+    elif built_on is not None:
+        import asyncio
+
+        from squadops.campaigns.increment_tree import compose_accepted_tree
+        from squadops.cycles.models import ArtifactRef
+
+        own = [ArtifactRef(**json.loads(p.read_text())) for p in src.glob("art_*/metadata.json")]
+        files = asyncio.run(compose_accepted_tree(_VaultDir(project), built_on, own))
+        dirs = _artifact_dirs(project, set(files.values()))
+        latest = {name: dirs[art_id] for name, art_id in files.items() if art_id in dirs}
+        print(f"  composed on {built_on}'s accepted tree: the whole app the run built on")
     else:
         records = {}
         for meta_path in src.glob("art_*/metadata.json"):
@@ -176,20 +216,52 @@ def reconstruct(project: str, cycle: str, run: str, out: Path) -> int:
     return len(latest)
 
 
-def load_manifest(project: str, cycle: str) -> dict:
-    """The cycle's authored ``interface_manifest.yaml`` from the vault: the latest one, from
-    whichever run of the cycle stored it (framing authors it)."""
+def cycle_row(project: str, cycle: str) -> dict:
+    """The cycle's registry row from the runtime API (the CLI's client and token, as
+    ``launch_reference_increment.py`` uses them)."""
+    from squadops.cli.commands.cycles import _get_client
+
+    return _get_client(None).get(f"/api/v1/projects/{project}/cycles/{cycle}")
+
+
+def seeded_manifest(project: str, cycle: str, plan_refs: list[str] | None = None) -> Path | None:
+    """A cycle's seeded ``interface_manifest.yaml``: the one its ``plan_artifact_refs`` name (#2008).
+
+    ``launch_reference_increment.py`` ingests the reference increment's candidate manifest before
+    the cycle exists, so it is stored unattached, under ``_unattached/``, and the cycle names it only
+    in its ``plan_artifact_refs``, the document it built against. ``plan_refs`` are read from the
+    runtime API when not given (the CLI's client and token, as the launcher uses them)."""
+    if plan_refs is None:
+        plan_refs = (cycle_row(project, cycle).get("execution_overrides") or {}).get(
+            "plan_artifact_refs"
+        ) or []
+    for ref in plan_refs:
+        for meta_path in (VAULT / project).glob(f"*/{ref}/metadata.json"):
+            meta = json.loads(meta_path.read_text())
+            if meta.get("filename") == "interface_manifest.yaml":
+                return MAIN / meta["vault_uri"]
+    return None
+
+
+def load_manifest(project: str, cycle: str, plan_refs: list[str] | None = None) -> dict:
+    """The cycle's ``interface_manifest.yaml`` from the vault: the latest one, from whichever run
+    of the cycle stored it (framing authors it), or, when none did, the seeded one its plan refs
+    name (a reference increment, #2008)."""
     found: list[tuple[str, Path]] = []
     for meta_path in (VAULT / project / cycle).glob("run_*/art_*/metadata.json"):
         meta = json.loads(meta_path.read_text())
         if meta.get("filename") == "interface_manifest.yaml":
             found.append((meta.get("created_at", ""), MAIN / meta["vault_uri"]))
-    if not found:
+    if found:
+        return yaml.safe_load(max(found)[1].read_text()) or {}
+    seeded = seeded_manifest(project, cycle, plan_refs)
+    if seeded is None:
         raise SystemExit(
-            f"no interface_manifest.yaml stored for {project}/{cycle}: the capture maps the seed "
-            "and the routes onto the run's own interface, and has none to read"
+            f"no interface_manifest.yaml stored for {project}/{cycle}, and none named by its "
+            "plan_artifact_refs: the capture maps the seed and the routes onto the run's own "
+            "interface, and has none to read"
         )
-    return yaml.safe_load(max(found)[1].read_text()) or {}
+    return yaml.safe_load(seeded.read_text()) or {}
 
 
 def _norm(path: str) -> str:
@@ -470,7 +542,13 @@ def main() -> int:
     if not routes:
         raise SystemExit("nothing to photograph — pass at least one --route PATH:LABEL")
 
-    manifest = load_manifest(args.project, args.cycle)
+    # #2008: a reference increment stores no manifest of its own; its row names the seeded one and
+    # the accepted cycle it built on. Every other cycle is read from the vault alone.
+    stored = (VAULT / args.project / args.cycle).glob("run_*/art_*/interface_manifest.yaml")
+    row = {} if any(stored) else cycle_row(args.project, args.cycle)
+    overrides = row.get("execution_overrides") or {}
+    manifest = load_manifest(args.project, args.cycle, overrides.get("plan_artifact_refs"))
+    built_on = (overrides.get("campaign_proposal") or {}).get("accepted_cycle_id")
     # Resolved against the run's interface BEFORE anything boots: a mismatch is named here, not
     # discovered as a 422 halfway through seeding or a blank page on the release.
     route_testids = declared_routes(manifest, routes)
@@ -484,7 +562,7 @@ def main() -> int:
 
     app = Path.home() / ".cache" / "squadops-capture" / args.cycle
     app.parent.mkdir(parents=True, exist_ok=True)
-    count = reconstruct(args.project, args.cycle, args.run, app)
+    count = reconstruct(args.project, args.cycle, args.run, app, built_on)
     print(f"reconstructed {count} files of {args.cycle}/{args.run} into {app}")
 
     boot(app, args.ui_port, args.api_port, args.wait)
