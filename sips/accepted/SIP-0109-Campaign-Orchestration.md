@@ -95,7 +95,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | package renderings: the app's evolution with screenshots | **shipped** | the v2.0.0 release package: campaign 2 at each of its four accepted trees (#1710, with #2000's capture fix) |
 | package renderings: the squad's first pass | **dropped** (the owner chose to drop it at the v2.0.0 cut, 2026-10-04; the digest and package carry the close) | #1710, closed |
 | the outer-loop runbook's second half | **shipped** | v2.0.0 (#1997, closed #1711) |
-| criterion files freeze rules the approved request never stated (the set's P9) | **shipped** (§24ax, §24ay): the rule reaches every author of an increment's tests, and unsupported behaviour is returned as a proposal | 2.1.0, #2012, #2019 |
+| criterion files freeze rules the approved request never stated (the set's P9) | **shipped** (§24ax, §24ay): the rule reaches every author of an increment's tests, and unsupported behaviour is returned as a proposal | 2.1.0, PRs #2012 and #2019, issue #1884 |
 | a proposal's PRD delta can state more than its manifest delta carries | **shipped** (§24aw: the request says so; no rail) | 2.1.0, #2014 |
 | rows 10–11 reachable live (environment attribution) | **placed** | 2.1.0, #1824 |
 | proposal tasks re-run on re-attach (random ids) | **placed** | 2.1.0, #1934 |

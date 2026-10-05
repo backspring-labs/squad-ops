@@ -172,7 +172,7 @@ Key principle: **acceptance is a design commitment on main, not an implementatio
 
 **A SIP that ships in parts keeps a delivery ledger** (the owner, 2026-10-04: "the record is maintained as to what remains left to do, where it is to be deployed, so that we can close and progress SIPs"). Large SIPs ship over several releases, and a release plan is superseded at its cut. So the record of what shipped and what remains lives in the SIP:
 - **Every accepted SIP, and every proposed SIP that has been placed, carries a `Delivery ledger`.** It has one row per part that ships separately (a phase, a slice, a section), and each row has a status:
-  - *shipped*: the release and the PR;
+  - *shipped*: the release and the PR, and the issue it closed when there was one (the guard reads labelled open issues against the rows, and the issue is still open in the PR that ships it);
   - *placed*: the release **and the open issue that tracks it**; a part with no open issue is not placed;
   - *unplaced*: said deliberately;
   - *dropped*: by the numbered amendment that dropped it.

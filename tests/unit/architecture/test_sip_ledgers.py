@@ -205,17 +205,23 @@ def test_a_release_branch_refreshes_every_ledger():
 
 def test_placed_rows_and_sip_labelled_issues_match():
     """#1979. Bugs caught: an issue carrying a SIP part with no label (so closing it never asks
-    for the ledger change), and a labelled issue no row places (a part the ledger forgot)."""
+    for the ledger change), and a labelled issue no row names (a part the ledger forgot).
+
+    The second direction asks for *a* row, not a placed one. The PR that ships a part moves its
+    row to shipped while the issue is still open (it closes when that PR merges), so requiring a
+    placed row would fail exactly the PR doing the right thing: #2017 shipped #1967's row, and
+    this rule then failed on a tree where nothing was wrong."""
     cache = sip_ledgers.open_issues()["open"]
     mismatches = []
     for path in sip_ledgers.accepted():
         label = f"sip:{sip_ledgers.sip_number(path)}"
         placed = {n for n in sip_ledgers.placed_issues(path) if n in cache}
+        named = {n for row in sip_ledgers.rows(path) for n in row.issues}
         labelled = {n for n, labels in cache.items() if label in labels}
         for n in sorted(placed - labelled):
             mismatches.append(f"{path.name}: placed row names #{n}, which lacks {label}")
-        for n in sorted(labelled - placed):
-            mismatches.append(f"{path.name}: #{n} carries {label}, but no placed row names it")
+        for n in sorted(labelled - named):
+            mismatches.append(f"{path.name}: #{n} carries {label}, but no row names it")
     assert mismatches == [], (
         "\n".join(mismatches) + "\n(run scripts/maintainer/sync_sip_labels.py, then "
         "refresh_open_issues.py)"
