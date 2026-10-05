@@ -53,6 +53,10 @@ def executor(mock_vault):
         queue=AsyncMock(),
         squad_profile=AsyncMock(),
         task_timeout=5.0,
+        project_registry=None,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
     )
 
 

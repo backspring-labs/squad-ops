@@ -456,12 +456,20 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
     def __init__(
         self,
-        cycle_registry: CycleRegistryPort | None = None,
-        artifact_vault: ArtifactVaultPort | None = None,
-        queue: QueuePort | None = None,
-        squad_profile: SquadProfilePort | None = None,
-        project_registry: ProjectRegistryPort | None = None,
         *,
+        # #1987: every dependency the executor reads, or whose absence turns a check off, is
+        # required with no default. A misspelled keyword is then a TypeError at construction,
+        # never a dependency silently ``None``. ``None`` is still accepted where its meaning is
+        # defined at the reader (no box read, a campaign ending logged unheard, a ruling gate
+        # refused), but only when the caller writes it.
+        cycle_registry: CycleRegistryPort | None,
+        artifact_vault: ArtifactVaultPort | None,
+        queue: QueuePort | None,
+        squad_profile: SquadProfilePort | None,
+        project_registry: ProjectRegistryPort | None,
+        campaign_registry: CampaignRegistryPort | None,
+        campaign_progress: CampaignProgress | None,
+        box_verdict: BoxVerdict | None,
         # 1.8.2 item 15: the per-task wait is declared by the composition root, never
         # defaulted here — a default is the hung-agent detector nobody chose.
         task_timeout: float,
@@ -479,9 +487,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         task_dispatcher: TaskDispatcher | None = None,
         patch_acceptance: PatchAcceptance | None = None,
         correction_repair: CorrectionRepair | None = None,
-        campaign_registry: CampaignRegistryPort | None = None,
-        campaign_progress: CampaignProgress | None = None,
-        box_verdict: BoxVerdict | None = None,
     ) -> None:
         self._cycle_registry = cycle_registry
         # SIP-0109 §9.2: the campaign a cycle belongs to hears its increment gate open. A

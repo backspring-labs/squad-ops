@@ -182,6 +182,10 @@ def executor(
         task_timeout=5.0,
         event_bus=event_bus,
         reply_router=mock_queue.reply_router,
+        project_registry=None,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
     )
 
 

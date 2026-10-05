@@ -182,7 +182,17 @@ def _run(run_id: str, workload: str) -> Run:
 
 class TestExecutorReplayResolution:
     def _executor(self, registry) -> DispatchedFlowExecutor:
-        return DispatchedFlowExecutor(task_timeout=300.0, cycle_registry=registry)
+        return DispatchedFlowExecutor(
+            task_timeout=300.0,
+            cycle_registry=registry,
+            artifact_vault=None,
+            queue=None,
+            squad_profile=None,
+            project_registry=None,
+            campaign_registry=None,
+            campaign_progress=None,
+            box_verdict=None,
+        )
 
     def _cycle(self, overrides) -> MagicMock:
         cycle = MagicMock()

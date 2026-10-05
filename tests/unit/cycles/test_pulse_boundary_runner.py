@@ -159,6 +159,10 @@ def executor(mock_registry, mock_vault, mock_queue, mock_squad_profile, reply_ro
         squad_profile=mock_squad_profile,
         task_timeout=5.0,  # Short timeout for tests
         reply_router=reply_router,
+        project_registry=None,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
     )
 
 
@@ -227,6 +231,10 @@ class TestPulseVerificationMilestone:
             reply_router=mock_queue.reply_router,
             squad_profile=mock_squad_profile,
             task_timeout=5.0,
+            project_registry=None,
+            campaign_registry=None,
+            campaign_progress=None,
+            box_verdict=None,
         )
 
     async def test_milestone_pass_continues(
@@ -353,6 +361,10 @@ class TestPulseVerificationCadence:
             reply_router=mock_queue.reply_router,
             squad_profile=mock_squad_profile,
             task_timeout=5.0,
+            project_registry=None,
+            campaign_registry=None,
+            campaign_progress=None,
+            box_verdict=None,
         )
 
     async def test_cadence_close_by_task_count(
@@ -572,6 +584,10 @@ class TestPulseVerificationTelemetry:
             squad_profile=mock_squad_profile,
             task_timeout=5.0,
             llm_observability=obs,
+            project_registry=None,
+            campaign_registry=None,
+            campaign_progress=None,
+            box_verdict=None,
         ), obs
 
     async def test_boundary_decision_event_emitted(
@@ -787,6 +803,10 @@ class TestPulseVerificationCombined:
             reply_router=mock_queue.reply_router,
             squad_profile=mock_squad_profile,
             task_timeout=5.0,
+            project_registry=None,
+            campaign_registry=None,
+            campaign_progress=None,
+            box_verdict=None,
         )
 
     async def test_both_cadence_and_milestone_fire(
@@ -878,6 +898,10 @@ class TestPulseVerificationRecordPersistence:
             reply_router=mock_queue.reply_router,
             squad_profile=mock_squad_profile,
             task_timeout=5.0,
+            project_registry=None,
+            campaign_registry=None,
+            campaign_progress=None,
+            box_verdict=None,
         )
 
     async def test_records_persisted_via_registry(
@@ -961,6 +985,10 @@ class TestPulseRepairLoop:
             reply_router=mock_queue.reply_router,
             squad_profile=mock_squad_profile,
             task_timeout=5.0,
+            project_registry=None,
+            campaign_registry=None,
+            campaign_progress=None,
+            box_verdict=None,
         )
 
     async def test_fail_repair_pass_continues(
@@ -1538,6 +1566,10 @@ class TestPulseRepairTelemetry:
             squad_profile=mock_squad_profile,
             task_timeout=5.0,
             llm_observability=obs,
+            project_registry=None,
+            campaign_registry=None,
+            campaign_progress=None,
+            box_verdict=None,
         ), obs
 
     async def test_repair_started_event(

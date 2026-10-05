@@ -136,6 +136,10 @@ async def _seed_and_compose(vault, cycle: Cycle) -> tuple[list[str], dict[str, s
         queue=AsyncMock(),
         squad_profile=AsyncMock(),
         task_timeout=5.0,
+        project_registry=None,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
     )
     executor._cycle_event_bus = MagicMock()
     run = Run("run_impl", "cyc_inc", 2, "running", "system", "cfg", workload_type="implementation")
@@ -159,6 +163,10 @@ async def _workspace(vault, seeds: list[str], task_type: str) -> dict[str, str]:
         queue=AsyncMock(),
         squad_profile=AsyncMock(),
         task_timeout=5.0,
+        project_registry=None,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
     )
     stored = [(art_id, vault.stored[art_id][0]) for art_id in seeds]
     return await executor._resolve_artifact_contents(task_type, stored)

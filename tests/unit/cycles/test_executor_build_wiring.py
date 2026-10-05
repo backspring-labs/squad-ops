@@ -72,6 +72,9 @@ def executor(reply_router):
         squad_profile=squad,
         project_registry=project,
         reply_router=reply_router,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
     )
     return ex
 
@@ -505,6 +508,10 @@ class TestBuildOnlyValidation:
             queue=reply_router.bind(AsyncMock()),
             squad_profile=squad,
             reply_router=reply_router,
+            project_registry=None,
+            campaign_registry=None,
+            campaign_progress=None,
+            box_verdict=None,
         )
 
         await ex.execute_run("cyc_001", "run_001")
@@ -654,6 +661,10 @@ class TestBuildOnlySeeding:
             queue=reply_router.bind(AsyncMock()),
             squad_profile=squad,
             reply_router=reply_router,
+            project_registry=None,
+            campaign_registry=None,
+            campaign_progress=None,
+            box_verdict=None,
         )
 
         await ex.execute_run("cyc_001", "run_001")
@@ -796,6 +807,10 @@ class TestBuilderDeliverableCompleteness:
             queue=reply_router.bind(AsyncMock()),
             squad_profile=self._builder_squad(),
             reply_router=reply_router,
+            project_registry=None,
+            campaign_registry=None,
+            campaign_progress=None,
+            box_verdict=None,
         )
 
         await ex.execute_run("cyc_001", "run_001")
@@ -847,6 +862,10 @@ class TestBuilderDeliverableCompleteness:
             queue=reply_router.bind(AsyncMock()),
             squad_profile=self._builder_squad(),
             reply_router=reply_router,
+            project_registry=None,
+            campaign_registry=None,
+            campaign_progress=None,
+            box_verdict=None,
         )
 
         await ex.execute_run("cyc_001", "run_001")
@@ -960,6 +979,10 @@ class TestPlanOnlyCyclesUnaffected:
             queue=reply_router.bind(AsyncMock()),
             squad_profile=squad,
             reply_router=reply_router,
+            project_registry=None,
+            campaign_registry=None,
+            campaign_progress=None,
+            box_verdict=None,
         )
 
         await ex.execute_run("cyc_001", "run_001")
@@ -1302,6 +1325,10 @@ class TestThePatchAcceptanceCollaboratorIsBuiltWhereItIsCalled:
             squad_profile=AsyncMock(),
             reply_router=reply_router,
             **kw,
+            project_registry=None,
+            campaign_registry=None,
+            campaign_progress=None,
+            box_verdict=None,
         )
 
     async def test_the_override_is_what_the_outcome_router_reaches(self, reply_router):
@@ -1390,6 +1417,10 @@ class TestTheCorrectionRepairCollaboratorIsBuiltWhereItIsCalled:
             squad_profile=AsyncMock(),
             reply_router=reply_router,
             **kw,
+            project_registry=None,
+            campaign_registry=None,
+            campaign_progress=None,
+            box_verdict=None,
         )
 
     def test_the_override_reaches_the_runner_that_drives_it(self, reply_router):

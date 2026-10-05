@@ -116,6 +116,10 @@ def executor(mock_registry, mock_event_bus):
         queue=AsyncMock(),
         squad_profile=AsyncMock(),
         task_timeout=5.0,
+        project_registry=None,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
     )
     exec_._cycle_event_bus = mock_event_bus
     # Patch execute_run to track calls without real dispatch
@@ -252,6 +256,10 @@ class TestStartingWorkloadIndex:
             queue=AsyncMock(),
             squad_profile=AsyncMock(),
             task_timeout=5.0,
+            project_registry=None,
+            campaign_registry=None,
+            campaign_progress=None,
+            box_verdict=None,
         )
 
     @pytest.mark.parametrize(

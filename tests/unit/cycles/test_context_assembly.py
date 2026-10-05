@@ -64,6 +64,9 @@ async def test_new_enrichment_is_a_registry_edit_only(reply_router, monkeypatch)
         squad_profile=AsyncMock(),
         project_registry=AsyncMock(),
         reply_router=reply_router,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
     )
     envelope = TaskEnvelope(
         task_id="t1",
@@ -198,6 +201,9 @@ def _executor_with(reply_router, universe):
         squad_profile=AsyncMock(),
         project_registry=AsyncMock(),
         reply_router=reply_router,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
     )
 
 
