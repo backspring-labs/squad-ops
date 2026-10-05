@@ -50,6 +50,19 @@ diverged from on agent-discretionary memory tools (§6).
 
 ---
 
+## Delivery ledger (current as of 2026-10-05)
+
+Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or
+re-places it.
+
+| part | status | where |
+|---|---|---|
+| the recall port, inert (answers empty), injected explicitly by the root, and its call site through `plan_rejection_context` | **shipped** | 2.1.0, PR #2058, issue #1964 |
+| the re-read of the Phase-1 value hypothesis against 2.1's recurrence evidence, as an amendment here | **placed** | 2.1.0, #1964 (at the cut) |
+| Phase 1: encode, recall and inject, the adapter and its factory | **unplaced** | the 2.2 headline (the 1.8.0 plan §8 decision 2); 2.2's plan opens its issue |
+
+**What closes this SIP:** Phase 1 shipped in 2.2, and Phase 2's gate ruled.
+
 ## 1. Summary
 
 SquadOps ships memory mechanics that nothing uses: `MemoryPort` + LanceDB (SIP-042) is

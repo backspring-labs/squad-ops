@@ -454,6 +454,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     from functools import partial
 
     from adapters.cycles.cycle_evidence import assess_cycle
+    from adapters.noop.ports import NoOpFailurePatternRecall
     from squadops._version import resolve_git_sha
     from squadops.campaigns.progress import CampaignProgress
     from squadops.campaigns.projection import ProjectingCampaignRegistry
@@ -501,6 +502,8 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         # SIP-0109 §9.3 (#1928): a run start waits on the launch's own verdict. The box reader
         # is built below, from the LLM port; read when a run starts, as the drain is above.
         box_verdict=lambda: state.box_reader.verdict(),
+        # #1964: Cross-Cycle Memory's recall, inert in 2.1 (answers empty), explicitly.
+        failure_recall=NoOpFailurePatternRecall(),
     )
 
     state.project_registry = project_registry

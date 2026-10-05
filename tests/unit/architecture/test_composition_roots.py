@@ -159,6 +159,10 @@ _CONSTRUCTION_EXCEPTIONS: dict[str, str] = {
     "LoggingRuntimeEventPublisher": _NOOP + " (logging sink)",
     "NoOpCycleEventBus": _NOOP,
     "NoOpWorkflowTracker": _NOOP,
+    # #1964: Cross-Cycle Memory's recall, inert in 2.1. The SIP places its factory, with a
+    # required selector, beside the first real adapter (2.2); until then the root names the
+    # inert binding explicitly rather than defaulting it.
+    "NoOpFailurePatternRecall": _NOOP + " (the inert recall, until 2.2's adapter and factory)",
     # The one entry that is a factory-shaped gap rather than a category: a vendor (httpx)
     # reporter built directly inside the root's _create_heartbeat_reporter. Tabled so #301
     # closes on its four bindings, and named on the PR as the follow-on it is.

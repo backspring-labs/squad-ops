@@ -33,6 +33,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+from adapters.noop.ports import NoOpFailurePatternRecall
 from squadops.capabilities.scaffold import InterfaceManifest
 from squadops.cycles.contract_derivation import (
     CONTRACT_ARTIFACT_TYPE,
@@ -96,6 +97,7 @@ def _executor_with_manifest() -> tuple[Any, list[tuple[str, Any]], Any]:
         campaign_registry=None,
         campaign_progress=None,
         box_verdict=None,
+        failure_recall=NoOpFailurePatternRecall(),
     )
     executor._cycle_registry = AsyncMock()
     return executor, [("art_manifest", manifest_ref)], contents
@@ -180,6 +182,7 @@ async def test_an_underivable_manifest_leaves_the_rejection_to_the_gate():
         campaign_registry=None,
         campaign_progress=None,
         box_verdict=None,
+        failure_recall=NoOpFailurePatternRecall(),
     )
     executor._cycle_registry = AsyncMock()
 
@@ -232,6 +235,7 @@ async def _enriched(task_type: str, contract: Any, manifest: Any) -> dict[str, A
         campaign_registry=None,
         campaign_progress=None,
         box_verdict=None,
+        failure_recall=NoOpFailurePatternRecall(),
     )
     envelope = _envelope(task_type)
     enriched = await executor._enrich_envelope(
@@ -338,6 +342,7 @@ def _gate_executor(with_contract: bool) -> tuple[Any, Any, Any]:
         campaign_registry=None,
         campaign_progress=None,
         box_verdict=None,
+        failure_recall=NoOpFailurePatternRecall(),
     )
     run = MagicMock()
     run.run_id = "run_1"
@@ -454,6 +459,7 @@ async def _forwarded(cycle: Any, *promoted: Any) -> dict[str, Any]:
         campaign_registry=None,
         campaign_progress=None,
         box_verdict=None,
+        failure_recall=NoOpFailurePatternRecall(),
     )
     completed = MagicMock()
     completed.run_id = "run_framing"

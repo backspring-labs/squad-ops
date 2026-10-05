@@ -29,6 +29,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from adapters.noop.ports import NoOpFailurePatternRecall
 from squadops.capabilities import scaffold
 from squadops.capabilities.handlers.build_profiles import BUILD_PROFILES
 from squadops.capabilities.scaffold import InterfaceManifest, ScaffoldStack
@@ -57,6 +58,7 @@ def _executor():
         campaign_registry=None,
         campaign_progress=None,
         box_verdict=None,
+        failure_recall=NoOpFailurePatternRecall(),
     )
 
 

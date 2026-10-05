@@ -27,6 +27,7 @@ import pytest
 import yaml
 
 from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+from adapters.noop.ports import NoOpFailurePatternRecall
 from squadops.cycles.manifest_authoring import (
     GATE_DECIDED_BY_NO_QUESTIONS,
     MANIFEST_ARTIFACT_TYPE,
@@ -97,6 +98,7 @@ def _executor(run_manifest: str | None = None, seeded_manifest: str | None = Non
         campaign_registry=None,
         campaign_progress=None,
         box_verdict=None,
+        failure_recall=NoOpFailurePatternRecall(),
     )
     executor._cycle_registry = AsyncMock()
     executor._cycle_event_bus = MagicMock()

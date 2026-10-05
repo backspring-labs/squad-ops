@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from adapters.noop.ports import NoOpFailurePatternRecall
 from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.models import (
     AgentProfileEntry,
@@ -170,6 +171,7 @@ def executor(mock_registry, mock_vault, mock_queue, mock_squad_profile, reply_ro
         campaign_registry=None,
         campaign_progress=None,
         box_verdict=None,
+        failure_recall=NoOpFailurePatternRecall(),
     )
 
 
@@ -582,6 +584,7 @@ class TestReserveBufferGuard:
             campaign_registry=None,
             campaign_progress=None,
             box_verdict=None,
+            failure_recall=NoOpFailurePatternRecall(),
         )
 
     async def test_imminent_hard_duty_pauses_run_before_dispatch(
@@ -781,6 +784,7 @@ class TestRecruitmentCoordinatorAdmission:
             campaign_registry=None,
             campaign_progress=None,
             box_verdict=None,
+            failure_recall=NoOpFailurePatternRecall(),
         )
 
     async def test_lease_conflict_defers_run_before_dispatch(
@@ -1108,6 +1112,7 @@ class TestCancellationProbeWiring:
             campaign_registry=None,
             campaign_progress=None,
             box_verdict=None,
+            failure_recall=NoOpFailurePatternRecall(),
         )
         envelope = TaskEnvelope(
             task_id="task-run_001-m000-development.develop",
@@ -1296,6 +1301,7 @@ class TestRunCompletionActivityWiring:
             campaign_registry=None,
             campaign_progress=None,
             box_verdict=None,
+            failure_recall=NoOpFailurePatternRecall(),
         )
 
         assert executor._run_completion._activity_port is activity_port
@@ -1321,6 +1327,7 @@ class TestRunCompletionActivityWiring:
             campaign_registry=None,
             campaign_progress=None,
             box_verdict=None,
+            failure_recall=NoOpFailurePatternRecall(),
             focus_lease_port=focus_lease_port,
         )
 

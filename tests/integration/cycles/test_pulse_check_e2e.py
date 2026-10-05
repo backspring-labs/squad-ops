@@ -20,6 +20,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from adapters.noop.ports import NoOpFailurePatternRecall
+
 try:
     import aio_pika  # noqa: F401
 
@@ -173,6 +175,7 @@ def _make_executor(registry, cycle):
         campaign_registry=None,
         campaign_progress=None,
         box_verdict=None,
+        failure_recall=NoOpFailurePatternRecall(),
     )
     return executor, mock_queue
 

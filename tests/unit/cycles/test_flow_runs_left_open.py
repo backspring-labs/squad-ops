@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from adapters.noop.ports import NoOpFailurePatternRecall
 from squadops.cycles.flow_runs import end_open_flow_runs
 from squadops.cycles.models import (
     AgentProfileEntry,
@@ -129,6 +130,7 @@ def _executor(prefect, reply_router):
         campaign_registry=None,
         campaign_progress=None,
         box_verdict=None,
+        failure_recall=NoOpFailurePatternRecall(),
         task_timeout=5.0,
         reply_router=reply_router,
         workflow_tracker=prefect,

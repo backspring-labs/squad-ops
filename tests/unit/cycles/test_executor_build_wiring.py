@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from adapters.noop.ports import NoOpFailurePatternRecall
 from squadops.capabilities.context_assembly import ACCEPTANCE_WORKSPACE_FILTER
 from squadops.cycles.models import (
     ArtifactRef,
@@ -75,6 +76,7 @@ def executor(reply_router):
         campaign_registry=None,
         campaign_progress=None,
         box_verdict=None,
+        failure_recall=NoOpFailurePatternRecall(),
     )
     return ex
 
@@ -512,6 +514,7 @@ class TestBuildOnlyValidation:
             campaign_registry=None,
             campaign_progress=None,
             box_verdict=None,
+            failure_recall=NoOpFailurePatternRecall(),
         )
 
         await ex.execute_run("cyc_001", "run_001")
@@ -665,6 +668,7 @@ class TestBuildOnlySeeding:
             campaign_registry=None,
             campaign_progress=None,
             box_verdict=None,
+            failure_recall=NoOpFailurePatternRecall(),
         )
 
         await ex.execute_run("cyc_001", "run_001")
@@ -811,6 +815,7 @@ class TestBuilderDeliverableCompleteness:
             campaign_registry=None,
             campaign_progress=None,
             box_verdict=None,
+            failure_recall=NoOpFailurePatternRecall(),
         )
 
         await ex.execute_run("cyc_001", "run_001")
@@ -866,6 +871,7 @@ class TestBuilderDeliverableCompleteness:
             campaign_registry=None,
             campaign_progress=None,
             box_verdict=None,
+            failure_recall=NoOpFailurePatternRecall(),
         )
 
         await ex.execute_run("cyc_001", "run_001")
@@ -983,6 +989,7 @@ class TestPlanOnlyCyclesUnaffected:
             campaign_registry=None,
             campaign_progress=None,
             box_verdict=None,
+            failure_recall=NoOpFailurePatternRecall(),
         )
 
         await ex.execute_run("cyc_001", "run_001")
@@ -1329,6 +1336,7 @@ class TestThePatchAcceptanceCollaboratorIsBuiltWhereItIsCalled:
             campaign_registry=None,
             campaign_progress=None,
             box_verdict=None,
+            failure_recall=NoOpFailurePatternRecall(),
         )
 
     async def test_the_override_is_what_the_outcome_router_reaches(self, reply_router):
@@ -1421,6 +1429,7 @@ class TestTheCorrectionRepairCollaboratorIsBuiltWhereItIsCalled:
             campaign_registry=None,
             campaign_progress=None,
             box_verdict=None,
+            failure_recall=NoOpFailurePatternRecall(),
         )
 
     def test_the_override_reaches_the_runner_that_drives_it(self, reply_router):

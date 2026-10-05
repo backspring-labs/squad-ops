@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from adapters.events.in_process_cycle_event_bus import InProcessCycleEventBus
+from adapters.noop.ports import NoOpFailurePatternRecall
 from squadops.cycles.models import (
     AgentProfileEntry,
     Cycle,
@@ -186,6 +187,7 @@ def executor(
         campaign_registry=None,
         campaign_progress=None,
         box_verdict=None,
+        failure_recall=NoOpFailurePatternRecall(),
     )
 
 

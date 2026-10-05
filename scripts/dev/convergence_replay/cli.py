@@ -20,6 +20,8 @@ import os
 import sys
 from pathlib import Path
 
+from adapters.noop.ports import NoOpFailurePatternRecall
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT))
@@ -168,6 +170,7 @@ async def build_bundles(dsn: str, vault_dir: Path, corpus: Path, out: Path) -> d
         campaign_registry=None,
         campaign_progress=None,
         box_verdict=None,
+        failure_recall=NoOpFailurePatternRecall(),
     )
     out.mkdir(parents=True, exist_ok=True)
     tally: collections.Counter[str] = collections.Counter()

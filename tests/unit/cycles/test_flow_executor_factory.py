@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from adapters.cycles.factory import create_flow_executor
+from adapters.noop.ports import NoOpFailurePatternRecall
 
 pytestmark = pytest.mark.domain_cycles
 
@@ -25,6 +26,8 @@ _UNWIRED = {
     "campaign_registry": None,
     "campaign_progress": None,
     "box_verdict": None,
+    # #1964: required, and inert in 2.1; it has no ``None`` meaning, so the fixture passes it.
+    "failure_recall": NoOpFailurePatternRecall(),
 }
 _REQUIRED = (*_UNWIRED, "task_timeout")
 
