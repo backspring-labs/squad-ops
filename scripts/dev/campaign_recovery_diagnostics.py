@@ -44,7 +44,9 @@ idle.** Pass the campaign and its diagnostics in order:
    increment's decision; the abort lands on the next proposal run.
 
 3. **2.1 rebuild 1** (2.1.0 plan §4 step 3): a campaign of one increment,
-   ``restart-at:at_proposal restart-queued-successor abort-in-flight``.
+   ``restart-at:at_proposal restart-queued-successor duplicate-completion``
+   (``examples/03_group_run/campaigns/2-1-0-rebuild1-diag.yaml``). The increment's cycle ends by
+   its own rules, and the last record reads #2007 over every run the restarts touched.
 
 The rulings this script makes are the diagnostic's, recorded with its reason. The supervision
 policy of a counted set does not apply to a diagnostic campaign.
