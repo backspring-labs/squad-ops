@@ -49,6 +49,17 @@ if TYPE_CHECKING:
     from squadops.ports.observability import LogForwarderPort
 
 
+def _base_path_candidate(relative: str) -> tuple:
+    """``relative`` under the repository base ``PathResolver`` resolves (#1991: the one reader of
+    ``SQUADOPS_BASE_PATH``), or nothing when it resolves none."""
+    from squadops.config.path_resolver import PathResolver
+
+    try:
+        return (PathResolver.get_base_path() / relative,)
+    except RuntimeError:
+        return ()
+
+
 def load_instance_config(agent_id: str) -> dict | None:
     """Load instance configuration for the given agent.
 
@@ -66,7 +77,7 @@ def load_instance_config(agent_id: str) -> dict | None:
     search_paths = [
         Path("/app/agents/instances/instances.yaml"),  # Container path
         Path("agents/instances/instances.yaml"),  # Local path
-        Path(os.getenv("SQUADOPS_BASE_PATH", ".")) / "agents/instances/instances.yaml",
+        *_base_path_candidate("agents/instances/instances.yaml"),
     ]
 
     for instances_path in search_paths:
@@ -429,17 +440,14 @@ class AgentRunner:
         from adapters.tools.factory import create_filesystem_provider
         from squadops.prompts.assembler import PromptAssembler
 
-        # Create LLM adapter
-        # Priority: instance config model > env var > config
-        llm_model = (
-            self._llm_model  # From instances.yaml for this agent
-            or os.getenv("LLM_MODEL")  # Environment override
-            or config.llm.model  # From app config
-        )
+        # Create LLM adapter. The model is the instance's (instances.yaml), else the config's
+        # (SQUADOPS__LLM__MODEL). #1991: an ``LLM_MODEL`` override sat between them, set by
+        # nothing in the repository and invisible to the deploy record; it is gone.
+        llm_model = self._llm_model or config.llm.model
         if not llm_model:
             raise ValueError(
                 f"No LLM model configured for agent '{self.agent_id}'. "
-                "Set model in instances.yaml, LLM_MODEL env var, or config.llm.model"
+                "Set model in instances.yaml or config.llm.model (SQUADOPS__LLM__MODEL)"
             )
         # #930: this is the adapter's FALLBACK, not the model the agent will use. Cycle
         # tasks carry a model from the squad profile and every handler resolves

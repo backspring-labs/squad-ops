@@ -778,15 +778,13 @@ class HealthChecker:
     async def _fetch_keycloak_version(self, base_url: str) -> str:
         """Best-effort Keycloak version fetch via admin API."""
         try:
-            import os
-
+            # #1991: the admin credentials come from config, through its secrets provider. The
+            # raw-environment fallback read a `secret://` reference literally; with no
+            # credentials in config the version reads "Unknown", as it already did.
             kc_cfg = getattr(self._config.auth, "keycloak", None)
-            if kc_cfg and kc_cfg.admin:
-                admin_user = kc_cfg.admin.username
-                admin_pass = kc_cfg.admin.password
-            else:
-                admin_user = os.environ.get("SQUADOPS__AUTH__KEYCLOAK__ADMIN__USERNAME")
-                admin_pass = os.environ.get("SQUADOPS__AUTH__KEYCLOAK__ADMIN__PASSWORD")
+            admin = kc_cfg.admin if kc_cfg else None
+            admin_user = admin.username if admin else None
+            admin_pass = admin.password if admin else None
             if not admin_user or not admin_pass:
                 return "Unknown"
 

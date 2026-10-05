@@ -56,6 +56,21 @@ def checker(mock_pg_pool, mock_config):
     )
 
 
+async def test_the_keycloak_version_never_reads_admin_credentials_from_the_environment(
+    checker, monkeypatch
+):
+    """#1991: the admin credentials come from config, through its secrets provider. Bug caught:
+    the raw-environment fallback, which would send a ``secret://`` reference to Keycloak as the
+    password. With none in config the version reads "Unknown" and nothing is sent."""
+    monkeypatch.setenv("SQUADOPS__AUTH__KEYCLOAK__ADMIN__USERNAME", "admin")
+    monkeypatch.setenv("SQUADOPS__AUTH__KEYCLOAK__ADMIN__PASSWORD", "secret://kc_admin")
+    client = AsyncMock()
+    checker._http_client = client
+
+    assert await checker._fetch_keycloak_version("http://keycloak:8080") == "Unknown"
+    client.post.assert_not_awaited()
+
+
 class TestComputeNetworkStatus:
     def test_none_heartbeat_is_offline(self, checker):
         assert checker._heartbeat_is_fresh(None) is False
