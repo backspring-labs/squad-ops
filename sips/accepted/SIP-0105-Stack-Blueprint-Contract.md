@@ -39,7 +39,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | `check_stack` split (dialect vs framework) | **unplaced, deliberately** (§A2); its "1.7" deferral superseded | none |
 | delete the four falsified fields | **placed** | 2.1.0, #1975 |
 | typed checks on the declared source language (sequencing step 3) | **unplaced**: whether it shipped is unverified (the 2026-10-04 audit could not read it); read before promotion | — |
-| the S5 gate's blind spot: a string field empty on one stack reads as set | **placed** | 2.1.0, #1967 |
+| the S5 gate's blind spot: a string field empty on one stack reads as set | **shipped** | 2.1.0, #2017 |
 
 **What closes this SIP:** #1975 and #1967 shipped; packs moved to a successor (§A2). Ruled 2026-10-04.
 
