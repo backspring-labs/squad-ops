@@ -44,3 +44,13 @@ def test_a_new_error_and_a_fixed_one_are_both_reported():
     assert [n.split("  (")[0] for n in new] == [_KEY.replace("\t", " | ")]
     assert [f.split("  (")[0] for f in fixed] == ["src/b.py | arg-type | bad"]
     assert ratchet.compare(baseline, baseline) == ([], [])
+
+
+def test_a_literal_unions_members_are_one_key_in_any_order():
+    """Bug caught on the ratchet's first CI run: mypy printed one narrowed literal union in two
+    orders across processes, so the same error read as new and as fixed at once."""
+    a = 'Invalid index type "Literal[P.PROPOSE, P.REPAIR] | None" for "dict[P, S]"'
+    b = 'Invalid index type "Literal[P.REPAIR, P.PROPOSE] | None" for "dict[P, S]"'
+
+    assert ratchet.canonical(a) == ratchet.canonical(b)
+    assert ratchet.canonical("no literal here") == "no literal here"

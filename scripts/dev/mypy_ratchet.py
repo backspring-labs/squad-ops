@@ -19,6 +19,7 @@ mypy is wrong about it, silenced at the line with ``# type: ignore[<code>]`` and
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -29,6 +30,14 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 BASELINE = Path(__file__).with_name("mypy_baseline.json")
 TARGETS = ("src/squadops", "adapters")
 _ERROR = re.compile(r"^(?P<path>[^:]+):\d+: error: (?P<message>.*?)\s+\[(?P<code>[a-z-]+)\]$")
+_LITERAL = re.compile(r"Literal\[([^\[\]]*)\]")
+
+
+def canonical(message: str) -> str:
+    """A message with each ``Literal[...]``'s members sorted. mypy prints a narrowed literal union
+    in an order that varies between processes (string hashing), so one error read as both new and
+    fixed on its first CI run."""
+    return _LITERAL.sub(lambda m: "Literal[" + ", ".join(sorted(m[1].split(", "))) + "]", message)
 
 
 def current() -> Counter:
@@ -38,12 +47,13 @@ def current() -> Counter:
         capture_output=True,
         text=True,
         check=False,
+        env={**os.environ, "PYTHONHASHSEED": "0"},
     )
     errors: Counter = Counter()
     for line in out.stdout.splitlines():
         m = _ERROR.match(line)
         if m:
-            errors["\t".join((m["path"], m["code"], m["message"]))] += 1
+            errors["\t".join((m["path"], m["code"], canonical(m["message"])))] += 1
     if out.returncode not in (0, 1) or (out.returncode == 1 and not errors):
         sys.exit(f"mypy did not run cleanly:\n{out.stdout[-2000:]}\n{out.stderr[-2000:]}")
     return errors
