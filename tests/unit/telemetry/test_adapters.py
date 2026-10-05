@@ -97,6 +97,19 @@ def _isolate_otel_globals():
         _otel_metrics_internal._METER_PROVIDER_SET_ONCE = saved_meter_once
 
 
+def _shut_down_installed_providers() -> None:
+    """Stop the threads of the SDK providers the test installed (#1930). A provider whose
+    exporter raises on shutdown (``BrokenExporter``) has nothing left running worth stopping."""
+    from opentelemetry.sdk.metrics import MeterProvider as _SDKMeterProvider
+
+    for provider in (trace.get_tracer_provider(), metrics.get_meter_provider()):
+        if isinstance(provider, _SDKTracerProvider | _SDKMeterProvider):
+            try:
+                provider.shutdown()
+            except Exception:
+                pass
+
+
 class BrokenWriter:
     """File-like object that raises on write."""
 
@@ -129,6 +142,26 @@ class TestNullAdapter:
         adapter = NullAdapter()
         event = StructuredEvent(name="test", message="msg")
         adapter.emit(event)  # Must not raise
+
+    def test_an_adapters_exporter_threads_stop_when_its_test_ends(self):
+        """#1930. Bug this catches: the fixture restoring the globals but leaving the exporter
+        threads running, to write into a closed capture and hold stdout's lock at shutdown."""
+        import threading
+
+        names = {"OtelBatchSpanRecordProcessor", "OtelPeriodicExportingMetricReader"}
+
+        def running() -> set[str]:
+            return {t.name for t in threading.enumerate() if t.name in names and t.is_alive()}
+
+        already = running()
+        adapter = OTelAdapter()
+        adapter.counter("test", 1)
+        adapter.end_span(adapter.start_span("test"))
+        assert running() - already == names
+
+        _shut_down_installed_providers()
+
+        assert running() - already == set()
 
     def test_start_span_returns_span(self):
         adapter = NullAdapter()
@@ -212,9 +245,19 @@ class TestOTelAdapter:
     @pytest.fixture(autouse=True)
     def _isolate_otel_globals(self):
         """Every OTelAdapter test installs process-global providers; isolate them
-        so none leaks a broken provider whose atexit hook fires at exit (#239)."""
+        so none leaks a broken provider whose atexit hook fires at exit (#239).
+
+        #1930: isolation restores the globals but does not stop what the test started. A
+        provider's ``BatchSpanProcessor`` and ``PeriodicExportingMetricReader`` each run a
+        daemon thread, and the default console exporters write to the ``sys.stdout`` of the
+        moment they were built: pytest's capture. Left running, a thread exported into that
+        capture after it closed (``ValueError: I/O operation on closed file``), and at
+        interpreter shutdown held stdout's lock, killing an xdist worker whose tests had all
+        passed. So the providers the test installed are shut down while the capture is open.
+        """
         with _isolate_otel_globals():
             yield
+            _shut_down_installed_providers()
 
     def test_otel_adapter_does_not_raise_on_exporter_failure(self):
         """OTelAdapter must swallow exceptions from broken exporter."""
