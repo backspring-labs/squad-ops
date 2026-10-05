@@ -365,7 +365,7 @@ tests/
 - [Development Safety Guide](../DEVELOPMENT_SAFETY_GUIDE.md)
 - [Test Level Guide](../TEST_LEVEL_GUIDE.md)
 - [Test Integrity Guide](../TEST_INTEGRITY_GUIDE.md)
-- [Core vs Build Separation](../architecture/CORE_VS_BUILD_SEPARATION.md)
+- [Core vs Build Separation](../../docs/archive/architecture-2025/CORE_VS_BUILD_SEPARATION.md)
 
 ### External Resources
 - [Pytest Documentation](https://docs.pytest.org/)

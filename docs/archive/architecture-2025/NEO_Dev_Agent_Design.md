@@ -1,3 +1,5 @@
+> **History, superseded (archived 2026-10-05, #1989).** A 2025 design document kept as the warm-boot-era record. The current architecture is `docs/architecture/overview.md`; agents are named by role, not by name (Max, Neo).
+
 # Neo (Dev Agent) — Build & Deploy Design Guide
 
 > Objective: Equip **Neo** to reliably build and deploy web apps + APIs from Max’s task plans with minimal handholding, using contracts-first development, strong guardrails, a project RAG/graph, and CI/CD quality gates.

@@ -94,31 +94,15 @@ squadops artifacts list --project <project> --cycle <cycle-id> --run <run-id>  #
 ## Architecture
 
 ### Hexagonal Structure (Ports & Adapters)
-- **`src/squadops/`** - Core domain
-  - `ports/` - Abstract interfaces (SecretProvider, QueuePort, CycleRegistryPort, AuthPort, AuditPort, LLMObservabilityPort)
-  - `agents/` - BaseAgent with DI, entrypoint for RabbitMQ message handling
-  - `tasks/` - TaskEnvelope, TaskResult models (A2A message format with lineage per SIP-031)
-  - `capabilities/` - Task contracts (`TaskContract`, keyed by `task_type` — "capability" means bindable agent competence, #922), workload runner, cycle task handlers, build handlers, development profiles (SIP-0058, SIP-0068, SIP-0072)
-  - `orchestration/` - AgentOrchestrator, HandlerExecutor
-  - `cycles/` - Cycle/Run/Gate domain models, lifecycle state machine, task planning (SIP-0064)
-  - `auth/` - Auth models, JWT validation helpers, middleware (SIP-0062)
-  - `cli/` - Typer CLI commands, CRP contract packs (SIP-0065)
-  - `api/` - FastAPI runtime API service with routes, DTOs, DI wiring (SIP-0048)
-  - `telemetry/` - LLM observability models, CorrelationContext, NoOp adapter (SIP-0061)
-  - `memory/` - LanceDB semantic memory (SIP-042)
-  - `llm/` - LLM router abstraction with dynamic provider registry
-  - `config/` - Configuration loading (`SQUADOPS__*` env vars, double underscores for nesting)
-  - `core/` - Core utilities (SecretManager)
-- **`adapters/`** - Concrete implementations
-  - `secrets/` - env, file, docker_secret providers
-  - `comms/` - RabbitMQ adapter
-  - `persistence/` - PostgreSQL runtime with connection pooling
-  - `cycles/` - DispatchedFlowExecutor, MemoryCycleRegistry, PostgresCycleRegistry, factory
-  - `telemetry/` - LangFuse adapter (buffered, with redaction) and factory
-  - `auth/` - Keycloak adapter, JWT middleware
-  - `llm/` - Ollama adapter
-  - `capabilities/` - Filesystem repository, ACI executor
-- **`infra/`** - Database migrations and DDL
+**The map is `docs/architecture/overview.md`:** one entry per package under `src/squadops/` (24) and
+`adapters/` (18), and the layering the guards enforce. `test_architecture_overview.py` fails when a
+package and its entry disagree (#1989), so read it rather than a list here.
+- **`src/squadops/`**: the domain (ports, models, decisions, handlers, prompts). **Only the composition
+  roots import `adapters.*`** (`squadops.api.runtime`, `squadops.agents.entrypoint`,
+  `squadops.sandbox.main`, `squadops.bootstrap`; #154, `docs/architecture/composition-roots.md`).
+- **`adapters/`**: implementations behind the ports. `adapters/cycles` still holds the cycle
+  orchestration, which moves into the domain in 2.3 (#1992).
+- **`infra/`**: database migrations and DDL.
 
 ### Key Patterns
 - **Dependency Injection**: `BaseAgent` receives its ports (LLM, memory, prompt service, queue, metrics/events, filesystem, LLM observability) via constructor injection
@@ -386,7 +370,7 @@ v1.6.0 could record zero code drift; v1.6.2 could not, and said so.
 - **The standard is `docs/architecture/api-route-lanes.md`** (#218), enforced by `tests/unit/api/test_route_lanes.py`, which enumerates every registered router and fails a route off every lane. Before adding or moving any route, read the **whole** existing surface — do not reason only about the neighborhood. Conform to a lane; if none covers your case, surface the gap and propose it **before** adding.
 - **Lanes:** authenticated, managed REST resources → `/api/v1/<resource>` (default home for anything new). `/health/*` = read-only, unauthenticated operational probes/heartbeats **only** — never a writable business resource (it's the only no-auth lane). `/auth/*` = identity. **Do not add `/api/v2`** — extend v1.
 - A new prefix/variant is a deliberate, justified decision, never a default. "It doesn't collide" is not a justification.
-- Known deviations under cleanup: unversioned `/api/chat`+`/api/agents` (#219); `/health`+`/auth` plain-string error bodies vs the standard `{"error": {...}}` envelope (#218). Don't add to these.
+- Known route deviations: none recorded (`test_route_lanes.py`'s `KNOWN_DEVIATIONS` is empty; #219 closed). The plain-string error bodies left on the health, agent-status and auth routes are #1976's (2.3). Don't add to them.
 
 **Typed checks (adding or binding one)**: a criterion is evaluated in more places than the
 one you are adding it for. Before binding a check onto a task's artifacts, table every seam
