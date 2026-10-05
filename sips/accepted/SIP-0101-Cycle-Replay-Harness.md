@@ -26,7 +26,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | slice 4: per-boundary compatibility policy (§3.5) | **dropped** (§11a) | — |
 | slice 5: console visibility (AC 9) | **unplaced, deliberately** (§11a): with the next console work | none |
 | §4.1: the first aggregator excludes replays, with a test | **placed** | 2.1.0, #1974 |
-| 1.9's finding (replay restores only checkpoints before any correction ids; the driver cannot launch or read a replay) | **recorded** (§11a) | `docs/plans/1-9-0-plan.md:66-70` |
+| 1.9's finding (replay restores only checkpoints before any correction ids; the driver cannot launch or read a replay) | **unplaced, deliberately**: recorded as a limit (§11a) | `docs/plans/1-9-0-plan.md:66-70` |
 
 **What closes this SIP:** #1974 (§4.1's test) shipped and slice 5 placed or dropped; then promote. Ruled 2026-10-04 (§11a).
 

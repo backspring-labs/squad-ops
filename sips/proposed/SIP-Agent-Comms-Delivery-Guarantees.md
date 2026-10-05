@@ -16,7 +16,7 @@ created_at: '2026-07-08T00:00:00Z'
 ## Status
 Proposed
 
-**Targets:** gate for Campaign (v1.6), alongside SIP-0096 + #288 + #316. Implementation window: the 1.5 stabilization minor, or riding 1.4 as hardening (parity gates features, not hardening — #281). The gate is: **implemented before any squad does paid external duty/Campaign work over this transport.**
+**Targets:** split (ruled 2026-10-04, `sips/PORTFOLIO.md` §2): the transport hardening is placed in 2.3.0 (#1977), and the duty-gated parts are deferred to 3.x. The gate is: **implemented before any squad does paid external duty/Campaign work over this transport.**
 **Builds on:** SIP-0094 (per-agent reply queues + `subscribe()` primitive, implemented) and #323 (agent comms poll→push migration). SIP-0094 §4 explicitly deferred the agent-side loop as "a follow-up"; #323 was that follow-up. This SIP is the next rung: the transport loop is now correct — the *delivery guarantees around failure* are not.
 **Amends:** SIP-0094 D12 ack policy — scoped per-direction, not revoked (see §5.1).
 

@@ -13,7 +13,7 @@ created_at: '2026-06-24'
 **Status:** Proposed
 **Authors:** Jason Ladd
 **Created:** 2026-06-24
-**Targets:** v1.2 candidate (lands *after* SIP-0089)
+**Targets:** 3.x (deferred, ruled 2026-10-04, `sips/PORTFOLIO.md` §4). It lands after SIP-0089, which shipped in v1.1.0.
 **Parent vision:** `sips/accepted/SIP-0088-Agent-Runtime-Modes.md` (umbrella index)
 **Depends on:** `sips/accepted/SIP-0089-Agent-Runtime-State.md` (Assignment, DutyWindow, RuntimeActivity)
 **Sibling SIPs:**

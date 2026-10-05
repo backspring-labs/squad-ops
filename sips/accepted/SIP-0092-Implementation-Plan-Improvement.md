@@ -24,9 +24,9 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | part | status | where |
 |---|---|---|
 | M1: typed acceptance | **shipped** | v1.1.0 (PR #75 et al.) |
-| M1's divergences from the spec (`command_exit_zero` not on the ACI executor, out-of-safelist → `error`, file-missing → `failed`, `regex_match` narrowed by #464, parameter names) | **amended** (§14a) | `docs/plans/sip-promotion-audit-2026-08-03.md:52-58`; partly overtaken (the safelist removed, #670) |
+| M1's divergences from the spec (`command_exit_zero` not on the ACI executor, out-of-safelist → `error`, file-missing → `failed`, `regex_match` narrowed by #464, parameter names) | **shipped** as amended by §14a | v1.1.0; `docs/plans/sip-promotion-audit-2026-08-03.md:52-58`; partly overtaken (the safelist removed, #670) |
 | M2: multi-role authoring | **shipped** via SIP-0093 (93.4 open there) | v1.1.0 |
-| the M2→M3 gate | **passed** 2026-08-05 | `docs/plans/SIP-0092-gate-M2-evaluation.md` |
+| the M2→M3 gate | **shipped**: ran and passed, 2026-08-05 | #732, `docs/plans/SIP-0092-gate-M2-evaluation.md` |
 | M3: plan changes | **dropped** (§14a) | SIP-0109's increment cycle evolves the plan at cycle level instead |
 | `handle()` decomposition | **shipped** | v1.8.0 (#1444) |
 

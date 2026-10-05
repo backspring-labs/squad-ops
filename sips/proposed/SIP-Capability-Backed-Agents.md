@@ -18,7 +18,7 @@ created_at: '2026-07-01'
 **Status:** Proposed (2.0 umbrella / architecture target)
 **Authors:** Jason Ladd (Backspring Labs / SquadOps)
 **Created:** 2026-07-01
-**Targets:** v2.0
+**Targets:** 3.x (deferred, ruled 2026-10-04, `sips/PORTFOLIO.md` §4)
 **Kind:** Umbrella SIP — a design commitment that splits into implementation SIPs (§17)
 **Depends on / builds on:**
 - `sips/implemented/SIP-0040-*` — the existing **Capability / Skill / Tool** system (this SIP extends it; "skill" returns at the **knowledge layer only** — §21 — satisfying the Skill-Layer SIP's incarnation-two contract; the removed code-seam grain stays removed)

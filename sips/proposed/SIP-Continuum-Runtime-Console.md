@@ -14,7 +14,7 @@ created_at: '2026-06-30'
 **Status:** Proposed
 **Authors:** Jason Ladd (Backspring Labs / SquadOps)
 **Created:** 2026-06-30
-**Targets:** Continuum Console (v1.2 candidate)
+**Targets:** partly absorbed; its duty view is deferred to 3.x (ruled 2026-10-04, `sips/PORTFOLIO.md` §2)
 **Depends on:**
 - `sips/implemented/SIP-0069-SquadOps-Console-Control-Plane.md` — Continuum plugin / perspective model, CLI-parity discipline
 - `sips/implemented/SIP-0089-Agent-Runtime-State.md` — `mode`, `runtime_status`, FocusLease, RuntimeActivity, DutyWindow

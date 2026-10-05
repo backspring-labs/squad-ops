@@ -32,13 +32,13 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 
 | part | status | where |
 |---|---|---|
-| contract + governance; S5 admission gate | **shipped** | the 1.6 line |
+| contract + governance; S5 admission gate | **shipped** | v1.6.0 (#977) |
 | A1: packaging rendered from the environment contract | **shipped** | v1.8.0 (#598) |
 | stack #1 out of `scaffold.py` | **shipped** | v1.7.1 (#1131, PR #1233); the "does not assert" table still says stack #1 is inline |
-| packs / plugin loading | **moved to a successor SIP** (§A2), not yet drafted | none |
+| packs / plugin loading | **dropped** by §A2: moved to a successor SIP, not yet drafted | none |
 | `check_stack` split (dialect vs framework) | **unplaced, deliberately** (§A2); its "1.7" deferral superseded | none |
 | delete the four falsified fields | **placed** | 2.1.0, #1975 |
-| typed checks on the declared source language (sequencing step 3) | *unverified* | — |
+| typed checks on the declared source language (sequencing step 3) | **unplaced**: whether it shipped is unverified (the 2026-10-04 audit could not read it); read before promotion | — |
 | the S5 gate's blind spot: a string field empty on one stack reads as set | **placed** | 2.1.0, #1967 |
 
 **What closes this SIP:** #1975 and #1967 shipped; packs moved to a successor (§A2). Ruled 2026-10-04.

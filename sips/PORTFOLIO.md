@@ -73,7 +73,7 @@ Class: **live** (wanted, not built), **partly absorbed** (some built or owned el
 | Outcome Evaluation (PR #1963) | live | instruments 2.3; feature half heads 2.4 | Q1, Q3 |
 | Verification Yield | partly absorbed | ledger 2026-10-04: #1960 (2.1), #1965 (crew, 2.1 window), #1966 (after memory) | done 2026-10-04 |
 | Test-First Verification | partly absorbed | greenfield gate #1978 (2.6) | ruled |
-| Campaign Self-Improvement and Test Bay | partly absorbed | its own 10-01 note supersedes its targets | Q6 |
+| Campaign Self-Improvement and Test Bay (`SIP-Campaign-Self-Improvement-and-Test-Bay-Requirements`) | partly absorbed | its own 10-01 note supersedes its targets | Q6 |
 | Cross-Cycle Memory | live | **2.2** headline; its 2.1 part is #1964 | Q2, Q4 |
 | Capability-Backed Agents | **deferred to 3.x**; premise to correct (#400/#401) | 3.x | ruled |
 | Agent Embodiment Runtime | **deferred to 3.x** | 3.x | ruled |
@@ -89,7 +89,7 @@ Class: **live** (wanted, not built), **partly absorbed** (some built or owned el
 | Planning Sequence Strategy-First | live (greenfield only); details stale | none | an outer-loop experiment candidate |
 | API Contract Hardening | partly absorbed | pre-1.0 | file the residue as issues, then deprecate (Q14) |
 | Experiment Queue and Cycle Assessment | superseded (by SIP-0108 and SIP-0109) | v1.1/v1.2 | deprecate (Q14) |
-| QA-First Test Strategy (the `IDEA-` file) | superseded; contradicts SIP-0109 §8.2 | none | deprecate or move to `docs/ideas/` (Q14) |
+| QA-First Test Strategy (`IDEA-QA-First-Test-Strategy-1h-Cycles-group_run`) | superseded; contradicts SIP-0109 §8.2 | none | deprecate or move to `docs/ideas/` (Q14) |
 | Skill Layer for Capabilities | superseded (into Capability-Backed Agents §21) | none | deprecate once that SIP cites its post-mortem (Q14) |
 | Version Bump Hardening | superseded (#1089, #336, #789, #1061); residue → #1957 | none | deprecate (Q14) |
 | Intelligent Delegation Protocols | superseded; residue → Capability-Backed Agents §15 | none | deprecate (Q14) |

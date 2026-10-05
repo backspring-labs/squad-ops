@@ -23,10 +23,11 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | part | status | where |
 |---|---|---|
 | child 1: SIP-0089 runtime state | **shipped** | v1.1.0 (`sips/implemented/SIP-0089-…`; this SIP's references still cite `sips/accepted/`) |
-| child 2: SIP-0090 embodiment | Phase 1 **shipped** (v1.2.0); Phases 2–4 **deferred to 3.x** (ruled 2026-10-04) | see SIP-0090's ledger |
+| child 2: SIP-0090 embodiment, Phase 1 | **shipped** (v1.2.0) | see SIP-0090's ledger |
+| child 2: SIP-0090 embodiment, Phases 2–4 | **deferred to 3.x** (ruled 2026-10-04) | see SIP-0090's ledger |
 | child 3: SIP-0091 Temporal durability | **deferred to 3.x** (ruled 2026-10-04) (no code) | see SIP-0091's ledger |
-| package acceptance criteria 5–6 (embodiment, Temporal) | not met | follow children 2 and 3 |
-| "Future considerations" (Patterns B/D/E, multi-embodiment, FocusLease queueing) | future SIPs, not obligations | the `queued` FocusLease outcome is also an unamended gap in SIP-0089 |
+| package acceptance criteria 5–6 (embodiment, Temporal) | **deferred to 3.x** (ruled 2026-10-04): met when children 2 and 3 ship | follow children 2 and 3 |
+| "Future considerations" (Patterns B/D/E, multi-embodiment, FocusLease queueing) | **unplaced, deliberately**: future SIPs, not obligations | the `queued` FocusLease outcome is also an unamended gap in SIP-0089 |
 
 **What closes this SIP:** Children 2 and 3 shipped or dropped. **Ruled 2026-10-04: the runtime-mode family and duty work are 3.x** (the 2.x line is campaigns, memory, outcome evaluation and the squad-authored backlog). Re-read when 2.x's last plan is written; placed by 3.0's plan. The children's "v1.1/v1.2/v1.3 candidate" labels are superseded by this.
 
