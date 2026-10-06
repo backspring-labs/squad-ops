@@ -330,3 +330,19 @@ checks:
       under = getattr(increment_tree, "_under_a_written_prefix", None)
       print(under and under({"/api/runs": "create"}, "/runs"), under and under({"/api/runs": 1, "/v2/runs": 2}, "/runs"))
     expect: create None
+  - id: "1985"
+    what: the package roots import nothing, so a leaf import loads a handful of modules, not 144
+    container: squadops-runtime-api
+    code: |
+      import sys
+      import squadops.cycles.naming
+      print(sum(m == "squadops" or m.startswith("squadops.") for m in sys.modules) <= 20)
+    expect: "True"
+  - id: "1985-neo"
+    what: an agent's package roots import nothing either
+    container: squadops-neo
+    code: |
+      import sys
+      import squadops.cycles.naming
+      print(sum(m == "squadops" or m.startswith("squadops.") for m in sys.modules) <= 20)
+    expect: "True"
