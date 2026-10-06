@@ -865,3 +865,62 @@ after the campaign completes.
 - #567: not built?
 - #1824: option 1 with the producer, or option 2?
 - #1937: the reporting-only lint, or 2.3?
+
+### The second night's record (2026-10-05 → 2026-10-06)
+
+**The owner's rulings (2026-10-05, on the recommendations above):**
+- **#2006:** the rotation goes, after a backup, keeping Langfuse's `SALT`; the realm users follow on in
+  2.2 (#2079).
+- **#567:** closed, not built, with the measurement.
+- **#1824:** option 1 with the producer, in 2.1.
+- **#1937:** built in 2.1, riding the final deploy.
+- **#2068:** in 2.1, riding the final deploy. The design changed before it was built. The approved one, a
+  console service account, would have let any console user act with its role, because the console's
+  command route checks no caller's role. The owner ruled instead that the console forwards each user's
+  own token.
+
+**The deploys, each verified by its tracked loaded checks before its pair:**
+
+| rebuild | from | carries | loaded | React roll | Next.js roll |
+|---|---|---|---|---|---|
+| 2 | `60189352` | batch 2 and the PyJWT verifier (#2075) | 36/36 | 21/21, 0 rounds, PASS, 50 min | 18/18, 1 round, **boot audit FAIL**, 67 min |
+| 2b | `85c36b17` | #2085 alone | 37/37 | — | — |
+| 3 | `bbd41dea` | #1985 alone (#2063) | 39/39 | 21/21, 1 round, PASS, 54 min | 16/16, 0 rounds, PASS, 48 min |
+| 4 | `c8869d69` | #414 alone (#2067) | 40/40 | 21/21, 0 rounds, PASS, 47 min | 18/18, 0 rounds, PASS, 66 min |
+| final | `047d5d91` | the last batch | 48/48 | the cut's set | the cut's set |
+
+**Rebuild 2's Next.js boot audit failed, and the fix was proven by replay.** `route-render /runs/{run_id}:
+not read`. The roll's manifest wrote its API with `base_path` empty and `/api` in each endpoint path, a
+shape `route_seeds` (#1973) did not match, so the detail page had no seed (#2084). Rebuild 1's roll had the
+same shape and passed only because its audit did not yet render routes (#1796 came in batch 2). The fix
+(#2085, SIP-0109 §24be) was replayed through the driver's own audit invocation: FAIL on main, PASS with the
+fix, three routes rendered. It shipped alone as rebuild 2b, so #1985's rebuild stayed a batch of its own.
+
+**The last batch, merged during rebuild 4's pair, each with main's whole run read green:** #2071 (#1692,
+SIP-0109 §24bf), #2070 (#1031), #2081 (#2068), #2089 (#1824's live diagnostic), #2080 (#1824, §24bg, SIP-0108
+§10q), #2087 (#2086), #2088 (#1937), #2091 (the final deploy's rows), then **#2020 last** (#1988). #2020's
+ratchet named eight type errors the line added after its baseline. They were fixed without behaviour
+changes, and the 27 entries the line's own deletions retired left the baseline, taken from CI's report,
+not a local run, because the dev venv's versions differ.
+
+**Also merged:** #2076 (a test helper's race that turned main red once on a docs merge, explained before the
+next merge and single-sourced), #2077 (rebuild 2's rows), #2078 (the CHANGELOG's 2.1 section so far), #2085,
+and #2092 (the cut's shakeout definition).
+
+**Filed during the night:** #2079 (the realm's admin user's committed password, 2.2), #2082 (two console test
+files order-dependent), #2083 (the realm sync never applies a service account's realm roles; unplaced), #2084
+(the seed shape, fixed) and #2086 (a failed `tests_pass` round recorded no reason, fixed by #2087).
+
+**The final deploy's first readings:**
+- **P4 (#2068):** the console's `download_artifact` command with the CLI's token was served (runtime `200`);
+  with none it was refused (`401`).
+- **The diagnostics** run detached, one campaign at a time: #1824's infrastructure retry on a 300-second
+  lease (`cmp_458a02ecc622`), then the restart set. A watcher on every live campaign's plan gates caught the
+  first calibration's gate on an unresolved question (the runs list's order) within a minute, and it was
+  decided on core scope.
+
+**Stopped, waiting on the owner:**
+- **The credential rotation** stopped at runbook step 2: the session's permission classifier denied
+  `deploy_credentials.py rotate`. Step 1's backup is written. Nothing else changed.
+- **The cut's pre-registration** is a draft (#2090): two rolls per stack, one shakeout campaign of two
+  increments, the diagnostics before registration, and four predictions. Registering it is the owner's.
