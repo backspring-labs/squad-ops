@@ -244,12 +244,13 @@ def _pending(
         return 6, PendingAction.PROPOSE
     if verdict is RunVerdict.ACCEPTED:
         return 7, PendingAction.PROPOSE
-    if verdict is RunVerdict.BLOCKED_UNVERIFIED:
-        return (8, PendingAction.REPAIR) if repairs_remain else (9, PendingAction.ESCALATE)
-    # #1824 (§24bg): rows 10 and 11 read the attribution, not the verdict. A run that failed
-    # outside the work reached no verdict at all, so keyed on ``rejected`` they never fired.
+    # #1824 (§24bg, §24bh): rows 10 and 11 read the attribution, not the verdict, and are asked
+    # before rows 8 and 9. A run that failed outside the work verified nothing, so finalization
+    # records it ``blocked_unverified``, and a repair would have no work to repair.
     if environment:
         return (10, PendingAction.RETRY) if retries_remain else (11, PendingAction.ESCALATE)
+    if verdict is RunVerdict.BLOCKED_UNVERIFIED:
+        return (8, PendingAction.REPAIR) if repairs_remain else (9, PendingAction.ESCALATE)
     if verdict is RunVerdict.REJECTED:
         if repairs_remain:
             return 12, PendingAction.REPAIR

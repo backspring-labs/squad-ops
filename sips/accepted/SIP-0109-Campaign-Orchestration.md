@@ -97,7 +97,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | the outer-loop runbook's second half | **shipped** | v2.0.0 (#1997, closed #1711) |
 | criterion files freeze rules the approved request never stated (the set's P9) | **shipped** (§24ax, §24ay): the rule reaches every author of an increment's tests, and unsupported behaviour is returned as a proposal | 2.1.0, PRs #2012 and #2019, issue #1884 |
 | a proposal's PRD delta can state more than its manifest delta carries | **shipped** (§24aw: the request says so; no rail) | 2.1.0, #2014 |
-| rows 10–11 reachable live (environment attribution) | **shipped** (§24bg): the rows read the attribution, and the box's and the queue's refusals record an infrastructure ending | 2.1.0, PR #2080, issue #1824 |
+| rows 10–11 reachable live (environment attribution) | **shipped** (§24bg, §24bh): the rows read the attribution, are asked before rows 8–9, and the box's and the queue's refusals record an infrastructure ending | 2.1.0, PRs #2080 and #2102, issues #1824 and #2101 |
 | proposal tasks re-run on re-attach (random ids) | **shipped**: every workload's task ids are deterministic | 2.1.0, PR #2033, issue #1934 |
 | a restart leaves the interrupted run's Prefect flow runs open (the re-attach, §24am) | **shipped**: a dead process's flow runs are ended when the run re-attaches and when it ends | 2.1.0, PR #2033, issue #2007 |
 | the stack's frozen conventions told to the proposer (Next.js; the rest) | **shipped** (§24av) | 2.1.0, #2013 |
@@ -2871,3 +2871,45 @@ for each.
 
 **Who ruled it.** The owner, 2026-10-05, on the recommendation in #1824: option 1 (the rows read
 the attribution) with the producer, since option 1 alone would still never fire.
+
+### 24bh. The retry rows are asked before the blocked rows (2026-10-06, §10 rows 8–11, #2101; ruled by the owner)
+
+**What §24bg wrote, and what the live path did.** §24bg kept rows 8 and 9 ahead of rows 10 and 11,
+on the premise that "a run that fails on infrastructure reaches no verification summary, so its
+verdict is unaskable". The live path disproved the premise. Finalization records a verification
+summary for every run that reaches it (`run_completion.py`, `record_run_verification_summary`). A
+failed run that verified nothing aggregates to `blocked_unverified` (SIP-0096, #388).
+
+So on the final deploy's diagnostic (`cmp_a17471e90130`, 2026-10-06), the increment's framing run was
+refused by a box held past one lease, and three readings followed:
+- it ended `infrastructure_failed`;
+- the cycle's attribution read `environment_or_infrastructure_failure`;
+- its verdict read `blocked_unverified`.
+
+Row 8 fired first. Its repair had no approved implementation plan to work under, so it built nothing
+and the campaign escalated. #2080's wiring test had modelled the refused run with no verification
+summary, a shape the live path never produces.
+
+**What changed.** Rows 10 and 11 are asked before rows 8 and 9. A cycle whose primary attribution is
+`environment_or_infrastructure_failure` is retried while retries remain, and escalated after,
+whatever its verdict, unless it was accepted. Without that attribution, `blocked_unverified` keeps
+rows 8 and 9. The rows keep their numbers, which the control log records. Only the order in which
+they are asked changes.
+
+**Not changed:** a calibration cycle that is not accepted still ends the campaign (row 2), whatever
+its attribution. A calibration refused by the box therefore ends its campaign in failure rather
+than retrying. That is left as it is, and named here so that it is a decision, not a gap.
+
+**Evidence.**
+- `tests/unit/campaigns/test_retry_on_infrastructure.py` enters at the admission wait and the
+  terminal mapping. It takes the verification summary that finalization's own aggregation
+  (`RunCompletion._aggregate_verification`) records for a failed run, and reads both stored
+  summaries through the real assessment into the decision: row 10, then row 11 with the retry spent.
+- With the old order restored, four tests fail: the wiring test, the direct precedence case, and the
+  two continuation-table rows for `blocked_unverified` with the environment attribution.
+- The diagnostic's own reading is the live evidence: `box-held-past-the-lease` FAIL on
+  `cmp_a17471e90130`, with "the continuation was row 8 (repair), not row 10 (retry)".
+
+**Who ruled it.** The owner, 2026-10-06, on the recommendation that followed the diagnostic's failure
+(reorder the rows, abort the diagnostic, rebuild with the fix alone, re-run): "go with the recommended
+sequence".

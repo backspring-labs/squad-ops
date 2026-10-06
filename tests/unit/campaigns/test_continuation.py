@@ -146,6 +146,9 @@ _GO = Guard.PROCEED
         (_BLK, dict(repair_cycles=1), (9, PendingAction.ESCALATE, None)),
         (_REJ, dict(environment=True), (10, PendingAction.RETRY, _GO)),
         (_REJ, dict(environment=True, retry_cycles=1), (11, PendingAction.ESCALATE, None)),
+        # §24bh: a run the box refused verified nothing, so it reads blocked_unverified.
+        (_BLK, dict(environment=True), (10, PendingAction.RETRY, _GO)),
+        (_BLK, dict(environment=True, retry_cycles=1), (11, PendingAction.ESCALATE, None)),
         (_REJ, {}, (12, PendingAction.REPAIR, _GO)),
         (_REJ, dict(repair_cycles=1), (13, PendingAction.ABANDON_AND_PROPOSE, _GO)),
         (None, {}, (14, PendingAction.ESCALATE, None)),

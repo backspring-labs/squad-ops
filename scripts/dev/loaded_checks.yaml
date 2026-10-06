@@ -430,3 +430,14 @@ checks:
       validate_run_transition(RunStatus.QUEUED, RunStatus.FAILED)
       print("queued -> failed legal")
     expect: queued -> failed legal
+  - id: "2101"
+    what: a cycle refused by the box is retried before it is repaired, whatever its verdict (SIP-0109 §24bh)
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.continuation import CycleEnding, EndedCycle, _pending
+      from squadops.campaigns.models import CycleKind
+      from squadops.cycles.verification_integrity import RunVerdict
+      c = EndedCycle("c", CycleKind.INCREMENT, CycleEnding.ASSESSED)
+      blk = RunVerdict.BLOCKED_UNVERIFIED
+      print(_pending(c, blk, True, True, True)[0], _pending(c, blk, False, True, True)[0])
+    expect: "10 8"

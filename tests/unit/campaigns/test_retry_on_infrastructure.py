@@ -11,11 +11,15 @@ What bugs would these catch?
 - A task timeout read as infrastructure. The model may still have been working (#995), and a retry
   would hide a defect in the work.
 - The retry rows keyed on the verdict again, so a failed run with no verdict escalates.
-- An environment attribution outranking ``blocked_unverified``, whose own rows come first.
+- ``blocked_unverified`` outranking the environment attribution (§24bh). A run the box refused
+  verified nothing, so finalization records it ``blocked_unverified``, and row 8's repair has no
+  approved plan to work under. That was the live campaign of 2026-10-06 (``cmp_a17471e90130``):
+  the run ended ``infrastructure_failed``, the attribution read the environment, and the decision
+  was row 8.
 
 Each test enters where the live run does: the admission wait and the terminal mapping the
-executor's single ``except`` calls, then the real assessment over the run's stored summary, then
-the decision.
+executor's single ``except`` calls, finalization's verification summary for the run, then the
+real assessment over the run's stored summaries, then the decision.
 """
 
 from __future__ import annotations
@@ -28,7 +32,7 @@ import pytest
 
 from adapters.cycles.execution_errors import _ExecutionError
 from adapters.cycles.run_admission import RunAdmission
-from adapters.cycles.run_completion import resolve_terminal_outcome
+from adapters.cycles.run_completion import RunCompletion, resolve_terminal_outcome
 from squadops.campaigns.continuation import (
     CycleEnding,
     EndedCycle,
@@ -39,6 +43,7 @@ from squadops.campaigns.models import CampaignState, CycleKind
 from squadops.cycles.cycle_assessment import AssessorIdentity, CycleEvidence, RunRecord, assess
 from squadops.cycles.failure_attribution import AttributionClass, TerminalKind
 from squadops.cycles.llm_usage import RunUsage
+from squadops.cycles.models import RunStatus
 from squadops.cycles.run_loop_summary import RunLoopSummary, RunTerminalDecision
 from squadops.cycles.verification_integrity import CycleOutcome, RunVerdict
 from squadops.ports.comms.queue import QueueError
@@ -68,14 +73,16 @@ async def _refused_by_the_box() -> _ExecutionError:
     return refused.value
 
 
-def _assessed(terminal: RunTerminalDecision, verdict: RunVerdict | None = None):
+def _assessed(
+    terminal: RunTerminalDecision, verdict: RunVerdict | None = None, *, status: str | None = None
+):
     """The real assessment of a one-run cycle whose stored summary records ``terminal``.
     ``verdict=None`` is a run that failed before any verification summary."""
     run = RunRecord(
         run_id="run_1",
         run_number=1,
         workload_type="implementation",
-        status="failed" if verdict is None else "completed",
+        status=status or ("failed" if verdict is None else "completed"),
         started_at=T0,
         finished_at=T0,
     )
@@ -112,12 +119,15 @@ def _decided(latest, **count_overrides):
 
 
 async def test_a_run_the_box_refuses_is_retried_by_its_campaign():
-    """The whole path: the admission wait's refusal, the executor's terminal mapping, the run's
-    stored summary, the real assessment, and the decision."""
+    """The whole path, as the live run takes it: the admission wait's refusal, the executor's
+    terminal mapping, the verification summary finalization records for a failed run that
+    verified nothing, the real assessment over both stored summaries, and the decision."""
     outcome = resolve_terminal_outcome(await _refused_by_the_box(), "run_1")
-    latest = _assessed(outcome.terminal)
+    finalized = RunCompletion._aggregate_verification(None, None, RunStatus.FAILED)
+    latest = _assessed(outcome.terminal, finalized.verdict, status="failed")
 
     assert outcome.terminal.kind is TerminalKind.INFRASTRUCTURE_FAILED
+    assert finalized.verdict is RunVerdict.BLOCKED_UNVERIFIED
     assert latest.attribution.attribution.primary is (
         AttributionClass.ENVIRONMENT_OR_INFRASTRUCTURE_FAILURE
     )
@@ -167,15 +177,18 @@ def test_a_failed_run_with_no_verdict_is_retried_only_on_an_infrastructure_endin
 
 
 @pytest.mark.parametrize(
-    ("verdict", "expected"),
+    ("verdict", "environment", "expected"),
     [
-        (RunVerdict.BLOCKED_UNVERIFIED, (8, PendingAction.REPAIR)),
-        (RunVerdict.REJECTED, (10, PendingAction.RETRY)),
+        (RunVerdict.BLOCKED_UNVERIFIED, True, (10, PendingAction.RETRY)),
+        (RunVerdict.REJECTED, True, (10, PendingAction.RETRY)),
+        # Control: without the environment attribution, blocked keeps its own rows.
+        (RunVerdict.BLOCKED_UNVERIFIED, False, (8, PendingAction.REPAIR)),
     ],
-    ids=["blocked-keeps-its-own-rows", "rejected-is-retried"],
+    ids=["blocked-is-retried", "rejected-is-retried", "blocked-without-it-is-repaired"],
 )
-def test_an_environment_attribution_ranks_below_blocked_and_above_rejected(verdict, expected):
-    """Precedence alone: the attribution is set directly, as the continuation suite sets it."""
-    decision = _decided(continuation_assessment(verdict, environment=True))
+def test_an_environment_attribution_outranks_the_verdict(verdict, environment, expected):
+    """Precedence alone (§24bh): the attribution is set directly, as the continuation suite sets
+    it."""
+    decision = _decided(continuation_assessment(verdict, environment=environment))
 
     assert (decision.row, decision.action) == expected
