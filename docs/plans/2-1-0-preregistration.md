@@ -1,6 +1,6 @@
 # 2.1.0 — pre-registration of the cut's set (plan §4 step 8, §6)
 
-**Status: DRAFT, 2026-10-06. Not registered.** The plan leaves the cut criteria's numbers (the
+**Status: REGISTERED, 2026-10-06 20:3x UTC, by the supervisor under the owner's pre-approval (§9), after the four conditions below held (§6a). Nothing in the set had launched.** Drafted the same day. The plan leaves the cut criteria's numbers (the
 regression set's size, the shakeout's exit rule) to this document, written when the line's last batch
 is built (plan §6), as 1.9 and 2.0 did. The last batch is built and held (§9). **Pre-approved by the
 owner on 2026-10-06** (§9): the supervisor registers it as drafted once the four conditions below hold,
@@ -112,12 +112,13 @@ it.
 
 | pin | value |
 |---|---|
-| deploy commit | read at registration |
-| image ids | read at registration |
-| deploy record | read at registration |
-| model | `qwen3.8:27b`, digest read at registration |
-| loaded checks | the final configs' tracked list, every row answering as expected at preflight |
-| set configs | `docs/plans/verification-sets/2-1-0-cut-regression-{fastapi-react,nextjs}.yaml`, sha256 at registration |
+| deploy commit | `fcc7ce04` (the final deploy, rebuilt for #2101 alone) |
+| image ids | runtime-api `f10b9711adef`, max `4f6052b7b82b`, neo `937fc46540de`, nat `b82d4b1bb9aa`, bob `2d0e31fbfaee`, eve `140b41393064`, data `de2d2f3e9440` |
+| deploy record | `dep_5e77a9060e68` (2026-10-06 14:31:49 UTC, `rebuild_and_deploy.sh all`) |
+| model | `qwen3.8:27b`, digest `22130167c4c2` |
+| loaded checks | the configs' 48 tracked rows, every one answering at the counting preflight (2026-10-06 20:31 UTC, both configs clean); all 50 rows of `scripts/dev/loaded_checks.yaml` answered after the rebuild |
+| set configs | `2-1-0-cut-regression-fastapi-react.yaml` sha256 `ddc54e1094af9656266812bb98d69b5371aabe79be7dd98f01cd6ec4021287e8`; `2-1-0-cut-regression-nextjs.yaml` sha256 `bc4cbb01e87ca383ed6d23adf29581ee308e85722417c490dcbe2beeff937c02` |
+| HEAD at preflight | `4cf9626f`. Its difference from the deploy commit is `docker-compose.yml` alone (#2104, below). The driver pins HEAD when roll 1 launches, after this registration merges |
 
 ---
 
@@ -155,9 +156,29 @@ it.
 - **P4, read once on that deploy:** with the CLI's token, the console's `download_artifact` command fetched
   its artifact (15,672 bytes; runtime `200`). With neither a token nor a session it was refused (runtime
   `401 Missing or invalid Authorization header`). Held.
-- **Preconditions 2 and 3:** the diagnostics are re-running on the rebuilt deploy (`cmp_a17471e90130`,
-  #1824's retry first, then the restart set), and the shakeout follows them on
-  `examples/03_group_run/campaigns/2-1-0-cut-shakeout.yaml` (#2092).
+- **Precondition 3, the diagnostics, PASS on the rebuilt deploy:**
+  - **#1824's infrastructure retry** (`cmp_9a26855746a9`, `box-held-past-the-lease`). The refused run ended
+    `infrastructure_failed`, and the continuation chose row 10. The launch was blocked once while the box was busy,
+    then unblocked, and the retry cycle `cyc_9d7b483bb93f` launched and was accepted. The campaign ended `success`.
+  - **The restart set** (`cmp_ea4159dbc00d`): `restart-at:at_proposal`, `restart-queued-successor` and
+    `duplicate-completion`, all PASS. The campaign ended `success`.
+  - The chain ended at 18:15 UTC. The records are under `var/campaigns/<cmp>/diagnostics/`.
+- **Between the diagnostics and the shakeout,** LangFuse's container was recreated with #2104's compose change: it
+  binds every interface, so its health check passes (#2103). Its image is unchanged. No squad image changed.
+- **Precondition 2, the shakeout, exited clean in one round** (`cmp_247adc7789c2`, 18:17–20:30 UTC, supervised under
+  2.0's §3a policy, `var/campaigns/cmp_247adc7789c2/proofs/supervision-log.md`):
+  - the calibration and two increments were accepted (capacity, then datetime sorting); the campaign ended `success`,
+    §10 row 3;
+  - both proposals were approved at v1, and every plan gate was approved without a question
+    (`system:no_open_questions`);
+  - each new criterion discriminates (T1, T2, T3), and the frozen T1 and T2 held on increment 2;
+  - every route renders, every implementation run recorded a lint reading with both tools, and no control operation
+    was refused;
+  - there were zero runtime-api errors, all 8 flow runs completed, and nothing was left queued or running.
+  - **One failed round,** in increment 1's qa task: the suite imported `../../views/RunDetailView.jsx` from
+    `src/__tests__/`, and was repaired in the next round. It is a model emission error, recorded with its reason
+    (`failed_detail`, #2086), not a seam finding.
+- **Precondition 4, the pins,** are §6, read at registration.
 
 ## 7. Prohibited while the set is open
 
@@ -168,7 +189,10 @@ it.
 ## 8. Drift the record must declare
 
 - **Any difference between the tagged tree and the registered deploy,** each named as additive or
-  behavioural.
+  behavioural. **At registration:**
+  - `docker-compose.yml`'s LangFuse `HOSTNAME` (#2104), applied to the running container before the shakeout. It is
+    behavioural for LangFuse's own binding only, and changes no squad image or code.
+  - Prose (the CHANGELOG, this document, its configs).
 - **Each void and re-run,** with its cause.
 - **Each owner action.**
 
