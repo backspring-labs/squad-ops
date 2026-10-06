@@ -2780,3 +2780,25 @@ order, and a build that fails.
 
 **Who ruled it.** The owner, on the SIP-portfolio audit (2026-10-04, queue Q17), placing #1973 in
 2.1 with #1950 and #1962.
+
+### 24be. A page's collection is found where the manifest wrote it, under base_path or under a prefix in each path (2026-10-06, §8.3, §24bd)
+
+**What §24bd left.** §24bd matched a page's collection at the path itself (`/runs`) or under the
+API's `base_path`. Next.js manifests write their API a second way: `base_path` empty and `/api`
+written into each endpoint path. 2.1 rebuild 2's Next.js regression (`cyc_d94c3742bb88`) did,
+as rebuild 1's did. Its detail page had no seed, was never read, and the boot audit (#1796) failed
+on it: `route-render /runs/{run_id}: not read (blocked_unverified)`. A campaign's increment
+evaluation reads seeds the same way, so a Next.js increment of that shape could never be promoted.
+
+**What changed.** When neither match exists, the collection is the one create endpoint whose
+path is the collection under leading segments (`/api/runs` for `/runs/{run_id}`). When none is,
+or more than one is, the page stays unseeded and reads `blocked_unverified`, never guessed.
+
+**Evidence.** The boot audit was replayed through the same invocation on the roll's delivered app.
+On main it failed as above. With this change it passed, and all three declared routes rendered their
+views, the detail page seeded at `POST /api/runs`. The roll's stored manifest is a test fixture beside
+§24bd's two. Reverting the match fails that case, and accepting an ambiguous match fails the
+ambiguity case.
+
+**Who ruled.** Found by rebuild 2's regression pair (#2084); a gap in §24bd's own rule ("a page written as
+the API writes it is seeded"), fixed to that rule.

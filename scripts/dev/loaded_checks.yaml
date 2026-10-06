@@ -322,3 +322,11 @@ checks:
       from squadops.core.hashing import text_sha256
       print(text_sha256("a")[:12])
     expect: ca978112ca1b
+  - id: "2084"
+    what: a page's collection is found under a prefix written into each endpoint path
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns import increment_tree
+      under = getattr(increment_tree, "_under_a_written_prefix", None)
+      print(under and under({"/api/runs": "create"}, "/runs"), under and under({"/api/runs": 1, "/v2/runs": 2}, "/runs"))
+    expect: create None

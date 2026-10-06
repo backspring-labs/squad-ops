@@ -327,7 +327,11 @@ def route_seeds(manifest: Any) -> dict[str, dict[str, Any]]:
         # A manifest with an API base path writes its endpoints under it (a Next.js app's
         # ``/api/runs`` for its ``/runs/{run_id}`` page, #1973); the collection is either.
         base = str(getattr(api, "base_path", "") or "").rstrip("/")
-        endpoint = creates.get(collection) or (creates.get(base + collection) if base else None)
+        endpoint = (
+            creates.get(collection)
+            or (creates.get(base + collection) if base else None)
+            or _under_a_written_prefix(creates, collection)
+        )
         if endpoint is None:
             continue
         seeds[path] = {
@@ -339,6 +343,21 @@ def route_seeds(manifest: Any) -> dict[str, dict[str, Any]]:
             "segment": params[0],
         }
     return seeds
+
+
+def _under_a_written_prefix(creates: dict[str, Any], collection: str) -> Any:
+    """The create a manifest wrote under a prefix of its own instead of in ``base_path``: a
+    Next.js app's ``/api/runs`` with no base path (2.1 rebuild 2's roll, ``cyc_d94c3742bb88``).
+    The one POST whose path is the collection beneath leading segments; ``None`` when none is or
+    more than one is, so an ambiguous page stays unseeded, never guessed."""
+    if collection == "/":
+        return None
+    found = [
+        endpoint
+        for path, endpoint in creates.items()
+        if path.endswith(collection) and path[: -len(collection)].startswith("/")
+    ]
+    return found[0] if len(found) == 1 else None
 
 
 def route_param(segment: str) -> str | None:
