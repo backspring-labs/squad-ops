@@ -23,7 +23,7 @@ the earliest structural work (the §7 amendments) belongs to the odd minor that 
 **SIP-0090 (Agent Embodiment Substrate — this SIP extends and amends it; it does not
 replace it)**, SIP-0091 (duty durability), SIP-031 (TaskEnvelope / A2A lineage), SIP-0096
 (verification evidence integrity), SIP-0102 (sandbox environment contract),
-`sips/proposed/SIP-Cross-Cycle-Memory.md` (the memory seam this SIP constrains).
+`sips/accepted/SIP-0110-Cross-Cycle-Memory.md` (the memory seam this SIP constrains).
 **Absorbs:** two idea documents (J. Ladd, 2026-08-18): *Agent Embodiment Runtime
 Architecture* (the thesis, normatively specified here) and *Distributed Agent Embodiment
 Across Heterogeneous Infrastructure* (the moon shot — Appendix A, explicitly non-roadmap).
@@ -352,7 +352,7 @@ never mints peer agents.
 
 1. Agent identity is never owned by a runtime.
 2. Durable memory never exists exclusively inside a runtime; the memory seam is
-   service-addressable (constraint on `SIP-Cross-Cycle-Memory` — see §9).
+   service-addressable (constraint on SIP-0110 Cross-Cycle Memory — see §9).
 3. Runtime failure is infrastructure failure, never agent death.
 4. A runtime may hold private operational state; SquadOps owns durable state.
 5. The same agent must be able to inhabit different runtimes; the native loop is a peer,
@@ -413,7 +413,7 @@ never mints peer agents.
 
 - FAY baseline banked by the 1.6→1.8 measurement program (the number cross-runtime
   evaluation compares against).
-- `SIP-Cross-Cycle-Memory` accepted with a **service-addressable** memory seam — the one
+- SIP-0110 (Cross-Cycle Memory) accepted with a **service-addressable** memory seam — the one
   assumption that would silently preclude this SIP. This constraint should be checked in
   that SIP's design review, which precedes this SIP's implementation by several releases.
 - SIP-0102's environment contract expressed as a capability declaration (it is the

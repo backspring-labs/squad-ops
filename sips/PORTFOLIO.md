@@ -31,7 +31,7 @@ The per-part record of what shipped where lives **in each SIP**, in its `Deliver
 
 ---
 
-## 1. Accepted SIPs (9, after the v2.0.0 sweep and SIP-0107's promotion after the tag)
+## 1. Accepted SIPs (10: 9 after the v2.0.0 sweep and SIP-0107's promotion after the tag, then SIP-0110 accepted 2026-10-06)
 
 | SIP | shipped | remaining, and where it is placed | promote? | ledger |
 |---|---|---|---|---|
@@ -44,6 +44,7 @@ The per-part record of what shipped where lives **in each SIP**, in its `Deliver
 | **0102** Ephemeral Application Sandbox | steps 1, 2 and 4, plus the clean-room audit (v1.4.0); §11a; §11b (v1.8.0) | steps 3, 5, 6, 7 **unplaced, deliberately**; in-agent execution ruled the accepted path (§11c) | no: waits for a clean-room requirement | added |
 | **0105** Stack Blueprint Contract | the contract and S5 admission gate (1.6); A1 packaging (v1.8.0); stack #1 extracted (v1.7.1) | fields deleted by #1975 (2.1.0); #1967 (2.1.0); packs to a successor; `check_stack` split unplaced, deliberately (§A2) | after #1975 and #1967 | added |
 | **0109** Campaign Orchestration (2.0 headline) | §18 steps 1–8, **v2.0.0**; the set read PASS (§24at); the runbook's second half (#1997) and the digest's renderings (#1998) | **#1710:** closed at the cut: the evolution screenshots ship in the 2.0.0 release package; the squad's first pass is dropped (Q24). **2.1.0:** #1824, #1884, #1934, #1950, #1961, #1962, #1995, #1692, #1940, #1954, #1956, #1959, #1960, #1971, #1972, #1973. **2.2.0:** #1708's remainder. §24b–§24i ratified (§24as) | no: its 2.1 parts are open; §24at is the consolidated status record | added |
+| **0110** Cross-Cycle Memory (2.2 headline) | the inert recall port and its call site (2.1.0, #2058) | **the re-read:** 2.1.0, #1964, the evidence to the final deploy in §5b, the cut set's readings added at the cut. **2.2.0:** Phase 1 on the proposal gate, built and measured (#2096). Phase 1.5 (the correction lane) and Phase 2: **unplaced**, gated on Phase 1's measurement (§8) | no: Phase 1 is 2.2's | added 2026-10-04; revision 4 2026-10-06 |
 
 **Implemented SIPs promoted with open items.** Each needs a text amendment, not a status change. The
 items go to each SIP's next touch, with Q22 for the decisions.
@@ -63,7 +64,7 @@ items go to each SIP's next touch, with Q22 for the decisions.
 
 ---
 
-## 2. Proposed SIPs (30 at the audit; 13 deprecated 2026-10-05 by Q14, 17 live)
+## 2. Proposed SIPs (30 at the audit; 13 deprecated 2026-10-05 by Q14; 16 live after Cross-Cycle Memory's acceptance as SIP-0110, 2026-10-06)
 
 Class: **live** (wanted, not built), **partly absorbed** (some built or owned elsewhere),
 **superseded**, **stale** (names architecture or releases that no longer exist).
@@ -74,7 +75,6 @@ Class: **live** (wanted, not built), **partly absorbed** (some built or owned el
 | Verification Yield | partly absorbed | ledger 2026-10-04: #1960 (2.1), #1965 (crew, 2.1 window), #1966 (after memory) | done 2026-10-04 |
 | Test-First Verification | partly absorbed | greenfield gate #1978 (2.6) | ruled |
 | Campaign Self-Improvement and Test Bay (`SIP-Campaign-Self-Improvement-and-Test-Bay-Requirements`) | partly absorbed | its own 10-01 note supersedes its targets | Q6 |
-| Cross-Cycle Memory | live | **2.2** headline; its 2.1 part is #1964 | Q2, Q4 |
 | Capability-Backed Agents | **deferred to 3.x**; premise to correct (#400/#401) | 3.x | ruled |
 | Agent Embodiment Runtime | **deferred to 3.x** | 3.x | ruled |
 | Duty Continuity and Handoff Ledger | **deferred to 3.x** | 3.x | ruled |
@@ -190,3 +190,4 @@ All four are placed early in 2.1.0.
 | 2026-10-04 | Cross-Cycle Memory's 2.1 part (#1964) | placed by the owner's ruling of 2026-09-12, missed in the 2.1 plan's first draft | the 2.1 plan §2.6 |
 | 2026-10-04 | the owner's rulings on the whole queue (§4) | runtime modes, duty work and Capability-Backed Agents to 3.x; every other recommendation accepted | §4; each SIP; the ROADMAP horizon |
 | 2026-10-04 | the code structure audit (not a SIP) | **one conflict:** Capability-Backed Agents (3.x) reserves the word *capability*, and the 32k-line package still carries it (Q23). **Complements:** #1985's direction guard and #1989's architecture map are the code's version of #1969's ledger guard; #1986's single gate recorder is the seam #1940 and #1708's auto tier decide through | Q23; the 2.1 plan §2.8 |
+| 2026-10-06 | SIP-0110's revision 4, the Phase-1 re-read (accepted with it) | **overlaps** the Design Decision Register: the recurring unresolved design questions are decision records, the register's proposed payload (its §5), not Phase 1's. Boundary: memory owns the substrate (Q4), and a decision-record payload arrives with the register's home (#950, Q12). **Overlaps** #1708's auto tier (SIP-0109), which reads the same proposal ledger: an auto-approved proposal is never classified. Sequenced by the 2.2 plan. **Builds on** SIP-0109 §9.2 (the within-cycle rung) and §9.4 (the class vocabulary). No conflict | SIP-0110 §5b; the Design Decision Register's header; the 2.2 plan |

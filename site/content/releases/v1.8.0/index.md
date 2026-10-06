@@ -193,7 +193,7 @@ No lifecycle change — each was edited under the status it already had (a post-
 | [SIP-0105-Stack-Blueprint-Contract](../../design/sips/SIP-0105-Stack-Blueprint-Contract.md) | accepted |
 | [SIP-Agent-Embodiment-Runtime](../../design/sips/SIP-Agent-Embodiment-Runtime.md) | proposed |
 | SIP-Campaign-Orchestration | proposed |
-| [SIP-Cross-Cycle-Memory](../../design/sips/SIP-Cross-Cycle-Memory.md) | proposed |
+| SIP-Cross-Cycle-Memory | proposed |
 
 ## Cycle evidence
 

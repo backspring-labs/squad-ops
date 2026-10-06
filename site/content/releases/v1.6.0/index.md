@@ -233,7 +233,7 @@ queue deferred to 1.6.1+: #1011, #1012 (byte-verified reproducer banked), #1013,
 | SIP-Atlas-Provider-Adapter | new | proposed |
 | SIP-Campaign-Orchestration | new | proposed |
 | [SIP-Capability-Backed-Agents](../../design/sips/SIP-Capability-Backed-Agents.md) | new | proposed |
-| [SIP-Cross-Cycle-Memory](../../design/sips/SIP-Cross-Cycle-Memory.md) | new | proposed |
+| SIP-Cross-Cycle-Memory | new | proposed |
 | SIP-Cycle-Evaluation-Scorecard | new | proposed |
 | [SIP-Cycle-Request-Profile-Naming-Taxonomy](../../design/sips/SIP-Cycle-Request-Profile-Naming-Taxonomy.md) | new | proposed |
 | [SIP-LLM-Emission-Contracts](../../design/sips/SIP-LLM-Emission-Contracts.md) | new | proposed |

@@ -1,21 +1,27 @@
 ---
 sip_uid: '17883224960394576'
-status: proposed
+status: accepted
 title: Cross-Cycle Memory
 author: Jason Ladd
 created_at: '2026-08-03T00:00:00Z'
+sip_number: 110
+updated_at: '2026-10-06T08:19:56.067127Z'
 ---
-# SIP: Cross-Cycle Memory
+# SIP-0110: Cross-Cycle Memory
 
-> **Placement and delivery (2026-10-04: the owner's rulings on the SIP-portfolio audit, `sips/PORTFOLIO.md`).** **The 2.2 headline, and 2.2's only change to squad behaviour**, beside #1708's auto tier and escalation queue, which change the control plane, not the squad. #557, #949 and #950 follow Outcome Evaluation's scenarios (2.4 or later). **Its 2.1 part** (the inert recall port, its call site, and the Phase-1 re-read) is **#1964**. **It owns** memory's scopes, lifecycle and payload; Capability-Backed Agents (3.x) defers to it. **A constraint from 3.x:** memory stays addressable as a service, the Embodiment Runtime's invariant 2.
+> **Placement and delivery (2026-10-04: the owner's rulings on the SIP-portfolio audit, `sips/PORTFOLIO.md`).** **The 2.2 headline, and 2.2's only change to squad behaviour**, beside #1708's auto tier and escalation queue, which change the control plane, not the squad. #557, #949 and #950 follow Outcome Evaluation's scenarios (2.4 or later). **Its 2.1 part** (the inert recall port, its call site, and the Phase-1 re-read) is **#1964**. **It owns** memory's scopes, lifecycle and payload; Capability-Backed Agents (3.x) defers to it. **A constraint from 3.x:** memory stays addressable as a service, the Embodiment Runtime's invariant 2. **Accepted with revision 4 (2026-10-06, §5b):** the re-read moves Phase 1's proving workload to the campaign's proposal gate.
 
 
 ## Status
-Draft (proposed)
+Accepted (2026-10-06), with revision 4, on the 2.2 plan's PR. The owner reviews both together, and
+the merge is the acceptance (CLAUDE.md, SIP workflow step 3). Phase 1 is the 2.2 headline
+(`docs/plans/2-2-0-plan.md`, a draft in the same PR).
 
 **Author:** Jason Ladd
 **Created:** 2026-08-03
-**Revision:** 3 (2026-10-01). It folds in the new elements of the owner's v4 draft (2026-08-29,
+**Revision:** 4 (2026-10-06). It re-reads Phase 1's value hypothesis against the evidence of 2.1's
+line (§5b, #1964) and moves Phase 1's proving workload from the plan gate to the campaign's proposal
+gate, where the recurrence is live. Revision 3 (2026-10-01) folds in the new elements of the owner's v4 draft (2026-08-29,
 recorded in `docs/ideas/cross-cycle-memory-v4-draft.md`) as §5a, corrects references that went stale,
 and states how Campaign (2.0) and this SIP meet. Revision 2 (2026-08-03) incorporated design-review
 round 1: the typed Phase-1 primitive, governed encoding templates, the lifecycle `status` dimension,
@@ -50,7 +56,7 @@ diverged from on agent-discretionary memory tools (§6).
 
 ---
 
-## Delivery ledger (current as of 2026-10-05)
+## Delivery ledger (current as of 2026-10-06)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or
 re-places it.
@@ -58,10 +64,13 @@ re-places it.
 | part | status | where |
 |---|---|---|
 | the recall port, inert (answers empty), injected explicitly by the root, and its call site through `plan_rejection_context` | **shipped** | 2.1.0, PR #2058, issue #1964 |
-| the re-read of the Phase-1 value hypothesis against 2.1's recurrence evidence, as an amendment here | **placed** | 2.1.0, #1964 (at the cut) |
-| Phase 1: encode, recall and inject, the adapter and its factory | **unplaced** | the 2.2 headline (the 1.8.0 plan §8 decision 2); 2.2's plan opens its issue |
+| the re-read of the Phase-1 value hypothesis against 2.1's recurrence evidence, as an amendment here | **placed** | 2.1.0, #1964: the evidence up to the final deploy is §5b (revision 4), and the cut set's readings are added at the cut |
+| Phase 1 on the proposal gate (§5, re-pointed by §5b): encode, recall and inject, the adapter and its factory, and the recurrence measurement (§9, metric 1) | **placed** | 2.2.0, #2096 (`docs/plans/2-2-0-plan.md`) |
+| Phase 1.5: the correction lane (§13 question 3) | **unplaced** | read again when `failed_detail` holds failures of more than one shape (§5b) |
+| Phase 2: consolidation and promotion (§8) | **unplaced** | gated on Phase 1's measurement (§8) |
 
-**What closes this SIP:** Phase 1 shipped in 2.2, and Phase 2's gate ruled.
+**What closes this SIP:** Phase 1 shipped and measured in 2.2, and Phase 2's gate ruled, which also
+places or drops Phase 1.5.
 
 ## 1. Summary
 
@@ -352,6 +361,112 @@ in 2.0 by the prior-cycle brief and the crew's outer loop. This SIP's later cont
 those approved corrective rules (the applicability gate) and to **measure** them (recurrence
 suppression). Without it, every approved rule goes into every prompt, the bloat v4's §3.1 describes.
 
+## 5b. Revision 4: the Phase-1 re-read against 2.1's evidence (2026-10-06, #1964)
+
+The 2026-09-12 placement asked 2.1 to re-read Phase 1's value hypothesis against the recurrence
+evidence of its day, so that 2.2 builds the mechanism against a proving workload that is live. This is
+that re-read, on the evidence up to the 2.1 line's final deploy. The cut's own set adds its readings
+when it closes (the delivery ledger's row).
+
+**The window:** every cycle created from 2026-10-04 00:00 UTC to 2026-10-06 12:12 UTC, 45 in all:
+- 31 on the 2.0 set's deploys: the shakeouts and the counted campaigns of #1908, recorded as framework
+  1.9.0 because the version moved at the cut;
+- 14 on the 2.1 line's deploys: rebuilds 1 to 4, the final deploy and its diagnostics, recorded as 2.0.1.
+
+Read from the registry (`cycle_runs`, `cycle_gate_decisions`, `run_loop_summaries`,
+`campaign_control_log`) and from each framing's `interface_manifest.yaml` in the vault.
+
+| reading | 2.0 set's deploys | 2.1 line's deploys |
+|---|---|---|
+| framings completed | 24 | 12 |
+| cycles with a framing re-roll | 0 | 0 |
+| plan reviews approved, of all decided | 24 of 24 | 12 of 12 |
+| implementation runs with a failed round | 2 of 24 | 2 of 12 |
+| what those rounds failed | `qa.test` `tests_pass`, both | `qa.test` `tests_pass`, both |
+| framings whose manifest carried an unresolved design question, of those that authored one | 5 of 9 | 3 of 10 |
+| of those, about the runs list's order or pagination | 4 | 3 |
+| increment rulings returned for revision, of all decided | 6 of 20 | 0 of 2 |
+
+**What it shows:**
+
+1. **The plan-gate workload is still dormant.** 36 framings, no re-roll, every plan review approved.
+   B1's thirteen records (2026-08-10 to 08-23) are still the whole corpus.
+2. **The correction lane is not a proving workload yet either.** 4 failed rounds in 36 implementation
+   runs, one per run, all the qa suite's `tests_pass`. That is the name of a check, not a class a
+   template could generalize: what failed differs per run, and until 2.1 nothing recorded which cases
+   failed. #2028 and #2086 record them now (`failed_detail`), so the cut set's rounds are the first
+   that could seed a class. Revision 3 named this lane as Phase 1's target (§5a, "the corpus"), and
+   the window does not support it yet.
+3. **The recurrence that is live is at the campaign's proposal gate.** 6 of 22 increment rulings were
+   returned, all on the 2.0 set's deploys, all by the supervisor (#1908 §3a):
+   - five were *criteria not checkable* (SIP-0109 §9.4). In four of them a new criterion named
+     behaviour the accepted application already had, so its test could not fail before the change
+     (§8.2). Shakeout 8's return of that class is what filed #1946. Its fix (#1947) tells the proposer
+     the rule, and the class recurred after it in counted campaign 1, at version 1 and again at version
+     2. That is §1's pattern: a prompt rule written after a person recognized the recurrence, and the
+     class recurring anyway;
+   - the fifth stated a rule the request did not, and the sixth was a PRD delta stating more than the
+     request carried (#1995's class, classified *ambiguous manifest delta*).
+
+   **The class label is already typed.** The supervisor's reading is a `ProposalClassification`
+   (§9.4's five classes), recorded as a `classify` operation in the campaign control log. The two
+   counted campaigns' three returns carry one. The three shakeout returns carry the class only in the
+   ruling's prose.
+
+   **The within-cycle rung exists, and the cross-cycle rung does not.** A revision of a returned
+   proposal is shown the supervisor's note and the version it revises (SIP-0109 §9.2), as a framing
+   re-roll is shown its rejection (#669). A new proposal, in the next increment or the next campaign, is
+   shown nothing of earlier returns.
+
+   **And the within-cycle rung did not convert this class.** Counted campaign 1's version 2 was shown
+   version 1's return, which named the criterion, and it was returned for the same class, on two other
+   criteria. So neither a prompt rule nor the returned note converted it. That is evidence against an
+   easy win, and it is why the measurement decides Phase 1's value, not this re-read.
+4. **Also recurring, and not Phase 1's.** 7 of the 8 unresolved design questions asked how the runs
+   list is ordered or paged, on the same PRD. The plan gate answered each time, and the next roll asked
+   again. These are decisions about the app under build:
+   - §11 excludes them from Phase 1;
+   - the Design Decision Register proposes decision records as memory's first payload (its §5), and the
+     portfolio folds that register into #950 (Q12, 2.4 or later);
+   - in the regression rolls they come from the fixed PRD, which is the yardstick and does not change.
+
+   The boundary: this SIP owns the substrate (the portfolio's Q4), and a decision-record payload arrives
+   with the register's home.
+
+**Proposed in this revision, and accepted with it:**
+- **Phase 1's proving workload is the proposal gate.**
+  - Observe: an increment ruling returned with a `ProposalClassification`.
+  - Encode: one governed template per class, so no LLM and no invented pattern (§5's rules,
+    unchanged).
+  - Recall into: `strategy.propose_increment`, the one task that authors a change request. That is one
+    consumer, as §5 requires.
+  - Scope: `project`, with `created_campaign` provenance (§7), so a class returned in one campaign
+    reaches the next campaign's proposer.
+- **A classified return enters as `validated`,** as a validator's firing does (§5). Its class comes
+  from a closed vocabulary, recorded by the gate's decider, and is encoded through a reviewed template.
+  Entering as `candidate` would deadlock the proving loop, which is §5's reason for the validator rule.
+  It still injects into a counted cycle only once the owner promotes it (revision 3).
+- **The plan-gate path stays specified and wired.** #2058's call site on the six plan-authoring task
+  types stays. Its corpus is empty, so it injects nothing. It is not the proving workload.
+- **§13 question 1 is answered for classified rulings.** A return by the supervisor or the owner that
+  carries a `ProposalClassification` is class-labeled at its source, so it enters Phase 1's corpus
+  through its template. A reason with no class still waits for Phase 2's encode.
+- **The correction lane stays Phase 1.5** (§13 question 3). It is read again when `failed_detail` holds
+  failures of more than one shape.
+- **Revision 3's governance is unchanged.** Only promoted patterns, approved by the owner, inject into
+  counted cycles, and nothing changes within a running campaign.
+
+**What the re-read does not settle:**
+- **The instrument.** §9's primary metric is the recurrence rate, memory-on against memory-off. The
+  increment replay (#1959) starts from an approved increment's seeds, after the gate, so it does not
+  replay a proposal run. Either a proposal-run replay, with and without a pattern, is Phase 1's first
+  slice, or the measurement is live only. The 2.2 plan decides which.
+- **The sample.** Six returns in one window is a small corpus, and two of them came before #1947. The
+  measurement window's N is declared before rolling (§9).
+- **The interaction with #1708's auto tier,** which lands in the same release and reads the same
+  ledger. A proposal the auto tier approves is never classified, so a class the supervisor would have
+  returned goes unobserved. The 2.2 plan sequences the two.
+
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 
 Phase 1 implements the cycle-mode loop, but the substrate is designed so duty- and
@@ -451,6 +566,8 @@ outcome wins:
 
 **Recall effectiveness (Phase 1 measures this; gates the phase):**
 1. **Primary:** recurrence rate of labeled rejection classes, memory-on vs. memory-off
+   (revision 4: on the proposal gate the classes are `ProposalClassification`'s, and the 2.2 plan
+   chooses the instrument, §5b)
    — scored against stored plans via the SIP-0101 replay harness and over a
    pre-registered set of live rolls (FAY methodology; N declared before rolling).
 2. Injection cost: prompt lines added per authoring task (must stay under the cap;
@@ -545,11 +662,13 @@ Per the ratified post-1.4 reshuffle (`docs/plans/post-1-4-roadmap-reconciliation
 
 1. Should human gate rejections (free-text reasons) enter Phase 1's corpus, or only
    validator-emitted classes? (Draft position: validator-only — deterministic encode; the
-   human-reason path needs the Phase-2 LLM encode.)
+   human-reason path needs the Phase-2 LLM encode.) **Answered by revision 4 for classified
+   rulings (§5b):** a return carrying a `ProposalClassification` enters; an unclassified reason does not.
 2. Per-class deduplication key: rejection class alone, or class × task_type?
 3. Does recall also belong on repair envelopes in Phase 1 (the correction lane of §2), or
    is that scope creep past "one consumer"? (Draft position: plan authoring only; repair
-   recall is the first Phase-1.5 extension once the metric exists.)
+   recall is the first Phase-1.5 extension once the metric exists.) **Revision 4 keeps repair
+   recall in Phase 1.5, and Phase 1's one consumer is the proposal task (§5b).**
 4. Retention horizon and the memory-off control protocol for the measurement window.
 5. Role-scoped expertise memory (procedural — "how this role solves problems well",
    keyed to persistent identity per SIP-0088/0089): does it enter as a Phase 1.5 with

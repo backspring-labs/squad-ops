@@ -8,6 +8,8 @@ created_at: '2026-08-21T00:00:00Z'
 # SIP: Design Decision Register
 
 > **Placement and delivery (2026-10-04: the owner's rulings on the SIP-portfolio audit, `sips/PORTFOLIO.md`).** **Folds into #950's design**, the plan-gate review packet, placed after Outcome Evaluation (2.4 or later). Its rung 1 is **#1031 (2.1.0)**. The rung targets in 1.6.x and 1.8 are superseded.
+>
+> **Boundary with SIP-0110 Cross-Cycle Memory (2026-10-06, its revision 4, §5b).** 2.1's evidence found one design question recurring across cycles: 7 of 8 unresolved questions asked how the runs list is ordered or paged, and the plan gate answered each time. Those answers are decision records, this register's payload, not memory Phase 1's, which takes the campaign's classified proposal returns. Memory owns the substrate that would carry them (`sips/PORTFOLIO.md` Q4). The payload arrives with this register's home (#950, Q12).
 
 
 **Status:** Proposed (2026-08-21)
@@ -17,7 +19,7 @@ derivation this SIP's linkage walks), #811 (framing revision loop — this SIP's
 **Siblings:** #557 (post-retest governance review — the fail-closed judgment precedent this
 SIP inherits), #950 (plan-gate review packet — the human-gate surface of the same data;
 convergence proposed in §6).
-**Forward hooks:** SIP-Campaign-Orchestration, SIP-Cross-Cycle-Memory (§5).
+**Forward hooks:** SIP-Campaign-Orchestration, SIP-0110 Cross-Cycle Memory (§5).
 
 ## 1. Summary
 
