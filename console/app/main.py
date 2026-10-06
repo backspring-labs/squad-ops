@@ -9,11 +9,13 @@ from __future__ import annotations
 import logging
 import os
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from pathlib import Path
 
 import httpx
 from auth_bff import configure as configure_auth
 from auth_bff import router as auth_bff_router
+from auth_bff import session_access_token
 from auth_bff import shutdown as shutdown_auth
 from continuum.adapters.web.api import router as continuum_api_router
 from continuum.app.runtime import ContinuumRuntime
@@ -46,63 +48,36 @@ CONSOLE_CLIENT_ID = os.environ.get("CONSOLE_CLIENT_ID", "squadops-console")
 CONSOLE_REDIRECT_URI = os.environ.get("CONSOLE_REDIRECT_URI", "http://localhost:4040/auth/callback")
 REDIS_URL = os.environ.get("REDIS_URL", "")
 
-# Service token for internal runtime-api calls (client-credentials grant)
-SERVICE_CLIENT_ID = os.environ.get("SERVICE_CLIENT_ID", "squadops-console-service")
-SERVICE_CLIENT_SECRET = os.environ.get("SERVICE_CLIENT_SECRET", "")
+# ── The caller's authorization (#2068) ─────────────────────────────────────
 
-# ── Service token management ────────────────────────────────────────────────
-
-_service_token: str | None = None
-_service_token_expires_at: float = 0
 _api_client: httpx.AsyncClient | None = None
 
+#: The authorization of the person a console call is made for. Every call to the runtime API
+#: carries it, so the API applies that user's own role; the console holds no credential of its
+#: own (#2068: a service account would have let every console user act with its role).
+_caller_authorization: ContextVar[str | None] = ContextVar("caller_authorization", default=None)
 
-async def _get_service_token() -> str:
-    """Obtain a service token via client-credentials grant.
 
-    Cached until expiry (minus 30s buffer).
-    """
-    import time
+async def _authorization_for(request: Request) -> str | None:
+    """The caller's own authorization: their ``Authorization`` header, else their console
+    session's access token. ``None`` when they have neither, and the API refuses the call."""
+    header = request.headers.get("authorization")
+    if header:
+        return header
+    session_id = request.cookies.get("session_id")
+    token = await session_access_token(session_id) if session_id else None
+    return f"Bearer {token}" if token else None
 
-    global _service_token, _service_token_expires_at
 
-    if _service_token and time.time() < _service_token_expires_at:
-        return _service_token
-
-    if not SERVICE_CLIENT_SECRET:
-        logger.warning("SERVICE_CLIENT_SECRET not set — command handlers will run unauthenticated")
-        return ""
-
-    assert _api_client is not None
-    token_url = f"{KEYCLOAK_URL}/protocol/openid-connect/token"
-    resp = await _api_client.post(
-        token_url,
-        data={
-            "grant_type": "client_credentials",
-            "client_id": SERVICE_CLIENT_ID,
-            "client_secret": SERVICE_CLIENT_SECRET,
-        },
-    )
-
-    if resp.status_code != 200:
-        logger.error("Failed to obtain service token: %s", resp.text)
-        return ""
-
-    tokens = resp.json()
-    _service_token = tokens["access_token"]
-    _service_token_expires_at = time.time() + tokens.get("expires_in", 300) - 30
-    return _service_token
+def _caller_headers() -> dict[str, str]:
+    authorization = _caller_authorization.get()
+    return {"Authorization": authorization} if authorization else {}
 
 
 async def _api_request(method: str, path: str, *, json: dict | None = None) -> httpx.Response:
-    """Make an authenticated request to the runtime API."""
-    token = await _get_service_token()
-    headers = {}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-
+    """Make a request to the runtime API as the command's caller."""
     assert _api_client is not None
-    return await _api_client.request(method, path, json=json, headers=headers)
+    return await _api_client.request(method, path, json=json, headers=_caller_headers())
 
 
 # ── Command handlers ────────────────────────────────────────────────────────
@@ -209,11 +184,6 @@ async def squadops_ingest_artifact(args: dict, context: dict) -> dict:
         content = args.get("content", "")
         file_bytes = content.encode() if isinstance(content, str) else content
 
-    token = await _get_service_token()
-    headers = {}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-
     assert _api_client is not None
     resp = await _api_client.post(
         f"/api/v1/projects/{project_id}/artifacts/ingest",
@@ -223,7 +193,7 @@ async def squadops_ingest_artifact(args: dict, context: dict) -> dict:
             "filename": filename,
             "media_type": media_type,
         },
-        headers=headers,
+        headers=_caller_headers(),
     )
 
     if resp.status_code >= 400:
@@ -405,6 +375,23 @@ app.include_router(continuum_api_router)
 # Auth BFF routes (/auth/login, /auth/callback, /auth/refresh, /auth/logout)
 app.include_router(auth_bff_router)
 
+#: Continuum's command route; its handlers are this module's ``COMMAND_HANDLERS``.
+COMMAND_ROUTE = "/api/commands/execute"
+
+
+@app.middleware("http")
+async def _commands_run_as_their_caller(request: Request, call_next):
+    """#2068: Continuum hands a command handler no caller (its user is a fixed operator), so the
+    caller's own authorization is set here, around the command, for every call the handler makes
+    to the runtime API."""
+    if request.url.path != COMMAND_ROUTE:
+        return await call_next(request)
+    reset = _caller_authorization.set(await _authorization_for(request))
+    try:
+        return await call_next(request)
+    finally:
+        _caller_authorization.reset(reset)
+
 
 # Health proxy routes (same-origin for console plugins)
 @app.get("/api/health/infra")
@@ -440,14 +427,10 @@ async def proxy_chat_stream(path: str, request: Request):
     """
     from fastapi.responses import StreamingResponse
 
-    token = await _get_service_token()
     headers: dict[str, str] = {}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-
-    auth_header = request.headers.get("authorization")
-    if auth_header:
-        headers["Authorization"] = auth_header
+    authorization = await _authorization_for(request)
+    if authorization:
+        headers["Authorization"] = authorization
 
     content_type = request.headers.get("content-type")
     if content_type:
@@ -506,14 +489,10 @@ async def proxy_chat_get(path: str, request: Request):
     """Buffered proxy for chat GET — session history, message list."""
     from fastapi.responses import Response as FastAPIResponse
 
-    token = await _get_service_token()
     headers: dict[str, str] = {}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-
-    auth_header = request.headers.get("authorization")
-    if auth_header:
-        headers["Authorization"] = auth_header
+    authorization = await _authorization_for(request)
+    if authorization:
+        headers["Authorization"] = authorization
 
     assert _api_client is not None
     resp = await _api_client.get(f"/api/v1/chat/{path}", headers=headers)
@@ -530,14 +509,10 @@ async def proxy_agents_messaging(request: Request):
     """Passthrough for agent discovery — dedicated route to avoid wildcard conflicts."""
     from fastapi.responses import Response as FastAPIResponse
 
-    token = await _get_service_token()
     headers: dict[str, str] = {}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-
-    auth_header = request.headers.get("authorization")
-    if auth_header:
-        headers["Authorization"] = auth_header
+    authorization = await _authorization_for(request)
+    if authorization:
+        headers["Authorization"] = authorization
 
     assert _api_client is not None
     resp = await _api_client.get("/api/v1/agents/messaging", headers=headers)
@@ -555,15 +530,10 @@ async def proxy_runtime_api(path: str, request: Request):
     """Reverse-proxy /api/v1/* to the runtime-api."""
     from fastapi.responses import Response as FastAPIResponse
 
-    token = await _get_service_token()
-    headers = {}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-
-    # Forward user's auth token if present (prefer user identity over service token)
-    auth_header = request.headers.get("authorization")
-    if auth_header:
-        headers["Authorization"] = auth_header
+    headers: dict[str, str] = {}
+    authorization = await _authorization_for(request)
+    if authorization:
+        headers["Authorization"] = authorization
 
     body = await request.body()
     content_type = request.headers.get("content-type")

@@ -357,3 +357,11 @@ checks:
       spent = last_attempt_reserved({"tests_pass"}, cfg, attempt=1, budget=2)
       print(held, spent, CorrectionTerminationReason.RESERVED_FOR_REQUIRED)
     expect: True False reserved_for_required
+  - id: "2068"
+    what: the console calls the runtime API with its caller's own token, and holds no client of its own
+    container: squadops-console
+    code: |
+      import auth_bff
+      source = open("/app/main.py").read()
+      print(callable(getattr(auth_bff, "session_access_token", None)), "_get_service_token" in source)
+    expect: True False
