@@ -389,3 +389,35 @@ checks:
       found = lint_delivered({"a.py": "import os\n", "b.js": "export const x = 1;\n"})
       print(sorted(found["tools"].values()), found["unavailable"])
     expect: "['10.12.0', 'ruff 0.16.6'] {}"
+  - id: "1031"
+    what: the framing gate knows each error code's conventional status, and reports an unwarranted departure
+    container: squadops-runtime-api
+    code: |
+      from squadops.capabilities.error_status import error_convention
+      from squadops.cycles.manifest_gates import PROOF_ERROR_STATUS_WARRANTED
+      print(sorted(error_convention("participant_not_found").statuses), bool(PROOF_ERROR_STATUS_WARRANTED))
+    expect: "[404] True"
+  - id: "1692"
+    what: a recovery cycle is told each correction round of the failed cycle, and the digest measures recurrence
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.prior_cycle import correction_rounds
+      from squadops.campaigns.scorecard import brief_recurrence
+      print(correction_rounds([]), callable(brief_recurrence))
+    expect: "[] True"
+  - id: "1824"
+    what: an ending outside the work is a terminal kind, and the queue's failure is declared on its port
+    container: squadops-runtime-api
+    code: |
+      from squadops.cycles.failure_attribution import TerminalKind
+      from squadops.ports.comms.queue import QueueError
+      print(TerminalKind.INFRASTRUCTURE_FAILED.value, QueueError.__module__)
+    expect: infrastructure_failed squadops.ports.comms.queue
+  - id: "2086"
+    what: a failed tests_pass round keeps its failing cases as its reason
+    container: squadops-runtime-api
+    code: |
+      from squadops.cycles.run_loop_summary import failed_detail_of
+      row = {"check": "tests_pass", "passed": False, "failing_cases": [{"file": "t.py", "line": 3, "title": "x", "message": "boom"}]}
+      print(failed_detail_of([row]))
+    expect: "(('tests_pass', 't.py:3 x: boom'),)"
