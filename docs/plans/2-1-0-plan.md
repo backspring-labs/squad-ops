@@ -759,3 +759,109 @@ refuses such a target, and `tests/conftest.py` refuses it for every test run. It
 2026-10-05, before the remaining conversions, whose tests also mock subprocesses.
 
 **The box:** the 2.0.1 deploy, unchanged overnight. No rebuild ran.
+
+### The first day's record (2026-10-05)
+
+**Merged (22), main's whole run read green after each but the last:** #2043 and #2046 (#1983), #2044 (this
+plan's rulings), #2031 (#1984), #2033 (#1934 with #2007), #2038 (#1972), #2035 (#1982), #2034 (#1930),
+#2051 (#1987), #2036 (#1974), #2058 (#1964's inert recall port), #2037 (#1975), #2047 (#1940), #2048
+(#2042), #2049 (#2029), #2050 (#1954), #2057 (#2045), #2052 (#1971), #2027 (#1960), and the rebuild's
+tooling, #2064 (the tracked loaded checks) and #2065 (the restart diagnostics); then, during the pair,
+#2032 (#1980), whose run is the one the Actions incident below holds. **So steps 1–3 are complete.**
+
+**Rebuild 1** (§4 step 3), built from `bb7e16e0`; the checkout read `c814fb32`, which adds tooling and no
+source. A backup was written first and every container's log saved.
+- **Loaded:** all 26 tracked rows (`scripts/dev/loaded_checks.yaml`, #2064) answered with the new code.
+  Each had been run against the merged tree, where it prints its expected line, and against the 2.0.1
+  deploy, where it does not. Since #2064 a set records these rows and preflight refuses a deploy that
+  answers otherwise.
+- **The sandbox service** (`--profile sandbox`, which `all` skips) was rebuilt so #1982 reached it.
+  Recreated, it refused to start: its token has no home in `.env` or `secrets/`, and the container it
+  replaced had been started with one exported in a shell. It was restarted with a fresh token held in
+  its environment only. The provider is `noop`, so no client calls it. This is #2006's twelfth
+  credential (comment on #2006, built into #2069).
+- **The regression pair, both accepted clean.** FastAPI+React `cyc_356895cd0440`: 21/21 criteria, zero
+  correction rounds, the boot audit PASS, 50 min. Next.js `cyc_0dcd556f4fea`: 16/16, zero rounds, the
+  boot audit PASS, 57 min. Both match the 2.0 baseline.
+- **The restart diagnostics** run on campaign `cmp_fb99bbe417ad`, of one increment
+  (`examples/03_group_run/campaigns/2-1-0-rebuild1-diag.yaml`):
+  - `restart-at:at_proposal`, which reads #1934: the re-attach asks for the proposal task by its id,
+    and the proposer answers from its stored reply;
+  - `restart-queued-successor`, which reads #2042: a foreign model holds the box while the ruling's
+    successor waits queued, the runtime restarts, and the successor must start once;
+  - `duplicate-completion`;
+  - every record reads #2007: no flow run of an ended run left open.
+
+  Their records are written to `var/campaigns/cmp_fb99bbe417ad/diagnostics/`. **All three passed**, on
+  rebuild 1's runtime image (`6c1a718c0bb3`):
+  - `restart-at:at_proposal` (#1934): one proposal task dispatched before the restart and the same one
+    after, answered from the store. The ledger held at 7 rows.
+  - `restart-queued-successor` (#2042): `llama3.1:8b` held the box (66 GB free before, 43 GB loaded),
+    the successor stayed queued through the restart, and it started once.
+  - `duplicate-completion`: one continuation and one launch. The ledger held at 9 rows.
+  - #2007: no flow run left open in any of the three.
+
+  The first attempt timed out at its four-hour wait for `at_proposal` and injected nothing. The
+  calibration gate below had held the campaign for about three of those hours. It was relaunched on the
+  same campaign at 00:20Z and passed within four minutes.
+
+**Batch 2 merged (steps 4 and 5), after the pair was read:** #2053 (#1757), #2054 (#1991), #2055 (#1911's
+instrument), #2056 (#2028), #2059 (#1973), #2060 (#1796), #2061 (#1727 with #1913), #2066 (#1990) and
+#2069 (#2006, the code; the Spark's own rotation waits for the owner). Also merged: #2040 (#1957) and
+#2039 (#1958). #2039's guard caught the diagnostics definition's own comment, which named the deploy it was
+written for, and it was reworded.
+
+**Built and held:**
+
+| batch | PRs |
+|---|---|
+| refactors (§4 step 6), each its own rebuild | #2063 (#1985), then #2067 (#414, rebased with the one `correction_budget` call #2055 added) |
+| generation quality (§4 step 7, the final deploy) | #2070 (#1031), #2071 (#1692's remainder; SIP-0109 §24be) |
+| tooling, last | #2020 (#1988) |
+
+A trial merge of every held PR in order passed 12,576 tests before batch 2 merged. Its one interaction was
+#2067's budget argument against #2055's new tests, which #2067's rebase added.
+
+**Measured:**
+- **#414:** the priority reserve replayed against the 106 stored runs with correction rounds. Two would
+  have ended a round sooner. None lost a required repair to completeness rounds (SIP-0086 §12c).
+- **#1031:** the error-status convention fires on 8 of 244 authored manifests. Every departure is the
+  issue's class: `participant_not_found` answering 409, 422, 400 or 424, and `duplicate_participant`
+  answering 400. It lands advisory (#820).
+- **#567:** 7,468 stored emissions replayed through CommonMark fence recognition. It truncates 426 of
+  9,605 files, and moves or drops about 80 more. The parser's two departures from the spec are rulings,
+  #430's nesting and #431's end-of-file recovery. Recommended not built (comment on #567); **the owner's
+  to rule**.
+
+**Filed:** #2068. The console's service client has no realm client and no secret, so its command
+handlers call the runtime API unauthenticated. The API refuses those calls, so nothing is exposed, but
+the console's commands do not work.
+
+**Paused, then resumed:** merges stopped from 19:20Z for GitHub's Actions incident ("delays in assigning
+GitHub-hosted runners"). The run on #2032's merge held one job that never got a runner, cancelled twice. Actions
+recovered at 21:55Z. The job was re-run green, and merging resumed.
+
+**Main's dependency audit went red after 59505573:** an external advisory published against a locked
+package, `python-jose` 3.5.0 (GHSA-3qf3-8w2g-rqmx). No fix version exists, and no merge introduced it. The
+owner approved two steps:
+- **#2074:** the advisory is accepted with its reason, because the one verifier pins `algorithms=["RS256"]`
+  and takes RSA keys from the JWKS. Reproduced locally, the forgery verifies only when HS256 is allowed. A
+  test forges the advisory's token against a real key set and fails if the restriction loosens. A second
+  advisory published while it ran, multidict 6.7.1 (GHSA-54p9-h82j-f925), has a fix, so it moves to 6.9.1.
+- **#2075 (#2073):** python-jose is retired and the verifier moves to PyJWT, riding rebuild 2. The
+  adapter's tests now sign real tokens, and the old behaviour's 27 pass on both libraries. PyJWT refuses
+  three tokens python-jose accepted (no `aud`, no `kid`, an `iat` beyond the skew ahead). None comes from
+  the deploy's clients. ADR §15, "`jose` over `PyJWT`", is amended with the evidence.
+
+**Held at a gate, then decided:** the diagnostics campaign's calibration framing stopped at
+`progress_plan_review` on an `unresolved: true` manifest question: the PRD states no page size for the runs
+list. It was escalated, and the owner ruled it is not theirs: an unresolved question on an uncounted run is
+the operator's. It was approved at 00:01Z with the manifest's unbounded list (MVP scale). Rebuild 2 runs
+after the campaign completes.
+
+**For the owner:**
+- #2006: the rotation, a backup first (`docs/ops/credential_rotation.md`). Rotate Langfuse's `SALT`?
+  Realm users as a follow-on?
+- #567: not built?
+- #1824: option 1 with the producer, or option 2?
+- #1937: the reporting-only lint, or 2.3?
