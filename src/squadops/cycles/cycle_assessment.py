@@ -804,10 +804,11 @@ def _canonical(obj: Any) -> Any:
     if isinstance(obj, RunLoopSummary):
         # #1710: a run's revision forms are its record, not evidence the assessment reads, and
         # were added after identities were first recorded; they never move an identity. #1757's
-        # path overrides are the same kind of record.
+        # path overrides and #1937's lint readings are the same kind of record.
         summary = obj.to_dict()
         summary.pop("revision_forms", None)
         summary.pop("path_overrides", None)
+        summary.pop("lint_findings", None)
         return summary
     if isinstance(obj, FailureEvent) and not obj.failed_detail:
         # #2028: added after identities were first recorded; an event without it keeps its own.

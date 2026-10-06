@@ -818,6 +818,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     contract=state.verification_contract,
                     usage=self._task_dispatcher.take_run_usage(run_id),
                     revision_forms=self._task_dispatcher.take_run_revision_forms(run_id),
+                    lint_findings=self._task_dispatcher.take_run_lint_findings(run_id),
                     terminal=terminal,
                 )
 

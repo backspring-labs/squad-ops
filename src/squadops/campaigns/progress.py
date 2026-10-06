@@ -673,9 +673,10 @@ class CampaignProgress:
             launch=built,
         )
 
-    async def _revision_forms(self, cycle_id: str) -> tuple:
-        """#1710: each run's revision forms, from its persisted summary, in run order."""
-        forms = []
+    async def _run_records(self, cycle_id: str) -> tuple[tuple, tuple]:
+        """Each run's revision forms (#1710) and lint reading (#1937), from its persisted
+        summary, in run order."""
+        forms, lint = [], []
         for run in sorted(await self._cycles.list_runs(cycle_id), key=lambda r: r.run_number):
             summary = await self._cycles.get_run_loop_summary(run.run_id)
             forms.append(
@@ -685,7 +686,14 @@ class CampaignProgress:
                     "forms": None if summary is None else summary.revision_forms,
                 }
             )
-        return tuple(forms)
+            lint.append(
+                {
+                    "run_id": run.run_id,
+                    "workload_type": run.workload_type,
+                    "findings": None if summary is None else summary.lint_findings,
+                }
+            )
+        return tuple(forms), tuple(lint)
 
     async def materialize_package(self, campaign_id: str) -> tuple[str, str, str]:
         """Store the campaign's evidence package and its digest (§14, #1710): a projection of
@@ -703,13 +711,15 @@ class CampaignProgress:
                 assessment = await self._assess(intent.cycle_id)
             except Exception as e:  # noqa: BLE001 — the package says what it could not read
                 assessment = {"unreadable": f"{type(e).__name__}: {e}"}
+            revision_forms, lint_findings = await self._run_records(intent.cycle_id)
             records.append(
                 CycleRecords(
                     cycle_id=intent.cycle_id,
                     kind=intent.cycle_kind.value,
                     assessment=assessment,
                     failure_records=await self._cycles.get_failure_records(intent.cycle_id),
-                    revision_forms=await self._revision_forms(intent.cycle_id),
+                    revision_forms=revision_forms,
+                    lint_findings=lint_findings,
                 )
             )
         doc = package(campaign, log, launches, records)

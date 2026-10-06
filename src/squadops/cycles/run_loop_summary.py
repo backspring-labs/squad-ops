@@ -373,6 +373,10 @@ class RunLoopSummary:
     #: #1757: every correction decision the policy overrode. ``None`` on a row written before
     #: they were recorded.
     path_overrides: tuple[PathOverride, ...] | None = ()
+    #: #1937: the run's latest lint reading of the tree a qa task evaluated (``delivered_lint``),
+    #: with that task. Evidence only: nothing that judges the run reads it. ``None`` when no qa
+    #: task of the run recorded one, or on a row written before they were.
+    lint_findings: dict[str, Any] | None = None
     summary_version: int = RUN_LOOP_SUMMARY_VERSION
 
     def to_dict(self) -> dict[str, Any]:
@@ -397,6 +401,7 @@ class RunLoopSummary:
             "path_overrides": (
                 None if self.path_overrides is None else [o.to_dict() for o in self.path_overrides]
             ),
+            "lint_findings": None if self.lint_findings is None else dict(self.lint_findings),
         }
 
     @classmethod
@@ -432,6 +437,11 @@ class RunLoopSummary:
                 None
                 if data.get("path_overrides") is None
                 else tuple(PathOverride.from_dict(o) for o in data["path_overrides"])
+            ),
+            lint_findings=(
+                dict(data["lint_findings"])
+                if isinstance(data.get("lint_findings"), Mapping)
+                else None
             ),
             summary_version=int(data.get("summary_version") or RUN_LOOP_SUMMARY_VERSION),
         )

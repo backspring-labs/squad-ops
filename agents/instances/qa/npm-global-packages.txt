@@ -7,3 +7,13 @@
 # Pinned to the version the Next.js skeleton pins in its own package.json
 # (stack_nextjs_ts._package_json) so the analyser and the app's compiler agree.
 typescript@5.5.3
+
+# #1937: reporting-only lint of the delivered app's JS/TS (src/squadops/capabilities/
+# delivered_lint_eslint.cjs resolves these from the global root, with its own config). Never a
+# gate: no check reads the findings. typescript-eslint 8.71 supports ESLint 10 and TypeScript
+# 5.5; ESLint 10 needs Node ^20.19 (the image has 20.19.2) and tracks JSX references, so a
+# component used only in JSX is not reported unused.
+eslint@10.12.0
+@eslint/js@10.0.1
+typescript-eslint@8.71.1
+globals@17.13.0

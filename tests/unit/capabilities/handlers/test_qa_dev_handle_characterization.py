@@ -49,6 +49,8 @@ _GOLDEN_PATH = Path(__file__).parent / "goldens" / "qa_dev_handle_characterizati
 _FIXTURES = Path(__file__).resolve().parents[3] / "fixtures"
 _SHELL = "__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts"
 _JS_TOOLS = frozenset({"tsc", "npm", "npx", "node"})
+#: #1937's lint reading runs ruff where it is installed; pinned absent like the JS tools.
+_LINT_TOOLS = frozenset({"ruff"})
 _LOGGERS = (
     "squadops.capabilities.handlers.cycle.qa_test",
     "squadops.capabilities.handlers.cycle.develop",
@@ -149,7 +151,9 @@ async def _run(handler, responses, inputs, monkeypatch, caplog, suite=None) -> d
     monkeypatch.setattr(
         shutil,
         "which",
-        lambda name, *a, **kw: None if name in _JS_TOOLS else real_which(name, *a, **kw),
+        lambda name, *a, **kw: (
+            None if name in _JS_TOOLS | _LINT_TOOLS else real_which(name, *a, **kw)
+        ),
     )
     ctx, calls = _context(*responses)
     with caplog.at_level(logging.INFO):

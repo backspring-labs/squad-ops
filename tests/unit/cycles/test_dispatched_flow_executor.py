@@ -295,6 +295,41 @@ class TestSequentialHappyPath:
             for task_id, task_type in dispatched
         ]
 
+    async def test_finalization_persists_the_runs_latest_lint_reading(
+        self, executor, mock_registry, mock_queue
+    ) -> None:
+        """#1937, entered at ``execute_run``: the lint reading a task's reply carries reaches the
+        run's persisted summary, the latest one, with its task. Bug caught: the reading left in
+        the reply, so neither the summary nor a campaign's package ever holds it."""
+        dispatched: list[str] = []
+
+        def responder(env):
+            dispatched.append(env["task_id"])
+            return TaskResult(
+                task_id=env["task_id"],
+                status="SUCCEEDED",
+                outputs={
+                    "summary": "stub",
+                    "artifacts": [],
+                    "lint_findings": {"version": 1, "total": len(dispatched)},
+                },
+            )
+
+        mock_queue.reply_router.responder = responder
+        with patch(
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        _run_id, summary = mock_registry.record_run_loop_summary.await_args.args
+        assert dispatched, "the plan dispatched its tasks"
+        assert summary.lint_findings == {
+            "task_id": dispatched[-1],
+            "version": 1,
+            "total": len(dispatched),
+        }
+
     async def test_publish_called_5_times(self, executor, mock_queue) -> None:
         """queue.publish called once per pipeline step (5 total)."""
         self._wire_canned_replies(mock_queue)

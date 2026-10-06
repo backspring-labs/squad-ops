@@ -631,6 +631,21 @@
     "extracted_chars": 6742,
     "response_chars": 64
    },
+   "lint_findings": {
+    "by_file": {},
+    "by_rule": {},
+    "files_linted": {
+     "js": 0,
+     "python": 1
+    },
+    "files_not_named": 0,
+    "tools": {},
+    "total": 0,
+    "unavailable": {
+     "ruff": "ruff is not installed"
+    },
+    "version": 1
+   },
    "outcome_class": "success",
    "prompt_provenance": {
     "system_prompt_bundle_hash": "sha256:test"
@@ -763,7 +778,8 @@
    "test_result",
    "prompt_provenance",
    "outcome_class",
-   "validation_result"
+   "validation_result",
+   "lint_findings"
   ],
   "success": true,
   "suite_ran_on": [
@@ -1814,6 +1830,19 @@
     "response_chars": 82
    },
    "failure_classification": "work_product",
+   "lint_findings": {
+    "by_file": {},
+    "by_rule": {},
+    "files_linted": {
+     "js": 0,
+     "python": 0
+    },
+    "files_not_named": 0,
+    "tools": {},
+    "total": 0,
+    "unavailable": {},
+    "version": 1
+   },
    "outcome_class": "semantic_failure",
    "prompt_provenance": {
     "system_prompt_bundle_hash": "sha256:test"
@@ -2585,6 +2614,7 @@
    "outcome_class",
    "failure_classification",
    "validation_result",
+   "lint_findings",
    "scaffold_evidence"
   ],
   "success": false,
@@ -2850,6 +2880,19 @@
     "extracted_chars": 16580,
     "response_chars": 154
    },
+   "lint_findings": {
+    "by_file": {},
+    "by_rule": {},
+    "files_linted": {
+     "js": 0,
+     "python": 0
+    },
+    "files_not_named": 0,
+    "tools": {},
+    "total": 0,
+    "unavailable": {},
+    "version": 1
+   },
    "outcome_class": "success",
    "prompt_provenance": {
     "system_prompt_bundle_hash": "sha256:test"
@@ -2891,6 +2934,7 @@
    "test_result",
    "prompt_provenance",
    "outcome_class",
+   "lint_findings",
    "scaffold_evidence"
   ],
   "success": true,

@@ -25,7 +25,8 @@ from squadops.campaigns.models import CampaignState, ControlOperation, ControlOu
 
 #: Bumped when the package's shape changes; a reader checks it before reading further.
 #: 2: each cycle carries its runs' revision forms (#1710).
-PACKAGE_VERSION = 2
+#: 3: and its runs' lint readings, evidence only (#1937).
+PACKAGE_VERSION = 3
 
 #: The size bound (#1710: "bounded, so a frontier triage of one night fits a metered model
 #: budget"). A package holds records only, never logs or prompts, so it grows only with the cycles
@@ -64,6 +65,8 @@ class CycleRecords:
     #: #1710: per run, the revision forms its tasks took, read from the run's persisted summary;
     #: a run whose summary predates them reads ``None``.
     revision_forms: tuple = ()
+    #: #1937: per run, the lint reading of the tree its qa task evaluated (``None`` when none).
+    lint_findings: tuple = ()
 
 
 def package(campaign: Any, log: list, launches: list, cycles: list[CycleRecords]) -> dict:
@@ -85,6 +88,7 @@ def package(campaign: Any, log: list, launches: list, cycles: list[CycleRecords]
                 "assessment": _plain(c.assessment),
                 "failure_records": _plain(c.failure_records),
                 "revision_forms": _plain(c.revision_forms),
+                "lint_findings": _plain(c.lint_findings),
                 "decision": decisions.get(c.cycle_id),
             }
             for c in cycles
