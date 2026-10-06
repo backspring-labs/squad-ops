@@ -5,6 +5,94 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+**The 2.1 line, after 2.0's campaign headline.** Plan: `docs/plans/2-1-0-plan.md`, which carries the
+owner's grant and rulings and each day's record. The line's validation (each rebuild's loaded checks
+and regression pair, the restart diagnostics, the cut's set) is summarised here at the cut. The
+entries below are what has merged so far.
+
+**Campaigns: the 2.0 set's findings (SIP-0109).**
+- **The proposer and its rails:** the rails refuse a behaviour change with nothing to build (#2011);
+  the proposer is told every convention its stack's frozen code decides (#1962, #1950; #2013), and
+  that a PRD delta states only what the request delivers (#1995; #2014).
+- **#1884, by the owner's rule:** every author of an increment's tests is held to it (#2012), and
+  behaviour a qa author would test but nothing accepted requires is returned as a proposal (#2019).
+- **The supervisor:** its instruments are tracked, each verdict a tested function (#2025); it
+  creates and manages a campaign, while escalations and limit pauses stay the owner's (#1940;
+  #2047).
+- **Recovery:** the sweep re-hears an ended cycle between restarts (#1972; #2038); a restart starts
+  a successor run left queued (#2042; #2048); a launch the cycle-create path refuses escalates to
+  the owner, who retries it or aborts (#1971; #2052).
+- **Evidence:** any increment can be replayed outside its campaign, on the current deploy (#1959;
+  #2026); a campaign's creation row records the definition file that made it (#1954; #2050); the
+  digest scores each increment from the package alone (#1960; #2027); a definition's comment names
+  no deploy or round unless its bytes are pinned (#1958; #2039).
+- **Next.js increments:** their pages are read, and a page written as the API writes it is seeded
+  (#1973; #2059).
+
+**Cycles and the correction loop.**
+- One recorder for every gate decision, and a refinement approval promotes (#1986; #2030); its notes
+  are promoted when they are stored, and the CLI says who reads them (#2029; #2049).
+- The restart re-attach replays a proposal task and ends the flow runs a dead process left open
+  (#1934, #2007; #2033).
+- A rewind on a `model_limitation` with repair unspent is a patch, and every override is recorded
+  with the run (#1757; #2053).
+- A qa task evaluates the set it stores, and a re-take proves it (SIP-0107 §20; #1727, #1913;
+  #2061).
+- A failed check's own account of why is kept with its round and its failure record (#2028; #2056);
+  an empty repair records whether it was offered the scoped edit form (#1911; #2055).
+- The boot audit renders each declared route, by the increment evaluation's own render (#1796;
+  #2060).
+- The flow executor's dependencies are required keywords, so a misspelling fails at boot (#1987;
+  #2051).
+
+**Processes and the sandbox.**
+- Every check, build, boot and browser the agents run ends with everything it started, and a
+  timed-out test run ends its whole process group (#1983; #2043, #2046).
+- A sandbox run that outlives its limit is killed by name, and its docker client ended (#2045;
+  #2057); a `secret://` service token is resolved by the provider the secrets section selects
+  (#1982; #2035).
+
+**Architecture.**
+- One map of every package, guarded both ways (#1989; #2021).
+- Four layers no composition root builds are deleted (#1984; #2031), and so are the four
+  stack-blueprint fields the second stack falsified (#1975; #2037).
+- Every environment read outside the config loader is inventoried and guarded both ways (#1991;
+  #2054); one helper each for the CLI client, text digests, string lists, the scaffold-integrity
+  emitter and an unreadable vault ref (#1990; #2066).
+- Cross-Cycle Memory's recall port, inert, and its call site (#1964; #2058).
+- The benchmark registry refuses a replayed cycle (SIP-0101 §4.1; #2036).
+
+**Security and dependencies.**
+- **Every credential is the deploy's own,** generated at bootstrap and rotatable in place: a
+  registry of the deploy's credentials, compose requiring each one, and a doctor check (#2006;
+  #2069).
+- **The token verifier moves to PyJWT** (#2073; #2075). python-jose had stopped releasing and
+  carried two advisories with no fix version (GHSA-3qf3-8w2g-rqmx, and PYSEC-2026-1325 against
+  `ecdsa`), both unreachable and accepted with their reasons in the meantime (#2074). PyJWT refuses
+  three tokens python-jose accepted (no `aud`, no `kid`, an `iat` beyond the skew ahead), none of
+  which the deploy's clients issue.
+- multidict moves to 6.9.1 for GHSA-54p9-h82j-f925 (#2074).
+
+**SIPs.**
+- `update_sip_status.py` can retire a proposal without accepting it (#1968; #2015), and the 13
+  proposals the portfolio ruled deprecated are retired (#2023).
+- The delivery ledgers and the portfolio are guarded (#1969; #2016); every SIP part's issue carries
+  `sip:NNNN`, matched to the ledgers both ways (#2022); new SIPs start from a template with an
+  intake check and a delivery ledger (#1981; #2018); the S5 admission gate reads an empty string as
+  unset (#1967; #2017).
+- The release cut's SIP sweep is read from the ledgers, and the release PR must name what it finds
+  (#1980; #2032).
+
+**Release and verification tooling.**
+- A verification set records the tracked loaded checks, and refuses a deploy that answers with the
+  old code (#2064); each rebuild adds its rows (#2077).
+- The recovery diagnostics read #1934, #2007 and #2042 live (#2065).
+- Cut steps 4 and 8 are checked: the ROADMAP entry and a recorded housekeeping run (#1957; #2040).
+- The delivered-app capture photographs a reference-scenario cycle, whole (#2008; #2024); the
+  records scan names a secret the repository already carries (#2005).
+- Tests: the OTel adapter tests stop the exporter threads they start (#1930; #2034), and one helper
+  watches a test's process end (#2076).
+
 ## [2.0.1] — 2026-10-04
 
 **Security: an artifact is written inside its own directory, whatever filename or id it carries**
