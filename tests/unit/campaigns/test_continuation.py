@@ -70,8 +70,9 @@ def assessment(verdict: RunVerdict | None, *, environment: bool = False):
     )
     latest = assess(outcome, evidence, assessor=AssessorIdentity("2.0.0", None))
     if environment:
-        # Not reachable by a completed cycle today: a rejected completion's failed checks read
-        # unattributed (their locus is not stored). Rows 10–11 are built as §10 writes them.
+        # Set directly, for the decision's own precedence. A completed cycle does not reach it (a
+        # rejected completion's failed checks read unattributed); a failed run does, through its
+        # terminal decision (#1824, test_retry_on_infrastructure.py).
         latest = dataclasses.replace(
             latest,
             attribution=AttributionReading(

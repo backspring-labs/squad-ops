@@ -18,6 +18,8 @@ from typing import Any
 
 from adapters.cycles.execution_errors import _ExecutionError, _RecruitmentRejectedError
 from adapters.cycles.run_provisioning import RunInProgress
+from squadops.cycles.failure_attribution import TerminalKind
+from squadops.cycles.run_loop_summary import RunTerminalDecision
 from squadops.runtime import reasons
 from squadops.runtime.admission import admit_participants, release_participants
 from squadops.runtime.focus_reaper import release_owner_leases
@@ -95,7 +97,10 @@ class RunAdmission:
                     "; ".join(verdict.reasons),
                 )
             if (now - started).total_seconds() >= bound_s:
-                raise _ExecutionError(_box_refused(run_id, verdict, bound_s))
+                raise _ExecutionError(
+                    _box_refused(run_id, verdict, bound_s),
+                    terminal=RunTerminalDecision(kind=TerminalKind.INFRASTRUCTURE_FAILED),
+                )
             await asyncio.sleep(BOX_POLL_S)
 
     async def _waited_on(self, cycle_id: str, now: datetime) -> str | None:

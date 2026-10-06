@@ -512,6 +512,10 @@ class TerminalKind(StrEnum):
     CORRECTION_TERMINATED = "correction_terminated"
     COMPLIANCE_BUDGET_EXCEEDED = "compliance_budget_exceeded"
     RUN_TIME_BUDGET_EXCEEDED = "run_time_budget_exceeded"
+    #: #1824: the run ended on a fault outside the work, declared where it is unambiguous: the
+    #: box refused the run past its admission bound, or the queue refused a dispatch. A task
+    #: timeout is not one of them: the model may still have been working (#995).
+    INFRASTRUCTURE_FAILED = "infrastructure_failed"
     COMPLETED = "completed"
     OTHER = "other"
 
@@ -704,6 +708,9 @@ def attribute(terminal: TerminalEvidence) -> Attribution:
         ]
     elif kind == TerminalKind.RUN_TIME_BUDGET_EXCEEDED:
         primary = AttributionClass.BUDGET_EXHAUSTION
+        contributing = events
+    elif kind == TerminalKind.INFRASTRUCTURE_FAILED:
+        primary = AttributionClass.ENVIRONMENT_OR_INFRASTRUCTURE_FAILURE
         contributing = events
     elif kind == TerminalKind.COMPLETED and terminal.verdict == _VERDICT_ACCEPTED:
         return Attribution(primary=None, contributing=())

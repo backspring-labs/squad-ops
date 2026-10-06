@@ -97,7 +97,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | the outer-loop runbook's second half | **shipped** | v2.0.0 (#1997, closed #1711) |
 | criterion files freeze rules the approved request never stated (the set's P9) | **shipped** (§24ax, §24ay): the rule reaches every author of an increment's tests, and unsupported behaviour is returned as a proposal | 2.1.0, PRs #2012 and #2019, issue #1884 |
 | a proposal's PRD delta can state more than its manifest delta carries | **shipped** (§24aw: the request says so; no rail) | 2.1.0, #2014 |
-| rows 10–11 reachable live (environment attribution) | **placed** | 2.1.0, #1824 |
+| rows 10–11 reachable live (environment attribution) | **shipped** (§24bg): the rows read the attribution, and the box's and the queue's refusals record an infrastructure ending | 2.1.0, PR #2080, issue #1824 |
 | proposal tasks re-run on re-attach (random ids) | **shipped**: every workload's task ids are deterministic | 2.1.0, PR #2033, issue #1934 |
 | a restart leaves the interrupted run's Prefect flow runs open (the re-attach, §24am) | **shipped**: a dead process's flow runs are ended when the run re-attaches and when it ends | 2.1.0, PR #2033, issue #2007 |
 | the stack's frozen conventions told to the proposer (Next.js; the rest) | **shipped** (§24av) | 2.1.0, #2013 |
@@ -2839,3 +2839,35 @@ whose chains ended `plan_defect`), so its text is the text a successor would be 
 
 **Who ruled it.** The owner placed #1692 in 2.1.0 (2026-10-03, the 2.0 plan rev 9, §5a.5). Its
 items are the issue's own list. This builds the two §24u recorded as not built.
+### 24bg. The retry rows read the attribution, and an ending outside the work is declared (2026-10-05, §10 rows 10–11, #1824; ruled by the owner)
+
+**What §10 wrote, and why it never fired.** Rows 10 and 11 read `latest.verdict = rejected` with
+`attribution.primary = environment_or_infrastructure_failure`. No cycle produced that reading:
+- a run that fails on infrastructure reaches no verification summary, so its verdict is
+  unaskable, not `rejected`;
+- nothing declared such an ending. It was recorded as `other` and read `unattributed`.
+
+Of the 156 stored failed cycles read through `cycles assess` (2026-10-03, comment on #1824), none
+read the environment class. So every failure outside the work escalated to the owner (row 14).
+
+**What changed.**
+- **Rows 10 and 11 read the attribution, not the verdict:** a cycle that is not accepted, not
+  `blocked_unverified`, and whose primary attribution is `environment_or_infrastructure_failure`
+  is retried while retries remain, and escalated after. This includes a failed run with no
+  verdict. `blocked_unverified` keeps rows 8 and 9, ahead of it.
+- **The ending is declared where it is unambiguous** (SIP-0108 §10q): the box refusing a run past
+  its admission bound (`RunAdmission.await_box`), and the queue refusing a dispatch (a
+  `QueueError`, now declared on the queue port). Both record the terminal kind
+  `infrastructure_failed`, which reads `environment_or_infrastructure_failure`.
+- **A task timeout is not declared one.** The model may still have been working (#995: a
+  timeout read as a dropped generation pointed everyone at the wrong layer), and a retry would hide
+  a defect in the work. It stays `other`, so it escalates, as before.
+
+**Evidence.** `tests/unit/campaigns/test_retry_on_infrastructure.py` enters at the admission wait
+and the executor's terminal mapping, and reads the run's stored summary through the real
+assessment into the decision: row 10, then row 11 with the retry spent. A task timeout and an
+unexpected error stay `other`. Each of the five changes was reverted in turn, and a test failed
+for each.
+
+**Who ruled it.** The owner, 2026-10-05, on the recommendation in #1824: option 1 (the rows read
+the attribution) with the producer, since option 1 alone would still never fire.
