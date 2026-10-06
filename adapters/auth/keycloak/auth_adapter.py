@@ -11,8 +11,14 @@ import time
 from datetime import UTC, datetime
 
 import httpx
-from jose import JWTError, jwt
-from jose.exceptions import ExpiredSignatureError
+import jwt
+from jwt import PyJWK
+from jwt.exceptions import (
+    ExpiredSignatureError,
+    InvalidSignatureError,
+    InvalidTokenError,
+    PyJWTError,
+)
 
 from squadops.auth.models import (
     Identity,
@@ -97,55 +103,47 @@ class KeycloakAuthAdapter(AuthPort):
                 return self._jwks
             raise TokenValidationError(f"Failed to fetch JWKS: {e}") from e
 
+    def _decode(self, token: str, jwks: dict) -> dict:
+        """Verify ``token`` with the realm key its header names, as RS256 and nothing else.
+
+        The algorithm is pinned, never read from the token: an HMAC token signed with the realm's
+        public key, which the JWKS endpoint publishes, is refused whatever key it names
+        (GHSA-3qf3-8w2g-rqmx, #2073). A ``kid`` the key set does not hold raises
+        ``InvalidSignatureError``, because that is what a key rotation looks like from here.
+        """
+        kid = jwt.get_unverified_header(token).get("kid")
+        if not kid:
+            raise InvalidTokenError("Token header names no signing key (kid)")
+        jwk = next((k for k in jwks.get("keys", ()) if k.get("kid") == kid), None)
+        if jwk is None:
+            raise InvalidSignatureError(f"No key in the realm's key set has kid {kid!r}")
+        return jwt.decode(
+            token,
+            PyJWK(jwk, algorithm="RS256").key,
+            algorithms=["RS256"],
+            audience=self._audience,
+            # Either the internal or the public issuer URL.
+            issuer=sorted(self._allowed_issuers),
+            leeway=self._clock_skew,
+        )
+
     async def validate_token(self, token: str) -> TokenClaims:
         """Decode and validate a JWT against JWKS."""
-        jwks = await self._fetch_jwks()
-
-        # When multiple issuers are allowed (internal + public URL), we validate
-        # the issuer manually after decoding to accept tokens from either.
-        verify_iss = len(self._allowed_issuers) == 1
-        decode_opts = {
-            "leeway": self._clock_skew,
-            "verify_exp": True,
-            "verify_aud": True,
-            "verify_iss": verify_iss,
-        }
-        decode_kwargs = {
-            "token": token,
-            "key": jwks,
-            "algorithms": ["RS256"],
-            "audience": self._audience,
-            "options": decode_opts,
-        }
-        if verify_iss:
-            decode_kwargs["issuer"] = self._issuer_url
-
         try:
-            payload = jwt.decode(**decode_kwargs)
+            payload = self._decode(token, await self._fetch_jwks())
         except ExpiredSignatureError as e:
             raise TokenValidationError("Token has expired") from e
-        except JWTError as e:
+        except InvalidSignatureError:
             # On signature failure, try a forced JWKS refresh once (key rotation)
-            if "signature" in str(e).lower() or "verification" in str(e).lower():
-                logger.info("JWT signature failed, attempting JWKS refresh for key rotation")
-                jwks = await self._fetch_jwks(force=True)
-                decode_kwargs["key"] = jwks
-                try:
-                    payload = jwt.decode(**decode_kwargs)
-                except JWTError as retry_e:
-                    raise TokenValidationError(
-                        f"Token validation failed after JWKS refresh: {retry_e}"
-                    ) from retry_e
-            else:
-                raise TokenValidationError(f"Token validation failed: {e}") from e
-
-        # Manual issuer check when multiple issuers are allowed
-        if not verify_iss:
-            token_issuer = payload.get("iss", "")
-            if token_issuer not in self._allowed_issuers:
+            logger.info("JWT signature failed, attempting JWKS refresh for key rotation")
+            try:
+                payload = self._decode(token, await self._fetch_jwks(force=True))
+            except PyJWTError as retry_e:
                 raise TokenValidationError(
-                    f"Invalid issuer: {token_issuer} (allowed: {self._allowed_issuers})"
-                )
+                    f"Token validation failed after JWKS refresh: {retry_e}"
+                ) from retry_e
+        except PyJWTError as e:
+            raise TokenValidationError(f"Token validation failed: {e}") from e
 
         # Extract roles from configurable claim path
         roles = self._extract_claim_path(payload, self._roles_claim_path)

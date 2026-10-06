@@ -244,6 +244,32 @@ class TestTokenValidation:
         with pytest.raises(TokenValidationError):
             await adapter.validate_token(realm.token(_make_claims(**claims)))
 
+    @pytest.mark.parametrize(
+        ("dropped_claim", "header", "iat_offset"),
+        [
+            ("aud", None, 0),
+            (None, {"alg": "RS256", "typ": "JWT"}, 0),
+            (None, None, 120),
+        ],
+        ids=["no-audience", "no-key-id", "issued-beyond-the-skew-ahead"],
+    )
+    async def test_what_python_jose_accepted_and_no_realm_client_issues_is_refused(
+        self, realm, dropped_claim, header, iat_offset
+    ):
+        """#2073: python-jose accepted all three, PyJWT refuses them. Every client in every realm
+        has an audience mapper adding ``squadops-runtime``, Keycloak names its signing key, and a
+        token issued 120s ahead is outside the 30s skew. Refused at once, never read as a rotated
+        key."""
+        claims = _make_claims(iat_offset=iat_offset)
+        if dropped_claim:
+            del claims[dropped_claim]
+        adapter = _adapter(realm)
+        get = _serving(adapter, realm.jwks)
+
+        with pytest.raises(TokenValidationError):
+            await adapter.validate_token(realm.token(claims, header=header))
+        assert get.await_count == 0
+
     async def test_a_malformed_token_is_refused(self, realm):
         with pytest.raises(TokenValidationError, match="Token validation failed"):
             await _adapter(realm).validate_token("not-a-jwt")
@@ -392,9 +418,9 @@ class TestTheVerifierPinsItsAlgorithm:
     that against a real key set, with no JWT library in the test, so they outlast the library.
 
     Bug caught: an HMAC algorithm added to the allow-list, or the restriction dropped. The verifier
-    would then rest on one barrier: the key's form, the JWKS's RSA keys, which the library refuses as
-    an HMAC secret. The advisory is a bypass of exactly that kind of guard, and the realm's public key
-    is published at the JWKS endpoint."""
+    would then rest on one barrier: the key's form, the JWKS's RSA keys, which the library refuses
+    as an HMAC secret. The advisory is a bypass of exactly that kind of guard, and the realm's
+    public key is published at the JWKS endpoint."""
 
     @staticmethod
     def _adapter(jwks):

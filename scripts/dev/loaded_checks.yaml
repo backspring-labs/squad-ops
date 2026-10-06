@@ -244,3 +244,11 @@ checks:
       from adapters.sandbox.factory import resolve_service_token
       print(inspect.signature(resolve_service_token).parameters["secret_manager"].default is inspect.Parameter.empty)
     expect: "True"
+  - id: "2073"
+    what: the runtime API verifies tokens with PyJWT, and python-jose has left the image
+    container: squadops-runtime-api
+    code: |
+      import importlib.util
+      import adapters.auth.keycloak.auth_adapter as verifier
+      print(verifier.jwt.__name__, importlib.util.find_spec("jose") is None)
+    expect: jwt True

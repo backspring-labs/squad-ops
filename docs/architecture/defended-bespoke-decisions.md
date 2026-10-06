@@ -118,11 +118,28 @@ headless in containers where no keyring exists, and one code path that works
 everywhere beats two paths where the privileged one is untestable in the environment
 that matters.
 
-## 15. `jose` over `PyJWT`
+## 15. PyJWT, with the key chosen by `kid` and the algorithm pinned
 
-The auth boundary (SIP-0062) validates Keycloak JWTs via `jose` for its JWK-set
-handling; the choice is pinned so dependency-hygiene passes don't "simplify" the auth
-path into a subtly different validator.
+**Amended 2026-10-05 (#2073).** This entry was "`jose` over `PyJWT`": "The auth boundary
+(SIP-0062) validates Keycloak JWTs via `jose` for its JWK-set handling; the choice is pinned so
+dependency-hygiene passes don't 'simplify' the auth path into a subtly different validator."
+
+**What overturned it.** python-jose stopped releasing at 3.5.0 (2025-05-28) and now carries two
+advisories with no fix version: GHSA-3qf3-8w2g-rqmx against python-jose itself, and
+PYSEC-2026-1325 against `ecdsa`, which python-jose pulls in. Neither was reachable, but an
+unmaintained verifier makes every later advisory a standing exception. The JWK-set handling it
+was chosen for takes three lines with PyJWT's `PyJWK`: take the key the token's `kid` names,
+parse it as an RS256 key whatever the JWK declares, and decode with `algorithms=["RS256"]`. The
+owner approved retiring python-jose for 2.1 by moving the verifier to PyJWT (2026-10-05).
+
+**What still holds, and guards the move.** The entry's concern was right: a different library
+is a subtly different validator. So the adapter's tests sign real tokens with `cryptography`
+alone and patch no decode (`tests/unit/auth/test_keycloak_adapter.py`). The 27 that describe
+the old behaviour pass unchanged on both libraries. PyJWT is stricter in three places, and a
+test pins each: a token with no `aud`, a token whose header names no `kid`, and a token issued
+more than the clock skew in the future are refused. None of the three can come from the
+deploy's own clients. Every client in every realm adds `squadops-runtime` to `aud`, and
+Keycloak names its signing key. The next change of library runs the same tests.
 
 ---
 

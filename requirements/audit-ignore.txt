@@ -4,20 +4,6 @@
 # accepted here in writing. Format: one advisory id per line; `#` comments.
 #
 # The 2026-09-08 refresh (#1204) moved cryptography to 50.0.1 and pyasn1 to 0.6.4, which
-# retired PYSEC-2026-3552 and PYSEC-2026-3455/3456/3457. What remains:
-
-# ecdsa 0.19.2 — NO fix version published (via python-jose on the auth boundary). Stays
-# listed until python-jose is retired or ecdsa ships a fix; revisited at every refresh.
-PYSEC-2026-1325
-
-# python-jose 3.5.0 — GHSA-3qf3-8w2g-rqmx / CVE-2026-85394, NO fix version published (python-jose's
-# last release is 3.5.0, 2025-05-28). A token signed HS256 with the service's DER-encoded public key
-# as the HMAC secret verifies "when algorithms are not explicitly restricted". Not reachable here:
-# the one verifier (adapters/auth/keycloak/auth_adapter.py, KeycloakAuthAdapter.validate_token)
-# passes algorithms=["RS256"], and its keys arrive as the realm's JWKS, whose RSA keys python-jose
-# refuses as an HMAC secret. Reproduced locally on 3.5.0 (2026-10-05): the forged token verifies
-# when HS256 is allowed with the DER key, and our call refuses it at the algorithm check.
-# tests/unit/auth/test_keycloak_adapter.py::TestTheVerifierPinsItsAlgorithm holds the restriction.
-# Retired with python-jose itself, which the verifier's move to PyJWT removes (#2073; the ecdsa
-# entry above goes too).
-GHSA-3qf3-8w2g-rqmx
+# retired PYSEC-2026-3552 and PYSEC-2026-3455/3456/3457. The verifier's move to PyJWT
+# (2026-10-05, #2073) retired python-jose, and with it PYSEC-2026-1325 (ecdsa, which only
+# python-jose pulled in) and GHSA-3qf3-8w2g-rqmx. Nothing is ignored.

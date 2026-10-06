@@ -43,7 +43,7 @@ LOCAL_PACKAGES = {"squadops", "adapters"}
 MODULE_TO_DISTRIBUTION: dict[str, str | tuple[str, ...]] = {
     "yaml": "pyyaml",
     "dotenv": "python-dotenv",
-    "jose": "python-jose",
+    "jwt": "pyjwt",
     "a2a": "a2a-sdk",
     "ulid": "ulid-py",
     "aio_pika": "aio-pika",

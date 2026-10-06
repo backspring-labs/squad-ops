@@ -31,7 +31,7 @@ asyncpg>=0.29.0
 redis>=5.0.0
 
 # Auth (SIP-0062)
-python-jose[cryptography]>=3.3.0
+PyJWT[crypto]>=2.10  # the token verifier (#2073)
 
 # LLM Observability (SIP-0061)
 langfuse>=2.0,<3.0
