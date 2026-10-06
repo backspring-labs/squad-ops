@@ -1285,3 +1285,24 @@ reports without a digest, and a cycle created before any deploy was recorded all
 (§7a item 1, 2026-09-29): a one-off command in the runtime image, `record_deploy`, run by the
 deploy step. The order of the three sources was decided in implementation: the record names
 everything the other two do, and more.
+
+### 10q. 2026-10-05 — an ending outside the work is a terminal kind (§4.1, §4.2, §10b)
+
+**What changed.** §10b's table gains a row, and the attribution a primary:
+
+| where the run ends | kind | also recorded |
+|---|---|---|
+| the box refuses the run past its admission bound (`RunAdmission.await_box`) | `infrastructure_failed` | — |
+| the queue refuses a dispatch (a `QueueError`, declared on the queue port) | `infrastructure_failed` | — |
+
+`attribute()` reads `infrastructure_failed` as `environment_or_infrastructure_failure`, with the
+run's failure events contributing. Before this, both endings were recorded as `other` and read
+`unattributed`. A termination reason of `infrastructure_failure` was already mapped to the class,
+but it is read only under `correction_terminated`, and no correction ends that way.
+
+**What stays `other`.** A task timeout. The declared wait running out does not say the model had
+stopped (#995), so it is not read as infrastructure. Everything else §10b lists stays as it was.
+
+**Why.** SIP-0109's retry rows (§24bg there) read this class, and nothing produced it.
+
+**Who ruled.** The owner, 2026-10-05, on #1824's recommendation: option 1 with the producer.

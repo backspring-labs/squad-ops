@@ -15,6 +15,13 @@ from squadops.comms.queue_message import QueueMessage
 
 logger = logging.getLogger(__name__)
 
+
+class QueueError(Exception):
+    """The queue could not do what was asked: the broker refused it or was unreachable, after
+    the provider's own retries. Declared on the port so a caller can tell a fault in the
+    transport from a fault in its own work (#1824)."""
+
+
 # SIP-0094 D3: canonical declaration args for agent comms/reply queues
 # (`{agent_id}_comms`, `{agent_id}_replies`). Every declaration of these queues
 # — agent startup `ensure_queue`, orchestrator `subscribe`, manual creation —

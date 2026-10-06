@@ -13,6 +13,7 @@ from aio_pika import Connection, Message, Queue
 from squadops.comms.queue_message import QueueMessage
 from squadops.ports.comms.queue import (
     REPLY_QUEUE_DECLARE_ARGS,
+    QueueError,
     QueuePort,
     SubscriptionCallback,
     SubscriptionHandle,
@@ -35,12 +36,6 @@ _PUBLISH_RETRY_BACKOFF = 0.5
 # #158: default poll window for the bounded consume() wait (how long a single
 # collect_messages() cycle blocks before returning). Tunable via the constructor.
 _DEFAULT_CONSUME_POLL_TIMEOUT = 1.0
-
-
-class QueueError(Exception):
-    """Base exception for queue operations."""
-
-    pass
 
 
 class RabbitMQAdapter(QueuePort):

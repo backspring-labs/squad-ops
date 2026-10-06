@@ -111,6 +111,7 @@ from squadops.cycles.task_plan import inject_contract_inputs
 from squadops.cycles.vault_reads import retrieve_or_absent
 from squadops.cycles.verification_normalize import normalize_task_checks
 from squadops.events.types import EventType
+from squadops.ports.comms.queue import QueueError
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
 from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
 from squadops.tasks.task_types import (
@@ -3906,7 +3907,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     context=task_context,
                     payload={"task_type": plan[i].task_type, "error": str(result)},
                 )
-                raise _ExecutionError(f"Task {plan[i].task_id} raised exception: {result}")
+                raise _ExecutionError(
+                    f"Task {plan[i].task_id} raised exception: {result}",
+                    # #1824: the queue refused the dispatch, a fault outside the work.
+                    terminal=RunTerminalDecision(kind=TerminalKind.INFRASTRUCTURE_FAILED)
+                    if isinstance(result, QueueError)
+                    else None,
+                )
             # #1148: recorded for every awaited result, success or failure — a failed
             # task's rows are evidence too, and the sequential path records them at the
             # same point.

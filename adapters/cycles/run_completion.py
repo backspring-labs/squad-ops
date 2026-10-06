@@ -42,6 +42,7 @@ from squadops.cycles.verification_integrity import (
     aggregate_verification,
 )
 from squadops.events.types import EventType
+from squadops.ports.comms.queue import QueueError
 from squadops.runtime.activity_reaper import abort_cycle_activities
 
 if TYPE_CHECKING:
@@ -134,6 +135,12 @@ def resolve_terminal_outcome(exc: BaseException, run_id: str) -> TerminalOutcome
         log_kind="exception",
         log_message=f"Run {run_id} failed with unexpected error: {exc}",
         failure_reason=failure_reason_text(exc),
+        # #1824: the queue refused a dispatch, which no raise site in the run wraps.
+        terminal=RunTerminalDecision(
+            kind=TerminalKind.INFRASTRUCTURE_FAILED
+            if isinstance(exc, QueueError)
+            else TerminalKind.OTHER
+        ),
     )
 
 
