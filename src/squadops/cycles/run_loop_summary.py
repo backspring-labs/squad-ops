@@ -102,7 +102,8 @@ def failed_detail_of(rows: Any) -> tuple[tuple[str, str], ...]:
     for row in rows or ():
         if not (isinstance(row, Mapping) and row.get("check") and row_is_blocking_failure(row)):
             continue
-        actual = row.get("actual") if isinstance(row.get("actual"), Mapping) else {}
+        raw_actual = row.get("actual")
+        actual: Mapping[str, Any] = raw_actual if isinstance(raw_actual, Mapping) else {}
         text = row.get("detail") or actual.get("stderr_tail") or row.get("reason")
         if text:
             detail.append((str(row["check"]), str(text)[-FAILED_DETAIL_LIMIT:]))

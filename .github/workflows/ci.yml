@@ -266,6 +266,35 @@ jobs:
           python -c "import fastapi, starlette; print('fastapi', fastapi.__version__, 'starlette', starlette.__version__)"
           pytest tests/unit/console -q
 
+  type-check:
+    # #1988: mypy was configured and never ran; its first run found 415 errors, among them real
+    # defects (#1982). This is a ratchet, not a gate on the backlog: scripts/dev/mypy_ratchet.py
+    # fails on any error not in scripts/dev/mypy_baseline.json (keyed by file, code and message,
+    # never line) and on a fixed error the baseline still lists, so the baseline only shrinks.
+    # Installed exactly as `lint + regression` is, so it reads the same environment. Its own job
+    # so whether it is required stays the owner's call.
+    name: type-check ratchet
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            tests/requirements.txt
+            ci-constraints.txt
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install -r tests/requirements.txt -c ci-constraints.txt
+      - name: mypy against its baseline
+        run: python scripts/dev/mypy_ratchet.py
+
   dependency-audit:
     # #1205: nothing scanned the pins for advisories, and since #1203 every image installs
     # the same set — a CVE in any pinned package lands in the runtime API and all six

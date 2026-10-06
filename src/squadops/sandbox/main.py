@@ -60,7 +60,7 @@ def secret_manager_from_env() -> SecretManager | None:
         return None
     from squadops.bootstrap.secrets import secret_provider_for
 
-    secrets = SecretsConfig(**values)
+    secrets = SecretsConfig.model_validate(values)
     return SecretManager(provider=secret_provider_for(secrets), name_map=secrets.name_map or {})
 
 

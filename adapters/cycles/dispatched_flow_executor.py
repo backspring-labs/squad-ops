@@ -2334,6 +2334,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # (row, promotion, event), so a decider cannot drop a step.
         from squadops.cycles.gate_decisions import record_gate_decision
 
+        if self._cycle_registry is None:
+            raise RuntimeError(
+                "a gate decision is recorded through the cycle registry, and none was given"
+            )
         await record_gate_decision(
             self._cycle_registry,
             self._artifact_vault,

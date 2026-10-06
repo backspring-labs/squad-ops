@@ -20,11 +20,13 @@ logger = logging.getLogger(__name__)
 
 
 async def retrieve_or_absent(
-    vault: ArtifactVaultPort, ref_id: str
+    vault: ArtifactVaultPort | None, ref_id: str
 ) -> tuple[ArtifactRef, bytes] | None:
     """``vault.retrieve(ref_id)``, or ``None`` with a warning naming the ref when it cannot be
-    read."""
+    read. A caller with no vault reads every ref as absent, as it always did (by the same catch)."""
     try:
+        if vault is None:
+            raise LookupError("no artifact vault")
         return await vault.retrieve(ref_id)
     except Exception as e:  # noqa: BLE001 — absent by the rule, and named
         logger.warning(

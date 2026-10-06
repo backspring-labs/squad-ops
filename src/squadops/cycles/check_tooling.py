@@ -38,6 +38,7 @@ def _find_instances_dir() -> Path | None:
     """
     from squadops.config.path_resolver import PathResolver
 
+    base: tuple[Path, ...]
     try:
         # #1991: the base path is PathResolver's to read (SQUADOPS_BASE_PATH, then detection).
         base = (PathResolver.get_base_path() / "agents/instances",)

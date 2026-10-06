@@ -583,7 +583,14 @@ class AcceptanceCheckEngine:
             cwd = str(self.chroot / resolved_cwd)
 
         try:
-            run = await run_bounded(check.command, cwd=cwd, env=cmd_env, timeout=timeout)
+            # A command check is refused at construction without a non-empty command
+            # (_validate_command_exit_code, capabilities/models.py), so it is never None here.
+            run = await run_bounded(
+                check.command,  # type: ignore[arg-type]
+                cwd=cwd,
+                env=cmd_env,
+                timeout=timeout,
+            )
         except FileNotFoundError:
             return AcceptanceResult(
                 check=check,
