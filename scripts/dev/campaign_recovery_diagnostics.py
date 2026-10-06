@@ -475,6 +475,32 @@ def no_partial_promotion_verdict(
     )
 
 
+def infrastructure_retry_verdict(
+    terminal: str, binding: Mapping[str, object], launch_id: str
+) -> Verdict:
+    """#1824: a run the box refuses past its lease ends outside the work, and the campaign retries
+    its cycle: the run's summary records ``infrastructure_failed``, the cycle's continuation is
+    row 10 (``retry``), and that decision launches one retry."""
+    failures = []
+    if terminal != "infrastructure_failed":
+        failures.append(
+            f"the run ended as {terminal or 'nothing recorded'}, not infrastructure_failed"
+        )
+    if (binding.get("row"), binding.get("action")) != (10, "retry"):
+        failures.append(
+            f"the continuation was row {binding.get('row')} ({binding.get('action')}), "
+            "not row 10 (retry)"
+        )
+    if not launch_id:
+        failures.append("the retry decision launched nothing")
+    return Verdict(
+        "box-held-past-the-lease",
+        not failures,
+        {"terminal": terminal, "decision": dict(binding), "launch_id": launch_id},
+        failures,
+    )
+
+
 def abort_verdict(rows: Sequence[Row], state: str, cancelled_runs: int) -> Verdict:
     """An abort is terminal: no launch intent after it, the campaign completed as aborted,
     and the running cycle cancelled by the existing path."""
@@ -819,6 +845,62 @@ def restart_queued_successor(campaign_id: str) -> Verdict:
     )
 
 
+def _run_terminal(run_id: str) -> str:
+    """The terminal kind a run's persisted summary records (SIP-0108 §4.1), or ``''``."""
+    rows = _psql(
+        "select coalesce(summary->'terminal'->>'kind','') from run_loop_summaries "
+        f"where run_id = '{_id(run_id)}'"
+    )
+    return rows[0][0] if rows else ""
+
+
+def _continuation(campaign_id: str, cycle_id: str) -> tuple[dict, str] | None:
+    """The cycle's continuation decision: its binding and the launch it made, or ``None``."""
+    rows = _psql(
+        "select binding::text, coalesce(launch_id,'') from campaign_control_log "
+        f"where campaign_id = '{_id(campaign_id)}' and operation = 'decide' and outcome = "
+        f"'applied' and target = '{_id(cycle_id)}' and next_state <> 'evaluating' order by seq"
+    )
+    return (json.loads(rows[-1][0]), rows[-1][1]) if rows else None
+
+
+def box_held_past_the_lease(campaign_id: str) -> Verdict:
+    """#1824: the ruling's successor run waits for a box a foreign model holds past one full
+    lease of its campaign, and is refused (``RunAdmission.await_box``). The run must end as an
+    infrastructure failure and the campaign retry the cycle (row 10), not escalate (row 14).
+    Run it on a campaign whose ``lease_expiry_s`` is short: the box is held that long."""
+    cycle_id, run_id = _at_the_ruling(campaign_id)
+    lease_s = int(
+        _psql(
+            f"select policy->>'lease_expiry_s' from campaigns where campaign_id = '{_id(campaign_id)}'"
+        )[0][0]
+    )
+    notes = "#1824 diagnostic: the ruling's successor waits for a box held past one full lease"
+    successor: list[str] = []
+
+    def refused() -> bool:
+        runs = [
+            (r, st)
+            for c, r, w, st in runs_of(campaign_id)
+            if c == cycle_id and r != run_id and w != "proposal"
+        ]
+        successor[:] = [r for r, _st in runs[-1:]]
+        return bool(runs) and runs[-1][1] == "failed"
+
+    with box_held_by(FOREIGN_MODEL) as held:
+        _rule(cycle_id, run_id, notes, f"diag-infra-{run_id}", ("--approve",))
+        wait_for(refused, "the successor is refused by the held box", timeout_s=lease_s + 900)
+    wait_for(
+        lambda: _continuation(campaign_id, cycle_id) is not None,
+        "the cycle's continuation decision committed",
+        timeout_s=600,
+    )
+    binding, launch_id = _continuation(campaign_id, cycle_id)
+    verdict = infrastructure_retry_verdict(_run_terminal(successor[0]), binding, launch_id)
+    verdict.facts.update({"box": held, "lease_s": lease_s, "successor": successor[0]})
+    return verdict
+
+
 def _workload_of(run_id: str) -> str:
     [[workload]] = _psql(
         f"select coalesce(workload_type,'') from cycle_runs where run_id = '{_id(run_id)}'"
@@ -919,6 +1001,7 @@ DIAGNOSTICS: dict[str, Callable[[str], Verdict]] = {
     "duplicate-completion": duplicate_completion,
     "abort-in-flight": abort_in_flight,
     "restart-queued-successor": restart_queued_successor,
+    "box-held-past-the-lease": box_held_past_the_lease,
 }
 
 

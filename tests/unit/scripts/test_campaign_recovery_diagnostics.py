@@ -336,3 +336,35 @@ def test_every_record_reads_the_flow_runs_its_campaign_left_open(monkeypatch, tm
     assert verdict.passed is False
     assert verdict.failures == ["run_a is completed and 1 flow run(s) of it are open: ['fr_dead']"]
     assert '"flow_runs_left_open"' in path.read_text()
+
+
+@pytest.mark.parametrize(
+    ("terminal", "binding", "launch_id", "failures"),
+    [
+        ("infrastructure_failed", {"row": 10, "action": "retry"}, "lnc_1", []),
+        (
+            "other",
+            {"row": 14, "action": "escalate"},
+            "",
+            [
+                "the run ended as other, not infrastructure_failed",
+                "the continuation was row 14 (escalate), not row 10 (retry)",
+                "the retry decision launched nothing",
+            ],
+        ),
+        (
+            "",
+            {"row": 10, "action": "retry"},
+            "lnc_1",
+            ["the run ended as nothing recorded, not infrastructure_failed"],
+        ),
+    ],
+    ids=["retried", "escalated-as-before-1824", "no-summary"],
+)
+def test_a_run_the_box_refuses_is_retried_not_escalated(terminal, binding, launch_id, failures):
+    """#1824. Bug caught: the refusal recorded as `other` and escalated to the owner (row 14), as
+    every infrastructure failure was before; or a retry decided but never launched."""
+    verdict = diag.infrastructure_retry_verdict(terminal, binding, launch_id)
+
+    assert verdict.failures == failures
+    assert verdict.passed is (not failures)

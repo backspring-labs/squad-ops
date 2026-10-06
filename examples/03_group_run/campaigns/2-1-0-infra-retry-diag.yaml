@@ -1,0 +1,29 @@
+# The infrastructure-retry diagnostic (#1824; campaign_recovery_diagnostics.py
+# box-held-past-the-lease): the increment ruling's successor run waits for a box a foreign
+# model holds past one full lease, and is refused. The run must end as an infrastructure
+# failure and the campaign retry the cycle (row 10), which then builds on a free box. One
+# increment, so the campaign completes by its own rules. Uncounted.
+project_id: group_run
+objective:
+  statement: "evolve group_run toward its PRD's expansion scope, one increment at a time"
+  allowed_scope: ["backend/**", "frontend/**"]
+  measurement: "none: a diagnostic campaign of one increment"
+  target_accepted_increments: 1
+policy:
+  max_cycles: 4
+  max_elapsed_s: 21600
+  budget_tokens: 2000000
+  max_repair_cycles_per_increment: 1
+  max_retry_cycles_per_increment: 1
+  max_proposal_run_retries: 1
+  max_proposal_revisions: 2
+  max_rejected_proposals_in_row: 2
+  max_unaccepted_increments: 1
+  ruling_bound_s: 1800
+  # Short on purpose: the diagnostic holds the box this long, so the waiting run is refused.
+  lease_expiry_s: 300
+  launch_blocked_interval_s: 300
+  launch_blocked_attempts: 6
+  calibration_profile: validated-fullstack
+  proposal_profile: campaign-increment
+  squad_profile: full-38
