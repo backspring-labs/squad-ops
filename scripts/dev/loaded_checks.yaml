@@ -346,3 +346,14 @@ checks:
       import squadops.cycles.naming
       print(sum(m == "squadops" or m.startswith("squadops.") for m in sys.modules) <= 20)
     expect: "True"
+  - id: "414"
+    what: the last correction attempt is held for a required check, and the reserve has its own ending
+    container: squadops-runtime-api
+    code: |
+      from squadops.cycles.correction_policy import last_attempt_reserved
+      from squadops.cycles.task_outcome import CorrectionTerminationReason
+      cfg = {"required_checks": ["tests_pass"]}
+      held = last_attempt_reserved({"lint"}, cfg, attempt=1, budget=2)
+      spent = last_attempt_reserved({"tests_pass"}, cfg, attempt=1, budget=2)
+      print(held, spent, CorrectionTerminationReason.RESERVED_FOR_REQUIRED)
+    expect: True False reserved_for_required

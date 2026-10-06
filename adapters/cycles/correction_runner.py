@@ -48,6 +48,7 @@ from squadops.capabilities.context_assembly import (
 )
 from squadops.cycles.agent_config import resolve_agent_config
 from squadops.cycles.checkpoint import RunCheckpoint
+from squadops.cycles.correction_policy import last_attempt_reserved
 from squadops.cycles.correction_signature import (
     carried_failures,
     classify_movement,
@@ -835,6 +836,39 @@ class CorrectionRunner:
             "delta_artifact_id": delta_artifact_id,
         }
 
+    async def _end_at_the_reserve(
+        self,
+        round_failure: RoundFailure,
+        envelope: TaskEnvelope,
+        cycle: Cycle,
+        run_id: str,
+        correction_attempts: int,
+        all_artifact_refs: list[str],
+    ) -> None:
+        """#414: the last attempt is held for a required check, and this round failed none.
+        Ends the chain as a typed termination, recorded where every other one is."""
+        termination = CorrectionTermination(
+            reason=CorrectionTerminationReason.RESERVED_FOR_REQUIRED,
+            failed_task_id=envelope.task_id,
+            repeated_signature=(),
+            structural_candidate="",
+            first_seen_round=correction_attempts,
+            terminal_round=correction_attempts,
+        )
+        ref = await self._store_termination(
+            termination, envelope, cycle, run_id, correction_attempts, all_artifact_refs
+        )
+        raise _ExecutionError(
+            f"reserved_for_required: correction ended at round {correction_attempts}, the run's "
+            f"last attempt, which is held for a required check; this round failed only "
+            f"{', '.join(round_failure.failed_checks)} (#414, see {ref.artifact_id})",
+            terminal=RunTerminalDecision(
+                kind=TerminalKind.CORRECTION_TERMINATED,
+                termination_reason=termination.reason,
+                task_id=envelope.task_id,
+            ),
+        )
+
     async def _store_termination(
         self,
         termination: CorrectionTermination,
@@ -975,6 +1009,9 @@ class CorrectionRunner:
         # the role that no agent consumes. The executor has always passed it; only test
         # harnesses relied on the default.
         profile: Any,
+        # #414: the run's correction budget, which the executor owns. Required, so the reserve
+        # below can never read a default the executor does not use.
+        correction_budget: int,
         flow_run_id: str | None = None,
         interface_manifest: Any = None,
         artifact_contents: dict[str, str] | None = None,
@@ -1044,6 +1081,7 @@ class CorrectionRunner:
             completed_task_ids=completed_task_ids,
             plan_delta_refs=plan_delta_refs,
             profile=profile,
+            correction_budget=correction_budget,
             flow_run_id=flow_run_id,
             interface_manifest=interface_manifest,
             artifact_contents=artifact_contents,
@@ -1167,6 +1205,7 @@ class CorrectionRunner:
         completed_task_ids: list[str],
         plan_delta_refs: list[str],
         profile: Any,
+        correction_budget: int,
         flow_run_id: str | None,
         interface_manifest: Any,
         artifact_contents: dict[str, str] | None,
@@ -1224,9 +1263,20 @@ class CorrectionRunner:
         mark_contested_rows(failure_evidence, repair_disputes)
         # SIP-0108 §4.2: the round's failure as its evidence classifies it — recorded before any
         # step dispatches, so a round the time budget ends at dispatch is still in the record.
+        round_failure = RoundFailure.from_evidence(
+            envelope.task_id, correction_attempts, failure_evidence
+        )
         if ledger is not None:
-            ledger.record_round_failure(
-                RoundFailure.from_evidence(envelope.task_id, correction_attempts, failure_evidence)
+            ledger.record_round_failure(round_failure)
+        # #414: the priority reserve, before any step dispatches — a refused round costs nothing.
+        if last_attempt_reserved(
+            round_failure.failed_checks,
+            cycle.resolved_config(),
+            attempt=correction_attempts,
+            budget=correction_budget,
+        ):
+            await self._end_at_the_reserve(
+                round_failure, envelope, cycle, run_id, correction_attempts, all_artifact_refs
             )
 
         # Issue #95: capture each correction step's outputs in its own variable

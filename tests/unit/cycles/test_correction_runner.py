@@ -11,6 +11,7 @@ directly, without a ``DispatchedFlowExecutor`` instance (SIP-0097 §9).
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -2114,6 +2115,7 @@ class TestCorrectionRunnerStandalone:
             stored_artifacts=[],
             completed_task_ids=[],
             plan_delta_refs=plan_delta_refs,
+            correction_budget=3,
         )
 
         assert protocol_result.correction_path == "continue"
@@ -2157,6 +2159,7 @@ class TestCorrectionRunnerStandalone:
             stored_artifacts=[],
             completed_task_ids=[],
             plan_delta_refs=[],
+            correction_budget=3,
         )
 
         assert "data.analyze_failure" not in dispatched
@@ -2204,6 +2207,7 @@ class TestCorrectionRunnerStandalone:
             stored_artifacts=[],
             completed_task_ids=[],
             plan_delta_refs=[],
+            correction_budget=3,
         )
 
         assert dispatched[:2] == ["data.analyze_failure", "governance.correction_decision"]
@@ -2229,6 +2233,7 @@ class TestCorrectionRunnerStandalone:
             stored_artifacts=[],
             completed_task_ids=[],
             plan_delta_refs=[],
+            correction_budget=3,
         )
 
         assert protocol_result.correction_path == "abort"
@@ -2268,6 +2273,7 @@ class TestCorrectionRunnerStandalone:
             stored_artifacts=[],
             completed_task_ids=completed,
             plan_delta_refs=[],
+            correction_budget=3,
         )
 
         failed_events = [
@@ -2325,6 +2331,7 @@ class TestCorrectionRunnerStandalone:
             stored_artifacts=[],
             completed_task_ids=[],
             plan_delta_refs=[],
+            correction_budget=3,
         )
 
         assert protocol_result.correction_path == "patch"
@@ -2394,6 +2401,7 @@ class TestCorrectionRunnerStandalone:
             stored_artifacts=[],
             completed_task_ids=[],
             plan_delta_refs=[],
+            correction_budget=3,
         )
 
         assert len(captured) == 1
@@ -2440,6 +2448,7 @@ class TestCorrectionRunnerStandalone:
             stored_artifacts=[],
             completed_task_ids=[],
             plan_delta_refs=[],
+            correction_budget=3,
         )
 
         assert len(captured) == 1
@@ -2511,6 +2520,7 @@ class TestCorrectionRunnerStandalone:
             completed_task_ids=[],
             plan_delta_refs=[],
             interface_manifest=manifest,
+            correction_budget=3,
         )
 
         assert len(captured) == 1
@@ -2564,6 +2574,7 @@ class TestCorrectionRunnerStandalone:
             stored_artifacts=[],
             completed_task_ids=[],
             plan_delta_refs=[],
+            correction_budget=3,
         )
 
         assert len(captured) == 1
@@ -2613,6 +2624,7 @@ class TestCorrectionRunnerStandalone:
             stored_artifacts=[],
             completed_task_ids=[],
             plan_delta_refs=[],
+            correction_budget=3,
         )
 
         assert len(captured) == 1
@@ -2681,6 +2693,7 @@ class TestCorrectionRunnerStandalone:
             plan_delta_refs=[],
             interface_manifest=manifest,
             scaffold_enforcement_carry=carry,
+            correction_budget=3,
         )
 
         assert [a["name"] for a in protocol_result.repair_artifacts] == ["backend/routes.py"]
@@ -2776,6 +2789,7 @@ class TestCorrectionRunnerStandalone:
             plan_delta_refs=[],
             interface_manifest=manifest,
             scaffold_enforcement_carry=carry,
+            correction_budget=3,
         )
 
         assert [a["name"] for a in protocol_result.repair_artifacts] == [touched]
@@ -2842,6 +2856,7 @@ class TestCorrectionRunnerStandalone:
             plan_delta_refs=[],
             interface_manifest=manifest,
             scaffold_enforcement_carry=carry,
+            correction_budget=3,
         )
 
         # Overlay landing point: the frozen path is gone, the fill slot untouched.
@@ -2910,6 +2925,7 @@ class TestCorrectionRunnerStandalone:
             completed_task_ids=[],
             plan_delta_refs=[],
             scaffold_enforcement_carry=carry,
+            correction_budget=3,
         )
 
         assert len(captured) == 1
@@ -2980,6 +2996,7 @@ class TestCorrectionRunnerStandalone:
                 "backend/routes.py": drifted_slot,
             },
             scaffold_enforcement_carry=[],
+            correction_budget=3,
         )
 
         drift = captured[0].inputs["failure_evidence"].get("interface_drift", [])
@@ -3040,6 +3057,7 @@ class TestCorrectionRunnerStandalone:
             stored_artifacts=[],
             completed_task_ids=[],
             plan_delta_refs=[],
+            correction_budget=3,
         )
 
         assert len(captured) == 1
@@ -3098,6 +3116,7 @@ class TestCorrectionRunnerStandalone:
             completed_task_ids=[],
             plan_delta_refs=[],
             scaffold_enforcement_carry=carry,
+            correction_budget=3,
         )
 
         # Overlay: only the valid file survives.
@@ -3147,6 +3166,7 @@ class TestCorrectionRunnerStandalone:
             stored_artifacts=[],
             completed_task_ids=[],
             plan_delta_refs=[],
+            correction_budget=3,
         )
 
         assert protocol_result.correction_path == "continue"
@@ -3987,6 +4007,7 @@ class TestOwnArtifactLocusRouting(TestCorrectionRunnerStandalone):
             stored_artifacts=[],
             completed_task_ids=[],
             plan_delta_refs=[],
+            correction_budget=3,
         )
         [repair] = [e for e in captured if e.task_type == "qa.test_repair"]
         assert repair.inputs.get("increment_test_scope") == (scope if in_a_campaign else None)
@@ -4063,6 +4084,7 @@ class TestOwnArtifactLocusRouting(TestCorrectionRunnerStandalone):
             stored_artifacts=[],
             completed_task_ids=[],
             plan_delta_refs=[],
+            correction_budget=3,
         )
 
         repair_envelopes = [e for e in captured if e.task_type.endswith("_repair")]
@@ -4110,6 +4132,7 @@ class TestOwnArtifactLocusRouting(TestCorrectionRunnerStandalone):
             stored_artifacts=[],
             completed_task_ids=[],
             plan_delta_refs=[],
+            correction_budget=3,
         )
 
         repair_envelopes = [e for e in captured if e.task_type.endswith("_repair")]
@@ -4158,6 +4181,7 @@ class TestErrorContractEvidence(TestCorrectionRunnerStandalone):
             completed_task_ids=[],
             plan_delta_refs=[],
             interface_manifest=manifest,
+            correction_budget=3,
         )
         evidence = analyze_inputs.get("failure_evidence") or {}
         lines = evidence.get("error_contract") or []
@@ -4193,6 +4217,7 @@ class TestErrorContractEvidence(TestCorrectionRunnerStandalone):
             stored_artifacts=[],
             completed_task_ids=[],
             plan_delta_refs=[],
+            correction_budget=3,
         )
         assert "error_contract" not in (analyze_inputs.get("failure_evidence") or {})
 
@@ -4589,6 +4614,7 @@ class TestBudgetGatesCorrectionDispatch:
                 plan_delta_refs=[],
                 budget_guard=expired_guard,
                 ledger=ledger,
+                correction_budget=3,
             )
         # The guard must fire BEFORE any transport work — no task_run, no dispatch.
         dispatcher.create_task_run_if_enabled.assert_not_awaited()
@@ -4630,6 +4656,7 @@ class TestBudgetGatesCorrectionDispatch:
                 completed_task_ids=[],
                 plan_delta_refs=[],
                 budget_guard=live_guard,
+                correction_budget=3,
             )
         except Exception:
             pass
@@ -4732,6 +4759,7 @@ class TestProgressAwareTermination:
             plan_delta_refs=[],
             signature_state=state,
             **extra,
+            correction_budget=3,
         )
 
     async def test_adjacent_repeat_with_candidates_terminates(self, cycle):
@@ -4835,6 +4863,7 @@ class TestProgressAwareTermination:
                 stored_artifacts=[],
                 completed_task_ids=[],
                 plan_delta_refs=[],
+                correction_budget=3,
             )  # no raise
 
 
@@ -4912,6 +4941,7 @@ class TestCarriedFailuresReplay:
                 plan_delta_refs=[],
                 signature_state=state,
                 **extra,
+                correction_budget=3,
             )
 
     @staticmethod
@@ -5091,6 +5121,7 @@ class TestRepairRejectionEvidence(TestCorrectionRunnerStandalone):
             completed_task_ids=[],
             plan_delta_refs=[],
             repair_rejections=rejections,
+            correction_budget=3,
         )
 
         assert len(captured) == 1
@@ -5130,6 +5161,7 @@ class TestRepairRejectionEvidence(TestCorrectionRunnerStandalone):
             stored_artifacts=[],
             completed_task_ids=[],
             plan_delta_refs=[],
+            correction_budget=3,
         )
 
         assert len(captured) == 1
@@ -5253,6 +5285,7 @@ class TestOwnershipVetoWiring(TestCorrectionRunnerStandalone):
             stored_artifacts=[],
             completed_task_ids=[],
             plan_delta_refs=[],
+            correction_budget=3,
         )
 
         assert len(captured) == 1
@@ -5336,6 +5369,7 @@ class TestOwnershipVetoWiring(TestCorrectionRunnerStandalone):
             stored_artifacts=[],
             completed_task_ids=[],
             plan_delta_refs=[],
+            correction_budget=3,
         )
 
         names = [a["name"] for a in protocol_result.repair_artifacts]
@@ -5428,6 +5462,7 @@ class TestEmptyRepairEmission:
             stored_artifacts=[],
             completed_task_ids=[],
             plan_delta_refs=[],
+            correction_budget=3,
         )
 
     @pytest.mark.parametrize(
@@ -5467,6 +5502,7 @@ class TestEmptyRepairEmission:
             stored_artifacts=[],
             completed_task_ids=[],
             plan_delta_refs=[],
+            correction_budget=3,
         )
 
         assert protocol.emission_empty is True
@@ -5525,6 +5561,7 @@ class TestEmptyRepairEmission:
             stored_artifacts=[],
             completed_task_ids=[],
             plan_delta_refs=[],
+            correction_budget=3,
         )
         assert protocol.emission_empty is True
         assert protocol.empty_emission_signatures == ("cap_exhausted",)
@@ -5589,6 +5626,7 @@ class TestEmptyRepairEmission:
             stored_artifacts=[],
             completed_task_ids=[],
             plan_delta_refs=[],
+            correction_budget=3,
         )
         assert protocol.emission_empty is False
 
@@ -6420,6 +6458,7 @@ class TestRepairCarriesTheDispatchedWorkspace(TestCorrectionRunnerStandalone):
             stored_artifacts=[],
             completed_task_ids=[],
             plan_delta_refs=[],
+            correction_budget=3,
         )
 
         repairs = [e for e in captured if e.task_type == "development.correction_repair"]
@@ -6540,6 +6579,7 @@ class TestTheProtocolResultCarriesTheRepairsRows(TestCorrectionRunnerStandalone)
             stored_artifacts=[],
             completed_task_ids=[],
             plan_delta_refs=[],
+            correction_budget=3,
         )
 
     async def test_the_repair_steps_rows_ride_the_protocol_result(self):
@@ -6663,6 +6703,7 @@ class TestTheRepairEnvelopeCarriesTheFailedTasksFiles(TestCorrectionRunnerStanda
             stored_artifacts=[],
             completed_task_ids=[],
             plan_delta_refs=[],
+            correction_budget=3,
         )
         repairs = [e for e in captured if e.task_type.endswith("correction_repair")]
         assert len(repairs) == 1
@@ -6791,6 +6832,7 @@ class TestRepairBriefReadout(TestCorrectionRunnerStandalone):
                 stored_artifacts=[],
                 completed_task_ids=[],
                 plan_delta_refs=[],
+                correction_budget=3,
             )
         return [m for m in caplog.messages if "correction_repair_brief:" in m]
 
@@ -6951,6 +6993,7 @@ class TestVitestOwnFrameRoutesToTheQaRepair(TestCorrectionRunnerStandalone):
             stored_artifacts=[],
             completed_task_ids=[],
             plan_delta_refs=[],
+            correction_budget=3,
         )
 
         repairs = [e.task_type for e in captured if "repair" in e.task_type]
@@ -7087,6 +7130,7 @@ class TestUnanimousSuiteReadingRoutesToTheQaRepair(TestCorrectionRunnerStandalon
             stored_artifacts=[],
             completed_task_ids=[],
             plan_delta_refs=[],
+            correction_budget=3,
         )
         return [e for e in captured if "repair" in e.task_type]
 
@@ -7190,6 +7234,7 @@ class TestProseOnlyRepairIsRefunded(TestCorrectionRunnerStandalone):
             stored_artifacts=[],
             completed_task_ids=[],
             plan_delta_refs=[],
+            correction_budget=3,
         )
         return protocol.emission_empty
 
@@ -7587,6 +7632,7 @@ class TestRefusedAnchoredRepairIsSpent:
             stored_artifacts=[],
             completed_task_ids=[],
             plan_delta_refs=[],
+            correction_budget=3,
         )
 
         assert protocol.emission_empty is False
@@ -7819,6 +7865,7 @@ class TestFillRepairAlsoTargetsTheOwnAdditiveSuite(TestCorrectionRunnerStandalon
             stored_artifacts=[],
             completed_task_ids=[],
             plan_delta_refs=[],
+            correction_budget=3,
         )
         repairs = [e for e in captured if "repair" in e.task_type]
         assert [e.task_type for e in repairs] == ["qa.test_repair"], [e.task_type for e in repairs]
@@ -7886,6 +7933,7 @@ class TestARepairsDisputeIsCarriedToTheNextRound:
                 completed_task_ids=[],
                 plan_delta_refs=[],
                 dispute_carry=carry,
+                correction_budget=3,
             )
 
         first, second = analyzed
@@ -7963,6 +8011,7 @@ class TestAConfirmedDisputeEndsTheChainBeforeItsRepair:
                 completed_task_ids=[],
                 plan_delta_refs=[],
                 ledger=ledger,
+                correction_budget=3,
             )
         except Exception as exc:  # the terminal path raises; the other returns
             raised = exc
@@ -8253,3 +8302,78 @@ def test_the_fault_hook_reads_the_round_index_not_the_sequence(task_id, first_at
     from squadops.capabilities.handlers.fault_injection import _is_first_attempt
 
     assert _is_first_attempt(task_id, {}) is first_attempt
+
+
+class TestThePriorityReserveEndsTheChainBeforeAnyStep:
+    """#414, entered at ``run_correction_protocol``, the executor's caller: the last attempt is
+    refused for a round that failed only completeness checks, before the analysis dispatches,
+    and recorded as a typed termination. The control: a required failure still proceeds."""
+
+    def _failed(self, checks):
+        return TaskResult(
+            task_id="task_failed",
+            status="FAILED",
+            error="bad",
+            outputs={
+                "validation_result": {
+                    "passed": False,
+                    "checks": [{"check": c, "status": "failed"} for c in checks],
+                }
+            },
+        )
+
+    async def _protocol(self, cycle, checks, dispatched):
+        harness = TestCorrectionRunnerStandalone()
+
+        def responder(envelope):
+            dispatched.append(envelope.task_type)
+            return TaskResult(
+                task_id=envelope.task_id,
+                status="SUCCEEDED",
+                outputs={"correction_path": "abort", "classification": "work_product"},
+            )
+
+        runner, _registry, vault, _bus = harness._make_runner(responder)
+        required = dataclasses.replace(
+            cycle,
+            applied_defaults={**cycle.applied_defaults, "required_checks": ["tests_pass"]},
+        )
+        coro = runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=required,
+            envelope=harness._failed_envelope(),
+            result=self._failed(checks),
+            correction_attempts=2,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+            correction_budget=3,
+        )
+        return coro, vault
+
+    async def test_a_completeness_round_at_the_last_attempt_is_refused_unasked(self, cycle):
+        from adapters.cycles.execution_errors import _ExecutionError
+
+        dispatched: list[str] = []
+        coro, vault = await self._protocol(cycle, ["acceptance:regex_match"], dispatched)
+
+        with pytest.raises(_ExecutionError) as refused:
+            await coro
+
+        assert dispatched == []
+        assert refused.value.terminal.termination_reason == "reserved_for_required"
+        [stored] = [c.args[0] for c in vault.store.call_args_list]
+        assert stored.artifact_type == "correction_termination"
+
+    async def test_a_required_failure_at_the_last_attempt_still_proceeds(self, cycle):
+        dispatched: list[str] = []
+        coro, _vault = await self._protocol(cycle, ["tests_pass"], dispatched)
+
+        try:
+            await coro
+        except Exception as e:  # noqa: BLE001 — the scripted abort; only the reserve matters here
+            assert "reserved_for_required" not in str(e)
+
+        assert "data.analyze_failure" in dispatched

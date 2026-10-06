@@ -239,6 +239,7 @@ async def _run_repair_scenario(
         scaffold_enforcement_carry=scaffold_enforcement_carry,
         budget_guard=None,
         signature_state=None,
+        correction_budget=3,
     )
     return {
         "repair_steps": [
