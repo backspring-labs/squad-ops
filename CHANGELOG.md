@@ -21,13 +21,18 @@ entries below are what has merged so far.
   #2047).
 - **Recovery:** the sweep re-hears an ended cycle between restarts (#1972; #2038); a restart starts
   a successor run left queued (#2042; #2048); a launch the cycle-create path refuses escalates to
-  the owner, who retries it or aborts (#1971; #2052).
+  the owner, who retries it or aborts (#1971; #2052). A cycle that failed outside the work is retried: the retry
+  rows read the failure's attribution, and the box's and the queue's refusals are declared as such
+  (#1824; #2080).
+- **A recovery cycle** is told what each correction round of the failed cycle tried, and the digest
+  measures what recurred (#1692; #2071).
 - **Evidence:** any increment can be replayed outside its campaign, on the current deploy (#1959;
   #2026); a campaign's creation row records the definition file that made it (#1954; #2050); the
   digest scores each increment from the package alone (#1960; #2027); a definition's comment names
   no deploy or round unless its bytes are pinned (#1958; #2039).
 - **Next.js increments:** their pages are read, and a page written as the API writes it is seeded
-  (#1973; #2059).
+  (#1973; #2059), including one whose collection sits under a prefix written into each endpoint path
+  (#2084; #2085, SIP-0109 §24be).
 
 **Cycles and the correction loop.**
 - One recorder for every gate decision, and a refinement approval promotes (#1986; #2030); its notes
@@ -38,8 +43,17 @@ entries below are what has merged so far.
   with the run (#1757; #2053).
 - A qa task evaluates the set it stores, and a re-take proves it (SIP-0107 §20; #1727, #1913;
   #2061).
-- A failed check's own account of why is kept with its round and its failure record (#2028; #2056);
-  an empty repair records whether it was offered the scoped edit form (#1911; #2055).
+- A failed check's own account of why is kept with its round and its failure record (#2028; #2056),
+  a failed `tests_pass` round's included: its failing cases and any runtime error (#2086; #2087). An
+  empty repair records whether it was offered the scoped edit form (#1911; #2055).
+- The last correction attempt is held for a required check (#414; #2067).
+- Reporting-only lint and complexity findings on the delivered app (ruff, and the pinned ESLint on a
+  TypeScript tree) are kept with each qa run and carried in the campaign package. They are evidence,
+  never a gate (#1937; #2088).
+- A run that fails before it starts ends failed, instead of staying queued (#2094; #2095, SIP-0064
+  §15a).
+- The manifest author is taught each error code's conventional status, and an unwarranted departure
+  is reported (#1031; #2070).
 - The boot audit renders each declared route, by the increment evaluation's own render (#1796;
   #2060).
 - The flow executor's dependencies are required keywords, so a misspelling fails at boot (#1987;
@@ -53,7 +67,10 @@ entries below are what has merged so far.
   (#1982; #2035).
 
 **Architecture.**
-- One map of every package, guarded both ways (#1989; #2021).
+- One map of every package, guarded both ways (#1989; #2021). The package roots import nothing, and the
+  packages' import direction is guarded (#1985; #2063).
+- Tooling targets Python 3.12, and mypy runs in CI as a ratchet against a recorded baseline (#1988;
+  #2020).
 - Four layers no composition root builds are deleted (#1984; #2031), and so are the four
   stack-blueprint fields the second stack falsified (#1975; #2037).
 - Every environment read outside the config loader is inventoried and guarded both ways (#1991;
@@ -72,6 +89,8 @@ entries below are what has merged so far.
   three tokens python-jose accepted (no `aud`, no `kid`, an `iat` beyond the skew ahead), none of
   which the deploy's clients issue.
 - multidict moves to 6.9.1 for GHSA-54p9-h82j-f925 (#2074).
+- **Every console call to the runtime API carries its caller's own token,** and the console's service
+  client is retired (#2068; #2081).
 
 **SIPs.**
 - `update_sip_status.py` can retire a proposal without accepting it (#1968; #2015), and the 13
@@ -85,8 +104,10 @@ entries below are what has merged so far.
 
 **Release and verification tooling.**
 - A verification set records the tracked loaded checks, and refuses a deploy that answers with the
-  old code (#2064); each rebuild adds its rows (#2077).
-- The recovery diagnostics read #1934, #2007 and #2042 live (#2065).
+  old code (#2064); each rebuild adds its rows (#2077, #2091).
+- The recovery diagnostics read #1934, #2007 and #2042 live (#2065), and hold the box past one lease
+  to read #1824's retry back (#2089).
+- The cut's shakeout campaign definition: two increments on 2.0's set policy (#2092).
 - Cut steps 4 and 8 are checked: the ROADMAP entry and a recorded housekeeping run (#1957; #2040).
 - The delivered-app capture photographs a reference-scenario cycle, whole (#2008; #2024); the
   records scan names a secret the repository already carries (#2005).
