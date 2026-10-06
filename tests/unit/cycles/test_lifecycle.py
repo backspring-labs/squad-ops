@@ -124,9 +124,10 @@ class TestValidateRunTransition:
         with pytest.raises(IllegalStateTransitionError):
             validate_run_transition(RunStatus.QUEUED, RunStatus.COMPLETED)
 
-    def test_queued_to_failed_illegal(self):
-        with pytest.raises(IllegalStateTransitionError):
-            validate_run_transition(RunStatus.QUEUED, RunStatus.FAILED)
+    def test_a_run_that_fails_before_it_starts_ends_failed(self):
+        """SIP-0109 §9.3: a run refused at admission fails unstarted. Bug caught: the run left
+        queued for ever, as the 2.1 final deploy's #1824 diagnostic found it."""
+        validate_run_transition(RunStatus.QUEUED, RunStatus.FAILED)
 
     def test_queued_to_paused_illegal(self):
         with pytest.raises(IllegalStateTransitionError):

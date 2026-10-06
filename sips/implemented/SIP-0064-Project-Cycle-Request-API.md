@@ -696,3 +696,30 @@ v0.9.3 does not:
 11. Built-in example projects replace WarmBoot as the primary "hello world" execution path.
 12. Legacy `FlowRun`/`FlowCreate`/`FlowState` models are superseded by new domain models.
 13. WarmBoot routes remain functional but frozen; no new features.
+
+## 15. Post-implementation amendments
+
+### 15a. 2026-10-06 — a run that fails before it starts ends failed (§6.2; #2094)
+
+**What §6.2 wrote.** The legal run transitions reached `failed` only from `running`, and the code pinned
+`queued → failed` illegal.
+
+**Why it changed.** SIP-0109 §9.3 (#1928) holds a run start, still `queued`, while the box is not quiet,
+and past one full lease the run "fails unstarted" (§24al, §24an). That failure raised
+`IllegalStateTransitionError`, so the run stayed `queued` for ever and its cycle and campaign never ended.
+The 2.1 final deploy's #1824 diagnostic found it live (`cmp_458a02ecc622`, run `run_08a8db67bfc3`). #1928's
+tests had driven a registry that checked no transition. Provisioning moves a run to `running` only after
+the admission wait, the cycle's preparation and the squad snapshot, so any failure there stranded a run the
+same way.
+
+**What changed.** A `fail_unstarted` edge, `queued → failed`, for a run that fails before it starts:
+
+```
+queued → failed
+```
+
+Every other path in §6.2 stands. #1928's tests now apply the registry's own `validate_run_transition` and
+assert the run's resulting status.
+
+**Who ruled.** The owner, 2026-10-06, on #2094's recommendation (option 1), over starting the run before
+the admission wait (contradicting §9.3) and cancelling it (misreporting the ending).

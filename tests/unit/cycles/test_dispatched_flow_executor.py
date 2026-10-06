@@ -2007,6 +2007,25 @@ class TestARunStartsOnlyWhenALaunchCould:
         return verdict
 
     @staticmethod
+    def _enforcing_transitions(mock_registry) -> dict:
+        """The registry's own rule, applied: each status change is checked by
+        ``validate_run_transition`` from the run's current status, and the run's status after it
+        is kept. #1928's tests drove a registry that checked nothing, so a refusal that could
+        never leave ``queued`` passed them and stranded its run live."""
+        from squadops.cycles.lifecycle import validate_run_transition
+
+        held = {"status": RunStatus.QUEUED}
+        base = mock_registry.update_run_status.side_effect
+
+        def update(run_id, status, *args, **kwargs):
+            validate_run_transition(held["status"], status)
+            held["status"] = status
+            return base(run_id, status)
+
+        mock_registry.update_run_status.side_effect = update
+        return held
+
+    @staticmethod
     def _in_campaign(mock_registry, cycle, campaign_id):
         import dataclasses
 
@@ -2103,6 +2122,7 @@ class TestARunStartsOnlyWhenALaunchCould:
         executor._campaign_registry = reg
         executor._box_verdict = self._verdict(reg, resident)
         self._in_campaign(mock_registry, cycle, "cmp_c")
+        run = self._enforcing_transitions(mock_registry)
 
         with (
             patch("adapters.cycles.run_admission.datetime", self._clock()),
@@ -2112,7 +2132,7 @@ class TestARunStartsOnlyWhenALaunchCould:
 
         calls = mock_registry.update_run_status.call_args_list
         assert RunStatus.RUNNING not in [c.args[1] for c in calls]
-        assert calls[-1].args[1] == RunStatus.FAILED
+        assert run["status"] is RunStatus.FAILED
         failure = calls[-1].kwargs["failure_reason"]
         assert "waited 60s for the box, one full lease of its campaign" in failure
         assert reason in failure
@@ -2128,6 +2148,7 @@ class TestARunStartsOnlyWhenALaunchCould:
         executor._campaign_registry = reg
         executor._box_verdict = self._verdict(reg, ["llama3.1:8b"])
         self._in_campaign(mock_registry, cycle, None)
+        run = self._enforcing_transitions(mock_registry)
         box_sleep = AsyncMock()
 
         with patch("adapters.cycles.run_admission.asyncio.sleep", box_sleep):
@@ -2135,6 +2156,7 @@ class TestARunStartsOnlyWhenALaunchCould:
 
         calls = mock_registry.update_run_status.call_args_list
         assert [c.args[1] for c in calls] == [RunStatus.FAILED]
+        assert run["status"] is RunStatus.FAILED
         assert "is refused: engine ollama has llama3.1:8b" in calls[-1].kwargs["failure_reason"]
         assert "outside every campaign" in calls[-1].kwargs["failure_reason"]
         box_sleep.assert_not_awaited()
