@@ -134,11 +134,22 @@ it.
   (deploy record `dep_8bd6d707ca1d`), and all 49 rows of `scripts/dev/loaded_checks.yaml` answered with the
   new code, #2094's included.
 - **The credential rotation (#2006) ran on that deploy** before the diagnostics, on the owner's go: a
-  backup first, ten credentials rotated, Langfuse's `SALT` and admin password kept, every service healthy
-  after it. It changed no image.
+  backup first, ten credentials rotated, and Langfuse's `SALT` and admin password kept. Every service
+  answered after it. It changed no image. **Corrected:** the record said every container was healthy, but
+  LangFuse's, recreated by the rotation, has failed its health check since. The check probes loopback,
+  while the server binds the container's address, and the service itself answers (#2103).
+- **#1824's diagnostic found a second defect on the rebuilt deploy** (`cmp_a17471e90130`). The refused
+  run ended `infrastructure_failed`, and the cycle's attribution read the environment. But finalization
+  records a verification summary for every run, so the cycle read `blocked_unverified`, and the
+  continuation asked row 8 (repair) before row 10 (retry). The repair had no plan to work under, and the
+  campaign escalated. The owner ruled the sequence (fix, abort, rebuild with the fix alone, re-run):
+  #2102 (#2101, SIP-0109 §24bh), merged as `fcc7ce04`. **The final deploy was rebuilt from `fcc7ce04`**
+  (`dep_5e77a9060e68`). All 50 rows answered with the new code, #2101's included, and the diagnostics
+  chain re-runs on it (`cmp_9a26855746a9` first).
 - **The set's configs are written** (`2-1-0-cut-regression-{fastapi-react,nextjs}.yaml`, carried from
-  rebuild 4's): two rolls each, 47 tracked rows (#2068's and #1937-han's are left out, as #1982's is, because
-  they ask services a set does not read), and the deploy pins read from the running deploy. A counting
+  rebuild 4's): two rolls each, 48 tracked rows (#2068's and #1937-han's are left out, as #1982's is, because
+  they ask services a set does not read), and the deploy pins read from the running deploy, re-read after
+  #2101's rebuild. A counting
   preflight on 2026-10-06 refused only for the box being busy (the diagnostics' run and leases) and the
   main checkout's one untracked file. The image ids, the loaded checks and the framework matched.
 - **P4, read once on that deploy:** with the CLI's token, the console's `download_artifact` command fetched

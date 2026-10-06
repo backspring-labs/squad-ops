@@ -5,9 +5,10 @@
 # - the last batch's loaded checks appended to the tracked list (#1937 in runtime-api and eve, #1031,
 #   #1692, #1824, #2086, #2094). #2068's row (the console) and #1937-han's (the generalist's image) are
 #   not named, as #1982's is not: they ask services a set does not read. The final deploy's check read
-#   all 49 rows, and P4 is read on the console separately (§4);
-# - the deploy pins: the commit and image ids of the final deploy (dep_8bd6d707ca1d, 6c3a1ca9),
-#   read 2026-10-06 and re-read at registration (§6). The configuration pins are carried.
+#   all 50 rows, and P4 is read on the console separately (§4); #2101's row is appended with its fix;
+# - the deploy pins: the commit and image ids of the final deploy as rebuilt for #2101
+#   (dep_5e77a9060e68, fcc7ce04), read 2026-10-06 and re-read at registration (§6). The
+#   configuration pins are carried.
 # The rebuild 4 config follows, as carried.
 #
 # 2.1 rebuild 4 regression roll — nextjs, UNCOUNTED, on the deploy carrying the 2.1.0 plan's second
@@ -144,6 +145,7 @@ tracked_loaded_checks:
   - "1824"
   - "2086"
   - "2094"
+  - "2101"
 # "Loaded, not built": run inside the container and recorded with the deploy identity. Each
 # row is a live CALL WITH ITS PAIRED CONTROL, never a symbol import — a symbol can be present
 # and unreachable, which is the shape #1289 had for the whole of 1.7.1. #1425 is why a row
@@ -584,12 +586,12 @@ pins_unmoved_because: >-
   refuses on a move.
   Re-read at 2.1 rebuild 1: no request profile and no config-hash code changed between v2.0.1
   and the rebuild's head (src/squadops/contracts/cycle_request_profiles/, compute_config_hash).
-frozen_deploy_commit: "6c3a1ca9"
+frozen_deploy_commit: "fcc7ce04"
 frozen_image_ids:
-  runtime-api: "87eb73d01d8e"
-  max: "2121e762f293"
-  neo: "01a9828ef056"
-  nat: "c80d94490609"
-  bob: "15ff2c4a42d6"
-  eve: "6b0b94c2de8f"
-  data: "581424f61bd9"
+  runtime-api: "f10b9711adef"
+  max: "4f6052b7b82b"
+  neo: "937fc46540de"
+  nat: "b82d4b1bb9aa"
+  bob: "2d0e31fbfaee"
+  eve: "140b41393064"
+  data: "de2d2f3e9440"
