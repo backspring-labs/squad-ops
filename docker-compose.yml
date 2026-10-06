@@ -164,6 +164,10 @@ services:
       NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:?required, written by scripts/dev/ops/deploy_credentials.py ensure (#2006)}
       NEXTAUTH_URL: http://localhost:3001
       SALT: ${LANGFUSE_SALT:?required, written by scripts/dev/ops/deploy_credentials.py ensure (#2006)}
+      # The server binds HOSTNAME (`process.env.HOSTNAME || '0.0.0.0'`), and Docker sets it to the
+      # container id, so it listened on the container's address only and the loopback health check
+      # above never passed (#2103).
+      HOSTNAME: "0.0.0.0"
     ports:
       - "3001:3000"
     depends_on:
