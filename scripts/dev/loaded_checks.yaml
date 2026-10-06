@@ -252,3 +252,73 @@ checks:
       import adapters.auth.keycloak.auth_adapter as verifier
       print(verifier.jwt.__name__, importlib.util.find_spec("jose") is None)
     expect: jwt True
+  - id: "1757"
+    what: a rewind on a model_limitation with repair unspent is a patch, and the override is recorded
+    container: squadops-runtime-api
+    code: |
+      from squadops.cycles.correction_policy import _PATCHABLE_REWIND_CLASSIFICATIONS
+      from squadops.cycles.run_loop_summary import PathOverride
+      print(sorted(_PATCHABLE_REWIND_CLASSIFICATIONS.values())[0], PathOverride.__name__)
+    expect: model_limitation_rewind_with_unspent_repair PathOverride
+  - id: "1991"
+    what: the health check reads Keycloak's admin credentials from config, never the raw environment
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.api.runtime import health_checker
+      print("SQUADOPS__AUTH__KEYCLOAK__ADMIN__PASSWORD" in inspect.getsource(health_checker))
+    expect: "False"
+  - id: "1991-neo"
+    what: an agent's model is the instance's or the config's, with no LLM_MODEL override between
+    container: squadops-neo
+    code: |
+      import inspect
+      from squadops.agents import entrypoint
+      print(hasattr(entrypoint, "_base_path_candidate"), "LLM_MODEL\")" in inspect.getsource(entrypoint))
+    expect: True False
+  - id: "1911"
+    what: an empty repair records whether it was offered the scoped edit form
+    container: squadops-runtime-api
+    code: |
+      import dataclasses
+      from adapters.cycles.correction_runner import CorrectionProtocolResult
+      from squadops.cycles.run_loop_summary import AbsentEmission
+      fields = {f.name for f in dataclasses.fields(CorrectionProtocolResult)}
+      print("empty_emission_offered_scoped" in fields, AbsentEmission(task_id="t", offered_scoped=True).to_dict()["offered_scoped"])
+    expect: True True
+  - id: "2028"
+    what: a failed check's own account of why is kept with its round
+    container: squadops-runtime-api
+    code: |
+      from squadops.cycles.run_loop_summary import failed_detail_of
+      print(failed_detail_of([{"check": "build", "passed": False, "detail": "boom"}]))
+    expect: "(('build', 'boom'),)"
+  - id: "1973"
+    what: a Next.js increment's pages are read, its brace route parameters included
+    container: squadops-eve
+    code: |
+      from squadops.campaigns.increment_tree import route_param
+      from squadops.capabilities.handlers.route_rendering import _PROFILES
+      print(route_param("{runId}"), _PROFILES["next_start"].serves_its_own_pages)
+    expect: runId True
+  - id: "1913"
+    what: a qa author's writes over another producer's files are dropped before its suite runs
+    container: squadops-eve
+    code: |
+      from squadops.capabilities.handlers.cycle import qa_test
+      print(callable(getattr(qa_test, "_drop_unowned_overwrites", None)))
+    expect: "True"
+  - id: "1727"
+    what: a qa re-take's stored set is checked against the set it evaluated
+    container: squadops-runtime-api
+    code: |
+      from squadops.cycles.patch_verification import retake_identity_mismatch
+      print(retake_identity_mismatch({"qa_retake_evaluated_revision_id": "evaluated"}, [])[0])
+    expect: evaluated
+  - id: "1990"
+    what: one helper each for text digests and the CLI client
+    container: squadops-runtime-api
+    code: |
+      from squadops.core.hashing import text_sha256
+      print(text_sha256("a")[:12])
+    expect: ca978112ca1b
