@@ -102,7 +102,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a restart leaves the interrupted run's Prefect flow runs open (the re-attach, §24am) | **shipped**: a dead process's flow runs are ended when the run re-attaches and when it ends | 2.1.0, PR #2033, issue #2007 |
 | the stack's frozen conventions told to the proposer (Next.js; the rest) | **shipped** (§24av) | 2.1.0, #2013 |
 | the rails accept an empty manifest delta | **shipped** (§24au) | 2.1.0, #2011 |
-| the prior-cycle brief's remainder | **placed** | 2.1.0, #1692 |
+| the prior-cycle brief's remainder | **shipped** (§24bf) | 2.1.0, PR #2071, issue #1692 |
 | the supervisor creates and manages campaigns (revises §24al) | **shipped** (§24az) | 2.1.0, PR #2047, issue #1940 |
 | a campaign records its definition file's hash | **shipped** | 2.1.0, PR #2050, issue #1954 |
 | supervisor instruments (the lease proof, the binding replay, the loaded checks, the watcher) | **shipped** | 2.1.0, PR #2025, issue #1956 |
@@ -2802,3 +2802,40 @@ ambiguity case.
 
 **Who ruled.** Found by rebuild 2's regression pair (#2084); a gap in §24bd's own rule ("a page written as
 the API writes it is seeded"), fixed to that rule.
+### 24bf. The prior-cycle brief's remainder: the correction chain round by round, and whether what it showed recurred (2026-10-05, §10a, §14, #1692; placed in 2.1.0 by the owner's ruling of 2026-10-03)
+
+**What §24u left not built:** two of #1692's items after the proposal run's brief shipped.
+- **The correction chain's own record.** "What each round tried, and the patches it refused. The
+  brief carries the round counts, not their content." A recovery cycle could learn that three
+  rounds ran. It could not learn that a repair of `backend/routes.py` had already been tried and
+  refused, so it was free to try it again.
+- **The recurrence measure.** "Whether a failure class recurs within the campaign after the brief
+  is shown."
+
+**As built:**
+- **The rounds** (`campaigns/prior_cycle.correction_rounds`) come from each run's loop summary
+  (SIP-0108 §4.1), never a narrative. Each round carries the task that failed (its type) and the
+  checks that failed it. Each repair of that round says whether it was kept, what it edited, and,
+  when refused, the reason its form recorded. The round also says how the task moved afterwards.
+  Repairs join their round by the index their task id carries
+  (`adapters/cycles/correction_ids.py`, before and after #1697's sequence). The brief adds
+  `correction_rounds`, and `correction_ended` (the chain's termination reason) when the chain
+  was terminated. A row written before rounds were recorded shows none, never a guess.
+- **The campaign reads them** where it builds the brief (`_prior_cycle_brief`): the failed
+  cycle's runs, each run's stored loop summary.
+- **Rendered** through the same managed asset, `request.prior_cycle_brief_appendix` (v2):
+  "What each correction round tried", one line per round. The asset adds: "A repair that was
+  tried and did not clear its check is a direction already taken."
+- **The recurrence measure** (`campaigns/scorecard.brief_recurrence`) is per recovery cycle
+  shown a brief. Of the checks the brief listed as failed, it records which failed again
+  (`recurred`) and which did not (`cleared`). It is `unread` when the recovery cycle's own failed
+  checks were not observed: an absence is never read as cleared. The digest's scorecard shows it
+  under the per-increment table. It is reporting only: no decision reads it.
+
+**Not yet read on real data.** No stored campaign has launched a repair or retry with a brief: the
+2.0 set's two campaigns had none. The measure first reads on the 2.1 line's campaigns. The round
+record was rendered from stored loop summaries (`run_33a98e71a7c8`, `run_a1e8f6dab695`, rows
+whose chains ended `plan_defect`), so its text is the text a successor would be shown.
+
+**Who ruled it.** The owner placed #1692 in 2.1.0 (2026-10-03, the 2.0 plan rev 9, §5a.5). Its
+items are the issue's own list. This builds the two §24u recorded as not built.

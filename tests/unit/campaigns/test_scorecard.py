@@ -92,3 +92,64 @@ def test_the_digest_carries_the_table_from_the_package_alone():
 
     assert "## Per increment" in text
     assert "| 1 | `cyc_359d44170982` | accepted |" in text
+
+
+def _recovery_doc(shown, own):
+    """One increment, and the retry it launched with a brief listing ``shown`` as failed."""
+    from squadops.cycles.cycle_assessment import IndicatorState
+
+    quality = (
+        []
+        if own is None
+        else [{"name": "failed_checks", "state": IndicatorState.OBSERVED, "value": own}]
+    )
+    return {
+        "control_log": [],
+        "launches": [
+            {
+                "launch_id": "lnc_inc",
+                "cycle_id": "cyc_inc",
+                "cycle_kind": "increment",
+                "created_at": "2026-10-05T01:00:00Z",
+            },
+            {
+                "launch_id": "lnc_retry",
+                "cycle_id": "cyc_retry",
+                "cycle_kind": "retry",
+                "created_at": "2026-10-05T02:00:00Z",
+                "cycle_request": {
+                    "body": {
+                        "execution_overrides": {
+                            "campaign_proposal": {
+                                "prior_cycle": {"cycle_id": "cyc_inc", "failed_checks": shown}
+                            }
+                        }
+                    }
+                },
+            },
+        ],
+        "cycles": [
+            {"cycle_id": "cyc_inc", "assessment": None},
+            {"cycle_id": "cyc_retry", "assessment": {"quality": quality}},
+        ],
+    }
+
+
+@pytest.mark.parametrize(
+    ("own", "expected"),
+    [
+        (["tests_pass"], {"recurred": ["tests_pass"], "cleared": ["frontend_build"]}),
+        ([], {"recurred": [], "cleared": ["tests_pass", "frontend_build"]}),
+        (None, {"unread": True}),
+    ],
+    ids=["one-recurred", "all-cleared", "not-recorded"],
+)
+def test_a_brief_is_measured_by_what_recurred_after_it(own, expected):
+    """#1692's recurrence measure. Bug caught: a recovery cycle whose own checks were never
+    recorded read as having cleared everything it was shown."""
+    from squadops.campaigns.scorecard import increment_scorecards
+
+    [row] = increment_scorecards(_recovery_doc(["tests_pass", "frontend_build"], own))
+
+    [measured] = row["brief_recurrence"]
+    assert {k: v for k, v in measured.items() if k not in ("cycle_id", "shown")} == expected

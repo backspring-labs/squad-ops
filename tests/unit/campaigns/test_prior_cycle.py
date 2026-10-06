@@ -309,3 +309,67 @@ def test_an_indicator_asked_with_none_is_shown_as_none_not_dropped():
     assert latest.indicator("unverified_by_reason").state is IndicatorState.ASKED_NONE
 
     assert "- unverified by reason: none" in brief_lines(prior_cycle_brief(latest))
+
+
+def _loop(round_failures, revision_forms=(), movements=()):
+    from squadops.cycles.llm_usage import RunUsage
+    from squadops.cycles.run_loop_summary import RunLoopSummary
+
+    return RunLoopSummary(
+        run_id="run_impl",
+        usage=RunUsage(by_task_type={}, tasks_reported=0, tasks_unreported=()),
+        round_failures=round_failures,
+        revision_forms=revision_forms,
+        movements=movements,
+    )
+
+
+def test_each_round_shows_its_repairs_kept_or_refused_with_why():
+    """#1692's remainder: the patches a chain refused are what the next cycle should not repeat.
+    Bug caught: a refused repair shown as tried (or not shown), or one matched to another
+    round. The second id is the format before #1697 added the round sequence."""
+    from squadops.campaigns.prior_cycle import correction_rounds
+    from squadops.cycles.run_loop_summary import MovementRecord, RoundFailure
+
+    task = "task-run_0123456789ab-m007-qa.test"
+    loop = _loop(
+        (
+            RoundFailure(task, 0, "executed_and_failed", "subject", failed_checks=("tests_pass",)),
+            RoundFailure(task, 1, "executed_and_failed", "subject", failed_checks=("tests_pass",)),
+        ),
+        revision_forms=(
+            {
+                "task_id": "repair-run_0123456789ab-00-s00-qa.test_repair",
+                "task_type": "qa.test_repair",
+                "accepted": True,
+                "edited": ["tests/test_api.py"],
+            },
+            {
+                "task_id": "repair-run_0123456789ab-01-qa.test_repair",
+                "task_type": "qa.test_repair",
+                "accepted": False,
+                "edited": ["app/main.py"],
+                "failure_reason": "outside the grant",
+            },
+        ),
+        movements=(MovementRecord(task, 0, "progress"), MovementRecord(task, 1, "repeat")),
+    )
+
+    rounds = correction_rounds([loop])
+    lines = brief_lines({"cycle_id": "cyc_inc", "correction_rounds": rounds})
+
+    assert [(r["round"], r["repairs"][0]["kept"], r["movement"]) for r in rounds] == [
+        (0, True, "progress"),
+        (1, False, "repeat"),
+    ]
+    assert (
+        "- round 1: `qa.test` failed `tests_pass`; `qa.test_repair` edited `app/main.py`, "
+        "and it was refused (outside the grant); afterwards: `repeat`" in lines
+    )
+
+
+def test_a_row_written_before_rounds_were_recorded_has_none_to_show():
+    from squadops.campaigns.prior_cycle import correction_rounds
+
+    assert correction_rounds([_loop(None)]) == []
+    assert "correction_rounds" not in prior_cycle_brief(_failed(), (), [_loop(None)])
