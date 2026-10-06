@@ -365,3 +365,27 @@ checks:
       source = open("/app/main.py").read()
       print(callable(getattr(auth_bff, "session_access_token", None)), "_get_service_token" in source)
     expect: True False
+  - id: "1937"
+    what: the run summary keeps the qa task's lint reading, and the campaign package carries it
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.evidence import PACKAGE_VERSION
+      from squadops.cycles.run_loop_summary import RunLoopSummary
+      print(PACKAGE_VERSION, "lint_findings" in RunLoopSummary.__dataclass_fields__)
+    expect: 3 True
+  - id: "1937-eve"
+    what: the qa image lints a delivered tree with ruff and the pinned ESLint, both running
+    container: squadops-eve
+    code: |
+      from squadops.capabilities.delivered_lint import lint_delivered
+      found = lint_delivered({"a.py": "import os\n", "b.js": "export const x = 1;\n"})
+      print(sorted(found["tools"].values()), found["unavailable"])
+    expect: "['10.12.0', 'ruff 0.16.6'] {}"
+  - id: "1937-han"
+    what: the generalist's image lints a delivered tree as the qa image does
+    container: squadops-han
+    code: |
+      from squadops.capabilities.delivered_lint import lint_delivered
+      found = lint_delivered({"a.py": "import os\n", "b.js": "export const x = 1;\n"})
+      print(sorted(found["tools"].values()), found["unavailable"])
+    expect: "['10.12.0', 'ruff 0.16.6'] {}"

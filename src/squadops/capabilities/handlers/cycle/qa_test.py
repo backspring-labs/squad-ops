@@ -691,6 +691,21 @@ class QATestHandler(_CycleTaskHandler):
         return "\n".join(parts)
 
     @staticmethod
+    async def _record_lint(outputs: dict[str, Any], tree: dict[str, str]) -> None:
+        """#1937: the evaluated tree's lint and complexity findings, as evidence only. Nothing
+        reads them to judge this task: they never touch ``validation_result`` or the outcome,
+        and a lint that cannot run is recorded as such, never a failure."""
+        from squadops.capabilities.delivered_lint import LINT_READING_VERSION, lint_delivered
+
+        try:
+            outputs["lint_findings"] = await asyncio.to_thread(lint_delivered, tree)
+        except Exception as e:  # noqa: BLE001 — evidence must never fail the task
+            outputs["lint_findings"] = {
+                "version": LINT_READING_VERSION,
+                "unavailable": {"lint": f"{type(e).__name__}: {e}"},
+            }
+
+    @staticmethod
     def _fail_task_on_failing_probes(outputs: dict[str, Any]) -> None:
         """A failing contract probe fails this task, so the correction loop engages (#1223).
 
@@ -1701,6 +1716,10 @@ class QATestHandler(_CycleTaskHandler):
         # patched files overlay the dispatch-time sources (#639).
         await self._append_contract_probe_rows(inputs, outputs, patched_files=extracted)
         self._fail_task_on_failing_probes(outputs)
+        # #1937: the tree this retest evaluated, the patched files over the sources (#639).
+        await self._record_lint(
+            outputs, {**sources, **{f["filename"]: f["content"] for f in extracted}}
+        )
 
         duration_ms = (time.perf_counter() - start_time) * 1000
         evidence = HandlerEvidence.create(
@@ -2181,6 +2200,7 @@ class QATestHandler(_CycleTaskHandler):
         # (both verdict paths, like frontend_build above — additive evidence).
         await self._append_contract_probe_rows(inputs, outputs)
         self._fail_task_on_failing_probes(outputs)
+        await self._record_lint(outputs, sources)
 
         # SIP-0104 P5: the scaffold evidence, after the probes (register entry 43).
         shape.append_evidence(outputs, test_result, artifacts)

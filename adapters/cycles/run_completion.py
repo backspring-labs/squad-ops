@@ -251,6 +251,7 @@ class RunCompletion:
         usage: RunUsage | None = None,
         terminal: RunTerminalDecision | None = None,
         revision_forms: tuple[dict, ...] = (),
+        lint_findings: dict | None = None,
     ) -> None:
         """Close observability traces and generate run report.
 
@@ -320,6 +321,7 @@ class RunCompletion:
                             round_failures=ledger.round_failures if ledger else (),
                             absent_emissions=ledger.absent_emissions if ledger else (),
                             revision_forms=tuple(revision_forms),
+                            lint_findings=lint_findings,
                             path_overrides=ledger.path_overrides if ledger else (),
                         ),
                     )

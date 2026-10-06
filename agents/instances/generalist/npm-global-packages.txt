@@ -1,2 +1,9 @@
 # The union of dev's and qa's (see system-packages.txt).
 typescript@5.5.3
+
+# #1937: the qa role's reporting-only lint (agents/instances/qa/npm-global-packages.txt has the
+# reasons); the generalist serves qa, so its image installs the same.
+eslint@10.12.0
+@eslint/js@10.0.1
+typescript-eslint@8.71.1
+globals@17.13.0

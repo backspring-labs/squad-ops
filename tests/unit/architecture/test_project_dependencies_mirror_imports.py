@@ -76,6 +76,10 @@ RUNTIME_ONLY: dict[str, str] = {
         "FastAPI parses Form(...)/File(...) parameters through it at request time "
         "(api/routes/cycles/artifacts.py) and raises at route registration without it."
     ),
+    "ruff": (
+        "A command the qa image runs over the delivered app's Python for the reporting-only "
+        "lint reading (#1937, squadops.capabilities.delivered_lint); never imported."
+    ),
 }
 
 #: Imports of modules that exist nowhere — a defect on record, keyed to its issue. The

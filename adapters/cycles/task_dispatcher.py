@@ -133,6 +133,8 @@ class TaskDispatcher:
         self._run_usage: dict[str, RunUsageAccumulator] = {}
         # #1710: every reply's revision forms, kept for the run's durable summary beside its usage.
         self._run_revision_forms: dict[str, list[dict]] = {}
+        # #1937: the run's latest lint reading of the tree a qa task evaluated, with that task.
+        self._run_lint_findings: dict[str, dict] = {}
 
     def take_run_usage(self, run_id: str) -> RunUsage:
         """The run's LLM usage so far, released — called once, at run finalization."""
@@ -141,6 +143,10 @@ class TaskDispatcher:
     def take_run_revision_forms(self, run_id: str) -> tuple[dict, ...]:
         """The run's revision forms so far, released — called once, at run finalization."""
         return tuple(self._run_revision_forms.pop(run_id, []))
+
+    def take_run_lint_findings(self, run_id: str) -> dict | None:
+        """The run's latest lint reading (#1937), released — called once, at run finalization."""
+        return self._run_lint_findings.pop(run_id, None)
 
     # SIP-0087: task-run lifecycle lives here (moved out of WorkflowTrackerBridge) so
     # the task_run_id is known before the agent starts producing logs.
@@ -324,6 +330,9 @@ class TaskDispatcher:
                         result.outputs if result is not None else None,
                     )
                 )
+                lint = (result.outputs or {}).get("lint_findings") if result is not None else None
+                if isinstance(lint, dict):
+                    self._run_lint_findings[run_id] = {"task_id": envelope.task_id, **lint}
                 await self._finish_task_activity(activity_id, result)
                 if result is not None and result.status == TaskResultStatus.SUCCEEDED:
                     await self._set_task_run_state(task_run_id, "COMPLETED", "Completed")

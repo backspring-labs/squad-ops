@@ -66,6 +66,7 @@ agent = [
   "tree-sitter>=0.25",
   "tree-sitter-javascript>=0.25",
   "tree-sitter-typescript>=0.23",
+  "ruff>=0.16",
 ]
 langfuse = ["langfuse>=2.0,<3.0"]
 # adapters/telemetry/otel.py imports the SDK lazily and swallows its absence; no image
@@ -81,7 +82,7 @@ auth = ["PyJWT[crypto]>=2.10"] # adapters/auth/keycloak (JWT validation, #2073)
 # next to the code that reads them through importlib.resources. Without this a wheel
 # (any non-editable install) carries the .py files alone and `load_profile()` finds no
 # profiles — the images sidestep it with `pip install -e .`, a bare install does not.
-squadops = ["**/*.yaml", "**/*.md", "**/*.json"]
+squadops = ["**/*.yaml", "**/*.md", "**/*.json", "**/*.cjs"]
 
 #######################################
 # Ruff - Linting & basic code hygiene #
