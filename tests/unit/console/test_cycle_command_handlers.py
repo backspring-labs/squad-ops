@@ -56,6 +56,7 @@ def _stub_continuum_and_bff():
     auth_bff_stub = MagicMock()
     auth_bff_stub.router = APIRouter(prefix="/auth")
     auth_bff_stub.configure = MagicMock()
+    auth_bff_stub.session_access_token = AsyncMock(return_value=None)
     stubs["auth_bff"] = auth_bff_stub
     sys.modules["auth_bff"] = auth_bff_stub
 
@@ -361,7 +362,6 @@ class TestIngestArtifactHandler:
         mock_client.post = AsyncMock(return_value=mock_resp)
 
         with (
-            patch.object(main, "_get_service_token", new_callable=AsyncMock, return_value="tok"),
             patch.object(main, "_api_client", mock_client),
         ):
             result = await main.squadops_ingest_artifact(
@@ -396,7 +396,6 @@ class TestIngestArtifactHandler:
         b64 = base64.b64encode(b"binary content").decode()
 
         with (
-            patch.object(main, "_get_service_token", new_callable=AsyncMock, return_value=""),
             patch.object(main, "_api_client", mock_client),
         ):
             result = await main.squadops_ingest_artifact(
@@ -426,7 +425,6 @@ class TestIngestArtifactHandler:
         mock_client.post = AsyncMock(return_value=mock_resp)
 
         with (
-            patch.object(main, "_get_service_token", new_callable=AsyncMock, return_value=""),
             patch.object(main, "_api_client", mock_client),
         ):
             result = await main.squadops_ingest_artifact(
@@ -523,25 +521,72 @@ class TestSetBaselineHandler:
         assert body["artifact_id"] == "a1"
 
 
-class TestServiceTokenManagement:
-    """Test the service token caching logic."""
+class TestCommandsRunAsTheirCaller:
+    """#2068: a command reaches the runtime API with its caller's own authorization, never a
+    credential of the console's, so the API applies that user's role (the owner's ruling: a
+    service account would have let every console user act with its role).
 
-    async def test_returns_empty_when_no_secret(self):
+    Entered at the console app, through the command route's middleware, with a stand-in for
+    Continuum's route that runs the handler as Continuum does: in its own task, under
+    ``wait_for``. Bugs caught: a console credential coming back; the caller's session not
+    consulted; the authorization not reaching the handler's task.
+    """
+
+    @staticmethod
+    def _client(main, seen):
+        import asyncio
+
+        import httpx
+        from fastapi.testclient import TestClient
+
+        def runtime_api(request):
+            seen.append(request.headers.get("authorization"))
+            return httpx.Response(200, json={"ok": True})
+
+        main._api_client = httpx.AsyncClient(
+            transport=httpx.MockTransport(runtime_api), base_url="http://runtime-api:8001"
+        )
+
+        async def continuum_command_route():
+            cancel = main.squadops_cancel_cycle({"project_id": "p", "cycle_id": "c"}, {})
+            return await asyncio.wait_for(cancel, timeout=5)
+
+        main.app.add_api_route(main.COMMAND_ROUTE, continuum_command_route, methods=["POST"])
+        return TestClient(main.app)
+
+    @pytest.mark.parametrize(
+        ("header", "session_token", "sent"),
+        [
+            (None, "user-token", "Bearer user-token"),
+            ("Bearer from-the-browser", "user-token", "Bearer from-the-browser"),
+            (None, None, None),
+        ],
+        ids=["their-session", "their-own-header", "neither-so-the-api-refuses"],
+    )
+    def test_a_command_carries_its_callers_authorization(self, header, session_token, sent):
         main = _load_main()
-        main.SERVICE_CLIENT_SECRET = ""
-        main._service_token = None
-        main._service_token_expires_at = 0
-        token = await main._get_service_token()
-        assert token == ""
+        seen: list[str | None] = []
+        client = self._client(main, seen)
+        client.cookies.set("session_id", "s-1")
 
-    async def test_returns_cached_token_when_valid(self):
-        import time
+        with patch.object(main, "session_access_token", AsyncMock(return_value=session_token)):
+            resp = client.post(
+                main.COMMAND_ROUTE, headers={"Authorization": header} if header else {}
+            )
 
+        assert resp.status_code == 200
+        assert seen == [sent]
+
+    def test_a_proxied_call_carries_its_callers_session_token(self):
         main = _load_main()
-        main._service_token = "cached-token"
-        main._service_token_expires_at = time.time() + 300
-        token = await main._get_service_token()
-        assert token == "cached-token"
+        seen: list[str | None] = []
+        client = self._client(main, seen)
+        client.cookies.set("session_id", "s-1")
+
+        with patch.object(main, "session_access_token", AsyncMock(return_value="user-token")):
+            client.get("/api/v1/projects")
+
+        assert seen == ["Bearer user-token"]
 
 
 class TestConfigJsEndpoint:

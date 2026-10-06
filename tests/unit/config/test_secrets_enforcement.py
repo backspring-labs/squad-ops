@@ -440,10 +440,7 @@ def test_no_url_credentials():
 _CREDENTIAL_KEY = re.compile(r"(PASSWORD|SECRET|SALT|TOKEN|SECRET_KEY)$", re.IGNORECASE)
 _URL_PASSWORD = re.compile(r"://[^/:@\s]+:([^@\s]+)@")
 #: Each known exception, with the issue that removes it.
-_KNOWN_DEFAULTED = {
-    # The console's service client exists in no realm export, so its secret has nothing to be.
-    ("squadops-console", "SERVICE_CLIENT_SECRET"): "#2068",
-}
+_KNOWN_DEFAULTED: dict[tuple[str, str], str] = {}
 
 
 def test_every_compose_credential_is_the_deploys_own_with_no_default():

@@ -7,6 +7,7 @@ URL encoding, session store, cookie security, loop-breaker, CORS).
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import sys
@@ -874,3 +875,61 @@ class TestCORSTightening:
                 assert "Content-Type" in headers
                 return
         pytest.fail("CORSMiddleware not found")
+
+
+@pytest.mark.auth
+class TestSessionAccessToken:
+    """#2068: the console calls the runtime API with the session user's own access token. The
+    realms revoke a refresh token on its first use, so a session's refreshes run one at a time.
+
+    Bugs caught: two concurrent refreshes spending one refresh token, where the loser's failure
+    ends the session; a token with time left refreshed anyway; the session's id token (logout's
+    hint) dropped by a refresh.
+    """
+
+    async def _session(self, **fields):
+        await auth_bff._session_store.set(
+            "s-1", {"refresh_token": "r-0", **fields}, _SESSION_TTL_SECONDS
+        )
+
+    async def test_a_stored_token_with_time_left_is_used_without_a_refresh(self):
+        await self._session(access_token="a-0", access_expires_at=str(time.time() + 300))
+        auth_bff._http_client.post = AsyncMock()
+
+        assert await auth_bff.session_access_token("s-1") == "a-0"
+        auth_bff._http_client.post.assert_not_awaited()
+
+    async def test_concurrent_callers_spend_the_refresh_token_once(self):
+        await self._session(access_token="a-0", access_expires_at="0", id_token="id-0")
+        spent: list[str] = []
+
+        async def keycloak(url, data, headers):
+            spent.append(data["refresh_token"])
+            await asyncio.sleep(0.01)
+            n = len(spent)
+            return MagicMock(
+                status_code=200,
+                json=lambda: {
+                    "access_token": f"a-{n}",
+                    "refresh_token": f"r-{n}",
+                    "expires_in": 600,
+                },
+            )
+
+        auth_bff._http_client.post = keycloak
+
+        tokens = await asyncio.gather(*(auth_bff.session_access_token("s-1") for _ in range(3)))
+
+        assert spent == ["r-0"]
+        assert tokens == ["a-1", "a-1", "a-1"]
+        session = await auth_bff._session_store.get("s-1")
+        assert (session["refresh_token"], session["id_token"]) == ("r-1", "id-0")
+
+    async def test_a_refused_refresh_ends_the_session(self):
+        await self._session(access_expires_at="0")
+        auth_bff._http_client.post = AsyncMock(
+            return_value=MagicMock(status_code=400, text="invalid_grant")
+        )
+
+        assert await auth_bff.session_access_token("s-1") is None
+        assert await auth_bff._session_store.get("s-1") is None

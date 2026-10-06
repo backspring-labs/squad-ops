@@ -847,8 +847,6 @@ services:
       KEYCLOAK_PUBLIC_URL: http://${SQUADOPS_HOST:-localhost}:8180/realms/${SQUADOPS_REALM:-squadops-dev}
       CONSOLE_CLIENT_ID: squadops-console
       CONSOLE_REDIRECT_URI: http://${SQUADOPS_HOST:-localhost}:4040/auth/callback
-      SERVICE_CLIENT_ID: squadops-console-service
-      SERVICE_CLIENT_SECRET: ${CONSOLE_SERVICE_CLIENT_SECRET:-}
       REDIS_URL: redis://redis:6379/1
     env_file:
       - .env.console

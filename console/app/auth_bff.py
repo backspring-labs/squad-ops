@@ -6,6 +6,7 @@ Refresh tokens are stored server-side; only access tokens reach the browser.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import json as _json
@@ -14,6 +15,7 @@ import os
 import secrets
 import time
 import urllib.parse
+import weakref
 from typing import Any
 
 import httpx
@@ -36,6 +38,14 @@ _http_client: httpx.AsyncClient | None = None
 
 _LOGIN_TTL_SECONDS = 600  # 10 minutes
 _SESSION_TTL_SECONDS = 86400  # 24 hours
+#: A stored access token is reused while it has more than this left (#2068).
+_ACCESS_TOKEN_MARGIN_S = 30
+
+#: #2068: a session's refreshes run one at a time. The realms revoke a refresh token on its first
+#: use (``revokeRefreshToken``, max reuse 0), so two refreshes racing on one token would spend it
+#: twice, and the loser's failure ends the session. One process serves the console, so a lock in
+#: it is enough. Weak values: a session's lock lives only while a refresh holds it.
+_refresh_locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
 
 
 def configure(
@@ -236,7 +246,7 @@ async def callback(code: str, state: str) -> Response:
         _validate_id_token(id_token, expected_nonce=pending["nonce"])
 
     session_id = secrets.token_urlsafe(32)
-    session_data: dict[str, str] = {"refresh_token": tokens["refresh_token"]}
+    session_data: dict[str, str] = {"refresh_token": tokens["refresh_token"], **_access(tokens)}
     if id_token:
         session_data["id_token"] = id_token
     await _session_store.set(
@@ -259,20 +269,21 @@ async def callback(code: str, state: str) -> Response:
     return response
 
 
-@router.post("/refresh")
-async def refresh(request: Request, response: Response) -> dict[str, Any]:
-    """Refresh access token using server-side refresh token.
+def _access(tokens: dict[str, Any]) -> dict[str, str]:
+    """The access token a token response carries, with when it expires, as the session keeps
+    them."""
+    expires_at = time.time() + float(tokens.get("expires_in", 300))
+    return {"access_token": tokens["access_token"], "access_expires_at": str(expires_at)}
 
-    Requires session_id cookie.
-    """
-    session_id = request.cookies.get("session_id")
-    if not session_id:
-        raise HTTPException(status_code=401, detail="No valid session")
 
+async def _refreshed(session_id: str) -> dict[str, Any] | None:
+    """Exchange the session's refresh token, keep the rotated one and the new access token in the
+    session (everything else in it, such as the id token, kept too), and return the token
+    response. ``None``, and the session ended, when there is no session or Keycloak refuses it.
+    Called with the session's lock held."""
     session = await _session_store.get(session_id)
     if session is None:
-        raise HTTPException(status_code=401, detail="No valid session")
-
+        return None
     assert _http_client is not None
     token_response = await _http_client.post(
         _token_endpoint(),
@@ -283,22 +294,60 @@ async def refresh(request: Request, response: Response) -> dict[str, Any]:
         },
         headers=_kc_backchannel_headers(),
     )
-
     if token_response.status_code != 200:
         # Refresh token expired or revoked — clear session
         await _session_store.delete(session_id)
-        response.delete_cookie("session_id", path="/")
-        raise HTTPException(status_code=401, detail="Refresh token expired")
-
+        return None
     tokens = token_response.json()
-
-    # Update stored refresh token (Keycloak rotates them) + sliding window
+    # Keycloak rotates refresh tokens; the session slides with each refresh.
     await _session_store.set(
         session_id,
-        {"refresh_token": tokens["refresh_token"]},
+        {**session, "refresh_token": tokens["refresh_token"], **_access(tokens)},
         _SESSION_TTL_SECONDS,
     )
-    await _session_store.touch(session_id, _SESSION_TTL_SECONDS)
+    return tokens
+
+
+def _lock(session_id: str) -> asyncio.Lock:
+    lock = _refresh_locks.get(session_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _refresh_locks[session_id] = lock
+    return lock
+
+
+async def session_access_token(session_id: str) -> str | None:
+    """The session user's access token, for a call the console makes on their behalf (#2068):
+    the stored one while it has more than ``_ACCESS_TOKEN_MARGIN_S`` left, else a refreshed one.
+    ``None`` when there is no session or it can no longer be refreshed."""
+    lock = _lock(session_id)
+    async with lock:
+        session = await _session_store.get(session_id)
+        if session is None:
+            return None
+        expires_at = float(session.get("access_expires_at") or 0)
+        if session.get("access_token") and expires_at - _ACCESS_TOKEN_MARGIN_S > time.time():
+            return session["access_token"]
+        tokens = await _refreshed(session_id)
+    return tokens["access_token"] if tokens else None
+
+
+@router.post("/refresh")
+async def refresh(request: Request, response: Response) -> dict[str, Any]:
+    """Refresh access token using server-side refresh token.
+
+    Requires session_id cookie.
+    """
+    session_id = request.cookies.get("session_id")
+    if not session_id or await _session_store.get(session_id) is None:
+        raise HTTPException(status_code=401, detail="No valid session")
+
+    lock = _lock(session_id)
+    async with lock:
+        tokens = await _refreshed(session_id)
+    if tokens is None:
+        response.delete_cookie("session_id", path="/")
+        raise HTTPException(status_code=401, detail="Refresh token expired")
 
     return {
         "access_token": tokens["access_token"],
