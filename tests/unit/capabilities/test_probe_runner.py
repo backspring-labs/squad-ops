@@ -27,6 +27,7 @@ from squadops.capabilities.handlers.probe_runner import (
 )
 from squadops.capabilities.scaffold import InterfaceManifest, expand
 from squadops.cycles.verification_contract import Probe
+from tests.unit.core.process_watch import ended, forking
 
 pytestmark = [pytest.mark.domain_capabilities]
 
@@ -551,48 +552,25 @@ class TestAFailingProbeFailsTheTask:
 # --------------------------------------------------------------------------- #
 
 
-def _alive(pid: int) -> bool:
-    """Running, and not a zombie awaiting its reaper."""
-    try:
-        return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0] != "Z"
-    except (FileNotFoundError, IndexError):
-        return False
-
-
-def _ended(pid: int, within: float = 2.0) -> bool:
-    """A signal is delivered asynchronously, so the process ends shortly after the kill returns."""
-    deadline = time.monotonic() + within
-    while _alive(pid):
-        if time.monotonic() > deadline:
-            return False
-        time.sleep(0.02)
-    return True
-
-
-def _forking(pidfile: Path) -> tuple[str, ...]:
-    """A launcher that starts the real work beneath it, as ``npm`` and ``npx`` do."""
-    return ("sh", "-c", f"sleep 60 & echo $! > {pidfile}; wait")
-
-
 def test_a_subject_that_never_boots_is_stopped_with_what_its_launcher_started(tmp_path):
     """Stopping the launcher alone left the server beneath it running in the qa container,
     holding its port, after every boot that never became ready."""
     pidfile = tmp_path / "server.pid"
     hang = pr.ExecutionProfile(
-        boot_argv=_forking(pidfile), startup_timeout_s=0.5, poll_interval_s=0.05
+        boot_argv=forking(pidfile), startup_timeout_s=0.5, poll_interval_s=0.05
     )
 
     outcomes = run_probes(tmp_path, [_probe(status=200)], profile=hang)
 
     assert outcomes[0].status == "skipped"
-    assert _ended(int(pidfile.read_text()))
+    assert ended(int(pidfile.read_text()))
 
 
 def test_a_build_that_outlives_its_timeout_is_stopped_with_what_it_started(tmp_path):
     pidfile = tmp_path / "build.pid"
     slow = pr.ExecutionProfile(
         boot_argv=(sys.executable, "-c", "pass"),
-        prepare_argv=_forking(pidfile),
+        prepare_argv=forking(pidfile),
         prepare_timeout_s=0.5,
     )
     started = time.monotonic()
@@ -602,4 +580,4 @@ def test_a_build_that_outlives_its_timeout_is_stopped_with_what_it_started(tmp_p
     assert outcomes[0].status == "skipped"
     assert "no exit within 0.5s" in outcomes[0].reason
     assert time.monotonic() - started < 15
-    assert _ended(int(pidfile.read_text()))
+    assert ended(int(pidfile.read_text()))
