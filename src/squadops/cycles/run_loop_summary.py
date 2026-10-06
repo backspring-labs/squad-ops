@@ -106,7 +106,25 @@ def failed_detail_of(rows: Any) -> tuple[tuple[str, str], ...]:
         text = row.get("detail") or actual.get("stderr_tail") or row.get("reason")
         if text:
             detail.append((str(row["check"]), str(text)[-FAILED_DETAIL_LIMIT:]))
+        elif cases := _failing_cases_text(row):
+            # The first cases are the ones a reader starts from, so these keep the head.
+            detail.append((str(row["check"]), cases[:FAILED_DETAIL_LIMIT]))
     return tuple(detail)
+
+
+def _failing_cases_text(row: Mapping[str, Any]) -> str:
+    """A ``tests_pass`` row's own account (#2086): each failing case where it failed and the
+    runner's first message about it (#1123), then a runtime error the run caught outside any
+    assertion (#1784). Empty for a row with neither."""
+    lines = [
+        f"{case.get('file', '')}:{case.get('failing_line') or case.get('line') or ''} "
+        f"{case.get('title', '')}: {case.get('message', '')}"
+        for case in row.get("failing_cases") or ()
+        if isinstance(case, Mapping)
+    ]
+    if row.get("app_traceback"):
+        lines.append(str(row["app_traceback"]))
+    return "\n".join(lines)
 
 
 @dataclass(frozen=True)
