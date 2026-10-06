@@ -1,0 +1,107 @@
+# The interface manifest of cyc_d94c3742bb88 (2.1 rebuild 2 Next.js regression, 2026-10-06), as stored:
+# endpoints written under /api with no base_path, the shape #1973 did not match.
+version: 1
+kind: interface_manifest
+project_id: group-run
+source_prd: "PRD: group_run (1-Hour Cycle MVP+) v0.5"
+stack: nextjs_ts
+scope: "Core group-run coordination (create, list, detail, join, leave, duplicate-name prevention) with in-memory storage. Deliberately excludes authentication, persistent databases, real-time updates, external APIs, and all §13 post-MVP features."
+entities:
+  - name: Run
+    fields:
+      - { name: id, type: string, required: true, generated: true }
+      - { name: title, type: string, required: true }
+      - { name: datetime, type: string, required: true }
+      - { name: meeting_location, type: string, required: true }
+      - { name: distance, type: string, required: false }
+      - { name: pace_target, type: string, required: false }
+      - { name: route_notes, type: string, required: false }
+      - { name: participants, type: "list[string]", required: true, default: [] }
+      - { name: created_at, type: string, required: true, generated: true }
+api:
+  base_path: ""
+  request_shapes:
+    RunCreate:
+      required: [title, datetime, meeting_location]
+      optional: [distance, pace_target, route_notes]
+    ParticipantAction:
+      required: [name]
+  endpoints:
+    - method: GET
+      path: /api/runs
+      summary: list all runs
+      response: "list[Run]"
+    - method: POST
+      path: /api/runs
+      summary: create a run event
+      request: RunCreate
+      response: Run
+      success_status: 201
+      errors: [validation_error]
+    - method: GET
+      path: "/api/runs/{run_id}"
+      summary: get run detail with participant list
+      response: Run
+      errors: [run_not_found]
+    - method: POST
+      path: "/api/runs/{run_id}/join"
+      summary: join a run with a participant name
+      request: ParticipantAction
+      response: Run
+      errors: [validation_error, run_not_found, duplicate_participant]
+    - method: POST
+      path: "/api/runs/{run_id}/leave"
+      summary: remove a participant by name from a run
+      request: ParticipantAction
+      response: Run
+      errors: [validation_error, run_not_found, participant_not_found]
+  error_contract:
+    shape: '{"error": {"code": "...", "message": "..."}}'
+    codes:
+      validation_error: { http: 400 }
+      run_not_found: { http: 404 }
+      duplicate_participant: { http: 409 }
+      participant_not_found: { http: 404 }
+frontend:
+  framework: nextjs_app_router
+  routes:
+    - path: /
+      view: RunsListView
+      purpose: display all runs with title, datetime, location, and participant count; show empty state when none exist
+      testids: [runs-view, runs-list, run-row, run-title, run-datetime, run-location, participant-count, create-run-link, empty-state]
+    - path: /runs/new
+      view: CreateRunView
+      purpose: form to create a new run event with required and optional fields; validate and submit to API
+      testids: [create-run-view, create-run-form, run-title-input, run-datetime-input, run-location-input, run-distance-input, run-pace-input, run-notes-input, create-run-submit, create-run-error]
+    - path: "/runs/{run_id}"
+      view: RunDetailView
+      purpose: display full run details, participant list, join form, and leave form; show not-found state for unknown id
+      testids: [run-detail-view, run-title, run-datetime, run-location, run-distance, run-pace, run-notes, participant-list, participant-name, participant-count, join-form, join-name-input, join-submit, join-error, leave-form, leave-name-input, leave-submit, leave-error, run-not-found]
+persistence: in_memory
+decisions:
+  - id: duplicate-name-semantics
+    choice: "Case-insensitive, trimmed comparison for duplicate detection; original casing preserved in storage and display"
+    warrant: "PRD §5.4: 'case sensitivity behavior should be defined in implementation; default recommendation: case-insensitive uniqueness'; PRD §4.1 Tier 2.5 confirms trim normalization"
+  - id: leave-absent-participant
+    choice: "Return 404 with participant_not_found error rather than a silent no-op"
+    warrant: "PRD §5.5: 'backend returns clear error (or no-op with clear response; choose one and document in QA handoff)' — chose explicit error for deterministic testability"
+  - id: validation-error-status
+    choice: "400 Bad Request for all validation failures (missing required fields on create, empty participant name on join/leave)"
+    warrant: "PRD §5.1, §5.4, §5.5 each require rejection of empty/missing required fields; 400 is the conventional status for insufficient or malformed request payloads"
+  - id: in-memory-persistence
+    choice: "All data lives in single-process memory (Map); lost on server restart; no database, no migrations"
+    warrant: "PRD §13 lists 'Persistent backend database + migrations' as post-MVP; PRD §12 mitigation: 'Prefer in-memory persistence for this cycle'"
+
+provenance:
+  mode: authored
+  cycle_id: cyc_d94c3742bb88
+  task_id: task-run_3036bc53-003-development.author_manifest
+  attempts: 2
+  revisions:
+  - attempt: 1
+    classes:
+      authoring_defect: 1
+      derivation_defect: 1
+    proofs:
+    - contract_derives
+    - expands

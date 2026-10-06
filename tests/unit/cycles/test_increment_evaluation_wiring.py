@@ -408,8 +408,11 @@ _REPLAYS = Path(__file__).resolve().parents[2] / "fixtures" / "roll_replays"
         ("1-9-0-react-roll-4-interface_manifest.yaml", "/runs", "{run_id}"),
         # The 2.0.0 Next.js regression (cyc_025e085a22b1): endpoints under base_path /api.
         ("2-0-0-nextjs-regression-interface_manifest.yaml", "/api/runs", "{run_id}"),
+        # 2.1 rebuild 2's Next.js roll (cyc_d94c3742bb88): endpoints written under /api with no
+        # base_path. #1973 missed this shape, and the boot audit read the page as unseeded.
+        ("2-1-0-rebuild2-nextjs-interface_manifest.yaml", "/api/runs", "{run_id}"),
     ],
-    ids=["react-roll-4", "nextjs-regression"],
+    ids=["react-roll-4", "nextjs-regression", "nextjs-prefix-written-in-each-path"],
 )
 def test_a_route_written_as_the_api_writes_it_is_seeded_from_real_manifests(fixture, path, segment):
     """#1973. Real manifests write a page's parameter as ``{run_id}`` and, behind
@@ -428,3 +431,20 @@ def test_a_route_written_as_the_api_writes_it_is_seeded_from_real_manifests(fixt
         "run_id",
         segment,
     )
+
+
+def test_a_collection_two_prefixes_could_serve_is_left_unseeded():
+    """Bug caught: a guess. With the create written under two prefixes, the page has no one
+    collection, so it is not seeded and reads ``blocked_unverified``, never a pass."""
+    import yaml
+
+    from squadops.campaigns.increment_tree import route_seeds
+
+    raw = yaml.safe_load((_REPLAYS / "2-1-0-rebuild2-nextjs-interface_manifest.yaml").read_text())
+    create = next(
+        e for e in raw["api"]["endpoints"] if e["method"] == "POST" and e["path"] == "/api/runs"
+    )
+    raw["api"]["endpoints"].append({**create, "path": "/v2/runs"})
+    manifest = InterfaceManifest.from_yaml(yaml.safe_dump(raw, sort_keys=False))
+
+    assert "/runs/{run_id}" not in route_seeds(manifest)
