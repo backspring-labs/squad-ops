@@ -53,6 +53,8 @@ Thumbs.db
 .env
 .env.local
 .env.console
+# the previous .env a credential rotation keeps beside it (#2099): every credential it held
+.env.pre-rotation-*
 
 # Configuration
 config/local.yaml
