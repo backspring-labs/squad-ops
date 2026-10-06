@@ -23,7 +23,8 @@ entries below are what has merged so far.
   a successor run left queued (#2042; #2048); a launch the cycle-create path refuses escalates to
   the owner, who retries it or aborts (#1971; #2052). A cycle that failed outside the work is retried: the retry
   rows read the failure's attribution, and the box's and the queue's refusals are declared as such
-  (#1824; #2080).
+  (#1824; #2080). The retry rows are asked before the blocked rows, since a run the box refused
+  verified nothing and reads `blocked_unverified` (#2101, SIP-0109 §24bh).
 - **A recovery cycle** is told what each correction round of the failed cycle tried, and the digest
   measures what recurred (#1692; #2071).
 - **Evidence:** any increment can be replayed outside its campaign, on the current deploy (#1959;
