@@ -39,10 +39,17 @@ roll or a campaign exercises it.
 - **Regression rolls:** **two per stack** (recommended), `fullstack_fastapi_react` and `nextjs_ts`, on
   `validated-fullstack` with `full-38`, launched by the verification-set driver from configs carried from
   rebuild 4's, with the final deploy's tracked loaded checks.
-  - **Baselines** (the line's own pairs, same profiles): React 21/21, zero correction rounds, boot audit
-    PASS, 50 min (rebuilds 1 and 2); Next.js 16/16 and 18/18, zero and one round, 57 and 67 min (rebuilds
-    1 and 2; rebuild 2's boot audit failed on #2084 and passes on its replay). Rebuild 3's and 4's pairs
-    are added when read.
+  - **Baselines** (the line's own pairs, same profiles, every roll accepted):
+
+    | rebuild | React: criteria, rounds, boot audit, wall clock | Next.js: criteria, rounds, boot audit, wall clock |
+    |---|---|---|
+    | 1 | 21/21, 0, PASS, 50 min | 16/16, 0, PASS, 57 min |
+    | 2 | 21/21, 0, PASS, 50 min | 18/18, 1, FAIL on #2084 (PASS on its replay), 67 min |
+    | 3 | 21/21, 1, PASS, 54 min | 16/16, 0, PASS, 48 min |
+    | 4 | 21/21, 0, PASS, 47 min | 18/18, 0, PASS, 66 min |
+
+    The boot audit renders routes from rebuild 2 on (#1796): rebuild 1's passes did not read them, and
+    from rebuild 3 on every pass renders all three declared routes.
 - **The shakeout campaign:** one campaign of **two increments** (`target_accepted_increments: 2`), on the
   React stack, opening with its calibration cycle, supervised by the owner's delegate under 2.0's §3a
   policy unchanged. It is the exit rule's shakeout (§3), and it is the set's campaign reading: it is
@@ -82,7 +89,7 @@ roll or a campaign exercises it.
 | P1 | every qa task of every roll records a lint reading, with both tools present on the stack's files and nothing `unavailable` (#1937) | each run's summary, `lint_findings` | a qa run with no reading, or a tool named `unavailable` |
 | P2 | every failed round records its checks' own reasons, `tests_pass` included (#2028, #2086) | each run's summary, `round_failures[].failed_detail` | a failed round whose `failed_detail` is empty |
 | P3 | a Next.js roll's detail page is seeded and renders (#2084) | the boot audit's route-render line | `/runs/{run_id}: not read` |
-| P4 | the console's commands run as their caller (#2068) | a command posted to the console's command route (`:4040/api/commands/execute`) carrying a signed-in user's token (the CLI's), and the runtime's record of who made the call | a command refused as unauthenticated, or one recorded as made by anyone but that user |
+| P4 | the console's commands run as their caller (#2068) | a read command (`squadops.download_artifact`) posted to the console's command route (`:4040/api/commands/execute`) with a signed-in user's token, and again with none; the runtime's access log for both | the call with the token refused, or the call with none accepted. The console holds no credential (loaded check `#2068`), so an accepted call carried the caller's own token |
 
 P4 is not exercised by a roll. It is read once on the final deploy, beside the diagnostics.
 
@@ -113,6 +120,18 @@ it.
 | set configs | `docs/plans/verification-sets/2-1-0-cut-regression-{fastapi-react,nextjs}.yaml`, sha256 at registration |
 
 ---
+
+## 6a. Readings so far (2026-10-06)
+
+- **Precondition 1, the final deploy:** built from `047d5d91`, with the whole last batch on main and main's
+  CI green on it. All 48 tracked loaded checks answered with the new code: the console's (#2068), the qa
+  and generalist images linting with ruff 0.16.6 and ESLint 10.12.0 (#1937), and #1031, #1692, #1824,
+  #2086, #2084 and #414 among them. A backup was written first.
+- **P4, read once on that deploy:** with the CLI's token, the console's `download_artifact` command fetched
+  its artifact (15,672 bytes; runtime `200`). With neither a token nor a session it was refused (runtime
+  `401 Missing or invalid Authorization header`). Held.
+- **Preconditions 2 and 3:** the diagnostics are running (`cmp_458a02ecc622`, #1824's retry first), and the
+  shakeout follows them on `examples/03_group_run/campaigns/2-1-0-cut-shakeout.yaml` (#2092).
 
 ## 7. Prohibited while the set is open
 
