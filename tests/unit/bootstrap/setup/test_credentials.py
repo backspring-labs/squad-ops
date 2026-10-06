@@ -15,6 +15,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import stat
+import subprocess
 import sys
 from pathlib import Path
 
@@ -197,6 +198,31 @@ def test_rotate_keeps_the_previous_env_and_changes_only_the_targets(tmp_path):
     changed = [a for a, b in zip(after, before.splitlines(), strict=True) if a != b]
     assert [line.split("=")[0] for line in changed] == ["LANGFUSE_SALT"]
     assert changed[0] != "LANGFUSE_SALT=mysalt"
+
+
+def test_the_previous_env_a_rotation_keeps_is_ignored_and_the_example_is_not(tmp_path):
+    """#2099. Bug caught: the copy of .env a rotation leaves in the checkout holds every
+    credential the deploy had, kept ones still live, and sat untracked, one `git add -A` from a
+    commit. The name is the script's own, so a renamed copy cannot reopen the gap. Control: a
+    pattern broad enough to ignore `.env.example`, the committed template, fails too."""
+    (tmp_path / "infra").mkdir()
+    (tmp_path / "infra" / "deploy_credentials.json").write_text(REGISTRY.read_text())
+    (tmp_path / ".env").write_text(
+        "".join(f"{c['env']}=own-{c['env']}\n" for c in REGISTRY_ROWS).replace(
+            "LANGFUSE_SALT=own-LANGFUSE_SALT", "LANGFUSE_SALT=mysalt"
+        )
+    )
+    _script().rotate(tmp_path, only=(), keep=(), dry_run=False)
+    [backup] = tmp_path.glob(".env.pre-rotation-*")
+
+    def ignored(name: str) -> bool:
+        # --no-index: check-ignore reports nothing for a tracked file, so without it the control
+        # would pass for `.env.example` whatever the pattern.
+        argv = ["git", "-C", str(_REPO), "check-ignore", "-q", "--no-index", name]
+        return subprocess.run(argv).returncode == 0
+
+    assert ignored(backup.name), f"{backup.name} is not ignored by the repository's .gitignore"
+    assert not ignored(".env.example")
 
 
 def test_a_deploy_whose_container_is_gone_still_counts_as_existing(tmp_path, monkeypatch):
