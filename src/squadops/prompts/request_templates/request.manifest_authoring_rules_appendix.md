@@ -1,6 +1,6 @@
 ---
 template_id: request.manifest_authoring_rules_appendix
-version: "3"
+version: "4"
 required_variables: []
 ---
 ## MANIFEST RULES (authoritative — a manifest that breaks one is rejected)
@@ -61,6 +61,20 @@ decisions:
 A decision that names the endpoint but not the status does not warrant the status — a
 routing judgment about the same path is a different judgment. If you have no reason, leave
 the field out and let the derived status stand: one value, and nothing to disagree with.
+
+**map-each-error-to-its-convention** — An error code's name says what kind of failure it is,
+and that kind has a conventional status:
+
+| the name says | it answers |
+|---|---|
+| a lookup found nothing (`run_not_found`, `participant_not_found`) | 404 |
+| the request conflicts with the resource's state (`already_joined`, `duplicate_name`) | 409 |
+| the request is malformed (`invalid_pace`, `validation_failed`) | 400 or 422 |
+
+A `participant_not_found` is a failed lookup even when the participant belongs to a run that
+exists: 404, not 400. If the PRD warrants a different status, add a `decisions[]` entry that
+names the code **and** states the status, as for a success status above. A code whose name
+says none of these is yours to map.
 
 **declare-the-choices-a-body-carries** — When a request field's *value* selects which
 behavior runs rather than carrying data — an `action` that is either `join` or `leave`, a

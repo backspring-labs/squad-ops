@@ -188,6 +188,7 @@ WINNABILITY_PROOFS: tuple[str, ...] = (
     manifest_gates.PROOF_TESTID_COVERAGE,
     manifest_gates.PROOF_STATUS_DECLARED,
     manifest_gates.PROOF_STATUS_WARRANTED,
+    manifest_gates.PROOF_ERROR_STATUS_WARRANTED,
     manifest_gates.PROOF_ERROR_SHAPE,
     manifest_gates.PROOF_STACK_MATCHES_CONFIG,
     manifest_gates.PROOF_SCAFFOLD_READY,

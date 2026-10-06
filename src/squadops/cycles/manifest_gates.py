@@ -41,6 +41,9 @@ PROOF_TESTID_COVERAGE = "testid_coverage"
 PROOF_STATUS_DECLARED = "status_declared"
 #: #1067: a declared status that contradicts the derived default must carry a warrant.
 PROOF_STATUS_WARRANTED = "status_warranted"
+#: #1031: an error code whose name says what kind of failure it is answers with that kind's
+#: status, or carries a warrant for another.
+PROOF_ERROR_STATUS_WARRANTED = "error_status_warranted"
 PROOF_ERROR_SHAPE = "error_shape_agrees"
 #: #838: the manifest declares its own stack, and until VS nothing compared that to the
 #: stack the CYCLE was configured for. A manifest for another stack is unwinnable in the
@@ -128,6 +131,7 @@ def assess_winnability(
     findings.extend(_interface_coherence_findings(manifest))
     findings.extend(_status_findings(manifest))
     findings.extend(_status_override_findings(manifest))
+    findings.extend(_error_status_findings(manifest))
     findings.extend(_error_shape_findings(manifest))
     findings.extend(_scaffold_findings(manifest))
     return tuple(findings)
@@ -593,6 +597,46 @@ def _status_override_findings(manifest) -> list[WinnabilityFinding]:
                 f"that names `{ep.path}` AND states {ep.success_status}, warranting the "
                 f"choice from the PRD. A decision about the endpoint that does not "
                 f"mention the status does not warrant the status.",
+            )
+        )
+    return findings
+
+
+def _error_status_findings(manifest) -> list[WinnabilityFinding]:
+    """An error code answers with the status its name commits it to, or says why not (#1031).
+
+    The success-status rule's sibling (#1067), for errors. ``participant_not_found`` mapped to
+    400 on the 1.6.1 shakedown, and 404 never entered the author's frame. This does not forbid
+    a departure: a decision can warrant one. It requires the departure to be a RECORDED
+    judgment, a ``decisions[]`` entry naming the code AND its status, so it can be challenged
+    downstream instead of arriving as an unexplained integer. A code whose name commits to no
+    convention is not checked (``capabilities.error_status``). Advisory until its evidence
+    promotes it: the author is taught the rule first, and the finding is reported, not refused.
+    """
+    from squadops.capabilities.error_status import error_convention
+
+    entries = [f"{d.id} {d.choice} {d.warrant} {d.question}" for d in (manifest.decisions or ())]
+    findings: list[WinnabilityFinding] = []
+    contract = manifest.api.error_contract
+    for code in contract.codes if contract else ():
+        convention = error_convention(code.code)
+        if convention is None or code.http in convention.statuses:
+            continue
+        name_token = re.compile(rf"\b{re.escape(code.code)}\b")
+        status_token = re.compile(rf"\b{code.http}\b")
+        if any(name_token.search(e) and status_token.search(e) for e in entries):
+            continue
+        expected = " or ".join(str(s) for s in sorted(convention.statuses))
+        findings.append(
+            WinnabilityFinding(
+                PROOF_ERROR_STATUS_WARRANTED,
+                f"error code `{code.code}` answers {code.http}, but its name says it is "
+                f"{convention.kind}, which answers {expected}. Either map it to {expected}, "
+                f"or add a `decisions[]` entry that names `{code.code}` AND states {code.http}, "
+                f"warranting the choice from the PRD.",
+                # A new proof lands advisory and is promoted on its own findings' evidence
+                # (#820's discipline): the stored corpus would have flagged 8 of 244 manifests.
+                advisory=True,
             )
         )
     return findings
