@@ -12,6 +12,7 @@
 # then re-validate the full regression suite is green before committing.
 # Re-resolved by .github/workflows/deps-refresh.yml on 2026-09-08 (#1204).
 # 2026-10-05: multidict 6.7.1 -> 6.9.1 for GHSA-54p9-h82j-f925 / CVE-2026-104874, by hand.
+# 2026-10-05: PyJWT 2.15.1 in for python-jose 3.5.0, with ecdsa and rsa out (#2073), by hand.
 a2a-sdk==0.3.26
 aio-pika==10.0.1
 aiofiles==25.1.0
@@ -48,7 +49,6 @@ deprecation==2.1.0
 Django==6.1.1
 docker==7.2.0
 docutils==0.22.4
-ecdsa==0.19.2
 execnet==2.1.2
 factory_boy==3.3.3
 Faker==40.38.0
@@ -151,6 +151,7 @@ pydantic==2.13.5
 pydantic_core==2.46.5
 pyflakes==3.4.0
 Pygments==2.21.0
+PyJWT==2.15.1
 pyparsing==3.3.2
 pytest==9.1.1
 pytest-asyncio==1.4.0
@@ -162,7 +163,6 @@ pytest-redis==5.0.0
 pytest-xdist==3.8.0
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.3
-python-jose==3.5.0
 python-multipart==0.0.32
 pytokens==0.4.1
 PyYAML==6.0.3
@@ -174,7 +174,6 @@ responses==0.26.3
 rich==15.0.0
 roman-numerals==4.1.0
 rpds-py==2026.6.3
-rsa==4.9.1
 ruff==0.16.6
 safetensors==0.8.0
 scikit-learn==1.9.0

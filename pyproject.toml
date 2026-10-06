@@ -53,7 +53,7 @@ api = [
   "aio-pika>=9.3.1",
   "asyncpg>=0.29.0",
   "redis>=5.0.0",
-  "python-jose[cryptography]>=3.3.0",
+  "PyJWT[crypto]>=2.10",
   "langfuse>=2.0,<3.0",
   "ulid-py>=1.1.0,<2.0",
 ]
@@ -74,7 +74,7 @@ otel = ["opentelemetry-api>=1.22.0", "opentelemetry-sdk>=1.22.0"]
 # Adapter-specific deps. Previously undeclared and pulled in only transitively
 # (via Prefect in the Docker images), so minimal/CI envs failed to import the
 # adapters and unit collection aborted. See issues #206 / #191.
-auth = ["python-jose[cryptography]>=3.3"] # adapters/auth/keycloak (JWT validation)
+auth = ["PyJWT[crypto]>=2.10"] # adapters/auth/keycloak (JWT validation, #2073)
 
 [tool.setuptools.package-data]
 # The package ships its prompt assets, request profiles and manifest schemas as data
