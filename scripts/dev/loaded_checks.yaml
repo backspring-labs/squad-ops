@@ -421,3 +421,12 @@ checks:
       row = {"check": "tests_pass", "passed": False, "failing_cases": [{"file": "t.py", "line": 3, "title": "x", "message": "boom"}]}
       print(failed_detail_of([row]))
     expect: "(('tests_pass', 't.py:3 x: boom'),)"
+  - id: "2094"
+    what: a run that fails before it starts ends failed, never left queued
+    container: squadops-runtime-api
+    code: |
+      from squadops.cycles.lifecycle import validate_run_transition
+      from squadops.cycles.models import RunStatus
+      validate_run_transition(RunStatus.QUEUED, RunStatus.FAILED)
+      print("queued -> failed legal")
+    expect: queued -> failed legal

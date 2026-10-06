@@ -29,6 +29,12 @@ _RUN_TRANSITIONS: list[tuple[str, RunStatus, RunStatus]] = [
     ("start", RunStatus.QUEUED, RunStatus.RUNNING),
     ("complete", RunStatus.RUNNING, RunStatus.COMPLETED),
     ("fail", RunStatus.RUNNING, RunStatus.FAILED),
+    # A run that fails before it starts: refused at admission (the box held past one full lease,
+    # SIP-0109 §9.3, #1928) or failing in provisioning before the run is moved to running. Without
+    # this edge the failure raised IllegalStateTransitionError, the run stayed queued for ever, and
+    # its cycle and campaign never ended. #1928's harness drove a registry that checked no
+    # transition, so it passed and never fired live; the 2.1 final deploy's #1824 diagnostic found it.
+    ("fail_unstarted", RunStatus.QUEUED, RunStatus.FAILED),
     ("pause", RunStatus.RUNNING, RunStatus.PAUSED),
     ("resume", RunStatus.PAUSED, RunStatus.RUNNING),
     ("cancel", RunStatus.QUEUED, RunStatus.CANCELLED),
