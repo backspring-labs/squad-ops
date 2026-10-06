@@ -2,9 +2,9 @@
 
 **Status: DRAFT, 2026-10-06. Not registered.** The plan leaves the cut criteria's numbers (the
 regression set's size, the shakeout's exit rule) to this document, written when the line's last batch
-is built (plan §6), as 1.9 and 2.0 did. The last batch is built and held (§9). Registration is the
-owner's (§9, decision 1): 2.0's set was registered by the supervisor under the owner's pre-approval, and
-2.1 has none.
+is built (plan §6), as 1.9 and 2.0 did. The last batch is built and held (§9). **Pre-approved by the
+owner on 2026-10-06** (§9): the supervisor registers it as drafted once the four conditions below hold,
+as 2.0's set was registered.
 
 **What must be true before it can be registered:**
 1. **The final deploy is built** from main with the whole last batch, and every tracked loaded check
@@ -123,15 +123,30 @@ it.
 
 ## 6a. Readings so far (2026-10-06)
 
-- **Precondition 1, the final deploy:** built from `047d5d91`, with the whole last batch on main and main's
-  CI green on it. All 48 tracked loaded checks answered with the new code: the console's (#2068), the qa
-  and generalist images linting with ruff 0.16.6 and ESLint 10.12.0 (#1937), and #1031, #1692, #1824,
-  #2086, #2084 and #414 among them. A backup was written first.
+- **Precondition 1, the final deploy:** first built from `047d5d91`, with the whole last batch on main and
+  main's CI green on it. All 48 tracked loaded checks answered with the new code: the console's (#2068),
+  the qa and generalist images linting with ruff 0.16.6 and ESLint 10.12.0 (#1937), and #1031, #1692,
+  #1824, #2086, #2084 and #414 among them. A backup was written first.
+- **#1824's diagnostic found #2094 on that deploy.** The lease refusal fired and recorded its terminal
+  kind, but `queued → failed` was not a legal transition, so the run stayed queued and the campaign
+  stranded (`cmp_458a02ecc622`, aborted). The owner ruled the fix (a `fail_unstarted` edge, with SIP-0064
+  §15a): #2095, merged as `6c3a1ca9`. **The final deploy was rebuilt from `6c3a1ca9` with that fix alone**
+  (deploy record `dep_8bd6d707ca1d`), and all 49 rows of `scripts/dev/loaded_checks.yaml` answered with the
+  new code, #2094's included.
+- **The credential rotation (#2006) ran on that deploy** before the diagnostics, on the owner's go: a
+  backup first, ten credentials rotated, Langfuse's `SALT` and admin password kept, every service healthy
+  after it. It changed no image.
+- **The set's configs are written** (`2-1-0-cut-regression-{fastapi-react,nextjs}.yaml`, carried from
+  rebuild 4's): two rolls each, 47 tracked rows (#2068's and #1937-han's are left out, as #1982's is, because
+  they ask services a set does not read), and the deploy pins read from the running deploy. A counting
+  preflight on 2026-10-06 refused only for the box being busy (the diagnostics' run and leases) and the
+  main checkout's one untracked file. The image ids, the loaded checks and the framework matched.
 - **P4, read once on that deploy:** with the CLI's token, the console's `download_artifact` command fetched
   its artifact (15,672 bytes; runtime `200`). With neither a token nor a session it was refused (runtime
   `401 Missing or invalid Authorization header`). Held.
-- **Preconditions 2 and 3:** the diagnostics are running (`cmp_458a02ecc622`, #1824's retry first), and the
-  shakeout follows them on `examples/03_group_run/campaigns/2-1-0-cut-shakeout.yaml` (#2092).
+- **Preconditions 2 and 3:** the diagnostics are re-running on the rebuilt deploy (`cmp_a17471e90130`,
+  #1824's retry first, then the restart set), and the shakeout follows them on
+  `examples/03_group_run/campaigns/2-1-0-cut-shakeout.yaml` (#2092).
 
 ## 7. Prohibited while the set is open
 
@@ -147,6 +162,10 @@ it.
 - **Each owner action.**
 
 ## 9. The owner's decisions at this stop
+
+**Ruled 2026-10-06.** The supervisor recommended registering as drafted once the shakeout exits clean,
+the diagnostics pass and the pins are read, and the owner agreed: "go with all". So decisions 1 to 4 are
+taken as recommended below, and the supervisor registers.
 
 1. **Register as drafted, or amend.** Nothing registers before the owner says so.
 2. **The regression set's size:** two rolls per stack (recommended), or more.
