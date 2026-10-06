@@ -792,7 +792,18 @@ source. A backup was written first and every container's log saved.
   - `duplicate-completion`;
   - every record reads #2007: no flow run of an ended run left open.
 
-  Their records are written to `var/campaigns/cmp_fb99bbe417ad/diagnostics/`.
+  Their records are written to `var/campaigns/cmp_fb99bbe417ad/diagnostics/`. **All three passed**, on
+  rebuild 1's runtime image (`6c1a718c0bb3`):
+  - `restart-at:at_proposal` (#1934): one proposal task dispatched before the restart and the same one
+    after, answered from the store. The ledger held at 7 rows.
+  - `restart-queued-successor` (#2042): `llama3.1:8b` held the box (66 GB free before, 43 GB loaded),
+    the successor stayed queued through the restart, and it started once.
+  - `duplicate-completion`: one continuation and one launch. The ledger held at 9 rows.
+  - #2007: no flow run left open in any of the three.
+
+  The first attempt timed out at its four-hour wait for `at_proposal` and injected nothing. The
+  calibration gate below had held the campaign for about three of those hours. It was relaunched on the
+  same campaign at 00:20Z and passed within four minutes.
 
 **Batch 2 merged (steps 4 and 5), after the pair was read:** #2053 (#1757), #2054 (#1991), #2055 (#1911's
 instrument), #2056 (#2028), #2059 (#1973), #2060 (#1796), #2061 (#1727 with #1913), #2066 (#1990) and
@@ -830,18 +841,25 @@ the console's commands do not work.
 GitHub-hosted runners"). The run on #2032's merge held one job that never got a runner, cancelled twice. Actions
 recovered at 21:55Z. The job was re-run green, and merging resumed.
 
-**Main's dependency audit has been red since 59505573:** an external advisory published against a locked
-package, `python-jose` 3.5.0. No fix version exists. No merge introduced it, and every other job is green. It
-is the owner's to decide (a security finding), and no public issue was filed.
+**Main's dependency audit went red after 59505573:** an external advisory published against a locked
+package, `python-jose` 3.5.0 (GHSA-3qf3-8w2g-rqmx). No fix version exists, and no merge introduced it. The
+owner approved two steps:
+- **#2074:** the advisory is accepted with its reason, because the one verifier pins `algorithms=["RS256"]`
+  and takes RSA keys from the JWKS. Reproduced locally, the forgery verifies only when HS256 is allowed. A
+  test forges the advisory's token against a real key set and fails if the restriction loosens. A second
+  advisory published while it ran, multidict 6.7.1 (GHSA-54p9-h82j-f925), has a fix, so it moves to 6.9.1.
+- **#2075 (#2073):** python-jose is retired and the verifier moves to PyJWT, riding rebuild 2. The
+  adapter's tests now sign real tokens, and the old behaviour's 27 pass on both libraries. PyJWT refuses
+  three tokens python-jose accepted (no `aud`, no `kid`, an `iat` beyond the skew ahead). None comes from
+  the deploy's clients. ADR §15, "`jose` over `PyJWT`", is amended with the evidence.
 
-**Held at a gate:** the diagnostics campaign's calibration framing stopped at `progress_plan_review` on an
-`unresolved: true` manifest question: the PRD states no page size for the runs list. An unresolved question is
-the owner's. Rebuild 2 runs after the campaign completes.
+**Held at a gate, then decided:** the diagnostics campaign's calibration framing stopped at
+`progress_plan_review` on an `unresolved: true` manifest question: the PRD states no page size for the runs
+list. It was escalated, and the owner ruled it is not theirs: an unresolved question on an uncounted run is
+the operator's. It was approved at 00:01Z with the manifest's unbounded list (MVP scale). Rebuild 2 runs
+after the campaign completes.
 
 **For the owner:**
-- The diagnostics campaign's calibration question (the runs list's pagination). Recommendation: approve the
-  manifest's unbounded list, MVP scale.
-- The `python-jose` advisory: the analysis and a recommendation were sent to the owner directly.
 - #2006: the rotation, a backup first (`docs/ops/credential_rotation.md`). Rotate Langfuse's `SALT`?
   Realm users as a follow-on?
 - #567: not built?
