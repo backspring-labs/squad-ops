@@ -392,3 +392,91 @@ class TestClose:
         await adapter.close()
         mock_client.aclose.assert_awaited_once()
         assert adapter._client is None
+
+
+class TestTheVerifierPinsItsAlgorithm:
+    """GHSA-3qf3-8w2g-rqmx (CVE-2026-85394): python-jose through 3.5.0 verifies a token signed HS256
+    with the service's DER-encoded public key as the HMAC secret "when algorithms are not explicitly
+    restricted". The dependency audit accepts it because this verifier restricts them. These hold
+    that against a real key set, with no JWT library in the test, so they outlast the library.
+
+    Bug caught: an HMAC algorithm added to the allow-list, or the restriction dropped. The verifier
+    would then rest on one barrier: the key's form, the JWKS's RSA keys, which python-jose refuses as
+    an HMAC secret. The advisory is a bypass of exactly that kind of guard, and the realm's public key
+    is published at the JWKS endpoint."""
+
+    ISSUER = "http://keycloak:8080/realms/squadops"
+
+    @staticmethod
+    def _b64(raw: bytes) -> str:
+        import base64
+
+        return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+
+    def _realm(self):
+        from cryptography.hazmat.primitives.asymmetric import rsa
+
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        numbers = key.public_key().public_numbers()
+        jwk = {
+            "kty": "RSA",
+            "kid": "realm-key",
+            "use": "sig",
+            "alg": "RS256",
+            "n": self._b64(numbers.n.to_bytes((numbers.n.bit_length() + 7) // 8, "big")),
+            "e": self._b64(numbers.e.to_bytes(3, "big")),
+        }
+        return key, {"keys": [jwk]}
+
+    def _token(self, header: dict, claims: dict, sign) -> str:
+        import json
+
+        signing_input = (
+            f"{self._b64(json.dumps(header).encode())}.{self._b64(json.dumps(claims).encode())}"
+        )
+        return f"{signing_input}.{self._b64(sign(signing_input.encode()))}"
+
+    def _adapter(self, jwks):
+        adapter = KeycloakAuthAdapter(issuer_url=self.ISSUER, audience="squadops-runtime")
+        fetch = AsyncMock(return_value=jwks)
+        adapter._fetch_jwks = fetch
+        return adapter, fetch
+
+    async def test_a_token_forged_with_the_realms_public_key_is_refused(self):
+        import hashlib
+        import hmac
+
+        from cryptography.hazmat.primitives import serialization
+
+        key, jwks = self._realm()
+        der = key.public_key().public_bytes(
+            serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+        forged = self._token(
+            {"alg": "HS256", "typ": "JWT", "kid": "realm-key"},
+            _make_claims(iss=self.ISSUER, roles=["admin"]),
+            lambda data: hmac.new(der, data, hashlib.sha256).digest(),
+        )
+        adapter, fetch = self._adapter(jwks)
+
+        with pytest.raises(TokenValidationError):
+            await adapter.validate_token(forged)
+        # Refused on its algorithm, never read as a rotated key: no forced re-fetch of the key set.
+        assert fetch.await_count == 1
+
+    async def test_a_token_the_realm_signed_still_verifies(self):
+        """The control: the restriction refuses the forgery and nothing the realm issues."""
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import padding
+
+        key, jwks = self._realm()
+        genuine = self._token(
+            {"alg": "RS256", "typ": "JWT", "kid": "realm-key"},
+            _make_claims(iss=self.ISSUER, sub="user-9"),
+            lambda data: key.sign(data, padding.PKCS1v15(), hashes.SHA256()),
+        )
+        adapter, _fetch = self._adapter(jwks)
+
+        claims = await adapter.validate_token(genuine)
+
+        assert claims.subject == "user-9"
