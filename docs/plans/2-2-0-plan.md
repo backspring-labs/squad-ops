@@ -18,12 +18,18 @@ diagnostics running, its set waiting for registration (#2090).
 **The 2026-10-07 revision re-scopes the plan for SIP-0110 revision 6** (the owner: "this is cross cycle memory; not
 cross campaign memory"). Revision 5 had narrowed Phase 1 to campaigns. Revision 6 restores the cycle as its unit:
 - every eligible cycle is observed, inside a campaign or not;
-- memory is supplied at plan writing, repair and proposal writing;
+- memory is supplied at plan writing, build authoring, repair and proposal writing;
 - the snapshot is pinned per standalone cycle or per campaign;
 - counted regression rolls declare memory disabled.
 
 The proposal behavior stays the first measured target. Re-scoped: §2.1's slices, §2.2's interaction with the auto tier,
 §2.5, §3's steps, the cut's criteria, and §4's D1, D7 and D8. New: §4's D11 and D12.
+
+**Added the same day, at the owner's request** ("yes, add those three"), after the owner asked what cross-cycle memory
+produces in the quality of the application the squad builds:
+- build authoring (`development.develop`, `qa.test`, `builder.assemble`) as a fourth seam, inert until approved;
+- the app-build indicators recorded beside each exposure, observed and never gating;
+- "What 2.2 does not claim", below.
 
 **This revision changes prose only.**
 
@@ -59,12 +65,26 @@ gate:
 - **It recurred after a prompt rule (#1947),** and again after the proposer was shown the return.
 
 **That is where Phase 1 is measured first, not what Phase 1 is** (SIP-0110 §5d). Every eligible cycle is observed, and
-the plan-writing and repair seams are wired inert. A recurring target there can then be supplied and measured once its
+the plan-writing, build-authoring and repair seams are wired inert. A recurring target there can then be supplied and measured once its
 template is written and approved. The headline is a measurement, not an expected win.
 
 **The corpus is small.** The proposal behavior has about three independent historical cases, none captured before
 authoring, and the 2.1 line added none. The test corpus is built by the 2.2 line's own cycles and campaigns, and
 **"inconclusive" is a likely and legitimate finding** (SIP-0110 §0.13).
+
+**What 2.2 does not claim: an improvement in the application the squad builds.** Its finding is about one authoring
+behavior's recurrence, measured by replay. The proposal behavior decides what is built next, not how well it is built.
+- **The app-build indicators recorded during the window are observation:** correction rounds, rounds to green and
+  acceptance beside each exposure (SIP-0110 §0.10). They never gate Phase 1 (§9).
+- **The counted regression rolls run with memory disabled** (D12), so the release's yardstick of the built application
+  is unchanged by design.
+- **The builds leave little to learn from today.** The 2.1 counted set passed 4 of 4 with one correction round across
+  the set, and the cut's four failed rounds were four different defects (SIP-0110 §5b).
+
+Claiming an improvement in the application needs three things 2.2 does not have:
+- a build-side target that recurs, with an approved lesson;
+- a comparison with memory on and off at the build seams;
+- Outcome Evaluation's measures (#557, #949, #950; 2.4 or later).
 
 ---
 
@@ -97,9 +117,9 @@ disabled. So building the parts does not move the regression baseline.
 
 | slice | what | the seam that owns it | size | deploy |
 |---|---|---|---|---|
-| 1, #2105 | the source-case inspection, then an `AuthoringReplayEnvelope` captured immediately before each consuming seam's authoring, complete beyond #1756's 10,000-character cut (§0.11): proposal writing first, then plan writing and repair | the proposal handler's input assembly (`capabilities/handlers/planning/proposal.py`); the plan-authoring and repair inputs' assembly (`cycles/task_plan.py`); the vault for storage | **L** (M in revision 5: one seam, now three) | yes |
+| 1, #2105 | the source-case inspection, then an `AuthoringReplayEnvelope` captured immediately before each consuming seam's authoring, complete beyond #1756's 10,000-character cut (§0.11): proposal writing first, then plan writing, build authoring and repair | the proposal handler's input assembly (`capabilities/handlers/planning/proposal.py`); the plan-authoring, build-authoring and repair inputs' assembly (`cycles/task_plan.py`) and the build handlers (`capabilities/handlers/cycle/develop.py`, `qa_test.py`, `builder.py`); the vault for storage | **L** (M in revision 5: one seam, now four) | yes |
 | 2, #2106 | the authoring replay: three arms over captured envelopes at any seam, validated first on proposals; temporal validity, isolation from production memory, one fixed rubric per target (§0.11–§0.12) | `scripts/dev/`, beside the increment replay (#1959) | M | no |
-| 3, #2096 | the mechanism (§0.2–§0.10), observing every eligible cycle and supplying three seams. Its parts are listed below | see the parts | L, larger than revision 5's | yes |
+| 3, #2096 | the mechanism (§0.2–§0.10), observing every eligible cycle and supplying four seams. Its parts are listed below | see the parts | L, larger than revision 5's | yes |
 | 4, #2107 | the template for the one supported target behavior, written on development cases; the pre-registration, which fixes the primary target; the window; the finding (§0.4, §0.12–§0.13) | `src/squadops/prompts/fragments/` for the template; `docs/plans/` for the pre-registration | M, plus the window's box time | yes |
 
 **Slice 3's parts, each with the seam that owns it:**
@@ -118,12 +138,17 @@ disabled. So building the parts does not move the regression baseline.
 - the recall policy behind `FailurePatternRecallPort` (`src/squadops/ports/memory/recall.py`, #2058), with the
   LanceDB adapter (`adapters/memory/lancedb.py`) and its factory. `RecallQuery` carries only the project and the task
   type today (`src/squadops/memory/recall.py`), and gains the snapshot and the applicability inputs;
-- **injection at three seams,** each declared on the task type's context-assembly contract
+- **injection at four seams,** each declared on the task type's context-assembly contract
   (`capabilities/context_assembly.py`) and each in its own slot:
   - the six plan-authoring types, through #2058's call site;
+  - the three build-authoring types (`development.develop`, `qa.test`, `builder.assemble`), through the same
+    plan-time composer (`cycles/task_plan.py`), in a slot apart from a retry's prior-cycle brief (#1692);
   - the four repair types;
   - `strategy.propose_increment`;
 - per-exposure assessment;
+- **the app-build indicators beside each exposure,** `disabled` ones included: the implementation run's correction
+  rounds, rounds to green and acceptance, read from `run_loop_summaries` and the run's verdict or the increment's
+  ruling (SIP-0110 §0.10). Observed only;
 - approval and revocation.
 
 **Renamed when touched:** three docstrings and a comment name the draft (`SIP-Cross-Cycle-Memory §5`):
@@ -140,8 +165,10 @@ They are left until a slice touches them, so that the plan's PRs stay prose only
   evidence-access gap, if found, is fixed as a separate change, held identical across the arms.
 - **Every campaign after the capture ships adds faithful cases** to the corpus the window needs.
 
-**Within slice 1, the proposal seam's capture lands first,** because the first measured target is there. Plan writing
-and repair follow in the same slice. Every cycle after they ship adds faithful cases at those seams too.
+**Within slice 1, the proposal seam's capture lands first,** because the first measured target is there. Plan writing,
+build authoring and repair follow in the same slice. Every cycle after they ship adds faithful cases at those seams too.
+A build-authoring prompt carries the accepted tree, so its envelope references files by hash rather than copying them
+(SIP-0110 §0.11: "contains, or immutably references").
 
 ### 2.2 Beside it: #1708's auto tier and escalation queue
 
@@ -235,9 +262,9 @@ The counted set passed 4 of 4 (the 2.1 pre-registration §10).
 3. **Slice 1 (#2105):**
    - the source-case inspection, posted;
    - capture at the proposal seam, proven live by a byte-exact reconstruction of a real proposal's prompt;
-   - capture at plan writing and at repair, each proven the same way on a live cycle. A repair needs a failed round,
-     so a fault-injected diagnostic may prove its capture: capture is not observation, and the diagnostic's failure is
-     never observed (SIP-0110 §0.3).
+   - capture at plan writing, build authoring and repair, each proven the same way on a live cycle. A repair needs a
+     failed round, so a fault-injected diagnostic may prove its capture: capture is not observation, and the
+     diagnostic's failure is never observed (SIP-0110 §0.3).
 4. **Hardening:**
    - #2082 (tooling, no deploy);
    - then #2079 and #2083 together, since both are the realm's, with a rebuild and the regression pair.
@@ -257,11 +284,13 @@ The counted set passed 4 of 4 (the 2.1 pre-registration §10).
    - campaigns build the proposal corpus, and every cycle adds to the plan-review and correction-round corpus;
    - the owner approves the pattern at a campaign boundary;
    - the replay compares the arms;
+   - every exposure records its build's indicators (correction rounds, rounds to green, acceptance), observed only;
    - **main is closed to code merges.** Prose merges stay free, because the drift check reads only `src/` and
      `adapters/`.
    - 2.3's work waits on branches: its refactors need rebuild pairs, and the box is held.
 9. **The finding** is recorded in SIP-0110: instrument validity first, then benefit, no benefit, harm or
-   inconclusive. The record also says whether a plan-review or correction-round target recurred (D11). The owner's
+   inconclusive. The record also says whether a plan-review or correction-round target recurred (D11), and reports
+   the app-build indicators as observation, with no claim about the built application. The owner's
    disposition for Phase 2 is recorded with it. "Inconclusive" at the budget cap is a
    valid finding, and the cut goes ahead on it.
 10. **#1708's plan-review tier is activated** under its declared policy, and validated by the cut's shakeout.
@@ -270,8 +299,8 @@ The counted set passed 4 of 4 (the 2.1 pre-registration §10).
     - one campaign shakeout;
     - the release cut procedure (CLAUDE.md);
     - a record that states separately the mechanism's correctness, the experiment's validity and result, the
-      activated patterns and their applicability, the auto-gate scope enabled, and the owner's disposition for the
-      next phase.
+      activated patterns and their applicability, the app-build indicators, the auto-gate scope enabled, and the
+      owner's disposition for the next phase.
 
 ### The cut's criteria
 
@@ -279,7 +308,8 @@ The counted set passed 4 of 4 (the 2.1 pre-registration §10).
   disabled snapshot leaves the rendered prompt byte-identical. Standalone cycles and a campaign's cycles have both
   recorded observations live.
 - **The instrument:** valid, by #2106's validity check.
-- **The finding:** recorded, whichever of the four. **A benefit is not a cut criterion.**
+- **The finding:** recorded, whichever of the four. **A benefit is not a cut criterion.** The app-build indicators are
+  reported beside it, as observation.
 - **#1708:** its tier escalates every case its policy does not cover, read in the shakeout.
 - **The regression set:** passes, under its own pre-registration, with memory disabled.
 
@@ -303,7 +333,7 @@ Each has a recommendation. None is built before it is ruled.
 | D8 | **the experiment's arms and the window's bound** | **as SIP-0110 §0.12–§0.13,** with the budget cap set in the pre-registration. The primary target is fixed there, from the seam with the most independent cases of one target behavior: the proposal behavior, on today's evidence. A proposed default: about five campaigns, with "inconclusive" at the cap | a bounded window cannot hold the release open indefinitely. Standalone cycles add plan-review and correction-round observations at no cost to the cap |
 | D9 | **emergency revocation** | **as SIP-0110 §0.7:** halt or restart the affected work under a new snapshot, and invalidate or set apart the affected measurements | harmful guidance must be removable without silently changing a counted intervention |
 | D10 | **the escalation queue's resumption** | **designed in #1708's SIP-0109 amendment against §2.2's contract** | it is SIP-0109's surface (SIP-0110 §0.14) |
-| D11 | **what is observed, and where memory is supplied** | **every eligible cycle, standalone or in a campaign, from three sources (rejected plans, failed correction rounds, returned proposals); supplied at plan writing, repair and proposal writing, each inert until a template is approved. A plan-review or correction-round template is written in 2.2 only if one target recurs across independent cycles, read at the pre-registration and at the cut** | memory's unit is the cycle. Observing every cycle costs a projection beside execution. Supplying only where a template is approved keeps the measurement clean |
+| D11 | **what is observed, and where memory is supplied** | **every eligible cycle, standalone or in a campaign, from three sources (rejected plans, failed correction rounds, returned proposals); supplied at plan writing, build authoring, repair and proposal writing, each inert until a template is approved. A plan-review or correction-round template is written in 2.2 only if one target recurs across independent cycles, read at the pre-registration and at the cut. Every exposure records its build's indicators, observed only** | memory's unit is the cycle. Observing every cycle costs a projection beside execution. Supplying only where a template is approved keeps the measurement clean. Build authoring is where a correction-round lesson reaches a later cycle before its check fails, not only after (SIP-0110 §0.9, §2) |
 | D12 | **counted regression rolls and memory** | **declare memory disabled until a finding of supported benefit and the owner's ruling. Their observations are still recorded** | the regression set is the framework's yardstick. A lesson approved for plan writing would otherwise reach it and move it unannounced |
 
 ---

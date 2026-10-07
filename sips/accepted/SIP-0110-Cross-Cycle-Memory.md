@@ -67,9 +67,9 @@ re-places it.
 |---|---|---|
 | the recall port, inert (answers empty), injected explicitly by the root, and its call site through `plan_rejection_context` | **shipped** | 2.1.0, PR #2058, issue #1964 |
 | the re-read of the Phase-1 value hypothesis against 2.1's recurrence evidence, as an amendment here | **shipped** | PR #2097, issue #1964: the evidence up to the final deploy is §5b (revision 4), and the cut's readings are §5b's last part |
-| Phase 1, slice 1: capture each consuming seam's inputs before authoring (proposal writing first, then plan writing and repair), and the source-case inspection (§0.11, §0.4) | **placed** | 2.2.0, #2105 |
+| Phase 1, slice 1: capture each consuming seam's inputs before authoring (proposal writing first, then plan writing, build authoring and repair), and the source-case inspection (§0.11, §0.4) | **placed** | 2.2.0, #2105 |
 | Phase 1, slice 2: the authoring replay, three arms, validated first on proposals (§0.11–§0.12) | **placed** | 2.2.0, #2106 |
-| Phase 1, slice 3: the mechanism, observing every eligible cycle and supplying three seams, inert until approved (§0.2–§0.10) | **placed** | 2.2.0, #2096 |
+| Phase 1, slice 3: the mechanism, observing every eligible cycle and supplying four seams, inert until approved, with the app-build indicators beside each exposure (§0.2–§0.10) | **placed** | 2.2.0, #2096 |
 | Phase 1, slice 4: the template and the measurement window, read before 2.2.0's cut (§0.4, §0.12–§0.13) | **placed** | 2.2.0, #2107 |
 | Phase 1.5: the correction lane (§13 question 3) | **dropped** | by revision 6 (§5d), which folds it into Phase 1: its observation is slice 3's, its repair seam is wired inert in slice 3, and its capture is slice 1's. A correction-round template waits for a recurring target behavior (§0.4) |
 | Phase 2: consolidation and promotion (§8) | **unplaced** | gated on Phase 1's measurement (§8) |
@@ -101,13 +101,16 @@ Where an earlier section disagrees with this one, this one holds, and the earlie
   records: plan-review rejections, failed correction rounds, and proposal returns. Each is recorded whether or not a
   lesson exists for it (§0.3).
 - **It encodes** reviewed reflective guidance in project scope, through governed templates.
-- **It supplies approved, applicable pattern revisions at three authoring seams:** plan writing (#2058's call site),
-  repair, and proposal writing (`strategy.propose_increment`) (§0.9).
+- **It supplies approved, applicable pattern revisions at four authoring seams:** plan writing (#2058's call site),
+  build authoring (`development.develop`, `qa.test`, `builder.assemble`), repair, and proposal writing
+  (`strategy.propose_increment`) (§0.9).
 - **Retrieval is deterministic,** from a memory snapshot pinned when the unit of execution is admitted: a standalone
   cycle when it is created, a campaign when it is admitted (§0.7).
 - **Counted regression rolls declare memory disabled,** so the regression yardstick does not move (§0.7).
 - **Authoring replay is the proving instrument.** The first measured target is a proposal behavior, because the
   proposal gate is the only seam with a recurring target behavior in the record so far (§5b, §0.12).
+- **App-build indicators are recorded beside each exposure** (correction rounds, rounds to green, acceptance). They are
+  observed, never gating, and **Phase 1 claims no improvement in the built application** (§0.10, §0.13, §9).
 - **These stay deferred:** semantic ranking, autonomous promotion and any other payload (§0.14).
 
 ### 0.1 What Phase 1 tests
@@ -319,14 +322,20 @@ set is the framework's yardstick, and an approved lesson must not move it unanno
 
 ### 0.9 Inject
 
-**The recall reaches three authoring seams.** At each it arrives through a managed fragment in its own slot, never in a
+**The recall reaches four authoring seams.** At each it arrives through a managed fragment in its own slot, never in a
 within-cycle rung's slot:
 
 | seam | the consuming task types | kept separate from |
 |---|---|---|
 | **plan writing** | the six plan-authoring types that declare `plan_rejection_context` (#2058's call site, `cycles/task_plan.py`) | a framing re-roll's rejection context (#669) |
+| **build authoring** | `development.develop`, `qa.test`, `builder.assemble`, through the same plan-time composer as plan writing (`cycles/task_plan.py`) | a retry's prior-cycle brief (#1692, SIP-0109 §10a) and the manifest's surfaces |
 | **repair** | `development.repair`, `development.correction_repair`, `qa.test_repair`, `builder.assemble_repair` | the failure evidence the repair is handed |
 | **proposal writing** | `strategy.propose_increment` | a proposal revision's note (SIP-0109 §9.2) |
+
+**Build authoring is where a correction-round lesson is front-loaded.** A lesson learned from failed correction rounds
+reaches a later cycle's first authoring of the output, before its check can fail, and not only the repair after the
+check has failed. That is §2's correction-lane thesis: about ten prompt lines spent to save one or two correction
+attempts. Without this seam, a correction-round lesson could only arrive at a later cycle's second attempt.
 
 **Which task types consume is declared,** on each type's context-assembly contract (`capabilities/context_assembly.py`),
 as `plan_rejection_context` is today, never by a branch on the type.
@@ -355,6 +364,17 @@ Each target is assessed by its template's rubric as **present**, **absent after 
 
 **Phase 1 has no automatic decay.** Deprecation is the owner's decision on assessed evidence, and takes effect at the next admission of a cycle or campaign. A small, precise policy is preferred to an unsupported confidence formula.
 
+**App-build indicators, observed beside each exposure.** Every exposure, `disabled` ones included, is joined to the
+build that its output fed, and the cycle records that build's indicators:
+- the implementation run's correction rounds, failed and refunded (`run_loop_summaries`);
+- the rounds it took to reach green, or that it did not;
+- its acceptance: the run's verdict, and in a campaign the increment's ruling.
+
+These are §9's outcome tier: observed in Phase 1, never gating it. They never enter an exposure's assessment or the
+`target_absence_rate`, since a green build says nothing about whether the target was present. Disabled exposures (the
+counted regression rolls, §0.7) give a series without memory beside the series with it. The two run different
+workloads, so a difference between them is descriptive, never a causal estimate.
+
 ### 0.11 The instrument: authoring replay
 
 **What is captured.** An `AuthoringReplayEnvelope` is captured immediately before each consuming seam's authoring task
@@ -364,8 +384,8 @@ references:
 - the objective or PRD, and the policy;
 - the revisions of the accepted application, PRD, manifest and evidence, where they exist;
 - the task's actual inputs;
-- the within-cycle rung it carries, if any: a re-roll's rejection context, a repair's failure evidence, or a revision's
-  prior proposal and note;
+- the within-cycle rung it carries, if any: a re-roll's rejection context, a repair's failure evidence, a retry's
+  prior-cycle brief, or a revision's prior proposal and note;
 - the complete assembled prompt and its fragment versions;
 - the model's identity, version and sampling settings;
 - the memory snapshot and the exact intervention;
@@ -383,6 +403,7 @@ The capture is complete, independent of the stored prompt's 10,000-character cut
 - **At each seam, the first authoring of its kind in a later unit is the primary test:**
   - a campaign's first proposal;
   - a cycle's first plan;
+  - a cycle's first build authoring of the output the target concerns;
   - a cycle's first repair of the target.
 - Revisions, re-rolls and repeat repairs are reported separately, since they already receive a within-cycle rung.
 
@@ -390,7 +411,7 @@ The capture is complete, independent of the stored prompt's 10,000-character cut
 
 | arm | purpose |
 |---|---|
-| current baseline | today's prompt at the seam, with its within-cycle rung (a re-roll's rejection context, a repair's failure evidence, a revision note) and #1947 where it applies, and no cross-cycle memory |
+| current baseline | today's prompt at the seam, with its within-cycle rung (a re-roll's rejection context, a repair's failure evidence, a retry's prior-cycle brief, a revision note) and #1947 where it applies, and no cross-cycle memory |
 | scoped memory | identical ordinary inputs, plus the eligible historical guidance |
 | static guidance (secondary) | the same reviewed guidance under a fixed prompt policy. With one target behavior it differs from scoped memory only where the lesson does not apply, so it measures selectivity, unnecessary injection and token cost |
 
@@ -433,12 +454,21 @@ All outputs, approvals and other returns included, are assessed by one fixed rub
 3. **Harm:** unacceptable regressions caused by the guidance or the system.
 4. **Inconclusive:** too few independent opportunities, too much uncertainty, or incomplete assessment.
 
-**The record states five things separately:**
+**The record states six things separately:**
 - the mechanism's correctness;
 - the experiment's validity and result;
 - the activated patterns and their applicability;
+- the app-build indicators beside the exposures (§0.10), as observation;
 - the auto-gate scope enabled;
 - the owner's disposition for the next phase.
+
+**What Phase 1 does not claim.** Phase 1 claims no improvement in the built application. Its finding is about one
+target behavior's recurrence in authoring. Claiming an improvement in the application would need three things Phase 1
+does not have:
+- a recurring build-side target with an approved lesson (§0.4);
+- a comparison with memory on and off at the build seams, which the counted rolls do not give while they declare memory
+  disabled (§0.7);
+- the outcome measures of §9's second tier and of Outcome Evaluation (#557, #949, #950).
 
 **What a finding does and does not license.**
 - A negative result for one class, template, model and workload does not disprove decision, correction, procedural or organizational memory.
@@ -503,9 +533,11 @@ Synthetic fixtures establish the mechanism's behavior. They are never evidence o
 | transfer | an approved lesson learned in a standalone cycle reaches a later campaign's matching seam, and one learned in a campaign reaches a later standalone cycle, under the same applicability |
 | restart | the original exposure is reconstructed after a restart |
 | failure disclosure | disabled, empty, filtered and failed recall remain distinguishable |
-| inert behavior | at every consuming seam (plan writing, repair, proposal writing), an empty or unapproved snapshot leaves the rendered prompt unchanged |
+| inert behavior | at every consuming seam (plan writing, build authoring, repair, proposal writing), an empty or unapproved snapshot leaves the rendered prompt unchanged |
+| slot separation | at build authoring, a lesson and a retry's prior-cycle brief render in separate slots, and either one alone renders the other's slot empty |
 | memory disabled | a cycle declaring memory disabled pins no snapshot, renders byte-identical prompts at every seam, records `disabled` exposures, and still records its observations |
 | feedback | unassessed or partly classified outputs earn no credit |
+| app-build indicators | an exposure, a `disabled` one included, records its build's correction rounds, rounds to green and acceptance; a green build leaves the exposure's assessment unchanged |
 | replay fidelity | both arms have identical ordinary pre-authoring inputs, at each seam captured |
 | temporal validity | a target cannot learn from its own later failure or from a later unit's evidence |
 | experiment isolation | test runs cannot modify production memory or learn from their outputs |
@@ -948,8 +980,9 @@ assumed.
 > class (§0.4).
 
 > **Revision 6 (§5d) reads this conclusion as where Phase 1 is measured first, not what Phase 1 is.** The proposal gate
-> stays the first measured target. Every eligible cycle is observed, and plan writing and repair are consuming seams
-> beside proposal writing. The cut's readings above also met Phase 1.5's condition, so the correction lane joins Phase 1.
+> stays the first measured target. Every eligible cycle is observed, and plan writing, build authoring and repair are
+> consuming seams beside proposal writing. The cut's readings above also met Phase 1.5's condition, so the correction
+> lane joins Phase 1.
 
 ## 5c. Revision 5: the external design review adopted (2026-10-06)
 
@@ -1018,14 +1051,16 @@ a standalone cycle recorded nothing and received nothing.
   (§0.7);
 - **memory disabled, declared:** counted regression rolls declare it, pin no snapshot, and still record their
   observations (§0.7);
-- **three consuming seams:** plan writing (#2058's call site), repair, and proposal writing, each in its own slot and
-  each byte-identical while nothing is approved (§0.9);
+- **four consuming seams:** plan writing (#2058's call site), build authoring, repair, and proposal writing, each in
+  its own slot and each byte-identical while nothing is approved (§0.9);
+- **app-build indicators beside each exposure,** observed and never gating, and a statement that Phase 1 claims no
+  improvement in the built application (§0.10, §0.13);
 - **authoring replay:** one envelope type, captured before each consuming seam (§0.11). The first measured target stays
   the proposal behavior, and the pre-registration fixes it (§0.12);
 - **the correction lane joins Phase 1:** its observation and its repair seam are Phase 1's, and its template waits for
   a recurring target behavior (§0.4). The ledger's Phase 1.5 row is dropped by this revision;
-- **the acceptance matrix** gains rows for sources, eligibility, execution isolation, unit freeze, transfer and memory
-  disabled (§0.15).
+- **the acceptance matrix** gains rows for sources, eligibility, execution isolation, unit freeze, transfer, memory
+  disabled, slot separation and the app-build indicators (§0.15).
 
 **What did not change:**
 - **governance:** people write the templates, the owner approves each revision for a stated applicability, and nothing
@@ -1050,6 +1085,18 @@ a standalone cycle recorded nothing and received nothing.
 - **One property revision 5 had by accident is kept on purpose.** Counted regression rolls received no memory only
   because they run no proposals. Revision 6 makes this a declaration, memory disabled, so the regression yardstick does
   not move when the first lesson is approved.
+- **Build authoring was missing from the first draft of this revision.** The owner asked what cross-cycle memory
+  produces in the quality of the application the squad builds. Read against that question, the draft supplied memory
+  everywhere except the tasks that write the application:
+  - plan writing shapes the plan, and proposal writing shapes what is built next;
+  - repair arrives only after a check has failed.
+
+  §2's correction-lane thesis is front-loading into first authoring, and the draft had no seam for it. The same reading
+  found that nothing in Phase 1 would record what happened to the build: §9 keeps outcome effectiveness out of Phase 1's
+  gate, and the counted rolls run with memory disabled. Hence the build-authoring seam, the indicators beside each
+  exposure, and the explicit statement of what Phase 1 does not claim (§0.13). On the evidence to the 2.1 cut, none of
+  this is likely to show an effect in 2.2: the counted set passed 4 of 4 with one correction round across the set, and
+  the cut's four failed rounds were four different defects (§5b).
 
 **Who ruled it.** The owner, 2026-10-07, on the supervisor's overview of the 2.2 plan:
 - "are memories captured after each cycle of a campaign as well; and also outside the scope of a campaign. I just want
@@ -1059,7 +1106,10 @@ a standalone cycle recorded nothing and received nothing.
 
 Revision 5's campaign framing was the supervisor's recommendation in adopting the external review (§5c), not a ruling of
 the owner's. The supervisor proposed this revision's shape. The owner asked for it to be drafted ("yes, draft revision 6
-and the plan re-scoping"). It is reviewed with the plan's re-scoping in one PR, and its merge is the ruling.
+and the plan re-scoping"). The owner then asked "what does cross cycle memory produce in terms of output quality of the
+target app build", and on the supervisor's answer asked for the build-authoring seam, the indicators and the statement
+of what is not claimed to be added ("yes, add those three"). It is reviewed with the plan's re-scoping in one PR, and
+its merge is the ruling.
 
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
@@ -1165,6 +1215,8 @@ overall result stays poor, so conflating them would let recall wins masquerade a
 outcome wins:
 
 > **Revision 5:** the metric's statistic is `target_absence_rate` over assessed exposures (§0.10); the instrument, arms and pre-registration are §0.11–§0.12; and Phase 1 keeps local non-regression guardrails, so "never gates Phase 1" below holds for Functional App Yield, not for the guardrails (§0.12).
+>
+> **Revision 6:** the outcome tier is observed through the app-build indicators recorded beside each exposure (§0.10): correction rounds, rounds to green and acceptance. Phase 1 claims no improvement in the built application (§0.13).
 
 **Recall effectiveness (Phase 1 measures this; gates the phase):**
 1. **Primary:** recurrence rate of labeled rejection classes, memory-on vs. memory-off
@@ -1266,7 +1318,7 @@ Per the ratified post-1.4 reshuffle (`docs/plans/post-1-4-roadmap-reconciliation
 
 > **Revision 5 answers:** question 2 (§0.2: the pattern's identity), 4 (§0.12: the pre-registration), 6 (§0.6 and §0.4: approval is the owner's, per revision and applicability), 7 (§0.10: no automatic decay in Phase 1) and 8 (§0.4: a supported behavior's missing template blocks its support claim, and an unsupported one is disclosed backlog). Questions 3 and 5 stay open for Phase 1.5 and Phase 2.
 >
-> **Revision 6 answers question 3** (§0.9): repair is one of Phase 1's three consuming seams, inert until a correction-round template is approved. **It extends the answer to question 1** (§0.4): a person's plan rejection with no recorded class is recorded as `unclassified` and produces no pattern. Question 5 stays open for Phase 2.
+> **Revision 6 answers question 3** (§0.9): repair is one of Phase 1's four consuming seams, beside build authoring, and both are inert until a correction-round template is approved. **It extends the answer to question 1** (§0.4): a person's plan rejection with no recorded class is recorded as `unclassified` and produces no pattern. Question 5 stays open for Phase 2.
 
 1. Should human gate rejections (free-text reasons) enter Phase 1's corpus, or only
    validator-emitted classes? (Draft position: validator-only — deterministic encode; the
