@@ -206,3 +206,51 @@ taken as recommended below, and the supervisor registers.
 2. **The regression set's size:** two rolls per stack (recommended), or more.
 3. **The shakeout campaign:** one campaign of two increments on React (recommended), or 2.0's three.
 4. **Who supervises the shakeout:** the owner's delegate under 2.0's §3a policy (recommended, as 2.0).
+
+---
+
+## 10. The set's readings (2026-10-07): PASS
+
+**The rolls,** launched by `cut_set_chain.sh` from the main checkout, with HEAD pinned at `83c36136` (the
+registration's merge) and the frozen image ids asserted at each roll's preflight. The pair baselines are
+§2's.
+
+| roll | cycle | verdict | criteria | correction rounds | re-rolls | boot audit | minutes |
+|---|---|---|---|---|---|---|---|
+| FastAPI+React 1 | `cyc_06d828da487c` | accepted | 21 of 21 | 1 | 0 | PASS, 3 routes render | 58 |
+| Next.js 1 | `cyc_09d5dc572482` | accepted | 15 of 15 | 0 | 0 | PASS, 3 routes render | 52 |
+| FastAPI+React 2 | `cyc_5a5805c5ea70` | accepted | 21 of 21 | 0 | 0 | PASS, 3 routes render | 49 |
+| Next.js 2 | `cyc_b6984d77fcf8` | accepted | 16 of 16 | 0 | 0 | PASS, 3 routes render | 60 |
+
+Records: `var/verification_sets/2-1-0-cut-regression/{fastapi-react,nextjs}/roll-0{1,2}-*.{json,md}`, with the chain's
+timeline in `var/verification_sets/2-1-0-cut-chain/chain.log`.
+
+**The frame (§3).**
+- Every roll was accepted, and every boot audit passed.
+- No roll regressed against its stack's baseline: every criterion was verified, and the correction rounds stayed
+  within the line's observed range of 0–1.
+- **Pass.**
+
+**The predictions (§4).**
+- **P1 holds.** Every qa task recorded a lint reading with nothing `unavailable`:
+  - ruff 0.16.6 and ESLint 10.12.0 on the React trees;
+  - ESLint alone on the Next.js trees, which hold no Python files (`files_linted.python: 0`).
+- **P2 holds.** The set's one failed round (React roll 1, `qa.test` `tests_pass`) recorded its failing case: a test
+  asserting the `apiFetch` call with the wrong arguments.
+- **P3 holds.** Both Next.js rolls declare `/runs/{run_id}` (roll 2: `/runs/:run_id`), and each audit reports every
+  declared route rendering its view, with no failure. Rebuild 2's `not read` did not recur.
+- **P4 holds,** as read on 2026-10-06 (§6a). The console's image has not been rebuilt since, so the reading stands
+  for the registered deploy.
+
+**Drift the record declares (§8).**
+- **The tag is not yet cut.** Between the registered deploy (`fcc7ce04`) and the registration's merge (`83c36136`),
+  the tree differs by #2104's `docker-compose.yml` LangFuse `HOSTNAME` and by prose.
+- **No void, and no re-run.**
+- **The owner's actions:**
+  - the pre-approval of the registration;
+  - the rulings on #2094's and #2101's sequences.
+
+**What the set does not cover.**
+- **Four rolls are not a reliability rate.**
+- **The campaign reading is the shakeout's** (§6a), not the set's.
+- **The recovery paths are read by the diagnostics,** not by any roll.
