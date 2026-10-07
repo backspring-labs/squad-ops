@@ -45,4 +45,4 @@ form (a compliant plan on the first roll, where shk-1 needed a rejection plus a 
 
 | Proposal | From | To |
 |---|---|---|
-| [SIP-Cross-Cycle-Memory](../../design/sips/SIP-Cross-Cycle-Memory.md) | new | proposed |
+| SIP-Cross-Cycle-Memory | new | proposed |

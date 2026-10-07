@@ -109,7 +109,7 @@ quality meets its baseline. An autonomy number never travels without the quality
 **Neighbouring proposals, kept separate:**
 - `SIP-Verification-Yield`: the value of the tests the squad writes;
 - `SIP-Campaign-Self-Improvement-and-Test-Bay`: SquadOps improving itself;
-- `SIP-Cross-Cycle-Memory`: what the squad recalls across cycles. Its outcome metrics (revision 2's
+- SIP-0110 (Cross-Cycle Memory): what the squad recalls across cycles. Its outcome metrics (revision 2's
   recall-versus-outcome split) are one consumer of this SIP's evidence.
 
 ## 4. The design

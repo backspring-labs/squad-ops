@@ -1,7 +1,7 @@
 # Cross-Cycle Agent Memory Architecture — v4 draft (2026-08-29)
 
 > **Recorded 2026-10-01** as the owner shared it, during the review of 2.0's SIP proposals. It is a later
-> draft of `sips/proposed/SIP-Cross-Cycle-Memory.md`. Its new elements are folded into that SIP as
+> draft of `sips/accepted/SIP-0110-Cross-Cycle-Memory.md`. Its new elements are folded into that SIP as
 > **revision 3**, §5a. This file keeps the source.
 >
 > Its original metadata:

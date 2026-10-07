@@ -69,7 +69,7 @@ the same release.
    phasing section).
 3. `docs/ROADMAP.md` Forward Cadence rewritten to the table above; drafts table and
    SIP-0102 target updated.
-4. `sips/proposed/SIP-Cross-Cycle-Memory.md` placement rewritten (Phase 1 → 1.8 rider,
+4. `sips/accepted/SIP-0110-Cross-Cycle-Memory.md` placement rewritten (Phase 1 → 1.8 rider,
    Phase 2 → 2.0) + Campaign-interaction section (§7: provenance-not-scope,
    campaign-close consolidation clock, continuation-decision purity boundary).
 
