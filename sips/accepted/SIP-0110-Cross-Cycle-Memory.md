@@ -65,7 +65,7 @@ re-places it.
 | part | status | where |
 |---|---|---|
 | the recall port, inert (answers empty), injected explicitly by the root, and its call site through `plan_rejection_context` | **shipped** | 2.1.0, PR #2058, issue #1964 |
-| the re-read of the Phase-1 value hypothesis against 2.1's recurrence evidence, as an amendment here | **placed** | 2.1.0, #1964: the evidence up to the final deploy is §5b (revision 4), and the cut set's readings are added at the cut |
+| the re-read of the Phase-1 value hypothesis against 2.1's recurrence evidence, as an amendment here | **shipped** | PR #2097, issue #1964: the evidence up to the final deploy is §5b (revision 4), and the cut's readings are §5b's last part |
 | Phase 1, slice 1: capture each proposal's inputs before authoring, and the source-case inspection (§0.11, §0.4) | **placed** | 2.2.0, #2105 |
 | Phase 1, slice 2: the proposal replay, three arms (§0.11–§0.12) | **placed** | 2.2.0, #2106 |
 | Phase 1, slice 3: the mechanism, inert until approved (§0.2–§0.10) | **placed** | 2.2.0, #2096 |
@@ -797,6 +797,26 @@ Read from the registry (`cycle_runs`, `cycle_gate_decisions`, `run_loop_summarie
 - **The interaction with #1708's auto tier,** which lands in the same release and reads the same
   ledger. A proposal the auto tier approves is never classified, so a class the supervisor would have
   returned goes unobserved. The 2.2 plan sequences the two.
+
+**The cut's readings (2026-10-07, #1964 at the 2.1 cut).** These are the 12 cycles on the 2.1 final deploy (`fcc7ce04`):
+the diagnostics' campaigns, the cut's shakeout campaign and the four counted rolls.
+- **The plan gate:** no framing re-roll, and all 11 plan reviews approved. Eight were approved by the system with no
+  open question. Three answered how the runs list is ordered, the §5b item 4 class again.
+- **The correction lane:** 4 of 11 implementation runs had one failed round, all `qa.test` `tests_pass`. Each recorded
+  its reason (`failed_detail`, #2028, #2086), and the four are four shapes, all in the React frontend suites:
+  - a mock asserted with the wrong arguments;
+  - an unresolved relative import;
+  - a test id not found;
+  - a misused mock.
+
+  None recurred, and each was repaired in one round. Phase 1.5's condition, failures of more than one shape, is now
+  met, and nothing in this window recurs.
+- **The proposal gate:** 4 increment rulings, all approved at version 1. **The whole 2.1 line returned no proposal.**
+  The recurrence §5b measures is the 2.0 window's six returns, so the corpus note in §0.13 stands: the test corpus is
+  built by 2.2's own campaigns.
+
+**The re-read's conclusion stands:** Phase 1's proving workload is the proposal gate, and its value is measured, not
+assumed.
 
 > **Revision 5 settles all three, and narrows one rule above.** The instrument is proposal replay (§0.11). The sample is
 > pre-registered, with "inconclusive" a legitimate finding (§0.12, §0.13). The auto tier stays off increment rulings through

@@ -12,10 +12,10 @@ diagnostics running, its set waiting for registration (#2090).
 - **The owner's choice of release shape B** ("go with B"): 2.2.0's cut waits for the bounded measurement
   window's finding (§3).
 
-**Two sections stay open until the 2.1 cut:**
-- **the cut's findings** (§2.4), placed when they are found;
-- **#1964's cut readings,** added to SIP-0110 §5b. If they change the re-read's finding, this plan is
-  amended before 2.2's first build.
+**The 2.1 cut's two open sections are now read (2026-10-07):**
+- **the cut's findings** (§2.4) were all fixed within 2.1, and none is placed here;
+- **#1964's cut readings** are in SIP-0110 §5b and do not change the re-read's finding. The whole 2.1 line returned no
+  proposal, so the corpus is built by 2.2's own campaigns.
 
 **This PR changes prose only.** It merges before the 2.1 set registers or after the 2.1 cut, and never while
 the set is open (#2090 §7).
@@ -57,14 +57,14 @@ finding** (SIP-0110 §0.13).
 
 ## 1. The open issues, every one placed
 
-27 issues are open on 2026-10-06, counting the four Phase-1 slices (#2096, #2105–#2107).
+26 issues are open on 2026-10-07, counting the four Phase-1 slices (#2096, #2105–#2107). #1964 closes with this PR.
 
 | where | count | issues |
 |---|---|---|
 | **2.2: the headline** | 4 | #2105 (slice 1: capture and the source-case inspection), #2106 (slice 2: the replay), #2096 (slice 3: the mechanism), #2107 (slice 4: the template and the measurement window) |
 | **2.2: beside it** | 1 | #1708's remainder: the auto tier and the escalation queue (placed 2026-10-03, 2.0 plan rev 9 §5a.5; kept 2026-10-04, Q2) |
 | **2.2: hardening, placed by the owner during the 2.1 line** | 3 | #2079 (the realm's admin password), #2082 (two console test files depend on their order), #2083 (the realm sync never applies a service account's roles) |
-| **2.1's, read at its cut** | 4 | #1964 (the re-read's cut readings), #1911 (the replay of #1788's bundles remains), #1469 (placed again once #2028's records hold failing builds of more than one shape), #2103 (LangFuse's health check, fixed in PR #2104) |
+| **2.1's, read at its cut** | 3 | #1964 (closed by this PR: the cut's readings are SIP-0110 §5b's last part). #1911 and #1469 carry, each waiting on its evidence: #1911 on its replay of #1788's bundles, and #1469 on a failing build of a second module shape (the cut window had none) |
 | **2.3** | 6 | #316 (the owner, 2026-10-06: "2.3 is fine just let's not forget about it"), #1976, #1977, #1992, #1993, #1994 |
 | **2.3, recommended here** (§4, D6) | 1 | #2062 (hoisting #1985's deferred imports: 606 import sites, a structural change for the stabilization line, next to #1992's move) |
 | **2.4 or later** | 4 | #1966, #557, #949, #950 (they follow Outcome Evaluation, Q2) |
@@ -167,8 +167,13 @@ compose change asks first.
 
 ### 2.4 From the 2.1 cut (open)
 
-Left open on purpose. The findings of the cut's set, its shakeout and its diagnostics are placed here when they are
-found.
+The cut found four defects, and each was fixed within 2.1, so none is placed here:
+- #2094: a refused run could not leave `queued`;
+- #2099: the rotation's `.env` copy was not ignored by git;
+- #2101: the retry rows were asked after the blocked rows (SIP-0109 §24bh);
+- #2103: LangFuse's health check.
+
+The counted set passed 4 of 4 (the 2.1 pre-registration §10).
 
 ### 2.5 Not in 2.2 (ruled)
 
