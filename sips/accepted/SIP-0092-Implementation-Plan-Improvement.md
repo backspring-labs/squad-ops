@@ -17,7 +17,7 @@ updated_at: '2026-04-29T23:39:19.875323Z'
 
 ---
 
-## Delivery ledger (current as of 2026-10-04)
+## Delivery ledger (current as of 2026-10-07)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
 
@@ -25,7 +25,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 |---|---|---|
 | M1: typed acceptance | **shipped** | v1.1.0 (PR #75 et al.) |
 | M1's divergences from the spec (`command_exit_zero` not on the ACI executor, out-of-safelist → `error`, file-missing → `failed`, `regex_match` narrowed by #464, parameter names) | **shipped** as amended by §14a | v1.1.0; `docs/plans/sip-promotion-audit-2026-08-03.md:52-58`; partly overtaken (the safelist removed, #670) |
-| M2: multi-role authoring | **shipped** via SIP-0093 (93.4 open there) | v1.1.0 |
+| M2: multi-role authoring | **placed**: 93.0–93.3 shipped through SIP-0093 (v1.1.0); its remainder is SIP-0093's 93.4, folded into #950 (re-read at the 2.1 cut: "shipped" here had let the sweep read this SIP as promotable while its closing line waits on that remainder) | 2.4 or later, #950 |
 | the M2→M3 gate | **shipped**: ran and passed, 2026-08-05 | #732, `docs/plans/SIP-0092-gate-M2-evaluation.md` |
 | M3: plan changes | **dropped** (§14a) | SIP-0109's increment cycle evolves the plan at cycle level instead |
 | `handle()` decomposition | **shipped** | v1.8.0 (#1444) |

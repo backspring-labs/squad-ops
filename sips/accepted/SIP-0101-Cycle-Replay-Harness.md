@@ -13,7 +13,7 @@ updated_at: '2026-07-25T11:34:32.304767Z'
 **Created:** 2026-07-25
 **Revision:** 3 (review round 1; FAY-enforcement correction + implementation order)
 
-## Delivery ledger (current as of 2026-10-04)
+## Delivery ledger (current as of 2026-10-07)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
 

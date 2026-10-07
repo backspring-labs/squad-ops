@@ -60,7 +60,7 @@ deferred until a second stack exists — see the §4.2 status note),
 SIP-Edge-Deployment-Profile (remote sandbox adapter target),
 SIP-Capability-Backed-Agents (toolchain-as-capability, 2.0 arc).
 
-## Delivery ledger (current as of 2026-10-04)
+## Delivery ledger (current as of 2026-10-07)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
 

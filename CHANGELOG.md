@@ -5,10 +5,25 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
-**The 2.1 line, after 2.0's campaign headline.** Plan: `docs/plans/2-1-0-plan.md`, which carries the
-owner's grant and rulings and each day's record. The line's validation (each rebuild's loaded checks
-and regression pair, the restart diagnostics, the cut's set) is summarised here at the cut. The
-entries below are what has merged so far.
+## [2.1.0] — 2026-10-07
+
+**The 2.1 line: hardening after 2.0's campaign headline, feature-free by rule** (CLAUDE.md, #281). It closes the
+debt 2.0 deferred, and every path the campaign relies on now holds on its own terms. Plan:
+`docs/plans/2-1-0-plan.md`, which carries the owner's grant, rulings and each day's record.
+
+**The cut's evidence: PASS** (`docs/plans/2-1-0-preregistration.md`, registered in #2090; its §10 in #2108). It was read
+on the final deploy (`fcc7ce04`, `dep_5e77a9060e68`):
+- **the counted set:** 4 of 4 regression rolls accepted, two per stack, every criterion verified (21, 15, 21, 16) and
+  every boot audit passed. There was one correction round, with its reason recorded. P1–P4 held: lint readings,
+  failed-round reasons, the Next.js detail page rendered, and the console acting as its caller;
+- **the shakeout campaign:** clean in one round, with two increments accepted;
+- **the recovery diagnostics, all PASS:** #1824's infrastructure retry end to end, and the restart set (#1934, #2007,
+  #2042);
+- **two defects found by #1824's live path** and fixed before the set: a refused run could not leave `queued` (#2094),
+  and the retry rows were asked after the blocked rows (#2101).
+
+The tagged tree differs from the validated deploy by #2104's LangFuse compose `HOSTNAME` and by prose. No squad image or
+code differs.
 
 **Campaigns: the 2.0 set's findings (SIP-0109).**
 - **The proposer and its rails:** the rails refuse a behaviour change with nothing to build (#2011);
@@ -24,7 +39,7 @@ entries below are what has merged so far.
   the owner, who retries it or aborts (#1971; #2052). A cycle that failed outside the work is retried: the retry
   rows read the failure's attribution, and the box's and the queue's refusals are declared as such
   (#1824; #2080). The retry rows are asked before the blocked rows, since a run the box refused
-  verified nothing and reads `blocked_unverified` (#2101, SIP-0109 §24bh).
+  verified nothing and reads `blocked_unverified` (#2101; #2102, SIP-0109 §24bh).
 - **A recovery cycle** is told what each correction round of the failed cycle tried, and the digest
   measures what recurred (#1692; #2071).
 - **Evidence:** any increment can be replayed outside its campaign, on the current deploy (#1959;
@@ -92,6 +107,9 @@ entries below are what has merged so far.
 - multidict moves to 6.9.1 for GHSA-54p9-h82j-f925 (#2074).
 - **Every console call to the runtime API carries its caller's own token,** and the console's service
   client is retired (#2068; #2081).
+- The copy of `.env` a credential rotation keeps beside it is ignored by git (#2099; #2100).
+- LangFuse listens on every interface, so its loopback health check passes. It had never passed since #581 (#2103;
+  #2104).
 
 **SIPs.**
 - `update_sip_status.py` can retire a proposal without accepting it (#1968; #2015), and the 13
@@ -102,6 +120,8 @@ entries below are what has merged so far.
   unset (#1967; #2017).
 - The release cut's SIP sweep is read from the ledgers, and the release PR must name what it finds
   (#1980; #2032).
+- **Cross-Cycle Memory is accepted as SIP-0110** (revisions 4 and 5), with the 2.2 plan (#2097, closing #1964's
+  re-read). Its Phase 1, the 2.2 headline, is the campaign's proposal gate, and is measured before 2.2.0's cut.
 
 **Release and verification tooling.**
 - A verification set records the tracked loaded checks, and refuses a deploy that answers with the
