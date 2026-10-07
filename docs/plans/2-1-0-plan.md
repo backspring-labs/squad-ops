@@ -924,3 +924,69 @@ files order-dependent), #2083 (the realm sync never applies a service account's 
   `deploy_credentials.py rotate`. Step 1's backup is written. Nothing else changed.
 - **The cut's pre-registration** is a draft (#2090): two rolls per stack, one shakeout campaign of two
   increments, the diagnostics before registration, and four predictions. Registering it is the owner's.
+
+### The cut day's record (2026-10-06 → 2026-10-07)
+
+**The owner's rulings:**
+- **"go with all"**, on the recommendations after #1824's first diagnostic stranded:
+  - fix `queued → failed` (#2094) with a SIP-0064 amendment;
+  - rotate the credentials, keeping LangFuse's `SALT` and admin password;
+  - pre-approve the cut's registration (#2090);
+  - place #2082 and #2083 in 2.2.
+- **"go with the recommended sequence"**, after the second diagnostic chose repair over retry: #2101's fix (SIP-0109
+  §24bh), the abort, the rebuild with the fix alone, and the re-run.
+- **"2.3 is fine just let's not forget about it"**, on #316.
+- **The 2.2 plan and SIP-0110's acceptance are one PR, #2097.** The owner chose shape B ("go with B"): 2.2.0's cut waits
+  for the memory measurement window's finding.
+
+**Merged:**
+- #2095 (#2094);
+- #2098 (the CHANGELOG's last batch);
+- #2100 (#2099: the rotation's `.env` copy, ignored by git);
+- #2102 (#2101);
+- #2104 (#2103: LangFuse's health check);
+- #2090, the registration.
+
+main was read green after each.
+
+**The deploys.** The final deploy was rebuilt twice, each time with one fix alone:
+- `6c3a1ca9` (#2094), 49 of 49 rows loaded;
+- `fcc7ce04` (#2101), 50 of 50 rows loaded.
+
+Credentials were rotated in place on the first rebuild (#2006's runbook), with a backup first.
+
+**The diagnostics,** on `fcc7ce04`, all PASS:
+- #1824's infrastructure retry ran end to end. The refusal ended the run `infrastructure_failed`, and row 10 chose the
+  retry. The launch was blocked once, then unblocked, and the retry was launched and accepted.
+- The restart set: #1934, #2007 and #2042.
+
+**Twice, #1824's live path found the next seam,** and both times the PR's wiring test had built its evidence by hand,
+not through the writer the live run uses:
+- **#2094:** a refused run could not leave `queued`.
+- **#2101:** a refused run reads `blocked_unverified`, and the blocked rows were asked before the retry rows.
+
+**The shakeout exited clean in one round** (`cmp_247adc7789c2`): two increments accepted, and no seam finding.
+
+**The counted set: PASS** (pre-registration §10):
+- 4 of 4 rolls accepted, every criterion verified, every boot audit passed;
+- one correction round, its reason recorded;
+- P1 to P4 held.
+
+**Filed and fixed during the day:**
+- #2094 and #2101 (the two seams above);
+- #2099 (the rotation's copy);
+- #2103 (LangFuse's health check, latent since #581; the rotation's record of "every container healthy" was corrected
+  on #2006).
+
+**#1964's cut readings:**
+- **The 12 cycles on the final deploy:**
+  - no framing re-roll;
+  - 11 plan reviews approved, three of them answering the runs list's order;
+  - **no proposal returned in 4 rulings;**
+  - 4 failed rounds, all `qa.test` `tests_pass`, in four different shapes, each repaired in one round.
+- **So the whole 2.1 line returned no proposal.** The recurrence SIP-0110 §5b measures is the 2.0 window's.
+- They are added to SIP-0110 §5b in #2097.
+
+**Waiting on the owner:**
+- the cut: the release PR, the tag, the Release and the records upload;
+- #2097's merge, which accepts SIP-0110 and adopts the 2.2 plan.
