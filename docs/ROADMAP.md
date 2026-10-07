@@ -23,7 +23,26 @@ Each even-minor consumer sits strictly behind the release that earns its trust: 
 
 ## Release Timeline
 
-### v2.0.1 (2026-10-04) — Current — a security patch
+### v2.1.0 (2026-10-07) — Current — hardening after Campaign
+
+**v2.1.0, the 2.x line's first stabilization release** (feature-free by rule; plan `docs/plans/2-1-0-plan.md`). It closes the
+debt 2.0 deferred:
+- the 2.0 set's findings (#1884's rule for qa authors, the proposer's conventions and rails);
+- the optimization crew's enablers (#1940, #1956, #1959, #1960);
+- the structure audit's defects and ground-clearing (#1982–#1991), with one refactor per rebuild: the package roots
+  (#1985), the priority reserve (#414);
+- recovery that holds on its own terms (#1934, #2007, #2042, #1824's infrastructure retry, #2094, #2101);
+- per-deploy credentials (#2006), and the console acting as its caller (#2068);
+- the evidence records: failed checks' reasons (#2028, #2086), and reporting-only lint findings (#1937).
+
+**Validated on the final deploy** (`fcc7ce04`): a 4-of-4 counted set on both stacks, a shakeout campaign clean in one
+round, and the recovery diagnostics, all PASS (`docs/plans/2-1-0-preregistration.md` §10). Cross-Cycle Memory is
+accepted as SIP-0110, with 2.2's plan.
+
+**Upgrade from 2.0.1:** the next deploy adopts each credential the deploy already runs with, because `ensure` runs
+before compose on every deploy (#2006). Nothing changes until a rotation (`docs/ops/credential_rotation.md`).
+
+### v2.0.1 (2026-10-04) — a security patch
 
 **v2.0.1**, the 2.0 line's first patch: **an artifact is written inside its own directory, whatever
 filename or id it carries** (advisory GHSA-3rw2-35gr-mvh3, #2003).
@@ -790,7 +809,7 @@ The following areas are identified for future work but do not block 1.0 readines
 | release | headline | carries |
 |---|---|---|
 | 2.0 | Campaign (SIP-0109) | the counted set, registered 2026-10-04 (#1908) |
-| 2.1 | stabilization | the 2.0 set's findings; the optimization crew's enablers (#1940, #1956, #1959, #1960); the structure audit's defects and ground-clearing (#1982–#1991); the plan is PR #1955 |
+| 2.1 | stabilization, **shipped 2026-10-07** | the 2.0 set's findings; the optimization crew's enablers (#1940, #1956, #1959, #1960); the structure audit's defects and ground-clearing (#1982–#1991); the plan is PR #1955 |
 | 2.2 | Cross-Cycle Memory (SIP-0110) | the line's **only** change to squad behaviour, beside #1708's auto tier and escalation queue; the plan is `docs/plans/2-2-0-plan.md` |
 | 2.3 | stabilization | Outcome Evaluation's reporting-only instruments; the comms (#1977) and API contract (#1976) hardening; the request-profile taxonomy (#316, moved from 2.1); the structure audit's batch: orchestration out of `adapters/cycles` (#1992), a `stacks` package (#1993), the largest units split (#1994) |
 | 2.4 | Outcome Evaluation's feature half (proposed) | Verification Yield's risk-first instructions (#1966); then the judgement steps it measures (#557, #949, #950) |
@@ -843,10 +862,10 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Stats
 
-*As of 2026-10-04 (v2.0.1):*
+*As of 2026-10-07 (v2.1.0):*
 
-- **Framework version**: 2.0.1
-- **SIPs** (2026-10-04, after the 2.0 sweep and SIP-0107's promotion after the tag): 69 implemented, 9 accepted (SIP-0088, 0090–0093, 0101, 0102, 0105, 0109), 20 deprecated, plus the unnumbered proposals indexed in `sips/PORTFOLIO.md`
+- **Framework version**: 2.1.0
+- **SIPs** (2026-10-07, after the 2.1 sweep): 69 implemented, 10 accepted (SIP-0088, 0090–0093, 0101, 0102, 0105, 0109, 0110), 33 deprecated, plus the unnumbered proposals indexed in `sips/PORTFOLIO.md`
 - **Tests**: 10,000+ passing in the regression suite (all of `tests/unit`, #1316)
 - **Python source**: ~109,000 lines measured 2026-09-17 (`src/` ~84,000 + `adapters/` ~25,000; ~168,000 test lines; ~144,000 lines of Markdown under `docs/` and `sips/`)
 - **~6 months** from initial repo (2025-09-20) to 1.0.0 release (2026-03-10)

@@ -26,7 +26,7 @@ answer lives only in a docstring.
 
 ---
 
-## Delivery ledger (current as of 2026-10-04)
+## Delivery ledger (current as of 2026-10-07)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
 
