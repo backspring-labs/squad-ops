@@ -1,0 +1,1267 @@
+version: 2.1.0
+tag: v2.1.0
+previous_tag: v2.0.1
+date: '2026-10-07'
+commit: 62cdb25973efee9ef0fe92e7e8d782a4b43f77de
+narrative: "**The 2.1 line: hardening after 2.0's campaign headline, feature-free\
+  \ by rule** (CLAUDE.md, #281). It closes the\ndebt 2.0 deferred, and every path\
+  \ the campaign relies on now holds on its own terms. Plan:\n`docs/plans/2-1-0-plan.md`,\
+  \ which carries the owner's grant, rulings and each day's record.\n\n**The cut's\
+  \ evidence: PASS** (`docs/plans/2-1-0-preregistration.md`, registered in #2090;\
+  \ its §10 in #2108). It was read\non the final deploy (`fcc7ce04`, `dep_5e77a9060e68`):\n\
+  - **the counted set:** 4 of 4 regression rolls accepted, two per stack, every criterion\
+  \ verified (21, 15, 21, 16) and\n  every boot audit passed. There was one correction\
+  \ round, with its reason recorded. P1–P4 held: lint readings,\n  failed-round reasons,\
+  \ the Next.js detail page rendered, and the console acting as its caller;\n- **the\
+  \ shakeout campaign:** clean in one round, with two increments accepted;\n- **the\
+  \ recovery diagnostics, all PASS:** #1824's infrastructure retry end to end, and\
+  \ the restart set (#1934, #2007,\n  #2042);\n- **two defects found by #1824's live\
+  \ path** and fixed before the set: a refused run could not leave `queued` (#2094),\n\
+  \  and the retry rows were asked after the blocked rows (#2101).\n\nThe tagged tree\
+  \ differs from the validated deploy by #2104's LangFuse compose `HOSTNAME` and by\
+  \ prose. No squad image or\ncode differs.\n\n**Campaigns: the 2.0 set's findings\
+  \ (SIP-0109).**\n- **The proposer and its rails:** the rails refuse a behaviour\
+  \ change with nothing to build (#2011);\n  the proposer is told every convention\
+  \ its stack's frozen code decides (#1962, #1950; #2013), and\n  that a PRD delta\
+  \ states only what the request delivers (#1995; #2014).\n- **#1884, by the owner's\
+  \ rule:** every author of an increment's tests is held to it (#2012), and\n  behaviour\
+  \ a qa author would test but nothing accepted requires is returned as a proposal\
+  \ (#2019).\n- **The supervisor:** its instruments are tracked, each verdict a tested\
+  \ function (#2025); it\n  creates and manages a campaign, while escalations and\
+  \ limit pauses stay the owner's (#1940;\n  #2047).\n- **Recovery:** the sweep re-hears\
+  \ an ended cycle between restarts (#1972; #2038); a restart starts\n  a successor\
+  \ run left queued (#2042; #2048); a launch the cycle-create path refuses escalates\
+  \ to\n  the owner, who retries it or aborts (#1971; #2052). A cycle that failed\
+  \ outside the work is retried: the retry\n  rows read the failure's attribution,\
+  \ and the box's and the queue's refusals are declared as such\n  (#1824; #2080).\
+  \ The retry rows are asked before the blocked rows, since a run the box refused\n\
+  \  verified nothing and reads `blocked_unverified` (#2101; #2102, SIP-0109 §24bh).\n\
+  - **A recovery cycle** is told what each correction round of the failed cycle tried,\
+  \ and the digest\n  measures what recurred (#1692; #2071).\n- **Evidence:** any\
+  \ increment can be replayed outside its campaign, on the current deploy (#1959;\n\
+  \  #2026); a campaign's creation row records the definition file that made it (#1954;\
+  \ #2050); the\n  digest scores each increment from the package alone (#1960; #2027);\
+  \ a definition's comment names\n  no deploy or round unless its bytes are pinned\
+  \ (#1958; #2039).\n- **Next.js increments:** their pages are read, and a page written\
+  \ as the API writes it is seeded\n  (#1973; #2059), including one whose collection\
+  \ sits under a prefix written into each endpoint path\n  (#2084; #2085, SIP-0109\
+  \ §24be).\n\n**Cycles and the correction loop.**\n- One recorder for every gate\
+  \ decision, and a refinement approval promotes (#1986; #2030); its notes\n  are\
+  \ promoted when they are stored, and the CLI says who reads them (#2029; #2049).\n\
+  - The restart re-attach replays a proposal task and ends the flow runs a dead process\
+  \ left open\n  (#1934, #2007; #2033).\n- A rewind on a `model_limitation` with repair\
+  \ unspent is a patch, and every override is recorded\n  with the run (#1757; #2053).\n\
+  - A qa task evaluates the set it stores, and a re-take proves it (SIP-0107 §20;\
+  \ #1727, #1913;\n  #2061).\n- A failed check's own account of why is kept with its\
+  \ round and its failure record (#2028; #2056),\n  a failed `tests_pass` round's\
+  \ included: its failing cases and any runtime error (#2086; #2087). An\n  empty\
+  \ repair records whether it was offered the scoped edit form (#1911; #2055).\n-\
+  \ The last correction attempt is held for a required check (#414; #2067).\n- Reporting-only\
+  \ lint and complexity findings on the delivered app (ruff, and the pinned ESLint\
+  \ on a\n  TypeScript tree) are kept with each qa run and carried in the campaign\
+  \ package. They are evidence,\n  never a gate (#1937; #2088).\n- A run that fails\
+  \ before it starts ends failed, instead of staying queued (#2094; #2095, SIP-0064\n\
+  \  §15a).\n- The manifest author is taught each error code's conventional status,\
+  \ and an unwarranted departure\n  is reported (#1031; #2070).\n- The boot audit\
+  \ renders each declared route, by the increment evaluation's own render (#1796;\n\
+  \  #2060).\n- The flow executor's dependencies are required keywords, so a misspelling\
+  \ fails at boot (#1987;\n  #2051).\n\n**Processes and the sandbox.**\n- Every check,\
+  \ build, boot and browser the agents run ends with everything it started, and a\n\
+  \  timed-out test run ends its whole process group (#1983; #2043, #2046).\n- A sandbox\
+  \ run that outlives its limit is killed by name, and its docker client ended (#2045;\n\
+  \  #2057); a `secret://` service token is resolved by the provider the secrets section\
+  \ selects\n  (#1982; #2035).\n\n**Architecture.**\n- One map of every package, guarded\
+  \ both ways (#1989; #2021). The package roots import nothing, and the\n  packages'\
+  \ import direction is guarded (#1985; #2063).\n- Tooling targets Python 3.12, and\
+  \ mypy runs in CI as a ratchet against a recorded baseline (#1988;\n  #2020).\n\
+  - Four layers no composition root builds are deleted (#1984; #2031), and so are\
+  \ the four\n  stack-blueprint fields the second stack falsified (#1975; #2037).\n\
+  - Every environment read outside the config loader is inventoried and guarded both\
+  \ ways (#1991;\n  #2054); one helper each for the CLI client, text digests, string\
+  \ lists, the scaffold-integrity\n  emitter and an unreadable vault ref (#1990; #2066).\n\
+  - Cross-Cycle Memory's recall port, inert, and its call site (#1964; #2058).\n-\
+  \ The benchmark registry refuses a replayed cycle (SIP-0101 §4.1; #2036).\n\n**Security\
+  \ and dependencies.**\n- **Every credential is the deploy's own,** generated at\
+  \ bootstrap and rotatable in place: a\n  registry of the deploy's credentials, compose\
+  \ requiring each one, and a doctor check (#2006;\n  #2069).\n- **The token verifier\
+  \ moves to PyJWT** (#2073; #2075). python-jose had stopped releasing and\n  carried\
+  \ two advisories with no fix version (GHSA-3qf3-8w2g-rqmx, and PYSEC-2026-1325 against\n\
+  \  `ecdsa`), both unreachable and accepted with their reasons in the meantime (#2074).\
+  \ PyJWT refuses\n  three tokens python-jose accepted (no `aud`, no `kid`, an `iat`\
+  \ beyond the skew ahead), none of\n  which the deploy's clients issue.\n- multidict\
+  \ moves to 6.9.1 for GHSA-54p9-h82j-f925 (#2074).\n- **Every console call to the\
+  \ runtime API carries its caller's own token,** and the console's service\n  client\
+  \ is retired (#2068; #2081).\n- The copy of `.env` a credential rotation keeps beside\
+  \ it is ignored by git (#2099; #2100).\n- LangFuse listens on every interface, so\
+  \ its loopback health check passes. It had never passed since #581 (#2103;\n  #2104).\n\
+  \n**SIPs.**\n- `update_sip_status.py` can retire a proposal without accepting it\
+  \ (#1968; #2015), and the 13\n  proposals the portfolio ruled deprecated are retired\
+  \ (#2023).\n- The delivery ledgers and the portfolio are guarded (#1969; #2016);\
+  \ every SIP part's issue carries\n  `sip:NNNN`, matched to the ledgers both ways\
+  \ (#2022); new SIPs start from a template with an\n  intake check and a delivery\
+  \ ledger (#1981; #2018); the S5 admission gate reads an empty string as\n  unset\
+  \ (#1967; #2017).\n- The release cut's SIP sweep is read from the ledgers, and the\
+  \ release PR must name what it finds\n  (#1980; #2032).\n- **Cross-Cycle Memory\
+  \ is accepted as SIP-0110** (revisions 4 and 5), with the 2.2 plan (#2097, closing\
+  \ #1964's\n  re-read). Its Phase 1, the 2.2 headline, is the campaign's proposal\
+  \ gate, and is measured before 2.2.0's cut.\n\n**Release and verification tooling.**\n\
+  - A verification set records the tracked loaded checks, and refuses a deploy that\
+  \ answers with the\n  old code (#2064); each rebuild adds its rows (#2077, #2091).\n\
+  - The recovery diagnostics read #1934, #2007 and #2042 live (#2065), and hold the\
+  \ box past one lease\n  to read #1824's retry back (#2089).\n- The cut's shakeout\
+  \ campaign definition: two increments on 2.0's set policy (#2092).\n- Cut steps\
+  \ 4 and 8 are checked: the ROADMAP entry and a recorded housekeeping run (#1957;\
+  \ #2040).\n- The delivered-app capture photographs a reference-scenario cycle, whole\
+  \ (#2008; #2024); the\n  records scan names a secret the repository already carries\
+  \ (#2005).\n- Tests: the OTel adapter tests stop the exporter threads they start\
+  \ (#1930; #2034), and one helper\n  watches a test's process end (#2076)."
+pull_requests:
+- number: 2109
+  title: 'chore(release): 2.1.0 - hardening after Campaign: bump, markers, CHANGELOG,
+    ROADMAP entry, the SIP sweep'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-07'
+- number: 2097
+  title: 'docs(plans): the 2.2.0 plan, drafted, and Cross-Cycle Memory accepted as
+    SIP-0110 with revision 4 (the Phase-1 re-read moves Phase 1 to the proposal gate)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1964
+  merged_at: '2026-10-07'
+- number: 2108
+  title: 'docs(plans): the 2.1 cut set''s record - PASS, 4 of 4 accepted; and the
+    cut day''s record'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-07'
+- number: 2090
+  title: 'docs(plans): 2.1.0 pre-registration of the cut''s set (REGISTERED)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-06'
+- number: 2104
+  title: 'fix(deploy): LangFuse listens on every interface, so its loopback health
+    check can pass'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2103
+  merged_at: '2026-10-06'
+- number: 2102
+  title: 'fix(campaigns): a cycle refused by the box is retried before it is repaired,
+    whatever its verdict (SIP-0109 §24bh)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2101
+  merged_at: '2026-10-06'
+- number: 2100
+  title: 'fix(ops): the previous .env a credential rotation keeps is ignored by git'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2099
+  merged_at: '2026-10-06'
+- number: 2098
+  title: 'docs(changelog): the 2.1 section, the line''s last batch and the final deploy''s
+    fix'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-06'
+- number: 2095
+  title: 'fix(cycles): a run that fails before it starts ends failed, instead of staying
+    queued for ever'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2094
+  merged_at: '2026-10-06'
+- number: 2093
+  title: 'docs(plans): 2.1.0 plan - the second night''s record'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-06'
+- number: 2092
+  title: 'examples(campaigns): the 2.1 cut''s shakeout campaign definition, two increments
+    on 2.0''s set policy'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-06'
+- number: 2020
+  title: 'build: tooling targets Python 3.12, and mypy runs in CI as a ratchet'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1988
+  merged_at: '2026-10-06'
+- number: 2091
+  title: 'fix(release): the final deploy''s loaded checks for the line''s last batch'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-06'
+- number: 2088
+  title: 'feat(cycles): reporting-only lint and complexity findings on the delivered
+    app, kept with the run and carried in the campaign package'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1937
+  merged_at: '2026-10-06'
+- number: 2087
+  title: 'fix(cycles): a failed tests_pass round keeps why it failed: its failing
+    cases and any runtime error'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2086
+  merged_at: '2026-10-06'
+- number: 2080
+  title: 'fix(campaigns): a cycle that failed outside the work is retried: the retry
+    rows read the attribution, and the box''s and the queue''s refusals are declared'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1824
+  merged_at: '2026-10-06'
+- number: 2089
+  title: 'fix(campaigns): a recovery diagnostic holds the box past one lease and reads
+    #1824''s retry back live'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-06'
+- number: 2081
+  title: 'fix(console): every console call to the runtime API carries its caller''s
+    own token, and the console''s service client is retired'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2068
+  merged_at: '2026-10-06'
+- number: 2070
+  title: 'fix(framing): the manifest author is taught each error code''s conventional
+    status, and an unwarranted departure is reported'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1031
+  merged_at: '2026-10-06'
+- number: 2071
+  title: 'fix(campaigns): a recovery cycle is told what each correction round of the
+    failed cycle tried, and the digest measures what recurred'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1692
+  merged_at: '2026-10-06'
+- number: 2067
+  title: 'fix(cycles): the last correction attempt is held for a required check'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 414
+  merged_at: '2026-10-06'
+- number: 2063
+  title: 'refactor: the package roots import nothing, and the packages'' import direction
+    is guarded'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1985
+  merged_at: '2026-10-06'
+- number: 2085
+  title: 'fix(campaigns): a page''s collection is found under a prefix written into
+    each endpoint path, so a Next.js detail page is seeded'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2084
+  merged_at: '2026-10-06'
+- number: 2078
+  title: 'docs(changelog): the 2.1 line so far, in [Unreleased]'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-06'
+- number: 2077
+  title: 'fix(release): rebuild 2''s loaded checks and regression pair: a row for
+    each batch-2 change the running services execute'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-06'
+- number: 2076
+  title: 'fix(tests): one helper watches a test''s process end, catching the race
+    that failed main'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-06'
+- number: 2075
+  title: 'fix(auth): the token verifier moves to PyJWT, retiring python-jose and both
+    of its accepted advisories'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2073
+  merged_at: '2026-10-06'
+- number: 2072
+  title: 'docs(plans): 2.1.0 plan - the first day''s record'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-06'
+- number: 2074
+  title: 'fix(deps): the dependency audit is green again: python-jose''s advisory
+    is accepted with its reason, and multidict moves to 6.9.1'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-06'
+- number: 2069
+  title: 'fix(deploy): every credential is the deploy''s own, generated at bootstrap
+    and rotatable in place'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2006
+  merged_at: '2026-10-05'
+- number: 2066
+  title: 'fix(cycles): one helper each for the CLI client, text digests, string lists,
+    the scaffold-integrity emitter and an unreadable vault ref'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1990
+  merged_at: '2026-10-05'
+- number: 2061
+  title: 'fix(cycles): a qa task evaluates the set it stores, and a re-take proves
+    it (SIP-0107 §20)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1727
+  - 1913
+  merged_at: '2026-10-05'
+- number: 2060
+  title: 'fix(audit): the boot audit renders each declared route, by the increment
+    evaluation''s own render'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1796
+  merged_at: '2026-10-05'
+- number: 2059
+  title: 'fix(campaigns): a Next.js increment''s pages are read, and a page written
+    as the API writes it is seeded'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1973
+  merged_at: '2026-10-05'
+- number: 2056
+  title: 'fix(cycles): a failed check''s own account of why is kept with its round
+    and its failure record'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2028
+  merged_at: '2026-10-05'
+- number: 2055
+  title: 'fix(cycles): an empty repair records whether it was offered the scoped edit
+    form'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-05'
+- number: 2054
+  title: 'fix(config): every environment read outside the config loader is inventoried
+    and guarded both ways'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1991
+  merged_at: '2026-10-05'
+- number: 2053
+  title: 'fix(cycles): a rewind on a model_limitation with repair unspent is a patch,
+    and every override is recorded with the run'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1757
+  merged_at: '2026-10-05'
+- number: 2039
+  title: 'fix(campaigns): a campaign definition''s comment names no deploy or round
+    unless its bytes are pinned (#1958)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1958
+  merged_at: '2026-10-05'
+- number: 2040
+  title: 'fix(release): cut steps 4 and 8 are checked, the ROADMAP entry and a recorded
+    housekeeping run (#1957)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1957
+  merged_at: '2026-10-05'
+- number: 2032
+  title: 'fix(sips): the release cut''s SIP sweep is read from the ledgers, and the
+    release PR must name what it finds (#1980)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1980
+  merged_at: '2026-10-05'
+- number: 2065
+  title: 'fix(campaigns): the recovery diagnostics read #1934, #2007 and #2042 live,
+    for 2.1 rebuild 1'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-05'
+- number: 2064
+  title: 'fix(release): a verification set records the tracked loaded checks, and
+    refuses a deploy that answers with the old code'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-05'
+- number: 2027
+  title: 'fix(campaigns): the digest scores each increment, from the package alone'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1960
+  merged_at: '2026-10-05'
+- number: 2052
+  title: 'fix(campaigns): a launch the cycle-create path refuses escalates to the
+    owner, who retries it or aborts'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1971
+  merged_at: '2026-10-05'
+- number: 2057
+  title: 'fix(sandbox): a sandbox run that outlives its limit is killed by name, and
+    its docker client ended'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2045
+  merged_at: '2026-10-05'
+- number: 2050
+  title: 'fix(campaigns): a campaign''s creation row records the definition file that
+    made it'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1954
+  merged_at: '2026-10-05'
+- number: 2049
+  title: 'fix(cycles): a refinement approval''s notes are promoted when they are stored,
+    and the CLI says who reads them'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2029
+  merged_at: '2026-10-05'
+- number: 2048
+  title: 'fix(campaigns): a restart starts a successor run left queued, so the cycle
+    it belongs to moves'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2042
+  merged_at: '2026-10-05'
+- number: 2047
+  title: 'feat(campaigns): the supervisor creates and manages a campaign; escalations
+    and limit pauses stay the owner''s'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1940
+  merged_at: '2026-10-05'
+- number: 2037
+  title: 'fix(blueprint): delete the four stack-blueprint fields the second stack
+    falsified (#1975)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1975
+  merged_at: '2026-10-05'
+- number: 2058
+  title: 'feat(memory): Cross-Cycle Memory''s recall port, inert, and its call site
+    through plan_rejection_context'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-05'
+- number: 2036
+  title: 'fix(benchmark): the benchmark registry refuses a replayed cycle (SIP-0101
+    §4.1)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1974
+  merged_at: '2026-10-05'
+- number: 2051
+  title: 'fix(cycles): the flow executor''s dependencies are required keywords, so
+    a misspelling fails at boot'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1987
+  merged_at: '2026-10-05'
+- number: 2046
+  title: 'fix(capabilities): every check, build, boot and browser the agents run ends
+    with everything it started'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1983
+  merged_at: '2026-10-05'
+- number: 2034
+  title: 'fix(tests): the OTel adapter tests stop the exporter threads they start
+    (#1930)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1930
+  merged_at: '2026-10-05'
+- number: 2035
+  title: 'fix(sandbox): a secret:// service token is resolved by the configured secrets
+    provider (#1982)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1982
+  merged_at: '2026-10-05'
+- number: 2038
+  title: 'fix(campaigns): the sweep re-hears an ended cycle between restarts (SIP-0109
+    §24v)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1972
+  merged_at: '2026-10-05'
+- number: 2033
+  title: 'fix(cycles): the restart re-attach replays a proposal task and ends the
+    flow runs a dead process left open'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1934
+  - 2007
+  merged_at: '2026-10-05'
+- number: 2031
+  title: 'fix(architecture): delete four layers no composition root builds (#1984)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1984
+  merged_at: '2026-10-05'
+- number: 2044
+  title: 'docs(plans): 2.1.0 plan - the day''s rulings, the line''s findings placed,
+    and the night''s record'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-05'
+- number: 2043
+  title: 'fix(capabilities): a timed-out test run ends its whole process group, and
+    no group kill can reach every process (part 1)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1983
+  merged_at: '2026-10-05'
+- number: 2030
+  title: 'fix(cycles): one recorder for every gate decision, and a refinement approval
+    promotes (#1986)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1986
+  merged_at: '2026-10-05'
+- number: 2026
+  title: 'fix(campaigns): any campaign increment can be replayed outside its campaign,
+    on the current deploy'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1959
+  merged_at: '2026-10-05'
+- number: 2025
+  title: 'fix(campaigns): the supervisor''s instruments are tracked, each verdict
+    a tested function'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1956
+  merged_at: '2026-10-05'
+- number: 2024
+  title: 'fix(release): the delivered-app capture photographs a reference-scenario
+    cycle, whole'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2008
+  merged_at: '2026-10-05'
+- number: 2023
+  title: 'chore(sips): the 13 proposals the portfolio ruled deprecated are retired
+    (Q14)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-05'
+- number: 2022
+  title: 'fix(sips): every SIP part''s issue carries sip:NNNN, matched to the ledgers
+    both ways'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1979
+  merged_at: '2026-10-05'
+- number: 2021
+  title: 'docs(architecture): one map of every package, guarded both ways'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1989
+  merged_at: '2026-10-05'
+- number: 2017
+  title: 'fix(sips): the S5 admission gate reads an empty string as unset'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1967
+  merged_at: '2026-10-05'
+- number: 2018
+  title: 'fix(sips): new SIPs start from a template with an intake check and a delivery
+    ledger'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1981
+  merged_at: '2026-10-05'
+- number: 2019
+  title: 'fix(campaigns): behaviour a qa author would test but nothing accepted requires
+    is returned as a proposal (#1884, part 2)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1884
+  merged_at: '2026-10-05'
+- number: 2016
+  title: 'fix(sips): the delivery ledgers and the portfolio are guarded'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1969
+  merged_at: '2026-10-05'
+- number: 2012
+  title: 'fix(campaigns): every author of an increment''s tests is held to the owner''s
+    rule (#1884, part 1)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-05'
+- number: 2015
+  title: 'fix(sips): update_sip_status.py can retire a proposal without accepting
+    it'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1968
+  merged_at: '2026-10-05'
+- number: 2014
+  title: 'fix(campaigns): the proposer is told a PRD delta states only what the request
+    delivers'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1995
+  merged_at: '2026-10-05'
+- number: 2013
+  title: 'fix(campaigns): the proposer is told every convention its stack''s frozen
+    code decides'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1950
+  - 1962
+  merged_at: '2026-10-05'
+- number: 2011
+  title: 'fix(campaigns): the rails refuse a behaviour change with nothing to build'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1961
+  merged_at: '2026-10-05'
+- number: 2010
+  title: 'docs(plans): 2.1.0 plan - the line starts: the owner''s grant and stop list,
+    #1884''s direction, #1965 listed'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-05'
+- number: 2009
+  title: 'docs(plans): 2.1.0 plan - the 2.0 cut''s three findings placed'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-05'
+- number: 2005
+  title: 'fix(release): the records scan names a secret the repository already carries;
+    the v2.0.0 records attached; the v2.0.1 package'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-05'
+sip_moves:
+- sip: IDEA-QA-First-Test-Strategy-1h-Cycles-group_run
+  from: proposed
+  to: deprecated
+- sip: SIP-0012-Pattern-First-Development-Escalation-Protocol
+  from: proposed
+  to: deprecated
+- sip: SIP-0013-Extensibility-Customization-Protocol
+  from: proposed
+  to: deprecated
+- sip: SIP-0016-HumanAgent-Hybrid-Squad-Operations
+  from: proposed
+  to: deprecated
+- sip: SIP-0018-Enterprise-Process-CoE-Enablement
+  from: proposed
+  to: deprecated
+- sip: SIP-0018-v2-Squad-Context-Protocol
+  from: proposed
+  to: deprecated
+- sip: SIP-0023-Domain-Expert-Architecture-for-Product-Strategy
+  from: proposed
+  to: deprecated
+- sip: SIP-0028-Hybrid-Deployment-Model-Industry-Aligned-Architecture-for-Multi-Environment-Depl
+  from: proposed
+  to: deprecated
+- sip: SIP-0110-Cross-Cycle-Memory
+  from: proposed
+  to: accepted
+- sip: SIP-API-Contract-Hardening
+  from: proposed
+  to: deprecated
+- sip: SIP-Experiment-Queue-and-Cycle-Assessment
+  from: proposed
+  to: deprecated
+- sip: SIP-Skill-Layer-For-Capabilities
+  from: proposed
+  to: deprecated
+- sip: SIP-Version-Bump-Hardening
+  from: proposed
+  to: deprecated
+- sip: SIP-intelligent-delegation-protocols
+  from: proposed
+  to: deprecated
+sip_amendments:
+- sip: SIP-0026-Testing-Framework-and-Philosophy
+  status: implemented
+- sip: SIP-0064-Project-Cycle-Request-API
+  status: implemented
+- sip: SIP-0086-Build-Convergence-Loop-Dynamic
+  status: implemented
+- sip: SIP-0088-Agent-Runtime-Modes
+  status: accepted
+- sip: SIP-0090-Agent-Embodiment-Substrate
+  status: accepted
+- sip: SIP-0091-Duty-Durability-via-Temporal
+  status: accepted
+- sip: SIP-0092-Implementation-Plan-Improvement
+  status: accepted
+- sip: SIP-0093-Multi-Role-Plan-Authoring
+  status: accepted
+- sip: SIP-0101-Cycle-Replay-Harness
+  status: accepted
+- sip: SIP-0102-Ephemeral-Application-Sandbox
+  status: accepted
+- sip: SIP-0105-Stack-Blueprint-Contract
+  status: accepted
+- sip: SIP-0107-Scoped-Code-Revision
+  status: implemented
+- sip: SIP-0108-Cycle-Evaluation-Scorecard
+  status: implemented
+- sip: SIP-0109-Campaign-Orchestration
+  status: accepted
+- sip: SIP-Agent-Comms-Delivery-Guarantees
+  status: proposed
+- sip: SIP-Agent-Embodiment-Runtime
+  status: proposed
+- sip: SIP-Capability-Backed-Agents
+  status: proposed
+- sip: SIP-Continuum-Runtime-Console
+  status: proposed
+- sip: SIP-Cycle-Request-Profile-Naming-Taxonomy
+  status: proposed
+- sip: SIP-Design-Decision-Register
+  status: proposed
+- sip: SIP-Duty-Continuity-and-Handoff-Ledger
+  status: proposed
+- sip: SIP-Fine-Grained-Issue-Enumeration
+  status: proposed
+- sip: SIP-Outcome-Evaluation
+  status: proposed
+- sip: SIP-Verification-Yield
+  status: proposed
+cycles:
+- cycle_id: cyc_06d828da487c
+  role: counted
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_09d5dc572482
+  role: counted
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:frontend_compiles
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_5a5805c5ea70
+  role: counted
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_b6984d77fcf8
+  role: counted
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:frontend_compiles
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_862df227bc0a
+  role: shakeout
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_f32f3eaf007e
+  role: shakeout
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 3
+- cycle_id: cyc_52603f6fa9f7
+  role: shakeout
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:assertion_kinds_match
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:count_at_least
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 3
+- cycle_id: cyc_168a3703f000
+  role: diagnostic
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_059fc8462fb3
+  role: diagnostic
+  captured: true
+  status: failed
+  verdict: blocked_unverified
+  verified: []
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_9d7b483bb93f
+  role: diagnostic
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_1162b306f643
+  role: diagnostic
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-participants
+  - vc-probe-runs-participants-duplicate
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_2c188880c5c0
+  role: diagnostic
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-participants
+  - vc-probe-runs-participants-duplicate
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 3
+screenshots:
+- counted-roll-1-a-run-s-detail-with-its-participants.png
+- counted-roll-1-the-create-run-form.png
+- counted-roll-1-the-run-list-with-its-seeded-runs.png
+- prefect-flow-run-counted-roll-1-a-qa-round-failed-then-repaired-and-re-taken.png
+showcase:
+  cycle_id: cyc_06d828da487c
+  reason: 'the counted set''s one correction round: the Prefect run shows the failed
+    qa round, its repair and the re-take, and the app is the React stack''s as delivered'
+  role: counted
+records:
+  asset: squadops-2.1.0-records.tar.gz
+  sha256: 00f456d6e175b4c7bd0d5656181e138486023095cb20e778a5609d6058056e0b
+  files: 82
+  campaigns:
+  - cmp_247adc7789c2
+  - cmp_458a02ecc622
+  - cmp_9a26855746a9
+  - cmp_a17471e90130
+  - cmp_ea4159dbc00d
+  - cmp_fb99bbe417ad
+  bytes: 178631
+  attached_at: '2026-10-07T12:34:38Z'
+  scanned:
+    secret_values: 55
+    patterns:
+    - langfuse key
+    - api key (sk-)
+    - jwt
+    - private key

@@ -7,6 +7,8 @@ campaigns:
   outcome: aborted
   create_reason: 'first live campaign shakeout on dep_d69ebe14d46b (2d477a1c): #1705 a-d, c2, plan-gate
     fix; uncounted (2.0 charter)'
+  recorded_definition: null
+  recorded_reconciles: null
   definitions:
   - path: examples/03_group_run/campaigns/shakeout-1.yaml
     sha256: 7471d261aa7a2aa66d5c1b693cfa844ea6e889cd188e76381edfb8e2b5d77c68
@@ -20,6 +22,8 @@ campaigns:
   outcome: exhausted
   create_reason: 'Shakeout 2 (uncounted, 2.0 charter) on dep_f32dfd1f3a21 (2a3d1e2f): validates the completion
     hook fix (#1857), the startup re-entry, step e, retry/repair and the prior-cycle brief live'
+  recorded_definition: null
+  recorded_reconciles: null
   definitions:
   - path: examples/03_group_run/campaigns/shakeout-1.yaml
     sha256: 7471d261aa7a2aa66d5c1b693cfa844ea6e889cd188e76381edfb8e2b5d77c68
@@ -33,6 +37,8 @@ campaigns:
   outcome: aborted
   create_reason: "Shakeout 3 (uncounted, 2.0 charter) on dep_84ec5743b14c (8d33fe09): a two-increment\
     \ campaign (\xA719 item 15), after the reference increment was accepted end to end"
+  recorded_definition: null
+  recorded_reconciles: null
   definitions:
   - path: examples/03_group_run/campaigns/shakeout-3.yaml
     sha256: 655475d66dd8b25de83db50d2c2ee2df89db71271bbd9577e2d9f6882c9a8806
@@ -46,6 +52,8 @@ campaigns:
   outcome: exhausted
   create_reason: "Shakeout 4 (uncounted, 2.0 charter) on dep_fd4de43a1f39 (3299ff78): two accepted increments\
     \ (\xA719 item 15), after #1887"
+  recorded_definition: null
+  recorded_reconciles: null
   definitions:
   - path: examples/03_group_run/campaigns/shakeout-3.yaml
     sha256: 655475d66dd8b25de83db50d2c2ee2df89db71271bbd9577e2d9f6882c9a8806
@@ -60,6 +68,8 @@ campaigns:
   create_reason: 'Shakeout 5 (uncounted, 2.0 charter): the shakeout loop on rebuild 14 (dep_634898532d01,
     afb15389), carrying shakeout 4''s fixes #1897 #1898 #1902 #1905 and row 3''s reader (#1907). Exit
     rule: no new seam finding.'
+  recorded_definition: null
+  recorded_reconciles: null
   definitions:
   - path: examples/03_group_run/campaigns/shakeout-5.yaml
     sha256: 618859e732adbfbc357e64b26274110b3394fabeba422026ad23d37dfed3c5af
@@ -71,6 +81,8 @@ campaigns:
   outcome: aborted
   create_reason: '#1802 deployed proof, the quiet-box half (precondition 4 of the 2.0 pre-registration
     draft)'
+  recorded_definition: null
+  recorded_reconciles: null
   definitions:
   - path: examples/03_group_run/campaigns/proof-1802.yaml
     sha256: 3dcfce9bf7832ed3fda981f8a396d72effc05d2bd26129d2aea4fd25edc2374e
@@ -82,6 +94,8 @@ campaigns:
   outcome: aborted
   create_reason: "#1803 recovery diagnostics, the blocked legs: restarts while launch_blocked, escalated\
     \ and calibrating, then an abort (validation plan \xA73) on rebuild 17 (5aae934c)"
+  recorded_definition: null
+  recorded_reconciles: null
   definitions:
   - path: examples/03_group_run/campaigns/diag-1803-blocked.yaml
     sha256: 628c668a1fdb5af4b8840130a09f84d567f6e05e3b46a79bf0fba741aabf2f68
@@ -94,6 +108,8 @@ campaigns:
   create_reason: "#1803 recovery diagnostics, the increment legs: restarts at at_proposal, awaiting_ruling,\
     \ paused and building; the repeated ruling; the kill before promotion; a duplicate completion; an\
     \ abort (validation plan \xA73) on rebuild 17 (5aae934c)"
+  recorded_definition: null
+  recorded_reconciles: null
   definitions:
   - path: examples/03_group_run/campaigns/diag-1803-increment.yaml
     sha256: 8eee81111126c31008d7d96ba1c9e434d89f198d860c8777bbcc5a76619e5e15
@@ -105,6 +121,8 @@ campaigns:
   outcome: aborted
   create_reason: '#1803 recovery diagnostics on rebuild 18 (5f46d946, the deploy the set registers), the
     blocked legs: restarts while launch_blocked, escalated and calibrating, then an abort'
+  recorded_definition: null
+  recorded_reconciles: null
   definitions:
   - path: examples/03_group_run/campaigns/diag-1803-blocked.yaml
     sha256: 628c668a1fdb5af4b8840130a09f84d567f6e05e3b46a79bf0fba741aabf2f68
@@ -117,6 +135,8 @@ campaigns:
   create_reason: '#1803 recovery diagnostics on rebuild 18 (5f46d946, the deploy the set registers), the
     increment legs: restarts at at_proposal, awaiting_ruling, paused and building; the repeated ruling;
     the kill before promotion; a duplicate completion; an abort'
+  recorded_definition: null
+  recorded_reconciles: null
   definitions:
   - path: examples/03_group_run/campaigns/diag-1803-increment.yaml
     sha256: 8eee81111126c31008d7d96ba1c9e434d89f198d860c8777bbcc5a76619e5e15
@@ -128,6 +148,8 @@ campaigns:
   outcome: success
   create_reason: "shakeout 6: the exit-rule run on rebuild 18 (5f46d946: #1909, #1912, #1802, #1708, #1710,\
     \ \xA724al, #1922, #1928, #1929), supervised by #1908 \xA73a"
+  recorded_definition: null
+  recorded_reconciles: null
   definitions:
   - path: examples/03_group_run/campaigns/2-0-0-set-1.yaml
     sha256: 74cb2f031c055fc250937c8282be66c0cb25a3d0fef6752762fdf91d129d27fe
@@ -151,6 +173,8 @@ campaigns:
   outcome: success
   create_reason: "shakeout 7: the exit-rule run on rebuild 19 (b0c25360 = rebuild 18 + #1938), supervised\
     \ by #1908 \xA73a; precondition 4's live-lease proof repeated at its first gate"
+  recorded_definition: null
+  recorded_reconciles: null
   definitions:
   - path: examples/03_group_run/campaigns/2-0-0-set-1.yaml
     sha256: 74cb2f031c055fc250937c8282be66c0cb25a3d0fef6752762fdf91d129d27fe
@@ -175,6 +199,8 @@ campaigns:
   create_reason: '#1803 recovery diagnostics on rebuild 20 (75a4b7b8, the deploy the set registers), the
     increment legs: all eight, since #1938/#1943 touch the proposal context and the promotion window (#1908
     precondition 5)'
+  recorded_definition: null
+  recorded_reconciles: null
   definitions:
   - path: examples/03_group_run/campaigns/diag-1803-increment.yaml
     sha256: 8eee81111126c31008d7d96ba1c9e434d89f198d860c8777bbcc5a76619e5e15
@@ -186,6 +212,8 @@ campaigns:
   outcome: aborted
   create_reason: "shakeout 8: the exit-rule run on rebuild 20 (75a4b7b8 = rebuild 19 + #1943), supervised\
     \ by #1908 \xA73a; precondition 4's live-lease proof repeated at its first gate"
+  recorded_definition: null
+  recorded_reconciles: null
   definitions:
   - path: examples/03_group_run/campaigns/2-0-0-set-1.yaml
     sha256: 74cb2f031c055fc250937c8282be66c0cb25a3d0fef6752762fdf91d129d27fe
@@ -209,6 +237,8 @@ campaigns:
   outcome: aborted
   create_reason: '#1803 recovery diagnostic on rebuild 21 (3f6551d8, the deploy the set registers): restart-at:at_proposal,
     the one leg #1946''s prompt change overlaps (#1908 precondition 5), then an abort'
+  recorded_definition: null
+  recorded_reconciles: null
   definitions:
   - path: examples/03_group_run/campaigns/diag-1803-increment.yaml
     sha256: 8eee81111126c31008d7d96ba1c9e434d89f198d860c8777bbcc5a76619e5e15
@@ -220,6 +250,8 @@ campaigns:
   outcome: aborted
   create_reason: "shakeout 9: the exit-rule run on rebuild 21 (3f6551d8 = rebuild 20 + #1946), supervised\
     \ by #1908 \xA73a; precondition 4's live-lease proof repeated at its first gate"
+  recorded_definition: null
+  recorded_reconciles: null
   definitions:
   - path: examples/03_group_run/campaigns/2-0-0-set-1.yaml
     sha256: 74cb2f031c055fc250937c8282be66c0cb25a3d0fef6752762fdf91d129d27fe
@@ -243,6 +275,8 @@ campaigns:
   outcome: success
   create_reason: "Shakeout 10: the exit-rule run on rebuild 22 (b09883c9, the deploy the set registers;\
     \ rebuild 21 + #1948). Objective and policy exactly shakeout 7's. Supervised by #1908 \xA73a."
+  recorded_definition: null
+  recorded_reconciles: null
   definitions:
   - path: examples/03_group_run/campaigns/2-0-0-set-1.yaml
     sha256: 74cb2f031c055fc250937c8282be66c0cb25a3d0fef6752762fdf91d129d27fe
@@ -266,6 +300,8 @@ campaigns:
   outcome: aborted
   create_reason: '#1803 recovery diagnostics on rebuild 22 (b09883c9, the deploy the set registers): restart-at:at_proposal
     and abort-in-flight, the legs #1948''s proposal-prompt change overlaps (#1908 precondition 5)'
+  recorded_definition: null
+  recorded_reconciles: null
   definitions:
   - path: examples/03_group_run/campaigns/diag-1803-increment.yaml
     sha256: 8eee81111126c31008d7d96ba1c9e434d89f198d860c8777bbcc5a76619e5e15
@@ -278,6 +314,8 @@ campaigns:
   create_reason: "2.0 counted set, campaign 1 of 2 (#1908, registered at 1b14d592 on rebuild 22, b09883c9\
     \ / dep_bb1eadeac4e7). Policy file 2-0-0-set-1.yaml sha256 74cb2f03..., at 34b242a7. Supervised by\
     \ #1908 \xA73a; the supervisor is the owner's delegate."
+  recorded_definition: null
+  recorded_reconciles: null
   definitions:
   - path: examples/03_group_run/campaigns/2-0-0-set-1.yaml
     sha256: 74cb2f031c055fc250937c8282be66c0cb25a3d0fef6752762fdf91d129d27fe
@@ -301,6 +339,8 @@ campaigns:
   outcome: success
   create_reason: 2.0 counted set, campaign 2 of 2 (#1908, registered 1b14d592 on rebuild 22); definition
     sha256 c43dbb4fe216f0fca8ae2291b5527a9256282a8e8bd361f0f7da09ede2cf48dc
+  recorded_definition: null
+  recorded_reconciles: null
   definitions:
   - path: examples/03_group_run/campaigns/2-0-0-set-1.yaml
     sha256: 74cb2f031c055fc250937c8282be66c0cb25a3d0fef6752762fdf91d129d27fe
@@ -318,4 +358,89 @@ campaigns:
     sha256: 5d99384bd446c1072ddcdf175734b8c8919ab2c30f6ee7ba9f8e84a426b19462
   package_identity: e3c112c45038e8428ac73a5319c5f7cef26224e9e83d7d28a000e6b6232644ea
   package_artifact: art_032ca67041af
+- campaign_id: cmp_fb99bbe417ad
+  created: '2026-10-05T20:16:38.536545+00:00'
+  state: completed
+  outcome: success
+  create_reason: '2.1 rebuild 1 recovery diagnostics (#1934, #2007, #2042)'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-1-0-rebuild1-diag.yaml
+    sha256: 0bb7517caec5eeaf4bcd61e0847bbb28c37606687acc509cfb31c1cae4c3dccc
+  recorded_reconciles: false
+  definitions:
+  - path: examples/03_group_run/campaigns/2-1-0-rebuild1-diag.yaml
+    sha256: dc72a067e977eaa0a1c91d40f0791a1954e175cc9421bdb96d1848924ee9c5a3
+  package_identity: ad2078886460c79fac2881cd7d9e961be10fc8d30407bfdf95081384bd443541
+  package_artifact: art_727143f836d1
+- campaign_id: cmp_458a02ecc622
+  created: '2026-10-06T08:35:32.61969+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: '2.1 final deploy: #1824 infrastructure retry diagnostic'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-1-0-infra-retry-diag.yaml
+    sha256: 733602c1942b70171110402aefd834549f1ad61d9a33e80517c9f8cbe1b8012d
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-1-0-infra-retry-diag.yaml
+    sha256: 733602c1942b70171110402aefd834549f1ad61d9a33e80517c9f8cbe1b8012d
+  package_identity: 8efc73b972df6cc96adf18150d10a368518e3353ea55903d7ecff941c4ba0b9a
+  package_artifact: art_d1b434e1eed2
+- campaign_id: cmp_a17471e90130
+  created: '2026-10-06T12:09:35.284775+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: '2.1 final deploy: #1824 infrastructure retry diagnostic'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-1-0-infra-retry-diag.yaml
+    sha256: 733602c1942b70171110402aefd834549f1ad61d9a33e80517c9f8cbe1b8012d
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-1-0-infra-retry-diag.yaml
+    sha256: 733602c1942b70171110402aefd834549f1ad61d9a33e80517c9f8cbe1b8012d
+  package_identity: db20731abc6f748971e96e142c1479c558afd14a5b4269f24a0d91a2b984563b
+  package_artifact: art_04f53a24bf84
+- campaign_id: cmp_9a26855746a9
+  created: '2026-10-06T14:33:30.918856+00:00'
+  state: completed
+  outcome: success
+  create_reason: '2.1 final deploy: #1824 infrastructure retry diagnostic'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-1-0-infra-retry-diag.yaml
+    sha256: 733602c1942b70171110402aefd834549f1ad61d9a33e80517c9f8cbe1b8012d
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-1-0-infra-retry-diag.yaml
+    sha256: 733602c1942b70171110402aefd834549f1ad61d9a33e80517c9f8cbe1b8012d
+  package_identity: null
+  package_artifact: null
+- campaign_id: cmp_ea4159dbc00d
+  created: '2026-10-06T16:30:41.447713+00:00'
+  state: completed
+  outcome: success
+  create_reason: '2.1 final deploy: the restart diagnostics (#1934, #2007, #2042)'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-1-0-rebuild1-diag.yaml
+    sha256: dc72a067e977eaa0a1c91d40f0791a1954e175cc9421bdb96d1848924ee9c5a3
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-1-0-rebuild1-diag.yaml
+    sha256: dc72a067e977eaa0a1c91d40f0791a1954e175cc9421bdb96d1848924ee9c5a3
+  package_identity: 74371a157b05c8b2d73844abe38913e1e5b53a100fed2696396e3d279fdb59db
+  package_artifact: art_f9e61e595790
+- campaign_id: cmp_247adc7789c2
+  created: '2026-10-06T18:17:39.722401+00:00'
+  state: completed
+  outcome: success
+  create_reason: "2.1 cut shakeout (2-1-0-preregistration.md \xA72, \xA73): uncounted, on the final deploy\
+    \ (fcc7ce04, dep_5e77a9060e68), supervised by the owner's delegate under 2.0's \xA73a policy"
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-1-0-cut-shakeout.yaml
+    sha256: a134af0e54241922803ed6260de05d07c59cfd09968b1752229a17fe238e7162
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-1-0-cut-shakeout.yaml
+    sha256: a134af0e54241922803ed6260de05d07c59cfd09968b1752229a17fe238e7162
+  package_identity: 0b812410c5208366b08b080a4ea917fe932762b66bfa9abfca55ea5685b8f5f1
+  package_artifact: art_f6428ebb7426
 examples_only: []
