@@ -1,24 +1,31 @@
-# 2.2.0 plan — Cross-Cycle Memory Phase 1: reviewed lessons from earlier campaigns, measured before the cut
+# 2.2.0 plan — Cross-Cycle Memory Phase 1: reviewed lessons from earlier cycles, measured before the cut
 
-**Status: DRAFT (2026-10-06), revised the same day, for the owner's review in the same PR as SIP-0110's
-acceptance.**
+**Status: DRAFT (2026-10-06), revised 2026-10-06 and 2026-10-07, for the owner's review.**
 
 **The first draft** was written while the 2.1 cut was being prepared: the final deploy built, its
 diagnostics running, its set waiting for registration (#2090).
 
-**The revision adopts two things:**
+**The 2026-10-06 revision adopts two things:**
 - **An external design review** of SIP-0110 revision 4 and of the first draft. It is now SIP-0110 revision 5:
   §0 is the normative Phase-1 contract, and §5c records the change.
 - **The owner's choice of release shape B** ("go with B"): 2.2.0's cut waits for the bounded measurement
   window's finding (§3).
 
-**The 2.1 cut's two open sections are now read (2026-10-07):**
+**The 2.1 cut's two open sections were read on 2026-10-07:**
 - **the cut's findings** (§2.4) were all fixed within 2.1, and none is placed here;
-- **#1964's cut readings** are in SIP-0110 §5b and do not change the re-read's finding. The whole 2.1 line returned no
-  proposal, so the corpus is built by 2.2's own campaigns.
+- **#1964's cut readings** are in SIP-0110 §5b. The whole 2.1 line returned no proposal.
 
-**This PR changes prose only.** It merges before the 2.1 set registers or after the 2.1 cut, and never while
-the set is open (#2090 §7).
+**The 2026-10-07 revision re-scopes the plan for SIP-0110 revision 6** (the owner: "this is cross cycle memory; not
+cross campaign memory"). Revision 5 had narrowed Phase 1 to campaigns. Revision 6 restores the cycle as its unit:
+- every eligible cycle is observed, inside a campaign or not;
+- memory is supplied at plan writing, repair and proposal writing;
+- the snapshot is pinned per standalone cycle or per campaign;
+- counted regression rolls declare memory disabled.
+
+The proposal behavior stays the first measured target. Re-scoped: §2.1's slices, §2.2's interaction with the auto tier,
+§2.5, §3's steps, the cut's criteria, and §4's D1, D7 and D8. New: §4's D11 and D12.
+
+**This revision changes prose only.**
 
 **What 2.2 is.** An even minor, a feature release (CLAUDE.md, #281), led by one headline: **SIP-0110 Phase 1**,
 the line's one change to what the squad generates (`sips/PORTFOLIO.md` Q2).
@@ -29,42 +36,48 @@ held outside the measurement window (D3). Hardening rides along.
 
 **The question it answers:**
 
-> **When the proposer is supplied reviewed lessons from earlier campaigns' proposal returns, does a named
-> defect recur less in later proposals, measured by replay against today's prompt, without degrading the
-> proposals? And can plan reviews be decided under a declared policy while the owner is away, escalating
+> **When an authoring step is supplied reviewed lessons from earlier cycles, does a named defect recur less in later
+> authoring, measured by replay against today's prompt, without degrading the output? The first measured target is a
+> proposal behavior. And can plan reviews be decided under a declared policy while the owner is away, escalating
 > everything the policy does not cover?**
 
 **What Phase 1 is, precisely** (SIP-0110 §0.1):
-- **cross-campaign learning, with lessons written by people;**
-- observations are recorded while a campaign runs, but new guidance never activates within it;
-- the owner approves a lesson, and it reaches campaigns admitted afterwards;
-- correction within a proposal stays SIP-0109 §9.2's revision note.
+- **cross-cycle learning, with lessons written by people;**
+- observations are recorded from every eligible cycle, whether it stands alone or runs inside a campaign;
+- new guidance never activates within the unit that is running: a standalone cycle, or a campaign with its cycles;
+- the owner approves a lesson, and it reaches cycles and campaigns admitted afterwards;
+- a campaign is provenance and one consumer, not memory's scope;
+- correcting the same output stays with the rungs that already exist: a re-roll's rejection context (#669), a
+  repair's failure evidence, and a proposal revision's note (SIP-0109 §9.2).
 
-**Why the headline is shaped this way.** The memory SIP was written for the plan gate. 2.1's re-read (SIP-0110 §5b)
-found that gate dormant: no framing re-rolls in 36 framings, and every plan review approved. The recurrence that is
-live is at the campaign's proposal gate:
-- **6 of 22 increment rulings were returned.**
+**Why the first measured target is a proposal behavior.** The memory SIP was written for the plan gate. 2.1's re-read
+(SIP-0110 §5b) found that gate dormant: no framing re-rolls in 36 framings, and every plan review approved. The correction
+rounds failed, but each for a different reason. The only seam that showed a recurring mistake was the campaign's proposal
+gate:
+- **6 of 22 increment rulings were returned,** all on the 2.0 set's deploys.
 - **One behavior recurred in three campaigns:** a new criterion already satisfied by the accepted application.
 - **It recurred after a prompt rule (#1947),** and again after the proposer was shown the return.
 
-So the headline is a measurement, not an expected win.
+**That is where Phase 1 is measured first, not what Phase 1 is** (SIP-0110 §5d). Every eligible cycle is observed, and
+the plan-writing and repair seams are wired inert. A recurring target there can then be supplied and measured once its
+template is written and approved. The headline is a measurement, not an expected win.
 
-**The corpus is small.** The target behavior has about three independent historical cases, none captured before
-authoring. The test corpus is built by the 2.2 line's own campaigns, and **"inconclusive" is a likely and legitimate
-finding** (SIP-0110 §0.13).
+**The corpus is small.** The proposal behavior has about three independent historical cases, none captured before
+authoring, and the 2.1 line added none. The test corpus is built by the 2.2 line's own cycles and campaigns, and
+**"inconclusive" is a likely and legitimate finding** (SIP-0110 §0.13).
 
 ---
 
 ## 1. The open issues, every one placed
 
-26 issues are open on 2026-10-07, counting the four Phase-1 slices (#2096, #2105–#2107). #1964 closes with this PR.
+25 issues are open on 2026-10-07, counting the four Phase-1 slices (#2096, #2105–#2107). #1964 closed with #2097.
 
 | where | count | issues |
 |---|---|---|
 | **2.2: the headline** | 4 | #2105 (slice 1: capture and the source-case inspection), #2106 (slice 2: the replay), #2096 (slice 3: the mechanism), #2107 (slice 4: the template and the measurement window) |
 | **2.2: beside it** | 1 | #1708's remainder: the auto tier and the escalation queue (placed 2026-10-03, 2.0 plan rev 9 §5a.5; kept 2026-10-04, Q2) |
 | **2.2: hardening, placed by the owner during the 2.1 line** | 3 | #2079 (the realm's admin password), #2082 (two console test files depend on their order), #2083 (the realm sync never applies a service account's roles) |
-| **2.1's, read at its cut** | 3 | #1964 (closed by this PR: the cut's readings are SIP-0110 §5b's last part). #1911 and #1469 carry, each waiting on its evidence: #1911 on its replay of #1788's bundles, and #1469 on a failing build of a second module shape (the cut window had none) |
+| **2.1's, read at its cut** | 2 | #1964 closed with #2097 (the cut's readings are SIP-0110 §5b's last part). #1911 and #1469 carry, each waiting on its evidence: #1911 on its replay of #1788's bundles, and #1469 on a failing build of a second module shape (the cut window had none) |
 | **2.3** | 6 | #316 (the owner, 2026-10-06: "2.3 is fine just let's not forget about it"), #1976, #1977, #1992, #1993, #1994 |
 | **2.3, recommended here** (§4, D6) | 1 | #2062 (hoisting #1985's deferred imports: 606 import sites, a structural change for the stabilization line, next to #1992's move) |
 | **2.4 or later** | 4 | #1966, #557, #949, #950 (they follow Outcome Evaluation, Q2) |
@@ -78,24 +91,38 @@ finding** (SIP-0110 §0.13).
 
 ### 2.1 The headline: SIP-0110 Phase 1, in four slices
 
-**Built to SIP-0110 §0.** Every part ships inert until the owner approves a pattern. Only an approved revision in
-a campaign's pinned snapshot is supplied (§0.6–§0.7), so building the parts does not move the regression baseline.
+**Built to SIP-0110 §0, revision 6.** Every part ships inert until the owner approves a pattern. Only an approved
+revision in the running unit's pinned snapshot is supplied (§0.6–§0.7), and counted regression rolls declare memory
+disabled. So building the parts does not move the regression baseline.
 
 | slice | what | the seam that owns it | size | deploy |
 |---|---|---|---|---|
-| 1, #2105 | the source-case inspection, then a `ProposalReplayEnvelope` captured immediately before `strategy.propose_increment`, complete beyond #1756's 10,000-character cut (§0.11) | the proposal handler's input assembly (`capabilities/handlers/planning/proposal.py`); the vault for storage | M | yes |
-| 2, #2106 | the proposal replay: three arms over captured inputs, temporal validity, isolation from production memory, one fixed rubric (§0.11–§0.12) | `scripts/dev/`, beside the increment replay (#1959) | M | no |
-| 3, #2096 | the mechanism (§0.2–§0.10). Its parts are listed below | see the parts | L | yes |
-| 4, #2107 | the template for the one target behavior, written on development cases; the pre-registration; the window; the finding (§0.4, §0.12–§0.13) | `src/squadops/prompts/fragments/` for the template; `docs/plans/` for the pre-registration | M, plus the window's box time | yes |
+| 1, #2105 | the source-case inspection, then an `AuthoringReplayEnvelope` captured immediately before each consuming seam's authoring, complete beyond #1756's 10,000-character cut (§0.11): proposal writing first, then plan writing and repair | the proposal handler's input assembly (`capabilities/handlers/planning/proposal.py`); the plan-authoring and repair inputs' assembly (`cycles/task_plan.py`); the vault for storage | **L** (M in revision 5: one seam, now three) | yes |
+| 2, #2106 | the authoring replay: three arms over captured envelopes at any seam, validated first on proposals; temporal validity, isolation from production memory, one fixed rubric per target (§0.11–§0.12) | `scripts/dev/`, beside the increment replay (#1959) | M | no |
+| 3, #2096 | the mechanism (§0.2–§0.10), observing every eligible cycle and supplying three seams. Its parts are listed below | see the parts | L, larger than revision 5's | yes |
+| 4, #2107 | the template for the one supported target behavior, written on development cases; the pre-registration, which fixes the primary target; the window; the finding (§0.4, §0.12–§0.13) | `src/squadops/prompts/fragments/` for the template; `docs/plans/` for the pre-registration | M, plus the window's box time | yes |
 
 **Slice 3's parts, each with the seam that owns it:**
 - observations, pattern revisions, approvals and exposures, in `src/squadops/memory/models.py`;
-- the idempotent projection from the campaign control log, through the campaign domain;
-- the classification-disposition rail (D2), with its SIP-0109 amendment;
-- the campaign snapshot pinned at admission;
+- **three idempotent projections,** each from its authoritative record (SIP-0110 §0.3):
+  - rejected plans, from the cycle's gate decisions and their `rejection_record` (the cycle registry);
+  - failed correction rounds, from `run_loop_summaries` (the correction loop);
+  - returned proposals, from the campaign control log (the campaign domain);
+- **the eligibility rule:** fault-injected diagnostics, environment-attributed failures and replays produce no
+  observation. The projections run beside execution, so a failure never changes a cycle;
+- the classification-disposition rail on proposal returns (D2), with its SIP-0109 amendment. Rejected plans and failed
+  rounds take their source's class or `unclassified`, with no new rail;
+- **the snapshot pinned per unit:** at a standalone cycle's creation, and at a campaign's admission;
+- **the memory-disabled declaration** on the cycle, with the verification-set driver writing it on every counted roll
+  (`scripts/dev/verification_set_driver.py`, D12);
 - the recall policy behind `FailurePatternRecallPort` (`src/squadops/ports/memory/recall.py`, #2058), with the
-  LanceDB adapter (`adapters/memory/lancedb.py`) and its factory;
-- injection into `strategy.propose_increment` in its own slot (`capabilities/context_assembly.py`);
+  LanceDB adapter (`adapters/memory/lancedb.py`) and its factory. `RecallQuery` carries only the project and the task
+  type today (`src/squadops/memory/recall.py`), and gains the snapshot and the applicability inputs;
+- **injection at three seams,** each declared on the task type's context-assembly contract
+  (`capabilities/context_assembly.py`) and each in its own slot:
+  - the six plan-authoring types, through #2058's call site;
+  - the four repair types;
+  - `strategy.propose_increment`;
 - per-exposure assessment;
 - approval and revocation.
 
@@ -105,13 +132,16 @@ a campaign's pinned snapshot is supplied (§0.6–§0.7), so building the parts 
 - `src/squadops/cycles/task_plan.py`;
 - `adapters/cycles/run_provisioning.py`.
 
-They are left in this PR so that it stays prose only and the 2.1 tree does not move.
+They are left until a slice touches them, so that the plan's PRs stay prose only.
 
 **Slice 1 comes first,** for two reasons:
 - **The inspection may show the information was on screen.** Version 2's return said "the manifest above already
   declares capacity", so the failure may be reasoning, not access. That changes what the template should say. An
   evidence-access gap, if found, is fixed as a separate change, held identical across the arms.
 - **Every campaign after the capture ships adds faithful cases** to the corpus the window needs.
+
+**Within slice 1, the proposal seam's capture lands first,** because the first measured target is there. Plan writing
+and repair follow in the same slice. Every cycle after they ship adds faithful cases at those seams too.
 
 ### 2.2 Beside it: #1708's auto tier and escalation queue
 
@@ -137,6 +167,10 @@ necessary for proposal auto-approval and not sufficient. Proposal auto-approval 
 
 Those checks do not exist, so proposal rulings stay with the supervisor in 2.2. After any automation, an assessed
 sample or holdout stays independent, and auto-approved, unassessed work is never memory feedback.
+
+**The tier also decides what memory observes** (SIP-0110 revision 6). Rejected plans are one of memory's three
+sources, and a plan the tier approves is never observed as a rejection. So an active tier changes the plan-review
+corpus. This is a second reason its activation follows the window (D3).
 
 **The escalation queue's contract,** designed in the same amendment:
 - an escalation's identity is tied to the objective, campaign, gate, proposal revision and accepted baseline;
@@ -181,9 +215,12 @@ The counted set passed 4 of 4 (the 2.1 pre-registration §10).
 - **The recurring design questions** (7 of 8 unresolved questions asked how the runs list is ordered or paged) are
   decision records. They are the Design Decision Register's payload, and arrive with its home, #950 (SIP-0110 §5b,
   Q12).
-- **Phase 1.5** (the correction lane), **Phase 2**, semantic ranking, LLM-generated lessons, autonomous promotion and
-  the other deferrals of SIP-0110 §0.14 stay unplaced. Phase 2 begins only on the owner's ruling after the window's
-  finding.
+- **Phase 2**, semantic ranking, LLM-generated lessons, autonomous promotion and the other deferrals of SIP-0110 §0.14
+  stay unplaced. Phase 2 begins only on the owner's ruling after the window's finding.
+- **Phase 1.5 is not a separate part any more.** SIP-0110 revision 6 folds the correction lane into Phase 1: its rounds
+  are observed, and its repair seam is wired inert, in 2.2. **A template for a plan-review or correction-round target**
+  is written in 2.2 only if one recurs across independent cycles. That is read at the pre-registration and again at
+  the cut (SIP-0110 §0.4, D11).
 - **Proposal auto-approval** (§2.2).
 - **#316** is 2.3's (2.1 plan §5 ruling 14).
 
@@ -193,34 +230,43 @@ The counted set passed 4 of 4 (the 2.1 pre-registration §10).
 
 1. **Inherit the 2.1 cut's findings** (§2.4). They are live evidence.
 2. **Rule before building:**
-   - this PR (SIP-0110 revision 5 and this plan);
+   - this plan, with SIP-0110 revisions 5 and 6 (D5, D11, D12);
    - the SIP-0109 amendments for D2's rail and for #1708's policy and queue.
 3. **Slice 1 (#2105):**
    - the source-case inspection, posted;
-   - pre-proposal capture, proven live by a byte-exact reconstruction of a real proposal's prompt.
+   - capture at the proposal seam, proven live by a byte-exact reconstruction of a real proposal's prompt;
+   - capture at plan writing and at repair, each proven the same way on a live cycle. A repair needs a failed round,
+     so a fault-injected diagnostic may prove its capture: capture is not observation, and the diagnostic's failure is
+     never observed (SIP-0110 §0.3).
 4. **Hardening:**
    - #2082 (tooling, no deploy);
    - then #2079 and #2083 together, since both are the realm's, with a rebuild and the regression pair.
 5. **Slice 3 (#2096),** inert, with the acceptance matrix (SIP-0110 §0.15) held on a controlled corpus. A rebuild
    and the regression pair follow. Nothing is supplied, because nothing is approved.
+   - **The regression pair is the first live proof that a standalone cycle is observed.** It declares memory disabled,
+     its prompts are byte-identical at every seam, and its rejected plans and failed rounds, if any, are recorded.
+   - **A campaign proves the campaign's sources,** with the same inertness.
+   - **From this deploy on, every eligible cycle the line runs adds observations:** regression pairs, diagnostics,
+     shakeouts and campaigns.
 6. **Slice 2 (#2106):** the replay, proven end to end on the historical cases, which are exploratory and diagnostic
    only.
 7. **#1708** is built, and its activation is held until the window closes (D3).
 8. **Slice 4 (#2107):** the template on development cases, then the pre-registration with its budget cap and
    stopping rule (D8). Then **the window opens**:
    - the deploy is frozen;
-   - campaigns build the captured corpus;
+   - campaigns build the proposal corpus, and every cycle adds to the plan-review and correction-round corpus;
    - the owner approves the pattern at a campaign boundary;
    - the replay compares the arms;
    - **main is closed to code merges.** Prose merges stay free, because the drift check reads only `src/` and
      `adapters/`.
    - 2.3's work waits on branches: its refactors need rebuild pairs, and the box is held.
 9. **The finding** is recorded in SIP-0110: instrument validity first, then benefit, no benefit, harm or
-   inconclusive. The owner's disposition for Phase 2 is recorded with it. "Inconclusive" at the budget cap is a
+   inconclusive. The record also says whether a plan-review or correction-round target recurred (D11). The owner's
+   disposition for Phase 2 is recorded with it. "Inconclusive" at the budget cap is a
    valid finding, and the cut goes ahead on it.
 10. **#1708's plan-review tier is activated** under its declared policy, and validated by the cut's shakeout.
 11. **The cut:**
-    - a regression set on both stacks;
+    - a regression set on both stacks, with memory disabled (D12);
     - one campaign shakeout;
     - the release cut procedure (CLAUDE.md);
     - a record that states separately the mechanism's correctness, the experiment's validity and result, the
@@ -229,12 +275,13 @@ The counted set passed 4 of 4 (the 2.1 pre-registration §10).
 
 ### The cut's criteria
 
-- **The mechanism:** SIP-0110 §0.15's acceptance matrix holds, and an empty or unapproved snapshot leaves the
-  rendered prompt byte-identical.
+- **The mechanism:** SIP-0110 §0.15's acceptance matrix holds. At every consuming seam, an empty, unapproved or
+  disabled snapshot leaves the rendered prompt byte-identical. Standalone cycles and a campaign's cycles have both
+  recorded observations live.
 - **The instrument:** valid, by #2106's validity check.
 - **The finding:** recorded, whichever of the four. **A benefit is not a cut criterion.**
 - **#1708:** its tier escalates every case its policy does not cover, read in the shakeout.
-- **The regression set:** passes, under its own pre-registration.
+- **The regression set:** passes, under its own pre-registration, with memory disabled.
 
 ---
 
@@ -245,16 +292,19 @@ Each has a recommendation. None is built before it is ruled.
 | # | decision | recommendation | why |
 |---|---|---|---|
 | — | **the release shape** | **decided: B** (the owner, 2026-10-06: "go with B") | the cut waits for the bounded window's finding |
-| D1 | **the instrument** | **proposal replay, conditional on slice 1's verified pre-authoring fidelity** | replay runs identical inputs under each arm. The boundary is immediately before authoring, never "at the ruling": later rulings and notes reveal what the author did not have |
+| — | **memory's unit** | **the cycle, not the campaign** (the owner, 2026-10-07: "this is cross cycle memory; not cross campaign memory") | SIP-0110 revision 6 (§5d). D11 and D12 are its shape, for ruling |
+| D1 | **the instrument** | **authoring replay, conditional on slice 1's verified pre-authoring fidelity at each seam, validated first on proposals** | replay runs identical inputs under each arm. The boundary is immediately before authoring, never "at the ruling": later rulings and notes reveal what the author did not have |
 | D2 | **a return's classification disposition** | **a `ProposalClassification` class or an explicit `unclassified` with rationale; a return with neither is refused** (a SIP-0109 rail and amendment) | 3 of the 6 historical returns carry their class only in prose. A novel defect must stay returnable without being forced into a wrong class |
 | D3 | **memory and the auto tier, in order** | **proposal rulings stay supervised through the window. #1708's tier covers plan reviews, under its declared policy, activated after the window** | the window's evidence comes from the supervisor's classified rulings. A tier active during it would change the cases it measures |
 | D4 | **#1995's typed link** | **a prerequisite for proposal auto-approval, never its authorization. No proposal auto-approval in 2.2** | §2.2's further checks do not exist |
 | D5 | **this plan** | adopt as revised, or amend | — |
 | D6 | **#2062** | **2.3,** with the structure batch | 606 import sites move for no behaviour, and #1992's move rewrites many of the same imports |
-| D7 | **snapshot and activation semantics** | **as SIP-0110 §0.7:** pinned at admission; changes reach campaigns admitted later; concurrent campaigns keep their own | otherwise a confidence or status update changes the next prompt mid-campaign, and the comparison moves under itself |
-| D8 | **the experiment's arms and the window's bound** | **as SIP-0110 §0.12–§0.13,** with the budget cap set in the pre-registration. A proposed default: about five campaigns, with "inconclusive" at the cap | a bounded window cannot hold the release open indefinitely |
+| D7 | **snapshot and activation semantics** | **as SIP-0110 §0.7:** pinned at the unit's admission, which is a standalone cycle's creation or a campaign's admission; a campaign's cycles use its snapshot; changes reach units admitted later; concurrent units keep their own | otherwise a confidence or status update changes the next prompt mid-cycle or mid-campaign, and the comparison moves under itself |
+| D8 | **the experiment's arms and the window's bound** | **as SIP-0110 §0.12–§0.13,** with the budget cap set in the pre-registration. The primary target is fixed there, from the seam with the most independent cases of one target behavior: the proposal behavior, on today's evidence. A proposed default: about five campaigns, with "inconclusive" at the cap | a bounded window cannot hold the release open indefinitely. Standalone cycles add plan-review and correction-round observations at no cost to the cap |
 | D9 | **emergency revocation** | **as SIP-0110 §0.7:** halt or restart the affected work under a new snapshot, and invalidate or set apart the affected measurements | harmful guidance must be removable without silently changing a counted intervention |
 | D10 | **the escalation queue's resumption** | **designed in #1708's SIP-0109 amendment against §2.2's contract** | it is SIP-0109's surface (SIP-0110 §0.14) |
+| D11 | **what is observed, and where memory is supplied** | **every eligible cycle, standalone or in a campaign, from three sources (rejected plans, failed correction rounds, returned proposals); supplied at plan writing, repair and proposal writing, each inert until a template is approved. A plan-review or correction-round template is written in 2.2 only if one target recurs across independent cycles, read at the pre-registration and at the cut** | memory's unit is the cycle. Observing every cycle costs a projection beside execution. Supplying only where a template is approved keeps the measurement clean |
+| D12 | **counted regression rolls and memory** | **declare memory disabled until a finding of supported benefit and the owner's ruling. Their observations are still recorded** | the regression set is the framework's yardstick. A lesson approved for plan writing would otherwise reach it and move it unannounced |
 
 ---
 
@@ -263,6 +313,6 @@ Each has a recommendation. None is built before it is ruled.
 - **The 2.1 cut's findings** (§2.4) and **#1964's cut readings** (SIP-0110 §5b).
 - **The cut's numbers:** the regression set's size, and the window's N, budget cap and minimum worthwhile effect.
   They are written as pre-registrations when their batches are built.
-- **The standing authority for 2.2.** The owner's grant of 2026-10-04 covers the 2.1 line. 2.2's authority is the
-  owner's to give when this plan is adopted.
+- **The standing authority for 2.2.** The owner's grant of 2026-10-04 covered the 2.1 line and ended at its cut. 2.2's
+  authority is the owner's to give when this plan is adopted.
 - **Any compose change** (§2.3).

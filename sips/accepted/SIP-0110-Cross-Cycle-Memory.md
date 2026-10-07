@@ -9,7 +9,7 @@ updated_at: '2026-10-06T08:19:56.067127Z'
 ---
 # SIP-0110: Cross-Cycle Memory
 
-> **Placement and delivery (2026-10-04: the owner's rulings on the SIP-portfolio audit, `sips/PORTFOLIO.md`).** **The 2.2 headline, and 2.2's only change to squad behaviour**, beside #1708's auto tier and escalation queue, which change the control plane, not the squad. #557, #949 and #950 follow Outcome Evaluation's scenarios (2.4 or later). **Its 2.1 part** (the inert recall port, its call site, and the Phase-1 re-read) is **#1964**. **It owns** memory's scopes, lifecycle and payload; Capability-Backed Agents (3.x) defers to it. **A constraint from 3.x:** memory stays addressable as a service, the Embodiment Runtime's invariant 2. **Accepted with revision 4 (2026-10-06, §5b):** the re-read moves Phase 1's proving workload to the campaign's proposal gate.
+> **Placement and delivery (2026-10-04: the owner's rulings on the SIP-portfolio audit, `sips/PORTFOLIO.md`).** **The 2.2 headline, and 2.2's only change to squad behaviour**, beside #1708's auto tier and escalation queue, which change the control plane, not the squad. #557, #949 and #950 follow Outcome Evaluation's scenarios (2.4 or later). **Its 2.1 part** (the inert recall port, its call site, and the Phase-1 re-read) is **#1964**. **It owns** memory's scopes, lifecycle and payload; Capability-Backed Agents (3.x) defers to it. **A constraint from 3.x:** memory stays addressable as a service, the Embodiment Runtime's invariant 2. **Accepted with revision 4 (2026-10-06, §5b):** the re-read moves Phase 1's proving workload to the campaign's proposal gate. **Revision 6 (2026-10-07, §5d) restores the cycle as Phase 1's unit:** every eligible cycle is observed, inside a campaign or not, and the proposal gate is where Phase 1 is measured first, not its scope.
 
 
 ## Status
@@ -19,8 +19,9 @@ the merge is the acceptance (CLAUDE.md, SIP workflow step 3). Phase 1 is the 2.2
 
 **Author:** Jason Ladd
 **Created:** 2026-08-03
-**Revision:** 5 (2026-10-06). It adopts an external design review as §0, the normative Phase-1 contract, and
-records the change in §5c. Revision 4 (2026-10-06) re-reads Phase 1's value hypothesis against the evidence of 2.1's
+**Revision:** 6 (2026-10-07). It restores the cycle as Phase 1's unit, which revision 5 had narrowed to the
+campaign, and records the change in §5d. Revision 5 (2026-10-06) adopts an external design review as §0, the
+normative Phase-1 contract, and records the change in §5c. Revision 4 (2026-10-06) re-reads Phase 1's value hypothesis against the evidence of 2.1's
 line (§5b, #1964) and moves Phase 1's proving workload from the plan gate to the campaign's proposal
 gate, where the recurrence is live. Revision 3 (2026-10-01) folds in the new elements of the owner's v4 draft (2026-08-29,
 recorded in `docs/ideas/cross-cycle-memory-v4-draft.md`) as §5a, corrects references that went stale,
@@ -66,19 +67,24 @@ re-places it.
 |---|---|---|
 | the recall port, inert (answers empty), injected explicitly by the root, and its call site through `plan_rejection_context` | **shipped** | 2.1.0, PR #2058, issue #1964 |
 | the re-read of the Phase-1 value hypothesis against 2.1's recurrence evidence, as an amendment here | **shipped** | PR #2097, issue #1964: the evidence up to the final deploy is §5b (revision 4), and the cut's readings are §5b's last part |
-| Phase 1, slice 1: capture each proposal's inputs before authoring, and the source-case inspection (§0.11, §0.4) | **placed** | 2.2.0, #2105 |
-| Phase 1, slice 2: the proposal replay, three arms (§0.11–§0.12) | **placed** | 2.2.0, #2106 |
-| Phase 1, slice 3: the mechanism, inert until approved (§0.2–§0.10) | **placed** | 2.2.0, #2096 |
+| Phase 1, slice 1: capture each consuming seam's inputs before authoring (proposal writing first, then plan writing and repair), and the source-case inspection (§0.11, §0.4) | **placed** | 2.2.0, #2105 |
+| Phase 1, slice 2: the authoring replay, three arms, validated first on proposals (§0.11–§0.12) | **placed** | 2.2.0, #2106 |
+| Phase 1, slice 3: the mechanism, observing every eligible cycle and supplying three seams, inert until approved (§0.2–§0.10) | **placed** | 2.2.0, #2096 |
 | Phase 1, slice 4: the template and the measurement window, read before 2.2.0's cut (§0.4, §0.12–§0.13) | **placed** | 2.2.0, #2107 |
-| Phase 1.5: the correction lane (§13 question 3) | **unplaced** | read again when `failed_detail` holds failures of more than one shape (§5b) |
+| Phase 1.5: the correction lane (§13 question 3) | **dropped** | by revision 6 (§5d), which folds it into Phase 1: its observation is slice 3's, its repair seam is wired inert in slice 3, and its capture is slice 1's. A correction-round template waits for a recurring target behavior (§0.4) |
 | Phase 2: consolidation and promotion (§8) | **unplaced** | gated on Phase 1's measurement (§8) |
 
 **What closes this SIP:** Phase 1's four slices shipped in 2.2.0 with the window's finding recorded (§0.13), and Phase 2's
-gate ruled by the owner on that finding, which also places or drops Phase 1.5.
+gate ruled by the owner on that finding.
 
-## 0. The Phase-1 contract (normative, revision 5)
+## 0. The Phase-1 contract (normative, revision 6)
 
-**This section governs Phase 1.** Revision 5 (2026-10-06) adopts an external design review of revision 4 and of the 2.2 plan. The review found that earlier sections still read as active requirements and contradict each other:
+**This section governs Phase 1.** Revision 6 (2026-10-07) restores the cycle as Phase 1's unit. Revision 5 had
+narrowed it to the campaign: it observed only proposal returns, pinned memory only at a campaign's admission, and
+supplied it only to proposal writing. §5d records the change, its evidence and who ruled it, and this section is
+edited in place so that it stays the one current contract.
+
+Revision 5 (2026-10-06) adopts an external design review of revision 4 and of the 2.2 plan. The review found that earlier sections still read as active requirements and contradict each other:
 - the observation seam (§5) against the proposal ruling (§5b);
 - the consumer;
 - the instrument (§5a, §9);
@@ -88,23 +94,39 @@ gate ruled by the owner on that finding, which also places or drops Phase 1.5.
 - feedback (§5) against §7's campaign-close update;
 - the Phase-2 gate (§8).
 
-Where an earlier section disagrees with this one, this one holds, and the earlier text is marked as superseded where it stands. Who ruled it is §5c.
+Where an earlier section disagrees with this one, this one holds, and the earlier text is marked as superseded where it stands. Who ruled it is §5c, and for revision 6 §5d.
 
 **In one paragraph:**
-- Phase 1 observes committed, eligible proposal-return rulings. It encodes reviewed reflective guidance in project scope, and supplies approved, applicable pattern revisions to `strategy.propose_increment`.
-- Retrieval is deterministic and uses a memory snapshot pinned when the campaign is admitted.
-- Proposal replay is the proving instrument.
-- The plan-authoring recall seams (#2058) stay inert.
-- These stay deferred: correction-lane ingestion, semantic ranking, autonomous promotion and any other payload.
+- **Phase 1 observes every eligible cycle,** a standalone cycle or one inside a campaign. It reads three committed
+  records: plan-review rejections, failed correction rounds, and proposal returns. Each is recorded whether or not a
+  lesson exists for it (§0.3).
+- **It encodes** reviewed reflective guidance in project scope, through governed templates.
+- **It supplies approved, applicable pattern revisions at three authoring seams:** plan writing (#2058's call site),
+  repair, and proposal writing (`strategy.propose_increment`) (§0.9).
+- **Retrieval is deterministic,** from a memory snapshot pinned when the unit of execution is admitted: a standalone
+  cycle when it is created, a campaign when it is admitted (§0.7).
+- **Counted regression rolls declare memory disabled,** so the regression yardstick does not move (§0.7).
+- **Authoring replay is the proving instrument.** The first measured target is a proposal behavior, because the
+  proposal gate is the only seam with a recurring target behavior in the record so far (§5b, §0.12).
+- **These stay deferred:** semantic ranking, autonomous promotion and any other payload (§0.14).
 
 ### 0.1 What Phase 1 tests
 
-Phase 1 tests whether **retaining and selectively applying reviewed lessons from earlier campaigns' proposal returns improves later proposal authoring** under controlled conditions. It discovers no corrective rules: people write the templates, and observed experience decides which reviewed lessons are kept and supplied.
+Phase 1 tests whether **retaining and selectively applying reviewed lessons from earlier cycles improves later authoring** under controlled conditions. It discovers no corrective rules: people write the templates, and observed experience decides which reviewed lessons are kept and supplied. Its first measured target is a proposal behavior (§0.4). That is where it is measured first, not what it is (§5d).
 
-**It is cross-campaign learning.**
-- Observations are recorded while a campaign runs. New guidance does not become active within that campaign.
-- Owner-approved changes apply to campaigns admitted afterwards.
-- Correction within a proposal stays SIP-0109 §9.2's revision note.
+**It is cross-cycle learning.**
+- Observations are recorded from every eligible cycle while it runs, whether the cycle stands alone or runs inside a
+  campaign.
+- New guidance never activates within the unit that is running. The unit is a standalone cycle, or a campaign together
+  with its cycles and proposals.
+- Owner-approved changes apply to cycles and campaigns admitted afterwards.
+- **A campaign is provenance and one consumer, not memory's scope** (§7). A lesson learned in a standalone cycle
+  reaches a later campaign's matching seam, and one learned in a campaign reaches a later standalone cycle, wherever
+  its approved applicability holds.
+- Correcting the same output stays with the rungs that already exist:
+  - a framing re-roll's rejection context (#669);
+  - the failure evidence a repair is handed;
+  - a proposal revision's note (SIP-0109 §9.2).
 - Unattended learning (evidence-gated activation at a declared boundary, with rollback and measurement) would need its own authorization. It must not emerge from feedback updates.
 
 ### 0.2 The domain model
@@ -113,7 +135,7 @@ These six are domain concepts, not services or databases:
 
 | concept | what it is | identity |
 |---|---|---|
-| **observation** | one immutable occurrence: a committed ruling that returned a proposal, with its classification disposition and evidence | the ruling's control-log entry |
+| **observation** | one immutable occurrence from one of §0.3's three sources: a rejected plan, a failed correction round, or a returned proposal, with its classification disposition and evidence | the committed record it projects: the gate decision, the correction round, or the ruling's control-log entry |
 | **pattern** | the stable identity of one behavioral lesson | project scope, target behavior (§0.4), task type |
 | **pattern revision** | immutable guidance text, applicability and template version | pattern and revision number |
 | **approval** | the owner's authorization of one revision for a stated applicability | revision and applicability |
@@ -126,30 +148,70 @@ They are stored as four records: observations, pattern revisions, approvals, and
 
 ### 0.3 Observe
 
-**What is read.** The observation is a committed ruling at the increment gate (SIP-0109 §9.4) that returns a proposal. It is read as a projection from the campaign control log, which stays the authoritative record. The projection's guarantees:
-- only committed, eligible rulings produce memory;
-- a duplicate delivery adds no evidence, pattern or feedback;
-- a crash between the ruling's commit and the projection is recovered by reconciliation;
-- a retraction or reclassification keeps the history and marks the guidance that depended on it;
-- replay experiments never write to the production corpus.
+**What is read.** Three committed records, from every eligible cycle, whether it stands alone or runs inside a
+campaign. Each is read as a projection from the record that stays authoritative:
 
-The projection uses the campaign's existing durable log. It is not a new service or a distributed transaction.
+| source | the observation | its authoritative record |
+|---|---|---|
+| **plan review** | a plan-review gate decision that rejects a plan, by a validator or by a person, with its reasons | the cycle's gate decisions (`cycle_gate_decisions`), with the `rejection_record` that names the validators and proofs it refused on (#809) |
+| **correction round** | a failed correction round: the failed check, its attribution, and the round's own account of why (`failed_detail`, #2028, #2086) | the run's loop summary (`run_loop_summaries`) |
+| **proposal ruling** | a ruling at the increment gate (SIP-0109 §9.4) that returns a proposal | the campaign control log |
+
+**Eligibility.** Some failures say nothing about authoring, and these never become observations:
+- a failure in a cycle that declares an injected fault: such a cycle is a diagnostic by construction
+  (`capabilities/handlers/fault_injection.py`);
+- a failure attributed to the environment (`environment_or_infrastructure_failure`, `cycles/failure_attribution.py`);
+- a replay's outputs.
+
+A counted regression roll is observed like any other cycle. Its plan rejections and failed rounds are real.
+
+**The projection's guarantees:**
+- only committed, eligible records produce memory;
+- a duplicate delivery adds no evidence, pattern or feedback;
+- a crash between the record's commit and the projection is recovered by reconciliation;
+- a retraction or reclassification keeps the history and marks the guidance that depended on it;
+- replay experiments never write to the production corpus;
+- **the projection runs beside execution:** its failure never fails, holds or changes a cycle, and reconciliation
+  recovers it.
+
+Each projection uses its source's existing durable record. It is not a new service or a distributed transaction.
 
 ### 0.4 Classify and encode
 
-**Every return carries a classification disposition:** a `ProposalClassification` class, or an explicit `unclassified` with its rationale and evidence. An `unclassified` return:
-- is a valid gate action;
+**Every observation carries a classification disposition** in its source's own vocabulary, or an explicit
+`unclassified` with its rationale and evidence:
+
+| source | its vocabulary |
+|---|---|
+| plan review | the plan validator that refused the plan, or the manifest gate's proof class: the B1 baseline's vocabulary (`RejectionClassifier`, `cycles/rejection_baseline.py`). A person's rejection carries a class only when its decider records one |
+| correction round | the failure's attribution (`AttributionClass`, `cycles/failure_attribution.py`) and the failed check. An `unattributed` failure is recorded as `unclassified` |
+| proposal ruling | a `ProposalClassification` class |
+
+An `unclassified` observation:
+- is valid, and for a ruling a valid gate action;
 - produces no pattern;
 - is counted in coverage reporting;
 - enters a taxonomy backlog.
 
-A return carrying neither is refused (SIP-0109's rail, 2.2 plan decision D2). A historical return whose class is only in prose enters through a reviewed annotation, which keeps both the original ruling and the annotation's provenance.
+**A rail on proposal returns only.** A proposal return carrying neither a class nor `unclassified` is refused (SIP-0109's
+rail, 2.2 plan decision D2). Plan reviews and correction rounds gain no new rail in Phase 1: a person's plan rejection
+with no recorded class enters as `unclassified`, and a correction round always carries its attribution. A historical
+return whose class is only in prose enters through a reviewed annotation, which keeps both the original ruling and the
+annotation's provenance.
 
-**Target behaviors sit beneath the vocabulary.** `ProposalClassification` stays the gate's vocabulary. Where one class holds different corrections, a reviewed **target behavior** beneath it names one. *Criteria not checkable* holds at least two:
+**Target behaviors sit beneath each vocabulary.** Each source's vocabulary stays its gate's or its registry's. Where one
+class holds different corrections, a reviewed **target behavior** beneath it names one. *Criteria not checkable* holds at
+least two:
 - a new criterion already satisfied by the accepted application;
 - a criterion stating a rule the request does not.
 
-Phase 1 supports one target behavior: **a proposed new acceptance criterion is already satisfied by the accepted application.** A class or behavior claimed as supported must have its template, and an unsupported one is disclosed backlog that never blocks a legitimate return.
+**Phase 1 starts with one supported target behavior:** **a proposed new acceptance criterion is already satisfied by the
+accepted application.** Plan reviews and correction rounds have none yet. The 2.0 and 2.1 windows show no recurring
+target behavior at either: no plan was rejected, and the four failed rounds at the 2.1 cut were four different defects
+(§5b). **A template for a plan-review or correction-round target is written when its observations show one target
+behavior recurring across independent cycles.** That is read at slice 4's pre-registration and again at the 2.2 cut,
+and the owner places what it finds. A class or behavior claimed as supported must have its template, and an unsupported
+one is disclosed backlog that never blocks a legitimate return.
 
 **Each template maps:**
 - the observable defect;
@@ -163,26 +225,36 @@ For this target, the corrective rule leads to evidence of the intended before-an
 **What the encoding may and may not use.**
 - No LLM is in the encode path.
 - Free text stays evidence. Guidance comes only from governed templates.
-- The v4 draft's precedence rule (compilation, then security, then function, then performance; §5a) is not applied to proposal classes. Every observed defect is kept as evidence.
+- The v4 draft's precedence rule (compilation, then security, then function, then performance; §5a) is not applied to any source's classes. Every observed defect is kept as evidence.
 
 **`validated` means admissible, not effective:** the observation has an admissible source, recorded evidence, a supported classification and a valid governed encoding. It says nothing about whether the guidance helps. Source admissibility, the owner's authorization and measured benefit stay distinct.
 
 ### 0.5 Provenance
 
-The source is a **proposal ruling**, a typed source beside §5's `gate_decision`. It carries:
-- the project and campaign;
-- the proposal's id and version;
-- the ruling's control-log entry, and any that supersedes it;
-- the decider's identity and type;
-- the proposal invocation (run and task);
-- the accepted application's identity it was judged against;
+The source is typed, one of three: §5's `gate_decision` for a plan review, a **correction round**, and a **proposal
+ruling**.
+
+**Every source carries:**
+- the project, and the campaign when there is one;
+- the record's identity, and any record that supersedes it;
+- the authoring invocation it judged (cycle, run and task), where one exists;
 - the criterion and evidence references;
 - the classification and template versions.
 
+**And each carries its own:**
+
+| source | it also carries |
+|---|---|
+| plan review | the gate decision; the decider's identity and type (a validator or a person); the rejected plan, by reference |
+| correction round | the round's index; the failed check and its attribution; `failed_detail`; the repair's task, when one was dispatched |
+| proposal ruling | the proposal's id and version; the ruling's control-log entry; the decider's identity and type; the accepted application's identity it was judged against |
+
 **What is optional, and what the model fields mean.**
-- The cycle id is optional, because a returned proposal may never create a cycle.
+- **The campaign is optional on every source.** A standalone cycle's observations carry none.
+- **The cycle id is optional on a proposal ruling only,** because a returned proposal may never create a cycle.
 - `origin_mode = cycle` names the execution posture, not a cycle's existence.
-- The origin model is the **proposer's**. A model used in classifying, if any, is recorded separately.
+- **The origin model is the author's:** the planner's, the repairer's or the proposer's. A model used in classifying,
+  if any, is recorded separately.
 
 ### 0.6 Approval and activation
 
@@ -196,21 +268,32 @@ The source is a **proposal ruling**, a typed source beside §5's `gate_decision`
 - In Phase 1, `status = promoted` (§5) is read as *approved for its stated applicability*, and no other promotion exists.
 - A revision approved for model family A is not recalled for family B.
 
-### 0.7 The campaign snapshot
+### 0.7 The snapshot, pinned per unit of execution
 
-When a campaign is admitted, it pins a memory snapshot, an immutable manifest of:
+When a unit of execution is admitted, it pins a memory snapshot, an immutable manifest of:
 - the available pattern revisions and their approvals;
 - the template versions;
 - the retrieval policy and thresholds;
 - the applicability rules;
 - the ordering and the budgets.
 
+**The unit is one of two:**
+- **a standalone cycle,** pinned when the cycle is created;
+- **a campaign,** pinned when it is admitted. Its proposals and all its cycles use the campaign's snapshot, so guidance
+  never changes between its increments.
+
 **What can change, and when.**
-- Every proposal task selects from that snapshot and records its exposure.
+- Every consuming task (§0.9) selects from its unit's snapshot and records its exposure.
 - Feedback accrues at once.
-- Approval, deprecation, confidence and template changes reach campaigns admitted later.
-- Concurrent campaigns keep their own snapshots.
+- Approval, deprecation, confidence and template changes reach cycles and campaigns admitted later.
+- Concurrent units keep their own snapshots.
 - A restart reproduces the original selection from the same snapshot and task inputs.
+
+**Memory disabled, declared.** A cycle may declare memory disabled when it is created. It then pins no snapshot,
+every consuming task records a `disabled` exposure, and its prompts are rendered as if memory did not exist. **Its
+observations are still recorded** (§0.3). **Every counted regression roll declares it,** written by the
+verification-set driver, until the owner rules otherwise on a finding of supported benefit (2.2 plan D12). The regression
+set is the framework's yardstick, and an approved lesson must not move it unannounced.
 
 **Emergency revocation** of demonstrably harmful guidance halts or restarts the affected work under a new snapshot, and the affected measurements are explicitly invalidated or set apart. A counted intervention is never changed silently halfway through.
 
@@ -236,34 +319,53 @@ When a campaign is admitted, it pins a memory snapshot, an immutable manifest of
 
 ### 0.9 Inject
 
-The recall reaches `strategy.propose_increment` through a managed fragment, in its own slot, separate from §9.2's revision note. With an empty or unapproved snapshot, the rendered prompt is byte-identical to one rendered without memory.
+**The recall reaches three authoring seams.** At each it arrives through a managed fragment in its own slot, never in a
+within-cycle rung's slot:
+
+| seam | the consuming task types | kept separate from |
+|---|---|---|
+| **plan writing** | the six plan-authoring types that declare `plan_rejection_context` (#2058's call site, `cycles/task_plan.py`) | a framing re-roll's rejection context (#669) |
+| **repair** | `development.repair`, `development.correction_repair`, `qa.test_repair`, `builder.assemble_repair` | the failure evidence the repair is handed |
+| **proposal writing** | `strategy.propose_increment` | a proposal revision's note (SIP-0109 §9.2) |
+
+**Which task types consume is declared,** on each type's context-assembly contract (`capabilities/context_assembly.py`),
+as `plan_rejection_context` is today, never by a branch on the type.
+
+**With an empty, unapproved or disabled snapshot, every seam's rendered prompt is byte-identical** to one rendered
+without memory.
 
 ### 0.10 Assessment and feedback
 
-**What an assessment attaches to.** It attaches to the exact proposal revision and exposure, not to the next gate event. A ruling's silence about a class is not evidence the class is absent:
-- the proposal may be returned for another defect;
+**What an assessment attaches to.** It attaches to the exact authored output (a plan, a repair, or a proposal revision)
+and its exposure, not to the next gate event or check. A gate's or a check's silence about a target is not evidence the
+target is absent:
+- the output may be refused for another defect;
 - it may carry several defects and record one;
 - it may be approved without the target being checked;
 - it may avoid the defect by omitting meaningful work.
 
 Each target is assessed by its template's rubric as **present**, **absent after assessment**, **not applicable**, or **unassessed**. Retrieval, injection, assessment and outcome are recorded separately.
 
-**The statistic is `target_absence_rate`,** over applicable, assessed exposures. It replaces §5's `success_rate`. It is observational, not a causal estimate of memory's benefit. Unassessed and inapplicable exposures earn no credit. Campaign-close aggregation summarizes assessments, and never overwrites them with cycle success (§7).
+**The statistic is `target_absence_rate`,** over applicable, assessed exposures. It replaces §5's `success_rate`. It is observational, not a causal estimate of memory's benefit. Unassessed and inapplicable exposures earn no credit. Aggregation at a cycle's or a campaign's close summarizes assessments, and never overwrites them with cycle success (§7).
 
 **What a recurrence means:**
 - Repeated recurrence is a diagnostic trigger, not proof the rule is false. The model may lack the evidence, misread the instruction, or fail to follow valid guidance.
 - Invalid guidance and ineffective delivery are told apart.
 - Harm is attributed only on explicit evidence.
 
-**Phase 1 has no automatic decay.** Deprecation is the owner's decision on assessed evidence, and takes effect at the next campaign admission. A small, precise policy is preferred to an unsupported confidence formula.
+**Phase 1 has no automatic decay.** Deprecation is the owner's decision on assessed evidence, and takes effect at the next admission of a cycle or campaign. A small, precise policy is preferred to an unsupported confidence formula.
 
-### 0.11 The instrument: proposal replay
+### 0.11 The instrument: authoring replay
 
-**What is captured.** A `ProposalReplayEnvelope` is captured immediately before `strategy.propose_increment`. It contains, or immutably references:
-- the objective and policy;
-- the accepted application's, PRD's, manifest's and evidence's revisions;
+**What is captured.** An `AuthoringReplayEnvelope` is captured immediately before each consuming seam's authoring task
+(§0.9). Revision 5's `ProposalReplayEnvelope` is this envelope at the proposal seam. It contains, or immutably
+references:
+- the seam and the task;
+- the objective or PRD, and the policy;
+- the revisions of the accepted application, PRD, manifest and evidence, where they exist;
 - the task's actual inputs;
-- the prior proposal and revision note, when it is a revision;
+- the within-cycle rung it carries, if any: a re-roll's rejection context, a repair's failure evidence, or a revision's
+  prior proposal and note;
 - the complete assembled prompt and its fragment versions;
 - the model's identity, version and sampling settings;
 - the memory snapshot and the exact intervention;
@@ -272,18 +374,23 @@ Each target is assessed by its template's rubric as **present**, **absent after 
 The capture is complete, independent of the stored prompt's 10,000-character cut (#1756), or its reconstruction is proven lossless. A historical case whose inputs cannot be verified is diagnostic only.
 
 **Temporal validity.**
-- A target's eligible lessons originate in campaigns before the target's.
-- Replaying a proposal with a lesson derived from its own return tests assisted repair, not transfer, and is reported as that.
+- A target's eligible lessons originate in units admitted before the target's unit.
+- Replaying an output with a lesson derived from its own failure tests assisted repair, not transfer, and is reported
+  as that.
 
 **The cases.**
 - Development cases, used to write the templates, are separated from held-out evaluation cases before any tuning.
-- First proposals in later campaigns are the primary test. Revisions are reported separately, since they already receive the revision note.
+- **At each seam, the first authoring of its kind in a later unit is the primary test:**
+  - a campaign's first proposal;
+  - a cycle's first plan;
+  - a cycle's first repair of the target.
+- Revisions, re-rolls and repeat repairs are reported separately, since they already receive a within-cycle rung.
 
 ### 0.12 The experiment and its pre-registration
 
 | arm | purpose |
 |---|---|
-| current baseline | today's prompt, with #1947 and any revision note, and no cross-campaign memory |
+| current baseline | today's prompt at the seam, with its within-cycle rung (a re-roll's rejection context, a repair's failure evidence, a revision note) and #1947 where it applies, and no cross-cycle memory |
 | scoped memory | identical ordinary inputs, plus the eligible historical guidance |
 | static guidance (secondary) | the same reviewed guidance under a fixed prompt policy. With one target behavior it differs from scoped memory only where the lesson does not apply, so it measures selectivity, unnecessary injection and token cost |
 
@@ -292,14 +399,17 @@ The capture is complete, independent of the stored prompt's 10,000-character cut
 - The corpus, templates, model settings, policies and rubric are frozen before scored runs.
 - Arm order is randomized or balanced. Inputs are paired.
 - Repeated generations of one case are reported apart from independent cases.
-- Any live confirmation assigns treatment at campaign boundaries, because alternating within an evolving campaign carries over through the accepted application.
+- Any live confirmation assigns treatment at unit boundaries: a standalone cycle, or a whole campaign, because alternating within an evolving campaign carries over through the accepted application.
 - Calibration cycles are operational checks, not the comparison.
-- An improvement in ordinary inputs (the evidence the proposer sees, §0.4) is a separately identified change, held identical across arms.
+- An improvement in ordinary inputs (the evidence the author sees, §0.4) is a separately identified change, held identical across arms.
 
 **The pre-registration fixes, before scored runs:**
-- the primary target and what counts as an eligible opportunity (never defined after seeing an output);
+- the primary target, its seam, and what counts as an eligible opportunity (never defined after seeing an output). The
+  target is chosen from the seam whose development corpus holds the most independent cases of one target behavior. On
+  the evidence to the 2.1 cut, that is §0.4's proposal behavior. A recurring plan-review or correction-round target found
+  by then is a secondary or exploratory comparison;
 - the development and test split;
-- unique cases, campaigns and repeated generations, counted separately;
+- unique cases, cycles, campaigns and repeated generations, counted separately;
 - the unit of analysis and the treatment of campaign and lineage dependence;
 - confirmatory and exploratory comparisons;
 - the minimum worthwhile effect, and the uncertainty reporting suited to the design;
@@ -307,11 +417,11 @@ The capture is complete, independent of the stored prompt's 10,000-character cut
 - the budget cap and the stopping rule;
 - the versions of prompts, templates, models, policies and the evaluator;
 - the local guardrails:
-  - the proposal still advances the objective;
+  - the output still advances the objective;
   - required scope and meaningful criteria remain;
   - other serious defects do not materially increase;
   - context cost stays within budget;
-  - memory cannot earn a win with an empty proposal or by avoiding the requested work.
+  - memory cannot earn a win with an empty output or by avoiding the requested work.
 
 All outputs, approvals and other returns included, are assessed by one fixed rubric, with evaluators blind to the arm where practical and adjudication recorded. Injected tokens are reported as measured.
 
@@ -335,12 +445,20 @@ All outputs, approvals and other returns included, are assessed by one fixed rub
 - A successful replay does not by itself authorize Phase 2.
 - **Phase 2 begins only on the owner's ruling after a valid finding** (§8, amended).
 
-**The corpus is small.** The target behavior has about three independent historical cases, in three campaigns, none captured before authoring. So the test corpus is built by the 2.2 line's own campaigns, and **"inconclusive" is a likely and legitimate finding** for 2.2.
+**The corpus is small.**
+- **The proposal behavior** has about three independent historical cases, in three campaigns, none captured before
+  authoring.
+- **Plan reviews and correction rounds** show no recurring target behavior in the 2.0 and 2.1 windows (§5b).
+- **Every eligible cycle after slice 3's deploy adds observations,** the regression rolls included. Only campaigns add
+  proposal cases.
+
+So the test corpus is built by the 2.2 line's own cycles and campaigns, and **"inconclusive" is a likely and legitimate
+finding** for 2.2.
 
 ### 0.14 Deferred, and who owns what
 
 **Deferred:**
-- correction-lane ingestion (Phase 1.5);
+- templates for plan-review and correction-round targets, until one recurs (§0.4);
 - semantic ranking;
 - LLM-generated lessons;
 - autonomous promotion;
@@ -354,21 +472,25 @@ Decision records belong to the Design Decision Register and #950 (§5b).
 | document or interface | owns |
 |---|---|
 | SIP-0110 | memory payloads, lifecycle, applicability, approvals, exposure and effectiveness semantics |
-| SIP-0109 | ruling events, the campaign snapshot's admission point, gate authority, escalation and continuation |
+| SIP-0109 | ruling events, a campaign's admission point (where its snapshot is pinned), gate authority, escalation and continuation |
+| the cycle registry (SIP-0064, SIP-0067) and the correction loop (SIP-0086) | a standalone cycle's creation (where its snapshot is pinned), its gate decisions, and its correction rounds' records |
 | SIP-042 | storage and the adapter's guarantees |
-| the replay specification (#2096's slices) | the pre-proposal envelope, temporal isolation, arm execution and scoring |
+| the replay specification (slices 1 and 2: #2105, #2106) | the pre-authoring envelope, temporal isolation, arm execution and scoring |
 | SIP-0088/0089 | persistent identity and mode compatibility |
 | the Design Decision Register, #950 | the authoritative decision payload and its lifecycle |
 
 ### 0.15 Acceptance matrix
 
-Synthetic fixtures establish the mechanism's behavior. They are never evidence of cross-campaign improvement.
+Synthetic fixtures establish the mechanism's behavior. They are never evidence of cross-cycle improvement.
 
 | area | required scenario |
 |---|---|
-| provenance | a returned proposal with no cycle id is encoded and traced correctly |
-| idempotency | a duplicate ruling delivery does not double-count evidence or feedback |
-| recovery | a crash after the ruling's commit and before the projection is recovered |
+| sources | a standalone cycle and a campaign's cycle each record their rejected plans and failed correction rounds as observations, exactly once each |
+| eligibility | a fault-injected diagnostic's failures, an environment-attributed failure and a replay's outputs produce no observation |
+| execution isolation | a projection that fails leaves the cycle's outcome unchanged, and is reconciled |
+| provenance | a returned proposal with no cycle id, a rejected plan in a standalone cycle with no campaign, and a failed correction round are each encoded and traced correctly |
+| idempotency | a duplicate delivery of any source's record does not double-count evidence or feedback |
+| recovery | a crash after the record's commit and before the projection is recovered |
 | corrections | a reclassification or retraction keeps history and updates dependents explicitly |
 | classification | a novel `unclassified` defect is returned without creating a pattern |
 | pattern identity | a repeat occurrence cannot reset or resurrect deprecated guidance |
@@ -377,13 +499,15 @@ Synthetic fixtures establish the mechanism's behavior. They are never evidence o
 | isolation | wrong-project, incompatible-stack and unapproved records are excluded before the budgets |
 | determinism | tied timestamps and more than three eligible patterns give a stable selection |
 | budget | oversized guidance is omitted explicitly, never truncated |
-| campaign freeze | feedback, approval or deprecation cannot alter a running campaign's snapshot |
+| unit freeze | feedback, approval or deprecation cannot alter a running cycle's or campaign's snapshot, and a campaign's cycles use the campaign's snapshot |
+| transfer | an approved lesson learned in a standalone cycle reaches a later campaign's matching seam, and one learned in a campaign reaches a later standalone cycle, under the same applicability |
 | restart | the original exposure is reconstructed after a restart |
 | failure disclosure | disabled, empty, filtered and failed recall remain distinguishable |
-| inert behavior | an empty or unapproved snapshot leaves the rendered prompt unchanged |
+| inert behavior | at every consuming seam (plan writing, repair, proposal writing), an empty or unapproved snapshot leaves the rendered prompt unchanged |
+| memory disabled | a cycle declaring memory disabled pins no snapshot, renders byte-identical prompts at every seam, records `disabled` exposures, and still records its observations |
 | feedback | unassessed or partly classified outputs earn no credit |
-| replay fidelity | both arms have identical ordinary pre-proposal inputs |
-| temporal validity | a target cannot learn from its own later return or a later campaign's evidence |
+| replay fidelity | both arms have identical ordinary pre-authoring inputs, at each seam captured |
+| temporal validity | a target cannot learn from its own later failure or from a later unit's evidence |
 | experiment isolation | test runs cannot modify production memory or learn from their outputs |
 | quality | a target reduction cannot be achieved by omitting meaningful required work |
 
@@ -548,7 +672,7 @@ umbrella: later phases add sibling types (`ProceduralSkill`, `EpisodicEvent`,
 inject paths accept `ReflectiveFailurePattern` only, so future contributors cannot
 assume arbitrary memories flow through the proving loop.
 
-> **Superseded by §0 (revision 5):** Phase 1 observes committed proposal-return rulings (§0.3). The plan-gate and correction-finalization observations below are historical.
+> **Superseded by §0 (revision 5), and restored in §0's form by revision 6 (§5d):** Phase 1 observes rejected plans, failed correction rounds and returned proposals from every eligible cycle (§0.3), each with its source's classification or an explicit `unclassified` (§0.4). The details below are historical: where they differ from §0, §0 holds.
 
 **Observe.** On a plan-validation rejection (gate auto-reject or human gate rejection
 with reasons), and on cycle finalize for correction-loop failure classes that carry a
@@ -823,6 +947,10 @@ assumed.
 > the measurement window (the 2.2 plan, D3). And templates are written per **target behavior** beneath a class, not per
 > class (§0.4).
 
+> **Revision 6 (§5d) reads this conclusion as where Phase 1 is measured first, not what Phase 1 is.** The proposal gate
+> stays the first measured target. Every eligible cycle is observed, and plan writing and repair are consuming seams
+> beside proposal writing. The cut's readings above also met Phase 1.5's condition, so the correction lane joins Phase 1.
+
 ## 5c. Revision 5: the external design review adopted (2026-10-06)
 
 **What changed.** §0 is new and normative. Each passage it contradicts is marked as superseded where it stands. The
@@ -860,6 +988,78 @@ supervisor recommended adopting them as specification, with four additions to th
 records, pre-proposal capture and the replay), and proposed writing them into this PR with the release shape the
 owner chose. The owner chose shape B ("go with B"): 2.2.0's cut waits for the bounded measurement window's finding
 (the 2.2 plan §3). This revision is reviewed with the plan in the same PR, and its merge is the acceptance.
+
+> **Amended by revision 6 (§5d):** the activation boundary is the unit of execution, a standalone cycle or a campaign,
+> and the snapshot is pinned at that unit's admission. "Cross-campaign learning" above is revision 5's wording, and the
+> owner had not ruled on it.
+
+## 5d. Revision 6: the cycle restored as Phase 1's unit (2026-10-07)
+
+**What changed.** Revision 5 made the campaign Phase 1's unit:
+- it called Phase 1 "cross-campaign learning";
+- it pinned the snapshot only at a campaign's admission;
+- it observed only proposal returns, and marked the plan-review and correction-round observations historical;
+- it supplied memory only to proposal writing.
+
+A SIP named and argued as cross-cycle memory became campaign memory. §1 states the problem as "failures that recur
+**across cycles**", and its rung ladder runs within-cycle (#669), then cross-cycle, then organization. Under revision 5
+a standalone cycle recorded nothing and received nothing.
+
+**Revision 6 restores the cycle as the unit, in §0's form:**
+- **observation from every eligible cycle,** standalone or inside a campaign, from three committed records:
+  - rejected plans;
+  - failed correction rounds;
+  - returned proposals.
+
+  Each carries its source's classification or an explicit `unclassified` (§0.4) and typed provenance (§0.5). The
+  projection runs beside execution and never changes a cycle (§0.3);
+- **eligibility:** fault-injected diagnostics, environment-attributed failures and replays produce no observation (§0.3);
+- **the snapshot pinned per unit of execution:** a standalone cycle when it is created, a campaign when it is admitted
+  (§0.7);
+- **memory disabled, declared:** counted regression rolls declare it, pin no snapshot, and still record their
+  observations (§0.7);
+- **three consuming seams:** plan writing (#2058's call site), repair, and proposal writing, each in its own slot and
+  each byte-identical while nothing is approved (§0.9);
+- **authoring replay:** one envelope type, captured before each consuming seam (§0.11). The first measured target stays
+  the proposal behavior, and the pre-registration fixes it (§0.12);
+- **the correction lane joins Phase 1:** its observation and its repair seam are Phase 1's, and its template waits for
+  a recurring target behavior (§0.4). The ledger's Phase 1.5 row is dropped by this revision;
+- **the acceptance matrix** gains rows for sources, eligibility, execution isolation, unit freeze, transfer and memory
+  disabled (§0.15).
+
+**What did not change:**
+- **governance:** people write the templates, the owner approves each revision for a stated applicability, and nothing
+  changes within a running unit;
+- deterministic recall and its budgets;
+- per-exposure assessment, with no automatic decay;
+- the three arms and the four findings;
+- the purity boundary (§7);
+- release shape B (the 2.2 plan §3).
+
+**The evidence.**
+- **The narrowing confused where Phase 1 is measured first with what Phase 1 is.** §5b chose the proposal gate as the
+  proving workload, because it was the only seam with a recurring target behavior: 6 of 22 increment rulings returned,
+  all on the 2.0 set's deploys. Revision 5 then wrote that workload into the contract's unit, its snapshot and its
+  sources. Nothing in the evidence called for that:
+  - §7 had already ruled "campaign is provenance, not scope";
+  - §6's first constraint keeps the schema free of a cycle assumption so that memory is not tied to one mode.
+- **The reason for the narrowing weakened at the 2.1 cut.** The whole 2.1 line returned no proposal, and the cut's
+  correction rounds met Phase 1.5's condition, failures of more than one shape (§5b, the cut's readings).
+- **Campaign-only memory leaves cycles out.** The regression rolls, the diagnostics and any operator's standalone cycle
+  run outside a campaign. Under revision 5 none of them recorded anything.
+- **One property revision 5 had by accident is kept on purpose.** Counted regression rolls received no memory only
+  because they run no proposals. Revision 6 makes this a declaration, memory disabled, so the regression yardstick does
+  not move when the first lesson is approved.
+
+**Who ruled it.** The owner, 2026-10-07, on the supervisor's overview of the 2.2 plan:
+- "are memories captured after each cycle of a campaign as well; and also outside the scope of a campaign. I just want
+  to ensure that campaigns are not the only mechanism to persist cycle memories";
+- then "but this is cross cycle memory; not cross campaign memory. Just not clear why this turned into a campaign memory
+  system".
+
+Revision 5's campaign framing was the supervisor's recommendation in adopting the external review (§5c), not a ruling of
+the owner's. The supervisor proposed this revision's shape. The owner asked for it to be drafted ("yes, draft revision 6
+and the plan re-scoping"). It is reviewed with the plan's re-scoping in one PR, and its merge is the ruling.
 
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
@@ -926,6 +1126,7 @@ Design decisions this implies:
   rides the metadata; recall scoring may boost same-campaign provenance (the "this
   objective's own history" signal); the scope ladder (§5) is unchanged.
 > **Revision 5:** campaign-close aggregation summarizes assessments and never overwrites them with cycle success (§0.10). Campaign close is one mode's consolidation trigger; duty and ambient memory will need their own.
+> **Revision 6:** this bullet is now §0.1's rule. A campaign is provenance and one consumer, and Phase 1's unit is the cycle (§5d). A standalone cycle's close is a consolidation trigger too.
 - **Campaign close is Phase 2's consolidation clock.** Consolidation and success-rate
   updates need a deterministic trigger; cycle-end is too frequent and wall-clock is
   arbitrary. Campaign disposition — the final continuation decision — is the natural
@@ -1064,6 +1265,8 @@ Per the ratified post-1.4 reshuffle (`docs/plans/post-1-4-roadmap-reconciliation
 ## 13. Open questions for design review
 
 > **Revision 5 answers:** question 2 (§0.2: the pattern's identity), 4 (§0.12: the pre-registration), 6 (§0.6 and §0.4: approval is the owner's, per revision and applicability), 7 (§0.10: no automatic decay in Phase 1) and 8 (§0.4: a supported behavior's missing template blocks its support claim, and an unsupported one is disclosed backlog). Questions 3 and 5 stay open for Phase 1.5 and Phase 2.
+>
+> **Revision 6 answers question 3** (§0.9): repair is one of Phase 1's three consuming seams, inert until a correction-round template is approved. **It extends the answer to question 1** (§0.4): a person's plan rejection with no recorded class is recorded as `unclassified` and produces no pattern. Question 5 stays open for Phase 2.
 
 1. Should human gate rejections (free-text reasons) enter Phase 1's corpus, or only
    validator-emitted classes? (Draft position: validator-only — deterministic encode; the
