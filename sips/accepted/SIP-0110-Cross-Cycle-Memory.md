@@ -28,7 +28,8 @@ recorded in `docs/ideas/cross-cycle-memory-v4-draft.md`) as §5a, corrects refer
 and states how Campaign (2.0) and this SIP meet. Revision 2 (2026-08-03) incorporated design-review
 round 1: the typed Phase-1 primitive, governed encoding templates, the lifecycle `status` dimension,
 deterministic Phase-1 retrieval, the recall-vs-outcome metric split, and Phase-1 decay.
-**Builds on:** SIP-042 (LanceDB semantic memory — the storage mechanics), SIP-0088/0089
+**Builds on:** SIP-042 (LanceDB semantic memory — the storage mechanics until revision 6, which stores Phase 1's
+records in Postgres, §0.8), SIP-0088/0089
 (persistent agent identity), #669 (framing re-roll rejection context — the within-cycle
 rung and the injection seam this SIP reuses), SIP-0101 (Cycle Replay Harness — the
 measurement instrument), Campaign Orchestration (proposed, **v2.0's headline**, revision 2; see §7
@@ -142,7 +143,7 @@ These six are domain concepts, not services or databases:
 | **pattern** | the stable identity of one behavioral lesson | project scope, target behavior (§0.4), task type |
 | **pattern revision** | immutable guidance text, applicability and template version | pattern and revision number |
 | **approval** | the owner's authorization of one revision for a stated applicability | revision and applicability |
-| **exposure** | the exact revisions supplied to one proposal invocation, with what was omitted and why | the invocation |
+| **exposure** | the exact revisions supplied to one authoring invocation at a consuming seam (§0.9), with what was omitted and why | the invocation |
 | **assessment** | what was observed for that exposure's targets (§0.10) | the exposure |
 
 They are stored as four records: observations, pattern revisions, approvals, and exposures that carry their assessment.
@@ -256,8 +257,8 @@ ruling**.
 - **The campaign is optional on every source.** A standalone cycle's observations carry none.
 - **The cycle id is optional on a proposal ruling only,** because a returned proposal may never create a cycle.
 - `origin_mode = cycle` names the execution posture, not a cycle's existence.
-- **The origin model is the author's:** the planner's, the repairer's or the proposer's. A model used in classifying,
-  if any, is recorded separately.
+- **The origin model is the author's:** the planner's, the build author's, the repairer's or the proposer's. A model
+  used in classifying, if any, is recorded separately.
 
 ### 0.6 Approval and activation
 
@@ -292,9 +293,11 @@ When a unit of execution is admitted, it pins a memory snapshot, an immutable ma
 - Concurrent units keep their own snapshots.
 - A restart reproduces the original selection from the same snapshot and task inputs.
 
-**Memory disabled, declared.** A cycle may declare memory disabled when it is created. It then pins no snapshot,
-every consuming task records a `disabled` exposure, and its prompts are rendered as if memory did not exist. **Its
-observations are still recorded** (§0.3). **Every counted regression roll declares it,** written by the
+**Memory disabled, declared.** A unit may declare memory disabled when it is admitted: a standalone cycle when it is
+created, a campaign when it is admitted, and the campaign's proposals and cycles then follow it. The unit pins no
+snapshot, every consuming task records a `disabled` exposure, and its prompts are rendered as if memory did not exist.
+A whole campaign declaring it is the memory-off arm of a live confirmation (§0.12). **Its observations are still
+recorded** (§0.3). **Every counted regression roll declares it,** written by the
 verification-set driver, until the owner rules otherwise on a finding of supported benefit (2.2 plan D12). The regression
 set is the framework's yardstick, and an approved lesson must not move it unannounced.
 
@@ -303,7 +306,17 @@ set is the framework's yardstick, and an approved lesson must not move it unanno
 ### 0.8 Recall
 
 **Who owns what.**
-- `MemoryPort` owns storage (SIP-042).
+- **Phase 1's four records are stored in Postgres, beside the cycle registry** (the 2.2 plan's D13). They sit behind
+  their own port, with an in-memory adapter for tests and a Postgres adapter in a deploy, selected as the cycle
+  registry is (`adapters/cycles/factory.py`). The reasons:
+  - recall in Phase 1 is exact filtering (below), so it needs no embedding;
+  - each projection must be idempotent and reconciled against its source (§0.3), and the sources
+    (`cycle_gate_decisions`, `run_loop_summaries`, the campaign control log) are in the same database;
+  - the store stays addressable as a service, the Embodiment Runtime's invariant 2;
+  - the nightly verified backup covers Postgres only (`scripts/dev/ops/backup_db.sh`).
+- **SIP-042's `MemoryPort` is not Phase 1's store.** Its LanceDB adapter is each agent's own store, embedded in the
+  agent's container (`agents/entrypoint.py`), and used today only by console chat. The runtime API, where recall and
+  the plan composer run, has none. Phase 2 chooses a similarity index when it adds ranking (§8).
 - The recall policy behind `FailurePatternRecallPort` owns eligibility, authorization, snapshot selection, ordering and disclosure.
 - The executor is a consumer. Duty and ambient callers will reuse the policy rather than reimplement its trust rules.
 
@@ -345,9 +358,9 @@ without memory.
 
 ### 0.10 Assessment and feedback
 
-**What an assessment attaches to.** It attaches to the exact authored output (a plan, a repair, or a proposal revision)
-and its exposure, not to the next gate event or check. A gate's or a check's silence about a target is not evidence the
-target is absent:
+**What an assessment attaches to.** It attaches to the exact authored output (a plan, a build output, a repair, or a
+proposal revision) and its exposure, not to the next gate event or check. A gate's or a check's silence about a target
+is not evidence the target is absent:
 - the output may be refused for another defect;
 - it may carry several defects and record one;
 - it may be approved without the target being checked;
@@ -504,7 +517,8 @@ Decision records belong to the Design Decision Register and #950 (§5b).
 | SIP-0110 | memory payloads, lifecycle, applicability, approvals, exposure and effectiveness semantics |
 | SIP-0109 | ruling events, a campaign's admission point (where its snapshot is pinned), gate authority, escalation and continuation |
 | the cycle registry (SIP-0064, SIP-0067) and the correction loop (SIP-0086) | a standalone cycle's creation (where its snapshot is pinned), its gate decisions, and its correction rounds' records |
-| SIP-042 | storage and the adapter's guarantees |
+| this SIP's store, in Postgres beside the cycle registry (§0.8, the 2.2 plan's D13) | the four records, their idempotency keys and their reconciliation |
+| SIP-042 | each agent's own semantic store, which Phase 1 does not use |
 | the replay specification (slices 1 and 2: #2105, #2106) | the pre-authoring envelope, temporal isolation, arm execution and scoring |
 | SIP-0088/0089 | persistent identity and mode compatibility |
 | the Design Decision Register, #950 | the authoritative decision payload and its lifecycle |
@@ -535,7 +549,8 @@ Synthetic fixtures establish the mechanism's behavior. They are never evidence o
 | failure disclosure | disabled, empty, filtered and failed recall remain distinguishable |
 | inert behavior | at every consuming seam (plan writing, build authoring, repair, proposal writing), an empty or unapproved snapshot leaves the rendered prompt unchanged |
 | slot separation | at build authoring, a lesson and a retry's prior-cycle brief render in separate slots, and either one alone renders the other's slot empty |
-| memory disabled | a cycle declaring memory disabled pins no snapshot, renders byte-identical prompts at every seam, records `disabled` exposures, and still records its observations |
+| memory disabled | a standalone cycle or a campaign declaring memory disabled pins no snapshot, renders byte-identical prompts at every seam (a campaign's proposals and cycles included), records `disabled` exposures, and still records its observations |
+| storage | the four records are in the deploy's Postgres, read by the runtime API, and survive every container's recreation |
 | feedback | unassessed or partly classified outputs earn no credit |
 | app-build indicators | an exposure, a `disabled` one included, records its build's correction rounds, rounds to green and acceptance; a green build leaves the exposure's assessment unchanged |
 | replay fidelity | both arms have identical ordinary pre-authoring inputs, at each seam captured |
@@ -753,6 +768,9 @@ entry; never a blob of the whole gate decision):
   extensible to duty-handoff, observation, and conversation origins), `summary`.
   (SIP-042's `MemoryEntry` already carries namespace/tags/importance/cycle_id; the delta
   is the scoring/provenance/identity fields.)
+
+> **Superseded by §0.8 (revision 6, the 2.2 plan's D13):** Phase 1's records are stored in Postgres beside the cycle
+> registry, behind their own port, not through `MemoryPort`. There is still no new service.
 
 **Store.** Existing `MemoryPort` → LanceDB adapter. No new storage service.
 
@@ -1059,8 +1077,11 @@ a standalone cycle recorded nothing and received nothing.
   the proposal behavior, and the pre-registration fixes it (§0.12);
 - **the correction lane joins Phase 1:** its observation and its repair seam are Phase 1's, and its template waits for
   a recurring target behavior (§0.4). The ledger's Phase 1.5 row is dropped by this revision;
+- **storage in Postgres, beside the cycle registry** (§0.8, the 2.2 plan's D13), in place of SIP-042's `MemoryPort`;
+- **a campaign may declare memory disabled,** as a standalone cycle may, so that a live confirmation can assign the
+  memory-off arm to a whole campaign as §0.12 requires (§0.7);
 - **the acceptance matrix** gains rows for sources, eligibility, execution isolation, unit freeze, transfer, memory
-  disabled, slot separation and the app-build indicators (§0.15).
+  disabled, slot separation, the app-build indicators and storage (§0.15).
 
 **What did not change:**
 - **governance:** people write the templates, the owner approves each revision for a stated applicability, and nothing
@@ -1097,6 +1118,18 @@ a standalone cycle recorded nothing and received nothing.
   exposure, and the explicit statement of what Phase 1 does not claim (§0.13). On the evidence to the 2.1 cut, none of
   this is likely to show an effect in 2.2: the counted set passed 4 of 4 with one correction round across the set, and
   the cut's four failed rounds were four different defects (§5b).
+- **The store revision 5 named could not serve Phase 1.** §0.8 said `MemoryPort` owns storage, and the plan's slice 3
+  named its LanceDB adapter. Reading the code for the owner's question about agent and squad memory found that the
+  adapter is created inside each agent's container (`agents/entrypoint.py`, at `/app/data/memory_db`) and used only by
+  console chat (`adapters/comms/chat_executor.py`). Recall runs in the runtime API (`api/runtime/main.py`,
+  `adapters/cycles/run_provisioning.py`), which has no such store. Placing it in one agent's container would break the
+  Embodiment Runtime's invariant 2, and a new store in the runtime API would need a compose change and sit outside the
+  nightly backup, which covers Postgres only. The same reading found three agents with no volume for their own store
+  (#2112).
+- **A review of this revision's text,** asked for by the owner before kickoff, found four places still written for one
+  seam or one unit: the exposure's definition (§0.2, "one proposal invocation"), the origin model (§0.5), what an
+  assessment attaches to (§0.10), and the memory-disabled declaration, open to a cycle only while §0.12 assigns live
+  treatment to whole campaigns (§0.7). Each is corrected in place.
 
 **Who ruled it.** The owner, 2026-10-07, on the supervisor's overview of the 2.2 plan:
 - "are memories captured after each cycle of a campaign as well; and also outside the scope of a campaign. I just want
@@ -1108,8 +1141,9 @@ Revision 5's campaign framing was the supervisor's recommendation in adopting th
 the owner's. The supervisor proposed this revision's shape. The owner asked for it to be drafted ("yes, draft revision 6
 and the plan re-scoping"). The owner then asked "what does cross cycle memory produce in terms of output quality of the
 target app build", and on the supervisor's answer asked for the build-authoring seam, the indicators and the statement
-of what is not claimed to be added ("yes, add those three"). It is reviewed with the plan's re-scoping in one PR, and
-its merge is the ruling.
+of what is not claimed to be added ("yes, add those three"). On the supervisor's account of how agent and squad memory
+work, the owner asked for the storage decision to be added ("yes, add the Postgres decision to 2111"), and for a full
+review of the PR before kickoff. It is reviewed with the plan's re-scoping in one PR, and its merge is the ruling.
 
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization

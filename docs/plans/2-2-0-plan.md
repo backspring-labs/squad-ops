@@ -31,6 +31,13 @@ produces in the quality of the application the squad builds:
 - the app-build indicators recorded beside each exposure, observed and never gating;
 - "What 2.2 does not claim", below.
 
+**Added later the same day, at the owner's request** ("yes, add the Postgres decision to 2111 and file the volume
+issue"), after the owner asked how agent memory and the squad's project memory work:
+- **D13:** Phase 1's records are stored in Postgres beside the cycle registry, not in SIP-042's per-agent LanceDB store;
+- **#2112**, placed in §2.3: three agents have no volume for their own store;
+- corrections from the owner's review request: the repair seam is composed at runtime by the correction runner, not by
+  the plan composer (§2.1), and four places in SIP-0110 §0 still written for one seam or one unit (its §5d).
+
 **This revision changes prose only.**
 
 **What 2.2 is.** An even minor, a feature release (CLAUDE.md, #281), led by one headline: **SIP-0110 Phase 1**,
@@ -90,13 +97,15 @@ Claiming an improvement in the application needs three things 2.2 does not have:
 
 ## 1. The open issues, every one placed
 
-25 issues are open on 2026-10-07, counting the four Phase-1 slices (#2096, #2105–#2107). #1964 closed with #2097.
+26 issues are open on 2026-10-07, counting the four Phase-1 slices (#2096, #2105–#2107) and #2112. #1964 closed with
+#2097.
 
 | where | count | issues |
 |---|---|---|
 | **2.2: the headline** | 4 | #2105 (slice 1: capture and the source-case inspection), #2106 (slice 2: the replay), #2096 (slice 3: the mechanism), #2107 (slice 4: the template and the measurement window) |
 | **2.2: beside it** | 1 | #1708's remainder: the auto tier and the escalation queue (placed 2026-10-03, 2.0 plan rev 9 §5a.5; kept 2026-10-04, Q2) |
 | **2.2: hardening, placed by the owner during the 2.1 line** | 3 | #2079 (the realm's admin password), #2082 (two console test files depend on their order), #2083 (the realm sync never applies a service account's roles) |
+| **2.2: hardening, filed at the owner's request on 2026-10-07** | 1 | #2112 (three agents have no volume for their own store). Its fix is a compose change, built only on the owner's OK (§2.3) |
 | **2.1's, read at its cut** | 2 | #1964 closed with #2097 (the cut's readings are SIP-0110 §5b's last part). #1911 and #1469 carry, each waiting on its evidence: #1911 on its replay of #1788's bundles, and #1469 on a failing build of a second module shape (the cut window had none) |
 | **2.3** | 6 | #316 (the owner, 2026-10-06: "2.3 is fine just let's not forget about it"), #1976, #1977, #1992, #1993, #1994 |
 | **2.3, recommended here** (§4, D6) | 1 | #2062 (hoisting #1985's deferred imports: 606 import sites, a structural change for the stabilization line, next to #1992's move) |
@@ -117,7 +126,7 @@ disabled. So building the parts does not move the regression baseline.
 
 | slice | what | the seam that owns it | size | deploy |
 |---|---|---|---|---|
-| 1, #2105 | the source-case inspection, then an `AuthoringReplayEnvelope` captured immediately before each consuming seam's authoring, complete beyond #1756's 10,000-character cut (§0.11): proposal writing first, then plan writing, build authoring and repair | the proposal handler's input assembly (`capabilities/handlers/planning/proposal.py`); the plan-authoring, build-authoring and repair inputs' assembly (`cycles/task_plan.py`) and the build handlers (`capabilities/handlers/cycle/develop.py`, `qa_test.py`, `builder.py`); the vault for storage | **L** (M in revision 5: one seam, now four) | yes |
+| 1, #2105 | the source-case inspection, then an `AuthoringReplayEnvelope` captured immediately before each consuming seam's authoring, complete beyond #1756's 10,000-character cut (§0.11): proposal writing first, then plan writing, build authoring and repair | the proposal handler's input assembly (`capabilities/handlers/planning/proposal.py`); the plan-authoring and build-authoring inputs' assembly (`cycles/task_plan.py`) and the build handlers (`capabilities/handlers/cycle/develop.py`, `qa_test.py`, `builder.py`); the repair inputs' assembly, at runtime, by the correction runner (`adapters/cycles/correction_repair.py`); the vault for storage | **L** (M in revision 5: one seam, now four) | yes |
 | 2, #2106 | the authoring replay: three arms over captured envelopes at any seam, validated first on proposals; temporal validity, isolation from production memory, one fixed rubric per target (§0.11–§0.12) | `scripts/dev/`, beside the increment replay (#1959) | M | no |
 | 3, #2096 | the mechanism (§0.2–§0.10), observing every eligible cycle and supplying four seams. Its parts are listed below | see the parts | L, larger than revision 5's | yes |
 | 4, #2107 | the template for the one supported target behavior, written on development cases; the pre-registration, which fixes the primary target; the window; the finding (§0.4, §0.12–§0.13) | `src/squadops/prompts/fragments/` for the template; `docs/plans/` for the pre-registration | M, plus the window's box time | yes |
@@ -135,16 +144,21 @@ disabled. So building the parts does not move the regression baseline.
 - **the snapshot pinned per unit:** at a standalone cycle's creation, and at a campaign's admission;
 - **the memory-disabled declaration** on the cycle, with the verification-set driver writing it on every counted roll
   (`scripts/dev/verification_set_driver.py`, D12);
-- the recall policy behind `FailurePatternRecallPort` (`src/squadops/ports/memory/recall.py`, #2058), with the
-  LanceDB adapter (`adapters/memory/lancedb.py`) and its factory. `RecallQuery` carries only the project and the task
-  type today (`src/squadops/memory/recall.py`), and gains the snapshot and the applicability inputs;
+- **the store, in Postgres beside the cycle registry (D13):** a port for the four records, an in-memory adapter for
+  tests and a Postgres adapter in a deploy, selected as the cycle registry is (`adapters/cycles/factory.py`), with its
+  migration in `infra/migrations/`. It is not SIP-042's per-agent LanceDB store;
+- the recall policy behind `FailurePatternRecallPort` (`src/squadops/ports/memory/recall.py`, #2058). `RecallQuery`
+  carries only the project and the task type today (`src/squadops/memory/recall.py`), and gains the snapshot and the
+  applicability inputs;
 - **injection at four seams,** each declared on the task type's context-assembly contract
   (`capabilities/context_assembly.py`) and each in its own slot:
   - the six plan-authoring types, through #2058's call site;
   - the three build-authoring types (`development.develop`, `qa.test`, `builder.assemble`), through the same
     plan-time composer (`cycles/task_plan.py`), in a slot apart from a retry's prior-cycle brief (#1692);
-  - the four repair types;
-  - `strategy.propose_increment`;
+  - the four repair types. Their envelopes are composed at runtime by the correction runner
+    (`adapters/cycles/correction_repair.py`), not by the plan composer, so the run's pinned snapshot is carried to it.
+    Today the recall is asked once, when the run is provisioned (`adapters/cycles/run_provisioning.py`);
+  - `strategy.propose_increment`, through the plan composer;
 - per-exposure assessment;
 - **the app-build indicators beside each exposure,** `disabled` ones included: the implementation run's correction
   rounds, rounds to green and acceptance, read from `run_loop_summaries` and the run's verdict or the increment's
@@ -220,6 +234,7 @@ ordinary evidence from memory-informed proposals.
 | #2079 | the realm's `squadops-admin` signs in with the password every realm file commits; #2006 left the realm's human users out | generate it per deploy, as #2006 does for service credentials, and rotate it with the same runbook (`docs/ops/credential_rotation.md`) | S | yes |
 | #2082 | `test_cycle_command_handlers.py` stubs `auth_bff` in `sys.modules`, and `test_auth_bff.py` imports the real one, so the pair fails 5 tests in one order | one fixture that owns the module for both files and restores its prior state | S | no |
 | #2083 | the realm sync's `partialImport` leaves out `users`, so a service account added after a realm was created never gets its realm roles | apply each service account's roles from the export, repeatably, without importing human users | S | yes |
+| #2112 | nat, eve and han mount no volume at `/app/data/memory_db`, so their own store (console chat today) is lost when the container is recreated | a named volume on each, as the other five agents have. **A compose change: built only on the owner's OK** | S | yes |
 
 Each issue carries its acceptance criteria (posted 2026-10-06).
 
@@ -257,7 +272,7 @@ The counted set passed 4 of 4 (the 2.1 pre-registration §10).
 
 1. **Inherit the 2.1 cut's findings** (§2.4). They are live evidence.
 2. **Rule before building:**
-   - this plan, with SIP-0110 revisions 5 and 6 (D5, D11, D12);
+   - this plan, with SIP-0110 revisions 5 and 6 (D5, D11, D12, D13);
    - the SIP-0109 amendments for D2's rail and for #1708's policy and queue.
 3. **Slice 1 (#2105):**
    - the source-case inspection, posted;
@@ -267,7 +282,8 @@ The counted set passed 4 of 4 (the 2.1 pre-registration §10).
      diagnostic's failure is never observed (SIP-0110 §0.3).
 4. **Hardening:**
    - #2082 (tooling, no deploy);
-   - then #2079 and #2083 together, since both are the realm's, with a rebuild and the regression pair.
+   - then #2079 and #2083 together, since both are the realm's, with a rebuild and the regression pair;
+   - #2112 rides that rebuild if the owner has OK'd its compose change.
 5. **Slice 3 (#2096),** inert, with the acceptance matrix (SIP-0110 §0.15) held on a controlled corpus. A rebuild
    and the regression pair follow. Nothing is supplied, because nothing is approved.
    - **The regression pair is the first live proof that a standalone cycle is observed.** It declares memory disabled,
@@ -335,6 +351,7 @@ Each has a recommendation. None is built before it is ruled.
 | D10 | **the escalation queue's resumption** | **designed in #1708's SIP-0109 amendment against §2.2's contract** | it is SIP-0109's surface (SIP-0110 §0.14) |
 | D11 | **what is observed, and where memory is supplied** | **every eligible cycle, standalone or in a campaign, from three sources (rejected plans, failed correction rounds, returned proposals); supplied at plan writing, build authoring, repair and proposal writing, each inert until a template is approved. A plan-review or correction-round template is written in 2.2 only if one target recurs across independent cycles, read at the pre-registration and at the cut. Every exposure records its build's indicators, observed only** | memory's unit is the cycle. Observing every cycle costs a projection beside execution. Supplying only where a template is approved keeps the measurement clean. Build authoring is where a correction-round lesson reaches a later cycle before its check fails, not only after (SIP-0110 §0.9, §2) |
 | D12 | **counted regression rolls and memory** | **declare memory disabled until a finding of supported benefit and the owner's ruling. Their observations are still recorded** | the regression set is the framework's yardstick. A lesson approved for plan writing would otherwise reach it and move it unannounced |
+| D13 | **where Phase 1's records are stored** | **Postgres, beside the cycle registry, behind their own port** (SIP-0110 §0.8). Not SIP-042's LanceDB store | that store is created inside each agent's container and used only by console chat. Recall runs in the runtime API, which has none. Phase 1's recall is exact filtering, so it needs no embedding. The projections must be idempotent against records already in Postgres. Postgres is addressable as a service (the Embodiment Runtime's invariant 2) and is the only store in the nightly verified backup. Phase 2 chooses a similarity index when it adds ranking |
 
 ---
 
