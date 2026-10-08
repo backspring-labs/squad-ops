@@ -258,10 +258,27 @@ def _correction_rounds(cycle: Cycle, run: Run, summary: RunLoopSummary) -> list[
                     "locus": failure.locus,
                     "failed_checks": list(failure.failed_checks),
                     "failed_detail": [list(pair) for pair in failure.failed_detail],
+                    **_failure_shapes(failure.failed_detail),
                 },
             )
         )
     return observed
+
+
+def _failure_shapes(failed_detail: Sequence[tuple[str, str]]) -> dict[str, Any]:
+    """Each failing case's shape, by the table of the runner that ran it (§0.4, D14): an observed
+    signature, never a cause. A case no row matches is recorded with no shape: unclassified."""
+    # Local: the runner's tables sit in capabilities, which imports this package.
+    from squadops.capabilities.handlers.test_runner import (
+        FAILURE_SHAPE_TABLE_VERSION,
+        failure_shape_of,
+    )
+
+    shapes = []
+    for check, text in failed_detail:
+        runner, shape = failure_shape_of(text)
+        shapes.append({"check": check, "runner": runner, "shape": shape})
+    return {"failure_shapes": shapes, "failure_shape_table_version": FAILURE_SHAPE_TABLE_VERSION}
 
 
 def observe_proposal_rulings(
