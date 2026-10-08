@@ -127,6 +127,37 @@ class PatternRevision:
     def revision_id(self) -> str:
         return f"{self.pattern_id}@{self.revision}"
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "pattern_id": self.pattern_id,
+            "revision": self.revision,
+            "target_behavior": self.target_behavior,
+            "text": self.text,
+            "applicability": self.applicability.to_dict(),
+            "template_id": self.template_id,
+            "template_version": self.template_version,
+            "drafter_model": self.drafter_model,
+            "drafter_version": self.drafter_version,
+            "cited_observations": list(self.cited_observations),
+            "created_at": self.created_at.isoformat(),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> PatternRevision:
+        return cls(
+            pattern_id=str(data["pattern_id"]),
+            revision=int(data["revision"]),
+            target_behavior=str(data["target_behavior"]),
+            text=str(data["text"]),
+            applicability=Applicability.from_dict(data["applicability"]),
+            template_id=str(data["template_id"]),
+            template_version=str(data["template_version"]),
+            drafter_model=str(data["drafter_model"]),
+            drafter_version=str(data["drafter_version"]),
+            cited_observations=tuple(data.get("cited_observations") or ()),
+            created_at=datetime.fromisoformat(str(data["created_at"])),
+        )
+
 
 @dataclass(frozen=True)
 class Approval:
@@ -140,6 +171,30 @@ class Approval:
     #: The replay check the draft was given before approval: its reference and result (§0.6).
     replay_check: Mapping[str, Any] = field(default_factory=dict)
     revoked_at: datetime | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "approval_id": self.approval_id,
+            "revision_id": self.revision_id,
+            "applicability": self.applicability.to_dict(),
+            "approved_by": self.approved_by,
+            "approved_at": self.approved_at.isoformat(),
+            "replay_check": dict(self.replay_check),
+            "revoked_at": self.revoked_at.isoformat() if self.revoked_at else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> Approval:
+        revoked = data.get("revoked_at")
+        return cls(
+            approval_id=str(data["approval_id"]),
+            revision_id=str(data["revision_id"]),
+            applicability=Applicability.from_dict(data["applicability"]),
+            approved_by=str(data["approved_by"]),
+            approved_at=datetime.fromisoformat(str(data["approved_at"])),
+            replay_check=dict(data.get("replay_check") or {}),
+            revoked_at=datetime.fromisoformat(str(revoked)) if revoked else None,
+        )
 
 
 @dataclass(frozen=True)
@@ -168,6 +223,42 @@ class Snapshot:
     disabled: bool
     entries: tuple[SnapshotEntry, ...] = ()
     policy: RecallPolicy = field(default_factory=RecallPolicy)
+
+    def to_dict(self) -> dict[str, Any]:
+        """The whole pin, self-contained: a stored snapshot never depends on rows read later."""
+        return {
+            "snapshot_id": self.snapshot_id,
+            "unit_kind": self.unit_kind.value,
+            "unit_id": self.unit_id,
+            "pinned_at": self.pinned_at.isoformat(),
+            "disabled": self.disabled,
+            "entries": [
+                {"revision": e.revision.to_dict(), "approval": e.approval.to_dict()}
+                for e in self.entries
+            ],
+            "policy": {
+                "version": self.policy.version,
+                "max_lessons": self.policy.max_lessons,
+                "token_budget": self.policy.token_budget,
+            },
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> Snapshot:
+        return cls(
+            snapshot_id=str(data["snapshot_id"]),
+            unit_kind=UnitKind(data["unit_kind"]),
+            unit_id=str(data["unit_id"]),
+            pinned_at=datetime.fromisoformat(str(data["pinned_at"])),
+            disabled=bool(data["disabled"]),
+            entries=tuple(
+                SnapshotEntry(
+                    PatternRevision.from_dict(e["revision"]), Approval.from_dict(e["approval"])
+                )
+                for e in data.get("entries") or ()
+            ),
+            policy=RecallPolicy(**dict(data.get("policy") or {})),
+        )
 
 
 def pin(
