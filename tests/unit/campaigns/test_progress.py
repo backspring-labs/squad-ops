@@ -475,24 +475,43 @@ async def test_a_cycle_that_can_still_continue_is_not_decided(calibrating, stopp
 
 
 @pytest.mark.parametrize(
-    ("workload", "status", "stopped", "ending"),
+    ("workload", "status", "stopped", "ending", "parked"),
     [
-        ("proposal", "completed", CycleStopReason.GATE_REJECTED, CycleEnding.REJECTED_AT_GATE),
+        (
+            "proposal",
+            "completed",
+            CycleStopReason.GATE_REJECTED,
+            CycleEnding.REJECTED_AT_GATE,
+            False,
+        ),
         # §9.5: a proposal whose revisions are spent counts as rejected.
         (
             "proposal",
             "completed",
             CycleStopReason.REVISION_UNAVAILABLE,
             CycleEnding.REJECTED_AT_GATE,
+            False,
         ),
-        ("proposal", "failed", CycleStopReason.RUN_FAILED, CycleEnding.PROPOSAL_FAILED),
-        ("implementation", "failed", CycleStopReason.RUN_FAILED, CycleEnding.ASSESSED),
-        ("framing", "completed", CycleStopReason.GATE_REJECTED, CycleEnding.ASSESSED),
+        ("proposal", "failed", CycleStopReason.RUN_FAILED, CycleEnding.PROPOSAL_FAILED, False),
+        ("implementation", "failed", CycleStopReason.RUN_FAILED, CycleEnding.ASSESSED, False),
+        ("framing", "completed", CycleStopReason.GATE_REJECTED, CycleEnding.ASSESSED, False),
+        # §24bj: the expired escalation's run, cancelled for it.
+        ("framing", "cancelled", CycleStopReason.RUN_CANCELLED, CycleEnding.PARKED, True),
+        # An expiry a person's decision beat: the run went on, so the cycle was not parked.
+        (
+            "implementation",
+            "completed",
+            CycleStopReason.SEQUENCE_COMPLETED,
+            CycleEnding.ASSESSED,
+            True,
+        ),
+        # An operator's cancel with no expiry naming the run is not a park.
+        ("framing", "cancelled", CycleStopReason.RUN_CANCELLED, CycleEnding.ASSESSED, False),
     ],
 )
-def test_the_ending_is_read_from_where_the_cycle_stopped(workload, status, stopped, ending):
+def test_the_ending_is_read_from_where_the_cycle_stopped(workload, status, stopped, ending, parked):
     run = Run("r", "c", 1, status, "system", "cfg", workload_type=workload)
-    assert cycle_ending(stopped, run) is ending
+    assert cycle_ending(stopped, run, parked=parked) is ending
 
 
 def test_the_counters_are_read_from_the_campaigns_own_records():

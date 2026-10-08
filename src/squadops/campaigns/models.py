@@ -108,6 +108,12 @@ class ControlOperation(StrEnum):
     #: intent refuses it again. The owner fixes what it names and resumes, or aborts (§24e item 5,
     #: §24ba; #1971).
     LAUNCH_REFUSED = "launch_refused"
+    #: The plan-review tier could not approve a plan gate, so it escalated (§24bj): one row per
+    #: escalation, keyed by its identity. A record: the campaign holds at the gate it was in.
+    ESCALATION_OPENED = "escalation_opened"
+    #: An escalation ended, as resolved, expired, superseded or cancelled (§24bj, §24bk). Every
+    #: ending of one escalation shares one key, so it ends exactly once. A record.
+    ESCALATION_CLOSED = "escalation_closed"
 
     @property
     def records_only(self) -> bool:
@@ -122,6 +128,8 @@ class ControlOperation(StrEnum):
             ControlOperation.CLASSIFY,
             ControlOperation.LEASE_ACQUIRE,
             ControlOperation.LEASE_RELEASE,
+            ControlOperation.ESCALATION_OPENED,
+            ControlOperation.ESCALATION_CLOSED,
         )
 
     @property

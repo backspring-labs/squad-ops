@@ -35,6 +35,13 @@ from squadops.campaigns.continuation import (
     campaign_continuation_decision,
     cycle_verdict,
 )
+from squadops.campaigns.escalation import (
+    EscalationState,
+    RunAtGate,
+    closing_transitions,
+    escalations,
+    parked_run,
+)
 from squadops.campaigns.evaluator_trees import FileTree
 from squadops.campaigns.evidence import CycleRecords, digest, package, serialized
 from squadops.campaigns.gate import (
@@ -79,6 +86,7 @@ from squadops.cycles.models import (
     Cycle,
     GateDecision,
     GateDecisionValue,
+    IllegalStateTransitionError,
     Run,
     RunStatus,
     WorkloadType,
@@ -94,6 +102,15 @@ EVIDENCE_ARTIFACT_TYPE = "campaign_evidence"
 #: The role on the rows the completion boundary writes for the campaign.
 COMPLETION_ROLE = "completion"
 
+#: The states a campaign's cycle can wait at a plan gate in: the sweep reads their gates (§24aj)
+#: and their escalations (§24bj).
+_GATE_SWEEP_STATES = (
+    CampaignState.CALIBRATING,
+    CampaignState.BUILDING,
+    CampaignState.REPAIRING,
+    CampaignState.RETRYING,
+)
+
 #: How many repairs back a framing answer is looked for: a repair of a repair is bounded by the
 #: policy's per-increment repairs, and a cycle naming itself must not loop (#1902).
 _REPAIR_CHAIN_LIMIT = 8
@@ -108,16 +125,33 @@ _RUNNING_STATES = frozenset(
 )
 
 
-def cycle_ending(stopped_because: CycleStopReason, last_run: Run) -> CycleEnding:
+def cycle_ending(stopped_because: CycleStopReason, last_run: Run, *, parked: bool) -> CycleEnding:
     """How the cycle ended, for the decision. The increment gate's rejection — and a proposal
     whose revisions were spent, which §9.5 counts as rejected — is ``rejected_at_gate``; a
-    proposal run that failed is ``proposal_failed``; everything else reached its assessment."""
+    proposal run that failed is ``proposal_failed``; a plan gate whose escalation expired, its run
+    cancelled for it, is ``parked`` (§24bj; ``parked`` is read from the control log by
+    ``escalation.parked_run``); everything else reached its assessment."""
+    if parked and last_run.status == RunStatus.CANCELLED.value:
+        return CycleEnding.PARKED
     if last_run.workload_type == WorkloadType.PROPOSAL:
         if stopped_because in (CycleStopReason.GATE_REJECTED, CycleStopReason.REVISION_UNAVAILABLE):
             return CycleEnding.REJECTED_AT_GATE
         if last_run.status == RunStatus.FAILED.value:
             return CycleEnding.PROPOSAL_FAILED
     return CycleEnding.ASSESSED
+
+
+def _person_decision(run: Run, gate_name: str) -> str | None:
+    """Who decided ``gate_name`` on ``run``, when a person (or a declared agent) did; ``None`` when
+    nobody has, or only a machine path has."""
+    return next(
+        (
+            d.decided_by
+            for d in run.gate_decisions
+            if d.gate_name == gate_name and not is_machine_decision(d.decided_by)
+        ),
+        None,
+    )
 
 
 def decision_transition(
@@ -443,7 +477,7 @@ class CampaignProgress:
             return None
 
         latest = await self._assess(cycle.cycle_id)
-        ending = cycle_ending(stopped_because, last_run)
+        ending = cycle_ending(stopped_because, last_run, parked=parked_run(log, last_run.run_id))
         kind = CycleKind(cycle.kind)
         evaluation = None
         if kind in _INCREMENT_KINDS and ending is CycleEnding.ASSESSED:
@@ -588,6 +622,7 @@ class CampaignProgress:
                     "campaign_ruling_sweep_failed", extra={"campaign_id": campaign.campaign_id}
                 )
         written.extend(await self._sweep_plan_gates())
+        written.extend(await self._sweep_escalations())
         return written
 
     async def _sweep_plan_gates(self) -> list[ControlLogEntry]:
@@ -595,18 +630,17 @@ class CampaignProgress:
         question) is bounded as the increment gate is: one ``ruling_overdue`` row per seat whose
         bound has passed, keeping the campaign where it is. Nothing answers the gate."""
         written = []
-        for state in (
-            CampaignState.CALIBRATING,
-            CampaignState.BUILDING,
-            CampaignState.REPAIRING,
-            CampaignState.RETRYING,
-        ):
+        for state in _GATE_SWEEP_STATES:
             for campaign in await self._campaigns.campaigns_in_state(state):
                 try:
                     waiting = await self._waiting_gate(campaign)
                     if waiting is None:
                         continue
                     log = await self._campaigns.control_log(campaign.campaign_id)
+                    if any(e.run_id == waiting.run_id for e in escalations(log, campaign.state)):
+                        # §24bj: an escalated gate's bound is its escalation's expiry, which
+                        # parks the cycle; an overdue row saying it still waits would contradict it.
+                        continue
                     for transition in plan_gate_overdue_transitions(
                         campaign, log, waiting, self._clock()
                     ):
@@ -626,6 +660,70 @@ class CampaignProgress:
                         "campaign_gate_sweep_failed", extra={"campaign_id": campaign.campaign_id}
                     )
         return written
+
+    async def _sweep_escalations(self) -> list[ControlLogEntry]:
+        """§24bj: each pending escalation of a working campaign ends once, read against its run:
+        resolved when a person decided its gate, superseded when its run stopped waiting without
+        one, expired when the ruling bound passed with it still waiting. An expiry cancels the
+        run, so the cycle ends parked; a person's decision that lands first wins, and the run is
+        left to it. One campaign that cannot be swept does not stop the rest."""
+        written = []
+        for state in _GATE_SWEEP_STATES:
+            for campaign in await self._campaigns.campaigns_in_state(state):
+                try:
+                    written.extend(await self._end_escalations(campaign))
+                except Exception:
+                    logger.exception(
+                        "campaign_escalation_sweep_failed",
+                        extra={"campaign_id": campaign.campaign_id},
+                    )
+        return written
+
+    async def _end_escalations(self, campaign: Campaign) -> list[ControlLogEntry]:
+        log = await self._campaigns.control_log(campaign.campaign_id)
+        pending = [
+            e for e in escalations(log, campaign.state) if e.state is EscalationState.PENDING
+        ]
+        if not pending:
+            return []
+        waiting = await self._waiting_gate(campaign)
+        runs = {}
+        for esc in pending:
+            run = await self._cycles.get_run(esc.run_id)
+            runs[esc.run_id] = RunAtGate(
+                waiting=waiting is not None
+                and (waiting.run_id, waiting.gate_name) == (esc.run_id, esc.gate_name),
+                decided_by=_person_decision(run, esc.gate_name),
+            )
+        written = []
+        for transition in closing_transitions(campaign, log, runs, self._clock()):
+            try:
+                result = await self._campaigns.transition(campaign.campaign_id, transition)
+            except ControlOperationRefused as refused:
+                logger.info(
+                    "campaign_escalation_close_refused",
+                    extra={"campaign_id": campaign.campaign_id, "refusal": refused.entry.refusal},
+                )
+                continue
+            if result.replayed:
+                continue
+            written.append(result.entry)
+            if transition.binding["state"] == EscalationState.EXPIRED:
+                await self._park(transition.target)
+        return written
+
+    async def _park(self, run_id: str | None) -> None:
+        """Cancel the expired escalation's run, so its gate's poll ends and the cycle ends parked.
+        A person's decision that landed since the sweep read the run wins: the run goes on."""
+        assert run_id is not None
+        run = await self._cycles.get_run(run_id)
+        if any(not is_machine_decision(d.decided_by) for d in run.gate_decisions):
+            logger.info("campaign_escalation_park_skipped_decided", extra={"run_id": run_id})
+            return
+        try:
+            await self._cycles.cancel_run(run_id)
+        except IllegalStateTransitionError:
+            logger.info("campaign_escalation_park_run_already_ended", extra={"run_id": run_id})
 
     async def _waiting_gate(self, campaign: Campaign):
         """The gate the campaign's newest launched cycle waits at, if any."""
