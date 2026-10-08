@@ -217,6 +217,7 @@ def test_the_sync_grants_a_live_realms_service_account_its_declared_role(monkeyp
     monkeypatch.setattr(sync, "admin_token", lambda *a: "t")
     monkeypatch.setattr(sync, "_request", answering)
     monkeypatch.setattr(sync, "client_secrets", lambda registry, env: {})
+    monkeypatch.setattr(sync, "user_passwords", lambda registry, env: {})
 
     assert sync.main([str(_ROOT / "infra" / "auth" / "squadops-realm.json")]) == 0
 
@@ -224,3 +225,101 @@ def test_the_sync_grants_a_live_realms_service_account_its_declared_role(monkeyp
         "squadops-dev/squadops-agent: service account granted ['agent']" in capsys.readouterr().out
     )
     assert {r["name"] for r in realm.held} == {"agent"}
+
+
+class _UserRealm:
+    """A live realm's admin API for one human user, with the requests made of it."""
+
+    def __init__(self, exists: bool = True):
+        self.exists = exists
+        self.calls: list[tuple[str, str, object]] = []
+
+    def __call__(self, base_url, token, method, path, body=None):
+        self.calls.append((method, path, body))
+        if method == "GET" and "/users?" in path:
+            return 200, ([{"id": "u-admin", "username": "squadops-admin"}] if self.exists else [])
+        if method == "PUT" and path.endswith("/users/u-admin/reset-password"):
+            return 204, None
+        return 404, None
+
+
+@pytest.mark.parametrize(
+    ("holds", "exists", "said", "writes"),
+    [
+        (True, True, "password already the deploy's", []),
+        (
+            False,
+            True,
+            "password set from .env",
+            [
+                (
+                    "PUT",
+                    "/admin/realms/squadops-local/users/u-admin/reset-password",
+                    {"type": "password", "value": "deploy-own", "temporary": False},
+                )
+            ],
+        ),
+        (False, False, "user not found", []),
+    ],
+)
+def test_the_realm_users_password_is_brought_to_the_deploys_own(
+    monkeypatch, holds, exists, said, writes
+):
+    """#2079. Bugs caught: the admin left on the password every realm file committed; a
+    non-temporary reset that a password grant then refuses; or a user who already holds the
+    deploy's value reset on every deploy."""
+    realm = _UserRealm(exists)
+    monkeypatch.setattr(sync, "_request", realm)
+    monkeypatch.setattr(sync, "holds_password", lambda *a: holds)
+
+    line = sync.set_user_password(
+        "http://kc", "t", "squadops-local", "squadops-admin", "deploy-own"
+    )
+
+    assert said in line
+    assert [c for c in realm.calls if c[0] != "GET"] == writes
+
+
+def test_the_sync_brings_each_realm_users_password_to_env(monkeypatch, capsys):
+    """#2079's wiring, entered at the sync's ``main``: the registry's user password, from .env,
+    reaches every synced realm."""
+    realm = _UserRealm()
+
+    def answering(base_url, token, method, path, body=None):
+        if method == "GET" and path == "/admin/realms/squadops-dev":
+            return 200, {"realm": "squadops-dev"}
+        if path.endswith("/partialImport"):
+            return 200, {"added": 0, "skipped": 9, "overwritten": 0}
+        if "/clients?" in path or "/service-account-user" in path or "/role-mappings" in path:
+            return 404, None
+        return realm(base_url, token, method, path, body)
+
+    monkeypatch.setenv("KEYCLOAK_ADMIN_PASSWORD", "x")
+    monkeypatch.setattr(sync, "admin_token", lambda *a: "t")
+    monkeypatch.setattr(sync, "_request", answering)
+    monkeypatch.setattr(sync, "holds_password", lambda *a: False)
+    monkeypatch.setattr(sync, "client_secrets", lambda registry, env: {})
+    monkeypatch.setattr(sync, "read_env", lambda path: {"SQUADOPS_ADMIN_PASSWORD": "deploy-own"})
+
+    assert sync.main([str(_ROOT / "infra" / "auth" / "squadops-realm.json")]) == 0
+
+    assert "squadops-dev/squadops-admin: password set from .env" in capsys.readouterr().out
+    [put] = [c for c in realm.calls if c[0] == "PUT"]
+    assert put[2]["value"] == "deploy-own"
+
+
+@pytest.mark.parametrize(
+    "export_name",
+    [
+        "squadops-realm.json",
+        "squadops-realm-local.json",
+        "squadops-realm-cloud.json",
+        "squadops-realm-lab.json",
+    ],
+)
+def test_no_realm_export_commits_a_users_password(export_name):
+    """#2079. Bug caught: a realm user's password back in an export, so every realm created from
+    it signs in with a value anyone with the repository has."""
+    export = json.loads((_ROOT / "infra" / "auth" / export_name).read_text())
+
+    assert [u["username"] for u in export.get("users", []) if u.get("credentials")] == []
