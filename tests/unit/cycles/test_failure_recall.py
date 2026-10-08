@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import dataclasses
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -20,7 +20,8 @@ from adapters.memory.cross_cycle import InMemoryCrossCycleMemoryStore
 from adapters.memory.recall import SnapshotRecall
 from adapters.noop.ports import NoOpFailurePatternRecall
 from squadops.capabilities.context_assembly import authoring_seam_of
-from squadops.capabilities.lesson_supply import supply_lessons, unit_of
+from squadops.capabilities.handlers.fault_injection import PRIOR_ATTEMPTS_KEY
+from squadops.capabilities.lesson_supply import supply_lessons, supply_the_redispatch, unit_of
 from squadops.cycles.models import (
     AgentProfileEntry,
     Cycle,
@@ -30,6 +31,7 @@ from squadops.cycles.models import (
     WorkloadType,
 )
 from squadops.cycles.task_plan import generate_task_plan
+from squadops.memory.exposures import exposure_id_for
 from squadops.memory.lessons import (
     ANY_STACK,
     Applicability,
@@ -256,6 +258,120 @@ async def test_a_unit_with_no_pin_hands_nothing_and_records_the_recall_as_failed
     assert {x.disposition for x in await store.list_exposures("run_recall0001")} == {
         "recall_failed"
     }
+
+
+def _redispatched(envelope):
+    """``envelope`` as the loop holds it for its second dispatch: stamped with the one attempt
+    made (#1304), beside the enriched copy the loop actually dispatches."""
+    envelope.inputs[PRIOR_ATTEMPTS_KEY] = 1
+    return envelope, dataclasses.replace(envelope, inputs=dict(envelope.inputs))
+
+
+async def test_a_redispatched_task_records_its_own_exposure_and_its_first_keeps_its_id():
+    """§0.2: an exposure is one authoring invocation's (#2162). Bugs caught: a re-take or an
+    emission retry, which authors again with its own envelope, recording nothing, so its output
+    has no exposure to be assessed under; or the first attempt's id moving, so the exposures
+    already stored no longer join to their envelopes; or a task at no consuming seam asking."""
+    store = await _store_with(("Name the manifest element each criterion checks.", _DESIGN))
+    await _pinned(store, UnitKind.CYCLE, "cyc_recall")
+    supplied = await _supplied(SnapshotRecall(store))
+    [design] = [e for e in supplied if str(e.task_type) == "development.design_plan"]
+    other = next(e for e in supplied if authoring_seam_of(str(e.task_type)) is None)
+
+    for task in (design, other):
+        await supply_the_redispatch(
+            _redispatched(task),
+            recall=SnapshotRecall(store),
+            cycle=_framing_cycle(),
+            run_id="run_recall0001",
+            now=_NOW,
+        )
+
+    exposures = await store.list_exposures("run_recall0001")
+    mine = sorted((x for x in exposures if x.task_id == design.task_id), key=lambda x: x.attempt)
+    assert [(x.attempt, x.disposition) for x in mine] == [(1, "supplied"), (2, "supplied")]
+    assert mine[0].exposure_id == exposure_id_for("run_recall0001", design.task_id)
+    assert mine[1].exposure_id != mine[0].exposure_id
+    assert not [x for x in exposures if x.task_id == other.task_id]
+
+
+async def test_a_redispatch_answered_with_nothing_carries_no_earlier_lesson():
+    """Bug caught: the re-dispatch keeping the lesson its first attempt was handed while its own
+    exposure records that recall failed, so the record says memory was off for an authoring that
+    rendered a lesson. Both envelopes the loop holds are kept equal to the answer."""
+    store = await _store_with(("Name the manifest element each criterion checks.", _DESIGN))
+    await _pinned(store, UnitKind.CYCLE, "cyc_recall")
+    supplied = await _supplied(SnapshotRecall(store))
+    [design] = [e for e in supplied if str(e.task_type) == "development.design_plan"]
+    assert LESSONS_INPUT in design.inputs
+    store.get_snapshot = AsyncMock(side_effect=OSError("store unreachable"))  # type: ignore[method-assign]
+    held = _redispatched(design)
+
+    await supply_the_redispatch(
+        held,
+        recall=SnapshotRecall(store),
+        cycle=_framing_cycle(),
+        run_id="run_recall0001",
+        now=_NOW,
+    )
+
+    assert [LESSONS_INPUT in e.inputs for e in held] == [False, False]
+    [second] = [x for x in await store.list_exposures("run_recall0001") if x.attempt == 2]
+    assert (second.task_id, second.disposition) == (design.task_id, "recall_failed")
+
+
+async def test_a_task_the_run_dispatches_again_records_an_exposure_per_dispatch(reply_router):
+    """Wiring, entered at ``execute_run`` with the snapshot recall over a store: a framing run whose
+    design-plan writer fails once on transport and is dispatched again. Bug caught (#2162, the
+    rebuild 5 and 6 Next.js regression cycles): the re-dispatch rode the first attempt's envelope
+    and recorded nothing, so 11 authorings had 10 exposures. Each dispatch's exposure is joined by
+    the attempt its envelope carries."""
+    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.tasks.models import TaskResult
+
+    store = await _store_with()
+    await _pinned(store, UnitKind.CYCLE, "cyc_recall", disabled=True)
+    cycle, run = _framing_cycle(), _framing_run()
+    registry = AsyncMock()
+    registry.get_cycle.return_value = cycle
+    registry.get_run.return_value = run
+    registry.get_latest_checkpoint.return_value = None
+    profiles = AsyncMock()
+    profiles.resolve_snapshot.return_value = (_PROFILE, "sha")
+    queue = reply_router.bind(AsyncMock())
+    executor = DispatchedFlowExecutor(
+        cycle_registry=registry,
+        artifact_vault=AsyncMock(),
+        queue=queue,
+        squad_profile=profiles,
+        task_timeout=5.0,
+        reply_router=reply_router,
+        project_registry=None,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
+        failure_recall=SnapshotRecall(store),
+    )
+    dispatched: list[tuple[str, int]] = []
+
+    def responder(env):
+        inputs = env.get("inputs") or {}
+        dispatched.append((env["task_id"], int(inputs.get(PRIOR_ATTEMPTS_KEY) or 0) + 1))
+        first_design = env["task_type"] == "development.design_plan" and not inputs.get(
+            PRIOR_ATTEMPTS_KEY
+        )
+        if first_design:
+            return TaskResult(task_id=env["task_id"], status="FAILED", error="transient")
+        return TaskResult(task_id=env["task_id"], status="SUCCEEDED", outputs={"summary": "ok"})
+
+    reply_router.responder = responder
+    with patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock):
+        await executor.execute_run(cycle_id=cycle.cycle_id, run_id=run.run_id)
+
+    consuming = {t for t, _ in dispatched if authoring_seam_of(t.rsplit("-", 1)[-1])}
+    recorded = {(x.task_id, x.attempt) for x in await store.list_exposures(run.run_id)}
+    assert [a for t, a in dispatched if t.endswith("-development.design_plan")] == [1, 2]
+    assert recorded == {(t, a) for t, a in dispatched if t in consuming}
 
 
 async def test_provisioning_supplies_the_plan_it_builds():

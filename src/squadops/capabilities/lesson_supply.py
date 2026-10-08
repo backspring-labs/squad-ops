@@ -11,6 +11,10 @@ Which task types consume is their context-assembly contract's declaration (``aut
 never a branch on the type. Plan writing and build authoring are supplied here, when the run's plan
 is composed; repair when the correction runner composes a repair, and proposal writing when a
 campaign composes its proposal, each through the same function.
+
+An exposure is one authoring invocation's (§0.2), so a task the loop dispatches again (a correction
+round's re-take, an emission retry) asks again and discloses its own answer, under its attempt
+(:func:`supply_the_redispatch`, #2162).
 """
 
 from __future__ import annotations
@@ -21,6 +25,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from squadops.capabilities.context_assembly import authoring_seam_of
+from squadops.capabilities.handlers.fault_injection import PRIOR_ATTEMPTS_KEY
 from squadops.llm.model_registry import model_family_of
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import Recalled
@@ -28,6 +33,7 @@ from squadops.memory.recall import LESSONS_INPUT, RecallQuery, UnitKind
 
 if TYPE_CHECKING:
     from squadops.cycles.models import Cycle
+    from squadops.memory.authoring_envelope import AuthoringSeam
     from squadops.ports.memory.recall import FailurePatternRecallPort
     from squadops.tasks.models import TaskEnvelope
 
@@ -51,6 +57,13 @@ def query_for(envelope: TaskEnvelope, *, unit: tuple[UnitKind, str], stack: str)
         unit_kind=unit[0],
         unit_id=unit[1],
     )
+
+
+def attempt_of(envelope: TaskEnvelope) -> int:
+    """Which dispatch of its task ``envelope``'s next one is: the executor's attempt stamp (#1304),
+    which counts the attempts already made, plus one. The captured envelope carries the same
+    stamp, so an exposure and its authoring join on it."""
+    return int((envelope.inputs or {}).get(PRIOR_ATTEMPTS_KEY) or 0) + 1
 
 
 def lessons_input(recalled: Recalled) -> dict | None:
@@ -104,24 +117,83 @@ async def supply_lessons(
         if seam is None:
             supplied.append(envelope)
             continue
-        query = query_for(envelope, unit=unit, stack=stack)
-        recalled = await recall.recall(query)
-        await recall.disclose(
-            Exposure.of(
-                run_id=run_id,
-                task_id=envelope.task_id,
-                cycle_id=envelope.cycle_id,
-                agent_id=envelope.agent_id,
-                seam=seam.value,
-                query=query,
-                recalled=recalled,
-                recorded_at=now,
-            )
+        handed = await _ask_and_disclose(
+            envelope, seam, recall=recall, unit=unit, stack=stack, run_id=run_id, now=now
         )
-        handed = lessons_input(recalled)
         if handed is None:
             supplied.append(envelope)
         else:
             inputs = {**envelope.inputs, LESSONS_INPUT: handed}
             supplied.append(dataclasses.replace(envelope, inputs=inputs))
     return supplied
+
+
+async def supply_the_redispatch(
+    envelopes: Sequence[TaskEnvelope | None],
+    *,
+    recall: FailurePatternRecallPort,
+    cycle: Cycle,
+    run_id: str,
+    now: datetime,
+) -> None:
+    """A task the loop is about to dispatch again is another authoring invocation (§0.2, #2162):
+    it asks its unit's snapshot again and discloses its own exposure, under its attempt.
+
+    The loop re-dispatches the envelopes it already holds, so what this attempt is handed replaces
+    what the one before it was handed, in place, on each of them: a lesson the earlier answer
+    supplied and this one does not is taken off, or the envelope would carry a lesson its exposure
+    says it never got. The first of ``envelopes`` is the task's own; the rest (the enriched copy the
+    loop dispatches) are kept equal to it. A task at no consuming seam is left as it is.
+    """
+    from squadops.cycles.benchmark_registry import cycle_stack
+
+    held = [e for e in envelopes if e is not None]
+    if not held:
+        return
+    seam = authoring_seam_of(str(held[0].task_type))
+    if seam is None:
+        return
+    handed = await _ask_and_disclose(
+        held[0],
+        seam,
+        recall=recall,
+        unit=unit_of(cycle),
+        stack=cycle_stack(cycle) or "",
+        run_id=run_id,
+        now=now,
+    )
+    for envelope in held:
+        if handed is None:
+            envelope.inputs.pop(LESSONS_INPUT, None)
+        else:
+            envelope.inputs[LESSONS_INPUT] = handed
+
+
+async def _ask_and_disclose(
+    envelope: TaskEnvelope,
+    seam: AuthoringSeam,
+    *,
+    recall: FailurePatternRecallPort,
+    unit: tuple[UnitKind, str],
+    stack: str,
+    run_id: str,
+    now: datetime,
+) -> dict | None:
+    """One invocation's recall: asked with the task's trusted scope, disclosed under its attempt,
+    and what it is handed (``None`` when nothing is supplied)."""
+    query = query_for(envelope, unit=unit, stack=stack)
+    recalled = await recall.recall(query)
+    await recall.disclose(
+        Exposure.of(
+            run_id=run_id,
+            task_id=envelope.task_id,
+            cycle_id=envelope.cycle_id,
+            agent_id=envelope.agent_id,
+            seam=seam.value,
+            query=query,
+            recalled=recalled,
+            recorded_at=now,
+            attempt=attempt_of(envelope),
+        )
+    )
+    return lessons_input(recalled)
