@@ -7094,3 +7094,69 @@ class TestTheDeployADiagnosticsAreReadWhereTheirSeamsWrite:
         ]
         assert reading["reached"] is True
         assert driver._applied_words(reading) == f" — fault applied to `{task}` (0→1 rows)"
+
+
+class TestACountedRollDeclaresMemoryDisabled:
+    """SIP-0110 D12, entered at the driver's ``launch`` and ``preflight``: every cycle the driver
+    launches declares memory, and a counted roll refuses any declaration but ``disabled``."""
+
+    def _cfg(self, driver, tmp_path, overrides):
+        p = tmp_path / "set.yaml"
+        p.write_text(
+            yaml.safe_dump(
+                {
+                    "name": "d",
+                    "project": "group_run",
+                    "squad_profile": "full-38",
+                    "request_profile": "validated-fullstack",
+                    "gate_name": "g",
+                    "gate_notes": "g",
+                    "launch_notes": "r {roll}/{n}",
+                    "shakeout_notes": "s",
+                    "n_rolls": 1,
+                    "overrides": overrides,
+                }
+            )
+        )
+        return driver.load_set_config(p)
+
+    @pytest.mark.parametrize(
+        "overrides, sets",
+        [
+            ({}, ["memory=disabled"]),
+            ({"build_profile": "nextjs_ts"}, ["memory=disabled", "build_profile=nextjs_ts"]),
+            ({"memory": "enabled"}, ["memory=enabled"]),  # a shakeout's memory arm
+        ],
+    )
+    def test_every_launch_declares_memory(self, driver, tmp_path, monkeypatch, overrides, sets):
+        """Bug caught: a roll launched with no declaration, so a lesson approved between two rolls
+        reaches the yardstick unannounced; or the declaration written twice on one command."""
+        commands: list[str] = []
+        monkeypatch.setattr(driver, "login", lambda *a, **k: None)
+        monkeypatch.setattr(
+            driver, "sh", lambda cmd, *a, **k: commands.append(cmd) or "cyc_0a run_0b hash: 0c"
+        )
+
+        driver.launch(self._cfg(driver, tmp_path, overrides), "notes")
+
+        [command] = commands
+        assert re.findall(r"--set (\S+)", command) == sets
+
+    @pytest.mark.parametrize(
+        "declared, refused", [(None, False), ("disabled", False), ("enabled", True)]
+    )
+    def test_a_counted_roll_refuses_any_memory_but_disabled(
+        self, driver, tmp_path, monkeypatch, declared, refused
+    ):
+        """Bug caught: a counted roll run with memory on, its result read as the squad's own. A
+        shakeout may run with memory on; only counting refuses it."""
+        overrides = {} if declared is None else {"memory": declared}
+        cfg = self._cfg(driver, tmp_path, overrides)
+        monkeypatch.setattr(driver, "psql", lambda *a, **k: "0")
+        monkeypatch.setattr(driver, "sh", lambda *a, **k: "")
+
+        counted = driver.preflight(cfg, counting=True, identity={})
+        shakeout = driver.preflight(cfg, counting=False, identity={})
+
+        assert any(p.startswith("D12:") for p in counted) is refused
+        assert not any(p.startswith("D12:") for p in shakeout)

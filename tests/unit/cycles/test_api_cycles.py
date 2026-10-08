@@ -897,3 +897,91 @@ class TestListCyclesPages:
     @pytest.mark.parametrize("query", ["?limit=0", "?limit=501", "?offset=-1"])
     async def test_a_page_outside_the_bounds_is_refused(self, paged, query):
         assert paged.get(f"/api/v1/projects/hello_squad/cycles{query}").status_code == 422
+
+
+class TestCreatePinsTheMemorySnapshot:
+    """SIP-0110 §0.7, entered at the create route the CLI and the verification-set driver call: a
+    standalone cycle pins its snapshot when it is created, and its declaration decides whether the
+    snapshot carries anything (D12)."""
+
+    _URL = "/api/v1/projects/hello_squad/cycles"
+    _REQUEST = {"squad_profile_id": "full", "task_flow_policy": {"mode": "sequential"}}
+
+    @pytest.fixture
+    def store(self, client):
+        from adapters.memory.cross_cycle import InMemoryCrossCycleMemoryStore
+
+        store = InMemoryCrossCycleMemoryStore()
+        client.app.state.memory_store = store
+        return store
+
+    @pytest.mark.parametrize(
+        "declared, disabled",
+        [
+            ({}, False),
+            ({"execution_overrides": {"memory": "disabled"}}, True),
+            ({"applied_defaults": {"memory": "disabled"}}, True),
+            (
+                {
+                    "applied_defaults": {"memory": "disabled"},
+                    "execution_overrides": {"memory": "enabled"},
+                },
+                False,
+            ),
+        ],
+    )
+    async def test_a_cycle_pins_at_create_and_its_declaration_decides_what_it_carries(
+        self, client, store, declared, disabled
+    ):
+        """Bugs caught: a standalone cycle that pins nothing, so every seam records recall as
+        failed; a declaration read from the overrides alone, so a request profile that declares
+        memory disabled still hands a counted roll its lessons (D12); or an override that cannot
+        win over a default, which every other key's merge allows (#426)."""
+        import dataclasses
+
+        from squadops.memory.lessons import UnitKind
+        from tests.unit.memory.test_lessons import WHERE, _approve, _revision
+
+        here = dataclasses.replace(WHERE, project_id="hello_squad")
+        lesson = _revision("criterion_already_satisfied", where=here)
+        await store.record_revision(lesson)
+        await store.record_approval(_approve(lesson, at=NOW, where=here))
+
+        resp = client.post(self._URL, json={**self._REQUEST, **declared})
+
+        snapshot = await store.get_snapshot(UnitKind.CYCLE, resp.json()["cycle_id"])
+        assert resp.status_code == 200
+        assert snapshot.disabled is disabled
+        carried = [e.revision.revision_id for e in snapshot.entries]
+        assert carried == ([] if disabled else [lesson.revision_id])
+
+    def test_an_unknown_declaration_is_refused_before_the_cycle_exists(
+        self, client, store, mock_cycle_registry
+    ):
+        """Bug caught: ``memory: off`` read as enabled, handing a counted roll its lessons, or as
+        disabled, leaving a memory arm without memory."""
+        resp = client.post(
+            self._URL, json={**self._REQUEST, "execution_overrides": {"memory": "off"}}
+        )
+
+        err = resp.json()["detail"]["error"]
+        assert resp.status_code == 422 and err["code"] == "PREFLIGHT_REJECTED"
+        assert "memory must be 'disabled' or 'enabled', not 'off'" in err["message"]
+        mock_cycle_registry.create_cycle.assert_not_called()
+
+    def test_a_pin_that_fails_never_stops_the_cycle(self, client, mock_cycle_registry, caplog):
+        """Memory is beside execution (§0.3). Bug caught: a store outage refusing every cycle
+        create, so a fault in memory stops the squad it only advises."""
+        from adapters.memory.cross_cycle import InMemoryCrossCycleMemoryStore
+
+        class _Down(InMemoryCrossCycleMemoryStore):
+            async def get_snapshot(self, unit_kind, unit_id):
+                raise ConnectionError("the store is down")
+
+        client.app.state.memory_store = _Down()
+
+        resp = client.post(self._URL, json=self._REQUEST)
+
+        assert resp.status_code == 200
+        mock_cycle_registry.create_run.assert_called_once()
+        assert "memory_snapshot_not_pinned" in caplog.text

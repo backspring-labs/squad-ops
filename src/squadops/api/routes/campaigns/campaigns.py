@@ -272,7 +272,29 @@ async def start_campaign(
         # The policy names a request profile that does not exist: nothing can launch.
         raise HTTPException(status_code=422, detail=str(e)) from e
     result = await apply_control(request, campaign_id, transition, identity)
+    # SIP-0110 §0.7: the campaign pins its memory snapshot at admission, before its calibration
+    # launches, so every proposal and cycle of it selects from one snapshot.
+    await _pin_memory(request, result.campaign)
     return _result(result, launched_cycles=await launch_pending(request, result))
+
+
+async def _pin_memory(request: Request, campaign) -> None:
+    """A pin that fails is logged and the campaign starts; its seams record recall as failed.
+    Repeated (a replayed start, a restart), it returns the first pin."""
+    from datetime import UTC, datetime
+
+    from squadops.api.runtime.deps import get_memory_store
+    from squadops.memory.pinning import pin_campaign
+
+    store = get_memory_store(request)
+    if store is None:
+        return
+    try:
+        await pin_campaign(store, campaign, now=datetime.now(UTC))
+    except Exception:
+        logger.warning(
+            "memory_snapshot_not_pinned campaign=%s", campaign.campaign_id, exc_info=True
+        )
 
 
 @router.post("/{campaign_id}/classifications")

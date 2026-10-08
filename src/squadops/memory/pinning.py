@@ -9,7 +9,7 @@ original, so a unit's guidance never changes while it runs.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from squadops.memory.lessons import RecallPolicy, Snapshot, UnitKind, pin
 
@@ -41,3 +41,37 @@ async def pin_unit(
         policy=policy,
     )
     return await store.record_snapshot(snapshot)
+
+
+async def pin_standalone_cycle(
+    store: CrossCycleMemoryStorePort, cycle: Any, *, now: datetime
+) -> Snapshot | None:
+    """A standalone cycle's pin at its creation (§0.7), or ``None`` for a campaign's cycle, which
+    uses its campaign's snapshot."""
+    from squadops.memory.declarations import memory_disabled
+
+    if getattr(cycle, "campaign_id", None):
+        return None
+    return await pin_unit(
+        store,
+        unit_kind=UnitKind.CYCLE,
+        unit_id=cycle.cycle_id,
+        project_id=cycle.project_id,
+        pinned_at=now,
+        disabled=memory_disabled(cycle.resolved_config()),
+    )
+
+
+async def pin_campaign(
+    store: CrossCycleMemoryStorePort, campaign: Any, *, now: datetime
+) -> Snapshot:
+    """A campaign's pin at its admission (§0.7); its proposals and cycles use it. A campaign-level
+    memory-disabled declaration, for a live confirmation's off arm (§0.12), arrives with slice 4."""
+    return await pin_unit(
+        store,
+        unit_kind=UnitKind.CAMPAIGN,
+        unit_id=campaign.campaign_id,
+        project_id=campaign.project_id,
+        pinned_at=now,
+        disabled=False,
+    )

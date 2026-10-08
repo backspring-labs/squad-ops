@@ -9,6 +9,7 @@ from datetime import timedelta
 import pytest
 
 from adapters.memory.cross_cycle import InMemoryCrossCycleMemoryStore, RevisionConflict
+from squadops.memory.declarations import memory_disabled
 from squadops.memory.lessons import RecallDisposition, Snapshot, UnitKind, recall
 from squadops.memory.pinning import pin_unit
 from tests.unit.memory.test_lessons import ASK, T0, _approve, _revision
@@ -114,3 +115,25 @@ async def test_a_snapshot_survives_the_store_whole():
     )
 
     assert Snapshot.from_dict(json.loads(json.dumps(snapshot.to_dict()))) == snapshot
+
+
+@pytest.mark.parametrize(
+    "config, disabled",
+    [
+        (None, False),
+        ({}, False),
+        ({"memory": "enabled"}, False),
+        ({"memory": " Disabled "}, True),
+        ({"memory": "off"}, ValueError),
+        ({"memory": False}, ValueError),  # YAML's `memory: no`
+        ({"memory": ""}, ValueError),
+    ],
+)
+def test_the_declaration_is_one_of_two_words_and_anything_else_is_refused(config, disabled):
+    """§0.7. Bug caught: an unknown value read either way. Read as enabled it hands a counted roll
+    its lessons (D12); read as disabled it leaves a memory arm without memory."""
+    if disabled is ValueError:
+        with pytest.raises(ValueError, match="memory must be 'disabled' or 'enabled'"):
+            memory_disabled(config)
+    else:
+        assert memory_disabled(config) is disabled
