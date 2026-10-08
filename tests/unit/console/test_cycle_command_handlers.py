@@ -35,6 +35,21 @@ def _stub_continuum_and_bff():
     is wrong.
     """
     stubs = {}
+    # #2082: restore exactly what was here before, rather than removing it. Another console
+    # file imports the real ``auth_bff`` and puts console/app on the path at collection; a
+    # teardown that popped both broke that file's later ``import main`` in this run order.
+    stubbed = (
+        "continuum",
+        "continuum.app",
+        "continuum.app.runtime",
+        "continuum.adapters",
+        "continuum.adapters.web",
+        "continuum.adapters.web.api",
+        "auth_bff",
+        "main",
+    )
+    prior_modules = {name: sys.modules.get(name) for name in stubbed}
+    path_added = _docker_dir not in sys.path
 
     # Stub continuum hierarchy
     for mod_name in (
@@ -61,16 +76,17 @@ def _stub_continuum_and_bff():
     sys.modules["auth_bff"] = auth_bff_stub
 
     # Add console/app to sys.path so main.py can be found
-    if _docker_dir not in sys.path:
+    if path_added:
         sys.path.insert(0, _docker_dir)
 
     yield
 
-    # Cleanup
-    for mod_name in stubs:
-        sys.modules.pop(mod_name, None)
-    sys.modules.pop("main", None)
-    if _docker_dir in sys.path:
+    for name, prior in prior_modules.items():
+        if prior is None:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = prior
+    if path_added and _docker_dir in sys.path:
         sys.path.remove(_docker_dir)
 
 
