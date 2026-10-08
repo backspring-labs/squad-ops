@@ -38,6 +38,13 @@ issue"), after the owner asked how agent memory and the squad's project memory w
 - corrections from the owner's review request: the repair seam is composed at runtime by the correction runner, not by
   the plan composer (§2.1), and four places in SIP-0110 §0 still written for one seam or one unit (its §5d).
 
+**And at the owner's request on the review** ("yes, make both changes in 2111"), after the owner asked "who better to
+determine the lesson than the AI auditing everything":
+- **D14:** each stack's failure-shape sorter and a repeat report, in slice 3, so that a build mistake repeated across
+  cycles can be seen;
+- **D15:** a frontier-model auditor drafts each lesson from the recorded evidence. Each draft is frozen, replay-checked
+  and approved by the owner before any task is given it.
+
 **This revision changes prose only.**
 
 **What 2.2 is.** An even minor, a feature release (CLAUDE.md, #281), led by one headline: **SIP-0110 Phase 1**,
@@ -55,7 +62,8 @@ held outside the measurement window (D3). Hardening rides along.
 > everything the policy does not cover?**
 
 **What Phase 1 is, precisely** (SIP-0110 §0.1):
-- **cross-cycle learning, with lessons written by people;**
+- **cross-cycle learning: a frontier-model auditor drafts each lesson from the recorded evidence, and the owner approves
+  it after a replay check (D15);**
 - observations are recorded from every eligible cycle, whether it stands alone or runs inside a campaign;
 - new guidance never activates within the unit that is running: a standalone cycle, or a campaign with its cycles;
 - the owner approves a lesson, and it reaches cycles and campaigns admitted afterwards;
@@ -72,8 +80,9 @@ gate:
 - **It recurred after a prompt rule (#1947),** and again after the proposer was shown the return.
 
 **That is where Phase 1 is measured first, not what Phase 1 is** (SIP-0110 §5d). Every eligible cycle is observed, and
-the plan-writing, build-authoring and repair seams are wired inert. A recurring target there can then be supplied and measured once its
-template is written and approved. The headline is a measurement, not an expected win.
+the plan-writing, build-authoring and repair seams are wired inert. The repeat report (D14) shows whether a target
+recurs there. If one does, its lesson is drafted, approved, supplied and measured. The headline is a measurement, not an
+expected win.
 
 **The corpus is small.** The proposal behavior has about three independent historical cases, none captured before
 authoring, and the 2.1 line added none. The test corpus is built by the 2.2 line's own cycles and campaigns, and
@@ -86,7 +95,8 @@ behavior's recurrence, measured by replay. The proposal behavior decides what is
 - **The counted regression rolls run with memory disabled** (D12), so the release's yardstick of the built application
   is unchanged by design.
 - **The builds leave little to learn from today.** The 2.1 counted set passed 4 of 4 with one correction round across
-  the set, and the cut's four failed rounds were four different defects (SIP-0110 §5b).
+  the set, and the cut's four failed rounds were four different defects (SIP-0110 §5b). The repeat report (D14) is
+  what tells whether that still holds over the 2.2 line.
 
 Claiming an improvement in the application needs three things 2.2 does not have:
 - a build-side target that recurs, with an approved lesson;
@@ -102,7 +112,7 @@ Claiming an improvement in the application needs three things 2.2 does not have:
 
 | where | count | issues |
 |---|---|---|
-| **2.2: the headline** | 4 | #2105 (slice 1: capture and the source-case inspection), #2106 (slice 2: the replay), #2096 (slice 3: the mechanism), #2107 (slice 4: the template and the measurement window) |
+| **2.2: the headline** | 4 | #2105 (slice 1: capture and the source-case inspection), #2106 (slice 2: the replay), #2096 (slice 3: the mechanism), #2107 (slice 4: the first lesson and the measurement window) |
 | **2.2: beside it** | 1 | #1708's remainder: the auto tier and the escalation queue (placed 2026-10-03, 2.0 plan rev 9 §5a.5; kept 2026-10-04, Q2) |
 | **2.2: hardening, placed by the owner during the 2.1 line** | 3 | #2079 (the realm's admin password), #2082 (two console test files depend on their order), #2083 (the realm sync never applies a service account's roles) |
 | **2.2: hardening, filed at the owner's request on 2026-10-07** | 1 | #2112 (three agents have no volume for their own store). Its fix is a compose change, built only on the owner's OK (§2.3) |
@@ -128,15 +138,23 @@ disabled. So building the parts does not move the regression baseline.
 |---|---|---|---|---|
 | 1, #2105 | the source-case inspection, then an `AuthoringReplayEnvelope` captured immediately before each consuming seam's authoring, complete beyond #1756's 10,000-character cut (§0.11): proposal writing first, then plan writing, build authoring and repair | the proposal handler's input assembly (`capabilities/handlers/planning/proposal.py`); the plan-authoring and build-authoring inputs' assembly (`cycles/task_plan.py`) and the build handlers (`capabilities/handlers/cycle/develop.py`, `qa_test.py`, `builder.py`); the repair inputs' assembly, at runtime, by the correction runner (`adapters/cycles/correction_repair.py`); the vault for storage | **L** (M in revision 5: one seam, now four) | yes |
 | 2, #2106 | the authoring replay: three arms over captured envelopes at any seam, validated first on proposals; temporal validity, isolation from production memory, one fixed rubric per target (§0.11–§0.12) | `scripts/dev/`, beside the increment replay (#1959) | M | no |
-| 3, #2096 | the mechanism (§0.2–§0.10), observing every eligible cycle and supplying four seams. Its parts are listed below | see the parts | L, larger than revision 5's | yes |
-| 4, #2107 | the template for the one supported target behavior, written on development cases; the pre-registration, which fixes the primary target; the window; the finding (§0.4, §0.12–§0.13) | `src/squadops/prompts/fragments/` for the template; `docs/plans/` for the pre-registration | M, plus the window's box time | yes |
+| 3, #2096 | the mechanism (§0.2–§0.10), observing every eligible cycle and supplying four seams, with the failure-shape sorter and the repeat report (D14). Its parts are listed below | see the parts | L, larger than revision 5's | yes |
+| 4, #2107 | the lesson for the one supported target behavior, drafted by the auditor on development cases and replay-checked before the owner approves it (D15); the pre-registration, which fixes the primary target; the window; the finding (§0.4, §0.6, §0.12–§0.13) | the store (D13) for the drafted revision; `docs/plans/` for the pre-registration | M, plus the window's box time | yes |
 
 **Slice 3's parts, each with the seam that owns it:**
 - observations, pattern revisions, approvals and exposures, in `src/squadops/memory/models.py`;
+- drafted revisions, each with its drafter's model and version and the observations it cites, and on each approval the
+  replay check it was given (D15);
 - **three idempotent projections,** each from its authoritative record (SIP-0110 §0.3):
   - rejected plans, from the cycle's gate decisions and their `rejection_record` (the cycle registry);
   - failed correction rounds, from `run_loop_summaries` (the correction loop);
   - returned proposals, from the campaign control log (the campaign domain);
+- **the failure-shape sorter (D14):** each stack's table of its test runner's own failure messages and the target
+  behavior each names, declared beside the stack's other declarations (`capabilities/stack_fastapi_react.py`,
+  `capabilities/stack_nextjs_ts.py`), never in shared code. The correction-round projection applies it to each
+  `failed_detail` entry. A message no row matches is `unclassified`;
+- **the repeat report (D14):** each target behavior, at every source, counted by independent cycles (a retry and the
+  cycle it retries count once). The auditor drafts from it, and it is read at the pre-registration and at the cut;
 - **the eligibility rule:** fault-injected diagnostics, environment-attributed failures and replays produce no
   observation. The projections run beside execution, so a failure never changes a cycle;
 - the classification-disposition rail on proposal returns (D2), with its SIP-0109 amendment. Rejected plans and failed
@@ -175,7 +193,7 @@ They are left until a slice touches them, so that the plan's PRs stay prose only
 
 **Slice 1 comes first,** for two reasons:
 - **The inspection may show the information was on screen.** Version 2's return said "the manifest above already
-  declares capacity", so the failure may be reasoning, not access. That changes what the template should say. An
+  declares capacity", so the failure may be reasoning, not access. That changes what the lesson should say. An
   evidence-access gap, if found, is fixed as a separate change, held identical across the arms.
 - **Every campaign after the capture ships adds faithful cases** to the corpus the window needs.
 
@@ -257,12 +275,14 @@ The counted set passed 4 of 4 (the 2.1 pre-registration §10).
 - **The recurring design questions** (7 of 8 unresolved questions asked how the runs list is ordered or paged) are
   decision records. They are the Design Decision Register's payload, and arrive with its home, #950 (SIP-0110 §5b,
   Q12).
-- **Phase 2**, semantic ranking, LLM-generated lessons, autonomous promotion and the other deferrals of SIP-0110 §0.14
-  stay unplaced. Phase 2 begins only on the owner's ruling after the window's finding.
+- **Phase 2**, semantic ranking, autonomous promotion and the other deferrals of SIP-0110 §0.14 stay unplaced. Phase 2
+  begins only on the owner's ruling after the window's finding.
+- **A built-in auditor** that drafts lessons inside the product after each cycle. In 2.2 the outer loop's model drafts
+  them (D15).
 - **Phase 1.5 is not a separate part any more.** SIP-0110 revision 6 folds the correction lane into Phase 1: its rounds
-  are observed, and its repair seam is wired inert, in 2.2. **A template for a plan-review or correction-round target**
-  is written in 2.2 only if one recurs across independent cycles. That is read at the pre-registration and again at
-  the cut (SIP-0110 §0.4, D11).
+  are observed, and its repair seam is wired inert, in 2.2. **A lesson for a plan-review or correction-round target**
+  is drafted in 2.2 only if the repeat report shows one recurring across independent cycles. That is read at the
+  pre-registration and again at the cut (SIP-0110 §0.4, D11, D14).
 - **Proposal auto-approval** (§2.2).
 - **#316** is 2.3's (2.1 plan §5 ruling 14).
 
@@ -272,7 +292,7 @@ The counted set passed 4 of 4 (the 2.1 pre-registration §10).
 
 1. **Inherit the 2.1 cut's findings** (§2.4). They are live evidence.
 2. **Rule before building:**
-   - this plan, with SIP-0110 revisions 5 and 6 (D5, D11, D12, D13);
+   - this plan, with SIP-0110 revisions 5 and 6 (D5, D11–D15);
    - the SIP-0109 amendments for D2's rail and for #1708's policy and queue.
 3. **Slice 1 (#2105):**
    - the source-case inspection, posted;
@@ -291,21 +311,25 @@ The counted set passed 4 of 4 (the 2.1 pre-registration §10).
    - **A campaign proves the campaign's sources,** with the same inertness.
    - **From this deploy on, every eligible cycle the line runs adds observations:** regression pairs, diagnostics,
      shakeouts and campaigns.
+   - **The repeat report is read first here,** over every round recorded with `failed_detail` since #2028 and #2086
+     began recording it.
 6. **Slice 2 (#2106):** the replay, proven end to end on the historical cases, which are exploratory and diagnostic
    only.
 7. **#1708** is built, and its activation is held until the window closes (D3).
-8. **Slice 4 (#2107):** the template on development cases, then the pre-registration with its budget cap and
-   stopping rule (D8). Then **the window opens**:
+8. **Slice 4 (#2107):** the auditor drafts the first lesson on development cases and it is replay-checked (D15), then
+   the pre-registration with its budget cap and stopping rule (D8), which reads the repeat report (D14). Then **the
+   window opens**:
    - the deploy is frozen;
    - campaigns build the proposal corpus, and every cycle adds to the plan-review and correction-round corpus;
-   - the owner approves the pattern at a campaign boundary;
+   - the owner approves the lesson, with its replay check, at a campaign boundary;
    - the replay compares the arms;
    - every exposure records its build's indicators (correction rounds, rounds to green, acceptance), observed only;
    - **main is closed to code merges.** Prose merges stay free, because the drift check reads only `src/` and
      `adapters/`.
    - 2.3's work waits on branches: its refactors need rebuild pairs, and the box is held.
 9. **The finding** is recorded in SIP-0110: instrument validity first, then benefit, no benefit, harm or
-   inconclusive. The record also says whether a plan-review or correction-round target recurred (D11), and reports
+   inconclusive. The record also says whether a plan-review or correction-round target recurred (the repeat report,
+   D11, D14), and reports
    the app-build indicators as observation, with no claim about the built application. The owner's
    disposition for Phase 2 is recorded with it. "Inconclusive" at the budget cap is a
    valid finding, and the cut goes ahead on it.
@@ -349,9 +373,11 @@ Each has a recommendation. None is built before it is ruled.
 | D8 | **the experiment's arms and the window's bound** | **as SIP-0110 §0.12–§0.13,** with the budget cap set in the pre-registration. The primary target is fixed there, from the seam with the most independent cases of one target behavior: the proposal behavior, on today's evidence. A proposed default: about five campaigns, with "inconclusive" at the cap | a bounded window cannot hold the release open indefinitely. Standalone cycles add plan-review and correction-round observations at no cost to the cap |
 | D9 | **emergency revocation** | **as SIP-0110 §0.7:** halt or restart the affected work under a new snapshot, and invalidate or set apart the affected measurements | harmful guidance must be removable without silently changing a counted intervention |
 | D10 | **the escalation queue's resumption** | **designed in #1708's SIP-0109 amendment against §2.2's contract** | it is SIP-0109's surface (SIP-0110 §0.14) |
-| D11 | **what is observed, and where memory is supplied** | **every eligible cycle, standalone or in a campaign, from three sources (rejected plans, failed correction rounds, returned proposals); supplied at plan writing, build authoring, repair and proposal writing, each inert until a template is approved. A plan-review or correction-round template is written in 2.2 only if one target recurs across independent cycles, read at the pre-registration and at the cut. Every exposure records its build's indicators, observed only** | memory's unit is the cycle. Observing every cycle costs a projection beside execution. Supplying only where a template is approved keeps the measurement clean. Build authoring is where a correction-round lesson reaches a later cycle before its check fails, not only after (SIP-0110 §0.9, §2) |
+| D11 | **what is observed, and where memory is supplied** | **every eligible cycle, standalone or in a campaign, from three sources (rejected plans, failed correction rounds, returned proposals); supplied at plan writing, build authoring, repair and proposal writing, each inert until a lesson is approved. A plan-review or correction-round lesson is drafted in 2.2 only if the repeat report (D14) shows one target recurring across independent cycles, read at the pre-registration and at the cut. Every exposure records its build's indicators, observed only** | memory's unit is the cycle. Observing every cycle costs a projection beside execution. Supplying only where a lesson is approved keeps the measurement clean. Build authoring is where a correction-round lesson reaches a later cycle before its check fails, not only after (SIP-0110 §0.9, §2) |
 | D12 | **counted regression rolls and memory** | **declare memory disabled until a finding of supported benefit and the owner's ruling. Their observations are still recorded** | the regression set is the framework's yardstick. A lesson approved for plan writing would otherwise reach it and move it unannounced |
 | D13 | **where Phase 1's records are stored** | **Postgres, beside the cycle registry, behind their own port** (SIP-0110 §0.8). Not SIP-042's LanceDB store | that store is created inside each agent's container and used only by console chat. Recall runs in the runtime API, which has none. Phase 1's recall is exact filtering, so it needs no embedding. The projections must be idempotent against records already in Postgres. Postgres is addressable as a service (the Embodiment Runtime's invariant 2) and is the only store in the nightly verified backup. Phase 2 chooses a similarity index when it adds ranking |
+| D14 | **seeing a repeated build mistake** | **each stack's failure-shape sorter and a repeat report, in slice 3** (SIP-0110 §0.4). The sorter is a table of the test runner's own failure messages, declared with each stack, applied to every failed round's `failed_detail`, with no model in it. The report counts each target behavior by independent cycles, and is read at slice 3's deploy, at the pre-registration and at the cut | a correction round is labelled only by its attribution and its failed check, and every failed round in the 2.0 and 2.1 windows failed `tests_pass`. What went wrong is only in `failed_detail`'s text, so a repeated build mistake could only be found by hand, and the build-authoring and repair seams would stay empty by design. The four rounds recorded so far each carry one message that names its defect. Added at the owner's request ("yes, make both changes in 2111") |
+| D15 | **who drafts a lesson** | **a frontier-model auditor, from the recorded evidence:** the outer loop's model (the supervisor in 2.2, the crew once commissioned), never the squad's own model. It drafts between units and cites its cases. Each draft is frozen, replay-checked on development cases, and approved by the owner before any task is given it (SIP-0110 §0.4, §0.6). A built-in auditor is later | an AI auditing every failure is better placed than a person reading a sample (the owner: "who better to determine the lesson than the AI auditing everything"). The owner's direction of 2026-09-28 has frontier models improve the framework from evidence. A lesson can be wrong whoever writes it: #1947's rule was followed by the same mistake twice, so the replay check stays. Added at the owner's request ("yes, make both changes in 2111") |
 
 ---
 

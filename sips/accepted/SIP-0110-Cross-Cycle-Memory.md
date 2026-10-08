@@ -70,8 +70,8 @@ re-places it.
 | the re-read of the Phase-1 value hypothesis against 2.1's recurrence evidence, as an amendment here | **shipped** | PR #2097, issue #1964: the evidence up to the final deploy is §5b (revision 4), and the cut's readings are §5b's last part |
 | Phase 1, slice 1: capture each consuming seam's inputs before authoring (proposal writing first, then plan writing, build authoring and repair), and the source-case inspection (§0.11, §0.4) | **placed** | 2.2.0, #2105 |
 | Phase 1, slice 2: the authoring replay, three arms, validated first on proposals (§0.11–§0.12) | **placed** | 2.2.0, #2106 |
-| Phase 1, slice 3: the mechanism, observing every eligible cycle and supplying four seams, inert until approved, with the app-build indicators beside each exposure (§0.2–§0.10) | **placed** | 2.2.0, #2096 |
-| Phase 1, slice 4: the template and the measurement window, read before 2.2.0's cut (§0.4, §0.12–§0.13) | **placed** | 2.2.0, #2107 |
+| Phase 1, slice 3: the mechanism, observing every eligible cycle and supplying four seams, inert until approved, with the app-build indicators beside each exposure, the failure-shape sorter and the repeat report (§0.2–§0.10) | **placed** | 2.2.0, #2096 |
+| Phase 1, slice 4: the first lesson, drafted by the auditor, and the measurement window, read before 2.2.0's cut (§0.4, §0.12–§0.13) | **placed** | 2.2.0, #2107 |
 | Phase 1.5: the correction lane (§13 question 3) | **dropped** | by revision 6 (§5d), which folds it into Phase 1: its observation is slice 3's, its repair seam is wired inert in slice 3, and its capture is slice 1's. A correction-round template waits for a recurring target behavior (§0.4) |
 | Phase 2: consolidation and promotion (§8) | **unplaced** | gated on Phase 1's measurement (§8) |
 
@@ -101,7 +101,9 @@ Where an earlier section disagrees with this one, this one holds, and the earlie
 - **Phase 1 observes every eligible cycle,** a standalone cycle or one inside a campaign. It reads three committed
   records: plan-review rejections, failed correction rounds, and proposal returns. Each is recorded whether or not a
   lesson exists for it (§0.3).
-- **It encodes** reviewed reflective guidance in project scope, through governed templates.
+- **It encodes** reflective guidance in project scope. A frontier-model auditor drafts each lesson from the recorded
+  evidence, between units, and each is frozen, replay-checked and approved by the owner before any task is given it
+  (§0.4, §0.6). Correction rounds are sorted by failure shape, and a repeat report shows which mistakes recur (§0.4).
 - **It supplies approved, applicable pattern revisions at four authoring seams:** plan writing (#2058's call site),
   build authoring (`development.develop`, `qa.test`, `builder.assemble`), repair, and proposal writing
   (`strategy.propose_increment`) (§0.9).
@@ -116,7 +118,7 @@ Where an earlier section disagrees with this one, this one holds, and the earlie
 
 ### 0.1 What Phase 1 tests
 
-Phase 1 tests whether **retaining and selectively applying reviewed lessons from earlier cycles improves later authoring** under controlled conditions. It discovers no corrective rules: people write the templates, and observed experience decides which reviewed lessons are kept and supplied. Its first measured target is a proposal behavior (§0.4). That is where it is measured first, not what it is (§5d).
+Phase 1 tests whether **retaining and selectively applying reviewed lessons from earlier cycles improves later authoring** under controlled conditions. A frontier-model auditor drafts the lessons from the recorded evidence, between units, and the owner approves each after a replay check (§0.4, §0.6). Observed experience decides which are kept and supplied. Its first measured target is a proposal behavior (§0.4). That is where it is measured first, not what it is (§5d).
 
 **It is cross-cycle learning.**
 - Observations are recorded from every eligible cycle while it runs, whether the cycle stands alone or runs inside a
@@ -141,7 +143,7 @@ These six are domain concepts, not services or databases:
 |---|---|---|
 | **observation** | one immutable occurrence from one of §0.3's three sources: a rejected plan, a failed correction round, or a returned proposal, with its classification disposition and evidence | the committed record it projects: the gate decision, the correction round, or the ruling's control-log entry |
 | **pattern** | the stable identity of one behavioral lesson | project scope, target behavior (§0.4), task type |
-| **pattern revision** | immutable guidance text, applicability and template version | pattern and revision number |
+| **pattern revision** | immutable guidance text, applicability and template version, with its drafter (the auditor's model and version) and the observations it cites | pattern and revision number |
 | **approval** | the owner's authorization of one revision for a stated applicability | revision and applicability |
 | **exposure** | the exact revisions supplied to one authoring invocation at a consuming seam (§0.9), with what was omitted and why | the invocation |
 | **assessment** | what was observed for that exposure's targets (§0.10) | the exposure |
@@ -188,7 +190,7 @@ Each projection uses its source's existing durable record. It is not a new servi
 | source | its vocabulary |
 |---|---|
 | plan review | the plan validator that refused the plan, or the manifest gate's proof class: the B1 baseline's vocabulary (`RejectionClassifier`, `cycles/rejection_baseline.py`). A person's rejection carries a class only when its decider records one |
-| correction round | the failure's attribution (`AttributionClass`, `cycles/failure_attribution.py`) and the failed check. An `unattributed` failure is recorded as `unclassified` |
+| correction round | the failure's attribution (`AttributionClass`, `cycles/failure_attribution.py`) and the failed check, and beneath them the **failure shape** its stack's sorter reads from the test runner's own message (below). An `unattributed` failure is recorded as `unclassified` |
 | proposal ruling | a `ProposalClassification` class |
 
 An `unclassified` observation:
@@ -212,12 +214,30 @@ least two:
 **Phase 1 starts with one supported target behavior:** **a proposed new acceptance criterion is already satisfied by the
 accepted application.** Plan reviews and correction rounds have none yet. The 2.0 and 2.1 windows show no recurring
 target behavior at either: no plan was rejected, and the four failed rounds at the 2.1 cut were four different defects
-(§5b). **A template for a plan-review or correction-round target is written when its observations show one target
-behavior recurring across independent cycles.** That is read at slice 4's pre-registration and again at the 2.2 cut,
-and the owner places what it finds. A class or behavior claimed as supported must have its template, and an unsupported
-one is disclosed backlog that never blocks a legitimate return.
+(§5b). **A lesson for a plan-review or correction-round target is drafted when the repeat report (below) shows one
+target behavior recurring across independent cycles.** The report is read at slice 4's pre-registration and again at
+the 2.2 cut, and the owner approves what is drafted from it (§0.6). A class or behavior claimed as supported must have
+its template, and an unsupported one is disclosed backlog that never blocks a legitimate return.
 
-**Each template maps:**
+**The failure-shape sorter** (the 2.2 plan's D14). A correction round's attribution and check are too coarse to show a
+repeat: every failed round in the 2.0 and 2.1 windows failed `tests_pass`, and what went wrong is only in the text of
+`failed_detail`. So:
+- **each stack declares a table** of its test runner's own failure messages and the target behavior each one names,
+  beside its other declarations (`capabilities/stack_fastapi_react.py`, `capabilities/stack_nextjs_ts.py`), never in
+  shared code. For example, vitest's `Failed to resolve import "…". Does the file exist?` names an import of a file that
+  does not exist;
+- **the correction-round projection applies the cycle's stack's table** to each `failed_detail` entry, and records the
+  shape it names with the table's version. No model sorts. A message no row matches is `unclassified` and enters the
+  backlog;
+- the four rounds recorded with `failed_detail` so far (the 2.1 cut, §5b) each carry such a message: an import of a
+  file that does not exist, an element the page never renders, a module faked the wrong way, and a check of the wrong
+  arguments.
+
+**The repeat report.** It counts each target behavior, at every source, by the independent cycles it occurred in: a
+retry and the cycle it retries count once, and a campaign's cycles are named with their campaign. It is the auditor's
+input (below), and it is read at slice 4's pre-registration and at the 2.2 cut.
+
+**Each lesson fills its target behavior's template:**
 - the observable defect;
 - the corrective action;
 - the evidence needed to take it;
@@ -226,9 +246,18 @@ one is disclosed backlog that never blocks a legitimate return.
 
 For this target, the corrective rule leads to evidence of the intended before-and-after difference against the accepted application. It is not an admonition to write checkable criteria, which already failed (#1947).
 
-**What the encoding may and may not use.**
-- No LLM is in the encode path.
-- Free text stays evidence. Guidance comes only from governed templates.
+**Who drafts a lesson, and what it may use** (the 2.2 plan's D15).
+- **A frontier-model auditor drafts each lesson** from the observations and their evidence: the outer loop's model (the
+  supervisor in 2.2, the crew once it is commissioned), never the squad's own model judging its own output. This is the
+  owner's direction of 2026-09-28: frontier models improve the framework from the evidence of how cycles perform. The
+  auditor cites the observations a lesson rests on, and fills its template.
+- **It drafts between units, never inside a running one.** No model in a running cycle or campaign writes or changes a
+  lesson, and recall and injection stay deterministic (§0.8).
+- **A draft is frozen when it is drafted,** as a pattern revision (§0.2): its text, its drafter's model and version, and
+  the observations it cites. No task is given it until it is replay-checked and approved (§0.6).
+- **The auditor also reads the backlog.** It may propose a new target behavior, or a new row in a stack's sorter. A new
+  row is a code change, reviewed as one.
+- Free text stays evidence. It becomes guidance only through a frozen, approved revision.
 - The v4 draft's precedence rule (compilation, then security, then function, then performance; §5a) is not applied to any source's classes. Every observed defect is kept as evidence.
 
 **`validated` means admissible, not effective:** the observation has an admissible source, recorded evidence, a supported classification and a valid governed encoding. It says nothing about whether the guidance helps. Source admissibility, the owner's authorization and measured benefit stay distinct.
@@ -250,7 +279,7 @@ ruling**.
 | source | it also carries |
 |---|---|
 | plan review | the gate decision; the decider's identity and type (a validator or a person); the rejected plan, by reference |
-| correction round | the round's index; the failed check and its attribution; `failed_detail`; the repair's task, when one was dispatched |
+| correction round | the round's index; the failed check and its attribution; `failed_detail`, and the failure shape with the sorter table's version; the repair's task, when one was dispatched |
 | proposal ruling | the proposal's id and version; the ruling's control-log entry; the decider's identity and type; the accepted application's identity it was judged against |
 
 **What is optional, and what the model fields mean.**
@@ -266,6 +295,11 @@ ruling**.
 - change the content;
 - widen the applicability;
 - add a model family.
+
+**Before approval, a draft is replay-checked:** at its seam, on development cases (§0.11), with and without it, under
+§0.12's guardrails. The result goes to the owner with the draft, and the approval records it. A draft whose seam has no
+captured case waits for one. A lesson can be wrong whoever drafts it: #1947's prompt rule was written once the proposal
+mistake had been recognized, and the mistake recurred twice after it (§5b).
 
 **The statuses.**
 - Approval to influence execution is distinct from promotion to a broader scope, which is Phase 2's.
@@ -412,7 +446,8 @@ The capture is complete, independent of the stored prompt's 10,000-character cut
   as that.
 
 **The cases.**
-- Development cases, used to write the templates, are separated from held-out evaluation cases before any tuning.
+- Development cases, used to draft the lessons and replay-check them, are separated from held-out evaluation cases
+  before any tuning.
 - **At each seam, the first authoring of its kind in a later unit is the primary test:**
   - a campaign's first proposal;
   - a cycle's first plan;
@@ -501,9 +536,10 @@ finding** for 2.2.
 ### 0.14 Deferred, and who owns what
 
 **Deferred:**
-- templates for plan-review and correction-round targets, until one recurs (§0.4);
+- lessons for plan-review and correction-round targets, until the repeat report shows one recurring (§0.4);
 - semantic ranking;
-- LLM-generated lessons;
+- a built-in auditor that drafts lessons inside the product after each cycle (in Phase 1 the outer loop's model
+  drafts them, §0.4);
 - autonomous promotion;
 - organization-wide transfer;
 - procedural-success learning;
@@ -519,6 +555,7 @@ Decision records belong to the Design Decision Register and #950 (§5b).
 | the cycle registry (SIP-0064, SIP-0067) and the correction loop (SIP-0086) | a standalone cycle's creation (where its snapshot is pinned), its gate decisions, and its correction rounds' records |
 | this SIP's store, in Postgres beside the cycle registry (§0.8, the 2.2 plan's D13) | the four records, their idempotency keys and their reconciliation |
 | SIP-042 | each agent's own semantic store, which Phase 1 does not use |
+| each stack (`capabilities/stack_fastapi_react.py`, `capabilities/stack_nextjs_ts.py`) | its failure-shape table (§0.4) |
 | the replay specification (slices 1 and 2: #2105, #2106) | the pre-authoring envelope, temporal isolation, arm execution and scoring |
 | SIP-0088/0089 | persistent identity and mode compatibility |
 | the Design Decision Register, #950 | the authoritative decision payload and its lifecycle |
@@ -537,6 +574,9 @@ Synthetic fixtures establish the mechanism's behavior. They are never evidence o
 | recovery | a crash after the record's commit and before the projection is recovered |
 | corrections | a reclassification or retraction keeps history and updates dependents explicitly |
 | classification | a novel `unclassified` defect is returned without creating a pattern |
+| failure shapes | a round's `failed_detail` is sorted by its cycle's stack's table; the same message gives the same shape on every run; a message no row matches is `unclassified` |
+| repeat report | a target behavior in two independent cycles is reported as recurring, and a retry and the cycle it retries count once |
+| lesson provenance | a revision records its drafter's model and version and the observations it cites; an approval records the replay check it was given; nothing in a running unit writes a revision |
 | pattern identity | a repeat occurrence cannot reset or resurrect deprecated guidance |
 | approval | new template content or widened applicability requires its own approval |
 | model scope | approval for one model family does not apply to another |
@@ -1000,7 +1040,8 @@ assumed.
 > **Revision 6 (§5d) reads this conclusion as where Phase 1 is measured first, not what Phase 1 is.** The proposal gate
 > stays the first measured target. Every eligible cycle is observed, and plan writing, build authoring and repair are
 > consuming seams beside proposal writing. The cut's readings above also met Phase 1.5's condition, so the correction
-> lane joins Phase 1.
+> lane joins Phase 1. "No LLM" in the encode step above is replaced: a frontier-model auditor drafts each lesson,
+> frozen, replay-checked and approved before use (§0.4, §0.6).
 
 ## 5c. Revision 5: the external design review adopted (2026-10-06)
 
@@ -1080,12 +1121,19 @@ a standalone cycle recorded nothing and received nothing.
 - **storage in Postgres, beside the cycle registry** (§0.8, the 2.2 plan's D13), in place of SIP-042's `MemoryPort`;
 - **a campaign may declare memory disabled,** as a standalone cycle may, so that a live confirmation can assign the
   memory-off arm to a whole campaign as §0.12 requires (§0.7);
+- **a frontier-model auditor drafts the lessons** (§0.4, the 2.2 plan's D15), in place of "people write the templates"
+  and "no LLM in the encode path". Each draft cites its evidence, is frozen, is replay-checked on development cases and
+  is approved by the owner (§0.6). Nothing in a running unit writes a lesson. A built-in auditor stays deferred (§0.14);
+- **the failure-shape sorter and the repeat report** (§0.4, the 2.2 plan's D14): each stack's table of its test
+  runner's messages sorts a correction round's `failed_detail` into a target behavior, and the report counts each
+  target behavior by independent cycles;
 - **the acceptance matrix** gains rows for sources, eligibility, execution isolation, unit freeze, transfer, memory
-  disabled, slot separation, the app-build indicators and storage (§0.15).
+  disabled, slot separation, the app-build indicators, storage, failure shapes, the repeat report and lesson provenance
+  (§0.15).
 
 **What did not change:**
-- **governance:** people write the templates, the owner approves each revision for a stated applicability, and nothing
-  changes within a running unit;
+- **governance:** the owner approves each revision for a stated applicability, and nothing changes within a running
+  unit. Who drafts a lesson changed (above);
 - deterministic recall and its budgets;
 - per-exposure assessment, with no automatic decay;
 - the three arms and the four findings;
@@ -1130,6 +1178,17 @@ a standalone cycle recorded nothing and received nothing.
   seam or one unit: the exposure's definition (§0.2, "one proposal invocation"), the origin model (§0.5), what an
   assessment attaches to (§0.10), and the memory-disabled declaration, open to a cycle only while §0.12 assigns live
   treatment to whole campaigns (§0.7). Each is corrected in place.
+- **Correction rounds could not show a repeat.** Their vocabulary is the attribution (ten classes) and the failed
+  check, and every failed round in the 2.0 and 2.1 windows failed `tests_pass` (§5b). What went wrong is only in the
+  text of `failed_detail`, so "one target behavior recurring across independent cycles" (§0.4) could only be read by
+  hand, and the build-authoring and repair seams would stay inert by construction. The four rounds recorded with
+  `failed_detail` each carry one test-runner message that names its defect, and two of the four are families the
+  framework once fixed by hand: an import the suite cannot resolve (the frozen surface,
+  `capabilities/context_assembly.py`, roll 9) and an element the page never renders (#659).
+- **"People write the templates" did not describe how the project works.** The supervisor, which would draft them, is
+  a frontier model, and the owner's direction of 2026-09-28 has frontier models improve the framework from evidence,
+  while the squad's own model does not yet. What the rule protected is kept: a lesson is fixed before it is used,
+  tested before any task is given it, and approved. A lesson can be wrong whoever writes it (§0.6, #1947).
 
 **Who ruled it.** The owner, 2026-10-07, on the supervisor's overview of the 2.2 plan:
 - "are memories captured after each cycle of a campaign as well; and also outside the scope of a campaign. I just want
@@ -1143,7 +1202,10 @@ and the plan re-scoping"). The owner then asked "what does cross cycle memory pr
 target app build", and on the supervisor's answer asked for the build-authoring seam, the indicators and the statement
 of what is not claimed to be added ("yes, add those three"). On the supervisor's account of how agent and squad memory
 work, the owner asked for the storage decision to be added ("yes, add the Postgres decision to 2111"), and for a full
-review of the PR before kickoff. It is reviewed with the plan's re-scoping in one PR, and its merge is the ruling.
+review of the PR before kickoff. On the review, the owner asked what "people write the lessons" meant, answered "who
+better to determine the lesson than the AI auditing everything", and asked for the auditor and the sorter with its
+report ("yes, make both changes in 2111"). It is reviewed with the plan's re-scoping in one PR, and its merge is the
+ruling.
 
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
@@ -1239,6 +1301,9 @@ Design decisions this implies:
   `success_rate`, and audit validation — using Phase 1's telemetry, not judgment.
 - LLM-assisted encoding for failure classes that lack a validator label (correction-loop
   behavioral classes), behind the same schema.
+
+> **Revision 6:** Phase 1's lessons are drafted by a frontier-model auditor, between units (§0.4). Phase 2's part is a
+> built-in auditor that drafts inside the product, and approval on measured evidence (promotion).
 
 Phase 2 does not begin until Phase 1's recurrence-rate measurement is in hand. **Amended by revision 5 (§0.13):** it begins only on the owner's ruling after a valid finding, which may be any of the four. Later consolidation keeps disputed, superseded and differently scoped claims with their evidence, never deletes history to resolve a contradiction, and does not equate low reuse with low value.
 
@@ -1352,7 +1417,7 @@ Per the ratified post-1.4 reshuffle (`docs/plans/post-1-4-roadmap-reconciliation
 
 > **Revision 5 answers:** question 2 (§0.2: the pattern's identity), 4 (§0.12: the pre-registration), 6 (§0.6 and §0.4: approval is the owner's, per revision and applicability), 7 (§0.10: no automatic decay in Phase 1) and 8 (§0.4: a supported behavior's missing template blocks its support claim, and an unsupported one is disclosed backlog). Questions 3 and 5 stay open for Phase 1.5 and Phase 2.
 >
-> **Revision 6 answers question 3** (§0.9): repair is one of Phase 1's four consuming seams, beside build authoring, and both are inert until a correction-round template is approved. **It extends the answer to question 1** (§0.4): a person's plan rejection with no recorded class is recorded as `unclassified` and produces no pattern. Question 5 stays open for Phase 2.
+> **Revision 6 answers question 3** (§0.9): repair is one of Phase 1's four consuming seams, beside build authoring, and both are inert until a correction-round lesson is approved. **It extends the answer to question 1** (§0.4): a person's plan rejection with no recorded class is recorded as `unclassified` and produces no pattern, and the auditor reads it in the backlog and may propose a target behavior from it. Question 5 stays open for Phase 2.
 
 1. Should human gate rejections (free-text reasons) enter Phase 1's corpus, or only
    validator-emitted classes? (Draft position: validator-only — deterministic encode; the
