@@ -192,7 +192,7 @@ class PulseBoundaryRunner:
         stored_artifacts: list[tuple[str, ArtifactRef]],
         all_artifact_refs: list[str],
         flow_run_id: str | None,
-        profile: SquadProfile,
+        profile: SquadProfile | None,
         run_root: str,
         *,
         ledger: RunLedger,
@@ -448,7 +448,8 @@ class PulseBoundaryRunner:
         max_repair_attempts: int = 2,
         flow_run_id: str | None = None,
         *,
-        profile: SquadProfile,
+        # None is refused where a step's role is resolved, as an unserved role (#110, SIP-0108).
+        profile: SquadProfile | None,
         ledger: RunLedger,
     ) -> None:
         """Verify boundary, repair on failure, exhaust on repeated failure.
