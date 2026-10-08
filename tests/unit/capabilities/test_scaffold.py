@@ -12,6 +12,8 @@ from __future__ import annotations
 import dataclasses as dc
 import importlib.util
 import re
+import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -1273,6 +1275,51 @@ class TestFrozenConventionsHoldOnTheBytes:
 
     def test_an_unregistered_stack_declares_nothing(self):
         assert scaffold.frozen_conventions_for("no_such_stack") == ()
+
+    def test_fastapi_s_frozen_request_models_drop_a_field_they_do_not_declare(self):
+        """#2114, the bytes behind ``undeclared_field_ignored``: every frozen request model
+        accepts a request carrying a field it does not declare and drops the field. If a later
+        scaffold refuses extra fields, this fails and the declaration changes with it."""
+        manifest, files = self._tree("fullstack_fastapi_react")
+        assert "backend/models.py" in scaffold.frozen_paths(manifest)
+        module = types.ModuleType("frozen_backend_models")
+        sys.modules[module.__name__] = module  # pydantic resolves the module's annotations here
+        try:
+            exec(compile(files["backend/models.py"], "backend/models.py", "exec"), module.__dict__)
+        finally:
+            sys.modules.pop(module.__name__, None)
+        checked = 0
+        for shape in manifest.api.request_shapes:
+            model = getattr(module, shape.name)
+            parsed = model(**{name: "x" for name in shape.required}, capacity=2)
+            assert "capacity" not in parsed.model_dump()
+            checked += 1
+        assert checked == len(manifest.api.request_shapes) > 0
+
+    @pytest.mark.parametrize(
+        ("stack", "kind"),
+        [
+            ("fullstack_fastapi_react", scaffold.ConventionKind.UNDECLARED_FIELD_IGNORED),
+            ("nextjs_ts", scaffold.ConventionKind.UNDECLARED_FIELD_UNFIXED),
+        ],
+    )
+    def test_each_stack_says_exactly_one_thing_about_an_undeclared_request_field(self, stack, kind):
+        """#2114. Bugs caught: Next.js told FastAPI's "ignored" (its fills may refuse the
+        request), or a stack told nothing, so a proposal asserts a default case of a new field
+        that the accepted application already meets by ignoring it (shakeout 7)."""
+        undeclared_kinds = {
+            scaffold.ConventionKind.UNDECLARED_FIELD_IGNORED,
+            scaffold.ConventionKind.UNDECLARED_FIELD_UNFIXED,
+        }
+        assert set(self._declared(stack)) & undeclared_kinds == {kind}
+
+    def test_next_js_leaves_a_request_body_to_the_build(self):
+        """The bytes behind ``undeclared_field_unfixed``: no frozen file reads a request body; the
+        route handlers that do are fill slots."""
+        manifest, files = self._tree("nextjs_ts")
+        frozen = scaffold.frozen_paths(manifest)
+        assert not [p for p in frozen if p in files and "request.json(" in files[p]]
+        assert "app/api/runs/route.ts" in scaffold.fill_slot_paths(manifest)
 
 
 # --------------------------------------------------------------------------- #
