@@ -18,10 +18,16 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class RecallQuery:
-    """What a plan-authoring task asks before it authors: its project and its task type."""
+    """What an authoring task asks before it authors (SIP-0110 §0.8): its project and task type,
+    and the role, stack and model family a lesson's applicability is matched against. Scope comes
+    from trusted execution context, never from an agent-supplied value. An empty field matches
+    no lesson: an unknown never means "everywhere" (§0.8 step 3)."""
 
     project_id: str
     task_type: str
+    role: str = ""
+    stack: str = ""
+    model_family: str = ""
 
 
 @dataclass(frozen=True)
