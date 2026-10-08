@@ -1985,6 +1985,7 @@ class TestCorrectionRunnerStandalone:
             event_bus=bus,
             task_dispatcher=_PassthroughDispatcher(),
             store_artifact=store_artifact,
+            failure_recall=NoOpFailurePatternRecall(),
         )
         return runner, registry, vault, bus
 
@@ -3200,6 +3201,7 @@ class TestReexecuteRepairedSuite:
             event_bus=MagicMock(),
             task_dispatcher=dispatcher,
             store_artifact=AsyncMock(),
+            failure_recall=NoOpFailurePatternRecall(),
         )
         return runner, dispatcher
 
@@ -4520,6 +4522,7 @@ class TestBudgetGatesCorrectionDispatch:
             event_bus=MagicMock(),
             task_dispatcher=dispatcher,
             store_artifact=AsyncMock(),
+            failure_recall=NoOpFailurePatternRecall(),
         )
         return runner, dispatcher
 
@@ -4680,6 +4683,7 @@ class TestProgressAwareTermination:
             event_bus=MagicMock(),
             task_dispatcher=AsyncMock(),
             store_artifact=AsyncMock(),
+            failure_recall=NoOpFailurePatternRecall(),
         )
         return runner
 

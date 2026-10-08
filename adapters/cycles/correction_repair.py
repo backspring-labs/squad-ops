@@ -22,6 +22,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -32,6 +33,7 @@ from squadops.capabilities.context_assembly import (
     manifest_surface_fragments,
     repair_forwarded_inputs,
 )
+from squadops.capabilities.lesson_supply import supply_for_cycle
 from squadops.cycles.agent_config import resolve_agent_config
 from squadops.cycles.scaffold_enforcement import name_producer
 from squadops.cycles.task_plan import repair_steps_for
@@ -39,6 +41,7 @@ from squadops.tasks.models import TaskEnvelope
 
 if TYPE_CHECKING:
     from squadops.cycles.models import ArtifactRef, Cycle
+    from squadops.ports.memory.recall import FailurePatternRecallPort
     from squadops.tasks.models import TaskResult
 
 logger = logging.getLogger(__name__)
@@ -902,14 +905,21 @@ class RepairOutcome:
 class CorrectionRepair:
     """Repair-step selection, the ownership vetoes, the dispatch, the emission judgment.
 
-    Holds no ports. One late-bound callable — ``CorrectionRunner._dispatch_protocol_step``,
+    Holds one port, the failure recall each repair asks for its lessons (SIP-0110 §0.9), and
+    one late-bound callable — ``CorrectionRunner._dispatch_protocol_step``,
     which map §4 step 4 leaves untouched and which owns task-run creation and the SIP-0087
     task events, so correction-driven repairs appear in the Prefect UI. Following the
     ``store_artifact=lambda …`` precedent already on ``CorrectionRunner`` (SIP-0097 §6.3).
     """
 
-    def __init__(self, *, dispatch_step: Callable[..., Any]) -> None:
+    def __init__(
+        self, *, dispatch_step: Callable[..., Any], failure_recall: FailurePatternRecallPort
+    ) -> None:
         self._dispatch_step = dispatch_step
+        # SIP-0110 §0.9: each repair asks its unit's pinned snapshot for the lessons approved for
+        # it, composed here as the plan's tasks are at provisioning. Required: a repair that is
+        # never asked records no exposure, which no measurement can tell from memory disabled.
+        self._failure_recall = failure_recall
 
     async def dispatch(
         self,
@@ -1082,6 +1092,14 @@ class CorrectionRepair:
                     span_id=uuid4().hex,
                     inputs=repair_inputs,
                     metadata={"role": role, "step_index": step_idx},
+                )
+                # SIP-0110 §0.9: the lessons approved for this repair, if any, and its exposure.
+                [repair_envelope] = await supply_for_cycle(
+                    [repair_envelope],
+                    recall=self._failure_recall,
+                    cycle=cycle,
+                    run_id=run_id,
+                    now=datetime.now(UTC),
                 )
 
                 # Dispatch the repair step (task_run creation + task events

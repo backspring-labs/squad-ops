@@ -38,6 +38,7 @@ _SLOTTED = {
     "request.development_develop.focused_build_task": "prior_cycle_section",
     "request.builder_assemble.build_assemble": "prior_cycle_section",
     "request.strategy_propose_increment": "prd_section",
+    "request.cycle_repair_task": "disputed_checks_section",
 }
 
 _LESSONS = {
@@ -295,3 +296,29 @@ async def test_each_build_author_shows_the_lessons_it_is_handed(handler, inputs,
 
     assert _shows_the_lessons("\n".join(str(m.content) for m in shown[0]))
     assert _HEADING not in "\n".join(str(m.content) for m in plain[0])
+
+
+async def test_a_correction_repair_shows_the_lessons_it_is_handed_after_its_failure_evidence():
+    """Repair (§0.9), entered at the real ``handle()`` on the shipped templates. Bugs caught: the
+    lessons absent from the repair prompt; or placed among the failure evidence, so a lesson reads
+    as part of why this attempt failed."""
+    from squadops.capabilities.handlers.impl.repair_handlers import (
+        DevelopmentCorrectionRepairHandler,
+    )
+    from tests.unit.capabilities.test_repair_decision_section import (
+        _EDIT,
+        _context,
+        _inputs,
+        _user_prompt,
+    )
+
+    prompts = []
+    for extra in ({LESSONS_INPUT: _LESSONS}, {}):
+        ctx = _context(_EDIT)
+        await DevelopmentCorrectionRepairHandler().handle(ctx, {**_inputs({}), **extra})
+        prompts.append(_user_prompt(ctx))
+
+    assert _shows_the_lessons(prompts[0])
+    assert prompts[0].index("### Why the Prior Attempt Failed") < prompts[0].index(_HEADING)
+    assert prompts[0].index(_HEADING) < prompts[0].index("### Product Requirements Document")
+    assert _HEADING not in prompts[1]
