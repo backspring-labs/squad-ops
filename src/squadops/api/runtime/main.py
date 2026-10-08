@@ -134,6 +134,8 @@ _STATE_SLOTS = (
     "runtime_coordinator",  # SIP-0089 §3.5 (#233) single-writer (D16), shared by executor + scheduler
     "campaign_launch_task",  # SIP-0109 §12b: the startup drain of pending launch intents
     "campaign_sweep_task",  # SIP-0109 §9.2 (§24ae): the ruling-bound sweep; cancelled on shutdown
+    "memory_store",  # SIP-0110 (D13): Cross-Cycle Memory's store, beside the cycle registry
+    "memory_reconcile_task",  # SIP-0110 §0.3: the observation passes; cancelled on shutdown
 )
 
 
@@ -691,6 +693,50 @@ async def _startup(app: FastAPI) -> None:
     # startup sweeps ran before the executor existed.
     state.campaign_launch_task = asyncio.create_task(_resume_campaigns(state))
     state.campaign_sweep_task = asyncio.create_task(_sweep_campaigns(state))
+    _init_memory(state, config, state.pool)
+    state.memory_reconcile_task = asyncio.create_task(_reconcile_memory(state))
+
+
+def _init_memory(state, config, pool) -> None:
+    """SIP-0110 (the 2.2 plan's D13): Cross-Cycle Memory's store, beside the cycle registry and
+    selected by its required provider."""
+    from adapters.memory.cross_cycle import create_cross_cycle_store
+
+    provider = config.cycles.registry_provider
+    state.memory_store = create_cross_cycle_store(
+        provider, **({"pool": pool} if provider == "postgres" else {})
+    )
+
+
+#: How often the memory reconciliation passes run (SIP-0110 §0.3). Observations feed lessons the
+#: owner approves between units, so minutes of lag cost nothing.
+_MEMORY_RECONCILE_INTERVAL_S = 300
+
+
+async def _reconcile_memory(state) -> None:
+    """SIP-0110 §0.3: beside execution, every interval, the recent cycles and campaigns are
+    projected into observations. A pass never touches a run; one that fails is logged and the next
+    runs, and projecting a record twice adds nothing, so a crash between a record's commit and its
+    projection is recovered by the next pass."""
+    from datetime import UTC, datetime
+
+    from squadops.memory.reconcile import reconcile_recent
+
+    while True:
+        await asyncio.sleep(_MEMORY_RECONCILE_INTERVAL_S)
+        try:
+            new = await reconcile_recent(
+                projects=state.project_registry,
+                registry=state.cycle_registry,
+                campaigns=state.campaign_registry,
+                vault=state.artifact_vault,
+                store=state.memory_store,
+                now=datetime.now(UTC),
+            )
+            if new:
+                logger.info("memory_observations_recorded new=%d", new)
+        except Exception:
+            logger.exception("memory_reconcile_failed")
 
 
 #: How often the campaign sweep reads the gates waiting on a ruling. A bound is recorded at most
@@ -752,6 +798,8 @@ async def _stop_work(state) -> None:
         state.reconciliation_task.cancel()
     if state.campaign_sweep_task:
         state.campaign_sweep_task.cancel()
+    if state.memory_reconcile_task:
+        state.memory_reconcile_task.cancel()
 
 
 async def _shutdown(app: FastAPI) -> None:
