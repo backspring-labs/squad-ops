@@ -198,3 +198,49 @@ async def test_a_draft_the_rules_refuse_is_a_422_and_stores_nothing(world, chang
     assert resp.status_code == 422
     assert message in resp.json()["detail"]["error"]["message"]
     assert world.client.get(f"{BASE}/lessons").json() == []
+
+
+async def test_an_exposures_target_is_assessed_and_the_rate_reads_the_supplied_series(world):
+    """§0.10 through the routes. Bugs caught: an absence recorded where the work was left out;
+    the supplied flag taken from the caller rather than the exposure's own intervention, so the
+    memory-on series could be filled by assertion."""
+    from squadops.memory.exposures import Exposure
+    from squadops.memory.lessons import RecallDisposition, Recalled
+    from squadops.memory.recall import RecallQuery
+
+    exposure = Exposure(
+        run_id="run_p",
+        task_id="task-prop",
+        cycle_id="cyc_inc",
+        agent_id="nat",
+        seam="proposal_writing",
+        query=RecallQuery("group_run", "strategy.propose_increment", "strat"),
+        recalled={
+            **Recalled("snp_x", RecallDisposition.SUPPLIED).exposure(),
+            "intervention": [{"revision_id": "pat_a@1"}],
+        },
+        recorded_at=datetime.now(UTC),
+    )
+    await world.store.record_exposure(exposure)
+    path = f"{BASE}/exposures/{exposure.exposure_id}/assessments"
+    body = {"pattern_id": "pat_a", "rubric": "lesson.r@1", "evidence": "change_request v1"}
+
+    leaving_work_out = world.client.post(path, json={**body, "state": "absent"})
+    absent = world.client.post(path, json={**body, "state": "absent", "required_work_done": True})
+    rates = world.client.get(f"{BASE}/lessons/absence-rates").json()
+    listed = world.client.get(f"{BASE}/exposures", params={"run_id": "run_p"}).json()
+
+    assert leaving_work_out.status_code == 422
+    assert absent.status_code == 201 and absent.json()["supplied"] is True
+    assert rates == [
+        {
+            "pattern_id": "pat_a",
+            "supplied": True,
+            "absent": 1,
+            "assessed": 1,
+            "not_applicable": 0,
+            "unassessed": 0,
+            "rate": 1.0,
+        }
+    ]
+    assert [a["state"] for a in listed[0]["assessments"]] == ["absent"]

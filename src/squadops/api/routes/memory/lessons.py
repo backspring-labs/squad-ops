@@ -1,10 +1,11 @@
-"""``/api/v1/projects/{project_id}/lessons`` — Cross-Cycle Memory's lessons (SIP-0110 §0.4, §0.6–§0.7;
-slice 3d, #2096).
+"""``/api/v1/projects/{project_id}/lessons`` and ``…/exposures`` — Cross-Cycle Memory's lessons and
+what each consuming task was supplied (SIP-0110 §0.4, §0.6–§0.7, §0.10; slice 3d, #2096).
 
 - **read** (``memory:read``): the project's revisions with their approvals, and the approved lessons
   a revision would be supplied beside;
-- **draft** (``memory:draft``): the auditor writes a revision (the 2.2 plan's D15). In 2.2 the
-  auditor is the outer loop's model in the supervisor's seat, which holds ``admin``;
+- **draft** (``memory:draft``): the auditor writes a revision (the 2.2 plan's D15), and assesses an
+  exposure's output against a target (§0.10). In 2.2 the auditor is the outer loop's model in the
+  supervisor's seat, which holds ``admin``;
 - **approve** (``memory:approve``, the owner alone): approve a revision for an applicability, with
   the ruling, the replay check and the combined check it rests on; revoke an approval.
 
@@ -22,6 +23,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from squadops.api.memory_schemas import (
     ApplicabilityDTO,
+    AssessmentRequest,
     LessonApprovalRequest,
     LessonDraftRequest,
     RevocationRequest,
@@ -35,6 +37,14 @@ from squadops.memory.approval import (
     draft_revision,
     revoke,
     supplied_together,
+)
+from squadops.memory.assessment import (
+    AssessmentRefused,
+    TargetState,
+    assess,
+    latest,
+    supplied_to,
+    target_absence_rates,
 )
 from squadops.memory.lessons import Applicability, Approval, PatternRevision
 
@@ -246,3 +256,81 @@ async def revoke_lesson(
             else "units admitted from now pin without it; no unit holds it"
         ),
     }
+
+
+@router.get("/exposures")
+async def list_exposures(
+    request: Request,
+    project_id: str,
+    run_id: str,
+    identity: Identity | None = Depends(require_scopes(Scope.MEMORY_READ)),
+) -> list[dict[str, Any]]:
+    """A run's exposures, each with the latest assessment of each target (§0.8 step 7, §0.10)."""
+    store = _store(request)
+    read = latest(await store.list_assessments(project_id))
+    return [
+        {
+            **e.to_dict(),
+            "assessments": [
+                a.to_dict() for (exposure_id, _), a in read.items() if exposure_id == e.exposure_id
+            ],
+        }
+        for e in await store.list_exposures(run_id)
+        if e.query.project_id == project_id
+    ]
+
+
+@router.post("/exposures/{exposure_id}/assessments", status_code=201)
+async def assess_exposure(
+    request: Request,
+    project_id: str,
+    exposure_id: str,
+    body: AssessmentRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.MEMORY_DRAFT)),
+) -> dict[str, Any]:
+    """One target's state in the exposure's authored output, by the target's rubric (§0.10). An
+    absence is refused unless the output did its required work."""
+    assessed_by = _actor(identity)
+    store = _store(request)
+    exposure = await store.get_exposure(exposure_id)
+    if exposure is None or exposure.query.project_id != project_id:
+        raise _error(404, "NOT_FOUND", f"no exposure {exposure_id} in {project_id}")
+    try:
+        assessment = assess(
+            project_id=project_id,
+            exposure_id=exposure_id,
+            pattern_id=body.pattern_id,
+            state=TargetState(body.state),
+            required_work_done=body.required_work_done,
+            supplied=supplied_to(exposure.recalled.get("intervention"), body.pattern_id),
+            rubric=body.rubric,
+            evidence=body.evidence,
+            assessed_by=assessed_by,
+            now=datetime.now(UTC),
+        )
+    except AssessmentRefused as e:
+        raise _error(422, "VALIDATION_ERROR", str(e)) from e
+    await store.record_assessment(assessment)
+    return assessment.to_dict()
+
+
+@router.get("/lessons/absence-rates")
+async def absence_rates(
+    request: Request,
+    project_id: str,
+    identity: Identity | None = Depends(require_scopes(Scope.MEMORY_READ)),
+) -> list[dict[str, Any]]:
+    """``target_absence_rate`` per target, the supplied and unsupplied series apart, over the latest
+    assessments of applicable, assessed exposures (§0.10). Observational, not a causal estimate."""
+    return [
+        {
+            "pattern_id": r.pattern_id,
+            "supplied": r.supplied,
+            "absent": r.absent,
+            "assessed": r.assessed,
+            "not_applicable": r.not_applicable,
+            "unassessed": r.unassessed,
+            "rate": r.rate,
+        }
+        for r in target_absence_rates(await _store(request).list_assessments(project_id))
+    ]

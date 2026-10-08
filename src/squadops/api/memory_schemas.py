@@ -65,3 +65,16 @@ class RevocationRequest(BaseModel):
     reason: str
 
     model_config = ConfigDict(extra="forbid")
+
+
+class AssessmentRequest(BaseModel):
+    """One target's state in an exposure's authored output (SIP-0110 §0.10)."""
+
+    pattern_id: str
+    state: Literal["present", "absent", "not_applicable", "unassessed"]
+    #: Whether the output did its required work; an absence requires it.
+    required_work_done: bool | None = None
+    rubric: str
+    evidence: str
+
+    model_config = ConfigDict(extra="forbid")

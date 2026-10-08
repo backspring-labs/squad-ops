@@ -4,7 +4,8 @@ Phase 1's records live in Postgres beside the cycle registry, behind this port, 
 in-memory adapter for tests. It is not SIP-042's ``MemoryPort``, which is each agent's own
 semantic store: the runtime API, where recall and the projections run, has none of those, and
 Phase 1's recall is exact filtering that needs no embedding. It holds the observations (3a), and
-the lessons, their approvals, each unit's pinned snapshot and each consuming task's exposure (3c).
+the lessons, their approvals, each unit's pinned snapshot, each consuming task's exposure (3c), and
+each exposure's assessments (3d).
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 
+from squadops.memory.assessment import Assessment
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import Approval, PatternRevision, Snapshot, UnitKind
 from squadops.memory.observations import Observation, ObservationSource
@@ -79,3 +81,20 @@ class CrossCycleMemoryStorePort(ABC):
     @abstractmethod
     async def list_exposures(self, run_id: str) -> list[Exposure]:
         """A run's exposures, by task."""
+
+    @abstractmethod
+    async def get_exposure(self, exposure_id: str) -> Exposure | None:
+        """One exposure, or ``None``."""
+
+    @abstractmethod
+    async def list_project_exposures(self, project_id: str) -> list[Exposure]:
+        """A project's exposures, oldest first."""
+
+    @abstractmethod
+    async def record_assessment(self, assessment: Assessment) -> bool:
+        """Store an assessment; append-only, so a reassessment is a new record (§0.10). Returns
+        whether it was new."""
+
+    @abstractmethod
+    async def list_assessments(self, project_id: str) -> list[Assessment]:
+        """A project's assessments, oldest first."""

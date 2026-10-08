@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from squadops.memory.approval import units_holding
+from squadops.memory.assessment import Assessment
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import Approval, PatternRevision, Snapshot, UnitKind
 from squadops.memory.observations import Observation, ObservationSource
@@ -28,6 +29,7 @@ class InMemoryCrossCycleMemoryStore(CrossCycleMemoryStorePort):
         self._approvals: dict[str, Approval] = {}
         self._snapshots: dict[tuple[str, str], Snapshot] = {}
         self._exposures: dict[str, Exposure] = {}
+        self._assessments: dict[str, Assessment] = {}
 
     async def record_observations(self, observations: Sequence[Observation]) -> int:
         new = 0
@@ -99,6 +101,27 @@ class InMemoryCrossCycleMemoryStore(CrossCycleMemoryStorePort):
     async def list_exposures(self, run_id: str) -> list[Exposure]:
         return sorted(
             (e for e in self._exposures.values() if e.run_id == run_id), key=lambda e: e.task_id
+        )
+
+    async def get_exposure(self, exposure_id: str) -> Exposure | None:
+        return self._exposures.get(exposure_id)
+
+    async def list_project_exposures(self, project_id: str) -> list[Exposure]:
+        return sorted(
+            (e for e in self._exposures.values() if e.query.project_id == project_id),
+            key=lambda e: (e.recorded_at, e.exposure_id),
+        )
+
+    async def record_assessment(self, assessment: Assessment) -> bool:
+        if assessment.assessment_id in self._assessments:
+            return False
+        self._assessments[assessment.assessment_id] = assessment
+        return True
+
+    async def list_assessments(self, project_id: str) -> list[Assessment]:
+        return sorted(
+            (a for a in self._assessments.values() if a.project_id == project_id),
+            key=lambda a: (a.assessed_at, a.assessment_id),
         )
 
 
@@ -283,6 +306,47 @@ class PostgresCrossCycleMemoryStore(CrossCycleMemoryStorePort):
                 run_id,
             )
         return [Exposure.from_dict(r["exposure_body"]) for r in rows]
+
+    async def get_exposure(self, exposure_id: str) -> Exposure | None:
+        async with self._pool.acquire() as conn:
+            body = await conn.fetchval(
+                "SELECT exposure_body FROM memory_exposures WHERE exposure_id = $1", exposure_id
+            )
+        return Exposure.from_dict(body) if body is not None else None
+
+    async def list_project_exposures(self, project_id: str) -> list[Exposure]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT exposure_body FROM memory_exposures WHERE project_id = $1 "
+                "ORDER BY recorded_at, exposure_id",
+                project_id,
+            )
+        return [Exposure.from_dict(r["exposure_body"]) for r in rows]
+
+    async def record_assessment(self, assessment: Assessment) -> bool:
+        async with self._pool.acquire() as conn:
+            status = await conn.execute(
+                "INSERT INTO memory_assessments (assessment_id, project_id, exposure_id, "
+                "pattern_id, state, assessed_at, assessment_body) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (assessment_id) DO NOTHING",
+                assessment.assessment_id,
+                assessment.project_id,
+                assessment.exposure_id,
+                assessment.pattern_id,
+                assessment.state.value,
+                assessment.assessed_at,
+                assessment.to_dict(),
+            )
+        return status.endswith(" 1")
+
+    async def list_assessments(self, project_id: str) -> list[Assessment]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT assessment_body FROM memory_assessments WHERE project_id = $1 "
+                "ORDER BY assessed_at, assessment_id",
+                project_id,
+            )
+        return [Assessment.from_dict(r["assessment_body"]) for r in rows]
 
 
 def create_cross_cycle_store(provider: str, **kwargs: Any) -> CrossCycleMemoryStorePort:
