@@ -9,10 +9,15 @@ Part of SIP-0070 Phase 3.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
 from squadops.capabilities.handlers.cycle_tasks import _CycleTaskHandler
 from squadops.tasks.task_types import TaskType
+
+if TYPE_CHECKING:
+    from squadops.capabilities.handlers.base import HandlerResult
+    from squadops.capabilities.handlers.context import ExecutionContext
 
 
 class _RepairTaskHandler(_CycleTaskHandler):
@@ -38,7 +43,19 @@ class _RepairTaskHandler(_CycleTaskHandler):
             "role": self._role,
             "verification_context": verification_section,
             "prior_outputs": self._format_prior_outputs(upstream or None),
+            # SIP-0110 §0.9: rendered in handle(); "" when no lesson was supplied.
+            "cross_cycle_lessons_section": str(inputs.get("cross_cycle_lessons_section") or ""),
         }
+
+    async def handle(self, context: ExecutionContext, inputs: dict[str, Any]) -> HandlerResult:
+        """The chain's step, with the lessons approved for it in a slot of their own, after its
+        verification failure context (SIP-0110 §0.9)."""
+        lessons = await cross_cycle_lessons_section(
+            getattr(context.ports, "request_renderer", None), inputs
+        )
+        if lessons:
+            inputs = {**inputs, "cross_cycle_lessons_section": lessons}
+        return await super().handle(context, inputs)
 
     def _build_user_prompt(
         self,

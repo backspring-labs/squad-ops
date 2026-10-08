@@ -406,7 +406,7 @@ class TestPulseRepairTaskRunPropagation:
             all_artifact_refs=[],
             max_repair_attempts=2,
             flow_run_id="fr_main",
-            agent_resolver={"strat": "nat", "dev": "neo", "qa": "eve", "lead": "max"},
+            profile=_HARNESS_PROFILE,
             ledger=RunLedger(),
         )
 
