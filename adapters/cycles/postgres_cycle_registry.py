@@ -52,6 +52,7 @@ from squadops.cycles.verification_integrity import (
     RunVerificationSummary,
     UnverifiedCheck,
 )
+from squadops.memory.authoring_envelope import envelope_id
 from squadops.ports.cycles.cycle_registry import CycleRegistryPort
 
 logger = logging.getLogger(__name__)
@@ -538,6 +539,38 @@ class PostgresCycleRegistry(CycleRegistryPort):
         if row is None:
             return None
         return RunLoopSummary.from_dict(row["summary"])
+
+    async def record_authoring_envelope(self, run_id: str, envelope: dict[str, Any]) -> bool:
+        """Insert one authoring seam's replay envelope (SIP-0110 §0.11). A duplicate delivery of
+        the same capture keeps the first row; returns whether this one was new."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT 1 FROM cycle_runs WHERE run_id = $1", run_id)
+            if row is None:
+                raise RunNotFoundError(f"Run not found: {run_id}")
+            status = await conn.execute(
+                "INSERT INTO authoring_envelopes (envelope_id, run_id, task_id, task_type, seam, "
+                "captured_at, messages_sha256, envelope) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) "
+                "ON CONFLICT (envelope_id) DO NOTHING",
+                envelope_id(envelope),
+                run_id,
+                str(envelope["task_id"]),
+                str(envelope["task_type"]),
+                str(envelope["seam"]),
+                datetime.fromisoformat(str(envelope["captured_at"])),
+                str(envelope["messages_sha256"]),
+                envelope,
+            )
+        return status.endswith(" 1")
+
+    async def list_authoring_envelopes(self, run_id: str) -> list[dict[str, Any]]:
+        """A run's recorded envelopes, in capture order."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT envelope FROM authoring_envelopes WHERE run_id = $1 "
+                "ORDER BY captured_at, envelope_id",
+                run_id,
+            )
+        return [dict(row["envelope"]) for row in rows]
 
     async def record_failure_records(
         self, cycle_id: str, last_run_id: str, records: tuple[FailureRecord, ...]

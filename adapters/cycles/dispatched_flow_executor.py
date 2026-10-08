@@ -575,6 +575,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # instance the correction and pulse runners below share, so cancel
             # reaches every dispatch path, not just the sequential loop top.
             is_cancelled=lambda run_id: self._is_cancelled(run_id),
+            # SIP-0110 §0.11 (#2105): each authoring seam's envelope, recorded as it arrives.
+            record_authoring_envelope=self._record_authoring_envelope,
         )
         # SIP-0097 §6.3: correction-protocol collaborator. store_artifact stays
         # an executor-supplied late-bound callable (artifact plumbing is §6.7
@@ -4239,6 +4241,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    async def _record_authoring_envelope(self, run_id: str, envelope: dict[str, Any]) -> None:
+        """Record one authoring seam's replay envelope through the cycle registry (SIP-0110
+        §0.11). The dispatcher calls it as each reply arrives and logs a failure."""
+        if self._cycle_registry is None:
+            raise RuntimeError("no cycle registry to record the authoring envelope in")
+        await self._cycle_registry.record_authoring_envelope(run_id, envelope)
 
     async def _is_cancelled(self, run_id: str) -> bool:
         """Check local fast-path set AND registry state."""

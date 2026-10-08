@@ -1107,6 +1107,8 @@ class AgentRunner:
                 error=str(e),
                 # SIP-0108 §4.1: a handler timeout carries the calls it made before it ran out.
                 llm_usage=getattr(e, "llm_usage", None),
+                # SIP-0110 §0.11: and the authoring it captured before it ran out (#2105).
+                authoring_envelope=getattr(e, "authoring_envelope", None),
             )
         finally:
             if llm_obs:

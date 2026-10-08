@@ -12,9 +12,11 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
+from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.capabilities.disputed_checks import DISPUTED_CHECKS
 from squadops.capabilities.handlers.context import ExecutionContext
 from squadops.cycles.llm_usage import UsageTotals
+from squadops.memory.authoring_envelope import json_safe
 from squadops.orchestration.handler_registry import HandlerNotFoundError, HandlerRegistry
 from squadops.ports.capabilities.executor import CapabilityExecutor
 from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
@@ -143,6 +145,14 @@ class HandlerExecutor(CapabilityExecutor):
                 correlation_context=corr_ctx,
             )
 
+            # SIP-0110 §0.11 (#2105): an authoring seam's inputs, taken as the handler is handed
+            # them, before it can change them; ``_llm_call`` captures the envelope from them.
+            if authoring_seam_of(task_type) is not None:
+                safe, not_captured = json_safe(dict(envelope.inputs or {}))
+                context.authoring_task_type = str(task_type)
+                context.authoring_inputs = safe
+                context.authoring_inputs_not_captured = tuple(not_captured)
+
             # Validate inputs
             errors = handler.validate_inputs(envelope.inputs or {})
             if errors:
@@ -153,6 +163,7 @@ class HandlerExecutor(CapabilityExecutor):
                     error=f"Validation failed: {'; '.join(errors)}",
                     execution_evidence={"validation_errors": errors},
                     llm_usage=context.llm_usage.to_dict(),
+                    authoring_envelope=context.authoring_envelope,
                 )
 
             # Execute with timeout
@@ -167,6 +178,7 @@ class HandlerExecutor(CapabilityExecutor):
                 timed_out = TimeoutError(f"Execution timed out after {timeout}s")
                 # The agent entrypoint builds this task's result from the exception.
                 timed_out.llm_usage = context.llm_usage.to_dict()  # type: ignore[attr-defined]
+                timed_out.authoring_envelope = context.authoring_envelope  # type: ignore[attr-defined]
                 raise timed_out from err
 
             # Convert handler result to task result
@@ -185,6 +197,7 @@ class HandlerExecutor(CapabilityExecutor):
                     error=None,
                     execution_evidence=self._evidence_to_dict(result.evidence),
                     llm_usage=context.llm_usage.to_dict(),
+                    authoring_envelope=context.authoring_envelope,
                 )
             else:
                 logger.warning(
@@ -202,6 +215,7 @@ class HandlerExecutor(CapabilityExecutor):
                     error=result.error,
                     execution_evidence=self._evidence_to_dict(result.evidence),
                     llm_usage=context.llm_usage.to_dict(),
+                    authoring_envelope=context.authoring_envelope,
                 )
 
         except TimeoutError:
@@ -219,6 +233,7 @@ class HandlerExecutor(CapabilityExecutor):
                 error=str(e),
                 execution_evidence={"exception": type(e).__name__},
                 llm_usage=context.llm_usage.to_dict() if context is not None else None,
+                authoring_envelope=context.authoring_envelope if context is not None else None,
             )
 
     async def health(self) -> dict[str, Any]:

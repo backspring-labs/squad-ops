@@ -272,6 +272,50 @@ class TestRunLoopSummaryRoundTrip:
         assert await registry.get_run_loop_summary(run.run_id) == summary(5)
 
 
+class TestAuthoringEnvelopes:
+    """SIP-0110 §0.11 (#2105): the memory adapter keeps envelopes in a dict, so only this proves
+    the INSERT, the seam CHECK, the duplicate rule and the JSONB round trip agree with the table."""
+
+    async def test_an_envelope_round_trips_whole_and_a_redelivery_adds_no_row(self, registry):
+        from squadops.memory.authoring_envelope import AuthoringSeam, capture_envelope
+
+        cycle = _make_cycle()
+        await registry.create_cycle(cycle)
+        run = await registry.create_run(_make_run(cycle.cycle_id))
+        envelope = capture_envelope(
+            seam=AuthoringSeam.REPAIR,
+            task_type="qa.test_repair",
+            task_id="repair-1",
+            cycle_id=cycle.cycle_id,
+            project_id="test-project",
+            agent_id="eve",
+            role="qa",
+            handler_name="qa_test_repair_handler",
+            captured_at="2026-10-08T02:00:00+00:00",
+            messages=[("system", "s"), ("user", "fix the suite — “quoted” and ünïcode")],
+            chat_kwargs={"model": "qwen", "max_tokens": 8192},
+            inputs={"failure_evidence": {"rows": [{"check": "tests_pass"}]}, "n": 3},
+        ).to_dict()
+
+        assert await registry.record_authoring_envelope(run.run_id, envelope) is True
+        assert await registry.record_authoring_envelope(run.run_id, dict(envelope)) is False
+
+        assert await registry.list_authoring_envelopes(run.run_id) == [envelope]
+
+    async def test_an_envelope_for_an_unknown_run_is_refused(self, registry):
+        from squadops.cycles.models import RunNotFoundError
+
+        with pytest.raises(RunNotFoundError):
+            await registry.record_authoring_envelope(
+                "run_missing",
+                {
+                    "task_id": "t",
+                    "captured_at": "2026-10-08T02:00:00+00:00",
+                    "messages_sha256": "x",
+                },
+            )
+
+
 class TestFullRunLifecycle:
     """create → running → paused → running → completed (Plan §3.3 item 2)."""
 
