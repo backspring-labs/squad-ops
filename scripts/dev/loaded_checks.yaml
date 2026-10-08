@@ -441,3 +441,26 @@ checks:
       blk = RunVerdict.BLOCKED_UNVERIFIED
       print(_pending(c, blk, True, True, True)[0], _pending(c, blk, False, True, True)[0])
     expect: "10 8"
+  - id: "2105-runtime"
+    what: SIP-0110 slice 1 - the runtime records each authoring seam's envelope through the cycle registry
+    container: squadops-runtime-api
+    code: |
+      from squadops.tasks.models import TaskResult
+      from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
+      print("authoring_envelope" in TaskResult.__dataclass_fields__, hasattr(MemoryCycleRegistry, "record_authoring_envelope"))
+    expect: True True
+  - id: "2105-agent"
+    what: SIP-0110 slice 1 - an agent captures an authoring seam's envelope at its first model call
+    container: squadops-nat
+    code: |
+      from squadops.capabilities.context_assembly import authoring_seam_of
+      from squadops.capabilities.handlers.cycle.base import _CycleTaskHandler
+      print(authoring_seam_of("strategy.propose_increment").value, hasattr(_CycleTaskHandler, "_authoring_envelope"))
+    expect: proposal_writing True
+  - id: "2114"
+    what: a campaign proposer is told what its stack does with a request field the manifest does not declare
+    container: squadops-nat
+    code: |
+      from squadops.capabilities.scaffold import ConventionKind, frozen_conventions_for
+      print(sorted(c.kind.value for c in frozen_conventions_for("fullstack_fastapi_react") if c.kind.value.startswith("undeclared")))
+    expect: "['undeclared_field_ignored']"
