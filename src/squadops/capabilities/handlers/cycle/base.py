@@ -36,7 +36,11 @@ from squadops.cycles.acceptance_evaluation import (
     resolve_check_stack,
     split_acceptance_criteria,
 )
-from squadops.cycles.emission_integrity import emission_stats
+from squadops.cycles.emission_integrity import (
+    SIGNATURE_CAP_TRUNCATED,
+    emission_stats,
+    reached_cap,
+)
 from squadops.cycles.implementation_plan import TypedCheck
 from squadops.cycles.patch_verification import materialize_artifacts
 from squadops.cycles.verification_integrity import ResultStatus
@@ -1563,6 +1567,14 @@ class _CycleTaskHandler(CapabilityHandler):
                 if retried
                 else await self._cap_exhausted_fact(context, response, content, chat_kwargs, label)
             )
+            # #2149: a call the budget stopped mid-block. The cut block is dropped here, before
+            # any parser can take it as written (#431's close at EOF would), and the call is asked
+            # again once, as an exhausted one is. ``cut`` is what was dropped, for the shape log.
+            cut: str | None = None
+            if retry_fact is None:
+                content, cut, retry_fact = await self._cap_truncated(
+                    context, response, content, chat_kwargs, label, retried
+                )
 
             # #1251: a declared fault transforms the emission HERE, before the shape is
             # logged, so every readout downstream reads one consistent emission and the log
@@ -1592,7 +1604,9 @@ class _CycleTaskHandler(CapabilityHandler):
             # would go missing in exactly the setups where the emission is unexplained. The
             # discarded emission is logged under its own label, so a record counts it.
             log_emission_shape(
-                label if retry_fact is None else f"{label}:cap_exhausted",
+                label
+                if retry_fact is None and cut is None
+                else f"{label}:{SIGNATURE_CAP_TRUNCATED if cut is not None else 'cap_exhausted'}",
                 content,
                 response.completion_tokens,
                 response.reasoning_tokens,
@@ -1674,6 +1688,54 @@ class _CycleTaskHandler(CapabilityHandler):
             "request.disputed_checks_appendix", {"checks": "\n".join(checks)}
         )
         return rendered.content
+
+    async def _cap_truncated(
+        self,
+        context: ExecutionContext,
+        response: ChatMessage,
+        content: str,
+        chat_kwargs: dict[str, Any],
+        label: str,
+        retried: bool,
+    ) -> tuple[str, str | None, str | None]:
+        """A call the completion budget stopped mid-block (#2149): ``(content, cut, retry fact)``.
+
+        At the cap with text, the response's final block may have no close. #431 closes such a
+        block at EOF, since a model sometimes drops only its closing fence. Under the cap that
+        reading stands. At the cap it does not: the block was cut, and taking it would hand on
+        half a file as written. So the cut block is dropped (``cut`` names its opening line), the
+        closed blocks before it are kept, and, once per call, the call is asked again with the
+        fact. A call at the cap whose blocks all closed was not cut, and is returned as it is."""
+        from squadops.capabilities.handlers.fenced_parser import cut_final_block
+
+        cap = chat_kwargs.get("max_tokens")
+        if not content or not reached_cap(response.completion_tokens, cap):
+            return content, None, None
+        start = cut_final_block(content)
+        if start is None:
+            return content, None, None
+        cut = content[start:].split("\n", 1)[0]
+        kept = content[:start]
+        logger.warning(
+            "cap_truncated handler=%s tokens=%s cap=%s — the budget ran out inside %r; the cut "
+            "block is dropped, never taken as written (#2149)",
+            label,
+            response.completion_tokens,
+            cap,
+            cut,
+        )
+        renderer = getattr(context.ports, "request_renderer", None)
+        if retried or renderer is None:
+            return kept, cut, None
+        fact = await renderer.render(
+            "request.cycle_cap_truncated_retry",
+            {
+                "completion_cap": str(cap),
+                "completion_tokens": str(response.completion_tokens),
+                "cut_block": cut,
+            },
+        )
+        return kept, cut, fact.content
 
     async def _cap_exhausted_fact(
         self,
