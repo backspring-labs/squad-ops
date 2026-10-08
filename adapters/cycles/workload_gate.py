@@ -32,7 +32,18 @@ from squadops.campaigns.gate import (
     binding_from_change_request,
     submission,
 )
-from squadops.campaigns.models import ControlOperationRefused, SubmittedProposal
+from squadops.campaigns.models import (
+    ControlOperationRefused,
+    CycleKind,
+    PlanGate,
+    SubmittedProposal,
+)
+from squadops.campaigns.plan_review_tier import (
+    GATE_DECIDED_BY_PLAN_REVIEW_TIER,
+    TierVerdict,
+    plan_footprint,
+    plan_review_tier,
+)
 from squadops.capabilities.handlers.planning.proposal import CHANGE_REQUEST_ARTIFACT_TYPE
 from squadops.cycles.cycle_end import CycleStopReason
 from squadops.cycles.gate_decisions import record_gate_decision
@@ -50,6 +61,10 @@ from squadops.events.types import EventType
 
 # The executor's logger name: the gate's lines are read by where they have always come from.
 logger = logging.getLogger("adapters.cycles.dispatched_flow_executor")
+
+
+#: The decider of a plan-validation refusal: a re-rolled framing's earlier run carries it (§24bj).
+PLAN_VALIDATION_DECIDER = "system:plan_validation"
 
 
 class GateOutcome(StrEnum):
@@ -83,7 +98,7 @@ class WorkloadGate:
         "_cycle_event_bus",
         "_cycle_registry",
         "_design_questions_for_gate",
-        "_load_rejected_plan_yaml",
+        "_load_run_plan_yaml",
         "_poll_inter_workload_gate",
         "_reject_invalid_plan_before_workload_gate",
         "_run_manifest_content",
@@ -167,7 +182,7 @@ class WorkloadGate:
                 rejection = GateDecision(
                     gate_name=gate_name,
                     decision=GateDecisionValue.REJECTED.value,
-                    decided_by="system:plan_validation",
+                    decided_by=PLAN_VALIDATION_DECIDER,
                     decided_at=datetime.now(UTC),
                     notes="; ".join(plan_errors),
                 )
@@ -208,7 +223,7 @@ class WorkloadGate:
                     # rebuilt at the next workload advance, so the context
                     # never leaks past framing; a second re-roll replaces
                     # the first's context with the latest rejection.
-                    rejected_plan_yaml = await self._load_rejected_plan_yaml(run)
+                    rejected_plan_yaml = await self._load_run_plan_yaml(run)
                     rejection_context: dict[str, Any] = {"rejection_reasons": list(plan_errors)}
                     if rejected_plan_yaml:
                         rejection_context["rejected_plan_yaml"] = rejected_plan_yaml
@@ -248,6 +263,7 @@ class WorkloadGate:
             # the deterministic gates, and a review that adds nothing is worse than no
             # review — it manufactures the appearance of one. Keyed on the design, never
             # on who wrote it (Guard 1a).
+            tier: TierVerdict | None = None
             if gate_name == INCREMENT_RULING_GATE:
                 # SIP-0109 §9.2: the supervisor's ruling alone moves this gate. An increment cycle
                 # carries its baseline's manifest, which asks nothing, so #807's pass-through would
@@ -260,7 +276,14 @@ class WorkloadGate:
                 # which the stored cycle does not carry, so the question check found no design and
                 # every increment's plan gate asked a human.
                 questions = await self._design_questions_for_gate(run, run_cycle)
-            if questions is not None and not questions:
+                tier = await self._plan_review_tier(cycle, run, current_run_id, questions)
+            if tier is not None and tier.approves:
+                # §24bj: a campaign that declares the tier has its plan gate decided by it, and
+                # never by #807's pass-through, whose approvals the tier's are a subset of.
+                decision = await self._approve_gate_by_tier(
+                    cycle.project_id, current_run_id, cycle_id, gate_name, tier
+                )
+            elif tier is None and questions is not None and not questions:
                 # Synthesized, not short-circuited: the decision runs through the SAME
                 # exhaustive dispatch below that a human's answer does, so a
                 # pass-through cannot reach a path an approval would not.
@@ -279,8 +302,21 @@ class WorkloadGate:
                     payload={
                         "gate_name": gate_name,
                         "open_questions": list(questions or ()),
+                        # §24bj: what the tier could not establish, when the campaign declares it
+                        **(
+                            {"tier_failed": [str(c.condition) for c in tier.failed]}
+                            if tier is not None
+                            else {}
+                        ),
                     },
                 )
+                if tier is not None:
+                    logger.info(
+                        "Gate %r on run %s escalates from the plan-review tier: %s",
+                        gate_name,
+                        current_run_id,
+                        "; ".join(f"{c.condition}: {c.reading}" for c in tier.failed),
+                    )
                 if questions:
                     logger.info(
                         "Gate %r on run %s is waiting on %d design question(s): %s",
@@ -458,6 +494,71 @@ class WorkloadGate:
             await self._seed_increment(cycle, run)
 
         return step(GateOutcome.PROCEED)
+
+    async def _plan_review_tier(
+        self, cycle: Cycle, run: Any, current_run_id: str, questions: tuple[str, ...] | None
+    ) -> TierVerdict | None:
+        """§24bj: the tier's verdict on this plan gate, or ``None`` when the cycle's campaign does
+        not declare it: a supervised campaign, or a cycle no campaign launched."""
+        if not cycle.campaign_id:
+            return None
+        if self._campaign_registry is None:
+            raise RuntimeError(
+                f"campaign cycle {cycle.cycle_id} reached its plan gate on an executor wired "
+                "without a campaign registry, so the plan gate its campaign declares is unreadable"
+            )
+        campaign = await self._campaign_registry.get_campaign(cycle.campaign_id)
+        if campaign.policy.plan_gate is not PlanGate.TIER:
+            return None
+        if cycle.kind is None:
+            raise ValueError(
+                f"campaign cycle {cycle.cycle_id} records no kind, so the tier cannot tell a "
+                "calibration, which the scope does not hold, from an increment"
+            )
+        framings = await self._cycle_registry.list_runs(
+            cycle.cycle_id, workload_type=WorkloadType.FRAMING
+        )
+        refused = [
+            r.run_id
+            for r in framings
+            if r.run_id != current_run_id
+            and any(
+                d.decided_by == PLAN_VALIDATION_DECIDER
+                and d.decision == GateDecisionValue.REJECTED.value
+                for d in r.gate_decisions
+            )
+        ]
+        return plan_review_tier(
+            kind=CycleKind(cycle.kind),
+            open_questions=questions,
+            footprint=plan_footprint(await self._load_run_plan_yaml(run)),
+            allowed_scope=campaign.objective.allowed_scope,
+            refused_framing_runs=refused,
+        )
+
+    async def _approve_gate_by_tier(
+        self, project_id: str, run_id: str, cycle_id: str, gate_name: str, tier: TierVerdict
+    ) -> GateDecision:
+        """Record the tier's approval and return it, so it runs through the same dispatch a
+        person's answer takes (#807's shape: recorded, never implied). Its notes say what each
+        condition read; the one recorder promotes the run's artifacts (#1986)."""
+        decision = GateDecision(
+            gate_name=gate_name,
+            decision=GateDecisionValue.APPROVED.value,
+            decided_by=GATE_DECIDED_BY_PLAN_REVIEW_TIER,
+            decided_at=datetime.now(UTC),
+            notes=tier.notes(),
+        )
+        await record_gate_decision(
+            self._cycle_registry,
+            self._artifact_vault,
+            self._cycle_event_bus,
+            project_id=project_id,
+            cycle_id=cycle_id,
+            run_id=run_id,
+            decision=decision,
+        )
+        return decision
 
     async def _submit_proposal(self, cycle: Cycle, run: Any) -> None:
         """Pin the proposal this run produced at its campaign's increment gate (SIP-0109 §9.2).

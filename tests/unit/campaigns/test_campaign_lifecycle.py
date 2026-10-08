@@ -207,6 +207,23 @@ def test_a_policy_stored_with_two_seat_bounds_reads_as_one_supervisors():
     assert CampaignPolicy.from_stored(current) == policy(ruling_bound_s=900)
 
 
+def test_a_policy_stored_before_the_plan_gate_ran_supervised_and_an_unknown_mode_is_refused():
+    """§24bj. Bug caught: every campaign stored before the field unreadable (the Postgres loader
+    builds its policy from the stored row), one read as the tier it never declared, or a mode
+    the tier does not know accepted into a policy."""
+    import dataclasses
+
+    from squadops.campaigns.models import CampaignPolicy, PlanGate
+
+    stored = dataclasses.asdict(policy())
+    del stored["plan_gate"]
+
+    assert CampaignPolicy.from_stored(stored).plan_gate is PlanGate.SUPERVISED
+    assert CampaignPolicy.from_stored({**stored, "plan_gate": "tier"}).plan_gate is PlanGate.TIER
+    with pytest.raises(ValueError, match="plan_gate must be one of"):
+        policy(plan_gate="auto")
+
+
 def test_a_creation_without_a_definition_keeps_the_hash_it_was_stored_with():
     """#1954 adds the definition to a creation's content only when one is given. Bug caught: the
     hash of every definition-less creation changing, so a retried create of a campaign stored
@@ -227,6 +244,10 @@ def test_a_creation_without_a_definition_keeps_the_hash_it_was_stored_with():
 
     assert before == "08aecfc79fc10fe8afb1f8f158f9df08b14e1bba092ef0a0bc0743e2b7d7e76f"
     assert with_file != before
+    # §24bj: the supervised plan gate is how the creation above was stored, so it enters the hash
+    # as that absence; the tier is a different creation.
+    tiered = campaign("cmp_hash0000001", policy=policy(plan_gate="tier"))
+    assert creation_request_hash(tiered, actor="owner", actor_role="admin", reason="r") != before
 
 
 @pytest.mark.parametrize(

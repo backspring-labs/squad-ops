@@ -11,6 +11,7 @@ from squadops.campaigns.models import (
     CampaignState,
     CampaignTransition,
     ControlOperation,
+    PlanGate,
 )
 
 T0 = datetime(2026, 10, 2, 3, 0, tzinfo=UTC)
@@ -34,6 +35,7 @@ def policy(**overrides) -> CampaignPolicy:
         calibration_profile="validated-fullstack",
         proposal_profile="campaign-increment",
         squad_profile="full-38",
+        plan_gate=PlanGate.SUPERVISED,
     )
     values.update(overrides)
     return CampaignPolicy(**values)

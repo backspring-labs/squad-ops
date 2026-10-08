@@ -1281,8 +1281,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         )
         return await self._cycle_registry.create_run(next_run)
 
-    async def _load_rejected_plan_yaml(self, run: Run) -> str | None:
-        """The rejected run's implementation_plan.yaml content, or None (#669).
+    async def _load_run_plan_yaml(self, run: Run) -> str | None:
+        """The run's implementation_plan.yaml content, or None: a rejected run's for the re-roll's
+        context (#669), and the plan the plan-review tier reads its footprint from (§24bj).
 
         Same match rule as the gate-net loader — cancellation only flips run
         status, so the rejected run's artifact refs stay readable. Best-effort:

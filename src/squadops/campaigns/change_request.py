@@ -18,6 +18,7 @@ import copy
 import dataclasses
 import hashlib
 import json
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from fnmatch import fnmatch
@@ -442,6 +443,17 @@ class ProposalContext:
     prior_criteria: tuple[str, ...] = field(default_factory=tuple)
 
 
+def outside_allowed_scope(paths: Iterable[str], allowed_scope: Sequence[str]) -> list[str]:
+    """The paths no entry of the objective's allowed scope covers, in their order. An entry is a
+    glob (``backend/**``) or a path prefix (``backend``). One reading for the proposal's rails
+    (§9.1) and the plan-review tier (§24bj), so the two cannot disagree on what is in scope."""
+    return [
+        p
+        for p in paths
+        if not any(fnmatch(p, scope) or p.startswith(scope.rstrip("*")) for scope in allowed_scope)
+    ]
+
+
 def validate_proposal(authored: dict, context: ProposalContext) -> ProposalVerdict:
     """Every rail, every refusal. A malformed document or a delta that does not fit stops the
     rails that need a candidate manifest; the rest still run."""
@@ -478,13 +490,7 @@ def validate_proposal(authored: dict, context: ProposalContext) -> ProposalVerdi
         return ProposalVerdict(None, tuple(refusals), candidate)
 
     footprint = derive_footprint(context.baseline_manifest, candidate)
-    outside = [
-        p
-        for p in footprint
-        if not any(
-            fnmatch(p, scope) or p.startswith(scope.rstrip("*")) for scope in context.allowed_scope
-        )
-    ]
+    outside = outside_allowed_scope(footprint, context.allowed_scope)
     if outside:
         refusals.append(
             ProposalRefusal(

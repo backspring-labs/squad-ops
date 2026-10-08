@@ -12,6 +12,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from squadops.campaigns.models import PlanGate
+
 
 class CampaignObjectiveDTO(BaseModel):
     statement: str
@@ -39,6 +41,8 @@ class CampaignPolicyDTO(BaseModel):
     calibration_profile: str
     proposal_profile: str
     squad_profile: str
+    #: §24bj: required, so a definition that does not declare it is refused at creation.
+    plan_gate: PlanGate
 
 
 class CampaignDefinitionDTO(BaseModel):
