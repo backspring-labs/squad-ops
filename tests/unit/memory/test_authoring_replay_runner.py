@@ -74,6 +74,22 @@ async def test_a_valid_case_is_authored_under_every_scheduled_arm_and_writes_now
     assert model.asked == 3
 
 
+async def test_the_baseline_authoring_records_that_its_call_was_the_captured_prompt():
+    """Bug caught: a call record hashed differently from the envelope, so the scored baseline's
+    fidelity cannot be read from the records (the exploratory run's first records, #2106); or a
+    baseline whose real call is not the capture. Only the baseline claims it."""
+    envelope = await _captured_envelope()
+    registry, prompt_service, renderer = _tools()
+
+    records = await _module.replay(_payload(envelope), registry, prompt_service, renderer, _Model())
+
+    by_arm = {r["arm"]: r for r in records if r["record"] == "authoring"}
+    assert by_arm["baseline"]["calls"][0]["messages_sha256"] == envelope["messages_sha256"]
+    assert by_arm["baseline"]["first_call_is_the_capture"] is True
+    assert [arm for arm, r in by_arm.items() if "first_call_is_the_capture" in r] == ["baseline"]
+    assert by_arm["scoped_memory"]["calls"][0]["messages_sha256"] != envelope["messages_sha256"]
+
+
 async def test_a_case_whose_reproduction_differs_is_reported_and_never_authored():
     """Bug caught: a replay scored on an envelope whose inputs no longer produce its prompt, so the
     baseline arm authors from a different prompt than the model saw."""

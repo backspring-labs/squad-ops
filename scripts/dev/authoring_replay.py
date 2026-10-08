@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import asyncio
 import copy
-import hashlib
 import json
 import sys
 from pathlib import Path
@@ -47,16 +46,17 @@ class _Recording:
         return reply
 
     def _record(self, messages: list[Any], reply: Any) -> None:
+        from squadops.memory.authoring_envelope import messages_digest
+
+        # The envelope's own digest, so a baseline call reads against its case's messages_sha256.
         self.calls.append(
             {
-                "messages_sha256": _digest([m.content for m in messages]),
+                "messages_sha256": messages_digest(
+                    [{"role": m.role, "content": m.content} for m in messages]
+                ),
                 "reply": str(getattr(reply, "content", reply)),
             }
         )
-
-
-def _digest(contents: list[str]) -> str:
-    return hashlib.sha256(json.dumps(contents).encode()).hexdigest()
 
 
 def _context(envelope: dict, llm: Any, prompt_service: Any, renderer: Any) -> Any:
@@ -168,12 +168,23 @@ async def replay(
         recording = _Recording(llm)
         context = _context(envelope, recording, prompt_service, renderer)
         result = await registry.get(envelope["task_type"]).handle(context, copy.deepcopy(inputs))
+        # Validity checked the baseline's prompt before the model was called; this is the call the
+        # scored authoring actually made, read against the capture.
+        fidelity = (
+            {
+                "first_call_is_the_capture": bool(recording.calls)
+                and recording.calls[0]["messages_sha256"] == envelope["messages_sha256"]
+            }
+            if arm_name == Arm.BASELINE.value
+            else {}
+        )
         records.append(
             {
                 "record": "authoring",
                 "envelope_id": envelope_id,
                 "arm": arm_name,
                 "generation": generation,
+                **fidelity,
                 "success": bool(getattr(result, "success", False)),
                 "error": getattr(result, "error", None),
                 "calls": recording.calls,
