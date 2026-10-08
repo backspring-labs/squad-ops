@@ -68,7 +68,7 @@ re-places it.
 |---|---|---|
 | the recall port, inert (answers empty), injected explicitly by the root, and its call site through `plan_rejection_context` | **shipped** | 2.1.0, PR #2058, issue #1964 |
 | the re-read of the Phase-1 value hypothesis against 2.1's recurrence evidence, as an amendment here | **shipped** | PR #2097, issue #1964: the evidence up to the final deploy is §5b (revision 4), and the cut's readings are §5b's last part |
-| Phase 1, slice 1: capture each consuming seam's inputs before authoring (proposal writing first, then plan writing, build authoring and repair), and the source-case inspection (§0.11, §0.4) | **placed** | 2.2.0, #2105 |
+| Phase 1, slice 1: capture each consuming seam's inputs before authoring (proposal writing first, then plan writing, build authoring and repair), and the source-case inspection (§0.11, §0.4) | **shipped** | 2.2.0, PRs #2116, #2119 and #2123, issue #2105: every seam's envelope reconstructs byte for byte on a live cycle (posted on #2105); the inspection is §5e |
 | Phase 1, slice 2: the authoring replay, three arms, validated first on proposals (§0.11–§0.12) | **placed** | 2.2.0, #2106 |
 | Phase 1, slice 3: the mechanism, observing every eligible cycle and supplying four seams, inert until approved, with the app-build indicators beside each exposure, the failure-shape sorter and the repeat report (§0.2–§0.10) | **placed** | 2.2.0, #2096 |
 | Phase 1, slice 4: the first lesson, drafted by the auditor, and the measurement window, read before 2.2.0's cut (§0.4, §0.12–§0.13) | **placed** | 2.2.0, #2107 |
