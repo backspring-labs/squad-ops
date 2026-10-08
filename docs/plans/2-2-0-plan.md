@@ -45,6 +45,20 @@ determine the lesson than the AI auditing everything":
 - **D15:** a frontier-model auditor drafts each lesson from the recorded evidence. Each draft is frozen, replay-checked
   and approved by the owner before any task is given it.
 
+**And nine changes from review feedback the owner supplied before adoption** ("yes, add all nine to 2111"), recorded in
+SIP-0110 §5d:
+1. the cut names the next build-side experiment, or records that no build-side target recurred and when that is read
+   again, and keeps three results apart (below, §3);
+2. the application-quality dependency is corrected: Outcome Evaluation's scenarios, not #557, #949 and #950 (below);
+3. slice 2 reads temporal validity by evidence time, with a test for two units running at once (§2.1);
+4. every activated lesson gets a disposition at the cut (§3);
+5. lessons are checked together with those supplied beside them, and the task's requirements win over any lesson
+   (§2.1);
+6. a failure shape is an observed signature, and the auditor substantiates the mistake (§2.1, D14);
+7. when a lesson takes effect is stated exactly: never within the campaign that learned it, in 2.2 (below, D7, §2.5);
+8. the window's freeze is an experiment manifest, not a rule about directories (§3, D8);
+9. acceptance checks for future compatibility and for the indicators' states (§2.1).
+
 **This revision changes prose only.**
 
 **What 2.2 is.** An even minor, a feature release (CLAUDE.md, #281), led by one headline: **SIP-0110 Phase 1**,
@@ -67,6 +81,9 @@ held outside the measurement window (D3). Hardening rides along.
 - observations are recorded from every eligible cycle, whether it stands alone or runs inside a campaign;
 - new guidance never activates within the unit that is running: a standalone cycle, or a campaign with its cycles;
 - the owner approves a lesson, and it reaches cycles and campaigns admitted afterwards;
+- **within a campaign, a lesson learned in one of its cycles cannot reach a later cycle of the same campaign:** the
+  campaign's snapshot is fixed at admission (D7). Within it, a retry's prior-cycle brief (#1692) and a returned
+  proposal's note still carry what they carry. Activation within a running campaign is deferred (§2.5);
 - a campaign is provenance and one consumer, not memory's scope;
 - correcting the same output stays with the rungs that already exist: a re-roll's rejection context (#669), a
   repair's failure evidence, and a proposal revision's note (SIP-0109 §9.2).
@@ -98,10 +115,23 @@ behavior's recurrence, measured by replay. The proposal behavior decides what is
   the set, and the cut's four failed rounds were four different defects (SIP-0110 §5b). The repeat report (D14) is
   what tells whether that still holds over the 2.2 line.
 
-Claiming an improvement in the application needs three things 2.2 does not have:
-- a build-side target that recurs, with an approved lesson;
-- a comparison with memory on and off at the build seams;
-- Outcome Evaluation's measures (#557, #949, #950; 2.4 or later).
+**Three results, kept apart** (SIP-0110 §0.13):
+- **authoring improvement:** a mistake's absence in authored output at a seam. 2.2 measures this, for one target;
+- **delivery reliability:** correction rounds, rounds to green and acceptance. 2.2 observes this;
+- **application quality:** what the built application does. 2.2 does not read this.
+
+**What each claim needs:**
+- **a delivery-reliability claim** (fewer repeated build failures, less repair effort, lower delivery cost) needs a
+  build-side target that recurs, an approved lesson, and a comparison with memory on and off at the build seams, read
+  from the replay and the app-build indicators. It waits for no later feature;
+- **an application-quality claim** needs Outcome Evaluation's independent outcome scenarios: its instruments are placed
+  in 2.3 (reporting only) and its feature half in 2.4 (`SIP-Outcome-Evaluation`);
+- #557, #949 and #950 are later judgment and decision-record features (the post-retest review, feedback-scoped framing
+  revision, the plan-gate review packet). They follow Outcome Evaluation, and no build-side experiment depends on them.
+
+**The next step toward better builds is named at the cut.** The cut record names the next build-side experiment: its
+owner, the evidence that triggers it (the repeat report), its comparison, its quality checks and its release placement.
+If no build-side target recurred, the record says so and names when the question is read again (§3, step 9).
 
 ---
 
@@ -137,9 +167,9 @@ disabled. So building the parts does not move the regression baseline.
 | slice | what | the seam that owns it | size | deploy |
 |---|---|---|---|---|
 | 1, #2105 | the source-case inspection, then an `AuthoringReplayEnvelope` captured immediately before each consuming seam's authoring, complete beyond #1756's 10,000-character cut (§0.11): proposal writing first, then plan writing, build authoring and repair | the proposal handler's input assembly (`capabilities/handlers/planning/proposal.py`); the plan-authoring and build-authoring inputs' assembly (`cycles/task_plan.py`) and the build handlers (`capabilities/handlers/cycle/develop.py`, `qa_test.py`, `builder.py`); the repair inputs' assembly, at runtime, by the correction runner (`adapters/cycles/correction_repair.py`); the vault for storage | **L** (M in revision 5: one seam, now four) | yes |
-| 2, #2106 | the authoring replay: three arms over captured envelopes at any seam, validated first on proposals; temporal validity, isolation from production memory, one fixed rubric per target (§0.11–§0.12) | `scripts/dev/`, beside the increment replay (#1959) | M | no |
+| 2, #2106 | the authoring replay: three arms over captured envelopes at any seam, validated first on proposals; temporal validity read by evidence time, not admission time, with a test for two units running at once; counterfactual replays reported apart from prospective claims; isolation from production memory; one fixed rubric per target; the combined replay of lessons supplied together (§0.6, §0.11–§0.12) | `scripts/dev/`, beside the increment replay (#1959) | M | no |
 | 3, #2096 | the mechanism (§0.2–§0.10), observing every eligible cycle and supplying four seams, with the failure-shape sorter and the repeat report (D14). Its parts are listed below | see the parts | L, larger than revision 5's | yes |
-| 4, #2107 | the lesson for the one supported target behavior, drafted by the auditor on development cases and replay-checked before the owner approves it (D15); the pre-registration, which fixes the primary target; the window; the finding (§0.4, §0.6, §0.12–§0.13) | the store (D13) for the drafted revision; `docs/plans/` for the pre-registration | M, plus the window's box time | yes |
+| 4, #2107 | the lesson for the one supported target behavior, drafted by the auditor on development cases and replay-checked, with any lessons supplied beside it, before the owner approves it (D15); the pre-registration, which fixes the primary target; the window; the finding (§0.4, §0.6, §0.12–§0.13) | the store (D13) for the drafted revision; `docs/plans/` for the pre-registration | M, plus the window's box time | yes |
 
 **Slice 3's parts, each with the seam that owns it:**
 - observations, pattern revisions, approvals and exposures, in `src/squadops/memory/models.py`;
@@ -149,13 +179,15 @@ disabled. So building the parts does not move the regression baseline.
   - rejected plans, from the cycle's gate decisions and their `rejection_record` (the cycle registry);
   - failed correction rounds, from `run_loop_summaries` (the correction loop);
   - returned proposals, from the campaign control log (the campaign domain);
-- **the failure-shape sorter (D14):** each runner's table of its own failure messages and the target behavior each
-  names. It extends the per-runner tables the test runner already keeps (`capabilities/handlers/test_runner.py`:
-  `_VITEST_SUITE_BROKEN_MARKERS`, `_OWN_FRAME_SHAPES`), and never maps a shape to an attribution class (SIP-0108
-  §4.2). The correction-round projection applies it to each `failed_detail` entry. A message no row matches is
-  `unclassified`;
-- **the repeat report (D14):** each target behavior, at every source, counted by independent cycles (a retry and the
-  cycle it retries count once). The auditor drafts from it, and it is read at the pre-registration and at the cut;
+- **the failure-shape sorter (D14):** each runner's table of its own failure messages and the failure shape each
+  identifies: an observed signature, never a cause. It extends the per-runner tables the test runner already keeps
+  (`capabilities/handlers/test_runner.py`: `_VITEST_SUITE_BROKEN_MARKERS`, `_OWN_FRAME_SHAPES`), and never maps a shape
+  to an attribution class (SIP-0108 §4.2). The correction-round projection applies it to each `failed_detail` entry. A
+  message no row matches is `unclassified`;
+- **the repeat report (D14):** repeated shapes and recurring target behaviors, kept apart and counted by independent
+  cycles (a retry and the cycle it retries count once). A target behavior counts only where the auditor substantiated
+  it from the round's artifacts; a case they do not settle stays `unclassified`. The auditor drafts from it, and it is
+  read at slice 3's deploy, at the pre-registration and at the cut;
 - **the eligibility rule:** fault-injected diagnostics, environment-attributed failures and replays produce no
   observation. The projections run beside execution, so a failure never changes a cycle;
 - the classification-disposition rail on proposal returns (D2), with its SIP-0109 amendment. Rejected plans and failed
@@ -181,8 +213,13 @@ disabled. So building the parts does not move the regression baseline.
 - per-exposure assessment;
 - **the app-build indicators beside each exposure,** `disabled` ones included: the implementation run's correction
   rounds, rounds to green and acceptance, read from `run_loop_summaries` and the run's verdict or the increment's
-  ruling (SIP-0110 §0.10). Observed only;
-- approval and revocation.
+  ruling (SIP-0110 §0.10). Observed only. **Counted once per distinct build run,** with each exposure's build state:
+  built, no downstream build, pending, or evidence missing, none of the last three read as a failure;
+- approval and revocation, **with the overlap and conflict check** against the approved lessons that would be supplied
+  together, and the slot's statement that the task's requirements and the manifest take precedence over any lesson;
+- **acceptance checks for future compatibility** (SIP-0110 §0.15): `agent_id` stays apart from the role, a record with
+  no cycle needs no fabricated cycle id, and the recall policy works outside the cycle executor. They build no duty,
+  ambient or organization memory.
 
 **Renamed when touched:** three docstrings and a comment name the draft (`SIP-Cross-Cycle-Memory §5`):
 - `src/squadops/memory/recall.py`;
@@ -284,6 +321,9 @@ The counted set passed 4 of 4 (the 2.1 pre-registration §10).
   are observed, and its repair seam is wired inert, in 2.2. **A lesson for a plan-review or correction-round target**
   is drafted in 2.2 only if the repeat report shows one recurring across independent cycles. That is read at the
   pre-registration and again at the cut (SIP-0110 §0.4, D11, D14).
+- **Activation within a running campaign.** A lesson learned in a campaign reaches later units only. Activating one
+  mid-campaign would need an approval during an unattended run and would break the comparison of whole campaigns
+  (SIP-0110 §0.1, §0.14).
 - **Proposal auto-approval** (§2.2).
 - **#316** is 2.3's (2.1 plan §5 ruling 14).
 
@@ -325,32 +365,50 @@ The counted set passed 4 of 4 (the 2.1 pre-registration §10).
    - the owner approves the lesson, with its replay check, at a campaign boundary;
    - the replay compares the arms;
    - every exposure records its build's indicators (correction rounds, rounds to green, acceptance), observed only;
-   - **main is closed to code merges.** Prose merges stay free, because the drift check reads only `src/` and
-     `adapters/`.
+   - **an experiment manifest is recorded as the window opens** (SIP-0110 §0.12), each input by version or hash: the
+     deployed artifact, the prompts and fragments, the configuration (`config/`, the request profiles, the squad
+     profile as stored in Postgres), the deploy's model settings, the policies, the evaluator (the replay tool and its
+     rubric in `scripts/dev/`), the PRDs (`examples/`), the referenced evidence, and the store's lessons and
+     approvals. The framework-drift check (`verification_set_driver.py`, `src/` and `adapters/` only) covers part of
+     it;
+   - **no rebuild during the window.** A merge that changes an input the manifest lists waits for the window to close,
+     so that the cut tags the tree the window measured. Any other merge, prose or code, is free. A change that must
+     land inside it (an instrument fix, a revocation) restarts the window under a new manifest, or is recorded as an
+     intervention that sets the affected measurements apart;
    - 2.3's work waits on branches: its refactors need rebuild pairs, and the box is held.
 9. **The finding** is recorded in SIP-0110: instrument validity first, then benefit, no benefit, harm or
-   inconclusive. The record also says whether a plan-review or correction-round target recurred (the repeat report,
-   D11, D14), and reports
-   the app-build indicators as observation, with no claim about the built application. The owner's
-   disposition for Phase 2 is recorded with it. "Inconclusive" at the budget cap is a
-   valid finding, and the cut goes ahead on it.
+   inconclusive. With it:
+   - whether a plan-review or correction-round target recurred: the repeat report's repeated shapes and substantiated
+     target behaviors (D11, D14);
+   - the app-build indicators, as observation, with no claim about the built application;
+   - **each activated lesson's disposition:** retained within its tested applicability, disabled, revised for
+     retesting, or continued in an explicitly bounded experiment. Harm invokes the revocation procedure (D9).
+     Inconclusive may ship the mechanism, but never makes an activation permanent by default;
+   - **the next build-side experiment:** its owner, its triggering evidence, its comparison, its quality checks and its
+     release placement, or the finding that no build-side target recurred and when that is read again;
+   - the owner's disposition for Phase 2.
+
+   "Inconclusive" at the budget cap is a valid finding, and the cut goes ahead on it.
 10. **#1708's plan-review tier is activated** under its declared policy, and validated by the cut's shakeout.
 11. **The cut:**
     - a regression set on both stacks, with memory disabled (D12);
     - one campaign shakeout;
     - the release cut procedure (CLAUDE.md);
     - a record that states separately the mechanism's correctness, the experiment's validity and result, the
-      activated patterns and their applicability, the app-build indicators, the auto-gate scope enabled, and the
-      owner's disposition for the next phase.
+      activated patterns with their applicability and dispositions, the app-build indicators, the repeat report, the
+      next build-side experiment, the auto-gate scope enabled, and the owner's disposition for the next phase.
 
 ### The cut's criteria
 
 - **The mechanism:** SIP-0110 §0.15's acceptance matrix holds. At every consuming seam, an empty, unapproved or
   disabled snapshot leaves the rendered prompt byte-identical. Standalone cycles and a campaign's cycles have both
   recorded observations live.
-- **The instrument:** valid, by #2106's validity check.
+- **The instrument:** valid, by #2106's validity check, and the experiment manifest held, or each change to it
+  recorded.
 - **The finding:** recorded, whichever of the four. **A benefit is not a cut criterion.** The app-build indicators are
   reported beside it, as observation.
+- **Every activated lesson has a disposition,** and the next build-side experiment is named, or its absence recorded
+  with the next review point.
 - **#1708:** its tier escalates every case its policy does not cover, read in the shakeout.
 - **The regression set:** passes, under its own pre-registration, with memory disabled.
 
@@ -370,15 +428,15 @@ Each has a recommendation. None is built before it is ruled.
 | D4 | **#1995's typed link** | **a prerequisite for proposal auto-approval, never its authorization. No proposal auto-approval in 2.2** | §2.2's further checks do not exist |
 | D5 | **this plan** | adopt as revised, or amend | — |
 | D6 | **#2062** | **2.3,** with the structure batch | 606 import sites move for no behaviour, and #1992's move rewrites many of the same imports |
-| D7 | **snapshot and activation semantics** | **as SIP-0110 §0.7:** pinned at the unit's admission, which is a standalone cycle's creation or a campaign's admission; a campaign's cycles use its snapshot; changes reach units admitted later; concurrent units keep their own | otherwise a confidence or status update changes the next prompt mid-cycle or mid-campaign, and the comparison moves under itself |
-| D8 | **the experiment's arms and the window's bound** | **as SIP-0110 §0.12–§0.13,** with the budget cap set in the pre-registration. The primary target is fixed there, from the seam with the most independent cases of one target behavior: the proposal behavior, on today's evidence. A proposed default: about five campaigns, with "inconclusive" at the cap | a bounded window cannot hold the release open indefinitely. Standalone cycles add plan-review and correction-round observations at no cost to the cap |
+| D7 | **snapshot and activation semantics** | **as SIP-0110 §0.7:** pinned at the unit's admission, which is a standalone cycle's creation or a campaign's admission; a campaign's cycles use its snapshot; changes reach units admitted later; concurrent units keep their own. **So a lesson learned in a campaign never reaches a later cycle of that campaign;** activation within a running campaign is deferred (SIP-0110 §0.1) | otherwise a confidence or status update changes the next prompt mid-cycle or mid-campaign, and the comparison moves under itself |
+| D8 | **the experiment's arms and the window's bound** | **as SIP-0110 §0.12–§0.13,** with the budget cap set in the pre-registration. The primary target is fixed there, from the seam with the most independent cases of one target behavior: the proposal behavior, on today's evidence. A proposed default: about five campaigns, with "inconclusive" at the cap. The window is held by an experiment manifest of every input, not by which directories may change | a bounded window cannot hold the release open indefinitely. Standalone cycles add plan-review and correction-round observations at no cost to the cap |
 | D9 | **emergency revocation** | **as SIP-0110 §0.7:** halt or restart the affected work under a new snapshot, and invalidate or set apart the affected measurements | harmful guidance must be removable without silently changing a counted intervention |
 | D10 | **the escalation queue's resumption** | **designed in #1708's SIP-0109 amendment against §2.2's contract** | it is SIP-0109's surface (SIP-0110 §0.14) |
 | D11 | **what is observed, and where memory is supplied** | **every eligible cycle, standalone or in a campaign, from three sources (rejected plans, failed correction rounds, returned proposals); supplied at plan writing, build authoring, repair and proposal writing, each inert until a lesson is approved. A plan-review or correction-round lesson is drafted in 2.2 only if the repeat report (D14) shows one target recurring across independent cycles, read at the pre-registration and at the cut. Every exposure records its build's indicators, observed only** | memory's unit is the cycle. Observing every cycle costs a projection beside execution. Supplying only where a lesson is approved keeps the measurement clean. Build authoring is where a correction-round lesson reaches a later cycle before its check fails, not only after (SIP-0110 §0.9, §2) |
 | D12 | **counted regression rolls and memory** | **declare memory disabled until a finding of supported benefit and the owner's ruling. Their observations are still recorded** | the regression set is the framework's yardstick. A lesson approved for plan writing would otherwise reach it and move it unannounced |
 | D13 | **where Phase 1's records are stored** | **Postgres, beside the cycle registry, behind their own port** (SIP-0110 §0.8). Not SIP-042's LanceDB store | that store is created inside each agent's container and used only by console chat. Recall runs in the runtime API, which has none. Phase 1's recall is exact filtering, so it needs no embedding. The projections must be idempotent against records already in Postgres. Postgres is addressable as a service (the Embodiment Runtime's invariant 2) and is the only store in the nightly verified backup. Phase 2 chooses a similarity index when it adds ranking |
-| D14 | **seeing a repeated build mistake** | **a failure-shape sorter for each test runner and a repeat report, in slice 3** (SIP-0110 §0.4). The sorter is a table of each runner's own failure messages, extending the test runner's existing per-runner tables (`capabilities/handlers/test_runner.py`), applied to every failed round's `failed_detail`, with no model in it. A shape sits beneath the attribution and never maps to an attribution class (SIP-0108 §4.2). The report counts each target behavior by independent cycles, and is read at slice 3's deploy, at the pre-registration and at the cut | a correction round is labelled only by its attribution and its failed check, and every failed round in the 2.0 and 2.1 windows failed `tests_pass`. What went wrong is only in `failed_detail`'s text, so a repeated build mistake could only be found by hand, and the build-authoring and repair seams would stay empty by design. The four rounds recorded so far each carry one message that names its defect. Added at the owner's request ("yes, make both changes in 2111") |
-| D15 | **who drafts a lesson** | **a frontier-model auditor, from the recorded evidence:** the outer loop's model (the supervisor in 2.2, the crew once commissioned), never the squad's own model. It drafts between units and cites its cases. Each draft is frozen, replay-checked on development cases, and approved by the owner before any task is given it (SIP-0110 §0.4, §0.6). A built-in auditor is later | an AI auditing every failure is better placed than a person reading a sample (the owner: "who better to determine the lesson than the AI auditing everything"). The owner's direction of 2026-09-28 has frontier models improve the framework from evidence. A lesson can be wrong whoever writes it: #1947's rule was followed by the same mistake twice, so the replay check stays. Added at the owner's request ("yes, make both changes in 2111") |
+| D14 | **seeing a repeated build mistake** | **a failure-shape sorter for each test runner and a repeat report, in slice 3** (SIP-0110 §0.4). The sorter is a table of each runner's own failure messages, extending the test runner's existing per-runner tables (`capabilities/handlers/test_runner.py`), applied to every failed round's `failed_detail`, with no model in it. A shape is an observed signature, never a cause: it sits beneath the attribution and never maps to an attribution class (SIP-0108 §4.2). The auditor substantiates a target behavior from the round's artifacts, and the report keeps repeated shapes apart from recurring target behaviors, counted by independent cycles. It is read at slice 3's deploy, at the pre-registration and at the cut | a correction round is labelled only by its attribution and its failed check, and every failed round in the 2.0 and 2.1 windows failed `tests_pass`. What went wrong is only in `failed_detail`'s text, so a repeated build mistake could only be found by hand, and the build-authoring and repair seams would stay empty by design. The four rounds recorded so far each carry one message that names its defect. Added at the owner's request ("yes, make both changes in 2111") |
+| D15 | **who drafts a lesson** | **a frontier-model auditor, from the recorded evidence:** the outer loop's model (the supervisor in 2.2, the crew once commissioned), never the squad's own model. It drafts between units and cites its cases. Each draft is frozen, replay-checked on development cases together with any lessons supplied beside it, and approved by the owner before any task is given it (SIP-0110 §0.4, §0.6). A built-in auditor is later | an AI auditing every failure is better placed than a person reading a sample (the owner: "who better to determine the lesson than the AI auditing everything"). The owner's direction of 2026-09-28 has frontier models improve the framework from evidence. A lesson can be wrong whoever writes it: #1947's rule was followed by the same mistake twice, so the replay check stays. Added at the owner's request ("yes, make both changes in 2111") |
 
 ---
 

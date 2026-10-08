@@ -103,12 +103,14 @@ Where an earlier section disagrees with this one, this one holds, and the earlie
   lesson exists for it (§0.3).
 - **It encodes** reflective guidance in project scope. A frontier-model auditor drafts each lesson from the recorded
   evidence, between units, and each is frozen, replay-checked and approved by the owner before any task is given it
-  (§0.4, §0.6). Correction rounds are sorted by failure shape, and a repeat report shows which mistakes recur (§0.4).
+  (§0.4, §0.6). Correction rounds are sorted by the failure shape the test runner reported, and a repeat report
+  separates repeated shapes from recurring mistakes the auditor has substantiated (§0.4).
 - **It supplies approved, applicable pattern revisions at four authoring seams:** plan writing (#2058's call site),
   build authoring (`development.develop`, `qa.test`, `builder.assemble`), repair, and proposal writing
   (`strategy.propose_increment`) (§0.9).
 - **Retrieval is deterministic,** from a memory snapshot pinned when the unit of execution is admitted: a standalone
-  cycle when it is created, a campaign when it is admitted (§0.7).
+  cycle when it is created, a campaign when it is admitted (§0.7). So a lesson learned inside a campaign reaches later
+  units, never a later cycle of the same campaign (§0.1).
 - **Counted regression rolls declare memory disabled,** so the regression yardstick does not move (§0.7).
 - **Authoring replay is the proving instrument.** The first measured target is a proposal behavior, because the
   proposal gate is the only seam with a recurring target behavior in the record so far (§5b, §0.12).
@@ -134,6 +136,17 @@ Phase 1 tests whether **retaining and selectively applying reviewed lessons from
   - the failure evidence a repair is handed;
   - a proposal revision's note (SIP-0109 §9.2).
 - Unattended learning (evidence-gated activation at a declared boundary, with rollback and measurement) would need its own authorization. It must not emerge from feedback updates.
+
+**When a lesson takes effect, exactly:**
+- every eligible cycle contributes observations, standalone or inside a campaign (§0.3);
+- what is learned is project-scoped (§0.6);
+- a lesson takes effect at the next admission of a unit: a standalone cycle's creation, or a campaign's admission
+  (§0.7);
+- **within a campaign, a lesson learned from one of its cycles cannot reach a later cycle of the same campaign,**
+  because the campaign's snapshot is fixed when it is admitted. Within a campaign, the existing carriers still apply:
+  a retry's prior-cycle brief (#1692) and a returned proposal's note (SIP-0109 §9.2);
+- this holds in Phase 1. **Activation within a running campaign is deferred** (§0.14): it would need an approval during
+  an unattended run, and it would break the comparison of whole campaigns (§0.12).
 
 ### 0.2 The domain model
 
@@ -190,7 +203,7 @@ Each projection uses its source's existing durable record. It is not a new servi
 | source | its vocabulary |
 |---|---|
 | plan review | the plan validator that refused the plan, or the manifest gate's proof class: the B1 baseline's vocabulary (`RejectionClassifier`, `cycles/rejection_baseline.py`). A person's rejection carries a class only when its decider records one |
-| correction round | the failure's attribution (`AttributionClass`, `cycles/failure_attribution.py`) and the failed check, and beneath them the **failure shape** the sorter reads from the test runner's own message (below). An `unattributed` failure is recorded as `unclassified` |
+| correction round | the failure's attribution (`AttributionClass`, `cycles/failure_attribution.py`) and the failed check, and beneath them the **failure shape** the sorter matches in the test runner's own message, and the target behavior the auditor substantiates from it (below). An `unattributed` failure is recorded as `unclassified` |
 | proposal ruling | a `ProposalClassification` class |
 
 An `unclassified` observation:
@@ -214,34 +227,44 @@ least two:
 **Phase 1 starts with one supported target behavior:** **a proposed new acceptance criterion is already satisfied by the
 accepted application.** Plan reviews and correction rounds have none yet. The 2.0 and 2.1 windows show no recurring
 target behavior at either: no plan was rejected, and the four failed rounds at the 2.1 cut were four different defects
-(§5b). **A lesson for a plan-review or correction-round target is drafted when the repeat report (below) shows one
-target behavior recurring across independent cycles.** The report is read at slice 4's pre-registration and again at
-the 2.2 cut, and the owner approves what is drafted from it (§0.6). A class or behavior claimed as supported must have
-its template, and an unsupported one is disclosed backlog that never blocks a legitimate return.
+(§5b). **A lesson for a plan-review or correction-round target is drafted when the auditor has substantiated one
+target behavior recurring across independent cycles,** starting from the repeat report's repeated shapes (below). The
+report is read at slice 4's pre-registration and again at the 2.2 cut, and the owner approves what is drafted from it
+(§0.6). A class or behavior claimed as supported must have its template, and an unsupported one is disclosed backlog
+that never blocks a legitimate return.
 
 **The failure-shape sorter** (the 2.2 plan's D14). A correction round's attribution and check are too coarse to show a
 repeat: every failed round in the 2.0 and 2.1 windows failed `tests_pass`, and what went wrong is only in the text of
 `failed_detail`. So:
-- **each runner has a table** of its own failure messages and the target behavior each one names. It extends the
+- **a failure shape is an observed signature: what the runner reported, never why.** The sorter establishes no cause,
+  as the attribution registry's classes name evidence, never a cause (SIP-0108 §4.2);
+- **each runner has a table** of its own failure messages and the failure shape each one identifies. It extends the
   tables the test runner already keeps per runner (`capabilities/handlers/test_runner.py`): the messages that mean a
   suite could not run (`_VITEST_SUITE_BROKEN_MARKERS`, #626) and the shapes a suite raises in its own frame
   (`_OWN_FRAME_SHAPES`, #1130, #1270). It does not start a second table. For example, vitest's
-  `Failed to resolve import "…". Does the file exist?` names an import of a file that does not exist;
+  `Failed to resolve import "…". Does the file exist?` identifies an unresolved import;
 - **the correction-round projection applies the table of the runner that ran the suite** to each `failed_detail`
-  entry, and records the shape it names with the table's version. No model sorts. A message no row matches is
+  entry, and records the shape it matches with the table's version. No model sorts. A message no row matches is
   `unclassified` and enters the backlog;
 - **a shape sits beneath the attribution, never beside it.** It never maps to an attribution class, so the attribution
   registry (`cycles/failure_attribution.py`) stays the only home of attribution (SIP-0108 §4.2), and the sorter is not
   the parallel taxonomy SIP-0109 rules out for memory. It is coarser than the correction loop's own signature
   (`cycles/correction_signature.py`), which compares one run's rounds by check, file and test: a shape drops the file
   and the test, so the same mistake in another cycle's application still matches;
-- the four rounds recorded with `failed_detail` so far (the 2.1 cut, §5b) each carry such a message: an import of a
-  file that does not exist, an element the page never renders, a module faked the wrong way, and a check of the wrong
-  arguments.
+- the four rounds recorded with `failed_detail` so far (the 2.1 cut, §5b) each carry such a message: an unresolved
+  import, an element not found, a mocked function that is not a function, and a spy called with other arguments.
 
-**The repeat report.** It counts each target behavior, at every source, by the independent cycles it occurred in: a
-retry and the cycle it retries count once, and a campaign's cycles are named with their campaign. It is the auditor's
-input (below), and it is read at slice 4's pre-registration and at the 2.2 cut.
+**The auditor establishes the target behavior.** A shape is evidence. The auditor proposes a target behavior and a
+corrective lesson only where the failed round's artifacts substantiate them: the suite, the subject files, the repair
+it was handed and its result. The same shape can be different mistakes. `is not a function` is the suite's mistake or
+the application's depending on whether the application defines the name, which is why the runner's own table carries
+`ambiguous_when_app_defines`. A case the artifacts do not settle stays `unclassified`.
+
+**The repeat report.** It counts, by the independent cycles they occurred in, two things kept apart: **repeated
+shapes**, which the sorter found, and **recurring target behaviors**, which the auditor substantiated in each case. A
+retry and the cycle it retries count once, and a campaign's cycles are named with their campaign. A repeated shape is a
+candidate, not a finding. The report is the auditor's input (below), and it is read at slice 4's pre-registration and
+at the 2.2 cut.
 
 **Each lesson fills its target behavior's template:**
 - the observable defect;
@@ -285,7 +308,7 @@ ruling**.
 | source | it also carries |
 |---|---|
 | plan review | the gate decision; the decider's identity and type (a validator or a person); the rejected plan, by reference |
-| correction round | the round's index; the failed check and its attribution; `failed_detail`, and the failure shape with the sorter table's version; the repair's task, when one was dispatched |
+| correction round | the round's index; the failed check and its attribution; `failed_detail`, the failure shape with the sorter table's version, and the target behavior with the auditor's substantiation, where one was established; the repair's task, when one was dispatched |
 | proposal ruling | the proposal's id and version; the ruling's control-log entry; the decider's identity and type; the accepted application's identity it was judged against |
 
 **What is optional, and what the model fields mean.**
@@ -303,7 +326,10 @@ ruling**.
 - add a model family.
 
 **Before approval, a draft is replay-checked:** at its seam, on development cases (§0.11), with and without it, under
-§0.12's guardrails. The result goes to the owner with the draft, and the approval records it. A draft whose seam has no
+§0.12's guardrails. **It is checked together with the approved lessons that would be supplied beside it** under the same
+applicability, since a task receives up to three (§0.8): the auditor checks the set for overlap and conflict first, and
+the replay runs the combined set. A conflicting set is not approved as it stands: a lesson is revised, narrowed or
+withdrawn. The result goes to the owner with the draft, and the approval records it. A draft whose seam has no
 captured case waits for one. A lesson can be wrong whoever drafts it: #1947's prompt rule was written once the proposal
 mistake had been recognized, and the mistake recurred twice after it (§5b).
 
@@ -393,6 +419,10 @@ attempts. Without this seam, a correction-round lesson could only arrive at a la
 **Which task types consume is declared,** on each type's context-assembly contract (`capabilities/context_assembly.py`),
 as `plan_rejection_context` is today, never by a branch on the type.
 
+**Current requirements outrank history.** The slot's fragment states that the task's own requirements and the
+application's authoritative contracts (the manifest, the accepted application) take precedence over any lesson. A lesson
+never overrides them.
+
 **With an empty, unapproved or disabled snapshot, every seam's rendered prompt is byte-identical** to one rendered
 without memory.
 
@@ -423,6 +453,11 @@ build that its output fed, and the cycle records that build's indicators:
 - the rounds it took to reach green, or that it did not;
 - its acceptance: the run's verdict, and in a campaign the increment's ruling.
 
+**Counted once per build, with its state.** One run feeds many exposures (its plan writing, its build authoring, its
+repairs), so the indicators are reported once per distinct build run, never once per exposure. An exposure's build is
+in one of four states: built, with its indicators; no downstream build (a returned proposal); pending (an increment not
+yet run); or evidence missing. None of the last three reads as a build failure.
+
 These are §9's outcome tier: observed in Phase 1, never gating it. They never enter an exposure's assessment or the
 `target_absence_rate`, since a green build says nothing about whether the target was present. Disabled exposures (the
 counted regression rolls, §0.7) give a series without memory beside the series with it. The two run different
@@ -447,9 +482,14 @@ references:
 The capture is complete, independent of the stored prompt's 10,000-character cut (#1756), or its reconstruction is proven lossless. A historical case whose inputs cannot be verified is diagnostic only.
 
 **Temporal validity.**
-- A target's eligible lessons originate in units admitted before the target's unit.
+- **Every observation and evidence item a lesson rests on predates the target's pre-authoring cutoff,** the moment its
+  envelope was captured. An earlier admission of the source unit is not enough: two units run at once, and the one
+  admitted first may produce its failure after the other has authored.
 - Replaying an output with a lesson derived from its own failure tests assisted repair, not transfer, and is reported
   as that.
+- **Two kinds of claim stay apart.** A retrospective replay asks what would have happened had a lesson existed at the
+  cutoff: a counterfactual. A prospective claim is about lessons actually approved and in the unit's snapshot when it
+  ran. A counterfactual result never reads as a prospective one.
 
 **The cases.**
 - Development cases, used to draft the lessons and replay-check them, are separated from held-out evaluation cases
@@ -471,7 +511,12 @@ The capture is complete, independent of the stored prompt's 10,000-character cut
 
 **What is deferred, and how the runs are controlled.**
 - The v4 draft's raw-trace and factual-memory arms (§5a) are deferred.
-- The corpus, templates, model settings, policies and rubric are frozen before scored runs.
+- The corpus, templates, model settings, policies and rubric are frozen before scored runs, and recorded in an
+  **experiment manifest**, each by version or hash: the deployed artifact, the prompts and fragments, the configuration
+  (the squad and request profiles), the model settings, the policies, the evaluator (the replay tool and the rubric),
+  the PRDs and referenced evidence, and the store's lessons and approvals. Some of these live in the database, not in
+  the repository. A change inside the manifest restarts the window under a new one, or is recorded as an intervention
+  that sets the affected measurements apart (§0.7). A change outside it is free.
 - Arm order is randomized or balanced. Inputs are paired.
 - Repeated generations of one case are reported apart from independent cases.
 - Any live confirmation assigns treatment at unit boundaries: a standalone cycle, or a whole campaign, because alternating within an evolving campaign carries over through the accepted application.
@@ -490,7 +535,7 @@ The capture is complete, independent of the stored prompt's 10,000-character cut
 - the minimum worthwhile effect, and the uncertainty reporting suited to the design;
 - the handling of missing assessments and invalid replays;
 - the budget cap and the stopping rule;
-- the versions of prompts, templates, models, policies and the evaluator;
+- the versions of prompts, templates, models, policies and the evaluator, in the experiment manifest;
 - the local guardrails:
   - the output still advances the objective;
   - required scope and meaningful criteria remain;
@@ -508,21 +553,45 @@ All outputs, approvals and other returns included, are assessed by one fixed rub
 3. **Harm:** unacceptable regressions caused by the guidance or the system.
 4. **Inconclusive:** too few independent opportunities, too much uncertainty, or incomplete assessment.
 
-**The record states six things separately:**
+**The record states eight things separately:**
 - the mechanism's correctness;
 - the experiment's validity and result;
-- the activated patterns and their applicability;
+- the activated patterns, their applicability, and each one's disposition (below);
 - the app-build indicators beside the exposures (§0.10), as observation;
+- the repeat report: repeated shapes and substantiated recurring target behaviors (§0.4);
+- **the next build-side experiment:** its owner, the evidence that triggers it, its comparison, its quality checks and
+  its release placement. If no build-side target recurred, the record says so and names when the question is read
+  again;
 - the auto-gate scope enabled;
 - the owner's disposition for the next phase.
 
+**Three results stay distinct:**
+- **authoring improvement:** a target behavior's absence in authored output at a seam (§0.10). Phase 1 measures this;
+- **delivery reliability:** correction rounds, rounds to green and acceptance (the app-build indicators). Phase 1
+  observes this;
+- **application quality:** what the built application does, read by Outcome Evaluation's independent scenarios. Phase 1
+  does not read this.
+
+**Every activated lesson gets a disposition** when the window closes, recorded with the finding:
+- retained, within its tested applicability;
+- disabled;
+- revised, and sent back for retesting;
+- continued in an explicitly bounded experiment: its applicability, its end point, and what ends it.
+
+A harm finding invokes emergency revocation (§0.7). An inconclusive finding may ship the mechanism, but never makes a
+lesson's activation permanent by default: a lesson continues only by an explicit disposition. A demonstrated benefit is
+still not required to cut.
+
 **What Phase 1 does not claim.** Phase 1 claims no improvement in the built application. Its finding is about one
-target behavior's recurrence in authoring. Claiming an improvement in the application would need three things Phase 1
-does not have:
-- a recurring build-side target with an approved lesson (§0.4);
-- a comparison with memory on and off at the build seams, which the counted rolls do not give while they declare memory
-  disabled (§0.7);
-- the outcome measures of §9's second tier and of Outcome Evaluation (#557, #949, #950).
+target behavior's recurrence in authoring.
+- **A delivery-reliability claim** (fewer repeated build failures, less repair effort, lower delivery cost) needs a
+  recurring build-side target with an approved lesson (§0.4), and a comparison with memory on and off at the build
+  seams, read from the replay and the app-build indicators. The counted rolls do not give that comparison while they
+  declare memory disabled (§0.7). It does not wait for any later feature.
+- **An application-quality claim** needs Outcome Evaluation's independent outcome scenarios: its instruments are placed
+  in 2.3 (reporting only) and its feature half in 2.4 (`SIP-Outcome-Evaluation`).
+- #557, #949 and #950 are later judgment and decision-record features (the post-retest review, feedback-scoped framing
+  revision, the plan-gate review packet). They follow Outcome Evaluation, and no build-side experiment depends on them.
 
 **What a finding does and does not license.**
 - A negative result for one class, template, model and workload does not disprove decision, correction, procedural or organizational memory.
@@ -550,7 +619,8 @@ finding** for 2.2.
 - organization-wide transfer;
 - procedural-success learning;
 - duty and ambient write tools;
-- generic consolidation.
+- generic consolidation;
+- activation within a running campaign (§0.1).
 
 Decision records belong to the Design Decision Register and #950 (§5b).
 
@@ -580,9 +650,10 @@ Synthetic fixtures establish the mechanism's behavior. They are never evidence o
 | recovery | a crash after the record's commit and before the projection is recovered |
 | corrections | a reclassification or retraction keeps history and updates dependents explicitly |
 | classification | a novel `unclassified` defect is returned without creating a pattern |
-| failure shapes | a round's `failed_detail` is sorted by the table of the runner that ran it; the same message gives the same shape on every run; a message no row matches is `unclassified`; no shape maps to an attribution class |
-| repeat report | a target behavior in two independent cycles is reported as recurring, and a retry and the cycle it retries count once |
+| failure shapes | a round's `failed_detail` is sorted by the table of the runner that ran it; the same message gives the same shape on every run; a message no row matches is `unclassified`; no shape maps to an attribution class or records a cause |
+| repeat report | a shape in two independent cycles is reported as a repeated shape, and as a recurring target behavior only where the auditor substantiated it in each; a case the artifacts do not settle stays `unclassified`; a retry and the cycle it retries count once |
 | lesson provenance | a revision records its drafter's model and version and the observations it cites; an approval records the replay check it was given; nothing in a running unit writes a revision |
+| combined guidance | two approved lessons under different pattern ids that conflict under one applicability are caught by the overlap check before approval; the replay runs the set that would be supplied together; the rendered slot states that the task's requirements and the manifest take precedence |
 | pattern identity | a repeat occurrence cannot reset or resurrect deprecated guidance |
 | approval | new template content or widened applicability requires its own approval |
 | model scope | approval for one model family does not apply to another |
@@ -599,10 +670,19 @@ Synthetic fixtures establish the mechanism's behavior. They are never evidence o
 | storage | the four records are in the deploy's Postgres, read by the runtime API, and survive every container's recreation |
 | feedback | unassessed or partly classified outputs earn no credit |
 | app-build indicators | an exposure, a `disabled` one included, records its build's correction rounds, rounds to green and acceptance; a green build leaves the exposure's assessment unchanged |
+| indicator aggregation | a run that fed several exposures is reported once; an exposure with no downstream build, a pending build or missing evidence is reported as that, never as a build failure |
 | replay fidelity | both arms have identical ordinary pre-authoring inputs, at each seam captured |
-| temporal validity | a target cannot learn from its own later failure or from a later unit's evidence |
+| temporal validity | a target cannot learn from its own later failure or from a later unit's evidence; with two units running at once, evidence the earlier-admitted unit produced after the target's cutoff is excluded |
+| claim kinds | a replay result is reported as a counterfactual; only an exposure from a live snapshot supports a prospective claim |
+| identity | a record carries `agent_id` apart from its role, and a role reassignment leaves `agent_id` unchanged (§6) |
+| non-cycle provenance | a record with no cycle (a proposal ruling, a future duty or ambient origin) is valid without a fabricated cycle id (§0.5, §6) |
+| recall outside the executor | the recall policy, called through `FailurePatternRecallPort` without the cycle executor, gives the same selection for the same snapshot and inputs (§6) |
+| experiment manifest | a change to an input the manifest lists is detected, and restarts the window or is recorded as an intervention; a change outside it does neither |
 | experiment isolation | test runs cannot modify production memory or learn from their outputs |
 | quality | a target reduction cannot be achieved by omitting meaningful required work |
+
+The identity, non-cycle provenance and recall rows check that the substrate stays open to §6's modes. They implement
+no duty, ambient or organization memory.
 
 The auto-review and escalation-queue scenarios are #1708's (2.2 plan §2.2).
 
@@ -1133,9 +1213,30 @@ a standalone cycle recorded nothing and received nothing.
 - **the failure-shape sorter and the repeat report** (§0.4, the 2.2 plan's D14): each runner's table of its
   own messages, extending the test runner's existing per-runner tables, sorts a correction round's `failed_detail`
   into a target behavior beneath its attribution, and the report counts each target behavior by independent cycles;
+- **nine changes from review feedback the owner supplied before adoption:**
+  1. the record names the next build-side experiment, or records that no build-side target recurred and when that is
+     read again, and keeps three results apart: authoring improvement, delivery reliability and application quality
+     (§0.13);
+  2. the application-quality dependency is Outcome Evaluation's independent scenarios (instruments 2.3, feature half
+     2.4), and a delivery-reliability claim waits for no later feature (§0.13);
+  3. temporal validity is read by evidence time, not admission time, with a test for two units running at once, and
+     counterfactual replays stay apart from prospective claims (§0.11);
+  4. every activated lesson gets a disposition when the window closes, and an inconclusive finding never makes an
+     activation permanent by default (§0.13);
+  5. a draft is checked with the lessons that would be supplied beside it, and the task's requirements and the manifest
+     take precedence over any lesson (§0.6, §0.9);
+  6. a failure shape is an observed signature, never a cause; the auditor substantiates the target behavior from the
+     round's artifacts, and the repeat report keeps repeated shapes apart from recurring target behaviors (§0.4);
+  7. when a lesson takes effect is stated exactly, including that a lesson learned in a campaign cannot reach a later
+     cycle of the same campaign; activation within a running campaign is deferred (§0.1, §0.14);
+  8. the window's freeze is an experiment manifest of every input, some of them in the database, not a rule about which
+     directories may change (§0.12);
+  9. acceptance rows for identity, non-cycle provenance, recall outside the executor, indicator aggregation and the
+     indicator states (§0.10, §0.15);
 - **the acceptance matrix** gains rows for sources, eligibility, execution isolation, unit freeze, transfer, memory
-  disabled, slot separation, the app-build indicators, storage, failure shapes, the repeat report and lesson provenance
-  (§0.15).
+  disabled, slot separation, the app-build indicators, storage, failure shapes, the repeat report, lesson provenance,
+  combined guidance, indicator aggregation, claim kinds, identity, non-cycle provenance, recall outside the executor
+  and the experiment manifest (§0.15).
 
 **What did not change:**
 - **governance:** the owner approves each revision for a stated applicability, and nothing changes within a running
@@ -1199,6 +1300,16 @@ a standalone cycle recorded nothing and received nothing.
   a frontier model, and the owner's direction of 2026-09-28 has frontier models improve the framework from evidence,
   while the squad's own model does not yet. What the rule protected is kept: a lesson is fixed before it is used,
   tested before any task is given it, and approved. A lesson can be wrong whoever writes it (§0.6, #1947).
+- **Two passages this revision carried were wrong, and the feedback found both.**
+  - §0.13 called #557, #949 and #950 "Outcome Evaluation's measures". They are the post-retest review (#557),
+    feedback-scoped framing revision (#949) and the plan-gate review packet (#950), which follow Outcome Evaluation
+    (the portfolio's Q2). Outcome Evaluation's own target is instruments in 2.3 and its feature half in 2.4.
+  - The plan held prose merges harmless during the window "because the drift check reads only `src/` and `adapters/`"
+    (`scripts/dev/verification_set_driver.py`, `framework_drift_problems`). The experiment also depends on the PRDs
+    (`examples/`), `config/`, the deploy's model settings and the replay tool (`scripts/dev/`). The squad profile and,
+    under D13, the lessons and approvals live in the database, where no merge rule reaches.
+- **§0.11's admission rule let a replay use the future.** Two units admitted in order can fail out of order, so a lesson
+  from the earlier unit could rest on evidence produced after the later unit authored.
 
 **Who ruled it.** The owner, 2026-10-07, on the supervisor's overview of the 2.2 plan:
 - "are memories captured after each cycle of a campaign as well; and also outside the scope of a campaign. I just want
@@ -1214,7 +1325,11 @@ of what is not claimed to be added ("yes, add those three"). On the supervisor's
 work, the owner asked for the storage decision to be added ("yes, add the Postgres decision to 2111"), and for a full
 review of the PR before kickoff. On the review, the owner asked what "people write the lessons" meant, answered "who
 better to determine the lesson than the AI auditing everything", and asked for the auditor and the sorter with its
-report ("yes, make both changes in 2111"). It is reviewed with the plan's re-scoping in one PR, and its merge is the
+report ("yes, make both changes in 2111"). The owner then supplied review feedback of nine points and asked "are these
+worth considering?". The supervisor recommended all nine, and named point 7 as the owner's choice, since it states a
+limit of campaigns. The owner asked for all nine ("yes, add all nine to 2111"), with point 7 as presented: lessons are
+frozen within a campaign in 2.2, and activation within a running campaign is deferred. It is reviewed with the plan's
+re-scoping in one PR, and its merge is the
 ruling.
 
 
