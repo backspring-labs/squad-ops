@@ -535,3 +535,22 @@ checks:
       from squadops.capabilities.handlers.fenced_parser import cut_final_block
       print(cut_final_block("```python:a.py\nx = 1\n```\n```python:b.py\ndef half("))
     expect: "25"
+  - id: "2152"
+    what: an error the app raised under the spine's own call is the app's, not the fill's
+    container: squadops-eve
+    code: |
+      from squadops.cycles.scaffold_evidence import _app_raise_under_spine
+      shell = "s.test.ts"
+      body = "call()\n// [scaffold-slot:begin slot-x]\nexpect(1)\n// [scaffold-slot:end slot-x]\n"
+      row = {"frames": [{"file": shell, "line": 1}, {"file": "app/r.ts", "line": 9}]}
+      print(_app_raise_under_spine(row, shell, body))
+    expect: "('app/r.ts:9', 1)"
+  - id: "2155"
+    what: the analyzer-claim refutation knows the scaffold's frozen files
+    container: squadops-runtime-api
+    code: |
+      from adapters.cycles.correction_runner import refuted_source_claims
+      analysis = {"analysis_summary": "The routes do not use lib/errors.ts errorResponse."}
+      known = {"implementation_artifacts": ["app/api/runs/route.ts"]}
+      print(refuted_source_claims(analysis, known, {"lib/errors.ts"}))
+    expect: "[]"
