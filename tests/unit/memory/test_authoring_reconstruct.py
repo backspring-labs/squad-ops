@@ -133,3 +133,64 @@ async def test_a_build_authored_with_lessons_records_them_apart_and_reconstructs
     assert LESSONS_INPUT not in envelope["inputs"]
     assert "Declare the field the client reads." in envelope["messages"][-1]["content"]
     assert verdict["byte_exact"] is True, verdict
+
+
+_PROPOSERS = {
+    TaskType.DEVELOPMENT_PROPOSE_PLAN_TASKS: "_DEV_PROPOSAL_RESPONSE",
+    TaskType.QA_PROPOSE_PLAN_TASKS: "_QA_PROPOSAL_RESPONSE",
+    TaskType.STRATEGY_PROPOSE_PLAN_GUIDANCE: "_STRATEGY_GUIDANCE_RESPONSE",
+}
+
+
+@pytest.mark.parametrize("task_type", list(_PROPOSERS))
+async def test_a_plan_proposal_reconstructs_byte_for_byte(task_type):
+    """#2141, entered at ``HandlerExecutor.execute`` with the real proposer, renderer and assembler.
+    Bug caught: a proposer that mints a random id into its prompt, so a re-run on the captured
+    inputs renders another id and the envelope is never a replayable case. The live proof's
+    framings never ran these three, so slice 1 shipped with them unreconstructable."""
+    from squadops.capabilities.handlers.planning_tasks import (
+        DevelopmentProposePlanTasksHandler,
+        QaProposePlanTasksHandler,
+        StrategyProposePlanGuidanceHandler,
+    )
+    from tests.unit.capabilities import test_propose_plan_tasks as fixtures
+
+    handler = {
+        TaskType.DEVELOPMENT_PROPOSE_PLAN_TASKS: DevelopmentProposePlanTasksHandler,
+        TaskType.QA_PROPOSE_PLAN_TASKS: QaProposePlanTasksHandler,
+        TaskType.STRATEGY_PROPOSE_PLAN_GUIDANCE: StrategyProposePlanGuidanceHandler,
+    }[task_type]
+    reply = getattr(fixtures, _PROPOSERS[task_type])
+    result = await _executor(handler(), _ctx(reply).ports).execute(
+        _dispatched(task_type, fixtures._seeded_inputs())
+    )
+    registry = HandlerRegistry()
+    registry.register(handler())
+    _, prompt_service, renderer = _tools()
+
+    verdict = await reconstruct(result.authoring_envelope, registry, prompt_service, renderer)
+
+    assert verdict["byte_exact"] is True, verdict
+
+
+def test_the_proposers_answering_one_brief_get_distinct_ids():
+    """The id is derived, not drawn, so it must still tell the run's proposals apart: the merge
+    records them by id. Bug caught: a derivation from the brief alone, giving the development and
+    qa proposals of one run the same id."""
+    from squadops.capabilities.handlers.planning_tasks import (
+        DevelopmentProposePlanTasksHandler,
+        QaProposePlanTasksHandler,
+        StrategyProposePlanGuidanceHandler,
+    )
+    from tests.unit.capabilities.test_propose_plan_tasks import _seeded_inputs
+
+    inputs = _seeded_inputs()
+    prior = inputs["prior_outputs"]
+    dev = DevelopmentProposePlanTasksHandler()._build_render_variables("PRD", prior, inputs)
+    qa = QaProposePlanTasksHandler()._build_render_variables("PRD", prior, inputs)
+    strat = StrategyProposePlanGuidanceHandler()._build_render_variables("PRD", prior, inputs)
+    again = DevelopmentProposePlanTasksHandler()._build_render_variables("PRD", prior, inputs)
+
+    assert dev["proposal_id"] == again["proposal_id"]
+    assert len({dev["proposal_id"], qa["proposal_id"], strat["proposal_id"]}) == 3
+    assert strat["guidance_id"].startswith("guid-") and dev["proposal_id"].startswith("prop-")

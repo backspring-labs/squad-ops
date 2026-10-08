@@ -7,6 +7,7 @@ helpers is propose-side.
 
 from __future__ import annotations
 
+import hashlib
 import time
 from functools import partial
 from typing import TYPE_CHECKING, Any
@@ -79,6 +80,17 @@ def _format_planning_content(prior_outputs: dict[str, Any] | None) -> str:
     return "\n\n".join(parts) if parts else "(no upstream framing artifacts)"
 
 
+def _answer_id(prefix: str, brief_id: str, proposer_role: str) -> str:
+    """The id a proposer's answer echoes, derived from what the task was given (#2141).
+
+    A random id made the prompt differ on every render, so no envelope of this family could be
+    reconstructed (SIP-0110 §0.11) and the replay refused every one. One proposer per role
+    answers a run's brief, so the ids stay distinct within the run, where the merge records them.
+    """
+    digest = hashlib.sha256(f"{brief_id}|{proposer_role}".encode()).hexdigest()[:8]
+    return f"{prefix}-{digest}"
+
+
 class _ProposeBaseHandler(_PlanningTaskHandler):
     """Shared shape for the three SIP-0093 proposer handlers.
 
@@ -117,8 +129,6 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         prior_outputs: dict[str, Any] | None,
         inputs: dict[str, Any],
     ) -> dict[str, str]:
-        import uuid
-
         brief_content = "(brief not yet provided — direct-invocation context)"
         if prior_outputs:
             contents = prior_outputs.get("artifact_contents")
@@ -126,7 +136,7 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
                 brief_content = contents.get("plan_authoring_brief.yaml", brief_content)
 
         brief_id = _extract_brief_id_from_prior_outputs(prior_outputs) or "(unknown)"
-        proposal_id = inputs.get("proposal_id") or f"prop-{uuid.uuid4().hex[:8]}"
+        proposal_id = inputs.get("proposal_id") or _answer_id("prop", brief_id, self._proposer_role)
 
         profile_roles = inputs.get("profile_roles") or []
         roles_section = ""
@@ -529,11 +539,12 @@ class StrategyProposePlanGuidanceHandler(_ProposeBaseHandler):
         # (proposal_id), so its request template requires a `guidance_id` the shared
         # proposer base never provides — the strategy proposer crashed with
         # TemplateMissingVariableError on every multi-role cycle. Supply one, mirroring
-        # the base's proposal_id generation.
-        import uuid
-
+        # the base's proposal_id derivation.
         variables = super()._build_render_variables(prd, prior_outputs, inputs)
-        variables["guidance_id"] = str(inputs.get("guidance_id") or f"guid-{uuid.uuid4().hex[:8]}")
+        brief_id = _extract_brief_id_from_prior_outputs(prior_outputs) or "(unknown)"
+        variables["guidance_id"] = str(
+            inputs.get("guidance_id") or _answer_id("guid", brief_id, self._proposer_role)
+        )
         return variables
 
     def _parse_and_validate(
