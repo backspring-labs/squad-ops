@@ -397,11 +397,12 @@ class AgentRunner:
         Creates all port adapters and bootstraps the system.
         """
         from squadops.bootstrap import SystemConfig, create_system
+        from squadops.bootstrap.secrets import secret_provider_for
         from squadops.config import load_config
 
         # Reuse config loaded by start(); only load if invoked standalone.
         if self._config is None:
-            self._config = load_config()
+            self._config = load_config(secret_provider_factory=secret_provider_for)
         config = self._config
 
         # Create adapters based on configuration

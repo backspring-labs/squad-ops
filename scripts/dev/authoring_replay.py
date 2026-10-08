@@ -191,12 +191,14 @@ async def _main() -> int:
     from adapters.llm.factory import create_llm_provider
     from adapters.prompts.factory import create_prompt_asset_source, create_prompt_repository
     from squadops.bootstrap.handlers import create_handler_registry
+    from squadops.bootstrap.secrets import secret_provider_for
     from squadops.config import load_config
     from squadops.prompts.assembler import PromptAssembler
     from squadops.prompts.renderer import RequestTemplateRenderer
 
     payload = json.load(sys.stdin)
-    config = load_config()
+    # The agent's config resolves its secret:// references as the entrypoint does.
+    config = load_config(secret_provider_factory=secret_provider_for)
     llm = create_llm_provider(
         provider=config.llm.provider,
         base_url=config.llm.url,
