@@ -110,7 +110,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | increment replay (any increment of any campaign, outside it) | **shipped** | 2.1.0, PR #2026, issue #1959 |
 | the plan-review tier at the plan gate, declared by `plan_gate` (§24bj) | **shipped**; activation held until 2.2's measurement window closes | 2.2.0, PR #2146 |
 | the escalation queue: its store, the bound's expiry and the parked cycle (§24bk) | **shipped** | 2.2.0, PR #2147 |
-| the escalation queue's late answer, its digest lists and its CLI (§24bj, §24bk) | **placed** | 2.2.0, #1708 |
+| the escalation queue's late answer, its digest lists and its CLI (§24bl) | **shipped** | 2.2.0, PR #2148 |
 | the tier's activation, after 2.2's measurement window closes, and its live reading in the cut's campaign shakeout (the 2.2 plan, steps 10–11) | **placed** | 2.2.0, #1708 |
 | accepted increments' `prd_delta` text to the proposer | **deferred to 2.4** (ruled 2026-10-03, §24ap): "a 2.4 question" | §24ap |
 | escalating a launch the cycle-create preflight refuses | **shipped** (§24ba) | 2.1.0, PR #2052, issue #1971 |
