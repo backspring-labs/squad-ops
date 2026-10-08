@@ -7,8 +7,13 @@ what it sent. An envelope that does not reconstruct exactly is not a replayable 
 
     python scripts/dev/verify_authoring_envelopes.py --run run_xxx [--task task-...]
 
-Reads `authoring_envelopes` from the deploy's Postgres container. Exits 1 if any envelope is not
-byte-exact, or if the run recorded none.
+It also reads each envelope's own exposure (SIP-0110 §0.2: one per authoring invocation, joined by
+run, task and attempt, #2162). A re-dispatched task is its own invocation, so it needs its own
+exposure, not its first attempt's.
+
+Reads `authoring_envelopes` and `memory_exposures` from the deploy's Postgres container. Exits 1
+if any envelope is not byte-exact or has no exposure of its own, or if the run recorded none. A run
+from before exposures were recorded (2026-10-08 05:18Z) has none, and this says so.
 """
 
 from __future__ import annotations
@@ -21,6 +26,8 @@ import tempfile
 from pathlib import Path
 
 _POSTGRES = "squadops-postgres"
+#: #1304's attempt stamp, as the captured envelope's inputs carry it.
+_PRIOR_ATTEMPTS = "prior_attempts"
 _RECONSTRUCT = Path(__file__).resolve().parent / "authoring_reconstruct.py"
 
 
@@ -42,6 +49,29 @@ def _envelopes(run_id: str, task_id: str | None) -> list[dict]:
         f"FROM authoring_envelopes WHERE {where}"
     )
     return json.loads(out or "[]")
+
+
+def _exposure_ids(run_id: str) -> set[str]:
+    out = _psql(
+        "SELECT coalesce(json_agg(exposure_id), '[]') FROM memory_exposures "
+        f"WHERE run_id = '{run_id}'"
+    )
+    return set(json.loads(out or "[]"))
+
+
+def own_exposures(
+    run_id: str, envelopes: list[dict], recorded: set[str]
+) -> list[tuple[str, int, bool]]:
+    """Each envelope's task, its attempt (the stamp of attempts already made, plus one) and
+    whether the exposure of that invocation was recorded."""
+    from squadops.memory.exposures import exposure_id_for
+
+    rows = []
+    for envelope in envelopes:
+        task_id = envelope["task_id"]
+        attempt = int((envelope.get("inputs") or {}).get(_PRIOR_ATTEMPTS) or 0) + 1
+        rows.append((task_id, attempt, exposure_id_for(run_id, task_id, attempt) in recorded))
+    return rows
 
 
 def _container_for(role: str) -> str:
@@ -105,7 +135,16 @@ def main() -> int:
         )
     exact = sum(v["byte_exact"] for v in verdicts)
     print(f"{exact} of {len(verdicts)} envelopes reconstruct byte for byte")
-    return 0 if exact == len(verdicts) else 1
+
+    recorded = _exposure_ids(args.run)
+    exposed = own_exposures(args.run, envelopes, recorded)
+    for task_id, attempt, present in exposed:
+        if not present:
+            print(f"NO EXPOSURE  attempt {attempt}  {task_id}")
+    own = sum(present for _, _, present in exposed)
+    note = "" if recorded else " (the run recorded no exposures: before SIP-0110 slice 3?)"
+    print(f"{own} of {len(exposed)} envelopes have their own exposure{note}")
+    return 0 if exact == len(verdicts) and own == len(exposed) else 1
 
 
 if __name__ == "__main__":

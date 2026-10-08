@@ -554,3 +554,12 @@ checks:
       known = {"implementation_artifacts": ["app/api/runs/route.ts"]}
       print(refuted_source_claims(analysis, known, {"lib/errors.ts"}))
     expect: "[]"
+  - id: "2162"
+    what: SIP-0110 §0.2 - a re-dispatched authoring records its own exposure under its attempt, and a first attempt keeps the id the deploy already stored
+    container: squadops-runtime-api
+    code: |
+      from squadops.capabilities.lesson_supply import supply_the_redispatch
+      from squadops.memory.exposures import exposure_id_for
+      run, task = "run_7fabca91826f", "task-run_7fabca91-m007-qa.test"
+      print(exposure_id_for(run, task), exposure_id_for(run, task, 2) != exposure_id_for(run, task))
+    expect: exp_dcf598a011e0244f True

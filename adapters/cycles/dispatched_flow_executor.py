@@ -60,6 +60,7 @@ from squadops.capabilities.context_assembly import (
     retake_suite_files,
     wrapup_evidence_applies,
 )
+from squadops.capabilities.lesson_supply import supply_the_redispatch
 from squadops.cycles.build_completeness import compute_missing_required_files
 from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.contract_derivation import (
@@ -1812,6 +1813,17 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 _holder["result"] = result
                 action = await _next_action(
                     result, _envelope, _enriched, _consecutive_failures, _holder
+                )
+            if action == "continue":
+                # SIP-0110 §0.2 (#2162): the re-dispatch is another authoring invocation. It asks
+                # its unit's snapshot again and records its own exposure under its attempt;
+                # before, it rode the first attempt's envelope and had none.
+                await supply_the_redispatch(
+                    (_envelope, _enriched),
+                    recall=self._failure_recall,
+                    cycle=cycle,
+                    run_id=run_id,
+                    now=datetime.now(UTC),
                 )
             if action == "accept_patch":
                 # #994: remember that THIS task now has accepted, stored repaired
