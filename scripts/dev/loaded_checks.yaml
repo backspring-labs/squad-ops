@@ -464,3 +464,39 @@ checks:
       from squadops.capabilities.scaffold import ConventionKind, frozen_conventions_for
       print(sorted(c.kind.value for c in frozen_conventions_for("fullstack_fastapi_react") if c.kind.value.startswith("undeclared")))
     expect: "['undeclared_field_ignored']"
+  - id: "2096-runtime"
+    what: SIP-0110 slice 3 - the runtime pins, supplies each consuming task from its unit's snapshot, discloses each answer, and serves the lessons routes
+    container: squadops-runtime-api
+    code: |
+      from adapters.memory.recall import SnapshotRecall
+      from squadops.capabilities.lesson_supply import supply_for_cycle
+      from squadops.memory.declarations import memory_disabled
+      from squadops.api.routes.memory import memory_router
+      paths = sorted({r.path.split("/{project_id}", 1)[-1] for r in memory_router.routes})
+      print(memory_disabled({"memory": "disabled"}), len(paths))
+    expect: True 7
+  - id: "2096-agent"
+    what: SIP-0110 slice 3 - an agent renders supplied lessons in their own slot and records them in the envelope's memory block
+    container: squadops-neo
+    code: |
+      import importlib.resources as r
+      from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
+      from squadops.memory.authoring_envelope import inputs_as_handed
+      print((r.files("squadops.prompts") / "request_templates" / "request.cross_cycle_lessons_section.md").is_file())
+    expect: "True"
+  - id: "2128"
+    what: the pulse-check repair chain runs on its roles' profile models and is supplied its lessons
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from adapters.cycles.pulse_boundary_runner import PulseBoundaryRunner
+      print("failure_recall" in inspect.signature(PulseBoundaryRunner).parameters)
+    expect: "True"
+  - id: "2132"
+    what: SIP-0109 §24bi - a return names its class, or unclassified with why
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.gate import UNCLASSIFIED, return_classification
+      from squadops.cycles.models import GateDecisionValue
+      print(return_classification(GateDecisionValue.REJECTED, UNCLASSIFIED, "why"))
+    expect: "{'classification': 'unclassified', 'classification_rationale': 'why'}"
