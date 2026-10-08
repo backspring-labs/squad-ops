@@ -183,6 +183,10 @@ async def test_every_consuming_task_discloses_its_answer_and_no_other_task_does(
     assert consuming  # a framing plan has plan writers
     assert {x.task_id for x in exposures} == consuming
     assert {x.disposition for x in exposures} == {"memory_disabled"}
+    # §0.15 identity: the agent that ran the task, kept apart from its role.
+    by_task = {e.task_id: e for e in supplied}
+    assert all(x.agent_id == by_task[x.task_id].agent_id for x in exposures)
+    assert {x.agent_id for x in exposures} != {x.query.role for x in exposures}
 
 
 async def test_a_lesson_reaches_exactly_the_tasks_its_approval_covers_with_the_plans_own_scope():

@@ -178,6 +178,13 @@ class Approval:
     #: The replay check the draft was given before approval: its reference and result (§0.6).
     replay_check: Mapping[str, Any] = field(default_factory=dict)
     revoked_at: datetime | None = None
+    #: Where the owner ruled the approval (the owner's words and where they are recorded).
+    ruling: str = ""
+    #: The auditor's check of the set supplied together with this lesson (§0.6): the approved
+    #: revisions it covered, its verdict, and where it is recorded.
+    combined_check: Mapping[str, Any] = field(default_factory=dict)
+    revoked_by: str | None = None
+    revocation_reason: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -188,6 +195,10 @@ class Approval:
             "approved_at": self.approved_at.isoformat(),
             "replay_check": dict(self.replay_check),
             "revoked_at": self.revoked_at.isoformat() if self.revoked_at else None,
+            "ruling": self.ruling,
+            "combined_check": dict(self.combined_check),
+            "revoked_by": self.revoked_by,
+            "revocation_reason": self.revocation_reason,
         }
 
     @classmethod
@@ -201,6 +212,10 @@ class Approval:
             approved_at=datetime.fromisoformat(str(data["approved_at"])),
             replay_check=dict(data.get("replay_check") or {}),
             revoked_at=datetime.fromisoformat(str(revoked)) if revoked else None,
+            ruling=str(data.get("ruling") or ""),
+            combined_check=dict(data.get("combined_check") or {}),
+            revoked_by=data.get("revoked_by"),
+            revocation_reason=data.get("revocation_reason"),
         )
 
 

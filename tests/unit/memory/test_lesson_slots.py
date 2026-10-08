@@ -339,3 +339,32 @@ async def test_the_pulse_chains_repair_shows_the_lessons_it_is_handed():
     assert _shows_the_lessons(shown)
     assert shown.index("suite_a failed") < shown.index(_HEADING)
     assert _HEADING not in plain
+
+
+async def test_a_lesson_and_a_retrys_prior_cycle_brief_render_in_separate_slots():
+    """§0.15 slot separation, at build authoring, through ``DevelopmentDevelopHandler.handle``.
+    Bugs caught: the lessons rendered inside the failed cycle's record, so a model reads a lesson
+    as something that cycle did; or one slot's presence emptying or duplicating the other."""
+    from squadops.campaigns.prior_cycle import brief_lines, prior_cycle_brief
+    from squadops.capabilities.handlers.cycle.develop import DevelopmentDevelopHandler
+    from tests.unit.campaigns.test_prior_cycle import _failed
+
+    brief = brief_lines(prior_cycle_brief(_failed()))
+    base = {"prd": "the PRD", "subtask_focus": "the limit", "expected_artifacts": ["a.py"]}
+    prompts = {}
+    for name, extra in (
+        ("both", {"prior_cycle_brief": brief, LESSONS_INPUT: _LESSONS}),
+        ("brief", {"prior_cycle_brief": brief}),
+        ("lessons", {LESSONS_INPUT: _LESSONS}),
+    ):
+        sent: list = []
+        await DevelopmentDevelopHandler().handle(_author_context(sent), {**base, **extra})
+        prompts[name] = "\n".join(str(m.content) for m in sent[0])
+
+    attempted = "THIS INCREMENT WAS ATTEMPTED BEFORE, AND FAILED"
+    both = prompts["both"]
+    assert both.count(attempted) == 1 and both.count(_HEADING) == 1
+    assert both.index(attempted) < both.index(_HEADING)
+    assert f"\n\n{_HEADING}\n" in both
+    assert attempted in prompts["brief"] and _HEADING not in prompts["brief"]
+    assert _HEADING in prompts["lessons"] and attempted not in prompts["lessons"]

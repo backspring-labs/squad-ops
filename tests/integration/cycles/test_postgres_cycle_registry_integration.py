@@ -396,6 +396,7 @@ class TestMemoryLessons:
         from datetime import timedelta
 
         from adapters.memory.cross_cycle import PostgresCrossCycleMemoryStore, RevisionConflict
+        from squadops.memory.approval import revoke
         from squadops.memory.lessons import UnitKind
         from squadops.memory.pinning import pin_unit
         from tests.unit.memory.test_lessons import WHERE, _approve, _revision
@@ -429,13 +430,23 @@ class TestMemoryLessons:
                 pinned_at=approval.approved_at + timedelta(hours=2),
                 disabled=True,
             )
-            await store.revoke_approval(
-                approval.approval_id, approval.approved_at + timedelta(hours=3)
+            revoked_at = approval.approved_at + timedelta(hours=3)
+            await store.record_revocation(
+                revoke(approval, by="owner", reason="harmful", now=revoked_at)
+            )
+            await store.record_revocation(
+                revoke(approval, by="someone", reason="again", now=revoked_at + timedelta(hours=1))
             )
 
             assert again == pinned and len(pinned.entries) == 1
             [stored] = await store.list_approvals(project)
-            assert stored.revoked_at == approval.approved_at + timedelta(hours=3)
+            assert (stored.revoked_at, stored.revoked_by, stored.revocation_reason) == (
+                revoked_at,
+                "owner",
+                "harmful",
+            )
+            holding = await store.list_snapshots_holding(approval.approval_id)
+            assert [s.unit_id for s in holding] == [f"cyc_{project}"]
         finally:
             async with migrated_pool.acquire() as conn:
                 await conn.execute(
@@ -450,7 +461,10 @@ class TestMemoryLessons:
         """§0.8 against the tables. Bugs caught: a restart's second composition of a plan writing
         a second exposure for the same task; or a pin this code cannot read raising a bare
         ``KeyError`` that recall would report as a failed read, hiding a version skew."""
+        import dataclasses
+
         from adapters.memory.cross_cycle import PostgresCrossCycleMemoryStore
+        from squadops.memory.assessment import TargetState, assess
         from squadops.memory.exposures import Exposure
         from squadops.memory.lessons import RecallDisposition, Recalled, UnitKind
         from squadops.memory.recall import RecallQuery
@@ -465,6 +479,7 @@ class TestMemoryLessons:
             run_id=run_id,
             task_id="task-1",
             cycle_id="cyc_1",
+            agent_id="neo",
             seam="build_authoring",
             query=query,
             recalled=Recalled("snp_x", RecallDisposition.NONE_ELIGIBLE),
@@ -475,6 +490,28 @@ class TestMemoryLessons:
             assert await store.record_exposure(exposure) is True
             assert await store.record_exposure(exposure) is False
             assert await store.list_exposures(run_id) == [exposure]
+            assert await store.get_exposure(exposure.exposure_id) == exposure
+            assert exposure in await store.list_project_exposures("group_run")
+            # §0.10: assessments are append-only; the project's are read oldest first.
+            first = assess(
+                project_id=f"assess-{run_id}",
+                exposure_id=exposure.exposure_id,
+                pattern_id="pat_a",
+                state=TargetState.PRESENT,
+                required_work_done=True,
+                supplied=False,
+                rubric="r@1",
+                evidence="e",
+                assessed_by="auditor",
+                now=datetime(2026, 10, 8, 1, tzinfo=UTC),
+            )
+            second = dataclasses.replace(
+                first, state=TargetState.ABSENT, assessed_at=datetime(2026, 10, 8, 2, tzinfo=UTC)
+            )
+            assert await store.record_assessment(first) is True
+            assert await store.record_assessment(first) is False
+            assert await store.record_assessment(second) is True
+            assert await store.list_assessments(f"assess-{run_id}") == [first, second]
             async with migrated_pool.acquire() as conn:
                 await conn.execute(
                     "INSERT INTO memory_snapshots (unit_kind, unit_id, snapshot_id, pinned_at, "
@@ -487,6 +524,9 @@ class TestMemoryLessons:
                 await store.get_snapshot(UnitKind.CAMPAIGN, unit_id)
         finally:
             async with migrated_pool.acquire() as conn:
+                await conn.execute(
+                    "DELETE FROM memory_assessments WHERE project_id = $1", f"assess-{run_id}"
+                )
                 await conn.execute("DELETE FROM memory_exposures WHERE run_id = $1", run_id)
                 await conn.execute("DELETE FROM memory_snapshots WHERE unit_id = $1", unit_id)
 

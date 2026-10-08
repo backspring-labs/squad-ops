@@ -31,6 +31,9 @@ class Exposure:
     run_id: str
     task_id: str
     cycle_id: str
+    #: The agent that ran the task, kept apart from its role (§0.15 identity, §6): a role can be
+    #: reassigned to another agent, and a record keyed only by role would follow the role.
+    agent_id: str
     seam: str
     query: RecallQuery
     #: ``Recalled.exposure()``: the snapshot, the disposition, the intervention and the omitted.
@@ -49,12 +52,15 @@ class Exposure:
         run_id: str,
         task_id: str,
         cycle_id: str,
+        agent_id: str,
         seam: str,
         query: RecallQuery,
         recalled: Recalled,
         recorded_at: datetime,
     ) -> Exposure:
-        return cls(run_id, task_id, cycle_id, seam, query, recalled.exposure(), recorded_at)
+        return cls(
+            run_id, task_id, cycle_id, agent_id, seam, query, recalled.exposure(), recorded_at
+        )
 
     @property
     def disposition(self) -> str:
@@ -67,6 +73,7 @@ class Exposure:
             "run_id": self.run_id,
             "task_id": self.task_id,
             "cycle_id": self.cycle_id,
+            "agent_id": self.agent_id,
             "seam": self.seam,
             "query": {
                 "project_id": q.project_id,
@@ -89,6 +96,7 @@ class Exposure:
             run_id=str(data["run_id"]),
             task_id=str(data["task_id"]),
             cycle_id=str(data["cycle_id"]),
+            agent_id=str(data["agent_id"]),
             seam=str(data["seam"]),
             query=RecallQuery(**q, unit_kind=UnitKind(unit_kind) if unit_kind else None),
             recalled=dict(data["recalled"]),

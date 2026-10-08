@@ -4,15 +4,16 @@ Phase 1's records live in Postgres beside the cycle registry, behind this port, 
 in-memory adapter for tests. It is not SIP-042's ``MemoryPort``, which is each agent's own
 semantic store: the runtime API, where recall and the projections run, has none of those, and
 Phase 1's recall is exact filtering that needs no embedding. It holds the observations (3a), and
-the lessons, their approvals, each unit's pinned snapshot and each consuming task's exposure (3c).
+the lessons, their approvals, each unit's pinned snapshot, each consuming task's exposure (3c), and
+each exposure's assessments (3d).
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from datetime import datetime
 
+from squadops.memory.assessment import Assessment
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import Approval, PatternRevision, Snapshot, UnitKind
 from squadops.memory.observations import Observation, ObservationSource
@@ -50,8 +51,9 @@ class CrossCycleMemoryStorePort(ABC):
         """Store an approval; a second write of the same ``approval_id`` is a no-op."""
 
     @abstractmethod
-    async def revoke_approval(self, approval_id: str, revoked_at: datetime) -> None:
-        """Record an approval's revocation. Units admitted later pin without it (§0.7)."""
+    async def record_revocation(self, revoked: Approval) -> None:
+        """Store an approval's revocation (``squadops.memory.approval.revoke``: when, by whom and
+        why). Units admitted later pin without it (§0.7). An approval revoked once stays so."""
 
     @abstractmethod
     async def list_approvals(self, project_id: str) -> list[Approval]:
@@ -68,6 +70,10 @@ class CrossCycleMemoryStorePort(ABC):
         :class:`RecordIncompatible` for a stored pin this code cannot read."""
 
     @abstractmethod
+    async def list_snapshots_holding(self, approval_id: str) -> list[Snapshot]:
+        """The pinned snapshots that carry ``approval_id``: the units a revocation names."""
+
+    @abstractmethod
     async def record_exposure(self, exposure: Exposure) -> bool:
         """Store a task's exposure, once per task of a run (``exposure_id``); composing the task
         again adds nothing. Returns whether it was new."""
@@ -75,3 +81,20 @@ class CrossCycleMemoryStorePort(ABC):
     @abstractmethod
     async def list_exposures(self, run_id: str) -> list[Exposure]:
         """A run's exposures, by task."""
+
+    @abstractmethod
+    async def get_exposure(self, exposure_id: str) -> Exposure | None:
+        """One exposure, or ``None``."""
+
+    @abstractmethod
+    async def list_project_exposures(self, project_id: str) -> list[Exposure]:
+        """A project's exposures, oldest first."""
+
+    @abstractmethod
+    async def record_assessment(self, assessment: Assessment) -> bool:
+        """Store an assessment; append-only, so a reassessment is a new record (§0.10). Returns
+        whether it was new."""
+
+    @abstractmethod
+    async def list_assessments(self, project_id: str) -> list[Assessment]:
+        """A project's assessments, oldest first."""

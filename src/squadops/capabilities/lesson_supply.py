@@ -111,6 +111,7 @@ async def supply_lessons(
                 run_id=run_id,
                 task_id=envelope.task_id,
                 cycle_id=envelope.cycle_id,
+                agent_id=envelope.agent_id,
                 seam=seam.value,
                 query=query,
                 recalled=recalled,

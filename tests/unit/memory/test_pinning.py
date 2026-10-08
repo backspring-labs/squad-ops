@@ -9,6 +9,7 @@ from datetime import timedelta
 import pytest
 
 from adapters.memory.cross_cycle import InMemoryCrossCycleMemoryStore, RevisionConflict
+from squadops.memory.approval import revoke
 from squadops.memory.declarations import memory_disabled
 from squadops.memory.lessons import RecallDisposition, Snapshot, UnitKind, recall
 from squadops.memory.pinning import pin_unit
@@ -85,7 +86,9 @@ async def test_a_revocation_reaches_units_admitted_after_it_only():
         disabled=False,
     )
 
-    await store.revoke_approval(approval.approval_id, T0 + timedelta(hours=2))
+    await store.record_revocation(
+        revoke(approval, by="owner", reason="harmful", now=T0 + timedelta(hours=2))
+    )
     later = await pin_unit(
         store,
         unit_kind=UnitKind.CYCLE,
@@ -97,6 +100,10 @@ async def test_a_revocation_reaches_units_admitted_after_it_only():
 
     assert len((await store.get_snapshot(UnitKind.CYCLE, "cyc_running")).entries) == 1
     assert running.entries and later.entries == ()
+    # §0.7, D9: the revocation names the running unit that holds it, for its halt or restart.
+    assert [s.unit_id for s in await store.list_snapshots_holding(approval.approval_id)] == [
+        "cyc_running"
+    ]
 
 
 async def test_a_snapshot_survives_the_store_whole():
