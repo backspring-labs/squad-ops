@@ -456,7 +456,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     from functools import partial
 
     from adapters.cycles.cycle_evidence import assess_cycle
-    from adapters.noop.ports import NoOpFailurePatternRecall
+    from adapters.memory.recall import create_failure_recall
     from squadops._version import resolve_git_sha
     from squadops.campaigns.progress import CampaignProgress
     from squadops.campaigns.projection import ProjectingCampaignRegistry
@@ -504,8 +504,9 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         # SIP-0109 §9.3 (#1928): a run start waits on the launch's own verdict. The box reader
         # is built below, from the LLM port; read when a run starts, as the drain is above.
         box_verdict=lambda: state.box_reader.verdict(),
-        # #1964: Cross-Cycle Memory's recall, inert in 2.1 (answers empty), explicitly.
-        failure_recall=NoOpFailurePatternRecall(),
+        # SIP-0110 §0.8: each consuming task's lessons, from its unit's pinned snapshot in the
+        # memory store (built before this subsystem, `_startup`).
+        failure_recall=create_failure_recall("snapshot", store=state.memory_store),
     )
 
     state.project_registry = project_registry
@@ -685,6 +686,8 @@ async def _startup(app: FastAPI) -> None:
 
     await _init_auth_subsystem(state, config)
     await _init_migrations(config, state.pool)
+    # SIP-0110 (D13): the memory store, before the cycle subsystem whose executor recalls from it.
+    _init_memory(state, config, state.pool)
     await _init_log_forwarding(state, config)
     await _init_cycle_subsystem(state, config, state.pool)
     await _init_monitoring(state, config, state.pool)
@@ -693,7 +696,6 @@ async def _startup(app: FastAPI) -> None:
     # startup sweeps ran before the executor existed.
     state.campaign_launch_task = asyncio.create_task(_resume_campaigns(state))
     state.campaign_sweep_task = asyncio.create_task(_sweep_campaigns(state))
-    _init_memory(state, config, state.pool)
     state.memory_reconcile_task = asyncio.create_task(_reconcile_memory(state))
 
 

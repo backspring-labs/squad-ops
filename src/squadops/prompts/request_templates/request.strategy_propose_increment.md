@@ -1,6 +1,6 @@
 ---
 template_id: request.strategy_propose_increment
-version: "9"
+version: "10"
 required_variables:
   - objective_statement
   - objective_measurement
@@ -13,6 +13,7 @@ optional_variables:
   - prd_section
   - abandoned_increment_section
   - qa_proposed_behaviours_section
+  - cross_cycle_lessons_section
 ---
 ## Propose the next increment of this application
 
@@ -53,7 +54,7 @@ criterion on it) or leave it out of the text.
 {{supervisor_note_section}}
 {{abandoned_increment_section}}
 {{qa_proposed_behaviours_section}}
-{{prd_section}}
+{{prd_section}}{{cross_cycle_lessons_section}}
 **The manifest below is what the application does.** Every endpoint, error code, field and client
 route it declares is built, accepted and running, so a criterion about one of them names nothing new.
 Your change is what `manifest_delta` adds or modifies: the build may touch only the files those

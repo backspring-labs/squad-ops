@@ -81,7 +81,7 @@ async def reconstruct(
     """One envelope's verdict: whether its handler, re-run on its inputs, sends exactly its
     messages. ``registry``, ``prompt_service`` and ``renderer`` are the image's own."""
     from squadops.capabilities.handlers.context import ExecutionContext
-    from squadops.memory.authoring_envelope import AuthoringReplayEnvelope
+    from squadops.memory.authoring_envelope import AuthoringReplayEnvelope, inputs_as_handed
 
     captured = AuthoringReplayEnvelope.from_dict(envelope)
     verdict: dict[str, Any] = {
@@ -119,7 +119,7 @@ async def reconstruct(
     )
     handler = registry.get(captured.task_type)
     try:
-        await handler.handle(context, copy.deepcopy(captured.inputs))
+        await handler.handle(context, copy.deepcopy(inputs_as_handed(captured)))
     except _Captured as stop:
         got = [(m.role, m.content) for m in stop.messages]
         expected = [(m["role"], m["content"]) for m in captured.messages]

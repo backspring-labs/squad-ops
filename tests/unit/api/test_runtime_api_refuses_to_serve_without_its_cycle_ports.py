@@ -58,6 +58,8 @@ async def test_the_failure_reaches_the_caller_that_owns_the_lifespan(monkeypatch
     monkeypatch.setattr(
         runtime_main, "_init_cycle_subsystem", AsyncMock(side_effect=_Boom("wiring"))
     )
+    # The memory store is built first, from the config this test does not have (SIP-0110 D13).
+    monkeypatch.setattr(runtime_main, "_init_memory", MagicMock())
     app = MagicMock()
     app.state.config = MagicMock()
 

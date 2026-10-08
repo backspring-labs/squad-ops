@@ -4,7 +4,7 @@ Phase 1's records live in Postgres beside the cycle registry, behind this port, 
 in-memory adapter for tests. It is not SIP-042's ``MemoryPort``, which is each agent's own
 semantic store: the runtime API, where recall and the projections run, has none of those, and
 Phase 1's recall is exact filtering that needs no embedding. It holds the observations (3a), and
-the lessons, their approvals and each unit's pinned snapshot (3c).
+the lessons, their approvals, each unit's pinned snapshot and each consuming task's exposure (3c).
 """
 
 from __future__ import annotations
@@ -13,8 +13,14 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from datetime import datetime
 
+from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import Approval, PatternRevision, Snapshot, UnitKind
 from squadops.memory.observations import Observation, ObservationSource
+
+
+class RecordIncompatible(ValueError):
+    """A stored record this code cannot read: written by a newer version, or damaged. Recall
+    reports it as its own outcome (§0.8), never as nothing eligible."""
 
 
 class CrossCycleMemoryStorePort(ABC):
@@ -58,4 +64,14 @@ class CrossCycleMemoryStorePort(ABC):
 
     @abstractmethod
     async def get_snapshot(self, unit_kind: UnitKind, unit_id: str) -> Snapshot | None:
-        """The snapshot a unit pinned, or ``None`` for a unit that has not."""
+        """The snapshot a unit pinned, or ``None`` for a unit that has not. Raises
+        :class:`RecordIncompatible` for a stored pin this code cannot read."""
+
+    @abstractmethod
+    async def record_exposure(self, exposure: Exposure) -> bool:
+        """Store a task's exposure, once per task of a run (``exposure_id``); composing the task
+        again adds nothing. Returns whether it was new."""
+
+    @abstractmethod
+    async def list_exposures(self, run_id: str) -> list[Exposure]:
+        """A run's exposures, by task."""

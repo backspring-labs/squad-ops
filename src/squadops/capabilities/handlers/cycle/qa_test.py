@@ -34,6 +34,7 @@ from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
 )
+from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
 from squadops.capabilities.handlers.increment_test_scope import increment_test_scope_section
 from squadops.capabilities.handlers.prior_cycle import prior_cycle_section
 from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
@@ -1799,6 +1800,13 @@ class QATestHandler(_CycleTaskHandler):
             )
             if prior_section:
                 user_prompt = f"{user_prompt}\n{prior_section}"
+            # SIP-0110 §0.9: the lessons approved for this task, in a slot of their own. The
+            # section opens with its own paragraph break.
+            lessons_section = await cross_cycle_lessons_section(
+                getattr(context.ports, "request_renderer", None), inputs
+            )
+            if lessons_section:
+                user_prompt = f"{user_prompt}{lessons_section}"
             retake_section, retake_offered = await self._retake_section(context, inputs)
             if retake_section:
                 user_prompt = f"{user_prompt}\n{retake_section}"

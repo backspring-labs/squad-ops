@@ -165,7 +165,14 @@ def test_a_unit_that_declares_memory_disabled_pins_and_recalls_nothing():
 
     assert snapshot.entries == ()
     assert recall(snapshot, ASK).disposition is RecallDisposition.DISABLED
-    assert recall(None, ASK).disposition is RecallDisposition.DISABLED
+
+
+def test_a_unit_with_no_pin_is_a_failed_recall_never_memory_off():
+    """§0.8's five outcomes. Bug caught: a unit whose pin failed read as memory disabled, so its
+    measurement counts as a memory-off trial instead of being marked invalid."""
+    out = recall(None, ASK)
+
+    assert (out.disposition, out.snapshot_id, out.supplied) == (RecallDisposition.FAILED, None, ())
 
 
 def test_a_unit_keeps_what_it_pinned_whatever_is_approved_or_revoked_later():

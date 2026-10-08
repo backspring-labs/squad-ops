@@ -21,11 +21,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 from adapters.cycles.execution_errors import _ExecutionError
+from squadops.capabilities.lesson_supply import supply_lessons, unit_of
+from squadops.cycles.benchmark_registry import cycle_stack
 from squadops.cycles.models import Cycle, RunStatus, WorkloadType
-from squadops.cycles.task_plan import generate_task_plan, recalled_patterns_for
+from squadops.cycles.task_plan import generate_task_plan
 from squadops.events.types import EventType
 
 
@@ -170,11 +173,6 @@ class RunProvisioning:
 
             change_request = await approved_change_request(self._artifact_vault, cycle)
 
-        # #1964 (SIP-Cross-Cycle-Memory §5): each plan-authoring task type the context registry
-        # hands rejection context to asks the recall what this project has failed before. 2.1's
-        # recall answers empty, so nothing is handed and no prompt changes.
-        recalled = await recalled_patterns_for(self._failure_recall, cycle.project_id)
-
         plan = generate_task_plan(
             cycle,
             run,
@@ -183,7 +181,17 @@ class RunProvisioning:
             contract=verification_contract,
             interface_manifest=interface_manifest,
             change_request=change_request,
-            recalled_patterns=recalled,
+        )
+        # SIP-0110 §0.9: each plan-writing and build-authoring task asks its unit's pinned snapshot
+        # for the lessons approved for it, and every answer is disclosed. A task handed none keeps
+        # the inputs it had before memory existed, so its prompt is unchanged.
+        plan = await supply_lessons(
+            plan,
+            recall=self._failure_recall,
+            unit=unit_of(cycle),
+            stack=cycle_stack(cycle) or "",
+            run_id=run.run_id,
+            now=datetime.now(UTC),
         )
         state.plan = plan
         participating_agent_ids = {e.agent_id for e in plan}

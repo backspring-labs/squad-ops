@@ -27,6 +27,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
+from squadops.memory.recall import LESSONS_INPUT
+
 #: Bumped when a field changes meaning, so a reader can refuse an envelope it cannot replay.
 ENVELOPE_SCHEMA_VERSION = 1
 
@@ -109,8 +111,9 @@ class AuthoringReplayEnvelope:
     inputs_not_captured: tuple[str, ...] = ()
     #: The request template's provenance, where the handler passed its render to the call.
     request_template: dict[str, str] | None = None
-    #: The memory snapshot pinned for the unit and the exact intervention supplied. Empty until
-    #: slice 3 supplies memory (#2096); a replay arm records its own.
+    #: The memory snapshot pinned for the unit and the exact intervention supplied (the lessons
+    #: the task was handed on ``LESSONS_INPUT``, kept out of ``inputs``). Empty when none was
+    #: supplied; a replay arm records its own.
     memory: dict[str, Any] = field(default_factory=lambda: {"snapshot": None, "intervention": None})
     schema_version: int = ENVELOPE_SCHEMA_VERSION
 
@@ -198,7 +201,14 @@ def capture_envelope(
     ``inputs`` may already be plain JSON, taken when the handler was handed them, with
     ``inputs_not_captured`` naming what that copy could not carry."""
     sent = tuple({"role": role_, "content": content} for role_, content in messages)
-    safe_inputs, dropped = json_safe(dict(inputs))
+    # §0.11: the intervention is recorded apart from the task's own inputs, so a replay arm can run
+    # the same inputs with no lesson, or with its own.
+    own = dict(inputs)
+    supplied = own.pop(LESSONS_INPUT, None)
+    memory = {"snapshot": None, "intervention": None}
+    if isinstance(supplied, Mapping):
+        memory = {"snapshot": supplied.get("snapshot"), "intervention": supplied.get("lessons")}
+    safe_inputs, dropped = json_safe(own)
     not_captured = [*inputs_not_captured, *(p for p in dropped if p not in inputs_not_captured)]
     safe_kwargs, _ = json_safe(dict(chat_kwargs))
     return AuthoringReplayEnvelope(
@@ -217,4 +227,15 @@ def capture_envelope(
         inputs=safe_inputs,
         inputs_not_captured=tuple(not_captured),
         request_template=dict(request_template) if request_template else None,
+        memory=json_safe(memory)[0],
     )
+
+
+def inputs_as_handed(envelope: AuthoringReplayEnvelope) -> dict[str, Any]:
+    """The inputs the handler was handed: the task's own, with the lessons it was supplied (its
+    ``memory`` block) back on the input they rode."""
+    inputs = dict(envelope.inputs)
+    lessons = envelope.memory.get("intervention")
+    if lessons:
+        inputs[LESSONS_INPUT] = {"snapshot": envelope.memory.get("snapshot"), "lessons": lessons}
+    return inputs

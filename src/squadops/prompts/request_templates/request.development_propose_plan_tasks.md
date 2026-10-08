@@ -1,6 +1,6 @@
 ---
 template_id: request.development_propose_plan_tasks
-version: "6"
+version: "7"
 required_variables:
   - brief_content
   - planning_content
@@ -16,6 +16,7 @@ optional_variables:
   - increment_sections
   - rejection_context_section
   - prior_cycle_section
+  - cross_cycle_lessons_section
   - authoring_rules_section
 ---
 You are proposing development-domain plan tasks for the upcoming build.
@@ -80,4 +81,4 @@ confidence: ""  # low | medium | high
 {{frozen_surface_section}}
 {{increment_sections}}
 {{rejection_context_section}}
-{{prior_cycle_section}}
+{{prior_cycle_section}}{{cross_cycle_lessons_section}}

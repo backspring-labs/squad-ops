@@ -799,36 +799,6 @@ def _prior_cycle_inputs(resolved_config: Mapping[str, Any], task_type: str) -> d
     return {"prior_cycle_brief": lines} if lines else {}
 
 
-def _inject_recalled_patterns(
-    inputs: dict[str, Any], recalled: Mapping[str, Any] | None, task_type: str
-) -> None:
-    """#1964 (SIP-Cross-Cycle-Memory §5): the failure patterns recalled for this task type,
-    handed through the same declaration as a re-roll's rejection (``plan_rejection_context``).
-    Data-only and presence-keyed: no patterns, no key, so 2.1's inert recall changes nothing."""
-    if not get_context_contract(task_type).plan_rejection_context:
-        return
-    patterns = (recalled or {}).get(str(task_type)) or ()
-    if patterns:
-        inputs["recalled_failure_patterns"] = [
-            {"rejection_class": p.rejection_class, "statement": p.statement} for p in patterns
-        ]
-
-
-async def recalled_patterns_for(recall: Any, project_id: str) -> dict[str, tuple[Any, ...]]:
-    """What the recall answers for each task type declaring ``plan_rejection_context``, keeping
-    only the non-empty answers (#1964)."""
-    from squadops.capabilities.context_assembly import CONTEXT_CONTRACTS
-    from squadops.memory.recall import RecallQuery
-
-    answers: dict[str, tuple[Any, ...]] = {}
-    for task_type, contract in CONTEXT_CONTRACTS.items():
-        if contract.plan_rejection_context:
-            found = await recall.recall(RecallQuery(project_id=project_id, task_type=task_type))
-            if found:
-                answers[str(task_type)] = tuple(found)
-    return answers
-
-
 def _inject_rejection_context(
     inputs: dict[str, Any], rejection_context: Any, task_type: str
 ) -> None:
@@ -1270,7 +1240,6 @@ def generate_task_plan(
     contract: VerificationContract | None = None,
     interface_manifest: InterfaceManifest | None = None,
     change_request: str | None = None,
-    recalled_patterns: Mapping[str, tuple[Any, ...]] | None = None,
 ) -> list[TaskEnvelope]:
     """Generate a task plan for a cycle run.
 
@@ -1295,9 +1264,6 @@ def generate_task_plan(
         change_request: An increment's approved change request, for its framing run
             (SIP-0109 §7.3) — the framed objective every framing task is shown. Required
             there, and refused anywhere else.
-        recalled_patterns: The failure patterns Cross-Cycle Memory's recall answered, by task
-            type (#1964). Handed to the task types declaring ``plan_rejection_context``;
-            empty in 2.1, whose recall is inert.
 
     Returns:
         Ordered list of TaskEnvelopes, one per pipeline step.
@@ -1500,7 +1466,6 @@ def generate_task_plan(
             test_scope,
         )
         _inject_rejection_context(inputs, framing_rejection_context, task_type)
-        _inject_recalled_patterns(inputs, recalled_patterns, task_type)
         inputs.update(_increment_inputs(run, task_type, change_request, evaluation, test_scope))
         inputs.update(_prior_cycle_inputs(resolved_config, task_type))
 
