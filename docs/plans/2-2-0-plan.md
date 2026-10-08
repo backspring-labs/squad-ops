@@ -103,9 +103,10 @@ the plan-writing, build-authoring and repair seams are wired inert. The repeat r
 recurs there. If one does, its lesson is drafted, approved, supplied and measured. The headline is a measurement, not an
 expected win.
 
-**The corpus is small.** The proposal behavior has about three independent historical cases, none captured before
-authoring, and the 2.1 line added none. The test corpus is built by the 2.2 line's own cycles and campaigns, and
-**"inconclusive" is a likely and legitimate finding** (SIP-0110 §0.13).
+**The corpus is small.** The proposal behavior has one clean historical case under today's prompt, none captured before
+authoring, and the 2.1 line added none. Slice 1's inspection (#2105, SIP-0110 §5e) read the other three returns as a
+missing instruction or a missing fact since supplied. The test corpus is built by the 2.2 line's own cycles and
+campaigns, and **"inconclusive" is a likely and legitimate finding** (SIP-0110 §0.13).
 
 **What 2.2 does not claim: an improvement in the application the squad builds.** Its finding is about one authoring
 behavior's recurrence, measured by replay. The proposal behavior decides what is built next, not how well it is built.
@@ -139,12 +140,13 @@ If no build-side target recurred, the record says so and names when the question
 
 ## 1. The open issues, every one placed
 
-26 issues are open on 2026-10-07, counting the four Phase-1 slices (#2096, #2105–#2107) and #2112. #1964 closed with
-#2097.
+27 issues are open on 2026-10-08, counting the four Phase-1 slices (#2096, #2105–#2107), #2112 and #2114. #1964
+closed with #2097.
 
 | where | count | issues |
 |---|---|---|
 | **2.2: the headline** | 4 | #2105 (slice 1: capture and the source-case inspection), #2106 (slice 2: the replay), #2096 (slice 3: the mechanism), #2107 (slice 4: the first lesson and the measurement window) |
+| **2.2: the inspection's evidence-access fix** | 1 | #2114 (the proposer is not told that the FastAPI stack's frozen request models ignore an undeclared field). Fixed before the window, held identical across the arms (§2.1) |
 | **2.2: beside it** | 1 | #1708's remainder: the auto tier and the escalation queue (placed 2026-10-03, 2.0 plan rev 9 §5a.5; kept 2026-10-04, Q2) |
 | **2.2: hardening, placed by the owner during the 2.1 line** | 3 | #2079 (the realm's admin password), #2082 (two console test files depend on their order), #2083 (the realm sync never applies a service account's roles) |
 | **2.2: hardening, filed at the owner's request on 2026-10-07** | 1 | #2112 (three agents have no volume for their own store). Its fix is a compose change, built only on the owner's OK (§2.3) |
