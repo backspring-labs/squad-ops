@@ -9,7 +9,12 @@ from __future__ import annotations
 import pytest
 
 from adapters.cycles.memory_campaign_registry import MemoryCampaignRegistry
-from squadops.campaigns.gate import binding_from_change_request, ruling_transition, submission
+from squadops.campaigns.gate import (
+    RETURNING_DECISIONS,
+    binding_from_change_request,
+    ruling_transition,
+    submission,
+)
 from squadops.campaigns.models import (
     AcceptedTree,
     CampaignState,
@@ -39,6 +44,8 @@ def _rule(decision: GateDecisionValue, binding: ProposalBinding, key: str, run_i
         actor_role="campaign-supervisor",
         reason="read the change request and its footprint",
         idempotency_key=key,
+        # SIP-0109 §24bi: a return names what went wrong.
+        classification="scope_too_large" if decision in RETURNING_DECISIONS else None,
     )
 
 

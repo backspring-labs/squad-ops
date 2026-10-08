@@ -31,6 +31,8 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
+from squadops.campaigns.gate import RETURNING_DECISIONS
+from squadops.campaigns.gate import UNCLASSIFIED as RULING_UNCLASSIFIED
 from squadops.campaigns.models import (
     ControlLogEntry,
     ControlOperation,
@@ -62,9 +64,6 @@ UNCLASSIFIED = "unclassified"
 PLAN_REVIEW_GATE = "progress_plan_review"
 
 #: The increment-gate decisions that return a proposal (SIP-0109 §9.4, ``RULING_MOVES``).
-_RETURNING_DECISIONS = frozenset(
-    {GateDecisionValue.RETURNED_FOR_REVISION.value, GateDecisionValue.REJECTED.value}
-)
 
 
 @dataclass(frozen=True)
@@ -281,6 +280,22 @@ def _failure_shapes(failed_detail: Sequence[tuple[str, str]]) -> dict[str, Any]:
     return {"failure_shapes": shapes, "failure_shape_table_version": FAILURE_SHAPE_TABLE_VERSION}
 
 
+def _ruling_classification(binding: Mapping[str, Any], later: Sequence[str]) -> Classification:
+    """A returned version's class: the one its ruling carried (SIP-0109 §24bi), with any later
+    reading the supervisor recorded of it; or ``unclassified``, with the ruling's rationale, or
+    saying none was recorded (a ruling from before the rail)."""
+    known = {c.value for c in ProposalClassification}
+    at_ruling = str(binding.get("classification") or "")
+    recorded = sorted({c for c in [at_ruling, *later] if c in known})
+    if recorded and {c for c in later if c} <= known:
+        return Classification(VOCABULARY_PROPOSAL, tuple(recorded))
+    if at_ruling == RULING_UNCLASSIFIED and not later:
+        return Classification(
+            UNCLASSIFIED, rationale=str(binding.get("classification_rationale") or "")
+        )
+    return Classification(UNCLASSIFIED, rationale="no classification of this version was recorded")
+
+
 def observe_proposal_rulings(
     campaign_id: str,
     project_id: str,
@@ -303,20 +318,12 @@ def observe_proposal_rulings(
             or entry.outcome is not ControlOutcome.APPLIED
         ):
             continue
-        if str(entry.binding.get("decision")) not in _RETURNING_DECISIONS:
+        if str(entry.binding.get("decision")) not in {d.value for d in RETURNING_DECISIONS}:
             continue
         if entry.target in ineligible_runs:
             continue
         key = (str(entry.binding.get("proposal_id")), int(entry.binding.get("version") or 0))
-        recorded = sorted(set(classes.get(key, [])))
-        known = {c.value for c in ProposalClassification}
-        classification = (
-            Classification(VOCABULARY_PROPOSAL, tuple(recorded))
-            if recorded and set(recorded) <= known
-            else Classification(
-                UNCLASSIFIED, rationale="no classification of this version was recorded"
-            )
-        )
+        classification = _ruling_classification(entry.binding, classes.get(key, []))
         observed.append(
             Observation(
                 source=ObservationSource.PROPOSAL_RULING,

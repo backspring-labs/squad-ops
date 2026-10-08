@@ -2913,3 +2913,46 @@ than retrying. That is left as it is, and named here so that it is a decision, n
 **Who ruled it.** The owner, 2026-10-06, on the recommendation that followed the diagnostic's failure
 (reorder the rows, abort the diagnostic, rebuild with the fix alone, re-run): "go with the recommended
 sequence".
+
+### 24bi. A return names what went wrong, or says that nothing fits and why (2026-10-08, §9.2, §9.4; the 2.2 plan's D2, adopted by the owner 2026-10-07)
+
+**What §9.4 wrote, and what the record held.** §9.4 has the supervisor classify what went wrong with
+each returned or rejected proposal, and the tooling records it as a separate `classify` row,
+accepted at any time, even after the campaign ends. Nothing tied the class to the ruling. Of the six
+historical returns, three carry their class only in the ruling's prose. The runbook told the
+supervisor to name the nearest class when none fitted, which forces a novel defect into a wrong class.
+SIP-0110 observes each returned proposal by its class (§0.4), so a return without one is observed as
+`unclassified` with nothing to say why, and the repeat report cannot read it.
+
+**What changed.** A ruling at the increment gate that returns a proposal (request revision, or reject)
+carries its classification:
+- one of §9.4's five classes; or
+- `unclassified`, with a rationale saying why none fits. A novel defect stays returnable without
+  being forced into a class.
+
+A return with neither is refused with a 422, before any row is written. So is a rationale beside a
+class (a class's reason is the ruling's own notes), an unknown class, and a class on an approval,
+which has nothing wrong to name. The class rides the ruling's own `rule` row (`classification`,
+`classification_rationale` in its binding), in the transaction that records the ruling. The CLI takes
+`--classification` and `--classification-rationale` on `squadops runs gate … progress_increment_ruling`.
+
+**Not changed:**
+- the five classes;
+- the `classify` route, which still records a later reading of a version. SIP-0110's projection reads
+  the ruling's class together with any later reading, so a later reading can class an `unclassified`
+  return;
+- an approval's ruling.
+
+**Evidence.**
+- `tests/unit/api/test_increment_gate_route.py`, entered at the gate route: a return or rejection with
+  no class, `unclassified` without a rationale, an unknown class, and a class on an approval are each
+  a 422 that writes no `rule` row and no gate decision. A classed return, an `unclassified` one with
+  its rationale, and an approval each record exactly that on the `rule` row.
+- `tests/unit/memory/test_observations.py`: the observed class is the ruling's, joined by any later
+  reading; an `unclassified` return keeps its rationale; a ruling from before the rail stays
+  `unclassified` with "no classification of this version was recorded".
+- `tests/unit/cli/test_commands_runs.py`: the flags reach the request, and another gate refuses them.
+
+**Who ruled it.** The owner, 2026-10-07, adopting the 2.2 plan with D1–D15 as written. D2: "a
+`ProposalClassification` class or an explicit `unclassified` with rationale; a return with neither is
+refused (a SIP-0109 rail and amendment)".

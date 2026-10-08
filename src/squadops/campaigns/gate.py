@@ -30,6 +30,7 @@ from squadops.campaigns.models import (
     ControlOutcome,
     IncrementRuling,
     ProposalBinding,
+    ProposalClassification,
     SubmittedProposal,
 )
 from squadops.cycles.models import GateDecisionValue, RunStatus, WorkloadType
@@ -40,6 +41,14 @@ INCREMENT_RULING_GATE = "progress_increment_ruling"
 
 #: The provenance of the candidate manifest an approved increment seeds for its framing (§7.3).
 INCREMENT_SEED_PRODUCER = "campaign.increment_seed"
+
+#: The rulings that return a proposal: request revision, and reject (§9.2).
+RETURNING_DECISIONS = frozenset(
+    {GateDecisionValue.RETURNED_FOR_REVISION, GateDecisionValue.REJECTED}
+)
+
+#: §24bi (the 2.2 plan's D2): a return whose defect none of §9.4's classes fits says so, and why.
+UNCLASSIFIED = "unclassified"
 
 #: The role on the rows the executor writes for the campaign.
 EXECUTOR_ROLE = "executor"
@@ -122,6 +131,44 @@ def submission(state: CampaignState, proposal: SubmittedProposal) -> CampaignTra
     )
 
 
+def return_classification(
+    decision: GateDecisionValue, classification: str | None, rationale: str | None
+) -> dict[str, str]:
+    """What a ruling records of what went wrong with the proposal (§24bi, the 2.2 plan's D2).
+
+    A return (request revision, or reject) carries one of §9.4's classes, or ``unclassified`` with
+    a rationale saying why none fits: a novel defect stays returnable without being forced into a
+    wrong class. A return with neither is refused, and so is a class on an approval, which has
+    nothing wrong to name. Raises ``ValueError`` with the refusal."""
+    classes = ", ".join(c.value for c in ProposalClassification)
+    rationale = (rationale or "").strip()
+    if decision not in RETURNING_DECISIONS:
+        if classification or rationale:
+            raise ValueError(
+                "a classification names what went wrong with a returned proposal; "
+                f"a {decision.value} ruling carries none"
+            )
+        return {}
+    if not classification:
+        raise ValueError(
+            f"a {decision.value} ruling carries its classification: one of {classes}, or "
+            f"{UNCLASSIFIED} with a rationale saying why none fits (SIP-0109 §24bi)"
+        )
+    if classification == UNCLASSIFIED:
+        if not rationale:
+            raise ValueError(f"{UNCLASSIFIED} carries a rationale: why none of {classes} fits")
+        return {"classification": UNCLASSIFIED, "classification_rationale": rationale}
+    if classification not in {c.value for c in ProposalClassification}:
+        raise ValueError(
+            f"unknown classification {classification!r}: one of {classes}, or {UNCLASSIFIED}"
+        )
+    if rationale:
+        raise ValueError(
+            "a rationale goes with unclassified; a class's reason is the ruling's own notes"
+        )
+    return {"classification": classification}
+
+
 def ruling_transition(
     decision: GateDecisionValue,
     binding: ProposalBinding,
@@ -131,9 +178,13 @@ def ruling_transition(
     actor_role: str,
     reason: str,
     idempotency_key: str,
+    classification: str | None = None,
+    classification_rationale: str | None = None,
 ) -> CampaignTransition:
     """The ``rule`` row. A decision the gate does not take still becomes a row, refused as
-    ``illegal_ruling`` and recorded; it moves nothing."""
+    ``illegal_ruling`` and recorded; it moves nothing. A return's classification rides the row
+    (§24bi); one missing or misplaced raises ``ValueError`` before any row is written."""
+    classified = return_classification(decision, classification, classification_rationale)
     return CampaignTransition(
         operation=ControlOperation.RULE,
         actor=actor,
@@ -148,6 +199,7 @@ def ruling_transition(
             "version": binding.version,
             "content_hash": binding.content_hash,
             "baseline_tree": binding.baseline_tree,
+            **classified,
         },
         ruling=IncrementRuling(decision, binding, run_id),
     )

@@ -137,9 +137,14 @@ Read the tree in the runtime container, as root, by the rule every delivered-tre
 (`squadops.cycles.delivered_tree.delivered_files`). An increment's composed tree is the PROMOTE row's
 `tree_ref` (`accepted_tree.json`), which holds the whole app.
 
-**Classify every return or rejection** (§9.4): `squadops campaigns classify <campaign_id> --proposal
-<id> --version <n> --as <class> --reason "…"`. When no class fits exactly, name the nearest and say
-why in the reason. The ledger is what the next pre-registration reads.
+**Every return or rejection carries its classification** (§9.4, §24bi): `--classification <class>` on
+the ruling, one of `scope_too_large`, `criteria_not_checkable`, `conflicts_with_an_earlier_increment`,
+`ambiguous_manifest_delta` or `sound_proposal_built_badly`. When none fits, say so:
+`--classification unclassified --classification-rationale "why none fits"`, rather than forcing a novel
+defect into the nearest class. A return with neither is refused before anything is recorded. A later
+reading of a version is still recorded with `squadops campaigns classify <campaign_id> --proposal <id>
+--version <n> --as <class> --reason "…"`. The ledger is what the next pre-registration reads, and
+Cross-Cycle Memory observes each return by its class (SIP-0110 §0.4).
 
 ```bash
 squadops runs gate <project> <cycle_id> <proposal_run_id> progress_increment_ruling \
@@ -151,9 +156,10 @@ squadops runs gate <project> <cycle_id> <proposal_run_id> progress_increment_rul
   is refused and recorded.
 - **Resending the same key replays the ruling.** A different key with a different payload is a
   conflict.
-- **Request revision** (`--return-for-revision`) sends a note back to the strategy role,
-  which writes the next version.
-- **Reject** (`--reject`) ends the cycle `rejected_at_gate`; it counts toward `max_rejected_proposals_in_row`.
+- **Request revision** (`--return-for-revision --classification <class>`) sends a note back to the
+  strategy role, which writes the next version.
+- **Reject** (`--reject --classification <class>`) ends the cycle `rejected_at_gate`; it counts toward
+  `max_rejected_proposals_in_row`.
 - **Never edit the proposal.** The supervisor is not an author (§9.2).
 - **The ruling bound** (`ruling_bound_s`) is the supervisor's, whoever holds the seat, the
   owner or the crew (§24al). Once it passes, a `ruling_overdue` row is recorded and the digest

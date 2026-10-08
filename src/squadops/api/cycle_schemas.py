@@ -107,6 +107,10 @@ class GateDecisionRequest(BaseModel):
     #: on, and the caller's retry key. Required there, refused elsewhere.
     binding: ProposalBindingDTO | None = None
     idempotency_key: str | None = None
+    #: SIP-0109 §24bi, the increment gate only: a return's classification (§9.4's class, or
+    #: ``unclassified``) and, with ``unclassified``, the rationale. Refused elsewhere.
+    classification: str | None = None
+    classification_rationale: str | None = None
 
     model_config = ConfigDict(extra="forbid")
 
