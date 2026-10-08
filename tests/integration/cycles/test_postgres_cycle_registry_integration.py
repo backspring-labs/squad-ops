@@ -465,6 +465,7 @@ class TestMemoryLessons:
             run_id=run_id,
             task_id="task-1",
             cycle_id="cyc_1",
+            agent_id="neo",
             seam="build_authoring",
             query=query,
             recalled=Recalled("snp_x", RecallDisposition.NONE_ELIGIBLE),
