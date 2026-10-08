@@ -122,3 +122,105 @@ def test_the_secrets_come_from_env_by_the_registrys_client_names():
     env = {"SQUADOPS_AGENT_CLIENT_SECRET": "a", "POSTGRES_PASSWORD": "p"}
 
     assert sync.client_secrets(registry, env) == {"squadops-agent": "a"}
+
+
+class _ServiceAccountRealm:
+    """A live realm's admin API for one confidential client whose service-account user holds
+    ``held``, with the requests made of it."""
+
+    def __init__(self, held: list[str]):
+        self.held = [{"id": f"r-{n}", "name": n} for n in held]
+        self.calls: list[tuple[str, str, object]] = []
+
+    def __call__(self, base_url, token, method, path, body=None):
+        self.calls.append((method, path, body))
+        if method == "GET" and path.endswith("/clients?clientId=squadops-agent"):
+            return 200, [{"id": "c-1", "clientId": "squadops-agent"}]
+        if method == "GET" and path.endswith("/clients/c-1/service-account-user"):
+            return 200, {"id": "u-sa", "username": "service-account-squadops-agent"}
+        if method == "GET" and path.endswith("/users/u-sa/role-mappings/realm"):
+            return 200, list(self.held)
+        if method == "GET" and "/roles/" in path:
+            name = path.rsplit("/", 1)[1]
+            return 200, {"id": f"r-{name}", "name": name}
+        if method == "POST" and path.endswith("/users/u-sa/role-mappings/realm"):
+            self.held += body
+            return 204, None
+        return 404, None
+
+
+def test_a_service_account_missing_its_declared_role_is_granted_it_and_nothing_else(monkeypatch):
+    """#2083, entered at the sync's grant with a realm lacking the mapping (squadops-dev's live
+    state, 2026-10-05). Bugs caught: the agents' client token carrying no role, so the runtime
+    grants it no scope; or the grant touching anything but the service account's own mappings."""
+    export = json.loads((_ROOT / "infra" / "auth" / "squadops-realm.json").read_text())
+    declared = sync.declared_service_account_roles(export)
+    realm = _ServiceAccountRealm(held=["default-roles-squadops"])
+    monkeypatch.setattr(sync, "_request", realm)
+
+    line = sync.grant_service_account_roles(
+        "http://kc", "t", "squadops-dev", "squadops-agent", declared["squadops-agent"]
+    )
+
+    assert declared == {"squadops-agent": ["agent"]}
+    assert "granted ['agent']" in line
+    [post] = [c for c in realm.calls if c[0] != "GET"]
+    assert post == (
+        "POST",
+        "/admin/realms/squadops-dev/users/u-sa/role-mappings/realm",
+        [{"id": "r-agent", "name": "agent"}],
+    )
+    assert {r["name"] for r in realm.held} == {"default-roles-squadops", "agent"}
+
+
+def test_a_service_account_already_holding_its_roles_is_left_alone(monkeypatch):
+    realm = _ServiceAccountRealm(held=["agent"])
+    monkeypatch.setattr(sync, "_request", realm)
+
+    line = sync.grant_service_account_roles(
+        "http://kc", "t", "squadops-dev", "squadops-agent", ["agent"]
+    )
+
+    assert "already holds ['agent']" in line
+    assert [c for c in realm.calls if c[0] != "GET"] == []
+
+
+def test_a_human_user_in_the_export_is_never_read_as_a_service_account():
+    export = {
+        "users": [
+            {"username": "squadops-admin", "realmRoles": ["admin"]},
+            {
+                "username": "service-account-squadops-agent",
+                "serviceAccountClientId": "squadops-agent",
+                "realmRoles": ["agent"],
+            },
+        ]
+    }
+
+    assert sync.declared_service_account_roles(export) == {"squadops-agent": ["agent"]}
+
+
+def test_the_sync_grants_a_live_realms_service_account_its_declared_role(monkeypatch, capsys):
+    """#2083's done-when, entered at the sync's ``main`` with the shipped export and a realm that
+    exists and lacks the mapping. Bug caught: the grant written and never called by the sync the
+    deploy runs."""
+    realm = _ServiceAccountRealm(held=[])
+
+    def answering(base_url, token, method, path, body=None):
+        if method == "GET" and path == "/admin/realms/squadops-dev":
+            return 200, {"realm": "squadops-dev"}
+        if path.endswith("/partialImport"):
+            return 200, {"added": 0, "skipped": 9, "overwritten": 0}
+        return realm(base_url, token, method, path, body)
+
+    monkeypatch.setenv("KEYCLOAK_ADMIN_PASSWORD", "x")
+    monkeypatch.setattr(sync, "admin_token", lambda *a: "t")
+    monkeypatch.setattr(sync, "_request", answering)
+    monkeypatch.setattr(sync, "client_secrets", lambda registry, env: {})
+
+    assert sync.main([str(_ROOT / "infra" / "auth" / "squadops-realm.json")]) == 0
+
+    assert (
+        "squadops-dev/squadops-agent: service account granted ['agent']" in capsys.readouterr().out
+    )
+    assert {r["name"] for r in realm.held} == {"agent"}
