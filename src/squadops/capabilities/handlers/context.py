@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from squadops.cycles.llm_usage import UsageLedger
 
@@ -52,6 +52,16 @@ class ExecutionContext:
     #: SIP-0096 §17a: the checks this task's responses disputed, stripped from each response
     #: by ``_llm_call`` and carried on the task result's outputs by the handler executor.
     disputed_checks: list[dict[str, str]] = field(default_factory=list)
+    #: SIP-0110 §0.11 (#2105): when the task type is an authoring seam, the handler executor sets
+    #: these before ``handle()``: the dispatched task type, the inputs as plain JSON as the
+    #: handler was handed them, and the paths JSON could not carry. ``None`` for every other
+    #: task. ``_llm_call`` reads them to build the envelope.
+    authoring_task_type: str | None = None
+    authoring_inputs: dict[str, Any] | None = None
+    authoring_inputs_not_captured: tuple[str, ...] = ()
+    #: The authoring replay envelope, as a dict: built by ``_llm_call`` at the task's first model
+    #: call, once, and carried on the task result on every exit path.
+    authoring_envelope: dict[str, Any] | None = None
 
     @classmethod
     def create(

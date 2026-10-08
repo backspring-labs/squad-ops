@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from squadops.campaigns.proposed_behaviours import QA_PROPOSED_BEHAVIOURS_ARTIFACT_TYPE
+from squadops.memory.authoring_envelope import AuthoringSeam
 from squadops.tasks.task_types import TaskType
 
 # ---------------------------------------------------------------------------
@@ -138,6 +139,11 @@ class ContextAssemblyContract:
     #: told the rule through ``request.increment_test_scope_appendix``. Declared on the task that
     #: authors the suite; its repair inherits it through ``REPAIR_PRESENCE_KEYS``.
     increment_test_scope: bool = False
+    #: SIP-0110 §0.9: the authoring seam this task is, where cross-cycle memory is supplied and
+    #: where its pre-authoring state is captured for replay (#2105). Plan writing is not declared
+    #: here: it is the #2058 call site, read from ``plan_rejection_context``
+    #: (:func:`authoring_seam_of`), so the fact has one author.
+    authoring_seam: AuthoringSeam | None = None
 
 
 _EMPTY_CONTRACT = ContextAssemblyContract()
@@ -195,6 +201,7 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
         # on the same transport repairs have always used.
         manifest_surfaces=_DEV_SURFACES,
         prior_cycle_brief=True,
+        authoring_seam=AuthoringSeam.BUILD_AUTHORING,
     ),
     TaskType.BUILDER_ASSEMBLE: ContextAssemblyContract(
         artifact_filter=ArtifactFilter(
@@ -204,6 +211,7 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
         ),
         acceptance_workspace=True,
         prior_cycle_brief=True,
+        authoring_seam=AuthoringSeam.BUILD_AUTHORING,
     ),
     # qa.test's prompt context IS the full accepted tree (#644); in bind mode
     # it additionally carries the contract's behavioral surface at PLAN time.
@@ -224,6 +232,7 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
         bind_verification_scaffold=True,
         prior_cycle_brief=True,
         increment_test_scope=True,
+        authoring_seam=AuthoringSeam.BUILD_AUTHORING,
     ),
     # --- planning chain (#657): upstream documents on an envelope-local
     # prior_outputs copy; all four authoring types receive a re-roll's
@@ -330,6 +339,13 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
     TaskType.QA_EVALUATE_INCREMENT: ContextAssemblyContract(
         acceptance_workspace=True, increment_evaluation=True
     ),
+    # --- SIP-0110 §0.9: the proposal and the pulse-check repair are authoring seams. Neither
+    # threads other context through this registry: the proposal's arrives on its launch
+    # (SIP-0109 §9.1), and the pulse repair chain composes its own (SIP-0070).
+    TaskType.STRATEGY_PROPOSE_INCREMENT: ContextAssemblyContract(
+        authoring_seam=AuthoringSeam.PROPOSAL_WRITING
+    ),
+    TaskType.DEVELOPMENT_REPAIR: ContextAssemblyContract(authoring_seam=AuthoringSeam.REPAIR),
     TaskType.DATA_GATHER_EVIDENCE: ContextAssemblyContract(wrapup_evidence=True),
     TaskType.QA_ASSESS_OUTCOMES: ContextAssemblyContract(wrapup_evidence=True),
     TaskType.DATA_CLASSIFY_UNRESOLVED: ContextAssemblyContract(wrapup_evidence=True),
@@ -409,6 +425,7 @@ DECLARED_NO_CONTEXT: frozenset[str] = frozenset(
 #: Kept in step by `test_repair_threads_every_surface_the_developer_gets` — a comment
 #: asking for parity is what produced two inert renderers.
 REPAIR_CONTEXT_CONTRACT = ContextAssemblyContract(
+    authoring_seam=AuthoringSeam.REPAIR,
     manifest_surfaces=(
         SURFACE_ERROR_CONTRACT,
         SURFACE_MODEL,
@@ -558,6 +575,25 @@ def get_context_contract(task_type: str) -> ContextAssemblyContract:
     """The task type's declared contract; the empty contract for undeclared
     types (base enrichment only — chain context and artifact refs)."""
     return CONTEXT_CONTRACTS.get(task_type, _EMPTY_CONTRACT)
+
+
+def authoring_seam_of(task_type: str) -> AuthoringSeam | None:
+    """The authoring seam ``task_type`` is (SIP-0110 §0.9), or ``None``.
+
+    Plan writing is the six types declaring ``plan_rejection_context`` (#2058's call site), read
+    from that declaration. The correction loop's repair types share ``REPAIR_CONTEXT_CONTRACT``,
+    which the correction runner composes them with, so its seam is theirs."""
+    contract = get_context_contract(task_type)
+    if contract.authoring_seam is not None:
+        return contract.authoring_seam
+    if contract.plan_rejection_context:
+        return AuthoringSeam.PLAN_WRITING
+    # Local: task_plan imports this module, so a module-level import would be a cycle.
+    from squadops.cycles.task_plan import REPAIR_TASK_TYPES
+
+    if task_type in REPAIR_TASK_TYPES:
+        return REPAIR_CONTEXT_CONTRACT.authoring_seam
+    return None
 
 
 def dispatch_artifact_filter_spec(task_type: str) -> dict[str, list[str]] | None:

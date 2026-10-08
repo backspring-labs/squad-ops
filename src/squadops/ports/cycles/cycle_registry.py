@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from datetime import datetime
+from typing import Any
 
 from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.cycle_end import RecordedEnd
@@ -213,6 +214,23 @@ class CycleRegistryPort(ABC):
     async def get_run_loop_summary(self, run_id: str) -> RunLoopSummary | None:
         """One run's persisted loop facts, or None — a run finalized before SIP-0108's row."""
         return None  # default for adapters predating the row
+
+    # --- Authoring replay envelopes (SIP-0110 §0.11; #2105) ---
+
+    async def record_authoring_envelope(self, run_id: str, envelope: dict[str, Any]) -> bool:
+        """Record one authoring seam's replay envelope, as ``AuthoringReplayEnvelope.to_dict()``.
+
+        Idempotent: a duplicate delivery of the same capture (``envelope_id``) is a no-op.
+        Returns whether the row is new. Recorded as the reply arrives, while the run runs.
+
+        Raises:
+            RunNotFoundError: If the run_id is not found.
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not record authoring envelopes")
+
+    async def list_authoring_envelopes(self, run_id: str) -> list[dict[str, Any]]:
+        """A run's recorded envelopes, in capture order (empty for a run with none)."""
+        raise NotImplementedError(f"{type(self).__name__} does not record authoring envelopes")
 
     @abstractmethod
     async def get_run_verification_summary(self, run_id: str) -> RunVerificationSummary | None:

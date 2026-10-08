@@ -101,7 +101,8 @@ The LLM domain: request, response and chat-message models, its exceptions, and t
 registry (SIP-0073), which maps each model name to its context window and defaults.
 
 ### `squadops.memory`
-The memory domain: entries, queries and scored results for semantic memory (SIP-042).
+The memory domain: entries, queries and scored results for semantic memory (SIP-042), and Cross-Cycle
+Memory's (SIP-0110): the recall query and recalled pattern, and the authoring replay envelope with its four seams.
 
 ### `squadops.orchestration`
 Coordination between agents and handlers: `AgentOrchestrator`, the handler registry and the

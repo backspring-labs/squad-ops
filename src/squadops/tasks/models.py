@@ -122,6 +122,9 @@ class TaskResult:
     #: timeout, an agent older than the field), which the run summary counts rather than
     #: reads as zero.
     llm_usage: dict[str, Any] | None = None
+    #: SIP-0110 §0.11 (#2105): an authoring seam's replay envelope, captured at the task's first
+    #: model call. ``None`` for every other task, and for a seam task that never called a model.
+    authoring_envelope: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dict for JSON transport."""

@@ -41,7 +41,7 @@ import json
 import logging
 import time
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from adapters.cycles.execution_errors import _CancellationError
 from adapters.cycles.task_naming import build_task_name
@@ -113,6 +113,7 @@ class TaskDispatcher:
         # 1.8.2 item 15: declared by whoever composes the dispatcher, never defaulted here.
         task_timeout: float,
         is_cancelled: Callable[[str], Awaitable[bool]] | None = None,
+        record_authoring_envelope: Callable[[str, dict[str, Any]], Awaitable[Any]] | None = None,
     ) -> None:
         self._queue = queue
         self._reply_router = reply_router
@@ -124,6 +125,10 @@ class TaskDispatcher:
         # idiom as ``store_artifact`` / ``handle_task_outcome``: the transport
         # asks "is this run cancelled?" without taking a registry dependency.
         self._is_cancelled = is_cancelled
+        # SIP-0110 §0.11 (#2105): executor-supplied, the same idiom: every reply that carries an
+        # authoring seam's envelope is recorded here, on every dispatch path, without the
+        # transport taking a registry dependency.
+        self._record_authoring_envelope = record_authoring_envelope
         # #1929: this process's boot. Every dispatch carries it, so an agent can tell a restarted
         # runtime asking again for a task it finished from this process's own retry.
         self._boot = uuid.uuid4().hex
@@ -330,6 +335,8 @@ class TaskDispatcher:
                         result.outputs if result is not None else None,
                     )
                 )
+                if result is not None and result.authoring_envelope:
+                    await self._record_envelope(run_id, result.authoring_envelope)
                 lint = (result.outputs or {}).get("lint_findings") if result is not None else None
                 if isinstance(lint, dict):
                     self._run_lint_findings[run_id] = {"task_id": envelope.task_id, **lint}
@@ -395,6 +402,24 @@ class TaskDispatcher:
                 await self._activity_port.fail_activity(activity_id, reason)
         except Exception:
             logger.warning("best-effort finish_activity failed for %s", activity_id, exc_info=True)
+
+    async def _record_envelope(self, run_id: str, envelope: dict[str, Any]) -> None:
+        """Record one authoring envelope (SIP-0110 §0.11). Beside execution: a failure to record
+        is logged and never fails, holds or changes the task, whose reply is already here."""
+        if self._record_authoring_envelope is None:
+            logger.warning(
+                "authoring_envelope_not_recorded: no recorder wired",
+                extra={"run_id": run_id, "task_id": envelope.get("task_id")},
+            )
+            return
+        try:
+            await self._record_authoring_envelope(run_id, envelope)
+        except Exception:
+            logger.warning(
+                "authoring_envelope_not_recorded",
+                extra={"run_id": run_id, "task_id": envelope.get("task_id")},
+                exc_info=True,
+            )
 
     async def _publish_and_await(
         self,

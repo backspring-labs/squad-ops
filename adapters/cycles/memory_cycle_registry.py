@@ -6,8 +6,10 @@ Stores mutable internal records, returns frozen snapshots via dataclasses.replac
 
 from __future__ import annotations
 
+import copy
 import dataclasses
 from datetime import datetime
+from typing import Any
 
 from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.cycle_end import RecordedEnd
@@ -33,6 +35,7 @@ from squadops.cycles.models import (
 from squadops.cycles.pulse_models import PulseVerificationRecord
 from squadops.cycles.run_loop_summary import RunLoopSummary
 from squadops.cycles.verification_integrity import RunVerificationSummary
+from squadops.memory.authoring_envelope import envelope_id
 from squadops.ports.cycles.cycle_registry import CycleRegistryPort
 
 
@@ -47,6 +50,8 @@ class MemoryCycleRegistry(CycleRegistryPort):
         self._pulse_verifications: dict[str, list[dict]] = {}
         self._verification_summaries: dict[str, RunVerificationSummary] = {}
         self._loop_summaries: dict[str, RunLoopSummary] = {}
+        #: run_id -> envelope_id -> envelope (SIP-0110 §0.11).
+        self._authoring_envelopes: dict[str, dict[str, dict[str, Any]]] = {}
         self._checkpoints: dict[str, list[RunCheckpoint]] = {}
         # SIP-0101 Slice 2: (run_id, checkpoint_index) pairs excluded from pruning
         # (the model stays retention-agnostic; postgres carries this as a column)
@@ -283,6 +288,21 @@ class MemoryCycleRegistry(CycleRegistryPort):
 
     async def get_run_loop_summary(self, run_id: str) -> RunLoopSummary | None:
         return self._loop_summaries.get(run_id)
+
+    async def record_authoring_envelope(self, run_id: str, envelope: dict[str, Any]) -> bool:
+        """Store one authoring seam's replay envelope (SIP-0110 §0.11; idempotent)."""
+        if run_id not in self._runs:
+            raise RunNotFoundError(f"Run not found: {run_id}")
+        recorded = self._authoring_envelopes.setdefault(run_id, {})
+        key = envelope_id(envelope)
+        if key in recorded:
+            return False
+        recorded[key] = copy.deepcopy(envelope)
+        return True
+
+    async def list_authoring_envelopes(self, run_id: str) -> list[dict[str, Any]]:
+        recorded = self._authoring_envelopes.get(run_id, {})
+        return sorted((copy.deepcopy(e) for e in recorded.values()), key=lambda e: e["captured_at"])
 
     async def record_failure_records(
         self, cycle_id: str, last_run_id: str, records: tuple[FailureRecord, ...]

@@ -170,7 +170,7 @@ disabled. So building the parts does not move the regression baseline.
 
 | slice | what | the seam that owns it | size | deploy |
 |---|---|---|---|---|
-| 1, #2105 | the source-case inspection, then an `AuthoringReplayEnvelope` captured immediately before each consuming seam's authoring, complete beyond #1756's 10,000-character cut (§0.11): proposal writing first, then plan writing, build authoring and repair | the proposal handler's input assembly (`capabilities/handlers/planning/proposal.py`); the plan-authoring and build-authoring inputs' assembly (`cycles/task_plan.py`) and the build handlers (`capabilities/handlers/cycle/develop.py`, `qa_test.py`, `builder.py`); the repair inputs' assembly, at runtime, by the correction runner (`adapters/cycles/correction_repair.py`); the vault for storage | **L** (M in revision 5: one seam, now four) | yes |
+| 1, #2105 | the source-case inspection, then an `AuthoringReplayEnvelope` captured immediately before each consuming seam's authoring, complete beyond #1756's 10,000-character cut (§0.11): proposal writing first, then plan writing, build authoring and repair | the proposal handler's input assembly (`capabilities/handlers/planning/proposal.py`); the plan-authoring and build-authoring inputs' assembly (`cycles/task_plan.py`) and the build handlers (`capabilities/handlers/cycle/develop.py`, `qa_test.py`, `builder.py`); the repair inputs' assembly, at runtime, by the correction runner (`adapters/cycles/correction_repair.py`); the capture at the one model-call sequence every handler shares (`capabilities/handlers/cycle/base.py` `_llm_call`); the cycle registry for storage (`authoring_envelopes`), not the vault, whose run artifacts feed later prompts by producing task | **L** (M in revision 5: one seam, now four) | yes |
 | 2, #2106 | the authoring replay: three arms over captured envelopes at any seam, validated first on proposals; temporal validity read by evidence time, not admission time, with a test for two units running at once; counterfactual replays reported apart from prospective claims; isolation from production memory; one fixed rubric per target; the combined replay of lessons supplied together (§0.6, §0.11–§0.12) | `scripts/dev/`, beside the increment replay (#1959) | M | no |
 | 3, #2096 | the mechanism (§0.2–§0.10), observing every eligible cycle and supplying four seams, with the failure-shape sorter and the repeat report (D14). Its parts are listed below | see the parts | L, larger than revision 5's | yes |
 | 4, #2107 | the lesson for the one supported target behavior, drafted by the auditor on development cases and replay-checked, with any lessons supplied beside it, before the owner approves it (D15); the pre-registration, which fixes the primary target; the window; the finding (§0.4, §0.6, §0.12–§0.13) | the store (D13) for the drafted revision; `docs/plans/` for the pre-registration | M, plus the window's box time | yes |
@@ -241,8 +241,10 @@ They are left until a slice touches them, so that the plan's PRs stay prose only
 
 **Within slice 1, the proposal seam's capture lands first,** because the first measured target is there. Plan writing,
 build authoring and repair follow in the same slice. Every cycle after they ship adds faithful cases at those seams too.
-A build-authoring prompt carries the accepted tree, so its envelope references files by hash rather than copying them
-(SIP-0110 §0.11: "contains, or immutably references").
+The envelope holds the handler's inputs inline, so the handler's own prompt construction can be re-run from them. A
+build-authoring task's inputs carry the accepted tree, so its envelope's size is measured on the live proof. If the
+volume calls for it, large inputs move to content-addressed references (SIP-0110 §0.11: "contains, or immutably
+references").
 
 ### 2.2 Beside it: #1708's auto tier and escalation queue
 

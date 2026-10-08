@@ -1511,6 +1511,23 @@ class _CycleTaskHandler(CapabilityHandler):
         Reading it off ``messages`` rather than taking it as an argument is what stops
         the two drifting apart.
         """
+        # SIP-0110 §0.11 (#2105): an authoring seam's first call is captured before the model is
+        # asked, once per task, and its capture time is the task's pre-authoring cutoff. A
+        # re-ask or a self-eval call is the same authoring: the envelope already holds what it
+        # was given.
+        # Beside the authoring, never in its way: a capture that fails is logged, the call goes
+        # ahead, and the reconstruction proof is what finds the missing envelope.
+        if isinstance(context.authoring_inputs, dict) and context.authoring_envelope is None:
+            try:
+                context.authoring_envelope = self._authoring_envelope(
+                    context, messages, chat_kwargs, rendered
+                )
+            except Exception:
+                logger.warning(
+                    "authoring_envelope_not_captured",
+                    extra={"task_id": context.task_id, "handler": self._handler_name},
+                    exc_info=True,
+                )
         # 1.8.2 item 2: a call that spent its whole completion budget and wrote nothing is
         # asked again once, with that fact. The loop keeps ONE call and one sequence: every
         # call — the discarded one included — is accounted, shape-logged and recorded here,
@@ -1603,6 +1620,48 @@ class _CycleTaskHandler(CapabilityHandler):
                 return response, content
             retried = True
             call_messages = [*messages, ChatMessage(role="user", content=retry_fact)]
+
+    def _authoring_envelope(
+        self,
+        context: ExecutionContext,
+        messages: list[ChatMessage],
+        chat_kwargs: dict[str, Any],
+        rendered: object | None,
+    ) -> dict[str, Any]:
+        """The authoring replay envelope for this task's first call (SIP-0110 §0.11), as a dict."""
+        from datetime import UTC, datetime
+
+        from squadops.capabilities.context_assembly import authoring_seam_of
+        from squadops.memory.authoring_envelope import capture_envelope
+
+        task_type = context.authoring_task_type or str(self._task_type)
+        seam = authoring_seam_of(task_type)
+        if seam is None:  # the executor sets the inputs only for a seam; never guess one
+            raise ValueError(f"{task_type} is not an authoring seam, so it has no envelope")
+        template = None
+        template_id = getattr(rendered, "template_id", None)
+        if template_id:
+            template = {
+                "template_id": str(template_id),
+                "template_version": str(getattr(rendered, "template_version", "")),
+                "render_hash": str(getattr(rendered, "render_hash", "")),
+            }
+        return capture_envelope(
+            seam=seam,
+            task_type=task_type,
+            task_id=context.task_id,
+            cycle_id=context.cycle_id,
+            project_id=context.project_id,
+            agent_id=context.agent_id,
+            role=context.role_id,
+            handler_name=self._handler_name,
+            captured_at=datetime.now(UTC).isoformat(),
+            messages=[(m.role, m.content) for m in messages],
+            chat_kwargs=chat_kwargs,
+            inputs=context.authoring_inputs or {},
+            inputs_not_captured=context.authoring_inputs_not_captured,
+            request_template=template,
+        ).to_dict()
 
     @staticmethod
     async def _disputed_checks_section(renderer: Any, checks: list[str]) -> str:
