@@ -59,7 +59,7 @@ diverged from on agent-discretionary memory tools (§6).
 
 ---
 
-## Delivery ledger (current as of 2026-10-07)
+## Delivery ledger (current as of 2026-10-08)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or
 re-places it.
@@ -599,8 +599,10 @@ target behavior's recurrence in authoring.
 - **Phase 2 begins only on the owner's ruling after a valid finding** (§8, amended).
 
 **The corpus is small.**
-- **The proposal behavior** has about three independent historical cases, in three campaigns, none captured before
-  authoring.
+- **The proposal behavior** has one clean historical case under today's prompt: counted campaign 1's increment 2,
+  version 1, with the rule (#1947) stated and the evidence on screen. The source-case inspection (§5e) read the other
+  three returns as a missing instruction (the two shakeouts, before #1947) and a missing fact since supplied (version
+  2, before #2013). They stay diagnostic. None was captured before authoring.
 - **Plan reviews and correction rounds** show no recurring target behavior in the 2.0 and 2.1 windows (§5b).
 - **Every eligible cycle after slice 3's deploy adds observations,** the regression rolls included. Only campaigns add
   proposal cases.
@@ -1331,6 +1333,33 @@ limit of campaigns. The owner asked for all nine ("yes, add all nine to 2111"), 
 frozen within a campaign in 2.2, and activation within a running campaign is deferred. It is reviewed with the plan's
 re-scoping in one PR, and its merge is the
 ruling.
+
+## 5e. The source-case inspection (2026-10-08, slice 1, #2105)
+
+**What changed.** §0.13's corpus note. "About three independent historical cases" becomes **one clean case under
+today's prompt**. The full inspection is posted on #2105. For each of the four returns it read the proposal, the
+ruling, the proposal block the proposer was given (which carries the accepted manifest verbatim), and the deploy's
+templates at its commit:
+
+| case | deploy | the evidence on screen | what failed |
+|---|---|---|---|
+| shakeout 7, v1 (T2) | rebuild 19, before #1947 | partly: the criterion held only because the FastAPI stack's frozen request models ignore an undeclared field, which no convention said | a missing instruction, and one missing stack fact |
+| shakeout 8, v1 (T3) | rebuild 20, before #1947 | yes: the manifest says the app excludes capacity limits | a missing instruction |
+| counted campaign 1, increment 2, v1 (T2) | rebuild 22, with #1947 | yes, in full: the manifest declares `capacity` and `capacity_reached` | faulty reasoning. The proposal's empty `manifest_delta` and tests-only footprint show it registered the declaration |
+| counted campaign 1, increment 2, v2 (T3, T4) | rebuild 22, without #2013 | no: trimming is the frozen models' `NonBlankStr` | missing information, since supplied by #2013 (#1962) |
+
+**What follows.**
+- The lesson targets reasoning, not access and not the rule. In the clean case the rule was stated and the evidence
+  was on screen, so restating either repeats #1947. The corrective action is a comparison step: for each new
+  criterion, name the element of the accepted manifest that makes it fail before the change.
+- §5b's reading that the class "recurred after [#1947] in counted campaign 1, at version 1 and again at version 2" holds
+  for version 1 only. Version 2 was a missing fact.
+- One evidence-access gap remains: the FastAPI stack's undeclared-field convention. It is #2114, fixed as a separately
+  identified change before the window (§0.4).
+- "Inconclusive" is more likely than §0.13 first said. The window's corpus comes from 2.2's own campaigns.
+
+**Who ruled it.** No ruling changes. The inspection is slice 1's first deliverable, built under the 2.2 standing
+authority (the 2.2 plan §5). It corrects a count and records evidence.
 
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
