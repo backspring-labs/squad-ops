@@ -152,6 +152,26 @@ _GO = Guard.PROCEED
         (_REJ, {}, (12, PendingAction.REPAIR, _GO)),
         (_REJ, dict(repair_cycles=1), (13, PendingAction.ABANDON_AND_PROPOSE, _GO)),
         (None, {}, (14, PendingAction.ESCALATE, None)),
+        # §24bj: a parked increment, repair or retry is abandoned, counting as unaccepted; asked
+        # before row 6, which would otherwise propose without counting it.
+        (None, dict(ending=CycleEnding.PARKED), (15, PendingAction.ABANDON_AND_PROPOSE, _GO)),
+        (
+            None,
+            dict(ending=CycleEnding.PARKED, kind=CycleKind.REPAIR),
+            (15, PendingAction.ABANDON_AND_PROPOSE, _GO),
+        ),
+        # A parked calibration has nothing to build on: row 2 ends the campaign.
+        (
+            None,
+            dict(ending=CycleEnding.PARKED, kind=CycleKind.CALIBRATION),
+            (2, CampaignOutcome.FAILURE),
+        ),
+        # A run of parks ends at the no-progress rule.
+        (
+            None,
+            dict(ending=CycleEnding.PARKED, unaccepted_increments=2),
+            (4, CampaignOutcome.FAILURE),
+        ),
     ],
 )
 def test_each_row_is_reached_by_a_crafted_input(verdict, kwargs, expected):

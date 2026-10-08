@@ -18,7 +18,13 @@ import pytest
 from adapters.cycles.memory_campaign_registry import MemoryCampaignRegistry
 from adapters.cycles.workload_gate import GateOutcome
 from adapters.noop.ports import NoOpFailurePatternRecall
-from squadops.campaigns.models import CampaignObjective, CampaignState, PlanGate
+from squadops.campaigns.escalation import EscalationState, escalations
+from squadops.campaigns.models import (
+    CampaignObjective,
+    CampaignState,
+    ControlOperation,
+    PlanGate,
+)
 from squadops.campaigns.plan_review_tier import GATE_DECIDED_BY_PLAN_REVIEW_TIER
 from squadops.cycles.manifest_authoring import GATE_DECIDED_BY_NO_QUESTIONS
 from squadops.cycles.models import (
@@ -111,6 +117,22 @@ _REFUSED = GateDecision(
 )
 
 
+async def _tier_cycle(kind: str = "increment") -> Cycle:
+    return Cycle(
+        cycle_id="cyc_tier",
+        project_id="group_run",
+        created_at=NOW,
+        created_by="launcher",
+        prd_ref=None,
+        squad_profile_id="full",
+        squad_profile_snapshot_ref="sha256:abc",
+        task_flow_policy=TaskFlowPolicy(mode="sequential"),
+        build_strategy="fresh",
+        campaign_id=CID,
+        kind=kind,
+    )
+
+
 async def _reach_the_gate(
     plan_gate: PlanGate,
     *,
@@ -173,19 +195,7 @@ async def _reach_the_gate(
             notes="answered",
         )
     )
-    cycle = Cycle(
-        cycle_id="cyc_tier",
-        project_id="group_run",
-        created_at=NOW,
-        created_by="launcher",
-        prd_ref=None,
-        squad_profile_id="full",
-        squad_profile_snapshot_ref="sha256:abc",
-        task_flow_policy=TaskFlowPolicy(mode="sequential"),
-        build_strategy="fresh",
-        campaign_id=CID,
-        kind=kind,
-    )
+    cycle = await _tier_cycle(kind)
     step = await executor._workload_gate.decide(
         cycle=cycle,
         cycle_id=cycle.cycle_id,
@@ -210,6 +220,8 @@ async def test_a_tier_campaigns_plan_every_condition_holds_for_is_approved_by_th
     """Bug caught: a tier campaign's gate decided by #807's pass-through (no record of the
     tier's reading) or left waiting on a person it does not need."""
     executor, registry, step = await _reach_the_gate(PlanGate.TIER)
+    log = await executor._campaign_registry.control_log(CID)
+    assert escalations(log, CampaignState.CALIBRATING) == []
 
     assert step.outcome is GateOutcome.PROCEED
     assert _recorded_deciders(registry) == [GATE_DECIDED_BY_PLAN_REVIEW_TIER]
@@ -244,6 +256,39 @@ async def test_a_plan_the_tier_cannot_approve_waits_for_a_person(reach, failed):
     ]
     assert awaiting.kwargs["payload"]["tier_failed"] == failed
     assert step.outcome is GateOutcome.PROCEED  # the person's answer moved it
+    # §24bj: the gate opened one escalation, about this run and gate, naming what failed.
+    campaigns = executor._campaign_registry
+    [esc] = escalations(await campaigns.control_log(CID), CampaignState.CALIBRATING)
+    assert (esc.run_id, esc.gate_name, esc.state) == ("run_frame", GATE, EscalationState.PENDING)
+    assert [condition for condition, _ in esc.failed] == failed
+    assert esc.questions == tuple(reach.get("questions", ()))
+
+
+async def test_re_entering_an_escalated_gate_after_a_restart_opens_no_second_escalation():
+    """Keyed by what it is about (§24bj). Bug caught: a restart re-entering the gate opening a
+    second escalation for the same plan, so one question expires twice."""
+    executor, _, _ = await _reach_the_gate(PlanGate.TIER, questions=("which order?",))
+    campaigns = executor._campaign_registry
+    await executor._workload_gate.decide(
+        cycle=await _tier_cycle(),
+        cycle_id="cyc_tier",
+        run=_run("run_frame"),
+        workload_entry={"type": "framing", "gate": GATE},
+        gate_name=GATE,
+        current_run_id="run_frame",
+        forwarding_overrides=None,
+        framing_rerolls=0,
+        framing_revisions=0,
+        max_framing_rerolls=2,
+        max_framing_revisions=0,
+    )
+
+    opened = [
+        e
+        for e in await campaigns.control_log(CID)
+        if e.operation is ControlOperation.ESCALATION_OPENED
+    ]
+    assert len(opened) == 1
 
 
 async def test_a_tier_calibrations_builder_notes_at_the_root_do_not_escalate_it():

@@ -44,7 +44,7 @@ def _check_values(sql: str, column: str) -> set[str]:
         # Replaced whole again by 1650 (the owner's start), 1660 (the classification), 1680
         # (the ruling bound), 1690 (the box lease and a blocked launch, #1802) and 1695 (a
         # launch the cycle-create path refused, #1971).
-        ("1695_campaign_launch_refused.sql", "operation", ControlOperation),
+        ("1750_campaign_escalations.sql", "operation", ControlOperation),
         ("1690_box_lease.sql", "refusal", RefusalReason),
         ("1690_box_lease.sql", "holder", LeaseHolder),
         ("1600_campaigns.sql", "cycle_kind", CycleKind),

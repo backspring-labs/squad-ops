@@ -26,6 +26,12 @@ from hashlib import sha256
 from typing import Any
 from uuid import uuid4
 
+from squadops.campaigns.escalation import (
+    EscalationIdentity,
+    escalations,
+    opening_transition,
+    plan_identity,
+)
 from squadops.campaigns.gate import (
     INCREMENT_RULING_GATE,
     INCREMENT_SEED_PRODUCER,
@@ -317,6 +323,9 @@ class WorkloadGate:
                         current_run_id,
                         "; ".join(f"{c.condition}: {c.reading}" for c in tier.failed),
                     )
+                    await self._open_escalation(
+                        cycle, run, run_cycle, current_run_id, gate_name, tier, questions
+                    )
                 if questions:
                     logger.info(
                         "Gate %r on run %s is waiting on %d design question(s): %s",
@@ -559,6 +568,55 @@ class WorkloadGate:
             decision=decision,
         )
         return decision
+
+    async def _open_escalation(
+        self,
+        cycle: Cycle,
+        run: Any,
+        run_cycle: Cycle,
+        current_run_id: str,
+        gate_name: str,
+        tier: TierVerdict,
+        questions: tuple[str, ...] | None,
+    ) -> None:
+        """§24bj: the tier could not approve, so the gate escalates. One ``escalation_opened`` row,
+        keyed by what it is about, so re-entering the gate after a restart replays it; the gate
+        then waits for a person, and the sweep ends the escalation."""
+        assert cycle.campaign_id is not None and self._campaign_registry is not None
+        campaign = await self._campaign_registry.get_campaign(cycle.campaign_id)
+        proposal = run_cycle.resolved_config().get("campaign_proposal") or {}
+        identity = EscalationIdentity(
+            campaign_id=cycle.campaign_id,
+            cycle_id=cycle.cycle_id,
+            run_id=current_run_id,
+            gate_name=gate_name,
+            proposal_id=proposal.get("proposal_id"),
+            proposal_version=proposal.get("version"),
+            baseline=campaign.accepted.identity if campaign.accepted else None,
+            plan_identity=plan_identity(
+                await self._run_manifest_content(run, run_cycle),
+                await self._load_run_plan_yaml(run),
+            ),
+        )
+        log = await self._campaign_registry.control_log(cycle.campaign_id)
+        if any(e.escalation_id == identity.escalation_id for e in escalations(log, campaign.state)):
+            # A restart re-entered the gate: the escalation stands, and its bound runs from when
+            # it was first opened. Writing it again would be refused as a conflicting key.
+            return
+        try:
+            await self._campaign_registry.transition(
+                cycle.campaign_id,
+                opening_transition(identity, tier, questions, datetime.now(UTC)),
+            )
+        except ControlOperationRefused as refused:
+            logger.error(
+                "plan_gate_escalation_refused",
+                extra={
+                    "cycle_id": cycle.cycle_id,
+                    "run_id": current_run_id,
+                    "refusal": str(refused.entry.refusal),
+                },
+            )
 
     async def _submit_proposal(self, cycle: Cycle, run: Any) -> None:
         """Pin the proposal this run produced at its campaign's increment gate (SIP-0109 §9.2).

@@ -109,7 +109,8 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | per-increment scorecard in the digest (§24bb) | **shipped** | 2.1.0, PR #2027, issue #1960 |
 | increment replay (any increment of any campaign, outside it) | **shipped** | 2.1.0, PR #2026, issue #1959 |
 | the plan-review tier at the plan gate, declared by `plan_gate` (§24bj) | **shipped**; activation held until 2.2's measurement window closes | 2.2.0, PR #2146 |
-| the escalation queue: its store, the bound's expiry, the parked cycle, the late answer and the digest (§24bj) | **placed** | 2.2.0, #1708 |
+| the escalation queue: its store, the bound's expiry and the parked cycle (§24bk) | **shipped** | 2.2.0, PR #2147 |
+| the escalation queue's late answer, its digest lists and its CLI (§24bj, §24bk) | **placed** | 2.2.0, #1708 |
 | accepted increments' `prd_delta` text to the proposer | **deferred to 2.4** (ruled 2026-10-03, §24ap): "a 2.4 question" | §24ap |
 | escalating a launch the cycle-create preflight refuses | **shipped** (§24ba) | 2.1.0, PR #2052, issue #1971 |
 | re-hearing an ended cycle between restarts | **shipped**: the campaign sweep re-hears on its interval, and a cycle is heard by one hearer at a time | 2.1.0, PR #2038, issue #1972 (§24as) |
@@ -3085,3 +3086,71 @@ and shows each late answer recorded. It reads the store, so a restart loses noth
 - **an automatic rejection or answer.** The ruling keeps them with a person;
 - **proposal auto-approval,** until its checks exist (the 2.2 plan §2.2);
 - **an escalation that notifies anyone.** The digest is its reader, as it is the overdue rows' (§24ae).
+
+### 24bk. The escalation queue, as built, and one correction to §24bj (2026-10-08, §10, §24ae, §24aj, §24bj, #1708; implementer's reading, for the owner)
+
+**The correction.** §24bj says an approval with blank notes on a question "answers nothing (§24ad),
+so the escalation stays `pending`". That cannot hold. A person's approval decides the gate, and the
+cycle goes on to its build. A pending escalation would then expire at the bound and park a cycle that
+had already moved on. **As built:** any decision a person records on the gate resolves its escalation.
+A blank-noted approval still answers no question: §24ad leaves the question open, and it is asked
+again at the next gate. Found while building the sweep; the test is
+`test_a_person_deciding_the_gate_resolves_it_and_the_run_goes_on`.
+
+**As built:**
+- **The queue is the campaign's control log.** Two record-only operations (migration 1750):
+  - `escalation_opened`, keyed by the escalation's identity (`escalation.EscalationIdentity`): the
+    campaign, cycle, run, gate, proposal and version, the accepted baseline, and the content hash of
+    the manifest and plan the tier read;
+  - `escalation_closed`, whose binding names its state. **Every ending of one escalation shares one
+    key,** so a second ending is refused as a conflicting key, recorded, and never applied. That is
+    the compare-and-set: an escalation ends exactly once.
+
+  Both are records, so the campaign holds in the state it was in, as §24bj says.
+- **The gate opens it** (`WorkloadGate._open_escalation`) when the tier cannot approve, then waits for
+  a person. A restart that re-enters the gate finds the escalation standing and writes nothing, so its
+  bound runs from its first opening.
+- **The sweep ends it** (`CampaignProgress._sweep_escalations`, every interval, beside §24ae's and
+  §24aj's rows), reading each pending escalation against its run:
+  - a person decided its gate: `resolved`, with the decider as the row's actor;
+  - its run no longer waits, and nobody decided it: `superseded`;
+  - it still waits, and `ruling_bound_s` has passed since it opened: `expired`.
+- **An expiry parks the cycle.** The sweep cancels the run (the `supersede` edge, `COMPLETED →
+  CANCELLED`, a framing run waiting at its gate having already completed). The gate's poll sees the
+  cancellation, and the cycle ends `RUN_CANCELLED`. A person's decision that lands between the sweep's
+  read and the cancel wins: the run goes on, and the expiry stands in the record beside it.
+- **The `parked` ending** (`CycleEnding.PARKED`) is read from the record: the cycle's last run is the
+  one an expiry named, and it was cancelled (`escalation.parked_run`). An operator's cancel with no
+  expiry naming the run is not a park.
+- **§10 row 15**, asked before row 6: a parked increment, repair or retry is `abandon_and_propose`,
+  counting as unaccepted. Row 15 is numbered after row 14 so that recorded rows keep their numbers. A
+  parked calibration never reaches it: it was not accepted, so row 2 ends the campaign.
+- **`cancelled` is read, not written.** An escalation still pending when its campaign completed reads
+  `cancelled`. The campaign's own terminal row is its record, and no sweep reads completed campaigns.
+- **§24aj's overdue row is not written for an escalated gate.** It shares the bound with the expiry and
+  says the gate still waits, which the expiry contradicts.
+
+**Still to build** (#1708): the late answer and its reading through §24ad, the digest's lists, and the
+CLI that answers an expired escalation.
+
+**Evidence.**
+- `tests/unit/campaigns/test_plan_gate_escalations.py` enters at `CampaignProgress.sweep_ruling_bounds`
+  over memory campaign and cycle registries:
+  - an expiry is written once, cancels the run and parks it, with no overdue row beside it;
+  - before the bound, nothing moves;
+  - a person's decision resolves the escalation and leaves the run alone;
+  - a run that stopped waiting supersedes it;
+  - a second ending is refused;
+  - an escalation pending at the campaign's end reads `cancelled`.
+
+  Without the overdue-row skip, the expiry test fails. Without the park, the expiry test fails.
+- `tests/unit/cycles/test_plan_review_tier_wiring.py` enters at `WorkloadGate.decide`. The tier's
+  failure opens one escalation naming its conditions and questions, and a re-entry opens no second
+  one: that test found the re-entry writing a refused row on every restart, which is why the gate
+  reads the log first.
+- `tests/unit/campaigns/test_continuation.py`: row 15 for a parked increment and a parked repair, row
+  2 for a parked calibration, and row 4 for a run of parks.
+
+**Who ruled it.** The queue is §24bj's, ruled by the owner on 2026-10-08. The correction, and the
+readings above that §24bj left open (row 15's number, `cancelled` read rather than written, the
+overdue row's skip), are the implementer's, for the owner's reading.

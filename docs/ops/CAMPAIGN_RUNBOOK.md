@@ -188,8 +188,11 @@ definition declares it; one that does not is refused at creation:
   for you;
 - `tier`: the plan-review tier approves when the design asks nothing, the plan's files are inside the
   objective's `allowed_scope` (a calibration is exempt), and the framing ran once. It records
-  `system:plan_review_tier`, with what each condition read in the notes. Anything else waits for you
-  as above, with the conditions that failed on the gate's awaiting event. **Held until 2.2's
+  `system:plan_review_tier`, with what each condition read in the notes. **Anything else escalates**
+  (§24bj, §24bk): an `escalation_opened` row names the conditions that failed and the questions, and
+  the gate waits for you as above. Answer it within `ruling_bound_s`; any decision you record resolves
+  it. Past the bound, the sweep parks the cycle: the increment is abandoned, unaccepted, and the
+  campaign proposes again (row 15), or a parked calibration ends the campaign. **Held until 2.2's
   measurement window closes:** no campaign declares `tier` before then.
 
 ---

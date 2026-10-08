@@ -42,6 +42,9 @@ class CycleEnding(StrEnum):
     ASSESSED = "assessed"
     REJECTED_AT_GATE = "rejected_at_gate"
     PROPOSAL_FAILED = "proposal_failed"
+    #: §24bj: the plan gate escalated and its bound passed with nobody deciding it. Unaccepted,
+    #: and neither rejected nor failed: silence is never a verdict.
+    PARKED = "parked"
 
 
 @dataclass(frozen=True)
@@ -240,6 +243,11 @@ def _pending(
 ) -> tuple[int, PendingAction]:
     if cycle.kind is CycleKind.CALIBRATION:
         return 5, PendingAction.PROPOSE
+    # §24bj, row 15, asked before row 6: a parked increment, repair or retry counts as unaccepted,
+    # so a run of parks ends at the no-progress rule. A parked calibration never reaches here: it
+    # was not accepted, so row 2 ended the campaign.
+    if cycle.ending is CycleEnding.PARKED:
+        return 15, PendingAction.ABANDON_AND_PROPOSE
     if cycle.ending is not CycleEnding.ASSESSED:
         return 6, PendingAction.PROPOSE
     if verdict is RunVerdict.ACCEPTED:
