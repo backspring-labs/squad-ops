@@ -392,6 +392,7 @@ class TestMemoryLessons:
     the inserts, the immutability check, revocation and a unit's single pin against the tables."""
 
     async def test_a_lesson_its_approval_and_a_units_pin_round_trip(self, migrated_pool):
+        import dataclasses
         from datetime import timedelta
 
         from adapters.memory.cross_cycle import PostgresCrossCycleMemoryStore, RevisionConflict
@@ -400,7 +401,7 @@ class TestMemoryLessons:
         from tests.unit.memory.test_lessons import WHERE, _approve, _revision
 
         project = f"lessons-{uuid.uuid4().hex[:8]}"
-        where = WHERE.__class__(**{**WHERE.to_dict(), "project_id": project})
+        where = dataclasses.replace(WHERE, project_id=project)
         rev = _revision(f"behavior-{project}", where=where)
         approval = _approve(rev, where=where)
         store = PostgresCrossCycleMemoryStore(pool=migrated_pool)
