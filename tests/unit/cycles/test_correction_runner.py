@@ -7385,6 +7385,97 @@ class TestTheAnalyzersProseIsCheckedBeforeTheDecisionInheritsIt:
     def test_prose_without_any_path_is_left_alone(self):
         assert self._refute({"analysis_summary": "The route handler returns the wrong code."}) == []
 
+    def test_a_claim_about_a_frozen_scaffold_file_stands_and_a_ghost_beside_it_does_not(self):
+        """#2155. The rebuild 5 nextjs pair's analyzer said, correctly, that the routes did not
+        use ``lib/errors.ts``'s ``errorResponse``. The refutation told the decision that the
+        file did not exist, in both rounds, because the scaffold seeds it and no task lists it.
+        Bug caught: a true claim about a frozen file refuted."""
+        from adapters.cycles.correction_runner import refuted_source_claims
+
+        analysis = {
+            "analysis_summary": "The routes throw instead of using lib/errors.ts errorResponse.",
+            "contributing_factors": ["app/api/runs/ghost.ts never answers."],
+        }
+        inputs = {"implementation_artifacts": ["app/api/runs/route.ts"]}
+
+        refuted = refuted_source_claims(analysis, inputs, frozenset({"lib/errors.ts"}))
+
+        assert [e["path"] for e in refuted] == ["app/api/runs/ghost.ts"]
+
+    def test_frozen_paths_alone_do_not_switch_the_refutation_on(self):
+        """The frozen set widens what is known; it never stands in for an envelope that knew
+        nothing, which still refutes nothing."""
+        from adapters.cycles.correction_runner import refuted_source_claims
+
+        analysis = {"analysis_summary": "backend/ghost.py is the cause."}
+        assert refuted_source_claims(analysis, {}, frozenset({"lib/errors.ts"})) == []
+
+    async def test_the_decision_is_not_told_a_frozen_file_is_missing(self, cycle):
+        """#2155's wiring, entered at ``run_correction_protocol`` with a nextjs interface
+        manifest, so the run's bound record is the one a live run builds. The decision's
+        envelope carries the refutation of the ghost path the analyzer named, and none of
+        ``lib/errors.ts``, which the scaffold froze into the workspace."""
+        from squadops.tasks.models import TaskEnvelope
+        from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+        dispatched: dict[str, dict] = {}
+
+        def responder(envelope):
+            dispatched[envelope.task_type] = dict(envelope.inputs)
+            if envelope.task_type == "data.analyze_failure":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "classification": "work_product",
+                        "analysis_summary": (
+                            "The routes throw instead of using lib/errors.ts errorResponse. "
+                            "And app/api/runs/ghost.ts never answers."
+                        ),
+                    },
+                )
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={"correction_path": "continue", "decision_rationale": "r"},
+                )
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+        runner, _registry, _vault, _bus = TestCorrectionRunnerStandalone()._make_runner(responder)
+        failed = TaskEnvelope(
+            task_id="task_failed",
+            agent_id="eve",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="group_run",
+            task_type="qa.test",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={"implementation_artifacts": ["app/api/runs/route.ts"]},
+            metadata={"role": "qa"},
+        )
+
+        await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=failed,
+            result=TaskResult(task_id="task_failed", status="FAILED", error="10 failed"),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+            correction_budget=3,
+            interface_manifest=manifest_for_stack("nextjs_ts"),
+        )
+
+        refuted = dispatched["governance.correction_decision"]["refuted_source_claims"]
+        assert [e["path"] for e in refuted] == ["app/api/runs/ghost.ts"]
+
 
 class TestADisputedGenericOwnArtifactRouteFallsThroughToTheDevChain:
     """#1054's routing half, at `_locus_and_repair_target`.
