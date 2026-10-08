@@ -9,6 +9,9 @@ the deploy: for every export the compose mounts, if its realm exists, ``partialI
 the export with ``ifResourceExists=SKIP`` — idempotent and non-destructive (adds what is
 missing, leaves existing resources and users alone).
 
+#2083: then each confidential client's service account is given the realm roles the export
+declares on its user, which ``partialImport`` (users omitted) never carries.
+
 #2006: then each confidential client's secret is set from ``.env`` (the registry,
 ``infra/deploy_credentials.json``, names which variable holds which client's). The exports carry
 a seed value, which every deploy used to keep; now a realm the export created is brought to the
@@ -107,6 +110,55 @@ def sync_export(base_url: str, token: str, export_path: Path) -> str:
     )
 
 
+def declared_service_account_roles(export: dict) -> dict[str, list[str]]:
+    """Each confidential client's service-account realm roles, as the export declares them on the
+    ``service-account-<client>`` user, by clientId (#2083)."""
+    return {
+        u["serviceAccountClientId"]: list(u.get("realmRoles") or ())
+        for u in export.get("users") or ()
+        if u.get("serviceAccountClientId") and u.get("realmRoles")
+    }
+
+
+def grant_service_account_roles(
+    base_url: str, token: str, realm: str, client_id: str, roles: list[str]
+) -> str:
+    """Add the export's declared realm roles to a client's live service-account user (#2083).
+
+    ``partialImport`` leaves users out, and a service account's roles live on its user, so a
+    client added to an export after its realm was created arrives without them. Additive: a role
+    already held is left, nothing is removed, and no human user is touched."""
+    query = urllib.parse.urlencode({"clientId": client_id})
+    status, found = _request(base_url, token, "GET", f"/admin/realms/{realm}/clients?{query}")
+    if status != 200 or not found:
+        return f"{realm}/{client_id}: client not found ({status})"
+    status, user = _request(
+        base_url,
+        token,
+        "GET",
+        f"/admin/realms/{realm}/clients/{found[0]['id']}/service-account-user",
+    )
+    if status != 200 or not user:
+        return f"{realm}/{client_id}: no service-account user ({status})"
+    mappings = f"/admin/realms/{realm}/users/{user['id']}/role-mappings/realm"
+    status, held = _request(base_url, token, "GET", mappings)
+    if status != 200:
+        return f"{realm}/{client_id}: reading its roles returned {status}"
+    missing = sorted(set(roles) - {r["name"] for r in held or ()})
+    if not missing:
+        return f"{realm}/{client_id}: service account already holds {sorted(roles)}"
+    representations = []
+    for name in missing:
+        status, role = _request(base_url, token, "GET", f"/admin/realms/{realm}/roles/{name}")
+        if status != 200 or not role:
+            return f"{realm}/{client_id}: realm role {name!r} not found ({status})"
+        representations.append(role)
+    status, _ = _request(base_url, token, "POST", mappings, representations)
+    if status not in (200, 204):
+        return f"{realm}/{client_id}: adding {missing} returned {status}"
+    return f"{realm}/{client_id}: service account granted {missing}"
+
+
 def client_secrets(registry: list[dict], env: dict[str, str]) -> dict[str, str]:
     """Each Keycloak client's secret as ``.env`` holds it, by clientId (#2006)."""
     return {
@@ -163,10 +215,14 @@ def main(argv: list[str] | None = None) -> int:
     secrets_by_client = client_secrets(load_registry(), read_env(REPO / ".env"))
     for export in args.exports:
         print(sync_export(args.base_url, token, export))
-        realm = json.loads(export.read_text())["realm"]
+        document = json.loads(export.read_text())
+        realm = document["realm"]
         status, _ = _request(args.base_url, token, "GET", f"/admin/realms/{realm}")
         if status != 200:
             continue
+        # #2083: the service accounts' realm roles, which partialImport's users omission leaves out.
+        for client_id, roles in sorted(declared_service_account_roles(document).items()):
+            print(grant_service_account_roles(args.base_url, token, realm, client_id, roles))
         for client_id, secret in sorted(secrets_by_client.items()):
             print(set_client_secret(args.base_url, token, realm, client_id, secret))
     return 0
