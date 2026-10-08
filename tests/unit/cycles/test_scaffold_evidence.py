@@ -203,6 +203,99 @@ class TestRoutingPerClass:
         assert obs.failure_class == CLASS_APP_CONTRACT
 
 
+def _stack_row(shell: str, *frames: tuple[str, int], message: str = "Error: boom") -> dict:
+    """A shell's failure row as the runner builds it from vitest's JSON report: the error's
+    stack in ``failureMessages`` (innermost frame first, as V8 prints it), parsed by the same
+    ``parse_vitest_failure_rows`` the live path calls."""
+    stack = "\n".join(
+        [message]
+        + [f"    at Module.fn (/ws/{file}:{line}:11)" for file, line in frames]
+        + ["    at file:///ws/node_modules/@vitest/runner/dist/index.js:135:14"]
+    )
+    report = {
+        "testResults": [
+            {
+                "name": f"/ws/{shell}",
+                "status": "failed",
+                "assertionResults": [
+                    {"status": "failed", "title": "t", "failureMessages": [stack]},
+                ],
+            }
+        ]
+    }
+    (row,) = parse_vitest_failure_rows(report, "/ws", [shell])
+    return row
+
+
+class TestAppRaisedUnderTheSpine:
+    """#2152: a mechanical death the APP raised, under a call on the frozen spine. The nextjs
+    regression pair of rebuild 5 (``cyc_9e9770706fdd``): the route threw ``ApiError`` instead of
+    answering through ``errorResponse``. The shell died on the spine's ``GET(...)`` with its slot
+    unrun, was classed ``fill``, and qa re-filled two correct shells until the run ended
+    ``plan_defect``. Bug caught: the app's raise sent to qa, or to no LLM round at all."""
+
+    @pytest.mark.parametrize(
+        ("shell", "expected_criterion"),
+        # A ``vs-`` shell binds no probe, so it has no criterion to join (as the spine's own
+        # assertion failure has none there).
+        [(_CREATE_SHELL, "vc-probe-api-runs"), (_LIST_SHELL, "")],
+        ids=["a filled probe shell", "an unfilled scenario shell"],
+    )
+    def test_the_apps_raise_under_the_spines_call_is_app_contract(
+        self, emission, merged_contents, dispositions, shell, expected_criterion
+    ):
+        call_line = _line_of(merged_contents[shell], "as Handler)(")
+        row = _stack_row(
+            shell,
+            ("app/api/runs/route.ts", 24),
+            (shell, call_line),
+            message="Error: Field 'title' is required and must be a non-empty string",
+        )
+
+        (obs,) = _classify(emission, merged_contents, dispositions, [row])
+
+        assert obs.failure_class == CLASS_APP_CONTRACT
+        assert obs.criterion_id == expected_criterion
+        assert obs.line == call_line
+        assert obs.detail.startswith(
+            f"the app raised at app/api/runs/route.ts:24 under the spine's own call at line "
+            f"{call_line}: Error: Field 'title' is required"
+        )
+        assert obs.to_dict()["route"] == "dev_repair"
+
+    def test_the_apps_raise_under_a_call_the_fill_made_stays_the_fills(
+        self, emission, merged_contents, dispositions
+    ):
+        """The fill chose that call, so the frames do not clear it."""
+        fill_line = _line_of(merged_contents[_CREATE_SHELL], "expect(body.title).toBe('sample')")
+        row = _stack_row(_CREATE_SHELL, ("lib/store.ts", 9), (_CREATE_SHELL, fill_line))
+
+        (obs,) = _classify(emission, merged_contents, dispositions, [row])
+
+        assert obs.failure_class == CLASS_FILL
+        assert "merged fill broke the shell mechanically" in obs.detail
+
+    def test_a_raise_in_the_shell_itself_keeps_the_mechanical_reading(
+        self, emission, merged_contents, dispositions
+    ):
+        call_line = _line_of(merged_contents[_CREATE_SHELL], "as Handler)(")
+        row = _stack_row(_CREATE_SHELL, (_CREATE_SHELL, call_line))
+
+        (obs,) = _classify(emission, merged_contents, dispositions, [row])
+
+        assert obs.failure_class == CLASS_FILL
+
+    def test_frames_that_never_reach_the_shell_keep_the_mechanical_reading(
+        self, emission, merged_contents, dispositions
+    ):
+        """Who made the call is unknown, so there is nothing to clear the fill with."""
+        row = _stack_row(_CREATE_SHELL, ("app/api/runs/route.ts", 24))
+
+        (obs,) = _classify(emission, merged_contents, dispositions, [row])
+
+        assert obs.failure_class == CLASS_FILL
+
+
 class TestCorrelation:
     def _shell_obs(self, criterion="vc-probe-api-runs"):
         return ShellObservation(

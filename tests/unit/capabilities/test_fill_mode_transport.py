@@ -444,6 +444,86 @@ async def test_the_evidence_pipeline_lands_in_outputs(scaffold_input, monkeypatc
     assert classify_failure_locus(evidence) == FailureLocus.SUBJECT
 
 
+async def test_the_apps_raise_under_the_spine_reaches_the_locus_as_the_subjects(
+    scaffold_input, monkeypatch
+):
+    """#2152's wiring, entered at ``handle()``: the runner's row for a shell the app killed
+    under the spine's own call (the rebuild 5 nextjs pair, ``cyc_9e9770706fdd``) is built from
+    the report by the live parser and lands as ``app_contract``. So the correction loop reads
+    the subject's locus, not the qa re-fill that ended that run ``plan_defect``."""
+    from squadops.capabilities.handlers.cycle import qa_test as qa_test_module
+    from squadops.capabilities.handlers.test_runner import RunTestsResult, parse_vitest_failure_rows
+    from squadops.cycles.failure_evidence import FailureLocus, classify_failure_locus
+
+    fill_text = "```fill:slot-vc-probe-api-runs\n    expect(body.id).toBeTruthy()\n```\n"
+    shell_path = "__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts"
+
+    async def _canned_suite(capability, sources, extracted):
+        merged_content = next(f["content"] for f in extracted if f["filename"] == shell_path)
+        call_line = next(
+            i
+            for i, line in enumerate(merged_content.split("\n"), start=1)
+            if "as Handler)(" in line
+        )
+        stack = (
+            "Error: Field 'title' is required and must be a non-empty string\n"
+            "    at Module.POST (/tmp/qa_node_x/app/api/runs/route.ts:24:13)\n"
+            f"    at /tmp/qa_node_x/{shell_path}:{call_line}:42\n"
+        )
+        report = {
+            "testResults": [
+                {
+                    "name": f"/tmp/qa_node_x/{shell_path}",
+                    "status": "failed",
+                    "assertionResults": [
+                        {"status": "failed", "title": "t", "failureMessages": [stack]}
+                    ],
+                }
+            ]
+        }
+        result = RunTestsResult(
+            executed=True,
+            exit_code=1,
+            runner="vitest",
+            suite_broken=False,
+            test_failures=tuple(parse_vitest_failure_rows(report, "/tmp/qa_node_x", [shell_path])),
+        )
+        return result, {
+            "name": "test_report.md",
+            "content": "r",
+            "media_type": "text/markdown",
+            "type": "document",
+        }
+
+    monkeypatch.setattr(
+        qa_test_module.QATestHandler, "_run_test_suite", staticmethod(_canned_suite)
+    )
+    context = MagicMock()
+    context.ports.llm.chat_stream_with_usage = AsyncMock(return_value=MagicMock(content=fill_text))
+    context.ports.llm.default_model = "m"
+    assembled = MagicMock()
+    assembled.content = "system"
+    context.ports.prompt_service.assemble = MagicMock(return_value=assembled)
+    context.ports.request_renderer = None
+
+    result = await QATestHandler().handle(
+        context,
+        {
+            "prd": "group_run",
+            "artifact_contents": {},
+            "resolved_config": {"development_profile": "nextjs_ts"},
+            "subtask_focus": "fill the scaffold",
+            "expected_artifacts": [],
+            "verification_scaffold": scaffold_input,
+        },
+    )
+
+    evidence = result.outputs["scaffold_evidence"]
+    assert evidence["failure_classes"] == {"app_contract": 1}
+    assert evidence["observations"][0]["owner"] == "dev"
+    assert classify_failure_locus({"scaffold_evidence": evidence}) == FailureLocus.SUBJECT
+
+
 def test_containment_findings_reach_outputs_scaffold_evidence(scaffold_input, emission):
     """The landing, asserted on `outputs` — the dict that actually leaves the handler.
 

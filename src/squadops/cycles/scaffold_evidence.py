@@ -136,6 +136,23 @@ def classify_shell_failures(
             # bodies: if one was merged, the fill is the variable; if none, the spine
             # itself failed to execute — a generator surface the gates missed.
             detail = messages[0][:400] if messages else "mechanical failure"
+            # #2152: unless the APP raised, under a call the spine made. The shell then died
+            # before its slot ran, so neither the fill nor the generator is the variable.
+            under_spine = _app_raise_under_spine(row, path, merged_contents.get(path))
+            if under_spine is not None:
+                raised, shell_line = under_spine
+                observations.append(
+                    ShellObservation(
+                        file=path,
+                        slot_id=slot_id,
+                        failure_class=CLASS_APP_CONTRACT,
+                        detail=f"the app raised at {raised} under the spine's own call at "
+                        f"line {shell_line}: {detail}",
+                        criterion_id=primary_slot.probe_id if primary_slot else "",
+                        line=shell_line,
+                    )
+                )
+                continue
             if filled:
                 observations.append(
                     ShellObservation(
@@ -198,6 +215,45 @@ def classify_shell_failures(
                 )
             )
     return observations
+
+
+def _app_raise_under_spine(
+    row: dict, shell_path: str, merged_content: str | None
+) -> tuple[str, int] | None:
+    """``("<file>:<line>" raised at, the shell's line)`` when a mechanical death was raised by
+    the app under a call on the spine, else None (#2152).
+
+    Read off the row's frames (#1270, outermost first, so ``frames[-1]`` raised): the raising
+    frame is in a file other than the shell, and the shell's own innermost frame lies outside
+    every slot region of the merged file. The nextjs regression pair of rebuild 5
+    (``cyc_9e9770706fdd``) shows the case. The not-found shell died at line 14, the spine's
+    ``GET(...)``, raised by ``app/api/runs/[run_id]/route.ts:11``, while the slot (lines 20–24)
+    never ran. It was classed ``fill`` and qa re-filled two correct shells.
+
+    Anything the frames cannot settle keeps the mechanical reading: no frames, a raise in the
+    shell itself, the shell's frame inside a slot, or merged content that does not parse.
+    """
+    from squadops.capabilities.verification_scaffold import ScaffoldSpineError, parse_slot_regions
+
+    frames = [f for f in row.get("frames") or () if isinstance(f, dict)]
+    if not frames or merged_content is None:
+        return None
+    raised = frames[-1]
+    if str(raised.get("file") or "") == shell_path:
+        return None
+    own_lines = [
+        f["line"] for f in frames if f.get("file") == shell_path and isinstance(f.get("line"), int)
+    ]
+    if not own_lines:
+        return None
+    shell_line = own_lines[-1]
+    try:
+        regions = parse_slot_regions(merged_content)
+    except ScaffoldSpineError:
+        return None
+    if any(region.begin_line < shell_line < region.end_line for region in regions):
+        return None
+    return f"{raised.get('file')}:{raised.get('line')}", shell_line
 
 
 @dataclass(frozen=True)
