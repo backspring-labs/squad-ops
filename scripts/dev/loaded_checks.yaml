@@ -500,3 +500,12 @@ checks:
       from squadops.cycles.models import GateDecisionValue
       print(return_classification(GateDecisionValue.REJECTED, UNCLASSIFIED, "why"))
     expect: "{'classification': 'unclassified', 'classification_rationale': 'why'}"
+  - id: "2141"
+    what: the plan proposers derive the id they render, so their envelopes reconstruct
+    container: squadops-nat
+    code: |
+      from squadops.capabilities.handlers.planning_tasks import StrategyProposePlanGuidanceHandler
+      render = StrategyProposePlanGuidanceHandler()._build_render_variables
+      a, b = render("PRD", None, {}), render("PRD", None, {})
+      print(a["proposal_id"] == b["proposal_id"] and a["guidance_id"] == b["guidance_id"])
+    expect: "True"
