@@ -179,7 +179,7 @@ def observe_cycle(
 
 
 def _plan_reviews(cycle: Cycle, run: Run, records: list[RejectionRecord]) -> list[Observation]:
-    observed = []
+    observed: list[Observation] = []
     for decision in run.gate_decisions:
         if (
             decision.gate_name != PLAN_REVIEW_GATE
@@ -216,7 +216,7 @@ def _plan_reviews(cycle: Cycle, run: Run, records: list[RejectionRecord]) -> lis
 
 
 def _correction_rounds(cycle: Cycle, run: Run, summary: RunLoopSummary) -> list[Observation]:
-    observed = []
+    observed: list[Observation] = []
     finished = run.finished_at
     if finished is None:  # a summary is written at finalization; an unfinished run has none
         return observed
@@ -279,7 +279,7 @@ def observe_proposal_rulings(
         if entry.operation is ControlOperation.CLASSIFY and entry.outcome is ControlOutcome.APPLIED:
             key = (str(entry.binding.get("proposal_id")), int(entry.binding.get("version") or 0))
             classes.setdefault(key, []).append(str(entry.binding.get("classification")))
-    observed = []
+    observed: list[Observation] = []
     for entry in log:
         if (
             entry.operation is not ControlOperation.RULE
