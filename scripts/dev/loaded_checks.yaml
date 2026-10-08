@@ -24,7 +24,7 @@ checks:
     code: |
       from squadops.capabilities.scaffold import frozen_conventions_for
       print(sorted(c.kind.value for c in frozen_conventions_for("nextjs_ts")))
-    expect: "['error_envelope', 'unset_optional_unfixed']"
+    expect: "['error_envelope', 'undeclared_field_unfixed', 'unset_optional_unfixed']"
   - id: "1884"
     what: a qa repair inherits the increment's test scope
     container: squadops-runtime-api
