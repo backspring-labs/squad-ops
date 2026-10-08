@@ -66,6 +66,27 @@ def lessons_input(recalled: Recalled) -> dict | None:
     }
 
 
+async def supply_for_cycle(
+    envelopes: Sequence[TaskEnvelope],
+    *,
+    recall: FailurePatternRecallPort,
+    cycle: Cycle,
+    run_id: str,
+    now: datetime,
+) -> list[TaskEnvelope]:
+    """:func:`supply_lessons` for a run of ``cycle``: its unit and its stack (``cycle_stack``)."""
+    from squadops.cycles.benchmark_registry import cycle_stack
+
+    return await supply_lessons(
+        envelopes,
+        recall=recall,
+        unit=unit_of(cycle),
+        stack=cycle_stack(cycle) or "",
+        run_id=run_id,
+        now=now,
+    )
+
+
 async def supply_lessons(
     envelopes: Sequence[TaskEnvelope],
     *,

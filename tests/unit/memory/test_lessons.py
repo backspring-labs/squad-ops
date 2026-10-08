@@ -210,3 +210,20 @@ def test_the_exposure_records_what_was_supplied_and_what_was_left_out_and_why():
     assert exposure["disposition"] == "supplied" and exposure["snapshot"].startswith("snp_")
     assert [i["revision_id"] for i in exposure["intervention"]] == [small.revision_id]
     assert exposure["omitted"] == [{"revision_id": large.revision_id, "reason": "budget"}]
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("project_id", ""),
+        ("model_families", ("",)),
+        ("model_families", ()),
+        ("roles", ("strat", " ")),
+        ("stacks", ()),
+    ],
+)
+def test_an_applicability_with_an_empty_field_is_refused_when_made(field, value):
+    """§0.8 step 3. Bug caught: a lesson approved for the family ``""`` reaching every task whose
+    model the registry does not know, an unknown read as a match."""
+    with pytest.raises(ValueError, match="an applicability names its"):
+        dataclasses.replace(WHERE, **{field: value})

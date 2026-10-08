@@ -28,6 +28,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from adapters.cycles.correction_runner import CorrectionRunner
+from adapters.noop.ports import NoOpFailurePatternRecall
 from squadops.capabilities.scaffold import InterfaceManifest
 from squadops.cycles.models import AgentProfileEntry, SquadProfile
 from squadops.tasks.models import TaskEnvelope, TaskResult
@@ -80,6 +81,10 @@ _CYCLE = SimpleNamespace(
     # Every cycle's request profile declares what its correction protocol runs
     # (SIP-0108 §10i item 3); this golden captures the squad's full protocol.
     resolved_config=lambda: {"correction_steps": ["analyze", "decide", "repair"]},
+    # What a repair's lesson supply reads (SIP-0110 §0.9): a standalone cycle, no stack declared.
+    campaign_id=None,
+    execution_overrides={},
+    applied_defaults={},
 )
 
 _RUN_ID = "run_abcdef123456"
@@ -200,6 +205,7 @@ def harness(monkeypatch):
         event_bus=MagicMock(),
         task_dispatcher=AsyncMock(),
         store_artifact=AsyncMock(),
+        failure_recall=NoOpFailurePatternRecall(),
     )
     captured: list[tuple[str, str, dict]] = []
 

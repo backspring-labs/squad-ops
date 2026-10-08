@@ -55,6 +55,17 @@ class Applicability:
     stacks: tuple[str, ...]
     model_families: tuple[str, ...]
 
+    def __post_init__(self) -> None:
+        """Refused when made with an empty field, or an empty name in one: a task whose scope is
+        unknown (an unregistered model's family is ``""``) would then match it, and an unknown
+        never means "everywhere" (§0.8 step 3)."""
+        if not str(self.project_id).strip():
+            raise ValueError("an applicability names its project")
+        for name in ("task_types", "roles", "stacks", "model_families"):
+            values = getattr(self, name)
+            if not values or any(not str(v).strip() for v in values):
+                raise ValueError(f"an applicability names its {name}, and none of them is empty")
+
     def covers(
         self, project_id: str, task_type: str, role: str, stack: str, model_family: str
     ) -> bool:

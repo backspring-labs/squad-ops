@@ -590,6 +590,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             dispatch_step=lambda *args, **kw: self._correction_runner._dispatch_protocol_step(
                 *args, **kw
             ),
+            failure_recall=failure_recall,
         )
         self._correction_runner = correction_runner or CorrectionRunner(
             cycle_registry=cycle_registry,
@@ -597,6 +598,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             event_bus=event_bus,
             task_dispatcher=self._task_dispatcher,
             store_artifact=lambda *args, **kw: self._store_artifact(*args, **kw),
+            failure_recall=failure_recall,
             correction_repair=self._correction_repair,
         )
         # 1.7.5 recovery extraction map §4 step 2: the accepted-patch collaborator, built

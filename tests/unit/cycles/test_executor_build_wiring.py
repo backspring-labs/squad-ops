@@ -1441,7 +1441,9 @@ class TestTheCorrectionRepairCollaboratorIsBuiltWhereItIsCalled:
         """
         from adapters.cycles.correction_repair import CorrectionRepair
 
-        override = CorrectionRepair(dispatch_step=AsyncMock())
+        override = CorrectionRepair(
+            dispatch_step=AsyncMock(), failure_recall=NoOpFailurePatternRecall()
+        )
         executor = self._executor(reply_router, correction_repair=override)
 
         assert executor._correction_repair is override

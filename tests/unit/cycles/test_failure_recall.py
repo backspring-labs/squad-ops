@@ -292,3 +292,104 @@ async def test_provisioning_supplies_the_plan_it_builds():
     [design] = [e for e in state.plan if str(e.task_type) == "development.design_plan"]
     assert design.inputs[LESSONS_INPUT]["lessons"][0]["revision_id"].endswith("@1")
     assert await store.list_exposures(run.run_id)
+
+
+async def test_a_correction_repair_is_supplied_its_lessons_when_it_is_composed():
+    """Repair (§0.9), entered at ``CorrectionRunner.run_correction_protocol`` with the snapshot
+    recall, composing a real dev repair of a failed ``development.develop``. Bugs caught: the
+    repair composed without asking, so a correction-round lesson reaches only the next cycle's
+    first authoring; or the analyzer and the decision, which author no output, handed lessons."""
+    from adapters.cycles.correction_runner import CorrectionRunner
+    from squadops.tasks.models import TaskResult
+    from tests.unit.cycles.test_correction_context_golden import (
+        _CYCLE,
+        _DEV_FAILED_INPUTS,
+        _DEV_FAILED_RESULT,
+        _HARNESS_PROFILE,
+        _RUN_ID,
+        _STEP_OUTPUTS,
+        _failed_envelope,
+    )
+
+    repair_where = Applicability(
+        project_id="proj",
+        task_types=("development.correction_repair",),
+        roles=("dev",),
+        stacks=(ANY_STACK,),
+        model_families=("qwen3.8",),
+    )
+    store = InMemoryCrossCycleMemoryStore()
+    for text, where in (("Declare the field the client reads.", repair_where),):
+        revision = PatternRevision(
+            pattern_id=pattern_id_for("proj", text, "development.correction_repair"),
+            revision=1,
+            target_behavior=text,
+            text=text,
+            applicability=where,
+            template_id="lesson.t",
+            template_version="1",
+            drafter_model="auditor",
+            drafter_version="1",
+            cited_observations=("correction_round:x",),
+            created_at=_NOW,
+        )
+        await store.record_revision(revision)
+        await store.record_approval(Approval("apr_r", revision.revision_id, where, "owner", _NOW))
+    await pin_unit(
+        store,
+        unit_kind=UnitKind.CYCLE,
+        unit_id=_CYCLE.cycle_id,
+        project_id="proj",
+        pinned_at=_NOW.replace(hour=1),
+        disabled=False,
+    )
+    profile = dataclasses.replace(
+        _HARNESS_PROFILE,
+        agents=tuple(dataclasses.replace(a, model=_MODEL) for a in _HARNESS_PROFILE.agents),
+    )
+    runner = CorrectionRunner(
+        cycle_registry=AsyncMock(),
+        artifact_vault=AsyncMock(),
+        event_bus=MagicMock(),
+        task_dispatcher=AsyncMock(),
+        store_artifact=AsyncMock(),
+        failure_recall=SnapshotRecall(store),
+    )
+    dispatched = []
+
+    async def _dispatch(step_envelope, *args, **kwargs):
+        dispatched.append(step_envelope)
+        outputs = _STEP_OUTPUTS.get(step_envelope.task_type, {"artifacts": []})
+        return TaskResult(task_id=step_envelope.task_id, status="SUCCEEDED", outputs=dict(outputs))
+
+    runner._dispatch_protocol_step = _dispatch  # type: ignore[method-assign]
+
+    await runner.run_correction_protocol(
+        run_id=_RUN_ID,
+        cycle=_CYCLE,
+        envelope=_failed_envelope("development.develop", _DEV_FAILED_INPUTS, "dev"),
+        result=_DEV_FAILED_RESULT,
+        correction_attempts=0,
+        prior_outputs={"dev": {"summary": "[dev] built"}},
+        all_artifact_refs=["art_routes"],
+        stored_artifacts=[],
+        completed_task_ids=["task-development.develop"],
+        plan_delta_refs=[],
+        profile=profile,
+        flow_run_id=None,
+        interface_manifest=None,
+        artifact_contents=None,
+        scaffold_enforcement_carry=None,
+        budget_guard=None,
+        signature_state=None,
+        correction_budget=3,
+    )
+
+    handed = {str(e.task_type): e.inputs.get(LESSONS_INPUT) for e in dispatched}
+    assert [x["text"] for x in handed["development.correction_repair"]["lessons"]] == [
+        "Declare the field the client reads."
+    ]
+    assert handed["data.analyze_failure"] is None
+    assert handed["governance.correction_decision"] is None
+    [exposure] = await store.list_exposures(_RUN_ID)
+    assert (exposure.seam, exposure.disposition) == ("repair", "supplied")

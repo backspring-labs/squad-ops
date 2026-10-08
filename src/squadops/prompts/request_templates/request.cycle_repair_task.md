@@ -1,6 +1,6 @@
 ---
 template_id: request.cycle_repair_task
-version: "12"
+version: "13"
 required_variables:
   - prd
   - role
@@ -29,6 +29,7 @@ optional_variables:
   - anchored_edit_section
   - anchored_edit_retry_section
   - disputed_checks_section
+  - cross_cycle_lessons_section
 ---
 ## Repair Task
 
@@ -74,7 +75,7 @@ The narrative criteria below describe intent. They are context, not letter-of-th
 {{failure_summary}}
 
 {{correction_decision_section}}
-{{disputed_checks_section}}
+{{disputed_checks_section}}{{cross_cycle_lessons_section}}
 
 ### Product Requirements Document
 

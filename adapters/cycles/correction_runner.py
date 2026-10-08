@@ -92,6 +92,7 @@ if TYPE_CHECKING:
     from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
     from squadops.ports.cycles.cycle_registry import CycleRegistryPort
     from squadops.ports.events.cycle_event_bus import CycleEventBusPort
+    from squadops.ports.memory.recall import FailurePatternRecallPort
     from squadops.tasks.models import TaskResult
 
 logger = logging.getLogger(__name__)
@@ -378,6 +379,7 @@ class CorrectionRunner:
         *,
         task_dispatcher: TaskDispatcher,
         store_artifact: Callable[..., Awaitable[ArtifactRef]],
+        failure_recall: FailurePatternRecallPort,
         correction_repair: CorrectionRepair | None = None,
     ) -> None:
         self._cycle_registry = cycle_registry
@@ -397,7 +399,8 @@ class CorrectionRunner:
             # here would keep calling the original past the patch — silently, since the
             # collaborator would still dispatch and the golden would diff the real
             # envelope against the stub's.
-            dispatch_step=lambda *args, **kw: self._dispatch_protocol_step(*args, **kw)
+            dispatch_step=lambda *args, **kw: self._dispatch_protocol_step(*args, **kw),
+            failure_recall=failure_recall,
         )
 
     async def _store_correction_task_artifacts(
