@@ -28,6 +28,7 @@ from squadops.cli.commands.bootstrap import bootstrap
 from squadops.cli.commands.campaigns import app as campaigns_app
 from squadops.cli.commands.cycles import app as cycles_app
 from squadops.cli.commands.doctor import doctor
+from squadops.cli.commands.lessons import app as lessons_app
 from squadops.cli.commands.meta import app as meta_app
 from squadops.cli.commands.models import app as models_app
 from squadops.cli.commands.profiles import app as profiles_app
@@ -105,3 +106,4 @@ app.add_typer(request_profiles_app, name="request-profiles")  # SIP-0074
 app.add_typer(models_app, name="models")  # SIP-0074
 app.add_typer(agent_app, name="agent")  # SIP-0089
 app.add_typer(assignment_app, name="assignment")  # SIP-0089 §2.7
+app.add_typer(lessons_app, name="lessons")  # SIP-0110 §0.6: Cross-Cycle Memory's lessons

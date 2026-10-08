@@ -43,6 +43,7 @@ from squadops.api.routes.cycles import (
     projects_router,
     runs_router,
 )
+from squadops.api.routes.memory import memory_router
 from squadops.api.routes.platform_health import router as platform_health_router
 from squadops.bootstrap.secrets import secret_provider_for
 from squadops.config import config_fingerprint, load_config, redact_config
@@ -115,6 +116,7 @@ def _include_routers(app: FastAPI) -> None:
     app.include_router(agent_status_router)  # #326: agent status writes, authed /api/v1 lane
     app.include_router(chat_router)  # SIP-0085
     app.include_router(chat_agents_router)
+    app.include_router(memory_router)  # SIP-0110 §0.6 (slice 3d): lessons, approvals, revocations
 
 
 #: Connection and process objects live on ``app.state`` (FastAPI's per-app holder), so an

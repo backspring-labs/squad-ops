@@ -55,6 +55,11 @@ class Scope:
     CAMPAIGNS_SUPERVISE = "campaigns:supervise"
     CAMPAIGNS_MANAGE = "campaigns:manage"
     CAMPAIGNS_CONTROL = "campaigns:control"
+    # SIP-0110 §0.6 (slice 3d): read Cross-Cycle Memory's lessons; draft a revision (the auditor,
+    # the outer loop's seat, D15); approve or revoke one, which is the owner's alone.
+    MEMORY_READ = "memory:read"
+    MEMORY_DRAFT = "memory:draft"
+    MEMORY_APPROVE = "memory:approve"
 
 
 # Role → implied scopes (#270). Keycloak is role-centric — it issues realm roles
@@ -78,6 +83,9 @@ ROLE_SCOPES: dict[str, frozenset[str]] = {
             Scope.CAMPAIGNS_SUPERVISE,
             Scope.CAMPAIGNS_MANAGE,
             Scope.CAMPAIGNS_CONTROL,
+            Scope.MEMORY_READ,
+            Scope.MEMORY_DRAFT,
+            Scope.MEMORY_APPROVE,
         }
     ),
     Role.OPERATOR: frozenset(
@@ -88,6 +96,7 @@ ROLE_SCOPES: dict[str, frozenset[str]] = {
             Scope.TASKS_READ,
             Scope.TASKS_WRITE,
             Scope.CAMPAIGNS_READ,
+            Scope.MEMORY_READ,
         }
     ),
     Role.VIEWER: frozenset(
@@ -96,6 +105,7 @@ ROLE_SCOPES: dict[str, frozenset[str]] = {
             Scope.AGENTS_READ,
             Scope.TASKS_READ,
             Scope.CAMPAIGNS_READ,
+            Scope.MEMORY_READ,
         }
     ),
     Role.AGENT: frozenset(
@@ -109,12 +119,14 @@ ROLE_SCOPES: dict[str, frozenset[str]] = {
             Scope.CAMPAIGNS_READ,
             Scope.CAMPAIGNS_SUPERVISE,
             Scope.CAMPAIGNS_MANAGE,
+            Scope.MEMORY_READ,
         }
     ),
     Role.CAMPAIGN_TRIAGE: frozenset(
         {
             Scope.CYCLES_READ,
             Scope.CAMPAIGNS_READ,
+            Scope.MEMORY_READ,
         }
     ),
 }
