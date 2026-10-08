@@ -1,6 +1,8 @@
 # 2.2.0 plan — Cross-Cycle Memory Phase 1: reviewed lessons from earlier cycles, measured before the cut
 
-**Status: DRAFT (2026-10-06), revised 2026-10-06 and 2026-10-07, for the owner's review.**
+**Status: ADOPTED (2026-10-07).** Drafted 2026-10-06 and revised 2026-10-06 and 2026-10-07. SIP-0110 revision 6 merged
+with #2111. The owner then chose to adopt this plan with every decision in §4 as recommended (D1–D15), and granted
+standing authority for the 2.2 line on the 2.1 line's terms, with three items kept as the owner's (§5).
 
 **The first draft** was written while the 2.1 cut was being prepared: the final deploy built, its
 diagnostics running, its set waiting for registration (#2090).
@@ -333,8 +335,10 @@ The counted set passed 4 of 4 (the 2.1 pre-registration §10).
 
 1. **Inherit the 2.1 cut's findings** (§2.4). They are live evidence.
 2. **Rule before building:**
-   - this plan, with SIP-0110 revisions 5 and 6 (D5, D11–D15);
-   - the SIP-0109 amendments for D2's rail and for #1708's policy and queue.
+   - this plan, with SIP-0110 revisions 5 and 6 (D5, D11–D15): **ruled 2026-10-07, adopted as recommended**;
+   - the SIP-0109 amendments for D2's rail and for #1708's policy and queue. Each is drafted before the part that needs
+     it: D2's rail before slice 3's, and #1708's policy before #1708 is built. #1708's policy designs gate authority,
+     so it goes to the owner.
 3. **Slice 1 (#2105):**
    - the source-case inspection, posted;
    - capture at the proposal seam, proven live by a byte-exact reconstruction of a real proposal's prompt;
@@ -416,7 +420,8 @@ The counted set passed 4 of 4 (the 2.1 pre-registration §10).
 
 ## 4. Decisions for the owner
 
-Each has a recommendation. None is built before it is ruled.
+Each has a recommendation. **Ruled 2026-10-07: every decision as recommended.** The owner chose to adopt the plan with
+D1–D15 as written, answering the kickoff question after "merge 2111 and let's go!".
 
 | # | decision | recommendation | why |
 |---|---|---|---|
@@ -445,6 +450,18 @@ Each has a recommendation. None is built before it is ruled.
 - **The 2.1 cut's findings** (§2.4) and **#1964's cut readings** (SIP-0110 §5b).
 - **The cut's numbers:** the regression set's size, and the window's N, budget cap and minimum worthwhile effect.
   They are written as pre-registrations when their batches are built.
-- **The standing authority for 2.2.** The owner's grant of 2026-10-04 covered the 2.1 line and ended at its cut. 2.2's
-  authority is the owner's to give when this plan is adopted.
+- **The standing authority for 2.2: granted 2026-10-07, on the 2.1 line's terms.** The supervisor builds in §3's
+  order, merges its PRs once every check is green and main's run has been read, addresses issues as they are found, and
+  runs rebuilds and uncounted validation runs. The 2.1 line's stop list holds:
+  - no tag, Release or public upload;
+  - #316, until its SIP is accepted;
+  - security findings are handled privately;
+  - an unexplained red on main;
+  - nothing that reverses a ruling;
+  - the crew's items.
+
+  **Three items stay the owner's in 2.2:**
+  - any compose change (#2112 included);
+  - approving any lesson (D15);
+  - opening the measurement window, and its pre-registration (§3 step 8).
 - **Any compose change** (§2.3).
