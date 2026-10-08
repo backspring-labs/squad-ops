@@ -302,6 +302,37 @@ class TestAuthoringEnvelopes:
 
         assert await registry.list_authoring_envelopes(run.run_id) == [envelope]
 
+    async def test_an_envelopes_keys_come_back_in_the_order_they_were_sent(self, registry):
+        """#2105's live finding: JSONB reordered the prior outputs a planning prompt renders in
+        order, so the re-run rendered another prompt. ``==`` on dicts ignores order, so the test
+        compares the key sequences."""
+        from squadops.memory.authoring_envelope import AuthoringSeam, capture_envelope
+
+        cycle = _make_cycle()
+        await registry.create_cycle(cycle)
+        run = await registry.create_run(_make_run(cycle.cycle_id))
+        prior = {"strat": "frame", "data": "context", "dev": "design", "qa": "strategy"}
+        envelope = capture_envelope(
+            seam=AuthoringSeam.PLAN_WRITING,
+            task_type="development.author_manifest",
+            task_id="t-order",
+            cycle_id=cycle.cycle_id,
+            project_id="test-project",
+            agent_id="neo",
+            role="dev",
+            handler_name="h",
+            captured_at="2026-10-08T02:00:00+00:00",
+            messages=[("user", "u")],
+            chat_kwargs={"model": "m", "max_tokens": 1},
+            inputs={"prior_outputs": prior, "zeta": 1, "alpha": 2},
+        ).to_dict()
+
+        await registry.record_authoring_envelope(run.run_id, envelope)
+        [stored] = await registry.list_authoring_envelopes(run.run_id)
+
+        assert list(stored["inputs"]) == ["prior_outputs", "zeta", "alpha"]
+        assert list(stored["inputs"]["prior_outputs"]) == list(prior)
+
     async def test_an_envelope_for_an_unknown_run_is_refused(self, registry):
         from squadops.cycles.models import RunNotFoundError
 
