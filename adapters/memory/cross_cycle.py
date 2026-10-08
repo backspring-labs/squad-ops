@@ -3,11 +3,10 @@
 
 from __future__ import annotations
 
-import dataclasses
 from collections.abc import Sequence
-from datetime import datetime
 from typing import Any
 
+from squadops.memory.approval import units_holding
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import Approval, PatternRevision, Snapshot, UnitKind
 from squadops.memory.observations import Observation, ObservationSource
@@ -70,10 +69,10 @@ class InMemoryCrossCycleMemoryStore(CrossCycleMemoryStorePort):
         self._approvals[approval.approval_id] = approval
         return True
 
-    async def revoke_approval(self, approval_id: str, revoked_at: datetime) -> None:
-        held = self._approvals[approval_id]
+    async def record_revocation(self, revoked: Approval) -> None:
+        held = self._approvals[revoked.approval_id]
         if held.revoked_at is None:
-            self._approvals[approval_id] = dataclasses.replace(held, revoked_at=revoked_at)
+            self._approvals[revoked.approval_id] = revoked
 
     async def list_approvals(self, project_id: str) -> list[Approval]:
         return sorted(
@@ -87,6 +86,9 @@ class InMemoryCrossCycleMemoryStore(CrossCycleMemoryStorePort):
 
     async def get_snapshot(self, unit_kind: UnitKind, unit_id: str) -> Snapshot | None:
         return self._snapshots.get((unit_kind.value, unit_id))
+
+    async def list_snapshots_holding(self, approval_id: str) -> list[Snapshot]:
+        return units_holding(approval_id, self._snapshots.values())
 
     async def record_exposure(self, exposure: Exposure) -> bool:
         if exposure.exposure_id in self._exposures:
@@ -189,23 +191,20 @@ class PostgresCrossCycleMemoryStore(CrossCycleMemoryStorePort):
             )
         return status.endswith(" 1")
 
-    async def revoke_approval(self, approval_id: str, revoked_at: datetime) -> None:
+    async def record_revocation(self, revoked: Approval) -> None:
         async with self._pool.acquire() as conn:
-            body = await conn.fetchval(
-                "SELECT approval_body FROM memory_approvals WHERE approval_id = $1", approval_id
-            )
-            if body is None:
-                raise KeyError(approval_id)
-            held = Approval.from_dict(body)
-            if held.revoked_at is not None:
-                return
-            await conn.execute(
+            # The first revocation stands: a second never rewrites when, by whom or why.
+            status = await conn.execute(
                 "UPDATE memory_approvals SET approval_body = $2, revoked_at = $3 "
-                "WHERE approval_id = $1",
-                approval_id,
-                dataclasses.replace(held, revoked_at=revoked_at).to_dict(),
-                revoked_at,
+                "WHERE approval_id = $1 AND revoked_at IS NULL",
+                revoked.approval_id,
+                revoked.to_dict(),
+                revoked.revoked_at,
             )
+            if status.endswith(" 0") and not await conn.fetchval(
+                "SELECT 1 FROM memory_approvals WHERE approval_id = $1", revoked.approval_id
+            ):
+                raise KeyError(revoked.approval_id)
 
     async def list_approvals(self, project_id: str) -> list[Approval]:
         async with self._pool.acquire() as conn:
@@ -245,6 +244,16 @@ class PostgresCrossCycleMemoryStore(CrossCycleMemoryStorePort):
             return Snapshot.from_dict(body)
         except (KeyError, TypeError, ValueError) as e:
             raise RecordIncompatible(f"{unit_kind.value} {unit_id}'s snapshot: {e!r}") from e
+
+    async def list_snapshots_holding(self, approval_id: str) -> list[Snapshot]:
+        # A text match narrows the rows; the domain's read of each entry decides.
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT snapshot_body FROM memory_snapshots "
+                "WHERE strpos(snapshot_body::text, $1) > 0 ORDER BY pinned_at, unit_id",
+                approval_id,
+            )
+        return units_holding(approval_id, [Snapshot.from_dict(r["snapshot_body"]) for r in rows])
 
     async def record_exposure(self, exposure: Exposure) -> bool:
         async with self._pool.acquire() as conn:

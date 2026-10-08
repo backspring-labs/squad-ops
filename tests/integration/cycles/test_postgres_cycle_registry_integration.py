@@ -396,6 +396,7 @@ class TestMemoryLessons:
         from datetime import timedelta
 
         from adapters.memory.cross_cycle import PostgresCrossCycleMemoryStore, RevisionConflict
+        from squadops.memory.approval import revoke
         from squadops.memory.lessons import UnitKind
         from squadops.memory.pinning import pin_unit
         from tests.unit.memory.test_lessons import WHERE, _approve, _revision
@@ -429,13 +430,23 @@ class TestMemoryLessons:
                 pinned_at=approval.approved_at + timedelta(hours=2),
                 disabled=True,
             )
-            await store.revoke_approval(
-                approval.approval_id, approval.approved_at + timedelta(hours=3)
+            revoked_at = approval.approved_at + timedelta(hours=3)
+            await store.record_revocation(
+                revoke(approval, by="owner", reason="harmful", now=revoked_at)
+            )
+            await store.record_revocation(
+                revoke(approval, by="someone", reason="again", now=revoked_at + timedelta(hours=1))
             )
 
             assert again == pinned and len(pinned.entries) == 1
             [stored] = await store.list_approvals(project)
-            assert stored.revoked_at == approval.approved_at + timedelta(hours=3)
+            assert (stored.revoked_at, stored.revoked_by, stored.revocation_reason) == (
+                revoked_at,
+                "owner",
+                "harmful",
+            )
+            holding = await store.list_snapshots_holding(approval.approval_id)
+            assert [s.unit_id for s in holding] == [f"cyc_{project}"]
         finally:
             async with migrated_pool.acquire() as conn:
                 await conn.execute(

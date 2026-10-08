@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from datetime import datetime
 
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import Approval, PatternRevision, Snapshot, UnitKind
@@ -50,8 +49,9 @@ class CrossCycleMemoryStorePort(ABC):
         """Store an approval; a second write of the same ``approval_id`` is a no-op."""
 
     @abstractmethod
-    async def revoke_approval(self, approval_id: str, revoked_at: datetime) -> None:
-        """Record an approval's revocation. Units admitted later pin without it (§0.7)."""
+    async def record_revocation(self, revoked: Approval) -> None:
+        """Store an approval's revocation (``squadops.memory.approval.revoke``: when, by whom and
+        why). Units admitted later pin without it (§0.7). An approval revoked once stays so."""
 
     @abstractmethod
     async def list_approvals(self, project_id: str) -> list[Approval]:
@@ -66,6 +66,10 @@ class CrossCycleMemoryStorePort(ABC):
     async def get_snapshot(self, unit_kind: UnitKind, unit_id: str) -> Snapshot | None:
         """The snapshot a unit pinned, or ``None`` for a unit that has not. Raises
         :class:`RecordIncompatible` for a stored pin this code cannot read."""
+
+    @abstractmethod
+    async def list_snapshots_holding(self, approval_id: str) -> list[Snapshot]:
+        """The pinned snapshots that carry ``approval_id``: the units a revocation names."""
 
     @abstractmethod
     async def record_exposure(self, exposure: Exposure) -> bool:
