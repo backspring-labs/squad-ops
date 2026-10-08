@@ -133,9 +133,13 @@ async def _world():
         footprint=("backend/routes.py",),
         allowed_scope=("backend/**",),
         refused_framing_runs=(),
+        answered_on_record={},
     )
     await campaigns.transition(
-        CID, opening_transition(_identity(cycle.cycle_id), verdict, (QUESTION,), OPENED)
+        CID,
+        opening_transition(
+            _identity(cycle.cycle_id), verdict, (("list-ordering", QUESTION),), OPENED
+        ),
     )
     now = [OPENED + timedelta(seconds=BOUND)]
     progress = CampaignProgress(
@@ -244,8 +248,11 @@ def test_an_escalation_pending_when_its_campaign_ended_reads_cancelled():
         footprint=("backend/routes.py",),
         allowed_scope=("backend/**",),
         refused_framing_runs=(),
+        answered_on_record={},
     )
-    opening = opening_transition(_identity("cyc_x"), verdict, (QUESTION,), OPENED)
+    opening = opening_transition(
+        _identity("cyc_x"), verdict, (("list-ordering", QUESTION),), OPENED
+    )
     entry = ControlLogEntry(
         entry_id="ctl_1",
         campaign_id=CID,
@@ -278,3 +285,41 @@ def test_an_escalations_identity_is_what_it_is_about():
     assert _identity("cyc_x").escalation_id == _identity("cyc_x").escalation_id
     assert _identity("cyc_x").escalation_id != _identity("cyc_x", plan="plan-b").escalation_id
     assert _identity("cyc_x").escalation_id.startswith("esc_")
+
+
+async def test_the_digest_asks_while_pending_then_for_a_late_answer_then_shows_it():
+    """The queue's reader is the owner's digest (§24bj). Bugs caught: an escalation the owner is
+    never asked about; an expired one shown as settled with nothing to answer; a late answer that
+    leaves the ask standing; unresolved work mixed into what was accepted."""
+    from squadops.campaigns.escalation import answer_transition
+    from squadops.campaigns.evidence import digest, package
+
+    campaigns, cycles, progress, now, _ = await _world()
+
+    async def read():
+        return digest(
+            package(await campaigns.get_campaign(CID), await campaigns.control_log(CID), [], [])
+        )
+
+    now[0] = OPENED + timedelta(seconds=BOUND - 1)
+    await progress.sweep_ruling_bounds()
+    pending = await read()
+    now[0] = OPENED + timedelta(seconds=BOUND)
+    await progress.sweep_ruling_bounds()
+    expired = await read()
+    [esc] = escalations(await campaigns.control_log(CID), S.BUILDING)
+    await campaigns.transition(
+        CID,
+        answer_transition(
+            esc, "insertion order", actor="human:owner", actor_role="owner", reason="late"
+        ),
+    )
+    answered = await read()
+
+    assert "The plan gate on `run_f` escalated: answer it at the gate" in pending
+    assert f"Escalation `{esc.escalation_id}` expired with nobody answering" in expired
+    assert f"squadops campaigns answer {CID} {esc.escalation_id}" in expired
+    assert "expired with nobody answering" not in answered
+    assert "Answered late by human:owner: insertion order" in answered
+    # Kept apart from the accepted work: its own section.
+    assert answered.index("## Escalations") > answered.index("## Accepted")

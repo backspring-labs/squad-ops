@@ -19,7 +19,7 @@ Pure: it reads the gate's evidence and the campaign's record, never mutable memo
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -94,12 +94,15 @@ def plan_review_tier(
     footprint: Sequence[str],
     allowed_scope: Sequence[str],
     refused_framing_runs: Sequence[str],
+    answered_on_record: Mapping[str, str],
 ) -> TierVerdict:
     """The tier's verdict on one plan gate.
 
-    ``open_questions`` is the design's questions after §24ad's answers, or ``None`` for a cycle
-    with no manifest. ``refused_framing_runs`` are this cycle's earlier framing runs that plan
-    validation refused, each one a re-roll."""
+    ``open_questions`` is the design's questions after §24ad's answers and the late answers on
+    record, or ``None`` for a cycle with no manifest. ``answered_on_record`` names each decision a
+    late answer covered, with the escalation it was recorded against (§24bl).
+    ``refused_framing_runs`` are this cycle's earlier framing runs that plan validation refused,
+    each one a re-roll."""
     if open_questions is None:
         questions = TierCheck(
             TierCondition.NO_OPEN_QUESTION,
@@ -111,6 +114,13 @@ def plan_review_tier(
             TierCondition.NO_OPEN_QUESTION,
             False,
             f"{len(open_questions)} open: " + "; ".join(open_questions),
+        )
+    elif answered_on_record:
+        questions = TierCheck(
+            TierCondition.NO_OPEN_QUESTION,
+            True,
+            "every question the design asks is answered on record: "
+            + ", ".join(f"{d} ({e})" for d, e in sorted(answered_on_record.items())),
         )
     else:
         questions = TierCheck(TierCondition.NO_OPEN_QUESTION, True, "the design asks nothing")

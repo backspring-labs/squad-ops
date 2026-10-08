@@ -114,6 +114,9 @@ class ControlOperation(StrEnum):
     #: An escalation ended, as resolved, expired, superseded or cancelled (§24bj, §24bk). Every
     #: ending of one escalation shares one key, so it ends exactly once. A record.
     ESCALATION_CLOSED = "escalation_closed"
+    #: A late answer to an expired or cancelled escalation (§24bj, §24bl). A record, accepted on a
+    #: completed campaign; it never reopens one, and a later plan gate reads it by decision id.
+    ESCALATION_ANSWERED = "escalation_answered"
 
     @property
     def records_only(self) -> bool:
@@ -130,6 +133,7 @@ class ControlOperation(StrEnum):
             ControlOperation.LEASE_RELEASE,
             ControlOperation.ESCALATION_OPENED,
             ControlOperation.ESCALATION_CLOSED,
+            ControlOperation.ESCALATION_ANSWERED,
         )
 
     @property

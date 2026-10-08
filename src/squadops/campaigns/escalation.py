@@ -17,10 +17,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from typing import Protocol
 
 from squadops.campaigns.gate import EXECUTOR_ROLE, SWEEP_ROLE
 from squadops.campaigns.models import (
@@ -32,6 +33,22 @@ from squadops.campaigns.models import (
     ControlOutcome,
 )
 from squadops.campaigns.plan_review_tier import TierVerdict
+
+
+class LogRow(Protocol):
+    """What the projection reads of a control-log row: a ``ControlLogEntry``, or the package's
+    plain record of one read back for the digest."""
+
+    @property
+    def operation(self) -> ControlOperation: ...
+    @property
+    def outcome(self) -> ControlOutcome: ...
+    @property
+    def binding(self) -> dict: ...
+    @property
+    def actor(self) -> str: ...
+    @property
+    def committed_at(self) -> datetime: ...
 
 
 class EscalationState(StrEnum):
@@ -82,8 +99,26 @@ class Escalation:
     failed: tuple[tuple[str, str], ...]
     questions: tuple[str, ...]
     state: EscalationState
+    #: The open decisions' ids, matched by a later gate's question (§24bl); empty on an
+    #: escalation opened before they were recorded.
+    decision_ids: tuple[str, ...] = ()
     closed_by: str | None = None
     closed_at: datetime | None = None
+    #: The late answer (§24bj, §24bl): recorded against an expired or cancelled escalation.
+    answer: str | None = None
+    answered_by: str | None = None
+    answered_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class RecordedAnswer:
+    """A late answer, as a later plan gate reads it (§24bl): what was answered, by whom, when,
+    and which escalation it was recorded against."""
+
+    answer: str
+    answered_by: str
+    answered_at: datetime
+    escalation_id: str
 
 
 @dataclass(frozen=True)
@@ -98,11 +133,12 @@ class RunAtGate:
 def opening_transition(
     identity: EscalationIdentity,
     verdict: TierVerdict,
-    questions: Sequence[str] | None,
+    decisions: Sequence[tuple[str, str]],
     opened_at: datetime,
 ) -> CampaignTransition:
-    """The ``escalation_opened`` row the gate writes when the tier cannot approve (§24bj). Keyed by
-    the identity, so re-entering the gate after a restart replays it."""
+    """The ``escalation_opened`` row the gate writes when the tier cannot approve (§24bj), with
+    the design's open decisions as ``(id, question)``. Keyed by the identity, so re-entering the
+    gate after a restart replays it."""
     failed = [{"condition": str(c.condition), "reading": c.reading} for c in verdict.failed]
     return CampaignTransition(
         operation=ControlOperation.ESCALATION_OPENED,
@@ -117,13 +153,14 @@ def opening_transition(
             "escalation_id": identity.escalation_id,
             "identity": dict(identity.__dict__),
             "failed": failed,
-            "questions": list(questions or ()),
+            "questions": [question for _id, question in decisions],
+            "decision_ids": [decision_id for decision_id, _q in decisions],
             "opened_at": opened_at.isoformat(),
         },
     )
 
 
-def escalations(log: Sequence[ControlLogEntry], campaign_state: CampaignState) -> list[Escalation]:
+def escalations(log: Sequence[LogRow], campaign_state: CampaignState) -> list[Escalation]:
     """Every escalation the log holds, in opening order, each in its state. One still open when
     its campaign completed reads ``cancelled``: the campaign's terminal row is its record."""
     applied = [e for e in log if e.outcome is ControlOutcome.APPLIED]
@@ -131,6 +168,11 @@ def escalations(log: Sequence[ControlLogEntry], campaign_state: CampaignState) -
         e.binding["escalation_id"]: e
         for e in applied
         if e.operation is ControlOperation.ESCALATION_CLOSED
+    }
+    answered = {
+        e.binding["escalation_id"]: e
+        for e in applied
+        if e.operation is ControlOperation.ESCALATION_ANSWERED
     }
     out = []
     for e in applied:
@@ -154,11 +196,23 @@ def escalations(log: Sequence[ControlLogEntry], campaign_state: CampaignState) -
                 failed=tuple((f["condition"], f["reading"]) for f in b["failed"]),
                 questions=tuple(b["questions"]),
                 state=state,
+                decision_ids=tuple(b.get("decision_ids") or ()),
                 closed_by=ending.actor if ending is not None else None,
                 closed_at=ending.committed_at if ending is not None else None,
+                **_answer_of(answered.get(b["escalation_id"])),
             )
         )
     return out
+
+
+def _answer_of(row) -> dict:
+    if row is None:
+        return {}
+    return {
+        "answer": row.binding["answer"],
+        "answered_by": row.actor,
+        "answered_at": row.committed_at,
+    }
 
 
 def _closing(escalation: Escalation, state: EscalationState, actor: str, reason: str):
@@ -248,3 +302,70 @@ def parked_run(log: Sequence[ControlLogEntry], run_id: str) -> bool:
         and e.binding["identity"]["run_id"] == run_id
         for e in log
     )
+
+
+#: The states a late answer is recorded against: the bound passed, or the campaign ended, with
+#: nobody deciding the gate (§24bj). A pending escalation is answered at its gate.
+ANSWERABLE = frozenset({EscalationState.EXPIRED, EscalationState.CANCELLED})
+
+
+def answer_refusal(escalation: Escalation | None, answer: str) -> str | None:
+    """Why a late answer is refused, or ``None``. Blank notes state nothing (§24ad), and an
+    escalation that was resolved, superseded or is still pending has nothing to answer late."""
+    if escalation is None:
+        return "no escalation with that id is recorded in this campaign"
+    if escalation.state not in ANSWERABLE:
+        return (
+            f"escalation {escalation.escalation_id} is {escalation.state}: only an expired or "
+            "cancelled one takes a late answer; a pending one is answered at its gate"
+        )
+    if not answer.strip():
+        return "an answer with no text states nothing (§24ad)"
+    if escalation.answer is not None and escalation.answer != answer.strip():
+        # The same answer again is a retry, and replays; another one would make the record
+        # ambiguous for every later gate that reads it.
+        return (
+            f"escalation {escalation.escalation_id} already holds its late answer: "
+            f"{escalation.answer!r}"
+        )
+    return None
+
+
+def answer_transition(
+    escalation: Escalation, answer: str, *, actor: str, actor_role: str, reason: str
+) -> CampaignTransition:
+    """The ``escalation_answered`` row: a record, accepted on a completed campaign too, that never
+    reopens it or resumes the parked cycle (§24bj). One per escalation, by its key."""
+    return CampaignTransition(
+        operation=ControlOperation.ESCALATION_ANSWERED,
+        actor=actor,
+        actor_role=actor_role,
+        reason=reason,
+        idempotency_key=f"escalation_answered:{escalation.escalation_id}",
+        next_state=None,
+        target=escalation.run_id,
+        binding={
+            "escalation_id": escalation.escalation_id,
+            "answer": answer.strip(),
+            "decision_ids": list(escalation.decision_ids),
+        },
+    )
+
+
+def recorded_answers(
+    logs: Iterable[tuple[Sequence[LogRow], CampaignState]],
+) -> dict[str, RecordedAnswer]:
+    """Each decision id a late answer covers, across the given campaigns' logs, with the latest
+    answer for it (§24bl). A later plan gate reads its open questions against these."""
+    found: dict[str, RecordedAnswer] = {}
+    for log, state in logs:
+        for esc in escalations(log, state):
+            if esc.answer is None or esc.answered_at is None or esc.answered_by is None:
+                continue
+            for decision_id in esc.decision_ids:
+                prior = found.get(decision_id)
+                if prior is None or esc.answered_at > prior.answered_at:
+                    found[decision_id] = RecordedAnswer(
+                        esc.answer, esc.answered_by, esc.answered_at, esc.escalation_id
+                    )
+    return found

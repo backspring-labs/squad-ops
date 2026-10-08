@@ -106,6 +106,13 @@ def open_questions(manifest_content: str | None) -> tuple[str, ...]:
     already rejects a manifest that cannot be read, and inventing a second opinion here would
     stop a cycle for a defect that is already being reported.
     """
+    return tuple(question for _id, question in open_decisions(manifest_content))
+
+
+def open_decisions(manifest_content: str | None) -> tuple[tuple[str, str], ...]:
+    """Each decision the manifest declined to answer, as ``(id, question)``: the questions
+    ``open_questions`` reads, with the id a recorded answer is matched by (SIP-0109 §24bl). The
+    id is the author's, and it recurs across framings of one project (``list-ordering``)."""
     if not manifest_content:
         return ()
     from squadops.capabilities.scaffold import InterfaceManifest
@@ -115,7 +122,9 @@ def open_questions(manifest_content: str | None) -> tuple[str, ...]:
     except Exception:  # noqa: BLE001 - unreadable manifests are the gate net's to report
         return ()
     return tuple(
-        d.question.strip() for d in manifest.decisions if d.unresolved and d.question.strip()
+        (d.id, d.question.strip())
+        for d in manifest.decisions
+        if d.unresolved and d.question.strip()
     )
 
 

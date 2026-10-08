@@ -9,6 +9,7 @@ refusal not recorded, a resume to the wrong state, an abort that leaves a launch
 from __future__ import annotations
 
 import dataclasses
+from datetime import UTC, datetime
 
 import pytest
 from fastapi import FastAPI, Request
@@ -569,3 +570,123 @@ async def test_the_owners_resume_of_a_blocked_launch_escalation_retries_the_laun
     assert resp.status_code == 200
     assert resp.json()["campaign"]["state"] == "launch_blocked"
     assert [i.state.value for i in await world.campaigns.launch_intents(cid)] == ["pending"]
+
+
+# ---------------------------------------------------------------------------------------------
+# The plan-review tier's escalations (SIP-0109 §24bj, §24bk, §24bl)
+# ---------------------------------------------------------------------------------------------
+
+
+async def _escalation(world: _World, *, ended: str | None) -> str:
+    """An escalation on the created campaign, ended as ``ended`` (``None`` leaves it pending)."""
+    from squadops.campaigns.escalation import EscalationIdentity, opening_transition
+    from squadops.campaigns.models import CampaignTransition, ControlOperation, CycleKind
+    from squadops.campaigns.plan_review_tier import plan_review_tier
+
+    identity = EscalationIdentity(
+        "cmp_api000000001", "cyc_x", "run_x", "progress_plan_review", None, None, None, "p"
+    )
+    verdict = plan_review_tier(
+        kind=CycleKind.CALIBRATION,
+        open_questions=("which order does the runs list use?",),
+        footprint=("backend/main.py",),
+        allowed_scope=("backend/**",),
+        refused_framing_runs=(),
+        answered_on_record={},
+    )
+    opening = opening_transition(
+        identity,
+        verdict,
+        (("list-ordering", "which order does the runs list use?"),),
+        datetime(2026, 10, 8, 15, 0, tzinfo=UTC),
+    )
+    await world.campaigns.transition("cmp_api000000001", opening)
+    if ended is not None:
+        await world.campaigns.transition(
+            "cmp_api000000001",
+            CampaignTransition(
+                operation=ControlOperation.ESCALATION_CLOSED,
+                actor="squadops",
+                actor_role="sweep",
+                reason="test",
+                idempotency_key=f"escalation_closed:{identity.escalation_id}",
+                next_state=None,
+                target="run_x",
+                binding={"escalation_id": identity.escalation_id, "state": ended},
+            ),
+        )
+    return identity.escalation_id
+
+
+def _answer(world: _World, escalation_id: str, answer: str = "insertion order"):
+    return world.client.post(
+        f"/api/v1/campaigns/cmp_api000000001/escalations/{escalation_id}/answer",
+        json={"answer": answer, "reason": "late, after the campaign"},
+    )
+
+
+async def test_a_late_answer_is_recorded_once_against_an_expired_escalation(world):
+    """§24bj's ruling 4. Bugs caught: the answer lost, or recorded twice with two texts, so a later
+    gate could read either."""
+    assert _create(world).status_code == 200
+    escalation_id = await _escalation(world, ended="expired")
+
+    first = _answer(world, escalation_id)
+    again = _answer(world, escalation_id)
+    other = _answer(world, escalation_id, "newest first")
+    [listed] = world.client.get("/api/v1/campaigns/cmp_api000000001/escalations").json()
+
+    assert first.status_code == 200 and first.json()["replayed"] is False
+    assert again.status_code == 200 and again.json()["replayed"] is True
+    assert other.status_code == 422
+    assert "already holds its late answer" in other.json()["detail"]["error"]["message"]
+    assert (listed["state"], listed["answer"], listed["answered_by"]) == (
+        "expired",
+        "insertion order",
+        "owner",
+    )
+    assert listed["decision_ids"] == ["list-ordering"]
+
+
+async def test_an_answer_after_the_campaign_ended_is_recorded_and_reopens_nothing(world):
+    """An escalation pending when its campaign ended reads cancelled, and takes a late answer;
+    the campaign stays completed."""
+    assert _create(world).status_code == 200
+    escalation_id = await _escalation(world, ended=None)
+    abort = world.client.post(
+        "/api/v1/campaigns/cmp_api000000001/abort",
+        json={"reason": "stop", "idempotency_key": "abort-1"},
+    )
+    assert abort.status_code == 200
+
+    resp = _answer(world, escalation_id)
+
+    assert resp.status_code == 200
+    campaign_now = world.client.get("/api/v1/campaigns/cmp_api000000001").json()
+    assert campaign_now["state"] == "completed"
+    [listed] = world.client.get("/api/v1/campaigns/cmp_api000000001/escalations").json()
+    assert (listed["state"], listed["answer"]) == ("cancelled", "insertion order")
+
+
+@pytest.mark.parametrize(
+    ("ended", "answer", "known", "message"),
+    [
+        (None, "insertion order", True, "a pending one is answered at its gate"),
+        ("resolved", "insertion order", True, "only an expired or cancelled one"),
+        ("expired", "   ", True, "states nothing"),
+        ("expired", "insertion order", False, "no escalation with that id"),
+    ],
+    ids=["pending", "resolved", "blank", "unknown"],
+)
+async def test_a_late_answer_with_nothing_to_answer_is_a_422_and_records_nothing(
+    world, ended, answer, known, message
+):
+    assert _create(world).status_code == 200
+    escalation_id = await _escalation(world, ended=ended)
+
+    resp = _answer(world, escalation_id if known else "esc_000000000000", answer)
+
+    assert resp.status_code == 422
+    assert message in resp.json()["detail"]["error"]["message"]
+    [listed] = world.client.get("/api/v1/campaigns/cmp_api000000001/escalations").json()
+    assert listed["answer"] is None

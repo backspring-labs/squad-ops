@@ -30,6 +30,7 @@ def _verdict(**overrides):
         footprint=("backend/routes.py", "backend/tests/test_runs.py"),
         allowed_scope=SCOPE,
         refused_framing_runs=(),
+        answered_on_record={},
     )
     values.update(overrides)
     return plan_review_tier(**values)

@@ -34,6 +34,8 @@ from squadops.api.campaign_schemas import (
     ControlLogEntryResponse,
     ControlRequest,
     ControlResultResponse,
+    EscalationAnswerRequest,
+    EscalationResponse,
     LeaseRequest,
     LeaseResponse,
     LeaseResultResponse,
@@ -42,6 +44,7 @@ from squadops.api.campaign_schemas import (
 from squadops.api.middleware.auth import holds_scopes, require_scopes
 from squadops.auth.models import Identity, Role, Scope
 from squadops.campaigns import lifecycle
+from squadops.campaigns.escalation import Escalation
 from squadops.campaigns.models import (
     Campaign,
     CampaignDefinition,
@@ -342,6 +345,56 @@ async def classify_proposal(
             "version": body.version,
             "classification": classification.value,
         },
+    )
+    return _result(await apply_control(request, campaign_id, transition, identity))
+
+
+@router.get("/{campaign_id}/escalations")
+async def list_escalations(
+    request: Request,
+    campaign_id: str,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_READ)),
+) -> list[EscalationResponse]:
+    """The plan-review tier's escalations (§24bj, §24bk), each in its state, with its late
+    answer when one is recorded."""
+    from squadops.campaigns.escalation import escalations
+
+    campaign = await _registry(request).get_campaign(campaign_id)
+    return [
+        _escalation(e)
+        for e in escalations(await _registry(request).control_log(campaign_id), campaign.state)
+    ]
+
+
+@router.post("/{campaign_id}/escalations/{escalation_id}/answer")
+async def answer_escalation(
+    request: Request,
+    campaign_id: str,
+    escalation_id: str,
+    body: EscalationAnswerRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_SUPERVISE)),
+) -> ControlResultResponse:
+    """A late answer to an expired or cancelled escalation (§24bj's ruling 4, §24bl): a record,
+    accepted after the campaign ended. It never reopens the campaign or resumes the parked cycle;
+    a later plan gate of the project reads it by the decision's id."""
+    from squadops.campaigns.escalation import answer_refusal, answer_transition, escalations
+
+    campaign = await _registry(request).get_campaign(campaign_id)
+    found = next(
+        (
+            e
+            for e in escalations(await _registry(request).control_log(campaign_id), campaign.state)
+            if e.escalation_id == escalation_id
+        ),
+        None,
+    )
+    refusal = answer_refusal(found, body.answer)
+    if refusal is not None:
+        raise HTTPException(422, _validation(refusal))
+    assert found is not None
+    actor, role = actor_from(identity)
+    transition = answer_transition(
+        found, body.answer, actor=actor, actor_role=role, reason=body.reason
     )
     return _result(await apply_control(request, campaign_id, transition, identity))
 
@@ -649,6 +702,25 @@ async def _retry_launch(request: Request, launch_id: str, result: TransitionResu
     await get_campaign_launch(request).drain()
     intent = await _registry(request).get_launch_intent(launch_id)
     return [intent.cycle_id] if intent.cycle_id else []
+
+
+def _escalation(e: Escalation) -> EscalationResponse:
+    return EscalationResponse(
+        escalation_id=e.escalation_id,
+        cycle_id=e.cycle_id,
+        run_id=e.run_id,
+        gate_name=e.gate_name,
+        state=str(e.state),
+        opened_at=e.opened_at,
+        failed=[{"condition": c, "reading": r} for c, r in e.failed],
+        questions=list(e.questions),
+        decision_ids=list(e.decision_ids),
+        closed_by=e.closed_by,
+        closed_at=e.closed_at,
+        answer=e.answer,
+        answered_by=e.answered_by,
+        answered_at=e.answered_at,
+    )
 
 
 def _validation(message: str) -> dict:

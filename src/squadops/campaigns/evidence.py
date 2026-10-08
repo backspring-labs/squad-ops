@@ -152,9 +152,75 @@ def digest(doc: dict) -> str:
             f"| `{cyc['cycle_id']}` | {cyc['kind']} | {d.get('ending', '—')} | "
             f"{d.get('verdict') or '—'} | {decided} | {_primary(cyc['assessment'])} |"
         )
-    asks = _questions(c, rows) + _over_bound(doc)
+    lines += ["", "## Escalations", ""] + (
+        _escalation_lines(c, rows) or ["- the plan-review tier escalated nothing"]
+    )
+    asks = _questions(c, rows) + _escalation_asks(c, rows) + _over_bound(doc)
     lines += ["", "## For the owner", ""] + ([f"- {q}" for q in asks] or ["- nothing is waiting"])
     return "\n".join(lines) + "\n"
+
+
+def _escalations_of(campaign: dict, rows: list[dict]):
+    """The plan-review tier's escalations (§24bj, §24bk), read from the package's rows by the same
+    projection the gate and the sweep use."""
+    from datetime import datetime
+    from types import SimpleNamespace
+
+    from squadops.campaigns.escalation import escalations
+
+    ops = {
+        ControlOperation.ESCALATION_OPENED,
+        ControlOperation.ESCALATION_CLOSED,
+        ControlOperation.ESCALATION_ANSWERED,
+    }
+    entries = [
+        SimpleNamespace(
+            operation=ControlOperation(r["operation"]),
+            outcome=ControlOutcome(r["outcome"]),
+            binding=r["binding"],
+            actor=r["actor"],
+            committed_at=datetime.fromisoformat(r["committed_at"]),
+        )
+        for r in rows
+        if r["operation"] in ops
+    ]
+    return escalations(entries, CampaignState(campaign["state"]))
+
+
+def _escalation_lines(campaign: dict, rows: list[dict]) -> list[str]:
+    """Every escalation and how it ended, kept apart from what was accepted (§24bj): the
+    campaign's unresolved work, beside its completed work."""
+    lines = []
+    for e in _escalations_of(campaign, rows):
+        asked = "; ".join(e.questions) or "no question"
+        failed = ", ".join(condition for condition, _ in e.failed)
+        line = f"- `{e.escalation_id}` on `{e.cycle_id}`: {e.state} ({failed}). Asked: {asked}"
+        if e.answer is not None:
+            line += f". Answered late by {e.answered_by}: {e.answer}"
+        lines.append(line)
+    return lines
+
+
+def _escalation_asks(campaign: dict, rows: list[dict]) -> list[str]:
+    """What the owner is asked about the tier's escalations: a pending one is answered at its gate
+    before the bound parks it; an expired or cancelled one with no answer can be answered late."""
+    from squadops.campaigns.escalation import ANSWERABLE, EscalationState
+
+    asks = []
+    for e in _escalations_of(campaign, rows):
+        asked = "; ".join(e.questions) or "no question"
+        if e.state is EscalationState.PENDING:
+            asks.append(
+                f"The plan gate on `{e.run_id}` escalated: answer it at the gate before its ruling "
+                f"bound parks the cycle. Asked: {asked}"
+            )
+        elif e.state in ANSWERABLE and e.answer is None:
+            asks.append(
+                f"Escalation `{e.escalation_id}` {e.state} with nobody answering. Answer it late "
+                f"with `squadops campaigns answer {campaign['campaign_id']} {e.escalation_id} "
+                f'--answer "…" --reason "…"`; a later plan gate reads it. Asked: {asked}'
+            )
+    return asks
 
 
 def _kb(size: int) -> str:
