@@ -893,6 +893,11 @@ class ConventionKind(StrEnum):
     SUCCESS_STATUS_PINNED = "success_status_pinned"
     #: Every contract error comes back as the frozen envelope (#795, #911).
     ERROR_ENVELOPE = "error_envelope"
+    #: A request field the manifest does not declare is ignored by the frozen request models
+    #: (#2114).
+    UNDECLARED_FIELD_IGNORED = "undeclared_field_ignored"
+    #: What happens to a request field the manifest does not declare is the build's (#2114).
+    UNDECLARED_FIELD_UNFIXED = "undeclared_field_unfixed"
 
 
 @dataclass(frozen=True)
@@ -1756,6 +1761,10 @@ _STACKS: dict[str, ScaffoldStack] = {
             FrozenConvention(
                 ConventionKind.REQUIRED_STRING_TRIMMED, (("code", "validation_error"),)
             ),
+            # #2114: ``_model_source`` emits each request shape as a plain ``BaseModel``, and
+            # pydantic ignores a field it does not declare. Shakeout 7's "a capacity-2 run takes a
+            # second join" held on the accepted tree for that reason alone.
+            FrozenConvention(ConventionKind.UNDECLARED_FIELD_IGNORED),
         ),
     ),
     # #822 stack #2, a module from the start; stack #1 joined it in #1131 (the reference
@@ -1797,7 +1806,12 @@ _STACKS: dict[str, ScaffoldStack] = {
         # #1950: the frozen types write an optional field ``field?: type`` and the frozen store
         # adds no default, so what a create without it returns is each build's handler's choice.
         # 225 stored handlers return it left out, null and "" (#1950's comment of 2026-10-05).
-        frozen_conventions=(FrozenConvention(ConventionKind.UNSET_OPTIONAL_UNFIXED),),
+        # #2114: the route handlers that parse a request body are fill slots, so what a build
+        # does with a field the manifest does not declare is its own.
+        frozen_conventions=(
+            FrozenConvention(ConventionKind.UNSET_OPTIONAL_UNFIXED),
+            FrozenConvention(ConventionKind.UNDECLARED_FIELD_UNFIXED),
+        ),
     ),
 }
 

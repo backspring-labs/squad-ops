@@ -274,14 +274,16 @@ _CONVENTION_LINES = {
     "trimmed": "A required string in a request is trimmed, and a blank one is refused",
     "pinned": "An endpoint's declared `success_status` is fixed in its frozen route.",
     "envelope": 'Every contract error comes back as the frozen envelope** `{"error": {"code"',
+    "ignored": "A request field the manifest does not declare is ignored.",
+    "undeclared": "What happens to a request field the manifest does not declare is not fixed.",
 }
 
 
 @pytest.mark.parametrize(
     ("stack", "told"),
     [
-        ("fullstack_fastapi_react", {"null", "trimmed", "pinned", "envelope"}),
-        ("nextjs_ts", {"unfixed", "envelope"}),
+        ("fullstack_fastapi_react", {"null", "trimmed", "pinned", "envelope", "ignored"}),
+        ("nextjs_ts", {"unfixed", "envelope", "undeclared"}),
         ("no_such_stack", set()),  # not registered: told nothing, and the render still runs
     ],
 )
