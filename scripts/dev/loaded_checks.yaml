@@ -528,3 +528,10 @@ checks:
       from squadops.campaigns.models import ControlOperation
       print(ControlOperation.ESCALATION_ANSWERED.value, ControlOperation.ESCALATION_ANSWERED.records_only)
     expect: escalation_answered True
+  - id: "2149"
+    what: a block the completion cap cut is found where #431's close at EOF would take it
+    container: squadops-neo
+    code: |
+      from squadops.capabilities.handlers.fenced_parser import cut_final_block
+      print(cut_final_block("```python:a.py\nx = 1\n```\n```python:b.py\ndef half("))
+    expect: "25"

@@ -11,6 +11,7 @@ the one seam every call passes.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -31,19 +32,35 @@ _EDIT = (
 )
 
 
+@dataclass(frozen=True)
+class _AtCap:
+    """A call that used its whole budget and wrote ``content``: the budget stopped it there."""
+
+    content: str
+
+
+#: The repair's edit, then a new file the budget cut off mid-line: what a generation stopped by
+#: its cap leaves (#2149). #431's close at EOF would take ``backend/extra.py`` as written.
+_CUT = _EDIT + "```python:backend/extra.py\ndef half(payload):\n    return pay"
+
+
 def _context(*shapes, renderer: bool = True):
     """``shapes``: per call, ``"cap"`` (the whole budget, nothing written), ``"short"`` (empty
-    under the budget) or the content to return."""
+    under the budget), ``_AtCap(content)`` (the whole budget, that content written: #2149) or the
+    content to return under the budget."""
     calls: list[tuple[list, dict]] = []
 
     async def llm(messages, **kwargs):
         calls.append((messages, kwargs))
         shape = shapes[len(calls) - 1]
         cap = kwargs["max_tokens"]
+        at_cap = shape == "cap" or isinstance(shape, _AtCap)
         return MagicMock(
-            content="" if shape in ("cap", "short") else shape,
+            content=""
+            if shape in ("cap", "short")
+            else (shape.content if isinstance(shape, _AtCap) else shape),
             prompt_tokens=10,
-            completion_tokens=cap if shape == "cap" else 10,
+            completion_tokens=cap if at_cap else 10,
             reasoning_tokens=None,
             reasoning_text="thinking " * 500 if shape == "cap" else "",
         )
@@ -123,3 +140,63 @@ async def test_without_a_renderer_to_state_the_fact_it_is_not_asked_again(caplog
         await DevelopmentCorrectionRepairHandler().handle(ctx, _inputs())
     assert len(calls) == 1
     assert "not asked again" in caplog.text
+
+
+# ---------------------------------------------------------------------------------------------
+# #2149: a call the budget stopped mid-block
+# ---------------------------------------------------------------------------------------------
+
+
+def _artifact_names(result) -> list[str]:
+    return [a["name"] for a in result.outputs.get("artifacts") or []]
+
+
+async def test_a_call_cut_at_the_cap_drops_the_cut_block_and_is_asked_again_with_the_fact(
+    caplog,
+):
+    """Wiring, entered at ``handle`` through the real renderer and templates. Bug this catches:
+    half a file handed on as written, because #431's close at EOF reads a cut block as one whose
+    closing fence was dropped. The retry's answer is the one used."""
+    ctx, calls = _context(_AtCap(_CUT), _EDIT)
+    with caplog.at_level(logging.INFO):
+        result = await DevelopmentCorrectionRepairHandler().handle(ctx, _inputs())
+
+    assert len(calls) == 2
+    retry_prompt = calls[1][0][-1].content
+    assert "ran out while it was writing this block" in retry_prompt
+    assert "```python:backend/extra.py" in retry_prompt
+    assert calls[1][0][:-1] == calls[0][0], "the retry is the same call with the fact appended"
+    assert result.success, result.error
+    assert _artifact_names(result) == ["backend/routes.py"]
+    shapes = [r.getMessage() for r in caplog.records if "emission shape:" in r.getMessage()]
+    assert any(":cap_truncated emission shape:" in s for s in shapes)
+    assert "cap_truncated handler=" in caplog.text
+
+
+async def test_a_second_cut_is_returned_with_its_closed_blocks_and_never_the_cut_one():
+    """Once per call: a second cut is not asked again, and what it wrote before the cut is kept.
+    Bug caught: the cut file taken on the last attempt because nothing is left to retry."""
+    ctx, calls = _context(_AtCap(_CUT), _AtCap(_CUT))
+    result = await DevelopmentCorrectionRepairHandler().handle(ctx, _inputs())
+
+    assert len(calls) == 2
+    assert result.success, result.error
+    assert _artifact_names(result) == ["backend/routes.py"]
+
+
+@pytest.mark.parametrize(
+    ("shape", "kept"),
+    [
+        # Under the cap, an unclosed final block is #431's dropped closing fence: still recovered.
+        (_CUT, ["backend/routes.py", "backend/extra.py"]),
+        # At the cap with every block closed, nothing was cut: returned as it is, not asked again.
+        (_AtCap(_EDIT), ["backend/routes.py"]),
+    ],
+    ids=["under the cap", "at the cap, all closed"],
+)
+async def test_only_a_block_the_cap_cut_is_dropped(shape, kept):
+    ctx, calls = _context(shape)
+    result = await DevelopmentCorrectionRepairHandler().handle(ctx, _inputs())
+
+    assert len(calls) == 1
+    assert sorted(_artifact_names(result)) == sorted(kept)

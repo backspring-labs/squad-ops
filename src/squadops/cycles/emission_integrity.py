@@ -97,9 +97,23 @@ EMISSION_FAILURE_NO_FENCED_BLOCKS = "no_fenced_blocks"
 #   (a transport drop, a refusal, a model that stopped). Remedy: retry, investigate.
 # - ``unextractable``: content came back but nothing in it was a path-addressed fence.
 #   Remedy: the emission format (the #987/#528 class), not the budget.
+# - ``cap_truncated`` (#2149): content came back, and the budget stopped it mid-block. Not a
+#   zero-extraction shape: the closed blocks before the cut are whole. The cut block is dropped,
+#   never taken as written. Remedy lives at the budget, as for ``cap_exhausted``.
 SIGNATURE_CAP_EXHAUSTED = "cap_exhausted"
 SIGNATURE_EMPTY = "empty"
 SIGNATURE_UNEXTRACTABLE = "unextractable"
+SIGNATURE_CAP_TRUNCATED = "cap_truncated"
+
+
+def reached_cap(completion_tokens: int | None, completion_cap: int | None) -> bool:
+    """Whether the generation used its whole completion budget: the cap signal. The provider
+    reports no stop reason through this port, so the token count against the requested budget
+    is the observable; either value unknown (absent, or not a count) means the cap cannot be
+    asserted."""
+    if not isinstance(completion_tokens, int) or not isinstance(completion_cap, int):
+        return False
+    return completion_cap > 0 and completion_tokens >= completion_cap
 
 
 def classify_empty_emission(
@@ -114,12 +128,7 @@ def classify_empty_emission(
     """
     if response_chars > 0:
         return SIGNATURE_UNEXTRACTABLE
-    if (
-        completion_tokens is not None
-        and completion_cap is not None
-        and completion_cap > 0
-        and completion_tokens >= completion_cap
-    ):
+    if reached_cap(completion_tokens, completion_cap):
         return SIGNATURE_CAP_EXHAUSTED
     return SIGNATURE_EMPTY
 

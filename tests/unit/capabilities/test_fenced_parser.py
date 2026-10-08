@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
+from squadops.capabilities.handlers.fenced_parser import cut_final_block, extract_fenced_files
 
 pytestmark = [pytest.mark.domain_capabilities]
 
@@ -763,6 +763,43 @@ class TestImplicitEofClose:
         """Implicit close only helps when a filename resolves — an untagged
         unterminated fence has no path and is still dropped."""
         assert extract_fenced_files("```\nsome loose text at eof\n") == []
+
+
+class TestCutFinalBlock:
+    """#2149: where #431's implicit close would take the final block. The handler drops it from
+    a generation its budget stopped, since there the block was cut, not left unclosed."""
+
+    _CLOSED = "```python:a.py\ncode_a\n```\n"
+
+    @pytest.mark.parametrize(
+        ("response", "starts_at"),
+        [
+            # Every block closed: nothing to drop.
+            (_CLOSED, None),
+            # The final block runs to EOF unclosed: #431 would take it.
+            (_CLOSED + "```python:b.py\ndef half(", len(_CLOSED)),
+            # A response that is one unclosed block.
+            ("```python:b.py\ndef half(", 0),
+            # An abandoned unclosed opener, then a clean trailing block: #431 takes the trailing one.
+            ("```python:a.py\ncode_a\n```python:b.py\ncode_b\n", 22),
+            ("", None),
+        ],
+        ids=[
+            "closed",
+            "cut after a closed block",
+            "only a cut block",
+            "after an abandoned",
+            "empty",
+        ],
+    )
+    def test_it_is_the_block_implicit_close_would_take(self, response, starts_at):
+        start = cut_final_block(response)
+        assert start == starts_at
+        if start is not None:
+            # The dropped block's file is the one #431 would take, and no part of it survives.
+            [dropped] = extract_fenced_files(response[start:])
+            kept = extract_fenced_files(response[:start])
+            assert dropped["filename"] not in [f["filename"] for f in kept]
 
 
 class TestSingleExpectedArtifactFallback:

@@ -372,6 +372,30 @@ def _resolve_block(
     return filename, language, body, last_used_heading_pos
 
 
+def cut_final_block(response: str) -> int | None:
+    """Where the response's final fenced block opens, when that block has no close and #431's
+    implicit close at EOF would take it; ``None`` otherwise.
+
+    From the text alone the two cases are one: a model that dropped only its closing fence, and
+    a generation the completion budget stopped mid-file. The caller tells them apart by the
+    token count (#2149): under the cap, #431 recovers the file; at the cap, the block was cut,
+    and this is where it starts, so it can be dropped rather than taken as written.
+    """
+    pos = 0
+    while True:
+        open_match = _OPEN_FENCE_RE.search(response, pos)
+        if open_match is None:
+            return None
+        body_start = open_match.end() + 1
+        close_match = _find_block_close(response, body_start)
+        if close_match is not None:
+            pos = close_match.end()
+        elif _is_implicit_eof_close(response, body_start):
+            return open_match.start()
+        else:
+            pos = body_start
+
+
 def extract_fenced_files(
     response: str,
     expected_artifacts: list[str] | None = None,
