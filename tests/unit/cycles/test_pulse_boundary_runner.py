@@ -12,7 +12,7 @@ directly, without a ``DispatchedFlowExecutor`` instance (SIP-0097 §9).
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -30,6 +30,7 @@ from squadops.cycles.pulse_models import CADENCE_BOUNDARY_ID, SuiteOutcome
 from squadops.cycles.run_ledger import RunLedger
 from squadops.events.types import EventType
 from squadops.tasks.models import TaskEnvelope, TaskResult
+from tests.unit.cycles.test_correction_repair_prefect_propagation import _HARNESS_PROFILE
 
 NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
@@ -2005,6 +2006,7 @@ class TestPulseBoundaryRunnerStandalone:
             llm_observability=None,
             task_dispatcher=_PassthroughDispatcher(),
             store_artifact=store_artifact,
+            failure_recall=NoOpFailurePatternRecall(),
         )
         return runner, registry, bus
 
@@ -2120,7 +2122,7 @@ class TestPulseBoundaryRunnerStandalone:
                 stored_artifacts=[],
                 all_artifact_refs=[],
                 max_repair_attempts=1,
-                agent_resolver={"strat": "nat", "dev": "neo", "qa": "eve", "lead": "max"},
+                profile=_HARNESS_PROFILE,
                 ledger=RunLedger(),
             )
 
@@ -2147,3 +2149,141 @@ class TestPulseBoundaryRunnerStandalone:
         assert runner.evaluate_pulse_boundaries(
             task_idx=2, plan=plan, cadence_task_count=1, cadence_start_time=now, cadence=cadence
         )
+
+
+async def test_the_pulse_repair_chain_runs_on_the_profiles_models_and_its_repair_is_supplied(cycle):
+    """#2128 and SIP-0110 §0.9, entered at ``_verify_with_repair`` on a failing boundary. Bugs
+    caught: a chain step dispatched without its role's profile model and overrides, so it runs on
+    the agent container's instance default (#110's shape); and the chain's repair composed without
+    asking for its lessons, or the analysis steps, which author no output, handed them."""
+    import dataclasses
+
+    from adapters.cycles.pulse_boundary_runner import PulseBoundaryRunner
+    from adapters.memory.cross_cycle import InMemoryCrossCycleMemoryStore
+    from adapters.memory.recall import SnapshotRecall
+    from squadops.cycles.pulse_models import PulseVerificationRecord
+    from squadops.memory.lessons import (
+        ANY_STACK,
+        Applicability,
+        Approval,
+        PatternRevision,
+        UnitKind,
+        pattern_id_for,
+    )
+    from squadops.memory.pinning import pin_unit
+    from squadops.memory.recall import LESSONS_INPUT
+
+    where = Applicability(
+        "hello_squad", ("development.repair",), ("dev",), (ANY_STACK,), ("qwen3.8",)
+    )
+    lesson = PatternRevision(
+        pattern_id=pattern_id_for("hello_squad", "b", "development.repair"),
+        revision=1,
+        target_behavior="b",
+        text="Repair the suite the boundary named, not its neighbours.",
+        applicability=where,
+        template_id="lesson.t",
+        template_version="1",
+        drafter_model="auditor",
+        drafter_version="1",
+        cited_observations=("correction_round:x",),
+        created_at=NOW,
+    )
+    store = InMemoryCrossCycleMemoryStore()
+    await store.record_revision(lesson)
+    await store.record_approval(Approval("apr_p", lesson.revision_id, where, "owner", NOW))
+    await pin_unit(
+        store,
+        unit_kind=UnitKind.CYCLE,
+        unit_id=cycle.cycle_id,
+        project_id="hello_squad",
+        pinned_at=NOW + timedelta(hours=1),
+        disabled=False,
+    )
+    models = {
+        "data": "qwen2.5:32b",
+        "lead": "llama3:70b",
+        "strat": "qwen3.6:27b",
+        "dev": "qwen3.8:27b",
+    }
+    profile = dataclasses.replace(
+        _HARNESS_PROFILE,
+        agents=tuple(
+            dataclasses.replace(
+                a, model=models.get(a.role, a.model), config_overrides={"temperature": 0.1}
+            )
+            for a in _HARNESS_PROFILE.agents
+        ),
+    )
+    dispatched: list[TaskEnvelope] = []
+
+    class _Recording:
+        async def dispatch_task(self, envelope, run_id, **_kwargs):
+            dispatched.append(envelope)
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+        async def create_task_run_if_enabled(self, _flow_run_id, _envelope):
+            return None
+
+    runner = PulseBoundaryRunner(
+        cycle_registry=AsyncMock(),
+        event_bus=MagicMock(),
+        task_dispatcher=_Recording(),
+        store_artifact=AsyncMock(),
+        failure_recall=SnapshotRecall(store),
+    )
+
+    async def failing(*, suites, boundary_id, cadence_interval_id, run_id, **_kw):
+        return [
+            PulseVerificationRecord(
+                suite_id=s.suite_id,
+                boundary_id=boundary_id,
+                cadence_interval_id=cadence_interval_id,
+                run_id=run_id,
+                suite_outcome=SuiteOutcome.FAIL,
+            )
+            for s in suites
+        ]
+
+    with (
+        patch("adapters.cycles.pulse_boundary_runner.run_pulse_verification", side_effect=failing),
+        pytest.raises(Exception, match="VERIFICATION_EXHAUSTED"),
+    ):
+        await runner._verify_with_repair(
+            suites=[MagicMock(suite_id="suite_a")],
+            boundary_id="boundary_x",
+            cadence_interval_id=0,
+            run_id="run_001",
+            cycle=cycle,
+            obs_ctx=None,
+            engine=MagicMock(),
+            context=MagicMock(),
+            envelope=TaskEnvelope(
+                task_id="task_1",
+                agent_id="neo",
+                cycle_id="cyc_001",
+                pulse_id="p",
+                project_id="hello_squad",
+                task_type="development.develop",
+                correlation_id="corr",
+                causation_id=None,
+                trace_id="t",
+                span_id="s",
+                inputs={},
+                metadata={"role": "dev"},
+            ),
+            prior_outputs={},
+            stored_artifacts=[],
+            all_artifact_refs=[],
+            max_repair_attempts=1,
+            profile=profile,
+            ledger=RunLedger(),
+        )
+
+    by_role = {e.metadata["role"]: e for e in dispatched}
+    assert {r: e.inputs["agent_model"] for r, e in by_role.items()} == models
+    assert {str(e.inputs["agent_config_overrides"]) for e in dispatched} == {"{'temperature': 0.1}"}
+    assert [x["text"] for x in by_role["dev"].inputs[LESSONS_INPUT]["lessons"]] == [lesson.text]
+    assert [r for r, e in by_role.items() if LESSONS_INPUT in e.inputs] == ["dev"]
+    [exposure] = await store.list_exposures("run_001")
+    assert (exposure.query.task_type, exposure.disposition) == ("development.repair", "supplied")

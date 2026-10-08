@@ -29,9 +29,12 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from adapters.cycles.execution_errors import _ExecutionError
+from squadops.capabilities.lesson_supply import supply_for_cycle
+from squadops.cycles.agent_config import build_agent_resolver, resolve_agent_config
 from squadops.cycles.pulse_models import (
     CADENCE_BOUNDARY_ID,
     CadencePolicy,
@@ -55,11 +58,12 @@ if TYPE_CHECKING:
     from adapters.cycles.task_dispatcher import TaskDispatcher
     from squadops.capabilities.acceptance import AcceptanceCheckEngine
     from squadops.capabilities.models import AcceptanceContext
-    from squadops.cycles.models import ArtifactRef, Cycle
+    from squadops.cycles.models import ArtifactRef, Cycle, SquadProfile
     from squadops.cycles.pulse_models import PulseCheckDefinition, PulseVerificationRecord
     from squadops.cycles.run_ledger import RunLedger
     from squadops.ports.cycles.cycle_registry import CycleRegistryPort
     from squadops.ports.events.cycle_event_bus import CycleEventBusPort
+    from squadops.ports.memory.recall import FailurePatternRecallPort
     from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
     from squadops.tasks.models import TaskEnvelope
 
@@ -82,8 +86,11 @@ class PulseBoundaryRunner:
         *,
         task_dispatcher: TaskDispatcher,
         store_artifact: Callable[..., Awaitable[ArtifactRef]],
+        failure_recall: FailurePatternRecallPort,
     ) -> None:
         self._cycle_registry = cycle_registry
+        # SIP-0110 §0.9: the chain's repair asks its unit's pinned snapshot for its lessons.
+        self._failure_recall = failure_recall
         self._event_bus = event_bus
         self._llm_observability = llm_observability
         self._task_dispatcher = task_dispatcher
@@ -185,7 +192,7 @@ class PulseBoundaryRunner:
         stored_artifacts: list[tuple[str, ArtifactRef]],
         all_artifact_refs: list[str],
         flow_run_id: str | None,
-        agent_resolver: dict[str, str],
+        profile: SquadProfile,
         run_root: str,
         *,
         ledger: RunLedger,
@@ -224,7 +231,7 @@ class PulseBoundaryRunner:
                     all_artifact_refs=all_artifact_refs,
                     max_repair_attempts=max_repair_attempts,
                     flow_run_id=flow_run_id,
-                    agent_resolver=agent_resolver,
+                    profile=profile,
                     ledger=ledger,
                 )
 
@@ -245,7 +252,7 @@ class PulseBoundaryRunner:
                 all_artifact_refs=all_artifact_refs,
                 max_repair_attempts=max_repair_attempts,
                 flow_run_id=flow_run_id,
-                agent_resolver=agent_resolver,
+                profile=profile,
                 ledger=ledger,
             )
 
@@ -440,8 +447,8 @@ class PulseBoundaryRunner:
         all_artifact_refs: list[str],
         max_repair_attempts: int = 2,
         flow_run_id: str | None = None,
-        agent_resolver: dict[str, str] | None = None,
         *,
+        profile: SquadProfile,
         ledger: RunLedger,
     ) -> None:
         """Verify boundary, repair on failure, exhaust on repeated failure.
@@ -572,7 +579,7 @@ class PulseBoundaryRunner:
                 boundary_id=boundary_id,
                 cadence_interval_id=cadence_interval_id,
                 failed_suite_ids=tuple(failed_suite_ids),
-                agent_resolver=agent_resolver,
+                agent_resolver=build_agent_resolver(profile),
             )
 
             # Inject verification context + PRD into repair envelopes
@@ -581,12 +588,25 @@ class PulseBoundaryRunner:
                 "verification_context": verification_context,
             }
             for repair_env in repair_envelopes:
+                # #2128 (#110's shape): each step runs on the model and overrides the squad
+                # profile gives its role, not the agent container's instance default.
+                resolved = resolve_agent_config(repair_env.metadata.get("role", ""), profile)
                 enriched_repair = dataclasses.replace(
                     repair_env,
                     inputs={
                         "prd": cycle.prd_ref,
                         "prior_outputs": repair_prior,
+                        "agent_model": resolved.model,
+                        "agent_config_overrides": resolved.config_overrides,
                     },
+                )
+                # SIP-0110 §0.9: the chain's repair is supplied its approved lessons, if any.
+                [enriched_repair] = await supply_for_cycle(
+                    [enriched_repair],
+                    recall=self._failure_recall,
+                    cycle=cycle,
+                    run_id=run_id,
+                    now=datetime.now(UTC),
                 )
 
                 # SIP-0087 B2: create the Prefect task_run before dispatch so

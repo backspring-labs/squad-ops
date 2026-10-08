@@ -39,6 +39,7 @@ _SLOTTED = {
     "request.builder_assemble.build_assemble": "prior_cycle_section",
     "request.strategy_propose_increment": "prd_section",
     "request.cycle_repair_task": "disputed_checks_section",
+    "request.repair_task_base": "verification_context",
 }
 
 _LESSONS = {
@@ -322,3 +323,19 @@ async def test_a_correction_repair_shows_the_lessons_it_is_handed_after_its_fail
     assert prompts[0].index("### Why the Prior Attempt Failed") < prompts[0].index(_HEADING)
     assert prompts[0].index(_HEADING) < prompts[0].index("### Product Requirements Document")
     assert _HEADING not in prompts[1]
+
+
+async def test_the_pulse_chains_repair_shows_the_lessons_it_is_handed():
+    """The pulse-check chain's ``development.repair`` (§0.9, #2128), entered at its real
+    ``handle()`` on the shipped template. Bug caught: the chain supplied lessons its prompt never
+    shows."""
+    from squadops.capabilities.handlers.repair_tasks import DevelopmentRepairHandler
+
+    base = {"prd": "the PRD", "prior_outputs": {"verification_context": "suite_a failed"}}
+
+    shown = await _rendered(DevelopmentRepairHandler(), {**base, LESSONS_INPUT: _LESSONS})
+    plain = await _rendered(DevelopmentRepairHandler(), base)
+
+    assert _shows_the_lessons(shown)
+    assert shown.index("suite_a failed") < shown.index(_HEADING)
+    assert _HEADING not in plain

@@ -60,7 +60,6 @@ from squadops.capabilities.context_assembly import (
     retake_suite_files,
     wrapup_evidence_applies,
 )
-from squadops.cycles.agent_config import build_agent_resolver
 from squadops.cycles.build_completeness import compute_missing_required_files
 from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.contract_derivation import (
@@ -629,6 +628,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             llm_observability=llm_observability,
             task_dispatcher=self._task_dispatcher,
             store_artifact=lambda *args, **kw: self._store_artifact(*args, **kw),
+            failure_recall=failure_recall,
         )
         # SIP-0097 §6.6: per-run pulse summaries live on the RunLedger created
         # in execute_run() and passed explicitly; multi-workload forwarding
@@ -1594,9 +1594,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 state.produced.all_artifact_refs,
             )
 
-        # Build role → agent_id resolver for repair task dispatch
-        agent_resolver = build_agent_resolver(profile)
-
         # ------------------------------------------------------------------
         # SIP-0070: Parse pulse checks + cadence policy from applied_defaults
         # ------------------------------------------------------------------
@@ -1624,7 +1621,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 obs_ctx=obs_ctx,
                 ledger=ledger,
                 interface_manifest=interface_manifest,
-                agent_resolver=agent_resolver,
                 pulse=pulse,
                 budget_guard=_budget_guard,
             )
@@ -1666,7 +1662,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         obs_ctx: Any,
         ledger: RunLedger,
         interface_manifest: Any,
-        agent_resolver: Any,
         pulse: _PulseContext,
         budget_guard: Callable[[], None],
     ) -> None:
@@ -1935,7 +1930,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 stored_artifacts=state.produced.stored_artifacts,
                 all_artifact_refs=state.produced.all_artifact_refs,
                 flow_run_id=flow_run_id,
-                agent_resolver=agent_resolver,
+                profile=profile,
                 run_root=run_root,
                 ledger=ledger,
             )
