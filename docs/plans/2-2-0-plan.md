@@ -40,8 +40,8 @@ issue"), after the owner asked how agent memory and the squad's project memory w
 
 **And at the owner's request on the review** ("yes, make both changes in 2111"), after the owner asked "who better to
 determine the lesson than the AI auditing everything":
-- **D14:** each stack's failure-shape sorter and a repeat report, in slice 3, so that a build mistake repeated across
-  cycles can be seen;
+- **D14:** a failure-shape sorter for each test runner and a repeat report, in slice 3, so that a build mistake
+  repeated across cycles can be seen;
 - **D15:** a frontier-model auditor drafts each lesson from the recorded evidence. Each draft is frozen, replay-checked
   and approved by the owner before any task is given it.
 
@@ -149,10 +149,11 @@ disabled. So building the parts does not move the regression baseline.
   - rejected plans, from the cycle's gate decisions and their `rejection_record` (the cycle registry);
   - failed correction rounds, from `run_loop_summaries` (the correction loop);
   - returned proposals, from the campaign control log (the campaign domain);
-- **the failure-shape sorter (D14):** each stack's table of its test runner's own failure messages and the target
-  behavior each names, declared beside the stack's other declarations (`capabilities/stack_fastapi_react.py`,
-  `capabilities/stack_nextjs_ts.py`), never in shared code. The correction-round projection applies it to each
-  `failed_detail` entry. A message no row matches is `unclassified`;
+- **the failure-shape sorter (D14):** each runner's table of its own failure messages and the target behavior each
+  names. It extends the per-runner tables the test runner already keeps (`capabilities/handlers/test_runner.py`:
+  `_VITEST_SUITE_BROKEN_MARKERS`, `_OWN_FRAME_SHAPES`), and never maps a shape to an attribution class (SIP-0108
+  §4.2). The correction-round projection applies it to each `failed_detail` entry. A message no row matches is
+  `unclassified`;
 - **the repeat report (D14):** each target behavior, at every source, counted by independent cycles (a retry and the
   cycle it retries count once). The auditor drafts from it, and it is read at the pre-registration and at the cut;
 - **the eligibility rule:** fault-injected diagnostics, environment-attributed failures and replays produce no
@@ -376,7 +377,7 @@ Each has a recommendation. None is built before it is ruled.
 | D11 | **what is observed, and where memory is supplied** | **every eligible cycle, standalone or in a campaign, from three sources (rejected plans, failed correction rounds, returned proposals); supplied at plan writing, build authoring, repair and proposal writing, each inert until a lesson is approved. A plan-review or correction-round lesson is drafted in 2.2 only if the repeat report (D14) shows one target recurring across independent cycles, read at the pre-registration and at the cut. Every exposure records its build's indicators, observed only** | memory's unit is the cycle. Observing every cycle costs a projection beside execution. Supplying only where a lesson is approved keeps the measurement clean. Build authoring is where a correction-round lesson reaches a later cycle before its check fails, not only after (SIP-0110 §0.9, §2) |
 | D12 | **counted regression rolls and memory** | **declare memory disabled until a finding of supported benefit and the owner's ruling. Their observations are still recorded** | the regression set is the framework's yardstick. A lesson approved for plan writing would otherwise reach it and move it unannounced |
 | D13 | **where Phase 1's records are stored** | **Postgres, beside the cycle registry, behind their own port** (SIP-0110 §0.8). Not SIP-042's LanceDB store | that store is created inside each agent's container and used only by console chat. Recall runs in the runtime API, which has none. Phase 1's recall is exact filtering, so it needs no embedding. The projections must be idempotent against records already in Postgres. Postgres is addressable as a service (the Embodiment Runtime's invariant 2) and is the only store in the nightly verified backup. Phase 2 chooses a similarity index when it adds ranking |
-| D14 | **seeing a repeated build mistake** | **each stack's failure-shape sorter and a repeat report, in slice 3** (SIP-0110 §0.4). The sorter is a table of the test runner's own failure messages, declared with each stack, applied to every failed round's `failed_detail`, with no model in it. The report counts each target behavior by independent cycles, and is read at slice 3's deploy, at the pre-registration and at the cut | a correction round is labelled only by its attribution and its failed check, and every failed round in the 2.0 and 2.1 windows failed `tests_pass`. What went wrong is only in `failed_detail`'s text, so a repeated build mistake could only be found by hand, and the build-authoring and repair seams would stay empty by design. The four rounds recorded so far each carry one message that names its defect. Added at the owner's request ("yes, make both changes in 2111") |
+| D14 | **seeing a repeated build mistake** | **a failure-shape sorter for each test runner and a repeat report, in slice 3** (SIP-0110 §0.4). The sorter is a table of each runner's own failure messages, extending the test runner's existing per-runner tables (`capabilities/handlers/test_runner.py`), applied to every failed round's `failed_detail`, with no model in it. A shape sits beneath the attribution and never maps to an attribution class (SIP-0108 §4.2). The report counts each target behavior by independent cycles, and is read at slice 3's deploy, at the pre-registration and at the cut | a correction round is labelled only by its attribution and its failed check, and every failed round in the 2.0 and 2.1 windows failed `tests_pass`. What went wrong is only in `failed_detail`'s text, so a repeated build mistake could only be found by hand, and the build-authoring and repair seams would stay empty by design. The four rounds recorded so far each carry one message that names its defect. Added at the owner's request ("yes, make both changes in 2111") |
 | D15 | **who drafts a lesson** | **a frontier-model auditor, from the recorded evidence:** the outer loop's model (the supervisor in 2.2, the crew once commissioned), never the squad's own model. It drafts between units and cites its cases. Each draft is frozen, replay-checked on development cases, and approved by the owner before any task is given it (SIP-0110 §0.4, §0.6). A built-in auditor is later | an AI auditing every failure is better placed than a person reading a sample (the owner: "who better to determine the lesson than the AI auditing everything"). The owner's direction of 2026-09-28 has frontier models improve the framework from evidence. A lesson can be wrong whoever writes it: #1947's rule was followed by the same mistake twice, so the replay check stays. Added at the owner's request ("yes, make both changes in 2111") |
 
 ---

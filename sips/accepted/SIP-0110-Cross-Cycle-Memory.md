@@ -190,7 +190,7 @@ Each projection uses its source's existing durable record. It is not a new servi
 | source | its vocabulary |
 |---|---|
 | plan review | the plan validator that refused the plan, or the manifest gate's proof class: the B1 baseline's vocabulary (`RejectionClassifier`, `cycles/rejection_baseline.py`). A person's rejection carries a class only when its decider records one |
-| correction round | the failure's attribution (`AttributionClass`, `cycles/failure_attribution.py`) and the failed check, and beneath them the **failure shape** its stack's sorter reads from the test runner's own message (below). An `unattributed` failure is recorded as `unclassified` |
+| correction round | the failure's attribution (`AttributionClass`, `cycles/failure_attribution.py`) and the failed check, and beneath them the **failure shape** the sorter reads from the test runner's own message (below). An `unattributed` failure is recorded as `unclassified` |
 | proposal ruling | a `ProposalClassification` class |
 
 An `unclassified` observation:
@@ -222,13 +222,19 @@ its template, and an unsupported one is disclosed backlog that never blocks a le
 **The failure-shape sorter** (the 2.2 plan's D14). A correction round's attribution and check are too coarse to show a
 repeat: every failed round in the 2.0 and 2.1 windows failed `tests_pass`, and what went wrong is only in the text of
 `failed_detail`. So:
-- **each stack declares a table** of its test runner's own failure messages and the target behavior each one names,
-  beside its other declarations (`capabilities/stack_fastapi_react.py`, `capabilities/stack_nextjs_ts.py`), never in
-  shared code. For example, vitest's `Failed to resolve import "…". Does the file exist?` names an import of a file that
-  does not exist;
-- **the correction-round projection applies the cycle's stack's table** to each `failed_detail` entry, and records the
-  shape it names with the table's version. No model sorts. A message no row matches is `unclassified` and enters the
-  backlog;
+- **each runner has a table** of its own failure messages and the target behavior each one names. It extends the
+  tables the test runner already keeps per runner (`capabilities/handlers/test_runner.py`): the messages that mean a
+  suite could not run (`_VITEST_SUITE_BROKEN_MARKERS`, #626) and the shapes a suite raises in its own frame
+  (`_OWN_FRAME_SHAPES`, #1130, #1270). It does not start a second table. For example, vitest's
+  `Failed to resolve import "…". Does the file exist?` names an import of a file that does not exist;
+- **the correction-round projection applies the table of the runner that ran the suite** to each `failed_detail`
+  entry, and records the shape it names with the table's version. No model sorts. A message no row matches is
+  `unclassified` and enters the backlog;
+- **a shape sits beneath the attribution, never beside it.** It never maps to an attribution class, so the attribution
+  registry (`cycles/failure_attribution.py`) stays the only home of attribution (SIP-0108 §4.2), and the sorter is not
+  the parallel taxonomy SIP-0109 rules out for memory. It is coarser than the correction loop's own signature
+  (`cycles/correction_signature.py`), which compares one run's rounds by check, file and test: a shape drops the file
+  and the test, so the same mistake in another cycle's application still matches;
 - the four rounds recorded with `failed_detail` so far (the 2.1 cut, §5b) each carry such a message: an import of a
   file that does not exist, an element the page never renders, a module faked the wrong way, and a check of the wrong
   arguments.
@@ -255,7 +261,7 @@ For this target, the corrective rule leads to evidence of the intended before-an
   lesson, and recall and injection stay deterministic (§0.8).
 - **A draft is frozen when it is drafted,** as a pattern revision (§0.2): its text, its drafter's model and version, and
   the observations it cites. No task is given it until it is replay-checked and approved (§0.6).
-- **The auditor also reads the backlog.** It may propose a new target behavior, or a new row in a stack's sorter. A new
+- **The auditor also reads the backlog.** It may propose a new target behavior, or a new row in a runner's table. A new
   row is a code change, reviewed as one.
 - Free text stays evidence. It becomes guidance only through a frozen, approved revision.
 - The v4 draft's precedence rule (compilation, then security, then function, then performance; §5a) is not applied to any source's classes. Every observed defect is kept as evidence.
@@ -555,7 +561,7 @@ Decision records belong to the Design Decision Register and #950 (§5b).
 | the cycle registry (SIP-0064, SIP-0067) and the correction loop (SIP-0086) | a standalone cycle's creation (where its snapshot is pinned), its gate decisions, and its correction rounds' records |
 | this SIP's store, in Postgres beside the cycle registry (§0.8, the 2.2 plan's D13) | the four records, their idempotency keys and their reconciliation |
 | SIP-042 | each agent's own semantic store, which Phase 1 does not use |
-| each stack (`capabilities/stack_fastapi_react.py`, `capabilities/stack_nextjs_ts.py`) | its failure-shape table (§0.4) |
+| the test runner (`capabilities/handlers/test_runner.py`) | each runner's failure-shape table, beside its suite-health markers and its own-frame shapes (§0.4) |
 | the replay specification (slices 1 and 2: #2105, #2106) | the pre-authoring envelope, temporal isolation, arm execution and scoring |
 | SIP-0088/0089 | persistent identity and mode compatibility |
 | the Design Decision Register, #950 | the authoritative decision payload and its lifecycle |
@@ -574,7 +580,7 @@ Synthetic fixtures establish the mechanism's behavior. They are never evidence o
 | recovery | a crash after the record's commit and before the projection is recovered |
 | corrections | a reclassification or retraction keeps history and updates dependents explicitly |
 | classification | a novel `unclassified` defect is returned without creating a pattern |
-| failure shapes | a round's `failed_detail` is sorted by its cycle's stack's table; the same message gives the same shape on every run; a message no row matches is `unclassified` |
+| failure shapes | a round's `failed_detail` is sorted by the table of the runner that ran it; the same message gives the same shape on every run; a message no row matches is `unclassified`; no shape maps to an attribution class |
 | repeat report | a target behavior in two independent cycles is reported as recurring, and a retry and the cycle it retries count once |
 | lesson provenance | a revision records its drafter's model and version and the observations it cites; an approval records the replay check it was given; nothing in a running unit writes a revision |
 | pattern identity | a repeat occurrence cannot reset or resurrect deprecated guidance |
@@ -1124,9 +1130,9 @@ a standalone cycle recorded nothing and received nothing.
 - **a frontier-model auditor drafts the lessons** (§0.4, the 2.2 plan's D15), in place of "people write the templates"
   and "no LLM in the encode path". Each draft cites its evidence, is frozen, is replay-checked on development cases and
   is approved by the owner (§0.6). Nothing in a running unit writes a lesson. A built-in auditor stays deferred (§0.14);
-- **the failure-shape sorter and the repeat report** (§0.4, the 2.2 plan's D14): each stack's table of its test
-  runner's messages sorts a correction round's `failed_detail` into a target behavior, and the report counts each
-  target behavior by independent cycles;
+- **the failure-shape sorter and the repeat report** (§0.4, the 2.2 plan's D14): each runner's table of its
+  own messages, extending the test runner's existing per-runner tables, sorts a correction round's `failed_detail`
+  into a target behavior beneath its attribution, and the report counts each target behavior by independent cycles;
 - **the acceptance matrix** gains rows for sources, eligibility, execution isolation, unit freeze, transfer, memory
   disabled, slot separation, the app-build indicators, storage, failure shapes, the repeat report and lesson provenance
   (§0.15).
@@ -1185,6 +1191,10 @@ a standalone cycle recorded nothing and received nothing.
   `failed_detail` each carry one test-runner message that names its defect, and two of the four are families the
   framework once fixed by hand: an import the suite cannot resolve (the frozen surface,
   `capabilities/context_assembly.py`, roll 9) and an element the page never renders (#659).
+- **The sorter was first placed with each stack's declarations** (`capabilities/stack_*.py`). Surveying the other SIPs
+  for their effect on memory found that the test runner already keeps per-runner message tables, and SIP-0105 names
+  per-runner output signatures as a stack declaration. So the sorter extends the runner's tables, and stays beneath the
+  attribution registry (SIP-0108 §4.2) (§0.4).
 - **"People write the templates" did not describe how the project works.** The supervisor, which would draft them, is
   a frontier model, and the owner's direction of 2026-09-28 has frontier models improve the framework from evidence,
   while the squad's own model does not yet. What the rule protected is kept: a lesson is fixed before it is used,
