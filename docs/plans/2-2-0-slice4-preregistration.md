@@ -36,6 +36,10 @@ admitted after the window opens. To be eligible, all four hold:
 Revisions (v2+), later increments' proposals and re-rolls carry a within-campaign rung or lineage, and
 are reported separately, never pooled with the primary cases (§0.11).
 
+A re-dispatch of the first proposal (an emission retry) is another invocation, with its own envelope
+and its own exposure (§0.2; #2162, fixed by #2163). The primary case is the first envelope. A
+re-dispatch is counted beside it, and never as a second case.
+
 ## 3. The cases, and the split
 
 - **Development cases** (used to draft the lesson and replay-check it; never scored):
