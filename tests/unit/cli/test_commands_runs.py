@@ -204,6 +204,43 @@ class TestRunsGateIncrementRuling:
         }
         assert (body["idempotency_key"], body["notes"]) == ("k-1", "scope reads right")
 
+    @patch("squadops.cli.commands.runs._get_client")
+    def test_a_returns_classification_is_sent_with_the_ruling(self, mock_get_client, tmp_path):
+        """SIP-0109 §24bi. Bug caught: the flags accepted and never sent, so every return the CLI
+        makes is refused by the API with no way through."""
+        reviewed = tmp_path / "change_request.yaml"
+        reviewed.write_text(self._CR)
+        mock_get_client.return_value = _mock_client(post_val={"status": "ok"})
+
+        result = runner.invoke(
+            app,
+            [
+                "runs",
+                "gate",
+                "group_run",
+                "cyc_1",
+                "run_1",
+                "progress_increment_ruling",
+                "--reject",
+                "--notes",
+                "names a route the manifest forbids",
+                "--change-request",
+                str(reviewed),
+                "--classification",
+                "unclassified",
+                "--classification-rationale",
+                "no class names a forbidden route",
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        body = mock_get_client.return_value.post.call_args.kwargs["json"]
+        assert (body["decision"], body["classification"], body["classification_rationale"]) == (
+            "rejected",
+            "unclassified",
+            "no class names a forbidden route",
+        )
+
     @pytest.mark.parametrize(
         ("gate", "extra", "message"),
         [
@@ -211,6 +248,11 @@ class TestRunsGateIncrementRuling:
             (
                 "progress_plan_review",
                 ["--idempotency-key", "k"],
+                "belong to progress_increment_ruling",
+            ),
+            (
+                "progress_plan_review",
+                ["--classification", "scope_too_large"],
                 "belong to progress_increment_ruling",
             ),
         ],

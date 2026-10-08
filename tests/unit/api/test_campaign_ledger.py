@@ -18,7 +18,7 @@ from squadops.api.error_handlers import register_domain_error_handlers
 from squadops.api.routes.campaigns import campaigns_router
 from squadops.auth.models import Identity, IdentityType, Role, scopes_for_roles
 from squadops.campaigns.continuation import ContinuationDecision, CycleEnding, PendingAction
-from squadops.campaigns.gate import ruling_transition, submission
+from squadops.campaigns.gate import RETURNING_DECISIONS, ruling_transition, submission
 from squadops.campaigns.models import (
     AcceptedTree,
     CampaignOutcome,
@@ -47,6 +47,8 @@ def _rule(decision, binding, run_id, key):
         actor_role="campaign-supervisor",
         reason=f"{decision} on v{binding.version}",
         idempotency_key=key,
+        # SIP-0109 §24bi: a return names what went wrong.
+        classification="scope_too_large" if decision in RETURNING_DECISIONS else None,
     )
 
 

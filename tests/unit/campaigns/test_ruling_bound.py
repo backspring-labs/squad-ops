@@ -159,6 +159,7 @@ async def test_a_gate_that_reopens_is_timed_from_its_reopening(at_the_gate):
             actor_role="campaign-supervisor",
             reason="narrow the footprint",
             idempotency_key="k-revise",
+            classification="criteria_not_checkable",
         ),
     )
     await _submit(at_the_gate, V2, "run_p2")

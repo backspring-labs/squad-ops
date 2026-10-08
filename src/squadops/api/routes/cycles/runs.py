@@ -263,10 +263,8 @@ async def _rule_increment(
     if not cycle.campaign_id:
         raise ValidationError(f"cycle {cycle_id} belongs to no campaign")
     actor, role = actor_from(identity)
-    await apply_control(
-        request,
-        cycle.campaign_id,
-        ruling_transition(
+    try:
+        transition = ruling_transition(
             GateDecisionValue(body.decision),
             ProposalBinding(**body.binding.model_dump()),
             run_id=run_id,
@@ -274,9 +272,12 @@ async def _rule_increment(
             actor_role=role,
             reason=reason,
             idempotency_key=body.idempotency_key,
-        ),
-        identity,
-    )
+            classification=body.classification,
+            classification_rationale=body.classification_rationale,
+        )
+    except ValueError as e:  # §24bi: a return names what went wrong, or it is refused
+        raise ValidationError(str(e)) from e
+    await apply_control(request, cycle.campaign_id, transition, identity)
     run = await registry.get_run(run_id)
     return not any(d.gate_name == INCREMENT_RULING_GATE for d in run.gate_decisions)
 
@@ -298,9 +299,18 @@ async def gate_decision(
     if gate_name == INCREMENT_RULING_GATE:
         if not await _rule_increment(request, registry, cycle_id, run_id, body, identity):
             return run_to_response(await registry.get_run(run_id))
-    elif body.binding is not None or body.idempotency_key is not None:
+    elif any(
+        value is not None
+        for value in (
+            body.binding,
+            body.idempotency_key,
+            body.classification,
+            body.classification_rationale,
+        )
+    ):
         raise ValidationError(
-            f"binding and idempotency_key belong to the {INCREMENT_RULING_GATE} gate only"
+            "binding, idempotency_key and classification belong to the "
+            f"{INCREMENT_RULING_GATE} gate only"
         )
 
     # SIP-0096 §6.5 (#682): accept-with-waiver is explicit, reasoned, and

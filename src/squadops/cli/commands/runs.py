@@ -239,6 +239,19 @@ def gate_decision(
         "--idempotency-key",
         help="The increment gate only: resend a key to replay the ruling, not repeat it.",
     ),
+    classification: str | None = typer.Option(
+        None,
+        "--classification",
+        help="The increment gate only, required on a return or rejection (SIP-0109 §24bi): what "
+        "went wrong with the proposal, one of scope_too_large, criteria_not_checkable, "
+        "conflicts_with_an_earlier_increment, ambiguous_manifest_delta, "
+        "sound_proposal_built_badly, or unclassified with --classification-rationale.",
+    ),
+    classification_rationale: str | None = typer.Option(
+        None,
+        "--classification-rationale",
+        help="With --classification unclassified: why none of the classes fits.",
+    ),
 ):
     """Record a gate decision.
 
@@ -283,7 +296,11 @@ def gate_decision(
         body["waived_checks"] = list(waive)
     if waiver_reason:
         body["waiver_reason"] = waiver_reason
-    body.update(_increment_binding(gate_name, change_request, idempotency_key))
+    body.update(
+        _increment_ruling_fields(
+            gate_name, change_request, idempotency_key, classification, classification_rationale
+        )
+    )
 
     try:
         client = _get_client(ctx)
@@ -302,13 +319,23 @@ def gate_decision(
         print_success(f"Gate {gate_name!r} {decision}")
 
 
-def _increment_binding(gate_name: str, change_request: Path | None, key: str | None) -> dict:
-    """The increment ruling's binding, read from the change request the supervisor reviewed,
-    and its retry key (minted and printed when none is given). Nothing for any other gate,
-    which refuses the two flags."""
+def _increment_ruling_fields(
+    gate_name: str,
+    change_request: Path | None,
+    key: str | None,
+    classification: str | None,
+    rationale: str | None,
+) -> dict:
+    """The increment ruling's binding, read from the change request the supervisor reviewed, its
+    retry key (minted and printed when none is given), and a return's classification (SIP-0109
+    §24bi; the API refuses a return without one, and says why). Nothing for any other gate, which
+    refuses the flags."""
     if gate_name != INCREMENT_RULING_GATE:
-        if change_request is not None or key is not None:
-            print_error(f"--change-request and --idempotency-key belong to {INCREMENT_RULING_GATE}")
+        if any(v is not None for v in (change_request, key, classification, rationale)):
+            print_error(
+                "--change-request, --idempotency-key and --classification belong to "
+                f"{INCREMENT_RULING_GATE}"
+            )
             raise typer.Exit(code=2)
         return {}
     if change_request is None:
@@ -324,7 +351,12 @@ def _increment_binding(gate_name: str, change_request: Path | None, key: str | N
         raise typer.Exit(code=2) from e
     key = key or f"cli-{uuid.uuid4().hex}"
     print_success(f"binding {binding.proposal_id} v{binding.version} (key {key})")
-    return {"binding": dataclasses.asdict(binding), "idempotency_key": key}
+    fields: dict = {"binding": dataclasses.asdict(binding), "idempotency_key": key}
+    if classification:
+        fields["classification"] = classification
+    if rationale:
+        fields["classification_rationale"] = rationale
+    return fields
 
 
 @app.command("resume")

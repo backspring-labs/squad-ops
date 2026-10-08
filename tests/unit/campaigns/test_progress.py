@@ -956,7 +956,7 @@ async def _increment_failed_by_the_environment(
         MANIFEST.encode(),
     )
     stored["art_cr"] = (_ref("art_cr", "change_request.yaml", "change_request", -1), b"cr")
-    from squadops.campaigns.gate import ruling_transition, submission
+    from squadops.campaigns.gate import RETURNING_DECISIONS, ruling_transition, submission
     from squadops.campaigns.models import ProposalBinding, SubmittedProposal
     from squadops.cycles.models import GateDecisionValue
 
@@ -1014,6 +1014,9 @@ async def _increment_failed_by_the_environment(
             actor_role="campaign_supervisor",
             reason="r",
             idempotency_key="rule-1",
+            classification=(
+                "scope_too_large" if GateDecisionValue(ruled) in RETURNING_DECISIONS else None
+            ),
         ),
     )
     w._assess = lambda cycle_id: _async(

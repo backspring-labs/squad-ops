@@ -205,12 +205,68 @@ async def test_an_approval_records_one_row_and_one_decision_and_a_repeat_neither
         (INCREMENT_RULING_GATE, {"notes": " "}, "the ruling's reason"),
         (INCREMENT_RULING_GATE, {"waived_checks": ["tests_pass"]}, "takes no waiver"),
         ("progress_plan_review", {}, "belong to the progress_increment_ruling gate only"),
+        # SIP-0109 §24bi (the 2.2 plan's D2): a return names what went wrong, or says none fits.
+        (
+            INCREMENT_RULING_GATE,
+            {"decision": "returned_for_revision"},
+            "carries its classification",
+        ),
+        (INCREMENT_RULING_GATE, {"decision": "rejected"}, "carries its classification"),
+        (
+            INCREMENT_RULING_GATE,
+            {"decision": "rejected", "classification": "unclassified"},
+            "carries a rationale",
+        ),
+        (
+            INCREMENT_RULING_GATE,
+            {"decision": "returned_for_revision", "classification": "bad_luck"},
+            "unknown classification",
+        ),
+        (INCREMENT_RULING_GATE, {"classification": "scope_too_large"}, "carries none"),
     ],
 )
 async def test_a_malformed_ruling_is_a_422_and_records_nothing(world, gate, body, message):
+    """Bugs caught for §24bi: a return recorded with no class, so Cross-Cycle Memory observes it
+    as unclassified with nothing to say why (SIP-0110 §0.4); a novel defect forced into a class by
+    a vocabulary with no way out; or a class on an approval, which has nothing wrong to name."""
     world.identity = _identity(Role.ADMIN)
     resp = world.rule(gate, **body)
 
     assert resp.status_code == 422
     assert message in resp.json()["detail"]["error"]["message"]
     assert await world.gate_decisions() == []
+    log = await world.campaigns.control_log(CID)
+    assert not [e for e in log if e.operation is ControlOperation.RULE]
+
+
+@pytest.mark.parametrize(
+    ("body", "recorded"),
+    [
+        (
+            {"decision": "returned_for_revision", "classification": "scope_too_large"},
+            {"classification": "scope_too_large"},
+        ),
+        (
+            {
+                "decision": "rejected",
+                "classification": "unclassified",
+                "classification_rationale": "the delta names a route the manifest forbids",
+            },
+            {
+                "classification": "unclassified",
+                "classification_rationale": "the delta names a route the manifest forbids",
+            },
+        ),
+        ({"decision": "approved"}, {}),
+    ],
+)
+async def test_a_returns_classification_rides_its_ruling_row(world, body, recorded):
+    """§24bi, entered at the gate route. Bug caught: the class accepted and then dropped, so the
+    ledger and Cross-Cycle Memory read the return as unclassified."""
+    resp = world.rule(**body)
+
+    [row] = [
+        e for e in await world.campaigns.control_log(CID) if e.operation is ControlOperation.RULE
+    ]
+    assert resp.status_code == 200
+    assert {k: v for k, v in row.binding.items() if k.startswith("classification")} == recorded

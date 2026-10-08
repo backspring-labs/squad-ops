@@ -260,6 +260,55 @@ def test_a_return_never_classified_or_refused_or_from_a_diagnostic_is_handled_ex
     assert observed.evidence["version"] == 1
 
 
+@pytest.mark.parametrize(
+    ("at_ruling", "later", "expected"),
+    [
+        # SIP-0109 §24bi: the class the ruling carried.
+        (
+            {"classification": "scope_too_large"},
+            [],
+            (VOCABULARY_PROPOSAL, ("scope_too_large",), ""),
+        ),
+        # A novel defect, returned as unclassified with why: the rationale is kept.
+        (
+            {"classification": "unclassified", "classification_rationale": "a route it forbids"},
+            [],
+            (UNCLASSIFIED, (), "a route it forbids"),
+        ),
+        # A later reading of the version (the classify route) joins the ruling's class.
+        (
+            {"classification": "scope_too_large"},
+            ["ambiguous_manifest_delta"],
+            (VOCABULARY_PROPOSAL, ("ambiguous_manifest_delta", "scope_too_large"), ""),
+        ),
+        # A later reading classes an unclassified return.
+        (
+            {"classification": "unclassified", "classification_rationale": "novel"},
+            ["criteria_not_checkable"],
+            (VOCABULARY_PROPOSAL, ("criteria_not_checkable",), ""),
+        ),
+        # A ruling from before the rail, never classified.
+        ({}, [], (UNCLASSIFIED, (), "no classification of this version was recorded")),
+    ],
+)
+def test_a_returns_class_is_read_from_its_ruling_row_and_any_later_reading(
+    at_ruling, later, expected
+):
+    """SIP-0110 §0.4 with SIP-0109 §24bi. Bugs caught: the class the ruling carried ignored, so
+    every return after the rail reads as unclassified; or an unclassified return's rationale lost,
+    leaving the backlog unable to say why it has no class."""
+    bind = {"proposal_id": "prop_1", "version": 1}
+    log = [_entry(1, ControlOperation.RULE, {**bind, "decision": "rejected", **at_ruling})] + [
+        _entry(2 + n, ControlOperation.CLASSIFY, {**bind, "classification": c})
+        for n, c in enumerate(later)
+    ]
+
+    [observed] = observe_proposal_rulings("cmp_1", "group_run", log)
+
+    c = observed.classification
+    assert (c.vocabulary, c.values, c.rationale or "") == expected
+
+
 def test_an_observation_survives_the_store_unchanged():
     """Bug caught: a field lost between the projection and the Postgres row's JSON."""
     [observed] = observe_cycle(
