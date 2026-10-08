@@ -147,6 +147,11 @@ def get_squad_profile_port(request: Request) -> SquadProfilePort:
     return _required(request, "squad_profile", "SquadProfilePort")
 
 
+def get_memory_store(request: Request):
+    """SIP-0110 (D13): Cross-Cycle Memory's store, beside the cycle registry (``main._init_memory``)."""
+    return _slot(request, "memory_store")
+
+
 def get_artifact_vault(request: Request) -> ArtifactVaultPort:
     """Return the ArtifactVaultPort (T14: never None at call sites)."""
     return _required(request, "artifact_vault", "ArtifactVaultPort")

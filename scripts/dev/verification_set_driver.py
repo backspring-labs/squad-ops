@@ -1158,6 +1158,26 @@ def framework_drift_problems(cfg: SetConfig) -> list[str]:
     ]
 
 
+#: SIP-0110 §0.7 (the 2.2 plan's D12): every cycle this driver launches declares memory disabled,
+#: so an approved lesson never moves the regression yardstick unannounced. A set's shakeouts declare
+#: it too, so a shakeout resolves the same configuration its rolls do. A set config may still say
+#: ``memory: enabled`` for a shakeout; a counting roll refuses anything but ``disabled``.
+MEMORY_DECLARATION = ("memory", "disabled")
+
+
+def memory_declaration_problems(cfg: SetConfig) -> list[str]:
+    """D12: a counted roll runs with memory disabled until the owner rules otherwise on a finding
+    of supported benefit. A set config that declares anything else cannot be counted."""
+    key, value = MEMORY_DECLARATION
+    declared = str(cfg.overrides.get(key, value)).strip().lower()
+    if declared == value:
+        return []
+    return [
+        f"D12: a counted roll declares {key}: {value}; the set config says {key}: {declared}. "
+        "Memory on a counted roll needs the owner's ruling on a finding of supported benefit."
+    ]
+
+
 def preflight(cfg: SetConfig, *, counting: bool, identity: dict[str, str]) -> list[str]:
     problems: list[str] = []
     # #1425: three 1.7.4 probes named containers that do not exist and recorded "No such
@@ -1194,6 +1214,7 @@ def preflight(cfg: SetConfig, *, counting: bool, identity: dict[str, str]) -> li
         log(f"DIAGNOSTIC: this cycle injects fault(s) {', '.join(faults)} — non-counting")
     if not counting:
         return problems
+    problems.extend(memory_declaration_problems(cfg))
     if not cfg.frozen_image_ids:
         problems.append(
             "counting roll with no frozen_image_ids in the set config — pre-register the deploy first"
@@ -1651,9 +1672,16 @@ def squad_snapshot_problems(cfg: SetConfig) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
+def launch_overrides(cfg: SetConfig) -> dict[str, str]:
+    """The overrides a launch passes: the set config's, with memory declared disabled unless the
+    config declares memory itself."""
+    key, value = MEMORY_DECLARATION
+    return {key: value, **cfg.overrides}
+
+
 def launch(cfg: SetConfig, notes: str) -> tuple[str, str, str]:
     login()
-    sets = " ".join(f"--set {k}={v}" for k, v in cfg.overrides.items())
+    sets = " ".join(f"--set {k}={v}" for k, v in launch_overrides(cfg).items())
     out = sh(
         f"{SQUADOPS} cycles create {cfg.project} --squad-profile {cfg.squad_profile} "
         f"--request-profile {cfg.request_profile} {sets} --notes {shlex.quote(notes)}"

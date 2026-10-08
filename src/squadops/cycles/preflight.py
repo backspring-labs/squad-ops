@@ -436,6 +436,25 @@ def fault_injection_decision(config: Mapping[str, Any]) -> PreflightDecision:
     )
 
 
+def memory_declaration_decision(config: Mapping[str, Any]) -> PreflightDecision:
+    """Block a ``memory`` declaration that is neither ``disabled`` nor ``enabled`` (SIP-0110 §0.7).
+
+    A typo is refused rather than read either way: read as enabled, it would hand a counted roll
+    its lessons (D12); read as disabled, it would leave a memory arm without memory.
+    """
+    from squadops.memory.declarations import memory_disabled
+
+    try:
+        memory_disabled(config)
+    except ValueError as exc:
+        return PreflightDecision(
+            blocking=(
+                Finding(code="memory_declaration_unknown", severity="block", message=str(exc)),
+            )
+        )
+    return PreflightDecision()
+
+
 def required_check_tooling_decision(
     required_check_ids: Iterable[str],
     available_tooling: Iterable[str] | None,

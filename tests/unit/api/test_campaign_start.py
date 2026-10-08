@@ -21,12 +21,14 @@ from adapters.auth.keycloak.authz_adapter import KeycloakAuthzAdapter
 from adapters.cycles.factory import create_project_registry, create_squad_profile_port
 from adapters.cycles.memory_campaign_registry import MemoryCampaignRegistry
 from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
+from adapters.memory.cross_cycle import InMemoryCrossCycleMemoryStore
 from squadops.api.campaign_launch import CampaignLaunchService
 from squadops.api.error_handlers import register_domain_error_handlers
 from squadops.api.routes.campaigns import campaigns_router
 from squadops.api.routes.cycles.cycles import CreationPorts
 from squadops.auth.models import Identity, IdentityType, Role, scopes_for_roles
 from squadops.campaigns.models import CampaignState, ControlOperation, LaunchIntentState
+from squadops.memory.lessons import UnitKind
 from tests.unit.campaigns.builders import campaign, policy, quiet_box
 
 pytestmark = pytest.mark.auth
@@ -141,6 +143,30 @@ async def test_a_start_launches_the_calibration_cycle_by_the_cycle_create_path(w
     assert (cycle.squad_profile_id, cycle.created_by) == ("full-38", "campaign-launcher")
     assert (run.run_number, run.status, run.workload_type) == (1, "queued", "framing")
     assert world.executor.started == [(cycle_id, run.run_id, "full-38")]
+
+
+async def test_a_start_pins_the_campaigns_snapshot_before_its_calibration_cycle_exists(world):
+    """SIP-0110 §0.7. Bugs caught: a campaign that pins nothing; a pin after the launch, so the
+    calibration cycle's seams ask for a snapshot that does not exist yet; or the calibration cycle
+    pinning one of its own, so one campaign's units select from two snapshots."""
+    cycles_at_pin: list[int] = []
+
+    class _Store(InMemoryCrossCycleMemoryStore):
+        async def record_snapshot(self, snapshot):
+            cycles_at_pin.append(len(await world.cycles.list_cycles("group_run")))
+            return await super().record_snapshot(snapshot)
+
+    store = _Store()
+    world.client.app.state.memory_store = store
+
+    resp = world.start()
+    await asyncio.sleep(0)
+
+    [cycle_id] = resp.json()["launched_cycles"]
+    pinned = await store.get_snapshot(UnitKind.CAMPAIGN, CID)
+    assert (pinned.unit_id, pinned.disabled) == (CID, False)
+    assert cycles_at_pin == [0]
+    assert await store.get_snapshot(UnitKind.CYCLE, cycle_id) is None
 
 
 async def test_the_supervisor_starts_a_campaign_and_its_row_names_the_supervisor(world):

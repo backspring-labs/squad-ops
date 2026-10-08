@@ -44,6 +44,7 @@ from squadops.cycles.preflight import (
     bind_mode_authoring_decision,
     combine,
     fault_injection_decision,
+    memory_declaration_decision,
     model_availability_decision,
     model_registration_decision,
     required_check_tooling_decision,
@@ -169,6 +170,8 @@ async def _run_create_preflight(
         # diagnostic — a cycle reading as evidence the loop handled a fault that never
         # happened. A usable one warns, so the create log says the cycle is a diagnostic.
         fault_injection_decision(config),
+        # SIP-0110 §0.7: a memory declaration is `disabled` or `enabled`, never guessed.
+        memory_declaration_decision(config),
     )
     if decision.rejected:
         raise PreflightRejectedError(decision.summary())
@@ -499,6 +502,7 @@ async def create_cycle(
     # Persist atomically (T17)
     await ports.cycle_registry.create_cycle(cycle)
     await ports.cycle_registry.create_run(run)
+    await _pin_memory(request, cycle)
 
     # SIP-0077: cycle.created
     from squadops.api.runtime.deps import get_cycle_event_bus
@@ -539,6 +543,23 @@ async def create_cycle(
         resolved_config_hash=config_hash,
         warnings=[PreflightWarningDTO(code=w.code, message=w.message) for w in preflight_warnings],
     )
+
+
+async def _pin_memory(request: Request, cycle) -> None:
+    """SIP-0110 §0.7: a standalone cycle pins its memory snapshot when it is created. Beside the
+    launch: a pin that fails is logged, the cycle runs, and its seams record recall as failed."""
+    from datetime import UTC, datetime
+
+    from squadops.api.runtime.deps import get_memory_store
+    from squadops.memory.pinning import pin_standalone_cycle
+
+    store = get_memory_store(request)
+    if store is None:
+        return
+    try:
+        await pin_standalone_cycle(store, cycle, now=datetime.now(UTC))
+    except Exception:
+        logger.warning("memory_snapshot_not_pinned cycle=%s", cycle.cycle_id, exc_info=True)
 
 
 def _audit_launch_refused(
