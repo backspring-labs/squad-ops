@@ -98,13 +98,62 @@ def test_a_config_without_references_needs_no_factory():
     assert config is not None
 
 
-def test_both_composition_roots_hand_the_loader_the_bootstrap_factory():
-    """The roots that load the framework config pass ``secret_provider_for`` — a
-    root that forgot would fail at first boot on any config with a reference, and this
-    says so in CI instead."""
+def _framework_load_config_calls_without_a_factory(source: str) -> list[int]:
+    """The lines where a module calls the FRAMEWORK loader (imported from ``squadops.config``)
+    without ``secret_provider_factory``. The CLI's own ``squadops.cli.config.load_config``
+    reads the CLI's file, holds no references, and is not this loader."""
+    import ast
+
+    tree = ast.parse(source)
+    names = {
+        alias.asname or alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.module in ("squadops.config", "squadops.config.loader")
+        for alias in node.names
+        if alias.name == "load_config"
+    }
+    return [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in names
+        and not any(k.arg == "secret_provider_factory" for k in node.keywords)
+    ]
+
+
+def test_every_framework_config_load_hands_the_loader_a_factory():
+    """Bug caught: a caller that loads the framework config with no factory fails at its
+    first use on any deploy, whose config always carries references. Checking only the two
+    roots missed the in-container authoring replay (#2137): its tests entered below
+    ``_main``, and the first live run raised ``ConfigValidationError``. Every caller in
+    ``src/``, ``adapters/`` and ``scripts/`` is read, not a list of them."""
     from pathlib import Path
 
     repo = Path(__file__).resolve().parents[3]
-    for rel in ("src/squadops/api/runtime/main.py", "src/squadops/agents/entrypoint.py"):
-        text = (repo / rel).read_text(encoding="utf-8")
-        assert "secret_provider_factory=secret_provider_for" in text, rel
+    offenders = [
+        f"{path.relative_to(repo)}:{line}"
+        for root in ("src", "adapters", "scripts")
+        for path in sorted((repo / root).rglob("*.py"))
+        for line in _framework_load_config_calls_without_a_factory(path.read_text(encoding="utf-8"))
+    ]
+    assert offenders == []
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("from squadops.config import load_config\nload_config()\n", [2]),
+        ("from squadops.config.loader import load_config as lc\nlc(strict=True)\n", [2]),
+        (
+            "from squadops.config import load_config\nload_config(secret_provider_factory=f)\n",
+            [],
+        ),
+        ("from squadops.cli.config import load_config\nload_config()\n", []),
+    ],
+)
+def test_the_scan_reads_the_framework_loader_and_only_it(source, expected):
+    """The guard above is only as good as its scan: an alias must not hide a call, and the
+    CLI's loader of the same name must not be flagged."""
+    assert _framework_load_config_calls_without_a_factory(source) == expected
