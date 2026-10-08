@@ -108,7 +108,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | supervisor instruments (the lease proof, the binding replay, the loaded checks, the watcher) | **shipped** | 2.1.0, PR #2025, issue #1956 |
 | per-increment scorecard in the digest (§24bb) | **shipped** | 2.1.0, PR #2027, issue #1960 |
 | increment replay (any increment of any campaign, outside it) | **shipped** | 2.1.0, PR #2026, issue #1959 |
-| the auto-decision tier and escalation queue | **placed**, outside this SIP's scope (§5) | 2.2.0, #1708 |
+| the auto-decision tier and escalation queue | **placed**: its policy and queue ruled by the owner (§24bj), activation held until 2.2's measurement window closes | 2.2.0, #1708 |
 | accepted increments' `prd_delta` text to the proposer | **deferred to 2.4** (ruled 2026-10-03, §24ap): "a 2.4 question" | §24ap |
 | escalating a launch the cycle-create preflight refuses | **shipped** (§24ba) | 2.1.0, PR #2052, issue #1971 |
 | re-hearing an ended cycle between restarts | **shipped**: the campaign sweep re-hears on its interval, and a cycle is heard by one hearer at a time | 2.1.0, PR #2038, issue #1972 (§24as) |
@@ -2957,3 +2957,130 @@ which has nothing wrong to name. The class rides the ruling's own `rule` row (`c
 **Who ruled it.** The owner, 2026-10-07, adopting the 2.2 plan with D1–D15 as written. D2: "a
 `ProposalClassification` class or an explicit `unclassified` with rationale; a return with neither is
 refused (a SIP-0109 rail and amendment)".
+
+### 24bj. The plan-review tier and the escalation queue (2026-10-08, §9.2, §9.5, §10, §24ad, §24ae, §24aj, #1708; the policy ruled by the owner)
+
+#1708 asked for three things: a declared policy that decides an unattended cycle's review gate inside
+the objective's scope, with the decider recorded; an escalation that queues instead of holding the
+box; and no gate that waits without bound. §24aj bounded the wait with a record, and nothing more. The
+2.2 plan (§2.2) placed the rest here, and the owner ruled the policy on 2026-10-08.
+
+**The ruling.** The owner, 2026-10-08, accepted the four recommendations put to them ("yes to 1 and 2,
+go ahead"):
+1. **The tier may approve, and nothing else.** A rejection, a return or an answer to a question is
+   never the tier's. Anything it cannot approve escalates.
+2. **An approval needs every condition below.** Any one missing escalates.
+3. **An escalation waits the campaign's `ruling_bound_s`.** When the bound passes, the increment is
+   parked, unaccepted. The campaign continues with independent work, or ends with its completed and
+   unresolved work kept apart.
+4. **An answer that comes after the campaign closed** is recorded against its escalation and read at
+   the next campaign's admission. It never reopens a closed campaign.
+
+**What the tier adds, read against today.** A design-bearing plan gate already passes on its own when
+its manifest asks no question (`system:no_open_questions`, #807, `adapters/cycles/workload_gate.py:263`),
+after plan validation and the manifest's schema and winnability gates. A plan gate stops for a person
+only when the design asks a question, as `cmp_dae2cd6b0e3c`'s calibration asked its runs-list ordering.
+So **the tier approves nothing the pass-through would not.** It grants no new authority. What it adds:
+- **two conditions the pass-through never checked:** the plan stays inside the objective's scope, and
+  the framing ran once. In a tier campaign, a plan that fails either escalates where a supervised
+  campaign passes it unread;
+- **the escalation queue and its bound,** so a question nobody answers parks its increment instead of
+  holding the campaign.
+
+**The policy (normative).**
+- **Its gate:** `progress_plan_review` on a campaign's cycles (calibration, increment, repair, retry).
+  The increment gate stays the supervisor's (§9.2). Approving a proposal would need checks that do not
+  exist yet (the 2.2 plan §2.2: unsupported added scope, omitted obligations, already-satisfied
+  criteria, and others).
+- **Its conditions, all required:**
+  1. plan validation passed at this gate (the existing rails, `framing_gate_check`);
+  2. the manifest's schema and winnability gates passed;
+  3. no unresolved question remains once §24ad's answers are applied;
+  4. **the plan's footprint is inside the objective's `allowed_scope`.** The footprint is the union of
+     its tasks' `expected_artifacts`. An increment, repair or retry is held to it. **A calibration is
+     not:** it builds the baseline the scope is read against, and its plan names the builder's own
+     `assembly_notes.md` at the root. Both of this line's calibrations do (`cyc_41679341d038`,
+     `cyc_17cd76a351a0`), and all three of its increments were inside scope;
+  5. the cycle's framing ran once. A re-rolled framing (`workload_gate.py:201`, under
+     `max_framing_rerolls`) escalates, because plan validation already refused one of its plans.
+- **The decider is recorded:** `decided_by = system:plan_review_tier`. The decision's notes name each
+  condition and what it read, so the row says why, not only who.
+- **Declared, never defaulted.** `CampaignPolicy.plan_gate` is `supervised` or `tier`. A definition
+  that does not declare it is refused at creation, as every other policy field is. A campaign stored
+  before this reads `supervised` (`CampaignPolicy.from_stored`). **`supervised` is today's behaviour,
+  unchanged:** the pass-through, §24ae's and §24aj's overdue rows, and a wait that only a ruling ends.
+- **Pure:** the tier reads the gate's evidence and the campaign's record, never mutable memory
+  (SIP-0110 §7, §0.8).
+
+**Its activation is held until the measurement window closes** (the 2.2 plan's D3). 2.2 builds the
+tier, and no campaign declares `tier` before the window closes. The window's experiment manifest
+records each campaign's `plan_gate`. Two reasons:
+- authority comes from a declared policy, and that is read in a shakeout before it is relied on;
+- **the tier changes what memory observes.** A plan the tier approves is never observed as a rejection,
+  and a parked one is not observed at all (below).
+
+The cut's campaign shakeout declares `tier`. It is read for one thing: every case the policy does not
+cover escalated.
+
+**The escalation (normative).**
+- **Opened** when a tier campaign's plan gate is not approved by the tier. It is one row, keyed by its
+  identity: the campaign, the cycle, the run, the gate, the proposal and its version (none for a
+  calibration), the accepted baseline's identity, and the plan's (its manifest's and its
+  implementation plan's content hashes). Opening is idempotent: a row with the same identity is the
+  same escalation. It carries the conditions that failed, the open questions verbatim, and its opening
+  time.
+- **Its states:** `pending`, then exactly one of:
+  - `resolved`: a principal decided the gate before the bound, whatever the decision. An approval with
+    blank notes on a question answers nothing (§24ad), so the escalation stays `pending`;
+  - `expired`: the bound passed with it pending;
+  - `cancelled`: the campaign was aborted or stopped while it was pending;
+  - `superseded`: the gate it was opened for is no longer the one waiting, for example after a
+    supervisor's return re-framed the cycle.
+
+  Each transition is compare-and-set from `pending` and is recorded with its actor and time. A
+  transition that loses a race is refused and recorded, as §24ae's rows are.
+- **While one is pending, the campaign holds at that gate.** Any other increment would start from the
+  same accepted baseline as the pending one, so nothing else launches. The hold lasts at most
+  `ruling_bound_s`, the same bound a ruling waits.
+- **The expiry is one transition,** written by §24ae's sweep: the escalation is `expired`, the run is
+  cancelled with the reason `escalation_expired`, and the cycle ends **parked**.
+
+**A parked cycle (normative).**
+- **The continuation decision** gets one row, asked before row 6: the cycle was parked.
+  - **An increment, repair or retry:** `abandon_and_propose`, counting as unaccepted. A run of parks is
+    bounded by `max_unaccepted_increments`, the no-progress rule (§9.5).
+  - **A calibration:** row 2 applies (`stop_failure`, calibration). There is no baseline to build on.
+- **Silence is never approval, and never a rejection.** A parked plan is not counted among the rejected
+  proposals in a row, and memory does not observe it as a rejected plan (SIP-0110 revision 6).
+- **It is not regenerated in a loop.** The next proposal is shown the parked increment's brief through
+  §24w's channel, with the escalation and its open questions. A re-proposal that escalates again is
+  parked again and counts again, so the no-progress rule ends the loop.
+- **Completed and unresolved, kept apart.** The campaign's close record and its digest list the
+  accepted increments, and separately every escalation pending or expired at the close, with its
+  questions. A campaign that ends because every increment it could build needed the owner ends
+  `stop_failure` (no-progress), with that list. The outcome vocabulary does not change.
+
+**The late answer (normative).** An answer to an expired escalation is recorded against it, with its
+actor, its time and its notes. The escalation stays `expired`, with the answer beside it.
+- It never resumes a parked cycle, and never reopens a closed campaign.
+- It is read as an authoritative answer to the same question, by §24ad's mechanism, with a warrant that
+  names the escalation:
+  - by a running campaign at its next proposal launch;
+  - by the next campaign for the same project, at its admission, which applies it to its calibration's
+    questions.
+- A stale answer never authorizes a changed plan. It answers a question by its id, and a changed plan
+  that asks the same question is answered by it, as §24ad answers a question already ruled.
+
+**The digest** asks for each pending escalation, lists each expired one as unresolved and answerable,
+and shows each late answer recorded. It reads the store, so a restart loses nothing.
+
+**Not changed:**
+- **the campaign-level `escalated` state** (§10 rows 9, 11 and 14, the retry limit, the launch limit).
+  It waits on the owner's word, as §10 says. It is not this queue;
+- the supervisor's rulings at either gate, in either mode;
+- the increment gate.
+
+**Not built:**
+- **an automatic rejection or answer.** The ruling keeps them with a person;
+- **proposal auto-approval,** until its checks exist (the 2.2 plan §2.2);
+- **an escalation that notifies anyone.** The digest is its reader, as it is the overdue rows' (§24ae).
