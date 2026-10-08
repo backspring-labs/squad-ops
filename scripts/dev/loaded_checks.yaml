@@ -160,14 +160,14 @@ checks:
             ps["failure_recall"].default is inspect.Parameter.empty, ps["task_dispatcher"].default is None)
     expect: True True True
   - id: "1964"
-    what: the inert failure-pattern recall answers empty, where the memory port's no-op raises
+    what: the no-op failure recall answers every task as memory disabled, where the memory port's no-op raises (#1964; its answer since SIP-0110 slice 3c, #2127)
     container: squadops-runtime-api
     code: |
       import asyncio
       from adapters.noop.ports import NoOpFailurePatternRecall
       from squadops.memory.recall import RecallQuery
-      print(asyncio.run(NoOpFailurePatternRecall().recall(RecallQuery("group_run", "development.design_plan"))))
-    expect: ()
+      print(asyncio.run(NoOpFailurePatternRecall().recall(RecallQuery("group_run", "development.design_plan"))).disposition.value)
+    expect: memory_disabled
   - id: "1940"
     what: the campaign supervisor manages a campaign; only the owner controls one
     container: squadops-runtime-api
