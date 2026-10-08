@@ -26,6 +26,7 @@ from squadops.campaigns.models import (
     ControlOutcome,
     LaunchIntent,
     LaunchIntentState,
+    PlanGate,
     RefusalReason,
 )
 
@@ -158,13 +159,18 @@ def creation_request_hash(
     definition: CampaignDefinition | None = None,
 ) -> str:
     """The creation's content, for its replay. The definition (#1954) enters only when given,
-    so a creation stored before it, or made without a file, keeps the hash it was stored with."""
+    so a creation stored before it, or made without a file, keeps the hash it was stored with. The
+    plan gate (§24bj) enters only when it is not ``supervised``: a creation stored before it existed
+    ran supervised and was hashed without it, so its retry still replays."""
+    policy = dataclasses.asdict(campaign.policy)
+    if policy["plan_gate"] is PlanGate.SUPERVISED:
+        del policy["plan_gate"]
     content = {
         "operation": ControlOperation.CREATE,
         "campaign_id": campaign.campaign_id,
         "project_id": campaign.project_id,
         "objective": dataclasses.asdict(campaign.objective),
-        "policy": dataclasses.asdict(campaign.policy),
+        "policy": policy,
         "created_by": campaign.created_by,
         "actor": actor,
         "actor_role": actor_role,

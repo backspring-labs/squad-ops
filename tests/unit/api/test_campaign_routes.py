@@ -50,6 +50,7 @@ _POLICY = dict(
     calibration_profile="validated-fullstack",
     proposal_profile="campaign-increment",
     squad_profile="full-38",
+    plan_gate="supervised",
 )
 
 
@@ -394,6 +395,24 @@ async def test_an_invalid_policy_is_a_422_not_a_500_and_creates_nothing(world, o
     resp = _create(world, policy={**_POLICY, **override})
     assert resp.status_code == 422
     assert message in resp.json()["detail"]["error"]["message"]
+    assert world.client.get("/api/v1/campaigns/cmp_api000000001").status_code == 404
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        {k: v for k, v in _POLICY.items() if k != "plan_gate"},
+        {**_POLICY, "plan_gate": "auto"},
+    ],
+    ids=["undeclared", "unknown"],
+)
+def test_a_plan_gate_not_declared_as_supervised_or_tier_is_refused_at_creation(world, policy):
+    """§24bj: declared, never defaulted. Bug caught: a definition that says nothing about who
+    decides its plan gates created as if it had chosen, or an unknown mode accepted."""
+    resp = _create(world, policy=policy)
+
+    assert resp.status_code == 422
+    assert "plan_gate" in resp.text
     assert world.client.get("/api/v1/campaigns/cmp_api000000001").status_code == 404
 
 

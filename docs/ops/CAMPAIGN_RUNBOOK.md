@@ -182,6 +182,16 @@ An answer is asked once. The next proposal carries it into the accepted manifest
 `choice`, with a `warrant` naming the gate that answered it (§24ad, §24ag). An approval with blank
 notes answers nothing, and the question is asked again.
 
+**Who decides a plan gate is the campaign's declaration** (`policy.plan_gate`, §24bj). Every new
+definition declares it; one that does not is refused at creation:
+- `supervised`: as above. A design that asks nothing passes on its own (#807), and a question waits
+  for you;
+- `tier`: the plan-review tier approves when the design asks nothing, the plan's files are inside the
+  objective's `allowed_scope` (a calibration is exempt), and the framing ran once. It records
+  `system:plan_review_tier`, with what each condition read in the notes. Anything else waits for you
+  as above, with the conditions that failed on the gate's awaiting event. **Held until 2.2's
+  measurement window closes:** no campaign declares `tier` before then.
+
 ---
 
 ## 5. Recovering

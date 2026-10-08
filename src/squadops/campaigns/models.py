@@ -60,6 +60,15 @@ class CycleKind(StrEnum):
     RETRY = "retry"
 
 
+class PlanGate(StrEnum):
+    """Who decides a campaign cycle's plan gate (§24bj). Declared by the campaign, never defaulted."""
+
+    #: Today's behaviour: #807's pass-through, and a person for any question (§24ae, §24aj).
+    SUPERVISED = "supervised"
+    #: The plan-review tier: it approves when every §24bj condition holds, and escalates otherwise.
+    TIER = "tier"
+
+
 class ControlOperation(StrEnum):
     """A control operation, each one a control-log row (§13).
 
@@ -323,16 +332,21 @@ class CampaignPolicy:
     calibration_profile: str
     proposal_profile: str
     squad_profile: str
+    # §24bj: who decides the plan gates of the cycles this campaign launches
+    plan_gate: PlanGate
 
     @classmethod
     def from_stored(cls, data: Mapping[str, Any]) -> CampaignPolicy:
         """A stored policy, as written. One stored before §24al carries two seat bounds, a crew's
-        and an owner's; its supervisor's bound is the first of them, the crew's. A terminal row
-        needs no migration, and its record keeps the values it ran under."""
+        and an owner's; its supervisor's bound is the first of them, the crew's. One stored before
+        §24bj declares no plan gate, and ran supervised. A terminal row needs no migration, and its
+        record keeps the values it ran under."""
         values = dict(data)
         if "ruling_bound_s" not in values and "crew_ruling_bound_s" in values:
             values["ruling_bound_s"] = values.pop("crew_ruling_bound_s")
             values.pop("owner_ruling_bound_s", None)
+        if "plan_gate" not in values:
+            values["plan_gate"] = PlanGate.SUPERVISED
         return cls(**values)
 
     def __post_init__(self) -> None:
@@ -347,6 +361,13 @@ class CampaignPolicy:
             floor = 1 if f.name in _POSITIVE_POLICY_FIELDS else 0
             if value < floor:
                 raise ValueError(f"CampaignPolicy.{f.name} must be >= {floor}, got {value}")
+        try:
+            object.__setattr__(self, "plan_gate", PlanGate(self.plan_gate))
+        except ValueError:
+            raise ValueError(
+                f"CampaignPolicy.plan_gate must be one of {[g.value for g in PlanGate]}, "
+                f"got {self.plan_gate!r}"
+            ) from None
         _require_text(
             "CampaignPolicy",
             calibration_profile=self.calibration_profile,
