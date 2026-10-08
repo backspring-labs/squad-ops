@@ -34,6 +34,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -112,7 +113,9 @@ _PROSE_PATH = re.compile(r"[\w.\-/@]*[\w\-]+/[\w.\-/@]*[\w\-]+\.[A-Za-z0-9]{1,6}
 
 
 def refuted_source_claims(
-    failure_analysis: dict[str, Any] | None, failed_inputs: dict[str, Any]
+    failure_analysis: dict[str, Any] | None,
+    failed_inputs: dict[str, Any],
+    frozen_paths: Iterable[str] = (),
 ) -> list[dict[str, str]]:
     """Claims in the analyzer's PROSE that name a file the workspace does not have (#968).
 
@@ -132,6 +135,13 @@ def refuted_source_claims(
     decision prompt can quote what was refuted rather than merely counting it. Deliberately
     NOT a rewrite of the analysis: the analyzer's text stands as it was written, and the
     contradiction rides beside it.
+
+    ``frozen_paths`` are the scaffold's frozen files, from the run's bound record (#2155).
+    They are in every workspace of a bound run, and they are the files an analysis most often
+    has to cite. Without them, the rebuild 5 nextjs regression pair (``cyc_9e9770706fdd``) told
+    its decision, in both rounds, that ``lib/errors.ts`` did not exist. The analyzer had said,
+    correctly, that the routes did not use its ``errorResponse``. They widen what is known
+    only: an envelope that knows nothing still refutes nothing.
     """
     if not isinstance(failure_analysis, dict):
         return []
@@ -143,6 +153,7 @@ def refuted_source_claims(
         # Nothing to check against. Refuting every path here would indict a whole analysis
         # on missing inputs, which is the opposite of the failure this guards.
         return []
+    known.update(str(p) for p in frozen_paths if p)
     known_basenames = {p.rsplit("/", 1)[-1] for p in known}
 
     prose: list[str] = []
@@ -169,6 +180,7 @@ def _attach_refuted_claims(
     analysis_outputs: dict[str, Any],
     envelope: Any,
     decision_task_id: str = "",
+    frozen_paths: Iterable[str] = (),
 ) -> None:
     """Ride the refutation beside the analysis the decision inherits (#968).
 
@@ -182,7 +194,9 @@ def _attach_refuted_claims(
     in one round would excuse a claim quoted in another (#1600's review). The failed task
     stays on the line as ``task=``, unchanged, because it is what the claim was about.
     """
-    refuted = refuted_source_claims(analysis_outputs, getattr(envelope, "inputs", None) or {})
+    refuted = refuted_source_claims(
+        analysis_outputs, getattr(envelope, "inputs", None) or {}, frozen_paths
+    )
     if not refuted:
         return
     corr_inputs["refuted_source_claims"] = refuted
@@ -1320,7 +1334,13 @@ class CorrectionRunner:
             }
             if analysis_outputs:
                 corr_inputs["failure_analysis"] = analysis_outputs
-                _attach_refuted_claims(corr_inputs, analysis_outputs, envelope, corr_task_id)
+                _attach_refuted_claims(
+                    corr_inputs,
+                    analysis_outputs,
+                    envelope,
+                    corr_task_id,
+                    frozen_paths=bound_record.frozen_paths() if bound_record is not None else (),
+                )
 
             corr_envelope = TaskEnvelope(
                 task_id=corr_task_id,
