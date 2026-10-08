@@ -316,6 +316,46 @@ class TestAuthoringEnvelopes:
             )
 
 
+class TestMemoryObservations:
+    """SIP-0110 §0.3 (#2096, the 2.2 plan's D13): the in-memory store keeps observations in a dict,
+    so only this proves the INSERT, the source CHECK, the duplicate rule and the JSONB round trip."""
+
+    async def test_an_observation_round_trips_and_a_reprojection_adds_nothing(self, migrated_pool):
+        from adapters.memory.cross_cycle import PostgresCrossCycleMemoryStore
+        from squadops.memory.observations import (
+            Classification,
+            Observation,
+            ObservationSource,
+        )
+
+        project = f"obs-{uuid.uuid4().hex[:8]}"
+        observed = Observation(
+            source=ObservationSource.CORRECTION_ROUND,
+            source_id=f"correction_round:run_x:{project}:0",
+            project_id=project,
+            observed_at=_NOW,
+            classification=Classification("attribution", ("verification_artifact_failure",)),
+            cycle_id="cyc_x",
+            run_id="run_x",
+            task_id="t-qa",
+            evidence={
+                "failed_detail": [["tests_pass", "TypeError: … is not a function — ünïcode"]]
+            },
+        )
+        store = PostgresCrossCycleMemoryStore(pool=migrated_pool)
+        try:
+            assert await store.record_observations([observed]) == 1
+            assert await store.record_observations([observed]) == 0
+
+            assert await store.list_observations(project) == [observed]
+            assert (
+                await store.list_observations(project, source=ObservationSource.PLAN_REVIEW) == []
+            )
+        finally:
+            async with migrated_pool.acquire() as conn:
+                await conn.execute("DELETE FROM memory_observations WHERE project_id = $1", project)
+
+
 class TestFullRunLifecycle:
     """create → running → paused → running → completed (Plan §3.3 item 2)."""
 
