@@ -101,6 +101,13 @@ def driver():
 
 
 @pytest.fixture(autouse=True)
+def _the_driver_signs_in_with_a_test_password(monkeypatch):
+    """#2079: the driver's login reads the deploy's own admin password and refuses without one.
+    Tests run with no deploy, so they give it one; the tests of that lookup set or clear it."""
+    monkeypatch.setenv("SQUADOPS_DRIVER_PASSWORD", "test-password")
+
+
+@pytest.fixture(autouse=True)
 def _the_deploys_containers_are_not_read(request, monkeypatch):
     """Every test reads a stubbed window, never the live deploy's containers: the Prefect
     fallback asks docker when each container was created, and an unstubbed ask read this box's
@@ -7160,3 +7167,36 @@ class TestACountedRollDeclaresMemoryDisabled:
 
         assert any(p.startswith("D12:") for p in counted) is refused
         assert not any(p.startswith("D12:") for p in shakeout)
+
+
+class TestTheDriverSignsInWithTheDeploysOwnPassword:
+    """#2079: the driver's login reads the realm admin's password from the environment or the
+    deploy's .env, never from a literal the repository commits."""
+
+    @pytest.mark.parametrize(
+        ("env_var", "env_file", "expected"),
+        [
+            ("from-env", "SQUADOPS_ADMIN_PASSWORD=from-file\n", "from-env"),
+            (None, "OTHER=1\nSQUADOPS_ADMIN_PASSWORD=from-file\n", "from-file"),
+        ],
+    )
+    def test_the_password_is_the_environments_else_the_deploys(
+        self, driver, tmp_path, monkeypatch, env_var, env_file, expected
+    ):
+        (tmp_path / ".env").write_text(env_file)
+        if env_var is None:
+            monkeypatch.delenv("SQUADOPS_DRIVER_PASSWORD", raising=False)
+        else:
+            monkeypatch.setenv("SQUADOPS_DRIVER_PASSWORD", env_var)
+
+        assert driver.admin_password(tmp_path) == expected
+
+    def test_a_deploy_with_no_admin_password_is_refused_by_name(
+        self, driver, tmp_path, monkeypatch
+    ):
+        """Bug caught: a fallback to the committed literal, so the driver signs in to any deploy
+        that still holds it and fails without saying why on one that does not."""
+        monkeypatch.delenv("SQUADOPS_DRIVER_PASSWORD", raising=False)
+
+        with pytest.raises(SystemExit, match="SQUADOPS_ADMIN_PASSWORD"):
+            driver.admin_password(tmp_path)

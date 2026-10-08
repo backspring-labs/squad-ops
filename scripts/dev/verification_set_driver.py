@@ -1011,8 +1011,25 @@ def login(squadops: str = SQUADOPS) -> None:
     the CLI to log in with: another script's resolves the main checkout's (the recovery
     diagnostics, #1803), where this one's is its own tree's."""
     user = os.environ.get("SQUADOPS_DRIVER_USER", "squadops-admin")
-    password = os.environ.get("SQUADOPS_DRIVER_PASSWORD", "admin123")
+    password = admin_password(REPO)
     sh(f"{squadops} login -u {shlex.quote(user)} -p {shlex.quote(password)}")
+
+
+def admin_password(repo: Path) -> str:
+    """The realm admin's password: ``SQUADOPS_DRIVER_PASSWORD`` when set, else the deploy's own,
+    ``SQUADOPS_ADMIN_PASSWORD`` in ``.env`` (#2079). Never a literal the repository commits: a
+    deploy whose ``.env`` lacks it is refused, by name."""
+    from squadops.bootstrap.setup.credentials import read_env
+
+    password = os.environ.get("SQUADOPS_DRIVER_PASSWORD") or read_env(repo / ".env").get(
+        "SQUADOPS_ADMIN_PASSWORD", ""
+    )
+    if not password:
+        raise SystemExit(
+            "no admin password: set SQUADOPS_DRIVER_PASSWORD, or run "
+            "scripts/dev/ops/deploy_credentials.py ensure to give .env SQUADOPS_ADMIN_PASSWORD"
+        )
+    return password
 
 
 def image_id(service: str) -> str:

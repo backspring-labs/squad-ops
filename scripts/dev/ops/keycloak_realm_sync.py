@@ -17,6 +17,10 @@ declares on its user, which ``partialImport`` (users omitted) never carries.
 a seed value, which every deploy used to keep; now a realm the export created is brought to the
 deploy's own secret the first time this runs, and a rotation is ``.env`` plus a deploy.
 
+#2079: then each realm user's password is set from ``.env`` the same way, unless the user already
+signs in with it. The exports commit no password for it, so a realm an export creates gets the
+deploy's own value on its first sync.
+
 stdlib only, so any deploy pipeline can call it. Usage:
 
     keycloak_realm_sync.py [--base-url http://localhost:8180] [--admin admin]
@@ -185,6 +189,62 @@ def set_client_secret(base_url: str, token: str, realm: str, client_id: str, sec
     return f"{realm}/{client_id}: secret set from .env"
 
 
+def user_passwords(registry: list[dict], env: dict[str, str]) -> dict[str, str]:
+    """Each realm user's password as ``.env`` holds it, by username (#2079)."""
+    return {
+        c["keycloak_user"]: env[c["env"]]
+        for c in registry
+        if c.get("keycloak_user") and env.get(c["env"])
+    }
+
+
+#: The realm's public client that takes a password grant: the CLI's (``squadops login``).
+PASSWORD_GRANT_CLIENT = "squadops-cli"
+
+
+def holds_password(base_url: str, realm: str, username: str, password: str) -> bool:
+    """Whether ``username`` already signs in to ``realm`` with ``password`` (the CLI's own grant)."""
+    body = urllib.parse.urlencode(
+        {
+            "grant_type": "password",
+            "client_id": PASSWORD_GRANT_CLIENT,
+            "username": username,
+            "password": password,
+        }
+    ).encode()
+    req = urllib.request.Request(
+        f"{base_url}/realms/{realm}/protocol/openid-connect/token",
+        data=body,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return resp.status == 200
+    except urllib.error.URLError:
+        return False
+
+
+def set_user_password(base_url: str, token: str, realm: str, username: str, password: str) -> str:
+    """Bring one realm user's password to ``password`` (#2079); a user already holding it is left
+    alone. The realm exports commit none, so a realm created from one gets the deploy's here."""
+    if holds_password(base_url, realm, username, password):
+        return f"{realm}/{username}: password already the deploy's"
+    query = urllib.parse.urlencode({"username": username, "exact": "true"})
+    status, found = _request(base_url, token, "GET", f"/admin/realms/{realm}/users?{query}")
+    if status != 200 or not found:
+        return f"{realm}/{username}: user not found ({status})"
+    status, _ = _request(
+        base_url,
+        token,
+        "PUT",
+        f"/admin/realms/{realm}/users/{found[0]['id']}/reset-password",
+        {"type": "password", "value": password, "temporary": False},
+    )
+    if status not in (200, 204):
+        return f"{realm}/{username}: setting the password returned {status}"
+    return f"{realm}/{username}: password set from .env"
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -212,7 +272,9 @@ def main(argv: list[str] | None = None) -> int:
     except (urllib.error.URLError, KeyError, ValueError) as exc:
         print(f"keycloak_realm_sync: admin token failed: {exc}", file=sys.stderr)
         return 1
-    secrets_by_client = client_secrets(load_registry(), read_env(REPO / ".env"))
+    registry, env = load_registry(), read_env(REPO / ".env")
+    secrets_by_client = client_secrets(registry, env)
+    passwords_by_user = user_passwords(registry, env)
     for export in args.exports:
         print(sync_export(args.base_url, token, export))
         document = json.loads(export.read_text())
@@ -225,6 +287,8 @@ def main(argv: list[str] | None = None) -> int:
             print(grant_service_account_roles(args.base_url, token, realm, client_id, roles))
         for client_id, secret in sorted(secrets_by_client.items()):
             print(set_client_secret(args.base_url, token, realm, client_id, secret))
+        for username, password in sorted(passwords_by_user.items()):
+            print(set_user_password(args.base_url, token, realm, username, password))
     return 0
 
 

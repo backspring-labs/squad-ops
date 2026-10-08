@@ -20,6 +20,7 @@ restart, and the Keycloak admin password changes before the realm sync signs in 
 | `RABBITMQ_PASSWORD` | `rabbitmqctl change_password` (step 4) |
 | `KEYCLOAK_ADMIN_PASSWORD` | `kcadm.sh set-password`, signed in with the old one (step 5) |
 | `SQUADOPS_AGENT_CLIENT_SECRET`, `SQUADOPS_RUNTIME_CLIENT_SECRET` | the realm sync sets each client's secret from `.env` (step 6) |
+| `SQUADOPS_ADMIN_PASSWORD` | the realm sync sets `squadops-admin`'s password from `.env` in every synced realm (step 6, #2079). **It is how the owner and the scripts sign in:** after rotating it, `squadops login` takes the new value |
 | `GRAFANA_ADMIN_PASSWORD` | `grafana cli admin reset-admin-password` (step 7) |
 | `LANGFUSE_NEXTAUTH_SECRET`, `LANGFUSE_SALT` | compose recreates Langfuse with them (step 8). **A new `SALT` invalidates every Langfuse API key**: step 9 mints new ones |
 | `LANGFUSE_ADMIN_PASSWORD` | the Langfuse UI user's password, changed in the UI (step 9) |
@@ -90,8 +91,11 @@ docker exec squadops-keycloak /opt/keycloak/bin/kcadm.sh set-password -r master 
 python3 scripts/dev/ops/keycloak_realm_sync.py infra/auth/squadops-realm.json infra/auth/squadops-realm-local.json
 ```
 
-Each client prints `secret set from .env`. It signs in with the new admin password from
-`secrets/keycloak_admin_password.txt`, which step 2's `ensure` wrote.
+Each client prints `secret set from .env`, and `squadops-admin` prints `password set from .env`
+(#2079). It signs in with the new admin password from `secrets/keycloak_admin_password.txt`, which
+step 2's `ensure` wrote. Then sign the CLI in with the new realm password:
+`.venv/bin/squadops login -u squadops-admin -p "$(val SQUADOPS_ADMIN_PASSWORD)"`. The
+verification-set driver and the release capture read it from `.env` themselves.
 
 ## 7. Grafana's admin
 

@@ -233,13 +233,6 @@
       "enabled": true,
       "firstName": "SquadOps",
       "lastName": "Admin",
-      "credentials": [
-        {
-          "type": "password",
-          "value": "admin123",
-          "temporary": false
-        }
-      ],
       "realmRoles": [
         "admin",
         "operator",

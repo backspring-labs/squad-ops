@@ -267,7 +267,8 @@ def _bearer_token() -> str:
 
 def _login() -> None:
     """Log the CLI in without a prompt, with the driver's credentials and defaults
-    (`scripts/dev/verification_set_driver.py` `login()`): the dev realm's seeded admin.
+    (`scripts/dev/verification_set_driver.py` `login()`): the realm admin, with the deploy's own
+    password from `.env` (#2079).
 
     The console script beside this interpreter, so the login lands in the same token store
     `resolve_token` reads. Never `--keycloak-url`: the override logs in at Keycloak and then
@@ -276,8 +277,15 @@ def _login() -> None:
     cli = Path(sys.executable).with_name("squadops")
     if not cli.exists():
         return
+    from squadops.bootstrap.setup.credentials import read_env
+
     user = os.environ.get("SQUADOPS_DRIVER_USER", "squadops-admin")
-    password = os.environ.get("SQUADOPS_DRIVER_PASSWORD", "admin123")
+    # #2079: the deploy's own admin password, never a committed literal.
+    password = os.environ.get("SQUADOPS_DRIVER_PASSWORD") or read_env(REPO_ROOT / ".env").get(
+        "SQUADOPS_ADMIN_PASSWORD", ""
+    )
+    if not password:
+        return
     run(str(cli), "login", "-u", user, "-p", password, check=False)
 
 

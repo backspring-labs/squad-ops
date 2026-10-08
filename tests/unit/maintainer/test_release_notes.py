@@ -251,6 +251,8 @@ class TestTokenResolution:
         brp = build_release_package
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
         monkeypatch.delenv("SQUADOPS_TOKEN", raising=False)
+        # #2079: the login reads the deploy's own admin password, and skips without one.
+        monkeypatch.setenv("SQUADOPS_DRIVER_PASSWORD", "test-password")
         (tmp_path / "bin").mkdir()
         (tmp_path / "bin" / "squadops").write_text("")
         monkeypatch.setattr(brp.sys, "executable", str(tmp_path / "bin" / "python"))
@@ -327,6 +329,19 @@ class TestTokenResolution:
 
         build_release_package.cycle_evidence(["cyc_1"], "http://api", "proj")
         assert not any("Authorization" in str(a) for a in calls["api"][0])
+
+    def test_a_deploy_with_no_admin_password_is_not_logged_in_with_a_committed_one(
+        self, env, monkeypatch
+    ):
+        """#2079. Bug caught: the capture falling back to the password every realm file used to
+        commit, so it signs in to any deploy that still holds it."""
+        calls, _ = env
+        monkeypatch.delenv("SQUADOPS_DRIVER_PASSWORD")
+        monkeypatch.setattr(build_release_package, "REPO_ROOT", Path("/nonexistent"))
+
+        build_release_package._login()
+
+        assert calls["logins"] == []
 
 
 class TestCycleRoles:

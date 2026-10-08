@@ -22,7 +22,7 @@
 
 **Login Credentials:**
 - Username: `admin`
-- Password: `admin123`
+- Password: `GRAFANA_ADMIN_PASSWORD` in `.env`, the deploy's own (#2006)
 
 **What you can do:**
 - View WarmBoot telemetry dashboard
@@ -88,13 +88,13 @@ Expected targets:
 ## 📊 Current Status
 
 - ✅ Prometheus: http://localhost:9090 (accessible)
-- ✅ Grafana: http://localhost:3000 (accessible, admin/admin123)
+- ✅ Grafana: http://localhost:3000 (accessible, `admin` with `GRAFANA_ADMIN_PASSWORD` from `.env`)
 - ✅ OpenTelemetry Collector: Running (no UI, endpoints on 4317/4318)
 - ✅ Agents: Running with OpenTelemetry initialized
 
 ## 🚀 Next Steps
 
-1. **Access Grafana:** http://localhost:3000 (login with admin/admin123)
+1. **Access Grafana:** http://localhost:3000 (`admin`, with `GRAFANA_ADMIN_PASSWORD` from `.env`)
 2. **Check Prometheus:** http://localhost:9090/targets (verify targets)
 3. **View Dashboard:** Grafana → Dashboards → WarmBoot Telemetry
 4. **Query Metrics:** Prometheus → Graph (once instrumentation is added)
