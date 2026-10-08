@@ -387,6 +387,64 @@ class TestMemoryObservations:
                 await conn.execute("DELETE FROM memory_observations WHERE project_id = $1", project)
 
 
+class TestMemoryLessons:
+    """SIP-0110 §0.2, §0.7 (#2096): the in-memory store holds lessons in dicts, so only this proves
+    the inserts, the immutability check, revocation and a unit's single pin against the tables."""
+
+    async def test_a_lesson_its_approval_and_a_units_pin_round_trip(self, migrated_pool):
+        import dataclasses
+        from datetime import timedelta
+
+        from adapters.memory.cross_cycle import PostgresCrossCycleMemoryStore, RevisionConflict
+        from squadops.memory.lessons import UnitKind
+        from squadops.memory.pinning import pin_unit
+        from tests.unit.memory.test_lessons import WHERE, _approve, _revision
+
+        project = f"lessons-{uuid.uuid4().hex[:8]}"
+        where = dataclasses.replace(WHERE, project_id=project)
+        rev = _revision(f"behavior-{project}", where=where)
+        approval = _approve(rev, where=where)
+        store = PostgresCrossCycleMemoryStore(pool=migrated_pool)
+        try:
+            assert await store.record_revision(rev) is True
+            assert await store.record_revision(rev) is False
+            with pytest.raises(RevisionConflict):
+                await store.record_revision(_revision(f"behavior-{project}", text="x", where=where))
+            assert await store.record_approval(approval) is True
+            assert await store.list_revisions(project) == [rev]
+
+            pinned = await pin_unit(
+                store,
+                unit_kind=UnitKind.CYCLE,
+                unit_id=f"cyc_{project}",
+                project_id=project,
+                pinned_at=approval.approved_at + timedelta(hours=1),
+                disabled=False,
+            )
+            again = await pin_unit(
+                store,
+                unit_kind=UnitKind.CYCLE,
+                unit_id=f"cyc_{project}",
+                project_id=project,
+                pinned_at=approval.approved_at + timedelta(hours=2),
+                disabled=True,
+            )
+            await store.revoke_approval(
+                approval.approval_id, approval.approved_at + timedelta(hours=3)
+            )
+
+            assert again == pinned and len(pinned.entries) == 1
+            [stored] = await store.list_approvals(project)
+            assert stored.revoked_at == approval.approved_at + timedelta(hours=3)
+        finally:
+            async with migrated_pool.acquire() as conn:
+                await conn.execute(
+                    "DELETE FROM memory_snapshots WHERE unit_id = $1", f"cyc_{project}"
+                )
+                await conn.execute("DELETE FROM memory_approvals WHERE project_id = $1", project)
+                await conn.execute("DELETE FROM memory_revisions WHERE project_id = $1", project)
+
+
 class TestFullRunLifecycle:
     """create → running → paused → running → completed (Plan §3.3 item 2)."""
 

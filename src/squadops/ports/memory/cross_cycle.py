@@ -3,15 +3,17 @@
 Phase 1's records live in Postgres beside the cycle registry, behind this port, with an
 in-memory adapter for tests. It is not SIP-042's ``MemoryPort``, which is each agent's own
 semantic store: the runtime API, where recall and the projections run, has none of those, and
-Phase 1's recall is exact filtering that needs no embedding. Slice 3a stores observations; the
-pattern revisions and approvals join in 3d.
+Phase 1's recall is exact filtering that needs no embedding. It holds the observations (3a), and
+the lessons, their approvals and each unit's pinned snapshot (3c).
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+from datetime import datetime
 
+from squadops.memory.lessons import Approval, PatternRevision, Snapshot, UnitKind
 from squadops.memory.observations import Observation, ObservationSource
 
 
@@ -26,3 +28,34 @@ class CrossCycleMemoryStorePort(ABC):
         self, project_id: str, *, source: ObservationSource | None = None
     ) -> list[Observation]:
         """A project's observations, oldest first by ``observed_at``, then ``source_id``."""
+
+    @abstractmethod
+    async def record_revision(self, revision: PatternRevision) -> bool:
+        """Store a lesson's revision. Revisions are immutable: a second write of the same
+        ``revision_id`` is refused when its content differs, and a no-op when it is the same.
+        Returns whether it was new."""
+
+    @abstractmethod
+    async def list_revisions(self, project_id: str) -> list[PatternRevision]:
+        """A project's revisions, by pattern and revision number."""
+
+    @abstractmethod
+    async def record_approval(self, approval: Approval) -> bool:
+        """Store an approval; a second write of the same ``approval_id`` is a no-op."""
+
+    @abstractmethod
+    async def revoke_approval(self, approval_id: str, revoked_at: datetime) -> None:
+        """Record an approval's revocation. Units admitted later pin without it (§0.7)."""
+
+    @abstractmethod
+    async def list_approvals(self, project_id: str) -> list[Approval]:
+        """The approvals of a project's revisions, revoked ones included, oldest first."""
+
+    @abstractmethod
+    async def record_snapshot(self, snapshot: Snapshot) -> Snapshot:
+        """Store a unit's pin, once: if the unit already pinned, that snapshot is returned and
+        this one is dropped, so a restart reproduces the original (§0.7)."""
+
+    @abstractmethod
+    async def get_snapshot(self, unit_kind: UnitKind, unit_id: str) -> Snapshot | None:
+        """The snapshot a unit pinned, or ``None`` for a unit that has not."""
