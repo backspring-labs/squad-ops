@@ -15,6 +15,7 @@ from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
 )
+from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
 from squadops.capabilities.handlers.prior_cycle import prior_cycle_section
 from squadops.cycles.acceptance_check_spec import render_typed_acceptance_vocabulary
 from squadops.tasks.task_types import TaskType
@@ -277,6 +278,10 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         prior = await prior_cycle_section(renderer, inputs)
         if prior:
             variables["prior_cycle_section"] = prior
+        # SIP-0110 §0.9: the lessons approved for this task, in a slot of their own.
+        lessons = await cross_cycle_lessons_section(renderer, inputs)
+        if lessons:
+            variables["cross_cycle_lessons_section"] = lessons
         rendered = await renderer.render(self._request_template_id, variables)
         user_prompt = rendered.content
 

@@ -444,6 +444,52 @@ class TestMemoryLessons:
                 await conn.execute("DELETE FROM memory_approvals WHERE project_id = $1", project)
                 await conn.execute("DELETE FROM memory_revisions WHERE project_id = $1", project)
 
+    async def test_an_exposure_is_stored_once_per_task_and_a_damaged_pin_reads_as_incompatible(
+        self, migrated_pool
+    ):
+        """§0.8 against the tables. Bugs caught: a restart's second composition of a plan writing
+        a second exposure for the same task; or a pin this code cannot read raising a bare
+        ``KeyError`` that recall would report as a failed read, hiding a version skew."""
+        from adapters.memory.cross_cycle import PostgresCrossCycleMemoryStore
+        from squadops.memory.exposures import Exposure
+        from squadops.memory.lessons import RecallDisposition, Recalled, UnitKind
+        from squadops.memory.recall import RecallQuery
+        from squadops.ports.memory.cross_cycle import RecordIncompatible
+
+        run_id = f"run_{uuid.uuid4().hex[:12]}"
+        unit_id = f"cmp_{uuid.uuid4().hex[:12]}"
+        query = RecallQuery(
+            "group_run", "qa.test", "qa", "nextjs_ts", "qwen3.8", UnitKind.CAMPAIGN, unit_id
+        )
+        exposure = Exposure.of(
+            run_id=run_id,
+            task_id="task-1",
+            cycle_id="cyc_1",
+            seam="build_authoring",
+            query=query,
+            recalled=Recalled("snp_x", RecallDisposition.NONE_ELIGIBLE),
+            recorded_at=datetime(2026, 10, 8, tzinfo=UTC),
+        )
+        store = PostgresCrossCycleMemoryStore(pool=migrated_pool)
+        try:
+            assert await store.record_exposure(exposure) is True
+            assert await store.record_exposure(exposure) is False
+            assert await store.list_exposures(run_id) == [exposure]
+            async with migrated_pool.acquire() as conn:
+                await conn.execute(
+                    "INSERT INTO memory_snapshots (unit_kind, unit_id, snapshot_id, pinned_at, "
+                    "snapshot_body) VALUES ('campaign', $1, $2, now(), $3)",
+                    unit_id,
+                    f"snp_{unit_id}",
+                    {"snapshot_id": f"snp_{unit_id}", "written_by": "a later version"},
+                )
+            with pytest.raises(RecordIncompatible):
+                await store.get_snapshot(UnitKind.CAMPAIGN, unit_id)
+        finally:
+            async with migrated_pool.acquire() as conn:
+                await conn.execute("DELETE FROM memory_exposures WHERE run_id = $1", run_id)
+                await conn.execute("DELETE FROM memory_snapshots WHERE unit_id = $1", unit_id)
+
 
 class TestFullRunLifecycle:
     """create → running → paused → running → completed (Plan §3.3 item 2)."""

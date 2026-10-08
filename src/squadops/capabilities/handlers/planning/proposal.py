@@ -32,6 +32,7 @@ from squadops.campaigns.change_request import (
 )
 from squadops.campaigns.prior_cycle import brief_lines
 from squadops.capabilities.handlers.base import HandlerEvidence, HandlerResult
+from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
 from squadops.capabilities.handlers.planning.base import _PlanningTaskHandler
 from squadops.capabilities.scaffold import frozen_conventions_for
 from squadops.tasks.task_types import TaskType
@@ -171,6 +172,11 @@ class StrategyProposeIncrementHandler(_PlanningTaskHandler):
 
         variables = _render_variables(block, proposal_context)
         variables.update(await _context_sections(renderer, inputs, block, proposal_context))
+        # SIP-0110 §0.9: the lessons approved for this task, in a slot of their own, apart from a
+        # revision's note (SIP-0109 §9.2).
+        lessons = await cross_cycle_lessons_section(renderer, inputs)
+        if lessons:
+            variables["cross_cycle_lessons_section"] = lessons
         rendered = await renderer.render(self._request_template_id, variables)
         assembled = context.ports.prompt_service.assemble(
             role=context.role_id,  # SIP-0108 §10m: the identity layer is what the process IS

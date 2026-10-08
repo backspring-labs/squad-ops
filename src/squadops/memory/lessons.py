@@ -10,9 +10,10 @@ never changes while the unit runs (§0.7).
 **Recall is deterministic** (§0.8): applicability filters first (an unknown never means
 "everywhere"), then one revision per pattern, then a total order (approval time, then pattern),
 then the budgets (at most three lessons, and a token budget; a lesson over budget is left out
-whole, never cut). Five outcomes stay distinct: memory disabled, nothing eligible, supplied,
-everything eligible omitted by the budget, and recall failed, which the caller records when the
-recall itself raises.
+whole, never cut). Five outcomes stay distinct beside a lesson supplied (§0.8): memory disabled,
+nothing eligible, everything eligible omitted by the budget, a stored record this code cannot read,
+and recall failed. A unit with no pin is a failed recall, never read as memory off or as nothing
+eligible.
 
 Pure: the store holds these records, and the composers call :func:`recall`.
 """
@@ -26,17 +27,10 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from squadops.memory.recall import RecallQuery
+from squadops.memory.recall import RecallQuery, UnitKind
 
 #: A stack-independent lesson says so explicitly (§0.8 step 3): unknown never means everywhere.
 ANY_STACK = "*"
-
-
-class UnitKind(StrEnum):
-    """The two units that pin a snapshot (§0.7)."""
-
-    CYCLE = "cycle"
-    CAMPAIGN = "campaign"
 
 
 class RecallDisposition(StrEnum):
@@ -46,6 +40,8 @@ class RecallDisposition(StrEnum):
     NONE_ELIGIBLE = "none_eligible"
     SUPPLIED = "supplied"
     OMITTED_BY_BUDGET = "omitted_by_budget"
+    #: The unit's stored snapshot is one this code cannot read (a newer or damaged record).
+    INCOMPATIBLE = "record_incompatible"
     FAILED = "recall_failed"
 
 
@@ -330,9 +326,13 @@ def _tokens(text: str) -> int:
 
 
 def recall(snapshot: Snapshot | None, query: RecallQuery) -> Recalled:
-    """The lessons ``query``'s task is supplied from its unit's snapshot (§0.8)."""
-    if snapshot is None or snapshot.disabled:
-        return Recalled(snapshot.snapshot_id if snapshot else None, RecallDisposition.DISABLED)
+    """The lessons ``query``'s task is supplied from its unit's snapshot (§0.8). ``None`` is a
+    unit with no pin (its pin failed, or the unit was admitted before the store): a failed recall,
+    which marks the measurement invalid, never memory off or nothing eligible."""
+    if snapshot is None:
+        return Recalled(None, RecallDisposition.FAILED)
+    if snapshot.disabled:
+        return Recalled(snapshot.snapshot_id, RecallDisposition.DISABLED)
     eligible = [
         e
         for e in snapshot.entries

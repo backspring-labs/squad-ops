@@ -1,21 +1,26 @@
-"""Cross-Cycle Memory's 2.1 part (#1964): the recall port, inert, and its call site.
+"""Supplying approved lessons when a run's plan is composed (SIP-0110 §0.8–§0.9; #2096, on #1964's
+call site).
 
-What bugs would these catch? An inert recall that raises as ``NoOpMemoryPort`` does, which would
-crash every run's provisioning now that the call site is live; recalled patterns handed to a
-task type the registry does not declare (the plan merger or the sign-off reading warnings meant
-for the authors); the inert recall handing anything at all, when 2.1 must change no prompt; and
-a call site off the path a run takes, so 2.2's adapter would be wired to nothing.
+What bugs would these catch? A memory-disabled or empty unit handing a task anything, so the
+counted rolls' inputs change when nothing is approved; a consuming task with no exposure, so a
+measurement cannot tell "disabled" from "never asked"; lessons handed to a task their approval
+does not cover; a scope read from anywhere but the plan the framework wrote; a campaign's cycle
+reading a snapshot of its own; and a call site off the path a run takes.
 """
 
 from __future__ import annotations
 
+import dataclasses
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from adapters.memory.cross_cycle import InMemoryCrossCycleMemoryStore
+from adapters.memory.recall import SnapshotRecall
 from adapters.noop.ports import NoOpFailurePatternRecall
-from squadops.capabilities.context_assembly import CONTEXT_CONTRACTS
+from squadops.capabilities.context_assembly import authoring_seam_of
+from squadops.capabilities.lesson_supply import supply_lessons, unit_of
 from squadops.cycles.models import (
     AgentProfileEntry,
     Cycle,
@@ -24,33 +29,26 @@ from squadops.cycles.models import (
     TaskFlowPolicy,
     WorkloadType,
 )
-from squadops.cycles.task_plan import generate_task_plan, recalled_patterns_for
-from squadops.memory.recall import RecalledPattern, RecallQuery
-from squadops.ports.memory.recall import FailurePatternRecallPort
+from squadops.cycles.task_plan import generate_task_plan
+from squadops.memory.lessons import (
+    ANY_STACK,
+    Applicability,
+    Approval,
+    PatternRevision,
+    UnitKind,
+    pattern_id_for,
+)
+from squadops.memory.pinning import pin_unit
+from squadops.memory.recall import LESSONS_INPUT
 
 pytestmark = [pytest.mark.domain_memory]
 
-_NOW = datetime(2026, 10, 5, tzinfo=UTC)
-_DECLARED = {str(t) for t, c in CONTEXT_CONTRACTS.items() if c.plan_rejection_context}
-_PATTERN = RecalledPattern(
-    rejection_class="artifact_claim_conflict",
-    statement="verification-only tasks declare expected_artifacts: []",
-)
+_NOW = datetime(2026, 10, 8, tzinfo=UTC)
+_MODEL = "qwen3.8:27b"
 
 
-class _Recording(FailurePatternRecallPort):
-    """A recall that answers one pattern for every task type, and records what it was asked."""
-
-    def __init__(self) -> None:
-        self.asked: list[RecallQuery] = []
-
-    async def recall(self, query: RecallQuery) -> tuple[RecalledPattern, ...]:
-        self.asked.append(query)
-        return (_PATTERN,)
-
-
-def _framing_cycle() -> Cycle:
-    return Cycle(
+def _framing_cycle(**changes) -> Cycle:
+    cycle = Cycle(
         cycle_id="cyc_recall",
         project_id="group_run",
         created_at=_NOW,
@@ -60,10 +58,14 @@ def _framing_cycle() -> Cycle:
         squad_profile_snapshot_ref="sha",
         task_flow_policy=TaskFlowPolicy(mode="sequential"),
         build_strategy="fresh",
-        applied_defaults={"plan_authoring_contributors": ["development", "qa", "strategy"]},
+        applied_defaults={
+            "plan_authoring_contributors": ["development", "qa", "strategy"],
+            "build_profile": "fullstack_fastapi_react",
+        },
         execution_overrides={},
         expected_artifact_types=["source"],
     )
+    return dataclasses.replace(cycle, **changes)
 
 
 def _framing_run() -> Run:
@@ -84,55 +86,183 @@ _PROFILE = SquadProfile(
     description="d",
     version=1,
     agents=[
-        AgentProfileEntry(agent_id=a, role=r, model="m", enabled=True, serves_roles=(r,))
+        AgentProfileEntry(agent_id=a, role=r, model=_MODEL, enabled=True, serves_roles=(r,))
         for a, r in (("max", "lead"), ("neo", "dev"), ("nat", "strat"), ("eve", "qa"))
     ]
     + [
         AgentProfileEntry(
-            agent_id="data", role="data", model="m", enabled=True, serves_roles=("data",)
+            agent_id="data", role="data", model=_MODEL, enabled=True, serves_roles=("data",)
         )
     ],
     created_at=_NOW,
 )
 
-
-async def test_the_inert_recall_answers_empty_and_hands_nothing():
-    """2.1's recall: an answer of "none", never a raise, and no key on any envelope."""
-    answers = await recalled_patterns_for(NoOpFailurePatternRecall(), "group_run")
-
-    plan = generate_task_plan(_framing_cycle(), _framing_run(), _PROFILE, recalled_patterns=answers)
-
-    assert answers == {}
-    assert not [e for e in plan if "recalled_failure_patterns" in e.inputs]
+_DESIGN = Applicability(
+    project_id="group_run",
+    task_types=("development.design_plan",),
+    roles=("dev",),
+    stacks=("fullstack_fastapi_react",),
+    model_families=("qwen3.8",),
+)
 
 
-async def test_recalled_patterns_reach_exactly_the_task_types_that_declare_them():
-    recall = _Recording()
+async def _store_with(*approved: tuple[str, Applicability]) -> InMemoryCrossCycleMemoryStore:
+    store = InMemoryCrossCycleMemoryStore()
+    for text, where in approved:
+        revision = PatternRevision(
+            pattern_id=pattern_id_for("group_run", text, where.task_types[0]),
+            revision=1,
+            target_behavior=text,
+            text=text,
+            applicability=where,
+            template_id="lesson.t",
+            template_version="1",
+            drafter_model="auditor",
+            drafter_version="1",
+            cited_observations=("correction_round:x",),
+            created_at=_NOW,
+        )
+        await store.record_revision(revision)
+        await store.record_approval(
+            Approval(f"apr_{text}", revision.revision_id, where, "owner", _NOW)
+        )
+    return store
 
-    answers = await recalled_patterns_for(recall, "group_run")
-    plan = generate_task_plan(_framing_cycle(), _framing_run(), _PROFILE, recalled_patterns=answers)
 
-    handed = {str(e.task_type) for e in plan if "recalled_failure_patterns" in e.inputs}
-    assert {q.task_type for q in recall.asked} == _DECLARED
-    assert {q.project_id for q in recall.asked} == {"group_run"}
-    assert handed == _DECLARED & {str(e.task_type) for e in plan}
-    assert handed  # a framing plan has declared authors
-    assert all(
-        e.inputs["recalled_failure_patterns"]
-        == [{"rejection_class": "artifact_claim_conflict", "statement": _PATTERN.statement}]
-        for e in plan
-        if str(e.task_type) in handed
+async def _pinned(store, unit_kind, unit_id, *, disabled=False):
+    await pin_unit(
+        store,
+        unit_kind=unit_kind,
+        unit_id=unit_id,
+        project_id="group_run",
+        pinned_at=_NOW.replace(hour=1),
+        disabled=disabled,
     )
 
 
-async def test_provisioning_asks_the_executors_recall_before_it_builds_the_plan():
-    """Entered at ``RunProvisioning.prepare``, the step ``execute_run`` takes before dispatch,
-    with the real plan generation. Bug caught: the call site off the run's path, so a recall
-    answering patterns would reach no envelope."""
+def _plan(cycle=None):
+    return generate_task_plan(cycle or _framing_cycle(), _framing_run(), _PROFILE)
+
+
+async def _supplied(recall, cycle=None):
+    cycle = cycle or _framing_cycle()
+    return await supply_lessons(
+        _plan(cycle),
+        recall=recall,
+        unit=unit_of(cycle),
+        stack="fullstack_fastapi_react",
+        run_id="run_recall0001",
+        now=_NOW,
+    )
+
+
+@pytest.mark.parametrize("unit", ["disabled", "empty", "no recall"])
+async def test_a_unit_with_nothing_to_supply_hands_every_task_its_inputs_unchanged(unit):
+    """§0.9's inertness, at the inputs. Bug caught: a key written on every envelope whatever the
+    answer, so every prompt that renders its inputs changes when nothing is approved."""
+    store = await _store_with()
+    await _pinned(store, UnitKind.CYCLE, "cyc_recall", disabled=unit == "disabled")
+    recall = NoOpFailurePatternRecall() if unit == "no recall" else SnapshotRecall(store)
+
+    supplied = await _supplied(recall)
+
+    assert [e.inputs for e in supplied] == [e.inputs for e in _plan()]
+
+
+async def test_every_consuming_task_discloses_its_answer_and_no_other_task_does():
+    """§0.7: a memory-disabled unit's every consuming task records a ``memory_disabled`` exposure.
+    Bug caught: an exposure missing for a disabled task, so the counted rolls' series without
+    memory cannot be told from tasks that were never asked."""
+    store = await _store_with()
+    await _pinned(store, UnitKind.CYCLE, "cyc_recall", disabled=True)
+
+    supplied = await _supplied(SnapshotRecall(store))
+
+    exposures = await store.list_exposures("run_recall0001")
+    consuming = {e.task_id for e in supplied if authoring_seam_of(str(e.task_type))}
+    assert consuming  # a framing plan has plan writers
+    assert {x.task_id for x in exposures} == consuming
+    assert {x.disposition for x in exposures} == {"memory_disabled"}
+
+
+async def test_a_lesson_reaches_exactly_the_tasks_its_approval_covers_with_the_plans_own_scope():
+    """§0.8 steps 1 and 3. Bugs caught: a lesson handed to another plan writer; or the scope
+    read from somewhere but the plan the framework wrote (the role from the agent's name, the
+    family unknown for a registered model), so the approved lesson reaches nobody."""
+    store = await _store_with(("Name the manifest element each criterion checks.", _DESIGN))
+    await _pinned(store, UnitKind.CYCLE, "cyc_recall")
+
+    supplied = await _supplied(SnapshotRecall(store))
+
+    handed = {
+        str(e.task_type): e.inputs[LESSONS_INPUT] for e in supplied if LESSONS_INPUT in e.inputs
+    }
+    assert list(handed) == ["development.design_plan"]
+    assert [lesson["text"] for lesson in handed["development.design_plan"]["lessons"]] == [
+        "Name the manifest element each criterion checks."
+    ]
+    [design] = [
+        x
+        for x in await store.list_exposures("run_recall0001")
+        if x.query.task_type == "development.design_plan"
+    ]
+    assert (design.query.role, design.query.stack, design.query.model_family) == (
+        "dev",
+        "fullstack_fastapi_react",
+        "qwen3.8",
+    )
+    assert design.disposition == "supplied"
+
+
+async def test_a_lesson_for_any_stack_and_one_for_another_family_are_told_apart():
+    """Bug caught: a lesson tuned on another family's mistakes handed to this squad's model."""
+    any_stack = dataclasses.replace(_DESIGN, stacks=(ANY_STACK,))
+    other_family = dataclasses.replace(_DESIGN, model_families=("qwen3.6",))
+    store = await _store_with(("any stack", any_stack), ("other family", other_family))
+    await _pinned(store, UnitKind.CYCLE, "cyc_recall")
+
+    supplied = await _supplied(SnapshotRecall(store))
+
+    [design] = [e for e in supplied if str(e.task_type) == "development.design_plan"]
+    assert [lesson["text"] for lesson in design.inputs[LESSONS_INPUT]["lessons"]] == ["any stack"]
+
+
+async def test_a_campaigns_cycle_selects_from_its_campaigns_snapshot():
+    """§0.7. Bug caught: a campaign's cycle reading a snapshot of its own, which it never pinned,
+    so every task of every campaign records recall as failed."""
+    store = await _store_with(("Name the manifest element each criterion checks.", _DESIGN))
+    await _pinned(store, UnitKind.CAMPAIGN, "cmp_x")
+    cycle = _framing_cycle(campaign_id="cmp_x")
+
+    supplied = await _supplied(SnapshotRecall(store), cycle)
+
+    assert unit_of(cycle) == (UnitKind.CAMPAIGN, "cmp_x")
+    assert any(LESSONS_INPUT in e.inputs for e in supplied)
+    assert {x.query.unit_id for x in await store.list_exposures("run_recall0001")} == {"cmp_x"}
+
+
+async def test_a_unit_with_no_pin_hands_nothing_and_records_the_recall_as_failed():
+    """§0.8. Bug caught: a unit whose pin failed read as memory off, so its tasks count as a
+    memory-off trial rather than an invalid measurement."""
+    store = await _store_with(("Name the manifest element each criterion checks.", _DESIGN))
+
+    supplied = await _supplied(SnapshotRecall(store))
+
+    assert not any(LESSONS_INPUT in e.inputs for e in supplied)
+    assert {x.disposition for x in await store.list_exposures("run_recall0001")} == {
+        "recall_failed"
+    }
+
+
+async def test_provisioning_supplies_the_plan_it_builds():
+    """Wiring, entered at ``RunProvisioning.prepare``, the step ``execute_run`` takes before
+    dispatch, with the real plan generation and the snapshot recall over a store. Bug caught: the
+    call site off the run's path, so an approved lesson would reach no envelope."""
     from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
     from adapters.cycles.run_provisioning import RunInProgress
 
-    recall = _Recording()
+    store = await _store_with(("Name the manifest element each criterion checks.", _DESIGN))
+    await _pinned(store, UnitKind.CYCLE, "cyc_recall")
     executor = DispatchedFlowExecutor(
         cycle_registry=AsyncMock(),
         artifact_vault=AsyncMock(),
@@ -142,7 +272,7 @@ async def test_provisioning_asks_the_executors_recall_before_it_builds_the_plan(
         campaign_registry=None,
         campaign_progress=None,
         box_verdict=None,
-        failure_recall=recall,
+        failure_recall=SnapshotRecall(store),
         task_timeout=5.0,
     )
     cycle, run = _framing_cycle(), _framing_run()
@@ -159,5 +289,6 @@ async def test_provisioning_asks_the_executors_recall_before_it_builds_the_plan(
         state, cycle.cycle_id, run.run_id, "full", forwarding_overrides=None
     )
 
-    assert recall.asked
-    assert any("recalled_failure_patterns" in e.inputs for e in state.plan)
+    [design] = [e for e in state.plan if str(e.task_type) == "development.design_plan"]
+    assert design.inputs[LESSONS_INPUT]["lessons"][0]["revision_id"].endswith("@1")
+    assert await store.list_exposures(run.run_id)

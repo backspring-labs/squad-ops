@@ -91,3 +91,45 @@ async def test_an_envelope_with_an_input_it_could_not_carry_is_not_replayable():
 
     assert verdict["byte_exact"] is False
     assert verdict["reason"] == "inputs not captured" and verdict["paths"] == ["artifact_vault"]
+
+
+async def test_a_build_authored_with_lessons_records_them_apart_and_reconstructs_byte_for_byte():
+    """§0.11 with memory on. Entered at ``HandlerExecutor.execute`` with the real build author,
+    renderer and assembler. Bugs caught: the lessons left among the task's own inputs, so a
+    replay's no-memory arm still carries them; or the memory block not restored on the re-run, so
+    an envelope that was supplied lessons can never be reproduced."""
+    from squadops.capabilities.handlers.cycle.develop import DevelopmentDevelopHandler
+    from squadops.memory.recall import LESSONS_INPUT
+    from tests.unit.campaigns.test_prior_cycle import _SOURCES, _author_context
+    from tests.unit.capabilities.test_authoring_capture import _dispatched, _executor
+
+    lessons = {
+        "snapshot": "snp_0123456789abcdef",
+        "lessons": [{"revision_id": "pat_a@1", "text": "Declare the field the client reads."}],
+    }
+    own = {
+        "prd": "the PRD",
+        "artifact_contents": _SOURCES,
+        "subtask_focus": "the limit",
+        "expected_artifacts": ["a.py"],
+    }
+    _, prompt_service, renderer = _tools()
+    ports = _author_context([]).ports
+    ports.prompt_service, ports.request_renderer = prompt_service, renderer
+
+    result = await _executor(DevelopmentDevelopHandler(), ports).execute(
+        _dispatched(TaskType.DEVELOPMENT_DEVELOP, {**own, LESSONS_INPUT: lessons})
+    )
+    envelope = result.authoring_envelope
+    registry = HandlerRegistry()
+    registry.register(DevelopmentDevelopHandler())
+
+    verdict = await reconstruct(envelope, registry, prompt_service, renderer)
+
+    assert envelope["memory"] == {
+        "snapshot": lessons["snapshot"],
+        "intervention": lessons["lessons"],
+    }
+    assert LESSONS_INPUT not in envelope["inputs"]
+    assert "Declare the field the client reads." in envelope["messages"][-1]["content"]
+    assert verdict["byte_exact"] is True, verdict

@@ -8,9 +8,10 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
+from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import Approval, PatternRevision, Snapshot, UnitKind
 from squadops.memory.observations import Observation, ObservationSource
-from squadops.ports.memory.cross_cycle import CrossCycleMemoryStorePort
+from squadops.ports.memory.cross_cycle import CrossCycleMemoryStorePort, RecordIncompatible
 
 
 def _ordered(observations: list[Observation]) -> list[Observation]:
@@ -27,6 +28,7 @@ class InMemoryCrossCycleMemoryStore(CrossCycleMemoryStorePort):
         self._revisions: dict[str, PatternRevision] = {}
         self._approvals: dict[str, Approval] = {}
         self._snapshots: dict[tuple[str, str], Snapshot] = {}
+        self._exposures: dict[str, Exposure] = {}
 
     async def record_observations(self, observations: Sequence[Observation]) -> int:
         new = 0
@@ -85,6 +87,17 @@ class InMemoryCrossCycleMemoryStore(CrossCycleMemoryStorePort):
 
     async def get_snapshot(self, unit_kind: UnitKind, unit_id: str) -> Snapshot | None:
         return self._snapshots.get((unit_kind.value, unit_id))
+
+    async def record_exposure(self, exposure: Exposure) -> bool:
+        if exposure.exposure_id in self._exposures:
+            return False
+        self._exposures[exposure.exposure_id] = exposure
+        return True
+
+    async def list_exposures(self, run_id: str) -> list[Exposure]:
+        return sorted(
+            (e for e in self._exposures.values() if e.run_id == run_id), key=lambda e: e.task_id
+        )
 
 
 class PostgresCrossCycleMemoryStore(CrossCycleMemoryStorePort):
@@ -226,7 +239,41 @@ class PostgresCrossCycleMemoryStore(CrossCycleMemoryStorePort):
                 unit_kind.value,
                 unit_id,
             )
-        return Snapshot.from_dict(body) if body is not None else None
+        if body is None:
+            return None
+        try:
+            return Snapshot.from_dict(body)
+        except (KeyError, TypeError, ValueError) as e:
+            raise RecordIncompatible(f"{unit_kind.value} {unit_id}'s snapshot: {e!r}") from e
+
+    async def record_exposure(self, exposure: Exposure) -> bool:
+        async with self._pool.acquire() as conn:
+            status = await conn.execute(
+                "INSERT INTO memory_exposures (exposure_id, project_id, cycle_id, run_id, task_id, "
+                "task_type, seam, disposition, snapshot_id, exposure_body, recorded_at) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) "
+                "ON CONFLICT (exposure_id) DO NOTHING",
+                exposure.exposure_id,
+                exposure.query.project_id,
+                exposure.cycle_id,
+                exposure.run_id,
+                exposure.task_id,
+                exposure.query.task_type,
+                exposure.seam,
+                exposure.disposition,
+                exposure.recalled.get("snapshot"),
+                exposure.to_dict(),
+                exposure.recorded_at,
+            )
+        return status.endswith(" 1")
+
+    async def list_exposures(self, run_id: str) -> list[Exposure]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT exposure_body FROM memory_exposures WHERE run_id = $1 ORDER BY task_id",
+                run_id,
+            )
+        return [Exposure.from_dict(r["exposure_body"]) for r in rows]
 
 
 def create_cross_cycle_store(provider: str, **kwargs: Any) -> CrossCycleMemoryStorePort:

@@ -20,8 +20,10 @@ from uuid import uuid4
 
 from squadops.comms.queue_message import QueueMessage
 from squadops.llm.models import ChatMessage, LLMRequest, LLMResponse
+from squadops.memory.exposures import Exposure
+from squadops.memory.lessons import RecallDisposition, Recalled
 from squadops.memory.models import MemoryEntry, MemoryQuery, MemoryResult
-from squadops.memory.recall import RecalledPattern, RecallQuery
+from squadops.memory.recall import RecallQuery
 from squadops.ports.comms.queue import QueuePort
 from squadops.ports.llm.provider import LLMPort
 from squadops.ports.memory.recall import FailurePatternRecallPort
@@ -96,12 +98,15 @@ class NoOpMemoryPort(MemoryPort):
 
 
 class NoOpFailurePatternRecall(FailurePatternRecallPort):
-    """The inert recall 2.1 ships (#1964): it answers empty, so a plan-authoring task is handed
-    nothing and no prompt changes. Not ``NoOpMemoryPort``, which raises on every call: the call
-    site is live, and an answer of "none" is what it must get until 2.2's adapter."""
+    """A recall for a composition with no memory store (tests and tools): every task is answered
+    as memory disabled, so it is handed nothing and its prompt renders as if memory did not exist
+    (SIP-0110 §0.7). Not ``NoOpMemoryPort``, which raises: the call sites are live."""
 
-    async def recall(self, query: RecallQuery) -> tuple[RecalledPattern, ...]:
-        return ()
+    async def recall(self, query: RecallQuery) -> Recalled:
+        return Recalled(None, RecallDisposition.DISABLED)
+
+    async def disclose(self, exposure: Exposure) -> None:
+        return None
 
 
 class NoOpPromptService(PromptService):

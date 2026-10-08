@@ -14,6 +14,7 @@ from squadops.capabilities.development_profiles import (
 )
 from squadops.capabilities.disputed_checks import criterion_identities
 from squadops.capabilities.handlers.base import HandlerResult
+from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
 from squadops.capabilities.handlers.prior_cycle import prior_cycle_section
 from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
 from squadops.llm.exceptions import LLMError
@@ -373,6 +374,10 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         prior = await prior_cycle_section(renderer, inputs)
         if prior:
             variables["prior_cycle_section"] = prior
+        # SIP-0110 §0.9: the lessons approved for this task, in a slot of their own.
+        lessons = await cross_cycle_lessons_section(renderer, inputs)
+        if lessons:
+            variables["cross_cycle_lessons_section"] = lessons
         rendered = await renderer.render(
             "request.development_develop.focused_build_task", variables
         )

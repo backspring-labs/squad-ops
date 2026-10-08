@@ -60,7 +60,8 @@ logged transition.
 ### `squadops.capabilities`
 Task contracts and their handlers: the per-task-type handlers the agents run, the scaffold and its
 stacks (`scaffold`, `stack_fastapi_react`, `stack_nextjs_ts`), typed acceptance, the context-assembly
-contracts that decide what each task is handed, and the workload runner. "Capability" here means a
+contracts that decide what each task is handed (with the supply of Cross-Cycle Memory's approved
+lessons to the four authoring seams they declare, `lesson_supply`), and the workload runner. "Capability" here means a
 task contract, keyed by `task_type` (#922); the package keeps the name (PORTFOLIO Q23).
 
 ### `squadops.cli`
@@ -102,7 +103,10 @@ registry (SIP-0073), which maps each model name to its context window and defaul
 
 ### `squadops.memory`
 The memory domain: entries, queries and scored results for semantic memory (SIP-042), and Cross-Cycle
-Memory's (SIP-0110): the recall query and recalled pattern, and the authoring replay envelope with its four seams.
+Memory's (SIP-0110): the observations projected from three sources and the repeat report; the lessons,
+their approvals and each unit's pinned snapshot; the recall query and its deterministic policy; the
+exposures recording what each consuming task was supplied; and the authoring replay envelope with its
+four seams.
 
 ### `squadops.orchestration`
 Coordination between agents and handlers: `AgentOrchestrator`, the handler registry and the
@@ -168,7 +172,8 @@ Cycle event buses: in-process and NoOp, the runtime event publisher, and their f
 Model servers: Ollama, vLLM's OpenAI-compatible API, and Atlas (SIP-0106).
 
 ### `adapters.memory`
-Semantic memory on LanceDB.
+Semantic memory on LanceDB, and Cross-Cycle Memory's store (Postgres beside the cycle registry, and
+in memory for tests) with the recall that answers from a unit's pinned snapshot.
 
 ### `adapters.noop`
 NoOp port stubs for bootstrapping a `PortsBundle` (SIP-0066).

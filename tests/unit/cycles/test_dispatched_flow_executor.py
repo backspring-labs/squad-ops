@@ -419,7 +419,9 @@ class TestAFailedRunFinalizesWithTheStateItReached:
         kwargs = executor._run_completion.finalize.await_args.kwargs
         assert kwargs["cycle"] is cycle
         assert kwargs["contract"] is contract
-        assert kwargs["plan"] is (generated if plan_recorded else None)
+        # The plan provisioning reached is the supplied one (SIP-0110 §0.9), equal to what was
+        # generated when no lesson applies: compared by value, not identity.
+        assert kwargs["plan"] == (generated if plan_recorded else None)
 
 
 class TestFailFast:

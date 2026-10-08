@@ -10,7 +10,11 @@ class TestModelSpec:
 
     def test_frozen(self):
         spec = ModelSpec(
-            name="test", context_window=8192, default_max_completion=4096, reasoning_control="none"
+            name="test",
+            context_window=8192,
+            default_max_completion=4096,
+            reasoning_control="none",
+            family="test",
         )
         with pytest.raises(AttributeError):
             spec.name = "changed"  # type: ignore[misc]

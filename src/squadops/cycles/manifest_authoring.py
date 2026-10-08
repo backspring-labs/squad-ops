@@ -65,13 +65,13 @@ AUTHORING_INPUT_CONTRACT: frozenset[str] = frozenset(
         # Dispatch mechanics, not design inputs: model selection and chat kwargs.
         "agent_model",
         "agent_config_overrides",
+        # SIP-0110 §0.9, the extension point §5c.9 named: the lessons the owner approved for
+        # this task, from the unit's pinned snapshot, with their provenance (the snapshot and
+        # each revision's id). `squadops.memory.recall.LESSONS_INPUT`, spelled here because the
+        # cycle domain does not import memory; present only when a lesson is supplied.
+        "cross_cycle_lessons",
     }
 )
-
-#: Where cross-cycle memory plugs in later, named now so the integration is an intended
-#: extension rather than unexplained drift (§5c.9). A recall added here must arrive with
-#: its provenance; anything that appears without an entry is contamination by the rule above.
-INPUT_CONTRACT_EXTENSION_POINTS: tuple[str, ...] = ("cross_cycle_recall",)
 
 
 #: Where an operator-requested revision re-enters the framing sequence (#811).

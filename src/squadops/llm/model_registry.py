@@ -31,12 +31,16 @@ class ReasoningControl:
 
 @dataclass(frozen=True)
 class ModelSpec:
-    """Context window, completion budget and reasoning dial for a known model."""
+    """Context window, completion budget, reasoning dial and family for a known model."""
 
     name: str
     context_window: int
     default_max_completion: int
     reasoning_control: str
+    #: The model's release line, across its sizes and the names its servers give it (SIP-0110
+    #: §0.6): a Cross-Cycle Memory lesson is approved for named families, and one tuned on a
+    #: family's mistakes reaches no other. Declared per entry, no default, as the dial is.
+    family: str
 
 
 MODEL_SPECS: dict[str, ModelSpec] = {
@@ -45,18 +49,21 @@ MODEL_SPECS: dict[str, ModelSpec] = {
         context_window=32_768,
         default_max_completion=4_096,
         reasoning_control=ReasoningControl.NONE,
+        family="qwen2.5",
     ),
     "qwen2.5:32b": ModelSpec(
         name="qwen2.5:32b",
         context_window=32_768,
         default_max_completion=8_192,
         reasoning_control=ReasoningControl.NONE,
+        family="qwen2.5",
     ),
     "qwen2.5:72b": ModelSpec(
         name="qwen2.5:72b",
         context_window=131_072,
         default_max_completion=16_384,
         reasoning_control=ReasoningControl.NONE,
+        family="qwen2.5",
     ),
     # qwen3.6:27b is the uniform model used by the full
     # profile on DGX Spark. Without a registry entry, get_model_spec()
@@ -78,6 +85,7 @@ MODEL_SPECS: dict[str, ModelSpec] = {
         # #924 measured the same fill brief at 5,727 completion tokens with it
         # on and 413 with it off — the dial is the budget.
         reasoning_control=ReasoningControl.TOGGLE,
+        family="qwen3.6",
     ),
     # qwen3.8:27b is the V38 comparison arm (full-38 profile). The completion
     # clamp is deliberately IDENTICAL to qwen3.6:27b's: the V38 window compares
@@ -90,6 +98,7 @@ MODEL_SPECS: dict[str, ModelSpec] = {
         context_window=262_144,
         default_max_completion=8_192,
         reasoning_control=ReasoningControl.TOGGLE,
+        family="qwen3.8",
     ),
     # Atlas serves models by HuggingFace path, so the same weights carry a second name
     # (SIP-0106 §3.4 — model identity is provider-scoped). The window is the one the
@@ -108,12 +117,14 @@ MODEL_SPECS: dict[str, ModelSpec] = {
         context_window=65_536,
         default_max_completion=8_192,
         reasoning_control=ReasoningControl.TOGGLE,
+        family="qwen3.8",
     ),
     "llama3:70b": ModelSpec(
         name="llama3:70b",
         context_window=131_072,
         default_max_completion=16_384,
         reasoning_control=ReasoningControl.NONE,
+        family="llama3",
     ),
 }
 
@@ -178,3 +189,10 @@ def get_model_spec(name: str) -> ModelSpec | None:
     capability-only budgets.
     """
     return MODEL_SPECS.get(name.strip())
+
+
+def model_family_of(model: str) -> str:
+    """``model``'s family, or ``""`` for a model the registry does not know: an unknown family
+    matches no lesson (SIP-0110 §0.8 step 3), never every family."""
+    spec = get_model_spec(model)
+    return spec.family if spec is not None else ""

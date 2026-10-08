@@ -13,6 +13,7 @@ from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
 )
+from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
 from squadops.capabilities.handlers.prior_cycle import prior_cycle_section
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
@@ -191,6 +192,10 @@ class BuilderAssembleHandler(_CycleTaskHandler):
             prior = await prior_cycle_section(renderer, inputs)
             if prior:
                 variables["prior_cycle_section"] = prior
+            # SIP-0110 §0.9: the lessons approved for this task, in a slot of their own.
+            lessons = await cross_cycle_lessons_section(renderer, inputs)
+            if lessons:
+                variables["cross_cycle_lessons_section"] = lessons
             rendered = await renderer.render(
                 "request.builder_assemble.build_assemble",
                 variables,

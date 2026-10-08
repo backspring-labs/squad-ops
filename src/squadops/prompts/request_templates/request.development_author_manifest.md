@@ -1,6 +1,6 @@
 ---
 template_id: request.development_author_manifest
-version: "1"
+version: "2"
 required_variables:
   - prd
   - stack
@@ -9,6 +9,7 @@ optional_variables:
   - prior_outputs
   - authoring_rules_section
   - rejection_context_section
+  - cross_cycle_lessons_section
 ---
 You are authoring this build's **interface manifest** — the typed description of the
 application's interface that everything downstream is generated from.
@@ -102,4 +103,4 @@ Fields that are **not** manifest content, because the blueprint owns them: entry
 build/proxy config, CORS wiring, the standard health endpoint, test-runner wiring, and
 package manifests. Do not declare them.
 {{authoring_rules_section}}
-{{rejection_context_section}}
+{{rejection_context_section}}{{cross_cycle_lessons_section}}

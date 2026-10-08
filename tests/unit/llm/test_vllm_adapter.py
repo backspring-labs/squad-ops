@@ -186,7 +186,13 @@ class TestStreamingUsageFrame:
 
 
 def _spec(dial: str) -> ModelSpec:
-    return ModelSpec(name="any", context_window=1, default_max_completion=1, reasoning_control=dial)
+    return ModelSpec(
+        name="any",
+        context_window=1,
+        default_max_completion=1,
+        reasoning_control=dial,
+        family="any",
+    )
 
 
 class TestReasoningDials:
