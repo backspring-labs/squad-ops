@@ -141,38 +141,48 @@ async def _run_ui_data_path(files: dict[str, str], stack: str, base_url: str) ->
     the alternative, sending real verbs, buys a stronger signal by destroying the
     property that makes the audit repeatable.
 
-    A path fails only when the answer shows no route is mounted there: a 404 the framework
+    A path fails when the answer shows no route is mounted there: a 404 the framework
     produced (HTML rather than the app's own JSON envelope), or HTML through the JSON seam,
-    which means the call landed on a page. An app correctly reporting an unknown id still
-    passes, and so does one that rejects the probe's method.
+    which means the call landed on a page. It also fails on an error status the seam receives
+    without JSON, such as a route that raised (#2154). An app correctly reporting an unknown id
+    still passes, and so does one that rejects the probe's method.
     """
     calls = extract_ui_calls(files, stack)
     if not calls:
         return []
     failures: list[str] = []
-    seen: dict[tuple[str, bool], str] = {}
+    # Each answer is kept beside its verdict, so a failure line states what the probe saw (#2154).
+    seen: dict[tuple[str, bool], tuple[str, int | None, str]] = {}
     async with httpx.AsyncClient(base_url=base_url, timeout=15.0) as client:
         for call in calls:
             cache_key = (call.request_path, expects_json(call.fn))
-            verdict = seen.get(cache_key)
-            if verdict is None:
+            answer = seen.get(cache_key)
+            if answer is None:
                 if call.request_path.startswith(("http://", "https://")):
-                    verdict = LIVE_SERVER
+                    answer = (LIVE_SERVER, None, "")
                 else:
                     try:
                         resp = await client.get(call.request_path)
                     except httpx.HTTPError as exc:
                         failures.append(f"{call.location()}: transport error {exc!r}")
                         continue
-                    verdict = classify_ui_response(
-                        call.request_path,
+                    content_type = resp.headers.get("content-type", "")
+                    answer = (
+                        classify_ui_response(
+                            call.request_path,
+                            resp.status_code,
+                            content_type,
+                            via_seam=expects_json(call.fn),
+                        ),
                         resp.status_code,
-                        resp.headers.get("content-type", ""),
-                        via_seam=expects_json(call.fn),
+                        content_type,
                     )
-                seen[cache_key] = verdict
+                seen[cache_key] = answer
+            verdict, status, content_type = answer
             if verdict != SERVED:
-                failures.append(describe_failure(call, verdict))
+                failures.append(
+                    describe_failure(call, verdict, status=status, content_type=content_type)
+                )
     return failures
 
 

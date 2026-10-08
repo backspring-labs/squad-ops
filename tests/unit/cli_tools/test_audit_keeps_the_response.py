@@ -104,6 +104,34 @@ async def test_a_passing_probe_and_a_transport_error_keep_their_old_shape(monkey
     assert line.startswith("probe ok: transport error ")
 
 
+async def test_a_ui_call_answered_by_a_crashed_route_states_what_the_probe_saw(monkeypatch):
+    """#2154, entered at the audit's own UI pass. The rebuild 5 nextjs pair's detail route threw
+    for an unknown id, so Next answered 500 with no body and no content type. The line said
+    "serves a PAGE … the response is HTML". It now says what came back, for each call site,
+    including the second one that reads the cached answer."""
+    files = {
+        "app/runs/[run_id]/page.tsx": (
+            "const run = await api<Run>(`/api/runs/${runId}`)\n"
+            "const again = await api<Run>(`/api/runs/${runId}`)\n"
+        )
+    }
+    requests: list[str] = []
+
+    def crashed(req):
+        requests.append(req.url.path)
+        return httpx.Response(500)
+
+    monkeypatch.setattr(audit.httpx, "AsyncClient", _client_factory(crashed))
+
+    lines = await audit._run_ui_data_path(files, "nextjs_ts", "http://app")
+
+    assert len(requests) == 1  # one probe per distinct path; the second call reads the cache
+    assert len(lines) == 2
+    for line in lines:
+        assert "answers 500 with no content type, not JSON" in line
+        assert "PAGE" not in line
+
+
 def test_the_driver_keeps_every_fail_line_not_the_last_line_alone():
     output = (
         "assembled 12 files for stack fullstack_fastapi_react\n"

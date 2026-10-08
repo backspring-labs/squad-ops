@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from squadops.capabilities.ui_data_path import (
+    ERROR_NOT_JSON,
     LIVE_SERVER,
     METHOD_NOT_ALLOWED,
     PAGE_NOT_API,
@@ -282,6 +283,37 @@ class TestMethodNotAllowed:
 
     def test_a_framework_404_is_still_a_missing_route(self):
         assert classify_ui_response("/api/nope", 404, "text/html") == ROUTE_MISSING
+
+
+class TestErrorWithoutJson:
+    """#2154. The rebuild 5 nextjs regression pair (``cyc_9e9770706fdd``): the detail route
+    threw ``ApiError`` instead of answering through ``errorResponse``, so Next answered the probe
+    with a 500 and no content type. The not-JSON rule called that ``PAGE_NOT_API`` and told the
+    reader to look for a page serving HTML, but no page existed. Bug caught: a crashed route
+    reported as the page collision, or let through as served."""
+
+    @pytest.mark.parametrize(
+        ("status", "content_type"),
+        [(500, ""), (502, "text/plain"), (500, "text/html; charset=utf-8"), (400, "text/plain")],
+    )
+    def test_an_error_status_without_json_through_the_seam_fails_as_its_own_class(
+        self, status, content_type
+    ):
+        verdict = classify_ui_response("/api/runs/x", status, content_type, via_seam=True)
+        assert verdict == ERROR_NOT_JSON
+
+    def test_a_raw_fetch_is_still_judged_only_on_whether_a_route_exists(self):
+        assert classify_ui_response("/api/runs/x", 500, "", via_seam=False) == SERVED
+
+    def test_the_line_states_the_answer_and_names_no_page(self):
+        files = {"app/runs/[run_id]/page.tsx": "const d = await api<Run>(`/api/runs/${runId}`)"}
+        (call,) = extract_ui_calls(files, "nextjs_ts")
+
+        message = describe_failure(call, ERROR_NOT_JSON, status=500, content_type="")
+
+        assert "app/runs/[run_id]/page.tsx:1" in message
+        assert "answers 500 with no content type, not JSON" in message
+        assert "PAGE" not in message and "renders blank" not in message
 
 
 def test_the_two_defects_masked_each_other_on_a_correct_app():

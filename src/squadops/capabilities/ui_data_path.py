@@ -161,6 +161,7 @@ METHOD_NOT_ALLOWED = 405
 SERVED = "served"
 ROUTE_MISSING = "route_missing"
 PAGE_NOT_API = "page_not_api"
+ERROR_NOT_JSON = "error_not_json"
 LIVE_SERVER = "live_server"
 
 #: Call sites that parse the response as JSON unconditionally — the scaffold-owned
@@ -198,6 +199,14 @@ def classify_ui_response(
     **A 405 is the strongest signal the route exists** — the router matched the path and
     rejected only the method, which is precisely the question this check asks. A page never
     answers 405; it answers 200 with HTML, and that case is untouched.
+
+    **An error status without JSON is ``ERROR_NOT_JSON``, not a page** (#2154). A route that
+    raises instead of answering through ``errorResponse`` gets a 500 with no content type
+    from Next. It still fails, because the seam's contract is JSON whatever the status. But
+    ``PAGE_NOT_API`` reported it as "serves a PAGE … the response is HTML … renders blank",
+    and each part was false: the route is mounted, nothing was HTML, and the seam throws
+    ``http_500``, so the view errors on every load. The rebuild 5 nextjs regression pair
+    (``cyc_9e9770706fdd``) was told to look for a page that did not exist.
     """
     if request_path.startswith(("http://", "https://")):
         return LIVE_SERVER
@@ -207,7 +216,7 @@ def classify_ui_response(
     if status == METHOD_NOT_ALLOWED:
         return SERVED
     if via_seam and not is_json:
-        return PAGE_NOT_API
+        return PAGE_NOT_API if status < 400 else ERROR_NOT_JSON
     return SERVED
 
 
@@ -216,7 +225,12 @@ def expects_json(fn: str) -> bool:
     return fn in _JSON_SEAM_FUNCTIONS
 
 
-def describe_failure(call: UiCall, verdict: str) -> str:
+def describe_failure(
+    call: UiCall, verdict: str, *, status: int | None = None, content_type: str = ""
+) -> str:
+    """One failure line. ``status`` and ``content_type`` are the probe's answer. The
+    ``ERROR_NOT_JSON`` line states them as observed: a 5xx may be a route that raised or a
+    page that crashed, and the probe cannot tell which."""
     if verdict == LIVE_SERVER:
         return (
             f"{call.location()}: {call.fn}({call.written!r}) targets a live server — the "
@@ -227,6 +241,13 @@ def describe_failure(call: UiCall, verdict: str) -> str:
             f"{call.location()}: {call.fn}({call.written!r}) requests "
             f"{call.request_path!r}, which serves a PAGE, not the API — the response is "
             f"HTML, so the parsed body is empty and the view renders blank with no error"
+        )
+    if verdict == ERROR_NOT_JSON:
+        return (
+            f"{call.location()}: {call.fn}({call.written!r}) requests {call.request_path!r}, "
+            f"which answers {status} with {content_type or 'no content type'}, not JSON: an "
+            f"error outside the scaffold's errorResponse envelope, so the seam throws on every "
+            f"load of this view"
         )
     return (
         f"{call.location()}: {call.fn}({call.written!r}) requests {call.request_path!r}, "
