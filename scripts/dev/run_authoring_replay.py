@@ -278,7 +278,10 @@ def main() -> int:
             f"memory arm differs only by its section={r['memory_differs_only_by_its_section']}"
         )
     for arm in frozen["arms"]:
-        print(f"  {arm}: {sum(1 for r in authored if r['arm'] == arm)} authorings")
+        mine = [r for r in authored if r["arm"] == arm]
+        exact = [r for r in mine if r.get("first_call_is_the_capture")]
+        fidelity = f", first call is the capture in {len(exact)}" if arm == "baseline" else ""
+        print(f"  {arm}: {len(mine)} authorings{fidelity}")
     print(f"records: {directory}")
     return 0 if all(r["valid"] for r in checks) else 1
 
