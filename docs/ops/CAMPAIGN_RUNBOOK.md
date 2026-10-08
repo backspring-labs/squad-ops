@@ -195,6 +195,16 @@ definition declares it; one that does not is refused at creation:
   campaign proposes again (row 15), or a parked calibration ends the campaign. **Held until 2.2's
   measurement window closes:** no campaign declares `tier` before then.
 
+**An escalation nobody answered in time can be answered late** (§24bl), even after its campaign has
+ended. The answer is a record: it reopens nothing. A later plan gate of a tier campaign in the same
+project reads it by the decision's id, so the question is not asked again. The digest's Escalations
+section lists each one, and its asks name the command:
+
+```bash
+squadops campaigns escalations <campaign_id>
+squadops campaigns answer <campaign_id> <escalation_id> --answer "<the answer>" --reason "<why now>"
+```
+
 ---
 
 ## 5. Recovering

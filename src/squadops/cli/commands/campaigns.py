@@ -245,6 +245,51 @@ def classify(
     )
 
 
+@app.command("escalations")
+def escalations(ctx: typer.Context, campaign_id: str = typer.Argument(...)):
+    """The plan-review tier's escalations (SIP-0109 §24bj): each one's state, what the tier could
+    not establish, its questions, and its late answer."""
+    entries = _call(ctx, "get", f"/api/v1/campaigns/{campaign_id}/escalations")
+    fmt, quiet = _fmt(ctx)
+    if fmt == "json":
+        print_json(entries)
+        return
+    rows = [
+        [
+            e["escalation_id"],
+            e["state"],
+            e["run_id"],
+            ", ".join(f["condition"] for f in e["failed"]),
+            "; ".join(e["questions"]) or "—",
+            e["answer"] or "—",
+        ]
+        for e in entries
+    ]
+    print_table(
+        ["Escalation", "State", "Run", "Failed", "Questions", "Late answer"], rows, quiet=quiet
+    )
+
+
+@app.command("answer")
+def answer(
+    ctx: typer.Context,
+    campaign_id: str = typer.Argument(...),
+    escalation_id: str = typer.Argument(...),
+    text: str = typer.Option(..., "--answer", help="the answer to the escalation's questions"),
+    reason: str = _REASON,
+):
+    """Answer an expired or cancelled escalation late (SIP-0109 §24bj, §24bl). A record: it never
+    reopens the campaign or resumes the parked cycle; a later plan gate of the project reads it.
+    One answer per escalation: the same answer again replays it."""
+    data = _call(
+        ctx,
+        "post",
+        f"/api/v1/campaigns/{campaign_id}/escalations/{escalation_id}/answer",
+        json={"answer": text, "reason": reason},
+    )
+    _show_result(ctx, data, f"escalation_answered:{escalation_id}")
+
+
 @app.command("start")
 def start(
     ctx: typer.Context,

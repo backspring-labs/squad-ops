@@ -111,6 +111,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | the plan-review tier at the plan gate, declared by `plan_gate` (§24bj) | **shipped**; activation held until 2.2's measurement window closes | 2.2.0, PR #2146 |
 | the escalation queue: its store, the bound's expiry and the parked cycle (§24bk) | **shipped** | 2.2.0, PR #2147 |
 | the escalation queue's late answer, its digest lists and its CLI (§24bj, §24bk) | **placed** | 2.2.0, #1708 |
+| the tier's activation, after 2.2's measurement window closes, and its live reading in the cut's campaign shakeout (the 2.2 plan, steps 10–11) | **placed** | 2.2.0, #1708 |
 | accepted increments' `prd_delta` text to the proposer | **deferred to 2.4** (ruled 2026-10-03, §24ap): "a 2.4 question" | §24ap |
 | escalating a launch the cycle-create preflight refuses | **shipped** (§24ba) | 2.1.0, PR #2052, issue #1971 |
 | re-hearing an ended cycle between restarts | **shipped**: the campaign sweep re-hears on its interval, and a cycle is heard by one hearer at a time | 2.1.0, PR #2038, issue #1972 (§24as) |
@@ -3154,3 +3155,68 @@ CLI that answers an expired escalation.
 **Who ruled it.** The queue is §24bj's, ruled by the owner on 2026-10-08. The correction, and the
 readings above that §24bj left open (row 15's number, `cancelled` read rather than written, the
 overdue row's skip), are the implementer's, for the owner's reading.
+
+### 24bl. The late answer, and where a later gate reads it (2026-10-08, §24ad, §24bj, §24bk, #1708; implementer's reading of the owner's ruling 4, for the owner)
+
+§24bj's ruling 4: an answer that comes after the campaign closed is recorded against its escalation and
+read at the next campaign's admission, and it never reopens a closed campaign. §24bj said it is read
+through §24ad's mechanism, by a running campaign at its next proposal launch and by the next campaign
+at its admission.
+
+**As built:**
+- **The record.** `escalation_answered` (migration 1760) is a record-only control-log row, so it is
+  accepted on a completed campaign. It is keyed by its escalation: one answer per escalation.
+  - It is taken only by an `expired` or `cancelled` escalation. A pending one is answered at its gate,
+    and a resolved or superseded one has nothing left to answer.
+  - Blank text states nothing (§24ad), and is refused.
+  - The same answer again replays. A different one is refused with the answer already held, so no
+    later gate reads two answers for one escalation.
+  - It never resumes the parked cycle or reopens the campaign.
+
+  `POST /api/v1/campaigns/{id}/escalations/{escalation_id}/answer` (`campaigns:supervise`), and
+  `squadops campaigns answer <campaign> <escalation> --answer "…" --reason "…"`.
+- **Its key: the decision's id.** An escalation now records its open decisions as `(id, question)`
+  (`open_decisions`, beside `open_questions`, which now reads from it). An author's decision id
+  recurs across framings of one project: both of this line's calibrations named `list-ordering`.
+- **Where it is read: every later plan gate of a tier campaign in the same project.** The tier reads
+  the design's open decisions against the late answers on record in the project's campaigns
+  (`escalation.recorded_answers`; the latest answer for an id wins). A decision an answer covers is
+  answered, and the tier's notes name the answer and the escalation it was recorded against. The rest
+  stay open, and only they are recorded on any escalation the gate opens. This reading covers both of
+  §24bj's cases:
+  - the next campaign's calibration: its first plan gate is where its admission meets the question;
+  - a running campaign's next gate.
+
+**Where this differs from §24bj's wording, and why:**
+- **Read at the gate, not at the proposal launch.** §24ad's channel resolves the accepted manifest's
+  questions at a proposal launch. A calibration has no accepted manifest: its questions arise in the
+  manifest its framing writes. So the one place that sees the question in both cases is the gate.
+  **The answer does not enter the manifest's decision as its `choice`.** The build of the cycle whose
+  gate it answered runs on the plan as authored, as an answer given at the gate does today.
+- **Tier campaigns only.** A supervised campaign keeps today's behaviour (§24bj). Reading late answers
+  there would let #807's pass-through approve with notes saying the design asked nothing, which would
+  be false.
+
+**The digest** has an Escalations section listing every escalation and how it ended, with its late
+answer, kept apart from what was accepted. Its asks are:
+- a pending escalation, to answer at the gate before the bound parks it;
+- an expired or cancelled one with no answer, with the command that answers it late.
+
+**Evidence.**
+- `tests/unit/cycles/test_plan_review_tier_wiring.py`, entered at `WorkloadGate.decide` with V4 roll
+  2's authored manifest (decision `expansion-gating`):
+  - a late answer recorded against an earlier campaign's expired escalation answers the same decision,
+    so the tier approves and opens no escalation, its notes naming the answer;
+  - with the carry removed, the test fails;
+  - an escalation the gate opens records the decision's id with its question.
+- `tests/unit/api/test_campaign_routes.py`:
+  - an answer is recorded once, a retry replays, and a different answer is a 422;
+  - an answer after the campaign ended is recorded, and the campaign stays completed;
+  - pending, resolved, blank and unknown are each a 422 that records nothing.
+- `tests/unit/campaigns/test_plan_gate_escalations.py`: the digest asks at the gate while the
+  escalation is pending, then asks for a late answer once it has expired, then shows the answer and drops the ask.
+- `tests/unit/cli/test_commands_campaigns.py`: `answer` posts to the escalation's own route, and
+  `escalations` lists each one's state, conditions and questions.
+
+**Who ruled it.** The record is the owner's ruling 4 of 2026-10-08. Reading it at the gate, by decision
+id, in tier campaigns only, is the implementer's reading, for the owner.

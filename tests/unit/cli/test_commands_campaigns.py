@@ -297,3 +297,56 @@ def test_show_names_the_definition_its_creation_row_records(get_client):
 
     assert result.exit_code == 0, result.output
     assert json.loads(result.output)["definition"] == {"path": "s.yaml", "sha256": "f" * 64}
+
+
+@patch("squadops.cli.commands.campaigns._get_client")
+def test_answer_sends_the_answer_to_the_escalations_own_route(get_client):
+    """SIP-0109 §24bl. Bug caught: the answer posted to the campaign rather than to the
+    escalation it answers, or the escalation id dropped, so a later gate cannot match it."""
+    client = _client(post=_RESULT)
+    get_client.return_value = client
+
+    result = runner.invoke(
+        app,
+        [
+            "campaigns",
+            "answer",
+            "cmp_1",
+            "esc_0123456789ab",
+            "--answer",
+            "insertion order",
+            "--reason",
+            "late",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    client.post.assert_called_once_with(
+        "/api/v1/campaigns/cmp_1/escalations/esc_0123456789ab/answer",
+        json={"answer": "insertion order", "reason": "late"},
+    )
+
+
+@patch("squadops.cli.commands.campaigns._get_client")
+def test_escalations_lists_each_ones_state_failed_conditions_and_late_answer(get_client):
+    listed = [
+        {
+            "escalation_id": "esc_0123456789ab",
+            "state": "expired",
+            "run_id": "run_f",
+            "failed": [{"condition": "no_open_question", "reading": "1 open: which order?"}],
+            "questions": ["which order?"],
+            "answer": None,
+        }
+    ]
+    get_client.return_value = _client(get=listed)
+
+    with patch("squadops.cli.commands.campaigns.print_table") as table:
+        result = runner.invoke(app, ["campaigns", "escalations", "cmp_1"])
+
+    assert result.exit_code == 0, result.output
+    headers, rows = table.call_args.args
+    assert headers == ["Escalation", "State", "Run", "Failed", "Questions", "Late answer"]
+    assert rows == [
+        ["esc_0123456789ab", "expired", "run_f", "no_open_question", "which order?", "—"]
+    ]

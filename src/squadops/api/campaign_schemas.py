@@ -121,6 +121,34 @@ class ClassificationRequest(ControlRequest):
     classification: str
 
 
+class EscalationAnswerRequest(BaseModel):
+    """A late answer to an expired or cancelled escalation (SIP-0109 §24bj, §24bl). One per
+    escalation: its key is the escalation's own, so a retry of the same answer replays it and a
+    different one is refused."""
+
+    answer: str
+    reason: str
+
+
+class EscalationResponse(BaseModel):
+    """One escalation of the plan-review tier, as the control log holds it (§24bj, §24bk)."""
+
+    escalation_id: str
+    cycle_id: str
+    run_id: str
+    gate_name: str
+    state: str
+    opened_at: datetime
+    failed: list[dict[str, str]]
+    questions: list[str]
+    decision_ids: list[str]
+    closed_by: str | None
+    closed_at: datetime | None
+    answer: str | None
+    answered_by: str | None
+    answered_at: datetime | None
+
+
 class AcceptedTreeDTO(BaseModel):
     identity: str
     cycle_id: str

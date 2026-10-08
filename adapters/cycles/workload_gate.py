@@ -28,9 +28,11 @@ from uuid import uuid4
 
 from squadops.campaigns.escalation import (
     EscalationIdentity,
+    RecordedAnswer,
     escalations,
     opening_transition,
     plan_identity,
+    recorded_answers,
 )
 from squadops.campaigns.gate import (
     INCREMENT_RULING_GATE,
@@ -54,6 +56,7 @@ from squadops.capabilities.handlers.planning.proposal import CHANGE_REQUEST_ARTI
 from squadops.cycles.cycle_end import CycleStopReason
 from squadops.cycles.gate_decisions import record_gate_decision
 from squadops.cycles.gate_promotion import promote_run_artifacts
+from squadops.cycles.manifest_authoring import open_decisions
 from squadops.cycles.models import (
     APPROVING_DECISIONS,
     ArtifactRef,
@@ -71,6 +74,15 @@ logger = logging.getLogger("adapters.cycles.dispatched_flow_executor")
 
 #: The decider of a plan-validation refusal: a re-rolled framing's earlier run carries it (§24bj).
 PLAN_VALIDATION_DECIDER = "system:plan_validation"
+
+
+@dataclass(frozen=True)
+class _TierReading:
+    """The tier's verdict on a plan gate, with the design's decisions still open after the late
+    answers on record: what an escalation records, by id, for a later gate to match (§24bl)."""
+
+    verdict: TierVerdict
+    open_decisions: tuple[tuple[str, str], ...]
 
 
 class GateOutcome(StrEnum):
@@ -269,7 +281,7 @@ class WorkloadGate:
             # the deterministic gates, and a review that adds nothing is worse than no
             # review — it manufactures the appearance of one. Keyed on the design, never
             # on who wrote it (Guard 1a).
-            tier: TierVerdict | None = None
+            reading: _TierReading | None = None
             if gate_name == INCREMENT_RULING_GATE:
                 # SIP-0109 §9.2: the supervisor's ruling alone moves this gate. An increment cycle
                 # carries its baseline's manifest, which asks nothing, so #807's pass-through would
@@ -282,7 +294,8 @@ class WorkloadGate:
                 # which the stored cycle does not carry, so the question check found no design and
                 # every increment's plan gate asked a human.
                 questions = await self._design_questions_for_gate(run, run_cycle)
-                tier = await self._plan_review_tier(cycle, run, current_run_id, questions)
+                reading = await self._plan_review_tier(cycle, run, run_cycle, current_run_id)
+            tier = reading.verdict if reading is not None else None
             if tier is not None and tier.approves:
                 # §24bj: a campaign that declares the tier has its plan gate decided by it, and
                 # never by #807's pass-through, whose approvals the tier's are a subset of.
@@ -323,8 +336,9 @@ class WorkloadGate:
                         current_run_id,
                         "; ".join(f"{c.condition}: {c.reading}" for c in tier.failed),
                     )
+                    assert reading is not None
                     await self._open_escalation(
-                        cycle, run, run_cycle, current_run_id, gate_name, tier, questions
+                        cycle, run, run_cycle, current_run_id, gate_name, reading
                     )
                 if questions:
                     logger.info(
@@ -505,10 +519,16 @@ class WorkloadGate:
         return step(GateOutcome.PROCEED)
 
     async def _plan_review_tier(
-        self, cycle: Cycle, run: Any, current_run_id: str, questions: tuple[str, ...] | None
-    ) -> TierVerdict | None:
-        """§24bj: the tier's verdict on this plan gate, or ``None`` when the cycle's campaign does
-        not declare it: a supervised campaign, or a cycle no campaign launched."""
+        self,
+        cycle: Cycle,
+        run: Any,
+        run_cycle: Cycle,
+        current_run_id: str,
+    ) -> _TierReading | None:
+        """§24bj: the tier's reading of this plan gate, or ``None`` when the cycle's campaign does
+        not declare it: a supervised campaign, or a cycle no campaign launched. The design's open
+        decisions are read against the late answers on record in the project's campaigns
+        (§24bl): one whose id an answer covers is answered, and the rest stay open."""
         if not cycle.campaign_id:
             return None
         if self._campaign_registry is None:
@@ -537,13 +557,33 @@ class WorkloadGate:
                 for d in r.gate_decisions
             )
         ]
-        return plan_review_tier(
+        # The design's open decisions, read once here with their ids: the tier and the escalation
+        # it may open read the same ones. No manifest, nothing the tier can establish.
+        manifest = await self._run_manifest_content(run, run_cycle)
+        decisions: tuple[tuple[str, str], ...] = ()
+        carried: dict[str, RecordedAnswer] = {}
+        questions: tuple[str, ...] | None = None if manifest is None else ()
+        if manifest is not None:
+            decisions = open_decisions(manifest)
+            if decisions:
+                on_record = recorded_answers(
+                    [
+                        (await self._campaign_registry.control_log(c.campaign_id), c.state)
+                        for c in await self._campaign_registry.list_campaigns(campaign.project_id)
+                    ]
+                )
+                carried = {d: on_record[d] for d, _q in decisions if d in on_record}
+                decisions = tuple((d, q) for d, q in decisions if d not in carried)
+            questions = tuple(q for _d, q in decisions)
+        verdict = plan_review_tier(
             kind=CycleKind(cycle.kind),
             open_questions=questions,
             footprint=plan_footprint(await self._load_run_plan_yaml(run)),
             allowed_scope=campaign.objective.allowed_scope,
             refused_framing_runs=refused,
+            answered_on_record={d: a.escalation_id for d, a in carried.items()},
         )
+        return _TierReading(verdict, decisions)
 
     async def _approve_gate_by_tier(
         self, project_id: str, run_id: str, cycle_id: str, gate_name: str, tier: TierVerdict
@@ -576,8 +616,7 @@ class WorkloadGate:
         run_cycle: Cycle,
         current_run_id: str,
         gate_name: str,
-        tier: TierVerdict,
-        questions: tuple[str, ...] | None,
+        reading: _TierReading,
     ) -> None:
         """§24bj: the tier could not approve, so the gate escalates. One ``escalation_opened`` row,
         keyed by what it is about, so re-entering the gate after a restart replays it; the gate
@@ -606,7 +645,9 @@ class WorkloadGate:
         try:
             await self._campaign_registry.transition(
                 cycle.campaign_id,
-                opening_transition(identity, tier, questions, datetime.now(UTC)),
+                opening_transition(
+                    identity, reading.verdict, reading.open_decisions, datetime.now(UTC)
+                ),
             )
         except ControlOperationRefused as refused:
             logger.error(
