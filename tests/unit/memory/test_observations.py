@@ -75,7 +75,11 @@ _MOCK_MISUSE = RoundFailure(
     locus="own_artifact",
     failed_checks=("tests_pass",),
     failed_detail=(
-        ("tests_pass", "TypeError: __vi_import_5__.apiFetch.mockResolvedValue is not a function"),
+        (
+            "tests_pass",
+            "frontend/src/__tests__/runViews.test.jsx:39 renders run titles and participant "
+            "counts: TypeError: __vi_import_5__.apiFetch.mockResolvedValue is not a function",
+        ),
     ),
 )
 
@@ -120,6 +124,9 @@ def test_a_failed_round_carries_its_attribution_and_its_own_account_of_why():
     assert round_.classification.values == ("verification_artifact_failure",)
     assert round_.evidence["failed_detail"] == [list(_MOCK_MISUSE.failed_detail[0])]
     assert round_.observed_at == run.finished_at  # the record's commit, never earlier
+    assert round_.evidence["failure_shapes"] == [
+        {"check": "tests_pass", "runner": "vitest", "shape": "not_a_function"}
+    ]
 
 
 @pytest.mark.parametrize(

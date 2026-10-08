@@ -17,7 +17,7 @@ import re
 import shutil
 import sys
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -1695,3 +1695,87 @@ async def run_build_validation(
     if frontend_check is not None:
         result = replace(result, frontend_build=frontend_check)
     return result
+
+
+# ---------------------------------------------------------------------------------------------
+# Failure shapes: what a runner reported, never why (SIP-0110 §0.4, the 2.2 plan's D14)
+# ---------------------------------------------------------------------------------------------
+
+#: Bumped when a row is added, removed or changes what it matches, so an observation names the
+#: table that sorted it.
+FAILURE_SHAPE_TABLE_VERSION = 1
+
+
+@dataclass(frozen=True)
+class FailureShape:
+    """One observed signature in a runner's own failure message. It names what the runner
+    reported, never its cause: ``not_a_function`` is the suite's mistake or the application's
+    depending on whether the application defines the name (``ambiguous_when_app_defines``
+    above), and the auditor settles which from the round's artifacts. It never maps to an
+    attribution class (SIP-0108 §4.2)."""
+
+    name: str
+    pattern: re.Pattern[str]
+
+
+def _any_of(markers: Sequence[str]) -> re.Pattern[str]:
+    return re.compile("|".join(re.escape(m) for m in markers))
+
+
+#: Each runner's shapes, first match wins. The rows reuse the messages this module already reads
+#: per runner (the suite-health markers, #626; the own-frame shapes, #1130, #1270) rather than
+#: restating them. Seeded by the four rounds the 2.1 cut recorded with ``failed_detail``.
+FAILURE_SHAPES: dict[str, tuple[FailureShape, ...]] = {
+    "vitest": (
+        FailureShape("suite_not_found", _any_of(_VITEST_SUITE_BROKEN_MARKERS[:2])),
+        FailureShape(
+            "unresolved_import",
+            _any_of(
+                [m for m in _VITEST_SUITE_BROKEN_MARKERS if "resolve" in m or "Cannot find" in m]
+            ),
+        ),
+        FailureShape(
+            "element_not_found",
+            re.compile(r"Unable to find (?:an? )?(?:element|accessible element|role|label|text)"),
+        ),
+        FailureShape(
+            "spy_called_with_other_arguments",
+            re.compile(r"expected \"spy\" to be called with arguments|toHaveBeenCalledWith"),
+        ),
+        FailureShape("not_a_function", _OWN_FRAME_SHAPES["vitest"][1].message),  # type: ignore[arg-type]
+        FailureShape("not_defined", _OWN_FRAME_SHAPES["vitest"][0].message),  # type: ignore[arg-type]
+        FailureShape("undefined_property_read", _OWN_FRAME_SHAPES["vitest"][2].message),  # type: ignore[arg-type]
+    ),
+    "pytest": (
+        FailureShape("import_error", re.compile(r"\b(?:ModuleNotFoundError|ImportError)\b")),
+        FailureShape("name_error", re.compile(r"\bNameError\b")),
+        FailureShape("argument_binding", _ARGUMENT_BINDING_ERROR),
+        FailureShape("status_code_mismatch", re.compile(r"\bassert [1-5]\d\d == [1-5]\d\d\b")),
+        FailureShape("key_error", re.compile(r"\bKeyError\b")),
+        FailureShape("attribute_error", re.compile(r"\bAttributeError\b")),
+    ),
+}
+
+_JS_SUITE_SUFFIXES = (".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs")
+
+
+def runner_of_case(text: str) -> str | None:
+    """The runner a failing case's account came from, read from the case's own file: a ``.py``
+    suite is pytest's and a JavaScript or TypeScript one vitest's. ``None`` when the account
+    names no file."""
+    head = text.strip().split(":", 1)[0].split("::", 1)[0].strip()
+    if head.endswith(".py"):
+        return "pytest"
+    if head.endswith(_JS_SUITE_SUFFIXES):
+        return "vitest"
+    return None
+
+
+def failure_shape_of(text: str) -> tuple[str | None, str | None]:
+    """``(runner, shape)`` for one failing case's account. A runner without a table, an account
+    naming no file, or a message no row matches gives ``shape = None``: unclassified."""
+    runner = runner_of_case(text)
+    for shape in FAILURE_SHAPES.get(runner or "", ()):
+        if shape.pattern.search(text):
+            return runner, shape.name
+    return runner, None
