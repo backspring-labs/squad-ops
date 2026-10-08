@@ -556,6 +556,7 @@ async def replay_sample(
     from adapters.cycles.correction_repair import CorrectionRepair
     from adapters.cycles.correction_runner import _Diagnosis, _inject_deterministic_evidence
     from adapters.cycles.patch_acceptance import PatchAcceptance
+    from adapters.noop.ports import NoOpFailurePatternRecall
     from squadops.capabilities.scaffold import InterfaceManifest
     from squadops.cycles.failure_evidence import build_failure_evidence
     from squadops.tasks.models import TaskEnvelope
@@ -619,7 +620,11 @@ async def replay_sample(
         return after
 
     started = time.perf_counter()
-    outcome = await CorrectionRepair(dispatch_step=dispatch_step).dispatch(
+    # Memory disabled (SIP-0110 §0.7): the repair's prompt renders as it did before memory existed,
+    # which is what a replay of a pre-memory round compares.
+    outcome = await CorrectionRepair(
+        dispatch_step=dispatch_step, failure_recall=NoOpFailurePatternRecall()
+    ).dispatch(
         "patch",
         diagnosis,
         envelope,

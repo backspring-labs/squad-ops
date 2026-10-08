@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import dataclasses
 import importlib.util
+import inspect
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -19,6 +20,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from squadops.cycles.models import AgentProfileEntry, Cycle, Gate, SquadProfile, TaskFlowPolicy
+from squadops.memory.lessons import RecallDisposition
 
 _PATH = (
     Path(__file__).resolve().parents[3] / "scripts" / "dev" / "convergence_replay" / "container.py"
@@ -262,9 +264,17 @@ async def test_a_sample_keeps_what_each_empty_repair_said(monkeypatch, content, 
         await recorder.chat_stream_with_usage([])
         return SimpleNamespace(outputs={"llm_usage": None, "anchored_edits": transaction})
 
+    from adapters.cycles.correction_repair import CorrectionRepair
+
+    constructed: dict = {}
+
     class _Repair:
-        def __init__(self, *, dispatch_step):
-            self._dispatch_step = dispatch_step
+        def __init__(self, **kwargs):
+            # Bound against the real constructor, so a dependency it comes to require fails here
+            # rather than as every live sample's `unrunnable` (#2129 added `failure_recall`).
+            inspect.signature(CorrectionRepair.__init__).bind(None, **kwargs)
+            constructed.update(kwargs)
+            self._dispatch_step = kwargs["dispatch_step"]
 
         async def dispatch(self, mode, diagnosis, envelope, result, cycle, run_id, *a, **k):
             step = TaskEnvelope.from_dict(
@@ -315,6 +325,8 @@ async def test_a_sample_keeps_what_each_empty_repair_said(monkeypatch, content, 
         12,
     )
     assert step["anchored_edits"] == transaction
+    recalled = await constructed["failure_recall"].recall(None)
+    assert recalled.disposition is RecallDisposition.DISABLED  # the pre-memory prompt
 
 
 async def test_a_long_response_is_kept_bounded_and_a_failed_call_as_its_error():
