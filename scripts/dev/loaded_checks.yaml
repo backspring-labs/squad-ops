@@ -509,3 +509,22 @@ checks:
       a, b = render("PRD", None, {}), render("PRD", None, {})
       print(a["proposal_id"] == b["proposal_id"] and a["guidance_id"] == b["guidance_id"])
     expect: "True"
+  - id: "1708-tier"
+    what: the plan-review tier decides a tier campaign's plan gate, a calibration exempt from the scope
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.models import CycleKind
+      from squadops.campaigns.plan_review_tier import plan_review_tier
+      verdict = plan_review_tier(
+          kind=CycleKind.CALIBRATION, open_questions=(), footprint=("assembly_notes.md",),
+          allowed_scope=("backend/**",), refused_framing_runs=(), answered_on_record={},
+      )
+      print(verdict.approves)
+    expect: "True"
+  - id: "1708-queue"
+    what: the escalation queue's operations, the late answer included
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.models import ControlOperation
+      print(ControlOperation.ESCALATION_ANSWERED.value, ControlOperation.ESCALATION_ANSWERED.records_only)
+    expect: escalation_answered True
