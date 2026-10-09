@@ -1201,3 +1201,12 @@ sips:
   approver: null
   created_at: '2026-10-09T00:00:00Z'
   updated_at: '2026-10-09T14:35:13.751261Z'
+- sip_uid: '1791574804220728'
+  sip_number: null
+  title: TensorFold Provider Adapter
+  path: sips/proposed/SIP-TensorFold-Provider-Adapter.md
+  status: proposed
+  author: Jason Ladd
+  approver: null
+  created_at: '2026-10-09T00:00:00Z'
+  updated_at: null
