@@ -384,7 +384,8 @@ set is the framework's yardstick, and an approved lesson must not move it unanno
   agent's container (`agents/entrypoint.py`), and used today only by console chat. The runtime API, where recall and
   the plan composer run, has none. Phase 2 chooses a similarity index when it adds ranking (§8).
   > **2026-10-09 (§5f):** that store holds no record on the deploy and cannot write one (#2171), and its only reader,
-  > console chat, reaches only joi. The memory entry-points proposal makes it dormant (2.3) and retires it (2.5);
+  > console chat, reaches only joi. The memory entry-points proposal makes it dormant (2.3) and retires it in the
+  > stabilization release after its replacement passes acceptance;
   > a similarity index, if one is ever added, is derived from Postgres records and owns none of them.
 - The recall policy behind `FailurePatternRecallPort` owns eligibility, authorization, snapshot selection, ordering and disclosure.
 - The executor is a consumer. Duty and ambient callers will reuse the policy rather than reimplement its trust rules.
@@ -1384,8 +1385,16 @@ not a second memory system:
   conversational claim never becomes a lesson;
 - **it adds a context-assembly port** whose consumer is a task invocation or a chat turn, so chat never fabricates a
   cycle id. The lesson section is §0.8's recall, unchanged;
-- **the unit snapshot (§0.7) would pin the in-force project instructions beside the approved lessons,** and memory
-  disabled would exclude every memory-sourced section through every entry point.
+- **instructions are binding:** a task whose instructions, or the references they require, cannot be loaded,
+  resolved or fitted into its prompt is held, not run without them. Lessons stay optional context, omitted whole and
+  disclosed as now;
+- **the unit snapshot (§0.7) would pin the in-force project instructions beside the approved lessons,** as two sets;
+- **the comparison arms would be separated.** `lessons: disabled` is the lesson-effectiveness control: today's "memory
+  disabled", keeping every instruction identical across the arms. Withholding instructions too is a separately named
+  experiment, never read as a lesson's effect. **2.2's experiment is unchanged:** no instruction exists in 2.2, so its
+  arms already differ only in lessons;
+- **a task instruction's work target (a cycle and its tasks) is kept apart from the snapshot owner** (the cycle or its
+  campaign), so one cycle's instruction never reaches another cycle that shares its campaign's snapshot.
 
 **The evidence** (read on the deploy `dep_34b4117e7ede`, 2026-10-09):
 - **SIP-042's store holds no record in any of the eight agents** (seven empty directories; joi's one empty table, never
@@ -1406,8 +1415,10 @@ not a second memory system:
 
 The points those passages make (recall as a port policy; discretionary access per mode; the quarantine rule) stand.
 
-**Who ruled it.** The owner's direction of 2026-10-09, quoted above. The facts were read by the implementer. The
-design, its placement (Q25) and #2171's disposition (Q26) wait for the owner's acceptance.
+**Who ruled it.** The owner's direction of 2026-10-09, quoted above, and the owner's review of the proposal's first
+revision the same day (binding instructions, the separated arms, the work target, emergency withdrawal, session ownership).
+The facts were read by the implementer. The design, its placement (Q25) and #2171's disposition (Q26) wait for the
+owner's acceptance.
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 

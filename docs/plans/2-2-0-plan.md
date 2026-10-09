@@ -334,7 +334,8 @@ The counted set passed 4 of 4 (the 2.1 pre-registration §10).
 - **#316** is 2.3's (2.1 plan §5 ruling 14).
 - **Memory entry points for chat and task assignment** (the owner's direction, 2026-10-09: "Preserve the current 2.2
   experiment's scope"). The design is `sips/proposed/SIP-Memory-Entry-Points.md`, epic #2173, and it lands in SIP-0110
-  on acceptance (§5f). Nothing in it enters 2.2. Its proposed placement (2.3, 2.4 and 2.5) is the owner's to rule
+  on acceptance (§5f). Nothing in it enters 2.2. Its proposed placement (2.3 and 2.4, then the legacy store's retirement in the stabilization release after the
+  replacement passes acceptance) is the owner's to rule
   (`sips/PORTFOLIO.md` Q25). #2112's volumes shipped in 2.2 as hardening (#2172) and are separate from whether that
   store stays.
 

@@ -514,7 +514,9 @@ design (§10) is superseded by the owner's direction for one memory architecture
   - every failure visible.
 - **§4, §7 and §9's conversation history never reached the agent.** The route forwards only the current message
   (`src/squadops/api/routes/chat/routes.py:177–179`); `_load_history` (`:290`) is never called, against the executor's
-  own contract P2-RC5. This is a defect, #2175, and not superseded: the fix wires the history as this SIP designed it.
+  own contract P2-RC5. This is a defect, #2175, and not superseded: the fix wires the history as this SIP designed it,
+  and before any history is replayed it checks that the session's owner is the authenticated user and its agent the one
+  requested, on resume, on reads and in assembly. A session id is not authorization.
 
 The transport (console → runtime API → A2A) and the persistence (`chat_sessions`, `chat_messages`, Redis) stand.
 
