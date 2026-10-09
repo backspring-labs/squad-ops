@@ -61,6 +61,12 @@ _ASKING = (
     / "interface_manifest_roll2.yaml"
 ).read_text(encoding="utf-8")
 [(DECISION, QUESTION)] = open_decisions(_ASKING)
+#: The owner's late answer to the earlier campaign's escalation on that decision (§24bm).
+LATE = "after two weeks"
+#: The earlier campaign's escalation, as ``_a_late_answer_on_record`` opens it.
+PRIOR_ESCALATION = EscalationIdentity(
+    PRIOR, "cyc_prior", "run_prior", GATE, None, None, None, "p"
+).escalation_id
 
 
 def _answered(manifest_yaml: str) -> str:
@@ -200,7 +206,11 @@ async def _a_late_answer_on_record(campaigns: MemoryCampaignRegistry) -> None:
     await campaigns.transition(
         PRIOR,
         answer_transition(
-            expired, "after two weeks", actor="human:owner", actor_role="owner", reason="late"
+            expired,
+            {DECISION: LATE},
+            actor="human:owner",
+            actor_role="owner",
+            reason="late",
         ),
     )
 
@@ -229,6 +239,7 @@ async def _reach_the_gate(
     earlier_framings: tuple[Run, ...] = (),
     asks: bool = False,
     answered_late: bool = False,
+    manifest: str | None = None,
 ):
     campaigns = MemoryCampaignRegistry()
     if answered_late:
@@ -256,7 +267,9 @@ async def _reach_the_gate(
     registry.record_gate_decision.side_effect = lambda run_id, decision: framing
     executor = DispatchedFlowExecutor(
         cycle_registry=registry,
-        artifact_vault=_Vault(plan, _ASKING if asks else _answered(_ASKING)),
+        artifact_vault=_Vault(
+            plan, manifest if manifest is not None else (_ASKING if asks else _answered(_ASKING))
+        ),
         queue=AsyncMock(),
         squad_profile=AsyncMock(),
         task_timeout=5.0,
@@ -406,18 +419,63 @@ async def test_a_supervised_campaign_keeps_the_pass_through_unchanged():
     assert step.outcome is GateOutcome.PROCEED
 
 
-async def test_a_late_answer_on_record_answers_the_same_question_at_a_later_gate():
-    """§24bj's ruling 4, read at the next campaign (§24bl): the owner's late answer to an earlier
-    campaign's expired escalation answers the same decision, by id, so its question is not asked
-    again. Bug caught: the late answer recorded where no gate reads it, so every campaign asks
-    the question again and parks on it."""
-    executor, registry, step = await _reach_the_gate(PlanGate.TIER, asks=True, answered_late=True)
+async def test_a_late_answer_on_record_never_clears_an_open_question_at_the_gate():
+    """§24bm, correcting §24bl. Bug caught: a historical answer clearing a current question
+    because the two share a decision id, while the plan the gate approves never carries the
+    answer: the build would run on a design nobody answered."""
+    executor, registry, _ = await _reach_the_gate(PlanGate.TIER, asks=True, answered_late=True)
+
+    assert GATE_DECIDED_BY_PLAN_REVIEW_TIER not in _recorded_deciders(registry)
+    [esc] = escalations(
+        await executor._campaign_registry.control_log(CID), CampaignState.CALIBRATING
+    )
+    assert (esc.decision_ids, esc.questions) == ((DECISION,), (QUESTION,))
+
+
+def _carried(choice: str = LATE) -> str:
+    """The design with the earlier campaign's late answer carried into it, as a tier campaign's
+    proposal launch writes it (§24bm), then with its choice set to ``choice``."""
+    from squadops.campaigns.escalation import RecordedAnswer
+    from squadops.cycles.manifest_authoring import resolve_late_answers
+
+    held = RecordedAnswer(DECISION, QUESTION, LATE, "human:owner", NOW, PRIOR_ESCALATION)
+    data = yaml.safe_load(resolve_late_answers(_ASKING, {DECISION: held}))
+    for d in data["decisions"]:
+        if d["id"] == DECISION:
+            d["choice"] = choice
+    return yaml.dump(data, sort_keys=False)
+
+
+async def test_a_plan_carrying_the_late_answer_it_cites_is_answered_by_it():
+    """§24bm. Bug caught: a late answer carried into the manifest and then asked again, so every
+    campaign parks on a question the owner already answered."""
+    executor, registry, _ = await _reach_the_gate(
+        PlanGate.TIER, answered_late=True, manifest=_carried()
+    )
 
     assert _recorded_deciders(registry) == [GATE_DECIDED_BY_PLAN_REVIEW_TIER]
     notes = registry.record_gate_decision.await_args.args[1].notes
-    assert f"every question the design asks is answered on record: {DECISION} (esc_" in notes
-    executor._poll_inter_workload_gate.assert_not_awaited()
+    assert (
+        f"answered in the plan, by a late answer on record: {DECISION} ({PRIOR_ESCALATION})"
+        in notes
+    )
     assert (
         escalations(await executor._campaign_registry.control_log(CID), CampaignState.CALIBRATING)
         == []
     )
+
+
+async def test_a_plan_that_changed_the_late_answer_it_cites_escalates():
+    """§24bm, the owner's example: a historical "descending" must not authorize an ascending plan
+    because both decisions are called the same. Bug caught: a gate approving a plan whose choice
+    contradicts the answer its own warrant cites."""
+    executor, registry, _ = await _reach_the_gate(
+        PlanGate.TIER, answered_late=True, manifest=_carried("before launch")
+    )
+
+    assert GATE_DECIDED_BY_PLAN_REVIEW_TIER not in _recorded_deciders(registry)
+    [esc] = escalations(
+        await executor._campaign_registry.control_log(CID), CampaignState.CALIBRATING
+    )
+    assert esc.decision_ids == (DECISION,)
+    assert "is not the late answer it cites" in esc.questions[0]

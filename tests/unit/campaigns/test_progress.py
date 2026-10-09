@@ -1228,7 +1228,18 @@ _ANSWER = (
 )
 
 
-async def _answered_calibration(calibrating, monkeypatch, *, decided_by: str, notes: str | None):
+async def _answered_calibration(
+    calibrating,
+    monkeypatch,
+    *,
+    decided_by: str,
+    notes: str | None,
+    late_answer: tuple[str, str] | None = None,
+    **policy_overrides,
+):
+    """The calibration accepted on ``_OPEN_MANIFEST`` and its gate decided, then its cycle ended.
+    ``late_answer`` (question, answer) first records an earlier campaign of the project whose
+    escalation on ``run-list-ordering`` expired and was answered late (SIP-0109 §24bm)."""
     from squadops.cycles.models import GateDecision
 
     monkeypatch.setitem(
@@ -1239,7 +1250,9 @@ async def _answered_calibration(calibrating, monkeypatch, *, decided_by: str, no
             _OPEN_MANIFEST.encode(),
         ),
     )
-    w, run = await calibrating(RunVerdict.ACCEPTED)
+    w, run = await calibrating(RunVerdict.ACCEPTED, **policy_overrides)
+    if late_answer is not None:
+        await _a_late_answer_on_record(w.campaigns, *late_answer)
     await w.cycles.create_run(
         Run(
             run_id="run_frame",
@@ -1264,6 +1277,67 @@ async def _answered_calibration(calibrating, monkeypatch, *, decided_by: str, no
     await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
     [_, increment] = await w.campaigns.launch_intents(CID)
     return increment.cycle_request["body"]["execution_overrides"]["campaign_proposal"]
+
+
+async def _a_late_answer_on_record(campaigns, question: str, answer: str) -> str:
+    """An earlier campaign of the project whose escalation on ``run-list-ordering`` (asked as
+    ``question``) expired, and which the owner answered late. Returns the escalation's id."""
+    from squadops.campaigns.escalation import (
+        EscalationIdentity,
+        answer_transition,
+        escalations,
+        opening_transition,
+    )
+    from squadops.campaigns.models import CampaignTransition, ControlOperation, CycleKind, PlanGate
+    from squadops.campaigns.plan_review_tier import plan_review_tier
+
+    prior = "cmp_prior0000001"
+    await campaigns.create_campaign(
+        campaign(prior, policy=policy(plan_gate=PlanGate.TIER)),
+        actor="owner",
+        actor_role="owner",
+        reason="r",
+        idempotency_key="create-prior",
+    )
+    identity = EscalationIdentity(
+        prior, "cyc_prior", "run_prior", "progress_plan_review", None, None, None, "p"
+    )
+    verdict = plan_review_tier(
+        kind=CycleKind.CALIBRATION,
+        open_questions=(question,),
+        footprint=("backend/main.py",),
+        allowed_scope=("backend/**",),
+        refused_framing_runs=(),
+        answered_on_record={},
+    )
+    await campaigns.transition(
+        prior, opening_transition(identity, verdict, (("run-list-ordering", question),), NOW)
+    )
+    await campaigns.transition(
+        prior,
+        CampaignTransition(
+            operation=ControlOperation.ESCALATION_CLOSED,
+            actor="squadops",
+            actor_role="sweep",
+            reason="the bound passed",
+            idempotency_key=f"escalation_closed:{identity.escalation_id}",
+            next_state=None,
+            target="run_prior",
+            binding={"escalation_id": identity.escalation_id, "state": "expired"},
+        ),
+    )
+    [expired] = escalations(await campaigns.control_log(prior), CampaignState.DRAFT)
+    await campaigns.transition(
+        prior,
+        answer_transition(
+            expired,
+            {"run-list-ordering": answer},
+            actor="human:owner",
+            actor_role="owner",
+            reason="late",
+        ),
+    )
+    return identity.escalation_id
 
 
 async def test_an_answered_question_reaches_the_increment_resolved(calibrating, monkeypatch):
@@ -1632,3 +1706,48 @@ async def test_a_retry_is_told_what_each_correction_round_of_the_failed_cycle_tr
         }
     ]
     assert prior["correction_ended"] == "exhausted"
+
+
+@pytest.mark.parametrize(
+    ("plan_gate", "same_question", "carried"),
+    [
+        ("tier", True, True),
+        ("tier", False, False),
+        ("supervised", True, False),
+    ],
+    ids=["a tier campaign, the same question", "another question, one id", "a supervised campaign"],
+)
+async def test_a_late_answer_reaches_a_tier_increment_only_for_the_same_question(
+    calibrating, monkeypatch, plan_gate, same_question, carried
+):
+    """SIP-0109 §24bm, entered at ``CycleCompletion.end`` on shakeout 4's calibration manifest.
+    Bugs caught: a late answer that never reaches the plan the gate reads, so the tier can only
+    clear it by id; one carried into a different question that shares the id; one carried into a
+    supervised campaign, which keeps today's behaviour."""
+    from squadops.campaigns.models import PlanGate
+    from squadops.cycles.manifest_authoring import (
+        LATE_ANSWER_WARRANT,
+        cited_late_answers,
+        open_decisions,
+    )
+
+    [(_, question)] = open_decisions(_OPEN_MANIFEST)
+    asked = question if same_question else "Does the runs list page?"
+
+    proposal = await _answered_calibration(
+        calibrating,
+        monkeypatch,
+        decided_by="agent:005159fd",
+        notes=None,
+        late_answer=(asked, "newest first"),
+        plan_gate=PlanGate(plan_gate),
+    )
+
+    baseline = proposal["baseline_manifest"]
+    if carried:
+        [(choice, escalation_id)] = cited_late_answers(baseline).values()
+        assert choice == "newest first" and escalation_id.startswith("esc_")
+        assert open_decisions(baseline) == ()
+        assert LATE_ANSWER_WARRANT in baseline
+    else:
+        assert baseline == _OPEN_MANIFEST

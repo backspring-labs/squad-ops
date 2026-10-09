@@ -98,9 +98,10 @@ def plan_review_tier(
 ) -> TierVerdict:
     """The tier's verdict on one plan gate.
 
-    ``open_questions`` is the design's questions after §24ad's answers and the late answers on
-    record, or ``None`` for a cycle with no manifest. ``answered_on_record`` names each decision a
-    late answer covered, with the escalation it was recorded against (§24bl).
+    ``open_questions`` is the design's open questions, with any decision whose plan cites a late
+    answer it no longer carries, or ``None`` for a cycle with no manifest. ``answered_on_record``
+    names each decision the plan carries a late answer for, with the escalation it was recorded
+    against (§24bm): carried into the manifest at the proposal launch, and still its choice.
     ``refused_framing_runs`` are this cycle's earlier framing runs that plan validation refused,
     each one a re-roll."""
     if open_questions is None:
@@ -119,7 +120,7 @@ def plan_review_tier(
         questions = TierCheck(
             TierCondition.NO_OPEN_QUESTION,
             True,
-            "every question the design asks is answered on record: "
+            "every question the design asked is answered in the plan, by a late answer on record: "
             + ", ".join(f"{d} ({e})" for d, e in sorted(answered_on_record.items())),
         )
     else:

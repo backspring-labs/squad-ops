@@ -84,7 +84,7 @@ The revision history at the end has the earlier placements.
 
 ---
 
-## Delivery ledger (current as of 2026-10-07)
+## Delivery ledger (current as of 2026-10-09)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
 
@@ -111,6 +111,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | the plan-review tier at the plan gate, declared by `plan_gate` (§24bj) | **shipped**; activation held until 2.2's measurement window closes | 2.2.0, PR #2146 |
 | the escalation queue: its store, the bound's expiry and the parked cycle (§24bk) | **shipped** | 2.2.0, PR #2147 |
 | the escalation queue's late answer, its digest lists and its CLI (§24bl) | **shipped** | 2.2.0, PR #2148 |
+| the late answer corrected (§24bm): one answer per decision, carried into a tier campaign's next manifest only for the same question, and an open or uncarried question escalates | **shipped** | 2.2.0, PR #PRNUM, issue #2188 |
 | the tier's activation, after 2.2's measurement window closes, and its live reading in the cut's campaign shakeout (the 2.2 plan, steps 10–11) | **placed** | 2.2.0, #1708 |
 | accepted increments' `prd_delta` text to the proposer | **deferred to 2.4** (ruled 2026-10-03, §24ap): "a 2.4 question" | §24ap |
 | escalating a launch the cycle-create preflight refuses | **shipped** (§24ba) | 2.1.0, PR #2052, issue #1971 |
@@ -3158,6 +3159,10 @@ overdue row's skip), are the implementer's, for the owner's reading.
 
 ### 24bl. The late answer, and where a later gate reads it (2026-10-08, §24ad, §24bj, §24bk, #1708; implementer's reading of the owner's ruling 4, for the owner)
 
+> **Superseded in part by §24bm (2026-10-09).** The owner did not ratify this reading. A late answer no longer
+> clears a question at the gate by its decision id: it answers each decision by id, it is carried into a tier
+> campaign's next manifest only for the same question, and the gate escalates any question the plan does not carry.
+
 §24bj's ruling 4: an answer that comes after the campaign closed is recorded against its escalation and
 read at the next campaign's admission, and it never reopens a closed campaign. §24bj said it is read
 through §24ad's mechanism, by a running campaign at its next proposal launch and by the next campaign
@@ -3220,3 +3225,51 @@ answer, kept apart from what was accepted. Its asks are:
 
 **Who ruled it.** The record is the owner's ruling 4 of 2026-10-08. Reading it at the gate, by decision
 id, in tier campaigns only, is the implementer's reading, for the owner.
+
+### 24bm. A late answer reaches a plan only by being carried, and only to the same question (2026-10-09, §24ad, §24bj, §24bl, #2188; ruled by the owner)
+
+**What changed.** §24bl let a later plan gate clear an open question with any late answer on record whose decision id
+matched, and recorded one free-text answer for every decision its escalation listed. The answer never became the
+current manifest's choice, so the tier approved a plan that did not carry it. Now:
+- **A late answer names each decision it answers, by its id** (`answers: {decision_id: answer}`). It may name only
+  decisions the escalation recorded, and one text never stands for several questions. Each answer is kept with the
+  question it answered. `POST /api/v1/campaigns/{id}/escalations/{escalation_id}/answer` takes `answers`, and
+  `squadops campaigns answer … --answer DECISION_ID=ANSWER`, once per decision.
+- **It is carried at a tier campaign's proposal launch, as §24ad's answer is.** An open decision in the baseline
+  manifest is resolved by a late answer on record only when both the decision id and the question match.
+  Case, spacing and trailing punctuation are set aside; an author's ids recur across a project's framings, so a shared
+  id alone is not the same question. The decision's `choice` becomes the answer, and its `warrant` names the
+  escalation (`late answer recorded against esc_…`).
+- **The gate no longer clears anything by id.**
+  - An open question in the manifest it reads is open, and escalates.
+  - A decision that cites a late answer is answered only while its `choice` is still the answer that escalation
+    recorded for it. Otherwise it escalates, naming the mismatch.
+  - So a historical "descending" never authorizes an ascending plan because both are called `list-ordering`.
+- **Unchanged:** supervised campaigns carry nothing (§24bl's tier-only rule), a calibration's question is answered at
+  its gate (it has no baseline to carry into), and the late answer stays a record that reopens nothing.
+
+**Evidence.**
+- **Read at rebuild 9 (`a84e085f`):**
+  - the tier removed open decisions by id against late answers from every campaign of the project
+    (`adapters/cycles/workload_gate.py`);
+  - `escalation.recorded_answers` recorded the one answer under each of the escalation's decision ids;
+  - nothing wrote the answer into the manifest.
+- **The tests:**
+  - `tests/unit/cycles/test_plan_review_tier_wiring.py`, entered at `WorkloadGate.decide` on V4 roll 2's authored
+    manifest. A late answer on record leaves the open question open and escalates; with the gate's old clearing
+    restored, the test fails. A plan carrying the answer it cites is approved, its notes naming the carry. One whose
+    choice was changed escalates;
+  - `tests/unit/campaigns/test_progress.py`, entered at `CycleCompletion.end` on shakeout 4's calibration manifest. A
+    tier campaign's increment baseline carries the late answer for the same question. It carries nothing for another
+    question under the same id, and nothing in a supervised campaign;
+  - `tests/unit/campaigns/test_late_answers.py`: question matching; the latest answer per decision; the carry check;
+    a manifest with nothing to resolve unchanged, byte for byte;
+  - the route and CLI tests: an answer naming a decision the escalation did not ask is a 422.
+- **No live effect, and no data migration.** The tier is inactive until after 2.2's window (the 2.2 plan's D3), and the
+  live store holds no late answer.
+
+**Who ruled it.** The owner's review of the 2.2 shakeout (2026-10-09, point 9): "Do not ratify §24bl unchanged …
+Require compatible question/context, explicit coverage of each answered question, and evidence that the current plan
+carries the answer; otherwise continue escalating … Keep the automatic tier disabled through the window and correct
+this behavior before activating it." In the same review the owner's reviewer recommended accepting §24bk's bookkeeping
+correction, which stays the owner's ruling.

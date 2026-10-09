@@ -28,11 +28,11 @@ from uuid import uuid4
 
 from squadops.campaigns.escalation import (
     EscalationIdentity,
-    RecordedAnswer,
     escalations,
     opening_transition,
     plan_identity,
     recorded_answers,
+    uncarried,
 )
 from squadops.campaigns.gate import (
     INCREMENT_RULING_GATE,
@@ -56,7 +56,7 @@ from squadops.capabilities.handlers.planning.proposal import CHANGE_REQUEST_ARTI
 from squadops.cycles.cycle_end import CycleStopReason
 from squadops.cycles.gate_decisions import record_gate_decision
 from squadops.cycles.gate_promotion import promote_run_artifacts
-from squadops.cycles.manifest_authoring import open_decisions
+from squadops.cycles.manifest_authoring import cited_late_answers, open_decisions
 from squadops.cycles.models import (
     APPROVING_DECISIONS,
     ArtifactRef,
@@ -561,19 +561,25 @@ class WorkloadGate:
         # it may open read the same ones. No manifest, nothing the tier can establish.
         manifest = await self._run_manifest_content(run, run_cycle)
         decisions: tuple[tuple[str, str], ...] = ()
-        carried: dict[str, RecordedAnswer] = {}
+        carried: dict[str, str] = {}
         questions: tuple[str, ...] | None = None if manifest is None else ()
         if manifest is not None:
+            # §24bm: an open question stays open. A late answer reaches a plan only by being
+            # carried into the manifest at the proposal launch, and a decision that cites one is
+            # answered only while its choice is still that answer; otherwise it escalates.
             decisions = open_decisions(manifest)
-            if decisions:
+            cited = cited_late_answers(manifest)
+            if cited:
                 on_record = recorded_answers(
                     [
                         (await self._campaign_registry.control_log(c.campaign_id), c.state)
                         for c in await self._campaign_registry.list_campaigns(campaign.project_id)
                     ]
                 )
-                carried = {d: on_record[d] for d, _q in decisions if d in on_record}
-                decisions = tuple((d, q) for d, q in decisions if d not in carried)
+                broken = uncarried(cited, on_record)
+                decisions = (*decisions, *broken)
+                failed = {d for d, _why in broken}
+                carried = {d: e for d, (_c, e) in cited.items() if d not in failed}
             questions = tuple(q for _d, q in decisions)
         verdict = plan_review_tier(
             kind=CycleKind(cycle.kind),
@@ -581,7 +587,7 @@ class WorkloadGate:
             footprint=plan_footprint(await self._load_run_plan_yaml(run)),
             allowed_scope=campaign.objective.allowed_scope,
             refused_framing_runs=refused,
-            answered_on_record={d: a.escalation_id for d, a in carried.items()},
+            answered_on_record=carried,
         )
         return _TierReading(verdict, decisions)
 

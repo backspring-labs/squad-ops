@@ -614,3 +614,13 @@ checks:
               await conn.close()
       print(sorted(citable([o], [a])), sorted(citable([o], [review(a, reviewed_by="o", now=at)])), asyncio.run(live()))
     expect: "[] ['proposal_ruling:c:e'] True"
+  - id: "2188"
+    what: SIP-0109 §24bm - a late answer reaches a plan only for the same question, and a plan whose choice is not the late answer it cites escalates; the gate no longer clears a question by decision id
+    container: squadops-runtime-api
+    code: |
+      from datetime import UTC, datetime
+      import adapters.cycles.workload_gate as gate
+      from squadops.campaigns.escalation import RecordedAnswer, same_question, uncarried
+      held = {"d": RecordedAnswer("d", "Which order?", "descending", "o", datetime(2026, 10, 9, tzinfo=UTC), "esc_a")}
+      print(same_question("Which order?", "which  order"), [d for d, _ in uncarried({"d": ("ascending", "esc_a")}, held)], hasattr(gate, "uncarried"))
+    expect: "True ['d'] True"

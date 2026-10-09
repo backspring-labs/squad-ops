@@ -374,9 +374,10 @@ async def answer_escalation(
     body: EscalationAnswerRequest,
     identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_SUPERVISE)),
 ) -> ControlResultResponse:
-    """A late answer to an expired or cancelled escalation (§24bj's ruling 4, §24bl): a record,
-    accepted after the campaign ended. It never reopens the campaign or resumes the parked cycle;
-    a later plan gate of the project reads it by the decision's id."""
+    """A late answer to an expired or cancelled escalation (§24bj's ruling 4, §24bm): a record,
+    accepted after the campaign ended, answering each decision it names by its id. It never reopens
+    the campaign or resumes the parked cycle. A later tier campaign's proposal launch carries a
+    compatible answer into its manifest, and its plan gate checks the plan still carries it."""
     from squadops.campaigns.escalation import answer_refusal, answer_transition, escalations
 
     campaign = await _registry(request).get_campaign(campaign_id)
@@ -388,13 +389,13 @@ async def answer_escalation(
         ),
         None,
     )
-    refusal = answer_refusal(found, body.answer)
+    refusal = answer_refusal(found, body.answers)
     if refusal is not None:
         raise HTTPException(422, _validation(refusal))
     assert found is not None
     actor, role = actor_from(identity)
     transition = answer_transition(
-        found, body.answer, actor=actor, actor_role=role, reason=body.reason
+        found, body.answers, actor=actor, actor_role=role, reason=body.reason
     )
     return _result(await apply_control(request, campaign_id, transition, identity))
 
@@ -717,7 +718,7 @@ def _escalation(e: Escalation) -> EscalationResponse:
         decision_ids=list(e.decision_ids),
         closed_by=e.closed_by,
         closed_at=e.closed_at,
-        answer=e.answer,
+        answers=dict(e.answers),
         answered_by=e.answered_by,
         answered_at=e.answered_at,
     )
