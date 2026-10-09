@@ -18,7 +18,7 @@ original_filename: "SIP-021-Agent-Memory-Protocol.md"
 >
 > **Superseded as a design (2026-10-09).** Its agent-specific memory patterns, its "lore" and its per-agent stores are
 > not carried forward. Cross-cycle learning is SIP-0110's; chat and task-assignment memory is the entry-points proposal's
-> (`sips/proposed/SIP-Memory-Entry-Points.md`, epic #2173), which lands in SIP-0110 on acceptance. The data model it did
+> (epic #2173), accepted on 2026-10-09 into SIP-0110 (§5g, Appendix A). The data model it did
 > ship (`MemoryEntry`, `MemoryQuery`, `MemoryResult`) serves only SIP-042's LanceDB store, which holds no record on the
 > deploy and is proposed for retirement (#2184). The owner's direction of 2026-10-09: "without carrying forward obsolete
 > chat assumptions."

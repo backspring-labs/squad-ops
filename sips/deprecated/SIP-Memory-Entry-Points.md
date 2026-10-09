@@ -1,13 +1,16 @@
 ---
 sip_uid: '1791554672623514'
-status: proposed
+status: deprecated
 title: Memory Entry Points
 author: Jason Ladd
 created_at: '2026-10-09T00:00:00Z'
+updated_at: '2026-10-09T14:35:13.728929Z'
 ---
 # SIP: Memory Entry Points
 
-**Status:** Proposed (draft, revision 3, 2026-10-09)
+**Status:** Deprecated: **accepted by the owner on 2026-10-09 and absorbed into SIP-0110** (§5g, and Appendix A, which holds
+this design as accepted). This file is the proposal's record at revision 3. The design lives in SIP-0110, where any change
+to it is a numbered amendment, and its delivery rows are SIP-0110's ledger.
 **Target (proposed, for the owner's ruling, §8 Q25):**
 - **2.3, stabilization:** the legacy agent store made dormant and its failures visible; chat's conversation history
   reaching the agent, with session ownership checked; the context-assembly port, inert. None of it changes what a task

@@ -500,7 +500,7 @@ steps 7–8.
 
 **What changed.** Nothing in the code yet. Two of this SIP's statements no longer describe the deploy, and its memory
 design (§10) is superseded by the owner's direction for one memory architecture serving chat and task assignment
-(`sips/proposed/SIP-Memory-Entry-Points.md`, epic #2173; on acceptance it lands in SIP-0110):
+(epic #2173; accepted on 2026-10-09 into SIP-0110, §5g and Appendix A):
 - **§10's semantic memory is superseded:**
   - each chat agent's own LanceDB store, written on the phrases "remember this", "note that", "save this" and
     "store this" (`adapters/comms/chat_executor.py:39`);

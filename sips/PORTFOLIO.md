@@ -73,7 +73,7 @@ Class: **live** (wanted, not built), **partly absorbed** (some built or owned el
 | proposal | class | placement it states | action |
 |---|---|---|---|
 | Outcome Evaluation (PR #1963) | live | instruments 2.3; feature half heads 2.4 | Q1, Q3 |
-| Memory Entry Points (epic #2173; drafted 2026-10-09 on the owner's direction) | live; lands in SIP-0110 on acceptance | proposed: 2.3 (the legacy store dormant, chat history with session ownership, the inert context port), 2.4 (the entry points), then the legacy store retired in the stabilization release after they pass acceptance (2.5 if 2.4) | Q25–Q29 |
+| Memory Entry Points (epic #2173; drafted 2026-10-09 on the owner's direction) | **accepted 2026-10-09 and absorbed into SIP-0110** (§5g, Appendix A); the proposal file is **deprecated** with a pointer there | 2.3.0 (#2174, #2175, #2176), 2.4.0 (#2177–#2183), 2.5.0 (#2184): SIP-0110's ledger | Q25–Q29, ruled |
 | Verification Yield | partly absorbed | ledger 2026-10-04: #1960 (2.1), #1965 (crew, 2.1 window), #1966 (after memory) | done 2026-10-04 |
 | Test-First Verification | partly absorbed | greenfield gate #1978 (2.6) | ruled |
 | Campaign Self-Improvement and Test Bay (`SIP-Campaign-Self-Improvement-and-Test-Bay-Requirements`) | partly absorbed | its own 10-01 note supersedes its targets | Q6 |
@@ -166,15 +166,17 @@ dated amendment.
 All four are placed early in 2.1.0.
 
 
-### Open: waiting on the owner (2026-10-09, Memory Entry Points)
+### Ruled 2026-10-09: Memory Entry Points
 
-| # | decision | recommended | recorded in |
+The owner's words: "accept 2185 with Q25–Q29 as drafted". Each ruling is recorded in SIP-0110 §5g and Appendix A §A.8.
+
+| # | decision | ruled (as drafted) | recorded in |
 |---|---|---|---|
-| Q25 | where the entry points land | **2.4, beside Outcome Evaluation's feature half** (Q1 gave 2.4's head to it). The relationship is one-way: Outcome Evaluation supports application-quality claims about memory; it is not required to deliver the entry points, and its delivery is not blocked by them. The alternative: 2.6, beside the squad-authored backlog. The legacy store's retirement follows in the next stabilization release either way | the draft's §6; SIP-0110 §5f; the ROADMAP horizon |
-| Q26 | #2171 (no agent can write its legacy store) | **close as not planned:** do not restore the embedding path; its live defect, the silent failure, moves to #2174 (2.3) | the draft's §4.5; #2171 |
-| Q27 | who holds `memory:note` and `memory:instruct` until a membership model exists | admins only, as drafted | the draft's §3.3 |
-| Q28 | chat beyond joi | not required by the draft; a config flag | the draft's §8 |
-| Q29 | conversation-history retention | to be set before #2180 ships | the draft's §8 |
+| Q25 | where the entry points land | **2.4, beside Outcome Evaluation's feature half** (Q1 gave 2.4's head to it). The relationship is one-way: Outcome Evaluation supports application-quality claims about memory; it is not required to deliver the entry points, and its delivery is not blocked by them. The alternative: 2.6, beside the squad-authored backlog. The legacy store's retirement follows in the next stabilization release either way | SIP-0110 §5g, §A.6; the ROADMAP horizon |
+| Q26 | #2171 (no agent can write its legacy store) | **closed as not planned:** the embedding path is not restored; its live defect, the silent failure, is #2174's (2.3) | SIP-0110 §5g, §A.4.5; #2171, closed |
+| Q27 | who holds `memory:note` and `memory:instruct` until a membership model exists | admins only | SIP-0110 §5g, §A.3.3 |
+| Q28 | chat beyond joi | not required; a config flag | SIP-0110 §5g, §A.8 |
+| Q29 | conversation-history retention | set before #2180 ships | SIP-0110 §5g, §A.8 |
 
 ---
 
@@ -209,3 +211,4 @@ All four are placed early in 2.1.0.
 | 2026-10-09 | Memory Entry Points (the owner's direction: one memory architecture for chat and task assignment, execution its driver) | **overlaps** Cross-Cycle Memory entirely, by design: it lands there on acceptance (Q4), extends its store, snapshot, exposure and recall policy, and changes no lesson rule. **Overlaps** SIP-0085 (chat keeps its transport and persistence; its §10 memory is superseded, and its history, never wired, is #2175), SIP-0089 (its `Assignment` is a duty window, so the new record is a *task instruction*), SIP-0109 (gate notes, §24ad answers and proposal notes stay authoritative where they are), SIP-0103 §5c.5 and #950 (a change to the manifest or a decision goes through its owner; memory only references it), and Outcome Evaluation (an application-quality claim needs its scenarios). **Conflicts:** Q1's 2.4 placement (Q25) and #2171 as filed (Q26) | the draft's header; SIP-0110 §5f; SIP-0085's and SIP-0021's notes; §4's open queue |
 | 2026-10-09 | Memory Entry Points, revision 2 (the owner's review of revision 1) | **two new overlaps, no conflict.** **SIP-0109's escalation queue** (#1708, §24bj): a task held for an incomplete binding context is escalated through it in a campaign, as a held gate is; SIP-0109 keeps the queue and its authority. **SIP-0073's model context registry** supplies the window a task's total prompt budget is read from. The other changes stay inside the draft and SIP-0110: binding instructions hold dispatch; `lessons: disabled` (today's "memory disabled") keeps instructions identical across arms, and a broader removal is a named experiment; a task instruction's work target is apart from its snapshot owner; emergency withdrawal restarts with corrected bindings; session ownership and provenance links are authorized. 2.2's experiment is unchanged | the draft's header and §3.3–§3.8; SIP-0110 §5f |
 | 2026-10-09 | Memory Entry Points, revision 3 (the owner's review of revision 2) | **no new overlap, no conflict.** **SIP-0109's control log** (an existing overlap) gains a record kind: re-binding a running campaign is recorded there and needs `campaigns:supervise`; SIP-0109 keeps the log and the authority. **SIP-0110 §0.8 step 6** (inside the landing SIP) gains one recall input, an effective lesson budget, the smaller of the snapshot's and what binding instructions leave after the lesson slot's framing; it equals the snapshot's whenever they leave room, and always in 2.2. The other changes stay inside the draft: a reference is bound to a concrete revision with its instruction, never at dispatch; a hold on a pinned project instruction is released by an authorized re-binding (forward or restart), never by a revision alone; budgets are applied once, where records are chosen. T8 extended; T10 restated; T16 and T17 added | the draft's revision 3 note; SIP-0110 §5f |
+| 2026-10-09 | Memory Entry Points, accepted (the owner: "accept 2185 with Q25–Q29 as drafted") | **both conflicts resolved:** Q25 places the entry points in 2.4 beside Outcome Evaluation's feature half (one-way relationship), and Q26 closes #2171 as not planned. The design is absorbed into SIP-0110 as §5g and Appendix A, with eleven ledger rows placed in 2.3.0, 2.4.0 and 2.5.0, each issue labelled `sip:0110`; the proposal file is deprecated with a pointer there (the absorbed-proposal precedent of §2) | SIP-0110 §5g; §4's ruled table |

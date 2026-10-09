@@ -103,7 +103,7 @@ registry (SIP-0073), which maps each model name to its context window and defaul
 
 ### `squadops.memory`
 The memory domain: entries, queries and scored results for SIP-042's per-agent semantic store (legacy: only console
-chat reads it, it holds no record on the deploy, and it is proposed for retirement, SIP-0110 §5f and #2184), and
+chat reads it, it holds no record on the deploy, and it is retired in 2.5, SIP-0110 §5g and #2184), and
 Cross-Cycle Memory's (SIP-0110): the observations projected from three sources and the repeat report; the lessons,
 their approvals and each unit's pinned snapshot; the recall query and its deterministic policy; the
 exposures recording what each consuming task was supplied; and the authoring replay envelope with its

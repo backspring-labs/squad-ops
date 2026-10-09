@@ -811,9 +811,9 @@ The following areas are identified for future work but do not block 1.0 readines
 | 2.0 | Campaign (SIP-0109) | the counted set, registered 2026-10-04 (#1908) |
 | 2.1 | stabilization, **shipped 2026-10-07** | the 2.0 set's findings; the optimization crew's enablers (#1940, #1956, #1959, #1960); the structure audit's defects and ground-clearing (#1982–#1991); the plan is PR #1955 |
 | 2.2 | Cross-Cycle Memory (SIP-0110) | the line's **only** change to squad behaviour, beside #1708's auto tier and escalation queue; the plan is `docs/plans/2-2-0-plan.md` |
-| 2.3 | stabilization | Outcome Evaluation's reporting-only instruments; the comms (#1977) and API contract (#1976) hardening; the request-profile taxonomy (#316, moved from 2.1); the structure audit's batch: orchestration out of `adapters/cycles` (#1992), a `stacks` package (#1993), the largest units split (#1994); **proposed, Q25:** the legacy agent store made dormant with its failures visible (#2174), chat's history reaching the agent, with session ownership checked (#2175), and the context-assembly port, inert (#2176) |
-| 2.4 | Outcome Evaluation's feature half (proposed) | Verification Yield's risk-first instructions (#1966); then the judgement steps it measures (#557, #949, #950); **proposed, Q25:** memory entry points for chat and task assignment beside it (`sips/proposed/SIP-Memory-Entry-Points.md`, epic #2173), landing in SIP-0110 |
-| 2.5 | stabilization | **proposed, Q25:** the legacy per-agent LanceDB store retired, after a re-inventory, in the stabilization release after its replacement ships and passes acceptance: here if the entry points land in 2.4 (#2184; its volumes are a compose change, made on the owner's OK) |
+| 2.3 | stabilization | Outcome Evaluation's reporting-only instruments; the comms (#1977) and API contract (#1976) hardening; the request-profile taxonomy (#316, moved from 2.1); the structure audit's batch: orchestration out of `adapters/cycles` (#1992), a `stacks` package (#1993), the largest units split (#1994); **placed (SIP-0110 §5g, Q25):** the legacy agent store made dormant with its failures visible (#2174), chat's history reaching the agent, with session ownership checked (#2175), and the context-assembly port, inert (#2176) |
+| 2.4 | Outcome Evaluation's feature half (proposed) | Verification Yield's risk-first instructions (#1966); then the judgement steps it measures (#557, #949, #950); **placed (SIP-0110 §5g, Q25):** memory entry points for chat and task assignment beside it (SIP-0110 Appendix A, epic #2173, #2177–#2183) |
+| 2.5 | stabilization | **placed (SIP-0110 §5g):** the legacy per-agent LanceDB store retired, after a re-inventory, once its replacement ships and passes acceptance (#2184; its volumes are a compose change, made on the owner's OK) |
 | 2.6 | the squad-authored backlog (no SIP yet) | features from the strategy role, debt refactors from the lead; Test-First's greenfield gate (#1978) |
 
 **3.x: agents running continuously in the world (duty mode).** Deferred here by ruling, and placed by 3.0's plan:
@@ -841,7 +841,6 @@ The following areas are identified for future work but do not block 1.0 readines
 | SIP | Title |
 |-----|-------|
 | (unnumbered) | Outcome Evaluation (drafted 2026-10-04, PR #1963: instruments 2.3, feature half heads 2.4) |
-| (unnumbered) | Memory Entry Points (drafted 2026-10-09 on the owner's direction; epic #2173; lands in SIP-0110 on acceptance) |
 | (unnumbered) | Verification Yield and Test Value (partly shipped in 2.0; delivery ledger in the SIP) |
 | (unnumbered) | Campaign Self-Improvement and Test Bay Requirements (2.0 vision anchor) |
 | (unnumbered) | Agent Comms Delivery Guarantees (was a "Campaign gate"; 2.0 shipped without it, on a Postgres outbox and sweep. Its trigger is to be restated: `sips/PORTFOLIO.md` Q9) |
