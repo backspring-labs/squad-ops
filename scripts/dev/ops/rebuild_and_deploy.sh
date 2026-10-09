@@ -12,6 +12,10 @@
 #   ./scripts/dev/ops/rebuild_and_deploy.sh agents max nat neo eve data glyph  # Rebuild specified agents
 #   ./scripts/dev/ops/rebuild_and_deploy.sh runtime-api agents        # Rebuild runtime-api and default agents
 #   ./scripts/dev/ops/rebuild_and_deploy.sh runtime-api               # Rebuild only runtime-api
+#   ./scripts/dev/ops/rebuild_and_deploy.sh sandbox                   # Rebuild and start the sandbox service
+#
+# The sandbox service is opt-in (`profiles: ["sandbox"]`, SIP-0102): `all` rebuilds it only when
+# this deploy already runs it, and `sandbox` rebuilds and starts it (#2193).
 #
 # Environment variables:
 #   FORCE_REBUILD=1                             # Use --no-cache for full rebuild
@@ -41,11 +45,14 @@ source "$REPO_ROOT/scripts/dev/ops/secrets.sh"
 REBUILD_CONSOLE=false
 REBUILD_AGENTS=false
 REBUILD_RUNTIME_API=false
+# #2193: true (named), auto (`all`: only when the deploy runs it) or false.
+REBUILD_SANDBOX=auto
 REBUILD_ALL=true
 AGENT_LIST=()
 
 if [ $# -gt 0 ]; then
     REBUILD_ALL=false
+    REBUILD_SANDBOX=false
     i=0
     while [ $i -lt $# ]; do
         i=$((i + 1))
@@ -61,7 +68,7 @@ if [ $# -gt 0 ]; then
                 while [ $i -le $# ]; do
                     next_arg="${!i}"
                     case "$next_arg" in
-                        console|runtime-api|runtime_api|all)
+                        console|runtime-api|runtime_api|sandbox|all)
                             # Hit another service keyword, back up and break
                             i=$((i - 1))
                             break
@@ -78,15 +85,19 @@ if [ $# -gt 0 ]; then
             runtime-api|runtime_api)
                 REBUILD_RUNTIME_API=true
                 ;;
+            sandbox)
+                REBUILD_SANDBOX=true
+                ;;
             all)
                 REBUILD_ALL=true
                 REBUILD_CONSOLE=true
                 REBUILD_AGENTS=true
                 REBUILD_RUNTIME_API=true
+                [ "$REBUILD_SANDBOX" = true ] || REBUILD_SANDBOX=auto
                 ;;
             *)
                 echo "Unknown argument: $arg"
-                echo "Usage: $0 [console] [agents [agent1 agent2 ...]] [runtime-api] [all]"
+                echo "Usage: $0 [console] [agents [agent1 agent2 ...]] [runtime-api] [sandbox] [all]"
                 echo "  Examples:"
                 echo "    $0 console                   # Build only console"
                 echo "    $0 agents                    # Build every agent service the compose file defines"
@@ -238,6 +249,7 @@ echo -e "${BLUE}🔨 Step 3: Rebuilding containers with updated code...${NC}"
 # banner and exit code stay honest (#370).
 RUNTIME_API_FAILED=0
 CONSOLE_FAILED=0
+SANDBOX_FAILED=0
 AGENTS_RESTART_FAILED=0
 FAILED_AGENTS=""
 
@@ -463,6 +475,32 @@ print(" ".join(sorted(n for n, v in services.items() if (v.get("build") or {}).g
     fi
 fi
 
+# Step 5b: the sandbox service (#2193). It is opt-in (`profiles: ["sandbox"]`), so no plain
+# compose call touches it: `sandbox` rebuilds and starts it, and `all` rebuilds it when this deploy
+# runs it. It runs before the record, which reads every running service: a sandbox rebuilt after
+# the record left the record naming the previous image, and every cycle on the deploy with it.
+if [ "$REBUILD_SANDBOX" = auto ]; then
+    if [ -n "$(docker compose --profile sandbox ps -q --status running sandbox-service 2>/dev/null)" ]; then
+        REBUILD_SANDBOX=true
+    else
+        echo -e "${BLUE}ℹ️  sandbox-service does not run on this deploy; \`sandbox\` starts it${NC}"
+    fi
+fi
+if [ "$REBUILD_SANDBOX" = true ]; then
+    echo -e "${YELLOW}📦 Rebuilding sandbox-service...${NC}"
+    if [ "${FORCE_REBUILD:-0}" = "1" ]; then
+        BUILD_OK=true; docker compose --profile sandbox build --no-cache sandbox-service || BUILD_OK=false
+    else
+        BUILD_OK=true; docker compose --profile sandbox build sandbox-service || BUILD_OK=false
+    fi
+    if [ "$BUILD_OK" = true ] && docker compose --profile sandbox up -d --wait sandbox-service; then
+        echo -e "${GREEN}✅ sandbox-service rebuilt and restarted${NC}"
+    else
+        SANDBOX_FAILED=1
+        echo -e "${RED}  ⚠️  sandbox-service build or restart failed${NC}"
+    fi
+fi
+
 # Step 6: Verify deployment
 echo ""
 echo -e "${BLUE}✅ Step 6: Verifying deployment...${NC}"
@@ -485,6 +523,7 @@ echo ""
 DEPLOY_FAILED=0
 [ "${RUNTIME_API_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
 [ "${CONSOLE_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
+[ "${SANDBOX_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
 [ "${AGENTS_RESTART_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
 [ "${PROMPT_SYNC_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
 [ "${DEPLOY_RECORD_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
@@ -521,6 +560,11 @@ if [ "${CONSOLE_FAILED:-0}" = "1" ]; then
     echo ""
     echo -e "${RED}❌ Console build failed. Fix the Svelte error and rebuild:${NC}"
     echo -e "${YELLOW}   ./scripts/dev/ops/rebuild_and_deploy.sh console${NC}"
+fi
+if [ "${SANDBOX_FAILED:-0}" = "1" ]; then
+    echo ""
+    echo -e "${RED}❌ sandbox-service build or restart failed (#2193). Fix it and rebuild:${NC}"
+    echo -e "${YELLOW}   ./scripts/dev/ops/rebuild_and_deploy.sh sandbox${NC}"
 fi
 if [ "${PROMPT_SYNC_FAILED:-0}" = "1" ]; then
     echo ""

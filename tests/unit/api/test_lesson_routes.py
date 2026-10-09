@@ -96,12 +96,22 @@ class _World:
 @pytest.fixture
 async def world() -> _World:
     w = _World()
-    bind = {"proposal_id": "prop_1", "version": 1, "decision": "returned_for_revision"}
-    [observed] = observe_proposal_rulings(
-        "cmp_1", "group_run", [_entry(1, ControlOperation.RULE, bind)]
+    bind = {
+        "proposal_id": "prop_1",
+        "version": 1,
+        "decision": "returned_for_revision",
+        "classification": "criteria_not_checkable",
+    }
+    # A return classified only in prose: no class on the ruling (#2160's case).
+    prose = {"proposal_id": "prop_2", "version": 1, "decision": "returned_for_revision"}
+    observed, in_prose = observe_proposal_rulings(
+        "cmp_1",
+        "group_run",
+        [_entry(1, ControlOperation.RULE, bind), _entry(2, ControlOperation.RULE, prose)],
     )
-    await w.store.record_observations([observed])
+    await w.store.record_observations([observed, in_prose])
     w.cited = observed.source_id
+    w.prose = in_prose.source_id
     return w
 
 
@@ -187,7 +197,7 @@ async def test_a_revocation_names_the_running_units_that_hold_it_and_stands_once
 @pytest.mark.parametrize(
     ("change", "message"),
     [
-        ({"cited_observations": ["proposal_ruling:cmp_x:e9"]}, "not recorded"),
+        ({"cited_observations": ["proposal_ruling:cmp_x:e9"]}, "not citable"),
         ({"applicability": {**WHERE, "model_families": [""]}}, "an applicability names its"),
         ({"text": " "}, "names its text"),
     ],
@@ -244,3 +254,73 @@ async def test_an_exposures_target_is_assessed_and_the_rate_reads_the_supplied_s
         }
     ]
     assert [a["state"] for a in listed[0]["assessments"]] == ["absent"]
+
+
+ANNOTATION = {
+    "values": ["criteria_not_checkable"],
+    "target_behavior": "criterion_already_satisfied",
+    "evidence": {"ruling": "T3 holds because the accepted app has no capacity concept"},
+    "context": {"deploy": "rebuild 20, before #1947", "prompt": "the proposal block, verbatim"},
+    "annotator": "claude-opus-5-5",
+}
+
+
+async def test_a_prose_return_is_cited_only_after_the_owner_reviews_its_annotation(world):
+    """§0.4 through the routes (#2160). Bugs caught: a lesson citing a return whose class is only in
+    prose; an annotation that classifies before review; anyone but the owner reviewing one; a
+    review rewritten; the observation itself changed by its annotation."""
+    annotations = f"{BASE}/observations/{world.prose}/annotations"
+
+    refused = world.draft(cited_observations=[world.prose])
+    proposed = world.client.post(annotations, json=ANNOTATION)
+    still_refused = world.draft(cited_observations=[world.prose])
+    review_path = f"{BASE}/annotations/{proposed.json()['annotation_id']}/review"
+    world.identity = _identity(Role.CAMPAIGN_SUPERVISOR)
+    by_supervisor = world.client.post(review_path, json={"note": "read"})
+    world.identity = _identity(Role.ADMIN)
+    by_owner = world.client.post(review_path, json={"note": "read the ruling and the manifest"})
+    again = world.client.post(review_path, json={"note": "twice"})
+    cited = world.draft(cited_observations=[world.prose])
+    listed = {o["source_id"]: o for o in world.client.get(f"{BASE}/observations").json()}
+
+    assert refused.status_code == 422 and "not citable" in refused.text
+    assert proposed.status_code == 201 and proposed.json()["reviewed_by"] is None
+    assert still_refused.status_code == 422
+    assert by_supervisor.status_code == 403
+    assert by_owner.status_code == 200 and by_owner.json()["reviewed_by"] == "user-admin"
+    assert again.status_code == 409
+    assert cited.status_code == 201
+    assert len(listed) == 2
+    assert listed[world.prose]["classification"]["vocabulary"] == "unclassified"
+    assert listed[world.prose]["effective_classification"]["values"] == ["criteria_not_checkable"]
+
+
+@pytest.mark.parametrize(
+    ("change", "status"),
+    [
+        ({"context": {"deploy": "rebuild 20"}}, 422),
+        ({"values": ["made_up_class"]}, 422),
+    ],
+    ids=["no prompt context", "outside the vocabulary"],
+)
+async def test_an_annotation_the_rules_refuse_is_a_422_and_stores_nothing(world, change, status):
+    resp = world.client.post(
+        f"{BASE}/observations/{world.prose}/annotations", json={**ANNOTATION, **change}
+    )
+
+    assert resp.status_code == status
+    assert await world.store.list_annotations("group_run") == []
+
+
+async def test_an_annotation_of_an_unknown_observation_or_by_an_operator_is_refused(world):
+    """Bugs caught: an annotation stored against an observation the project never recorded, and
+    one proposed by a role that cannot draft."""
+    unknown = world.client.post(
+        f"{BASE}/observations/proposal_ruling:cmp_x:e9/annotations", json=ANNOTATION
+    )
+    world.identity = _identity(Role.OPERATOR)
+    by_operator = world.client.post(
+        f"{BASE}/observations/{world.prose}/annotations", json=ANNOTATION
+    )
+
+    assert (unknown.status_code, by_operator.status_code) == (404, 403)

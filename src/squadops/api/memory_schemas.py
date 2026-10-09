@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -76,5 +76,28 @@ class AssessmentRequest(BaseModel):
     required_work_done: bool | None = None
     rubric: str
     evidence: str
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class AnnotationRequest(BaseModel):
+    """A proposed classification of an observation classified only in prose (SIP-0110 §0.4, #2160).
+    It classifies nothing until the owner reviews it."""
+
+    values: list[str] = Field(min_length=1)
+    target_behavior: str | None = None
+    rationale: str | None = None
+    #: The ruling's own words and the elements that settle the classification.
+    evidence: dict[str, Any] = Field(min_length=1)
+    #: The case's original context: at least ``deploy`` and ``prompt``.
+    context: dict[str, Any]
+    #: Who drafted it: a model and its version, or a person.
+    annotator: str
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class AnnotationReviewRequest(BaseModel):
+    note: str = ""
 
     model_config = ConfigDict(extra="forbid")

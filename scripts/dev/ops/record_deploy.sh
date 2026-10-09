@@ -2,9 +2,13 @@
 # Record what is in service now: one deploy record (#1720).
 #
 #   ./scripts/dev/ops/record_deploy.sh ["<what is recording>"]
+#   ./scripts/dev/ops/record_deploy.sh --check
 #
 # rebuild_and_deploy.sh runs it as its last step. Run it by hand after anything that changes what
 # is in service without a deploy, such as `ollama pull` re-pulling a model under the same tag.
+#
+# --check writes nothing: it exits 1, naming each service, when the latest record does not
+# describe the running images (#2193). verify_loaded.py runs it after every rebuild.
 #
 # The host reads each running service's image and revision label (deploy_facts.py); the runtime
 # image's recorder adds the model digests and writes the record through its own port, as a
@@ -17,6 +21,13 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$REPO_ROOT"
+
+if [ "${1:-}" = "--check" ]; then
+    facts=$(python3 "$REPO_ROOT/scripts/dev/ops/deploy_facts.py" "record_deploy.sh --check" "")
+    printf '%s' "$facts" | docker compose run --rm --no-deps -T runtime-api \
+        python -m squadops.api.runtime.deploy_check
+    exit
+fi
 
 facts=$(python3 "$REPO_ROOT/scripts/dev/ops/deploy_facts.py" "${1:-record_deploy.sh}" "${SOURCE_HASH:-}")
 printf '%s' "$facts" | docker compose run --rm --no-deps -T runtime-api \

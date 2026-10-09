@@ -164,6 +164,70 @@ def resolve_answered_questions(
     return yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
 
 
+#: How a late answer's warrant opens (SIP-0109 §24bm): the escalation id follows, so a later plan
+#: gate can check the plan still carries the answer it cites.
+LATE_ANSWER_WARRANT = "late answer recorded against "
+
+
+def resolve_late_answers(manifest_content: str, answers: Mapping[str, Any]) -> str:
+    """The manifest with each open question a compatible late answer covers resolved by it
+    (SIP-0109 §24bm), read at a tier campaign's proposal launch, as §24ad's answer is.
+
+    ``answers`` maps a decision id to its recorded answer (``escalation.RecordedAnswer``). An open
+    decision is resolved only when its id **and** its question match the one the answer was given
+    to: an author's ids recur across a project's framings, so a shared id alone is not the same
+    question. The decision's ``choice`` becomes the answer, and its ``warrant`` names the
+    escalation, so a later gate can check the plan carries it. Content with nothing to resolve
+    comes back unchanged, byte for byte."""
+    from squadops.campaigns.escalation import same_question
+
+    compatible = {
+        d: a
+        for d, q in open_decisions(manifest_content)
+        if (a := answers.get(d)) is not None and same_question(q, a.question)
+    }
+    if not compatible:
+        return manifest_content
+    import yaml
+
+    data = yaml.safe_load(manifest_content)
+    for decision in data.get("decisions") or []:
+        if not isinstance(decision, dict) or not decision.get("unresolved"):
+            continue
+        held = compatible.get(str(decision.get("id") or ""))
+        if held is None:
+            continue
+        question = str(decision.get("question") or "").strip()
+        for key in ("unresolved", "question"):
+            decision.pop(key, None)
+        decision["choice"] = held.answer
+        decision["warrant"] = (
+            f"{LATE_ANSWER_WARRANT}{held.escalation_id} by {held.answered_by} at "
+            f"{held.answered_at.isoformat()}; the question was: {question}"
+        )
+    return yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
+
+
+def cited_late_answers(manifest_content: str | None) -> dict[str, tuple[str, str]]:
+    """Each resolved decision whose warrant cites a late answer, as ``{id: (choice, escalation
+    id)}`` (SIP-0109 §24bm): what a plan gate checks the plan still carries."""
+    if not manifest_content:
+        return {}
+    from squadops.capabilities.scaffold import InterfaceManifest
+
+    try:
+        manifest = InterfaceManifest.from_yaml(manifest_content)
+    except Exception:  # noqa: BLE001 - unreadable manifests are the gate net's to report
+        return {}
+    out = {}
+    for d in manifest.decisions:
+        if d.unresolved or not d.warrant.startswith(LATE_ANSWER_WARRANT):
+            continue
+        escalation_id = d.warrant[len(LATE_ANSWER_WARRANT) :].split(" ", 1)[0]
+        out[d.id] = (d.choice, escalation_id)
+    return out
+
+
 def authors_interface_manifest(resolved_config: Mapping[str, Any] | None) -> bool:
     """True when the squad writes the manifest rather than binding a seeded one.
 

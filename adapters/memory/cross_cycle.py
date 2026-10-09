@@ -6,6 +6,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+from squadops.memory.annotation import Annotation
 from squadops.memory.approval import units_holding
 from squadops.memory.assessment import Assessment
 from squadops.memory.exposures import Exposure
@@ -30,6 +31,7 @@ class InMemoryCrossCycleMemoryStore(CrossCycleMemoryStorePort):
         self._snapshots: dict[tuple[str, str], Snapshot] = {}
         self._exposures: dict[str, Exposure] = {}
         self._assessments: dict[str, Assessment] = {}
+        self._annotations: dict[str, Annotation] = {}
 
     async def record_observations(self, observations: Sequence[Observation]) -> int:
         new = 0
@@ -48,6 +50,25 @@ class InMemoryCrossCycleMemoryStore(CrossCycleMemoryStorePort):
                 for o in self._observations.values()
                 if o.project_id == project_id and (source is None or o.source is source)
             ]
+        )
+
+    async def record_annotation(self, annotation: Annotation) -> bool:
+        if annotation.source_id not in self._observations:
+            raise KeyError(annotation.source_id)
+        if annotation.annotation_id in self._annotations:
+            return False
+        self._annotations[annotation.annotation_id] = annotation
+        return True
+
+    async def record_annotation_review(self, reviewed: Annotation) -> None:
+        held = self._annotations[reviewed.annotation_id]
+        if not held.reviewed:
+            self._annotations[reviewed.annotation_id] = reviewed
+
+    async def list_annotations(self, project_id: str) -> list[Annotation]:
+        return sorted(
+            (a for a in self._annotations.values() if a.project_id == project_id),
+            key=lambda a: (a.annotated_at, a.annotation_id),
         )
 
     async def record_revision(self, revision: PatternRevision) -> bool:
@@ -171,6 +192,50 @@ class PostgresCrossCycleMemoryStore(CrossCycleMemoryStorePort):
             Observation.from_dict({**dict(row), "observed_at": row["observed_at"].isoformat()})
             for row in rows
         ]
+
+    async def record_annotation(self, annotation: Annotation) -> bool:
+        import asyncpg
+
+        try:
+            async with self._pool.acquire() as conn:
+                status = await conn.execute(
+                    "INSERT INTO memory_observation_annotations (annotation_id, project_id, "
+                    "source_id, annotated_at, annotation_body) VALUES ($1, $2, $3, $4, $5) "
+                    "ON CONFLICT (annotation_id) DO NOTHING",
+                    annotation.annotation_id,
+                    annotation.project_id,
+                    annotation.source_id,
+                    annotation.annotated_at,
+                    annotation.to_dict(),
+                )
+        except asyncpg.ForeignKeyViolationError as e:
+            raise KeyError(annotation.source_id) from e
+        return status.endswith(" 1")
+
+    async def record_annotation_review(self, reviewed: Annotation) -> None:
+        async with self._pool.acquire() as conn:
+            # The first review stands: a second never rewrites who reviewed it, or when.
+            status = await conn.execute(
+                "UPDATE memory_observation_annotations SET annotation_body = $2, reviewed_at = $3 "
+                "WHERE annotation_id = $1 AND reviewed_at IS NULL",
+                reviewed.annotation_id,
+                reviewed.to_dict(),
+                reviewed.reviewed_at,
+            )
+            if status.endswith(" 0") and not await conn.fetchval(
+                "SELECT 1 FROM memory_observation_annotations WHERE annotation_id = $1",
+                reviewed.annotation_id,
+            ):
+                raise KeyError(reviewed.annotation_id)
+
+    async def list_annotations(self, project_id: str) -> list[Annotation]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT annotation_body FROM memory_observation_annotations WHERE project_id = $1 "
+                "ORDER BY annotated_at, annotation_id",
+                project_id,
+            )
+        return [Annotation.from_dict(r["annotation_body"]) for r in rows]
 
     async def record_revision(self, revision: PatternRevision) -> bool:
         async with self._pool.acquire() as conn:

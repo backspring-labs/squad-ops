@@ -3,6 +3,11 @@
 The auditor drafts (``draft``); the owner approves and revokes (``approve``, ``revoke``). A draft and
 an approval are files: each carries several records (the applicability, the cited observations; the
 ruling, the replay check, the combined check) that flags would scatter.
+
+A return classified only in prose enters through a reviewed annotation (§0.4, #2160): the auditor
+proposes one (``annotate``, a file with its classes, evidence and context), the owner reviews it
+(``review-annotation``), and ``observations`` shows each observation's classification as memory reads
+it.
 """
 
 from __future__ import annotations
@@ -149,3 +154,74 @@ def revoke(
     for unit in data["units_holding_it"]:
         print_success(f"still held by {unit['unit_kind']} {unit['unit_id']}")
     print_success(data["next"])
+
+
+@app.command("observations")
+def observations(ctx: typer.Context, project_id: str = typer.Argument(...)):
+    """The project's observations: each one's projected classification, its annotations, and the
+    classification memory reads for it."""
+    data = _call(ctx, "get", f"/api/v1/projects/{project_id}/observations")
+    if _json(ctx):
+        print_json(data)
+        return
+    rows = []
+    for o in data:
+        eff = o["effective_classification"]
+        pending = sum(1 for a in o["annotations"] if not a["reviewed_at"])
+        rows.append(
+            [
+                o["source_id"],
+                eff["vocabulary"],
+                ", ".join(eff["values"]) or "-",
+                f"{len(o['annotations'])} ({pending} awaiting review)" if o["annotations"] else "-",
+            ]
+        )
+    print_table(["observation", "vocabulary", "classes", "annotations"], rows)
+
+
+@app.command("annotate")
+def annotate(
+    ctx: typer.Context,
+    project_id: str = typer.Argument(...),
+    source_id: str = typer.Argument(..., help="The observation, e.g. proposal_ruling:cmp_x:ctl_y"),
+    file: Path = typer.Option(
+        ...,
+        "--file",
+        help="YAML: values, target_behavior, rationale, evidence, context (deploy, prompt), annotator",
+    ),
+):
+    """Propose a classification for an observation classified only in prose. It classifies nothing
+    until the owner reviews it."""
+    data = _call(
+        ctx,
+        "post",
+        f"/api/v1/projects/{project_id}/observations/{source_id}/annotations",
+        json=_document(file),
+    )
+    if _json(ctx):
+        print_json(data)
+        return
+    print_success(f"annotation {data['annotation_id']} on {source_id}, awaiting the owner's review")
+
+
+@app.command("review-annotation")
+def review_annotation(
+    ctx: typer.Context,
+    project_id: str = typer.Argument(...),
+    annotation_id: str = typer.Argument(...),
+    note: str = typer.Option("", "--note", help="What the review read"),
+):
+    """The owner's review (SIP-0110 §0.4): the annotation becomes its observation's classification,
+    and a lesson may cite the observation."""
+    data = _call(
+        ctx,
+        "post",
+        f"/api/v1/projects/{project_id}/annotations/{annotation_id}/review",
+        json={"note": note},
+    )
+    if _json(ctx):
+        print_json(data)
+        return
+    print_success(
+        f"reviewed {annotation_id}: {data['source_id']} is classified {data['classification']['values']}"
+    )

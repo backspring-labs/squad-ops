@@ -18,7 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 from typing import Protocol
@@ -104,17 +104,28 @@ class Escalation:
     decision_ids: tuple[str, ...] = ()
     closed_by: str | None = None
     closed_at: datetime | None = None
-    #: The late answer (§24bj, §24bl): recorded against an expired or cancelled escalation.
-    answer: str | None = None
+    #: The late answer (§24bj, §24bm): recorded against an expired or cancelled escalation, one
+    #: answer per decision it names, never one text for all of them.
+    answers: Mapping[str, str] = field(default_factory=dict)
     answered_by: str | None = None
     answered_at: datetime | None = None
+
+    def question_of(self, decision_id: str) -> str | None:
+        """The question this escalation recorded for ``decision_id``, or ``None``."""
+        for d, q in zip(self.decision_ids, self.questions, strict=False):
+            if d == decision_id:
+                return q
+        return None
 
 
 @dataclass(frozen=True)
 class RecordedAnswer:
-    """A late answer, as a later plan gate reads it (§24bl): what was answered, by whom, when,
-    and which escalation it was recorded against."""
+    """One decision's late answer, as a later proposal launch and plan gate read it (§24bm): the
+    decision and the question it answered, the answer, by whom, when, and the escalation it was
+    recorded against."""
 
+    decision_id: str
+    question: str
     answer: str
     answered_by: str
     answered_at: datetime
@@ -209,7 +220,7 @@ def _answer_of(row) -> dict:
     if row is None:
         return {}
     return {
-        "answer": row.binding["answer"],
+        "answers": dict(row.binding.get("answers") or {}),
         "answered_by": row.actor,
         "answered_at": row.committed_at,
     }
@@ -309,9 +320,15 @@ def parked_run(log: Sequence[ControlLogEntry], run_id: str) -> bool:
 ANSWERABLE = frozenset({EscalationState.EXPIRED, EscalationState.CANCELLED})
 
 
-def answer_refusal(escalation: Escalation | None, answer: str) -> str | None:
-    """Why a late answer is refused, or ``None``. Blank notes state nothing (§24ad), and an
-    escalation that was resolved, superseded or is still pending has nothing to answer late."""
+def _cleaned(answers: Mapping[str, str]) -> dict[str, str]:
+    return {str(d).strip(): str(text).strip() for d, text in answers.items()}
+
+
+def answer_refusal(escalation: Escalation | None, answers: Mapping[str, str]) -> str | None:
+    """Why a late answer is refused, or ``None`` (§24bm). It answers each decision it names, by the
+    decision's id, and only decisions the escalation recorded: one free text never stands for
+    several questions. Blank text states nothing (§24ad), and an escalation that was resolved,
+    superseded or is still pending has nothing to answer late."""
     if escalation is None:
         return "no escalation with that id is recorded in this campaign"
     if escalation.state not in ANSWERABLE:
@@ -319,23 +336,45 @@ def answer_refusal(escalation: Escalation | None, answer: str) -> str | None:
             f"escalation {escalation.escalation_id} is {escalation.state}: only an expired or "
             "cancelled one takes a late answer; a pending one is answered at its gate"
         )
-    if not answer.strip():
-        return "an answer with no text states nothing (§24ad)"
-    if escalation.answer is not None and escalation.answer != answer.strip():
-        # The same answer again is a retry, and replays; another one would make the record
-        # ambiguous for every later gate that reads it.
+    if not escalation.decision_ids:
+        return (
+            f"escalation {escalation.escalation_id} recorded no decision ids, so an answer could "
+            "not say which question it answers"
+        )
+    given = _cleaned(answers)
+    if not given:
+        return "a late answer names each decision it answers, by its id"
+    unknown = sorted(set(given) - set(escalation.decision_ids))
+    if unknown:
+        return (
+            f"escalation {escalation.escalation_id} asked {list(escalation.decision_ids)}; "
+            f"{unknown} are not among them"
+        )
+    blank = sorted(d for d, text in given.items() if not text)
+    if blank:
+        return f"an answer with no text states nothing (§24ad): {blank}"
+    if escalation.answers and dict(escalation.answers) != given:
+        # The same answers again are a retry, and replay; others would make the record ambiguous
+        # for every later launch and gate that reads it.
         return (
             f"escalation {escalation.escalation_id} already holds its late answer: "
-            f"{escalation.answer!r}"
+            f"{dict(escalation.answers)!r}"
         )
     return None
 
 
 def answer_transition(
-    escalation: Escalation, answer: str, *, actor: str, actor_role: str, reason: str
+    escalation: Escalation,
+    answers: Mapping[str, str],
+    *,
+    actor: str,
+    actor_role: str,
+    reason: str,
 ) -> CampaignTransition:
     """The ``escalation_answered`` row: a record, accepted on a completed campaign too, that never
-    reopens it or resumes the parked cycle (§24bj). One per escalation, by its key."""
+    reopens it or resumes the parked cycle (§24bj). One per escalation, by its key. Each answer is
+    kept with the question it answers, as the escalation recorded it."""
+    given = _cleaned(answers)
     return CampaignTransition(
         operation=ControlOperation.ESCALATION_ANSWERED,
         actor=actor,
@@ -346,8 +385,8 @@ def answer_transition(
         target=escalation.run_id,
         binding={
             "escalation_id": escalation.escalation_id,
-            "answer": answer.strip(),
-            "decision_ids": list(escalation.decision_ids),
+            "answers": given,
+            "questions": {d: escalation.question_of(d) or "" for d in given},
         },
     )
 
@@ -355,17 +394,65 @@ def answer_transition(
 def recorded_answers(
     logs: Iterable[tuple[Sequence[LogRow], CampaignState]],
 ) -> dict[str, RecordedAnswer]:
-    """Each decision id a late answer covers, across the given campaigns' logs, with the latest
-    answer for it (§24bl). A later plan gate reads its open questions against these."""
+    """Each decision a late answer names, across the given campaigns' logs, with the latest answer
+    for it and the question it answered (§24bm). A later proposal launch carries a compatible one
+    into its manifest; a later plan gate checks the plan still holds it."""
     found: dict[str, RecordedAnswer] = {}
     for log, state in logs:
         for esc in escalations(log, state):
-            if esc.answer is None or esc.answered_at is None or esc.answered_by is None:
+            if not esc.answers or esc.answered_at is None or esc.answered_by is None:
                 continue
-            for decision_id in esc.decision_ids:
+            for decision_id, text in esc.answers.items():
                 prior = found.get(decision_id)
                 if prior is None or esc.answered_at > prior.answered_at:
                     found[decision_id] = RecordedAnswer(
-                        esc.answer, esc.answered_by, esc.answered_at, esc.escalation_id
+                        decision_id=decision_id,
+                        question=esc.question_of(decision_id) or "",
+                        answer=text,
+                        answered_by=esc.answered_by,
+                        answered_at=esc.answered_at,
+                        escalation_id=esc.escalation_id,
                     )
     return found
+
+
+def same_question(a: str, b: str) -> bool:
+    """Whether two questions are the same one (§24bm): equal once case, spacing and trailing
+    punctuation are set aside. A shared decision id is not enough: an author's ids recur across a
+    project's framings, and one id can ask a different question."""
+
+    def norm(q: str) -> str:
+        return " ".join(q.split()).casefold().rstrip("?.! ")
+
+    return bool(norm(a)) and norm(a) == norm(b)
+
+
+def uncarried(
+    cited: Mapping[str, tuple[str, str]], on_record: Mapping[str, RecordedAnswer]
+) -> list[tuple[str, str]]:
+    """Each decision whose plan cites a late answer it does not carry, as ``(id, why)`` (§24bm).
+
+    ``cited`` is the manifest's decisions that name a late answer in their warrant, as
+    ``{id: (choice, escalation_id)}``. The plan carries the answer only when that escalation's
+    recorded answer for the decision is still the decision's choice. A historical "descending"
+    never authorizes an ascending plan because both are called ``list-ordering``."""
+    out = []
+    for decision_id, (choice, escalation_id) in sorted(cited.items()):
+        held = on_record.get(decision_id)
+        if held is None or held.escalation_id != escalation_id:
+            out.append(
+                (
+                    decision_id,
+                    f"{decision_id}: the plan cites a late answer from {escalation_id} "
+                    "that is not on record for this decision",
+                )
+            )
+        elif " ".join(choice.split()) != " ".join(held.answer.split()):
+            out.append(
+                (
+                    decision_id,
+                    f"{decision_id}: the plan's choice {choice!r} is not the late answer "
+                    f"it cites, {held.answer!r} ({escalation_id})",
+                )
+            )
+    return out

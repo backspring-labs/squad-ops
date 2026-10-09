@@ -39,7 +39,7 @@ def _draft(target="criterion_already_satisfied", where=WHERE, revisions=(), now=
         "drafter_model": "claude-opus",
         "drafter_version": "5.5",
         "cited_observations": OBS,
-        "known_observations": OBS,
+        "citable_observations": OBS,
         "revisions": revisions,
         "now": now,
     }
@@ -73,14 +73,14 @@ def _approve(
 def test_a_draft_is_its_patterns_next_revision_and_cites_recorded_observations():
     """§0.15 lesson provenance and pattern identity. Bugs caught: a second draft of a target
     reusing revision 1 (overwriting the lesson units already pinned), or a draft citing evidence
-    the store never recorded."""
+    that is not citable: unrecorded, or unclassified with no reviewed annotation (#2160)."""
     first = _draft()
     second = _draft(revisions=[first], text="Check the manifest before naming a criterion.")
 
     assert (first.revision, second.revision) == (1, 2)
     assert first.pattern_id == second.pattern_id
     assert (second.drafter_model, second.cited_observations) == ("claude-opus", OBS)
-    with pytest.raises(LessonRefused, match="not recorded"):
+    with pytest.raises(LessonRefused, match="not citable"):
         _draft(cited_observations=("proposal_ruling:cmp_x:e1",))
     with pytest.raises(LessonRefused, match="cites the observations"):
         _draft(cited_observations=())

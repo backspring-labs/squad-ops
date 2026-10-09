@@ -41,6 +41,7 @@ from squadops.campaigns.escalation import (
     closing_transitions,
     escalations,
     parked_run,
+    recorded_answers,
 )
 from squadops.campaigns.evaluator_trees import FileTree
 from squadops.campaigns.evidence import CycleRecords, digest, package, serialized
@@ -71,6 +72,7 @@ from squadops.campaigns.models import (
     CycleKind,
     LaunchIntentState,
     LaunchRequest,
+    PlanGate,
 )
 from squadops.campaigns.prior_cycle import prior_cycle_brief
 from squadops.cycles.contract_derivation import (
@@ -80,7 +82,11 @@ from squadops.cycles.contract_derivation import (
 from squadops.cycles.cycle_assessment import CycleAssessment
 from squadops.cycles.cycle_end import CycleStopReason
 from squadops.cycles.gate_attribution import is_machine_decision
-from squadops.cycles.manifest_authoring import resolve_answered_questions
+from squadops.cycles.manifest_authoring import (
+    open_decisions,
+    resolve_answered_questions,
+    resolve_late_answers,
+)
 from squadops.cycles.models import (
     ArtifactRef,
     Cycle,
@@ -1200,6 +1206,17 @@ class CampaignProgress:
                 answered_at=answer.decided_at.isoformat(),
                 where=where,
             )
+        # §24bm: in a tier campaign, a late answer on record for one of the baseline's open
+        # questions (the same decision id and the same question) is carried into the manifest the
+        # proposal frames from, as §24ad's answer is, so the plan the gate reads carries it.
+        if campaign.policy.plan_gate is PlanGate.TIER and open_decisions(baseline):
+            on_record = recorded_answers(
+                [
+                    (await self._campaigns.control_log(c.campaign_id), c.state)
+                    for c in await self._campaigns.list_campaigns(campaign.project_id)
+                ]
+            )
+            baseline = resolve_late_answers(baseline, on_record)
         frozen = frozen_criteria(await self._campaigns.control_log(campaign.campaign_id))
         # #1884: what the qa authors proposed instead of testing, in the accepted increment and
         # the one this proposal replaces.

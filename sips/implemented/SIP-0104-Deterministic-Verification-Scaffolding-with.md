@@ -14,7 +14,7 @@ Implemented: promoted at the v2.0.0 cut's SIP sweep (2026-10-04), by §13c's rea
 **Targets:** acceptance decision in the open, against the 1e ledger through roll 17 — per the §10.4 amendment (2026-08-14); implementation in whatever feature window the owner assigns. The change is qa-surface-scoped and stack-opt-in (§8), so it can ride as an even-minor feature or land per-stack.
 **Builds on:** SIP-0100 (scaffold ownership, fill slots, the frozen harness — this SIP is its test-side counterpart), SIP-0098 (verification contract; shells derive from the same manifest facts as the behavioral probes), #818 (criteria packs — the per-stack seam, including its asymmetric-default ruling), #877 (execution-model guidance — the experiment whose measured result motivates this), #866 (context completeness), #884 (the cross-role suite rewrite this SIP's frozen spine bounds).
 
-## Delivery ledger (current as of 2026-10-04)
+## Delivery ledger (current as of 2026-10-09)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
 
@@ -29,8 +29,9 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | §10.3 economics metric | *unverified* | — |
 | stack #1 parity (#1122) | **dropped** (closed `not_planned` 2026-09-29, the owner's 1.9.0 ruling) | — |
 | §4.3's "any role", re-read by SIP-0107 §46d item 4 (a dev edit to slot bodies is dropped) | **recorded** (§13c) | SIP-0107 §46d |
+| a failing slot assertion routed by demonstrated defect ownership, its location only saying who wrote it (§13d) | **unplaced** | #2153: the routing code stays as it is through SIP-0110's window, and is placed after it |
 
-**What closes this SIP:** **Closed: promoted to implemented at the v2.0.0 cut's SIP sweep (2026-10-04),** by §13c's reading. Nothing remains placed. The §10.3 economics metric is unverified and is not a promotion criterion.
+**What closes this SIP:** **Closed: promoted to implemented at the v2.0.0 cut's SIP sweep (2026-10-04),** by §13c's reading. Nothing remains placed. The §10.3 economics metric is unverified and is not a promotion criterion. §13d's routing (#2153) is a follow-on to an implemented SIP, recorded so it does not read as shipped.
 
 ## 1. Abstract
 
@@ -126,7 +127,7 @@ The author may add whole new test files beside the scaffold. Normative bounds: d
 |---|---|---|
 | Scaffold import unresolvable, invocation underivable, scaffold won't collect | **scaffold-invalid** | generator defect; fails run setup (§4.4), never an LLM round |
 | Frozen shell executes; app violates the declared contract | **app-contract** | dev repair — and a shell status failure and its bound probe's failure are **the same defect observed twice**: the correction router deduplicates on the shared criterion id rather than burning a round on each |
-| Authored slot assertion wrong or failing | **fill failure** | qa repair, slot-scoped |
+| Authored slot assertion wrong or failing | **fill failure** | qa repair, slot-scoped. **Amended by §13d (2026-10-09):** a failing assertion's location says who wrote it, not what is wrong. It is routed by demonstrated defect ownership |
 | Harness/runtime cannot execute | **test-infrastructure** | environment triage, not a work-product round |
 | Wrong import / invocation signature / status assertion in a *frozen* region | scaffold-generation defect (impossible unless enforcement failed — a §4.3 violation) |
 | Live-server assumption or undeclared dependency in a fill or additive test | prohibited-fill violation — qa repair with the violation named |
@@ -264,3 +265,40 @@ implementation plan were updated to match.
 **Evidence.** The window record; #1122; SIP-0107 §46d; the read-only SIP-portfolio audit of 2026-10-04.
 
 **Who ruled it.** the owner's rulings of 2026-10-04 on the SIP-portfolio audit (`sips/PORTFOLIO.md`): "yes, move them to 3.x including capability-backed agents. I accept all your other recommendations to keep SIPs current, reflecting what gets delivered, and where the work is targeted". The reading of §10.2 is the owner's.
+
+### 13d. A failing slot assertion's location says who wrote it, not what is wrong (2026-10-09)
+
+**What changed.** §5's row "Authored slot assertion wrong or failing → fill failure → qa repair" reads as if an
+assertion's location inside a slot settled which side is wrong. It doesn't: the location identifies who **wrote** the
+assertion (the qa fill). Whether the assertion or the application is wrong is a separate question, and the answer
+decides the route.
+
+**The intended policy: route by demonstrated defect ownership.** For a failing assertion inside a slot:
+- **A correct assertion, and a broken application.** The assertion's expected value traces to the manifest, its
+  bound contract or the criterion it fills, and the application's answer contradicts it. **Route to dev repair, and the
+  assertion is preserved:** it encodes a legitimate requirement, and no repair may weaken it.
+- **A wrong assertion, and a correct application.** The assertion's expected value contradicts the manifest, the
+  contract or the criterion, or it tests behaviour nothing declares, and the application's answer meets the
+  declaration. **Route to qa repair, slot-scoped,** and the repair keeps every legitimate requirement the slot carries.
+- **Ambiguous.** Neither side can be shown wrong from the declarations, or both can. **No automatic reroute:** the case
+  keeps today's route, with both readings recorded beside the failure, and a repair is never allowed to resolve it by
+  deleting or weakening the assertion.
+
+**What does not change now.**
+- **The routing code stays as it is through SIP-0110's measurement window** (#2153). Today's vitest classifier cannot
+  place a slot assertion at all (`scaffold_evidence.py` reads the declaration line, which vitest does not report), so
+  every vitest slot failure is routed as `app-contract`, to dev. That matches the first case's route, and changing it
+  mid-window would move a measured input.
+- **Building the route by demonstrated ownership,** with the evidence each case needs recorded on the failure, is
+  #2153's. It is unplaced, and is placed after the window.
+
+**Evidence.**
+- #2153: the classifier places a vitest assertion by `row["line"]`, which is `None` for vitest's JSON report without
+  `includeTaskLocation`, so `in_slot` is always `None`.
+- **#2152 supports caution.** A dev route-fill error was classed as the fill's, and the repair re-filled correct tests.
+  It is a neighbouring incident, about an error raised under the spine's own call, and not an instance of #2153's
+  assertion branch. It shows the cost of rewriting correct tests after an application failure.
+
+**Who ruled it.** The owner's review of the 2.2 shakeout (2026-10-09, point 8): "Assertion location identifies who wrote
+the assertion, not whether the assertion or the application is wrong … Route based on demonstrated defect ownership,
+and preserve legitimate requirements during test repairs. Amend the location-implies-QA design wording."

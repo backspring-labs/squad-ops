@@ -82,3 +82,41 @@ def test_the_default_rebuild_takes_every_agent_service_the_compose_file_defines(
     assert selected == agent_services
     assert "han" in selected
     assert 'grep -E "^(max|nat|neo|eve|bob|data|joi)$"' not in text
+
+
+def test_the_sandbox_is_rebuilt_before_the_record_and_a_failed_one_fails_the_deploy():
+    """#2193: the sandbox is opt-in, so `all` never built it. Rebuild 11 rebuilt it by hand after
+    the script's record, and the record named the previous sandbox image for every cycle on that
+    deploy. `all` now rebuilds it when the deploy runs it, before the record."""
+    text = SCRIPT.read_text()
+    up = text.index("docker compose --profile sandbox up -d --wait sandbox-service")
+    record = text.index('"$REPO_ROOT/scripts/dev/ops/record_deploy.sh"')
+
+    assert up < record
+    # `all` asks whether this deploy runs it; it never starts an opt-in service unasked.
+    assert "--profile sandbox ps -q --status running sandbox-service" in text[:up]
+    assert '[ "${SANDBOX_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1' in text
+
+
+def test_every_image_built_from_the_source_hash_carries_it_as_its_revision_label():
+    """#2193: the sandbox image took SOURCE_HASH and carried no label, so the deploy record could
+    name its image but never the commit it was built from (revision ``None``, as for postgres)."""
+    import yaml
+
+    root = SCRIPT.parents[3]
+    compose = yaml.safe_load((root / "docker-compose.yml").read_text())
+    dockerfiles = sorted(
+        {
+            svc["build"]["dockerfile"]
+            for svc in compose["services"].values()
+            if "SOURCE_HASH" in ((svc.get("build") or {}).get("args") or {})
+        }
+    )
+    unlabelled = [
+        d
+        for d in dockerfiles
+        if 'LABEL org.opencontainers.image.revision="${SOURCE_HASH}"' not in (root / d).read_text()
+    ]
+
+    assert "src/squadops/sandbox/Dockerfile" in dockerfiles
+    assert unlabelled == []

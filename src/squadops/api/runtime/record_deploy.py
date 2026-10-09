@@ -15,6 +15,8 @@ over the one pool (#577).
 To them it adds the digest of every model an enabled agent of any squad profile names, as the
 LLM provider reports it, and writes one record. A provider that cannot be listed leaves every
 digest ``None`` and says so on stderr; it does not stop the record, whose images are still true.
+
+Its check, which writes nothing, is ``deploy_check`` (#2193).
 """
 
 from __future__ import annotations
@@ -26,11 +28,12 @@ import sys
 import uuid
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from squadops.cycles.deploy_record import (
     DeployFactsError,
     DeployRecord,
+    ServiceImage,
     model_weights,
     services_from_facts,
 )
@@ -38,6 +41,11 @@ from squadops.llm.models import ModelInfo
 from squadops.ports.cycles.deploy_registry import DeployRegistryPort
 from squadops.ports.cycles.squad_profile import SquadProfilePort
 from squadops.ports.llm.provider import LLMPort
+
+if TYPE_CHECKING:
+    import asyncpg
+
+    from squadops.config import AppConfig
 
 logger = logging.getLogger(__name__)
 
@@ -86,23 +94,81 @@ async def record_deploy(
     return record
 
 
-async def _compose_and_record(facts: Mapping[str, Any]) -> DeployRecord:
-    from adapters.cycles.factory import create_deploy_registry, create_squad_profile_port
-    from adapters.llm.factory import create_llm_provider
+def stale_services(record: DeployRecord | None, running: tuple[ServiceImage, ...]) -> list[str]:
+    """Why ``record`` does not describe the services ``running``, one line per service, or nothing.
+
+    The image id decides. A revision label is read from the image, so an equal id cannot carry
+    another one."""
+    if record is None:
+        return ["no deploy is recorded"]
+    recorded = {s.service: s.image_id for s in record.services}
+    runs = {s.service: s.image_id for s in running}
+    why: list[str] = []
+    for name in sorted(recorded.keys() | runs.keys()):
+        was, now = recorded.get(name), runs.get(name)
+        if was == now:
+            continue
+        if was is None:
+            why.append(f"{name} runs {_short(now)}, which {record.deploy_id} does not record")
+        elif now is None:
+            why.append(f"{name} is recorded ({_short(was)}) but does not run")
+        else:
+            why.append(f"{name} runs {_short(now)}; {record.deploy_id} records {_short(was)}")
+    return why
+
+
+def _short(image_id: str | None) -> str:
+    return (image_id or "").split(":")[-1][:12]
+
+
+async def check_deploy(
+    facts: Mapping[str, Any], *, registry: DeployRegistryPort
+) -> tuple[DeployRecord | None, list[str]]:
+    """The latest record, and why it does not describe the running services the facts name.
+
+    Raises:
+        DeployFactsError: the facts name no services, or a service without its image.
+    """
+    running = services_from_facts(facts)
+    record = await registry.latest()
+    return record, stale_services(record, running)
+
+
+async def _deploy_config_and_pool() -> tuple[AppConfig, asyncpg.Pool]:
+    """The deploy's configuration, loaded as ``main.build_app`` and the agent entrypoint load it,
+    and the one pool over its database (#577). The configuration carries ``secret://``
+    references, which only a secret provider resolves (the 1.9 deploy's first record failed on
+    exactly this)."""
     from adapters.persistence.pool import create_pool
     from squadops.bootstrap.secrets import secret_provider_for
     from squadops.config import load_config
 
-    # As main.build_app and the agent entrypoint load it: the deploy's configuration carries
-    # secret:// references, which only a secret provider resolves (the 1.9 deploy's first
-    # record failed on exactly this).
     config = load_config(secret_provider_factory=secret_provider_for)
-    pool = await create_pool(config.db.url, min_size=1, max_size=2)
+    return config, await create_pool(config.db.url, min_size=1, max_size=2)
+
+
+def _deploy_registry(config: AppConfig, pool: asyncpg.Pool) -> DeployRegistryPort:
+    from adapters.cycles.factory import create_deploy_registry
+
+    selector = config.cycles.registry_provider
+    return create_deploy_registry(selector, **({"pool": pool} if selector == "postgres" else {}))
+
+
+async def compose_and_check(facts: Mapping[str, Any]) -> tuple[DeployRecord | None, list[str]]:
+    config, pool = await _deploy_config_and_pool()
     try:
-        selector = config.cycles.registry_provider
-        registry = create_deploy_registry(
-            selector, **({"pool": pool} if selector == "postgres" else {})
-        )
+        return await check_deploy(facts, registry=_deploy_registry(config, pool))
+    finally:
+        await pool.close()
+
+
+async def _compose_and_record(facts: Mapping[str, Any]) -> DeployRecord:
+    from adapters.cycles.factory import create_squad_profile_port
+    from adapters.llm.factory import create_llm_provider
+
+    config, pool = await _deploy_config_and_pool()
+    try:
+        registry = _deploy_registry(config, pool)
         profile_selector = config.cycles.squad_profile_provider
         profiles = create_squad_profile_port(
             profile_selector, **({"pool": pool} if profile_selector == "postgres" else {})
