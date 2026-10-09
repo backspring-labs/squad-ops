@@ -358,6 +358,8 @@ services:
       SQUADOPS__CYCLES__REGISTRY_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
+    volumes:
+      - nat_memory_data:/app/data/memory_db
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -503,6 +505,8 @@ services:
       SQUADOPS__CYCLES__REGISTRY_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
+    volumes:
+      - eve_memory_data:/app/data/memory_db
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -627,6 +631,8 @@ services:
       SQUADOPS__CYCLES__REGISTRY_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
+    volumes:
+      - han_memory_data:/app/data/memory_db
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -987,6 +993,9 @@ volumes:
   bob_memory_data: {}
   data_memory_data: {}
   joi_memory_data: {}
+  nat_memory_data: {}
+  eve_memory_data: {}
+  han_memory_data: {}
 secrets:
   agent_client_secret:
     file: ./secrets/agent_client_secret.txt
