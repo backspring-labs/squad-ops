@@ -474,7 +474,8 @@ checks:
       from squadops.api.routes.memory import memory_router
       paths = sorted({r.path.split("/{project_id}", 1)[-1] for r in memory_router.routes})
       print(memory_disabled({"memory": "disabled"}), len(paths))
-    expect: True 7
+    # 10 since #2186: the observations list, an annotation, and its review (SIP-0110 §0.4, #2160).
+    expect: True 10
   - id: "2096-agent"
     what: SIP-0110 slice 3 - an agent renders supplied lessons in their own slot and records them in the envelope's memory block
     container: squadops-neo
