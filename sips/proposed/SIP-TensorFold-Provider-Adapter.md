@@ -8,6 +8,9 @@ created_at: '2026-10-09T00:00:00Z'
 # SIP: TensorFold Provider Adapter
 
 **Status:** Proposed (draft, 2026-10-09, for the owner's review)
+**The owner's ruling on the version (2026-10-09):** "don't plan to use the 1.0.x version. base our adapter on the faster
+python version that support the qwen 3.8 27b". **Pinned: TensorFold v0.6.6** (tag `v0.6.6`, commit `cb2ebf05`, released
+2026-10-06). It is the last Python release, and its CUDA server serves Qwen3.8-27B. The 1.0.x Zig line is not used.
 **Target:** unplaced until the owner rules (§8). Recommended: gates G0–G2 on the 2.3 line, dark (§6); cutover by
 evidence, not by date.
 **Authors:** Jason Ladd (the direction, 2026-10-09: plug in TensorFold "as soon as I can to benefit from the tps for
@@ -82,25 +85,54 @@ None has been measured here.
 - **The API:** OpenAI chat completions, completions and Responses, plus Anthropic Messages, at
   `http://127.0.0.1:8080/v1`. Also `/v1/models`, `/metrics`, `/stats` and `/memory`. **No Ollama endpoints** (`/api/chat`,
   `/api/tags`, `/api/show`). Models are managed by the CLI (`pull`, `serve`), not over HTTP, as with Atlas.
-- **Versions:** 0.3.0 (2026-09-26) was the first CUDA release. 1.0.0 is a native Zig rewrite, and 1.0.2 is current.
-  That is two weeks of CUDA history, with releases most days.
+- **Versions:** 0.3.0 (2026-09-26) was the first CUDA release. **v0.6.6** (2026-10-06) is the last Python release, and
+  the one pinned here (the owner's ruling, above). 1.0.0 is a native Zig rewrite, and 1.0.2 is current. That is two weeks
+  of CUDA history, with releases most days.
 - **Our model on our box.** **1.0.0 qualifies CUDA on GB10 for Nemotron only, greedy decoding only.** Its changelog says
   Qwen3.8-27B's "served speed is still below Python 0.6.6". The Python line (0.3.5–0.6.6) served Qwen3.8-27B on CUDA:
   - **0.5.0, one Spark, MLX 4-bit with DFlash2 drafts:** 18.4 → 38.9 tok/s at 128k context, and 23.6 → 45.9 at 96k;
   - **0.6.1, NVFP4:** first token on a Spark from 1.6 s to 0.15 s;
   - **0.3.6.2, `--parallel 16`:** 161.7 tok/s aggregate on one Spark. That is not our workload: we dispatch one task at
     a time, as vLLM's idle 24× concurrency showed (SIP-0106 §1.2e).
+- **v0.6.6 on our model and box** (its `docs/recipes/qwen3.8-27b.md` at the tag; vendor's figures):
+  - It serves Qwen3.8-27B on CUDA in three forms:
+    - `TensorFold/Qwen3.8-27B-MLX-4bit`;
+    - `nvidia/Qwen3.8-27B-NVFP4`, on one GPU;
+    - `turboderp/Qwen3.8-27B-exl3`, experimental.
+
+    Each runs with the `z-lab/Qwen3.8-27B-DFlash2` drafter, which CUDA requires unless `--no-drafts` is set.
+  - **Decode on one GB10, 64-token replies, sampled:**
+    - MLX 4-bit: 57.8 tok/s on code and 50.0 on chat;
+    - NVFP4: 47.1 and 38.2;
+    - EXL3 3.00bpw: 83.4 and 44.2;
+    - vLLM MTP=3, for comparison: 23.4 and 25.4.
+
+    These are short replies. Ours run to thousands of tokens of reasoning on 30–50k-token prompts, where 0.5.0 reported
+    38.9–45.9 tok/s at 96–128k.
+  - **Install:** NVIDIA's `pytorch:26.07-py3` container, then `pip install git+https://github.com/ashhart/TensorFold.git@v0.6.6`
+    (its RUNBOOK's DGX Spark setup).
 - **Exact speculative decoding:** a drafted token is accepted only when it equals the token the same engine would
   produce serially. That holds against the same engine, weights and settings. **It does not make TensorFold's output
   equal Ollama's.** The weights differ (MLX 4-bit, NVFP4 or FP8, against Ollama's GGUF Q4_K_M), so quality is measured,
   never assumed (G1).
-- **Reasoning:** `--thinking` / `--no-thinking`, a default `--reasoning-effort`, and `--thinking-budget N`, a cap on
-  tokens inside reasoning. 0.6.5 warns when a reply reaches `max_tokens` before closing its think block, leaving
-  `content` empty. That is vLLM's blocking failure shape (§3).
-- **Usage:** streamed usage arrives in its own chunk with `stream_options.include_usage` (0.6.3). Every reply reports
-  `context_window` and `context_used`. **Not documented:** whether reasoning arrives as `reasoning_content` or inline,
-  the `finish_reason` values, timeout behaviour, and per-request `reasoning_effort`. G0 records them.
-- **Auth:** API keys from 0.6.5. The default bind is localhost.
+- **The API at v0.6.6** (its `docs/api.md` at the tag):
+  - **Reasoning arrives separately,** in `reasoning_content` (`delta.reasoning_content` when streaming), never inline.
+  - **`reasoning_effort` is accepted per request.** For Qwen3.8 the server maps an unnamed level to the template's
+    nearest (`high` and `max` are heard as `xhigh`), so unlike Atlas the adapter needs no mapping.
+  - **`thinking_budget` is accepted per request,** a cap on tokens inside reasoning. It is the documented control for
+    vLLM's blocking failure shape (§3).
+  - **Usage:** prompt, completion and total tokens, `cached_tokens`, and `completion_tokens_details.reasoning_tokens`.
+    Streamed usage arrives in its own final event with `stream_options.include_usage`.
+  - **Errors:** a prompt and reply that overflow the window are refused with HTTP 400 and `context_length_exceeded`
+    before generation. A generation error is HTTP 500, or a `server_error` event then `[DONE]` once a stream is open.
+  - **No server-side request timeout is documented,** so the client's timeout is the only one.
+  - **Sampling is seeded from the prompt by default.** The same request repeats the same sample unless it sends a
+    `seed`, so a replay's repeated generations must send a seed each.
+  - **`GET /health` carries counters,** including `busy`, `requests_running` and `context_length`.
+- **Memory on GB10:** the CUDA server's allocations come out of host RAM and are not charged to a container's memory
+  limit. It sizes its window from `MemAvailable` less a reserve (`TENSORFOLD_MEMORY_RESERVE_GIB`), and the docs warn that
+  exhausting unified memory can freeze the host. That is §1.2c's trap in the vendor's own words.
+- **Auth:** API keys (`--api-key-file`, a Bearer token). The default bind is localhost.
 - **Licence:** Apache-2.0 from 0.6.0 (MIT before).
 
 ## 3. What Atlas and vLLM taught, which this plan carries
@@ -125,8 +157,14 @@ None has been measured here.
 ## 4. The gates
 
 **G0: feasibility and throughput (Level 1 of SIP-0106 §6.1a; no cycle runs).**
-- Pin an exact TensorFold release and a Qwen3.8-27B checkpoint and drafter, recorded by revision. Begin with the
-  latest 1.0.x. If it does not serve Qwen3.8-27B on CUDA, use 0.6.6, the last Python release that did (§8 Q4).
+- TensorFold **v0.6.6** (the owner's ruling), with the DFlash2 drafter. The checkpoint is chosen by a stated matrix,
+  as the owner's Atlas ruling asks of a candidate's best tuned line:
+  - `TensorFold/Qwen3.8-27B-MLX-4bit`, the vendor's fastest dense-27B form on GB10;
+  - `nvidia/Qwen3.8-27B-NVFP4`;
+  - `turboderp/Qwen3.8-27B-exl3` at 3.00bpw (experimental, lower precision; it is in the matrix only if G1 holds for it).
+
+  Each is recorded by revision, with every serve flag. `--context` and `TENSORFOLD_MEMORY_RESERVE_GIB` are set so its
+  memory leaves headroom on the unified GB10.
 - **The corpus is SIP-0110's capture:** byte-exact authoring envelopes at every consuming seam, from real cycles, on both
   stacks: plan writing (including `governance.prepare_plan_authoring_brief` and `merge_plan`), build authoring,
   proposal writing and repair. Take a fixed sample, chosen before any is sent, and send each to Ollama, then to TensorFold,
@@ -174,14 +212,22 @@ None has been measured here.
   dialect differs where it matters, so a shared base would need provider conditionals (#559).
 - **Factory and config:** `provider == "tensorfold"` in `create_llm_provider`, and the value in the config schema.
   The provider stays required, never defaulted (#1157).
-- **Capabilities, declared (§3.2), from G0's records:**
-  - **streaming usage:** the `include_usage` chunk;
-  - **reasoning:** separated or inline. If inline, it is stripped from the text exactly as the port expects;
-  - **reasoning effort:** mapped by model family, as Atlas maps `high` to the template's tier;
-  - **thinking-token accounting;**
-  - **truncation:** a `max_tokens` stop surfaces as a truncation the cap-truncation path already handles (#2149). An
-    empty `content` after an unclosed think block is a truncation, never an answer;
-  - **the engine's request timeout** maps to `LLMTimeoutError`, the locus the correction loop classifies (#568).
+- **Capabilities, declared (§3.2), against v0.6.6's documented API and confirmed by G0's recorded responses:**
+  - **reasoning:** read from `reasoning_content` and `delta.reasoning_content`, never spliced into the text, as the
+    Atlas adapter does;
+  - **reasoning effort:** passed through. The server maps Qwen3.8's levels itself;
+  - **thinking budget:** `thinking_budget` per request, declared as a capability. It is the lever for runaway reasoning,
+    and any default is recorded in the arm's recipe;
+  - **usage:** `reasoning_tokens` give the thinking-token accounting, and streamed usage comes from the final
+    `include_usage` event;
+  - **truncation:** `finish_reason: "length"` surfaces as the truncation the cap-truncation path already handles (#2149).
+    An empty `content` after an unclosed think block is a truncation, never an answer;
+  - **context overflow:** HTTP 400 `context_length_exceeded` becomes a typed error naming the window, not a generic
+    failure;
+  - **generation errors:** HTTP 500, or a streamed `server_error` event, raise an error;
+  - **timeouts:** the client's own timeout raises `LLMTimeoutError`, the locus the correction loop classifies (#568);
+  - **seed:** sent when the caller supplies one. The replay's repeated generations need it, since TensorFold seeds from
+    the prompt by default.
 - **Model identity (§3.4, SIP-0073):**
   - Registry entries for the served model ids, or an `--alias` to the production name, with family `qwen3.8` and
     TensorFold's context window. Without the family, `model_family_of` returns `""`, and the approved lesson matches
@@ -228,8 +274,8 @@ None has been measured here.
   worse a truncation rate. G1's bar is a pass rate at least Ollama's on the same envelopes.
 - **Q3: the overlay.** Recommended: OK in principle to add `docker-compose.tensorfold.yml` at G2, as a new overlay.
   The base compose file stays untouched. Its exact contents come for review in that PR.
-- **Q4: version policy.** Recommended: pin an exact release. Start with the latest 1.0.x, and use 0.6.6 only if 1.0.x
-  does not serve Qwen3.8-27B on CUDA. Re-run G0 on any version change.
+- **Q4: version policy. Ruled 2026-10-09:** TensorFold v0.6.6, the Python line that serves Qwen3.8-27B; no 1.0.x. Any
+  later version change re-runs G0 and G1.
 - **Q5: the Mac (optional).** If you want the API's shape recorded before the Spark is free, run TensorFold on the Mac
   with a Qwen3.8 MLX checkpoint, and I will turn its responses into the G2 fixtures. It answers nothing about speed on the
   Spark.
