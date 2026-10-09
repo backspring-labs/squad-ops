@@ -158,7 +158,13 @@ shape.
 ## 9. The experiment manifest (recorded as the window opens)
 
 Each input is recorded by version or hash, in `var/replays/<window>/manifest.json`, with a copy committed beside this file when the window closes:
-- **the deploy:** its commit and image ids, read from the running deploy;
+- **the deploy:** its deploy record, read from the running deploy: the record's id, its source revision (which carries
+  `docker-compose.yml`), every service's image id and the models' digests;
+  - **the deploy as of this draft** (2026-10-09): `dep_34b4117e7ede`, source `747584c3`. All 21 running containers
+    match the record's image ids. It is the shakeout's last deploy (`a84e085f`, rebuild 9) plus #2172, which gives
+    nat, eve and han each a memory volume (#2112); the two differ only in `docker-compose.yml` and one unit test, so no
+    file under `src/`, `adapters/` or `agents/` differs from what the shakeout validated. A rebuild before the window opens replaces this line,
+    and the manifest records the deploy the window actually opens on;
 - **the prompts and fragments:** a hash of `src/squadops/prompts/`;
 - **configuration:**
   - `config/`;
