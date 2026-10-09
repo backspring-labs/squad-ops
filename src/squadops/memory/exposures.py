@@ -1,10 +1,12 @@
 """Exposures: what each authoring task was supplied, or why nothing (SIP-0110 §0.2, §0.8 step 7).
 
-An exposure is recorded for every task at a consuming seam (§0.9), a memory-disabled one included,
-when its inputs are composed. It names the query the task asked with (the scope taken from trusted
-context), the snapshot that answered, the disposition, the lessons supplied and those left out with
-the reason. It is joined to the task's authoring by run and task. The assessment of the authored
-output against each supplied lesson's target attaches to it later (§0.10, slice 3d).
+An exposure is recorded for every authoring invocation at a consuming seam (§0.9), a memory-disabled
+one included: when the task's inputs are composed, and again each time the loop dispatches the task
+once more (a correction round's re-take, an emission retry, #2162). It names the query the task
+asked with (the scope taken from trusted context), the snapshot that answered, the disposition, the
+lessons supplied and those left out with the reason. It is joined to its authoring by run, task and
+attempt, which the captured envelope carries (#1304's ``prior_attempts`` plus one). The assessment
+of the authored output against each supplied lesson's target attaches to it later (§0.10, slice 3d).
 """
 
 from __future__ import annotations
@@ -19,14 +21,17 @@ from squadops.memory.lessons import Recalled
 from squadops.memory.recall import RecallQuery, UnitKind
 
 
-def exposure_id_for(run_id: str, task_id: str) -> str:
-    """One exposure per task of a run: composing the task again records nothing new."""
-    return "exp_" + hashlib.sha256(f"{run_id}|{task_id}".encode()).hexdigest()[:16]
+def exposure_id_for(run_id: str, task_id: str, attempt: int = 1) -> str:
+    """One exposure per authoring invocation (§0.2): composing the same attempt again records
+    nothing new, and each re-dispatch is its own. A first attempt keeps the id it had before the
+    attempt was part of it, so the exposures already stored still join to their envelopes."""
+    key = f"{run_id}|{task_id}" if attempt == 1 else f"{run_id}|{task_id}|{attempt}"
+    return "exp_" + hashlib.sha256(key.encode()).hexdigest()[:16]
 
 
 @dataclass(frozen=True)
 class Exposure:
-    """One consuming task's recall, as it was answered."""
+    """One authoring invocation's recall, as it was answered."""
 
     run_id: str
     task_id: str
@@ -39,11 +44,15 @@ class Exposure:
     #: ``Recalled.exposure()``: the snapshot, the disposition, the intervention and the omitted.
     recalled: Mapping[str, Any]
     recorded_at: datetime
+    #: Which dispatch of the task this was: 1 for the first, one more for each re-dispatch.
+    attempt: int = 1
     exposure_id: str = field(default="")
 
     def __post_init__(self) -> None:
         if not self.exposure_id:
-            object.__setattr__(self, "exposure_id", exposure_id_for(self.run_id, self.task_id))
+            object.__setattr__(
+                self, "exposure_id", exposure_id_for(self.run_id, self.task_id, self.attempt)
+            )
 
     @classmethod
     def of(
@@ -57,9 +66,18 @@ class Exposure:
         query: RecallQuery,
         recalled: Recalled,
         recorded_at: datetime,
+        attempt: int = 1,
     ) -> Exposure:
         return cls(
-            run_id, task_id, cycle_id, agent_id, seam, query, recalled.exposure(), recorded_at
+            run_id,
+            task_id,
+            cycle_id,
+            agent_id,
+            seam,
+            query,
+            recalled.exposure(),
+            recorded_at,
+            attempt,
         )
 
     @property
@@ -72,6 +90,7 @@ class Exposure:
             "exposure_id": self.exposure_id,
             "run_id": self.run_id,
             "task_id": self.task_id,
+            "attempt": self.attempt,
             "cycle_id": self.cycle_id,
             "agent_id": self.agent_id,
             "seam": self.seam,
@@ -101,5 +120,7 @@ class Exposure:
             query=RecallQuery(**q, unit_kind=UnitKind(unit_kind) if unit_kind else None),
             recalled=dict(data["recalled"]),
             recorded_at=datetime.fromisoformat(str(data["recorded_at"])),
+            # An exposure stored before the attempt was recorded is its task's first (#2162).
+            attempt=int(data.get("attempt") or 1),
             exposure_id=str(data["exposure_id"]),
         )

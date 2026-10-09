@@ -195,8 +195,9 @@ def _escalation_lines(campaign: dict, rows: list[dict]) -> list[str]:
         asked = "; ".join(e.questions) or "no question"
         failed = ", ".join(condition for condition, _ in e.failed)
         line = f"- `{e.escalation_id}` on `{e.cycle_id}`: {e.state} ({failed}). Asked: {asked}"
-        if e.answer is not None:
-            line += f". Answered late by {e.answered_by}: {e.answer}"
+        if e.answers:
+            given = "; ".join(f"{d}: {a}" for d, a in e.answers.items())
+            line += f". Answered late by {e.answered_by}: {given}"
         lines.append(line)
     return lines
 
@@ -214,11 +215,11 @@ def _escalation_asks(campaign: dict, rows: list[dict]) -> list[str]:
                 f"The plan gate on `{e.run_id}` escalated: answer it at the gate before its ruling "
                 f"bound parks the cycle. Asked: {asked}"
             )
-        elif e.state in ANSWERABLE and e.answer is None:
+        elif e.state in ANSWERABLE and not e.answers:
             asks.append(
                 f"Escalation `{e.escalation_id}` {e.state} with nobody answering. Answer it late "
                 f"with `squadops campaigns answer {campaign['campaign_id']} {e.escalation_id} "
-                f'--answer "…" --reason "…"`; a later plan gate reads it. Asked: {asked}'
+                f'--answer "<decision id>=…" --reason "…"`; a later tier campaign carries it. Asked: {asked}'
             )
     return asks
 

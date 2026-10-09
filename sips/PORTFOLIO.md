@@ -59,6 +59,7 @@ items go to each SIP's next touch, with Q22 for the decisions.
 | 0106 Atlas Provider Adapter | provider-aware routing and a per-generation throughput record, to "a successor SIP" (none) | nothing |
 | 0097 Executor Decomposition | the post-arc rename of `DispatchedFlowExecutor` | nothing |
 | 0070 Pulse Checks | Tiers 2–3 "to a follow-up SIP" (≈ SIP-0109 accumulated acceptance; ≈ #557) | partly |
+| 0104 Deterministic Verification Scaffolding | §13d (2026-10-09): a failing slot assertion is routed by demonstrated defect ownership, not by its location; unplaced, after SIP-0110's window | #2153 |
 | 0083 Multi-Run Cycles | `returned_for_revision` "deferred", since built (#811, SIP-0109): the text is stale | — |
 | 0085, 0077, 0074, 0075, 0048 | console and event v1 deferrals, all low priority | nothing |
 

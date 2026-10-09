@@ -618,10 +618,12 @@ async def _escalation(world: _World, *, ended: str | None) -> str:
     return identity.escalation_id
 
 
-def _answer(world: _World, escalation_id: str, answer: str = "insertion order"):
+def _answer(
+    world: _World, escalation_id: str, answer: str = "insertion order", decision="list-ordering"
+):
     return world.client.post(
         f"/api/v1/campaigns/cmp_api000000001/escalations/{escalation_id}/answer",
-        json={"answer": answer, "reason": "late, after the campaign"},
+        json={"answers": {decision: answer}, "reason": "late, after the campaign"},
     )
 
 
@@ -640,9 +642,9 @@ async def test_a_late_answer_is_recorded_once_against_an_expired_escalation(worl
     assert again.status_code == 200 and again.json()["replayed"] is True
     assert other.status_code == 422
     assert "already holds its late answer" in other.json()["detail"]["error"]["message"]
-    assert (listed["state"], listed["answer"], listed["answered_by"]) == (
+    assert (listed["state"], listed["answers"], listed["answered_by"]) == (
         "expired",
-        "insertion order",
+        {"list-ordering": "insertion order"},
         "owner",
     )
     assert listed["decision_ids"] == ["list-ordering"]
@@ -665,28 +667,34 @@ async def test_an_answer_after_the_campaign_ended_is_recorded_and_reopens_nothin
     campaign_now = world.client.get("/api/v1/campaigns/cmp_api000000001").json()
     assert campaign_now["state"] == "completed"
     [listed] = world.client.get("/api/v1/campaigns/cmp_api000000001/escalations").json()
-    assert (listed["state"], listed["answer"]) == ("cancelled", "insertion order")
+    assert (listed["state"], listed["answers"]) == (
+        "cancelled",
+        {"list-ordering": "insertion order"},
+    )
 
 
 @pytest.mark.parametrize(
-    ("ended", "answer", "known", "message"),
+    ("ended", "answer", "decision", "known", "message"),
     [
-        (None, "insertion order", True, "a pending one is answered at its gate"),
-        ("resolved", "insertion order", True, "only an expired or cancelled one"),
-        ("expired", "   ", True, "states nothing"),
-        ("expired", "insertion order", False, "no escalation with that id"),
+        (None, "insertion order", "list-ordering", True, "a pending one is answered at its gate"),
+        ("resolved", "insertion order", "list-ordering", True, "only an expired or cancelled one"),
+        ("expired", "   ", "list-ordering", True, "states nothing"),
+        ("expired", "insertion order", "list-ordering", False, "no escalation with that id"),
+        ("expired", "insertion order", "run-paging", True, "are not among them"),
     ],
-    ids=["pending", "resolved", "blank", "unknown"],
+    ids=["pending", "resolved", "blank", "unknown", "a decision it did not ask"],
 )
 async def test_a_late_answer_with_nothing_to_answer_is_a_422_and_records_nothing(
-    world, ended, answer, known, message
+    world, ended, answer, decision, known, message
 ):
+    """§24bm adds the last case. Bug caught: an answer attached to a decision the escalation never
+    asked, which a later launch would carry into a plan as if the owner had answered it."""
     assert _create(world).status_code == 200
     escalation_id = await _escalation(world, ended=ended)
 
-    resp = _answer(world, escalation_id if known else "esc_000000000000", answer)
+    resp = _answer(world, escalation_id if known else "esc_000000000000", answer, decision)
 
     assert resp.status_code == 422
     assert message in resp.json()["detail"]["error"]["message"]
     [listed] = world.client.get("/api/v1/campaigns/cmp_api000000001/escalations").json()
-    assert listed["answer"] is None
+    assert listed["answers"] == {}

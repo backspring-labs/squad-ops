@@ -474,7 +474,8 @@ checks:
       from squadops.api.routes.memory import memory_router
       paths = sorted({r.path.split("/{project_id}", 1)[-1] for r in memory_router.routes})
       print(memory_disabled({"memory": "disabled"}), len(paths))
-    expect: True 7
+    # 10 since #2186: the observations list, an annotation, and its review (SIP-0110 §0.4, #2160).
+    expect: True 10
   - id: "2096-agent"
     what: SIP-0110 slice 3 - an agent renders supplied lessons in their own slot and records them in the envelope's memory block
     container: squadops-neo
@@ -554,3 +555,73 @@ checks:
       known = {"implementation_artifacts": ["app/api/runs/route.ts"]}
       print(refuted_source_claims(analysis, known, {"lib/errors.ts"}))
     expect: "[]"
+  - id: "2162"
+    what: SIP-0110 §0.2 - a re-dispatched authoring records its own exposure under its attempt, and a first attempt keeps the id the deploy already stored
+    container: squadops-runtime-api
+    code: |
+      from squadops.capabilities.lesson_supply import supply_the_redispatch
+      from squadops.memory.exposures import exposure_id_for
+      run, task = "run_7fabca91826f", "task-run_7fabca91-m007-qa.test"
+      print(exposure_id_for(run, task), exposure_id_for(run, task, 2) != exposure_id_for(run, task))
+    expect: exp_dcf598a011e0244f True
+  - id: "2165"
+    what: SIP-0110 §0.2 - the exposures table holds one row per authoring invocation, not per task, so a re-dispatch's own exposure is stored (reads the live table's constraint kinds; writes nothing)
+    container: squadops-runtime-api
+    code: |
+      import asyncio
+      import asyncpg
+      from squadops.bootstrap.secrets import secret_provider_for
+      from squadops.config import load_config
+      async def kinds():
+          url = load_config(secret_provider_factory=secret_provider_for).db.url
+          conn = await asyncpg.connect(url)
+          try:
+              rows = await conn.fetch(
+                  "SELECT contype::text AS contype FROM pg_constraint "
+                  "WHERE conrelid = 'memory_exposures'::regclass"
+              )
+          finally:
+              await conn.close()
+          return sorted(r["contype"] for r in rows)
+      print(asyncio.run(kinds()))
+    expect: "['p']"
+  - id: "2168"
+    what: SIP-0096 §17a - a dispute is read as the appendix shows it, so a reason that quotes code (or a check copied in its backticks) still disputes; read as YAML it disputed nothing
+    container: squadops-eve
+    code: |
+      from squadops.capabilities.disputed_checks import split_disputed_checks
+      block = "```disputed_checks\n- check: `acceptance:field_kinds`\n  reason: The criterion declares `id: number`\n```\n"
+      print(split_disputed_checks(block)[1])
+    expect: "[{'check': 'acceptance:field_kinds', 'reason': 'The criterion declares `id: number`'}]"
+  - id: "2160"
+    what: SIP-0110 §0.4 - a return classified only in prose becomes citable only through a reviewed annotation, and the annotations table is live (reads the catalog; writes nothing)
+    container: squadops-runtime-api
+    code: |
+      import asyncio
+      from datetime import UTC, datetime
+      import asyncpg
+      from squadops.bootstrap.secrets import secret_provider_for
+      from squadops.config import load_config
+      from squadops.memory.annotation import annotate, citable, review
+      from squadops.memory.observations import UNCLASSIFIED, Classification, Observation, ObservationSource
+      at = datetime(2026, 10, 9, tzinfo=UTC)
+      o = Observation(ObservationSource.PROPOSAL_RULING, "proposal_ruling:c:e", "p", at, Classification(UNCLASSIFIED))
+      a = annotate(o, values=["criteria_not_checkable"], target_behavior=None, evidence={"r": "r"}, context={"deploy": "d", "prompt": "p"}, annotator="a", now=at)
+      async def live():
+          conn = await asyncpg.connect(load_config(secret_provider_factory=secret_provider_for).db.url)
+          try:
+              return await conn.fetchval("SELECT to_regclass('memory_observation_annotations') IS NOT NULL")
+          finally:
+              await conn.close()
+      print(sorted(citable([o], [a])), sorted(citable([o], [review(a, reviewed_by="o", now=at)])), asyncio.run(live()))
+    expect: "[] ['proposal_ruling:c:e'] True"
+  - id: "2188"
+    what: SIP-0109 §24bm - a late answer reaches a plan only for the same question, and a plan whose choice is not the late answer it cites escalates; the gate no longer clears a question by decision id
+    container: squadops-runtime-api
+    code: |
+      from datetime import UTC, datetime
+      import adapters.cycles.workload_gate as gate
+      from squadops.campaigns.escalation import RecordedAnswer, same_question, uncarried
+      held = {"d": RecordedAnswer("d", "Which order?", "descending", "o", datetime(2026, 10, 9, tzinfo=UTC), "esc_a")}
+      print(same_question("Which order?", "which  order"), [d for d, _ in uncarried({"d": ("ascending", "esc_a")}, held)], hasattr(gate, "uncarried"))
+    expect: "True ['d'] True"

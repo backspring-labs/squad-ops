@@ -8,6 +8,7 @@ enforcement, and data durability across adapter restarts.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import uuid
 from datetime import UTC, datetime
 
@@ -387,6 +388,70 @@ class TestMemoryObservations:
                 await conn.execute("DELETE FROM memory_observations WHERE project_id = $1", project)
 
 
+class TestMemoryAnnotations:
+    """SIP-0110 §0.4 (#2160): only the table proves an annotation is held beside an observation it
+    references, and that the first review stands."""
+
+    async def test_an_annotation_round_trips_and_its_first_review_stands(self, migrated_pool):
+        from adapters.memory.cross_cycle import PostgresCrossCycleMemoryStore
+        from squadops.memory.annotation import annotate, review
+        from squadops.memory.observations import (
+            UNCLASSIFIED,
+            Classification,
+            Observation,
+            ObservationSource,
+        )
+
+        project = f"ann-{uuid.uuid4().hex[:8]}"
+        observed = Observation(
+            source=ObservationSource.PROPOSAL_RULING,
+            source_id=f"proposal_ruling:cmp_{project}:ctl_1",
+            project_id=project,
+            observed_at=_NOW,
+            classification=Classification(UNCLASSIFIED, rationale="none recorded"),
+        )
+        proposed = annotate(
+            observed,
+            values=["criteria_not_checkable"],
+            target_behavior="criterion_already_satisfied",
+            evidence={"ruling": "T3 holds — ünïcode"},
+            context={"deploy": "rebuild 20", "prompt": "the proposal block"},
+            annotator="claude-opus-5-5",
+            now=_NOW,
+        )
+        orphan = annotate(
+            dataclasses.replace(observed, source_id=f"proposal_ruling:cmp_{project}:ctl_none"),
+            values=["criteria_not_checkable"],
+            target_behavior=None,
+            evidence={"ruling": "r"},
+            context={"deploy": "d", "prompt": "p"},
+            annotator="a",
+            now=_NOW,
+        )
+        store = PostgresCrossCycleMemoryStore(pool=migrated_pool)
+        try:
+            await store.record_observations([observed])
+            assert await store.record_annotation(proposed) is True
+            assert await store.record_annotation(proposed) is False
+            with pytest.raises(KeyError):
+                await store.record_annotation(orphan)
+
+            await store.record_annotation_review(review(proposed, reviewed_by="owner", now=_NOW))
+            await store.record_annotation_review(review(proposed, reviewed_by="other", now=_NOW))
+            with pytest.raises(KeyError):
+                await store.record_annotation_review(review(orphan, reviewed_by="owner", now=_NOW))
+
+            [held] = await store.list_annotations(project)
+            assert held == review(proposed, reviewed_by="owner", now=_NOW)
+            assert await store.list_observations(project) == [observed]
+        finally:
+            async with migrated_pool.acquire() as conn:
+                await conn.execute(
+                    "DELETE FROM memory_observation_annotations WHERE project_id = $1", project
+                )
+                await conn.execute("DELETE FROM memory_observations WHERE project_id = $1", project)
+
+
 class TestMemoryLessons:
     """SIP-0110 §0.2, §0.7 (#2096): the in-memory store holds lessons in dicts, so only this proves
     the inserts, the immutability check, revocation and a unit's single pin against the tables."""
@@ -455,12 +520,14 @@ class TestMemoryLessons:
                 await conn.execute("DELETE FROM memory_approvals WHERE project_id = $1", project)
                 await conn.execute("DELETE FROM memory_revisions WHERE project_id = $1", project)
 
-    async def test_an_exposure_is_stored_once_per_task_and_a_damaged_pin_reads_as_incompatible(
+    async def test_an_exposure_is_stored_once_per_invocation_and_a_damaged_pin_reads_as_incompatible(
         self, migrated_pool
     ):
         """§0.8 against the tables. Bugs caught: a restart's second composition of a plan writing
-        a second exposure for the same task; or a pin this code cannot read raising a bare
-        ``KeyError`` that recall would report as a failed read, hiding a version skew."""
+        a second exposure for the same task; the table refusing the exposure of the task's next
+        dispatch, which is another invocation (§0.2, #2165: the deploy's re-takes ran with none);
+        or a pin this code cannot read raising a bare ``KeyError`` that recall would report as a
+        failed read, hiding a version skew."""
         import dataclasses
 
         from adapters.memory.cross_cycle import PostgresCrossCycleMemoryStore
@@ -485,11 +552,23 @@ class TestMemoryLessons:
             recalled=Recalled("snp_x", RecallDisposition.NONE_ELIGIBLE),
             recorded_at=datetime(2026, 10, 8, tzinfo=UTC),
         )
+        retake = Exposure.of(
+            run_id=run_id,
+            task_id="task-1",
+            cycle_id="cyc_1",
+            agent_id="neo",
+            seam="build_authoring",
+            query=query,
+            recalled=Recalled("snp_x", RecallDisposition.NONE_ELIGIBLE),
+            recorded_at=datetime(2026, 10, 8, 1, tzinfo=UTC),
+            attempt=2,
+        )
         store = PostgresCrossCycleMemoryStore(pool=migrated_pool)
         try:
             assert await store.record_exposure(exposure) is True
             assert await store.record_exposure(exposure) is False
-            assert await store.list_exposures(run_id) == [exposure]
+            assert await store.record_exposure(retake) is True
+            assert await store.list_exposures(run_id) == [exposure, retake]
             assert await store.get_exposure(exposure.exposure_id) == exposure
             assert exposure in await store.list_project_exposures("group_run")
             # §0.10: assessments are append-only; the project's are read oldest first.

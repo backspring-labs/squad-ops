@@ -115,12 +115,14 @@ def draft_revision(
     drafter_model: str,
     drafter_version: str,
     cited_observations: Sequence[str],
-    known_observations: Iterable[str],
+    citable_observations: Iterable[str],
     revisions: Iterable[PatternRevision],
     now: datetime,
 ) -> PatternRevision:
     """The auditor's draft, as the pattern's next revision. Its pattern is the project, the target
-    behavior and the task types it covers; it cites observations the store holds."""
+    behavior and the task types it covers. It cites only ``citable_observations``: recorded, and
+    classified, originally or by a reviewed annotation (§0.4, #2160; ``annotation.citable``). An
+    ``unclassified`` observation produces no pattern."""
     for name, value in (
         ("target_behavior", target_behavior),
         ("text", text),
@@ -133,9 +135,12 @@ def draft_revision(
             raise LessonRefused(f"a draft names its {name}")
     if not cited_observations:
         raise LessonRefused("a draft cites the observations it rests on")
-    unknown = sorted(set(cited_observations) - set(known_observations))
-    if unknown:
-        raise LessonRefused(f"a draft cites only recorded observations; not recorded: {unknown}")
+    uncitable = sorted(set(cited_observations) - set(citable_observations))
+    if uncitable:
+        raise LessonRefused(
+            "a draft cites only recorded, classified observations (a return classified only in "
+            f"prose enters through a reviewed annotation, §0.4); not citable: {uncitable}"
+        )
     pattern_id = pattern_id_for(
         applicability.project_id, target_behavior, "|".join(sorted(applicability.task_types))
     )

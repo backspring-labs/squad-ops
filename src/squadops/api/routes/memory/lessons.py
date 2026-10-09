@@ -8,6 +8,9 @@ what each consuming task was supplied (SIP-0110 §0.4, §0.6–§0.7, §0.10; sl
   supervisor's seat, which holds ``admin``;
 - **approve** (``memory:approve``, the owner alone): approve a revision for an applicability, with
   the ruling, the replay check and the combined check it rests on; revoke an approval.
+- **annotations** (§0.4, #2160): the auditor proposes a classification for an observation classified
+  only in prose (``memory:draft``), and the owner reviews it (``memory:approve``). Only a reviewed
+  annotation classifies, and a lesson cites only classified observations.
 
 Nothing here changes a running unit: an approval or a revocation reaches units admitted after it
 (§0.7). A revocation answers with the running units that hold it, so their work can be halted or
@@ -22,6 +25,8 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from squadops.api.memory_schemas import (
+    AnnotationRequest,
+    AnnotationReviewRequest,
     ApplicabilityDTO,
     AssessmentRequest,
     LessonApprovalRequest,
@@ -30,6 +35,13 @@ from squadops.api.memory_schemas import (
 )
 from squadops.api.middleware.auth import require_scopes
 from squadops.auth.models import Identity, Scope
+from squadops.memory.annotation import (
+    AnnotationRefused,
+    annotate,
+    citable,
+    effective_classification,
+    review,
+)
 from squadops.memory.approval import (
     CombinedCheck,
     LessonRefused,
@@ -124,7 +136,9 @@ async def draft_lesson(
     owner approves it."""
     _actor(identity)
     store = _store(request)
-    known = {o.source_id for o in await store.list_observations(project_id)}
+    allowed = citable(
+        await store.list_observations(project_id), await store.list_annotations(project_id)
+    )
     try:
         revision = draft_revision(
             target_behavior=body.target_behavior,
@@ -135,7 +149,7 @@ async def draft_lesson(
             drafter_model=body.drafter_model,
             drafter_version=body.drafter_version,
             cited_observations=body.cited_observations,
-            known_observations=known,
+            citable_observations=allowed,
             revisions=await store.list_revisions(project_id),
             now=datetime.now(UTC),
         )
@@ -256,6 +270,86 @@ async def revoke_lesson(
             else "units admitted from now pin without it; no unit holds it"
         ),
     }
+
+
+@router.get("/observations")
+async def list_observations(
+    request: Request,
+    project_id: str,
+    identity: Identity | None = Depends(require_scopes(Scope.MEMORY_READ)),
+) -> list[dict[str, Any]]:
+    """The project's observations, each as projected, with its annotations and the classification
+    memory reads for it: the latest reviewed annotation's, or the projected one (§0.4)."""
+    store = _store(request)
+    annotations = await store.list_annotations(project_id)
+    return [
+        {
+            **o.to_dict(),
+            "annotations": [a.to_dict() for a in annotations if a.source_id == o.source_id],
+            "effective_classification": effective_classification(o, annotations).to_dict(),
+        }
+        for o in await store.list_observations(project_id)
+    ]
+
+
+@router.post("/observations/{source_id}/annotations", status_code=201)
+async def annotate_observation(
+    request: Request,
+    project_id: str,
+    source_id: str,
+    body: AnnotationRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.MEMORY_DRAFT)),
+) -> dict[str, Any]:
+    """A proposed classification of the observation, stored beside it. The observation is never
+    edited, and the annotation classifies nothing until it is reviewed."""
+    _actor(identity)
+    store = _store(request)
+    observation = next(
+        (o for o in await store.list_observations(project_id) if o.source_id == source_id), None
+    )
+    if observation is None:
+        raise _error(404, "NOT_FOUND", f"no observation {source_id} in {project_id}")
+    try:
+        annotation = annotate(
+            observation,
+            values=body.values,
+            target_behavior=body.target_behavior,
+            evidence=body.evidence,
+            context=body.context,
+            annotator=body.annotator,
+            now=datetime.now(UTC),
+            rationale=body.rationale,
+        )
+    except AnnotationRefused as e:
+        raise _error(422, "VALIDATION_ERROR", str(e)) from e
+    await store.record_annotation(annotation)
+    return annotation.to_dict()
+
+
+@router.post("/annotations/{annotation_id}/review")
+async def review_annotation(
+    request: Request,
+    project_id: str,
+    annotation_id: str,
+    body: AnnotationReviewRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.MEMORY_APPROVE)),
+) -> dict[str, Any]:
+    """The owner's review: from now on the annotation is its observation's classification, and a
+    lesson may cite the observation. A review is never rewritten."""
+    reviewer = _actor(identity)
+    store = _store(request)
+    held = next(
+        (a for a in await store.list_annotations(project_id) if a.annotation_id == annotation_id),
+        None,
+    )
+    if held is None:
+        raise _error(404, "NOT_FOUND", f"no annotation {annotation_id} in {project_id}")
+    try:
+        reviewed = review(held, reviewed_by=reviewer, now=datetime.now(UTC), note=body.note)
+    except AnnotationRefused as e:
+        raise _error(409, "ALREADY_REVIEWED", str(e)) from e
+    await store.record_annotation_review(reviewed)
+    return reviewed.to_dict()
 
 
 @router.get("/exposures")

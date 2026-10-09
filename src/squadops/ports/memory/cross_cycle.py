@@ -13,6 +13,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 
+from squadops.memory.annotation import Annotation
 from squadops.memory.assessment import Assessment
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import Approval, PatternRevision, Snapshot, UnitKind
@@ -35,6 +36,21 @@ class CrossCycleMemoryStorePort(ABC):
         self, project_id: str, *, source: ObservationSource | None = None
     ) -> list[Observation]:
         """A project's observations, oldest first by ``observed_at``, then ``source_id``."""
+
+    @abstractmethod
+    async def record_annotation(self, annotation: Annotation) -> bool:
+        """Store a proposed annotation beside its observation (§0.4, #2160), once per
+        ``annotation_id``; the observation itself is never touched. Returns whether it was new.
+        Raises ``KeyError`` for an observation the store does not hold."""
+
+    @abstractmethod
+    async def record_annotation_review(self, reviewed: Annotation) -> None:
+        """Store an annotation's review. The first review stands: a second never rewrites who or
+        when. Raises ``KeyError`` for an annotation the store does not hold."""
+
+    @abstractmethod
+    async def list_annotations(self, project_id: str) -> list[Annotation]:
+        """A project's annotations, reviewed or not, oldest first."""
 
     @abstractmethod
     async def record_revision(self, revision: PatternRevision) -> bool:
@@ -75,12 +91,13 @@ class CrossCycleMemoryStorePort(ABC):
 
     @abstractmethod
     async def record_exposure(self, exposure: Exposure) -> bool:
-        """Store a task's exposure, once per task of a run (``exposure_id``); composing the task
-        again adds nothing. Returns whether it was new."""
+        """Store an exposure, once per authoring invocation (``exposure_id``: the run, the task and
+        its attempt, §0.2); composing the task again adds nothing, and dispatching it again adds
+        that attempt's. Returns whether it was new."""
 
     @abstractmethod
     async def list_exposures(self, run_id: str) -> list[Exposure]:
-        """A run's exposures, by task."""
+        """A run's exposures, by task and then attempt."""
 
     @abstractmethod
     async def get_exposure(self, exposure_id: str) -> Exposure | None:
