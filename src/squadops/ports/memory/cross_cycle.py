@@ -75,12 +75,13 @@ class CrossCycleMemoryStorePort(ABC):
 
     @abstractmethod
     async def record_exposure(self, exposure: Exposure) -> bool:
-        """Store a task's exposure, once per task of a run (``exposure_id``); composing the task
-        again adds nothing. Returns whether it was new."""
+        """Store an exposure, once per authoring invocation (``exposure_id``: the run, the task and
+        its attempt, §0.2); composing the task again adds nothing, and dispatching it again adds
+        that attempt's. Returns whether it was new."""
 
     @abstractmethod
     async def list_exposures(self, run_id: str) -> list[Exposure]:
-        """A run's exposures, by task."""
+        """A run's exposures, by task and then attempt."""
 
     @abstractmethod
     async def get_exposure(self, exposure_id: str) -> Exposure | None:

@@ -100,7 +100,8 @@ class InMemoryCrossCycleMemoryStore(CrossCycleMemoryStorePort):
 
     async def list_exposures(self, run_id: str) -> list[Exposure]:
         return sorted(
-            (e for e in self._exposures.values() if e.run_id == run_id), key=lambda e: e.task_id
+            (e for e in self._exposures.values() if e.run_id == run_id),
+            key=lambda e: (e.task_id, e.attempt),
         )
 
     async def get_exposure(self, exposure_id: str) -> Exposure | None:
@@ -302,7 +303,8 @@ class PostgresCrossCycleMemoryStore(CrossCycleMemoryStorePort):
     async def list_exposures(self, run_id: str) -> list[Exposure]:
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
-                "SELECT exposure_body FROM memory_exposures WHERE run_id = $1 ORDER BY task_id",
+                "SELECT exposure_body FROM memory_exposures WHERE run_id = $1 "
+                "ORDER BY task_id, COALESCE((exposure_body->>'attempt')::int, 1)",
                 run_id,
             )
         return [Exposure.from_dict(r["exposure_body"]) for r in rows]
