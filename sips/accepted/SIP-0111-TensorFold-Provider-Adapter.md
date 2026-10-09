@@ -1,13 +1,15 @@
 ---
 sip_uid: '1791574804220728'
-status: proposed
+status: accepted
 title: TensorFold Provider Adapter
 author: Jason Ladd
 created_at: '2026-10-09T00:00:00Z'
+sip_number: 111
+updated_at: '2026-10-09T16:47:58.521552Z'
 ---
-# SIP: TensorFold Provider Adapter
+# SIP-0111: TensorFold Provider Adapter
 
-**Status:** Proposed (draft, revision 2, 2026-10-09, for the owner's review)
+**Status:** Accepted (2026-10-09, by the owner, at revision 2; for numbering and for implementing S, G0 and G1 in 2.3 after the 2.2 cut, see the design disposition below)
 **Scope:** TensorFold **v0.6.6 on the DGX Spark's GB10, CUDA backend only.** There is no Mac installation, build,
 execution or test. The `TensorFold/Qwen3.8-27B-MLX-4bit` checkpoint stays eligible because v0.6.6 serves those weights on
 CUDA; its name does not mean a Mac deployment.
@@ -24,8 +26,33 @@ CUDA; its name does not mean a Mac deployment.
   last Python release; its CUDA server serves Qwen3.8-27B.
 - **The review of revision 1 (PR #2198):** the separate adapter, the pinned Python release, the measured gates and the
   dark rollout are sound and kept. Q5 (a Mac run) is removed.
+- **Q6, the port amendments: APPROVED, with implementation safeguards** (the owner's review of revision 2, 2026-10-09).
+  (a)–(d) of §5.1 and §5.2 as proposed, and:
+  - unsupported controls are tested across **all** existing adapters, not only TensorFold;
+  - `completion_tokens` stays inclusive of `reasoning_tokens`, with nothing double-counted;
+  - **a complete, closed response that reaches the cap is kept.** A `length` finish alone never discards otherwise
+    valid output (§5.2);
+  - stream cancellation is verified to release the server's work before the next request (§5.4).
+- **Q7, the memory floors: APPROVED as initial safety floors, subject to empirical validation in S** (§5.6):
+  - before an engine loads, `MemAvailable` ≥ 90 GiB and no competing GPU inference process resident;
+  - after TensorFold loads, `MemAvailable` ≥ 16 GiB;
+  - **the switch fails closed** on either miss, on unknown residency, on failed authentication, or on a mismatch with
+    the pinned recipe;
+  - engines never overlap during rollback. Release is confirmed before Ollama is restored;
+  - memory is recorded before and after load, after warm-up, and **under representative long-context generation**.
+    Static idle headroom is not sufficient evidence of runtime safety;
+  - if long-context tests violate the reserve or destabilize the host, `--context` is reduced or the trial parked. The
+    floors are never relaxed to force a pass.
 
-Acceptance of this design, which numbers it, remains the owner's.
+**The owner's design disposition (2026-10-09): accepted for numbering, and for implementing S, G0 and G1 in 2.3 after
+the 2.2 cut.**
+- **G2 stays conditional** on meeting both approved gates, G0 and G1.
+- **G3 and G4 stay separate decisions.**
+- **This approval does not authorize switching production inference.**
+- #2199 and #2200 are synchronized with revision 2 before any work begins.
+- A frozen, auditable recipe and held-out validation are preserved.
+- **The decision to adopt TensorFold rests on end-to-end cycle quality, latency, stability and recoverability, never on
+  vendor tokens-per-second figures.**
 
 **Revision 2 (2026-10-09), from the owner's review of revision 1 (`866cfdac`).** These are the changes:
 1. GB10 CUDA only, with the Mac workflow removed.
@@ -357,7 +384,14 @@ D5 fallback, `dispatched_flow_executor.py`).
   existing providers keep today's path.
 
 **Tokens.** `completion_tokens` stays **inclusive of reasoning**, with `reasoning_tokens` a subset of it. Nothing
-subtracts reasoning or counts it twice.
+subtracts reasoning or counts it twice (Q6).
+
+**A `length` finish marks the cap. It never discards output by itself** (Q6).
+- `termination == "length"` says only that the budget was reached: it stands in for today's token comparison.
+- What happens next is decided by the content, exactly as #2149 decides it today:
+  - a final block left **unclosed** is the cut, and is dropped;
+  - **every block closed** means the response is returned as is;
+  - an **empty answer** with the budget spent is the exhausted path.
 
 **Missing usage.**
 - On TensorFold a successful stream must carry its terminal finish frame and, with `include_usage`, its usage event
@@ -468,10 +502,26 @@ and its guard was retired unbuilt.
    headroom must stay at or above the pre-registered floor, proposed as 16 GiB `MemAvailable` after load.
 7. **Resume clients,** with endpoint, model, credentials and provider switched together. Verify one healthy generation.
 
-- **Abort conditions** (pre-registered): a memory floor missed, a startup failure, a verification mismatch, or a
-  failed generation. Each aborts to restoration.
-- **Restoration:**
-  - TensorFold is stopped **before** Ollama loads, and its release verified as in step 4;
+- **The floors (Q7, approved as initial safety floors, subject to validation in S):**
+  - before a load, `MemAvailable` ≥ 90 GiB and no competing GPU inference process resident;
+  - after TensorFold loads, ≥ 16 GiB.
+- **The switch fails closed.** These abort it to restoration:
+  - a missed floor;
+  - unknown residency;
+  - failed authentication;
+  - a mismatch with the pinned recipe;
+  - a startup failure;
+  - a failed verification generation.
+- **Memory is recorded:**
+  - before the load and after it;
+  - after warm-up;
+  - **under representative long-context generation**, the longest captured prompts at their own `max_tokens`.
+
+  S's evidence is the long-context record. Static idle headroom is not sufficient. If long-context generation violates
+  the reserve or destabilizes the host, `--context` is reduced and S re-run, or the trial is parked. The floors are never
+  relaxed to force a pass.
+- **Restoration:** engines never overlap.
+  - TensorFold is stopped **before** Ollama loads, and its release confirmed as in step 4;
   - Ollama is started;
   - Ollama's endpoint, model, credentials and provider are restored together;
   - one healthy generation is verified.
@@ -524,7 +574,8 @@ and its guard was retired unbuilt.
 
 ## 8. Questions for the owner
 
-Ruled: Q1–Q4 (above). Q5 is removed.
+**All ruled (2026-10-09):** Q1–Q4 on revision 1, and Q6 and Q7 on revision 2 (the header records each). Q5 is removed.
+Kept below as they were asked.
 
 - **Q6: the port amendments** (§5.1, §5.2).
   - `seed` and `thinking_budget` as optional port fields, refused where unsupported;
