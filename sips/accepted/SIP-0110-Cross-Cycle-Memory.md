@@ -59,7 +59,7 @@ diverged from on agent-discretionary memory tools (§6).
 
 ---
 
-## Delivery ledger (current as of 2026-10-08)
+## Delivery ledger (current as of 2026-10-09)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or
 re-places it.
@@ -71,6 +71,7 @@ re-places it.
 | Phase 1, slice 1: capture each consuming seam's inputs before authoring (proposal writing first, then plan writing, build authoring and repair), and the source-case inspection (§0.11, §0.4) | **shipped** | 2.2.0, PRs #2116, #2119 and #2123, issue #2105: every seam's envelope reconstructs byte for byte on a live cycle (posted on #2105); the inspection is §5e. The three plan proposers (`development.propose_plan_tasks`, `qa.propose_plan_tasks`, `strategy.propose_plan_guidance`), which no proof's framing had run, rendered a random id and did not reconstruct until PR #2142, issue #2141 |
 | Phase 1, slice 2: the authoring replay, three arms, validated first on proposals (§0.11–§0.12) | **shipped** | 2.2.0, PRs #2137, #2139 and #2140, issue #2106: on a live deploy every captured envelope at every seam is valid (30 of 30: proposal, plan writing, build authoring and both repairs), and the exploratory proposal run authored all three arms (posted on #2106) |
 | Phase 1, slice 3: the mechanism, observing every eligible cycle and supplying four seams, inert until approved, with the app-build indicators beside each exposure, the failure-shape sorter and the repeat report (§0.2–§0.10) | **shipped** | 2.2.0, PRs #2120, #2121, #2122, #2124, #2125, #2126, #2127, #2129, #2130, #2132 and #2134, issue #2096: inert and observed live on the regression pair (memory disabled) and on the campaign proof `cmp_dae2cd6b0e3c` (memory enabled, nothing approved), with the repeat report's first read (posted on #2096). A re-dispatched authoring (a correction round's re-take, an emission retry) recorded no exposure of its own, against §0.2, until PR #2163, issue #2162: the rebuild 5 and 6 Next.js regression cycles each had one more envelope than exposures. The exposures table still held one row per task of a run, and refused that exposure on the deploy, until issue #2165 (the rebuild 7 Next.js cycle's qa.test, authored three times, kept only the first attempt's) |
+| the reviewed annotation by which a return classified only in prose enters (§0.4): beside its observation, adding no occurrence, classifying only once the owner reviews it; and a lesson cites only classified observations | **shipped** | 2.2.0, PR #PRNUM, issue #2160 |
 | Phase 1, slice 4: the first lesson, drafted by the auditor, and the measurement window, read before 2.2.0's cut (§0.4, §0.12–§0.13) | **placed** | 2.2.0, #2107 |
 | Phase 1.5: the correction lane (§13 question 3) | **dropped** | by revision 6 (§5d), which folds it into Phase 1: its observation is slice 3's, its repair seam is wired inert in slice 3, and its capture is slice 1's. A correction-round template waits for a recurring target behavior (§0.4) |
 | Phase 2: consolidation and promotion (§8) | **unplaced** | gated on Phase 1's measurement (§8) |

@@ -13,6 +13,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 
+from squadops.memory.annotation import Annotation
 from squadops.memory.assessment import Assessment
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import Approval, PatternRevision, Snapshot, UnitKind
@@ -35,6 +36,21 @@ class CrossCycleMemoryStorePort(ABC):
         self, project_id: str, *, source: ObservationSource | None = None
     ) -> list[Observation]:
         """A project's observations, oldest first by ``observed_at``, then ``source_id``."""
+
+    @abstractmethod
+    async def record_annotation(self, annotation: Annotation) -> bool:
+        """Store a proposed annotation beside its observation (§0.4, #2160), once per
+        ``annotation_id``; the observation itself is never touched. Returns whether it was new.
+        Raises ``KeyError`` for an observation the store does not hold."""
+
+    @abstractmethod
+    async def record_annotation_review(self, reviewed: Annotation) -> None:
+        """Store an annotation's review. The first review stands: a second never rewrites who or
+        when. Raises ``KeyError`` for an annotation the store does not hold."""
+
+    @abstractmethod
+    async def list_annotations(self, project_id: str) -> list[Annotation]:
+        """A project's annotations, reviewed or not, oldest first."""
 
     @abstractmethod
     async def record_revision(self, revision: PatternRevision) -> bool:
