@@ -56,7 +56,9 @@ python scripts/dev/mypy_ratchet.py   # mypy against its baseline: no new type er
 python scripts/dev/build_agent.py <role>           # Build agent package locally (required before Docker build)
 ./scripts/dev/ops/rebuild_and_deploy.sh agents      # Rebuild and deploy all agents
 ./scripts/dev/ops/rebuild_and_deploy.sh runtime-api # Rebuild runtime API
-./scripts/dev/ops/rebuild_and_deploy.sh all         # Rebuild everything
+./scripts/dev/ops/rebuild_and_deploy.sh all         # Rebuild everything (the opt-in sandbox too, when it runs)
+./scripts/dev/ops/rebuild_and_deploy.sh sandbox     # Rebuild and start the sandbox service (#2193)
+python scripts/dev/verify_loaded.py                 # After a rebuild: the loaded checks, then the deploy record
 ```
 
 ### Docker

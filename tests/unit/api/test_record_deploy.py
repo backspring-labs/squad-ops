@@ -18,7 +18,7 @@ import pytest
 
 from adapters.cycles.memory_deploy_registry import MemoryDeployRegistry
 from squadops.api.runtime import record_deploy as recorder
-from squadops.cycles.deploy_record import DeployFactsError, ModelWeights, ServiceImage
+from squadops.cycles.deploy_record import DeployFactsError, DeployRecord, ModelWeights, ServiceImage
 from squadops.llm.models import ModelInfo
 
 NOW = datetime(2026, 9, 29, 23, 0, tzinfo=UTC)
@@ -177,4 +177,128 @@ async def test_the_one_off_loads_the_deploys_config_as_the_runtime_does(monkeypa
 
     assert seen.get("secret_provider_factory") is secret_provider_for
     assert len(record.services) == 4
+    pool.close.assert_awaited_once()
+
+
+# --- the check (#2193): whether the latest record describes what runs, writing nothing ---
+
+_RUNNING = {
+    "recorded_by": "record_deploy.sh --check",
+    "services": [
+        {"service": "runtime-api", "image_id": "sha256:api", "revision": "7acc2bc1"},
+        {"service": "sandbox-service", "image_id": "sha256:435ca602e23c99", "revision": None},
+    ],
+}
+
+
+@pytest.mark.parametrize(
+    "recorded, running, why",
+    [
+        (
+            [("runtime-api", "sha256:api"), ("sandbox-service", "sha256:435ca602e23c99")],
+            _RUNNING["services"],
+            [],
+        ),
+        (  # rebuild 11: the sandbox rebuilt three seconds after the record
+            [("runtime-api", "sha256:api"), ("sandbox-service", "sha256:2ee90a99609e55")],
+            _RUNNING["services"],
+            ["sandbox-service runs 435ca602e23c; dep_a records 2ee90a99609e"],
+        ),
+        (
+            [("runtime-api", "sha256:api")],
+            _RUNNING["services"],
+            ["sandbox-service runs 435ca602e23c, which dep_a does not record"],
+        ),
+        (
+            [("runtime-api", "sha256:api"), ("sandbox-service", "sha256:435ca602e23c99")],
+            _RUNNING["services"][:1],
+            ["sandbox-service is recorded (435ca602e23c) but does not run"],
+        ),
+    ],
+    ids=["describes", "rebuilt-after", "started-since", "stopped-since"],
+)
+async def test_the_check_names_each_service_the_latest_record_misdescribes(recorded, running, why):
+    registry = MemoryDeployRegistry()
+    await registry.record(
+        DeployRecord(
+            "dep_a",
+            NOW,
+            "rebuild_and_deploy.sh all",
+            "fd492323",
+            tuple(ServiceImage(s, i, None) for s, i in recorded),
+            (),
+        )
+    )
+
+    record, stale = await recorder.check_deploy({"services": running}, registry=registry)
+
+    assert record.deploy_id == "dep_a"
+    assert stale == why
+    assert [r.deploy_id for r in registry._records.values()] == ["dep_a"]  # nothing written
+
+
+async def test_with_no_record_the_check_fails_rather_than_passing_empty():
+    record, stale = await recorder.check_deploy(_RUNNING, registry=MemoryDeployRegistry())
+
+    assert record is None
+    assert stale == ["no deploy is recorded"]
+
+
+@pytest.mark.parametrize(
+    "stdin, answer, expected_exit, said",
+    [
+        (json.dumps(_RUNNING), [], 0, "dep_a describes what runs: 2 services"),
+        (
+            json.dumps(_RUNNING),
+            ["sandbox-service runs 435ca602e23c; dep_a records 2ee90a99609e"],
+            1,
+            "dep_a does not describe what runs: sandbox-service runs 435ca602e23c",
+        ),
+        ("not json", None, 2, ""),
+    ],
+    ids=["describes", "stale", "unreadable"],
+)
+def test_the_check_command_exits_non_zero_when_the_record_is_stale(
+    monkeypatch, capsys, stdin, answer, expected_exit, said
+):
+    """``verify_loaded`` and ``record_deploy.sh --check`` read the exit code: a stale record that
+    exited 0 would pass as describing the deploy."""
+    from squadops.api.runtime import deploy_check
+
+    monkeypatch.setattr("sys.stdin", io.StringIO(stdin))
+    record = SimpleNamespace(deploy_id="dep_a", services=(1, 2))
+
+    async def _answer(facts):
+        recorder.services_from_facts(facts)
+        return record, answer
+
+    monkeypatch.setattr(deploy_check, "compose_and_check", _answer)
+
+    assert deploy_check.main() == expected_exit
+    assert said in capsys.readouterr().out
+
+
+async def test_the_check_loads_the_deploys_config_and_reads_the_registry_it_selects(monkeypatch):
+    """Wiring, entered at ``compose_and_check``, the check's own composition: the same config load
+    and registry selection the record uses, its pool closed. On a memory registry nothing is
+    recorded, so the check fails as it must on a deploy that never recorded itself."""
+    from squadops.bootstrap.secrets import secret_provider_for
+
+    seen = {}
+
+    def load_config(**kwargs):
+        seen.update(kwargs)
+        return SimpleNamespace(
+            db=SimpleNamespace(url="postgresql://unused"),
+            cycles=SimpleNamespace(registry_provider="memory"),
+        )
+
+    pool = AsyncMock()
+    monkeypatch.setattr("squadops.config.load_config", load_config)
+    monkeypatch.setattr("adapters.persistence.pool.create_pool", AsyncMock(return_value=pool))
+
+    record, stale = await recorder.compose_and_check(_RUNNING)
+
+    assert seen.get("secret_provider_factory") is secret_provider_for
+    assert (record, stale) == (None, ["no deploy is recorded"])
     pool.close.assert_awaited_once()

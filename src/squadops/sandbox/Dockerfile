@@ -27,6 +27,9 @@ RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements/api.l
 
 # Cache-bust: when SOURCE_HASH changes, Docker invalidates this layer and below
 ARG SOURCE_HASH=unknown
+# #2193: the same value as an OCI label, as the runtime and agent images carry it (#1720), so the
+# deploy record names the commit this image was built from.
+LABEL org.opencontainers.image.revision="${SOURCE_HASH}"
 
 COPY src/ ./src/
 COPY adapters/ ./adapters/
