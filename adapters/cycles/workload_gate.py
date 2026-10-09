@@ -78,8 +78,9 @@ PLAN_VALIDATION_DECIDER = "system:plan_validation"
 
 @dataclass(frozen=True)
 class _TierReading:
-    """The tier's verdict on a plan gate, with the design's decisions still open after the late
-    answers on record: what an escalation records, by id, for a later gate to match (§24bl)."""
+    """The tier's verdict on a plan gate, with the decisions it leaves open: the design's open
+    questions, and each decision that cites a late answer the plan no longer carries (§24bm). An
+    escalation records their ids for a later answer to match (§24bl)."""
 
     verdict: TierVerdict
     open_decisions: tuple[tuple[str, str], ...]
@@ -526,9 +527,10 @@ class WorkloadGate:
         current_run_id: str,
     ) -> _TierReading | None:
         """§24bj: the tier's reading of this plan gate, or ``None`` when the cycle's campaign does
-        not declare it: a supervised campaign, or a cycle no campaign launched. The design's open
-        decisions are read against the late answers on record in the project's campaigns
-        (§24bl): one whose id an answer covers is answered, and the rest stay open."""
+        not declare it: a supervised campaign, or a cycle no campaign launched. An open question
+        stays open: a late answer reaches the plan only by being carried into its manifest at the
+        proposal launch (§24bm). A decision that cites one is answered only while its choice is
+        still the answer on record; otherwise it is open, and escalates."""
         if not cycle.campaign_id:
             return None
         if self._campaign_registry is None:
