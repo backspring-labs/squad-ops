@@ -8,7 +8,8 @@ makes.
 
 **Three decisions stay distinct, and all three are the owner's:**
 - adopting this pre-registration;
-- approving the lesson, for a bounded experiment (§1);
+- approving the lesson, for a bounded experiment (§1). The owner delegated this one on 2026-10-09, conditional on
+  its replay check. It is recorded as `apr_7999ec25e1b8f229` (§1, §8);
 - opening the window.
 
 **Revision 2 (2026-10-09), from the owner's review of the 2.2 shakeout and of revision 1.** These are the changes:
@@ -40,6 +41,23 @@ makes.
     only, so `builder.assemble` is dispatched twice.
   - A fault-injected cycle is a diagnostic by construction, so its failures never become observations (SIP-0110 §0.3).
   - It must show two distinct exposures, attempts 1 and 2, each joined to its own exact envelope.
+  - **Result (2026-10-09): it showed both.** The cycle was `cyc_9b57a88dfff2`, with framing run `run_7eff6a842af4`
+    and implementation run `run_7541d8cb4939`. It ran from 15:52 to 16:44Z on rebuild 11 (`fd492323`), with config
+    `docs/plans/verification-sets/2-2-0-diagnostic-redispatch-exposure.yaml`.
+    - The fault bit on attempt 1 of `task-run_7541d8cb-m004-builder.assemble` (`fault_injection: APPLIED`, a
+      48-character reply). The executor re-dispatched it ("Retryable failure … (attempt 1), retrying"). Attempt 2 was
+      outside the fault's scope and passed.
+    - Two exposures:
+      - `exp_dfafd4990cfd0e1f`, attempt 1, joined to envelope `6d97c894…` (no prior attempt), 183,580 bytes;
+      - `exp_185682de56b3b77e`, attempt 2, joined to envelope `1bc8218a…` (`prior_attempts: 1`), 184,941 bytes.
+
+      Both were `memory_disabled`, from the same snapshot.
+    - `verify_authoring_envelopes.py`: 3 of 3 framing envelopes and 8 of 8 implementation envelopes reconstruct byte for
+      byte, and each has its own exposure.
+    - The cycle recorded no memory observation (0 rows), as a fault-injected diagnostic must not. Every container
+      logged 0 errors, 0 tracebacks and 0 `memory_exposure_not_recorded`.
+    - The cycle reached `accepted`, but it is uncounted: a diagnostic by construction.
+    - So a second attempt's exposure (#2166) is now proven live. The dispute lifecycle (#2169) still is not.
 - **The deploy.** The window opens on the deploy its manifest records (§9), after the normal required checks
   (`verify_loaded`, the health probes, main's CI read).
 
@@ -56,8 +74,35 @@ makes.
   - If the reviewed annotations of #2160 (§3) are cited, the citations change, and so does the text, which describes
     the returns it rests on. **Then @1 is kept as it stands, and a new revision is drafted and frozen.** The revision
     the owner is asked to approve is named here once it is settled, with its text hash.
+  - **Settled: `pat_0b4aef8aea974e06@2`.** @1 is kept as it stands.
+    - Frozen 2026-10-09 at 15:58:51Z.
+    - Text sha256 `9c4df85e86b15e052cc22bc3ebbee4245424f6f4ff1c50823005bbf3c28a34d5`, 1,085 characters.
+    - Drafted by `claude-opus-5-5`, the supervisor.
+    - It cites five returns across four campaigns: @1's two, plus the three prose-classified returns through their
+      reviewed annotations (§3):
+      - `proposal_ruling:cmp_b3a681c4f994:ctl_fca96af040ba`: `criteria_not_checkable`, annotation
+        `ann_dde5f2a917dad247`;
+      - `proposal_ruling:cmp_51919765933d:ctl_d1437f79b284`: `criteria_not_checkable`, annotation
+        `ann_baaec31b89b7a76f`;
+      - `proposal_ruling:cmp_58d4e3b0a5d3:ctl_7d37e12ad55a`: `conflicts_with_an_earlier_increment`, annotation
+        `ann_7abe6ec69b6400f7`.
+    - The owner delegated the annotations' review to the supervisor on 2026-10-09 ("can you do this for me? I honestly
+      trust your judgement here"). The supervisor also proposed them. So annotator and reviewer are the same, and each
+      annotation's notes say so.
+    - Its text changes from @1 only where it describes the returns it rests on: "returned five times, in four
+      campaigns, … once for restating a criterion an earlier increment had frozen", where @1 said "returned twice".
   - **The replay check (§8) and the combined-guidance check are run on that exact revision,** and the approval records
     both.
+  - **The owner delegated this revision's bounded approval to the supervisor** (2026-10-09, 12:09 ET: "delegate the
+    approval to you, go ahead").
+    - The delegation holds only if §8's replay check passes its gates: every case valid, no case worse with the lesson,
+      no guardrail breached, and the combined check clean. If any gate fails, the lesson is not approved and the owner
+      is told why.
+    - The supervisor both drafted and approves the lesson. The approval's ruling says so, and so does every readout.
+    - The approval record has no expiry field, so the bound below is procedural. The window's close record carries it.
+    - **Recorded: `apr_7999ec25e1b8f229`, 2026-10-09 at 17:42:26Z.** All four gates passed (§8). It was recorded before
+      the window opens, which is §4's recommended timing. If the owner chooses to approve after campaign 2 instead,
+      the approval is revoked before campaign 1 launches.
 - **Its applicability is limited to what was tested:** `group_run`, `strategy.propose_increment`, `strat`,
   `fullstack_fastapi_react`, and the `qwen3.8` configuration recorded in the manifest (§9). Wider applicability needs
   evidence on that stack or model.
@@ -316,6 +361,52 @@ shape.
 deploy, with the rubric's version 2. The combined-guidance check is run for the same revision. Both are recorded here
 and in the approval.
 
+**On @2** (`var/replays/lesson-check-criterion-already-satisfied-r2`, 2026-10-09, 16:45–17:38Z, on rebuild 11,
+`fd492323`):
+- **The setup is @1's:** the same four cases, both arms, 2 generations each, arm-scheduling seed 7, `qwen3.8:27b`. The
+  rubric is version 2. The lesson is `pat_0b4aef8aea974e06@2`, text sha256 `9c4df85e…`, as frozen.
+- **Before any output** (rubric @2), two records were written, both under `scoring/`:
+  - **The case objective record** (16:16Z, before the replay ran) finds legitimate work remaining in all four cases:
+    - in the three first increments, capacity, datetime sorting and seed data are unbuilt;
+    - in the second, datetime sorting and seed data are unbuilt.
+
+    No case leaves the comparison.
+  - **The calibration** scored five known examples from counted campaign 1's rulings, 2 positive and 3 negative. All
+    five came out as expected. They are not evidence.
+- **Instrument validity: 4 of 4 cases.**
+- **16 of 16 authorings parsed.** They were scored blind: blinding seed 20261009, and the key was joined after the
+  verdicts were written (`scores-r2.json`, sha256 `22bbce9b…`).
+
+  | case | what it proposed | baseline `present` | scoped memory `present` |
+  |---|---|---|---|
+  | `d91da940b33e` (first increment) | capacity | 0 of 2 | 0 of 2 |
+  | `2b9392a50e7b` (first increment) | capacity | 0 of 2 | 0 of 2 |
+  | `ef51c555bbb2` (first increment) | capacity | 0 of 2 | 0 of 2 |
+  | `cd0e5c799a25` (second increment; T1–T4 frozen) | datetime sorting | 0 of 2 | 0 of 2 |
+
+  - Every output is `absent after assessment`. Its 46 new criteria were each settled against a manifest element or a
+    frozen convention, and none is already satisfied.
+  - **4 ties: no improvement, no worsening.** No case is partly assessed, and no output is `not applicable`.
+  - The two arms wrote 24 and 22 new criteria, so the memory arm shows no sign of avoidance.
+  - No adjudication was required: there was no win, no worsening and no ambiguous verdict.
+- **What it shows is @1's finding again: no harm observed on these four cases, and no benefit shown,** because the
+  baseline did not make the mistake on any of them.
+- **No guardrail was breached in either arm.** Every output proposes the objective's next Tier 1 item, inside the
+  allowed scope, with criteria that fail on its accepted application.
+  - Two sorting outputs add a key the manifest does not use to their endpoint definition (`sort`, `sort_by`). The
+    parser drops it (`capabilities/scaffold.py:613-621`), so it is inert and draws no return class.
+- **The context cost:** the section is 1,622 characters (265 words), against prompts of about 26,000 characters.
+  The same rendering gives @1's 1,542.
+- **The combined check:** `squadops lessons together group_run pat_0b4aef8aea974e06@2` returns none: no approved
+  lesson meets it.
+- **The deploy:** the check ran on rebuild 11. The window's candidate deploy is rebuild 12 (`ed540e1b`, §9). It
+  changes no prompt asset and no proposal-writing code from `fd492323`. Its one `adapters/` change is #2195's two
+  docstrings.
+- **The approval, `apr_7999ec25e1b8f229`** (17:42:26Z), was recorded by the supervisor under the owner's delegation
+  (§1), once all four gates passed. Its ruling states the bound and discloses that the drafter is the approver.
+  Its replay check and combined check reference this record. The file it was posted from is `approval.yaml`, beside
+  the replay.
+
 ## 9. The experiment manifest (recorded as the window opens)
 
 Each input is recorded by version or hash, in `var/replays/<window>/manifest.json`, with a copy committed beside this
@@ -328,6 +419,35 @@ file when the window closes:
     file under `src/`, `adapters/` or `agents/` differs from what the shakeout validated. The changes to come before the
     window (#2160, the §24bl correction) make a new deploy, and the manifest records the deploy the window actually
     opens on;
+  - **superseded by rebuild 11** (2026-10-09), source `fd492323`, deploy record **`dep_9f4b14133155`**:
+    - All 21 running services match the record's image ids.
+    - `dep_2b80a59d0001`, written by the rebuild itself at 15:43:32Z, names the previous sandbox image. The sandbox
+      service was rebuilt three seconds later, after the record (#2193). `dep_9f4b14133155` was recorded by hand at
+      16:45:42Z, and it differs from `dep_2b80a59d0001` only in `sandbox-service`.
+    - `verify_loaded`: 68 of 68.
+    - **What differs from the shakeout's validated deploy (`a84e085f`)**, besides #2172's volumes:
+      - **#2186 (#2160):** the reviewed annotations, which add a store table (migration 1770), routes, CLI commands,
+        and the citation rule a draft is held to (`memory/approval.py`). Recall and the snapshot a unit receives are
+        unchanged.
+      - **#2189 (§24bm):** the plan-review tier's reading of a late answer (`workload_gate.py`, which returns before it for
+        any campaign whose `plan_gate` is not `PlanGate.TIER`, line 540), and a tier campaign's proposal launch
+        (`campaigns/progress.py:1212`, under `PlanGate.TIER`). The window's campaigns are supervised (D3), so neither path is on theirs.
+      - The rest is prose or tooling: #2187 (a SIP), #2190 (`verify_loaded`), #2191 (a config), #2192 (a loaded-check
+        row).
+
+      Each is behavioural only where named above. Each is proven by its tests and its loaded check (2160, 2188). The
+      redispatch diagnostic ran an ordinary `fastapi` cycle on this deploy to `accepted`, with every envelope exact (§0).
+      No campaign has run on it yet.
+    - The window's manifest records the deploy it actually opens on. Any rebuild before it supersedes this one;
+  - **superseded by rebuild 12** (2026-10-09), source `ed540e1b`, deploy record **`dep_4015cab5e042`**:
+    - It carries #2194, which fixes #2193. `all` now rebuilds the running sandbox before the record, the sandbox image
+      carries its revision label, and `verify_loaded` checks the latest record against what runs. It also carries
+      #2195, two docstrings in `workload_gate.py`.
+    - `verify_loaded`: 68 of 68, and `deploy record: dep_4015cab5e042 describes what runs: 21 services`. The
+      sandbox's record now names `ed540e1b`. `/health/infra`: 200.
+    - Against rebuild 11, no prompt asset and no proposal-writing code changed (§8). Against the shakeout's
+      `a84e085f`, the differences are rebuild 11's, listed above, plus this deploy tooling.
+    - **This is the deploy the window would open on,** unless something lands before the owner opens it;
 - **the prompts and fragments:** a hash of `src/squadops/prompts/`;
 - **configuration:**
   - `config/`;
@@ -368,6 +488,8 @@ As the rubric states them:
 5. **The lesson's exact revision and its bounded approval (§1).**
    - This depends on #2160's annotations, which the owner reviews.
    - The approval is a separate decision from adopting this document.
+   - **Done under the owner's delegation:** the annotations were reviewed. `pat_0b4aef8aea974e06@2` is approved,
+     bounded, as `apr_7999ec25e1b8f229`, after its replay check passed every gate (§8).
 6. **When to approve (§4):** before campaign 1 (recommended), or after campaign 2 if the activation boundary is itself
    an objective.
 7. **Opening the window:** a separate decision, after the readiness work in §0.
