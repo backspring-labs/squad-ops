@@ -28,7 +28,7 @@ import sys
 import uuid
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from squadops.cycles.deploy_record import (
     DeployFactsError,
@@ -41,6 +41,11 @@ from squadops.llm.models import ModelInfo
 from squadops.ports.cycles.deploy_registry import DeployRegistryPort
 from squadops.ports.cycles.squad_profile import SquadProfilePort
 from squadops.ports.llm.provider import LLMPort
+
+if TYPE_CHECKING:
+    import asyncpg
+
+    from squadops.config import AppConfig
 
 logger = logging.getLogger(__name__)
 
@@ -129,17 +134,20 @@ async def check_deploy(
     return record, stale_services(record, running)
 
 
-def _load_deploy_config() -> Any:
+async def _deploy_config_and_pool() -> tuple[AppConfig, asyncpg.Pool]:
+    """The deploy's configuration, loaded as ``main.build_app`` and the agent entrypoint load it,
+    and the one pool over its database (#577). The configuration carries ``secret://``
+    references, which only a secret provider resolves (the 1.9 deploy's first record failed on
+    exactly this)."""
+    from adapters.persistence.pool import create_pool
     from squadops.bootstrap.secrets import secret_provider_for
     from squadops.config import load_config
 
-    # As main.build_app and the agent entrypoint load it: the deploy's configuration carries
-    # secret:// references, which only a secret provider resolves (the 1.9 deploy's first
-    # record failed on exactly this).
-    return load_config(secret_provider_factory=secret_provider_for)
+    config = load_config(secret_provider_factory=secret_provider_for)
+    return config, await create_pool(config.db.url, min_size=1, max_size=2)
 
 
-def _deploy_registry(config: Any, pool: Any) -> DeployRegistryPort:
+def _deploy_registry(config: AppConfig, pool: asyncpg.Pool) -> DeployRegistryPort:
     from adapters.cycles.factory import create_deploy_registry
 
     selector = config.cycles.registry_provider
@@ -147,10 +155,7 @@ def _deploy_registry(config: Any, pool: Any) -> DeployRegistryPort:
 
 
 async def compose_and_check(facts: Mapping[str, Any]) -> tuple[DeployRecord | None, list[str]]:
-    from adapters.persistence.pool import create_pool
-
-    config = _load_deploy_config()
-    pool = await create_pool(config.db.url, min_size=1, max_size=2)
+    config, pool = await _deploy_config_and_pool()
     try:
         return await check_deploy(facts, registry=_deploy_registry(config, pool))
     finally:
@@ -160,10 +165,8 @@ async def compose_and_check(facts: Mapping[str, Any]) -> tuple[DeployRecord | No
 async def _compose_and_record(facts: Mapping[str, Any]) -> DeployRecord:
     from adapters.cycles.factory import create_squad_profile_port
     from adapters.llm.factory import create_llm_provider
-    from adapters.persistence.pool import create_pool
 
-    config = _load_deploy_config()
-    pool = await create_pool(config.db.url, min_size=1, max_size=2)
+    config, pool = await _deploy_config_and_pool()
     try:
         registry = _deploy_registry(config, pool)
         profile_selector = config.cycles.squad_profile_provider
