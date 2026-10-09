@@ -563,3 +563,24 @@ checks:
       run, task = "run_7fabca91826f", "task-run_7fabca91-m007-qa.test"
       print(exposure_id_for(run, task), exposure_id_for(run, task, 2) != exposure_id_for(run, task))
     expect: exp_dcf598a011e0244f True
+  - id: "2165"
+    what: SIP-0110 §0.2 - the exposures table holds one row per authoring invocation, not per task, so a re-dispatch's own exposure is stored (reads the live table's constraint kinds; writes nothing)
+    container: squadops-runtime-api
+    code: |
+      import asyncio
+      import asyncpg
+      from squadops.bootstrap.secrets import secret_provider_for
+      from squadops.config import load_config
+      async def kinds():
+          url = load_config(secret_provider_factory=secret_provider_for).db.url
+          conn = await asyncpg.connect(url)
+          try:
+              rows = await conn.fetch(
+                  "SELECT contype::text AS contype FROM pg_constraint "
+                  "WHERE conrelid = 'memory_exposures'::regclass"
+              )
+          finally:
+              await conn.close()
+          return sorted(r["contype"] for r in rows)
+      print(asyncio.run(kinds()))
+    expect: "['p']"

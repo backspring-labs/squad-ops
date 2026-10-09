@@ -455,12 +455,14 @@ class TestMemoryLessons:
                 await conn.execute("DELETE FROM memory_approvals WHERE project_id = $1", project)
                 await conn.execute("DELETE FROM memory_revisions WHERE project_id = $1", project)
 
-    async def test_an_exposure_is_stored_once_per_task_and_a_damaged_pin_reads_as_incompatible(
+    async def test_an_exposure_is_stored_once_per_invocation_and_a_damaged_pin_reads_as_incompatible(
         self, migrated_pool
     ):
         """§0.8 against the tables. Bugs caught: a restart's second composition of a plan writing
-        a second exposure for the same task; or a pin this code cannot read raising a bare
-        ``KeyError`` that recall would report as a failed read, hiding a version skew."""
+        a second exposure for the same task; the table refusing the exposure of the task's next
+        dispatch, which is another invocation (§0.2, #2165: the deploy's re-takes ran with none);
+        or a pin this code cannot read raising a bare ``KeyError`` that recall would report as a
+        failed read, hiding a version skew."""
         import dataclasses
 
         from adapters.memory.cross_cycle import PostgresCrossCycleMemoryStore
@@ -485,11 +487,23 @@ class TestMemoryLessons:
             recalled=Recalled("snp_x", RecallDisposition.NONE_ELIGIBLE),
             recorded_at=datetime(2026, 10, 8, tzinfo=UTC),
         )
+        retake = Exposure.of(
+            run_id=run_id,
+            task_id="task-1",
+            cycle_id="cyc_1",
+            agent_id="neo",
+            seam="build_authoring",
+            query=query,
+            recalled=Recalled("snp_x", RecallDisposition.NONE_ELIGIBLE),
+            recorded_at=datetime(2026, 10, 8, 1, tzinfo=UTC),
+            attempt=2,
+        )
         store = PostgresCrossCycleMemoryStore(pool=migrated_pool)
         try:
             assert await store.record_exposure(exposure) is True
             assert await store.record_exposure(exposure) is False
-            assert await store.list_exposures(run_id) == [exposure]
+            assert await store.record_exposure(retake) is True
+            assert await store.list_exposures(run_id) == [exposure, retake]
             assert await store.get_exposure(exposure.exposure_id) == exposure
             assert exposure in await store.list_project_exposures("group_run")
             # §0.10: assessments are append-only; the project's are read oldest first.
