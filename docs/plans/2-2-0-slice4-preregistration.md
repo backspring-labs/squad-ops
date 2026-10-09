@@ -1,10 +1,14 @@
-# 2.2.0 — SIP-0110 Phase 1's window: pre-registration (DRAFT, for the owner)
+# 2.2.0 — SIP-0110 Phase 1's window: pre-registration (ADOPTED 2026-10-09)
 
 **Drafted 2026-10-08 by the supervisor, before any scored run. The owner adopts or amends it; the
 window opens on the owner's word, never before** (the 2.2 plan §3 step 8, D8; the 2.2 standing
 authority's stop list). It fixes everything SIP-0110 §0.12 says a pre-registration fixes, and it reads
 the repeat report (D14). Each item marked **owner** is a choice this draft recommends and the owner
 makes.
+
+**Adopted by the owner, 2026-10-09, about 14:40 ET, as drafted** ("I am good with all other recommendations to proceed
+on the plan", answering the readiness packet). The owner's choices on §11 are recorded there. The window opens on the
+deploy §9 names, under this document as merged.
 
 **Three decisions stay distinct, and all three are the owner's:**
 - adopting this pre-registration;
@@ -479,6 +483,21 @@ As the rubric states them:
 - memory cannot win with an empty or avoiding output.
 
 ## 11. For the owner, before the window opens
+
+**Ruled 2026-10-09, about 14:40 ET.** The owner adopted this document as drafted, and accepted the packet's
+recommendations:
+1. **adopted as drafted;**
+2. **the budget cap:** five campaigns or 48 hours of window wall-clock, whichever comes first, not extended in response
+   to results;
+3. **the supported-benefit bar:** the five conditions of §6, as drafted;
+4. **the evaluator:** the supervisor, blind to the arm, with **every apparent win, every worsening and every ambiguous
+   verdict adjudicated independently** by an evaluator that did not draft the lesson (a fresh-context agent), and the
+   disclosure in every readout (§6);
+5. **the lesson:** `pat_0b4aef8aea974e06@2`, approved under the owner's delegation as `apr_7999ec25e1b8f229` (§1, §8);
+6. **when to approve:** before campaign 1 (done);
+7. **opening the window:** approved, on rebuild 12 (§9).
+
+The questions as they were put:
 
 1. **Adopt or amend this pre-registration.**
 2. **The budget cap (§6):** five campaigns or 48 hours, not extended in response to results.
