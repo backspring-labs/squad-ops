@@ -383,6 +383,9 @@ set is the framework's yardstick, and an approved lesson must not move it unanno
 - **SIP-042's `MemoryPort` is not Phase 1's store.** Its LanceDB adapter is each agent's own store, embedded in the
   agent's container (`agents/entrypoint.py`), and used today only by console chat. The runtime API, where recall and
   the plan composer run, has none. Phase 2 chooses a similarity index when it adds ranking (§8).
+  > **2026-10-09 (§5f):** that store holds no record on the deploy and cannot write one (#2171), and its only reader,
+  > console chat, reaches only joi. The memory entry-points proposal makes it dormant (2.3) and retires it (2.5);
+  > a similarity index, if one is ever added, is derived from Postgres records and owns none of them.
 - The recall policy behind `FailurePatternRecallPort` owns eligibility, authorization, snapshot selection, ordering and disclosure.
 - The executor is a consumer. Duty and ambient callers will reuse the policy rather than reimplement its trust rules.
 
@@ -632,7 +635,7 @@ Decision records belong to the Design Decision Register and #950 (§5b).
 | SIP-0109 | ruling events, a campaign's admission point (where its snapshot is pinned), gate authority, escalation and continuation |
 | the cycle registry (SIP-0064, SIP-0067) and the correction loop (SIP-0086) | a standalone cycle's creation (where its snapshot is pinned), its gate decisions, and its correction rounds' records |
 | this SIP's store, in Postgres beside the cycle registry (§0.8, the 2.2 plan's D13) | the four records, their idempotency keys and their reconciliation |
-| SIP-042 | each agent's own semantic store, which Phase 1 does not use |
+| SIP-042 | each agent's own semantic store, which Phase 1 does not use. **2026-10-09 (§5f):** it holds no record and is proposed for retirement |
 | the test runner (`capabilities/handlers/test_runner.py`) | each runner's failure-shape table, beside its suite-health markers and its own-frame shapes (§0.4) |
 | the replay specification (slices 1 and 2: #2105, #2106) | the pre-authoring envelope, temporal isolation, arm execution and scoring |
 | SIP-0088/0089 | persistent identity and mode compatibility |
@@ -1362,6 +1365,50 @@ templates at its commit:
 authority (the 2.2 plan §5). It corrects a count and records evidence.
 
 
+## 5f. Chat and task assignment as entry points, and the legacy agent store (2026-10-09)
+
+**What changed.** Nothing in Phase 1, and nothing in 2.2. The owner directed an explicit design for one memory
+architecture serving both direct chat and project task assignment, with execution as its driver and without carrying
+forward obsolete chat assumptions:
+
+> "The current distinction between per-agent LanceDB chat memory and SIP-0110's shared Postgres cross-cycle lessons is
+> confusing. I want an explicit design that reconciles these paths without carrying forward obsolete chat assumptions."
+
+It is proposed as `sips/proposed/SIP-Memory-Entry-Points.md` (epic #2173). **On acceptance it lands here,** as a numbered
+amendment and ledger rows, because this SIP owns memory's scopes, lifecycle and payload (`sips/PORTFOLIO.md` Q4). It is
+not a second memory system:
+- **lessons are unchanged:** §0.4–§0.7's evidence, the auditor's draft, the replay check, the owner's approval and the
+  pinned snapshot;
+- **it adds non-lesson record kinds,** each with its own lifecycle: notes, preferences, project instructions and task
+  instructions. A person's instruction is in force by its author's authority, a lesson by evidence and approval, and a
+  conversational claim never becomes a lesson;
+- **it adds a context-assembly port** whose consumer is a task invocation or a chat turn, so chat never fabricates a
+  cycle id. The lesson section is §0.8's recall, unchanged;
+- **the unit snapshot (§0.7) would pin the in-force project instructions beside the approved lessons,** and memory
+  disabled would exclude every memory-sourced section through every entry point.
+
+**The evidence** (read on the deploy `dep_34b4117e7ede`, 2026-10-09):
+- **SIP-042's store holds no record in any of the eight agents** (seven empty directories; joi's one empty table, never
+  written).
+- **It cannot write one (#2171).** The embedder is built at `localhost:11434`, its model is not installed, and the
+  failure is logged at DEBUG.
+- **Its only reader, console chat, reaches only joi,** the one agent with `a2a_messaging_enabled`.
+- **Chat sends the agent only the current message** (#2175). The session's history is stored and never passed.
+- **An operator's instruction reaches a task only through the PRD, the request profile or a gate.** An increment
+  approval's notes reached no prompt in `cmp_45729166756f` (2026-10-08).
+- **This SIP's store** holds 88 observations, 1 revision, 0 approvals, 14 snapshots and 174 exposures.
+
+**Text superseded, marked where it stands:**
+- §0.8's description of SIP-042's store as the one console chat uses;
+- §0.14's SIP-042 row;
+- §6 items 3 and 4's "behind `MemoryPort`" and "the same port";
+- §12's #571 prerequisite (#571 is closed).
+
+The points those passages make (recall as a port policy; discretionary access per mode; the quarantine rule) stand.
+
+**Who ruled it.** The owner's direction of 2026-10-09, quoted above. The facts were read by the implementer. The
+design, its placement (Q25) and #2171's disposition (Q26) wait for the owner's acceptance.
+
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 
 Phase 1 implements the cycle-mode loop, but the substrate is designed so duty- and
@@ -1383,11 +1430,17 @@ Phase 1's implementation (normative), with the utilization sketch they exist to 
 3. **Recall is a port operation, not an executor feature.** The composite-scored,
    confidence-gated recall of §5 lives behind `MemoryPort`, callable from any mode. The
    executor's plan-authoring seam is Phase 1's *consumer*, not the recall API's owner.
+   > **2026-10-09 (§5f):** superseded as to *where*. Recall is the policy behind `FailurePatternRecallPort`, not
+   > `MemoryPort`; the entry-points proposal adds a context-assembly port that any consumer, a chat turn included,
+   > calls with no fabricated cycle. The point, recall as a port policy, stands.
 4. **Access discipline is a per-mode policy, not a substrate property.** Cycle mode:
    seam-mediated only (§4). Duty and ambient modes: agent-initiated recall/remember
    through the same port is the intended shape — there is no deterministic pipeline seam
    in a duty window waiting on events (SIP-0091) or in ambient presence, so discretionary
    access is not a compromise there; it is the only coherent design.
+   > **2026-10-09 (§5f):** "the same port" is not SIP-042's `MemoryPort`, which is proposed for retirement. It is the
+   > recall policy, and, if the entry-points proposal is accepted, its capture and context-assembly interfaces. The
+   > quarantine rule below is unchanged.
 
 **Utilization sketch (non-normative, later phases):**
 
@@ -1544,6 +1597,7 @@ Per the ratified post-1.4 reshuffle (`docs/plans/post-1-4-roadmap-reconciliation
   *learned-experience* leg of the capability-backed agent equation — **agent = identity
   (SIP-0088/0089) + capability (packs) + memory (this SIP) + policy + evidence
   history** — which is why it precedes the umbrella rather than riding inside it.
+- **(2026-10-09, §5f: #571 is closed, and the LanceDB recall path it fixed is proposed for retirement.)**
 - **Hard prerequisite — #571 (added 2026-08-04, verified against the code):** the
   SIP-042 LanceDB adapter's recall path has two defects that Phase 1 would build
   directly on top of. `adapters/memory/lancedb.py:130` applies `.limit()` *before*

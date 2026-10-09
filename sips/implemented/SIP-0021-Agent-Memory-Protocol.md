@@ -15,6 +15,13 @@ original_filename: "SIP-021-Agent-Memory-Protocol.md"
 > The full memory system described below (LanceDB persistence, semantic search, agent-specific
 > memory managers, cleanup policies) has not been built. This SIP should be treated as a design
 > spec for future implementation, not a description of current functionality.
+>
+> **Superseded as a design (2026-10-09).** Its agent-specific memory patterns, its "lore" and its per-agent stores are
+> not carried forward. Cross-cycle learning is SIP-0110's; chat and task-assignment memory is the entry-points proposal's
+> (`sips/proposed/SIP-Memory-Entry-Points.md`, epic #2173), which lands in SIP-0110 on acceptance. The data model it did
+> ship (`MemoryEntry`, `MemoryQuery`, `MemoryResult`) serves only SIP-042's LanceDB store, which holds no record on the
+> deploy and is proposed for retirement (#2184). The owner's direction of 2026-10-09: "without carrying forward obsolete
+> chat assumptions."
 
 # SIP-021: Agent Memory Protocol
 
