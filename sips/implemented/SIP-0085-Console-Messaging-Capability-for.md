@@ -495,3 +495,38 @@ route to the standard in `docs/architecture/api-route-lanes.md`.
 **Ruled by.** #218's standard and #219 (decision: move, not exempt); the 1.7.3 plan §3.2
 steps 7–8.
 
+
+### 2026-10-09 — chat's memory assumptions are not carried forward; history was never wired
+
+**What changed.** Nothing in the code yet. Two of this SIP's statements no longer describe the deploy, and its memory
+design (§10) is superseded by the owner's direction for one memory architecture serving chat and task assignment
+(epic #2173; accepted on 2026-10-09 into SIP-0110, §5g and Appendix A):
+- **§10's semantic memory is superseded:**
+  - each chat agent's own LanceDB store, written on the phrases "remember this", "note that", "save this" and
+    "store this" (`adapters/comms/chat_executor.py:39`);
+  - recall by similarity, with no scope, authorization or disclosure;
+  - memory as best-effort with silent failures (the executor's contract P2-RC4).
+
+  In their place:
+  - project-scoped records in Postgres, which any authorized agent reads from one copy;
+  - capture with a stated kind and scope, confirmed by the person;
+  - each turn's context assembled in the runtime API and disclosed;
+  - every failure visible.
+- **§4, §7 and §9's conversation history never reached the agent.** The route forwards only the current message
+  (`src/squadops/api/routes/chat/routes.py:177–179`); `_load_history` (`:290`) is never called, against the executor's
+  own contract P2-RC5. This is a defect, #2175, and not superseded: the fix wires the history as this SIP designed it,
+  and before any history is replayed it checks that the session's owner is the authenticated user and its agent the one
+  requested, on resume, on reads and in assembly. A session id is not authorization.
+
+The transport (console → runtime API → A2A) and the persistence (`chat_sessions`, `chat_messages`, Redis) stand.
+
+**Evidence** (deploy `dep_34b4117e7ede`, 2026-10-09):
+- **The eight agent stores hold no record.** Joi's holds one empty table.
+- **A store cannot embed** (#2171): the embedder is built at `localhost:11434`, and its model is not installed.
+- **Every memory failure is logged at DEBUG** (`chat_executor.py:179`, `:318`).
+- **Only joi has messaging enabled** (`agents/instances/instances.yaml:97`).
+- **The chat tables hold two sessions from 2026-03-16,** six messages in all, none with a trigger phrase.
+
+**Ruled by.** The owner, 2026-10-09: "an explicit design that reconciles these paths without carrying forward obsolete
+chat assumptions." The replacement design awaits the owner's acceptance. Until it ships, the legacy path is made dormant
+with its failures visible (#2174).
