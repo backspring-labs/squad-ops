@@ -44,16 +44,34 @@ _DISPUTE = (
     "- check: acceptance:declared_imports\n"
     "  file: frontend/src/views/RunList.jsx\n"
     "  criterion_id: vc-view-compiles-run-list\n"
-    "  reason: the @/lib alias is declared in the tsconfig paths\n"
+    "  reason: tsconfig.json declares the alias as `@/*: src/*`, which the check does not read\n"
     "```\n"
 )
 _DISPUTED = {
     "check": "acceptance:declared_imports",
     "file": "frontend/src/views/RunList.jsx",
     "criterion_id": "vc-view-compiles-run-list",
-    "reason": "the @/lib alias is declared in the tsconfig paths",
+    "reason": "tsconfig.json declares the alias as `@/*: src/*`, which the check does not read",
 }
 _NAMED_FILE = "```yaml:disputed_checks.yaml\n- check: a\n  reason: b\n```\n"
+#: The shape of the qa dispute ``run_3e09bd8934f1`` dropped (#2168). Its reason opens as the log
+#: showed it ("The criterion declares `id: number`, but the builder assem"); the rest of the
+#: reason and the identities are this test's.
+_LIVE_DISPUTE = (
+    "```disputed_checks\n"
+    "- check: acceptance:field_kinds\n"
+    "  file: backend/models.py\n"
+    "  criterion_id: vc-field-kinds-run\n"
+    "  reason: The criterion declares `id: number`, but the builder assembly serializes it\n"
+    "    as a string\n"
+    "```\n"
+)
+_LIVE_DISPUTED = {
+    "check": "acceptance:field_kinds",
+    "file": "backend/models.py",
+    "criterion_id": "vc-field-kinds-run",
+    "reason": "The criterion declares `id: number`, but the builder assembly serializes it as a string",
+}
 
 
 @pytest.mark.parametrize(
@@ -61,7 +79,19 @@ _NAMED_FILE = "```yaml:disputed_checks.yaml\n- check: a\n  reason: b\n```\n"
     [
         (_FILE + "\n" + _DISPUTE, _FILE + "\n", [_DISPUTED]),
         (_NAMED_FILE, _NAMED_FILE, []),
-        ("```disputed_checks\n- check: [unclosed\n```\n", "", []),
+        (_LIVE_DISPUTE, "", [_LIVE_DISPUTED]),
+        (
+            "```disputed_checks\n- check: `acceptance:declared_imports`\n"
+            "  reason: >-\n    the alias is `@/*: src/*`,\n    in tsconfig.json\n```\n",
+            "",
+            [
+                {
+                    "check": "acceptance:declared_imports",
+                    "reason": "the alias is `@/*: src/*`, in tsconfig.json",
+                }
+            ],
+        ),
+        ("```disputed_checks\nthe suite is right and the check is not\n```\n", "", []),
         (
             "```disputed_checks\n- check: a\n- check: b\n  reason: r\n```\n",
             "",
@@ -69,13 +99,23 @@ _NAMED_FILE = "```yaml:disputed_checks.yaml\n- check: a\n  reason: b\n```\n"
         ),
         ("no block at all", "no block at all", []),
     ],
-    ids=["after a file", "a file named for it", "unparseable", "no reason", "absent"],
+    ids=[
+        "after a file",
+        "a file named for it",
+        "a reason quoting code",
+        "a check copied in backticks, the reason below",
+        "prose and no entry",
+        "no reason",
+        "absent",
+    ],
 )
 def test_the_block_is_taken_out_whole_and_only_a_well_formed_entry_disputes(
     response, kept, disputes
 ):
-    """Bug caught: a file whose path mentions the word read as a dispute; a block that does
-    not parse left in the response for the extractor; an entry with no reason counted."""
+    """Bug caught: a file whose path mentions the word read as a dispute; a block with no entry
+    left in the response for the extractor; an entry with no reason counted; a reason quoting
+    the code it is about (``id: number``), or a check copied in its backticks, dropping every
+    dispute in the block, as both of the rebuild 8 pair's qa disputes were (#2168)."""
     assert split_disputed_checks(response) == (kept, disputes)
 
 
