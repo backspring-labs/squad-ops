@@ -3089,7 +3089,7 @@ and shows each late answer recorded. It reads the store, so a restart loses noth
 - **proposal auto-approval,** until its checks exist (the 2.2 plan §2.2);
 - **an escalation that notifies anyone.** The digest is its reader, as it is the overdue rows' (§24ae).
 
-### 24bk. The escalation queue, as built, and one correction to §24bj (2026-10-08, §10, §24ae, §24aj, §24bj, #1708; implementer's reading, for the owner)
+### 24bk. The escalation queue, as built, and one correction to §24bj (2026-10-08, §10, §24ae, §24aj, §24bj, #1708; implementer's reading, ratified by the owner 2026-10-09)
 
 **The correction.** §24bj says an approval with blank notes on a question "answers nothing (§24ad),
 so the escalation stays `pending`". That cannot hold. A person's approval decides the gate, and the
@@ -3155,7 +3155,9 @@ CLI that answers an expired escalation.
 
 **Who ruled it.** The queue is §24bj's, ruled by the owner on 2026-10-08. The correction, and the
 readings above that §24bj left open (row 15's number, `cancelled` read rather than written, the
-overdue row's skip), are the implementer's, for the owner's reading.
+overdue row's skip), were the implementer's, for the owner's reading. **The owner ratified them as written on 2026-10-09**,
+accepting the readiness packet's recommendation ("I am good with all other recommendations to proceed on the plan"),
+after the owner's reviewer had recommended accepting the correction (§24bm). They are now the owner's ruling.
 
 ### 24bl. The late answer, and where a later gate reads it (2026-10-08, §24ad, §24bj, §24bk, #1708; implementer's reading of the owner's ruling 4, for the owner)
 
