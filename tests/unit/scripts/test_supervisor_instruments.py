@@ -110,6 +110,16 @@ def test_a_loaded_check_passes_only_on_the_expected_last_line(expect, code, out,
     assert (loaded.judge(expect, code, out, "Traceback\nImportError: x") is None) is ok
 
 
+def test_an_only_id_that_names_no_row_runs_nothing_and_says_so(capsys):
+    """Bug caught: ``--only`` with a misspelt or not-yet-merged id printed "1 loaded, 0 not" having
+    run nothing, so a deploy read as carrying a fix it lacked (found 2026-10-09, row 2188 checked
+    from a checkout whose file did not hold it)."""
+    assert loaded.main(["--only", "no-such-row"]) == 2
+    out = capsys.readouterr()
+    assert "no loaded check has id 'no-such-row'" in out.err
+    assert "loaded" not in out.out
+
+
 def test_every_loaded_check_row_is_complete():
     import yaml
 
