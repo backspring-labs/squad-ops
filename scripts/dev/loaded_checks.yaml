@@ -584,3 +584,11 @@ checks:
           return sorted(r["contype"] for r in rows)
       print(asyncio.run(kinds()))
     expect: "['p']"
+  - id: "2168"
+    what: SIP-0096 §17a - a dispute is read as the appendix shows it, so a reason that quotes code (or a check copied in its backticks) still disputes; read as YAML it disputed nothing
+    container: squadops-eve
+    code: |
+      from squadops.capabilities.disputed_checks import split_disputed_checks
+      block = "```disputed_checks\n- check: `acceptance:field_kinds`\n  reason: The criterion declares `id: number`\n```\n"
+      print(split_disputed_checks(block)[1])
+    expect: "[{'check': 'acceptance:field_kinds', 'reason': 'The criterion declares `id: number`'}]"

@@ -485,3 +485,17 @@ every other readout. The half that matters holds: the cycle opens nothing.
 **Evidence.** The read-only SIP-portfolio audit of 2026-10-04.
 
 **Who ruled it.** the owner's rulings of 2026-10-04 on the SIP-portfolio audit (`sips/PORTFOLIO.md` Q22): "I accept all your other recommendations to keep SIPs current".
+
+## Post-implementation amendment (2026-10-08): a dispute is read as the appendix shows it, not as YAML
+
+**What changed.** §17a's as-built change 1 reads the `disputed_checks` block as "a YAML list of `{check, file, criterion_id, reason}`". It is now read in the shape the appendix (`request.disputed_checks_appendix`) shows:
+
+- an entry starts at a `- ` line;
+- a field is one `field: value` line, and its value is the rest of the line, with one pair of surrounding quotes or backticks removed;
+- a line indented deeper than its field continues the value.
+
+The fields, the strip and the carry are unchanged. So is the rule that an entry without a `check` and a `reason` disputes nothing and is logged. A block with no entry is now logged as such, since nothing in it can fail to parse.
+
+**Evidence.** On the rebuild 8 regression pair (deploy `00bf3db6`, uncounted), the FastAPI + React implementation run `run_3e09bd8934f1` disputed twice. Both disputes came from its qa authorings, and both were dropped: `the block does not parse (mapping values are not allowed here …)`. Each reason quoted the code it was about (`` `id: number` ``). A plain YAML value can't hold `: `, nor open with a backtick, and the appendix lists the checks a task may dispute in backticks. So the format taught could not carry what it asked for. One refusal dropped every dispute in its block, and the run's record read `disputed checks: none (asked)` (#2168).
+
+**Who ruled it.** The implementer, under the owner's standing authority for 2.2 (address issues as found); for review on the PR that ships it.
