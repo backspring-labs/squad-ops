@@ -261,7 +261,7 @@ def escalations(ctx: typer.Context, campaign_id: str = typer.Argument(...)):
             e["run_id"],
             ", ".join(f["condition"] for f in e["failed"]),
             "; ".join(e["questions"]) or "—",
-            e["answer"] or "—",
+            "; ".join(f"{d}: {a}" for d, a in (e.get("answers") or {}).items()) or "—",
         ]
         for e in entries
     ]
@@ -275,17 +275,28 @@ def answer(
     ctx: typer.Context,
     campaign_id: str = typer.Argument(...),
     escalation_id: str = typer.Argument(...),
-    text: str = typer.Option(..., "--answer", help="the answer to the escalation's questions"),
+    given: list[str] = typer.Option(
+        ...,
+        "--answer",
+        help="DECISION_ID=ANSWER, once per decision answered (see `escalations` for the ids)",
+    ),
     reason: str = _REASON,
 ):
-    """Answer an expired or cancelled escalation late (SIP-0109 §24bj, §24bl). A record: it never
-    reopens the campaign or resumes the parked cycle; a later plan gate of the project reads it.
-    One answer per escalation: the same answer again replays it."""
+    """Answer an expired or cancelled escalation late (SIP-0109 §24bj, §24bm), one answer per
+    decision, by its id. A record: it never reopens the campaign or resumes the parked cycle. A
+    later tier campaign carries a compatible answer into its plan. The same answers again replay."""
+    answers = {}
+    for item in given:
+        decision_id, sep, text = item.partition("=")
+        if not sep or not decision_id.strip():
+            print_error(f"--answer {item!r}: expected DECISION_ID=ANSWER")
+            raise typer.Exit(code=2)
+        answers[decision_id.strip()] = text.strip()
     data = _call(
         ctx,
         "post",
         f"/api/v1/campaigns/{campaign_id}/escalations/{escalation_id}/answer",
-        json={"answer": text, "reason": reason},
+        json={"answers": answers, "reason": reason},
     )
     _show_result(ctx, data, f"escalation_answered:{escalation_id}")
 

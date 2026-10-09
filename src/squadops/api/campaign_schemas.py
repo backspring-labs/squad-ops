@@ -122,11 +122,12 @@ class ClassificationRequest(ControlRequest):
 
 
 class EscalationAnswerRequest(BaseModel):
-    """A late answer to an expired or cancelled escalation (SIP-0109 §24bj, §24bl). One per
-    escalation: its key is the escalation's own, so a retry of the same answer replays it and a
-    different one is refused."""
+    """A late answer to an expired or cancelled escalation (SIP-0109 §24bj, §24bm): one answer per
+    decision it answers, by the decision's id, never one text for several. One record per
+    escalation: its key is the escalation's own, so a retry of the same answers replays it and
+    different ones are refused."""
 
-    answer: str
+    answers: dict[str, str] = Field(min_length=1)
     reason: str
 
 
@@ -144,7 +145,7 @@ class EscalationResponse(BaseModel):
     decision_ids: list[str]
     closed_by: str | None
     closed_at: datetime | None
-    answer: str | None
+    answers: dict[str, str]
     answered_by: str | None
     answered_at: datetime | None
 

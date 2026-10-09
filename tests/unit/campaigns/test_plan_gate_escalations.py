@@ -311,7 +311,11 @@ async def test_the_digest_asks_while_pending_then_for_a_late_answer_then_shows_i
     await campaigns.transition(
         CID,
         answer_transition(
-            esc, "insertion order", actor="human:owner", actor_role="owner", reason="late"
+            esc,
+            {esc.decision_ids[0]: "insertion order"},
+            actor="human:owner",
+            actor_role="owner",
+            reason="late",
         ),
     )
     answered = await read()
@@ -320,6 +324,6 @@ async def test_the_digest_asks_while_pending_then_for_a_late_answer_then_shows_i
     assert f"Escalation `{esc.escalation_id}` expired with nobody answering" in expired
     assert f"squadops campaigns answer {CID} {esc.escalation_id}" in expired
     assert "expired with nobody answering" not in answered
-    assert "Answered late by human:owner: insertion order" in answered
+    assert "Answered late by human:owner: list-ordering: insertion order" in answered
     # Kept apart from the accepted work: its own section.
     assert answered.index("## Escalations") > answered.index("## Accepted")
