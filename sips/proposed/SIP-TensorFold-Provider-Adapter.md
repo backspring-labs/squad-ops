@@ -11,8 +11,10 @@ created_at: '2026-10-09T00:00:00Z'
 **The owner's ruling on the version (2026-10-09):** "don't plan to use the 1.0.x version. base our adapter on the faster
 python version that support the qwen 3.8 27b". **Pinned: TensorFold v0.6.6** (tag `v0.6.6`, commit `cb2ebf05`, released
 2026-10-06). It is the last Python release, and its CUDA server serves Qwen3.8-27B. The 1.0.x Zig line is not used.
-**Target:** unplaced until the owner rules (§8). Recommended: gates G0–G2 on the 2.3 line, dark (§6); cutover by
-evidence, not by date.
+**Target (the owner's ruling, 2026-10-09, §8 Q1):** gates G0–G2 on the **2.3** line, dark, with SIP-0106 §4.3's
+even/odd waiver (#2199, #2200); G3 and G4 by evidence, not by date.
+**The owner's rulings on the plan (2026-10-09):** "Q1 2.3 is fine, Q2 and Q3 as recommended", and Q4 above. Q5, the
+optional Mac run, is unanswered and stays optional. Acceptance of this design, which numbers it, remains the owner's.
 **Authors:** Jason Ladd (the direction, 2026-10-09: plug in TensorFold "as soon as I can to benefit from the tps for
 running cycles and campaigns"); Claude Code (this draft).
 **Extends:** SIP-0106 (Atlas Provider Adapter, implemented). TensorFold is a third candidate engine behind the same
@@ -37,19 +39,19 @@ Checked against `sips/PORTFOLIO.md` on 2026-10-09 (CLAUDE.md, "SIP System").
     declare is resident, so the adapter's model listing must answer that check truthfully (§5).
   - **#1177 and #1178 (closed): arm exclusivity and OOM containment.** Both engines resident at once on the Spark's
     unified memory made the box unreachable once (SIP-0106 §1.2c). Every step here carries the exclusivity guard.
-- **Conflicts:** one, for the owner's ruling. **2.3 is a stabilization release, feature-free by rule.** A dark adapter
-  changes no squad behaviour, and SIP-0106 §4.3 waived the even/odd rule for exactly that reason. Placing G0–G2 in 2.3
-  needs the same waiver (§8 Q1).
+- **Conflicts:** one, **resolved by the owner on 2026-10-09** (§8 Q1). 2.3 is a stabilization release, feature-free by
+  rule. A dark adapter changes no squad behaviour, and SIP-0106 §4.3 waived the even/odd rule for exactly that reason.
+  G0–G2 are placed in 2.3 under the same waiver.
 
 ## Delivery ledger (current as of 2026-10-09)
 
-Nothing is placed until the owner rules (§8).
+Placed by the owner's Q1 ruling (2026-10-09).
 
 | part | status | where |
 |---|---|---|
-| G0: feasibility and throughput on captured envelopes, Ollama against TensorFold, one engine resident at a time | **unplaced** | recommended: 2.3, after the 2.2 cut |
-| G1: emission quality, the same envelopes through each handler's own gate | **unplaced** | recommended: 2.3, with G0 |
-| G2: `adapters/llm/tensorfold.py`, dark, with conformance, registry entries and the deploy overlay | **unplaced** | recommended: 2.3, only if G0 and G1 pass |
+| G0: feasibility and throughput on captured envelopes, Ollama against TensorFold v0.6.6, one engine resident at a time | **placed** | 2.3.0, #2199 (on the Spark after the 2.2 cut) |
+| G1: emission quality, the same envelopes through each handler's own gate | **placed** | 2.3.0, #2199 |
+| G2: `adapters/llm/tensorfold.py`, dark, with conformance, registry entries and the deploy overlay | **placed** | 2.3.0, #2200 (merged only if G0 and G1 pass) |
 | G3: uncounted cycle A/B on both stacks, judged on cycle wall-clock | **unplaced** | after G2 |
 | G4: cutover | **unplaced** | the owner's decision on G3's evidence |
 
@@ -268,12 +270,12 @@ None has been measured here.
 
 ## 8. Questions for the owner
 
-- **Q1: placement.** Recommended: G0–G2 on the 2.3 line, dark, with the even/odd waiver SIP-0106 §4.3 used. G3 and G4
-  wait for evidence. The alternative is 2.4.
-- **Q2: G0's bar.** Recommended: median wall-clock per call at most 0.75× Ollama's on our captured envelopes, at no
-  worse a truncation rate. G1's bar is a pass rate at least Ollama's on the same envelopes.
-- **Q3: the overlay.** Recommended: OK in principle to add `docker-compose.tensorfold.yml` at G2, as a new overlay.
-  The base compose file stays untouched. Its exact contents come for review in that PR.
+- **Q1: placement. Ruled 2026-10-09 ("2.3 is fine"):** G0–G2 on the 2.3 line, dark, with SIP-0106 §4.3's even/odd
+  waiver (#2199, #2200). G3 and G4 wait for evidence.
+- **Q2: the bars. Ruled 2026-10-09, as recommended:** G0, median wall-clock per call at most 0.75× Ollama's on our
+  captured envelopes, at no worse a truncation rate. G1, a pass rate at least Ollama's on the same envelopes.
+- **Q3: the overlay. Ruled 2026-10-09, as recommended:** OK in principle to add `docker-compose.tensorfold.yml` at G2, as
+  a new overlay. The base compose file stays untouched, and its exact contents come for review in that PR.
 - **Q4: version policy. Ruled 2026-10-09:** TensorFold v0.6.6, the Python line that serves Qwen3.8-27B; no 1.0.x. Any
   later version change re-runs G0 and G1.
 - **Q5: the Mac (optional).** If you want the API's shape recorded before the Spark is free, run TensorFold on the Mac
