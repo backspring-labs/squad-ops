@@ -37,10 +37,14 @@ def main(argv: list[str]) -> int:
     p.add_argument("--only", help="run one row by its id")
     a = p.parse_args(argv)
     rows = yaml.safe_load(CHECKS.read_text())["checks"]
+    if a.only:
+        rows = [row for row in rows if row["id"] == a.only]
+        if not rows:
+            # A misspelt or unmerged id ran nothing; reporting "1 loaded" would credit it.
+            print(f"no loaded check has id {a.only!r} in {CHECKS}", file=sys.stderr)
+            return 2
     failed = 0
     for row in rows:
-        if a.only and row["id"] != a.only:
-            continue
         r = subprocess.run(
             ["docker", "exec", "-i", row["container"], "python", "-"],
             input=row["code"],
@@ -55,7 +59,7 @@ def main(argv: list[str]) -> int:
             f"{'ok  ' if why is None else 'FAIL'} #{row['id']} {row['container']}: {row['what']}"
             + (f" — {why}" if why else "")
         )
-    print(f"{len(rows) - failed if not a.only else 1 - failed} loaded, {failed} not")
+    print(f"{len(rows) - failed} loaded, {failed} not")
     return 1 if failed else 0
 
 
