@@ -28,8 +28,6 @@ import re
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-import yaml
-
 from squadops.cycles.contract_expectations import typed_check_and_params
 from squadops.cycles.verification_normalize import row_is_blocking_failure
 
@@ -46,6 +44,15 @@ _BLOCK = re.compile(
 #: What a dispute is keyed by, and what it must say. ``check`` names the row; ``file`` and
 #: ``criterion_id`` narrow it when the same check ran on several files or criteria.
 _FIELDS = ("check", "file", "criterion_id", "reason")
+#: A field's line in the block: an optional list dash, the field's name, a colon, and the rest of
+#: the line as its value. ``acceptance:declared_imports`` has no space after its colon, so a check
+#: name on a line of its own is a value, never a field.
+_FIELD_LINE = re.compile(
+    r"^(?P<indent>[ \t]*)(?P<dash>-[ \t]+)?(?P<key>[A-Za-z_][\w-]*)[ \t]*:(?:[ \t]+(?P<value>.*))?$"
+)
+#: A YAML block-scalar header on a field's line: the value is on the lines below it.
+_BLOCK_SCALAR_INDICATORS = frozenset({">", "|", ">-", "|-", ">+", "|+"})
+_QUOTES = "\"'`"
 
 
 #: The prefix the typed-acceptance seam gives a criterion's row (``handlers/cycle/base.py``). A
@@ -215,9 +222,9 @@ def _identity(check: str, file: Any, criterion_id: Any) -> str:
 def split_disputed_checks(content: str) -> tuple[str, list[dict[str, str]]]:
     """``content`` without its ``disputed_checks`` block(s), and the disputes they held.
 
-    A block that does not parse, or an entry without a ``check`` and a ``reason``, disputes
-    nothing and is logged; the block is still removed, because a fence left in the response is
-    a fence the extractor could store as a file.
+    An entry without a ``check`` and a ``reason`` disputes nothing and is logged; the block is
+    still removed, because a fence left in the response is a fence the extractor could store as
+    a file.
     """
     if not content or DISPUTED_CHECKS not in content:
         return content, []
@@ -228,21 +235,12 @@ def split_disputed_checks(content: str) -> tuple[str, list[dict[str, str]]]:
 
 
 def _entries(body: str) -> list[dict[str, str]]:
-    try:
-        parsed: Any = yaml.safe_load(body)
-    except yaml.YAMLError as exc:
-        logger.warning("disputed_checks: the block does not parse (%s); it disputes nothing", exc)
-        return []
-    if isinstance(parsed, dict):
-        parsed = [parsed]
-    if not isinstance(parsed, list):
-        logger.warning("disputed_checks: the block is not a list of disputes; it disputes nothing")
-        return []
+    items = _read_block(body)
+    if not items and body.strip():
+        logger.warning("disputed_checks: the block holds no entry; it disputes nothing")
     entries: list[dict[str, str]] = []
-    for item in parsed:
-        if not isinstance(item, dict):
-            continue
-        entry = {key: str(item[key]).strip() for key in _FIELDS if item.get(key) not in (None, "")}
+    for item in items:
+        entry = {key: item[key] for key in _FIELDS if item.get(key)}
         if not entry.get("check") or not entry.get("reason"):
             logger.warning(
                 "disputed_checks: an entry without a check and a reason disputes nothing: %r",
@@ -251,3 +249,44 @@ def _entries(body: str) -> list[dict[str, str]]:
             continue
         entries.append(entry)
     return entries
+
+
+def _read_block(body: str) -> list[dict[str, str]]:
+    """The block's entries, read in the shape the appendix shows (#2168): an entry starts at a
+    ``- `` line, a field is one ``field: value`` line whose value is the rest of the line, and a
+    line indented deeper than its field continues the value.
+
+    Not YAML. A reason is prose about the code a check read, and it quotes that code
+    (``declares `id: number```); a check is copied as the appendix lists it, in backticks. YAML
+    refuses both, and one refusal dropped every dispute in the block.
+    """
+    items: list[dict[str, str]] = []
+    item: dict[str, str] = {}
+    key: str | None = None
+    key_column = -1
+    for line in body.splitlines():
+        if not line.strip():
+            continue
+        field = _FIELD_LINE.match(line)
+        starts_entry = bool(field and field["dash"])
+        column = len(line) - len(line.lstrip())
+        if key is not None and not starts_entry and (field is None or column > key_column):
+            item[key] = f"{item[key]} {line.strip()}".strip()
+            continue
+        if field is None:
+            continue
+        if starts_entry or not items:
+            item = {}
+            items.append(item)
+        key = field["key"]
+        key_column = len(field["indent"]) + len(field["dash"] or "")
+        value = (field["value"] or "").strip()
+        item[key] = "" if value in _BLOCK_SCALAR_INDICATORS else value
+    return [{name: _unquoted(value) for name, value in each.items()} for each in items]
+
+
+def _unquoted(value: str) -> str:
+    """``value`` without one pair of quotes or backticks around the whole of it."""
+    if len(value) >= 2 and value[0] == value[-1] in _QUOTES and value[0] not in value[1:-1]:
+        return value[1:-1].strip()
+    return value
