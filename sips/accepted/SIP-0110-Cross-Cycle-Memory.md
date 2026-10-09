@@ -1384,7 +1384,14 @@ not a second memory system:
   instructions. A person's instruction is in force by its author's authority, a lesson by evidence and approval, and a
   conversational claim never becomes a lesson;
 - **it adds a context-assembly port** whose consumer is a task invocation or a chat turn, so chat never fabricates a
-  cycle id. The lesson section is §0.8's recall, unchanged;
+  cycle id. The lesson section is §0.8's recall with one input added: an effective budget, the smaller of the
+  snapshot's lesson budget and what the binding instructions leave after the lesson slot's framing. Recall applies it
+  in its one selection pass, and nothing is trimmed after it. It equals the snapshot's budget whenever the binding
+  instructions leave room, and so always in 2.2, which has none. That is the one change to §0.8 (step 6) the proposal
+  makes;
+- **a reference an instruction requires is bound to a concrete revision when the instruction is bound to a unit,**
+  never at dispatch. A running unit's bindings change only by a recorded **re-binding**, which is an intervention
+  (§0.12): it sets the unit's measurements apart, and a counted roll refuses it;
 - **instructions are binding:** a task whose instructions, or the references they require, cannot be loaded,
   resolved or fitted into its prompt is held, not run without them. Lessons stay optional context, omitted whole and
   disclosed as now;

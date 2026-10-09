@@ -7,7 +7,7 @@ created_at: '2026-10-09T00:00:00Z'
 ---
 # SIP: Memory Entry Points
 
-**Status:** Proposed (draft, revision 2, 2026-10-09)
+**Status:** Proposed (draft, revision 3, 2026-10-09)
 **Target (proposed, for the owner's ruling, §8 Q25):**
 - **2.3, stabilization:** the legacy agent store made dormant and its failures visible; chat's conversation history
   reaching the agent, with session ownership checked; the context-assembly port, inert. None of it changes what a task
@@ -28,6 +28,18 @@ tightened without widening the scope:
 6. the acceptance matrix and the interface no longer contradict the design (§3.2, §3.3, §3.6, §5);
 7. dependencies and the retirement's placement are corrected (§6).
 
+**Revision 3 (2026-10-09): the owner's review of revision 2 (commit `53902bda`).** Three gaps closed:
+1. **A reference is bound once.** One written `@current` resolves to a concrete revision when its instruction is bound
+   to a unit. Every dispatch, retry and comparison arm reads that revision, and a later change reaches a running unit
+   only by a recorded re-binding (§3.6, §3.7; T16).
+2. **A hold has a release path that the snapshot rules allow.** A project instruction's new revision reaches later units
+   only, so releasing a running unit's hold takes an authorized **re-binding** (§3.7). It has a forward path and a
+   restart path, a campaign scope, and measurement invalidation (§3.6, §3.7, §3.8; T8).
+3. **The lesson budget is applied once, inside recall.** Recall gains one input: an effective budget, the smaller of the
+   snapshot's and what the binding sections leave after the lesson slot's own framing. Nothing is trimmed after it, and
+   the exposure names exactly what was supplied. Recall is otherwise SIP-0110's, and identical to today's whenever the
+   binding sections leave room (§3.6; T10, T17).
+
 **Authors:** Jason Ladd (the direction and the review, 2026-10-09); Claude Code (this draft)
 **Extends:** SIP-0110 Cross-Cycle Memory. **On acceptance this lands in SIP-0110** as a numbered amendment and ledger rows.
 It is not a second memory SIP, and it adds no learning mechanism. SIP-0110 owns memory's scopes, lifecycle and payload
@@ -40,8 +52,8 @@ best-effort) and its trigger-phrase capture (§4.2).
 
 ## Intake check
 
-Checked against `sips/PORTFOLIO.md` on 2026-10-09, before this draft was recorded, and again for revision 2 (CLAUDE.md,
-"SIP System"):
+Checked against `sips/PORTFOLIO.md` on 2026-10-09, before this draft was recorded, and again for revisions 2 and 3
+(CLAUDE.md, "SIP System"):
 
 - **Overlaps:**
   - **SIP-0110 (accepted), all of it, by design.** This draft extends its substrate: the Postgres store beside the
@@ -60,6 +72,8 @@ Checked against `sips/PORTFOLIO.md` on 2026-10-09, before this draft was recorde
     - **Revision 2:** a task held for an incomplete binding context (§3.6), in a campaign, is surfaced through SIP-0109's
       escalation queue (#1708, §24bj) under the campaign's ruling bound, as a held gate is. SIP-0109 keeps the queue and
       its authority.
+    - **Revision 3:** re-binding a campaign (§3.7) is recorded in its control log and needs `campaigns:supervise`.
+      SIP-0109 keeps the log and that authority. Memory adds a record kind to the log, and no rule.
   - **SIP-0073, the model context registry.** It supplies the context window from which a task's total prompt budget is
     read (§3.6).
   - **SIP-0103 §5c.5, the operator-edit record (unplaced).** A change to the manifest goes through the manifest's own
@@ -402,7 +416,8 @@ class Section:
     need: Need
     disposition: Disposition
     supplied: tuple[RecordRef, ...]    # record id and revision, each
-    omitted: tuple[tuple[RecordRef, str], ...]   # OPTIONAL sections only, and why
+    omitted: tuple[tuple[RecordRef, str], ...]   # OPTIONAL sections only, and the limit: budget | remaining
+    effective_budget: int | None       # OPTIONAL sections: what the section could spend (§3.6 Budgets); None if BINDING
     unresolved: tuple[tuple[RecordRef, str], ...]  # BINDING sections only: what could not be loaded, resolved or fitted
 
 @dataclass(frozen=True)
@@ -420,16 +435,24 @@ class ContextAssemblyPort(ABC):
 - The binding sections are task instructions, project instructions and the references they mark as required.
 - **A bundle is incomplete when:**
   - a binding record cannot be loaded (the store fails);
-  - a required reference cannot be resolved (the record is gone, or is not at the revision the instruction requires; a
-    reference may require `@current`, resolved at dispatch and recorded, or a stated revision);
+  - a required reference cannot be read at the revision bound for it (the record is gone, or that revision is). A
+    reference names a revision, or `@current`. **`@current` is resolved once, when the instruction is bound to a unit,
+    never at dispatch** (§3.7);
   - the binding sections together do not fit the task's prompt budget.
 - **Then the task is held, undispatched, with the unresolved records and the reasons.** Recording the omission is not
   enough.
   - In a standalone cycle, the task holds as a gate does, and the hold shows in the cycle's status.
   - In a campaign, it is escalated through SIP-0109's queue under the campaign's ruling bound, as a held gate is.
-- **It is released when the context is complete** (the store answers, the reference resolves), **or by an authorized
-  revision:** the instruction revised, narrowed or withdrawn by someone who holds its permission (§3.3), or the budget
-  raised by the owner. Each release is recorded on the run.
+- **How it is released depends on the cause.** Each release is recorded on the run.
+  - **A store failure** is released when the store answers. Nothing the unit has bound changes.
+  - **A task instruction** held for its own size or an unreadable reference can be revised, narrowed or withdrawn before
+    its task dispatches. That change is a recorded intervention on its cycle (§3.5), and the task dispatches with the
+    new binding.
+  - **A project instruction** cannot be released by its revision alone. A new revision reaches later units only, and the
+    running unit keeps the revision its snapshot pinned (§3.7). So it is released by **re-binding** the unit: an
+    authorized intervention that replaces the pinned revision, or a reference's bound revision, in that unit (§3.7).
+    The same path releases a project instruction's unreadable reference.
+  - **A budget raise** by the owner is a re-binding of the unit's total budget, with the same record.
 
 **Optional sections keep SIP-0110's behaviour.**
 - The optional sections are lessons, optional references, and in chat, notes and preferences.
@@ -437,17 +460,43 @@ class ContextAssemblyPort(ABC):
 - A failure is `failed`, and invalidates the measurement. It never reads as "none eligible".
 - The task runs.
 
-**Budgets: a total, then sections.**
+**Budgets: a total, then sections, each applied once, where its records are chosen.**
+- **One measure.** Every size here is measured by the deterministic estimator recall already uses (`memory/lessons.py`
+  `_tokens`: a token per four characters, rounded up). The task's own inputs and the total are measured the same way,
+  so the sections' sum is compared with the total in one unit.
+- **A section's size includes its slot's fixed framing:** its heading and its precedence statement. A binding section
+  is measured with its framing. The lesson slot's framing is taken from the remaining space before the lessons' own
+  budget is set.
 - **The total prompt budget** is the task's model's context window (SIP-0073's registry), less the completion reserve and
   the task's own inputs.
-- **The binding sections claim it first,** with no section cap below the total.
-- **The optional sections then fill what is left,** in a fixed order (lessons, then optional references), each under its
-  own cap. Lessons keep SIP-0110 §0.8's three patterns and token budget.
+- **The binding sections claim it first,** with no section cap below the total. When they do not fit, the task is held
+  (above).
+- **The lesson section's effective budget** is the smaller of two figures: the snapshot's lesson budget (SIP-0110 §0.8:
+  three lessons and 600 tokens of lesson text, pinned in `RecallPolicy`) and what the binding sections leave, less the
+  lesson slot's framing. When less than the framing is left, the section is omitted whole (`remaining`).
+  - The assembler computes it and passes it to recall. Recall applies it in its one selection pass, with today's order
+    and today's rule: a lesson that does not fit is omitted whole.
+  - **Nothing is trimmed after recall.** The section rendered is exactly the set recall returned.
+  - Each omitted lesson names the limit that omitted it. It is `budget` when the snapshot's own budget would have
+    omitted it, and `remaining` when only what the binding sections left did.
+- **The optional references then fill what the supplied lessons leave,** under their own cap, by the same rule.
+- **The exposure records the final supplied set:**
+  - each section's supplied records;
+  - the effective lesson budget and what it was the smaller of;
+  - every omission with its limit.
+
+  A case whose lesson was omitted with `remaining` did not receive it, and is reported that way, never as a lesson that
+  had no effect.
 - A chat turn has a chat budget: history first, oldest turns dropped first with the cut stated, then records under their
   caps.
 
-**The lesson section is SIP-0110's recall, unchanged.** For a task invocation, the assembler builds today's `RecallQuery`
-from the snapshot owner and calls `FailurePatternRecallPort`. For a chat turn the section is `not_applicable`.
+**The lesson section is SIP-0110's recall, with one input added.**
+- For a task invocation, the assembler builds today's `RecallQuery` from the snapshot owner and calls
+  `FailurePatternRecallPort` with the effective budget. For a chat turn the section is `not_applicable`.
+- **When the binding sections leave at least the snapshot's lesson budget, the effective budget is the snapshot's, and
+  the section is today's recall exactly.** Until an instruction exists, which covers all of 2.2 and 2.3, that is always
+  so.
+- This changes SIP-0110 §0.8 step 6 by that one input. The landing amendment records it (§5f).
 
 **Slots and precedence.**
 - **Each section has its own slot,** rendered through a managed fragment (#448). With every section empty, unapproved or
@@ -480,15 +529,56 @@ from the snapshot owner and calls `FailurePatternRecallPort`. For a chat turn th
 - **Within its target cycle,** a task instruction reaches every dispatch that authors or revises the targeted output:
   re-dispatched attempts, re-takes, and the repair task types that revise it (the plan's own table,
   `task_plan.repair_steps_for`).
-- **Each dispatch resolves its bindings again** from their current status, and none is copied from the attempt before.
-  SIP-0110 already supplies lessons this way (`supply_the_redispatch`).
+- **Each dispatch reads its bindings' status again:** a withdrawn binding is absent, and none is copied from the attempt
+  before. SIP-0110 already supplies lessons this way (`supply_the_redispatch`). **It never re-resolves a reference:**
+  every dispatch reads the revision bound for it (below).
 - **A new cycle does not inherit it.** That covers a SIP-0109 retry, repair or fork continuation, and a relaunch.
 - **The exception:** an instruction given with `carries_into: continuations`. Then the new cycle's admission records its
   own binding, linked to the original, which can be withdrawn separately.
 
-**What the snapshot pins.** The in-force project-instruction revisions and the approved lessons, as two separate sets,
-with the owner's declaration (below). A project instruction confirmed, revised or withdrawn while the owner runs reaches
-later units only.
+**What the snapshot pins.** The in-force project-instruction revisions, each with its references' bound revisions, and
+the approved lessons, as two separate sets, with the owner's declaration (below). A project instruction confirmed,
+revised or withdrawn while the owner runs reaches later units only, unless the unit is re-bound (below).
+
+**References are bound once, with their instruction.**
+- **An instruction is bound to a unit** at one moment:
+  - a project instruction, when a snapshot owner pins it at admission;
+  - a task instruction, when it is admitted with its cycle, or added later by a recorded intervention.
+- **At that moment each reference is resolved to a concrete revision,** and that revision is recorded with the binding:
+  in the snapshot beside the instruction's revision, or in the cycle's inputs. `@current` means "the revision current at
+  binding", never "the revision current at dispatch".
+- **Every reader of the binding reads that revision.** That covers every dispatch, re-dispatch, re-take and repair, and
+  both arms of a paired comparison. Identical instruction revisions therefore always supply identical requirements.
+- **A change to the referenced record after binding reaches later units only.** Inside a running unit it arrives only by
+  a re-binding (below). A pair whose arms carry different bound revisions is invalid.
+- **A reference names a record that exists at binding.** A unit's own outputs are its inputs already, and are never
+  reference targets.
+
+**Re-binding a running unit.** This is the one way to change what a running unit has bound. It is an intervention, and
+the authorized release of a hold that a pinned binding causes (§3.6).
+- **What it can replace:**
+  - a project instruction's pinned revision, with its revised, narrowed or withdrawn revision;
+  - a reference's bound revision;
+  - the unit's total prompt budget.
+- **Who may do it:** a person holding both the record's permission and the unit's authority.
+  - The record's permission is `memory:instruct` for a project instruction (§3.3). A reference follows its instruction.
+    A budget change is the owner's.
+  - The unit's authority is `cycles:write` for a standalone cycle, and `campaigns:supervise` for a campaign.
+- **Its scope is the snapshot owner's, from the re-binding forward.**
+  - A standalone cycle: its tasks not yet dispatched.
+  - A campaign: its running cycle's tasks not yet dispatched, and every later proposal and cycle. Completed cycles keep
+    their history.
+  - It is recorded on the run and the cycle, and for a campaign in its control log (SIP-0109), with who, when, what was
+    replaced, the new revision and why.
+- **Two paths:**
+  - **Forward,** when no dispatched task of the unit received the replaced binding. The held task, and every later one,
+    dispatches under the new binding.
+  - **Restart,** when a dispatched task already received it. This is §3.8's emergency path: halt at the next task
+    boundary, re-bind, restart from the earliest affected task, and keep the history without reusing it.
+- **Measurement.** A re-binding changes a listed input (SIP-0110 §0.12).
+  - The unit's measurements are set apart from the first task the re-binding affects.
+  - In a measurement window, the case is reported as an intervention.
+  - A counted roll refuses a re-binding, as it refuses every intervention (§3.5).
 
 **A cycle's task instructions are its inputs.** Those given at admission are recorded with the cycle. An addition or a
 withdrawal after admission is an intervention (§3.5, §3.8).
@@ -522,7 +612,7 @@ withdrawal after admission is an intervention (§3.5, §3.8).
 |---|---|---|---|---|
 | note | a new revision; the old one is kept, marked superseded | it is no longer retrieved | the next authorized chat turn | none on tasks (notes never reach one); earlier chat exposures keep the revision they used |
 | preference | as a note | as a note | the person's next chat turn | none |
-| project instruction | a new revision, confirmed again with `memory:instruct`; it names the revision it replaces | by `memory:instruct` | units admitted later | running units keep their snapshot, unless emergency-withdrawn (below); exposures keep the revision used |
+| project instruction | a new revision, confirmed again with `memory:instruct`; it names the revision it replaces | by `memory:instruct` | units admitted later | running units keep their snapshot, unless re-bound (§3.7) or emergency-withdrawn (below); exposures keep the revision used |
 | task instruction | before its task dispatches: a recorded intervention | before dispatch: the same; after dispatch: emergency withdrawal (below) | its target tasks only | exposures and envelopes keep what was used, marked if withdrawn; no later dispatch reuses it |
 | lesson | SIP-0110: a new revision needs its own replay check and approval | revocation (`squadops lessons revoke`) | units admitted later | SIP-0110 §0.7 |
 
@@ -572,8 +662,8 @@ flowchart LR
 
 1. **Chat or task assignment** gives the squad context and requirements: a task instruction for the work at hand, or a
    project instruction for work to come. Each is confirmed with its scope, under the permission its kind needs.
-2. **The snapshot owner is admitted.** Its snapshot pins the project instructions in force and the approved lessons. A
-   cycle's task instructions are its inputs.
+2. **The snapshot owner is admitted.** Its snapshot pins the project instructions in force, with their references bound
+   to concrete revisions, and the approved lessons. A cycle's task instructions are its inputs, bound the same way.
 3. **Each consuming task gets assembled context.** Its binding instructions and their required references come whole,
    or the task waits. Its optional lessons come as the applicability and budget allow, and its exposure records exactly
    what it got.
@@ -704,14 +794,16 @@ the mechanism. They are never evidence that memory improved anything (SIP-0110 �
 | T5 | "QA should always mock the clock", said in chat | it is stored, if confirmed, as a `suggestion` note; `draft_revision` refuses it as a citation; no snapshot carries it; there is no route from it to an approval |
 | T6 | while a cycle and a campaign run: a project instruction confirmed, a lesson approved, a note saved | the running units' later tasks get their admission snapshot's content, byte for byte; **units admitted later receive the new instruction and lesson**; **the note is available at once to authorized chat turns**, and to no task |
 | T7 | records written through the API, then the runtime API's and Postgres's containers recreated | every record, revision and exposure reads back unchanged |
-| T8 | **binding:** a project instruction whose read fails; a required reference that does not resolve; binding instructions over the prompt budget. **optional:** a lesson read that fails; a chat save that fails | **each binding case holds the task undispatched,** with the unresolved record and reason on the run, and it dispatches only after the context completes or an authorized revision releases it; each optional case runs: the task's exposure records `failed` and its measurement is invalid, never "none eligible"; the chat reply says the note was not saved, the console shows the failure, and a WARNING is logged |
+| T8 | **binding:** a project instruction whose read fails; a required reference that cannot be read at its bound revision; binding instructions over the prompt budget. **release:** the oversized instruction is a pinned project instruction, then revised; separately, an oversized task instruction is revised before its task dispatches. **optional:** a lesson read that fails; a chat save that fails | **each binding case holds the task undispatched,** with the unresolved record and reason on the run. **The store failure** releases when the store answers. **The pinned project instruction's new revision alone does not release the hold:** the unit still holds the oversized revision. An authorized re-binding does. It goes forward when no dispatched task received the old revision, and through the restart path when one did. In a campaign it is recorded on the run, the cycle and the control log, and the unit's measurements are set apart from the held task. A re-binding by someone without both permissions is refused. **The task instruction's revision before dispatch** releases its own hold as a recorded intervention. **Each optional case runs:** the task's exposure records `failed` and its measurement is invalid, never "none eligible"; the chat reply says the note was not saved, the console shows the failure, and a WARNING is logged |
 | T9 | a `lessons: disabled` unit paired with a lessons-on unit, with a lesson approved and a project instruction in force | both receive the **same project-instruction revisions and task instructions**, and differ only in the lesson slot; no lesson reaches the disabled unit through any entry point; a lesson-citing task instruction is refused for it; the text diagnostic is reported as a signal and fails nothing; a `memory_context: none` unit is recorded and reported as its own experiment |
-| T10 | the context interface | a chat turn's request carries no cycle, run or task and cannot be built with one; an unbound chat carries no project; a task invocation cannot be unbound; a task's lesson section equals SIP-0110's recall for the same snapshot owner and inputs |
+| T10 | the context interface | a chat turn's request carries no cycle, run or task and cannot be built with one; an unbound chat carries no project; a task invocation cannot be unbound; a task's lesson section equals SIP-0110's recall for the same snapshot owner, inputs and effective budget, and, when the binding sections leave at least the snapshot's lesson budget, today's recall exactly |
 | T11 | the console record view | it shows source, scope, status, revisions, consuming tasks and associated results; its effect column reads "no effect measured" for an instruction with exposures and a green build |
 | T12 | two cycles in one campaign, sharing its snapshot and both running `qa.test`; a task instruction for cycle A's `qa.test` | it reaches cycle A's `qa.test`, its re-take and its `qa.test_repair`; it never reaches cycle B's `qa.test`; a continuation of cycle A does not get it unless it was given with `carries_into: continuations` |
 | T13 | a task instruction withdrawn in an emergency after its task was dispatched, then the affected task restarted | the run halts at its next boundary; the restart's envelope and exposure lack the withdrawn instruction (and carry its corrected revision, if one was given); the earlier exposure still names it, marked withdrawn; nothing in the restart is copied from it |
 | T14 | session ownership | another user's session id on resume, on a message read and in history assembly is refused, without revealing whether it exists; a session bound to agent X, used with agent Y, is refused; a project the client claims that differs from the session's stored binding is ignored |
 | T15 | a project instruction converted from a private chat | another reader sees the source as "a private chat turn by <author>, <time>", and following the link is refused; the session's owner opens that one turn and no other |
+| T16 | a project instruction and a task instruction, each requiring `manifest:decision:<id>@current`. The decision is revised after binding: between a task's attempt 1 and its re-dispatch, and between the two arms of a paired comparison | **both attempts and both arms carry the revision bound at admission,** and each exposure names it; units admitted after the change bind the new revision; inside the running unit, the new revision arrives only by a recorded re-binding, which sets its measurement apart; a pair built with different bound revisions is reported invalid |
+| T17 | binding sections that leave less than the lesson cap: binding sections that leave 300 tokens of lesson text after the lesson slot's framing, the snapshot's lesson budget of 600, and two eligible lessons of 260 and 280 tokens | **the effective lesson budget is 300.** The 260-token lesson is supplied, and the 280-token one is omitted whole with `remaining`; the prompt, framing included, sums to no more than the total; the exposure names exactly the rendered lesson, the effective budget and the omission; nothing is trimmed after recall. With binding sections that leave 600 or more, both lessons are supplied and the section equals today's recall byte for byte. With binding sections that leave less than the framing, the lesson section is omitted whole (`remaining`), and the task runs |
 
 ## 6. Work breakdown and placement
 
@@ -721,12 +813,12 @@ the mechanism. They are never evidence that memory improved anything (SIP-0110 �
 | #2175 | chat history reaches the agent, ownership checked | 2.3 | — | SIP-0085 §4 and §9, as written; §3.3's session ownership; T14 |
 | #2176 | the context-assembly port, inert | 2.3 | — | §3.6's types and port (binding and optional needs, `Unbound`, target and snapshot owner), the four seams through it, byte-identical prompts, T10 |
 | #2177 | the typed records | 2.4 | #2176 | §3.2–§3.4 and §3.8's records: tables, port, adapters, permissions by kind, provenance and its link authorization, revisions; a session's project binding |
-| #2178 | task instructions | 2.4 | #2177 | §3.5's task assignment; §3.7's target and retries; binding holds for task instructions; §3.8's emergency withdrawal; T3, T8 (task part), T12, T13 |
-| #2179 | project instructions in the snapshot, and the comparison arms | 2.4 | #2177 | §3.6's budgets and holds for project instructions and required references; §3.7's snapshot and arms; `memory:instruct`; disclosure sections; T1, T6, T8 (project part), T9 |
+| #2178 | task instructions | 2.4 | #2177 | §3.5's task assignment; §3.7's target and retries; references bound with the cycle's inputs; binding holds for task instructions and their release before dispatch; §3.8's emergency withdrawal; T3, T8 (task part), T12, T13, T16 (task part) |
+| #2179 | project instructions in the snapshot, and the comparison arms | 2.4 | #2177 | §3.6's budgets, applied once (recall's effective-budget input), and holds for project instructions and required references; §3.7's snapshot, references bound at admission, re-binding and arms; `memory:instruct`; disclosure sections; T1, T6, T8 (project part), T9, T16 (project part), T17 |
 | #2180 | chat on the substrate | 2.4 | **stage A:** #2175, #2176, #2177; **stage B (instruction capture):** #2178, #2179 | §3.5's chat; capture with confirmation; chat exposures; server-side project binding; provenance authorization; T2, T4, T14 (binding part), T15; stage B's capture of task and project instructions |
 | #2181 | lesson inspection from chat | 2.4 | #2180 (stage A) | §3.5's inspection and suggestions; T5 |
 | #2182 | the console memory view | 2.4 | #2177, #2179 | §3.11, provenance links authorized; T11 |
-| #2183 | the acceptance matrix, live | 2.4 | #2178–#2182 | §5 on a deploy, T1–T15 |
+| #2183 | the acceptance matrix, live | 2.4 | #2178–#2182 | §5 on a deploy, T1–T17 |
 | #2184 | retire the legacy store | the stabilization release after #2180 ships and #2183 passes (2.5 if Q25 places the entry points in 2.4) | #2180 live; #2183 passed; the owner's OK for the compose change | §4.3's second half |
 
 **Why this placement:**
@@ -750,7 +842,8 @@ the mechanism. They are never evidence that memory improved anything (SIP-0110 �
 
 ## 7. What this does not do
 
-- It does not change how a lesson is drafted, checked, approved, supplied or measured.
+- It does not change how a lesson is drafted, checked, approved, supplied or measured, with one exception. Recall takes
+  an effective budget, which is the snapshot's whenever the binding sections leave room for it (§3.6).
 - It does not change 2.2's experiment, its arms or its records.
 - It adds no built-in auditor, and no agent writes a lesson.
 - It applies nothing mid-unit, except as a recorded intervention.
