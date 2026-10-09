@@ -2,7 +2,9 @@
 
 The files `squadops campaigns create --file` reads, for the campaigns SquadOps runs on `group_run` to
 verify itself: the live shakeouts, the recovery diagnostics (#1803), the box lease's deployed proof
-(#1802), and the 2.0 counted set (`2-0-0-set-1.yaml`, `2-0-0-set-2.yaml`, pinned by #1908).
+(#1802), the 2.0 counted set (`2-0-0-set-1.yaml`, `2-0-0-set-2.yaml`, pinned by #1908), and the 2.2 measurement
+window's five campaigns (`2-2-0-window-1-capacity.yaml` to `2-2-0-window-5-seed.yaml`, one objective each, under the
+slice 4 pre-registration, `docs/plans/2-2-0-slice4-preregistration.md` §4).
 Campaigns an operator runs for their own purposes are theirs to keep, wherever they like.
 
 **A definition is the record of a campaign only when it reconciles with the stored campaign:** the same
