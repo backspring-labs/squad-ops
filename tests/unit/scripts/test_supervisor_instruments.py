@@ -120,6 +120,48 @@ def test_an_only_id_that_names_no_row_runs_nothing_and_says_so(capsys):
     assert "loaded" not in out.out
 
 
+@pytest.mark.parametrize(
+    ("argv", "record_rc", "expected_exit", "record_checked"),
+    [
+        ([], 0, 0, True),
+        ([], 1, 1, True),  # the row passed, the record is stale: the run fails
+        ([], 127, 1, True),  # the check could not run: not a record shown true
+        (["--only", "r1"], 1, 0, False),  # one row asked for: the record is not this run's
+    ],
+    ids=["record-describes", "record-stale", "check-did-not-run", "only-one-row"],
+)
+def test_the_run_fails_when_the_deploy_record_does_not_describe_what_runs(
+    tmp_path, monkeypatch, capsys, argv, record_rc, expected_exit, record_checked
+):
+    """Bug caught (#2193): rebuild 11's record named the previous sandbox image, because the
+    sandbox was rebuilt after the record was written, and verify_loaded reported 68 of 68. Entered
+    at ``main``, with the rows and both commands' answers handed in; nothing reaches docker."""
+    import subprocess
+
+    checks = tmp_path / "loaded_checks.yaml"
+    checks.write_text(
+        "checks:\n  - {id: r1, what: w, container: squadops-nat, code: print(1), expect: '1'}\n"
+    )
+    monkeypatch.setattr(loaded, "CHECKS", checks)
+    calls = []
+
+    def run(cmd, **kwargs):
+        calls.append(cmd)
+        if cmd[0] == "docker":
+            return subprocess.CompletedProcess(cmd, 0, "1\n", "")
+        said = "dep_x does not describe what runs: sandbox-service runs 435ca602e23c"
+        return subprocess.CompletedProcess(cmd, record_rc, said if record_rc == 1 else "", "")
+
+    monkeypatch.setattr(loaded.subprocess, "run", run)
+
+    assert loaded.main(argv) == expected_exit
+    out = capsys.readouterr().out
+    assert "1 loaded, 0 not" in out
+    assert ([str(loaded.RECORD_CHECK), "--check"] in calls) is record_checked
+    if record_rc == 1 and record_checked:
+        assert "FAIL deploy record: dep_x does not describe what runs: sandbox-service" in out
+
+
 def test_every_loaded_check_row_is_complete():
     import yaml
 
