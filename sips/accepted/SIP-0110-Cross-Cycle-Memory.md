@@ -74,9 +74,10 @@ re-places it.
 | Phase 1, slice 2: the authoring replay, three arms, validated first on proposals (§0.11–§0.12) | **shipped** | 2.2.0, PRs #2137, #2139 and #2140, issue #2106: on a live deploy every captured envelope at every seam is valid (30 of 30: proposal, plan writing, build authoring and both repairs), and the exploratory proposal run authored all three arms (posted on #2106) |
 | Phase 1, slice 3: the mechanism, observing every eligible cycle and supplying four seams, inert until approved, with the app-build indicators beside each exposure, the failure-shape sorter and the repeat report (§0.2–§0.10) | **shipped** | 2.2.0, PRs #2120, #2121, #2122, #2124, #2125, #2126, #2127, #2129, #2130, #2132 and #2134, issue #2096: inert and observed live on the regression pair (memory disabled) and on the campaign proof `cmp_dae2cd6b0e3c` (memory enabled, nothing approved), with the repeat report's first read (posted on #2096). A re-dispatched authoring (a correction round's re-take, an emission retry) recorded no exposure of its own, against §0.2, until PR #2163, issue #2162: the rebuild 5 and 6 Next.js regression cycles each had one more envelope than exposures. The exposures table still held one row per task of a run, and refused that exposure on the deploy, until issue #2165 (the rebuild 7 Next.js cycle's qa.test, authored three times, kept only the first attempt's) |
 | the reviewed annotation by which a return classified only in prose enters (§0.4): beside its observation, adding no occurrence, classifying only once the owner reviews it; and a lesson cites only classified observations | **shipped** | 2.2.0, PR #2186, issue #2160 |
-| Phase 1, slice 4: the first lesson, drafted by the auditor, and the measurement window, read before 2.2.0's cut (§0.4, §0.12–§0.13) | **placed** | 2.2.0, #2107: the window ran and its finding is recorded (§5h); the lesson's disposition, the next build-side experiment and Phase 2's disposition remain, the owner's at the cut |
+| Phase 1, slice 4: the first lesson, drafted by the auditor, and the measurement window, read before 2.2.0's cut (§0.4, §0.12–§0.13) | **shipped** | 2.2.0, PRs #2207 and #2209, issue #2107: the window ran on rebuild 12 and its finding is no demonstrated useful benefit (§5h). The owner disabled the lesson at the cut, and its approval is revoked |
+| Phase 1, the next build-side experiment: broader multi-increment campaigns with memory on, the repeat report and the auditor's reading, a build or repair lesson only for a substantiated target, its replay check and approval, and the comparison within that target (§5h) | **unplaced** | the owner's ruling at the 2.2 cut (§5h): the 2.3 plan places it, beside Outcome Evaluation's instruments |
 | Phase 1.5: the correction lane (§13 question 3) | **dropped** | by revision 6 (§5d), which folds it into Phase 1: its observation is slice 3's, its repair seam is wired inert in slice 3, and its capture is slice 1's. A correction-round template waits for a recurring target behavior (§0.4) |
-| Phase 2: consolidation and promotion (§8) | **unplaced** | gated on Phase 1's measurement (§8) |
+| Phase 2: consolidation and promotion (§8) | **unplaced** | gated on Phase 1's measurement (§8). The owner ruled at the 2.2 cut that it stays gated (§5h) |
 | entry points: the legacy agent store made dormant, its failures visible (Appendix A, §A.4.3) | **placed** | 2.3.0, #2174 |
 | entry points: chat's conversation history reaching the agent, with session ownership checked (SIP-0085 §4, §9; §A.3.3) | **placed** | 2.3.0, #2175 |
 | entry points: the context-assembly port, inert, at the four seams (§A.3.6) | **placed** | 2.3.0, #2176 |
@@ -90,7 +91,8 @@ re-places it.
 | entry points: the legacy agent store retired (§A.4.3), on the owner's OK for its compose change | **placed** | 2.5.0, #2184 |
 
 **What closes this SIP:** Phase 1's four slices shipped in 2.2.0 with the window's finding recorded (§0.13), Phase 2's
-gate ruled by the owner on that finding, and the entry points' eleven rows (§5g, Appendix A) shipped or dropped.
+gate ruled by the owner on that finding (both done, §5h), the next build-side experiment shipped or dropped, and the
+entry points' eleven rows (§5g, Appendix A) shipped or dropped.
 
 ## 0. The Phase-1 contract (normative, revision 6)
 
@@ -1552,7 +1554,16 @@ the supervisor's:
   or promoting lessons.
 
 **Who ruled it.** The finding is the evaluator's, under the pre-registration the owner adopted on 2026-10-09. The
-dispositions above are the owner's, and are recorded here when ruled.
+dispositions above are the owner's.
+
+**The owner's rulings (2026-10-10, at the cut's pre-registration, `docs/plans/2-2-0-cut-preregistration.md` §9).** The
+owner wrote "approve §9 as recommended, lesson disabled", and chose each recommendation above as written:
+- **The lesson is disabled, and the mechanism is kept.** Its approval, `apr_7999ec25e1b8f229` on
+  `pat_0b4aef8aea974e06@2`, was revoked on that ruling at 13:11:05Z. Units admitted afterwards pin without it, and no
+  approval is in force. The revocation named the window's five campaigns, all closed, as still holding it. That is a
+  display defect, #2210, and no running work held the lesson.
+- **The next build-side experiment** is the owner's direction of 2026-10-09, as listed above. The 2.3 plan places it.
+- **Phase 2 stays unplaced and gated** (§8).
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 
