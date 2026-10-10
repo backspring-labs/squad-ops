@@ -1,0 +1,34 @@
+# The 2.2 cut's tier diagnostic (docs/plans/2-2-0-cut-preregistration.md §2, §4 P5, §5), uncounted, before registration.
+# The roll's own path with the fault injected (#1251): the objective's allowed scope names the source files its
+# objective changes and excludes the test directories (backend/tests/, frontend/src/__tests__/). Every implementation
+# plan's qa task names a suite there, so the increment's plan falls outside the scope (§24bj condition 4) and the
+# tier must escalate. Explicit paths, not globs: the scope reading's fnmatch lets `*` cross `/`
+# (campaigns/change_request.py:446), so no glob over backend/ can leave backend/tests/ out.
+# No one answers: the escalation expires at the short bound, the cycle parks, the repeat parks again, and
+# max_unaccepted_increments ends the campaign stop_failure (no-progress). A late answer is then recorded against one
+# expired escalation, and must reopen nothing.
+project_id: group_run
+objective:
+  statement: "evolve group_run toward its PRD's expansion scope by adding a per-run capacity limit (PRD §4.1, Tier 1, item 1)"
+  allowed_scope: ["backend/routes.py", "backend/models.py", "backend/store.py", "backend/errors.py", "frontend/src/api.js", "frontend/src/App.jsx", "frontend/src/views/**"]
+  measurement: "one accepted increment"
+  target_accepted_increments: 1
+policy:
+  # 1 calibration + 2 parked increments, with 2 to spare: the no-progress rule ends it, never this cap.
+  max_cycles: 5
+  max_elapsed_s: 43200
+  budget_tokens: 4000000
+  max_repair_cycles_per_increment: 1
+  max_retry_cycles_per_increment: 1
+  max_proposal_run_retries: 1
+  max_proposal_revisions: 2
+  max_rejected_proposals_in_row: 2
+  max_unaccepted_increments: 2
+  ruling_bound_s: 600
+  lease_expiry_s: 3600
+  launch_blocked_interval_s: 300
+  launch_blocked_attempts: 6
+  calibration_profile: validated-fullstack
+  proposal_profile: campaign-increment
+  squad_profile: full-38
+  plan_gate: tier
