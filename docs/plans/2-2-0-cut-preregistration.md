@@ -1,13 +1,15 @@
 # 2.2.0 — pre-registration of the cut's set (plan §3 steps 10–11, the cut's criteria)
 
-**Status: DRAFT for the owner, 2026-10-10. Nothing in it is registered, and nothing has launched.** The plan leaves
+**Status: ruled by the owner, 2026-10-10, about 09:10 ET (§9): "approve §9 as recommended, lesson disabled". Nothing in it is
+registered, and nothing has launched.** The plan leaves
 the regression set's size and the shakeout's exit rule to this document, written when the line's last batch is built
 (the 2.2 plan §5), as 2.0 and 2.1 did. The window is read (the slice 4 pre-registration §12, SIP-0110 §5h), and no
 code has merged since the window's deploy. So this batch is the window's tree.
 
 **What must be true before it is registered:**
 1. **The owner's dispositions at the cut are recorded** (§9): first the lesson's, because it decides what the
-   shakeout's proposals receive.
+   shakeout's proposals receive. **Met:** the lesson is disabled, its approval `apr_7999ec25e1b8f229` revoked at
+   2026-10-10 13:11:05Z, and SIP-0110 §5h records the rulings.
 2. **The final deploy is fixed** (§6). It is recommended to stay rebuild 12 (`ed540e1b`, `dep_4015cab5e042`), the tree
    the window measured. A code change pulled into 2.2 means a rebuild, every tracked loaded check answering on it, and
    the diagnostic and the shakeout run on that deploy.
@@ -58,8 +60,8 @@ built but has never run live. The set measures three things:
   - Its proposal rulings stay with the owner's delegate, since the increment gate is never the tier's.
   - It is the exit rule's shakeout (§3), and the set's campaign reading. It is uncounted, and a new seam finding in it
     is fixed and re-run before registration, never counted.
-  - **Its memory follows the lesson's disposition** (§9). The recommended disposition (disabled) leaves no approved
-    lesson, so the campaign pins an empty snapshot.
+  - **Its memory follows the lesson's disposition** (§9). The lesson is disabled and no approval is in force, so the
+    campaign pins an empty snapshot.
 - **The tier's diagnostic, before registration** (#1251: the roll's own path with the fault injected). The shakeout
   covers the tier's approvals. An uncovered case may not occur in it, so the diagnostic forces one through the
   campaign's own path.
@@ -153,7 +155,7 @@ The files are written with this document: `examples/03_group_run/campaigns/2-2-0
 | model | `qwen3.8:27b`, digest read at registration |
 | loaded checks | the configs' tracked rows, every one answering at the counting preflight |
 | set configs | `2-2-0-cut-regression-{fastapi-react,nextjs}.yaml`, sha256 read at registration |
-| HEAD at preflight | read at registration. Its difference from the deploy commit is prose only, unless §9's decision 2 says otherwise |
+| HEAD at preflight | read at registration. Its difference from the deploy commit is prose and the set's own configuration files (the two campaign files and the two regression configs, which the campaign API and the driver read; no deployed code). §9's decision 2 keeps it so |
 
 ---
 
@@ -166,13 +168,27 @@ The files are written with this document: `examples/03_group_run/campaigns/2-2-0
 ## 8. Drift the record must declare
 
 - **Any difference between the tagged tree and the registered deploy,** each named as additive or behavioural. On
-  today's main: prose only, from `8fb5ca65` (the window's head) to `ca9577c9`.
+  today's main: prose only, from `8fb5ca65` (the window's head) to `ca9577c9`. This document adds the two campaign
+  files, and the regression configs follow. Both are inputs, not deployed code.
 - **Each void and re-run,** with its cause.
 - **Each owner action.**
 
 ## 9. The owner's decisions at this stop
 
 Each has a recommendation, and nothing registers before the owner says so.
+
+**The owner's ruling, 2026-10-10, about 09:10 ET:** "approve §9 as recommended, lesson disabled". The owner chose every
+recommendation below as written:
+- the lesson **disabled**, with the mechanism kept;
+- no code change in 2.2;
+- registration pre-approved;
+- two rolls per stack;
+- the shakeout as drafted;
+- the diagnostic;
+- the next build-side experiment and Phase 2 as SIP-0110 §5h recommends.
+
+The supervisor revoked the lesson's approval (`apr_7999ec25e1b8f229`, 13:11:05Z) on that ruling. The revocation
+named the window's five campaigns, every one closed, as still holding it (#2210, a display defect placed in 2.3).
 
 1. **The lesson's disposition** (SIP-0110 §5h). Recommended: **disabled** at the cut, with the mechanism kept. It is
    ruled first, because the shakeout's proposals receive whatever it leaves approved.
