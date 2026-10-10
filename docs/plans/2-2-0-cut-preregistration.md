@@ -1,7 +1,7 @@
 # 2.2.0 — pre-registration of the cut's set (plan §3 steps 10–11, the cut's criteria)
 
-**Status: ruled by the owner, 2026-10-10, about 09:10 ET (§9): "approve §9 as recommended, lesson disabled". Nothing in it is
-registered, and nothing has launched.** The plan leaves
+**Status: ruled by the owner, 2026-10-10, about 09:10 ET (§9): "approve §9 as recommended, lesson disabled". Precondition 3
+amended by the owner the same day, about 19:13 ET, after the diagnostic (§9, the amendment). Nothing in it is registered.** The plan leaves
 the regression set's size and the shakeout's exit rule to this document, written when the line's last batch is built
 (the 2.2 plan §5), as 2.0 and 2.1 did. The window is read (the slice 4 pre-registration §12, SIP-0110 §5h), and no
 code has merged since the window's deploy. So this batch is the window's tree.
@@ -13,7 +13,16 @@ code has merged since the window's deploy. So this batch is the window's tree.
 2. **The final deploy is fixed** (§6). It is recommended to stay rebuild 12 (`ed540e1b`, `dep_4015cab5e042`), the tree
    the window measured. A code change pulled into 2.2 means a rebuild, every tracked loaded check answering on it, and
    the diagnostic and the shakeout run on that deploy.
-3. **The tier's diagnostic passes** (§2, §4 P5). It is uncounted and runs before registration.
+3. **The tier's diagnostic is read, and the record says what it did and did not show** (§2, §4 P5; amended by the owner,
+   §9). **Met:**
+   - **Ran live:** the tier escalated a calibration's plan on an open question, the delegate answered inside the bound,
+     and the sweep closed the escalation `resolved`.
+   - **Not run live:** the timeout half (expiry at the bound, the run cancelled, the cycle parked, the continuation's
+     `abandon_and_propose`, the no-progress stop, the late answer). Unit tests cover it, at its seams:
+     `tests/unit/campaigns/test_plan_gate_escalations.py`, `test_progress.py`, `test_continuation.py`,
+     `test_late_answers.py`.
+   - **It cannot be forced on an increment without code (§2).** The diagnostic itself stopped on three defects, held
+     out of 2.2 by §9's decision 2: #2212, #2213, #2214.
 4. **The shakeout loop's exit rule holds** (§3): one shakeout campaign on the final deploy with no new seam finding.
 5. **The pins are read** (§6), and nothing in the set has launched.
 
@@ -32,7 +41,7 @@ built but has never run live. The set measures three things:
 | greenfield building did not regress on either stack, with memory disabled | each regression roll's verdict, criteria, correction rounds and boot audit, against §2's baselines | a clean campaign |
 | a cycle declaring memory disabled pins no snapshot, and every consuming task records a `memory_disabled` exposure whose envelope reconstructs (SIP-0110 §0.15) | each roll's exposures and envelopes (`verify_authoring_envelopes.py`) | the window's replays, which ran with memory on |
 | the campaign still evolves the app unattended, with its plan gates decided by the tier where the policy covers them | the shakeout's gate decisions (`decided_by = system:plan_review_tier`, each condition's reading in the notes) and its control log | the regression rolls, which run no campaign |
-| every plan gate the policy does not cover escalates, and the escalation's lifecycle runs to its bound | the diagnostic's escalation rows, the expiry, the parked cycle and the continuation's row (SIP-0109 §24bj, §24bk) | a shakeout in which every plan qualified |
+| every plan gate the policy does not cover escalates, and the escalation's lifecycle runs to its bound (amended: the timeout half was not read live, precondition 3) | the diagnostic's escalation rows, the expiry, the parked cycle and the continuation's row (SIP-0109 §24bj, §24bk) | a shakeout in which every plan qualified |
 
 ---
 
@@ -84,8 +93,26 @@ built but has never run live. The set measures three things:
     - it answers a calibration's design question if one is asked, since an unanswered calibration would end the
       diagnostic at row 2 and void it;
     - it never answers an increment's escalation before its expiry.
+  - **What happened (2026-10-10, `cmp_4bdd8fb573a0`):** the fault fired one rail early, and it always will.
+    - **The premise was wrong.** `derive_footprint_from` appends the stack's qa test namespace to every proposal's footprint
+      (`src/squadops/campaigns/change_request.py:400-413`). The scope rail reads the whole footprint (`:493`), so this
+      `allowed_scope` refuses every proposal. All three attempts were refused, and the increment never reached its plan.
+    - **No change to the campaign file reaches the tier on an increment.** Plan validation holds the plan to the
+      proposal's footprint (`src/squadops/cycles/implementation_plan.py:958`), and the scope rail holds the footprint to
+      `allowed_scope`. So the tier's scope condition cannot fail on an increment. The window's five increments each
+      planned only inside their footprint, asked nothing, and framed once.
+    - **Three defects:**
+      - the refused proposal entered the build correction loop, and its repair wrote source into the proposal run
+        (#2212);
+      - the run reached the increment gate with no change request, the gate's error went unretrieved, and the campaign
+        sat at `at_proposal` from 11:00 ET with no row and no bound (#2213);
+      - the abort left the waiting cycle un-cancelled (#2214).
+    - **Ended:** the owner's word ("cancel it", about 19:00 ET). The campaign was aborted at 19:01:58 ET, and its cycle
+      cancelled by hand. Uncounted.
+    - **What else ran live:** the calibration's escalation, as precondition 3 records.
 - **What the sample can say:** four rolls, one campaign and one diagnostic show the deploy working, memory inert where
-  it is declared disabled, and the tier's two paths each taken at least once. They are not a reliability rate, and the
+  it is declared disabled, the tier's approval path, and its escalation path as far as an answer (precondition 3). The
+  escalation's timeout half was not run live. They are not a reliability rate, and the
   record says so.
 
 ---
@@ -98,7 +125,7 @@ built but has never run live. The set measures three things:
   - **every regression roll is accepted, and its boot audit passes;**
   - **no roll regresses against its stack's baseline beyond variance:** every criterion verified, and correction rounds
     within the line's observed range (React 0–1, Next.js 0–2);
-  - **P1–P5 hold** (§4).
+  - **P1–P4 hold** (§4). P5 is withdrawn by the owner's amendment (§9), and precondition 3 records why.
 - **Fail:** a roll rejected, a boot audit failing, or a prediction falsified.
 - **Inconclusive:** a roll ended by a cause outside the framework, such as a box halt. It is re-run under 1.8.2's
   void rule and does not spend the budget.
@@ -118,7 +145,7 @@ built but has never run live. The set measures three things:
 | P2 | an observation is still recorded where a roll's run produces one (a failed round, a rejected plan): memory disabled stops supply, never observation (§0.3) | the observations table for the rolls' cycles | a failed round in a roll with no observation |
 | P3 | in the shakeout, every plan gate whose plan meets all five conditions is approved by the tier, with `decided_by = system:plan_review_tier` and each condition's reading in the notes | the shakeout's gate decisions | a qualifying plan gate decided by anyone else, or a tier approval whose notes miss a condition |
 | P4 | in the shakeout, a plan gate that fails any condition escalates, and is never approved by the tier | the shakeout's escalation rows beside its gate decisions | a tier approval on a gate with an open question, a footprint outside scope, or a re-rolled framing |
-| P5 | in the diagnostic, the out-of-scope plan escalates (condition 4); the escalation expires at its bound; the run is cancelled `escalation_expired`; the cycle ends parked; the continuation chooses `abandon_and_propose`; the repeat parks again, and the campaign ends `stop_failure` with completed and unresolved work apart; a late answer is recorded against its escalation and reopens nothing | the diagnostic's escalation rows, run, cycle, continuation decisions, close record and digest | any step missing or out of order, a tier approval of the out-of-scope plan, or a closed campaign reopened |
+| P5 (**withdrawn**, §9's amendment: unreachable on an increment without code, §2) | in the diagnostic, the out-of-scope plan escalates (condition 4); the escalation expires at its bound; the run is cancelled `escalation_expired`; the cycle ends parked; the continuation chooses `abandon_and_propose`; the repeat parks again, and the campaign ends `stop_failure` with completed and unresolved work apart; a late answer is recorded against its escalation and reopens nothing | the diagnostic's escalation rows, run, cycle, continuation decisions, close record and digest | any step missing or out of order, a tier approval of the out-of-scope plan, or a closed campaign reopened |
 
 ---
 
@@ -189,6 +216,20 @@ recommendation below as written:
 
 The supervisor revoked the lesson's approval (`apr_7999ec25e1b8f229`, 13:11:05Z) on that ruling. The revocation
 named the window's five campaigns, every one closed, as still holding it (#2210, a display defect placed in 2.3).
+
+**The owner's amendment, 2026-10-10, after the diagnostic:**
+- "cancel it, keep the ruling, check the window plans" (about 19:00 ET):
+  - the diagnostic was aborted;
+  - decision 2 stands, so #2212–#2214 are not in 2.2;
+  - the window's plans were read (§2, what happened).
+- "go ahead, amend precondition 3 and launch the shakeout" (about 19:13 ET):
+  - precondition 3 now reads as above;
+  - P5 is withdrawn;
+  - the shakeout launches as drafted.
+
+  The supervisor proposed a second diagnostic, then withdrew the proposal. The only no-code trigger left is a calibration
+  question left unanswered, and calibrations ask one only part of the time. A finding there could not change 2.2's code under decision 2.
+  So the timeout half's live reading goes with the fixes of #2212–#2214, wherever they are placed.
 
 1. **The lesson's disposition** (SIP-0110 §5h). Recommended: **disabled** at the cut, with the mechanism kept. It is
    ruled first, because the shakeout's proposals receive whatever it leaves approved.
