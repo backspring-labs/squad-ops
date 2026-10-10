@@ -61,7 +61,7 @@ diverged from on agent-discretionary memory tools (§6).
 
 ---
 
-## Delivery ledger (current as of 2026-10-09)
+## Delivery ledger (current as of 2026-10-10)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or
 re-places it.
@@ -74,7 +74,7 @@ re-places it.
 | Phase 1, slice 2: the authoring replay, three arms, validated first on proposals (§0.11–§0.12) | **shipped** | 2.2.0, PRs #2137, #2139 and #2140, issue #2106: on a live deploy every captured envelope at every seam is valid (30 of 30: proposal, plan writing, build authoring and both repairs), and the exploratory proposal run authored all three arms (posted on #2106) |
 | Phase 1, slice 3: the mechanism, observing every eligible cycle and supplying four seams, inert until approved, with the app-build indicators beside each exposure, the failure-shape sorter and the repeat report (§0.2–§0.10) | **shipped** | 2.2.0, PRs #2120, #2121, #2122, #2124, #2125, #2126, #2127, #2129, #2130, #2132 and #2134, issue #2096: inert and observed live on the regression pair (memory disabled) and on the campaign proof `cmp_dae2cd6b0e3c` (memory enabled, nothing approved), with the repeat report's first read (posted on #2096). A re-dispatched authoring (a correction round's re-take, an emission retry) recorded no exposure of its own, against §0.2, until PR #2163, issue #2162: the rebuild 5 and 6 Next.js regression cycles each had one more envelope than exposures. The exposures table still held one row per task of a run, and refused that exposure on the deploy, until issue #2165 (the rebuild 7 Next.js cycle's qa.test, authored three times, kept only the first attempt's) |
 | the reviewed annotation by which a return classified only in prose enters (§0.4): beside its observation, adding no occurrence, classifying only once the owner reviews it; and a lesson cites only classified observations | **shipped** | 2.2.0, PR #2186, issue #2160 |
-| Phase 1, slice 4: the first lesson, drafted by the auditor, and the measurement window, read before 2.2.0's cut (§0.4, §0.12–§0.13) | **placed** | 2.2.0, #2107 |
+| Phase 1, slice 4: the first lesson, drafted by the auditor, and the measurement window, read before 2.2.0's cut (§0.4, §0.12–§0.13) | **placed** | 2.2.0, #2107: the window ran and its finding is recorded (§5h); the lesson's disposition, the next build-side experiment and Phase 2's disposition remain, the owner's at the cut |
 | Phase 1.5: the correction lane (§13 question 3) | **dropped** | by revision 6 (§5d), which folds it into Phase 1: its observation is slice 3's, its repair seam is wired inert in slice 3, and its capture is slice 1's. A correction-round template waits for a recurring target behavior (§0.4) |
 | Phase 2: consolidation and promotion (§8) | **unplaced** | gated on Phase 1's measurement (§8) |
 | entry points: the legacy agent store made dormant, its failures visible (Appendix A, §A.4.3) | **placed** | 2.3.0, #2174 |
@@ -1488,6 +1488,71 @@ instruction exists before 2.4, so the window's arms differ only in lessons, as p
 PR #2185's comments map each review point to its change.
 
 **Who ruled it.** The owner, 2026-10-09, accepting the design and its five questions as drafted.
+
+## 5h. The 2.2 window's finding (2026-10-10)
+
+**What changed.** Phase 1's measurement window (§0.12, §0.13) ran and was read. The readout, with its tables, its
+adjudication and its sensitivity, is the pre-registration's §12 (`docs/plans/2-2-0-slice4-preregistration.md`). Here is
+the finding, in §0.13's order.
+
+**Instrument validity first: valid.**
+- 5 of 5 cases reconstructed byte for byte, and each memory arm differs from its baseline by the lesson's section
+  alone. All five cases are prospective.
+- The window ran on one deploy (rebuild 12, `ed540e1b`) with no rebuild, and its manifest held.
+- It closed at the budget cap's fifth campaign, after 8.6 of 48 hours.
+
+**The finding: no demonstrated useful benefit.**
+- `pat_0b4aef8aea974e06@2`, on proposal writing, at `criterion_already_satisfied`: 1 improvement, 0 worsenings and
+  4 ties. Already-satisfied criteria fell from 3 outputs to 2, out of 15 per arm.
+- The pre-registered bar needs three improvements and a halving, and neither is met.
+- Where the baseline made the mistake most (name normalization, 2 of 3), the memory arm made it as often, although the
+  lesson names that family.
+
+**One guardrail signal.** One memory-arm output in the sorting case left its objective. It read the manifest's declared
+ordering as built, which the delivered code is not (#2202), and proposed capacity instead.
+- It is not a `harm` finding under §0.13's definition, which needs a worsening or a counterfactual breach.
+- It is evidence that the lesson's comparison, applied to a manifest that misdescribes its code, can push a proposer
+  off its objective.
+
+**Sensitivity.**
+- Read from the prompt's sources alone, without the delivered code, two cases become partly assessed, and the finding
+  reads **inconclusive**.
+- Neither reading shows a benefit or a worsening.
+
+**Why so little headroom.** The proposal prompt already carries the lesson's teaching as static text:
+- the rule that each new criterion must fail on the accepted application (#1947, 2.0.0);
+- the frozen conventions (#2013, 2.1.0).
+
+Across all five cases the baseline made the mistake in 3 of 15 outputs.
+
+**Beside the finding.**
+- **The recurring targets at plan review and the correction round:** the repeat report (D14, read again 2026-10-10)
+  substantiates none. `correction_round vitest:element_not_found` repeats in 3 independent cycles, in 3 campaigns. It
+  is a candidate for the auditor, not yet read.
+- **The app-build indicators:** the window's ten builds were all accepted and promoted, with 0 or 1 failed correction
+  rounds each. They are observed only.
+
+**For the owner, at the cut (the 2.2 plan, §3 step 9).** Each item is the owner's to decide, and each recommendation is
+the supervisor's:
+- **The lesson's disposition.** Recommended: **disabled** at the cut, the mechanism kept. It showed no benefit on the
+  five cases, and it costs 265 words of every proposal prompt. Its one guardrail signal ties to a manifest defect
+  (#2202) that the lesson cannot correct.
+  - Revising it would retest a target the static prompt already covers.
+  - A bounded continuation would add cases with the same low headroom.
+- **The next build-side experiment.** Recommended: the owner's direction of 2026-10-09:
+  1. broader, multi-increment campaigns on both stacks, with memory on and no build-side lesson approved;
+  2. the repeat report, then the auditor's reading of `vitest:element_not_found` and of whatever else repeats;
+  3. a build-authoring or repair lesson, drafted only for a substantiated target;
+  4. its replay check on captured failed rounds, then the owner's approval;
+  5. a comparison within that target: failed correction rounds and rounds to green, with the lesson on and off,
+     counted in independent cycles.
+
+  It is placed by the 2.3 plan, beside Outcome Evaluation's instruments, which give the yardstick.
+- **Phase 2.** Recommended: **stays unplaced and gated** (§8). Nothing in Phase 1's finding yet supports consolidating
+  or promoting lessons.
+
+**Who ruled it.** The finding is the evaluator's, under the pre-registration the owner adopted on 2026-10-09. The
+dispositions above are the owner's, and are recorded here when ruled.
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 

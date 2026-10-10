@@ -512,3 +512,143 @@ The questions as they were put:
 6. **When to approve (§4):** before campaign 1 (recommended), or after campaign 2 if the activation boundary is itself
    an objective.
 7. **Opening the window:** a separate decision, after the readiness work in §0.
+
+## 12. The window's readout (2026-10-10)
+
+**The evaluator.** The supervisor scored every output, blind to the arm. It drafted the lesson, annotated and reviewed
+its observations, approved it under the owner's delegation, and ruled every live proposal in the window. Every output
+holding an apparent win or an ambiguous verdict was adjudicated by a fresh-context agent that did not draft the lesson
+(§6). There was no worsening to adjudicate.
+
+**The window.**
+- It opened 2026-10-09 18:31Z (14:31 ET) on rebuild 12 (`ed540e1b`, deploy `dep_4015cab5e042`). It closed at the
+  budget cap's fifth campaign, 2026-10-10 03:07Z (23:07 ET), after 8.6 hours of the 48 allowed.
+- **No rebuild.** The manifest held: main moved from `8fb5ca65` to `2ca3b3e9` during the window, by documents only.
+- Five campaigns, one per objective (§4). Every one completed `success`, its increment accepted and promoted.
+- Counted apart: 5 cases (one envelope each), 5 campaigns, and 3 generations per arm, so 30 outputs, never 30 cases.
+  Campaign 4's first proposal was re-dispatched once (envelope `6d5ae89c…`). It is counted beside its case, not as a
+  second one.
+
+**Instrument validity: 5 of 5 cases.** Each captured prompt was reconstructed byte for byte. Each memory arm differs
+from its baseline by the lesson's section alone. All five are **prospective**: the lesson was in each live snapshot.
+30 of 30 authorings parsed.
+
+**The objective check, before any arm generated.**
+- The capacity, normalization and seed cases hold legitimate work.
+- Two cases were ambiguous:
+  - **sorting:** the manifest declares lexical datetime ordering, but the delivered `GET /runs` returns insertion
+    order (#2202);
+  - **errors:** the accepted view already shows the server's specific messages.
+- Both were adjudicated independently before the replay ran (`var/replays/2-2-0-window/adjudication/objective/`), and
+  both hold work. All five cases enter the primary comparison.
+
+**The replay** (`var/replays/2-2-0-window-replays`, 2026-10-10, 03:08–05:07Z):
+- **Settings:** baseline and scoped memory, 3 generations per arm, arm-scheduling seed 7.
+- **Model:** `qwen3.8:27b`, `max_tokens` 12288, reasoning high.
+- **The lesson:** `pat_0b4aef8aea974e06@2`, text sha256 `9c4df85e…`.
+- **Scoring:** rubric @2, blinding seed 20261010. The verdicts (`scoring/scores-window.json`, sha256 `215eb182…`) were
+  written before the key was read.
+
+| case | objective | baseline `present` | scoped memory `present` | outcome |
+|---|---|---|---|---|
+| `924d0984664c` | capacity limit | 0 of 3 | 0 of 3 | tie |
+| `9bd9aa306ef8` | name normalization | 2 of 3 | 2 of 3 | tie |
+| `55a35be44201` | datetime sorting | 0 of 3 | 0 of 3 | tie |
+| `d581736fa640` | clearer error messages | 1 of 3 | 0 of 3 | improvement |
+| `f13ae85ce5ef` | seed sample run | 0 of 3 | 0 of 3 | tie |
+
+- **1 improvement, 0 worsenings, 4 ties.** Total `present`: baseline 3, scoped memory 2. Headroom (the baseline made
+  the mistake at least once): 2 cases.
+- **The uncertainty:** one non-tied case, so an exact sign test gives p = 1.0, two-sided. It is reported as
+  uncertainty, never as the decision.
+- **What the `present` verdicts were.**
+  - **Normalization:** in both arms, 2 of 3 outputs assert case-insensitive matching on join or leave. The accepted
+    application already does this: the manifest's decision `participant-uniqueness-case`, and `routes.py:69-75` and
+    `:91-97`. The lesson's text names this family (a name differing only by trim is already a duplicate). The memory
+    arm still made the mistake as often as the baseline did. The outputs that avoided it, one per arm, target internal
+    whitespace, which the application does not collapse.
+  - **Errors:** one baseline output asks the detail view to show the server's message. It already does
+    (`RunDetailView.jsx:59, 84`, rendered at `:181, :205`; `api.js:25-26`).
+- **The supported-benefit bar (§6):**
+  - at least four complete cases: yes, 5;
+  - no worsening: yes;
+  - at least three improvements: **no, 1**;
+  - the memory arm's `present` at most half the baseline's and at least three fewer: **no, 2 against 3**;
+  - every guardrail held: **no, one breach** (below).
+- **Complete removal:** in the errors case, all three memory-arm outputs are valid, applicable, assessed `absent` and
+  within the guardrails. That case's baseline made the mistake once.
+
+**The guardrails.**
+- **One breach, in the memory arm.** In the sorting case, generation 0 proposed a capacity limit instead of datetime
+  sorting. Its reply gives the reason. The manifest's decision `datetime-list-sorting` declares the ordering, so "a
+  criterion asserting that GET /runs returns runs in datetime order would already pass". It concluded that the
+  objective's means was already satisfied, and moved to the next Tier 1 item.
+  - The comparison it made is the one the lesson asks for.
+  - Its premise, "the manifest is what the application does", is the base prompt's, in both arms.
+  - The manifest misdescribes the delivered code (#2202).
+  - All three baseline outputs proposed sorting.
+  - One of 15 against none of 15 supports no causal reading. It is neither a counterfactual replay's breach nor a
+    worsening, so under §6 it does not make the finding `harm`. It is recorded as a harm signal for the lesson's
+    disposition: an off-objective proposal is the scope invention §2 warns against.
+- **Other serious defects:**
+  - **the baseline arm: 4.**
+    - Three seed outputs say "dev-only" in their PRD text, and nothing in their change carries it. This is the class
+      the live first proposal was returned for.
+    - One errors output puts its message text under an `error_messages:` key the manifest does not define, and the
+      build drops it (#2205's class).
+  - **the memory arm:** none besides the breach. Nothing grows under the lesson.
+- **No avoidance:** no output is `not applicable` in either arm. The arms wrote 31 and 25 new criteria.
+- **The context cost:** the section is 1,622 characters (265 words), against prompts of 27,336–29,528 characters.
+
+**The adjudication** (`var/replays/2-2-0-window-replays/adjudication/`, `record.json`):
+- **The packet:** Claude Sonnet 5.5 read the 18 outputs of the errors, normalization and sorting cases, blind to the arm
+  and to the supervisor's verdicts.
+- **Two readings:**
+  - **reading A, the delivered application:** the manifest and the frozen conventions decide first, and the delivered
+    code decides where they are silent or disagree. This is the reading the case-level adjudication ruled for #2202,
+    and the one the scores use;
+  - **reading B:** the prompt's sources only.
+- **Under reading A, 18 of 18 verdicts agree**, with the same criteria marked already satisfied.
+- **Guardrails:** both evaluators find the sorting case's capacity output off its objective, and the `error_messages:`
+  key's defect.
+- **Recorded disagreements, not resolved:** for three errors outputs, the adjudicator reads the objective as `unclear`
+  where the supervisor read `yes`. Two of them move the existing message to new testids, and one asks for what the view
+  already does.
+- **Citations:** the adjudicator's line numbers do not match the files. Its findings match the code at the citations
+  above.
+
+**Sensitivity.**
+- **Without the sorting case:** 4 cases, 1 improvement, 0 worsenings, 3 ties, `present` 3 against 2. The finding is the
+  same.
+- **Under reading B:**
+  - the sorting outputs become `present`;
+  - criteria the manifest is silent on become `unassessed`: leave matching, exact message texts, internal whitespace;
+  - so the normalization and errors cases are partly assessed and leave the comparison;
+  - three complete cases remain, fewer than four, which reads **inconclusive**.
+  - The sorting case would read 3 against 2, an improvement produced by the off-objective output, which the
+    no-empty-win guardrail does not count.
+- **On either reading:** no benefit shown, and no worsening.
+- **For rubric @3, not resolved here:** whether a manifest's silence settles "the application does not do it", and
+  whether the meaningful-criteria guardrail is read per reading.
+
+**The finding: no demonstrated useful benefit.** The window is complete and valid, it falls short of the bar, and it
+shows no harm by §6's definition. It carries one guardrail signal, the off-objective output, which the lesson's
+disposition weighs.
+
+**Beside it, as observation (§5, exploratory):**
+- **The live rulings:** every live first proposal was read `absent after assessment` (the sorting case by the code, as
+  adjudicated).
+  - Capacity, normalization and sorting: their first proposals were approved.
+  - Errors and seed: their first proposals were returned `ambiguous_manifest_delta`, for #2205's undefined key and for
+    the unsupported "dev-only" text. Both revisions were approved. They are reported apart (§2).
+- **The app-build indicators** (`var/replays/2-2-0-window/reports/`):
+  - the ten window builds, five calibrations and five increments, were all accepted and promoted;
+  - the increments took 1, 0, 0, 1 and 0 failed correction rounds, and the calibrations 0, 1, 1, 1 and 0.
+  - They are observed only, and claim nothing about the lesson.
+- **The repeat report** (read 2026-10-10 05:15Z): `group_run` has 95 observations and 8 rounds with a shape.
+  - Three signatures repeat across independent cycles:
+    - `correction_round vitest:element_not_found`, in 3 cycles and 3 campaigns;
+    - `proposal_ruling ambiguous_manifest_delta`, in 3 cycles: two of them are this window's, and they are different
+      mistakes (an undefined key; unsupported text);
+    - `correction_round vitest:not_a_function`, in 2 cycles: §7's two different mistakes.
+  - **No recurring target behavior is substantiated.** The first is a build-side candidate for the auditor's reading.
