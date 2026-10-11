@@ -6,7 +6,9 @@ comes entirely from role_id → prompt_service.get_system_prompt(role_id).
 
 Key design decisions (from plan runtime contracts):
 - P2-RC1: Zero role-specific code. role_id drives identity via prompt_service.
-- P2-RC4: Memory is best-effort and secondary to the chat loop.
+- P2-RC4, superseded: chat neither recalls nor stores. The legacy agent store is dormant
+  (SIP-0110 §A.4.3, #2174); chat carries no memory section until the context-assembly port
+  (#2176) supplies one.
 - P2-RC5: History comes from the proxy (Phase 3), not A2A context.
 """
 
@@ -32,12 +34,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Maximum memory results per query (SIP-0085 v1 scope rule)
-_MAX_MEMORY_RESULTS = 5
-
-# Phrases that trigger explicit memory storage (case-insensitive substring match)
-_MEMORY_TRIGGERS = ("remember this", "note that", "save this", "store this")
-
 
 class ChatAgentExecutor(AgentExecutor):
     """Role-generic chat executor.
@@ -45,14 +41,17 @@ class ChatAgentExecutor(AgentExecutor):
     Receives a PortsBundle and role_id at construction. On execute():
     1. Extracts user text from the A2A request context
     2. Assembles system prompt via prompt_service.get_system_prompt(role_id)
-    3. Optionally retrieves relevant memories (best-effort, bounded)
-    4. Streams response via ports.llm.chat_stream()
-    5. Enqueues text chunks as A2A status update events
+    3. Streams response via ports.llm.chat_stream()
+    4. Enqueues text chunks as A2A status update events
     """
 
     def __init__(self, *, ports: PortsBundle, role_id: str) -> None:
         self._ports = ports
         self._role_id = role_id
+        logger.warning(
+            "legacy agent memory dormant: chat neither recalls nor stores (SIP-0110 §A.4.3, #2174)",
+            extra={"role_id": role_id},
+        )
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         """Execute a chat request: stream LLM response as A2A events."""
@@ -73,13 +72,10 @@ class ChatAgentExecutor(AgentExecutor):
             # 1. Assemble system prompt from role identity
             system_content = self._get_system_prompt()
 
-            # 2. Best-effort memory retrieval (non-blocking)
-            memory_context = await self._retrieve_memories(user_text)
+            # 2. Build message list for LLM
+            messages = self._build_messages(system_content, user_text)
 
-            # 3. Build message list for LLM
-            messages = self._build_messages(system_content, memory_context, user_text)
-
-            # 4. Stream response and enqueue chunks
+            # 3. Stream response and enqueue chunks
             t0 = time.monotonic()
             full_response = await self._stream_response(
                 messages,
@@ -89,14 +85,11 @@ class ChatAgentExecutor(AgentExecutor):
             )
             latency_ms = (time.monotonic() - t0) * 1000
 
-            # 5. Best-effort memory write on explicit intent
-            await self._maybe_store_memory(user_text, full_response)
-
-            # 6. Record generation in LangFuse (SIP-0085 Phase 5)
+            # 4. Record generation in LangFuse (SIP-0085 Phase 5)
             self._record_generation(
                 context_id=context_id,
                 task_id=task_id,
-                prompt_text=system_content + memory_context + "\n\n" + user_text,
+                prompt_text=system_content + "\n\n" + user_text,
                 response_text=full_response,
                 latency_ms=latency_ms,
             )
@@ -163,35 +156,10 @@ class ChatAgentExecutor(AgentExecutor):
         assembled = self._ports.prompt_service.get_system_prompt(self._role_id)
         return assembled.content
 
-    async def _retrieve_memories(self, query: str) -> str:
-        """Best-effort memory retrieval, bounded to _MAX_MEMORY_RESULTS."""
-        try:
-            from squadops.memory.models import MemoryQuery
-
-            results = await self._ports.memory.search(
-                MemoryQuery(text=query, limit=_MAX_MEMORY_RESULTS),
-            )
-            if results:
-                entries = [r.entry.content for r in results if r.entry.content]
-                if entries:
-                    return "\n\nRelevant context from memory:\n" + "\n---\n".join(entries)
-        except Exception:
-            logger.debug("Memory retrieval failed (best-effort), continuing without")
-        return ""
-
-    def _build_messages(
-        self,
-        system_content: str,
-        memory_context: str,
-        user_text: str,
-    ) -> list[ChatMessage]:
+    def _build_messages(self, system_content: str, user_text: str) -> list[ChatMessage]:
         """Build the message list for the LLM."""
-        system_text = system_content
-        if memory_context:
-            system_text += memory_context
-
         return [
-            ChatMessage(role="system", content=system_text),
+            ChatMessage(role="system", content=system_content),
             ChatMessage(role="user", content=user_text),
         ]
 
@@ -298,21 +266,3 @@ class ChatAgentExecutor(AgentExecutor):
             llm_obs.flush()
         except Exception:
             logger.debug("LangFuse recording failed (best-effort)", exc_info=True)
-
-    async def _maybe_store_memory(self, user_text: str, response: str) -> None:
-        """Store memory only on explicit user intent."""
-        lower = user_text.lower()
-        if not any(trigger in lower for trigger in _MEMORY_TRIGGERS):
-            return
-
-        try:
-            from squadops.memory.models import MemoryEntry
-
-            entry = MemoryEntry(
-                content=f"User: {user_text}\nAssistant: {response}",
-                tags=("chat", self._role_id),
-            )
-            await self._ports.memory.store(entry)
-            logger.info("Stored chat memory", extra={"role_id": self._role_id})
-        except Exception:
-            logger.debug("Memory store failed (best-effort), continuing")
