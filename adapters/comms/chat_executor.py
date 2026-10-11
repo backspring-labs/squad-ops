@@ -9,7 +9,8 @@ Key design decisions (from plan runtime contracts):
 - P2-RC4, superseded: chat neither recalls nor stores. The legacy agent store is dormant
   (SIP-0110 §A.4.3, #2174); chat carries no memory section until the context-assembly port
   (#2176) supplies one.
-- P2-RC5: History comes from the proxy (Phase 3), not A2A context.
+- P2-RC5: History comes from the proxy (Phase 3), not A2A context: the runtime API sends a
+  session's earlier turns, bounded, in the message's metadata (#2175).
 """
 
 from __future__ import annotations
@@ -27,6 +28,12 @@ from a2a.types import (
 )
 from a2a.utils import new_agent_text_message
 
+from squadops.comms.chat_history import (
+    HISTORY_DROPPED_KEY,
+    HISTORY_KEY,
+    HISTORY_ROLES,
+    HISTORY_UNAVAILABLE_KEY,
+)
 from squadops.llm.models import ChatMessage
 
 if TYPE_CHECKING:
@@ -72,8 +79,8 @@ class ChatAgentExecutor(AgentExecutor):
             # 1. Assemble system prompt from role identity
             system_content = self._get_system_prompt()
 
-            # 2. Build message list for LLM
-            messages = self._build_messages(system_content, user_text)
+            # 2. Build message list for LLM: the session's earlier turns, then this one
+            messages = self._build_messages(system_content, self._history(context), user_text)
 
             # 3. Stream response and enqueue chunks
             t0 = time.monotonic()
@@ -89,7 +96,7 @@ class ChatAgentExecutor(AgentExecutor):
             self._record_generation(
                 context_id=context_id,
                 task_id=task_id,
-                prompt_text=system_content + "\n\n" + user_text,
+                prompt_text="\n\n".join(m.content for m in messages),
                 response_text=full_response,
                 latency_ms=latency_ms,
             )
@@ -156,10 +163,37 @@ class ChatAgentExecutor(AgentExecutor):
         assembled = self._ports.prompt_service.get_system_prompt(self._role_id)
         return assembled.content
 
-    def _build_messages(self, system_content: str, user_text: str) -> list[ChatMessage]:
+    def _history(self, context: RequestContext) -> list[ChatMessage]:
+        """The earlier turns the proxy sent with this one (#2175), oldest first. A turn sent
+        without them (no session yet) has none."""
+        metadata = getattr(context.message, "metadata", None)
+        if not isinstance(metadata, dict):
+            return []
+        turns = [
+            ChatMessage(role=t["role"], content=t["content"])
+            for t in metadata.get(HISTORY_KEY) or []
+            if isinstance(t, dict)
+            and t.get("role") in HISTORY_ROLES
+            and isinstance(t.get("content"), str)
+        ]
+        logger.info(
+            "chat_history_received",
+            extra={
+                "role_id": self._role_id,
+                "turns": len(turns),
+                "dropped": metadata.get(HISTORY_DROPPED_KEY, 0),
+                "unavailable": bool(metadata.get(HISTORY_UNAVAILABLE_KEY)),
+            },
+        )
+        return turns
+
+    def _build_messages(
+        self, system_content: str, history: list[ChatMessage], user_text: str
+    ) -> list[ChatMessage]:
         """Build the message list for the LLM."""
         return [
             ChatMessage(role="system", content=system_content),
+            *history,
             ChatMessage(role="user", content=user_text),
         ]
 

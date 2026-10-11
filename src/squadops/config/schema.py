@@ -194,6 +194,20 @@ class A2AConfig(BaseModel):
     )
 
 
+class ChatConfig(BaseModel):
+    """Console chat's tunables (SIP-0085; #2175): how much of a session's history a turn carries
+    to its agent. The oldest turns are dropped first, and the request counts what it dropped."""
+
+    history_max_turns: int = Field(
+        default=20, ge=0, description="Earlier messages a chat turn carries at most"
+    )
+    history_max_tokens: int = Field(
+        default=8000,
+        ge=0,
+        description="Estimated tokens of history a chat turn carries at most (4 chars a token)",
+    )
+
+
 class CommsConfig(BaseModel):
     """Communication services configuration."""
 
@@ -201,6 +215,7 @@ class CommsConfig(BaseModel):
     a2a: A2AConfig = Field(..., description="A2A transport selector and tunables (required)")
     rabbitmq: RabbitMQConfig = Field(..., description="RabbitMQ configuration")
     redis: RedisConfig = Field(..., description="Redis configuration")
+    chat: ChatConfig = Field(default_factory=ChatConfig, description="Console chat's tunables")
 
 
 class FilesystemToolConfig(BaseModel):

@@ -272,3 +272,41 @@ class TestLegacyMemoryIsDormant:
             ("user", user_text),
         ]
         assert not [r for r in caplog.records if "refused" in r.getMessage()]
+
+
+class TestTheTurnsHistory:
+    """P2-RC5 (#2175): the proxy sends a session's earlier turns in the message's metadata, and
+    the agent answers inside that conversation."""
+
+    async def test_the_sent_turns_come_between_the_identity_and_this_turn(self):
+        """Entered at ``execute``. Bugs caught: the history ignored, so every turn is a first; the
+        turns reordered; or something that is not conversation replayed as a turn."""
+        from adapters.comms.chat_executor import ChatAgentExecutor
+
+        captured: list = []
+
+        async def capturing_stream(messages, **kwargs):
+            captured.extend(messages)
+            yield "ok"
+
+        ports = _make_ports_bundle()
+        ports.llm.chat_stream = capturing_stream
+        ctx = _make_context(user_text="third")
+        ctx.message.metadata = {
+            "history": [
+                {"role": "user", "content": "first"},
+                {"role": "system", "content": "not a turn"},
+                {"role": "assistant", "content": "second"},
+            ],
+            "history_dropped": 0,
+            "history_unavailable": False,
+        }
+
+        await ChatAgentExecutor(ports=ports, role_id="comms").execute(ctx, _make_event_queue())
+
+        assert [(m.role, m.content) for m in captured] == [
+            ("system", "You are a test agent."),
+            ("user", "first"),
+            ("assistant", "second"),
+            ("user", "third"),
+        ]
