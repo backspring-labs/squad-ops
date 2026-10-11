@@ -391,19 +391,14 @@ def derive_counters(
     decisions = [
         e.binding for e in applied if e.operation == ControlOperation.DECIDE and "row" in e.binding
     ]
-    rejected_in_row = 1 if ending is CycleEnding.REJECTED_AT_GATE else 0
-    if rejected_in_row:
-        for binding in reversed(decisions):
-            if binding.get("ending") != CycleEnding.REJECTED_AT_GATE:
-                break
-            rejected_in_row += 1
     return CampaignCounters(
         cycles=len(launched),
         elapsed_s=int((now - started).total_seconds()),
         tokens=sum(r.tokens for r in launched),
         repair_cycles=since_increment.count(CycleKind.REPAIR),
         retry_cycles=since_increment.count(CycleKind.RETRY),
-        rejected_proposals_in_row=rejected_in_row,
+        rejected_proposals_in_row=_in_row(CycleEnding.REJECTED_AT_GATE, ending, decisions),
+        failed_proposals_in_row=_in_row(CycleEnding.PROPOSAL_FAILED, ending, decisions),
         # An abandonment is counted wherever it was executed: by a decision under ``proceed``,
         # or by the owner's word (a held action resumed, an escalation ruled).
         unaccepted_increments=sum(
@@ -414,6 +409,19 @@ def derive_counters(
         ),
         objective_met=objective_met,
     )
+
+
+def _in_row(kind: CycleEnding, ending: CycleEnding, decisions: list[dict]) -> int:
+    """How many cycles in a row, the ending one last, ended ``kind``: the earlier ones read back
+    from the decisions' rows until one ended otherwise."""
+    if ending is not kind:
+        return 0
+    count = 1
+    for binding in reversed(decisions):
+        if binding.get("ending") != kind:
+            break
+        count += 1
+    return count
 
 
 def accepted_increments(log: list, intents: list) -> int:
