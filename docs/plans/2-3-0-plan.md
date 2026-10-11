@@ -1,18 +1,21 @@
 # 2.3.0 plan — a faster engine first, then the structure: TensorFold to a decision, and stabilization on the engine that ships
 
-**Status: DRAFT (2026-10-11), for the owner's ruling (§5).** It was drafted while 2.2.1's diagnostic ran, at the
-owner's request: "I want to prioritize the TensorFold adapter to get shorter cycle times". It assumes 2.2.1 cuts as its
-plan says. Nothing here starts before that cut.
+**Status: DRAFT, revision 2 (2026-10-11), for the owner's ruling (§6).**
+- **Drafted** while 2.2.1's diagnostic ran, at the owner's request: "I want to prioritize the TensorFold adapter to get
+  shorter cycle times".
+- **Revision 2** applies the nine changes from the owner's review of PR #2228 ("apply all nine and the SIP amendment").
+  It proposes them to SIP-0111 as one amendment in the same PR (§9a). The amendment is ruled with this plan, before any
+  measurement.
+- **It assumes 2.2.1 cuts as its plan says.** Nothing here starts before that cut.
 
-**What 2.3 is.** An odd minor: a stabilization release, feature-free by rule (CLAUDE.md, #281). One track rides it
-under a waiver the owner already granted: **SIP-0111's TensorFold trial**, dark, under SIP-0106 §4.3 (the owner's Q1,
-2026-10-09). This plan puts that track first, and carries it to a cutover decision rather than stopping at the
-adapter.
+**What 2.3 is.** An odd minor: a stabilization release, feature-free by rule (CLAUDE.md, #281). One track rides it under
+a waiver the owner already granted: **SIP-0111's TensorFold trial**, dark, under SIP-0106 §4.3 (the owner's Q1,
+2026-10-09). This plan puts that track first, and carries it to a cutover decision rather than stopping at the adapter.
 
 **The question it answers:**
 
-> **Can the squad run on a faster engine with no loss in what it emits, and does the framework's structure hold
-> through its largest refactors, measured on the engine 2.3 ships with?**
+> **Can the squad run on a faster engine with no loss in the cycles it completes, and does the framework's structure
+> hold through its largest refactors, measured on the engine 2.3 ships with?**
 
 **Why the engine goes first, beyond speed.** An engine change is a listed-input change for every measurement after it
 (SIP-0111 §1, its SIP-0110 overlap). So anything measured before the engine decision would be measured again after it:
@@ -20,132 +23,231 @@ adapter.
 - Outcome Evaluation's baselines;
 - the next build-side memory experiment.
 
-Deciding the engine first means 2.3 measures once.
+Deciding the engine first means 2.3 measures once. **The cut's regression set on the chosen engine is in scope** (§3,
+phase 9). It is the new baseline if TensorFold is adopted.
 
 ---
 
-## 1. What a faster engine buys, from this box's own records
+## 1. What a faster engine could buy: projections, measured by G3
 
-Squad work dispatches one task at a time, so a cycle's length is mostly single-stream decode (SIP-0111 §1). Read from
-the 2.2 cut set's four counted rolls, every model call each agent logged (Ollama's `eval_count / eval_duration`, decode
-alone):
+Squad work dispatches one task at a time, so a cycle's length is mostly single-stream decode (SIP-0111 §1). This table
+reads every model call each agent logged in the 2.2 cut set's four counted rolls.
 
-| roll | wall clock (min) | model calls | tokens generated | decode (min) | share |
-|---|---:|---:|---:|---:|---:|
-| React 1 `cyc_0009e2942a6c` | 50.5 | 16 | 75,858 | 46.1 | 91% |
-| Next.js 1 `cyc_e2a1ad13af47` | 54.3 | 16 | 78,444 | 48.5 | 89% |
-| React 2 `cyc_5fb4b1537245` | 52.0 | 16 | 76,704 | 47.6 | 92% |
-| Next.js 2 `cyc_e7e0670e2681` | 62.1 | 19 | 91,055 | 54.6 | 88% |
+| roll | wall clock (min) | model calls | prompt tokens | generated tokens | decode (min) | share |
+|---|---:|---:|---:|---:|---:|---:|
+| React 1 `cyc_0009e2942a6c` | 50.5 | 16 | 162,028 | 75,858 | 46.1 | 91% |
+| Next.js 1 `cyc_e2a1ad13af47` | 54.3 | 16 | 187,307 | 78,444 | 48.5 | 89% |
+| React 2 `cyc_5fb4b1537245` | 52.0 | 16 | 163,140 | 76,704 | 47.6 | 92% |
+| Next.js 2 `cyc_e7e0670e2681` | 62.1 | 19 | 230,260 | 91,055 | 54.7 | 88% |
 
-**Decode is 88–92% of a roll.**
-- **What's left:** prompt reading (prefill), tests, typed checks, assembly, dispatch and the gates together take about
-  4–8 minutes.
-  - The prompts average 10–12k tokens, so prefill is about 2–3 of those minutes.
-  - React roll 1's two `qa.test` tasks ran 3.0 and 6.1 minutes. Their suites and checks took about 10 seconds of that.
-- **Reasoning** is 54% of the generated text in React roll 1, and the emitted answers are the rest.
+**How it was read.**
+- **The source:** each agent container's `LLM ... completed:` lines inside the roll's window in
+  `var/verification_sets/2-2-0-cut-chain/chain.log`.
+- **Decode** is `completion_tokens / t/s`. The adapter computes `t/s` as Ollama's `eval_count / eval_duration`
+  (`adapters/llm/ollama.py:31-39`), so it is **decode alone**.
+- **Each call** is listed with its container, timestamp and token counts in `docs/plans/2-3-0-roll-model-calls.tsv`
+  (67 calls). A call's container and log timestamp are its identifier: the log line carries no call id.
 
-*Corrected 2026-10-11:* the first draft read only the captured authoring envelopes and put model calls at 61–66%.
-Those envelopes miss five framing calls, so that figure was a floor.
+**Decode is 88–92% of a roll.** Two parts of a call aren't in that figure:
+- **The full request time:** prompt evaluation, load, and the handler around the call. Ollama's `prompt_eval_duration`
+  isn't logged, so prefill is not measured here; the harness records it (§2.1).
+- **What's left of the wall clock,** about 4–8 minutes a roll: prefill, tests, typed checks, assembly, dispatch and the
+  gates. React roll 1's two `qa.test` tasks ran 3.0 and 6.1 minutes, of which the suites and checks took about 10
+  seconds.
 
-**What a faster engine saves,** at today's average decode of 27.4 tok/s:
+Reasoning is 54% of the generated text in React roll 1, and the emitted answers are the rest.
 
-| engine | time per call vs today's | saved per roll | roll |
+*Corrected in revision 1's second commit:* the first draft read only the captured authoring envelopes and put model
+calls at 61–66%. Those envelopes miss five framing calls, so that figure was a floor.
+
+**Fixed-output-volume projections.** These assume each candidate generates the same tokens per roll that the 27B on
+Ollama does today:
+
+| candidate | decode time vs today's (27.4 tok/s average) | saved per roll | roll |
 |---|---|---|---|
 | TensorFold, 27B, at G0's bar | 0.75× | ~12–14 min (~23%) | ~39–48 min |
 | TensorFold, 27B, at the vendor's figures (50–58 tok/s) | ~0.47–0.55× | ~21–29 min (~45%) | ~27–35 min |
-| TensorFold, Flash-Next, at the vendor's figures (63–77 tok/s; D9) | ~0.36–0.43× | ~26–35 min (~55%) | ~23–30 min |
+| TensorFold, Flash-Next MLX 4-bit, at the vendor's figures (63–77 tok/s) | ~0.36–0.43× | ~26–35 min (~55%) | ~23–30 min |
+| TensorFold, Flash-Next EXL3 3.05 bpw | decode similar (59–81 tok/s); **prefill 930–970 tok/s**, under half the MLX checkpoint's 2,300–2,500 | **no forecast:** its slower prefill needs its own measurement | — |
 | infinitely fast calls (the ceiling) | 0 | ~46–55 min | ~4–8 min |
 
-The vendor's figures are for 64-token replies. Ours average about 4,700 tokens, and the class has missed its vendor
-claims here twice (SIP-0111 §3).
+**What these do not say:**
+- **A model change can change the volume.** Its reasoning length, retries and correction rounds can rise or fall, so
+  Flash-Next's row is the least reliable.
+- **The vendor's figures are 64-token replies.** Ours average about 4,700 tokens, and this engine class has missed its
+  vendor claims here twice (SIP-0111 §3).
+- **Only G3 measures cycle savings** (§2.1).
 
-**The gain arrives only at cutover, G4.** Until then, SIP-0111 runs TensorFold dark. The owner's disposition says
-adoption rests on end-to-end cycle quality, latency, stability and recoverability, never on vendor tokens per second.
+**The gain arrives only at cutover, G4.** Until then SIP-0111 runs TensorFold dark. Adoption rests on end-to-end cycle
+quality, latency, stability and recoverability, never on vendor tokens per second.
 
-**Beyond the engine, the other levers are also model time.** Build and test speed is not among them: those take
-minutes, not tens of minutes. The model-time levers are:
-- **fewer reasoning tokens:** a task's reasoning level, set per type in `reasoning_policy`;
+**Beyond the engine, the other levers are model time too.** Build and test speed is not among them: those take minutes,
+not tens of minutes. The model-time levers are:
+- **fewer reasoning tokens:** each task type's reasoning level;
 - **fewer framing calls:** eight calls, about 31 minutes, before any code;
-- **concurrent dispatch of independent tasks:** TensorFold shares forwards across concurrent requests. Ollama did not
-  gain from it here. This is a later lever, with its own measurement.
+- **concurrent dispatch of independent tasks:** about 2–3 minutes a roll on TensorFold, and nothing on Ollama.
 
-None is in this plan. Each changes what the squad emits, so it is output-quality work with its own pre-registration.
+None is in this plan. Each changes what the squad emits.
 
 ---
 
 ## 2. The work
 
-### 2.1 Track A, first: SIP-0111 from S to a G4 decision
+### 2.1 Track A, first: SIP-0111, one gate path per candidate
 
-| step | what | where | cost |
-|---|---|---|---|
-| S | engine switching and rollback, with #1177's exclusivity guard. Exercised: a switch each way, a failed start that restores Ollama, restoration from a busy TensorFold, long-context memory within the floors (90 / 16 GiB) | #2199 | code: one PR (`scripts/dev/ops/engine_switch.py`); box: about 1 h |
-| pre-registration | the sample, the split, the seeds, the recipe matrix, the floors and the analysis, posted to #2199 before the first TensorFold load | #2199 | prose |
-| harness | each held-out envelope replayed through each arm, scored by its task type's production validator. A task type with no validator fails the harness | #2199 | code: one or two PRs |
-| G0 / G1 | tuning, the frozen recipe, the held-out run, and the drafted-against-serial check | #2199 | **box: 17–56 h, by D2** |
-| G2 | the adapter, dark: the port's four amendments (seed, thinking budget, normalized termination, the overflow error), the registry entries, the `docker-compose.tensorfold.yml` overlay (Q3: OK in principle), the conformance suite across every adapter, and parity tests | #2200, merged only if G0 and G1 pass | code: two to four PRs; a rebuild |
-| G3 | an uncounted cycle A/B on both stacks: regression pairs interleaved A, B, A, B, one engine resident at a time, judged on cycle wall-clock, with a short pre-registration | **unplaced today: D3** | box: about 7–8 h (8 rolls, and a switch between each) |
-| G4 | cutover, by S's switching path, or the trial parked with its record | **the owner's decision: D4** | — |
+**Step 0, before any measurement: SIP-0111 §9a, ruled with this plan.** It holds every change below that the accepted
+SIP doesn't already say:
+- the self-contained harness;
+- the repetitions, drift and uncertainty rules;
+- the reuse and held-out rules;
+- the second candidate;
+- candidate-specific outcomes and the selection rule;
+- G3's comparison.
 
-**Conditional, all the way down.**
-- G2 is built only if G0 and G1 pass.
-- G3 runs only after G2.
-- G4 is the owner's, on G3's evidence. **This plan authorizes no production switch.** It asks for D4.
-- A negative at any gate parks the trial, records it in SIP-0111 as Atlas's and vLLM's were, and 2.3 goes on with the
-  stabilization track on Ollama.
+**Two candidates, each on its own gate path.** A candidate that fails a gate is parked, with its record in SIP-0111.
+That parks it alone, never every TensorFold candidate.
 
-**A second candidate, Qwen3.8-Flash-Next on TensorFold (D9, added at the owner's request).** This is a model
-change, not only an engine change. Flash-Next is a mixture-of-experts model of about 93B total parameters
-(TensorFold's `qwen4_exp` family). SIP-0111 §7 excludes it today, so it needs a SIP-0111 amendment first.
+| gate | the 27B (`TensorFold/Qwen3.8-27B-MLX-4bit` and the other §2 checkpoints) | Flash-Next (D9) |
+|---|---|---|
+| S: switching, rollback and the exclusivity guard (#2199) | exercised once, on the benchmark deploy (§3) | its checkpoint inside S's floors (§2.2) |
+| screening | none | #1408's plan-authoring replay, on prompts outside the held-out set (§5) |
+| recipe | frozen on tuning data, SIP-0111 §4 | **its own matrix and frozen recipe** (§2.2), on tuning data |
+| G0, throughput | the held-out set, the owner's bar (≤ 0.75× Ollama's median paired wall-clock, no worse truncation) | the same set and bar |
+| G1, emission validity | the held-out set, each task type's production validator, ≥ Ollama overall and per seam | the same |
+| selection | the pre-declared rule, below | |
+| G2, the adapter, dark | **only the selected candidate,** built only after its G0 and G1 pass. Its parity and conformance are read against the harness's recorded fixtures, and every adapter's unsupported-control tests | |
+| G3, cycles | **the selected candidate, on both stacks** | |
+| G4 | the owner's decision, on G3's evidence (D4) | |
 
-- **What it could buy.** TensorFold's v0.6.6 recipe reports, on one GB10 (vendor figures, 64-token replies, unmeasured
-  here):
-  - decode at 63–77 tok/s on the MLX 4-bit checkpoint, against 50–58 for the 27B;
-  - prefill at 2,300–2,500 tok/s from 2k to 64k, against 1,240–1,870.
+**What G1 shows, and what it doesn't.** G1 shows that each emission parses and passes its task type's own validator.
+That is emission validity. It says nothing of reasoning quality, or of whether the delivered app is correct. **Adoption
+rests on G3** (completed cycles) and the owner's G4, never on G1 alone.
 
-  By §1's arithmetic that is about 26–35 minutes a roll (~55%), against 21–29 for the 27B at its vendor figures.
-- **What it risks:**
-  - **Reasoning depth:** a mixture-of-experts model in roles the dense 27B has held.
-  - **Runaway reasoning:** the class that parked vLLM (SIP-0106 §1.2e).
-  - **Memory:** 81 GB of weights plus about 30 GiB of n-gram tables on a 121 GiB box. That may fail S's 16 GiB
-    post-load floor, and the EXL3 pack (52 GB) is the likelier fit.
-  - **Unmeasured at long context:** the recipe lists Flash-Next's long-context decode, latency and peak memory as TBD.
-  - **Every baseline resets** if it is adopted.
-- **Its gates, cheapest first, on the same harness and only after S exists:**
-  1. S's switch with Flash-Next's footprint, inside the floors.
-  2. #1408's plan-authoring replay: stored plan prompts through the handler's own validator. Does it emit a valid plan
-     at all?
-  3. Only then, G0 and G1 on the held-out set. Only its arm is new, because the Ollama arm's calls are the same
-     envelopes and seeds.
-- **G1 decides it, not speed.**
+**The selection rule, fixed before either candidate's held-out run.** When both candidates pass G0 and G1:
+- **The 27B is selected,** unless Flash-Next is better on all three counts:
+  - its median paired ratio is at least **0.15 lower** than the 27B's;
+  - its G1 pass rate is **at least the 27B's on every seam**;
+  - its truncation and runaway-reasoning rates are **no higher**.
+- **The reason:** a model change resets every baseline, and carries risks G1 can't see. It has to buy clearly more speed.
+- **When only one passes,** that one is selected. **When neither passes,** the trial is parked, and 2.3 continues on
+  Ollama.
 
-### 2.2 Track B: stabilization, measured on the engine Track A leaves
+**If the selected candidate fails G2 or G3,** it is parked. The other candidate is selected if it passed G0 and G1 and
+the budget allows (§4). It then needs **its own G2 and its own G3**: no evidence transfers between candidates after G3.
 
-All of these are placed in 2.3 already, by earlier rulings. Each is a framework fix or an output-quality change, as the
-owner's direction of 2026-10-09 asks plans to say.
+**G3's comparison.** It is pre-registered before its first roll, and amends SIP-0111 §4's "judged on cycle wall-clock".
+It runs the selected candidate against Ollama, as uncounted regression pairs on both stacks, interleaved A, B, A, B, one
+engine resident at a time. It reads, for each arm:
+- **cycle wall-clock** and **task completion time** by task type;
+- **emission retries,** **correction rounds,** and the **final verdict** with criteria verified and the boot audit;
+- the decode and prefill rates the instrumented deploy logs.
 
-| item | what | kind | size | note |
+**Its pass rule** (to be fixed in G3's pre-registration):
+- every candidate roll accepted, with its boot audit passing;
+- correction rounds within the stack's baseline range;
+- the candidate's median cycle wall-clock below Ollama's;
+- no task type's median completion time worse than Ollama's by more than 10%.
+
+**The harness, before G2, without the port's amendments** (§9a).
+- **It is self-contained.** It calls each engine's own API:
+  - Ollama's `/api/chat`, with `options.seed`, the envelope's captured options and `think`;
+  - TensorFold's `/v1/chat/completions`, with `seed`, `reasoning_effort` and `thinking_budget` as its own documented
+    request fields, and `stream_options.include_usage`.
+- **It normalizes how each call ended** itself: `finish_reason` or `done_reason`, the cap, a context overflow (HTTP 400
+  `context_length_exceeded`), and the deadline.
+- **It records everything:**
+  - each raw request and response;
+  - every stream event;
+  - prompt and decode durations: Ollama's `prompt_eval_duration` and `eval_duration`, and TensorFold's timings and
+    `cached_tokens`.
+- **No `LLMPort` change lands before G2.** The recorded payloads and normalized outcomes become **G2's parity fixtures:**
+  the adapter, given the same envelope and seed, must send the same request and normalize the same response the same
+  way.
+
+### 2.2 Flash-Next: its own recipe, matrix and identity (D9)
+
+Flash-Next is a model change, not only an engine change. SIP-0111 §7 excludes it until §9a amends it. **Nothing about the
+27B carries over:** not its three-checkpoint matrix, not its reasoning mapping, not its registry identity.
+
+**What TensorFold's v0.6.6 recipe states** ([its Flash-Next recipe](https://github.com/ashhart/TensorFold/blob/v0.6.6/docs/recipes/qwen3.8-flash-next.md), read 2026-10-11):
+- The model is the `qwen4_exp` family: Gated DeltaNet, sparse attention, a mixture of experts, hyper-connections and
+  hashed n-gram embeddings, with an MTP head used for drafting.
+- **Sizes are by checkpoint.** The MLX 4-bit checkpoint is 105.4 GiB, of which:
+  - about 29.8 GiB is n-gram tables, kept as host file mappings;
+  - 70.3 GiB is routed experts.
+
+  On a Spark its weights take 81 GB of GPU memory, with a default window of about 74,000 tokens.
+- **The EXL3 3.05 bpw pack:** 52 GB of weights and the full 262,144-token window, with a 32.6 GB n-gram table in the page
+  cache.
+- **Parameter counts:** the recipe gives none. The pre-registration cites the model card for the core model, the n-gram
+  tables and the MTP head separately. The earlier "about 93B total parameters" came secondhand from #1408's community
+  NVFP4 recipe, and is withdrawn.
+
+**Eligible checkpoints,** each pinned by revision in the pre-registration:
+
+| checkpoint | revision | weights | prefill (2k–64k, vendor) | decode (64-token, vendor) | memory on a Spark |
+|---|---|---|---|---|---|
+| `TensorFold/Qwen3.8-Flash-Next-MLX-4bit-MTP` | pinned at pre-registration | MLX affine 4-bit, groups of 32 | 2,300–2,500 tok/s | 62.7–76.5 tok/s sampled | 81 GB weights, ~74k window, plus the 29.8 GiB tables |
+| `turboderp/Qwen3.8-Flash-Next-exl3` | branch `3.05bpw_h5_ng5`, pinned | EXL3 3.05 bpw | 930–970 tok/s | 59.4–80.8 tok/s sampled | 52 GB weights, full window, plus the 32.6 GB table |
+| `local-inference-lab/Qwen3.8-Flash-Next-NVFP4` | `7c4f1bc1` | NVFP4 experts, MXFP8 elsewhere | 0.94–1.03× of its FP8 prompt path; not separately timed | 59.2 code / 36.6 chat, greedy | not stated in the recipe; read in S |
+
+**Each checkpoint's speed and memory forecast belongs to that checkpoint.** The EXL3 pack's slower prefill means it
+inherits nothing from the MLX row.
+
+**The recipe's fixed parts, recorded and frozen with the recipe:**
+- **The tokenizer and chat template:** the checkpoint's own, by revision and hash.
+- **Reasoning controls:** `qwen4_exp`'s template mapping of `reasoning_effort` and `enable_thinking`, read from the
+  template. It is never assumed to be the 27B's mapping. The pre-registration records which level each corpus setting
+  (`none`, `low`, `medium`, `high`) is heard as.
+- **The output allowance:** each envelope's own `max_tokens` (12,288 on most), unchanged. A thinking budget is a matrix
+  dimension.
+- **Drafting:**
+  - the MTP draft cap (CUDA default 6) and `--mtp-confidence` (default 0.70);
+  - the drafted-against-serial check (`"draft": false`) before any speed result counts.
+- **The context window:** set explicitly. It must be at least the corpus's largest prompt plus its `max_tokens`, about
+  25k plus 12,288; inside the MLX checkpoint's ~74k. The KV dtype stays bf16 (int8 and int4 change outputs).
+- **Registry identity:** a TensorFold model id of its own, with a **model family of its own**, never `qwen3.8`. No
+  lesson's tested applicability carries over to it.
+
+**Its matrix, on its tuning envelopes only:**
+- the checkpoints S admits;
+- drafting at the default and at a lower cap;
+- each reasoning mapping in use;
+- with and without a thinking budget.
+
+The pre-registration states the matrix, and one recipe is frozen before its held-out run.
+
+### 2.3 Track B: stabilization, on the engine Track A leaves
+
+Each item is a framework fix, an output-quality change, an instrument or an evaluator change. Every item has a slot in
+§3.
+
+| item | what | kind | size | slot (§3) |
 |---|---|---|---|---|
-| #2204 (with #2203) | host and GPU exporters, `GET /health/host`, a Host panel, a Grafana dashboard, and agent inference metrics (decode rate, TTFT, tokens per increment) | framework (instrument) | M–L | **early:** it is how Track A's cycle-time gain and memory floors are seen. Its compose services are OK'd |
-| #2201 | CI's integration job pulls Docker Hub images unauthenticated, and hit the rate limit twice | framework | S | the owner's choice: credentials or a mirror |
-| #2202 | a manifest decision the build does not honour passes acceptance | **output quality** | M | the first of its class (2026-10-09 direction) |
-| #2205 | a manifest delta's undefined key is dropped, so a footprint can omit the file every criterion needs | output quality | S–M | placed here at the 2.2 cut |
-| #2206 | a cross-role repair's file is labelled as the failed task's | framework (evidence) | M | placed here at the 2.2 cut |
-| #2210 | a revocation names finished units as still holding the lesson | framework (display) | S | placed here at the 2.2 cut |
-| #2208 | the `criterion_already_satisfied` rubric: how a manifest's silence is read | prose | S | |
-| the tier's timeout half, live | a diagnostic-only fault that makes an increment's plan ask a question, then the expiry, the parked cycle, `abandon_and_propose`, the no-progress stop and the late answer, read on one campaign | framework | S code, ~3 h box | placed here by 2.2.1's D2 |
-| #2174, #2175, #2176 | SIP-0110's entry-point prerequisites: the legacy agent store dormant with its failures visible, chat's history with session ownership checked, and the context-assembly port, inert | framework | M each | Q25's 2.3 placement |
-| #1976, #1977 | API contract residue; comms deduplication, a dead-letter queue and publisher confirms | framework | M, M–L | |
-| #316 | the request-profile taxonomy | framework | L | **its SIP must be accepted first** (Q13: pinned definitions keep resolving old names) |
-| Outcome Evaluation's reporting-only instruments | the yardstick that the output-quality work after 2.3 is measured against | instrument | M–L | **its SIP must be accepted first** (PR #1963, proposed) |
-| #1992, #1993, #1994 | the structure batch: orchestration out of `adapters/cycles` (about 12,000 lines), a `stacks` package, the largest units split | framework (refactor) | L, M, L | **one refactor per rebuild, each with a regression pair.** D5 |
+| **#2204a** | host and GPU exporters, `GET /health/host`, the agent inference metrics (decode rate, TTFT, prefill, tokens per increment) | instrument | M | phase 1: the benchmark deploy |
+| **#2204b** | the console's Host panel and the Grafana dashboard | instrument (presentation) | M | phase 8, any slot: no engine dependency |
+| #2201 | CI's Docker Hub rate limit | framework | S | phase 1 |
+| #2206 | a cross-role repair's file labelled as the failed task's | framework (evidence) | M | phase 8, R3 |
+| #2210 | a revocation names finished units as holding the lesson | framework (display) | S | phase 8, R3 |
+| #2174, #2175, #2176 | SIP-0110's entry-point prerequisites | framework | M each | phase 8, R3 |
+| **#2202** | a manifest decision the build doesn't honour passes acceptance | **output quality** | M | phase 8, its own slot: a targeted pre-registration and before/after evidence on the chosen engine |
+| **#2205** | a manifest delta's undefined key dropped, so a footprint omits the file the criteria need | **output quality** | S–M | phase 8, its own slot, as #2202 |
+| **#2208** | the `criterion_already_satisfied` rubric @3 | **evaluator change** | S | phase 8. Its new version is pinned in every later measurement, and @2 is kept for the historical results scored with it |
+| the tier's timeout half, live | a diagnostic-only fault that makes an increment's plan ask a question, then one campaign | framework | S code, ~3 h box | phase 8, R3's deploy |
+| #1976, #1977 | API contract residue; comms hardening | framework | M, M–L | phase 8, R4 |
+| **#2062** | hoist the 606 deferred imports #1985 left | framework (refactor) | M | phase 8, **R5, before or alongside #1993** (the 2.2 plan's D6). **It stays in 2.3 when #1992 and #1994 are deferred** |
+| #1993 | a `stacks` package | framework (refactor) | M | phase 8, R5 |
+| #1992 | orchestration out of `adapters/cycles` (~12,000 lines) | framework (refactor) | L | phase 8, R6; deferrable (§4) |
+| #1994 | the largest units split | framework (refactor) | L | phase 8, R7; deferrable (§4) |
+| #316 | the request-profile taxonomy | framework | L | phase 8, R8. **Its SIP is accepted first** (Q13: pinned definitions keep resolving old names) |
+| Outcome Evaluation's reporting-only instruments | the yardstick for output-quality work after 2.3 | instrument | M–L | phase 8, R9. **Its SIP is accepted first** (PR #1963) |
 
-### 2.3 Not in 2.3
+### 2.4 Not in 2.3
 
-- **SIP-0111 G4's consequences,** if adopted: every later counted set and memory measurement restarts on TensorFold
-  (SIP-0111 §4). No lesson is approved, so no replay check is owed.
-- **The next build-side memory experiment** (SIP-0110 §5h): broad multi-increment campaigns with memory on. It costs many
-  hours of box time and must run on the final engine. Recommended for 2.4, beside Outcome Evaluation's scenarios (D6).
+Only later experiments are deferred. The new baseline the 2.3 cut needs on the chosen engine is in scope (§3, phase 9).
+- **The next build-side memory experiment** (SIP-0110 §5h): broad multi-increment campaigns with memory on, on the final
+  engine. Recommended for 2.4, beside Outcome Evaluation's scenarios (D6).
+- **The other model-time levers** (§1): reasoning levels, fewer framing calls, concurrent dispatch.
 - **#2177–#2183** (the entry points' feature half, 2.4) and **#2184** (2.5), as SIP-0110's ledger places them.
 
 ---
@@ -153,78 +255,155 @@ owner's direction of 2026-10-09 asks plans to say.
 ## 3. Sequencing: the box is the constraint
 
 One box runs everything: measurements, rebuilds, regression pairs and campaigns. Code proceeds on branches while it's
-held.
+held. **No adapter code is written for either candidate before that candidate's G0 and G1 pass.**
 
-1. **2.2.1 cuts.** Then the owner rules this plan.
-2. **#2204's exporters and metrics,** and **#2201,** so the trial and the cycles are observed and CI is reliable.
-3. **S,** built and exercised.
-4. **The pre-registration, then the harness.**
-5. **G0 / G1 on the box** (D2's size). Meanwhile on branches: G2's adapter, Track B's small defects (#2202, #2205,
-   #2206, #2210, #2208), #2174–#2176, #1976, #1977, and the two SIP design reviews (#316's, Outcome Evaluation's).
-6. **If G0 and G1 pass:** G2 merged dark, a rebuild, then G3. **If not:** the negative recorded, and Track B goes on with
-   Ollama.
-7. **G4, the owner's decision** (D4). On adoption, cutover by S, and from here every measurement is on TensorFold.
-8. **Track B's merges, on the chosen engine:** the small defects and #2174–#2176 together in one rebuild with a
-   regression pair; #1976 and #1977 in another; then the structure batch, one refactor per rebuild (D5).
-9. **The cut:** a pre-registered regression set on both stacks, on the chosen engine, plus a campaign shakeout. If G4
-   adopted TensorFold, this set is the engine's first counted baseline. Then the release procedure.
+| phase | what | box |
+|---|---|---|
+| 0 | 2.2.1 cuts. The owner rules this plan and SIP-0111 §9a | — |
+| 1 | **The benchmark deploy:** #2204a and #2201 merged, a rebuild (R1), a regression pair, every loaded check answering. **This instrumented deploy is frozen** for both candidates' benchmark arms, and its deploy id is recorded in each pre-registration. A rebuild before the last benchmark call voids the affected arms (§5) | rebuild and pair, ~2 h |
+| 2 | **S,** built and exercised on the benchmark deploy (#2199's acceptance list) | ~1–2 h |
+| 3 | **The harness and the pre-registrations:** the 27B's, and Flash-Next's screening and recipe matrix. The selection rule is in both | — |
+| 4 | **The 27B:** tuning, the frozen recipe, the drift panel, the held-out run, the drift panel again, and drafted-against-serial. **Checkpoint A** (§4) | §4 |
+| 5 | **Flash-Next,** if checkpoint A allows: S's floors with its checkpoint, the screening replay, tuning, its frozen recipe, then its held-out arm (reusing Ollama's arm only under §5's rules) | §4 |
+| 6 | **Selection** (§2.1), then **G2** for the selected candidate: the adapter, the port's four amendments, registry entries, the overlay, the conformance suite across every adapter, and parity against the harness fixtures. Then a rebuild. **Checkpoint B** | rebuild |
+| 7 | **G3** on both stacks, then **G4,** the owner's decision. On adoption, cutover by S; from here every measurement is on TensorFold | ~8 h |
+| 8 | **Track B's merges on the chosen engine,** each rebuild with a regression pair (listed below) | ~2 h each |
+| 9 | **The cut:** a pre-registered regression set on both stacks on the chosen engine (the new baseline if TensorFold was adopted), a campaign shakeout, the release procedure | as 2.2's |
+
+Phase 8's rebuilds, in order:
+- **R3:** #2206, #2210, #2174–#2176, with a regression pair. Then the timeout-half diagnostic on R3's deploy: the fault
+  is a diagnostic-only code path merged in R3, and one campaign follows.
+- **#2202, then #2205:** each with its own pre-registered before/after comparison on the chosen engine (a targeted set,
+  or one campaign), before it is batched with anything else.
+- **#2208,** its rubric version pinned.
+- **R4:** #1976 and #1977.
+- **R5:** #2062 with #1993.
+- **R6:** #1992 (deferrable).
+- **R7:** #1994 (deferrable).
+- **R8:** #316, once its SIP is accepted.
+- **R9:** Outcome Evaluation's instruments, once their SIP is accepted.
+- **#2204b** at any of them.
+
+On branches during phases 4–7: Track B's code, and the two SIP design reviews (#316's, Outcome Evaluation's).
 
 **The cut's criteria:**
-- **Track A:** G4 decided (adopted, or parked with its record), with each earlier gate's evidence in SIP-0111.
-- **Track B:** each item merged with its evidence, or re-placed by the owner. Substance gates the cut, not the clock.
+- **Track A:** G4 decided (adopted, or parked with its record), with each candidate's gate evidence in SIP-0111.
+- **Track B:** each item merged with its evidence, deferred under §4's rule, or re-placed by the owner. Substance gates
+  the cut, not the clock.
 - **The regression set** passes under its own pre-registration.
 
 ---
 
-## 4. G0 / G1's size, from the corpus as it stands
+## 4. Box-time budget, checkpoints and the deferral rule
 
-The corpus on 2026-10-11 is 409 captured authoring envelopes. Under §4's split (tuning up to 2 per task type and stack,
-held-out up to 8), it gives:
-- **129 held-out envelopes:** 87 React and 42 Next.js;
-- **39 tuning envelopes.**
+**Track A's budget: 80 box-hours,** from S's first exercise to the G4 decision. It counts:
+- engine switches, at about 10 minutes each, warm-up included;
+- the drafted-against-serial checks;
+- the drift panels;
+- every failed call, at its deadline (an allowance of 10% on each arm).
 
-One Ollama generation of the held-out set takes about **7.3 h**, from each task type's median call time in the corpus
-(0.4 min for `builder.assemble` to 5.7 min for `qa.propose_plan_tasks`).
+| block | estimate |
+|---|---|
+| S's exercise | ~1–2 h |
+| **The 27B** (lean protocol, D2): tuning (3 checkpoints at production's thinking settings) ~5 h; Ollama arm, 2 generations ~14.6 h; TensorFold arm ~7–11 h; two drift panels on each arm ~3 h; drafted-against-serial ~0.5 h; ~6 switches ~1 h; failed-call allowance ~2.5 h | **~34–38 h** |
+| **Flash-Next** (if checkpoint A allows): S's floors and screening ~2 h; tuning ~4 h; its arm ~5–7 h; drift panels ~1.5 h; switches ~1 h; allowance ~1 h | **~14–17 h,** plus **~17 h** if Ollama's arm can't be reused |
+| G3, the selected candidate | **~8 h** |
+| A repeated gate (a recipe change re-runs G0 and G1) | ~20–25 h each |
 
-| protocol | Ollama | TensorFold (at 0.75×, at 0.5×) | tuning | total box |
-|---|---|---|---|---|
-| **as accepted** (3 generations per arm, a drift block, a matrix of at least 6 configs) | 29 h | 16 h, 11 h | ~10 h | **~50–56 h** |
-| **lean** (2 generations, interleaved O, T, O, T so the order itself detects drift; the 3 checkpoints with production's thinking settings) | 15 h | 11 h, 7 h | ~5 h | **~27–32 h** |
-| **leanest** (1 generation per arm; the 3 checkpoints) | 7 h | 5.5 h, 3.7 h | ~5 h | **~17–19 h** |
+**Checkpoint A,** after the 27B's G0 and G1 are read. Flash-Next runs only if both hold:
+- consumed time plus Flash-Next's estimate plus G3's leaves at least 10 hours of the budget;
+- the 27B didn't fail on drift or infrastructure (a repeat comes first).
 
-The power that matters is G0's median paired ratio and G1's per-seam pass rates:
-- G0 has 129 pairs even at one generation. A median over 129 or more pairs resolves a 0.75 bar clearly.
-- G1 compares pass rates per seam (plan writing, build authoring, proposal, repair), with tens of samples each. At one
-  generation a one-sample difference moves the repair seam's rate visibly, and two generations halve that sensitivity.
+Otherwise Flash-Next is **deferred to 2.4, as "not measured,"** never as a negative.
 
-Changing the protocol is an amendment to SIP-0111 §4, which the owner ruled. Hence D2.
+**Checkpoint B,** after selection. If consumed time plus G3 would pass 80 hours, the owner is asked before G3 runs.
 
-**Flash-Next's added cost (D9),** at the lean protocol:
-- about 2 h for its two cheap gates;
-- then about 10 h for its own arm, tuning included. The Ollama arm is reused.
+**Track B's deferral rule,** read at checkpoint B. If phase 8's remaining rebuilds can't finish before the cut set
+without a second calendar week of box time, **#1992 and #1994 move to 2.5** (the next odd minor). **#2062 and #1993
+stay in 2.3.**
 
 ---
 
-## 5. Decisions for the owner
+## 5. G0 / G1's statistics, drift, reuse and the held-out set
+
+**What is reported:**
+- unique held-out envelopes, and the **source cycles** they came from;
+- repetitions per envelope, and the denominator of every rate;
+- everything **by seam and by stack.**
+
+The corpus on 2026-10-11 has 129 held-out envelopes: 87 React and 42 Next.js. Some strata are small: Next.js repair
+has 2, and React's `qa.test_repair` 0.
+
+**The thresholds are unchanged** (the owner's Q2):
+- G0: the median paired ratio is at most 0.75, at no worse a truncation rate;
+- G1: the pass rate is at least Ollama's, overall and per seam.
+
+**What the reports add:**
+- **Paired uncertainty, clustered by envelope.** Repetitions of one envelope are not independent evidence, so intervals
+  are bootstrapped over envelopes (resampling envelopes, each with all its repetitions). That is reported beside the
+  point estimate.
+- **An observed pass is not evidence of general non-regression.** A threshold met by the point estimate is reported as an
+  **observed pass on this corpus.** It is evidence of non-regression only where the clustered interval's unfavourable
+  bound also meets the threshold. A seam or stratum too small to bound is named as unbounded, not passed.
+
+**Drift: a fixed panel of identical calls.**
+- **The panel:** about 16 envelope-and-seed pairs, two per seam and stack where the stratum allows, drawn from the
+  held-out set before any call.
+- **When it runs:** on each arm, at the start and at the end of that arm's held-out run. The calls are identical:
+  prompt, settings, seed and deadline.
+- **What shows drift:**
+  - **identity:** a seeded call repeats its output, so the token-id hashes should match;
+  - **speed:** the median wall-clock change across the panel, start against end.
+- **The threshold:** at least 15 of 16 identical, and a median wall-clock change within 10%.
+- **If it's exceeded,** that arm's held-out run is void. It is re-run once, after the cause is read. A second failure
+  stops the gate for the owner.
+- **Different-seed blocks alone can't separate engine drift from generation variability,** so they are not used for
+  drift.
+
+**Reusing Ollama's arm across candidates.** It is reused only if all of these are unchanged since it ran:
+- the deploy (by deploy id);
+- the model digest;
+- prompts, seeds and sampling;
+- deadlines;
+- cache treatment (each call's prefix-cache state recorded, primary timing on calls without a hit);
+- each validator's revision.
+
+It also needs the drift panel to pass on Ollama again at reuse time. Otherwise the Ollama arm is re-run beside the new
+candidate.
+
+**Protecting the held-out set:**
+- **Each recipe is frozen on tuning data** before any of its held-out calls is read.
+- **Flash-Next's screening prompts** come from tuning envelopes, or from envelopes captured after the split. They are
+  never held-out ones.
+- **The selection rule** (§2.1) is fixed in both pre-registrations, before either candidate's held-out run.
+- **Exploratory after a look.** A recipe adjusted after a held-out failure is read becomes exploratory. Confirming it
+  needs **fresh cases:** envelopes captured from cycles run after the freeze, which every new cycle adds. They are run as
+  a new held-out set under the same rules. Small strata grow slowly, so that can take more than one release.
+
+---
+
+## 6. Decisions for the owner
 
 | # | decision | recommendation |
 |---|---|---|
-| D1 | **the order** | **Track A first** (S, G0, G1, then G2 and G3), Track B on branches meanwhile, and Track B's merges after G4, so 2.3 measures on one engine |
-| D2 | **G0 / G1's size** (a SIP-0111 §4 amendment) | **lean, about 27–32 h of box time:** 2 generations per arm, interleaved, with the 3 checkpoints at production's thinking settings. *As accepted:* about 50–56 h. *Leanest:* about 17–19 h, with noisier per-seam pass rates |
-| D3 | **G3, placed** | **in 2.3,** with its short pre-registration. It runs only after G2 |
+| D1 | **the order** | **Track A first** (§3), Track B on branches meanwhile, and Track B's merges after G4, so 2.3 measures on one engine |
+| D2 | **G0 / G1's size** | **lean:** 2 generations per arm, the drift panel (§5), and the 3 checkpoints at production's thinking settings. About 34–38 h for the 27B. *As accepted:* about 55–60 h. *Leanest* (1 generation): about 22–25 h, with wider intervals |
+| D3 | **G3, placed** | **in 2.3,** for the selected candidate, with its pre-registered comparison (§2.1) |
 | D4 | **G4, the cutover decision** | **in 2.3, the owner's, on G3's evidence, before the cut set**, so the cut measures the engine 2.3 ships with. Cutover in an odd minor extends Q1's waiver from "dark" to "adopted", and that extension is the owner's to grant. If it isn't granted, G4 moves to 2.4's start, and 2.3's cut runs on Ollama |
-| D5 | **the structure batch** (#1992, #1993, #1994) | **kept in 2.3, after G4,** one refactor per rebuild with a regression pair each. If Track A runs long, **#1992 and #1994 move to 2.5** (the next odd minor) rather than stretch 2.3, and **#1993 stays** |
+| D5 | **the structure batch** | **#2062 with #1993 in 2.3** (R5). **#1992 and #1994 in 2.3 unless §4's deferral rule moves them to 2.5** |
 | D6 | **the next build-side memory experiment** | **2.4,** beside Outcome Evaluation's scenarios, on the final engine |
-| D7 | **#2201's fix** | registry credentials in CI (a repository secret), or a pull-through mirror. Recommended: **credentials**, the smaller change |
-| D9 | **Qwen3.8-Flash-Next on TensorFold, a second candidate** (the owner's request, 2026-10-11) | **added to Track A behind its two cheap gates** (S's floors with its footprint, then #1408's plan-authoring replay), and measured on G0 / G1 only if both pass. It needs **a SIP-0111 amendment first,** since §7 excludes a model swap. It is judged by G1, never by its decode rate, and its adoption resets every baseline. The 27B on TensorFold stays the primary candidate |
-| D8 | **who runs the line** | **the supervisor, on the 2.2 line's terms:** build in §3's order, merge on green with main's run read, run rebuilds and uncounted runs. **The owner's:** compose changes beyond #2204's and the overlay; G4; any lesson approval; the tag and Release unless delegated at the cut |
+| D7 | **#2201's fix** | registry credentials in CI (a repository secret), or a pull-through mirror. Recommended: **credentials** |
+| D8 | **who runs the line** | **the supervisor, on the 2.2 line's terms:** build in §3's order, merge on green with main's run read, run rebuilds and uncounted runs. **The owner's:** compose changes beyond #2204a's services and SIP-0111's overlay; G4; any lesson approval; the tag and Release unless delegated at the cut |
+| D9 | **Qwen3.8-Flash-Next on TensorFold, a second candidate** (the owner's request, 2026-10-11) | **on its own gate path** (§2.1, §2.2), behind S's floors and a screening replay, with its own frozen recipe and registry family. It is selected over the 27B only by the pre-declared rule, and runs only if checkpoint A allows |
+| D10 | **SIP-0111 §9a** | **ruled with this plan, before any measurement:** the self-contained harness, the statistics and drift rules, the reuse and held-out rules, the second candidate, candidate-specific outcomes, the selection rule, and G3's comparison |
+| D11 | **Track A's budget** | **80 box-hours,** with checkpoints A and B (§4) |
 
 ---
 
-## 6. What this plan does not decide
+## 7. What this plan does not decide
 
 - **G4 itself.** D4 places the decision; it doesn't make it.
 - **The cut's numbers:** the regression set's size and the shakeout's exit rule, written as a pre-registration when the
-  last batch is built.
+  last batch is built. G3's pass rule is fixed in G3's own pre-registration.
 - **#316's and Outcome Evaluation's designs.** Each needs its SIP accepted, at its own design review.
-- **Anything compose beyond #2204's services and SIP-0111's overlay.**
+- **Anything compose beyond #2204a's services and SIP-0111's overlay.**

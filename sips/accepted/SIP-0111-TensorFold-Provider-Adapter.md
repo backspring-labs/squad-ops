@@ -121,6 +121,7 @@ Placed by the owner's Q1 ruling (2026-10-09). The rows are ordered as the work r
 | G2: the adapter, dark, with the port amendments, registry entries, the overlay and parity tests (§5) | **placed** | 2.3.0, #2200 (merged only if G0 and G1 pass) |
 | G3: an uncounted cycle A/B on both stacks, judged on cycle wall-clock | **unplaced** | after G2 |
 | G4: cutover | **unplaced** | the owner's decision on G3's evidence |
+| a second candidate, Qwen3.8-Flash-Next on TensorFold, on its own gate path (§9a) | **unplaced** | proposed for 2.3 by the 2.3 plan's D9 (PR #2228), with §9a; placed only if the owner rules them |
 
 **What closes this SIP:** G4 decided (adopted, or parked with its record), with each earlier row shipped or its negative
 recorded.
@@ -587,3 +588,73 @@ Kept below as they were asked.
   it. That works for G0 and G1, but no task could ever set its own budget.
 - **Q7: the memory floors** (§5.6). Recommended: at least 90 GiB `MemAvailable` before a load, and at least 16 GiB after
   it. Both are written into #2199's pre-registration, and an abort below either.
+
+## 9. Post-acceptance amendments
+
+### 9a. The 2.3 plan's protocol amendments (PROPOSED 2026-10-11, for the owner's ruling with the 2.3 plan)
+
+**Status: proposed, not ruled.** It is drafted in the same PR as the 2.3 plan (#2228, revision 2). It applies the owner's
+review of that plan's first draft, at the owner's request: "apply all nine and the SIP amendment". It is ruled with the
+plan, before any measurement. Until then §1–§8 stand as written.
+
+**What changes:**
+1. **A self-contained harness for S, G0 and G1** (amends §4's "sends its seed through the port (§5.1)").
+   - **It calls each engine's own API:** Ollama's `/api/chat` with `options.seed` and the envelope's options, and
+     TensorFold's `/v1/chat/completions` with `seed`, `reasoning_effort` and `thinking_budget`.
+   - **It normalizes how each call ended** itself, and records every raw request, response, stream event, and prompt and
+     decode duration.
+   - **The port's four amendments (§5.1, §5.2) land with G2, not before.** The harness's recorded payloads and normalized
+     outcomes become G2's parity fixtures.
+2. **Repetitions, uncertainty and drift** (amends §4's seeds and order).
+   - **Repetitions:** the generations per arm are the plan's D2.
+   - **Uncertainty:** paired intervals clustered by envelope, reported beside the point estimates.
+   - **What is reported:** unique envelopes, source cycles, repetitions and denominators, by seam and stack. An observed
+     pass is reported apart from evidence of general non-regression.
+   - **Drift** is read on a fixed panel of identical envelope-and-seed calls, at the start and end of each arm. The
+     threshold: at least 15 of 16 identical, and a median wall-clock change within 10%. Exceeding it voids that arm's
+     run, with one re-run.
+   - **The bars of Q2 are unchanged.**
+3. **Reusing the Ollama arm across candidates,** only if nothing it depends on changed:
+   - the deploy, model digest, prompts, seeds, sampling and deadlines;
+   - its cache treatment and each validator's revision.
+
+   Its drift panel must also pass again at reuse time.
+4. **The held-out set is protected:**
+   - each recipe is frozen on tuning data before any held-out result is read;
+   - screening prompts never come from the held-out set;
+   - the selection rule (item 6) is fixed before either candidate's held-out run;
+   - a recipe adjusted after a held-out look is exploratory, and needs fresh cases captured after the freeze.
+5. **A second candidate: Qwen3.8-Flash-Next on TensorFold** (amends §7's "does not swap the dense 27B for a MoE model").
+   - **Its own gate path:**
+     - S's floors with its checkpoint;
+     - a plan-authoring screening replay (#1408's gate);
+     - its own frozen recipe and matrix on tuning data: checkpoint and revision, tokenizer and template, the
+       `qwen4_exp` reasoning mapping, output allowance, drafting settings and context window;
+     - G0 and G1 at the same bars.
+   - **Its own registry identity, and a model family of its own,** never `qwen3.8`.
+   - **Its forecasts are per checkpoint.** The EXL3 pack's prefill is under half the MLX checkpoint's in TensorFold's
+     recipe.
+6. **Candidate-specific outcomes, selection, and G3** (amends §4's G2 and G3 lines).
+   - A failed gate parks that candidate only.
+   - When both pass G0 and G1, **the 27B is selected** unless Flash-Next's median paired ratio is at least 0.15 lower,
+     its G1 pass rate is at least the 27B's on every seam, and its truncation and runaway rates are no higher.
+   - **G2 and G3 run on the selected candidate.** A replacement selected after a G2 or G3 failure needs its own G2 and
+     G3.
+   - **G3 is pre-registered.** It compares, against Ollama on both stacks:
+     - cycle wall-clock, and task completion time by task type;
+     - emission retries, correction rounds, and the final verdict with criteria and the boot audit.
+
+     It is no longer judged on cycle wall-clock alone.
+   - G1 is recorded as emission validity, never as reasoning or application quality.
+
+**The evidence.**
+- **The review of the 2.3 plan's first draft,** which the owner supplied (PR #2228). It found:
+  - the G2 sequencing contradiction;
+  - the gap between port-dependent seeds and a pre-G2 harness;
+  - the missing drift isolation;
+  - the overstatement that G1 decides adoption;
+  - the need for a separate Flash-Next recipe.
+- **TensorFold v0.6.6's [Flash-Next recipe](https://github.com/ashhart/TensorFold/blob/v0.6.6/docs/recipes/qwen3.8-flash-next.md):** the checkpoints, their memory, and
+  the EXL3 pack's prefill.
+
+**Who rules it.** The owner, with the 2.3 plan's D9 and D10. The supervisor drafted it.
