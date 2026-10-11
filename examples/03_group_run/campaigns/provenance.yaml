@@ -443,4 +443,155 @@ campaigns:
     sha256: a134af0e54241922803ed6260de05d07c59cfd09968b1752229a17fe238e7162
   package_identity: 0b812410c5208366b08b080a4ea917fe932762b66bfa9abfca55ea5685b8f5f1
   package_artifact: art_f6428ebb7426
+- campaign_id: cmp_35fb81f0ec50
+  created: '2026-10-08T02:23:21.908235+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: 'SIP-0110 slice 1 live capture proof (#2105): uncounted, one increment, on dep_3005231a1e36'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-2-0-capture-proof.yaml
+    sha256: 34ec38f46aa14d77f54374b92451270c099624fbcffde3574b71150cd204391d
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-2-0-capture-proof.yaml
+    sha256: 34ec38f46aa14d77f54374b92451270c099624fbcffde3574b71150cd204391d
+  package_identity: e8f4dd3e49137e3b4ccb3cf7f2fca56139b4c48c7cbb9a73d6130857edea87ca
+  package_artifact: art_d92b73618f95
+- campaign_id: cmp_dae2cd6b0e3c
+  created: '2026-10-08T07:35:04.336625+00:00'
+  state: completed
+  outcome: success
+  create_reason: 'SIP-0110 slice 3 live proof (#2096): the campaign pins a snapshot at start, its proposal
+    and cycles record exposures, and its rounds are observed; uncounted, on dep_d74bf614e3c8 at 28037f16'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-2-0-capture-proof.yaml
+    sha256: 34ec38f46aa14d77f54374b92451270c099624fbcffde3574b71150cd204391d
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-2-0-capture-proof.yaml
+    sha256: 34ec38f46aa14d77f54374b92451270c099624fbcffde3574b71150cd204391d
+  package_identity: 19775e23da08b2eb1df99554cc2fb965d25e8f65878a6ad7c19dd9f393d250e4
+  package_artifact: art_ae4283307436
+- campaign_id: cmp_45729166756f
+  created: '2026-10-08T09:51:06.409309+00:00'
+  state: completed
+  outcome: success
+  create_reason: '2.2 rebuild 3 (dep_f823d765de3d, 813caf02), uncounted: proves #2141 live on increment
+    framings (the plan proposers'' envelopes reconstruct) and adds captured proposal cases to SIP-0110
+    slice 4''s corpus; memory enabled, nothing approved'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-1-0-cut-shakeout.yaml
+    sha256: a134af0e54241922803ed6260de05d07c59cfd09968b1752229a17fe238e7162
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-1-0-cut-shakeout.yaml
+    sha256: a134af0e54241922803ed6260de05d07c59cfd09968b1752229a17fe238e7162
+  package_identity: 2e9feff21112049c9f486fe6e90b91755f2d29b242796b86dc31d2bfb0a8fb41
+  package_artifact: art_2a53ab7a15ea
+- campaign_id: cmp_65c34ad025be
+  created: '2026-10-09T18:31:33.560269+00:00'
+  state: completed
+  outcome: success
+  create_reason: '2.2 measurement window, campaign 1 of 5 (capacity), under the adopted pre-registration
+    (PR #2161); manifest var/replays/2-2-0-window/manifest.json sha256 2bc8ac63'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-2-0-window-1-capacity.yaml
+    sha256: e8f11533b111e77534b9164cdb020c91e5efec738264ede35799abd8b72f3c79
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-2-0-window-1-capacity.yaml
+    sha256: e8f11533b111e77534b9164cdb020c91e5efec738264ede35799abd8b72f3c79
+  package_identity: a4b946f2883d2d65fe479052e32741422b34831ecfc5e425e6098e383a83ba2a
+  package_artifact: art_e719e8025b18
+- campaign_id: cmp_56ae064543e0
+  created: '2026-10-09T20:06:59.218556+00:00'
+  state: completed
+  outcome: success
+  create_reason: 2.2 measurement window, campaign 2 of 5 (name normalization), under the adopted pre-registration;
+    manifest var/replays/2-2-0-window/manifest.json sha256 2bc8ac63
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-2-0-window-2-normalization.yaml
+    sha256: 32adf7ced7b7bde3daf62d5dd3077163fe23f8280ce4424bf0d5a6117457877c
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-2-0-window-2-normalization.yaml
+    sha256: 32adf7ced7b7bde3daf62d5dd3077163fe23f8280ce4424bf0d5a6117457877c
+  package_identity: 1db8cb71e631d21b44f9a2bf649112278c257b4018d1b1b48eff0d85e619acc3
+  package_artifact: art_d3daa83eb25e
+- campaign_id: cmp_d4181c169653
+  created: '2026-10-09T21:50:01.842848+00:00'
+  state: completed
+  outcome: success
+  create_reason: 2.2 measurement window, campaign 3 of 5 (datetime sorting), under the adopted pre-registration;
+    manifest sha256 2bc8ac63
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-2-0-window-3-sorting.yaml
+    sha256: 125c48e2380c07dff993fc07219ed804a9c1ccd7ac295b4487d29e0075a95c00
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-2-0-window-3-sorting.yaml
+    sha256: 125c48e2380c07dff993fc07219ed804a9c1ccd7ac295b4487d29e0075a95c00
+  package_identity: 242268c078f3c7ed0cb2a931e63a401a9095a32c11f99103f49c81431c87bf18
+  package_artifact: art_71ddcc6b5848
+- campaign_id: cmp_ff3ddfdfbc70
+  created: '2026-10-09T23:23:29.122693+00:00'
+  state: completed
+  outcome: success
+  create_reason: 2.2 measurement window, campaign 4 of 5 (UI error messages), under the adopted pre-registration;
+    manifest sha256 2bc8ac63
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-2-0-window-4-errors.yaml
+    sha256: dba6287ba1233ad9242062cd2be3acfd17c72b6fbc84b0d69bc3a3a0956b36e1
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-2-0-window-4-errors.yaml
+    sha256: dba6287ba1233ad9242062cd2be3acfd17c72b6fbc84b0d69bc3a3a0956b36e1
+  package_identity: 04d7f846356f3eef049d46ab981328cd538f45db4dbe3d3d25fca6bb6979c3d6
+  package_artifact: art_f679f2422305
+- campaign_id: cmp_9f5612668cbd
+  created: '2026-10-10T01:38:25.252625+00:00'
+  state: completed
+  outcome: success
+  create_reason: "2.2 measurement window, campaign 5 of 5 (pre-registration \xA74): the seed sample run\
+    \ objective"
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-2-0-window-5-seed.yaml
+    sha256: b44addb5ec5628f66c3a22f453624aaaeb120d34c3d8cb1c18940589f4d287b5
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-2-0-window-5-seed.yaml
+    sha256: b44addb5ec5628f66c3a22f453624aaaeb120d34c3d8cb1c18940589f4d287b5
+  package_identity: ba407687dccd6f519be225c3aa47134c1733f68625759754648b474701d3515d
+  package_artifact: art_fddf6897323b
+- campaign_id: cmp_4bdd8fb573a0
+  created: '2026-10-10T13:48:45.8338+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: "2.2 cut: the plan-review tier's diagnostic (2-2-0-cut-preregistration.md \xA72, \xA7\
+    4 P5), uncounted, before registration; the owner's go 2026-10-10"
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-2-0-cut-tier-diag.yaml
+    sha256: 188ebee993badf03ca88abb8438d6c2d33a577dd56ffbd9176f703f3be765cf0
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-2-0-cut-tier-diag.yaml
+    sha256: 188ebee993badf03ca88abb8438d6c2d33a577dd56ffbd9176f703f3be765cf0
+  package_identity: 7859e736fca1df763a92a8eacd1a755673d9d082dbb41929863f24ba448ce60f
+  package_artifact: art_76c5f70e526e
+- campaign_id: cmp_3c22edb866c2
+  created: '2026-10-10T23:16:33.268875+00:00'
+  state: completed
+  outcome: success
+  create_reason: "2.2 cut: the shakeout (2-2-0-cut-preregistration.md \xA72, \xA73, \xA75), uncounted,\
+    \ the exit rule's round 1 on rebuild 12 (ed540e1b); plan_gate tier, the tier's first live approvals;\
+    \ the owner's go 2026-10-10 about 19:13 ET"
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-2-0-cut-shakeout.yaml
+    sha256: 9217b5a0ac15bbaf501b54d808d179954a03dfc481b05d74ee6d43b5b9d4d470
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-2-0-cut-shakeout.yaml
+    sha256: 9217b5a0ac15bbaf501b54d808d179954a03dfc481b05d74ee6d43b5b9d4d470
+  package_identity: 13ce528efc1dc81fa24b3dfb3d840b53ac765f3684e4478178d7bbae71c87f58
+  package_artifact: art_3a88610b9e72
 examples_only: []
