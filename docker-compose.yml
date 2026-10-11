@@ -926,6 +926,25 @@ services:
     networks:
       - squadnet
     restart: unless-stopped
+  # #2204 (#2203): the box's own resources, scraped by Prometheus. It reads the host through a
+  # read-only mount of / and the host's PID namespace: memory available against SIP-0111's floors,
+  # swap and memory pressure (the 2026-08-29 livelock was swap thrash), disk against the 150 GB
+  # floor, and the NVMe and thermal-zone temperatures. On squadnet only: no published port.
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: squadops-node-exporter
+    command: ["--path.rootfs=/host"]
+    pid: host
+    volumes:
+      - /:/host:ro,rslave
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9100/metrics >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+    networks:
+      - squadnet
+    restart: unless-stopped
   grafana:
     image: grafana/grafana:latest
     container_name: squadops-grafana
