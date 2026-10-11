@@ -1,6 +1,6 @@
 # 2.3.0 plan — a faster engine first, then the structure: TensorFold to a decision, and stabilization on the engine that ships
 
-**Status: ADOPTED (2026-10-11).** The owner ruled §6 at about 12:45 ET: "approve D1-D11 as recommended". SIP-0111 §9a is
+**Status: ADOPTED (2026-10-11); STARTED the same day, about 15:30 ET, after 2.2.1's cut** (the owner: "go ahead with 2.3, place #2234 in 2.3"). The owner ruled §6 at about 12:45 ET: "approve D1-D11 as recommended". SIP-0111 §9a is
 ruled with it (D10). The 2.3 line starts after 2.2.1's cut, on D8's terms. Revision 2's history:
 - **Drafted** while 2.2.1's diagnostic ran, at the owner's request: "I want to prioritize the TensorFold adapter to get
   shorter cycle times".
@@ -257,6 +257,7 @@ Each item is a framework fix, an output-quality change, an instrument or an eval
 | #1994 | the largest units split | framework (refactor) | L | phase 8, R7; deferrable (§4) |
 | #316 | the request-profile taxonomy | framework | L | phase 8, R8. **Its SIP is accepted first** (Q13: pinned definitions keep resolving old names) |
 | Outcome Evaluation's reporting-only instruments | the yardstick for output-quality work after 2.3 | instrument | M–L | phase 8, R9. **Its SIP is accepted first** (PR #1963) |
+| **#2234** (placed by the owner, 2026-10-11) | the release capture: the delivered-app capture can't seed an app with an empty API base path, and the Prefect capture hangs on a failed flow run | framework (release tooling) | S | phase 8, any slot; before the 2.3 cut captures its package |
 
 ### 2.4 Not in 2.3
 
