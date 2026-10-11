@@ -4328,7 +4328,16 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         reach a workspace view or the assembled deliverable, and the readers that
         enforce that (``_resolve_artifact_contents`` here, ``_pull_run_artifacts`` in
         the audit script) key on this one field.
+
+        ``task_id``, ``role`` and ``producing_task_type`` name the task whose output this is:
+        the slot the workspace, the delivered tree and the audits read. A repair's accepted
+        bytes are stored under the task they repaired, and the repairing step can be another
+        role's (a dev repair of a qa failure). Relabelling the slot would drop the file, since
+        those readers leave a repair type's candidates out. So the step that wrote the bytes
+        is named beside it, as ``written_by_*``, whenever it is not the envelope's task (#2206).
         """
+        from squadops.cycles.scaffold_enforcement import named_producer
+
         content = art_dict.get("content", "").encode("utf-8")
         metadata: dict[str, Any] = {
             "task_id": envelope.task_id,
@@ -4336,6 +4345,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         }
         if producing_task_type:
             metadata["producing_task_type"] = producing_task_type
+        writer = named_producer(art_dict)
+        if writer is not None and writer.task_id != envelope.task_id:
+            metadata["written_by_task_id"] = writer.task_id
+            metadata["written_by_task_type"] = writer.task_type
+            metadata["written_by_role"] = writer.role
         if emission_status:
             metadata["emission_status"] = emission_status
         if attempt is not None:
