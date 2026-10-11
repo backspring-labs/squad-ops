@@ -222,3 +222,87 @@ class TestAgentCurrentActivity:
         client.get("/health/agents/MAX/activity")
 
         mock_health_checker.get_current_activity.assert_awaited_once_with("max")
+
+
+class TestHealthHost:
+    """GET /health/host (#2204): the host's numbers, the engines' loaded models and the box, on
+    the unauthenticated lane."""
+
+    def _client(self, mock_health_checker, box_reader):
+        app = FastAPI()
+        app.include_router(router)
+        app.state.box_reader = box_reader
+        mock_health_checker.read_host_resources = AsyncMock(
+            return_value={"memory_available_bytes": 1.0e11, "swap_used_bytes": None}
+        )
+        patcher = patch(
+            "squadops.api.routes.platform_health._get_health_checker",
+            return_value=mock_health_checker,
+        )
+        patcher.start()
+        self._patcher = patcher
+        return TestClient(app)
+
+    def teardown_method(self):
+        if getattr(self, "_patcher", None):
+            self._patcher.stop()
+
+    def test_the_payload_carries_states_and_numbers_and_no_identity(self, mock_health_checker):
+        """Entered at the route the console calls. Bugs caught: the lease holder's name, a
+        campaign id or a model digest leaking onto the unauthenticated lane; an unreadable
+        engine reported as holding nothing."""
+        from datetime import UTC, datetime
+
+        from squadops.campaigns.box import (
+            BoxLease,
+            EngineReading,
+            LeaseHolder,
+            Model,
+            Quietness,
+        )
+        from squadops.campaigns.box_reading import BoxSnapshot
+
+        expires = datetime(2026, 10, 11, 22, 0, tzinfo=UTC)
+        reader = MagicMock()
+        reader.snapshot = AsyncMock(
+            return_value=BoxSnapshot(
+                BoxLease(
+                    LeaseHolder.SUPERVISOR,
+                    "ripley-the-supervisor",
+                    expires,
+                    expires_at=expires,
+                    campaign_id="cmp_secret0000001",
+                ),
+                (
+                    EngineReading("ollama", (Model("qwen3.8:27b", "sha256deadbeefcafe"),)),
+                    EngineReading("tensorfold", None, "ConnectError: refused"),
+                ),
+                Quietness(False, ("engine tensorfold could not be read",)),
+            )
+        )
+
+        resp = self._client(mock_health_checker, reader).get("/health/host")
+
+        body = resp.json()
+        assert resp.status_code == 200
+        assert body["host"] == {"memory_available_bytes": 1.0e11, "swap_used_bytes": None}
+        assert body["floors"]["memory_available_after_load_bytes"] == 16 * 2**30
+        assert body["engines"] == [
+            {"engine": "ollama", "loaded": ["qwen3.8:27b"]},
+            {"engine": "tensorfold", "loaded": None},
+        ]
+        assert body["box"] == {
+            "quiet": False,
+            "lease": {"holder": "supervisor", "expires_at": expires.isoformat()},
+        }
+        for leaked in ("ripley", "cmp_secret", "deadbeef", "ConnectError"):
+            assert leaked not in resp.text
+
+    def test_an_unreadable_box_is_unknown_never_quiet(self, mock_health_checker):
+        """Bug caught: a box reader that raised, reported as a quiet box with no engines."""
+        reader = MagicMock()
+        reader.snapshot = AsyncMock(side_effect=RuntimeError("registry down"))
+
+        body = self._client(mock_health_checker, reader).get("/health/host").json()
+
+        assert (body["box"], body["engines"]) == (None, None)
