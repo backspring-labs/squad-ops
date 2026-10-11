@@ -244,6 +244,7 @@ Each item is a framework fix, an output-quality change, an instrument or an eval
 | #2201 | CI's Docker Hub rate limit | framework | S | phase 1 |
 | #2206 | a cross-role repair's file labelled as the failed task's | framework (evidence) | M | phase 8, R3 |
 | #2210 | a revocation names finished units as holding the lesson | framework (display) | S | phase 8, R3 |
+| **#2231** (placed by the owner, 2026-10-11) | `max_proposal_run_retries` is never read: failed proposal runs are retried by new cycles until `max_cycles`, and SIP-0109 §9.5's in-cycle retry isn't built | framework (campaign) | S–M | phase 8, R3. **Its two questions are ruled first:** build §9.5's retry or retire the field, and whether consecutive failed proposal runs pause the campaign |
 | #2174, #2175, #2176 | SIP-0110's entry-point prerequisites | framework | M each | phase 8, R3 |
 | **#2202** | a manifest decision the build doesn't honour passes acceptance | **output quality** | M | phase 8, its own slot: a targeted pre-registration and before/after evidence on the chosen engine |
 | **#2205** | a manifest delta's undefined key dropped, so a footprint omits the file the criteria need | **output quality** | S–M | phase 8, its own slot, as #2202 |
@@ -286,7 +287,7 @@ held. **No adapter code is written for either candidate before that candidate's 
 | 9 | **The cut:** a pre-registered regression set on both stacks on the chosen engine (the new baseline if TensorFold was adopted), a campaign shakeout, the release procedure | as 2.2's |
 
 Phase 8's rebuilds, in order:
-- **R3:** #2206, #2210, #2174–#2176, with a regression pair. Then the timeout-half diagnostic on R3's deploy: the fault
+- **R3:** #2206, #2210, #2231 (once its questions are ruled), #2174–#2176, with a regression pair. Then the timeout-half diagnostic on R3's deploy: the fault
   is a diagnostic-only code path merged in R3, and one campaign follows.
 - **#2202, then #2205:** each with its own pre-registered before/after comparison on the chosen engine (a targeted set,
   or one campaign), before it is batched with anything else.
