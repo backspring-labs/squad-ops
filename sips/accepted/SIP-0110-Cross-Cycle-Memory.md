@@ -376,8 +376,9 @@ When a unit of execution is admitted, it pins a memory snapshot, an immutable ma
 - A restart reproduces the original selection from the same snapshot and task inputs.
 
 **Memory disabled, declared.** A unit may declare memory disabled when it is admitted: a standalone cycle when it is
-created, a campaign when it is admitted, and the campaign's proposals and cycles then follow it. The unit pins no
-snapshot, every consuming task records a `disabled` exposure, and its prompts are rendered as if memory did not exist.
+created, a campaign when it is admitted, and the campaign's proposals and cycles then follow it. The unit pins a
+disabled snapshot that carries no lessons (§5i), every consuming task records a `disabled` exposure, and its prompts are
+rendered as if memory did not exist.
 A whole campaign declaring it is the memory-off arm of a live confirmation (§0.12). **Its observations are still
 recorded** (§0.3). **Every counted regression roll declares it,** written by the
 verification-set driver, until the owner rules otherwise on a finding of supported benefit (2.2 plan D12). The regression
@@ -688,7 +689,7 @@ Synthetic fixtures establish the mechanism's behavior. They are never evidence o
 | failure disclosure | disabled, empty, filtered and failed recall remain distinguishable |
 | inert behavior | at every consuming seam (plan writing, build authoring, repair, proposal writing), an empty or unapproved snapshot leaves the rendered prompt unchanged |
 | slot separation | at build authoring, a lesson and a retry's prior-cycle brief render in separate slots, and either one alone renders the other's slot empty |
-| memory disabled | a standalone cycle or a campaign declaring memory disabled pins no snapshot, renders byte-identical prompts at every seam (a campaign's proposals and cycles included), records `disabled` exposures, and still records its observations |
+| memory disabled | a standalone cycle or a campaign declaring memory disabled pins a disabled snapshot that carries no lessons (§5i), renders byte-identical prompts at every seam (a campaign's proposals and cycles included), records `disabled` exposures, and still records its observations |
 | storage | the four records are in the deploy's Postgres, read by the runtime API, and survive every container's recreation |
 | feedback | unassessed or partly classified outputs earn no credit |
 | app-build indicators | an exposure, a `disabled` one included, records its build's correction rounds, rounds to green and acceptance; a green build leaves the exposure's assessment unchanged |
@@ -1216,7 +1217,7 @@ a standalone cycle recorded nothing and received nothing.
 - **eligibility:** fault-injected diagnostics, environment-attributed failures and replays produce no observation (§0.3);
 - **the snapshot pinned per unit of execution:** a standalone cycle when it is created, a campaign when it is admitted
   (§0.7);
-- **memory disabled, declared:** counted regression rolls declare it, pin no snapshot, and still record their
+- **memory disabled, declared:** counted regression rolls declare it, pin a disabled snapshot with no lessons (§5i), and still record their
   observations (§0.7);
 - **four consuming seams:** plan writing (#2058's call site), build authoring, repair, and proposal writing, each in
   its own slot and each byte-identical while nothing is approved (§0.9);
@@ -1564,6 +1565,35 @@ owner wrote "approve §9 as recommended, lesson disabled", and chose each recomm
   display defect, #2210, and no running work held the lesson.
 - **The next build-side experiment** is the owner's direction of 2026-10-09, as listed above. The 2.3 plan places it.
 - **Phase 2 stays unplaced and gated** (§8).
+
+## 5i. The memory-disabled pin, as built (2026-10-10, #2217)
+
+**What changed.** A unit that declares memory disabled pins **a disabled snapshot that carries no lessons**. It does not
+pin "no snapshot". §0.7, the §0.15 matrix's "memory disabled" row and the slice list's "memory disabled, declared" line
+now say so.
+- **The code since #2126 (slice 3c):**
+  - `squadops.memory.lessons.pin` returns a `Snapshot` with `disabled: true` and no entries for a disabled unit ("a unit
+    that declares memory disabled pins nothing");
+  - `squadops.memory.pinning.pin_unit` records it;
+  - the unit's exposures cite its id.
+- **The text before this amendment** said the unit "pins no snapshot". So did the 2.2 cut's pre-registration in P1,
+  whose falsifier was "a pinned snapshot".
+- **The row records the declaration, not guidance.** Nothing a lesson could reach is pinned. Recording it keeps the
+  declaration itself reconstructible beside the exposures that cite it. So the text follows the code, and the code
+  does not change.
+
+**The evidence.**
+- Every memory-disabled unit since #2126 has exactly one such row, and no memory-disabled cycle lacks one:
+  - the 2.2 rebuild rolls of 2026-10-09 (`cyc_4f8c78ff0cec`, `cyc_6211353dc39d`, `cyc_dd6f459c40d8`, `cyc_9b57a88dfff2`);
+  - the 2.2 cut set's counted rolls (React roll 1, `cyc_0009e2942a6c` → `snp_db8232f4250e491c`).
+- On that roll:
+  - all 10 consuming tasks recorded `memory_disabled`;
+  - all 10 authoring envelopes reconstruct byte for byte (`scripts/dev/verify_authoring_envelopes.py`), each with its
+    own exposure.
+
+**Who ruled it.** The owner, 2026-10-10, about 22:55 ET, on the cut set's first P1 reading: "the row doesn't count
+against P1, amend the SIP". The 2.2 cut's P1 is read accordingly. A disabled snapshot with no entries is not the
+falsifier's "pinned snapshot", and the cut record says so.
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 
