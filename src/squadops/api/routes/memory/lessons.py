@@ -35,6 +35,8 @@ from squadops.api.memory_schemas import (
 )
 from squadops.api.middleware.auth import require_scopes
 from squadops.auth.models import Identity, Scope
+from squadops.campaigns.models import CampaignState
+from squadops.cycles.models import CycleStatus
 from squadops.memory.annotation import (
     AnnotationRefused,
     annotate,
@@ -58,7 +60,7 @@ from squadops.memory.assessment import (
     supplied_to,
     target_absence_rates,
 )
-from squadops.memory.lessons import Applicability, Approval, PatternRevision
+from squadops.memory.lessons import Applicability, Approval, PatternRevision, Snapshot, UnitKind
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}", tags=["memory"])
 
@@ -235,7 +237,8 @@ async def revoke_lesson(
     identity: Identity | None = Depends(require_scopes(Scope.MEMORY_APPROVE)),
 ) -> dict[str, Any]:
     """The owner's revocation. Units admitted afterwards pin without it; the answer names the
-    running units that hold it (§0.7, D9)."""
+    running units that hold it, and apart from them the finished units that ran with it (§0.7,
+    D9; #2210)."""
     revoked_by = _actor(identity)
     store = _store(request)
     held = next(
@@ -250,26 +253,60 @@ async def revoke_lesson(
             raise _error(409, "ALREADY_REVOKED", str(e)) from e
         raise _error(422, "VALIDATION_ERROR", str(e)) from e
     await store.record_revocation(revoked)
-    holding = await store.list_snapshots_holding(approval_id)
-    return {
-        "approval": revoked.to_dict(),
-        "units_holding_it": [
-            {
-                "unit_kind": s.unit_kind.value,
-                "unit_id": s.unit_id,
-                "snapshot_id": s.snapshot_id,
-                "pinned_at": s.pinned_at.isoformat(),
-            }
-            for s in holding
-        ],
-        "next": (
+    live: list[Snapshot] = []
+    finished: list[Snapshot] = []
+    for s in await store.list_snapshots_holding(approval_id):
+        (live if await _still_runs(request, s) else finished).append(s)
+    if live:
+        next_step = (
             "units admitted from now pin without it. Each unit named here keeps it while it runs: "
             "halt or restart its work under a new snapshot, and set its measurements apart "
             "(SIP-0110 §0.7)."
-            if holding
-            else "units admitted from now pin without it; no unit holds it"
-        ),
+        )
+    elif finished:
+        next_step = (
+            "units admitted from now pin without it; no running unit holds it. The finished units "
+            "named here ran with it: set their measurements apart (SIP-0110 §0.7)."
+        )
+    else:
+        next_step = "units admitted from now pin without it; no unit holds it"
+    return {
+        "approval": revoked.to_dict(),
+        "units_holding_it": [_unit(s) for s in live],
+        "finished_units_holding_it": [_unit(s) for s in finished],
+        "next": next_step,
     }
+
+
+def _unit(s: Snapshot) -> dict[str, Any]:
+    return {
+        "unit_kind": s.unit_kind.value,
+        "unit_id": s.unit_id,
+        "snapshot_id": s.snapshot_id,
+        "pinned_at": s.pinned_at.isoformat(),
+    }
+
+
+#: A cycle in these states still runs: a revocation names it as work to halt (#2210).
+_RUNNING_CYCLE = frozenset({CycleStatus.CREATED, CycleStatus.ACTIVE, CycleStatus.PAUSED})
+
+
+async def _still_runs(request: Request, s: Snapshot) -> bool:
+    """Whether the unit that pinned ``s`` still runs: a campaign not completed, or a cycle whose
+    status, read the way the cycle route reads it, has not ended. A unit that can't be read counts
+    as running: an emergency revocation names one unit too many rather than miss one (#2210)."""
+    from squadops.api.routes.cycles.mapping import cycle_status_of
+    from squadops.api.runtime.deps import get_campaign_registry, get_cycle_registry
+
+    try:
+        if s.unit_kind is UnitKind.CAMPAIGN:
+            campaign = await get_campaign_registry(request).get_campaign(s.unit_id)
+            return campaign.state is not CampaignState.COMPLETED
+        cycles = get_cycle_registry(request)
+        cycle = await cycles.get_cycle(s.unit_id)
+        return cycle_status_of(cycle, await cycles.list_runs(s.unit_id)) in _RUNNING_CYCLE
+    except Exception:  # noqa: BLE001 — unreadable is named, never dropped
+        return True
 
 
 @router.get("/observations")
