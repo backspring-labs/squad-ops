@@ -597,6 +597,15 @@ Kept below as they were asked.
 review of that plan's first draft, at the owner's request: "apply all nine and the SIP amendment". It is ruled with the
 plan, before any measurement. Until then §1–§8 stand as written.
 
+**The owner's guidance on its numbers** (2026-10-11): "I'm ok with the numbers. Let's just be flexible as we see
+performance in making a decision without such hard lines drawn early." So:
+- **They are guides,** reported against, never automatic triggers: the selection margin, the drift threshold, and G3's
+  comparison line.
+- **Each decision is the owner's,** with its reason recorded where it departs from a guide.
+- **The measurement protocol stays fixed:** the held-out set, frozen recipes, pairing, drift panels, clustered intervals
+  and the reporting.
+- **Q2's bars stand as ruled.**
+
 **What changes:**
 1. **A self-contained harness for S, G0 and G1** (amends §4's "sends its seed through the port (§5.1)").
    - **It calls each engine's own API:** Ollama's `/api/chat` with `options.seed` and the envelope's options, and
@@ -611,8 +620,8 @@ plan, before any measurement. Until then §1–§8 stand as written.
    - **What is reported:** unique envelopes, source cycles, repetitions and denominators, by seam and stack. An observed
      pass is reported apart from evidence of general non-regression.
    - **Drift** is read on a fixed panel of identical envelope-and-seed calls, at the start and end of each arm. The
-     threshold: at least 15 of 16 identical, and a median wall-clock change within 10%. Exceeding it voids that arm's
-     run, with one re-run.
+     guide: at least 15 of 16 identical, and a median wall-clock change within 10%. Exceeding it flags the arm. The
+     owner decides on a re-run.
    - **The bars of Q2 are unchanged.**
 3. **Reusing the Ollama arm across candidates,** only if nothing it depends on changed:
    - the deploy, model digest, prompts, seeds, sampling and deadlines;
@@ -636,8 +645,9 @@ plan, before any measurement. Until then §1–§8 stand as written.
      recipe.
 6. **Candidate-specific outcomes, selection, and G3** (amends §4's G2 and G3 lines).
    - A failed gate parks that candidate only.
-   - When both pass G0 and G1, **the 27B is selected** unless Flash-Next's median paired ratio is at least 0.15 lower,
-     its G1 pass rate is at least the 27B's on every seam, and its truncation and runaway rates are no higher.
+   - When both pass G0 and G1, **the owner selects.** The written guide prefers the 27B unless Flash-Next's median
+     paired ratio is at least 0.15 lower, its G1 pass rate at least the 27B's on every seam, and its truncation and
+     runaway rates no higher.
    - **G2 and G3 run on the selected candidate.** A replacement selected after a G2 or G3 failure needs its own G2 and
      G3.
    - **G3 is pre-registered.** It compares, against Ollama on both stacks:

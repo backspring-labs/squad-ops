@@ -6,6 +6,18 @@
 - **Revision 2** applies the nine changes from the owner's review of PR #2228 ("apply all nine and the SIP amendment").
   It proposes them to SIP-0111 as one amendment in the same PR (§9a). The amendment is ruled with this plan, before any
   measurement.
+- **The owner's guidance on revision 2** (2026-10-11): "I'm ok with the numbers. Let's just be flexible as we see
+  performance in making a decision without such hard lines drawn early."
+  - So the numbers this plan proposes are **guides,** reported against, never automatic triggers. They are:
+    - the selection margin;
+    - the drift threshold;
+    - G3's pass rule;
+    - the box budget and its checkpoints.
+  - **Each decision is the owner's,** on the evidence: which candidate, whether to re-run, whether to go on, whether to
+    adopt.
+  - **What stays fixed is the measurement:** the held-out set and its protection, frozen recipes, pairing, drift panels,
+    clustered intervals, and reporting by seam and stack. That keeps the evidence honest whatever is decided.
+  - SIP-0111's Q2 bars stand as the owner ruled them, and a reading near one goes to the owner.
 - **It assumes 2.2.1 cuts as its plan says.** Nothing here starts before that cut.
 
 **What 2.3 is.** An odd minor: a stabilization release, feature-free by rule (CLAUDE.md, #281). One track rides it under
@@ -123,8 +135,9 @@ That parks it alone, never every TensorFold candidate.
 That is emission validity. It says nothing of reasoning quality, or of whether the delivered app is correct. **Adoption
 rests on G3** (completed cycles) and the owner's G4, never on G1 alone.
 
-**The selection rule, fixed before either candidate's held-out run.** When both candidates pass G0 and G1:
-- **The 27B is selected,** unless Flash-Next is better on all three counts:
+**The selection guide, written before either candidate's held-out run.** When both candidates pass G0 and G1, the
+evidence is reported against it, and **the owner selects:**
+- **The guide prefers the 27B,** unless Flash-Next is better on all three counts:
   - its median paired ratio is at least **0.15 lower** than the 27B's;
   - its G1 pass rate is **at least the 27B's on every seam**;
   - its truncation and runaway-reasoning rates are **no higher**.
@@ -132,8 +145,9 @@ rests on G3** (completed cycles) and the owner's G4, never on G1 alone.
 - **When only one passes,** that one is selected. **When neither passes,** the trial is parked, and 2.3 continues on
   Ollama.
 
-**If the selected candidate fails G2 or G3,** it is parked. The other candidate is selected if it passed G0 and G1 and
-the budget allows (§4). It then needs **its own G2 and its own G3**: no evidence transfers between candidates after G3.
+**If the selected candidate fails G2 or G3,** it is parked. If the other candidate passed G0 and G1, the owner may
+select it at that check-in (§4). It then needs **its own G2 and its own G3**: no evidence transfers between candidates
+after G3.
 
 **G3's comparison.** It is pre-registered before its first roll, and amends SIP-0111 §4's "judged on cycle wall-clock".
 It runs the selected candidate against Ollama, as uncounted regression pairs on both stacks, interleaved A, B, A, B, one
@@ -142,7 +156,7 @@ engine resident at a time. It reads, for each arm:
 - **emission retries,** **correction rounds,** and the **final verdict** with criteria verified and the boot audit;
 - the decode and prefill rates the instrumented deploy logs.
 
-**Its pass rule** (to be fixed in G3's pre-registration):
+**Its guide** (written in G3's pre-registration, and read by the owner at G4):
 - every candidate roll accepted, with its boot audit passing;
 - correction rounds within the stack's baseline range;
 - the candidate's median cycle wall-clock below Ollama's;
@@ -296,7 +310,8 @@ On branches during phases 4–7: Track B's code, and the two SIP design reviews 
 
 ## 4. Box-time budget, checkpoints and the deferral rule
 
-**Track A's budget: 80 box-hours,** from S's first exercise to the G4 decision. It counts:
+**Track A's planning budget: about 80 box-hours,** from S's first exercise to the G4 decision. It is a guide for
+planning the box, not a cut-off. It counts:
 - engine switches, at about 10 minutes each, warm-up included;
 - the drafted-against-serial checks;
 - the drift panels;
@@ -310,17 +325,15 @@ On branches during phases 4–7: Track B's code, and the two SIP design reviews 
 | G3, the selected candidate | **~8 h** |
 | A repeated gate (a recipe change re-runs G0 and G1) | ~20–25 h each |
 
-**Checkpoint A,** after the 27B's G0 and G1 are read. Flash-Next runs only if both hold:
-- consumed time plus Flash-Next's estimate plus G3's leaves at least 10 hours of the budget;
-- the 27B didn't fail on drift or infrastructure (a repeat comes first).
+**Checkpoint A,** after the 27B's G0 and G1 are read: the owner's check-in. The supervisor reports the time used, the
+27B's readings, and the estimate for Flash-Next and G3. **The owner decides** whether Flash-Next runs now, waits for
+2.4 (as "not measured," never as a negative), or the trial changes course.
 
-Otherwise Flash-Next is **deferred to 2.4, as "not measured,"** never as a negative.
+**Checkpoint B,** after selection: the same check-in before G3.
 
-**Checkpoint B,** after selection. If consumed time plus G3 would pass 80 hours, the owner is asked before G3 runs.
-
-**Track B's deferral rule,** read at checkpoint B. If phase 8's remaining rebuilds can't finish before the cut set
-without a second calendar week of box time, **#1992 and #1994 move to 2.5** (the next odd minor). **#2062 and #1993
-stay in 2.3.**
+**Track B's deferral guide,** read at checkpoint B. If phase 8's remaining rebuilds look longer than about a calendar
+week of box time, **#1992 and #1994 are the ones to move to 2.5.** The owner decides. **#2062 and #1993 stay in
+2.3.**
 
 ---
 
@@ -354,9 +367,9 @@ has 2, and React's `qa.test_repair` 0.
 - **What shows drift:**
   - **identity:** a seeded call repeats its output, so the token-id hashes should match;
   - **speed:** the median wall-clock change across the panel, start against end.
-- **The threshold:** at least 15 of 16 identical, and a median wall-clock change within 10%.
-- **If it's exceeded,** that arm's held-out run is void. It is re-run once, after the cause is read. A second failure
-  stops the gate for the owner.
+- **The guide:** at least 15 of 16 identical, and a median wall-clock change within 10%.
+- **If it's exceeded,** the arm's results are flagged, the cause is read, and the owner decides whether the run is
+  re-run or read as it stands.
 - **Different-seed blocks alone can't separate engine drift from generation variability,** so they are not used for
   drift.
 
@@ -375,7 +388,9 @@ candidate.
 - **Each recipe is frozen on tuning data** before any of its held-out calls is read.
 - **Flash-Next's screening prompts** come from tuning envelopes, or from envelopes captured after the split. They are
   never held-out ones.
-- **The selection rule** (§2.1) is fixed in both pre-registrations, before either candidate's held-out run.
+- **The selection guide** (§2.1) is written in both pre-registrations, before either candidate's held-out run, so the
+  evidence is read against a line drawn before it was seen. The owner's choice may depart from it, with the reason
+  recorded.
 - **Exploratory after a look.** A recipe adjusted after a held-out failure is read becomes exploratory. Confirming it
   needs **fresh cases:** envelopes captured from cycles run after the freeze, which every new cycle adds. They are run as
   a new held-out set under the same rules. Small strata grow slowly, so that can take more than one release.
@@ -394,9 +409,9 @@ candidate.
 | D6 | **the next build-side memory experiment** | **2.4,** beside Outcome Evaluation's scenarios, on the final engine |
 | D7 | **#2201's fix** | registry credentials in CI (a repository secret), or a pull-through mirror. Recommended: **credentials** |
 | D8 | **who runs the line** | **the supervisor, on the 2.2 line's terms:** build in §3's order, merge on green with main's run read, run rebuilds and uncounted runs. **The owner's:** compose changes beyond #2204a's services and SIP-0111's overlay; G4; any lesson approval; the tag and Release unless delegated at the cut |
-| D9 | **Qwen3.8-Flash-Next on TensorFold, a second candidate** (the owner's request, 2026-10-11) | **on its own gate path** (§2.1, §2.2), behind S's floors and a screening replay, with its own frozen recipe and registry family. It is selected over the 27B only by the pre-declared rule, and runs only if checkpoint A allows |
+| D9 | **Qwen3.8-Flash-Next on TensorFold, a second candidate** (the owner's request, 2026-10-11) | **on its own gate path** (§2.1, §2.2), behind S's floors and a screening replay, with its own frozen recipe and registry family. The owner selects between candidates on the evidence, against the written guide, and decides at checkpoint A when it runs |
 | D10 | **SIP-0111 §9a** | **ruled with this plan, before any measurement:** the self-contained harness, the statistics and drift rules, the reuse and held-out rules, the second candidate, candidate-specific outcomes, the selection rule, and G3's comparison |
-| D11 | **Track A's budget** | **80 box-hours,** with checkpoints A and B (§4) |
+| D11 | **Track A's budget** | **about 80 box-hours as a planning guide,** with checkpoints A and B as the owner's check-ins (§4). **The numbers are accepted as guides** (the owner, 2026-10-11) |
 
 ---
 
