@@ -23,7 +23,33 @@ Each even-minor consumer sits strictly behind the release that earns its trust: 
 
 ## Release Timeline
 
-### v2.2.0 (2026-10-11) — Current — Cross-Cycle Memory, Phase 1
+### v2.2.1 (2026-10-11) — Current — a failed proposal and an abort end with a record
+
+**v2.2.1, the 2.2 line's first patch** (plan `docs/plans/2-2-1-plan.md`). It fixes the three defects the 2.2 cut's tier
+diagnostic found, and a security fix the owner added:
+- **a refused proposal fails its run** instead of entering the build correction loop (#2212);
+- **a proposal run completes only with its change request,** and a gate that raises ends the cycle through the
+  completion boundary, recorded (#2213);
+- **an abort cancels a cycle waiting between workloads** (#2214);
+- **the deploy's `.env` is owner-only** (GHSA-wrfh-h7jx-w578, #2233).
+
+**Validated lean, by the owner's ruling:**
+- wiring tests, each failing without its fix;
+- a runtime-only rebuild (`dba4f0c2`, `dep_b0c134405d55`) with every loaded check answering;
+- one diagnostic campaign whose rails refuse every proposal. It closed itself at its cycle cap with no correction loop
+  and no unretrieved exception.
+
+**What it moves on:**
+- **The tier's timeout half,** read live, moves to 2.3 by the owner's ruling. It had been placed here with the 2.2.0
+  entry.
+- **#2231,** the diagnostic's one finding, is placed in 2.3.
+
+**Upgrade from 2.2.0:**
+- **Migration 1696** is applied at the runtime's next start.
+- **The next `deploy_credentials.py ensure`,** which every deploy runs, makes `.env` owner-only. Or run `chmod 600 .env`
+  now.
+
+### v2.2.0 (2026-10-11) — Cross-Cycle Memory, Phase 1
 
 **v2.2.0, a feature release** (plan `docs/plans/2-2-0-plan.md`). Its headline is Cross-Cycle Memory's Phase 1
 (SIP-0110), with the cycle as memory's unit:
@@ -899,9 +925,9 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Stats
 
-*As of 2026-10-11 (v2.2.0):*
+*As of 2026-10-11 (v2.2.1):*
 
-- **Framework version**: 2.2.0
+- **Framework version**: 2.2.1
 - **SIPs** (2026-10-11, after the 2.2 sweep): 69 implemented, 11 accepted (SIP-0088, 0090–0093, 0101, 0102, 0105, 0109, 0110, 0111), 34 deprecated, plus the unnumbered proposals indexed in `sips/PORTFOLIO.md`
 - **Tests**: 10,000+ passing in the regression suite (all of `tests/unit`, #1316)
 - **Python source**: ~109,000 lines measured 2026-09-17 (`src/` ~84,000 + `adapters/` ~25,000; ~168,000 test lines; ~144,000 lines of Markdown under `docs/` and `sips/`)
