@@ -1029,6 +1029,42 @@ class TestCorrectionTerminalPaths:
         assert RunStatus.FAILED in terminal_statuses
 
 
+class TestAProposalFailsWithoutCorrection:
+    """#2212: an increment's proposal the rails refused after its revision budget is a failed
+    proposal run. The live case (the 2.2 cut's tier diagnostic, ``run_526cd42ff8a9``) entered the
+    build correction loop instead: its repair wrote product source into the proposal run, and the
+    run completed ``accepted`` with no change request."""
+
+    async def test_the_run_fails_and_no_correction_task_is_dispatched(
+        self, executor, mock_queue, mock_registry, run
+    ):
+        """Enters at ``execute_run`` on a proposal run, the call the live cycle makes, with the
+        plan the executor builds for it. Bug caught: the refused proposal's failure routed into
+        ``data.analyze_failure`` → ``correction_decision`` → a repair, and the run completed with a
+        developer's patch and no change request."""
+        mock_registry.get_run.return_value = dataclasses.replace(run, workload_type="proposal")
+        refused = (
+            "FAILED",
+            {"role": "strat"},
+            "the proposal was refused after its revision budget (§9.1): [out_of_scope]",
+        )
+        # The live run: no outcome class, so the D5 table retries once, then fails it.
+        _script_replies(mock_queue.reply_router, [refused, refused])
+
+        with patch(
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        dispatched = [
+            _published_envelope(c)["task_type"] for c in mock_queue.publish.call_args_list
+        ]
+        assert dispatched == ["strategy.propose_increment", "strategy.propose_increment"]
+        terminal = [c.args[1] for c in mock_registry.update_run_status.call_args_list]
+        assert RunStatus.FAILED in terminal
+        assert RunStatus.COMPLETED not in terminal
+
+
 class TestAModelLimitationRewindIsPatched:
     """#1757 (the 2.1 plan, §5 ruling 4): for an unattended run, run death is not what rewind
     means. Entered at ``execute_run``: the analyzer says ``model_limitation``, the lead chooses

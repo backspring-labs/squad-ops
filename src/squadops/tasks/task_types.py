@@ -102,9 +102,15 @@ class TaskType(StrEnum):
 
     @property
     def fails_without_correction(self) -> bool:
-        """A failure here aborts the run rather than entering the correction loop (D9):
-        the definition of done is the thing correction would be judged against."""
-        return self is TaskType.GOVERNANCE_DEFINE_DONE
+        """A failure here aborts the run rather than entering the correction loop.
+
+        - **The definition of done** (D9): it is the thing correction would be judged against.
+        - **The increment's proposal** (SIP-0109 §9.1, #2212): its output is a change request the
+          proposal rails judge. A repair is a developer's edit to source, so it cannot satisfy the
+          rails, and nothing re-runs them. A refused proposal is a failed proposal run, which the
+          campaign counts under ``max_proposal_run_retries``.
+        """
+        return self in (TaskType.GOVERNANCE_DEFINE_DONE, TaskType.STRATEGY_PROPOSE_INCREMENT)
 
     @property
     def domain(self) -> str:
