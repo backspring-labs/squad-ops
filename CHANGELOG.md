@@ -5,6 +5,118 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [2.2.0] — 2026-10-11
+
+**The 2.2 line: Cross-Cycle Memory, Phase 1** (SIP-0110), a feature release. Memory's unit is the cycle. Every
+eligible cycle is observed. A reviewed lesson can be supplied to the cycle's plan writing, build authoring, repair and
+proposal writing, and to nothing unless it is approved. Beside it is #1708's plan-review tier, which decides a
+campaign's plan gates when the campaign declares it. Plan: `docs/plans/2-2-0-plan.md`, which carries the owner's grant
+and rulings.
+
+**The window's finding: no demonstrated useful benefit** (SIP-0110 §5h; `docs/plans/2-2-0-slice4-preregistration.md`
+§12).
+- **The instrument is valid:** 5 of 5 cases reconstructed byte for byte, on one deploy, with the window's manifest held.
+- **The one lesson,** on proposal writing, improved 1 case, worsened none and tied 4. The pre-registered bar needs
+  three improvements.
+- **The owner disabled the lesson at the cut, and kept the mechanism.** No lesson is approved in 2.2.0, so memory
+  supplies nothing until the owner approves one.
+
+**The cut's evidence: PASS** (`docs/plans/2-2-0-cut-preregistration.md`, registered in #2216; its §10 in #2219). It
+was read on the window's deploy (`ed540e1b`, `dep_4015cab5e042`):
+- **the counted set:** 4 of 4 regression rolls accepted, two per stack, with memory disabled. Every criterion was
+  verified (21, 16, 21, 18) and every boot audit passed. No roll had a correction round or a re-roll;
+- **memory inert where it is disabled:** all 41 exposures read `memory_disabled`, and all 41 envelopes reconstruct
+  byte for byte;
+- **the shakeout campaign:** clean in one round. Two increments were accepted, and the tier decided all 3 plan gates;
+- **the tier's diagnostic:** the escalation path was read live as far as the delegate's answer. It found three
+  defects, which the owner placed in 2.2.1 (#2212, #2213, #2214). Until their fixes, the timeout half (expiry, the
+  parked cycle, the continuation) is read in unit tests only.
+
+No deployed code differs between the tagged tree and the validated deploy. The difference is campaign definitions, the
+set's configs, the replay's rubric and prose.
+
+**Cross-Cycle Memory, Phase 1 (SIP-0110).**
+- **Revision 6 restores the cycle as Phase 1's unit** (#2111). The plan is adopted with D1–D15 (#2113), and §5e
+  records the source-case inspection (#2115).
+- **Slice 1: capture.** Each authoring seam's pre-authoring state is captured at its first model call and recorded in
+  the cycle registry (#2116). An envelope's handler is re-run in its own container to compare the prompt byte for byte
+  (#2119). Envelopes are stored as `json`, so their inputs keep their order (#2123). The plan proposers derive the id
+  they render, so their envelopes reconstruct (#2141; #2142). Every seam reconstructs on a live cycle (#2105; #2131).
+- **Slice 3: the mechanism, inert until approved** (#2096; #2143).
+  - **Observation:** rejected plans, failed rounds and returned proposals are observed, and stored beside the cycle
+    registry (#2120). The runtime projects recent cycles and campaigns every five minutes (#2122).
+  - **The failure-shape sorter** reads the test runner's per-runner tables, and the repeat report reads repeated
+    signatures (#2121).
+  - **Lessons:** lessons, approvals, the pinned snapshot and deterministic recall (#2124), and their store (#2125).
+  - **Pins:** a standalone cycle pins at creation, a campaign at its start, and a counted roll declares memory
+    disabled (#2126).
+  - **Supply:** recall and slots at each consuming task, with every answer disclosed (#2127), and the correction loop's
+    repair slot (#2129). The pulse-check repair chain runs on its roles' squad-profile models (#2128; #2130).
+  - **Approval:** approval with its combined check, revocation, the lessons API and CLI, assessment, and the app-build
+    indicators (#2134).
+  - **Exposures:** a re-dispatched authoring records its own exposure (#2162; #2163), stored as one invocation's
+    (#2165; #2166).
+  - **Returns:** a return classified only in prose enters through a reviewed annotation (#2160; #2186).
+- **Slice 2: the authoring replay.** Three arms differ only by the intervention, with validity first, temporal validity
+  by evidence time, a frozen manifest, and no store writes (#2137). The in-container replay loads the agent's config
+  with the secret provider (#2139). The replay's call record uses the envelope's own digest (#2106; #2140). The
+  convergence replay hands its repair the memory-disabled recall (#2144).
+- **Slice 4: the first lesson and the window** (#2107).
+  - the slice 4 pre-registration, and the rubric it fixes (#2161);
+  - the window's five campaign definitions, one objective each (#2196);
+  - the finding (#2207);
+  - the cut's pre-registration, with the lesson disabled at the cut (#2209).
+- **SIP-0110 records:**
+  - Memory Entry Points for chat and task assignment, accepted by the owner and absorbed into SIP-0110 as §5g and
+    Appendix A (#2185). Its eleven parts are placed in 2.3–2.5 (#2174–#2184);
+  - §5i: a memory-disabled unit pins a disabled snapshot with no lessons, as built since #2126 (#2217; #2218).
+
+**Campaigns: the plan-review tier and its escalation queue (SIP-0109, #1708).**
+- **A return names what went wrong**, or says nothing fits and why (§24bi, the plan's D2; #2132).
+- **The policy**, as the owner ruled it (#2145).
+- **The tier:** a campaign declares who decides its plan gates, and the tier decides them when it says so (#2146).
+  It approves a plan with no open question, inside the objective's scope, framed once. Anything else escalates.
+- **The escalation queue:** an unanswered gate expires at the bound, and its cycle is parked, unaccepted (#2147). A
+  late answer is recorded (#2148), and it reaches a plan only by being carried, and only to the same question (#2188;
+  #2189). The tier's docstrings describe the carried answer (#2195), and §24bk is ratified as written (#2197).
+- **Activated** in the cut's shakeout, where it decided all 3 plan gates (#1708).
+- **The proposer** is told what its stack does with a request field the manifest does not declare (#2114; #2117).
+
+**Cycles, the correction loop and the audit.**
+- **A block cut by the completion cap** is dropped and the call asked again once. It is never taken as written
+  (#2149; #2150).
+- **Scaffold attribution:** an error the app raised under the spine's own call is the app's, never the fill's
+  (#2152; #2156).
+- **The boot audit:** a UI call answered with an error status and no JSON is reported as what came back, never as a
+  page (#2154; #2157).
+- **The analyzer-claim refutation** knows the scaffold's frozen files, so a true claim about one stands (#2155; #2158).
+
+**Security, auth and deploy.**
+- **The realm admin's password is the deploy's own,** held in `.env`, and the realm exports commit none (#2079;
+  #2138).
+- **The realm sync** gives each service account the realm roles its export declares (#2083; #2133).
+- **nat, eve and han keep their memory store** on a volume of their own, and a guard holds every agent to it (#2112;
+  #2172).
+- **The deploy record:** the sandbox is rebuilt before it is written, and a stale record fails `verify_loaded`
+  (#2193; #2194).
+
+**Release and verification tooling.**
+- **Loaded checks:** each rebuild's regression pair adds its rows (#2135, #2136, #2192). `verify_loaded --only` with
+  an id that names no row runs nothing, and says so (#2190).
+- **Disputes:** a dispute is read as the appendix shows it, so a reason that quotes code still disputes (#2168;
+  #2169).
+- **Configs:**
+  - the regression pairs' configs for rebuilds 5–9 (#2151, #2159, #2164, #2167, #2170);
+  - the redispatch diagnostic's config (#2191);
+  - the cut set's configs (#2211).
+- **The cut's records:** the pre-registration's amendment (#2215), registration (#2216) and readings (#2219).
+- **Tests:** the console command-handler stubs restore the state they found (#2082; #2118).
+
+**SIPs.**
+- **SIP-0111, TensorFold provider adapter, accepted** (#2198): a third candidate engine on GB10, behind SIP-0106's
+  seam, gated by measurement.
+- **SIP-0104:** a failing slot assertion's location says who wrote it, not what is wrong (#2187).
+
 ## [2.1.0] — 2026-10-07
 
 **The 2.1 line: hardening after 2.0's campaign headline, feature-free by rule** (CLAUDE.md, #281). It closes the
