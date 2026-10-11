@@ -18,6 +18,14 @@ from enum import StrEnum
 
 from squadops.campaigns.models import Campaign, CampaignState, ControlOperation, RefusalReason
 
+#: The box's floors, defined once: SIP-0111 §5.6 (Q7), the memory an engine switch requires
+#: available before an engine loads and after it, and the disk floor the box runs under (the 2.0
+#: day plan's disk policy). ``/health/host`` reports against them, and so will S's switch and the
+#: console's Host panel (#2204).
+MEMORY_FLOOR_BEFORE_LOAD_BYTES = 90 * 2**30
+MEMORY_FLOOR_AFTER_LOAD_BYTES = 16 * 2**30
+DISK_FLOOR_BYTES = 150 * 10**9
+
 
 class LeaseHolder(StrEnum):
     SQUAD = "squad"

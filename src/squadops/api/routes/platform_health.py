@@ -16,6 +16,11 @@ import asyncio
 from fastapi import APIRouter, HTTPException, Request
 
 from squadops.api.runtime.agent_labels import get_role_label
+from squadops.campaigns.box import (
+    DISK_FLOOR_BYTES,
+    MEMORY_FLOOR_AFTER_LOAD_BYTES,
+    MEMORY_FLOOR_BEFORE_LOAD_BYTES,
+)
 from squadops.cycles.deploy_record import revision_matches_deploy
 
 router = APIRouter(prefix="/health", tags=["platform-health"])
@@ -43,6 +48,57 @@ async def health_infra(request: Request):
         hc.check_keycloak(),
     )
     return list(results)
+
+
+@router.get("/host")
+async def health_host(request: Request):
+    """The machine the deploy runs on (#2204): its resources against the box's floors, each
+    engine's loaded models, and the box in SIP-0109's terms. Numbers and states only: this lane is
+    unauthenticated, so no process name, command line, path or deploy identifier. A source that
+    can't be read reports as unknown, never as healthy."""
+    from squadops.api.runtime.deps import get_box_reader
+
+    host = await _get_health_checker(request).read_host_resources()
+    try:
+        snap = await get_box_reader(request).snapshot()
+    except Exception:  # noqa: BLE001 — an unread box is unknown, never quiet
+        snap = None
+    return {
+        "host": host,
+        "floors": {
+            "memory_available_before_load_bytes": MEMORY_FLOOR_BEFORE_LOAD_BYTES,
+            "memory_available_after_load_bytes": MEMORY_FLOOR_AFTER_LOAD_BYTES,
+            "disk_available_bytes": DISK_FLOOR_BYTES,
+        },
+        "engines": (
+            None
+            if snap is None
+            else [
+                {
+                    "engine": r.engine,
+                    "loaded": None if r.loaded is None else [m.name for m in r.loaded],
+                }
+                for r in snap.readings
+            ]
+        ),
+        "box": (
+            None
+            if snap is None
+            else {
+                "quiet": snap.quietness.quiet,
+                "lease": (
+                    None
+                    if snap.lease is None
+                    else {
+                        "holder": snap.lease.holder.value,
+                        "expires_at": (
+                            snap.lease.expires_at.isoformat() if snap.lease.expires_at else None
+                        ),
+                    }
+                ),
+            }
+        ),
+    }
 
 
 @router.get("/agents")
