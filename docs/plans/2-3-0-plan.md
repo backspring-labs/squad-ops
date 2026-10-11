@@ -27,26 +27,49 @@ Deciding the engine first means 2.3 measures once.
 ## 1. What a faster engine buys, from this box's own records
 
 Squad work dispatches one task at a time, so a cycle's length is mostly single-stream decode (SIP-0111 §1). Read from
-the 2.2 cut set's four counted rolls:
+the 2.2 cut set's four counted rolls, every model call each agent logged (Ollama's `eval_count / eval_duration`, decode
+alone):
 
-| roll | wall clock (min) | authoring model calls (min) | share |
-|---|---:|---:|---:|
-| React 1 `cyc_0009e2942a6c` | 50.5 | 31.0 (10 calls) | 61% |
-| Next.js 1 `cyc_e2a1ad13af47` | 54.3 | 33.2 (9) | 61% |
-| React 2 `cyc_5fb4b1537245` | 52.0 | 32.9 (10) | 63% |
-| Next.js 2 `cyc_e7e0670e2681` | 62.1 | 41.2 (12) | 66% |
+| roll | wall clock (min) | model calls | tokens generated | decode (min) | share |
+|---|---:|---:|---:|---:|---:|
+| React 1 `cyc_0009e2942a6c` | 50.5 | 16 | 75,858 | 46.1 | 91% |
+| Next.js 1 `cyc_e2a1ad13af47` | 54.3 | 16 | 78,444 | 48.5 | 89% |
+| React 2 `cyc_5fb4b1537245` | 52.0 | 16 | 76,704 | 47.6 | 92% |
+| Next.js 2 `cyc_e7e0670e2681` | 62.1 | 19 | 91,055 | 54.6 | 88% |
 
-The model-call minutes are each envelope's `recorded_at − captured_at` (SIP-0110's capture). They are a floor: calls at
-seams that aren't captured, such as correction analysis, add to them. The rest of the wall clock is test runs, builds,
-the boot audit and dispatch. A faster engine doesn't touch any of that.
+**Decode is 88–92% of a roll.**
+- **What's left:** prompt reading (prefill), tests, typed checks, assembly, dispatch and the gates together take about
+  4–8 minutes.
+  - The prompts average 10–12k tokens, so prefill is about 2–3 of those minutes.
+  - React roll 1's two `qa.test` tasks ran 3.0 and 6.1 minutes. Their suites and checks took about 10 seconds of that.
+- **Reasoning** is 54% of the generated text in React roll 1, and the emitted answers are the rest.
 
-- **At G0's bar** (TensorFold at most 0.75× Ollama's wall-clock per call), a roll saves about 8–10 minutes: **about 16%**.
-- **At the vendor's figures,** about 0.5×: about 16–20 minutes, **about 32%**. These are vendor numbers, unmeasured here,
-  and the class has missed its vendor claims here twice (SIP-0111 §3).
-- **A campaign** is mostly cycles, and gains about as much.
+*Corrected 2026-10-11:* the first draft read only the captured authoring envelopes and put model calls at 61–66%.
+Those envelopes miss five framing calls, so that figure was a floor.
+
+**What a faster engine saves,** at today's average decode of 27.4 tok/s:
+
+| engine | time per call vs today's | saved per roll | roll |
+|---|---|---|---|
+| TensorFold, 27B, at G0's bar | 0.75× | ~12–14 min (~23%) | ~39–48 min |
+| TensorFold, 27B, at the vendor's figures (50–58 tok/s) | ~0.47–0.55× | ~21–29 min (~45%) | ~27–35 min |
+| TensorFold, Flash-Next, at the vendor's figures (63–77 tok/s; D9) | ~0.36–0.43× | ~26–35 min (~55%) | ~23–30 min |
+| infinitely fast calls (the ceiling) | 0 | ~46–55 min | ~4–8 min |
+
+The vendor's figures are for 64-token replies. Ours average about 4,700 tokens, and the class has missed its vendor
+claims here twice (SIP-0111 §3).
 
 **The gain arrives only at cutover, G4.** Until then, SIP-0111 runs TensorFold dark. The owner's disposition says
 adoption rests on end-to-end cycle quality, latency, stability and recoverability, never on vendor tokens per second.
+
+**Beyond the engine, the other levers are also model time.** Build and test speed is not among them: those take
+minutes, not tens of minutes. The model-time levers are:
+- **fewer reasoning tokens:** a task's reasoning level, set per type in `reasoning_policy`;
+- **fewer framing calls:** eight calls, about 31 minutes, before any code;
+- **concurrent dispatch of independent tasks:** TensorFold shares forwards across concurrent requests. Ollama did not
+  gain from it here. This is a later lever, with its own measurement.
+
+None is in this plan. Each changes what the squad emits, so it is output-quality work with its own pre-registration.
 
 ---
 
@@ -80,7 +103,7 @@ change, not only an engine change. Flash-Next is a mixture-of-experts model of a
   - decode at 63–77 tok/s on the MLX 4-bit checkpoint, against 50–58 for the 27B;
   - prefill at 2,300–2,500 tok/s from 2k to 64k, against 1,240–1,870.
 
-  By §1's arithmetic that is about 17–27 minutes a roll (33–43%), against 12–20 for the 27B on TensorFold.
+  By §1's arithmetic that is about 26–35 minutes a roll (~55%), against 21–29 for the 27B at its vendor figures.
 - **What it risks:**
   - **Reasoning depth:** a mixture-of-experts model in roles the dense 27B has held.
   - **Runaway reasoning:** the class that parked vLLM (SIP-0106 §1.2e).
