@@ -632,3 +632,24 @@ checks:
       from squadops.tasks.task_types import fails_without_correction
       print(fails_without_correction("strategy.propose_increment"), fails_without_correction("governance.define_done"), fails_without_correction("development.develop"))
     expect: "True True False"
+  - id: "2213"
+    what: a proposal run completes only with its change request, and an inter-workload gate that raises ends the cycle gate_failed, read by the campaign as proposal_failed; 1696's CHECK list allows it
+    container: squadops-runtime-api
+    code: |
+      import asyncio
+      import asyncpg
+      from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+      from squadops.bootstrap.secrets import secret_provider_for
+      from squadops.campaigns.progress import cycle_ending
+      from squadops.config import load_config
+      from squadops.cycles.cycle_end import CycleStopReason
+      from squadops.cycles.models import Run
+      async def live():
+          conn = await asyncpg.connect(load_config(secret_provider_factory=secret_provider_for).db.url)
+          try:
+              return "gate_failed" in await conn.fetchval("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'cycle_ends_stopped_because_check'")
+          finally:
+              await conn.close()
+      run = Run("r", "c", 1, "completed", "system", "cfg", workload_type="proposal")
+      print(cycle_ending(CycleStopReason.GATE_FAILED, run, parked=False).value, hasattr(DispatchedFlowExecutor, "_require_proposal_output"), asyncio.run(live()))
+    expect: "proposal_failed True True"

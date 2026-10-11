@@ -86,6 +86,17 @@ class _TierReading:
     open_decisions: tuple[tuple[str, str], ...]
 
 
+async def stored_change_request(vault: Any, run: Any) -> str | None:
+    """The change request a proposal run stored, or ``None`` when it stored none (SIP-0109 §9.1).
+    One lookup for the gate that submits it and the executor that refuses to complete a proposal
+    run without it (#2213)."""
+    for ref_id in tuple(run.artifact_refs or ()):
+        ref, content = await vault.retrieve(ref_id)
+        if ref.artifact_type == CHANGE_REQUEST_ARTIFACT_TYPE:
+            return content.decode("utf-8")
+    return None
+
+
 class GateOutcome(StrEnum):
     """What the sequencing loop does next."""
 
@@ -708,11 +719,12 @@ class WorkloadGate:
 
     async def _change_request_document(self, run: Any) -> str:
         """The change request the proposal run stored. A proposal workload that completed
-        without one is a defect, never a gate with nothing to rule on."""
-        for ref_id in tuple(run.artifact_refs or ()):
-            ref, content = await self._artifact_vault.retrieve(ref_id)
-            if ref.artifact_type == CHANGE_REQUEST_ARTIFACT_TYPE:
-                return content.decode("utf-8")
+        without one is a defect, never a gate with nothing to rule on. Since #2213 such a run
+        fails before it completes (``DispatchedFlowExecutor._require_proposal_output``), so this
+        raise is the last guard, and ``execute_cycle`` ends the cycle ``gate_failed`` on it."""
+        document = await stored_change_request(self._artifact_vault, run)
+        if document is not None:
+            return document
         raise ValueError(
             f"run {run.run_id} reached the {INCREMENT_RULING_GATE} gate with no "
             f"{CHANGE_REQUEST_ARTIFACT_TYPE} artifact"

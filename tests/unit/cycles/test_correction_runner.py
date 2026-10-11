@@ -8508,3 +8508,54 @@ class TestThePriorityReserveEndsTheChainBeforeAnyStep:
             assert "reserved_for_required" not in str(e)
 
         assert "data.analyze_failure" in dispatched
+
+
+class TestAProposalRunCompletesOnlyWithItsChangeRequest:
+    """#2213: a proposal run exists to store a change request (SIP-0109 §9.1). The 2.2 cut's
+    diagnostic completed one without it, and the increment gate then raised where nothing heard
+    it; the campaign waited eight hours with no row."""
+
+    async def test_a_proposal_run_that_stored_none_fails_with_that_reason(
+        self, executor, mock_queue, mock_registry, run
+    ):
+        """Enters at ``execute_run`` on a proposal run whose task succeeded and stored nothing.
+        Bug caught: the run completed, so the cycle went on to the increment gate with nothing
+        to submit."""
+        mock_registry.get_run.return_value = dataclasses.replace(run, workload_type="proposal")
+        _script_replies(mock_queue.reply_router, [("SUCCEEDED", {"role": "strat"}, None)])
+
+        with patch(
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        calls = mock_registry.update_run_status.call_args_list
+        assert RunStatus.COMPLETED not in [c.args[1] for c in calls]
+        failed = [c for c in calls if c.args[1] == RunStatus.FAILED]
+        assert failed, "the run was never failed"
+        assert "stored no change request" in failed[-1].kwargs["failure_reason"]
+
+    async def test_a_proposal_run_that_stored_its_change_request_completes(
+        self, executor, mock_queue, mock_registry, mock_vault, run
+    ):
+        """The check reads what the run stored, so a proposal that wrote its change request
+        completes as before. Bug caught: a check that fails every proposal run."""
+        from types import SimpleNamespace
+
+        mock_registry.get_run.return_value = dataclasses.replace(
+            run, workload_type="proposal", artifact_refs=("art_cr",)
+        )
+        mock_vault.retrieve.return_value = (
+            SimpleNamespace(artifact_type="change_request"),
+            b"version: 1\n",
+        )
+        _script_replies(mock_queue.reply_router, [("SUCCEEDED", {"role": "strat"}, None)])
+
+        with patch(
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        assert RunStatus.COMPLETED in [
+            c.args[1] for c in mock_registry.update_run_status.call_args_list
+        ]
