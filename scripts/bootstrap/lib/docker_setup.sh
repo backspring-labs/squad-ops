@@ -144,6 +144,23 @@ ensure_docker_group() {
     fi
 }
 
+# The GPU's CDI spec (#2204). Docker hands a container the GPU by the name `nvidia.com/gpu=all`
+# (the compose `gpu` profile's dcgm-exporter) only when /etc/cdi describes it. nvidia-ctk writes it
+# from the installed driver, so it is rewritten on every run: a driver upgrade changes the device
+# nodes, and a stale spec fails every GPU container.
+ensure_gpu_cdi_spec() {
+    if [[ "${SKIP_DOCKER:-0}" == "1" ]]; then
+        return 0
+    fi
+    if ! check_command nvidia-ctk; then
+        error "nvidia-ctk not found — the NVIDIA Container Toolkit writes the GPU's CDI spec"
+        exit 1
+    fi
+    info "Writing the GPU's CDI spec (/etc/cdi/nvidia.yaml)..."
+    run_or_dry sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+    success "GPU CDI spec written"
+}
+
 # Start Docker Compose services.
 # Returns 0 on success, 1 on failure, 2 when skipped via --skip-docker.
 start_docker_services() {

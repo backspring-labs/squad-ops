@@ -677,10 +677,10 @@ checks:
       print(LLM_DECODE_TOKENS_PER_SECOND, type(metrics).__name__)
     expect: "llm_decode_tokens_per_second OTLPMetricExporter"
   - id: "2204-host"
-    what: GET /health/host reads the host's seven numbers against the box's floors
+    what: GET /health/host reads the host's ten numbers, the GPU's three among them, against the box's floors
     container: squadops-runtime-api
     code: |
       from squadops.api.runtime.host_reading import HOST_QUERIES
       from squadops.campaigns.box import MEMORY_FLOOR_AFTER_LOAD_BYTES
       print(len(HOST_QUERIES), MEMORY_FLOOR_AFTER_LOAD_BYTES)
-    expect: "7 17179869184"
+    expect: "10 17179869184"

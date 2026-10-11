@@ -945,6 +945,25 @@ services:
     networks:
       - squadnet
     restart: unless-stopped
+  # #2204: the GPU's utilization, power, temperature and clocks, scraped by Prometheus. NVIDIA's DCGM
+  # exporter, verified on the Spark's GB10 (2026-10-11); it needs no added capability. It is handed the
+  # GPU through the CDI spec the local-spark bootstrap writes, so it runs only under the `gpu` profile:
+  # `docker compose --profile gpu up -d dcgm-exporter`. On squadnet only: no published port.
+  dcgm-exporter:
+    image: nvcr.io/nvidia/k8s/dcgm-exporter:4.4.2-4.7.1-ubuntu22.04
+    container_name: squadops-dcgm-exporter
+    profiles: ["gpu"]
+    devices:
+      - nvidia.com/gpu=all
+    healthcheck:
+      # The image has neither wget nor curl.
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/9400' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+    networks:
+      - squadnet
+    restart: unless-stopped
   grafana:
     image: grafana/grafana:latest
     container_name: squadops-grafana
