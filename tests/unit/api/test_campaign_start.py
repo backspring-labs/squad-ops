@@ -145,6 +145,27 @@ async def test_a_start_launches_the_calibration_cycle_by_the_cycle_create_path(w
     assert world.executor.started == [(cycle_id, run.run_id, "full-38")]
 
 
+async def test_an_execution_that_raises_is_retrieved_and_named(world, caplog):
+    """#2213: entered at the start route, through the real launch service, with an executor whose
+    cycle execution raises. Bug caught: the exception was left in a task nothing awaited, so the
+    only record was asyncio's "Task exception was never retrieved", naming no cycle or campaign."""
+
+    async def raising(cycle_id, run_id, squad_profile_id, *, reentry=False):
+        raise ValueError("a defect at the gate")
+
+    world.executor.execute_cycle = raising
+    with caplog.at_level("ERROR", logger="squadops.api.campaign_launch"):
+        resp = world.start()
+        for _ in range(3):  # the task runs, ends, and its done-callback runs
+            await asyncio.sleep(0)
+
+    [cycle_id] = resp.json()["launched_cycles"]
+    [record] = [r for r in caplog.records if r.getMessage() == "campaign_cycle_execution_raised"]
+    assert (record.campaign_id, record.cycle_id) == (CID, cycle_id)
+    assert isinstance(record.exc_info[1], ValueError)
+    assert not world.launch._running
+
+
 async def test_a_start_pins_the_campaigns_snapshot_before_its_calibration_cycle_exists(world):
     """SIP-0110 §0.7. Bugs caught: a campaign that pins nothing; a pin after the launch, so the
     calibration cycle's seams ask for a snapshot that does not exist yet; or the calibration cycle

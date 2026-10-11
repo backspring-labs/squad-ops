@@ -221,4 +221,25 @@ class CampaignLaunchService:
         )
         task = asyncio.create_task(execution)
         self._running.add(task)
-        task.add_done_callback(self._running.discard)
+        task.add_done_callback(lambda done: self._execution_ended(done, cycle, run))
+
+    def _execution_ended(self, task: asyncio.Task, cycle: Cycle, run: Run) -> None:
+        """#2213: the cycle's execution is retrieved when it ends. Nothing awaits it, so an
+        exception left here was logged only as asyncio's "Task exception was never retrieved",
+        with no cycle or campaign named, and the campaign waited with no row. The cycle's own
+        gate failure now ends it through the completion boundary; anything else that escapes is
+        named here, loudly."""
+        self._running.discard(task)
+        if task.cancelled():
+            return
+        error = task.exception()
+        if error is not None:
+            logger.error(
+                "campaign_cycle_execution_raised",
+                exc_info=error,
+                extra={
+                    "campaign_id": cycle.campaign_id,
+                    "cycle_id": cycle.cycle_id,
+                    "run_id": run.run_id,
+                },
+            )

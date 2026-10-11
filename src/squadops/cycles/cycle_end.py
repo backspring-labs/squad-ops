@@ -39,6 +39,8 @@ class CycleStopReason(StrEnum):
     REVISION_UNAVAILABLE = "revision_unavailable"
     #: A decision value the dispatch doesn't know — never read as an approval (#466).
     GATE_DECISION_UNRECOGNIZED = "gate_decision_unrecognized"
+    #: The inter-workload gate raised before any decision (#2213): a defect, never an approval.
+    GATE_FAILED = "gate_failed"
 
 
 #: Why the sequence stops on a run that did not complete — every ``RunStatus`` but ``COMPLETED``

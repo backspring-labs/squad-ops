@@ -493,6 +493,10 @@ async def test_a_cycle_that_can_still_continue_is_not_decided(calibrating, stopp
             False,
         ),
         ("proposal", "failed", CycleStopReason.RUN_FAILED, CycleEnding.PROPOSAL_FAILED, False),
+        # #2213: the increment gate failed to submit the proposal; never read as reaching a build.
+        ("proposal", "completed", CycleStopReason.GATE_FAILED, CycleEnding.PROPOSAL_FAILED, False),
+        # A plan gate that failed after framing ends the cycle unbuilt, read like a rejected plan.
+        ("framing", "completed", CycleStopReason.GATE_FAILED, CycleEnding.ASSESSED, False),
         ("implementation", "failed", CycleStopReason.RUN_FAILED, CycleEnding.ASSESSED, False),
         ("framing", "completed", CycleStopReason.GATE_REJECTED, CycleEnding.ASSESSED, False),
         # §24bj: the expired escalation's run, cancelled for it.

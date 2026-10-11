@@ -48,7 +48,7 @@ from adapters.cycles.run_completion import RunCompletion, resolve_terminal_outco
 from adapters.cycles.run_provisioning import RunInProgress, RunProvisioning
 from adapters.cycles.task_dispatcher import TaskDispatcher
 from adapters.cycles.task_naming import build_task_name
-from adapters.cycles.workload_gate import GateOutcome, WorkloadGate
+from adapters.cycles.workload_gate import GateOutcome, WorkloadGate, stored_change_request
 from squadops.capabilities.context_assembly import (
     ACCEPTANCE_WORKSPACE_FILTER,
     INCREMENT_CANDIDATE_FILTER,
@@ -86,6 +86,7 @@ from squadops.cycles.models import (
     GateDecisionValue,
     Run,
     RunStatus,
+    WorkloadType,
 )
 from squadops.cycles.naming import flow_run_name, flow_run_tags
 from squadops.cycles.patch_verification import (
@@ -751,6 +752,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         interface_manifest=interface_manifest,
                     )
 
+                await self._require_proposal_output(run_id)
+
                 # Success -> completed
                 await self._cycle_registry.update_run_status(run_id, RunStatus.COMPLETED)
                 self._cycle_event_bus.emit(
@@ -826,6 +829,17 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     lint_findings=self._task_dispatcher.take_run_lint_findings(run_id),
                     terminal=terminal,
                 )
+
+    async def _require_proposal_output(self, run_id: str) -> None:
+        """#2213: a proposal run completes only with the change request it exists to write
+        (SIP-0109 §9.1). Without one it fails here, with that as its reason, and the cycle ends
+        ``proposal_failed`` under the campaign's ``max_proposal_run_retries``. It used to complete,
+        and the increment gate then raised where nothing heard it."""
+        run = await self._cycle_registry.get_run(run_id)
+        if getattr(run, "workload_type", None) != WorkloadType.PROPOSAL:
+            return
+        if await stored_change_request(self._artifact_vault, run) is None:
+            raise _ExecutionError(f"proposal run {run_id} stored no change request (#2213)")
 
     def begin_shutdown(self) -> None:
         """The process is stopping (#1929). A run interrupted from here on is left as it was,
@@ -977,20 +991,32 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # Inter-workload gate
             gate_name = workload_entry.get("gate")
             if gate_name and gate_name != "auto":
-                gate = await self._workload_gate.decide(
-                    cycle=cycle,
-                    cycle_id=cycle_id,
-                    run=run,
-                    workload_entry=workload_entry,
-                    gate_name=gate_name,
-                    current_run_id=current_run_id,
-                    forwarding_overrides=forwarding_overrides,
-                    framing_rerolls=framing_rerolls,
-                    framing_revisions=framing_revisions,
-                    max_framing_rerolls=max_framing_rerolls,
-                    max_framing_revisions=max_framing_revisions,
-                    reentry=reentered_at_gate,
-                )
+                try:
+                    gate = await self._workload_gate.decide(
+                        cycle=cycle,
+                        cycle_id=cycle_id,
+                        run=run,
+                        workload_entry=workload_entry,
+                        gate_name=gate_name,
+                        current_run_id=current_run_id,
+                        forwarding_overrides=forwarding_overrides,
+                        framing_rerolls=framing_rerolls,
+                        framing_revisions=framing_revisions,
+                        max_framing_rerolls=max_framing_rerolls,
+                        max_framing_revisions=max_framing_revisions,
+                        reentry=reentered_at_gate,
+                    )
+                except Exception:
+                    # #2213: every raise in the gate is a defect, and one here used to escape a
+                    # task nothing awaits, leaving the campaign waiting with no row. The cycle
+                    # ends through the completion boundary instead, which records why and tells
+                    # the campaign.
+                    logger.exception(
+                        "inter_workload_gate_failed",
+                        extra={"cycle_id": cycle_id, "run_id": current_run_id, "gate": gate_name},
+                    )
+                    stopped_because = CycleStopReason.GATE_FAILED
+                    break
                 current_run_id, forwarding_overrides = (
                     gate.current_run_id,
                     gate.forwarding_overrides,

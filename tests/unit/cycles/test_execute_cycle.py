@@ -758,6 +758,31 @@ class TestInterWorkloadGates:
         executor.execute_run.assert_awaited_once()
         mock_registry.create_run.assert_not_called()
 
+    async def test_a_gate_that_raises_ends_the_cycle_gate_failed(self, executor, mock_registry):
+        """#2213: enters at ``execute_cycle`` with the real gate. A proposal run reaching the
+        increment gate on a cycle that cannot submit it raises inside the gate. Bug caught: the
+        raise escaped ``execute_cycle`` into a task nothing awaits, so the cycle never reached the
+        completion boundary and its campaign waited at ``at_proposal`` with no row."""
+        from squadops.cycles.cycle_end import CycleStopReason
+
+        cycle = _make_cycle(
+            workload_sequence=[
+                {"type": "proposal", "gate": "progress_increment_ruling"},
+                {"type": "framing"},
+            ]
+        )
+        mock_registry.get_cycle.return_value = cycle
+        proposal = _make_run("run_001", 1, "completed", "proposal")
+        mock_registry.get_run.return_value = proposal
+        executor._cycle_completion.end = AsyncMock()
+
+        await executor.execute_cycle("cyc_001", "run_001")
+
+        executor._cycle_completion.end.assert_awaited_once_with(
+            "cyc_001", proposal, CycleStopReason.GATE_FAILED
+        )
+        mock_registry.create_run.assert_not_called()
+
     async def test_no_gate_skips_polling(self, executor, mock_registry, mock_event_bus):
         """No gate on workload entry → advances without polling."""
         cycle = _make_cycle(

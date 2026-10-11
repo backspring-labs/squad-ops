@@ -16,16 +16,27 @@ from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
 from squadops.cycles.cycle_end import CycleStopReason, RecordedEnd
 from squadops.cycles.models import Cycle, CycleNotFoundError, TaskFlowPolicy
 
-_MIGRATION = Path(__file__).resolve().parents[3] / "infra/migrations/1670_cycle_ends.sql"
+_MIGRATIONS = Path(__file__).resolve().parents[3] / "infra/migrations"
+_CHECK_LIST = re.compile(r"CHECK \(stopped_because IN \(([^)]*)\)\)")
+
+
+def _latest_check_list() -> set[str]:
+    """The CHECK list the last migration to set one leaves in force, in the order startup applies
+    them (lexicographic, the migrations README)."""
+    lists = [
+        match.group(1)
+        for sql in (f.read_text() for f in sorted(_MIGRATIONS.glob("*.sql")))
+        for match in _CHECK_LIST.finditer(sql)
+    ]
+    assert lists, "no CHECK list for stopped_because"
+    return set(re.findall(r"'([^']+)'", lists[-1]))
 
 
 def test_the_migrations_check_list_holds_every_stop_reason():
     """Bug caught: a stop reason added without the migration — every ending for that reason
-    fails its write on the live deploy, and that ending can never be re-heard."""
-    sql = _MIGRATION.read_text()
-    match = re.search(r"\bstopped_because TEXT[^,]*CHECK \(stopped_because IN \(([^)]*)\)\)", sql)
-    assert match, "no CHECK list for stopped_because"
-    assert set(re.findall(r"'([^']+)'", match.group(1))) == {m.value for m in CycleStopReason}
+    fails its write on the live deploy, and that ending can never be re-heard. Read from the
+    latest list, since a table 1670 already created keeps its old one (#2213's 1696)."""
+    assert _latest_check_list() == {m.value for m in CycleStopReason}
 
 
 async def test_the_latest_ending_is_the_cycles_and_none_means_none_was_recorded():

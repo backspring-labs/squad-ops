@@ -134,15 +134,19 @@ _RUNNING_STATES = frozenset(
 def cycle_ending(stopped_because: CycleStopReason, last_run: Run, *, parked: bool) -> CycleEnding:
     """How the cycle ended, for the decision. The increment gate's rejection — and a proposal
     whose revisions were spent, which §9.5 counts as rejected — is ``rejected_at_gate``; a
-    proposal run that failed is ``proposal_failed``; a plan gate whose escalation expired, its run
-    cancelled for it, is ``parked`` (§24bj; ``parked`` is read from the control log by
-    ``escalation.parked_run``); everything else reached its assessment."""
+    proposal run that failed, or whose proposal the increment gate failed to submit (#2213), is
+    ``proposal_failed``; a plan gate whose escalation expired, its run cancelled for it, is
+    ``parked`` (§24bj; ``parked`` is read from the control log by ``escalation.parked_run``);
+    everything else reached its assessment."""
     if parked and last_run.status == RunStatus.CANCELLED.value:
         return CycleEnding.PARKED
     if last_run.workload_type == WorkloadType.PROPOSAL:
         if stopped_because in (CycleStopReason.GATE_REJECTED, CycleStopReason.REVISION_UNAVAILABLE):
             return CycleEnding.REJECTED_AT_GATE
-        if last_run.status == RunStatus.FAILED.value:
+        if (
+            last_run.status == RunStatus.FAILED.value
+            or stopped_because is CycleStopReason.GATE_FAILED
+        ):
             return CycleEnding.PROPOSAL_FAILED
     return CycleEnding.ASSESSED
 
