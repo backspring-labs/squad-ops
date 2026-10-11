@@ -84,7 +84,7 @@ The revision history at the end has the earlier placements.
 
 ---
 
-## Delivery ledger (current as of 2026-10-09)
+## Delivery ledger (current as of 2026-10-11)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
 
@@ -112,7 +112,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | the escalation queue: its store, the bound's expiry and the parked cycle (§24bk) | **shipped** | 2.2.0, PR #2147 |
 | the escalation queue's late answer, its digest lists and its CLI (§24bl) | **shipped** | 2.2.0, PR #2148 |
 | the late answer corrected (§24bm): one answer per decision, carried into a tier campaign's next manifest only for the same question, and an open or uncarried question escalates | **shipped** | 2.2.0, PR #2189, issue #2188 |
-| the tier's activation, after 2.2's measurement window closes, and its live reading in the cut's campaign shakeout (the 2.2 plan, steps 10–11) | **placed** | 2.2.0, #1708 |
+| the tier's activation, after 2.2's measurement window closes, and its live reading in the cut's campaign shakeout (the 2.2 plan, steps 10–11) | **shipped** | 2.2.0, issue #1708: activated in the cut's shakeout `cmp_3c22edb866c2`, which decided all 3 of its plan gates `system:plan_review_tier` (the cut pre-registration's P3, §10, PR #2219). The tier diagnostic's calibration escalated on an open question, and the delegate's answer resolved it inside the bound. The timeout half (expiry, the parked cycle, the continuation) is read in unit tests only. Its live reading goes with the fixes to #2212, #2213 and #2214, which the owner placed in 2.2.1 |
 | accepted increments' `prd_delta` text to the proposer | **deferred to 2.4** (ruled 2026-10-03, §24ap): "a 2.4 question" | §24ap |
 | escalating a launch the cycle-create preflight refuses | **shipped** (§24ba) | 2.1.0, PR #2052, issue #1971 |
 | re-hearing an ended cycle between restarts | **shipped**: the campaign sweep re-hears on its interval, and a cycle is heard by one hearer at a time | 2.1.0, PR #2038, issue #1972 (§24as) |

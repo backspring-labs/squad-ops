@@ -16,7 +16,7 @@ Draft (proposed)
 **Author:** Jason Ladd
 **Created:** 2026-08-19
 **Revision:** 1
-**Targets:** the **v2.2 era** (even-minor feature lane; headline candidate). Placement is a
+**Targets:** **3.x**, placed by 3.0's plan (the owner's ruling of 2026-10-04, in the note above). Placement is a
 sequencing intent, not a date — every phase is gated by the readiness conditions in §9, and
 the earliest structural work (the §7 amendments) belongs to the odd minor that precedes it.
 **Builds on:** SIP-0088 (runtime modes, umbrella), SIP-0089 (agent runtime state),

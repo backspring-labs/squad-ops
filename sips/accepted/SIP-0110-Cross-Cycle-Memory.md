@@ -61,7 +61,7 @@ diverged from on agent-discretionary memory tools (§6).
 
 ---
 
-## Delivery ledger (current as of 2026-10-10)
+## Delivery ledger (current as of 2026-10-11)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or
 re-places it.

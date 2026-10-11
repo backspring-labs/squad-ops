@@ -23,7 +23,43 @@ Each even-minor consumer sits strictly behind the release that earns its trust: 
 
 ## Release Timeline
 
-### v2.1.0 (2026-10-07) — Current — hardening after Campaign
+### v2.2.0 (2026-10-11) — Current — Cross-Cycle Memory, Phase 1
+
+**v2.2.0, a feature release** (plan `docs/plans/2-2-0-plan.md`). Its headline is Cross-Cycle Memory's Phase 1
+(SIP-0110), with the cycle as memory's unit:
+- **every eligible cycle is observed:** rejected plans, failed correction rounds and returned proposals, with a
+  failure-shape sorter and a repeat report;
+- **a reviewed lesson can be supplied** at plan writing, build authoring, repair and proposal writing. It is pinned
+  per cycle or per campaign, and is inert until the owner approves it;
+- **every authoring seam's input is captured,** and replays byte for byte. The authoring replay compares arms that
+  differ only by the lesson.
+
+**The window's finding: no demonstrated useful benefit** (SIP-0110 §5h). The one lesson, on proposal writing, improved
+1 of 5 cases and worsened none. The owner disabled it at the cut and kept the mechanism. No lesson is approved in
+2.2.0.
+
+**Beside it, #1708's plan-review tier** (SIP-0109 §24bj–§24bm). A campaign that declares `plan_gate: tier` has its plan
+gates approved when the plan asks nothing, stays inside scope and was framed once. Anything else escalates to a
+bounded queue.
+
+**Validated on the window's deploy** (`ed540e1b`):
+- a 4-of-4 counted set on both stacks with memory disabled, every exposure `memory_disabled` and every envelope
+  reconstructing;
+- a shakeout campaign clean in one round, with the tier deciding all 3 plan gates.
+
+Records: `docs/plans/2-2-0-cut-preregistration.md` §10. The tier diagnostic's three defects are placed in 2.2.1 (#2212,
+#2213, #2214), and with them the live reading of the tier's timeout half.
+
+**Upgrade from 2.1.0:**
+- **Migrations:** the runtime applies ten new migrations (1700–1770) at startup: the authoring envelopes, memory's
+  tables and the escalation queue.
+- **The realm admin's password:** the next deploy adopts the password `squadops-admin` already signs in with as the
+  deploy's own (#2079). Nothing changes until a rotation (`docs/ops/credential_rotation.md`), and until then the
+  doctor names it as a committed value.
+- **New volumes:** nat, eve and han each get a volume of their own for their memory store (#2172). What they held
+  before was lost whenever the container was recreated.
+
+### v2.1.0 (2026-10-07) — hardening after Campaign
 
 **v2.1.0, the 2.x line's first stabilization release** (feature-free by rule; plan `docs/plans/2-1-0-plan.md`). It closes the
 debt 2.0 deferred:
@@ -798,7 +834,7 @@ The following areas are identified for future work but do not block 1.0 readines
 | **SIP-0102** | Ephemeral Application Sandbox (1.4 floor shipped as the v1.4.0 S-lane headline) | migration steps 3–7 open (in-cycle routing, clean-room verdicts, #306 retirement, golden-path validation); **#598's rendered packaging is a §4.2 consequence landing in 1.8's prelude**; step 5 is named absent by SIP-0108, whose clean-room indicators are unaskable until it lands |
 | **SIP-0105** | Stack Blueprint Contract | stays accepted — the blueprint rewrite after #1131 open; **amended by #598 in 1.8** (the Dockerfile and nginx config become a rendering of the stack declaration) |
 | **SIP-0109** | Campaign Orchestration | **the 2.0 headline**: accepted 2026-10-01 (rev 6); §18 steps 1–8 built; the 2.0 counted set registered 2026-10-04 (#1908). Its delivery ledger is in the SIP. Promotion at or after the 2.0 cut (`sips/PORTFOLIO.md` Q17) |
-| **SIP-0110** | Cross-Cycle Memory | **the 2.2 headline**: accepted 2026-10-06 with revision 4, which moves Phase 1's proving workload to the campaign's proposal gate (§5b, #2096); its 2.1 part (the inert recall port) shipped as #2058. **Revision 6 (PR #2111) restores the cycle as Phase 1's unit:** every eligible cycle is observed, memory is supplied at four authoring seams (plan writing, build authoring, repair, proposal writing), and the proposal gate is where it is measured first, not its scope. Phases 2 and later are unplaced until the owner rules on Phase 1's finding at 2.2's cut. Its delivery ledger is in the SIP |
+| **SIP-0110** | Cross-Cycle Memory | **the 2.2 headline**: accepted 2026-10-06 with revision 4, which moves Phase 1's proving workload to the campaign's proposal gate (§5b, #2096); its 2.1 part (the inert recall port) shipped as #2058. **Revision 6 (PR #2111) restores the cycle as Phase 1's unit:** every eligible cycle is observed, memory is supplied at four authoring seams (plan writing, build authoring, repair, proposal writing), and the proposal gate is where it is measured first, not its scope. **Phase 1 shipped in 2.2.0** (slices 1–4). The window's finding is no demonstrated useful benefit (§5h). At the cut the owner disabled the lesson, kept the mechanism and kept Phase 2 unplaced and gated. The next build-side experiment is the 2.3 plan's to place, and the memory entry points are placed in 2.3–2.5 (§5g). Its delivery ledger is in the SIP |
 
 ## Horizon: 2.x and 3.x (ruled 2026-10-04)
 
@@ -810,7 +846,7 @@ The following areas are identified for future work but do not block 1.0 readines
 |---|---|---|
 | 2.0 | Campaign (SIP-0109) | the counted set, registered 2026-10-04 (#1908) |
 | 2.1 | stabilization, **shipped 2026-10-07** | the 2.0 set's findings; the optimization crew's enablers (#1940, #1956, #1959, #1960); the structure audit's defects and ground-clearing (#1982–#1991); the plan is PR #1955 |
-| 2.2 | Cross-Cycle Memory (SIP-0110) | the line's **only** change to squad behaviour, beside #1708's auto tier and escalation queue; the plan is `docs/plans/2-2-0-plan.md` |
+| 2.2 | Cross-Cycle Memory (SIP-0110), **shipped 2026-10-11** | the line's **only** change to squad behaviour, beside #1708's auto tier and escalation queue; the plan is `docs/plans/2-2-0-plan.md` |
 | 2.3 | stabilization | Outcome Evaluation's reporting-only instruments; the comms (#1977) and API contract (#1976) hardening; the request-profile taxonomy (#316, moved from 2.1); the structure audit's batch: orchestration out of `adapters/cycles` (#1992), a `stacks` package (#1993), the largest units split (#1994); **placed, dark (the owner's waiver):** SIP-0111's TensorFold v0.6.6 trial (S, G0 and G1, #2199) and, only if those gates pass, its adapter (#2200); **placed (SIP-0110 §5g, Q25):** the legacy agent store made dormant with its failures visible (#2174), chat's history reaching the agent, with session ownership checked (#2175), and the context-assembly port, inert (#2176) |
 | 2.4 | Outcome Evaluation's feature half (proposed) | Verification Yield's risk-first instructions (#1966); then the judgement steps it measures (#557, #949, #950); **placed (SIP-0110 §5g, Q25):** memory entry points for chat and task assignment beside it (SIP-0110 Appendix A, epic #2173, #2177–#2183) |
 | 2.5 | stabilization | **placed (SIP-0110 §5g):** the legacy per-agent LanceDB store retired, after a re-inventory, once its replacement ships and passes acceptance (#2184; its volumes are a compose change, made on the owner's OK) |
@@ -863,10 +899,10 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Stats
 
-*As of 2026-10-07 (v2.1.0):*
+*As of 2026-10-11 (v2.2.0):*
 
-- **Framework version**: 2.1.0
-- **SIPs** (2026-10-07, after the 2.1 sweep): 69 implemented, 10 accepted (SIP-0088, 0090–0093, 0101, 0102, 0105, 0109, 0110), 33 deprecated, plus the unnumbered proposals indexed in `sips/PORTFOLIO.md`
+- **Framework version**: 2.2.0
+- **SIPs** (2026-10-11, after the 2.2 sweep): 69 implemented, 11 accepted (SIP-0088, 0090–0093, 0101, 0102, 0105, 0109, 0110, 0111), 34 deprecated, plus the unnumbered proposals indexed in `sips/PORTFOLIO.md`
 - **Tests**: 10,000+ passing in the regression suite (all of `tests/unit`, #1316)
 - **Python source**: ~109,000 lines measured 2026-09-17 (`src/` ~84,000 + `adapters/` ~25,000; ~168,000 test lines; ~144,000 lines of Markdown under `docs/` and `sips/`)
 - **~6 months** from initial repo (2025-09-20) to 1.0.0 release (2026-03-10)
