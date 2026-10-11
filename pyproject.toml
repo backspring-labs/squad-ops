@@ -67,10 +67,13 @@ agent = [
   "tree-sitter-javascript>=0.25",
   "tree-sitter-typescript>=0.23",
   "ruff>=0.16",
+  "opentelemetry-sdk>=1.22.0",
+  "opentelemetry-exporter-otlp-proto-grpc>=1.22.0",
 ]
 langfuse = ["langfuse>=2.0,<3.0"]
-# adapters/telemetry/otel.py imports the SDK lazily and swallows its absence; no image
-# installs it and the test harness always had it, so it was declared nowhere (#582).
+# adapters/telemetry/otel.py imports the SDK lazily and swallows its absence. It was declared
+# nowhere (#582), and until #2203 no image installed it, so no metric reached the collector. The
+# agent extra and image now carry it with the OTLP exporter.
 otel = ["opentelemetry-api>=1.22.0", "opentelemetry-sdk>=1.22.0"]
 # Adapter-specific deps. Previously undeclared and pulled in only transitively
 # (via Prefect in the Docker images), so minimal/CI envs failed to import the

@@ -187,3 +187,42 @@ class TestHandlerSkipsRecordingWhenNoContext:
 
         assert result.success is True
         mock_obs.record_generation.assert_not_called()
+
+
+class TestHandlerEmitsCallMetrics:
+    """#2204, #2203: each model call's numbers reach the metrics port, not only a log line."""
+
+    async def test_a_call_s_decode_rate_and_prefill_reach_the_metrics_port(
+        self, mock_context_with_obs
+    ):
+        """Enters at ``handle()``, the call a live cycle makes. Bug caught: the decode rate kept
+        only as the "LLM throughput" log line, so the host panel and the engine comparison had
+        nothing to read over time."""
+        from squadops.telemetry.llm_metrics import (
+            LLM_DECODE_TOKENS_PER_SECOND,
+            LLM_PREFILL_SECONDS,
+        )
+
+        ctx, _ = mock_context_with_obs
+        ctx.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(
+                role="assistant",
+                content="LLM output",
+                prompt_tokens=9605,
+                completion_tokens=4922,
+                tokens_per_second=31.0,
+                prompt_eval_seconds=4.2,
+            )
+        )
+        ctx.ports.metrics = MagicMock()
+
+        result = await StrategyAnalyzeHandler().handle(ctx, {"prd": "Build a widget"})
+
+        assert result.success is True
+        observed = {
+            c.args[0]: (c.args[1], c.args[2]) for c in ctx.ports.metrics.histogram.call_args_list
+        }
+        assert observed[LLM_DECODE_TOKENS_PER_SECOND][0] == 31.0
+        assert observed[LLM_PREFILL_SECONDS][0] == 4.2
+        assert observed[LLM_DECODE_TOKENS_PER_SECOND][1]["role"] == "strat"
+        assert observed[LLM_DECODE_TOKENS_PER_SECOND][1]["long"] == "true"

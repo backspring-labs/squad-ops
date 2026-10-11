@@ -22,7 +22,9 @@ class TestCreateMetricsProvider:
     """Tests for create_metrics_provider factory."""
 
     def test_creates_otel_adapter_explicitly(self):
-        adapter = create_metrics_provider(provider="otel")
+        adapter = create_metrics_provider(
+            provider="otel", otlp_endpoint="http://otel-collector:4317"
+        )
         assert isinstance(adapter, OTelAdapter)
 
     def test_creates_console_adapter(self):
@@ -44,7 +46,9 @@ class TestCreateMetricsProvider:
 
     def test_production_mode_allows_otel_adapter(self):
         """Production mode allows production-ready adapters."""
-        adapter = create_metrics_provider(provider="otel", production_mode=True)
+        adapter = create_metrics_provider(
+            provider="otel", production_mode=True, otlp_endpoint="http://otel-collector:4317"
+        )
         assert isinstance(adapter, OTelAdapter)
 
     def test_production_mode_allows_null_adapter(self):
@@ -62,7 +66,7 @@ class TestCreateEventProvider:
     """Tests for create_event_provider factory."""
 
     def test_creates_otel_adapter(self):
-        adapter = create_event_provider(provider="otel")
+        adapter = create_event_provider(provider="otel", otlp_endpoint="http://otel-collector:4317")
         assert isinstance(adapter, OTelAdapter)
 
     def test_creates_console_adapter(self):
@@ -78,7 +82,9 @@ class TestCreateEventProvider:
             create_event_provider(provider="console", production_mode=True)
 
     def test_production_mode_allows_otel_adapter(self):
-        adapter = create_event_provider(provider="otel", production_mode=True)
+        adapter = create_event_provider(
+            provider="otel", production_mode=True, otlp_endpoint="http://otel-collector:4317"
+        )
         assert isinstance(adapter, OTelAdapter)
 
 
@@ -95,7 +101,9 @@ class TestCreateTelemetryProvider:
             create_telemetry_provider(provider="console", production_mode=True)
 
     def test_production_mode_allows_otel(self):
-        metrics, events = create_telemetry_provider(provider="otel", production_mode=True)
+        metrics, events = create_telemetry_provider(
+            provider="otel", production_mode=True, otlp_endpoint="http://otel-collector:4317"
+        )
         assert isinstance(metrics, OTelAdapter)
         assert isinstance(events, OTelAdapter)
 
@@ -239,3 +247,27 @@ class TestCreateLlmObservabilityProvider:
             else:
                 sys.modules["langfuse"] = old
             sys.modules.pop("adapters.telemetry.langfuse.adapter", None)
+
+
+class TestTheOtelBackendExportsToItsCollector:
+    """#2203: the OTel adapter wrote every metric and span to the console, so nothing the squad
+    measured reached the collector or Prometheus."""
+
+    @pytest.mark.parametrize("endpoint", [None, ""])
+    def test_the_otel_backend_without_an_endpoint_is_refused(self, endpoint):
+        """Bug caught: an otel backend with no collector configured, silently printing metrics to
+        stdout again."""
+        with pytest.raises(ValueError, match="otlp_endpoint"):
+            create_telemetry_provider(provider="otel", otlp_endpoint=endpoint)
+
+    def test_the_adapter_builds_otlp_exporters_to_its_endpoint(self):
+        """Bug caught: the default exporters being the console's whatever the configuration."""
+        from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+        from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+
+        from adapters.telemetry.otel import otlp_exporters
+
+        span, metric = otlp_exporters("http://otel-collector:4317")
+
+        assert isinstance(span, OTLPSpanExporter)
+        assert isinstance(metric, OTLPMetricExporter)

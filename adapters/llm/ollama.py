@@ -28,6 +28,12 @@ logger = logging.getLogger(__name__)
 _DEFAULT_MODEL_LIST_TIMEOUT = 10.0
 
 
+def _seconds(data: dict[str, Any], key: str) -> float | None:
+    """A duration Ollama reports in nanoseconds, in seconds; ``None`` when it reports none (#2204)."""
+    value = data.get(key)
+    return round(value / 1e9, 3) if isinstance(value, int | float) and value >= 0 else None
+
+
 def _compute_tokens_per_second(data: dict[str, Any]) -> float | None:
     """Compute tokens/second from Ollama response timing fields.
 
@@ -171,6 +177,8 @@ class OllamaAdapter(LLMPort):
                 completion_tokens=completion_tok,
                 total_tokens=total_tok,
                 tokens_per_second=tps,
+                prompt_eval_seconds=_seconds(data, "prompt_eval_duration"),
+                load_seconds=_seconds(data, "load_duration"),
             )
         except httpx.TimeoutException as e:
             raise LLMTimeoutError(f"Ollama request timed out after {timeout}s") from e
@@ -301,6 +309,8 @@ class OllamaAdapter(LLMPort):
                 # and empty), which is the difference between "did not think" and
                 # "thought and said nothing".
                 reasoning_text=message_data.get("thinking"),
+                prompt_eval_seconds=_seconds(data, "prompt_eval_duration"),
+                load_seconds=_seconds(data, "load_duration"),
             )
         except httpx.TimeoutException as e:
             raise LLMTimeoutError(f"Ollama chat timed out after {timeout}s") from e
@@ -413,6 +423,8 @@ class OllamaAdapter(LLMPort):
                 # count (``eval_count`` is the total), which is what ``capabilities()``
                 # declares with ``THINKING_TOKENS: False``. See #1195.
                 reasoning_text="".join(reasoning_chunks) if saw_reasoning else None,
+                prompt_eval_seconds=_seconds(usage_data, "prompt_eval_duration"),
+                load_seconds=_seconds(usage_data, "load_duration"),
             )
         except httpx.TimeoutException as e:
             raise LLMTimeoutError(

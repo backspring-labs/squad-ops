@@ -529,7 +529,9 @@ class AgentRunner:
 
         # Create telemetry (metrics + events). The selector is required by the schema (#1568),
         # so an unset backend never reaches this root.
-        metrics, events = create_telemetry_provider(config.telemetry.backend)
+        metrics, events = create_telemetry_provider(
+            config.telemetry.backend, otlp_endpoint=config.telemetry.otlp_endpoint
+        )
 
         # Create LLM observability (SIP-0061). LangFuse is its only provider and no config
         # field selects it, so the root names it — the artifact vault's shape (#1449).

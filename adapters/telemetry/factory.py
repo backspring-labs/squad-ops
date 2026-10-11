@@ -29,10 +29,24 @@ logger = logging.getLogger(__name__)
 DEV_ONLY_ADAPTERS = {"console"}
 
 
+def _otel(otlp_endpoint: str | None) -> OTelAdapter:
+    """The OTel adapter, exporting to the collector over OTLP (#2203). The endpoint is required,
+    never defaulted (#1568): without one the adapter wrote to the console, and nothing the squad
+    measured ever reached Prometheus."""
+    if not otlp_endpoint:
+        raise ValueError(
+            "the 'otel' telemetry backend exports to telemetry.otlp_endpoint, and none is set: "
+            "set SQUADOPS__TELEMETRY__OTLP_ENDPOINT (the collector, e.g. http://otel-collector:4317)"
+        )
+    return OTelAdapter(otlp_endpoint=otlp_endpoint)
+
+
 def create_metrics_provider(
     provider: str,
     production_mode: bool = False,
     output: TextIO | None = None,
+    *,
+    otlp_endpoint: str | None = None,
 ) -> MetricsPort:
     """Create a metrics provider.
 
@@ -54,7 +68,7 @@ def create_metrics_provider(
         )
 
     if provider == "otel":
-        return OTelAdapter()
+        return _otel(otlp_endpoint)
     if provider == "console":
         return ConsoleAdapter(output=output)
     if provider == "null":
@@ -67,6 +81,8 @@ def create_event_provider(
     provider: str,
     production_mode: bool = False,
     output: TextIO | None = None,
+    *,
+    otlp_endpoint: str | None = None,
 ) -> EventPort:
     """Create an event provider.
 
@@ -88,7 +104,7 @@ def create_event_provider(
         )
 
     if provider == "otel":
-        return OTelAdapter()
+        return _otel(otlp_endpoint)
     if provider == "console":
         return ConsoleAdapter(output=output)
     if provider == "null":
@@ -101,6 +117,8 @@ def create_telemetry_provider(
     provider: str,
     production_mode: bool = False,
     output: TextIO | None = None,
+    *,
+    otlp_endpoint: str | None = None,
 ) -> tuple[MetricsPort, EventPort]:
     """Create both metrics and event providers.
 
@@ -124,7 +142,7 @@ def create_telemetry_provider(
         )
 
     if provider == "otel":
-        adapter = OTelAdapter()
+        adapter = _otel(otlp_endpoint)
         return adapter, adapter
     if provider == "console":
         adapter = ConsoleAdapter(output=output)
