@@ -71,6 +71,31 @@ adoption rests on end-to-end cycle quality, latency, stability and recoverabilit
 - A negative at any gate parks the trial, records it in SIP-0111 as Atlas's and vLLM's were, and 2.3 goes on with the
   stabilization track on Ollama.
 
+**A second candidate, Qwen3.8-Flash-Next on TensorFold (D9, added at the owner's request).** This is a model
+change, not only an engine change. Flash-Next is a mixture-of-experts model of about 93B total parameters
+(TensorFold's `qwen4_exp` family). SIP-0111 §7 excludes it today, so it needs a SIP-0111 amendment first.
+
+- **What it could buy.** TensorFold's v0.6.6 recipe reports, on one GB10 (vendor figures, 64-token replies, unmeasured
+  here):
+  - decode at 63–77 tok/s on the MLX 4-bit checkpoint, against 50–58 for the 27B;
+  - prefill at 2,300–2,500 tok/s from 2k to 64k, against 1,240–1,870.
+
+  By §1's arithmetic that is about 17–27 minutes a roll (33–43%), against 12–20 for the 27B on TensorFold.
+- **What it risks:**
+  - **Reasoning depth:** a mixture-of-experts model in roles the dense 27B has held.
+  - **Runaway reasoning:** the class that parked vLLM (SIP-0106 §1.2e).
+  - **Memory:** 81 GB of weights plus about 30 GiB of n-gram tables on a 121 GiB box. That may fail S's 16 GiB
+    post-load floor, and the EXL3 pack (52 GB) is the likelier fit.
+  - **Unmeasured at long context:** the recipe lists Flash-Next's long-context decode, latency and peak memory as TBD.
+  - **Every baseline resets** if it is adopted.
+- **Its gates, cheapest first, on the same harness and only after S exists:**
+  1. S's switch with Flash-Next's footprint, inside the floors.
+  2. #1408's plan-authoring replay: stored plan prompts through the handler's own validator. Does it emit a valid plan
+     at all?
+  3. Only then, G0 and G1 on the held-out set. Only its arm is new, because the Ollama arm's calls are the same
+     envelopes and seeds.
+- **G1 decides it, not speed.**
+
 ### 2.2 Track B: stabilization, measured on the engine Track A leaves
 
 All of these are placed in 2.3 already, by earlier rulings. Each is a framework fix or an output-quality change, as the
@@ -151,6 +176,10 @@ The power that matters is G0's median paired ratio and G1's per-seam pass rates:
 
 Changing the protocol is an amendment to SIP-0111 §4, which the owner ruled. Hence D2.
 
+**Flash-Next's added cost (D9),** at the lean protocol:
+- about 2 h for its two cheap gates;
+- then about 10 h for its own arm, tuning included. The Ollama arm is reused.
+
 ---
 
 ## 5. Decisions for the owner
@@ -164,6 +193,7 @@ Changing the protocol is an amendment to SIP-0111 §4, which the owner ruled. He
 | D5 | **the structure batch** (#1992, #1993, #1994) | **kept in 2.3, after G4,** one refactor per rebuild with a regression pair each. If Track A runs long, **#1992 and #1994 move to 2.5** (the next odd minor) rather than stretch 2.3, and **#1993 stays** |
 | D6 | **the next build-side memory experiment** | **2.4,** beside Outcome Evaluation's scenarios, on the final engine |
 | D7 | **#2201's fix** | registry credentials in CI (a repository secret), or a pull-through mirror. Recommended: **credentials**, the smaller change |
+| D9 | **Qwen3.8-Flash-Next on TensorFold, a second candidate** (the owner's request, 2026-10-11) | **added to Track A behind its two cheap gates** (S's floors with its footprint, then #1408's plan-authoring replay), and measured on G0 / G1 only if both pass. It needs **a SIP-0111 amendment first,** since §7 excludes a model swap. It is judged by G1, never by its decode rate, and its adoption resets every baseline. The 27B on TensorFold stays the primary candidate |
 | D8 | **who runs the line** | **the supervisor, on the 2.2 line's terms:** build in §3's order, merge on green with main's run read, run rebuilds and uncounted runs. **The owner's:** compose changes beyond #2204's and the overlay; G4; any lesson approval; the tag and Release unless delegated at the cut |
 
 ---
