@@ -60,7 +60,6 @@ from squadops.campaigns.models import (
     ResumeReservedToOwner,
     TransitionResult,
 )
-from squadops.cycles.lifecycle import derive_cycle_status
 from squadops.cycles.models import CycleStatus
 
 logger = logging.getLogger(__name__)
@@ -871,6 +870,7 @@ def _paused_from(log: list[ControlLogEntry]) -> CampaignState | None:
 async def _cancel_launched_cycles(request: Request, campaign_id: str) -> list[str]:
     """Cancel, by the existing path, each cycle the campaign launched that has not ended."""
     from squadops.api.routes.cycles.cancellation import cancel_cycle_by_the_existing_path
+    from squadops.api.routes.cycles.mapping import cycle_status_of
     from squadops.api.runtime.deps import get_cycle_registry
 
     cycles = get_cycle_registry(request)
@@ -879,7 +879,10 @@ async def _cancel_launched_cycles(request: Request, campaign_id: str) -> list[st
         if intent.cycle_id is None:
             continue
         cycle = await cycles.get_cycle(intent.cycle_id)
-        status = derive_cycle_status(await cycles.list_runs(cycle.cycle_id), cycle.cancelled)
+        # #2214: ended as the cycle route reads it, workloads included. The latest run alone
+        # reads a cycle waiting between workloads (its proposal done, its framing pending) as
+        # completed, and the abort left it active.
+        status = cycle_status_of(cycle, await cycles.list_runs(cycle.cycle_id))
         if status in _TERMINAL_CYCLE:
             continue
         await cancel_cycle_by_the_existing_path(request, cycle.project_id, cycle.cycle_id)

@@ -379,6 +379,54 @@ async def test_abort_cancels_the_launched_cycle_by_the_existing_path(world):
     assert (resp["campaign"]["state"], resp["campaign"]["outcome"]) == ("completed", "aborted")
 
 
+async def test_abort_cancels_a_cycle_waiting_between_workloads(world):
+    """#2214: entered at the abort route. The campaign's increment cycle has finished its proposal
+    run, and its framing workload is pending: where a supervisor aborts from. Bug caught: the
+    abort judged "ended" by the latest run alone, read the cycle completed, and left it active
+    while the cycle route still read it active (the 2.2 cut's diagnostic, ``cyc_7b3dedce7bc5``)."""
+    from squadops.cycles.models import Run
+
+    _create(world)
+    await world.campaigns.transition(
+        "cmp_api000000001",
+        move(
+            CampaignState.CALIBRATING,
+            "k-start",
+            launch=LaunchRequest(CycleKind.CALIBRATION),
+        ),
+    )
+    sequence = [
+        {"type": "proposal", "gate": "progress_increment_ruling"},
+        {"type": "framing", "gate": "progress_plan_review"},
+        {"type": "implementation"},
+    ]
+
+    async def build(intent):
+        return dataclasses.replace(
+            cycle_for(intent), applied_defaults={"workload_sequence": sequence}
+        )
+
+    [launched] = await CampaignLauncher(
+        world.campaigns, world.cycles, build, actor="l1", box_verdict=quiet_box
+    ).drain()
+    await world.cycles.create_run(
+        Run(
+            run_id="run_proposal",
+            cycle_id=launched.cycle_id,
+            run_number=1,
+            status="completed",
+            initiated_by="campaign",
+            resolved_config_hash="h",
+            workload_type="proposal",
+        )
+    )
+
+    resp = _control(world, "abort", "k-abort").json()
+
+    assert resp["cancelled_cycles"] == [launched.cycle_id]
+    assert (await world.cycles.get_cycle(launched.cycle_id)).cancelled
+
+
 @pytest.mark.parametrize(
     ("override", "message"),
     [

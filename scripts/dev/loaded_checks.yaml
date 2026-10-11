@@ -653,3 +653,17 @@ checks:
       run = Run("r", "c", 1, "completed", "system", "cfg", workload_type="proposal")
       print(cycle_ending(CycleStopReason.GATE_FAILED, run, parked=False).value, hasattr(DispatchedFlowExecutor, "_require_proposal_output"), asyncio.run(live()))
     expect: "proposal_failed True True"
+  - id: "2214"
+    what: a campaign's abort reads a cycle as ended the way the cycle route does, so a cycle waiting between workloads is cancelled with the campaign
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from datetime import UTC, datetime
+      import squadops.api.routes.campaigns.campaigns as routes
+      from squadops.api.routes.cycles.mapping import cycle_status_of
+      from squadops.cycles.models import Cycle, Run, TaskFlowPolicy
+      sequence = [{"type": "proposal", "gate": "progress_increment_ruling"}, {"type": "framing"}]
+      cycle = Cycle(cycle_id="c", project_id="p", created_at=datetime.now(UTC), created_by="s", prd_ref=None, squad_profile_id="full", squad_profile_snapshot_ref="sha256:x", task_flow_policy=TaskFlowPolicy(mode="sequential"), build_strategy="fresh", applied_defaults={"workload_sequence": sequence})
+      run = Run("r", "c", 1, "completed", "system", "cfg", workload_type="proposal")
+      print(cycle_status_of(cycle, [run]).value, "cycle_status_of" in inspect.getsource(routes._cancel_launched_cycles))
+    expect: "active True"
