@@ -835,6 +835,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         (SIP-0109 §9.1). Without one it fails here, with that as its reason, and the cycle ends
         ``proposal_failed`` under the campaign's ``max_proposal_run_retries``. It used to complete,
         and the increment gate then raised where nothing heard it."""
+        if self._cycle_registry is None:
+            raise RuntimeError(
+                "a run's outputs are read through the cycle registry, and none was given"
+            )
         run = await self._cycle_registry.get_run(run_id)
         if getattr(run, "workload_type", None) != WorkloadType.PROPOSAL:
             return
