@@ -1,6 +1,7 @@
 # 2.2.1 plan — a failed proposal and an abort end with a record, never a wedge
 
-**Status: DRAFT (2026-10-11), for the owner's ruling (§5).** The owner asked for "a lean verification; don't want to
+**Status: ADOPTED (2026-10-11).** The owner ruled §5 at about 10:38 ET: "approve D1-D4 as recommended". The supervisor
+runs the line through the cut (D4). **Drafted the same morning.** The owner asked for "a lean verification; don't want to
 spend all day on this fix pack". So this plan fixes three defects, verifies each where a live campaign can reach it, and
 says plainly what it leaves to tests.
 
@@ -177,6 +178,8 @@ does once.
 | D2 | **the tier's timeout half, read live** | **out of 2.2.1:** placed in 2.3 with a diagnostic fault that makes an increment's plan ask a question (§2) |
 | D3 | **the verification** | **§3 as written:** tests, a runtime-only rebuild with loaded checks, and one ~1.5-hour diagnostic campaign. *Leaner:* drop the campaign and photograph a single regression roll, so no fixed seam is read live. *Heavier:* add the live abort for #2214, a second campaign aborted at its calibration's plan gate, about 35 more minutes |
 | D4 | **who runs the line** | **the supervisor, on the 2.2 line's terms, through the cut and including the tag and the records upload, once §3's readings hold.** If any reading fails, it stops for the owner. The grant ends at the 2.2.1 cut |
+
+**Ruled 2026-10-11: D1–D4 as recommended** (the owner: "approve D1-D4 as recommended").
 
 ---
 
