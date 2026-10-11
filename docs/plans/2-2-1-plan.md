@@ -1,6 +1,6 @@
 # 2.2.1 plan — a failed proposal and an abort end with a record, never a wedge
 
-**Status: ADOPTED (2026-10-11).** The owner ruled §5 at about 10:38 ET: "approve D1-D4 as recommended". The supervisor
+**Status: ADOPTED (2026-10-11); READ: the line's evidence is §6.** The owner ruled §5 at about 10:38 ET: "approve D1-D4 as recommended". The supervisor
 runs the line through the cut (D4). **Drafted the same morning.** The owner asked for "a lean verification; don't want to
 spend all day on this fix pack". So this plan fixes three defects, verifies each where a live campaign can reach it, and
 says plainly what it leaves to tests.
@@ -185,4 +185,83 @@ does once.
 
 ## 6. The record
 
-*Written as the line runs.*
+**The line ran on 2026-10-11, from the plan's adoption (about 10:38 ET) to the cut.**
+
+**The merges:**
+- the three fixes, each with its wiring test and loaded check:
+  - #2224 (#2212);
+  - #2225 (#2213, with migration 1696 and the `gate_failed` stop reason);
+  - #2226 (#2214);
+- the diagnostic's definition (#2227);
+- the private fix the owner added ("include the .env fix"): #2233, `.env` made owner-only, advisory GHSA-wrfh-h7jx-w578. It was pushed only at the cut, as 2.0.1's was.
+
+**The rebuild:**
+- `rebuild_and_deploy.sh runtime-api` at `dba4f0c2`, giving deploy **`dep_b0c134405d55`**;
+- `verify_loaded.py`: 71 of 71 loaded checks answering. Row 2212, row 2213 (which reads the live `gate_failed` constraint, so 1696 applied) and row 2214 are among them;
+- the deploy record describes the running images.
+
+**The diagnostic, `cmp_bf5daecdf444`** (uncounted). It launched at 11:26 ET and closed itself at 13:53 ET.
+- **Its calibration** `cyc_bf66cbcb335e` was accepted with 26 delivered files. The tier approved its plan gate
+  (`system:plan_review_tier`), and no question was asked.
+- **Four proposal cycles followed:**
+
+  | cycle | failed at |
+  |---|---|
+  | `cyc_785155745e7e` | 12:47 ET |
+  | `cyc_b659b00469ea` | 13:08 ET |
+  | `cyc_c00c032b4ab3` | 13:35 ET |
+  | `cyc_23980bea6492` | 13:53 ET |
+
+  In every one, the scope rail refused all three revisions, the dispatcher's D5 retry re-ran the task, and it was refused
+  three more times.
+
+**The readings:**
+- **R1 holds.** No correction-loop task was dispatched in any proposal run.
+  - The runtime log has zero `analyze_failure`, `correction_decision` or `correction_repair` lines from launch to
+    close.
+  - Each proposal flow run's only task type is `strategy.propose_increment`.
+  - Each run stored only its `run_report.md`, so no source was written.
+- **R2 holds.** All four proposal runs ended `failed`, with the rails' refusal as their reason ("failed (no
+  correction): the proposal was refused after its revision budget"). Each cycle ended `proposal_failed` (control log
+  rows 7, 9, 11, 13).
+- **R3 holds where it matters, and its mechanism was mispredicted.**
+  - **It closed itself, and the record names why:** row 13 is `decide`, row 4, cause `total_cycles`, outcome
+    `exhausted`.
+  - **Nothing was stranded:** no cycle stayed active, and the campaign never sat at `at_proposal`. Each decision came
+    within seconds of its cycle's failure.
+  - **The plan's wrong prediction:** it said the campaign closes "after one retry (`max_proposal_run_retries`)". That
+    misread the field. SIP-0109 §9.5 makes it a bound on in-cycle proposal-run retries, which aren't built, and nothing
+    reads it. So the continuation's row 6 proposed again after each failure, by design, until `max_cycles` (5).
+  - **That is #2231,** placed in 2.3 by the owner ("let it close, place #2231 in 2.3"). Under §3's exit rule it is a
+    finding elsewhere, and it doesn't hold the patch. #2212 didn't cause it: #2212 made `proposal_failed` reachable live
+    for the first time.
+- **R4 holds.** Zero "Task exception was never retrieved", `campaign_cycle_execution_raised` or
+  `inter_workload_gate_failed` lines from launch to close. The only ERROR lines are the four run failures.
+
+**A cost estimate the plan got wrong.**
+- **Each proposal run took 19–27 minutes,** not about 15: the D5 task retry doubles a refused proposal's attempts.
+- **The campaign took 2 h 27 m,** not about 1.5 h, because #2231 let it run four proposal cycles.
+
+**What the line does not cover, as §3 said:**
+- **#2213's completion check, live.** With #2212 fixed, no proposal run completed without a change request, so the check
+  never fired.
+- **#2214, live.** It is read by its wiring test.
+- **The tier's timeout half** (2.3, D2).
+- **Next.js.**
+- **One campaign is not a rate.**
+
+**Drift the record declares: the tagged tree against the rebuilt deploy (`dba4f0c2`).**
+- **Behavioural, tooling only:** #2233's change to the deploy tooling and the doctor:
+  - `scripts/dev/ops/deploy_credentials.py`;
+  - `scripts/bootstrap/lib/docker_setup.sh`;
+  - `src/squadops/bootstrap/setup/credentials.py` and `checks.py`.
+
+  The runtime and the agents don't import them, so no rebuild is needed.
+- **Inputs and prose:** the diagnostic's definition (#2227), the 2.3 plan and SIP-0111 §9a (#2228, #2232), and this
+  release's version, CHANGELOG, ROADMAP and records.
+- **The deploy reports 2.2.0** until its next rebuild.
+
+**The owner's actions:**
+- the plan's ruling ("approve D1-D4 as recommended, include the .env fix");
+- "let it close, place #2231 in 2.3";
+- the 2.3 plan's rulings, recorded in that plan.
