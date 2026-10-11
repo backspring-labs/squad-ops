@@ -576,6 +576,8 @@ campaigns:
   definitions:
   - path: examples/03_group_run/campaigns/2-2-0-cut-tier-diag.yaml
     sha256: 188ebee993badf03ca88abb8438d6c2d33a577dd56ffbd9176f703f3be765cf0
+  - path: examples/03_group_run/campaigns/2-2-1-proposal-failure-diag.yaml
+    sha256: 502ad4a667b622ba89680e9fbbf956aad280f4fb71588b1e22414ac93f76775d
   package_identity: 7859e736fca1df763a92a8eacd1a755673d9d082dbb41929863f24ba448ce60f
   package_artifact: art_76c5f70e526e
 - campaign_id: cmp_3c22edb866c2
@@ -594,4 +596,21 @@ campaigns:
     sha256: 9217b5a0ac15bbaf501b54d808d179954a03dfc481b05d74ee6d43b5b9d4d470
   package_identity: 13ce528efc1dc81fa24b3dfb3d840b53ac765f3684e4478178d7bbae71c87f58
   package_artifact: art_3a88610b9e72
+- campaign_id: cmp_bf5daecdf444
+  created: '2026-10-11T15:26:15.780281+00:00'
+  state: completed
+  outcome: exhausted
+  create_reason: "2.2.1 diagnostic (docs/plans/2-2-1-plan.md \xA73), uncounted: the rails refuse every\
+    \ proposal, so #2212/#2213 are read live on the rebuilt runtime (dep_b0c134405d55, dba4f0c2)"
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-2-1-proposal-failure-diag.yaml
+    sha256: 502ad4a667b622ba89680e9fbbf956aad280f4fb71588b1e22414ac93f76775d
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-2-0-cut-tier-diag.yaml
+    sha256: 188ebee993badf03ca88abb8438d6c2d33a577dd56ffbd9176f703f3be765cf0
+  - path: examples/03_group_run/campaigns/2-2-1-proposal-failure-diag.yaml
+    sha256: 502ad4a667b622ba89680e9fbbf956aad280f4fb71588b1e22414ac93f76775d
+  package_identity: 7ff7ad097504ccd6472b8be52a22f856ae812ce0e5db4e3a8dd7e8dd0041fc67
+  package_artifact: art_8f9cb517f3c5
 examples_only: []

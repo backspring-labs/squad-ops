@@ -1,0 +1,232 @@
+version: 2.2.1
+tag: v2.2.1
+previous_tag: v2.2.0
+date: '2026-10-11'
+commit: cb529dc78c8d1055cc402488707b0fab17da07b8
+narrative: "**The 2.2 line's first patch: a failed proposal and an abort end with\
+  \ a record, never a wedge** (plan\n`docs/plans/2-2-1-plan.md`). It fixes the three\
+  \ defects the 2.2 cut's tier diagnostic found, and a security fix to the\ndeploy's\
+  \ `.env`.\n\n**The evidence, lean by the owner's ruling** (the plan's §3, D3):\n\
+  - each fix's wiring test, entered where a live cycle enters, and each checked to\
+  \ fail without its change;\n- `rebuild_and_deploy.sh runtime-api` (`dep_b0c134405d55`,\
+  \ `dba4f0c2`), with every loaded check answering (71 of 71);\n- one diagnostic campaign,\
+  \ `cmp_bf5daecdf444`, whose rails refuse every proposal, so the refused-proposal\
+  \ path is\n  read live. It closed itself at its cycle cap at 13:53 ET. Every proposal\
+  \ run failed without the correction loop,\n  and no task exception went unretrieved\
+  \ (the plan's §6, R1–R4).\n  - **Its one misprediction is #2231,** placed in 2.3:\
+  \ `max_proposal_run_retries` is never read, so failed proposals are\n    retried\
+  \ by new cycles until `max_cycles`.\n\nNo regression set: every changed seam is\
+  \ on a campaign's path only. The tier's timeout half, read live, is placed in\n\
+  2.3 (D2).\n\n**Campaigns (SIP-0109).**\n- **A refused increment proposal fails its\
+  \ run.** It never enters the build correction loop, whose repair had written\n \
+  \ product source into a proposal run that then completed `accepted` with no change\
+  \ request. The proposal step joins\n  `TaskType.fails_without_correction`, beside\
+  \ D9's definition of done (#2212; #2224).\n- **A proposal run completes only with\
+  \ its change request,** and an inter-workload gate that raises ends the cycle\n\
+  \  `gate_failed` through the completion boundary, recorded, with its campaign told.\
+  \ The campaign reads it as\n  `proposal_failed` on a proposal, and as a rejected\
+  \ plan on a plan gate. A cycle's execution that raises anything else\n  is retrieved\
+  \ and named, never left to asyncio's \"Task exception was never retrieved\". Migration\
+  \ 1696 adds\n  `gate_failed` to `cycle_ends`' CHECK list (#2213; #2225).\n- **An\
+  \ abort cancels a cycle waiting between workloads.** It reads \"ended\" the way\
+  \ the cycle route does, through one\n  shared reading, `cycle_status_of` (#2214;\
+  \ #2226).\n- The diagnostic's definition, `2-2-1-proposal-failure-diag.yaml` (#2227).\n\
+  \n**Plans and SIPs.**\n- **The 2.2.1 plan,** adopted, with its record (#2223).\n\
+  - **The 2.3.0 plan, adopted:**\n  - TensorFold first, carried to the owner's G4\
+  \ decision, with Qwen3.8-Flash-Next as a second candidate;\n  - then stabilization\
+  \ on the engine that ships;\n  - SIP-0111 §9a ruled with it (#2228; G3 and G4 #2229,\
+  \ Flash-Next #2230);\n  - #2231 placed in its R3 (#2232).\n\n**Security.**\n- **`.env`\
+  \ is owner-only** (advisory GHSA-wrfh-h7jx-w578, low). Bootstrap had copied it at\
+  \ the umask (`0664` under\n  `0002`), and `deploy_credentials.py` wrote every credential\
+  \ into it without changing its mode. `ensure` now makes it\n  `0600` on every run,\
+  \ before writing; `rotate` does the same; bootstrap creates it with `install -m\
+  \ 600`; and the\n  doctor's credential check fails a `.env` another account can\
+  \ read (#2233).\n\n**Upgrade from 2.2.0:** the runtime applies migration 1696 at\
+  \ startup. The next `deploy_credentials.py ensure`, which\nevery deploy runs, makes\
+  \ an existing `.env` owner-only; or run `chmod 600 .env` now."
+pull_requests:
+- number: 2235
+  title: 'chore(release): 2.2.1 - a failed proposal and an abort end with a record:
+    bump, markers, CHANGELOG, ROADMAP entry, the record, the SIP sweep'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-11'
+- number: 2233
+  title: 'fix(deploy): the deploy''s .env is owner-only, made so before any credential
+    is written into it'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-11'
+- number: 2232
+  title: 'docs(plans): the 2.3 plan places the retry-limit finding in Track B''s R3,
+    its two questions ruled before it''s built'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-11'
+- number: 2228
+  title: 'docs(plans): the 2.3.0 plan, adopted - TensorFold to a decision on one gate
+    path per candidate, SIP-0111 §9a ruled, then stabilization on the engine that
+    ships'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-11'
+- number: 2227
+  title: 'feat(campaigns): the 2.2.1 diagnostic''s definition - the rails refuse every
+    proposal, so the refusal path is read live'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-11'
+- number: 2226
+  title: 'fix(campaigns): an abort cancels a cycle waiting between workloads, reading
+    ended as the cycle route does'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2214
+  merged_at: '2026-10-11'
+- number: 2225
+  title: 'fix(campaigns): a proposal run completes only with its change request, and
+    a gate that raises ends the cycle with a record'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2213
+  merged_at: '2026-10-11'
+- number: 2224
+  title: 'fix(campaigns): a refused increment proposal fails its run, never enters
+    the build correction loop'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2212
+  merged_at: '2026-10-11'
+- number: 2223
+  title: 'docs(plans): the 2.2.1 plan, adopted - a failed proposal and an abort end
+    with a record, never a wedge'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-11'
+- number: 2222
+  title: 'docs(release): the v2.2.0 records on the Release, recorded in the package'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-11'
+- number: 2221
+  title: 'docs(release): the v2.2.0 release package and the cut''s housekeeping'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-11'
+sip_moves: []
+sip_amendments:
+- sip: SIP-0111-TensorFold-Provider-Adapter
+  status: accepted
+cycles:
+- cycle_id: cyc_bf66cbcb335e
+  role: diagnostic
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_785155745e7e
+  role: diagnostic
+  captured: true
+  status: failed
+  verdict: blocked_unverified
+  verified: []
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 1
+- cycle_id: cyc_b659b00469ea
+  role: diagnostic
+  captured: true
+  status: failed
+  verdict: blocked_unverified
+  verified: []
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 1
+- cycle_id: cyc_c00c032b4ab3
+  role: diagnostic
+  captured: true
+  status: failed
+  verdict: blocked_unverified
+  verified: []
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 1
+- cycle_id: cyc_23980bea6492
+  role: diagnostic
+  captured: true
+  status: failed
+  verdict: blocked_unverified
+  verified: []
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 1
+screenshots:
+- prefect-flow-run-diagnostic-calibration-built-and-tested-on-the-rebuilt-runtime.png
+showcase:
+  cycle_id: cyc_bf66cbcb335e
+  reason: the 2.2.1 diagnostic's calibration, built and tested on the rebuilt runtime
+    that carries the three fixes; the refused proposal runs' own timelines could not
+    be captured (#2234)
+  role: diagnostic
+records:
+  asset: squadops-2.2.1-records.tar.gz
+  sha256: 0ca23816d342588274eb394be61ba2738a601f5e47e9f677ebe1f454507934db
+  files: 41
+  campaigns:
+  - cmp_bf5daecdf444
+  bytes: 40068
+  attached_at: '2026-10-11T18:29:29Z'
+  scanned:
+    secret_values: 56
+    patterns:
+    - langfuse key
+    - api key (sk-)
+    - jwt
+    - private key
