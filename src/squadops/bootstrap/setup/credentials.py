@@ -20,6 +20,27 @@ REPO = Path(__file__).resolve().parents[4]
 REGISTRY = REPO / "infra" / "deploy_credentials.json"
 
 
+#: ``.env`` holds every credential the deploy has, so only its owner reads it.
+OWNER_ONLY = 0o600
+
+
+def owner_only(path: Path) -> None:
+    """Make ``path`` readable and writable by its owner alone, creating it empty if it is absent,
+    before any credential is written into it. A file created under the usual umask (``0002``,
+    ``0022``) is readable by every account on the host."""
+    path.touch(mode=OWNER_ONLY, exist_ok=True)
+    path.chmod(OWNER_ONLY)
+
+
+def readable_by_others(path: Path) -> int | None:
+    """The file's mode when an account other than its owner can read or write it, else ``None``
+    (and ``None`` for a file that does not exist)."""
+    if not path.exists():
+        return None
+    mode = path.stat().st_mode & 0o777
+    return mode if mode & 0o077 else None
+
+
 def load_registry(path: Path = REGISTRY) -> list[dict]:
     return json.loads(path.read_text())["credentials"]
 

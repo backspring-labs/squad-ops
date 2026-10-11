@@ -1440,10 +1440,29 @@ def _collect_sandbox_checks(profile: BootstrapProfile) -> list[CheckResult]:
 def check_deploy_credentials(env_path: Path | None = None) -> CheckResult:
     """#2006: every credential the deploy holds is its own. Fails naming each one that is missing
     from ``.env`` or holds a value the repository has committed: the same on every deploy, and
-    readable by anyone who can read the repository."""
-    from squadops.bootstrap.setup.credentials import REPO, load_registry, problems, read_env
+    readable by anyone who can read the repository. Fails first on a ``.env`` that another account
+    on the host can read, since it holds every one of them."""
+    from squadops.bootstrap.setup.credentials import (
+        REPO,
+        load_registry,
+        problems,
+        read_env,
+        readable_by_others,
+    )
 
-    found = problems(load_registry(), read_env(env_path or REPO / ".env"))
+    path = env_path or REPO / ".env"
+    found = problems(load_registry(), read_env(path))
+    mode = readable_by_others(path)
+    if mode is not None:
+        return CheckResult(
+            name="deploy_credentials",
+            category="credentials",
+            passed=False,
+            message=f".env is readable by accounts other than its owner (mode {mode:o})"
+            + (f"; {len(found)} credential(s) are not the deploy's own" if found else ""),
+            detail="\n".join(found),
+            fix_command=f"chmod 600 {path}",
+        )
     if not found:
         return CheckResult(
             name="deploy_credentials",

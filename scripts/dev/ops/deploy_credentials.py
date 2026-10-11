@@ -45,7 +45,7 @@ _spec = importlib.util.spec_from_file_location(
 _core = importlib.util.module_from_spec(_spec)
 sys.modules[_spec.name] = _core
 _spec.loader.exec_module(_core)
-Plan, load_registry, plan, problems, read_env, rotation_targets, generate = (
+Plan, load_registry, plan, problems, read_env, rotation_targets, generate, owner_only = (
     _core.Plan,
     _core.load_registry,
     _core.plan,
@@ -53,6 +53,7 @@ Plan, load_registry, plan, problems, read_env, rotation_targets, generate = (
     _core.read_env,
     _core.rotation_targets,
     _core.generate,
+    _core.owner_only,
 )
 
 
@@ -71,8 +72,10 @@ def deploy_exists(repo: Path = REPO) -> bool:
 
 
 def _write_env(path: Path, updates: Mapping[str, tuple[str, str]]) -> None:
-    """Fill an empty ``KEY=`` line in place, else append under one header."""
+    """Fill an empty ``KEY=`` line in place, else append under one header. The file is made
+    owner-only before a value is written into it."""
     lines = path.read_text().splitlines() if path.exists() else []
+    owner_only(path)
     pending = dict(updates)
     for i, line in enumerate(lines):
         key = line.partition("=")[0].strip()
@@ -90,6 +93,10 @@ def _write_env(path: Path, updates: Mapping[str, tuple[str, str]]) -> None:
 def ensure(repo: Path, *, existing: bool, dry_run: bool) -> Plan:
     registry = load_registry(repo / "infra" / "deploy_credentials.json")
     env_path = repo / ".env"
+    if env_path.exists() and not dry_run:
+        # Every deploy runs ensure: a .env bootstrap copied at the umask, or one an older
+        # version left, holds every credential, and is made owner-only here.
+        owner_only(env_path)
     held = {
         c["secret_file"]: (repo / c["secret_file"]).read_text()
         for c in registry
@@ -129,6 +136,7 @@ def rotate(repo: Path, *, only: Sequence[str], keep: Sequence[str], dry_run: boo
     backup.chmod(0o600)
     print(f"the previous .env: {backup.name}")
     fresh = {name: generate() for name in targets}
+    owner_only(env_path)
     lines = env_path.read_text().splitlines()
     for i, line in enumerate(lines):
         key = line.partition("=")[0].strip()
