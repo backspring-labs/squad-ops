@@ -123,7 +123,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | the acquire race window; re-attach with the process up; a task re-asked after an agent restart | **dropped**: not built, by design (recorded) | §24ai, §24am, §24ao |
 | §24b–§24i, marked "implementer's reading, not yet ruled" | **shipped**, ratified as written (§24as) | v2.0.0 |
 | a return carries its classification, or `unclassified` with why (the 2.2 plan's D2) | **shipped** (§24bi) | 2.2.0, PR #2132 |
-| proposal-run retries bound failed proposal cycles in a row, and the failure past them pauses (§24bn) | **shipped** | 2.3.0, PR #PRNUM, issue #2231 |
+| proposal-run retries bound failed proposal cycles in a row, and the failure past them pauses (§24bn) | **shipped** | 2.3.0, PR #2245, issue #2231 |
 
 **What closes this SIP:** Its 2.1.0 rows closing, #1710's remainder ruled, and #1708's remainder shipped in 2.2.0 or ruled out of scope. §24at, the consolidated status at the v2.0.0 cut, replaces the 2.0 plan's §5a as the permanent record. Promotion follows at the sweep after the last placed row closes.
 
