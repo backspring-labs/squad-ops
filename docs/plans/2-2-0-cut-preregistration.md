@@ -1,7 +1,8 @@
 # 2.2.0 — pre-registration of the cut's set (plan §3 steps 10–11, the cut's criteria)
 
-**Status: ruled by the owner, 2026-10-10, about 09:10 ET (§9): "approve §9 as recommended, lesson disabled". Precondition 3
-amended by the owner the same day, about 19:13 ET, after the diagnostic (§9, the amendment). Nothing in it is registered.** The plan leaves
+**Status: REGISTERED 2026-10-10, about 21:35 ET, by the supervisor on the owner's pre-approval (§9, decision 3). The owner
+ruled §9 at about 09:10 ET ("approve §9 as recommended, lesson disabled") and amended precondition 3 at about 19:13 ET.
+All five conditions below hold, and the pins are in §6. Nothing in the set had launched at registration.** The plan leaves
 the regression set's size and the shakeout's exit rule to this document, written when the line's last batch is built
 (the 2.2 plan §5), as 2.0 and 2.1 did. The window is read (the slice 4 pre-registration §12, SIP-0110 §5h), and no
 code has merged since the window's deploy. So this batch is the window's tree.
@@ -24,7 +25,10 @@ code has merged since the window's deploy. So this batch is the window's tree.
    - **It cannot be forced on an increment without code (§2).** The diagnostic itself stopped on three defects, held
      out of 2.2 by §9's decision 2: #2212, #2213, #2214.
 4. **The shakeout loop's exit rule holds** (§3): one shakeout campaign on the final deploy with no new seam finding.
-5. **The pins are read** (§6), and nothing in the set has launched.
+   **Met in round 1:** `cmp_3c22edb866c2` on rebuild 12 ended `success` with no new seam finding (§2, the shakeout's
+   readings).
+5. **The pins are read** (§6), and nothing in the set has launched. **Met:** read at 01:27Z on 2026-10-11. Both configs'
+   counting preflights were clean, and no roll had launched (no `.head_pin` existed).
 
 ---
 
@@ -69,6 +73,22 @@ built but has never run live. The set measures three things:
   - Its proposal rulings stay with the owner's delegate, since the increment gate is never the tier's.
   - It is the exit rule's shakeout (§3), and the set's campaign reading. It is uncounted, and a new seam finding in it
     is fixed and re-run before registration, never counted.
+  - **Its readings (2026-10-10, `cmp_3c22edb866c2`, launched 19:16 ET, completed `success` at 21:24:57 ET):**
+    - **Cycles:** the calibration (`cyc_4a2cb6a9bd5c`, 26 files) and two increments were each accepted:
+      - `cyc_a86b06863e30` (`prop_a368e03614e4` v1, a per-run capacity, T1–T3, 30 files);
+      - `cyc_786c55b3c38f` (`prop_c3ba3b02ac01` v1, the runs list sorted by datetime, T4; must-not-break T1–T3, 31 files).
+    - **Every run:** 8 of 8 accepted, with 0 correction rounds, 0 failed checks and nothing unverified. The implementations
+      executed and passed 69, 89 and 31 checks.
+    - **The criteria:** each new criterion discriminates on the tree it changed. T1–T3 held when increment 2 was
+      evaluated.
+    - **The delegate's rulings:** both proposals were approved inside the bound, at 20:12:42 and 20:59:18 ET.
+    - **The tier (P3, P4):** 3 of 3 plan gates were decided `system:plan_review_tier`, each with every condition's
+      reading in its notes. None escalated, so P4 had no case in the shakeout.
+    - **Memory:** the campaign pinned an empty snapshot (`snp_cd5f54d6e63e4ab4`, no entries). Every consuming task
+      recorded `none_eligible`: 32 exposures over the three cycles' plan, build and proposal seams.
+    - **No error line:** none in the runtime-api log or the six agents' logs from launch to close.
+    - **Supervision:** a stall-alarmed watcher after the diagnostic's eight-hour stall (scratchpad `campaign_watchd.py`).
+      Logs archived to `var/campaigns/cmp_3c22edb866c2/`.
   - **Its memory follows the lesson's disposition** (§9). The lesson is disabled and no approval is in force, so the
     campaign pins an empty snapshot.
 - **The tier's diagnostic, before registration** (#1251: the roll's own path with the fault injected). The shakeout
@@ -176,13 +196,13 @@ The files are written with this document: `examples/03_group_run/campaigns/2-2-0
 
 | pin | value |
 |---|---|
-| deploy commit | `ed540e1b` (rebuild 12), unless §9's decision 2 pulls a change in |
-| deploy record | `dep_4015cab5e042` (2026-10-09 17:41:07 UTC, `rebuild_and_deploy.sh all`) |
-| image ids | read from the running deploy at registration |
-| model | `qwen3.8:27b`, digest read at registration |
-| loaded checks | the configs' tracked rows, every one answering at the counting preflight |
-| set configs | `2-2-0-cut-regression-{fastapi-react,nextjs}.yaml`, sha256 read at registration |
-| HEAD at preflight | read at registration. Its difference from the deploy commit is prose and the set's own configuration files (the two campaign files and the two regression configs, which the campaign API and the driver read; no deployed code). §9's decision 2 keeps it so |
+| deploy commit | **`ed540e1b`** (rebuild 12). §9's decision 2 pulled no change in, and `git diff ed540e1b..HEAD -- src/ adapters/` is empty |
+| deploy record | **`dep_4015cab5e042`** (2026-10-09 17:41:07 UTC, `rebuild_and_deploy.sh all`), still the latest record |
+| image ids | **runtime-api `fd44f88118ce`, max `c9664249cc83`, neo `4c4eec3e155e`, nat `5029cb4c5a81`, bob `495db7f4bbd0`, eve `2f0f3335ddfe`, data `5f5ea5a53fe3`**: read from the running containers, equal to both configs' `frozen_image_ids` |
+| model | **`qwen3.8:27b`, digest `22130167c4c2`** |
+| loaded checks | the configs' tracked rows, every one answering: **both counting preflights clean** (`preflight --counting`, 01:27Z) |
+| set configs | `2-2-0-cut-regression-fastapi-react.yaml` **`28f1b1e35d416833…`**, `2-2-0-cut-regression-nextjs.yaml` **`23f3e33ced589705…`** (sha256) |
+| HEAD at preflight | **`db1c0f1d`** at the preflight. Roll 1 pins the HEAD it launches from: this registration's merge, which adds prose only. Its difference from the deploy commit is prose and the set's own configuration files (the two campaign files and the two regression configs, which the campaign API and the driver read; no deployed code). §9's decision 2 keeps it so |
 
 ---
 
