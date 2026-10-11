@@ -30,6 +30,7 @@ from squadops.cycles.lifecycle import resolve_cycle_status
 from squadops.cycles.models import (
     ArtifactRef,
     Cycle,
+    CycleStatus,
     GateDecisionValue,
     Project,
     Run,
@@ -151,6 +152,19 @@ def compute_workload_progress(
     return entries
 
 
+def cycle_status_of(cycle: Cycle, runs: list[Run]) -> CycleStatus:
+    """The cycle's status as the cycle route reads it: its runs, and its workload progress
+    (SIP-0083 D5). One reading for every caller that asks whether a cycle has ended: a campaign's
+    abort read only the latest run (``derive_cycle_status``), so a cycle waiting between workloads
+    read ``completed`` there and ``active`` here, and the abort left it running (#2214)."""
+    ws = cycle.resolved_config().get("workload_sequence", [])
+    progress = compute_workload_progress(ws, runs)
+    workload_statuses = [e.status for e in progress] if progress else None
+    return resolve_cycle_status(
+        runs, cycle_cancelled=cycle.cancelled, workload_statuses=workload_statuses
+    )
+
+
 def _cycle_outcome_to_dto(outcome: CycleOutcome) -> CycleOutcomeDTO:
     return CycleOutcomeDTO(
         verdict=outcome.verdict.value,
@@ -242,10 +256,7 @@ def cycle_to_response(
 ) -> CycleResponse:
     ws = cycle.resolved_config().get("workload_sequence", [])
     progress = compute_workload_progress(ws, runs)
-    workload_statuses = [e.status for e in progress] if progress else None
-    status = resolve_cycle_status(
-        runs, cycle_cancelled=cycle.cancelled, workload_statuses=workload_statuses
-    )
+    status = cycle_status_of(cycle, runs)
     return CycleResponse(
         cycle_id=cycle.cycle_id,
         project_id=cycle.project_id,
