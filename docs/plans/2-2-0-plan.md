@@ -4,6 +4,10 @@
 with #2111. The owner then chose to adopt this plan with every decision in §4 as recommended (D1–D15), and granted
 standing authority for the 2.2 line on the 2.1 line's terms, with three items kept as the owner's (§5).
 
+**The cut's set read PASS on 2026-10-11, 4 of 4.** §3 step 11's record is the cut pre-registration's §10
+(`docs/plans/2-2-0-cut-preregistration.md`). The owner placed the tier diagnostic's three defects (#2212, #2213, #2214)
+in 2.2.1 the same day.
+
 **The first draft** was written while the 2.1 cut was being prepared: the final deploy built, its
 diagnostics running, its set waiting for registration (#2090).
 

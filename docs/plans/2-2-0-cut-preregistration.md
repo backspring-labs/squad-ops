@@ -1,5 +1,7 @@
 # 2.2.0 — pre-registration of the cut's set (plan §3 steps 10–11, the cut's criteria)
 
+**Read 2026-10-11: PASS, 4 of 4 (§10).**
+
 **Status: REGISTERED 2026-10-10, about 21:35 ET, by the supervisor on the owner's pre-approval (§9, decision 3). The owner
 ruled §9 at about 09:10 ET ("approve §9 as recommended, lesson disabled") and amended precondition 3 at about 19:13 ET.
 All five conditions below hold, and the pins are in §6. Nothing in the set had launched at registration.** The plan leaves
@@ -266,3 +268,121 @@ named the window's five campaigns, every one closed, as still holding it (#2210,
 7. **The next build-side experiment and Phase 2** (SIP-0110 §5h). Recommended:
    - the owner's direction of 2026-10-09, placed by the 2.3 plan;
    - Phase 2 unplaced and gated.
+
+## 10. The set's readings (2026-10-11): PASS
+
+**The rolls** were launched by `cut_set_chain.sh` from the main checkout at 21:41 ET on 2026-10-10, with HEAD pinned
+at `8ea36a12` (the registration's merge). The frozen image ids were asserted at each roll's preflight, and every launch
+declared `memory: disabled`. The chain ended at 01:25 ET on 2026-10-11. The baselines are §2's.
+
+| roll | cycle | verdict | criteria | correction rounds | re-rolls | boot audit | minutes |
+|---|---|---|---|---|---|---|---|
+| FastAPI+React 1 | `cyc_0009e2942a6c` | accepted | 21 of 21 | 0 | 0 | PASS, 3 routes render | 51 |
+| Next.js 1 | `cyc_e2a1ad13af47` | accepted | 16 of 16 | 0 | 0 | PASS, 3 routes render | 54 |
+| FastAPI+React 2 | `cyc_5fb4b1537245` | accepted | 21 of 21 | 0 | 0 | PASS, 3 routes render | 52 |
+| Next.js 2 | `cyc_e7e0670e2681` | accepted | 18 of 18 | 0 | 0 | PASS, 3 routes render | 62 |
+
+Records: `var/verification_sets/2-2-0-cut-regression/{fastapi-react,nextjs}/roll-0{1,2}-*.{json,md}`, with the chain's
+timeline in `var/verification_sets/2-2-0-cut-chain/chain.log`. Each boot audit installed, built and booted the delivered
+app, and it answered 5 contract probes.
+
+**The frame (§3): Pass.**
+- Every roll was accepted, and every boot audit passed.
+- No roll regressed against its stack's baseline. Every criterion was verified, and no roll needed a correction round,
+  inside the line's observed ranges (React 0–1, Next.js 0–2).
+- P1 and P3 hold. P2 and P4 had no case, so neither is falsified.
+
+**The predictions (§4).**
+- **P1 holds, as the owner read it.** In every roll:
+  - **The pin:** the cycle pinned a disabled snapshot with no entries. P1's text says "pins no snapshot", but a unit
+    declaring memory disabled has pinned a disabled snapshot since #2126. The owner ruled at about 22:55 ET on
+    2026-10-10: "the row doesn't count against P1, amend the SIP". SIP-0110 §5i records it (#2217, #2218).
+  - **The exposures:** every consuming task recorded `memory_disabled`. That is 41 exposures over the four rolls: 3 at
+    plan writing in each roll, and 7, 6, 7 and 9 at build authoring.
+  - **The envelopes:** 41 of 41 reconstruct byte for byte, and each has its own exposure.
+    `verify_authoring_envelopes.py --run` was read on each of the eight runs at 01:25 ET, and again at about 09:40 ET.
+  - No roll reached the repair or proposal seams: none had a correction round, and none ran in a campaign.
+- **P2 had no case.** No roll had a failed round or a rejected plan, and the observations table holds no row for the
+  four cycles. Nothing produced an observation to record.
+- **P3 holds,** in the shakeout (§2). The tier decided all 3 of its plan gates (`system:plan_review_tier`), each with
+  every condition's reading in its notes.
+- **P4 had no case.** Nothing in the shakeout escalated. The escalation path was read live only by the diagnostic's
+  calibration, as far as the delegate's answer (precondition 3).
+- **P5 is withdrawn** (§9).
+
+**The rolls' plan gates.** The rolls run no tier. Three plans declared no open question, and `system:no_open_questions`
+approved their gates. Next.js 2's manifest left one decision unresolved: "PRD does not state a page size or whether the
+run list is paginated". So its gate waited. At 00:58 ET the driver approved it as the set's agent (`agent:005159fd…`),
+with the gate text pre-registered for every roll ("no additional judgment applied"). That is the driver's rule, not a
+ruling on the question.
+
+**The tier's diagnostic** (§2, what happened). It is uncounted, and was aborted on the owner's word. It found #2212,
+#2213 and #2214. **The owner placed all three in 2.2.1 on 2026-10-11, at 09:37 ET.** The tier's timeout half (expiry,
+the parked cycle, `abandon_and_propose`, the no-progress stop, the late answer) is read live with their fixes. Until
+then, unit tests are its only evidence.
+
+**Drift the record declares (§8).**
+- **The tagged tree against the registered deploy** (`ed540e1b`):
+  - Nothing under `src/`, `adapters/`, `infra/`, `agents/`, `console/`, `requirements/`, `config/` or `tests/` differs,
+    and neither does `docker-compose.yml`.
+  - Three kinds of input changed. None of them is deployed:
+    - the campaign definitions: the window's five, the shakeout's and the diagnostic's;
+    - the set's two regression configs;
+    - the replay's rubric (`scripts/dev/replay_rubrics/criterion_already_satisfied.md`), an evaluator input.
+  - The rest is prose (`docs/`, `sips/`), plus the release's version bump in `pyproject.toml`.
+  - The deploy reports 2.1.0 until its next rebuild.
+- **No void, and no re-run.** The shakeout took one round. The diagnostic was aborted and is uncounted.
+- **A time in the record.** The diagnostic's abort row gives its time as "about 19:10 ET". The abort was recorded at
+  19:01:58 ET, and the row is left as written.
+- **The owner's actions:**
+  - §9's ruling (2026-10-10, about 09:10 ET), and its amendment (about 19:00 and 19:13 ET);
+  - the reading of P1's disabled pin (about 22:55 ET);
+  - on 2026-10-11 at 09:37 ET: the go-ahead for this record and the release PR, the tag, and 2.2.1 for #2212–#2214.
+
+**What the set does not cover.**
+- **Four rolls are not a reliability rate.**
+- **Supply.** Every roll ran with memory disabled, and the shakeout pinned an empty snapshot. A lesson supplied to a
+  prompt was read only in the window (SIP-0110 §5h), and no lesson is approved at the cut.
+- **The repair seam.** Neither the set nor the shakeout read the repair seam's exposure live: no roll had a correction
+  round, and neither did the shakeout.
+- **The campaign reading is the shakeout's:** two increments, on React.
+- **The tier's timeout half:** unit tests only, as above.
+
+### The 2.2 plan's cut record (§3 step 11)
+
+Each item the plan names, stated separately.
+- **The mechanism's correctness: holds.**
+  - SIP-0110 §0.15's acceptance matrix holds on a controlled corpus (slice 3).
+  - Live on the cut's deploy:
+    - a disabled snapshot recorded `memory_disabled` at every consuming task, and each envelope reconstructed byte
+      for byte (P1, 41 of 41);
+    - an empty one recorded `none_eligible`: the shakeout's 32 exposures, over plan, build and proposal seams.
+  - Standalone cycles and a campaign's cycles have both recorded observations live (SIP-0110 slice 3, #2143).
+- **The experiment's validity and result:**
+  - **valid:** 5 of 5 cases reconstructed byte for byte, on one deploy, with the manifest held;
+  - **the result:** no demonstrated useful benefit (SIP-0110 §5h; the slice 4 pre-registration's §12).
+- **The activated pattern:** `pat_0b4aef8aea974e06@2`.
+  - **Its applicability:** proposal writing, at `criterion_already_satisfied`.
+  - **Its disposition:** **disabled** by the owner, with the mechanism kept. Its approval was revoked at 13:11:05Z on
+    2026-10-10, and no approval is in force at the cut.
+- **The app-build indicators, observed only:**
+  - the window's ten builds were each accepted and promoted, with 0 or 1 failed correction rounds;
+  - the set adds four, each accepted with 0 rounds and memory disabled.
+- **The repeat report,** read again at about 09:40 ET on 2026-10-11. On group_run it reads 96 observations, 8 of them
+  rounds with a shape. Three signatures repeat across independent cycles:
+  - **`correction_round vitest:element_not_found`:** 3 cycles, in 3 campaigns;
+  - **`proposal_ruling proposal_classification:ambiguous_manifest_delta`:** 3 cycles, in 3 campaigns;
+  - **`correction_round vitest:not_a_function`:** 2 cycles, in 1 campaign.
+
+  The auditor has substantiated no target behaviour. A repeated signature is a candidate for the auditor, never a
+  finding.
+- **The next build-side experiment:** the owner's direction of 2026-10-09 (SIP-0110 §5h), placed by the 2.3 plan.
+- **The auto-gate scope enabled:** #1708's plan-review tier (SIP-0109 §24bj, §24bk).
+  - **Opt-in:** a campaign declares `plan_gate: tier`.
+  - **What it approves:** plan gates only, never the increment gate. It reads them after plan validation passes (the
+    manifest's schema and winnability gates included).
+  - **Its conditions:** no open question, a footprint inside the objective's `allowed_scope` (a calibration is exempt),
+    and a framing that ran once. Anything else escalates to the queue, bounded by the campaign's `ruling_bound_s`.
+  - **Read live:** three approvals (the shakeout), and one escalation answered by the delegate (the diagnostic's
+    calibration).
+- **The owner's disposition for the next phase:** Phase 2 stays unplaced and gated (SIP-0110 §8, §5h).
