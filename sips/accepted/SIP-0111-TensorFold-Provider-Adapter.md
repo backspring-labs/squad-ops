@@ -119,9 +119,9 @@ Placed by the owner's Q1 ruling (2026-10-09). The rows are ordered as the work r
 | G0: throughput on held-out captured envelopes, against production Ollama, on a frozen recipe (§4) | **placed** | 2.3.0, #2199 |
 | G1: emission quality, the same calls through each task type's production validator (§4) | **placed** | 2.3.0, #2199 |
 | G2: the adapter, dark, with the port amendments, registry entries, the overlay and parity tests (§5) | **placed** | 2.3.0, #2200 (merged only if G0 and G1 pass) |
-| G3: an uncounted cycle A/B on both stacks, judged on cycle wall-clock | **unplaced** | after G2 |
-| G4: cutover | **unplaced** | the owner's decision on G3's evidence |
-| a second candidate, Qwen3.8-Flash-Next on TensorFold, on its own gate path (§9a) | **unplaced** | proposed for 2.3 by the 2.3 plan's D9 (PR #2228), with §9a; placed only if the owner rules them |
+| G3: the selected candidate's uncounted cycle A/B on both stacks, compared on wall-clock, task times, retries, correction rounds and verdicts (§9a item 6) | **placed** | 2.3.0, #2229 |
+| G4: cutover | **placed** | 2.3.0, #2229: the owner's decision on G3's evidence, before the 2.3 cut set (the 2.3 plan's D4) |
+| a second candidate, Qwen3.8-Flash-Next on TensorFold, on its own gate path: screening, its own recipe, G0 and G1 (§9a) | **placed** | 2.3.0, #2230 (the 2.3 plan's D9; run at checkpoint A on the owner's word) |
 
 **What closes this SIP:** G4 decided (adopted, or parked with its record), with each earlier row shipped or its negative
 recorded.
@@ -591,11 +591,11 @@ Kept below as they were asked.
 
 ## 9. Post-acceptance amendments
 
-### 9a. The 2.3 plan's protocol amendments (PROPOSED 2026-10-11, for the owner's ruling with the 2.3 plan)
+### 9a. The 2.3 plan's protocol amendments (RULED 2026-10-11, with the 2.3 plan)
 
-**Status: proposed, not ruled.** It is drafted in the same PR as the 2.3 plan (#2228, revision 2). It applies the owner's
-review of that plan's first draft, at the owner's request: "apply all nine and the SIP amendment". It is ruled with the
-plan, before any measurement. Until then §1–§8 stand as written.
+**Status: ruled, 2026-10-11.** The owner approved the 2.3 plan's D1–D11 as recommended, and D10 is this amendment: "approve
+D1-D11 as recommended". It was drafted in the same PR as the plan (#2228, revision 2), from the owner's review of the
+plan's first draft ("apply all nine and the SIP amendment"). From here, §4's protocol is read with these changes.
 
 **The owner's guidance on its numbers** (2026-10-11): "I'm ok with the numbers. Let's just be flexible as we see
 performance in making a decision without such hard lines drawn early." So:
@@ -667,4 +667,4 @@ performance in making a decision without such hard lines drawn early." So:
 - **TensorFold v0.6.6's [Flash-Next recipe](https://github.com/ashhart/TensorFold/blob/v0.6.6/docs/recipes/qwen3.8-flash-next.md):** the checkpoints, their memory, and
   the EXL3 pack's prefill.
 
-**Who rules it.** The owner, with the 2.3 plan's D9 and D10. The supervisor drafted it.
+**Who ruled it.** The owner, 2026-10-11, with the 2.3 plan's D9 and D10. The supervisor drafted it.

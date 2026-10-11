@@ -1,6 +1,7 @@
 # 2.3.0 plan — a faster engine first, then the structure: TensorFold to a decision, and stabilization on the engine that ships
 
-**Status: DRAFT, revision 2 (2026-10-11), for the owner's ruling (§6).**
+**Status: ADOPTED (2026-10-11).** The owner ruled §6 at about 12:45 ET: "approve D1-D11 as recommended". SIP-0111 §9a is
+ruled with it (D10). The 2.3 line starts after 2.2.1's cut, on D8's terms. Revision 2's history:
 - **Drafted** while 2.2.1's diagnostic ran, at the owner's request: "I want to prioritize the TensorFold adapter to get
   shorter cycle times".
 - **Revision 2** applies the nine changes from the owner's review of PR #2228 ("apply all nine and the SIP amendment").
@@ -399,17 +400,19 @@ candidate.
 
 ## 6. Decisions for the owner
 
+**Ruled 2026-10-11: D1–D11 as recommended** (the owner: "approve D1-D11 as recommended").
+
 | # | decision | recommendation |
 |---|---|---|
 | D1 | **the order** | **Track A first** (§3), Track B on branches meanwhile, and Track B's merges after G4, so 2.3 measures on one engine |
 | D2 | **G0 / G1's size** | **lean:** 2 generations per arm, the drift panel (§5), and the 3 checkpoints at production's thinking settings. About 34–38 h for the 27B. *As accepted:* about 55–60 h. *Leanest* (1 generation): about 22–25 h, with wider intervals |
-| D3 | **G3, placed** | **in 2.3,** for the selected candidate, with its pre-registered comparison (§2.1) |
+| D3 | **G3, placed** | **in 2.3,** for the selected candidate, with its pre-registered comparison (§2.1). Tracked as #2229 |
 | D4 | **G4, the cutover decision** | **in 2.3, the owner's, on G3's evidence, before the cut set**, so the cut measures the engine 2.3 ships with. Cutover in an odd minor extends Q1's waiver from "dark" to "adopted", and that extension is the owner's to grant. If it isn't granted, G4 moves to 2.4's start, and 2.3's cut runs on Ollama |
 | D5 | **the structure batch** | **#2062 with #1993 in 2.3** (R5). **#1992 and #1994 in 2.3 unless §4's deferral rule moves them to 2.5** |
 | D6 | **the next build-side memory experiment** | **2.4,** beside Outcome Evaluation's scenarios, on the final engine |
 | D7 | **#2201's fix** | registry credentials in CI (a repository secret), or a pull-through mirror. Recommended: **credentials** |
 | D8 | **who runs the line** | **the supervisor, on the 2.2 line's terms:** build in §3's order, merge on green with main's run read, run rebuilds and uncounted runs. **The owner's:** compose changes beyond #2204a's services and SIP-0111's overlay; G4; any lesson approval; the tag and Release unless delegated at the cut |
-| D9 | **Qwen3.8-Flash-Next on TensorFold, a second candidate** (the owner's request, 2026-10-11) | **on its own gate path** (§2.1, §2.2), behind S's floors and a screening replay, with its own frozen recipe and registry family. The owner selects between candidates on the evidence, against the written guide, and decides at checkpoint A when it runs |
+| D9 | **Qwen3.8-Flash-Next on TensorFold, a second candidate** (the owner's request, 2026-10-11; tracked as #2230) | **on its own gate path** (§2.1, §2.2), behind S's floors and a screening replay, with its own frozen recipe and registry family. The owner selects between candidates on the evidence, against the written guide, and decides at checkpoint A when it runs |
 | D10 | **SIP-0111 §9a** | **ruled with this plan, before any measurement:** the self-contained harness, the statistics and drift rules, the reuse and held-out rules, the second candidate, candidate-specific outcomes, the selection rule, and G3's comparison |
 | D11 | **Track A's budget** | **about 80 box-hours as a planning guide,** with checkpoints A and B as the owner's check-ins (§4). **The numbers are accepted as guides** (the owner, 2026-10-11) |
 
