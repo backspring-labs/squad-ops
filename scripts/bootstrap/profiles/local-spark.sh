@@ -24,6 +24,7 @@ run_bootstrap() {
         error "nvidia-container-toolkit not found — required for GPU containers"
         exit 1
     fi
+    ensure_gpu_cdi_spec
 
     # ── System deps (fail-fast per R7) ─────────────────────────────
     info "=== System Dependencies ==="
@@ -55,6 +56,8 @@ run_bootstrap() {
     DEPLOYMENT_PROFILE=local
     ensure_env_file
 
+    # The `gpu` compose profile's services (the DCGM exporter, #2204) start with the rest.
+    export COMPOSE_PROFILES=gpu
     local docker_rc=0
     start_docker_services || docker_rc=$?
     if [[ "$docker_rc" == "1" ]]; then

@@ -21,6 +21,10 @@ HOST_QUERIES: dict[str, str] = {
     "disk_root_available_bytes": 'node_filesystem_avail_bytes{mountpoint="/"}',
     "temperature_max_celsius": "max(node_hwmon_temp_celsius)",
     "load_one_minute": "node_load1",
+    # The GPU, from the DCGM exporter. A host without one has no samples: unknown, not idle.
+    "gpu_utilization_percent": "max(DCGM_FI_DEV_GPU_UTIL)",
+    "gpu_power_watts": "sum(DCGM_FI_DEV_POWER_USAGE)",
+    "gpu_temperature_celsius": "max(DCGM_FI_DEV_GPU_TEMP)",
 }
 
 
