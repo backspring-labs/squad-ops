@@ -667,3 +667,20 @@ checks:
       run = Run("r", "c", 1, "completed", "system", "cfg", workload_type="proposal")
       print(cycle_status_of(cycle, [run]).value, "cycle_status_of" in inspect.getsource(routes._cancel_launched_cycles))
     expect: "active True"
+  - id: "2239"
+    what: an agent sends its metrics to the collector over OTLP, and each model call's decode rate is a metric
+    container: squadops-neo
+    code: |
+      from adapters.telemetry.otel import otlp_exporters
+      from squadops.telemetry.llm_metrics import LLM_DECODE_TOKENS_PER_SECOND
+      spans, metrics = otlp_exporters("http://otel-collector:4317")
+      print(LLM_DECODE_TOKENS_PER_SECOND, type(metrics).__name__)
+    expect: "llm_decode_tokens_per_second OTLPMetricExporter"
+  - id: "2204-host"
+    what: GET /health/host reads the host's seven numbers against the box's floors
+    container: squadops-runtime-api
+    code: |
+      from squadops.api.runtime.host_reading import HOST_QUERIES
+      from squadops.campaigns.box import MEMORY_FLOOR_AFTER_LOAD_BYTES
+      print(len(HOST_QUERIES), MEMORY_FLOOR_AFTER_LOAD_BYTES)
+    expect: "7 17179869184"
