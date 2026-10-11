@@ -351,7 +351,11 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:15
+        # #2201: Google's mirror of Docker Hub's official images. Docker Hub limits anonymous pulls
+        # per source IP, and GitHub's runners share theirs: the integration job failed twice on
+        # `toomanyrequests`. The owner chose the mirror (the 2.3 plan's D7): the same images, no
+        # account and no secret.
+        image: mirror.gcr.io/library/postgres:15
         # The same shape as docker-compose.yml: POSTGRES_DB is the deployment database,
         # owned by the superuser squadops. The test role and its database are provisioned
         # by the "Provision the integration-test role" step, not by this image (#1180).
@@ -364,13 +368,13 @@ jobs:
           --health-cmd "pg_isready -U squadops"
           --health-interval 10s --health-timeout 5s --health-retries 10
       redis:
-        image: redis:7-alpine
+        image: mirror.gcr.io/library/redis:7-alpine
         ports: ["6379:6379"]
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 10s --health-timeout 5s --health-retries 10
       rabbitmq:
-        image: rabbitmq:3.12-management
+        image: mirror.gcr.io/library/rabbitmq:3.12-management
         # The broker must CREATE the user the tests authenticate as. Setting only
         # RABBITMQ_USER/PASSWORD in the job env configures the client side; the stock image
         # ships `guest` alone, so every AMQP test failed with
