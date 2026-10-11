@@ -35,6 +35,19 @@ def resource_attributes(service_name: str) -> dict[str, str]:
     return attributes
 
 
+def otlp_exporters(endpoint: str) -> tuple[Any, Any]:
+    """The span and metric exporters that send to the collector at ``endpoint`` over OTLP gRPC
+    (#2203). An ``http://`` endpoint is sent without TLS, as the compose network's collector is."""
+    from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+
+    insecure = endpoint.startswith("http://")
+    return (
+        OTLPSpanExporter(endpoint=endpoint, insecure=insecure),
+        OTLPMetricExporter(endpoint=endpoint, insecure=insecure),
+    )
+
+
 class OTelAdapter(MetricsPort, EventPort):
     """OpenTelemetry adapter with injectable exporters for testing.
 
@@ -49,19 +62,24 @@ class OTelAdapter(MetricsPort, EventPort):
         span_exporter: SpanExporter | None = None,
         metric_exporter: MetricExporter | None = None,
         service_name: str = "squadops",
+        otlp_endpoint: str | None = None,
     ):
         """Initialize OTel adapter.
 
         Args:
-            span_exporter: Custom span exporter (default: OTLPSpanExporter from env)
-            metric_exporter: Custom metric exporter (default: OTLPMetricExporter from env)
+            span_exporter: Custom span exporter (default: OTLP to ``otlp_endpoint``)
+            metric_exporter: Custom metric exporter (default: OTLP to ``otlp_endpoint``)
             service_name: Service name for telemetry
+            otlp_endpoint: The collector the default exporters send to (#2203). Without it, and
+                without an injected exporter, the adapter writes to the console: what it always
+                did, which is why nothing reached the collector.
 
         Injection allows unit tests to pass BrokenExporter to verify error handling.
         """
         self._service_name = service_name
         self._span_exporter = span_exporter
         self._metric_exporter = metric_exporter
+        self._otlp_endpoint = otlp_endpoint
         self._tracer: Any = None
         self._meter: Any = None
         self._counters: dict[str, Any] = {}
@@ -91,15 +109,21 @@ class OTelAdapter(MetricsPort, EventPort):
 
             resource = Resource.create(resource_attributes(self._service_name))
 
+            default_span, default_metric = (
+                otlp_exporters(self._otlp_endpoint)
+                if self._otlp_endpoint
+                else (ConsoleSpanExporter(), ConsoleMetricExporter())
+            )
+
             # Set up tracing
-            span_exporter = self._span_exporter or ConsoleSpanExporter()
+            span_exporter = self._span_exporter or default_span
             tracer_provider = TracerProvider(resource=resource)
             tracer_provider.add_span_processor(BatchSpanProcessor(span_exporter))
             trace.set_tracer_provider(tracer_provider)
             self._tracer = trace.get_tracer(self._service_name)
 
             # Set up metrics
-            metric_exporter = self._metric_exporter or ConsoleMetricExporter()
+            metric_exporter = self._metric_exporter or default_metric
             reader = PeriodicExportingMetricReader(metric_exporter, export_interval_millis=5000)
             meter_provider = MeterProvider(resource=resource, metric_readers=[reader])
             metrics.set_meter_provider(meter_provider)

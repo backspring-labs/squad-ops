@@ -77,6 +77,11 @@ class LLMResponse:
     #: model that thought and returned an empty channel stays distinguishable from one
     #: that did not think at all.
     reasoning_text: str | None = None
+    #: #2204: seconds the provider spent reading the prompt (prefill), and loading the model
+    #: before it, when it reports them (Ollama's ``prompt_eval_duration``, ``load_duration``).
+    #: Decode speed alone hides prefill, which is the larger cost on a long prompt.
+    prompt_eval_seconds: float | None = None
+    load_seconds: float | None = None
 
 
 @dataclass(frozen=True)
@@ -112,3 +117,5 @@ class ChatMessage:
     tokens_per_second: float | None = None
     reasoning_tokens: int | None = None  # see LLMResponse.reasoning_tokens
     reasoning_text: str | None = None  # see LLMResponse.reasoning_text (#410)
+    prompt_eval_seconds: float | None = None  # see LLMResponse.prompt_eval_seconds (#2204)
+    load_seconds: float | None = None  # see LLMResponse.load_seconds (#2204)

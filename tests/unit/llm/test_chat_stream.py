@@ -168,6 +168,42 @@ class TestOllamaChatStream:
         assert message.content == "hello world"
         assert message.completion_tokens == 7
 
+    @pytest.mark.parametrize(
+        ("usage", "prefill", "load"),
+        [
+            ({"prompt_eval_duration": 4_250_000_000, "load_duration": 120_000_000}, 4.25, 0.12),
+            # A provider that reports neither: "not reported", never zero.
+            ({}, None, None),
+        ],
+        ids=["reported", "not-reported"],
+    )
+    async def test_stream_with_usage_reports_prefill_and_load_seconds(self, usage, prefill, load):
+        """#2204: Ollama returns how long it read the prompt and loaded the model, in
+        nanoseconds, and the adapter read neither. Bugs caught: prefill invisible behind the
+        decode rate on a long prompt; or a missing duration reported as zero seconds."""
+        from adapters.llm.ollama import OllamaAdapter
+
+        adapter = OllamaAdapter(base_url="http://fake:11434")
+        lines = [
+            json.dumps({"message": {"content": "hi"}, "done": False}),
+            json.dumps({"done": True, "message": {"content": ""}, "eval_count": 3, **usage}),
+        ]
+        mock_response = AsyncMock()
+        mock_response.raise_for_status = MagicMock()
+
+        async def fake_aiter_lines():
+            for line in lines:
+                yield line
+
+        mock_response.aiter_lines = fake_aiter_lines
+        mock_client = AsyncMock()
+        mock_client.stream = MagicMock(return_value=_AsyncContextManager(mock_response))
+        adapter._client = mock_client
+
+        message = await adapter.chat_stream_with_usage([ChatMessage(role="user", content="hi")])
+
+        assert (message.prompt_eval_seconds, message.load_seconds) == (prefill, load)
+
     async def test_stream_timeout_raises(self):
         """Timeout during streaming raises LLMTimeoutError."""
         from adapters.llm.ollama import OllamaAdapter

@@ -48,7 +48,12 @@ MODULE_TO_DISTRIBUTION: dict[str, str | tuple[str, ...]] = {
     "ulid": "ulid-py",
     "aio_pika": "aio-pika",
     "multipart": "python-multipart",
-    "opentelemetry": ("opentelemetry-api", "opentelemetry-sdk"),
+    # #2203: the OTLP gRPC exporter shares the namespace (adapters/telemetry/otel.py).
+    "opentelemetry": (
+        "opentelemetry-api",
+        "opentelemetry-sdk",
+        "opentelemetry-exporter-otlp-proto-grpc",
+    ),
     "tree_sitter": "tree-sitter",
     "tree_sitter_javascript": "tree-sitter-javascript",
     "tree_sitter_typescript": "tree-sitter-typescript",

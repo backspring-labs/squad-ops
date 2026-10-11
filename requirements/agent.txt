@@ -34,3 +34,10 @@ tree-sitter-typescript>=0.23
 # Reporting-only lint of the delivered app's Python (#1937; squadops.capabilities.delivered_lint).
 # A command, never imported; the qa image runs it, and no check reads what it finds.
 ruff>=0.16
+
+# Telemetry (#2203, #2204): the metrics and traces MetricsPort's OTel adapter exports to the
+# collector over OTLP. Only opentelemetry-api reached the image (pulled in by another package),
+# so the adapter's SDK import failed and every metric call did nothing. Agent-only: the agents are
+# the one composition root that builds telemetry (squadops.agents.entrypoint). CI already pins both.
+opentelemetry-sdk>=1.22.0
+opentelemetry-exporter-otlp-proto-grpc>=1.22.0

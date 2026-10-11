@@ -1836,6 +1836,23 @@ class _CycleTaskHandler(CapabilityHandler):
                 chat_response.tokens_per_second,
                 chat_response.completion_tokens,
             )
+        metrics = getattr(context.ports, "metrics", None)
+        if metrics is not None and chat_response is not None:
+            # #2204: the same numbers as metrics, so they are kept over time, not only logged.
+            # Telemetry never fails the task it measures (MetricsPort's non-blocking contract).
+            from squadops.telemetry.llm_metrics import record_llm_call
+
+            try:
+                record_llm_call(
+                    metrics,
+                    chat_response,
+                    role=self._role,
+                    task_type=str(self._task_type),
+                    model=str(resolved_model or context.ports.llm.default_model),
+                    duration_ms=duration_ms,
+                )
+            except Exception:
+                logger.debug("llm call metrics not recorded", exc_info=True)
         llm_obs = getattr(context.ports, "llm_observability", None)
         if llm_obs and context.correlation_context:
             from squadops.telemetry.models import (
