@@ -3103,7 +3103,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         Returns ``"continue"`` when the caller must re-dispatch, or ``None`` when the
         outcome goes on to correction. Raises ``_PausedError`` (BLOCKED is a pause, not
         an outcome) and ``_ExecutionError`` (D9: correcting the statement of what "done"
-        means is how a cycle talks itself into a lower bar).
+        means is how a cycle talks itself into a lower bar; #2212: a repair cannot satisfy the
+        rails that refused a proposal).
         """
         # D5 fallback table: classify unclassified failures
         if outcome is None:
@@ -3152,10 +3153,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
         # SEMANTIC_FAILURE / NEEDS_REPAIR / NEEDS_REPLAN → correction
 
-        # D9: definition-of-done task failure → immediate abort, no correction
+        # D9 and #2212: a task the correction loop cannot repair (the definition of done, an
+        # increment's proposal) → immediate abort, no correction
         if fails_without_correction(envelope.task_type):
             raise _ExecutionError(
-                f"Definition-of-done task {envelope.task_id} failed (no correction): {result.error}"
+                f"{envelope.task_type} task {envelope.task_id} failed (no correction): "
+                f"{result.error}"
             )
         return None
 

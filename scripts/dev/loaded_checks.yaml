@@ -625,3 +625,10 @@ checks:
       held = {"d": RecordedAnswer("d", "Which order?", "descending", "o", datetime(2026, 10, 9, tzinfo=UTC), "esc_a")}
       print(same_question("Which order?", "which  order"), [d for d, _ in uncarried({"d": ("ascending", "esc_a")}, held)], hasattr(gate, "uncarried"))
     expect: "True ['d'] True"
+  - id: "2212"
+    what: a refused increment proposal fails its run without the correction loop - the proposal step joins fails_without_correction (D9's property)
+    container: squadops-runtime-api
+    code: |
+      from squadops.tasks.task_types import fails_without_correction
+      print(fails_without_correction("strategy.propose_increment"), fails_without_correction("governance.define_done"), fails_without_correction("development.develop"))
+    expect: "True True False"
