@@ -100,6 +100,7 @@ def test_the_doctor_names_each_credential_missing_or_committed(tmp_path):
     env["LANGFUSE_SALT"] = "mysalt"
     del env["GRAFANA_ADMIN_PASSWORD"]
     (tmp_path / ".env").write_text("".join(f"{k}={v}\n" for k, v in env.items()))
+    (tmp_path / ".env").chmod(0o600)
 
     found = problems(REGISTRY_ROWS, env)
     result = check_deploy_credentials(tmp_path / ".env")
@@ -111,8 +112,25 @@ def test_the_doctor_names_each_credential_missing_or_committed(tmp_path):
 
 def test_the_doctor_passes_a_deploy_holding_only_its_own(tmp_path):
     (tmp_path / ".env").write_text("".join(f"{c['env']}=own-{c['env']}\n" for c in REGISTRY_ROWS))
+    (tmp_path / ".env").chmod(0o600)
 
     assert check_deploy_credentials(tmp_path / ".env").passed is True
+
+
+@pytest.mark.parametrize("mode", [0o664, 0o644, 0o640])
+def test_the_doctor_fails_an_env_another_account_can_read(tmp_path, mode):
+    """Bug caught: a deploy whose .env every account on the host can read passing the doctor,
+    with every credential in it the deploy's own. Bootstrap's copy took the umask (0664 on the
+    Spark) and nothing changed it."""
+    env = tmp_path / ".env"
+    env.write_text("".join(f"{c['env']}=own-{c['env']}\n" for c in REGISTRY_ROWS))
+    env.chmod(mode)
+
+    result = check_deploy_credentials(env)
+
+    assert result.passed is False
+    assert f"(mode {mode:o})" in result.message
+    assert result.fix_command == f"chmod 600 {env}"
 
 
 def _script():
@@ -145,6 +163,41 @@ def test_ensure_fills_empty_lines_in_place_appends_the_rest_and_locks_the_secret
     assert stat.S_IMODE(secret.stat().st_mode) == 0o600
     # A second run changes nothing.
     assert _script().ensure(tmp_path, existing=True, dry_run=False).env_updates == {}
+
+
+def test_ensure_makes_env_owner_only_whether_it_creates_it_or_finds_it_readable(tmp_path):
+    """Entered at ``ensure``, what bootstrap and every deploy call. Bugs caught: a .env bootstrap
+    copied at the umask (0664) kept that mode while ensure wrote every credential into it; and
+    a .env ensure created itself took the umask too."""
+    (tmp_path / "infra").mkdir()
+    (tmp_path / "infra" / "deploy_credentials.json").write_text(REGISTRY.read_text())
+    found = tmp_path / "found"
+    found.mkdir()
+    (found / "infra").mkdir()
+    (found / "infra" / "deploy_credentials.json").write_text(REGISTRY.read_text())
+    (found / ".env").write_text("SQUADOPS_PROFILE=local\n")
+    (found / ".env").chmod(0o664)
+
+    _script().ensure(tmp_path, existing=False, dry_run=False)
+    _script().ensure(found, existing=False, dry_run=False)
+
+    assert stat.S_IMODE((tmp_path / ".env").stat().st_mode) == 0o600
+    assert stat.S_IMODE((found / ".env").stat().st_mode) == 0o600
+
+
+def test_ensure_on_a_complete_env_still_makes_it_owner_only(tmp_path):
+    """A deploy whose .env already holds every credential writes nothing, and its mode is fixed
+    anyway: the upgrade path for a deploy an earlier version left readable."""
+    (tmp_path / "infra").mkdir()
+    (tmp_path / "infra" / "deploy_credentials.json").write_text(REGISTRY.read_text())
+    env = tmp_path / ".env"
+    env.write_text("".join(f"{c['env']}=own-{c['env']}\n" for c in REGISTRY_ROWS))
+    env.chmod(0o664)
+
+    decided = _script().ensure(tmp_path, existing=True, dry_run=False)
+
+    assert decided.env_updates == {}
+    assert stat.S_IMODE(env.stat().st_mode) == 0o600
 
 
 def test_every_credential_names_what_it_authenticates_and_its_committed_values():
@@ -189,8 +242,11 @@ def test_rotate_keeps_the_previous_env_and_changes_only_the_targets(tmp_path):
     )
     (tmp_path / ".env").write_text(before)
 
+    (tmp_path / ".env").chmod(0o664)
+
     rotated = _script().rotate(tmp_path, only=(), keep=(), dry_run=False)
 
+    assert stat.S_IMODE((tmp_path / ".env").stat().st_mode) == 0o600
     after = (tmp_path / ".env").read_text().splitlines()
     [backup] = tmp_path.glob(".env.pre-rotation-*")
     assert rotated == ["LANGFUSE_SALT"]

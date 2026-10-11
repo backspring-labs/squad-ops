@@ -20,7 +20,8 @@ ensure_env_file() {
         return 1
     else
         info "Creating .env from .env.example..."
-        run_or_dry cp "$env_example" "$env_file"
+        # Owner-only from the start: ensure writes every credential into it (#2006).
+        run_or_dry install -m 600 "$env_example" "$env_file"
         [[ "${DRY_RUN:-0}" != "1" ]] && success ".env created"
     fi
 
