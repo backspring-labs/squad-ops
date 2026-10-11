@@ -960,3 +960,25 @@ showcase:
     under the plan-review tier, with per-run capacity and the run list sorted by date;
     no roll in the counted set had a correction round to show'
   role: shakeout
+records:
+  asset: squadops-2.2.0-records.tar.gz
+  sha256: 225c5649d1cf59007dc857573a2c72a8e0a3956651f83931dfc69574bc9f432c
+  files: 225
+  campaigns:
+  - cmp_35fb81f0ec50
+  - cmp_3c22edb866c2
+  - cmp_4bdd8fb573a0
+  - cmp_56ae064543e0
+  - cmp_65c34ad025be
+  - cmp_9f5612668cbd
+  - cmp_d4181c169653
+  - cmp_ff3ddfdfbc70
+  bytes: 543560
+  attached_at: '2026-10-11T14:31:23Z'
+  scanned:
+    secret_values: 56
+    patterns:
+    - langfuse key
+    - api key (sk-)
+    - jwt
+    - private key
