@@ -1,0 +1,962 @@
+version: 2.2.0
+tag: v2.2.0
+previous_tag: v2.1.0
+date: '2026-10-11'
+commit: f203e1c232cc8c46c96f53c340dd15de76afda31
+narrative: "**The 2.2 line: Cross-Cycle Memory, Phase 1** (SIP-0110), a feature release.\
+  \ Memory's unit is the cycle. Every\neligible cycle is observed. A reviewed lesson\
+  \ can be supplied to the cycle's plan writing, build authoring, repair and\nproposal\
+  \ writing, and to nothing unless it is approved. Beside it is #1708's plan-review\
+  \ tier, which decides a\ncampaign's plan gates when the campaign declares it. Plan:\
+  \ `docs/plans/2-2-0-plan.md`, which carries the owner's grant\nand rulings.\n\n\
+  **The window's finding: no demonstrated useful benefit** (SIP-0110 §5h; `docs/plans/2-2-0-slice4-preregistration.md`\n\
+  §12).\n- **The instrument is valid:** 5 of 5 cases reconstructed byte for byte,\
+  \ on one deploy, with the window's manifest held.\n- **The one lesson,** on proposal\
+  \ writing, improved 1 case, worsened none and tied 4. The pre-registered bar needs\n\
+  \  three improvements.\n- **The owner disabled the lesson at the cut, and kept the\
+  \ mechanism.** No lesson is approved in 2.2.0, so memory\n  supplies nothing until\
+  \ the owner approves one.\n\n**The cut's evidence: PASS** (`docs/plans/2-2-0-cut-preregistration.md`,\
+  \ registered in #2216; its §10 in #2219). It\nwas read on the window's deploy (`ed540e1b`,\
+  \ `dep_4015cab5e042`):\n- **the counted set:** 4 of 4 regression rolls accepted,\
+  \ two per stack, with memory disabled. Every criterion was\n  verified (21, 16,\
+  \ 21, 18) and every boot audit passed. No roll had a correction round or a re-roll;\n\
+  - **memory inert where it is disabled:** all 41 exposures read `memory_disabled`,\
+  \ and all 41 envelopes reconstruct\n  byte for byte;\n- **the shakeout campaign:**\
+  \ clean in one round. Two increments were accepted, and the tier decided all 3 plan\
+  \ gates;\n- **the tier's diagnostic:** the escalation path was read live as far\
+  \ as the delegate's answer. It found three\n  defects, which the owner placed in\
+  \ 2.2.1 (#2212, #2213, #2214). Until their fixes, the timeout half (expiry, the\n\
+  \  parked cycle, the continuation) is read in unit tests only.\n\nNo deployed code\
+  \ differs between the tagged tree and the validated deploy. The difference is campaign\
+  \ definitions, the\nset's configs, the replay's rubric and prose.\n\n**Cross-Cycle\
+  \ Memory, Phase 1 (SIP-0110).**\n- **Revision 6 restores the cycle as Phase 1's\
+  \ unit** (#2111). The plan is adopted with D1–D15 (#2113), and §5e\n  records the\
+  \ source-case inspection (#2115).\n- **Slice 1: capture.** Each authoring seam's\
+  \ pre-authoring state is captured at its first model call and recorded in\n  the\
+  \ cycle registry (#2116). An envelope's handler is re-run in its own container to\
+  \ compare the prompt byte for byte\n  (#2119). Envelopes are stored as `json`, so\
+  \ their inputs keep their order (#2123). The plan proposers derive the id\n  they\
+  \ render, so their envelopes reconstruct (#2141; #2142). Every seam reconstructs\
+  \ on a live cycle (#2105; #2131).\n- **Slice 3: the mechanism, inert until approved**\
+  \ (#2096; #2143).\n  - **Observation:** rejected plans, failed rounds and returned\
+  \ proposals are observed, and stored beside the cycle\n    registry (#2120). The\
+  \ runtime projects recent cycles and campaigns every five minutes (#2122).\n  -\
+  \ **The failure-shape sorter** reads the test runner's per-runner tables, and the\
+  \ repeat report reads repeated\n    signatures (#2121).\n  - **Lessons:** lessons,\
+  \ approvals, the pinned snapshot and deterministic recall (#2124), and their store\
+  \ (#2125).\n  - **Pins:** a standalone cycle pins at creation, a campaign at its\
+  \ start, and a counted roll declares memory\n    disabled (#2126).\n  - **Supply:**\
+  \ recall and slots at each consuming task, with every answer disclosed (#2127),\
+  \ and the correction loop's\n    repair slot (#2129). The pulse-check repair chain\
+  \ runs on its roles' squad-profile models (#2128; #2130).\n  - **Approval:** approval\
+  \ with its combined check, revocation, the lessons API and CLI, assessment, and\
+  \ the app-build\n    indicators (#2134).\n  - **Exposures:** a re-dispatched authoring\
+  \ records its own exposure (#2162; #2163), stored as one invocation's\n    (#2165;\
+  \ #2166).\n  - **Returns:** a return classified only in prose enters through a reviewed\
+  \ annotation (#2160; #2186).\n- **Slice 2: the authoring replay.** Three arms differ\
+  \ only by the intervention, with validity first, temporal validity\n  by evidence\
+  \ time, a frozen manifest, and no store writes (#2137). The in-container replay\
+  \ loads the agent's config\n  with the secret provider (#2139). The replay's call\
+  \ record uses the envelope's own digest (#2106; #2140). The\n  convergence replay\
+  \ hands its repair the memory-disabled recall (#2144).\n- **Slice 4: the first lesson\
+  \ and the window** (#2107).\n  - the slice 4 pre-registration, and the rubric it\
+  \ fixes (#2161);\n  - the window's five campaign definitions, one objective each\
+  \ (#2196);\n  - the finding (#2207);\n  - the cut's pre-registration, with the lesson\
+  \ disabled at the cut (#2209).\n- **SIP-0110 records:**\n  - Memory Entry Points\
+  \ for chat and task assignment, accepted by the owner and absorbed into SIP-0110\
+  \ as §5g and\n    Appendix A (#2185). Its eleven parts are placed in 2.3–2.5 (#2174–#2184);\n\
+  \  - §5i: a memory-disabled unit pins a disabled snapshot with no lessons, as built\
+  \ since #2126 (#2217; #2218).\n\n**Campaigns: the plan-review tier and its escalation\
+  \ queue (SIP-0109, #1708).**\n- **A return names what went wrong**, or says nothing\
+  \ fits and why (§24bi, the plan's D2; #2132).\n- **The policy**, as the owner ruled\
+  \ it (#2145).\n- **The tier:** a campaign declares who decides its plan gates, and\
+  \ the tier decides them when it says so (#2146).\n  It approves a plan with no open\
+  \ question, inside the objective's scope, framed once. Anything else escalates.\n\
+  - **The escalation queue:** an unanswered gate expires at the bound, and its cycle\
+  \ is parked, unaccepted (#2147). A\n  late answer is recorded (#2148), and it reaches\
+  \ a plan only by being carried, and only to the same question (#2188;\n  #2189).\
+  \ The tier's docstrings describe the carried answer (#2195), and §24bk is ratified\
+  \ as written (#2197).\n- **Activated** in the cut's shakeout, where it decided all\
+  \ 3 plan gates (#1708).\n- **The proposer** is told what its stack does with a request\
+  \ field the manifest does not declare (#2114; #2117).\n\n**Cycles, the correction\
+  \ loop and the audit.**\n- **A block cut by the completion cap** is dropped and\
+  \ the call asked again once. It is never taken as written\n  (#2149; #2150).\n-\
+  \ **Scaffold attribution:** an error the app raised under the spine's own call is\
+  \ the app's, never the fill's\n  (#2152; #2156).\n- **The boot audit:** a UI call\
+  \ answered with an error status and no JSON is reported as what came back, never\
+  \ as a\n  page (#2154; #2157).\n- **The analyzer-claim refutation** knows the scaffold's\
+  \ frozen files, so a true claim about one stands (#2155; #2158).\n\n**Security,\
+  \ auth and deploy.**\n- **The realm admin's password is the deploy's own,** held\
+  \ in `.env`, and the realm exports commit none (#2079;\n  #2138).\n- **The realm\
+  \ sync** gives each service account the realm roles its export declares (#2083;\
+  \ #2133).\n- **nat, eve and han keep their memory store** on a volume of their own,\
+  \ and a guard holds every agent to it (#2112;\n  #2172).\n- **The deploy record:**\
+  \ the sandbox is rebuilt before it is written, and a stale record fails `verify_loaded`\n\
+  \  (#2193; #2194).\n\n**Release and verification tooling.**\n- **Loaded checks:**\
+  \ each rebuild's regression pair adds its rows (#2135, #2136, #2192). `verify_loaded\
+  \ --only` with\n  an id that names no row runs nothing, and says so (#2190).\n-\
+  \ **Disputes:** a dispute is read as the appendix shows it, so a reason that quotes\
+  \ code still disputes (#2168;\n  #2169).\n- **Configs:**\n  - the regression pairs'\
+  \ configs for rebuilds 5–9 (#2151, #2159, #2164, #2167, #2170);\n  - the redispatch\
+  \ diagnostic's config (#2191);\n  - the cut set's configs (#2211).\n- **The cut's\
+  \ records:** the pre-registration's amendment (#2215), registration (#2216) and\
+  \ readings (#2219).\n- **Tests:** the console command-handler stubs restore the\
+  \ state they found (#2082; #2118).\n\n**SIPs.**\n- **SIP-0111, TensorFold provider\
+  \ adapter, accepted** (#2198): a third candidate engine on GB10, behind SIP-0106's\n\
+  \  seam, gated by measurement.\n- **SIP-0104:** a failing slot assertion's location\
+  \ says who wrote it, not what is wrong (#2187)."
+pull_requests:
+- number: 2220
+  title: 'chore(release): 2.2.0 - Cross-Cycle Memory, Phase 1: bump, markers, CHANGELOG,
+    ROADMAP entry, the SIP sweep'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1708
+  merged_at: '2026-10-11'
+- number: 2219
+  title: 'docs(plans): the 2.2 cut set''s record - PASS, 4 of 4 accepted, P1 and P3
+    held, P2 and P4 with no case'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-11'
+- number: 2218
+  title: 'docs(sip-0110): §5i, a memory-disabled unit pins a disabled snapshot with
+    no lessons, as built since #2126'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2217
+  merged_at: '2026-10-11'
+- number: 2216
+  title: 'docs(plans): the 2.2 cut''s set registered: the shakeout clean in round
+    1, the pins read'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-11'
+- number: 2215
+  title: 'docs(plans): the 2.2 cut''s precondition 3, amended by the owner after the
+    tier diagnostic; P5 withdrawn'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-10'
+- number: 2211
+  title: 'docs(verification): the 2.2 cut set''s regression configs, counted, two
+    rolls per stack, pinned to rebuild 12'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-10'
+- number: 2209
+  title: 'docs(plans): the 2.2 cut''s pre-registration, ruled by the owner, with the
+    lesson disabled at the cut (SIP-0110 §5h)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2107
+  merged_at: '2026-10-10'
+- number: 2207
+  title: 'docs(sip-0110): the 2.2 window''s finding, no demonstrated useful benefit,
+    and its readout'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-10'
+- number: 2198
+  title: 'docs(sips): SIP-0111 TensorFold provider adapter, accepted: a third candidate
+    engine on GB10 behind SIP-0106s seam, gated by measurement'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-09'
+- number: 2197
+  title: 'docs(sip-0109): §24bk ratified by the owner as written'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-09'
+- number: 2185
+  title: 'docs(sips): memory entry points for chat and task assignment, proposed to
+    land in SIP-0110'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-09'
+- number: 2196
+  title: 'feat(campaigns): the 2.2 measurement window''s five campaign definitions,
+    one objective each'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-09'
+- number: 2161
+  title: 'docs(plans): the slice 4 pre-registration, adopted by the owner, and the
+    rubric it fixes'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-09'
+- number: 2195
+  title: 'docs(campaigns): the tier''s docstrings describe §24bm''s carried answer,
+    not §24bl''s id match'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-09'
+- number: 2194
+  title: 'fix(deploy): the sandbox is rebuilt before the deploy record, and a stale
+    record fails verify_loaded'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2193
+  merged_at: '2026-10-09'
+- number: 2192
+  title: 'fix(verification): loaded check 2096-runtime counts the ten memory routes
+    since #2186'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-09'
+- number: 2191
+  title: 'docs(verification): the redispatch diagnostic''s config, uncounted, a contentless
+    first builder emission'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-09'
+- number: 2190
+  title: 'fix(verification): verify_loaded --only with an id that names no row runs
+    nothing and says so'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-09'
+- number: 2189
+  title: 'fix(campaigns): a late answer reaches a plan only by being carried, and
+    only to the same question'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2188
+  merged_at: '2026-10-09'
+- number: 2186
+  title: 'feat(memory): a return classified only in prose enters through a reviewed
+    annotation'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2160
+  merged_at: '2026-10-09'
+- number: 2187
+  title: 'docs(sip-0104): a failing slot assertion''s location says who wrote it,
+    not what is wrong'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-09'
+- number: 2172
+  title: 'fix(compose): nat, eve and han keep their memory store on a volume of their
+    own'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-09'
+- number: 2170
+  title: 'docs(verification): the rebuild 9 regression pair''s configs, uncounted,
+    memory disabled, tracking the loaded check for #2168'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-09'
+- number: 2169
+  title: 'fix(verification): a dispute is read as the appendix shows it, so a reason
+    that quotes code still disputes'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2168
+  merged_at: '2026-10-09'
+- number: 2167
+  title: 'docs(verification): the rebuild 8 regression pair''s configs, uncounted,
+    memory disabled, tracking the loaded check for #2165'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-09'
+- number: 2166
+  title: 'fix(memory): an exposure is one invocation''s in the table too, so a re-dispatch''s
+    own is stored'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2165
+  merged_at: '2026-10-09'
+- number: 2164
+  title: 'docs(verification): the rebuild 7 regression pair''s configs, uncounted,
+    memory disabled, tracking the loaded check for the per-invocation exposure'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-08'
+- number: 2163
+  title: 'fix(memory): a re-dispatched authoring records its own exposure, as SIP-0110
+    §0.2 makes an exposure one invocation''s'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2162
+  merged_at: '2026-10-08'
+- number: 2159
+  title: 'docs(verification): the rebuild 6 regression pair''s configs, uncounted,
+    memory disabled, and the loaded checks for #2152 and #2155'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-08'
+- number: 2158
+  title: 'fix(correction): the analyzer-claim refutation knows the scaffold''s frozen
+    files, so a true claim about one stands'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2155
+  merged_at: '2026-10-08'
+- number: 2157
+  title: 'fix(audit): a UI call answered with an error status and no JSON is reported
+    as what came back, never as a page'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2154
+  merged_at: '2026-10-08'
+- number: 2156
+  title: 'fix(scaffold): an error the app raised under the spine''s own call is the
+    app''s, never the fill''s'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2152
+  merged_at: '2026-10-08'
+- number: 2151
+  title: 'docs(verification): the rebuild 5 regression pair''s configs, uncounted,
+    memory disabled'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-08'
+- number: 2150
+  title: 'fix(handlers): a block the completion cap cut is dropped and the call asked
+    again once, never taken as written by #431''s close at EOF'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2149
+  merged_at: '2026-10-08'
+- number: 2148
+  title: 'feat(campaigns): a late answer to an expired escalation is recorded, and
+    a later tier gate of the project reads it by decision id'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-08'
+- number: 2147
+  title: 'feat(campaigns): the plan-review tier''s escalation queue: an unanswered
+    gate expires at the bound and its cycle is parked, unaccepted'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-08'
+- number: 2146
+  title: 'feat(campaigns): a campaign declares who decides its plan gates, and the
+    plan-review tier decides them when it says so'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-08'
+- number: 2145
+  title: 'docs(sip-0109): the plan-review tier and the escalation queue, as the owner
+    ruled them'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-08'
+- number: 2144
+  title: 'fix(replay): the convergence replay hands its repair the memory-disabled
+    recall that #2129 made required'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-08'
+- number: 2143
+  title: 'docs(sip-0110): slice 3 shipped - inert and observed live on the regression
+    pair and the campaign proof'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2096
+  merged_at: '2026-10-08'
+- number: 2142
+  title: 'fix(planning): the plan proposers derive the id they render, so their authoring
+    envelopes reconstruct'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2141
+  merged_at: '2026-10-08'
+- number: 2140
+  title: 'fix(memory): the replay''s call record uses the envelope''s own digest,
+    and slice 2 of SIP-0110 is shipped'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2106
+  merged_at: '2026-10-08'
+- number: 2139
+  title: 'fix(memory): the in-container authoring replay loads the agent''s config
+    with the secret provider, and every framework config load is guarded for it'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-08'
+- number: 2138
+  title: 'fix(auth): the realm admin''s password is the deploy''s own, held in .env,
+    and the realm exports commit none'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2079
+  merged_at: '2026-10-08'
+- number: 2137
+  title: 'feat(memory): SIP-0110 slice 2 - the authoring replay, validity first, temporal
+    validity by evidence time, a frozen manifest'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-08'
+- number: 2136
+  title: 'fix(verification): #1964''s loaded check reads the no-op recall''s answer
+    since slice 3c'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-08'
+- number: 2135
+  title: 'chore(verification): 2.2 rebuild 1''s regression pair and slice 3''s loaded
+    checks'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-08'
+- number: 2133
+  title: 'fix(ops): the realm sync gives each service account the realm roles its
+    export declares'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2083
+  merged_at: '2026-10-08'
+- number: 2134
+  title: 'feat(memory): SIP-0110 slice 3d - approval with its combined check, revocation,
+    the lessons API and CLI, assessment and the app-build indicators'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-08'
+- number: 2130
+  title: 'fix(cycles): the pulse-check repair chain runs on its roles'' squad-profile
+    models (#2128), and its development.repair is supplied its approved lessons (SIP-0110
+    slice 3c)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2128
+  merged_at: '2026-10-08'
+- number: 2132
+  title: 'feat(campaigns): a return names what went wrong, or says nothing fits and
+    why - SIP-0109 §24bi, the 2.2 plan''s D2'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-08'
+- number: 2131
+  title: 'docs(sip-0110): slice 1 shipped - every seam''s envelope reconstructs byte
+    for byte on a live cycle'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2105
+  merged_at: '2026-10-08'
+- number: 2129
+  title: 'feat(memory): SIP-0110 slice 3c''s repair slot - each correction-loop repair
+    asks its unit''s pinned snapshot when it is composed, and shows supplied lessons
+    after its failure evidence'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-08'
+- number: 2127
+  title: 'feat(memory): SIP-0110 slice 3c''s recall and slots - each consuming task
+    asks its unit''s pinned snapshot, every answer is disclosed, and supplied lessons
+    render in a slot of their own'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-08'
+- number: 2126
+  title: 'feat(memory): SIP-0110 slice 3c''s pins - a standalone cycle pins at create,
+    a campaign at its start, and a counted roll declares memory disabled'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-08'
+- number: 2125
+  title: 'feat(memory): SIP-0110 slice 3c''s store - lessons, approvals and each unit''s
+    single pin'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-08'
+- number: 2124
+  title: 'feat(memory): SIP-0110 slice 3c''s core - lessons, approvals, the pinned
+    snapshot and deterministic recall'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-08'
+- number: 2122
+  title: 'feat(memory): SIP-0110 slice 3a''s hook - project recent cycles and campaigns
+    beside execution, every five minutes'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-08'
+- number: 2121
+  title: 'feat(memory): SIP-0110 slice 3b - the failure-shape sorter and the repeat
+    report'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-08'
+- number: 2123
+  title: 'fix(memory): store an authoring envelope as json so its inputs keep their
+    order'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-08'
+- number: 2120
+  title: 'feat(memory): SIP-0110 slice 3a - observe rejected plans, failed rounds
+    and returned proposals, stored beside the cycle registry'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-08'
+- number: 2119
+  title: 'feat(memory): SIP-0110 slice 1, part two - prove an authoring envelope complete
+    by re-running its handler, byte for byte'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-08'
+- number: 2118
+  title: 'test(console): the command-handler stubs restore the state they found, so
+    the console files pass in either order'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2082
+  merged_at: '2026-10-08'
+- number: 2117
+  title: 'fix(campaigns): the proposer is told what its stack does with a request
+    field the manifest does not declare'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2114
+  merged_at: '2026-10-08'
+- number: 2116
+  title: 'feat(memory): SIP-0110 slice 1, part one - capture each authoring seam before
+    it authors, and record it in the cycle registry'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-08'
+- number: 2115
+  title: 'docs(sips): SIP-0110 §5e records slice 1''s source-case inspection, and
+    the plan places #2114'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-08'
+- number: 2113
+  title: 'docs(plans): the 2.2.0 plan is adopted, with D1–D15 as recommended, and
+    the 2.2 standing authority'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-08'
+- number: 2111
+  title: 'docs(sips): SIP-0110 revision 6, the cycle restored as Phase 1''s unit,
+    and the 2.2 plan re-scoped for it'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-08'
+- number: 2110
+  title: 'docs(release): the v2.1.0 release package, its records on the Release, and
+    the cut''s housekeeping'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-07'
+sip_moves:
+- sip: SIP-0111-TensorFold-Provider-Adapter
+  from: null
+  to: accepted
+- sip: SIP-Memory-Entry-Points
+  from: null
+  to: deprecated
+sip_amendments:
+- sip: SIP-0021-Agent-Memory-Protocol
+  status: implemented
+- sip: SIP-0085-Console-Messaging-Capability-for
+  status: implemented
+- sip: SIP-0088-Agent-Runtime-Modes
+  status: accepted
+- sip: SIP-0090-Agent-Embodiment-Substrate
+  status: accepted
+- sip: SIP-0091-Duty-Durability-via-Temporal
+  status: accepted
+- sip: SIP-0092-Implementation-Plan-Improvement
+  status: accepted
+- sip: SIP-0093-Multi-Role-Plan-Authoring
+  status: accepted
+- sip: SIP-0096-Verification-Evidence-Integrity
+  status: implemented
+- sip: SIP-0101-Cycle-Replay-Harness
+  status: accepted
+- sip: SIP-0102-Ephemeral-Application-Sandbox
+  status: accepted
+- sip: SIP-0104-Deterministic-Verification-Scaffolding-with
+  status: implemented
+- sip: SIP-0105-Stack-Blueprint-Contract
+  status: accepted
+- sip: SIP-0109-Campaign-Orchestration
+  status: accepted
+- sip: SIP-0110-Cross-Cycle-Memory
+  status: accepted
+- sip: SIP-Agent-Embodiment-Runtime
+  status: proposed
+cycles:
+- cycle_id: cyc_0009e2942a6c
+  role: counted
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_e2a1ad13af47
+  role: counted
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:frontend_compiles
+  - acceptance:regex_match
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_5fb4b1537245
+  role: counted
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_e7e0670e2681
+  role: counted
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:frontend_compiles
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_4a2cb6a9bd5c
+  role: shakeout
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-participants
+  - vc-probe-runs-participants-duplicate
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_a86b06863e30
+  role: shakeout
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-participants
+  - vc-probe-runs-participants-duplicate
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 3
+- cycle_id: cyc_786c55b3c38f
+  role: shakeout
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:assertion_kinds_match
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-participants
+  - vc-probe-runs-participants-duplicate
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 3
+- cycle_id: cyc_53e5c36be4e1
+  role: diagnostic
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_7b3dedce7bc5
+  role: diagnostic
+  captured: true
+  status: cancelled
+  verdict: accepted
+  verified: []
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 1
+screenshots:
+- prefect-flow-run-shakeout-increment-2-the-date-sort-built-and-tested-with-no-correction-round.png
+- shakeout-increment-2-a-run-s-detail-with-its-capacity.png
+- shakeout-increment-2-the-create-run-form.png
+- shakeout-increment-2-the-run-list-sorted-by-date.png
+showcase:
+  cycle_id: cyc_786c55b3c38f
+  reason: 'the cut''s shakeout after its second increment: the app the campaign evolved
+    under the plan-review tier, with per-run capacity and the run list sorted by date;
+    no roll in the counted set had a correction round to show'
+  role: shakeout

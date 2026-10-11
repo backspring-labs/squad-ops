@@ -1,0 +1,27 @@
+tag: v2.2.0
+applied_at: '2026-10-11T14:06:48+00:00'
+worktrees_removed:
+- /tmp/claude-1000/-home-jladd-Code-squad-ops/b7dce674-8830-4c22-8028-2e9ef715d4d7/scratchpad/wt-release
+branches_deleted:
+- docs/sip-0110-slice-1-shipped
+- feature/2-2-0-rebuild1-regression
+- feature/sip-0109-d2-return-classification
+- feature/sip-0110-slice-1-authoring-capture
+- feature/sip-0110-slice-1-reconstruction
+- feature/sip-0110-slice-2-replay
+- feature/sip-0110-slice-3a-hooks
+- feature/sip-0110-slice-3a-observe
+- feature/sip-0110-slice-3b-shapes
+- feature/sip-0110-slice-3c-pins
+- feature/sip-0110-slice-3c-repair
+- feature/sip-0110-slice-3c-store
+- feature/sip-0110-slice-3c-supply
+- feature/sip-0110-slice-3d
+- fix/2079-admin-password
+- fix/2082-console-test-order
+- fix/2083-service-account-roles
+- fix/2105-envelope-key-order
+- fix/2114-undeclared-field-convention
+- fix/2128-pulse-repair-model
+- fix/loaded-check-1964
+problems: []
