@@ -78,7 +78,7 @@ re-places it.
 | Phase 1, the next build-side experiment: broader multi-increment campaigns with memory on, the repeat report and the auditor's reading, a build or repair lesson only for a substantiated target, its replay check and approval, and the comparison within that target (§5h) | **unplaced** | the owner's ruling at the 2.2 cut (§5h): the 2.3 plan places it, beside Outcome Evaluation's instruments |
 | Phase 1.5: the correction lane (§13 question 3) | **dropped** | by revision 6 (§5d), which folds it into Phase 1: its observation is slice 3's, its repair seam is wired inert in slice 3, and its capture is slice 1's. A correction-round template waits for a recurring target behavior (§0.4) |
 | Phase 2: consolidation and promotion (§8) | **unplaced** | gated on Phase 1's measurement (§8). The owner ruled at the 2.2 cut that it stays gated (§5h) |
-| entry points: the legacy agent store made dormant, its failures visible (Appendix A, §A.4.3) | **placed** | 2.3.0, #2174 |
+| entry points: the legacy agent store made dormant, its failures visible (Appendix A, §A.4.3) | **shipped** | 2.3.0, PR #2246, issue #2174: the agents hold a dormant port that refuses at WARNING, chat neither recalls nor stores, and no embedder is built on a default; the eight stores re-inventoried empty (posted on #2174) |
 | entry points: chat's conversation history reaching the agent, with session ownership checked (SIP-0085 §4, §9; §A.3.3) | **placed** | 2.3.0, #2175 |
 | entry points: the context-assembly port, inert, at the four seams (§A.3.6) | **placed** | 2.3.0, #2176 |
 | entry points: the typed records (notes, preferences, project and task instructions), permissions by kind, provenance (§A.3.2–§A.3.4) | **placed** | 2.4.0, #2177 |
