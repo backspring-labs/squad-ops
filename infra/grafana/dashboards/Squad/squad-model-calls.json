@@ -1,0 +1,1535 @@
+{
+  "uid": "squad-model-calls",
+  "title": "Squad model calls",
+  "tags": [
+    "squad",
+    "squadops",
+    "llm"
+  ],
+  "description": "The agents' model calls during cycles: how many, how fast, how big, and where the time goes.",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 41,
+  "version": 1,
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "timezone": "browser",
+  "annotations": {
+    "list": []
+  },
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 3
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Every model call the agents make during a cycle, as each agent reports it (OpenTelemetry → the collector → Prometheus). Engine replays, such as the TensorFold comparison, call the engine directly and are not here. These are exact counts, sums and averages. Percentiles and peaks can't be read until the histograms get their own bucket sizes (#2260)."
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Model calls",
+      "description": "Calls in the selected time range.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 3,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "refId": "A",
+          "expr": "sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[$__range])) * 0))",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Tokens generated",
+      "description": "Completion tokens, summed over every call in the range.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "gridPos": {
+        "x": 4,
+        "y": 3,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "refId": "A",
+          "expr": "sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_completion_tokens_sum{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_completion_tokens_sum{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_completion_tokens_sum{model=~\"$model\", role=~\"$role\"}[$__range])) * 0))",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Decode rate, calls of 1,000+ tokens",
+      "description": "The average of each call's decode rate (tokens a second), over calls of 1,000 completion tokens or more. A short call decodes faster, so the long calls are the comparable figure (#2204).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 3,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "refId": "A",
+          "expr": "sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\", long=\"true\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\", long=\"true\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\", long=\"true\"}[$__range])) * 0))\n/ (sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\", long=\"true\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\", long=\"true\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\", long=\"true\"}[$__range])) * 0)) > 0)",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Time to first token",
+      "description": "Average prefill (reading the prompt) plus model load, per call: what a call waits before its first token. On long prompts this is the larger cost, and the decode rate hides it.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 3,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "refId": "A",
+          "expr": "(sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_sum{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__range])) * 0))\n/ (sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_count{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_count{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_count{model=~\"$model\", role=~\"$role\"}[$__range])) * 0)) > 0))\n+ (sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_load_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_load_seconds_sum{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_load_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__range])) * 0))\n/ (sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_load_seconds_count{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_load_seconds_count{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_load_seconds_count{model=~\"$model\", role=~\"$role\"}[$__range])) * 0)) > 0))",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Average call",
+      "description": "Average wall-clock time of one call, end to end.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 3,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "refId": "A",
+          "expr": "sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_sum{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__range])) * 0))\n/ (sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[$__range])) * 0)) > 0)",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Average prompt",
+      "description": "Average prompt tokens per call. The window is 262,144 for qwen3.8:27b under Ollama (src/squadops/llm/model_registry.py) and 65,536 on TensorFold's recipe.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "gridPos": {
+        "x": 20,
+        "y": 3,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "refId": "A",
+          "expr": "sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_sum{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_sum{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_sum{model=~\"$model\", role=~\"$role\"}[$__range])) * 0))\n/ (sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_count{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_count{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_count{model=~\"$model\", role=~\"$role\"}[$__range])) * 0)) > 0)",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Calls per 10 min, by role",
+      "description": "Model calls that finished in each 10-minute bucket.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 7,
+        "w": 12,
+        "h": 8
+      },
+      "interval": "10m",
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "pointSize": 6,
+            "spanNulls": false,
+            "drawStyle": "bars",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "barAlignment": -1
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "lead"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#1F78C1"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "strat"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#BA43A9"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "dev"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#7EB26D"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "qa"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#EF843C"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "data"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#6ED0E0"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "builder"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#EAB839"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "refId": "A",
+          "expr": "sum by (role) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[$__interval])) * 0))",
+          "legendFormat": "{{role}}",
+          "range": true
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Tokens generated per 10 min, by role",
+      "description": "Completion tokens in each 10-minute bucket.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 7,
+        "w": 12,
+        "h": 8
+      },
+      "interval": "10m",
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "pointSize": 6,
+            "spanNulls": false,
+            "drawStyle": "bars",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "barAlignment": -1
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "lead"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#1F78C1"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "strat"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#BA43A9"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "dev"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#7EB26D"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "qa"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#EF843C"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "data"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#6ED0E0"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "builder"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#EAB839"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "refId": "A",
+          "expr": "sum by (role) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_completion_tokens_sum{model=~\"$model\", role=~\"$role\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_completion_tokens_sum{model=~\"$model\", role=~\"$role\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_completion_tokens_sum{model=~\"$model\", role=~\"$role\"}[$__interval])) * 0))",
+          "legendFormat": "{{role}}",
+          "range": true
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Decode rate (tokens a second)",
+      "description": "The average decode rate of the calls in each 10-minute bucket. Long calls are the comparable figure: the rate falls as output grows.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 12,
+        "h": 8
+      },
+      "interval": "10m",
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "always",
+            "pointSize": 6,
+            "spanNulls": false,
+            "drawStyle": "line",
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "barAlignment": -1
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "calls of 1,000+ tokens"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#1F78C1"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "shorter calls"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#B7B7B7"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "refId": "A",
+          "expr": "sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\", long=\"true\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\", long=\"true\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\", long=\"true\"}[$__interval])) * 0))\n/ (sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\", long=\"true\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\", long=\"true\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\", long=\"true\"}[$__interval])) * 0)) > 0)",
+          "legendFormat": "calls of 1,000+ tokens",
+          "range": true
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "refId": "B",
+          "expr": "sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\", long=\"false\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\", long=\"false\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\", long=\"false\"}[$__interval])) * 0))\n/ (sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\", long=\"false\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\", long=\"false\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\", long=\"false\"}[$__interval])) * 0)) > 0)",
+          "legendFormat": "shorter calls",
+          "range": true
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Time to first token",
+      "description": "Average prefill and model-load time per call in each 10-minute bucket, stacked: their sum is the wait before the first token. A model load shows up as a spike on one call.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 15,
+        "w": 12,
+        "h": 8
+      },
+      "interval": "10m",
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "pointSize": 6,
+            "spanNulls": false,
+            "drawStyle": "bars",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "barAlignment": -1
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "prefill"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#EF843C"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "model load"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#6ED0E0"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "refId": "A",
+          "expr": "sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_sum{model=~\"$model\", role=~\"$role\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__interval])) * 0))\n/ (sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_count{model=~\"$model\", role=~\"$role\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_count{model=~\"$model\", role=~\"$role\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_count{model=~\"$model\", role=~\"$role\"}[$__interval])) * 0)) > 0)",
+          "legendFormat": "prefill",
+          "range": true
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "refId": "B",
+          "expr": "sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_load_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_load_seconds_sum{model=~\"$model\", role=~\"$role\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_load_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__interval])) * 0))\n/ (sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_load_seconds_count{model=~\"$model\", role=~\"$role\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_load_seconds_count{model=~\"$model\", role=~\"$role\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_load_seconds_count{model=~\"$model\", role=~\"$role\"}[$__interval])) * 0)) > 0)",
+          "legendFormat": "model load",
+          "range": true
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Average prompt size, by role",
+      "description": "Average prompt tokens per call in each 10-minute bucket. qwen3.8:27b's window is 262,144 under Ollama and 65,536 on TensorFold's recipe. The largest prompt can't be read until #2260.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 23,
+        "w": 12,
+        "h": 8
+      },
+      "interval": "10m",
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "always",
+            "pointSize": 6,
+            "spanNulls": false,
+            "drawStyle": "line",
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "barAlignment": -1
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "lead"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#1F78C1"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "strat"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#BA43A9"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "dev"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#7EB26D"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "qa"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#EF843C"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "data"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#6ED0E0"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "builder"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#EAB839"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "refId": "A",
+          "expr": "sum by (role) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_sum{model=~\"$model\", role=~\"$role\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_sum{model=~\"$model\", role=~\"$role\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_sum{model=~\"$model\", role=~\"$role\"}[$__interval])) * 0))\n/ (sum by (role) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_count{model=~\"$model\", role=~\"$role\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_count{model=~\"$model\", role=~\"$role\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_count{model=~\"$model\", role=~\"$role\"}[$__interval])) * 0)) > 0)",
+          "legendFormat": "{{role}}",
+          "range": true
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Average call time, by role",
+      "description": "Average wall-clock time per call in each 10-minute bucket.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 23,
+        "w": 12,
+        "h": 8
+      },
+      "interval": "10m",
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "always",
+            "pointSize": 6,
+            "spanNulls": false,
+            "drawStyle": "line",
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "barAlignment": -1
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "lead"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#1F78C1"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "strat"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#BA43A9"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "dev"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#7EB26D"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "qa"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#EF843C"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "data"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#6ED0E0"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "builder"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#EAB839"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "refId": "A",
+          "expr": "sum by (role) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_sum{model=~\"$model\", role=~\"$role\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__interval])) * 0))\n/ (sum by (role) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[$__interval])) * 0)) > 0)",
+          "legendFormat": "{{role}}",
+          "range": true
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "table",
+      "title": "By task type, over the selected range",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "description": "One row per role and task type. Averages are per call; the decode rate here is over all calls, long and short.",
+      "gridPos": {
+        "x": 0,
+        "y": 31,
+        "w": 24,
+        "h": 10
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "refId": "A",
+          "expr": "sum by (role, task_type) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[$__range])) * 0))",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "refId": "B",
+          "expr": "sum by (role, task_type) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_sum{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__range])) * 0))\n/ (sum by (role, task_type) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[$__range])) * 0)) > 0)",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "refId": "C",
+          "expr": "sum by (role, task_type) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\"}[$__range])) * 0))\n/ (sum by (role, task_type) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\"}[$__range])) * 0)) > 0)",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "refId": "D",
+          "expr": "sum by (role, task_type) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_sum{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_sum{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_sum{model=~\"$model\", role=~\"$role\"}[$__range])) * 0))\n/ (sum by (role, task_type) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_count{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_count{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_count{model=~\"$model\", role=~\"$role\"}[$__range])) * 0)) > 0)",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "refId": "E",
+          "expr": "sum by (role, task_type) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_sum{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__range])) * 0))\n/ (sum by (role, task_type) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_count{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_count{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_count{model=~\"$model\", role=~\"$role\"}[$__range])) * 0)) > 0)",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "refId": "F",
+          "expr": "sum by (role, task_type) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_completion_tokens_sum{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_completion_tokens_sum{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_completion_tokens_sum{model=~\"$model\", role=~\"$role\"}[$__range])) * 0))",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "role": 0,
+              "task_type": 1,
+              "Value #A": 2,
+              "Value #B": 3,
+              "Value #C": 4,
+              "Value #D": 5,
+              "Value #E": 6,
+              "Value #F": 7
+            },
+            "renameByName": {
+              "task_type": "task type",
+              "Value #A": "calls",
+              "Value #B": "avg call",
+              "Value #C": "avg decode",
+              "Value #D": "avg prompt",
+              "Value #E": "avg prefill",
+              "Value #F": "tokens generated"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "calls",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "calls"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "avg call"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "avg decode"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "avg prompt"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "avg prefill"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "tokens generated"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      }
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "model",
+        "label": "Model",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "PBFA97CFB590B2093"
+        },
+        "query": {
+          "query": "label_values(squadops_llm_call_seconds_count, model)",
+          "refId": "model"
+        },
+        "definition": "label_values(squadops_llm_call_seconds_count, model)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "sort": 1,
+        "hide": 0
+      },
+      {
+        "name": "role",
+        "label": "Role",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "PBFA97CFB590B2093"
+        },
+        "query": {
+          "query": "label_values(squadops_llm_call_seconds_count, role)",
+          "refId": "role"
+        },
+        "definition": "label_values(squadops_llm_call_seconds_count, role)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "sort": 1,
+        "hide": 0
+      }
+    ]
+  }
+}

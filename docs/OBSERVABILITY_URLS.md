@@ -42,8 +42,18 @@
 - **Alert "Spark board zone above 98 °C"** (`infra/grafana/provisioning/alerting/spark-thermals.yml`): any
   ACPI zone above 98 °C for 5 minutes, one alert per zone, named. It goes to Grafana's default contact
   point, so it notifies nobody until a channel is chosen; it shows under Alerting meanwhile
-- All three are in Grafana's **Spark** folder. Dashboards reload from the checkout within 10 s; alert rules are
-  read at Grafana's startup
+- **Squad model calls** (`infra/grafana/dashboards/Squad/squad-model-calls.json`, in the **Squad** folder): the
+  agents' model calls during cycles, from the metrics they send through the collector. It shows:
+  - calls and tokens generated per 10 minutes, by role;
+  - the decode rate of calls of 1,000+ tokens against shorter calls;
+  - time to first token (prefill plus model load), and prompt size and call time by role;
+  - a table by task type.
+
+  The counts are exact: each agent process exports its own series, and `increase()` misses a series' first
+  value (on 2026-10-11 it read 25 of 53 calls), so the queries subtract each series' value before the window
+  instead. Percentiles and peaks wait on the histograms' bucket sizes (#2260)
+- The Spark dashboards and the alert are in Grafana's **Spark** folder. Dashboards reload from the checkout
+  within 10 s; alert rules are read at Grafana's startup
 
 **Key Areas:**
 - Dashboards: http://localhost:3000/dashboards
