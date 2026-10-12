@@ -263,7 +263,9 @@ def test_the_held_out_plan_runs_every_generation_once_with_no_envelope_twice_in_
     doc = json.loads(out.read_text())
 
     ids = [m["envelope_id"] for m in doc["held_out"]]
-    assert sorted(map(tuple, doc["order"])) == sorted((eid, g) for eid in ids for g in er.GENERATIONS)
+    assert sorted(map(tuple, doc["order"])) == sorted(
+        (eid, g) for eid in ids for g in er.GENERATIONS
+    )
     assert all(a[0] != b[0] for a, b in zip(doc["order"], doc["order"][1:], strict=False))
     cells = [
         next(m for m in doc["held_out"] if m["envelope_id"] == e)["seam"] for e in doc["panel"]
