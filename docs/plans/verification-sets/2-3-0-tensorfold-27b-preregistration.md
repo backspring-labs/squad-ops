@@ -84,7 +84,7 @@ Each step's records go under `var/engine_replay/<date>-held-out/` in the main ch
 4. **The draft check:** `--part draft-check --greedy --max-tokens-cap 512`, once with `--draft on` and once with
    `--draft off`.
 5. **The switch back to Ollama,** and its healthy generation.
-6. **Scoring:** `engine_replay.py score` on both arms' `held-out` folders.
+6. **Scoring and reading:** `engine_replay.py score` on both arms, then `engine_gates.py` (§5).
 
 **What stops it:**
 - the memory watchdog (S's floors: 16 GiB after load, swap);
@@ -95,6 +95,9 @@ Each step's records go under `var/engine_replay/<date>-held-out/` in the main ch
 check under 1 h: about 28–32 h.
 
 ## 5. The readings, fixed now
+
+`scripts/dev/engine_gates.py` computes every reading below from the arms' folders and the scores. It is committed
+with this pre-registration, and a change to it after registration is recorded here with its reason.
 
 **The denominator is every planned call:** 264 an arm. A failed or timed-out call is never dropped.
 
