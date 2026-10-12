@@ -6,6 +6,22 @@
 # rebuild/deploy path so the two cannot drift.
 source "$(dirname "${BASH_SOURCE[0]}")/../../dev/ops/secrets.sh"
 
+# Set KEY=VALUE in .env: replace the line, uncomment a commented one, or append it.
+set_env_value() {
+    local key="$1" value="$2" env_file=".env"
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then
+        info "[dry-run] set ${key} in .env"
+        return 0
+    fi
+    if grep -q "^${key}=" "$env_file"; then
+        sed -i "s|^${key}=.*|${key}=${value}|" "$env_file"
+    elif grep -q "^# *${key}=" "$env_file"; then
+        sed -i "s|^# *${key}=.*|${key}=${value}|" "$env_file"
+    else
+        echo "${key}=${value}" >> "$env_file"
+    fi
+}
+
 # Ensure .env and .env.console exist for Docker Compose.
 # Copies .env from .env.example, then generates the deploy's credentials into it (#2006).
 # Generates .env.console from console lock file if missing.

@@ -147,7 +147,13 @@ echo ""
 
 # Function to check if Ollama is running
 check_ollama() {
-    echo -e "${BLUE}🔍 Checking Ollama (host.docker.internal:11434)...${NC}"
+    # #2249: where the deploy runs Ollama in a container (the Spark's overlay), it is
+    # infrastructure: started here, before anything that calls it.
+    if docker compose config --services 2>/dev/null | grep -qx ollama; then
+        echo -e "${BLUE}🔍 Starting Ollama's container...${NC}"
+        docker compose up -d --wait ollama || return 1
+    fi
+    echo -e "${BLUE}🔍 Checking Ollama (localhost:11434)...${NC}"
     
     if curl -s --connect-timeout 2 http://localhost:11434/api/version > /dev/null 2>&1; then
         echo -e "${GREEN}✅ Ollama is running on localhost:11434${NC}"

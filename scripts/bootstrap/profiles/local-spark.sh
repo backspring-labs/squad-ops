@@ -33,8 +33,6 @@ run_bootstrap() {
     apt_install_package "docker-compose-plugin" "docker"
     apt_install_package "git"
     apt_install_package "curl"
-    install_ollama
-    configure_ollama_host_binding
 
     # ── Memory containment (#1178) ─────────────────────────────────
     # Before the services start: a box with no containment is one oversized allocation
@@ -55,9 +53,9 @@ run_bootstrap() {
     enable_docker_on_boot
     DEPLOYMENT_PROFILE=local
     ensure_env_file
-
-    # The `gpu` compose profile's services (the DCGM exporter, #2204) start with the rest.
-    export COMPOSE_PROFILES=gpu
+    # Ollama in a container, and the `gpu` profile's services (the DCGM exporter, #2204), start
+    # with the rest: .env names the overlay and the profile (#2249).
+    configure_ollama_container
     local docker_rc=0
     start_docker_services || docker_rc=$?
     if [[ "$docker_rc" == "1" ]]; then

@@ -27,7 +27,7 @@ def _app_config(runtime: dict | None = None) -> AppConfig:
     """Build a minimal valid AppConfig, optionally overriding the runtime section."""
     from tests.unit.config.test_llm_provider_required import _rest
 
-    kwargs: dict = {**_rest(), "llm": LLMConfig(provider="ollama")}
+    kwargs: dict = {**_rest(), "llm": LLMConfig(provider="ollama", url="http://ollama:11434")}
     if runtime is not None:
         kwargs["runtime"] = runtime
     return AppConfig(**kwargs)
