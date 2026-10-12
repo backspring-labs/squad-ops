@@ -15,27 +15,58 @@ campaign composes its proposal, each through the same function.
 An exposure is one authoring invocation's (§0.2), so a task the loop dispatches again (a correction
 round's re-take, an emission retry) asks again and discloses its own answer, under its attempt
 (:func:`supply_the_redispatch`, #2162).
+
+Every seam asks through the context-assembly port (Appendix A §3.6, #2176). In 2.3 the port is
+:class:`LessonContextAssembly`: one optional section, the lessons today's recall supplies from the snapshot
+owner, disclosed as today's exposure, so prompts and exposures are what they were before the port.
 """
 
 from __future__ import annotations
 
 import dataclasses
+import json
+import logging
 from collections.abc import Sequence
 from datetime import datetime
 from typing import TYPE_CHECKING
 
 from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.capabilities.handlers.fault_injection import PRIOR_ATTEMPTS_KEY
-from squadops.llm.model_registry import model_family_of
+from squadops.llm.model_registry import get_model_spec, model_family_of
+from squadops.memory.context import (
+    ChatTurn,
+    ContextBundle,
+    ContextRequest,
+    Disposition,
+    Need,
+    ProjectBound,
+    RecordRef,
+    Section,
+    SectionKind,
+    TaskInvocation,
+    UnitRef,
+)
 from squadops.memory.exposures import Exposure
-from squadops.memory.lessons import Recalled
+from squadops.memory.lessons import RecallDisposition, Recalled, RecallPolicy, _tokens
 from squadops.memory.recall import LESSONS_INPUT, RecallQuery, UnitKind
+from squadops.ports.memory.context_assembly import ContextAssemblyPort
 
 if TYPE_CHECKING:
     from squadops.cycles.models import Cycle
-    from squadops.memory.authoring_envelope import AuthoringSeam
     from squadops.ports.memory.recall import FailurePatternRecallPort
     from squadops.tasks.models import TaskEnvelope
+
+logger = logging.getLogger(__name__)
+
+#: Recall's outcomes, as the lesson section's dispositions (§3.6).
+_SECTION_DISPOSITION = {
+    RecallDisposition.SUPPLIED: Disposition.SUPPLIED,
+    RecallDisposition.NONE_ELIGIBLE: Disposition.NONE_ELIGIBLE,
+    RecallDisposition.DISABLED: Disposition.DISABLED,
+    RecallDisposition.OMITTED_BY_BUDGET: Disposition.OMITTED_BY_BUDGET,
+    RecallDisposition.INCOMPATIBLE: Disposition.INCOMPATIBLE,
+    RecallDisposition.FAILED: Disposition.FAILED,
+}
 
 
 def unit_of(cycle: Cycle) -> tuple[UnitKind, str]:
@@ -45,17 +76,56 @@ def unit_of(cycle: Cycle) -> tuple[UnitKind, str]:
     return UnitKind.CYCLE, cycle.cycle_id
 
 
-def query_for(envelope: TaskEnvelope, *, unit: tuple[UnitKind, str], stack: str) -> RecallQuery:
-    """The task's recall query. The role is the plan step's and the model the one the plan resolved
-    for it, both written by the framework, never by an agent (§0.8 step 1)."""
+def prompt_budget_of(envelope: TaskEnvelope) -> int:
+    """§3.6's total prompt budget: the model's context window (SIP-0073's registry) less its completion
+    reserve and the task's own inputs, measured as recall measures lessons. A model the registry does not
+    know has none, since an unknown never means room. The reserve is the registry's default completion
+    budget; nothing reads this in 2.3, and the binding sections that will (#2179) refine it."""
+    spec = get_model_spec(str(envelope.inputs.get("agent_model") or ""))
+    if spec is None:
+        return 0
+    own = _tokens(json.dumps(envelope.inputs, sort_keys=True, default=str))
+    return max(0, spec.context_window - spec.default_max_completion - own)
+
+
+def request_for(
+    envelope: TaskEnvelope, *, unit: tuple[UnitKind, str], stack: str, run_id: str
+) -> ContextRequest:
+    """The task's context request, from trusted context only: its project and cycle from the envelope,
+    the role the plan step names and the model the plan resolved, both written by the framework, never
+    by an agent (§0.8 step 1), and the unit whose snapshot answers."""
+    return ContextRequest(
+        binding=ProjectBound(envelope.project_id),
+        consumer=TaskInvocation(
+            run_id=run_id,
+            task_id=envelope.task_id,
+            attempt=attempt_of(envelope),
+            target_cycle_id=envelope.cycle_id,
+            snapshot_owner=UnitRef(*unit),
+            task_type=str(envelope.task_type),
+            role=str((envelope.metadata or {}).get("role") or ""),
+            stack=stack,
+            model_family=model_family_of(str(envelope.inputs.get("agent_model") or "")),
+            agent_id=envelope.agent_id,
+            prompt_budget=prompt_budget_of(envelope),
+        ),
+    )
+
+
+def query_of(request: ContextRequest) -> RecallQuery:
+    """Today's recall query for a task invocation's request: its unit is the snapshot owner, never the
+    target cycle (§3.7). An empty field matches no lesson (§0.8 step 3)."""
+    task = request.consumer
+    if not isinstance(task, TaskInvocation) or not isinstance(request.binding, ProjectBound):
+        raise TypeError("recall answers a task invocation bound to a project")
     return RecallQuery(
-        project_id=envelope.project_id,
-        task_type=str(envelope.task_type),
-        role=str((envelope.metadata or {}).get("role") or ""),
-        stack=stack,
-        model_family=model_family_of(str(envelope.inputs.get("agent_model") or "")),
-        unit_kind=unit[0],
-        unit_id=unit[1],
+        project_id=request.binding.project_id,
+        task_type=task.task_type,
+        role=task.role,
+        stack=task.stack,
+        model_family=task.model_family,
+        unit_kind=task.snapshot_owner.kind,
+        unit_id=task.snapshot_owner.unit_id,
     )
 
 
@@ -66,9 +136,9 @@ def attempt_of(envelope: TaskEnvelope) -> int:
     return int((envelope.inputs or {}).get(PRIOR_ATTEMPTS_KEY) or 0) + 1
 
 
-def lessons_input(recalled: Recalled) -> dict | None:
+def lessons_input(recalled: Recalled | None) -> dict | None:
     """What a task is handed on ``LESSONS_INPUT``, or ``None`` when nothing was supplied."""
-    if not recalled.supplied:
+    if recalled is None or not recalled.supplied:
         return None
     return {
         "snapshot": recalled.snapshot_id,
@@ -118,7 +188,7 @@ async def supply_lessons(
             supplied.append(envelope)
             continue
         handed = await _ask_and_disclose(
-            envelope, seam, recall=recall, unit=unit, stack=stack, run_id=run_id, now=now
+            envelope, recall=recall, unit=unit, stack=stack, run_id=run_id, now=now
         )
         if handed is None:
             supplied.append(envelope)
@@ -150,12 +220,10 @@ async def supply_the_redispatch(
     held = [e for e in envelopes if e is not None]
     if not held:
         return
-    seam = authoring_seam_of(str(held[0].task_type))
-    if seam is None:
+    if authoring_seam_of(str(held[0].task_type)) is None:
         return
     handed = await _ask_and_disclose(
         held[0],
-        seam,
         recall=recall,
         unit=unit_of(cycle),
         stack=cycle_stack(cycle) or "",
@@ -171,7 +239,6 @@ async def supply_the_redispatch(
 
 async def _ask_and_disclose(
     envelope: TaskEnvelope,
-    seam: AuthoringSeam,
     *,
     recall: FailurePatternRecallPort,
     unit: tuple[UnitKind, str],
@@ -179,21 +246,66 @@ async def _ask_and_disclose(
     run_id: str,
     now: datetime,
 ) -> dict | None:
-    """One invocation's recall: asked with the task's trusted scope, disclosed under its attempt,
-    and what it is handed (``None`` when nothing is supplied)."""
-    query = query_for(envelope, unit=unit, stack=stack)
-    recalled = await recall.recall(query)
-    await recall.disclose(
-        Exposure.of(
-            run_id=run_id,
-            task_id=envelope.task_id,
-            cycle_id=envelope.cycle_id,
-            agent_id=envelope.agent_id,
-            seam=seam.value,
-            query=query,
-            recalled=recalled,
-            recorded_at=now,
-            attempt=attempt_of(envelope),
+    """One invocation's context, through the port: assembled with the task's trusted scope, disclosed
+    under its attempt, and what it is handed (``None`` when nothing is supplied)."""
+    assembly = LessonContextAssembly(recall, now=now)
+    bundle = await assembly.assemble(request_for(envelope, unit=unit, stack=stack, run_id=run_id))
+    await assembly.disclose(bundle)
+    return lessons_input(bundle.recalled)
+
+
+class LessonContextAssembly(ContextAssemblyPort):
+    """The context-assembly port as 2.3 builds it (Appendix A §3.6, #2176): inert.
+
+    Its one section is SIP-0110's lessons, optional, answered by today's recall from the snapshot owner, and
+    its disclosure is today's exposure. There is no binding section yet, so every bundle is complete, and
+    the lesson budget is the snapshot's own: recall applies it, exactly as before (its effective-budget
+    input is #2179's). A chat turn's lesson section is ``not_applicable``, and its exposure is #2180's.
+    """
+
+    def __init__(self, recall: FailurePatternRecallPort, *, now: datetime) -> None:
+        self._recall = recall
+        self._now = now
+
+    async def assemble(self, request: ContextRequest) -> ContextBundle:
+        if isinstance(request.consumer, ChatTurn):
+            lessons = Section(SectionKind.LESSONS, Need.OPTIONAL, Disposition.NOT_APPLICABLE)
+            return ContextBundle(request, (lessons,), complete=True)
+        try:
+            recalled = await self._recall.recall(query_of(request))
+        except Exception:  # the port never raises: a recall that raised is a failed one, never none
+            logger.exception("recall raised for task %s", request.consumer.task_id)
+            recalled = Recalled(snapshot_id=None, disposition=RecallDisposition.FAILED)
+        lessons = Section(
+            SectionKind.LESSONS,
+            Need.OPTIONAL,
+            _SECTION_DISPOSITION[recalled.disposition],
+            supplied=tuple(
+                RecordRef(e.revision.pattern_id, str(e.revision.revision))
+                for e in recalled.supplied
+            ),
+            omitted=tuple((RecordRef.of_revision_id(r), why) for r, why in recalled.omitted),
+            effective_budget=RecallPolicy().token_budget,
         )
-    )
-    return lessons_input(recalled)
+        return ContextBundle(request, (lessons,), complete=True, recalled=recalled)
+
+    async def disclose(self, bundle: ContextBundle) -> None:
+        task = bundle.request.consumer
+        if not isinstance(task, TaskInvocation) or bundle.recalled is None:
+            return
+        seam = authoring_seam_of(task.task_type)
+        if seam is None:
+            return
+        await self._recall.disclose(
+            Exposure.of(
+                run_id=task.run_id,
+                task_id=task.task_id,
+                cycle_id=task.target_cycle_id,
+                agent_id=task.agent_id,
+                seam=seam.value,
+                query=query_of(bundle.request),
+                recalled=bundle.recalled,
+                recorded_at=self._now,
+                attempt=task.attempt,
+            )
+        )

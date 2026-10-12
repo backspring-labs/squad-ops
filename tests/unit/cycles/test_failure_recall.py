@@ -247,6 +247,35 @@ async def test_a_campaigns_cycle_selects_from_its_campaigns_snapshot():
     assert {x.query.unit_id for x in await store.list_exposures("run_recall0001")} == {"cmp_x"}
 
 
+async def test_every_consuming_task_asks_the_context_port_with_its_cycle_and_its_snapshot_owner():
+    """#2176: the seams go through the context-assembly port. Bugs caught: a seam that still calls
+    recall directly, so 2.4's binding sections would never reach it; a request whose snapshot owner is
+    the cycle, so a campaign's cycle asks a snapshot it never pinned; a target cycle taken from the
+    campaign, so a task instruction for one cycle would match another (§3.7)."""
+    from squadops.capabilities.lesson_supply import LessonContextAssembly
+    from squadops.memory.context import UnitRef
+
+    seen = []
+    original = LessonContextAssembly.assemble
+
+    async def spy(self, request):
+        seen.append(request)
+        return await original(self, request)
+
+    store = await _store_with(("Name the manifest element each criterion checks.", _DESIGN))
+    await _pinned(store, UnitKind.CAMPAIGN, "cmp_x")
+    cycle = _framing_cycle(campaign_id="cmp_x")
+    with patch.object(LessonContextAssembly, "assemble", spy):
+        supplied = await _supplied(SnapshotRecall(store), cycle)
+
+    consuming = [e.task_id for e in supplied if authoring_seam_of(str(e.task_type))]
+    assert [r.consumer.task_id for r in seen] == consuming
+    assert {(r.consumer.target_cycle_id, r.consumer.snapshot_owner) for r in seen} == {
+        (cycle.cycle_id, UnitRef(UnitKind.CAMPAIGN, "cmp_x"))
+    }
+    assert {r.binding.project_id for r in seen} == {cycle.project_id}
+
+
 async def test_a_unit_with_no_pin_hands_nothing_and_records_the_recall_as_failed():
     """§0.8. Bug caught: a unit whose pin failed read as memory off, so its tasks count as a
     memory-off trial rather than an invalid measurement."""
