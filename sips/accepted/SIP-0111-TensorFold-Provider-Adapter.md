@@ -362,6 +362,8 @@ Today `LLMRequest` and `LLMPort`'s `generate`, `chat`, `chat_stream` and `chat_s
 - `reasoning_effort` carries the port's level, `none|low|medium|high`, and TensorFold maps `high` to Qwen3.8's `xhigh`
   itself.
 - The adapter never sends `chat_template_kwargs.enable_thinking`, which would override the effort (§2).
+- **Amended by §9c (ruled 2026-10-12):** the level is not sent. TensorFold gets thinking on or off through
+  `enable_thinking`, and with thinking on the recipe's `parity_effort`, so its prompt is Ollama's to the token.
 
 **The acceptance tests:**
 - distinct replay seeds reach the server;
@@ -690,10 +692,10 @@ Nothing else in §5.6 changes: the order, the floors and failing closed are as w
 **Who ruled it.** The owner approved moving Ollama into Docker ("go ahead with moving Ollama into docker on that scope",
 2026-10-11). The switch's use of it follows from that, and #2199 was told (issuecomment-6115685094).
 
-### 9c. Reasoning is sent at parity with Ollama's prompt (PROPOSED 2026-10-12, awaiting the owner's ruling)
+### 9c. Reasoning is sent at parity with Ollama's prompt (RULED 2026-10-12)
 
-**What it would change.** §5.1's "Reasoning" and §9a item 1 send TensorFold the port's level as `reasoning_effort`,
-with `high` heard as `xhigh`. Under this amendment the harness, and G2's adapter, send what Ollama's prompt says:
+**What changed.** §5.1's "Reasoning" and §9a item 1 sent TensorFold the port's level as `reasoning_effort`, with
+`high` heard as `xhigh`. From this ruling the harness, and G2's adapter, send what Ollama's prompt says:
 - thinking on or off (`chat_template_kwargs.enable_thinking`);
 - with thinking on, the recipe's `parity_effort`: the level whose rendered prompt is Ollama's to the token;
 - never the port's level.
@@ -720,4 +722,6 @@ measure the instruction as well as the engine.
 - §2's note that an explicit `enable_thinking` "wins over `reasoning_effort`" concerns `false`. With `true`, v0.6.6
   hears both: thinking on, at the effort sent (`cuda/server.py`, `heard_effort`).
 
-**Who rules it.** The owner. Until then, the exploratory runs use parity, and no counted gate has run.
+**Who ruled it.** The owner approved it on 2026-10-12 ("1, yes", answering whether TensorFold should get exactly the
+same prompt as Ollama). No counted gate had run. From here, §5.1's "Reasoning" and §9a item 1 are read with this
+change.
