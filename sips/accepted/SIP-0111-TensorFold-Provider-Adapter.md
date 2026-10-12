@@ -668,3 +668,54 @@ performance in making a decision without such hard lines drawn early." So:
   the EXL3 pack's prefill.
 
 **Who ruled it.** The owner, 2026-10-11, with the 2.3 plan's D9 and D10. The supervisor drafted it.
+
+### 9b. S switches both containers (2026-10-11, with #2249)
+
+**What changed.** §5.6 was written while Ollama was a host system service, so its steps 3 and 7 stop and start "Ollama"
+without saying how, and the switch could not do it without sudo. #2249 moved the Spark's Ollama into a container
+(`docker-compose.ollama.yml`), so `engine_switch.py` now stops and starts both engines itself:
+- **To TensorFold:** `docker compose stop ollama`, then remove any `squadops-tensorfold` container, then step 4's release
+  check, then `docker run` from the recipe.
+- **To Ollama:** remove `squadops-tensorfold`, step 4's release check, then `docker compose up -d --wait ollama` and one
+  healthy generation.
+
+Nothing else in §5.6 changes: the order, the floors and failing closed are as written.
+
+**The evidence.** The overnight S exercises of 2026-10-11/12 (records in `var/engine_switch/`, summarized on #2199):
+- a switch to TensorFold with the box idle (87 s, the first start compiling the kernels; 23 s once cached);
+- the long-context record, with `MemAvailable` never under 82 GiB and no swap;
+- a restoration with a TensorFold request in flight (28 s);
+- a failed start on an unknown flag, which exited 2 and restored Ollama.
+
+**Who ruled it.** The owner approved moving Ollama into Docker ("go ahead with moving Ollama into docker on that scope",
+2026-10-11). The switch's use of it follows from that, and #2199 was told (issuecomment-6115685094).
+
+### 9c. Reasoning is sent at parity with Ollama's prompt (PROPOSED 2026-10-12, awaiting the owner's ruling)
+
+**What it would change.** §5.1's "Reasoning" and §9a item 1 send TensorFold the port's level as `reasoning_effort`,
+with `high` heard as `xhigh`. Under this amendment the harness, and G2's adapter, send what Ollama's prompt says:
+- thinking on or off (`chat_template_kwargs.enable_thinking`);
+- with thinking on, the recipe's `parity_effort`: the level whose rendered prompt is Ollama's to the token;
+- never the port's level.
+
+Level-aware thinking, which Ollama cannot express, would be a separate experiment, measured on G1 and G3 rather than
+G0.
+
+**Why.** The checkpoints' chat template (one template, md5 `519239a4`, in all four tonight) writes an effort line into
+every thinking prompt. By default, and for `high`, it is "Reasoning effort is set to xhigh. Please think carefully
+through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency,
+and clarity in the final answer." It writes a shorter "low" line for `low`, and none for `medium`. Ollama's template
+for the same model writes none. So sending the level gives TensorFold a different prompt from Ollama's, and G0 would
+measure the instruction as well as the engine.
+
+**The evidence** (#2199, the overnight exploratory run, tuning data only):
+- `/tokenize` at `medium` matched Ollama's `prompt_tokens` on all 18 thinking-on round-1 prompts; the default rendered
+  38 tokens more on each;
+- on `development.author_manifest` (reasoning high), the same engine and checkpoint wrote:
+  - 12,288 tokens and hit the cap with the xhigh line (280 s);
+  - 8,244 tokens and finished, at parity (145 s);
+  - against Ollama's 5,455 (210 s).
+- §2's note that an explicit `enable_thinking` "wins over `reasoning_effort`" concerns `false`. With `true`, v0.6.6
+  hears both: thinking on, at the effort sent (`cuda/server.py`, `heard_effort`).
+
+**Who rules it.** The owner. Until then, the exploratory runs use parity, and no counted gate has run.
