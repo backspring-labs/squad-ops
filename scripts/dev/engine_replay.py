@@ -56,7 +56,8 @@ DEFAULT_MAX_TOKENS = 8192  # qwen3.8:27b's default_max_completion in the model r
 SEEDS = {1: 1001, 2: 1002, 3: 1003}
 GENERATIONS = (1, 2)  # the 2.3 plan's D2: two generations per arm
 PANEL_PER_CELL = 2  # the drift panel: two envelopes per seam and stack, about 16
-PARTS = ("tuning", "panel-start", "held-out", "panel-end")
+PARTS = ("tuning", "panel-start", "held-out", "panel-end", "draft-check")
+DRAFT_CHECK = 5  # SIP-0111 §4: drafted against serial on 5 held-out envelopes, greedy and seeded
 CALL_TIMEOUT = 1800.0
 TUNING_PER_STRATUM = 2
 HELD_OUT_PER_STRATUM = 8
@@ -212,9 +213,9 @@ def calls(doc: dict[str, Any], part: str, round_no: int | None) -> tuple[list[di
             dict(meta[eid], seed=SEEDS[g], generation=g, raw=f"{eid}-g{g}.jsonl")
             for eid, g in doc["order"]
         ], part
-    return [
-        dict(meta[eid], seed=doc["panel_seed"], raw=f"{eid}.jsonl") for eid in doc["panel"]
-    ], part
+    # The draft check reads the first panel envelopes: fixed in the plan, and already called identically.
+    panel = doc["panel"][:DRAFT_CHECK] if part == "draft-check" else doc["panel"]
+    return [dict(meta[eid], seed=doc["panel_seed"], raw=f"{eid}.jsonl") for eid in panel], part
 
 
 # --- the calls ------------------------------------------------------------------------------------
@@ -391,6 +392,32 @@ def stream_call(url: str, body: dict, headers: dict, raw_path: Path, engine: str
     return row
 
 
+def _request(
+    env: dict[str, Any],
+    engine: str,
+    seed: int,
+    served: tuple[str | None, str | None],
+    draft: bool | None,
+    greedy: bool,
+    max_tokens_cap: int | None,
+) -> tuple[str, dict, dict[str, str]]:
+    """One call's URL, body and headers, with the run's overrides: greedy sampling and a lower cap, for the
+    draft check only."""
+    if engine == "ollama":
+        url, body = ollama_request(env, seed)
+        headers: dict[str, str] = {}
+    else:
+        url, body = tensorfold_request(env, seed, served[0], served[1], draft)
+        headers = {"Authorization": f"Bearer {api_key()}"}
+    options = body["options"] if engine == "ollama" else body
+    if greedy:  # one reply per prompt, whatever the sampler
+        options["temperature"] = 0.0
+    if max_tokens_cap:
+        key = "num_predict" if engine == "ollama" else "max_tokens"
+        options[key] = min(options[key], max_tokens_cap)
+    return url, body, headers
+
+
 def run(
     selection: Path,
     part: str,
@@ -401,9 +428,10 @@ def run(
     only: list[str] | None,
     draft: bool | None,
     max_tokens_cap: int | None,
+    greedy: bool = False,
 ) -> int:
     doc = json.loads(selection.read_text())
-    served_id = None
+    served_id = parity_effort = None
     label = engine
     if engine == "tensorfold":
         rec = yaml.safe_load(recipe.read_text())
@@ -431,17 +459,9 @@ def run(
         if (m["envelope_id"], seed) in done:
             continue
         env = envelope(m["envelope_id"])
-        if engine == "ollama":
-            url, body = ollama_request(env, seed)
-            headers: dict[str, str] = {}
-        else:
-            url, body = tensorfold_request(env, seed, served_id, parity_effort, draft)
-            headers = {"Authorization": f"Bearer {api_key()}"}
-        if max_tokens_cap:
-            if engine == "ollama":
-                body["options"]["num_predict"] = min(body["options"]["num_predict"], max_tokens_cap)
-            else:
-                body["max_tokens"] = min(body["max_tokens"], max_tokens_cap)
+        url, body, headers = _request(
+            env, engine, seed, (served_id, parity_effort), draft, greedy, max_tokens_cap
+        )
         started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         try:
             row = stream_call(url, body, headers, arm / m["raw"], engine)
@@ -628,6 +648,7 @@ def main() -> int:
     r.add_argument("--only", nargs="*")
     r.add_argument("--draft", choices=("on", "off"))
     r.add_argument("--max-tokens-cap", type=int)
+    r.add_argument("--greedy", action="store_true")
     c = sub.add_parser("score")
     c.add_argument("arms", type=Path, nargs="+")
     c.add_argument("--out", type=Path, required=True)
@@ -655,6 +676,7 @@ def main() -> int:
         args.only,
         draft,
         args.max_tokens_cap,
+        args.greedy,
     )
 
 

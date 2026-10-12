@@ -321,3 +321,27 @@ def test_both_generations_of_an_envelope_run_and_a_restart_skips_only_what_is_do
         ("a", 2, "a-g2.jsonl"),
         ("b", 2, "b-g2.jsonl"),
     ]
+
+
+@pytest.mark.parametrize(
+    "engine, read",
+    [
+        ("ollama", lambda b: (b["options"]["temperature"], b["options"]["num_predict"])),
+        ("tensorfold", lambda b: (b["temperature"], b["max_tokens"])),
+    ],
+)
+def test_the_draft_checks_overrides_land_on_each_engines_own_fields(engine, read, monkeypatch):
+    """The check compares a drafted reply with a plain one, so a sampler left on, or a cap written to a
+    field the engine ignores, makes it compare two different calls."""
+    monkeypatch.setattr(er, "api_key", lambda: "k")
+    _, body, _ = er._request(
+        envelope("medium"), engine, 1001, ("served", "medium"), True, True, 512
+    )
+    assert read(body) == (0.0, 512)
+    _, plain, _ = er._request(
+        envelope("medium"), engine, 1001, ("served", "medium"), None, False, None
+    )
+    # Without them, the call is production's: the envelope's own cap, and no sampler override.
+    options = plain["options"] if engine == "ollama" else plain
+    assert options.get("num_predict", options.get("max_tokens")) == 12288
+    assert options.get("temperature") in (None, 1.0)
