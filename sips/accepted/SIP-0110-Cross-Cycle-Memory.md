@@ -61,7 +61,7 @@ diverged from on agent-discretionary memory tools (§6).
 
 ---
 
-## Delivery ledger (current as of 2026-10-11)
+## Delivery ledger (current as of 2026-10-12)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or
 re-places it.
@@ -80,7 +80,7 @@ re-places it.
 | Phase 2: consolidation and promotion (§8) | **unplaced** | gated on Phase 1's measurement (§8). The owner ruled at the 2.2 cut that it stays gated (§5h) |
 | entry points: the legacy agent store made dormant, its failures visible (Appendix A, §A.4.3) | **placed** | 2.3.0, #2174 |
 | entry points: chat's conversation history reaching the agent, with session ownership checked (SIP-0085 §4, §9; §A.3.3) | **placed** | 2.3.0, #2175 |
-| entry points: the context-assembly port, inert, at the four seams (§A.3.6) | **placed** | 2.3.0, #2176 |
+| entry points: the context-assembly port, inert, at the four seams (§A.3.6) | **shipped** | 2.3.0, #2257 (closes #2176; §5j records where it departs from §A.3.6's text) |
 | entry points: the typed records (notes, preferences, project and task instructions), permissions by kind, provenance (§A.3.2–§A.3.4) | **placed** | 2.4.0, #2177 |
 | entry points: task instructions, with the work target, retries, references bound with the cycle, binding holds and emergency withdrawal (§A.3.5–§A.3.8) | **placed** | 2.4.0, #2178 |
 | entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179 |
@@ -1594,6 +1594,29 @@ now say so.
 **Who ruled it.** The owner, 2026-10-10, about 22:55 ET, on the cut set's first P1 reading: "the row doesn't count
 against P1, amend the SIP". The 2.2 cut's P1 is read accordingly. A disabled snapshot with no entries is not the
 falsifier's "pinned snapshot", and the cut record says so.
+
+## 5j. The context-assembly port, as built (2026-10-12, #2176)
+
+**What changed.** §A.3.6's port shipped inert in #2257, with two departures from its text and two values it leaves to
+later work:
+- **`ContextBundle` carries the lesson section's answer** (`recalled`, as recall returned it). §A.3.6 says the section
+  rendered is exactly the set recall returned. A `Section`'s `RecordRef`s name the records but hold no text, so the
+  bundle carries the answer the task is handed and its exposure records. It is `None` for a consumer recall does not
+  answer.
+- **`Disposition.DISABLED` is `"memory_disabled"`,** where §A.3.6 writes `"disabled"`. It is recall's own word
+  (`RecallDisposition.DISABLED`), so a section and the exposure it is disclosed as read the same. A bare `"disabled"`
+  would shadow eight unrelated configuration comparisons under the enum-shadow guard (#380).
+- **The lesson section's `effective_budget` is the snapshot's own** (`RecallPolicy`, 600 tokens), as §A.3.6 says it is
+  while no binding section exists. Recall's effective-budget input stays #2179's.
+- **`TaskInvocation.prompt_budget`'s completion reserve is the model registry's default.** Nothing reads it in 2.3. #2179,
+  which adds the binding sections that do, refines it to the agent's configured cap.
+
+**The evidence.**
+- Every existing recall and memory test passes unchanged, including the per-seam wiring tests (#2257's Evidence).
+- A new wiring test shows every consuming task asking the port with its cycle as target and its unit as snapshot owner.
+
+**Who ruled it.** Proposed in #2257. The owner's review of that PR rules it, before it merges with the first fix batch
+(the 2.3 plan's phase 8).
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 
