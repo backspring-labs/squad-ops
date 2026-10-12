@@ -161,3 +161,72 @@ def test_the_engine_counts_come_from_each_engines_own_record():
     assert tf["usage_extra"] == {"accepted": 30}
     # A stream that ended with no closing event has no counts, rather than a made-up rate.
     assert er.engine_counts("ollama", {}, {})["engine_decode_tps"] is None
+
+
+def _recorded(tmp_path, engine: str, lines: list[str]):
+    path = tmp_path / f"{engine}.jsonl"
+    rows = [json.dumps({"request": {}})] + [json.dumps({"t": "0", "line": line}) for line in lines]
+    path.write_text("\n".join(rows))
+    return er.recorded_answer(path, engine)
+
+
+def test_a_recorded_answer_keeps_the_counts_the_cap_check_reads(tmp_path):
+    """The handler drops a cut final block only when ``completion_tokens`` reaches the cap (#2149). An
+    answer rebuilt without TensorFold's usage-only chunk, or Ollama's closing event, has no count, so a
+    cut-off answer would be scored as a pass."""
+    tf = _recorded(
+        tmp_path,
+        "tensorfold",
+        [
+            ": keep-alive",
+            "data: " + json.dumps({"choices": [{"delta": {"reasoning_content": "plan "}}]}),
+            "data: " + json.dumps({"choices": [{"delta": {"content": "```py:a.py\nx = "}}]}),
+            "data: " + json.dumps({"choices": [{"delta": {}, "finish_reason": "length"}]}),
+            "data: "
+            + json.dumps(
+                {"choices": [], "usage": {"prompt_tokens": 9, "completion_tokens": 12288}}
+            ),
+            "data: [DONE]",
+        ],
+    )
+    assert tf == {
+        "content": "```py:a.py\nx = ",
+        "reasoning_text": "plan ",
+        "finish": "length",
+        "prompt_tokens": 9,
+        "completion_tokens": 12288,
+    }
+    ollama = _recorded(
+        tmp_path,
+        "ollama",
+        [
+            json.dumps({"message": {"content": "", "thinking": "t"}, "done": False}),
+            json.dumps({"message": {"content": "ok"}, "done": False}),
+            json.dumps(
+                {
+                    "message": {"content": ""},
+                    "done": True,
+                    "done_reason": "stop",
+                    "prompt_eval_count": 7,
+                    "eval_count": 30,
+                }
+            ),
+        ],
+    )
+    assert (ollama["content"], ollama["reasoning_text"], ollama["completion_tokens"]) == (
+        "ok",
+        "t",
+        30,
+    )
+
+
+def test_an_answer_with_no_thinking_hands_the_handler_none(tmp_path):
+    answer = _recorded(
+        tmp_path,
+        "tensorfold",
+        [
+            "data: "
+            + json.dumps({"choices": [{"delta": {"content": "x"}, "finish_reason": "stop"}]})
+        ],
+    )
+    assert (answer["reasoning_text"], answer["completion_tokens"]) == (None, None)
