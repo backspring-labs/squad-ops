@@ -1,18 +1,21 @@
 # 2.3.0 — pre-registration of the 27B's held-out run on TensorFold (SIP-0111's speed and validity gates, #2199)
 
-**Status: DRAFT, not registered.** Two things are open:
-- **The checkpoint (§3) is the owner's choice,** NVFP4 or EXL3 3.0 bpw.
-- **The owner was asked on 2026-10-12** whether to run on TensorFold 0.6.6 at all, given §8's finding about the engine
-  line.
+**Status: REGISTERED 2026-10-12, before any held-out call.** The owner's rulings, asked and answered that morning:
+- **TensorFold's prompt matches Ollama's** (SIP-0111 §9c): "1, yes".
+- **The tuning answers were scored before the checkpoint was chosen:** "2, check last night first".
+- **Flash-Next moves to 2.4** (#2230): "3, skip to next release".
+- **After §8's finding**, the owner chose "once per prompt, run on 0.6.6, NVFP4":
+  - one generation per arm, the 2.3 plan's D2 at its leanest;
+  - TensorFold's Python 0.6.6 engine;
+  - the NVFP4 checkpoint.
 
-It is registered when both are recorded here, the recipe in §3 is frozen, and this file's commit is posted on #2199
-beside the plan's sha256. No held-out call has run.
+The registration commit and the plan's sha256 are posted on #2199 before the run starts.
 
-**What must be true before it is registered:**
-1. **The owner has chosen the checkpoint and ruled on the engine line** (§3, §8).
-2. **The deploy is the benchmark deploy** (§2): no rebuild since `dep_c6cbc5110943`.
-3. **The plan file is committed** and its sha256 matches: `2-3-0-tensorfold-held-out-plan-2199.json`, `c46f47a4acd2f734…`.
-4. **The frozen recipe is committed** under `infra/tensorfold/recipes/`, with every pin, and its `status` says frozen.
+**What had to be true before it was registered, all met:**
+1. **The owner chose the checkpoint and ruled on the engine line:** NVFP4 on 0.6.6 (§3, §8).
+2. **The deploy is the benchmark deploy:** framework `7001c035` in every agent container, with no rebuild since R1-prime (§2).
+3. **The plan file is committed** with the sha256 in §2.
+4. **The frozen recipe is committed:** `infra/tensorfold/recipes/qwen27b-nvfp4.yaml`, whose `status` says frozen.
 
 ---
 
@@ -38,9 +41,9 @@ Both are read on the held-out set only. None of its 132 envelopes has been sent 
 | what | value |
 |---|---|
 | the split | `docs/plans/verification-sets/2-3-0-tensorfold-split-2199.json`, sha256 `27ee298ec39e…`, posted on #2199 before the first TensorFold load |
-| the plan | `docs/plans/verification-sets/2-3-0-tensorfold-held-out-plan-2199.json`, sha256 `c46f47a4acd2f734…`, from `engine_replay.py plan` with seed 2199 |
+| the plan | `docs/plans/verification-sets/2-3-0-tensorfold-held-out-plan-2199.json`, sha256 `6586370ac58c9fed…`, from `engine_replay.py plan` with seed 2199 |
 | the held-out set | 132 envelopes: React 88, Next.js 44; by seam, plan writing 68, build authoring 46, repair 10, proposal writing 8 |
-| generations | two per envelope per arm, seeds 1001 and 1002 (the 2.3 plan's D2), so 264 calls an arm |
+| generations | one per envelope per arm, seed 1001 (the owner's ruling, the 2.3 plan's D2 at its leanest), so 132 calls an arm |
 | the order | the plan's: one seeded shuffle, the same for both arms, with no envelope following itself |
 | the drift panel | the plan's 14 envelopes, two per seam and stack (Next.js has no proposal writing), seed 1001 |
 | the draft check | the panel's first 5 envelopes, greedy, capped at 512 tokens, drafting on and then off |
@@ -53,16 +56,16 @@ Both are read on the held-out set only. None of its 132 envelopes has been sent 
 
 ## 3. The frozen recipe
 
-**PENDING: the owner's choice of checkpoint.** Both candidates are on TensorFold 0.6.6 (`cb2ebf05`), image
-`squadops-tensorfold:0.6.6-cb2ebf05` (`sha256:b62567b8d89f…`), with the DFlash2 drafter `z-lab/Qwen3.8-27B-DFlash2`
-at `50307d4c`, context 65,536, no thinking budget, and `parity_effort: medium`:
-- **NVFP4:** `nvidia/Qwen3.8-27B-NVFP4` at `482ca0f3`;
-- **EXL3 3.0 bpw:** `turboderp/Qwen3.8-27B-exl3`, branch `3.00bpw`, at the revision in `qwen27b-exl3-300.yaml`.
+**`infra/tensorfold/recipes/qwen27b-nvfp4.yaml`, the owner's choice.** It holds:
+- TensorFold 0.6.6 (`cb2ebf05`), image `squadops-tensorfold:0.6.6-cb2ebf05` (`sha256:b62567b8d89f…`);
+- `nvidia/Qwen3.8-27B-NVFP4` at `482ca0f3`, served as `qwen3.8-27b-tf-nvfp4`;
+- the DFlash2 drafter `z-lab/Qwen3.8-27B-DFlash2` at `50307d4c`;
+- context 65,536, no thinking budget, and `parity_effort: medium`.
 
-The chosen recipe is committed with `status: frozen`. Any change to it after this registration re-runs both gates
-(SIP-0111 §4).
+The recipe is unchanged from the tuning run except its `status`. Any change to it after this registration re-runs both
+gates (SIP-0111 §4).
 
-**The tuning evidence the choice is read against** (exploratory, 39 prompts per arm; #2199, #2254):
+**The tuning evidence the choice was read against** (exploratory, 39 prompts per arm; #2199, #2254):
 
 | | NVFP4 | EXL3 3.0 bpw |
 |---|---|---|
@@ -77,7 +80,7 @@ The chosen recipe is committed with `status: frozen`. Any change to it after thi
 Each step's records go under `var/engine_replay/<date>-held-out/` in the main checkout:
 1. **Ollama's arm:**
    - `--part panel-start`;
-   - `--part held-out` (264 calls);
+   - `--part held-out` (132 calls);
    - `--part panel-end`.
 2. **The switch to TensorFold,** by S (`engine_switch.py`), on the frozen recipe.
 3. **TensorFold's arm:** the same three parts, in the same order.
@@ -91,15 +94,15 @@ Each step's records go under `var/engine_replay/<date>-held-out/` in the main ch
 - three failed TensorFold calls in a part (`THREE_FAILURES`), which stops that part and is reported;
 - a draft-check mismatch, which stops the trial and goes to the owner (SIP-0111 §4).
 
-**The estimate:** Ollama's arm about 16–18 h, TensorFold's about 8–10 h, the panels about 3 h, and switches and the draft
-check under 1 h: about 28–32 h.
+**The estimate:** Ollama's arm about 8–9 h, TensorFold's about 4–5 h, the panels about 3 h, and switches and the draft
+check under 1 h: about 15–17 h.
 
 ## 5. The readings, fixed now
 
 `scripts/dev/engine_gates.py` computes every reading below from the arms' folders and the scores. It is committed
 with this pre-registration, and a change to it after registration is recorded here with its reason.
 
-**The denominator is every planned call:** 264 an arm. A failed or timed-out call is never dropped.
+**The denominator is every planned call:** 132 an arm. A failed or timed-out call is never dropped.
 
 **The speed gate:**
 - For each (envelope, generation), the paired ratio is TensorFold's wall-clock over Ollama's.
@@ -122,8 +125,8 @@ with this pre-registration, and a change to it after registration is recorded he
   reason) and the handler's text.
 
 **Uncertainty (the 2.3 plan's §5):**
-- Each reading carries a 95% interval from a bootstrap that resamples envelopes, each with both its generations:
-  10,000 resamples, seed 2199.
+- Each reading carries a 95% interval from a bootstrap that resamples envelopes (each with all its generations, here
+  one): 10,000 resamples, seed 2199.
 - A bar met by the point estimate is an **observed pass on this corpus.** It is evidence of non-regression only where
   the interval's unfavourable bound also meets the bar.
 - A seam too small to bound is named as unbounded, not passed. Next.js repair has 2 envelopes, and proposal writing
@@ -168,5 +171,6 @@ From SIP-0111 §9a item 6, for when Flash-Next's own run is read (2.4, #2230):
   targets Ampere sm_86, not GB10.
 
 So a pass here would put production on an engine line its maker has moved past, for this model on this hardware. The
-switch back to Ollama took at most 28.2 s overnight. **Whether to run on it is the owner's decision,** asked on
-2026-10-12.
+switch back to Ollama took at most 28.2 s overnight. **The owner ruled to run on it** (2026-10-12, "run on 0.6.6"),
+after being told that no fixes are coming for the 27B on NVIDIA and that the switch back to Ollama is the fallback.
+SIP-0111 §9d records it.

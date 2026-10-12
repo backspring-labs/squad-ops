@@ -407,7 +407,7 @@ candidate.
 | # | decision | recommendation |
 |---|---|---|
 | D1 | **the order** | **Track A first** (§3), Track B on branches meanwhile, and Track B's merges after G4, so 2.3 measures on one engine |
-| D2 | **G0 / G1's size** | **lean:** 2 generations per arm, the drift panel (§5), and the 3 checkpoints at production's thinking settings. About 34–38 h for the 27B. *As accepted:* about 55–60 h. *Leanest* (1 generation): about 22–25 h, with wider intervals |
+| D2 | **G0 / G1's size** | **lean:** 2 generations per arm, the drift panel (§5), and the 3 checkpoints at production's thinking settings. About 34–38 h for the 27B. *As accepted:* about 55–60 h. *Leanest* (1 generation): about 22–25 h, with wider intervals. **Ruled 2026-10-12: leanest, 1 generation** (the owner: "once per prompt"; SIP-0111 §9d) |
 | D3 | **G3, placed** | **in 2.3,** for the selected candidate, with its pre-registered comparison (§2.1). Tracked as #2229 |
 | D4 | **G4, the cutover decision** | **in 2.3, the owner's, on G3's evidence, before the cut set**, so the cut measures the engine 2.3 ships with. Cutover in an odd minor extends Q1's waiver from "dark" to "adopted", and that extension is the owner's to grant. If it isn't granted, G4 moves to 2.4's start, and 2.3's cut runs on Ollama |
 | D5 | **the structure batch** | **#2062 with #1993 in 2.3** (R5). **#1992 and #1994 in 2.3 unless §4's deferral rule moves them to 2.5** |

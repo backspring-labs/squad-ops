@@ -24,7 +24,7 @@ level whose rendered prompt is Ollama's to the token (checked on every round-1 p
 and each row records the effort it sent.
 
 ``plan`` fixes the held-out run before any call (SIP-0111 §4; the 2.3 plan's §5 and D2): the held-out
-envelopes, two generations each (seeds 1001 and 1002), their order (one seeded shuffle, the same for both
+envelopes, one generation each (seed 1001; ``GENERATIONS``), their order (one seeded shuffle, the same for both
 arms, with no envelope following itself), and the drift panel, two envelopes per seam and stack where the
 stratum allows, called identically at the start and end of each arm. Its sha256 is posted before the
 first held-out call. ``run PLAN.json --part`` runs one part of it, resumably.
@@ -54,7 +54,9 @@ from engine_switch import OLLAMA_URL, TF_URL, api_key  # noqa: E402
 
 DEFAULT_MAX_TOKENS = 8192  # qwen3.8:27b's default_max_completion in the model registry
 SEEDS = {1: 1001, 2: 1002, 3: 1003}
-GENERATIONS = (1, 2)  # the 2.3 plan's D2: two generations per arm
+# The 2.3 plan's D2 asked for two generations per arm; the owner ruled one on 2026-10-12 ("once per prompt"),
+# its leanest option, since the tuning run left speed far inside its bar.
+GENERATIONS = (1,)
 PANEL_PER_CELL = 2  # the drift panel: two envelopes per seam and stack, about 16
 PARTS = ("tuning", "panel-start", "held-out", "panel-end", "draft-check")
 DRAFT_CHECK = 5  # SIP-0111 §4: drafted against serial on 5 held-out envelopes, greedy and seeded
