@@ -230,3 +230,94 @@ def test_an_answer_with_no_thinking_hands_the_handler_none(tmp_path):
         ],
     )
     assert (answer["reasoning_text"], answer["completion_tokens"]) == (None, None)
+
+
+def _split(tmp_path, cells: dict[tuple[str, str, str], int]) -> Path:
+    """A split whose held-out envelopes are named by their cell, and the store rows ``plan`` reads."""
+    strata, rows = {}, []
+    for (task_type, seam, stack), n in cells.items():
+        ids = [f"{task_type}-{stack}-{i}" for i in range(n)]
+        strata[f"{task_type}|{stack}"] = {"tuning": [], "held_out": ids}
+        rows += [f"{eid}|{task_type}|{seam}|{stack}" for eid in ids]
+    path = tmp_path / "split.json"
+    path.write_text(json.dumps({"sha256": "s", "strata": strata}))
+    return path, "\n".join(rows)
+
+
+def test_the_held_out_plan_runs_every_generation_once_with_no_envelope_twice_in_a_row(
+    tmp_path, monkeypatch
+):
+    """A generation run twice or not at all changes the denominator; an envelope after itself gets a
+    prefix-cache hit its pair didn't. The panel is drawn from the held-out set, two per seam and stack."""
+    split, rows = _split(
+        tmp_path,
+        {
+            ("development.develop", "build_authoring", "react"): 5,
+            ("qa.test_repair", "repair", "nextjs"): 1,
+            ("development.design_plan", "plan_writing", "react"): 3,
+        },
+    )
+    monkeypatch.setattr(er, "psql", lambda sql: rows)
+    out = tmp_path / "plan.json"
+    er.plan(split, out, seed=7)
+    doc = json.loads(out.read_text())
+
+    ids = [m["envelope_id"] for m in doc["held_out"]]
+    assert sorted(map(tuple, doc["order"])) == sorted((eid, g) for eid in ids for g in (1, 2))
+    assert all(a[0] != b[0] for a, b in zip(doc["order"], doc["order"][1:], strict=False))
+    cells = [
+        next(m for m in doc["held_out"] if m["envelope_id"] == e)["seam"] for e in doc["panel"]
+    ]
+    assert sorted(cells) == ["build_authoring"] * 2 + ["plan_writing"] * 2 + ["repair"]
+    er.plan(split, tmp_path / "again.json", seed=7)
+    assert json.loads((tmp_path / "again.json").read_text())["sha256"] == doc["sha256"]
+
+
+def test_a_plan_whose_envelopes_the_store_lacks_is_refused(tmp_path, monkeypatch):
+    split, rows = _split(tmp_path, {("qa.test", "build_authoring", "react"): 2})
+    monkeypatch.setattr(er, "psql", lambda sql: rows.splitlines()[0])
+    with pytest.raises(SystemExit, match="does not hold"):
+        er.plan(split, tmp_path / "plan.json", seed=7)
+
+
+def test_both_generations_of_an_envelope_run_and_a_restart_skips_only_what_is_done(
+    tmp_path, monkeypatch
+):
+    """Entered at ``run``, as the overnight driver calls it. Keyed by envelope alone, a restart would skip
+    generation 2 once generation 1 was written, and both would write one raw file."""
+    doc = {
+        "held_out": [
+            {"envelope_id": e, "task_type": "qa.test", "seam": "build_authoring", "stack": "react"}
+            for e in ("a", "b")
+        ],
+        "order": [["a", 1], ["b", 1], ["a", 2], ["b", 2]],
+        "panel": ["a"],
+        "panel_seed": 1001,
+    }
+    plan_path = tmp_path / "plan.json"
+    plan_path.write_text(json.dumps(doc))
+    sent: list[tuple[str, int, str]] = []
+
+    def fake_call(url, body, headers, raw_path, engine):
+        sent.append((body["messages"][0]["content"], body["options"]["seed"], raw_path.name))
+        return {"wall_s": 1.0, "finish": "stop"}
+
+    monkeypatch.setattr(
+        er,
+        "envelope",
+        lambda eid: envelope("medium") | {"messages": [{"role": "user", "content": eid}]},
+    )
+    monkeypatch.setattr(er, "stream_call", fake_call)
+    done = tmp_path / "ollama" / "held-out"
+    done.mkdir(parents=True)
+    (done / "summary.jsonl").write_text(json.dumps({"envelope_id": "a", "seed": 1001}) + "\n")
+
+    assert er.run(plan_path, "held-out", None, "ollama", None, tmp_path, None, None, None) == 0
+
+    assert sent == [("b", 1001, "b-g1.jsonl"), ("a", 1002, "a-g2.jsonl"), ("b", 1002, "b-g2.jsonl")]
+    rows = [json.loads(r) for r in (done / "summary.jsonl").read_text().splitlines()][1:]
+    assert [(r["envelope_id"], r["generation"], r["raw"]) for r in rows] == [
+        ("b", 1, "b-g1.jsonl"),
+        ("a", 2, "a-g2.jsonl"),
+        ("b", 2, "b-g2.jsonl"),
+    ]

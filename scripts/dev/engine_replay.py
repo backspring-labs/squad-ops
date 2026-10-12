@@ -9,6 +9,8 @@ skips what is done.
     engine_replay.py select --out SELECTION.json [--seed 2199]
     engine_replay.py run SELECTION.json --round 1 --engine ollama --out DIR
     engine_replay.py run SELECTION.json --round 1 --engine tensorfold --recipe RECIPE.yaml --out DIR
+    engine_replay.py plan SELECTION.json --out PLAN.json [--seed 2199]
+    engine_replay.py run PLAN.json --part panel-start|held-out|panel-end --engine … --out DIR
     engine_replay.py score ARM_DIR [ARM_DIR ...] --out SCORES.jsonl
 
 Settings: the envelope's ``max_tokens`` (production's registry default, 8,192, where the capture has
@@ -20,6 +22,12 @@ effort line; the checkpoints' own template writes one for xhigh (its default whe
 low, and none for medium. So a thinking-on call to TensorFold carries the recipe's ``parity_effort``, the
 level whose rendered prompt is Ollama's to the token (checked on every round-1 prompt with ``/tokenize``),
 and each row records the effort it sent.
+
+``plan`` fixes the held-out run before any call (SIP-0111 §4; the 2.3 plan's §5 and D2): the held-out
+envelopes, two generations each (seeds 1001 and 1002), their order (one seeded shuffle, the same for both
+arms, with no envelope following itself), and the drift panel, two envelopes per seam and stack where the
+stratum allows, called identically at the start and end of each arm. Its sha256 is posted before the
+first held-out call. ``run PLAN.json --part`` runs one part of it, resumably.
 
 ``score`` puts each recorded answer through its task type's own handler, in the agent container of the
 envelope's role (``authoring_score.py``), and records whether the first answer passed: G1's validator.
@@ -46,6 +54,9 @@ from engine_switch import OLLAMA_URL, TF_URL, api_key  # noqa: E402
 
 DEFAULT_MAX_TOKENS = 8192  # qwen3.8:27b's default_max_completion in the model registry
 SEEDS = {1: 1001, 2: 1002, 3: 1003}
+GENERATIONS = (1, 2)  # the 2.3 plan's D2: two generations per arm
+PANEL_PER_CELL = 2  # the drift panel: two envelopes per seam and stack, about 16
+PARTS = ("tuning", "panel-start", "held-out", "panel-end")
 CALL_TIMEOUT = 1800.0
 TUNING_PER_STRATUM = 2
 HELD_OUT_PER_STRATUM = 8
@@ -128,6 +139,82 @@ def envelope(eid: str) -> dict[str, Any]:
     return json.loads(
         psql(f"select envelope::text from authoring_envelopes where envelope_id = '{eid}'")
     )
+
+
+def _no_repeats(pairs: list[list], rng: random.Random) -> list[list]:
+    """A seeded shuffle in which no envelope follows itself, so neither engine's prompt cache serves a
+    generation from the one before it."""
+    for _ in range(10_000):
+        rng.shuffle(pairs)
+        if all(a[0] != b[0] for a, b in zip(pairs, pairs[1:], strict=False)):
+            return pairs
+    raise SystemExit("no order without a repeat was found")
+
+
+def plan(selection: Path, out: Path, seed: int) -> None:
+    """The held-out run, fixed before any call: its envelopes, order and drift panel."""
+    split = json.loads(selection.read_text())
+    ids = [eid for key in sorted(split["strata"]) for eid in split["strata"][key]["held_out"]]
+    quoted = ", ".join(f"'{eid}'" for eid in ids)
+    meta = {
+        eid: {"envelope_id": eid, "task_type": task_type, "seam": seam, "stack": stack}
+        for eid, task_type, seam, stack in (
+            line.split("|")
+            for line in psql(
+                "select envelope_id, task_type, seam, "
+                "coalesce(envelope->'inputs'->'resolved_config'->>'build_profile','none') "
+                f"from authoring_envelopes where envelope_id in ({quoted})"
+            ).splitlines()
+            if line
+        )
+    }
+    missing = sorted(set(ids) - set(meta))
+    if missing:
+        raise SystemExit(f"held-out envelopes the store does not hold: {missing}")
+    rng = random.Random(seed)
+    order = _no_repeats([[eid, g] for eid in ids for g in GENERATIONS], rng)
+    cells: dict[tuple[str, str], list[str]] = defaultdict(list)
+    for eid in ids:
+        cells[(meta[eid]["seam"], meta[eid]["stack"])].append(eid)
+    panel = [
+        eid
+        for cell in sorted(cells)
+        for eid in rng.sample(sorted(cells[cell]), min(PANEL_PER_CELL, len(cells[cell])))
+    ]
+    doc: dict[str, Any] = {
+        "selection_sha256": split["sha256"],
+        "seed": seed,
+        "seeds": {str(g): SEEDS[g] for g in GENERATIONS},
+        "held_out": [meta[eid] for eid in ids],
+        "order": order,
+        "panel": panel,
+        "panel_seed": SEEDS[1],
+    }
+    doc["sha256"] = hashlib.sha256(json.dumps(doc, sort_keys=True).encode()).hexdigest()
+    out.write_text(json.dumps(doc, indent=2))
+    print(
+        f"{len(ids)} held-out envelopes, {len(order)} calls an arm, a panel of {len(panel)}, "
+        f"sha256 {doc['sha256'][:16]}"
+    )
+
+
+def calls(doc: dict[str, Any], part: str, round_no: int | None) -> tuple[list[dict], str]:
+    """The calls of one part, in order, and the folder its records go to."""
+    if part == "tuning":
+        seed = SEEDS[round_no]
+        picks = [m for s in doc["strata"].values() for m in s["tuning"] if m["round"] == round_no]
+        return [dict(m, seed=seed, raw=f"{m['envelope_id']}.jsonl") for m in picks], (
+            f"round{round_no}"
+        )
+    meta = {m["envelope_id"]: m for m in doc["held_out"]}
+    if part == "held-out":
+        return [
+            dict(meta[eid], seed=SEEDS[g], generation=g, raw=f"{eid}-g{g}.jsonl")
+            for eid, g in doc["order"]
+        ], part
+    return [
+        dict(meta[eid], seed=doc["panel_seed"], raw=f"{eid}.jsonl") for eid in doc["panel"]
+    ], part
 
 
 # --- the calls ------------------------------------------------------------------------------------
@@ -306,7 +393,8 @@ def stream_call(url: str, body: dict, headers: dict, raw_path: Path, engine: str
 
 def run(
     selection: Path,
-    round_no: int,
+    part: str,
+    round_no: int | None,
     engine: str,
     recipe: Path | None,
     out: Path,
@@ -314,8 +402,7 @@ def run(
     draft: bool | None,
     max_tokens_cap: int | None,
 ) -> int:
-    split = json.loads(selection.read_text())
-    seed = SEEDS[round_no]
+    doc = json.loads(selection.read_text())
     served_id = None
     label = engine
     if engine == "tensorfold":
@@ -324,20 +411,24 @@ def run(
         parity_effort = rec["parity_effort"]  # required: the level that renders Ollama's prompt
     if draft is not None:
         label += f"-draft-{'on' if draft else 'off'}"
-    arm = out / label / f"round{round_no}"
+    picks, folder = calls(doc, part, round_no)
+    arm = out / label / folder
     arm.mkdir(parents=True, exist_ok=True)
     summary = arm / "summary.jsonl"
     done = (
-        {json.loads(row)["envelope_id"] for row in summary.read_text().splitlines()}
+        {
+            (json.loads(row)["envelope_id"], json.loads(row)["seed"])
+            for row in summary.read_text().splitlines()
+        }
         if summary.exists()
         else set()
     )
-    picks = [m for s in split["strata"].values() for m in s["tuning"] if m["round"] == round_no]
     if only:
         picks = [m for m in picks if m["envelope_id"] in only]
     failures = 0
     for m in picks:
-        if m["envelope_id"] in done:
+        seed = m["seed"]
+        if (m["envelope_id"], seed) in done:
             continue
         env = envelope(m["envelope_id"])
         if engine == "ollama":
@@ -353,7 +444,7 @@ def run(
                 body["max_tokens"] = min(body["max_tokens"], max_tokens_cap)
         started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         try:
-            row = stream_call(url, body, headers, arm / f"{m['envelope_id']}.jsonl", engine)
+            row = stream_call(url, body, headers, arm / m["raw"], engine)
         except (httpx.HTTPError, OSError, ValueError) as exc:
             row = {"error": f"{type(exc).__name__}: {str(exc)[:300]}"}
         max_tokens, reasoning = settings(env)
@@ -363,8 +454,11 @@ def run(
             "seam": m["seam"],
             "stack": m["stack"],
             "engine": label,
+            "part": part,
             "round": round_no,
+            "generation": m.get("generation"),
             "seed": seed,
+            "raw": m["raw"],
             "started_at": started,
             "max_tokens": body.get("max_tokens") or body.get("options", {}).get("num_predict"),
             "captured_max_tokens": max_tokens,
@@ -457,15 +551,16 @@ def score(arms: list[Path], out: Path) -> int:
 
     answers, cases = [], {}
     for arm in arms:
-        for summary in sorted(arm.glob("round*/summary.jsonl")):
+        for summary in sorted(arm.glob("*/summary.jsonl")):
             for line in summary.read_text().splitlines():
                 row = json.loads(line)
                 eid = row["envelope_id"]
                 meta = {
-                    "key": f"{arm.name}|{summary.parent.name}|{eid}",
+                    "key": f"{arm.name}|{summary.parent.name}|{eid}|{row['seed']}",
                     "envelope_id": eid,
                     "arm": arm.name,
-                    "round": row["round"],
+                    "part": summary.parent.name,
+                    "seed": row["seed"],
                     "task_type": row["task_type"],
                     "seam": row["seam"],
                     "stack": row["stack"],
@@ -475,7 +570,8 @@ def score(arms: list[Path], out: Path) -> int:
                     answers.append({**meta, "verdict": "error", "error": row["error"]})
                     continue
                 engine = "ollama" if row["engine"] == "ollama" else "tensorfold"
-                answers.append({**meta, **recorded_answer(summary.parent / f"{eid}.jsonl", engine)})
+                raw = summary.parent / row.get("raw", f"{eid}.jsonl")
+                answers.append({**meta, **recorded_answer(raw, engine)})
                 if eid not in cases:
                     cases[eid] = {**envelope(eid), "envelope_id": eid}
     records = [a for a in answers if a.get("verdict") == "error"]
@@ -518,9 +614,14 @@ def main() -> int:
     s = sub.add_parser("select")
     s.add_argument("--out", type=Path, required=True)
     s.add_argument("--seed", type=int, default=2199)
+    pl = sub.add_parser("plan")
+    pl.add_argument("selection", type=Path)
+    pl.add_argument("--out", type=Path, required=True)
+    pl.add_argument("--seed", type=int, default=2199)
     r = sub.add_parser("run")
-    r.add_argument("selection", type=Path)
-    r.add_argument("--round", type=int, required=True, choices=sorted(SEEDS))
+    r.add_argument("selection", type=Path, help="the split (tuning) or the plan (held-out)")
+    r.add_argument("--part", choices=PARTS, default="tuning")
+    r.add_argument("--round", type=int, choices=sorted(SEEDS))
     r.add_argument("--engine", choices=("ollama", "tensorfold"), required=True)
     r.add_argument("--recipe", type=Path)
     r.add_argument("--out", type=Path, required=True)
@@ -536,11 +637,17 @@ def main() -> int:
     if args.command == "select":
         select(args.out, args.seed)
         return 0
+    if args.command == "plan":
+        plan(args.selection, args.out, args.seed)
+        return 0
+    if (args.part == "tuning") != (args.round is not None):
+        parser.error("--round goes with the tuning part, and only with it")
     if args.engine == "tensorfold" and not args.recipe:
         parser.error("--recipe is required for tensorfold")
     draft = None if args.draft is None else args.draft == "on"
     return run(
         args.selection,
+        args.part,
         args.round,
         args.engine,
         args.recipe,
