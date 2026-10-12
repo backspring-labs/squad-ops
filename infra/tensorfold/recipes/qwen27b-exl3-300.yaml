@@ -1,0 +1,26 @@
+name: qwen27b-exl3-300
+status: "provisional: S's exercises and the 2026-10-11 exploratory tuning/screening run (#2199). NOT the frozen\
+  \ recipe, which SIP-0111 \xA74 fixes on tuning data before any held-out call."
+why: turboderp's EXL3 3.00bpw branch, experimental, with the DFlash2 drafter (docs/recipes/qwen3.8-27b.md).
+served_id: qwen3.8-27b-tf-exl3-300
+image: squadops-tensorfold:0.6.6-cb2ebf05
+image_id: sha256:b62567b8d89fca5ca126e614162d65b4a6eecaacd63d75699fdf70ff268f45f8
+tensorfold_commit: cb2ebf0540f42604e2759b2ddef497861e928248
+checkpoint:
+  repo: turboderp/Qwen3.8-27B-exl3
+  revision: 6fe61ad620abfe97c5b49f9722c2bceeea4ccc28
+  container_path: /cache/hf/hub/models--turboderp--Qwen3.8-27B-exl3/snapshots/6fe61ad620abfe97c5b49f9722c2bceeea4ccc28
+drafter:
+  repo: z-lab/Qwen3.8-27B-DFlash2
+  revision: 50307d4c4cde6860d4eee73e2547cd786fe8e8a4
+  container_path: /cache/hf/hub/models--z-lab--Qwen3.8-27B-DFlash2/snapshots/50307d4c4cde6860d4eee73e2547cd786fe8e8a4
+context: 65536
+memory_reserve_gib: 20
+serve_flags:
+- --drafter
+- /cache/hf/hub/models--z-lab--Qwen3.8-27B-DFlash2/snapshots/50307d4c4cde6860d4eee73e2547cd786fe8e8a4
+sampling:
+  temperature: 1.0
+  top_p: 0.95
+  top_k: 20
+  min_p: 0.0
