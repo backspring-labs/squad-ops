@@ -13,6 +13,12 @@ skips what is done.
 Settings: the envelope's ``max_tokens`` (production's registry default, 8,192, where the capture has
 none) and its reasoning level. Sampling is production's: Ollama's model defaults (temperature 1, top_p
 0.95, top_k 20, min_p 0), which TensorFold is sent explicitly. Each call carries the round's seed.
+
+Reasoning is sent as Ollama hears it: thinking on or off, never a level. Ollama's qwen3.8 template has no
+effort line; the checkpoints' own template writes one for xhigh (its default when thinking is on) and for
+low, and none for medium. So a thinking-on call to TensorFold carries the recipe's ``parity_effort``, the
+level whose rendered prompt is Ollama's to the token (checked on every round-1 prompt with ``/tokenize``),
+and each row records the effort it sent.
 """
 
 from __future__ import annotations
@@ -115,7 +121,8 @@ def ollama_request(env: dict[str, Any], seed: int) -> tuple[str, dict]:
     }
 
 
-def tensorfold_request(env: dict[str, Any], seed: int, served_id: str, draft: bool | None = None) -> tuple[str, dict]:
+def tensorfold_request(env: dict[str, Any], seed: int, served_id: str, parity_effort: str,
+                       draft: bool | None = None) -> tuple[str, dict]:
     max_tokens, reasoning = settings(env)
     body: dict[str, Any] = {
         "model": served_id,
@@ -129,7 +136,8 @@ def tensorfold_request(env: dict[str, Any], seed: int, served_id: str, draft: bo
     if reasoning == "none":
         body["chat_template_kwargs"] = {"enable_thinking": False}
     else:
-        body["reasoning_effort"] = reasoning
+        body["chat_template_kwargs"] = {"enable_thinking": True}
+        body["reasoning_effort"] = parity_effort
     if draft is not None:
         body["draft"] = draft
     return f"{TF_URL}/v1/chat/completions", body
@@ -228,6 +236,7 @@ def run(selection: Path, round_no: int, engine: str, recipe: Path | None, out: P
     if engine == "tensorfold":
         rec = yaml.safe_load(recipe.read_text())
         served_id, label = rec["served_id"], f"tensorfold-{rec['name']}"
+        parity_effort = rec["parity_effort"]  # required: the level that renders Ollama's prompt
     if draft is not None:
         label += f"-draft-{'on' if draft else 'off'}"
     arm = out / label / f"round{round_no}"
@@ -246,7 +255,7 @@ def run(selection: Path, round_no: int, engine: str, recipe: Path | None, out: P
             url, body = ollama_request(env, seed)
             headers: dict[str, str] = {}
         else:
-            url, body = tensorfold_request(env, seed, served_id, draft)
+            url, body = tensorfold_request(env, seed, served_id, parity_effort, draft)
             headers = {"Authorization": f"Bearer {api_key()}"}
         if max_tokens_cap:
             if engine == "ollama":
@@ -263,6 +272,7 @@ def run(selection: Path, round_no: int, engine: str, recipe: Path | None, out: P
                "stack": m["stack"], "engine": label, "round": round_no, "seed": seed, "started_at": started,
                "max_tokens": body.get("max_tokens") or body.get("options", {}).get("num_predict"),
                "captured_max_tokens": max_tokens, "reasoning": reasoning,
+               "reasoning_effort_sent": body.get("reasoning_effort"),
                "messages_sha256": env.get("messages_sha256"), **row}
         with summary.open("a") as f:
             f.write(json.dumps(row) + "\n")

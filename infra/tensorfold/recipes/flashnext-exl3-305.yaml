@@ -12,6 +12,9 @@ checkpoint:
   repo: turboderp/Qwen3.8-Flash-Next-exl3
   revision: 69e33439ae950f17bcbe95c98f117d80f759ab6d
   container_path: /cache/hf/hub/models--turboderp--Qwen3.8-Flash-Next-exl3/snapshots/69e33439ae950f17bcbe95c98f117d80f759ab6d
+# The checkpoint's template writes an effort line for xhigh (its default) and low, and none for medium;
+# Ollama's has none. Medium renders Ollama's prompt to the token (#2199, /tokenize on round 1).
+parity_effort: medium
 context: 65536
 memory_reserve_gib: 20
 serve_flags:

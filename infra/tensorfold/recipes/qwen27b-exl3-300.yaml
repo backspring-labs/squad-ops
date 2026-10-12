@@ -14,6 +14,9 @@ drafter:
   repo: z-lab/Qwen3.8-27B-DFlash2
   revision: 50307d4c4cde6860d4eee73e2547cd786fe8e8a4
   container_path: /cache/hf/hub/models--z-lab--Qwen3.8-27B-DFlash2/snapshots/50307d4c4cde6860d4eee73e2547cd786fe8e8a4
+# The checkpoint's template writes an effort line for xhigh (its default) and low, and none for medium;
+# Ollama's has none. Medium renders Ollama's prompt to the token (#2199, /tokenize on round 1).
+parity_effort: medium
 context: 65536
 memory_reserve_gib: 20
 serve_flags:
