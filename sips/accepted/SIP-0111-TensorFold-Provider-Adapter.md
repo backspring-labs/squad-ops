@@ -701,7 +701,7 @@ with `high` heard as `xhigh`. Under this amendment the harness, and G2's adapter
 Level-aware thinking, which Ollama cannot express, would be a separate experiment, measured on G1 and G3 rather than
 G0.
 
-**Why.** The checkpoints' chat template (one template, md5 `519239a4`, in all four tonight) writes an effort line into
+**Why.** The checkpoints' chat template (one template, md5 `519239a4`, in all four checkpoints the 2026-10-11 run loaded) writes an effort line into
 every thinking prompt. By default, and for `high`, it is "Reasoning effort is set to xhigh. Please think carefully
 through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency,
 and clarity in the final answer." It writes a shorter "low" line for `low`, and none for `medium`. Ollama's template
@@ -715,6 +715,8 @@ measure the instruction as well as the engine.
   - 12,288 tokens and hit the cap with the xhigh line (280 s);
   - 8,244 tokens and finished, at parity (145 s);
   - against Ollama's 5,455 (210 s).
+- sent at parity, all 156 of the run's pairs (39 prompts on each of four checkpoints) had the same prompt token count on
+  both engines (the results, 2026-10-12, are on #2199);
 - §2's note that an explicit `enable_thinking` "wins over `reasoning_effort`" concerns `false`. With `true`, v0.6.6
   hears both: thinking on, at the effort sent (`cuda/server.py`, `heard_effort`).
 
