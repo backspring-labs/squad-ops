@@ -223,6 +223,7 @@ services:
       # never defaulted and never inherited from SQUADOPS__LLM__TIMEOUT (1.8.2 item 15).
       SQUADOPS__DISPATCH__TASK_TIMEOUT: ${SQUADOPS__DISPATCH__TASK_TIMEOUT:?set it in .env (see .env.example) — required, never defaulted (1.8.2 item 15)}
       SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
+      SQUADOPS__LLM__URL: ${SQUADOPS__LLM__URL:?set it in .env (see .env.example) — required, never defaulted (#2249)}
       SQUADOPS__COMMS__QUEUE__PROVIDER: rabbitmq  # required, never defaulted (#301)
       SQUADOPS__COMMS__A2A__PROVIDER: http  # required, never defaulted (#301)
       SQUADOPS__TOOLS__FILESYSTEM__PROVIDER: local  # required, never defaulted (#301)
@@ -289,6 +290,7 @@ services:
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
       SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
+      SQUADOPS__LLM__URL: ${SQUADOPS__LLM__URL:?set it in .env (see .env.example) — required, never defaulted (#2249)}
       SQUADOPS__COMMS__QUEUE__PROVIDER: rabbitmq  # required, never defaulted (#301)
       SQUADOPS__COMMS__A2A__PROVIDER: http  # required, never defaulted (#301)
       SQUADOPS__TOOLS__FILESYSTEM__PROVIDER: local  # required, never defaulted (#301)
@@ -351,6 +353,7 @@ services:
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
       SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
+      SQUADOPS__LLM__URL: ${SQUADOPS__LLM__URL:?set it in .env (see .env.example) — required, never defaulted (#2249)}
       SQUADOPS__COMMS__QUEUE__PROVIDER: rabbitmq  # required, never defaulted (#301)
       SQUADOPS__COMMS__A2A__PROVIDER: http  # required, never defaulted (#301)
       SQUADOPS__TOOLS__FILESYSTEM__PROVIDER: local  # required, never defaulted (#301)
@@ -434,6 +437,7 @@ services:
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
       SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
+      SQUADOPS__LLM__URL: ${SQUADOPS__LLM__URL:?set it in .env (see .env.example) — required, never defaulted (#2249)}
       SQUADOPS__COMMS__QUEUE__PROVIDER: rabbitmq  # required, never defaulted (#301)
       SQUADOPS__COMMS__A2A__PROVIDER: http  # required, never defaulted (#301)
       SQUADOPS__TOOLS__FILESYSTEM__PROVIDER: local  # required, never defaulted (#301)
@@ -498,6 +502,7 @@ services:
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
       SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
+      SQUADOPS__LLM__URL: ${SQUADOPS__LLM__URL:?set it in .env (see .env.example) — required, never defaulted (#2249)}
       SQUADOPS__COMMS__QUEUE__PROVIDER: rabbitmq  # required, never defaulted (#301)
       SQUADOPS__COMMS__A2A__PROVIDER: http  # required, never defaulted (#301)
       SQUADOPS__TOOLS__FILESYSTEM__PROVIDER: local  # required, never defaulted (#301)
@@ -560,6 +565,7 @@ services:
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
       SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
+      SQUADOPS__LLM__URL: ${SQUADOPS__LLM__URL:?set it in .env (see .env.example) — required, never defaulted (#2249)}
       SQUADOPS__COMMS__QUEUE__PROVIDER: rabbitmq  # required, never defaulted (#301)
       SQUADOPS__COMMS__A2A__PROVIDER: http  # required, never defaulted (#301)
       SQUADOPS__TOOLS__FILESYSTEM__PROVIDER: local  # required, never defaulted (#301)
@@ -624,6 +630,7 @@ services:
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
       SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
+      SQUADOPS__LLM__URL: ${SQUADOPS__LLM__URL:?set it in .env (see .env.example) — required, never defaulted (#2249)}
       SQUADOPS__COMMS__QUEUE__PROVIDER: rabbitmq  # required, never defaulted (#301)
       SQUADOPS__COMMS__A2A__PROVIDER: http  # required, never defaulted (#301)
       SQUADOPS__TOOLS__FILESYSTEM__PROVIDER: local  # required, never defaulted (#301)
@@ -686,6 +693,7 @@ services:
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
       SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
+      SQUADOPS__LLM__URL: ${SQUADOPS__LLM__URL:?set it in .env (see .env.example) — required, never defaulted (#2249)}
       SQUADOPS__COMMS__QUEUE__PROVIDER: rabbitmq  # required, never defaulted (#301)
       SQUADOPS__COMMS__A2A__PROVIDER: http  # required, never defaulted (#301)
       SQUADOPS__TOOLS__FILESYSTEM__PROVIDER: local  # required, never defaulted (#301)
@@ -752,6 +760,7 @@ services:
       SQUADOPS_PROFILE: "${SQUADOPS_PROFILE:?Run bootstrap first}"
       SQUADOPS__SECRETS__PROVIDER: docker_secret
       SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157)
+      SQUADOPS__LLM__URL: ${SQUADOPS__LLM__URL:?set it in .env (see .env.example) — required, never defaulted (#2249)}
       SQUADOPS__COMMS__QUEUE__PROVIDER: rabbitmq  # required, never defaulted (#301)
       SQUADOPS__COMMS__A2A__PROVIDER: http  # required, never defaulted (#301)
       SQUADOPS__TOOLS__FILESYSTEM__PROVIDER: local  # required, never defaulted (#301)

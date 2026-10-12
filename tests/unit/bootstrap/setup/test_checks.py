@@ -428,18 +428,28 @@ class TestGpuChecks:
         assert smi_result.passed is False
         assert smi_result.heuristic is False
 
-    def test_ollama_gpu_access_heuristic(self):
-        """GPU layer check is heuristic-only, does not count as hard failure (R10)."""
+    @pytest.mark.parametrize(
+        ("running", "passed", "message"),
+        [
+            ({"models": [{"name": "qwen3.8:27b", "size_vram": 17_000_000_000}]}, True, "detected"),
+            ({"models": []}, False, "not detected"),
+            ({"models": [{"name": "qwen3.8:27b", "size_vram": 0}]}, False, "not detected"),
+            (None, False, "Could not probe"),
+        ],
+        ids=["loaded-on-gpu", "nothing-loaded", "loaded-on-cpu", "unreachable"],
+    )
+    def test_ollama_gpu_access_is_read_from_the_http_api(self, running, passed, message):
+        """#2249. Heuristic-only, never a hard failure (R10). Bugs caught: a Spark, whose Ollama
+        is a container with no host binary, reading as "could not probe"; or a model held off
+        the GPU read as GPU access."""
         with patch("shutil.which", return_value="/usr/bin/nvidia-smi"):
-            with patch("subprocess.run") as mock_run:
-                # nvidia-smi succeeds, ollama ps no GPU
-                mock_run.side_effect = [
-                    MagicMock(returncode=0),  # nvidia-smi
-                    MagicMock(returncode=0, stdout="NAME\tSIZE\n"),  # ollama ps
-                ]
-                results = check_nvidia_gpu()
+            with patch("subprocess.run", return_value=MagicMock(returncode=0)):
+                with patch.object(checks_mod, "_ollama_api", return_value=running) as api:
+                    results = check_nvidia_gpu()
         ollama_result = next(r for r in results if r.name == "gpu:ollama-access")
-        assert ollama_result.heuristic is True
+        assert (ollama_result.passed, ollama_result.heuristic) == (passed, True)
+        assert message in ollama_result.message
+        api.assert_called_once_with("/api/ps")
 
 
 # ---------------------------------------------------------------------------
@@ -1160,3 +1170,36 @@ class TestProvisioningNamesTheSameRole:
             "squadops",
         )
         assert dsn == "postgresql://squadops_test:pw@db.local:6543/squadops?sslmode=disable"
+
+
+class TestOllamaModelsOverHttp:
+    """#2249: the doctor reads Ollama's models from its HTTP API on the host's loopback, which
+    answers for the Mac's and the PC's host service and for the Spark's container alike."""
+
+    @pytest.mark.parametrize(
+        ("body", "expected"),
+        [
+            (
+                {"models": [{"name": "qwen3.8:27b"}, {"name": "qwen2.5:7b"}]},
+                {"qwen3.8:27b", "qwen2.5:7b"},
+            ),
+            ({"models": []}, set()),
+            (None, None),
+            ({"error": "boom"}, None),
+        ],
+        ids=["models", "reachable-empty", "unreachable", "not-a-model-list"],
+    )
+    def test_the_models_are_read_from_the_tags_api(self, body, expected):
+        """Bugs caught: an unreachable Ollama read as one with nothing pulled (it would block a
+        launch SIP-0095 §6.3 only warns on), or an error body read as an empty model list."""
+        with patch.object(checks_mod, "_ollama_api", return_value=body) as api:
+            assert checks_mod._query_ollama_models() == expected
+        api.assert_called_once_with("/api/tags")
+
+    def test_an_unreachable_host_reads_as_unknown(self):
+        """Bug caught: a refused connection raised out of the doctor instead of reading as
+        unknown."""
+        import urllib.error
+
+        with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("refused")):
+            assert checks_mod._ollama_api("/api/tags") is None

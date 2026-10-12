@@ -435,6 +435,7 @@ fix was refused (#1259). The table goes in the PR's Evidence section.
 | otel-collector | 4317, 4318 | OpenTelemetry collector |
 | node-exporter | — | The host's memory, swap, pressure, disk and temperatures, for Prometheus (#2204) |
 | dcgm-exporter | — | The GPU's utilization, power and temperature, for Prometheus; compose profile `gpu`, on the Spark (#2204) |
+| ollama | 11434 (loopback) | The Spark's Ollama, in a container (`docker-compose.ollama.yml`, #2249); the Mac and PC run Ollama on the host |
 | squadops-console | — | Control-plane UI (SIP-0069) |
 | caddy | 4040 | Reverse proxy for console and API |
 | max/neo/nat/eve/data | — | Agent containers |

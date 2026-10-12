@@ -31,11 +31,6 @@ system_deps:
     package: "docker-compose-plugin"
     required: true
 
-  - name: ollama
-    check: "ollama --version"
-    install: script  # curl -fsSL https://ollama.com/install.sh | sh
-    required: true
-
   - name: git
     check: "git --version"
     install: apt
