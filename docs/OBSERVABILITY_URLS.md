@@ -25,14 +25,25 @@
 - Password: `GRAFANA_ADMIN_PASSWORD` in `.env`, the deploy's own (#2006)
 
 **What you can do:**
-- View WarmBoot telemetry dashboard
+- View the Spark health and NVIDIA DCGM dashboards
 - Create custom dashboards
 - Query Prometheus data
 - Set up alerts
 
 **Pre-configured:**
-- **Prometheus Data Source:** Automatically configured
-- **WarmBoot Telemetry Dashboard:** Available in dashboards folder
+- **Prometheus Data Source:** Automatically configured (uid pinned in
+  `infra/grafana/provisioning/datasources/prometheus.yml`, so dashboards and alert rules can name it)
+- **Spark health** (`infra/grafana/dashboards/Spark/spark-health.json`): the GPU's temperature, utilisation and
+  power, the seven ACPI board zones against the 98 °C alert line and the 104 °C power-off, CPU load, memory
+  available, and free disk on the host root against the runbook's 150 GiB floor
+- **NVIDIA DCGM Exporter Dashboard** (`infra/grafana/dashboards/Spark/nvidia-dcgm.json`, grafana.com 12239
+  revision 2): its framebuffer-memory and tensor-core panels stay empty on the Spark, whose GPU has unified
+  memory and whose exporter reports neither metric
+- **Alert "Spark board zone above 98 °C"** (`infra/grafana/provisioning/alerting/spark-thermals.yml`): any
+  ACPI zone above 98 °C for 5 minutes, one alert per zone, named. It goes to Grafana's default contact
+  point, so it notifies nobody until a channel is chosen; it shows under Alerting meanwhile
+- All three are in Grafana's **Spark** folder. Dashboards reload from the checkout within 10 s; alert rules are
+  read at Grafana's startup
 
 **Key Areas:**
 - Dashboards: http://localhost:3000/dashboards
@@ -96,13 +107,12 @@ Expected targets:
 
 1. **Access Grafana:** http://localhost:3000 (`admin`, with `GRAFANA_ADMIN_PASSWORD` from `.env`)
 2. **Check Prometheus:** http://localhost:9090/targets (verify targets)
-3. **View Dashboard:** Grafana → Dashboards → WarmBoot Telemetry
+3. **View Dashboard:** Grafana → Dashboards → Spark → Spark health
 4. **Query Metrics:** Prometheus → Graph (once instrumentation is added)
 
 ## 📝 Notes
 
 - Prometheus is scraping every 15 seconds
 - Grafana dashboards may be empty until agents start emitting metrics
-- WarmBoot telemetry dashboard will populate once we instrument agent operations
 - OTLP endpoints are ready to receive telemetry from agents
 
