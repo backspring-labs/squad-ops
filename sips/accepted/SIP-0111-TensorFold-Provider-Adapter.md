@@ -109,19 +109,19 @@ Checked against `sips/PORTFOLIO.md` on 2026-10-09, and again for revision 2 (CLA
 - **Conflicts:** one, **resolved by the owner on 2026-10-09** (Q1). 2.3 is feature-free by rule, and G0–G2 are placed
   there, dark, under SIP-0106 §4.3's waiver.
 
-## Delivery ledger (current as of 2026-10-11)
+## Delivery ledger (current as of 2026-10-12)
 
 Placed by the owner's Q1 ruling (2026-10-09). The rows are ordered as the work runs.
 
 | part | status | where |
 |---|---|---|
-| S: engine switching and rollback, with the exclusivity guard, built and exercised before the first TensorFold load (§5.6) | **placed** | 2.3.0, #2199 |
+| S: engine switching and rollback, with the exclusivity guard, built and exercised before the first TensorFold load (§5.6) | **shipped** | 2.3.0, #2252: the switch and the four exercises, passed (their records are on #2199) |
 | G0: throughput on held-out captured envelopes, against production Ollama, on a frozen recipe (§4) | **placed** | 2.3.0, #2199 |
 | G1: emission quality, the same calls through each task type's production validator (§4) | **placed** | 2.3.0, #2199 |
 | G2: the adapter, dark, with the port amendments, registry entries, the overlay and parity tests (§5) | **placed** | 2.3.0, #2200 (merged only if G0 and G1 pass) |
 | G3: the selected candidate's uncounted cycle A/B on both stacks, compared on wall-clock, task times, retries, correction rounds and verdicts (§9a item 6) | **placed** | 2.3.0, #2229 |
 | G4: cutover | **placed** | 2.3.0, #2229: the owner's decision on G3's evidence, before the 2.3 cut set (the 2.3 plan's D4) |
-| a second candidate, Qwen3.8-Flash-Next on TensorFold, on its own gate path: screening, its own recipe, G0 and G1 (§9a) | **placed** | 2.3.0, #2230 (the 2.3 plan's D9; run at checkpoint A on the owner's word) |
+| a second candidate, Qwen3.8-Flash-Next on TensorFold, on its own gate path: screening, its own recipe, G0 and G1 (§9a) | **placed** | 2.4.0, #2230: moved from 2.3 by the owner on 2026-10-12 ("skip to next release"). Not measured in 2.3, which is not a negative |
 
 **What closes this SIP:** G4 decided (adopted, or parked with its record), with each earlier row shipped or its negative
 recorded.
