@@ -9,6 +9,7 @@ skips what is done.
     engine_replay.py select --out SELECTION.json [--seed 2199]
     engine_replay.py run SELECTION.json --round 1 --engine ollama --out DIR
     engine_replay.py run SELECTION.json --round 1 --engine tensorfold --recipe RECIPE.yaml --out DIR
+    engine_replay.py score ARM_DIR [ARM_DIR ...] --out SCORES.jsonl
 
 Settings: the envelope's ``max_tokens`` (production's registry default, 8,192, where the capture has
 none) and its reasoning level. Sampling is production's: Ollama's model defaults (temperature 1, top_p
@@ -19,6 +20,9 @@ effort line; the checkpoints' own template writes one for xhigh (its default whe
 low, and none for medium. So a thinking-on call to TensorFold carries the recipe's ``parity_effort``, the
 level whose rendered prompt is Ollama's to the token (checked on every round-1 prompt with ``/tokenize``),
 and each row records the effort it sent.
+
+``score`` puts each recorded answer through its task type's own handler, in the agent container of the
+envelope's role (``authoring_score.py``), and records whether the first answer passed: G1's validator.
 """
 
 from __future__ import annotations
@@ -398,6 +402,114 @@ def run(
     return 0
 
 
+# --- the answers, scored by their own handlers (G1) -------------------------------------------------
+
+SCORER = ("authoring_reconstruct.py", "authoring_replay.py", "authoring_score.py")
+
+
+def recorded_answer(path: Path, engine: str) -> dict[str, Any]:
+    """An answer as the model port hands it to the handler, rebuilt from the call's stream events: the
+    text, the thinking, and the counts the cap check reads."""
+    text, think, final, usage, finish = [], [], {}, {}, None
+    for raw in path.read_text().splitlines()[1:]:  # the first line is the request
+        event = read_event(engine, json.loads(raw)["line"])
+        if not event or event.get("end") or event.get("error"):
+            continue
+        text.append(event.get("piece") or "")
+        think.append(event.get("think") or "")
+        finish = event.get("finish") or finish
+        final = event.get("final") or final
+        usage = event.get("usage") or usage
+    counts = engine_counts(engine, final, usage)
+    return {
+        "content": "".join(text),
+        "reasoning_text": "".join(think) or None,
+        "finish": finish,
+        "prompt_tokens": counts["prompt_tokens"],
+        "completion_tokens": counts["completion_tokens"],
+    }
+
+
+def _in_container(container: str, cases: list[dict], answers: list[dict]) -> list[dict]:
+    here = Path(__file__).resolve().parent
+    for script in SCORER:
+        subprocess.run(
+            ["docker", "cp", str(here / script), f"{container}:/tmp/{script}"], check=True
+        )
+    done = subprocess.run(
+        ["docker", "exec", "-i", container, "python", "/tmp/authoring_score.py"],
+        input=json.dumps({"cases": cases, "answers": answers}),
+        capture_output=True,
+        text=True,
+    )
+    records = [json.loads(line) for line in done.stdout.splitlines() if line.startswith("{")]
+    if len(records) != len(answers):
+        raise SystemExit(
+            f"{container}: {len(records)} of {len(answers)} answers scored:\n{done.stderr[-3000:]}"
+        )
+    return records
+
+
+def score(arms: list[Path], out: Path) -> int:
+    """Score every recorded answer under each arm directory (its ``round*/`` folders)."""
+    from run_authoring_replay import _framework_sha
+    from verify_authoring_envelopes import _container_for
+
+    answers, cases = [], {}
+    for arm in arms:
+        for summary in sorted(arm.glob("round*/summary.jsonl")):
+            for line in summary.read_text().splitlines():
+                row = json.loads(line)
+                eid = row["envelope_id"]
+                meta = {
+                    "key": f"{arm.name}|{summary.parent.name}|{eid}",
+                    "envelope_id": eid,
+                    "arm": arm.name,
+                    "round": row["round"],
+                    "task_type": row["task_type"],
+                    "seam": row["seam"],
+                    "stack": row["stack"],
+                    "finish": row.get("finish"),
+                }
+                if row.get("error"):  # a failed call is a failed answer, never skipped (§4)
+                    answers.append({**meta, "verdict": "error", "error": row["error"]})
+                    continue
+                engine = "ollama" if row["engine"] == "ollama" else "tensorfold"
+                answers.append({**meta, **recorded_answer(summary.parent / f"{eid}.jsonl", engine)})
+                if eid not in cases:
+                    cases[eid] = {**envelope(eid), "envelope_id": eid}
+    records = [a for a in answers if a.get("verdict") == "error"]
+    by_role: dict[str, list[dict]] = defaultdict(list)
+    for a in answers:
+        if a.get("verdict") != "error":
+            by_role[cases[a["envelope_id"]]["role"]].append(a)
+    for role, mine in sorted(by_role.items()):
+        container = _container_for(role)
+        sha = _framework_sha(container)
+        meta = {a["key"]: a for a in mine}
+        scored = _in_container(
+            container, [cases[i] for i in {a["envelope_id"] for a in mine}], mine
+        )
+        for record in scored:
+            answer = meta[record["key"]]
+            records.append(
+                {
+                    **{k: v for k, v in answer.items() if k not in ("content", "reasoning_text")},
+                    **record,
+                    "container": container,
+                    "framework_git_sha": sha,
+                }
+            )
+    with out.open("w") as f:
+        for record in sorted(records, key=lambda r: r["key"]):
+            f.write(json.dumps(record) + "\n")
+    for arm in arms:
+        mine = [r for r in records if r["arm"] == arm.name]
+        passed = sum(r["verdict"] == "pass" for r in mine)
+        print(f"{arm.name}: {passed} of {len(mine)} first answers passed")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -415,7 +527,12 @@ def main() -> int:
     r.add_argument("--only", nargs="*")
     r.add_argument("--draft", choices=("on", "off"))
     r.add_argument("--max-tokens-cap", type=int)
+    c = sub.add_parser("score")
+    c.add_argument("arms", type=Path, nargs="+")
+    c.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
+    if args.command == "score":
+        return score(args.arms, args.out)
     if args.command == "select":
         select(args.out, args.seed)
         return 0
