@@ -725,3 +725,35 @@ measure the instruction as well as the engine.
 **Who ruled it.** The owner approved it on 2026-10-12 ("1, yes", answering whether TensorFold should get exactly the
 same prompt as Ollama). No counted gate had run. From here, §5.1's "Reasoning" and §9a item 1 are read with this
 change.
+
+### 9d. The 27B's gates run on TensorFold's Python 0.6.6 line (RULED 2026-10-12)
+
+**What changed.**
+- **This SIP assumed one TensorFold that would carry its recipe forward.** It doesn't. TensorFold 1.0 (2026-10-07) is
+  a native rewrite, and its CUDA build serves only Nemotron. The 27B on the Spark runs only on the Python 0.6.6
+  engine, in every checkpoint the tuning run loaded. §5.7's pinned recipe therefore pins the Python line, with no
+  newer TensorFold to move it to.
+- **The 27B's held-out run uses one generation per arm,** the 2.3 plan's D2 at its leanest, in place of §4's three and
+  §9a's two.
+
+**The evidence.**
+- **TensorFold's own `docs/recipes/cuda.md` at v1.0.8:**
+  - "The native binary registers only Nemotron on CUDA";
+  - "EXL3 loading and DFlash2 drafting remain Python-engine features, not native upgrade paths."
+- **Its release notes:**
+  - v1.0.0 kept the 27B out: it was slower than Python 0.6.6;
+  - v1.0.3 brought the 27B to the native engine on Apple silicon only.
+- **The `python-0.6` branch** is 12 commits past `v0.6.6`, with none since 2026-10-07.
+- **A community proposal** to port the 27B to native CUDA (ashhart/TensorFold#603) targets Ampere sm_86, not GB10.
+- **On the one-generation choice:** in the tuning run every 27B checkpoint's median was 0.40–0.51 of Ollama's
+  wall-clock, against G0's 0.75 (#2199). The interval G1 needs is the one the second generation would have narrowed.
+
+**What it means.**
+- If the gates and G3 pass, production would run an engine line that gets no further fixes for this model on this
+  hardware.
+- S's switch back to Ollama is the fallback. It took at most 28.2 s in S's exercises.
+- A future native port is a recipe change, and re-runs G0 and G1.
+
+**Who ruled it.** The owner, on 2026-10-12. Told the finding, the owner answered "once per prompt, run on 0.6.6,
+NVFP4". The same answer chose the checkpoint. The pre-registration
+(`docs/plans/verification-sets/2-3-0-tensorfold-27b-preregistration.md`) records it.
