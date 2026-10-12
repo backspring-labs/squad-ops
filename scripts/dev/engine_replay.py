@@ -37,9 +37,9 @@ from typing import Any
 import httpx
 import yaml
 
-OLLAMA_URL = "http://127.0.0.1:11434"
-TF_URL = "http://127.0.0.1:8090"
-KEY_FILE = Path("/home/jladd/tensorfold/secrets/api_key")
+sys.path.insert(0, str(Path(__file__).resolve().parent / "ops"))
+from engine_switch import OLLAMA_URL, TF_URL, api_key  # noqa: E402
+
 DEFAULT_MAX_TOKENS = 8192  # qwen3.8:27b's default_max_completion in the model registry
 SEEDS = {1: 1001, 2: 1002, 3: 1003}
 CALL_TIMEOUT = 1800.0
@@ -49,8 +49,22 @@ HELD_OUT_PER_STRATUM = 8
 
 def psql(sql: str) -> str:
     return subprocess.run(
-        ["docker", "exec", "squadops-postgres", "psql", "-U", "squadops", "-d", "squadops", "-At", "-c", sql],
-        capture_output=True, text=True, check=True,
+        [
+            "docker",
+            "exec",
+            "squadops-postgres",
+            "psql",
+            "-U",
+            "squadops",
+            "-d",
+            "squadops",
+            "-At",
+            "-c",
+            sql,
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
     ).stdout
 
 
@@ -70,16 +84,27 @@ def select(out: Path, seed: int) -> None:
     ]
     strata: dict[str, list[dict]] = defaultdict(list)
     for eid, task_type, seam, stack, sha in rows:
-        strata[f"{task_type}|{stack}"].append({"envelope_id": eid, "task_type": task_type, "seam": seam,
-                                               "stack": stack, "messages_sha256": sha})
+        strata[f"{task_type}|{stack}"].append(
+            {
+                "envelope_id": eid,
+                "task_type": task_type,
+                "seam": seam,
+                "stack": stack,
+                "messages_sha256": sha,
+            }
+        )
     rng = random.Random(seed)
-    split: dict[str, Any] = {"seed": seed, "strata": {}, "tuning_per_stratum": TUNING_PER_STRATUM,
-                             "held_out_per_stratum": HELD_OUT_PER_STRATUM}
+    split: dict[str, Any] = {
+        "seed": seed,
+        "strata": {},
+        "tuning_per_stratum": TUNING_PER_STRATUM,
+        "held_out_per_stratum": HELD_OUT_PER_STRATUM,
+    }
     for key in sorted(strata):
         members = sorted(strata[key], key=lambda r: r["envelope_id"])
         rng.shuffle(members)
         tuning = members[:TUNING_PER_STRATUM]
-        held = members[TUNING_PER_STRATUM:TUNING_PER_STRATUM + HELD_OUT_PER_STRATUM]
+        held = members[TUNING_PER_STRATUM : TUNING_PER_STRATUM + HELD_OUT_PER_STRATUM]
         split["strata"][key] = {
             "tuning": [dict(m, round=i + 1) for i, m in enumerate(tuning)],
             "held_out": [m["envelope_id"] for m in held],
@@ -90,19 +115,18 @@ def select(out: Path, seed: int) -> None:
     out.write_text(json.dumps(split, indent=2))
     tuning = sum(len(s["tuning"]) for s in split["strata"].values())
     held = sum(len(s["held_out"]) for s in split["strata"].values())
-    print(f"{len(split['strata'])} strata, {tuning} tuning, {held} held-out, sha256 {split['sha256'][:16]}")
+    print(
+        f"{len(split['strata'])} strata, {tuning} tuning, {held} held-out, sha256 {split['sha256'][:16]}"
+    )
 
 
 def envelope(eid: str) -> dict[str, Any]:
-    return json.loads(psql(f"select envelope::text from authoring_envelopes where envelope_id = '{eid}'"))
+    return json.loads(
+        psql(f"select envelope::text from authoring_envelopes where envelope_id = '{eid}'")
+    )
 
 
 # --- the calls ------------------------------------------------------------------------------------
-
-
-def api_key() -> str:
-    line = KEY_FILE.read_text().strip()
-    return line.split(":", 1)[1].strip() if ":" in line else line
 
 
 def settings(env: dict[str, Any]) -> tuple[int, str]:
@@ -121,8 +145,9 @@ def ollama_request(env: dict[str, Any], seed: int) -> tuple[str, dict]:
     }
 
 
-def tensorfold_request(env: dict[str, Any], seed: int, served_id: str, parity_effort: str,
-                       draft: bool | None = None) -> tuple[str, dict]:
+def tensorfold_request(
+    env: dict[str, Any], seed: int, served_id: str, parity_effort: str, draft: bool | None = None
+) -> tuple[str, dict]:
     max_tokens, reasoning = settings(env)
     body: dict[str, Any] = {
         "model": served_id,
@@ -131,7 +156,10 @@ def tensorfold_request(env: dict[str, Any], seed: int, served_id: str, parity_ef
         "stream_options": {"include_usage": True},
         "max_tokens": max_tokens,
         "seed": seed,
-        "temperature": 1.0, "top_p": 0.95, "top_k": 20, "min_p": 0.0,
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "top_k": 20,
+        "min_p": 0.0,
     }
     if reasoning == "none":
         body["chat_template_kwargs"] = {"enable_thinking": False}
@@ -143,6 +171,73 @@ def tensorfold_request(env: dict[str, Any], seed: int, served_id: str, parity_ef
     return f"{TF_URL}/v1/chat/completions", body
 
 
+def read_event(engine: str, line: str) -> dict[str, Any] | None:
+    """One streamed line, read the same way for both engines: the answer and thinking it adds, the finish
+    reason, and Ollama's closing event or the OpenAI usage block when it carries one. ``{"end": True}`` is
+    the OpenAI stream's ``[DONE]``; an ``error`` is a failure the engine reported mid-stream; ``None`` is a
+    line that carries no event."""
+    if engine == "ollama":
+        event = json.loads(line)
+        msg = event.get("message") or {}
+        out: dict[str, Any] = {
+            "piece": msg.get("content") or "",
+            "think": msg.get("thinking") or "",
+        }
+        if event.get("done"):
+            out |= {"final": event, "finish": event.get("done_reason")}
+        return out
+    if not line.startswith("data:"):
+        return None
+    data = line[5:].strip()
+    if data == "[DONE]":
+        return {"end": True}
+    event = json.loads(data)
+    if event.get("error"):
+        return {"error": str(event["error"])[:300]}
+    choice = (event.get("choices") or [{}])[0]
+    delta = choice.get("delta") or {}
+    return {
+        "piece": delta.get("content") or "",
+        "think": delta.get("reasoning_content") or "",
+        "finish": choice.get("finish_reason"),
+        "usage": event.get("usage"),
+    }
+
+
+def engine_counts(engine: str, final: dict[str, Any], usage: dict[str, Any]) -> dict[str, Any]:
+    """The engine's own token counts and timings: Ollama's closing event, or TensorFold's usage block."""
+    if engine == "ollama":
+        return {
+            "prompt_tokens": final.get("prompt_eval_count"),
+            "completion_tokens": final.get("eval_count"),
+            "load_s": round(final.get("load_duration", 0) / 1e9, 2),
+            "prefill_s": round(final.get("prompt_eval_duration", 0) / 1e9, 2),
+            "engine_decode_tps": round(final["eval_count"] / (final["eval_duration"] / 1e9), 2)
+            if final.get("eval_duration")
+            else None,
+        }
+    details = usage.get("completion_tokens_details") or {}
+    prompt_details = usage.get("prompt_tokens_details") or {}
+    return {
+        "prompt_tokens": usage.get("prompt_tokens"),
+        "completion_tokens": usage.get("completion_tokens"),
+        "reasoning_tokens": details.get("reasoning_tokens"),
+        "cached_tokens": prompt_details.get("cached_tokens"),
+        "usage_extra": {
+            k: v
+            for k, v in usage.items()
+            if k
+            not in {
+                "prompt_tokens",
+                "completion_tokens",
+                "total_tokens",
+                "prompt_tokens_details",
+                "completion_tokens_details",
+            }
+        },
+    }
+
+
 def stream_call(url: str, body: dict, headers: dict, raw_path: Path, engine: str) -> dict[str, Any]:
     """One streamed call: every event kept, the timings read from the client's own clock."""
     t0 = time.monotonic()
@@ -151,46 +246,43 @@ def stream_call(url: str, body: dict, headers: dict, raw_path: Path, engine: str
     final: dict[str, Any] = {}
     usage: dict[str, Any] = {}
     finish = None
-    with raw_path.open("w") as raw, httpx.stream("POST", url, json=body, headers=headers,
-                                                 timeout=httpx.Timeout(CALL_TIMEOUT, connect=30)) as resp:
-        raw.write(json.dumps({"request": body | {"messages": f"<{len(body['messages'])} messages>"}}) + "\n")
+    with (
+        raw_path.open("w") as raw,
+        httpx.stream(
+            "POST", url, json=body, headers=headers, timeout=httpx.Timeout(CALL_TIMEOUT, connect=30)
+        ) as resp,
+    ):
+        raw.write(
+            json.dumps({"request": body | {"messages": f"<{len(body['messages'])} messages>"}})
+            + "\n"
+        )
         if resp.status_code != 200:
             err = resp.read().decode(errors="replace")[:2000]
             raw.write(json.dumps({"status": resp.status_code, "error": err}) + "\n")
-            return {"error": f"HTTP {resp.status_code}: {err[:300]}", "wall_s": round(time.monotonic() - t0, 2)}
+            return {
+                "error": f"HTTP {resp.status_code}: {err[:300]}",
+                "wall_s": round(time.monotonic() - t0, 2),
+            }
         for line in resp.iter_lines():
             if not line:
                 continue
             now = time.monotonic()
             raw.write(json.dumps({"t": round(now - t0, 4), "line": line}) + "\n")
-            if engine == "ollama":
-                event = json.loads(line)
-                msg = event.get("message") or {}
-                piece, think = msg.get("content") or "", msg.get("thinking") or ""
-                if event.get("done"):
-                    final = event
-                    finish = event.get("done_reason")
-            else:
-                if not line.startswith("data:"):
-                    continue
-                data = line[5:].strip()
-                if data == "[DONE]":
-                    break
-                event = json.loads(data)
-                if event.get("usage"):
-                    usage = event["usage"]
-                if event.get("error"):
-                    return {"error": f"stream error: {str(event['error'])[:300]}",
-                            "wall_s": round(now - t0, 2)}
-                choice = (event.get("choices") or [{}])[0] if event.get("choices") else {}
-                delta = choice.get("delta") or {}
-                piece, think = delta.get("content") or "", delta.get("reasoning_content") or ""
-                finish = choice.get("finish_reason") or finish
-            if piece or think:
+            event = read_event(engine, line)
+            if event is None:
+                continue
+            if event.get("end"):
+                break
+            if "error" in event:
+                return {"error": f"stream error: {event['error']}", "wall_s": round(now - t0, 2)}
+            usage = event.get("usage") or usage
+            final = event.get("final") or final
+            finish = event.get("finish") or finish
+            if event["piece"] or event["think"]:
                 first = first if first is not None else now
                 last = now
-                text.append(piece)
-                thinking.append(think)
+                text.append(event["piece"])
+                thinking.append(event["think"])
     wall = time.monotonic() - t0
     row: dict[str, Any] = {
         "wall_s": round(wall, 2),
@@ -198,37 +290,26 @@ def stream_call(url: str, body: dict, headers: dict, raw_path: Path, engine: str
         "finish": finish,
         "text_chars": len("".join(text)),
         "thinking_chars": len("".join(thinking)),
-        "text_sha": hashlib.sha256(("".join(thinking) + "\x00" + "".join(text)).encode()).hexdigest()[:16],
-    }
-    if engine == "ollama":
-        row |= {
-            "prompt_tokens": final.get("prompt_eval_count"),
-            "completion_tokens": final.get("eval_count"),
-            "load_s": round(final.get("load_duration", 0) / 1e9, 2),
-            "prefill_s": round(final.get("prompt_eval_duration", 0) / 1e9, 2),
-            "engine_decode_tps": round(final["eval_count"] / (final["eval_duration"] / 1e9), 2)
-            if final.get("eval_duration") else None,
-        }
-    else:
-        details = usage.get("completion_tokens_details") or {}
-        prompt_details = usage.get("prompt_tokens_details") or {}
-        row |= {
-            "prompt_tokens": usage.get("prompt_tokens"),
-            "completion_tokens": usage.get("completion_tokens"),
-            "reasoning_tokens": details.get("reasoning_tokens"),
-            "cached_tokens": prompt_details.get("cached_tokens"),
-            "usage_extra": {k: v for k, v in usage.items()
-                            if k not in {"prompt_tokens", "completion_tokens", "total_tokens",
-                                         "prompt_tokens_details", "completion_tokens_details"}},
-        }
+        "text_sha": hashlib.sha256(
+            ("".join(thinking) + "\x00" + "".join(text)).encode()
+        ).hexdigest()[:16],
+    } | engine_counts(engine, final, usage)
     if first is not None and last is not None and row.get("completion_tokens"):
         span = last - first
         row["client_decode_tps"] = round(row["completion_tokens"] / span, 2) if span > 0 else None
     return row
 
 
-def run(selection: Path, round_no: int, engine: str, recipe: Path | None, out: Path,
-        only: list[str] | None, draft: bool | None, max_tokens_cap: int | None) -> int:
+def run(
+    selection: Path,
+    round_no: int,
+    engine: str,
+    recipe: Path | None,
+    out: Path,
+    only: list[str] | None,
+    draft: bool | None,
+    max_tokens_cap: int | None,
+) -> int:
     split = json.loads(selection.read_text())
     seed = SEEDS[round_no]
     served_id = None
@@ -242,7 +323,11 @@ def run(selection: Path, round_no: int, engine: str, recipe: Path | None, out: P
     arm = out / label / f"round{round_no}"
     arm.mkdir(parents=True, exist_ok=True)
     summary = arm / "summary.jsonl"
-    done = {json.loads(l)["envelope_id"] for l in summary.read_text().splitlines()} if summary.exists() else set()
+    done = (
+        {json.loads(row)["envelope_id"] for row in summary.read_text().splitlines()}
+        if summary.exists()
+        else set()
+    )
     picks = [m for s in split["strata"].values() for m in s["tuning"] if m["round"] == round_no]
     if only:
         picks = [m for m in picks if m["envelope_id"] in only]
@@ -268,17 +353,43 @@ def run(selection: Path, round_no: int, engine: str, recipe: Path | None, out: P
         except (httpx.HTTPError, OSError, ValueError) as exc:
             row = {"error": f"{type(exc).__name__}: {str(exc)[:300]}"}
         max_tokens, reasoning = settings(env)
-        row = {"envelope_id": m["envelope_id"], "task_type": m["task_type"], "seam": m["seam"],
-               "stack": m["stack"], "engine": label, "round": round_no, "seed": seed, "started_at": started,
-               "max_tokens": body.get("max_tokens") or body.get("options", {}).get("num_predict"),
-               "captured_max_tokens": max_tokens, "reasoning": reasoning,
-               "reasoning_effort_sent": body.get("reasoning_effort"),
-               "messages_sha256": env.get("messages_sha256"), **row}
+        row = {
+            "envelope_id": m["envelope_id"],
+            "task_type": m["task_type"],
+            "seam": m["seam"],
+            "stack": m["stack"],
+            "engine": label,
+            "round": round_no,
+            "seed": seed,
+            "started_at": started,
+            "max_tokens": body.get("max_tokens") or body.get("options", {}).get("num_predict"),
+            "captured_max_tokens": max_tokens,
+            "reasoning": reasoning,
+            "reasoning_effort_sent": body.get("reasoning_effort"),
+            "messages_sha256": env.get("messages_sha256"),
+            **row,
+        }
         with summary.open("a") as f:
             f.write(json.dumps(row) + "\n")
-        print(json.dumps({k: row.get(k) for k in ("engine", "task_type", "stack", "wall_s", "ttft_s",
-                                                  "completion_tokens", "client_decode_tps", "finish", "error")}),
-              flush=True)
+        print(
+            json.dumps(
+                {
+                    k: row.get(k)
+                    for k in (
+                        "engine",
+                        "task_type",
+                        "stack",
+                        "wall_s",
+                        "ttft_s",
+                        "completion_tokens",
+                        "client_decode_tps",
+                        "finish",
+                        "error",
+                    )
+                }
+            ),
+            flush=True,
+        )
         if row.get("error"):
             failures += 1
             if engine == "tensorfold" and failures >= 3:
@@ -288,7 +399,9 @@ def run(selection: Path, round_no: int, engine: str, recipe: Path | None, out: P
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     sub = parser.add_subparsers(dest="command", required=True)
     s = sub.add_parser("select")
     s.add_argument("--out", type=Path, required=True)
@@ -309,8 +422,16 @@ def main() -> int:
     if args.engine == "tensorfold" and not args.recipe:
         parser.error("--recipe is required for tensorfold")
     draft = None if args.draft is None else args.draft == "on"
-    return run(args.selection, args.round, args.engine, args.recipe, args.out, args.only, draft,
-               args.max_tokens_cap)
+    return run(
+        args.selection,
+        args.round,
+        args.engine,
+        args.recipe,
+        args.out,
+        args.only,
+        draft,
+        args.max_tokens_cap,
+    )
 
 
 if __name__ == "__main__":

@@ -37,13 +37,18 @@ from typing import Any
 import httpx
 import yaml
 
-MAIN = Path("/home/jladd/Code/squad-ops")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from checkouts import main_checkout  # noqa: E402
+
+#: The records go under the main checkout, whichever checkout runs the switch (scripts/dev/checkouts.py).
+MAIN = main_checkout(Path(__file__).resolve().parents[3])
 RECORDS = MAIN / "var" / "engine_switch"
 TF_CONTAINER = "squadops-tensorfold"
 TF_PORT = 8090
 TF_URL = f"http://127.0.0.1:{TF_PORT}"
 OLLAMA_URL = "http://127.0.0.1:11434"
-TF_HOME = Path("/home/jladd/tensorfold")
+#: The checkpoints' cache and the API key's file, outside every checkout.
+TF_HOME = Path.home() / "tensorfold"
 KEY_FILE = TF_HOME / "secrets" / "api_key"
 
 #: SIP-0111 §5.6 (Q7): the floors, as squadops.campaigns.box defines them.
@@ -95,21 +100,36 @@ def mem_available() -> int:
 def run(*cmd: str, check: bool = True, timeout: float = 120) -> subprocess.CompletedProcess:
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     if check and proc.returncode != 0:
-        raise SwitchFailed(f"{' '.join(cmd[:4])} exited {proc.returncode}: {proc.stderr.strip()[-300:]}")
+        raise SwitchFailed(
+            f"{' '.join(cmd[:4])} exited {proc.returncode}: {proc.stderr.strip()[-300:]}"
+        )
     return proc
 
 
 def gpu_compute_processes() -> list[str]:
     """Every GPU compute process, as nvidia-smi lists it. Unreadable residency fails closed."""
-    proc = run("nvidia-smi", "--query-compute-apps=pid,process_name", "--format=csv,noheader", check=False)
+    proc = run(
+        "nvidia-smi", "--query-compute-apps=pid,process_name", "--format=csv,noheader", check=False
+    )
     if proc.returncode != 0:
         raise SwitchFailed(f"GPU residency unknown: nvidia-smi exited {proc.returncode}")
     return [line.strip() for line in proc.stdout.splitlines() if line.strip()]
 
 
 def psql(sql: str) -> str:
-    return run("docker", "exec", "squadops-postgres", "psql", "-U", "squadops", "-d", "squadops", "-At",
-               "-c", sql).stdout.strip()
+    return run(
+        "docker",
+        "exec",
+        "squadops-postgres",
+        "psql",
+        "-U",
+        "squadops",
+        "-d",
+        "squadops",
+        "-At",
+        "-c",
+        sql,
+    ).stdout.strip()
 
 
 def box_work() -> list[str]:
@@ -125,8 +145,9 @@ def box_work() -> list[str]:
 
 
 def compose(*args: str, timeout: float = 600) -> subprocess.CompletedProcess:
-    return subprocess.run(["docker", "compose", *args], cwd=MAIN, capture_output=True, text=True,
-                          timeout=timeout)
+    return subprocess.run(
+        ["docker", "compose", *args], cwd=MAIN, capture_output=True, text=True, timeout=timeout
+    )
 
 
 def container_running(name: str) -> bool:
@@ -169,9 +190,17 @@ def start_ollama(rec: Record) -> None:
         raise SwitchFailed(f"ollama start: {proc.stderr.strip()[-300:]}")
     model = ollama_model()
     t0 = time.monotonic()
-    body = httpx.post(f"{OLLAMA_URL}/api/generate", timeout=600, json={
-        "model": model, "prompt": "Reply with the word ready.", "stream": False, "think": False,
-        "options": {"num_predict": 8, "seed": 1}}).json()
+    body = httpx.post(
+        f"{OLLAMA_URL}/api/generate",
+        timeout=600,
+        json={
+            "model": model,
+            "prompt": "Reply with the word ready.",
+            "stream": False,
+            "think": False,
+            "options": {"num_predict": 8, "seed": 1},
+        },
+    ).json()
     if not body.get("response", "").strip():
         raise SwitchFailed(f"ollama generation empty: {str(body)[:200]}")
     httpx.post(f"{OLLAMA_URL}/api/generate", json={"model": model, "keep_alive": 0}, timeout=120)
@@ -188,7 +217,15 @@ def ollama_model() -> str:
 
 def load_recipe(path: Path) -> dict[str, Any]:
     recipe = yaml.safe_load(path.read_text())
-    for key in ("name", "served_id", "image", "checkpoint", "context", "memory_reserve_gib", "serve_flags"):
+    for key in (
+        "name",
+        "served_id",
+        "image",
+        "checkpoint",
+        "context",
+        "memory_reserve_gib",
+        "serve_flags",
+    ):
         if key not in recipe:
             raise SwitchFailed(f"recipe {path.name} lacks {key}")
     return recipe
@@ -199,18 +236,49 @@ def serve_command(recipe: dict[str, Any]) -> list[str]:
     record of what was served."""
     cache = "/cache"
     cmd = [
-        "docker", "run", "-d", "--name", TF_CONTAINER,
-        "--device", "nvidia.com/gpu=all", "--ipc=host", "--user", "1000:1000",
-        "-e", f"HOME={cache}/home", "-e", f"HF_HOME={cache}/hf", "-e", "HF_HUB_OFFLINE=1",
-        "-e", f"TORCH_EXTENSIONS_DIR={cache}/torch_extensions", "-e", f"TRITON_CACHE_DIR={cache}/triton",
-        "-e", f"TENSORFOLD_MEMORY_RESERVE_GIB={recipe['memory_reserve_gib']}",
-        "-e", "PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True",
-        "-v", f"{TF_HOME}:{cache}", "-v", f"{KEY_FILE}:/run/tensorfold_api_key:ro",
-        "-p", f"127.0.0.1:{TF_PORT}:8080",
+        "docker",
+        "run",
+        "-d",
+        "--name",
+        TF_CONTAINER,
+        "--device",
+        "nvidia.com/gpu=all",
+        "--ipc=host",
+        "--user",
+        "1000:1000",
+        "-e",
+        f"HOME={cache}/home",
+        "-e",
+        f"HF_HOME={cache}/hf",
+        "-e",
+        "HF_HUB_OFFLINE=1",
+        "-e",
+        f"TORCH_EXTENSIONS_DIR={cache}/torch_extensions",
+        "-e",
+        f"TRITON_CACHE_DIR={cache}/triton",
+        "-e",
+        f"TENSORFOLD_MEMORY_RESERVE_GIB={recipe['memory_reserve_gib']}",
+        "-e",
+        "PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True",
+        "-v",
+        f"{TF_HOME}:{cache}",
+        "-v",
+        f"{KEY_FILE}:/run/tensorfold_api_key:ro",
+        "-p",
+        f"127.0.0.1:{TF_PORT}:8080",
         recipe["image"],
-        "serve", recipe["checkpoint"]["container_path"],
-        "--name", recipe["served_id"], "--host", "0.0.0.0", "--port", "8080",
-        "--context", str(recipe["context"]), "--api-key-file", "/run/tensorfold_api_key",
+        "serve",
+        recipe["checkpoint"]["container_path"],
+        "--name",
+        recipe["served_id"],
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8080",
+        "--context",
+        str(recipe["context"]),
+        "--api-key-file",
+        "/run/tensorfold_api_key",
         *[str(f) for f in recipe["serve_flags"]],
     ]
     return cmd
@@ -222,12 +290,18 @@ def api_key() -> str:
 
 
 def tf_get(path: str, **kw: Any) -> httpx.Response:
-    return httpx.get(f"{TF_URL}{path}", headers={"Authorization": f"Bearer {api_key()}"}, timeout=30, **kw)
+    return httpx.get(
+        f"{TF_URL}{path}", headers={"Authorization": f"Bearer {api_key()}"}, timeout=30, **kw
+    )
 
 
 def tf_post(path: str, body: dict, timeout: float = 600) -> httpx.Response:
-    return httpx.post(f"{TF_URL}{path}", headers={"Authorization": f"Bearer {api_key()}"}, json=body,
-                      timeout=timeout)
+    return httpx.post(
+        f"{TF_URL}{path}",
+        headers={"Authorization": f"Bearer {api_key()}"},
+        json=body,
+        timeout=timeout,
+    )
 
 
 def stop_tensorfold(rec: Record) -> None:
@@ -259,7 +333,9 @@ def start_tensorfold(rec: Record, recipe: dict[str, Any], ready_timeout: float) 
         except httpx.HTTPError:
             pass
         if mem_available() < FLOOR_AFTER_LOAD:
-            raise SwitchFailed(f"MemAvailable fell below {FLOOR_AFTER_LOAD / GIB:.0f} GiB during load")
+            raise SwitchFailed(
+                f"MemAvailable fell below {FLOOR_AFTER_LOAD / GIB:.0f} GiB during load"
+            )
         time.sleep(5)
     raise SwitchFailed(f"tensorfold did not answer within {ready_timeout:.0f}s")
 
@@ -273,16 +349,27 @@ def verify_tensorfold(rec: Record, recipe: dict[str, Any]) -> None:
     if window != recipe["context"]:
         raise SwitchFailed(f"served window {window} != the recipe's {recipe['context']}")
     args = json.loads(run("docker", "inspect", "-f", "{{json .Args}}", TF_CONTAINER).stdout)
-    if args[1] != recipe["checkpoint"]["container_path"] or not all(str(f) in args for f in recipe["serve_flags"]):
+    if args[1] != recipe["checkpoint"]["container_path"] or not all(
+        str(f) in args for f in recipe["serve_flags"]
+    ):
         raise SwitchFailed("the running command line is not the recipe's")
     available = mem_available()
     if available < FLOOR_AFTER_LOAD:
-        raise SwitchFailed(f"MemAvailable {available / GIB:.1f} GiB after load < {FLOOR_AFTER_LOAD / GIB:.0f}")
+        raise SwitchFailed(
+            f"MemAvailable {available / GIB:.1f} GiB after load < {FLOOR_AFTER_LOAD / GIB:.0f}"
+        )
     rec.write("tensorfold_verified", served_ids=sorted(ids), window=window)
     t0 = time.monotonic()
-    body = tf_post("/v1/chat/completions", {
-        "model": recipe["served_id"], "messages": [{"role": "user", "content": "Reply with the word ready."}],
-        "max_tokens": 16, "seed": 1, "chat_template_kwargs": {"enable_thinking": False}}).json()
+    body = tf_post(
+        "/v1/chat/completions",
+        {
+            "model": recipe["served_id"],
+            "messages": [{"role": "user", "content": "Reply with the word ready."}],
+            "max_tokens": 16,
+            "seed": 1,
+            "chat_template_kwargs": {"enable_thinking": False},
+        },
+    ).json()
     text = (body.get("choices") or [{}])[0].get("message", {}).get("content") or ""
     if not text.strip():
         raise SwitchFailed(f"tensorfold generation empty: {str(body)[:200]}")
@@ -313,12 +400,18 @@ def to_tensorfold(rec: Record, recipe_path: Path, ready_timeout: float) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     sub = parser.add_subparsers(dest="command", required=True)
     tf = sub.add_parser("to-tensorfold")
     tf.add_argument("recipe", type=Path)
-    tf.add_argument("--ready-timeout", type=float, default=2400,
-                    help="seconds for the first answer (a first start compiles TensorFold's kernels)")
+    tf.add_argument(
+        "--ready-timeout",
+        type=float,
+        default=2400,
+        help="seconds for the first answer (a first start compiles TensorFold's kernels)",
+    )
     sub.add_parser("to-ollama")
     sub.add_parser("status")
     args = parser.parse_args()
@@ -326,8 +419,12 @@ def main() -> int:
     RECORDS.mkdir(parents=True, exist_ok=True)
     rec = Record(RECORDS / f"{datetime.now(UTC):%Y%m%dT%H%M%SZ}-{args.command}.jsonl")
     if args.command == "status":
-        rec.write("status", tensorfold=container_running(TF_CONTAINER),
-                  ollama=container_running("squadops-ollama"), gpu_processes=gpu_compute_processes())
+        rec.write(
+            "status",
+            tensorfold=container_running(TF_CONTAINER),
+            ollama=container_running("squadops-ollama"),
+            gpu_processes=gpu_compute_processes(),
+        )
         return 0
     try:
         if args.command == "to-ollama":

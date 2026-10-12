@@ -18,8 +18,10 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+from engine_switch import RECORDS, TF_CONTAINER
+
 GIB = 2**30
-LOG = Path("/home/jladd/Code/squad-ops/var/engine_switch/watchdog.jsonl")
+LOG = RECORDS / "watchdog.jsonl"
 
 
 def meminfo() -> tuple[int, int]:
@@ -33,20 +35,30 @@ def meminfo() -> tuple[int, int]:
 def log(event: str, **fields) -> None:
     LOG.parent.mkdir(parents=True, exist_ok=True)
     available, swap = meminfo()
-    line = {"at": datetime.now(UTC).isoformat(timespec="seconds"), "event": event,
-            "mem_available_gib": round(available / GIB, 1), "swap_used_gib": round(swap / GIB, 2), **fields}
+    line = {
+        "at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "event": event,
+        "mem_available_gib": round(available / GIB, 1),
+        "swap_used_gib": round(swap / GIB, 2),
+        **fields,
+    }
     with LOG.open("a") as f:
         f.write(json.dumps(line) + "\n")
 
 
 def tensorfold_running() -> bool:
-    proc = subprocess.run(["docker", "inspect", "-f", "{{.State.Running}}", "squadops-tensorfold"],
-                          capture_output=True, text=True)
+    proc = subprocess.run(
+        ["docker", "inspect", "-f", "{{.State.Running}}", TF_CONTAINER],
+        capture_output=True,
+        text=True,
+    )
     return proc.returncode == 0 and proc.stdout.strip() == "true"
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--floor-gib", type=float, default=12.0)
     parser.add_argument("--swap-climb-gib", type=float, default=2.0)
     parser.add_argument("--interval", type=float, default=2.0)
@@ -61,7 +73,7 @@ def main() -> None:
         climbed = swap - swap_base > args.swap_climb_gib * GIB
         if (low >= 2 or climbed) and tensorfold_running():
             log("killing_tensorfold", reason="memory floor" if low >= 2 else "swap climb")
-            subprocess.run(["docker", "kill", "squadops-tensorfold"], capture_output=True, timeout=60)
+            subprocess.run(["docker", "kill", TF_CONTAINER], capture_output=True, timeout=60)
             log("killed_tensorfold")
             low = 0
             time.sleep(10)
