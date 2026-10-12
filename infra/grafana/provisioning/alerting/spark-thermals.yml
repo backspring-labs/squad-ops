@@ -1,0 +1,71 @@
+# The Spark's board thermals: one alert per ACPI zone above 98 °C for 5 minutes.
+#
+# Every zone's only trip point is critical at 104 °C, a hard power-off. Under a 9.4-hour cycle
+# TSOC and TGPU peaked at 94.9 °C and TS1P at 93.7 °C, so 98 °C is above anything a normal
+# cycle has reached and 6 °C short of the power-off.
+#
+# The kernel's zone names are not exported as labels, so the query names each zone (the same
+# expression as the "Board thermal zones" panel in infra/grafana/dashboards/spark-health.json),
+# and each alert carries its zone_name: a TSOC or TGPU alert says so by name. A zone outside
+# 0..6 is still alerted on, with its number only.
+#
+# No contact point or notification settings are set here: the alert goes to Grafana's default
+# notification policy and its default contact point, which has no working channel until one is
+# chosen. Until then a firing alert shows only in Grafana's Alerting pages.
+#
+# Grafana reads this file at startup (or on POST /api/admin/provisioning/alerting/reload).
+# Grafana expands $VARIABLES in provisioning files, so the templates below use .Labels and
+# .Values rather than $labels and $values.
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: spark-thermals
+    folder: Spark
+    interval: 30s
+    rules:
+      - uid: spark-acpi-zone-hot
+        title: Spark board zone above 98 °C
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            # The provisioned Prometheus datasource: its uid is pinned in datasources/prometheus.yml.
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              refId: A
+              instant: true
+              range: false
+              expr: |-
+                label_replace(node_thermal_zone_temp{type="acpitz", zone="0"}, "zone_name", "TSOC", "", "")
+                or label_replace(node_thermal_zone_temp{type="acpitz", zone="1"}, "zone_name", "TS0E", "", "")
+                or label_replace(node_thermal_zone_temp{type="acpitz", zone="2"}, "zone_name", "TS0P", "", "")
+                or label_replace(node_thermal_zone_temp{type="acpitz", zone="3"}, "zone_name", "TS1E", "", "")
+                or label_replace(node_thermal_zone_temp{type="acpitz", zone="4"}, "zone_name", "TS1P", "", "")
+                or label_replace(node_thermal_zone_temp{type="acpitz", zone="5"}, "zone_name", "TGPU", "", "")
+                or label_replace(node_thermal_zone_temp{type="acpitz", zone="6"}, "zone_name", "TUNC", "", "")
+                or on(zone) node_thermal_zone_temp{type="acpitz"}
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [98]
+        for: 5m
+        noDataState: NoData
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Spark zone {{ .Labels.zone_name }} (zone {{ .Labels.zone }}) is at {{ printf "%.1f" .Values.A.Value }} °C'
+          description: >-
+            An ACPI thermal zone has been above 98 °C for 5 minutes. Its only trip point is
+            critical at 104 °C, a hard power-off. TSOC is the system-on-chip and TGPU the ACPI GPU
+            sensor; both peaked at 94.9 °C under a 9.4-hour cycle. Reduce the load (stop the
+            running cycle or model) before it reaches 104 °C.
+        isPaused: false
