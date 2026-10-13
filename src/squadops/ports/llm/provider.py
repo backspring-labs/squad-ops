@@ -41,6 +41,19 @@ class LLMPort(ABC):
         """Return the default model name used by this provider."""
         return "unknown"
 
+    @property
+    @abstractmethod
+    def engine(self) -> str:
+        """The inference engine this adapter speaks to: one value per adapter, the factory's
+        provider name (``"ollama"``, ``"vllm"``, ``"atlas"``).
+
+        The per-call metrics are labelled with it (#2260). A model name can't stand in: it is
+        provider-scoped (SIP-0106 §3.4), so the same weights carry a different name on each
+        engine, and nothing in the name says which engine served the call. Required, never
+        defaulted: an adapter that named no engine would label its calls as somebody else's.
+        """
+        ...
+
     @abstractmethod
     async def generate(self, request: LLMRequest) -> LLMResponse:
         """Generate text from a prompt.

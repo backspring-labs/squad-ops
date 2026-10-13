@@ -43,15 +43,18 @@
   ACPI zone above 98 °C for 5 minutes, one alert per zone, named. It goes to Grafana's default contact
   point, so it notifies nobody until a channel is chosen; it shows under Alerting meanwhile
 - **Squad model calls** (`infra/grafana/dashboards/Squad/squad-model-calls.json`, in the **Squad** folder): the
-  agents' model calls during cycles, from the metrics they send through the collector. It shows:
+  agents' model calls during cycles, from the metrics they send through the collector. Engine, model and role
+  filter every panel. It shows:
   - calls and tokens generated per 10 minutes, by role;
-  - the decode rate of calls of 1,000+ tokens against shorter calls;
-  - time to first token (prefill plus model load), and prompt size and call time by role;
-  - a table by task type.
+  - the decode rate of calls of 1,000+ tokens against shorter calls, per engine;
+  - time to first token (prefill and model load) per engine, and prompt size and call time by role;
+  - a table by engine and task type.
 
   The counts are exact: each agent process exports its own series, and `increase()` misses a series' first
   value (on 2026-10-11 it read 25 of 53 calls), so the queries subtract each series' value before the window
-  instead. Percentiles and peaks wait on the histograms' bucket sizes (#2260)
+  instead. Each histogram has its own bucket sizes from #2260, so a percentile can be read with
+  `histogram_quantile`. Calls recorded before #2260 carry no engine label and show as "unlabelled"; all of them
+  were Ollama's
 - The Spark dashboards and the alert are in Grafana's **Spark** folder. Dashboards reload from the checkout
   within 10 s; alert rules are read at Grafana's startup
 

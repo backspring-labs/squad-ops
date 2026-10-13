@@ -157,6 +157,10 @@ class VLLMAdapter(LLMPort):
     def default_model(self) -> str:
         return self._default_model
 
+    @property
+    def engine(self) -> str:
+        return "vllm"
+
     def capabilities(self) -> dict[str, bool]:
         """Declare what this adapter does (#572's rule — see the port).
 

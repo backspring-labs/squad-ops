@@ -34,7 +34,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "Every model call the agents make during a cycle, as each agent reports it (OpenTelemetry → the collector → Prometheus). Engine replays, such as the TensorFold comparison, call the engine directly and are not here. These are exact counts, sums and averages. Percentiles and peaks can't be read until the histograms get their own bucket sizes (#2260)."
+        "content": "Every model call the agents make during a cycle, as each agent reports it (OpenTelemetry → the collector → Prometheus), labelled with the engine that served it. Engine replays, such as the TensorFold comparison, call the engine directly and are not here. These are exact counts, sums and averages. Calls recorded before the engine label existed (#2260) show as \"unlabelled\": every one of them was served by Ollama."
       }
     },
     {
@@ -92,7 +92,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "refId": "A",
-          "expr": "sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[$__range])) * 0))",
+          "expr": "sum (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) * 0))",
           "instant": true,
           "range": false
         }
@@ -152,7 +152,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "refId": "A",
-          "expr": "sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_completion_tokens_sum{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_completion_tokens_sum{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_completion_tokens_sum{model=~\"$model\", role=~\"$role\"}[$__range])) * 0))",
+          "expr": "sum (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_completion_tokens_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_completion_tokens_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_completion_tokens_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) * 0))",
           "instant": true,
           "range": false
         }
@@ -213,7 +213,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "refId": "A",
-          "expr": "sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\", long=\"true\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\", long=\"true\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\", long=\"true\"}[$__range])) * 0))\n/ (sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\", long=\"true\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\", long=\"true\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\", long=\"true\"}[$__range])) * 0)) > 0)",
+          "expr": "sum (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\", long=\"true\"}[$__range])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\", long=\"true\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\", long=\"true\"}[$__range])) * 0))\n/ (sum (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\", long=\"true\"}[$__range])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\", long=\"true\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\", long=\"true\"}[$__range])) * 0)) > 0)",
           "instant": true,
           "range": false
         }
@@ -274,7 +274,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "refId": "A",
-          "expr": "(sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_sum{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__range])) * 0))\n/ (sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_count{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_count{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_count{model=~\"$model\", role=~\"$role\"}[$__range])) * 0)) > 0))\n+ (sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_load_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_load_seconds_sum{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_load_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__range])) * 0))\n/ (sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_load_seconds_count{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_load_seconds_count{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_load_seconds_count{model=~\"$model\", role=~\"$role\"}[$__range])) * 0)) > 0))",
+          "expr": "(sum (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prefill_seconds_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prefill_seconds_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prefill_seconds_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) * 0))\n/ (sum (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prefill_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prefill_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prefill_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) * 0)) > 0))\n+ (sum (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_load_seconds_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_load_seconds_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_load_seconds_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) * 0))\n/ (sum (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_load_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_load_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_load_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) * 0)) > 0))",
           "instant": true,
           "range": false
         }
@@ -335,7 +335,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "refId": "A",
-          "expr": "sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_sum{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__range])) * 0))\n/ (sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[$__range])) * 0)) > 0)",
+          "expr": "sum (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_call_seconds_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_call_seconds_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_call_seconds_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) * 0))\n/ (sum (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) * 0)) > 0)",
           "instant": true,
           "range": false
         }
@@ -396,7 +396,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "refId": "A",
-          "expr": "sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_sum{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_sum{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_sum{model=~\"$model\", role=~\"$role\"}[$__range])) * 0))\n/ (sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_count{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_count{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_count{model=~\"$model\", role=~\"$role\"}[$__range])) * 0)) > 0)",
+          "expr": "sum (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prompt_tokens_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prompt_tokens_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prompt_tokens_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) * 0))\n/ (sum (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prompt_tokens_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prompt_tokens_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prompt_tokens_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) * 0)) > 0)",
           "instant": true,
           "range": false
         }
@@ -551,7 +551,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "refId": "A",
-          "expr": "sum by (role) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[$__interval])) * 0))",
+          "expr": "sum by (role) (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__interval])) * 0))",
           "legendFormat": "{{role}}",
           "range": true
         }
@@ -706,7 +706,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "refId": "A",
-          "expr": "sum by (role) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_completion_tokens_sum{model=~\"$model\", role=~\"$role\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_completion_tokens_sum{model=~\"$model\", role=~\"$role\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_completion_tokens_sum{model=~\"$model\", role=~\"$role\"}[$__interval])) * 0))",
+          "expr": "sum by (role) (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_completion_tokens_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_completion_tokens_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_completion_tokens_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__interval])) * 0))",
           "legendFormat": "{{role}}",
           "range": true
         }
@@ -716,7 +716,7 @@
       "id": 10,
       "type": "timeseries",
       "title": "Decode rate (tokens a second)",
-      "description": "The average decode rate of the calls in each 10-minute bucket. Long calls are the comparable figure: the rate falls as output grows.",
+      "description": "The average decode rate of the calls in each 10-minute bucket, one colour per engine. Long calls (solid) are the comparable figure: the rate falls as output grows. Shorter calls are dashed.",
       "datasource": {
         "type": "prometheus",
         "uid": "PBFA97CFB590B2093"
@@ -753,8 +753,8 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "calls of 1,000+ tokens"
+              "id": "byRegexp",
+              "options": "^ollama,? "
             },
             "properties": [
               {
@@ -768,16 +768,38 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "shorter calls"
+              "id": "byRegexp",
+              "options": "^tensorfold,? "
             },
             "properties": [
               {
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "#B7B7B7"
+                  "fixedColor": "#E0B400"
                 }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ", shorter calls$"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 1
               }
             ]
           }
@@ -801,8 +823,8 @@
             "uid": "PBFA97CFB590B2093"
           },
           "refId": "A",
-          "expr": "sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\", long=\"true\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\", long=\"true\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\", long=\"true\"}[$__interval])) * 0))\n/ (sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\", long=\"true\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\", long=\"true\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\", long=\"true\"}[$__interval])) * 0)) > 0)",
-          "legendFormat": "calls of 1,000+ tokens",
+          "expr": "label_replace(sum by (engine) (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\", long=\"true\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\", long=\"true\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\", long=\"true\"}[$__interval])) * 0))\n/ (sum by (engine) (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\", long=\"true\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\", long=\"true\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\", long=\"true\"}[$__interval])) * 0)) > 0), \"engine\", \"unlabelled\", \"engine\", \"\")",
+          "legendFormat": "{{engine}}, calls of 1,000+ tokens",
           "range": true
         },
         {
@@ -811,8 +833,8 @@
             "uid": "PBFA97CFB590B2093"
           },
           "refId": "B",
-          "expr": "sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\", long=\"false\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\", long=\"false\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\", long=\"false\"}[$__interval])) * 0))\n/ (sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\", long=\"false\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\", long=\"false\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\", long=\"false\"}[$__interval])) * 0)) > 0)",
-          "legendFormat": "shorter calls",
+          "expr": "label_replace(sum by (engine) (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\", long=\"false\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\", long=\"false\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\", long=\"false\"}[$__interval])) * 0))\n/ (sum by (engine) (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\", long=\"false\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\", long=\"false\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\", long=\"false\"}[$__interval])) * 0)) > 0), \"engine\", \"unlabelled\", \"engine\", \"\")",
+          "legendFormat": "{{engine}}, shorter calls",
           "range": true
         }
       ]
@@ -821,7 +843,7 @@
       "id": 11,
       "type": "timeseries",
       "title": "Time to first token",
-      "description": "Average prefill and model-load time per call in each 10-minute bucket, stacked: their sum is the wait before the first token. A model load shows up as a spike on one call.",
+      "description": "Average prefill and model-load time per call in each 10-minute bucket, one colour per engine: their sum is the wait before the first token. Model load is dashed, and shows up as a spike on one call. An engine that reports no timing has no line.",
       "datasource": {
         "type": "prometheus",
         "uid": "PBFA97CFB590B2093"
@@ -843,13 +865,13 @@
           },
           "custom": {
             "lineWidth": 2,
-            "fillOpacity": 80,
-            "showPoints": "never",
+            "fillOpacity": 0,
+            "showPoints": "always",
             "pointSize": 6,
             "spanNulls": false,
-            "drawStyle": "bars",
+            "drawStyle": "line",
             "stacking": {
-              "mode": "normal",
+              "mode": "none",
               "group": "A"
             },
             "barAlignment": -1
@@ -858,31 +880,53 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "prefill"
+              "id": "byRegexp",
+              "options": "^ollama,? "
             },
             "properties": [
               {
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "#EF843C"
+                  "fixedColor": "#1F78C1"
                 }
               }
             ]
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "model load"
+              "id": "byRegexp",
+              "options": "^tensorfold,? "
             },
             "properties": [
               {
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "#6ED0E0"
+                  "fixedColor": "#E0B400"
                 }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": " model load$"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 1
               }
             ]
           }
@@ -906,8 +950,8 @@
             "uid": "PBFA97CFB590B2093"
           },
           "refId": "A",
-          "expr": "sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_sum{model=~\"$model\", role=~\"$role\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__interval])) * 0))\n/ (sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_count{model=~\"$model\", role=~\"$role\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_count{model=~\"$model\", role=~\"$role\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_count{model=~\"$model\", role=~\"$role\"}[$__interval])) * 0)) > 0)",
-          "legendFormat": "prefill",
+          "expr": "label_replace(sum by (engine) (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prefill_seconds_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prefill_seconds_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prefill_seconds_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__interval])) * 0))\n/ (sum by (engine) (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prefill_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prefill_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prefill_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__interval])) * 0)) > 0), \"engine\", \"unlabelled\", \"engine\", \"\")",
+          "legendFormat": "{{engine}} prefill",
           "range": true
         },
         {
@@ -916,8 +960,8 @@
             "uid": "PBFA97CFB590B2093"
           },
           "refId": "B",
-          "expr": "sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_load_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_load_seconds_sum{model=~\"$model\", role=~\"$role\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_load_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__interval])) * 0))\n/ (sum (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_load_seconds_count{model=~\"$model\", role=~\"$role\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_load_seconds_count{model=~\"$model\", role=~\"$role\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_load_seconds_count{model=~\"$model\", role=~\"$role\"}[$__interval])) * 0)) > 0)",
-          "legendFormat": "model load",
+          "expr": "label_replace(sum by (engine) (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_load_seconds_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_load_seconds_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_load_seconds_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__interval])) * 0))\n/ (sum by (engine) (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_load_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_load_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_load_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__interval])) * 0)) > 0), \"engine\", \"unlabelled\", \"engine\", \"\")",
+          "legendFormat": "{{engine}} model load",
           "range": true
         }
       ]
@@ -1071,7 +1115,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "refId": "A",
-          "expr": "sum by (role) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_sum{model=~\"$model\", role=~\"$role\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_sum{model=~\"$model\", role=~\"$role\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_sum{model=~\"$model\", role=~\"$role\"}[$__interval])) * 0))\n/ (sum by (role) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_count{model=~\"$model\", role=~\"$role\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_count{model=~\"$model\", role=~\"$role\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_count{model=~\"$model\", role=~\"$role\"}[$__interval])) * 0)) > 0)",
+          "expr": "sum by (role) (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prompt_tokens_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prompt_tokens_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prompt_tokens_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__interval])) * 0))\n/ (sum by (role) (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prompt_tokens_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prompt_tokens_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prompt_tokens_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__interval])) * 0)) > 0)",
           "legendFormat": "{{role}}",
           "range": true
         }
@@ -1226,7 +1270,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "refId": "A",
-          "expr": "sum by (role) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_sum{model=~\"$model\", role=~\"$role\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__interval])) * 0))\n/ (sum by (role) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[$__interval])) * 0)) > 0)",
+          "expr": "sum by (role) (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_call_seconds_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_call_seconds_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_call_seconds_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__interval])) * 0))\n/ (sum by (role) (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__interval])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[10m] offset $__interval)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__interval])) * 0)) > 0)",
           "legendFormat": "{{role}}",
           "range": true
         }
@@ -1254,7 +1298,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "refId": "A",
-          "expr": "sum by (role, task_type) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[$__range])) * 0))",
+          "expr": "label_replace(sum by (engine, role, task_type) (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) * 0)), \"engine\", \"unlabelled\", \"engine\", \"\")",
           "instant": true,
           "range": false,
           "format": "table"
@@ -1265,7 +1309,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "refId": "B",
-          "expr": "sum by (role, task_type) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_sum{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__range])) * 0))\n/ (sum by (role, task_type) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\"}[$__range])) * 0)) > 0)",
+          "expr": "label_replace(sum by (engine, role, task_type) (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_call_seconds_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_call_seconds_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_call_seconds_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) * 0))\n/ (sum by (engine, role, task_type) (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_call_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) * 0)) > 0), \"engine\", \"unlabelled\", \"engine\", \"\")",
           "instant": true,
           "range": false,
           "format": "table"
@@ -1276,7 +1320,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "refId": "C",
-          "expr": "sum by (role, task_type) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\"}[$__range])) * 0))\n/ (sum by (role, task_type) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\"}[$__range])) * 0)) > 0)",
+          "expr": "label_replace(sum by (engine, role, task_type) (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_decode_tokens_per_second_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) * 0))\n/ (sum by (engine, role, task_type) (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_decode_tokens_per_second_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) * 0)) > 0), \"engine\", \"unlabelled\", \"engine\", \"\")",
           "instant": true,
           "range": false,
           "format": "table"
@@ -1287,7 +1331,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "refId": "D",
-          "expr": "sum by (role, task_type) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_sum{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_sum{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_sum{model=~\"$model\", role=~\"$role\"}[$__range])) * 0))\n/ (sum by (role, task_type) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_count{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_count{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prompt_tokens_count{model=~\"$model\", role=~\"$role\"}[$__range])) * 0)) > 0)",
+          "expr": "label_replace(sum by (engine, role, task_type) (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prompt_tokens_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prompt_tokens_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prompt_tokens_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) * 0))\n/ (sum by (engine, role, task_type) (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prompt_tokens_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prompt_tokens_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prompt_tokens_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) * 0)) > 0), \"engine\", \"unlabelled\", \"engine\", \"\")",
           "instant": true,
           "range": false,
           "format": "table"
@@ -1298,7 +1342,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "refId": "E",
-          "expr": "sum by (role, task_type) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_sum{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_sum{model=~\"$model\", role=~\"$role\"}[$__range])) * 0))\n/ (sum by (role, task_type) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_count{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_count{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_prefill_seconds_count{model=~\"$model\", role=~\"$role\"}[$__range])) * 0)) > 0)",
+          "expr": "label_replace(sum by (engine, role, task_type) (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prefill_seconds_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prefill_seconds_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prefill_seconds_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) * 0))\n/ (sum by (engine, role, task_type) (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prefill_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prefill_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_prefill_seconds_count{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) * 0)) > 0), \"engine\", \"unlabelled\", \"engine\", \"\")",
           "instant": true,
           "range": false,
           "format": "table"
@@ -1309,7 +1353,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "refId": "F",
-          "expr": "sum by (role, task_type) (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_completion_tokens_sum{model=~\"$model\", role=~\"$role\"}[$__range])) - (sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_completion_tokens_sum{model=~\"$model\", role=~\"$role\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, long) (last_over_time(squadops_llm_completion_tokens_sum{model=~\"$model\", role=~\"$role\"}[$__range])) * 0))",
+          "expr": "label_replace(sum by (engine, role, task_type) (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_completion_tokens_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) - (sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_completion_tokens_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[10m] offset $__range)) or sum by (exported_instance, role, task_type, model, engine, long) (last_over_time(squadops_llm_completion_tokens_sum{model=~\"$model\", role=~\"$role\", engine=~\"$engine\"}[$__range])) * 0)), \"engine\", \"unlabelled\", \"engine\", \"\")",
           "instant": true,
           "range": false,
           "format": "table"
@@ -1327,14 +1371,15 @@
               "Time": true
             },
             "indexByName": {
-              "role": 0,
-              "task_type": 1,
-              "Value #A": 2,
-              "Value #B": 3,
-              "Value #C": 4,
-              "Value #D": 5,
-              "Value #E": 6,
-              "Value #F": 7
+              "engine": 0,
+              "role": 1,
+              "task_type": 2,
+              "Value #A": 3,
+              "Value #B": 4,
+              "Value #C": 5,
+              "Value #D": 6,
+              "Value #E": 7,
+              "Value #F": 8
             },
             "renameByName": {
               "task_type": "task type",
@@ -1472,6 +1517,35 @@
   ],
   "templating": {
     "list": [
+      {
+        "name": "engine",
+        "label": "Engine",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "PBFA97CFB590B2093"
+        },
+        "query": {
+          "query": "label_values(squadops_llm_call_seconds_count, engine)",
+          "refId": "engine"
+        },
+        "definition": "label_values(squadops_llm_call_seconds_count, engine)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "sort": 1,
+        "hide": 0
+      },
       {
         "name": "model",
         "label": "Model",

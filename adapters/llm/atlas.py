@@ -135,6 +135,10 @@ class AtlasAdapter(LLMPort):
     def default_model(self) -> str:
         return self._default_model
 
+    @property
+    def engine(self) -> str:
+        return "atlas"
+
     def capabilities(self) -> dict[str, bool]:
         """Declared from what the live server did on 2026-08-28, not from its docs."""
         return {
