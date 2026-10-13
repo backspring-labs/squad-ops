@@ -12,6 +12,11 @@ Chromium, and share two facts learned at the 1.9.0 cut:
   reported as "a blank or error page" of the app's; read as Prefect, it would have been written
   as the release's timeline screenshot. ``browser_error`` names it, and the captures refuse it
   as the browser's failure.
+
+**Every browser call is bounded in wall-clock time** (#2234). ``--virtual-time-budget`` bounds the
+page's own clock, not the process: at the 2.2.1 cut the Prefect capture of a failed flow run ran
+until an outer 600-second wrapper killed it, and wrote nothing. A browser that outlives its budget
+by ``WALL_MARGIN_S`` is killed and named.
 """
 
 from __future__ import annotations
@@ -22,6 +27,9 @@ import subprocess
 from pathlib import Path
 
 DEFAULT_BROWSER = "chromium"
+#: Seconds a browser may run past its virtual-time budget before it is killed. Pages here load in
+#: about a second (a Prefect flow-run page took 1-3 s on 2026-10-12); the margin covers a cold start.
+WALL_MARGIN_S = 60
 _ERROR_CODE = re.compile(r'"errorCode":"(ERR_[A-Z0-9_]+)"')
 
 
@@ -53,12 +61,23 @@ def _headless(browser: str, budget_ms: int, *flags: str) -> list[str]:
     ]
 
 
+def _run(command: list[str], budget_ms: int, url: str) -> subprocess.CompletedProcess:
+    """One browser call, killed when it outlives its budget by ``WALL_MARGIN_S``."""
+    limit = budget_ms / 1000 + WALL_MARGIN_S
+    try:
+        return subprocess.run(command, capture_output=True, text=True, timeout=limit)
+    except subprocess.TimeoutExpired:
+        raise SystemExit(
+            f"{command[0]} was still running on {url} after {limit:.0f} s, and was stopped. "
+            "Nothing was written: check the page loads in a browser, and the browser binary "
+            "(--browser, #1793)"
+        ) from None
+
+
 def loaded_dom(browser: str, url: str, budget_ms: int) -> str:
     """The DOM the page at ``url`` rendered. Refused when the browser could not load it: that
     page is the browser's, and nothing on it says anything about the page asked for."""
-    dom = subprocess.run(
-        _headless(browser, budget_ms, "--dump-dom", url), capture_output=True, text=True
-    ).stdout
+    dom = _run(_headless(browser, budget_ms, "--dump-dom", url), budget_ms, url).stdout
     code = browser_error(dom)
     if code is not None:
         raise SystemExit(
@@ -72,7 +91,7 @@ def loaded_dom(browser: str, url: str, budget_ms: int) -> str:
 def screenshot(
     browser: str, url: str, target: Path, width: int, height: int, budget_ms: int
 ) -> None:
-    subprocess.run(
+    _run(
         _headless(
             browser,
             budget_ms,
@@ -81,6 +100,6 @@ def screenshot(
             f"--screenshot={target}",
             url,
         ),
-        capture_output=True,
-        text=True,
+        budget_ms,
+        url,
     )
