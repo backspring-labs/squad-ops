@@ -118,7 +118,7 @@ Placed by the owner's Q1 ruling (2026-10-09). The rows are ordered as the work r
 | S: engine switching and rollback, with the exclusivity guard, built and exercised before the first TensorFold load (§5.6) | **shipped** | 2.3.0, #2252: the switch and the four exercises, passed (their records are on #2199) |
 | G0: throughput on held-out captured envelopes, against production Ollama, on a frozen recipe (§4) | **shipped** | 2.3.0, #2256 and #2262 (the harness and its reader), #2199: the 27B on NVFP4 passed, a median of 0.438 of Ollama's wall-clock (§9e) |
 | G1: emission quality, the same calls through each task type's production validator (§4) | **shipped** | 2.3.0, #2256 and #2262, #2199: passed by the owner's ruling of 2026-10-13, with plan writing one answer under Ollama's (§9e) |
-| G2: the adapter, dark, with the port amendments, registry entries, the overlay and parity tests (§5) | **placed** | 2.3.0, #2200: started on the 27B's frozen recipe after G0 and G1 (§9e) |
+| G2: the adapter, dark, with the port amendments, registry entries, the overlay and parity tests (§5) | **placed** | 2.3.0, #2200: on the 27B's frozen recipe after G0 and G1 (§9e). The port's controls (#2268, §9f) and the adapter (#2269, §9g) are merged; the clients' switch and overlay, then the live tier on the Spark, remain |
 | G3: the selected candidate's uncounted cycle A/B on both stacks, compared on wall-clock, task times, retries, correction rounds and verdicts (§9a item 6) | **placed** | 2.3.0, #2229 |
 | G4: cutover | **placed** | 2.3.0, #2229: the owner's decision on G3's evidence, before the 2.3 cut set (the 2.3 plan's D4) |
 | a second candidate, Qwen3.8-Flash-Next on TensorFold, on its own gate path: screening, its own recipe, G0 and G1 (§9a) | **placed** | 2.4.0, #2230: moved from 2.3 by the owner on 2026-10-12 ("skip to next release"). Not measured in 2.3, which is not a negative |
@@ -817,10 +817,9 @@ any call, on all four generation methods.
 **The evidence:** the conformance suite runs each control on all four methods of every adapter. A termination-decides-
 the-cap test and the overflow test each enter where a live cycle enters (`handle`, and the handler executor).
 
-**Who ruled it.** No one yet: the supervisor proposes both in the PR that builds them, under the owner's G2 go of
-2026-10-13 (§9e), and the owner rules them with its merge. Neither changes a behaviour Q6 approved. The first leaves
-a route unbuilt because nothing would travel it. The second places §5.2's classification at the one seam that sees
-every handler's failure.
+**Who ruled it.** The owner, on 2026-10-13, approving #2268's merge ("1, merge"), in which the supervisor proposed
+both. Neither changes a behaviour Q6 approved. The first leaves a route unbuilt because nothing would travel it. The
+second places §5.2's classification at the one seam that sees every handler's failure.
 
 ### 9g. G2's adapter, as built (2026-10-13, with #2200's second PR)
 
@@ -864,6 +863,5 @@ differ from §5's text.
 - §5.4's cases each raise, and the request after each is healthy and waits for the release first. Writing them found
   a frame that raised in the caller leaving its stream open until garbage collection, which the adapter now closes.
 
-**Who ruled it.** No one yet. The supervisor proposes all seven in the PR that builds them, under the owner's G2 go
-of 2026-10-13 (§9e), and the owner rules them with its merge. The deploy overlay and the switch's network attachment
-come in their own PR, for review as §5.7 asks.
+**Who ruled it.** The owner, on 2026-10-13, approving #2269's merge ("1, merge"), in which the supervisor proposed
+all seven. The deploy overlay and the switch's network attachment come in their own PR, for review as §5.7 asks.
