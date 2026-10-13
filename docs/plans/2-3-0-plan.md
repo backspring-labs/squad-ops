@@ -280,7 +280,7 @@ held. **No adapter code is written for either candidate before that candidate's 
 | 1 | **The benchmark deploy:** #2204a and #2201 merged, a rebuild (R1), a regression pair, every loaded check answering. **This instrumented deploy is frozen** for both candidates' benchmark arms, and its deploy id is recorded in each pre-registration. A rebuild before the last benchmark call voids the affected arms (§5) | rebuild and pair, ~2 h |
 | 2 | **S,** built and exercised on the benchmark deploy (#2199's acceptance list) | ~1–2 h |
 | 3 | **The harness and the pre-registrations:** the 27B's, and Flash-Next's screening and recipe matrix. The selection rule is in both | — |
-| 4 | **The 27B:** tuning, the frozen recipe, the drift panel, the held-out run, the drift panel again, and drafted-against-serial. **Checkpoint A** (§4) | §4 |
+| 4 | **The 27B:** tuning, the frozen recipe, the drift panel, the held-out run, the drift panel again, and drafted-against-serial. **Checkpoint A** (§4). **Done:** the held-out run took 13.7 h (2026-10-12 10:19 to 10-13 00:01 ET). G0 passed at 0.438 of Ollama's wall-clock; G1 passed by the owner's ruling at checkpoint A, with plan writing one answer under Ollama's (SIP-0111 §9e) | §4 |
 | 5 | **Flash-Next: moved to 2.4** by the owner on 2026-10-12 ("skip to next release"), before checkpoint A. It is recorded as not measured in 2.3. Its exploratory tuning results are on #2199: 0.37 of Ollama's wall-clock against the best 27B's 0.40, short of the 0.15 selection margin. Its gate path, when it runs, is unchanged: S's floors with its checkpoint, the screening replay, tuning, its frozen recipe, then its held-out arm (reusing Ollama's arm only under §5's rules) | — |
 | 6 | **Selection** (§2.1), then **G2** for the selected candidate: the adapter, the port's four amendments, registry entries, the overlay, the conformance suite across every adapter, and parity against the harness fixtures. Then a rebuild. **Checkpoint B** | rebuild |
 | 7 | **G3** on both stacks, then **G4,** the owner's decision. On adoption, cutover by S; from here every measurement is on TensorFold | ~8 h |
@@ -331,6 +331,10 @@ planning the box, not a cut-off. It counts:
 **Checkpoint A,** after the 27B's G0 and G1 are read: the owner's check-in. The supervisor reports the time used, the
 27B's readings, and the estimate for Flash-Next and G3. **The owner decides** whether Flash-Next runs now, waits for
 2.4 (as "not measured," never as a negative), or the trial changes course.
+- **Held 2026-10-13.** Flash-Next had already moved to 2.4, so the 27B is the only candidate and selection (phase 6)
+  is the 27B. Told the readings, the owner ruled the one-answer plan-writing miss does not fail G1, with no re-run
+  ("1, does not fail vailidity, let's go with TensorFold. 2, no re-run"). G2 starts on the 27B's frozen recipe
+  (#2200).
 
 **Checkpoint B,** after selection: the same check-in before G3.
 
