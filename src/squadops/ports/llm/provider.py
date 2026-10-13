@@ -55,7 +55,7 @@ class LLMPort(ABC):
     @abstractmethod
     def engine(self) -> str:
         """The inference engine this adapter speaks to: one value per adapter, the factory's
-        provider name (``"ollama"``, ``"vllm"``, ``"atlas"``).
+        provider name (``"ollama"``, ``"vllm"``, ``"atlas"``, ``"tensorfold"``).
 
         The per-call metrics are labelled with it (#2260). A model name can't stand in: it is
         provider-scoped (SIP-0106 §3.4), so the same weights carry a different name on each

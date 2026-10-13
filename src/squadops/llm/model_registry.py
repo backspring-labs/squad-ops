@@ -119,6 +119,19 @@ MODEL_SPECS: dict[str, ModelSpec] = {
         reasoning_control=ReasoningControl.TOGGLE,
         family="qwen3.8",
     ),
+    # The 27B on TensorFold (SIP-0111 §5.3): its own id, never Ollama's name, since it serves a
+    # different window. The window is the frozen recipe's `--context` (65,536), which the adapter
+    # reads back from the server before its first call and refuses to exceed; the completion
+    # clamp is Ollama's, so both engines budget a task alike. TOGGLE, not the graded EFFORT §5.3
+    # first named: from §9c the adapter sends thinking on or off with the recipe's parity effort,
+    # never the port's level, so a MEDIUM call thinks exactly as a HIGH one and is budgeted the same.
+    "qwen3.8-27b-tf-nvfp4": ModelSpec(
+        name="qwen3.8-27b-tf-nvfp4",
+        context_window=65_536,
+        default_max_completion=8_192,
+        reasoning_control=ReasoningControl.TOGGLE,
+        family="qwen3.8",
+    ),
     "llama3:70b": ModelSpec(
         name="llama3:70b",
         context_window=131_072,
