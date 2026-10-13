@@ -21,7 +21,9 @@ from pathlib import Path
 from engine_switch import RECORDS, TF_CONTAINER
 
 GIB = 2**30
-LOG = RECORDS / "watchdog.jsonl"
+#: One record per watch, named for the moment it began like every engine record, so the release's
+#: records carry it (``attach_release_records.py`` takes engine records by the day they began).
+LOG = RECORDS / f"{datetime.now(UTC):%Y%m%dT%H%M%SZ}-watchdog.jsonl"
 
 
 def meminfo() -> tuple[int, int]:
