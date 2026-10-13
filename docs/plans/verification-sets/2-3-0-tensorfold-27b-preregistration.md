@@ -142,6 +142,15 @@ with this pre-registration, and a change to it after registration is recorded he
 **The draft check:** the 5 drafted replies must be byte-identical to the plain ones (`text_sha`). A mismatch stops the
 trial.
 
+**Changed after registration (2026-10-12, before any validity verdict was read):**
+- **What:** `engine_gates.py` raised on a group in which every pair had a cache hit. It now reads that group's speed
+  as having no primary timing (median `None`, neither observed nor bounded) and reads its validity as any other
+  group's.
+- **Why:** all 8 React repair pairs reported a cached prefix on TensorFold: the same 355 tokens of the repair prompt's
+  opening, on prompts of 5,381–13,206 tokens. That cell's interval had no median to bound, so the reading raised
+  before writing anything. No rule changes: the primary timing still reads only pairs where neither call had a hit, and the
+  overall and per-seam readings are computed as before.
+
 ## 6. The selection guide, written before either candidate's held-out run
 
 From SIP-0111 §9a item 6, for when Flash-Next's own run is read (2.4, #2230):
