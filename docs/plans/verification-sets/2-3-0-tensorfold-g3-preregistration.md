@@ -1,7 +1,13 @@
 # 2.3.0 — pre-registration of the 27B on TensorFold in cycles, against production Ollama (SIP-0111 G3, #2229)
 
-**Status: DRAFT, written 2026-10-13 for the owner's review, before any G3 cycle.** It is registered when the owner
-approves it. The registration commit and the four set configs are posted on #2229 before the first shakeout.
+**Status: REGISTERED 2026-10-13, before any G3 cycle.** Written that morning for the owner's review. Asked, the owner
+kept the Ollama rolls as the control ("ok keep the ollama rolls for the control here for now"), then ruled §10's three
+choices and approved it: "1, yes. 2, keep. 3, two. 4, register and run". So:
+- TensorFold shakeouts only;
+- each pair A then B, as first ruled;
+- two rolls per arm per stack.
+
+The registration commit and the four set configs are posted on #2229 before the first shakeout.
 
 **What had to be true before it was written, all met:**
 1. **G0 and G1 passed** for the 27B on the frozen NVFP4 recipe, G1 by the owner's ruling (SIP-0111 §9e).
@@ -167,7 +173,7 @@ no threshold.** The record reports, and the owner decides G4.
 - No other cycle or campaign on the box.
 - The record is written from per-round evidence before any conclusion.
 
-## 10. Choices this draft makes, for the owner's review
+## 10. Choices this draft made, ruled by the owner on 2026-10-13 as written
 
 1. **TensorFold shakeouts only, none on Ollama.** This deploy's changes since R1-prime are inert on Ollama's path:
    - the termination field is unset on Ollama, so its cap reads the token count as before;
