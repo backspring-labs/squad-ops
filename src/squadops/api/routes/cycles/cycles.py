@@ -602,11 +602,9 @@ async def list_cycles(
 
     registry = get_cycle_registry(request)
     cycles = await registry.list_cycles(project_id, status=status, limit=limit, offset=offset)
-    results = []
-    for c in cycles:
-        runs = await registry.list_runs(c.cycle_id)
-        results.append(cycle_to_response(c, runs))
-    return results
+    # The page's runs in one read (#1976): one query per cycle made a page of 500 cost 501.
+    runs = await registry.list_runs_for_cycles([c.cycle_id for c in cycles])
+    return [cycle_to_response(c, runs[c.cycle_id]) for c in cycles]
 
 
 @router.get("/{cycle_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])

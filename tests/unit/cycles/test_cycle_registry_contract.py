@@ -224,6 +224,24 @@ async def test_list_cycles_orders_newest_first(registry):
     assert [c.cycle_id for c in page] == ["cyc_003", "cyc_002"]
 
 
+async def test_list_runs_for_cycles_gives_each_cycle_its_own_runs_in_order(registry):
+    """#1976: the batched read the cycle list uses. Every id asked for is a key, a cycle's runs
+    come in run order, and ``limit_per_cycle`` caps each cycle, not the whole read."""
+    for cycle_id in ("cyc_a", "cyc_b", "cyc_c"):
+        await registry.create_cycle(_make_cycle(cycle_id=cycle_id))
+    for n in (1, 2, 3):
+        await registry.create_run(_make_run(run_id=f"run_a{n}", cycle_id="cyc_a", run_number=n))
+    await registry.create_run(_make_run(run_id="run_b1", cycle_id="cyc_b", run_number=1))
+
+    runs = await registry.list_runs_for_cycles(["cyc_a", "cyc_b", "cyc_c"], limit_per_cycle=2)
+
+    assert {k: [r.run_id for r in v] for k, v in runs.items()} == {
+        "cyc_a": ["run_a1", "run_a2"],
+        "cyc_b": ["run_b1"],
+        "cyc_c": [],
+    }
+
+
 # ---------------------------------------------------------------------------
 # Pulse Verification contract tests (SIP-0070, Phase 1.9)
 # ---------------------------------------------------------------------------

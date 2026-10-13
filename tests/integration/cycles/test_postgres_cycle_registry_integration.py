@@ -752,6 +752,57 @@ class TestStatusFiltersBeforeThePage:
         assert [c.cycle_id for c in rest] == ["st-000"]
 
 
+class TestPageReadsAreBatched:
+    """#1976: the cycle list read each cycle's runs, and a status filter each cycle's latest run,
+    one query per cycle. Both are now one read for the page; these hold what they return to what
+    the per-cycle reads returned, on real SQL."""
+
+    async def test_runs_for_cycles_carry_each_cycles_runs_in_order_with_their_gates(self, registry):
+        project_id = f"batch-{uuid.uuid4().hex[:8]}"
+        cycles = [_make_cycle(project_id=project_id) for _ in range(3)]
+        for cycle in cycles:
+            await registry.create_cycle(cycle)
+        first = [await registry.create_run(_make_run(cycles[0].cycle_id)) for _ in range(3)]
+        await registry.record_gate_decision(
+            first[1].run_id,
+            GateDecision(
+                gate_name="qa-review",
+                decision=GateDecisionValue.APPROVED,
+                decided_by="integration-test",
+                decided_at=_NOW,
+            ),
+        )
+        second = await registry.create_run(_make_run(cycles[1].cycle_id))
+        ids = [c.cycle_id for c in cycles]
+
+        runs = await registry.list_runs_for_cycles(ids, limit_per_cycle=2)
+
+        assert {k: [r.run_id for r in v] for k, v in runs.items()} == {
+            ids[0]: [first[0].run_id, first[1].run_id],
+            ids[1]: [second.run_id],
+            ids[2]: [],
+        }
+        for cycle_id in ids:  # the per-cycle read, the same up to the cap
+            assert runs[cycle_id] == (await registry.list_runs(cycle_id))[:2]
+        assert [g.gate_name for g in runs[ids[0]][1].gate_decisions] == ["qa-review"]
+
+    async def test_a_status_filter_reads_each_cycles_latest_run_not_its_first(self, registry):
+        project_id = f"latest-{uuid.uuid4().hex[:8]}"
+        cycle = _make_cycle(project_id=project_id)
+        await registry.create_cycle(cycle)
+        failed = await registry.create_run(_make_run(cycle.cycle_id))
+        await registry.update_run_status(failed.run_id, RunStatus.RUNNING)
+        await registry.update_run_status(failed.run_id, RunStatus.FAILED)
+        retried = await registry.create_run(_make_run(cycle.cycle_id))
+        await registry.update_run_status(retried.run_id, RunStatus.RUNNING)
+        await registry.update_run_status(retried.run_id, RunStatus.COMPLETED)
+
+        completed = await registry.list_cycles(project_id, status=CycleStatus.COMPLETED)
+        failed_page = await registry.list_cycles(project_id, status=CycleStatus.FAILED)
+
+        assert ([c.cycle_id for c in completed], failed_page) == ([cycle.cycle_id], [])
+
+
 class TestConcurrentRunCreation:
     """asyncio.gather(create_run(...)) x20 iterations (Plan §3.3 item 6).
 

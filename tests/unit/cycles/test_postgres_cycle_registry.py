@@ -609,24 +609,56 @@ class TestPostgresCycleRegistry:
             await registry.record_gate_decision("run_001", decision)
 
     # ------------------------------------------------------------------
-    # 17. list_cycles — N+1 derivation pattern with status filter
+    # 17. list_cycles — status derived from each batch's latest runs, read together
     # ------------------------------------------------------------------
 
     async def test_list_cycles_with_status_filter(self, registry, conn):
-        # list_cycles fetches all cycle rows, then for each derives status via
-        # _latest_run_for_cycle (N+1 pattern).
+        """#1976. Bug caught: the latest run read one cycle at a time (N+1), so a status filter
+        over a project of 694 cycles made 694 more queries."""
         row_active = _cycle_row(cycle_id="cyc_001", cancelled=False)
         row_created = _cycle_row(cycle_id="cyc_002", cancelled=False)
-
-        # First acquire: conn.fetch returns two cycle rows
-        # Then for each cycle, _latest_run_for_cycle calls acquire again:
-        #   - cyc_001: has a queued run => derives ACTIVE
-        #   - cyc_002: no runs => derives CREATED
+        gate = {
+            "run_id": "run_001",
+            "gate_name": "qa_gate",
+            "decision": "approved",
+            "decided_by": "op",
+            "decided_at": NOW,
+            "notes": None,
+        }
+        # cyc_001 has a queued run (ACTIVE); cyc_002 has none (CREATED)
         conn.fetch.side_effect = [
-            [row_active, row_created],  # list_cycles main query
-            # _latest_run_for_cycle for cyc_001: gate_rows
+            [row_active, row_created],  # the batch of cycle rows
+            [_run_row(run_id="run_001", cycle_id="cyc_001", status="queued")],  # latest runs
+            [gate],  # their gate decisions
+        ]
+
+        result = await registry.list_cycles("proj_1", status=CycleStatus.ACTIVE)
+
+        assert [c.cycle_id for c in result] == ["cyc_001"]
+        main_fetch_sql = conn.fetch.call_args_list[0][0][0]
+        assert "ORDER BY created_at DESC" in main_fetch_sql
+        assert "LIMIT" in main_fetch_sql
+        assert "OFFSET" in main_fetch_sql
+        latest_sql, latest_ids = conn.fetch.call_args_list[1][0]
+        assert "DISTINCT ON (cycle_id)" in latest_sql
+        assert latest_ids == ["cyc_001", "cyc_002"]
+        assert conn.fetch.call_count == 3
+        conn.fetchrow.assert_not_called()
+
+    async def test_list_runs_for_cycles_groups_each_cycles_runs_and_keys_every_cycle(
+        self, registry, conn
+    ):
+        """#1976. Bug caught: the cycle list read a page's runs one cycle at a time; and a
+        batched read that drops a cycle with no runs would KeyError the page."""
+        conn.fetch.side_effect = [
+            [
+                _run_row(run_id="run_a1", cycle_id="cyc_a", run_number=1),
+                _run_row(run_id="run_a2", cycle_id="cyc_a", run_number=2),
+                _run_row(run_id="run_b1", cycle_id="cyc_b", run_number=1),
+            ],
             [
                 {
+                    "run_id": "run_a2",
                     "gate_name": "qa_gate",
                     "decision": "approved",
                     "decided_by": "op",
@@ -634,27 +666,26 @@ class TestPostgresCycleRegistry:
                     "notes": None,
                 }
             ],
-            # _latest_run_for_cycle for cyc_002: gate_rows (empty, but won't reach)
         ]
 
-        conn.fetchrow.side_effect = [
-            # _latest_run_for_cycle for cyc_001: run row
-            _run_row(cycle_id="cyc_001", status="queued"),
-            # _latest_run_for_cycle for cyc_002: no run
-            None,
-        ]
+        runs = await registry.list_runs_for_cycles(["cyc_a", "cyc_b", "cyc_c"], limit_per_cycle=2)
 
-        result = await registry.list_cycles("proj_1", status=CycleStatus.ACTIVE)
+        assert {k: [r.run_id for r in v] for k, v in runs.items()} == {
+            "cyc_a": ["run_a1", "run_a2"],
+            "cyc_b": ["run_b1"],
+            "cyc_c": [],
+        }
+        assert [g.gate_name for g in runs["cyc_a"][1].gate_decisions] == ["qa_gate"]
+        run_sql, ids, per_cycle = conn.fetch.call_args_list[0][0]
+        assert ("PARTITION BY cycle_id" in run_sql, ids, per_cycle) == (
+            True,
+            ["cyc_a", "cyc_b", "cyc_c"],
+            2,
+        )
 
-        # Only cyc_001 should be returned (ACTIVE); cyc_002 is CREATED
-        assert len(result) == 1
-        assert result[0].cycle_id == "cyc_001"
-
-        # Verify the main query used ORDER BY, LIMIT, OFFSET
-        main_fetch_sql = conn.fetch.call_args_list[0][0][0]
-        assert "ORDER BY created_at DESC" in main_fetch_sql
-        assert "LIMIT" in main_fetch_sql
-        assert "OFFSET" in main_fetch_sql
+    async def test_list_runs_for_no_cycles_reads_nothing(self, registry, conn):
+        assert await registry.list_runs_for_cycles([]) == {}
+        conn.fetch.assert_not_called()
 
     # ------------------------------------------------------------------
     # 18. list_runs — batch gate fetch via ANY($1) pattern
