@@ -2,3 +2,4 @@
 import './SystemHealth.svelte';
 import './SystemPlugins.svelte';
 import './SystemInfra.svelte';
+import './SystemHost.svelte';
