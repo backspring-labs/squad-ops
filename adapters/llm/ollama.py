@@ -114,6 +114,7 @@ class OllamaAdapter(LLMPort):
             LLMCapability.LOADED_MODELS: True,
             LLMCapability.SEED: True,
             LLMCapability.THINKING_BUDGET: False,
+            LLMCapability.REQUESTS_IN_FLIGHT: False,
         }
 
     async def _get_client(self) -> httpx.AsyncClient:

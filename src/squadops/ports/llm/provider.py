@@ -26,6 +26,7 @@ class LLMCapability:
     LOADED_MODELS = "loaded_models"
     SEED = "seed"
     THINKING_BUDGET = "thinking_budget"
+    REQUESTS_IN_FLIGHT = "requests_in_flight"
 
 
 #: The per-call controls a provider honours only where it declares them (SIP-0111 §5.1): each
@@ -253,6 +254,9 @@ class LLMPort(ABC):
           (SIP-0111 §5.1). False means a seed is refused, never dropped.
         - ``thinking_budget``: a ``thinking_budget`` reaches the server, refused the
           same way where False.
+        - ``requests_in_flight``: :meth:`requests_in_flight` is implemented: how many
+          requests the engine is serving or holding now, from an authenticated source
+          (SIP-0111 §5.5). The quiet-box check reads it before a launch.
 
         Defaults to all-False: an adapter that declares nothing is treated as
         supporting nothing. Failing closed keeps a silent omission from
@@ -267,6 +271,7 @@ class LLMPort(ABC):
             LLMCapability.LOADED_MODELS: False,
             LLMCapability.SEED: False,
             LLMCapability.THINKING_BUDGET: False,
+            LLMCapability.REQUESTS_IN_FLIGHT: False,
         }
 
     def supports(self, capability: str) -> bool:
@@ -317,6 +322,21 @@ class LLMPort(ABC):
         raise NotImplementedError(
             f"{type(self).__name__} cannot report loaded models; "
             f"capabilities()['{LLMCapability.LOADED_MODELS}'] is False."
+        )
+
+    async def requests_in_flight(self) -> int:
+        """How many requests the engine is running or holding now (SIP-0111 §5.5).
+
+        What the launch gate reads beside the loaded models: an engine already serving
+        work the box did not launch is not quiet, whichever models it holds.
+
+        Raises:
+            NotImplementedError: when ``requests_in_flight`` is not declared. "Cannot read"
+                stays distinct from "nothing running": a zero would read as a quiet box.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} cannot report requests in flight; "
+            f"capabilities()['{LLMCapability.REQUESTS_IN_FLIGHT}'] is False."
         )
 
     async def pull_model(self, model_name: str) -> None:

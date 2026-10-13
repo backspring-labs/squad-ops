@@ -203,6 +203,7 @@ class VLLMAdapter(LLMPort):
             # The OpenAI request's ``seed`` field, which vLLM's sampler honours (SIP-0111 §5.1).
             LLMCapability.SEED: True,
             LLMCapability.THINKING_BUDGET: False,
+            LLMCapability.REQUESTS_IN_FLIGHT: False,
         }
 
     async def _get_client(self) -> httpx.AsyncClient:
