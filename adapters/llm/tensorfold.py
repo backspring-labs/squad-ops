@@ -19,7 +19,9 @@ read from the server's source at the pinned commit (``tensorfold/server/http.py`
 
 **What it sends is G0's request** (§5.7), so the adapter is measured by the gates that passed:
 - the served id, the call's ``max_tokens`` (the registry's completion allowance where the call names
-  none, as the harness had it), and its ``seed`` where one is set;
+  none, as the harness had it), and a seed on every call: the call's own, or a fresh one where it
+  sets none, named on the call's line (§9j). TensorFold keys an omitted seed to the prompt
+  (``engine/exact_sampling.py``'s ``seed_for``), so a repeated prompt would repeat its sample;
 - the frozen recipe's sampling, unless the call sets its own temperature or ``top_p``;
 - reasoning at parity with Ollama's prompt (§9c): ``enable_thinking`` on or off, and with it on, the
   recipe's ``parity_effort``, never the port's level. A call that names no level sends the effort
@@ -33,6 +35,7 @@ import asyncio
 import json
 import logging
 import re
+import secrets
 import time
 from collections.abc import AsyncIterator
 from contextlib import aclosing
@@ -90,6 +93,9 @@ _OVERFLOW = re.compile(
     r"maximum context length is (\d+) tokens: the rendered prompt has (\d+) tokens"
 )
 _GAUGE = re.compile(r"^tensorfold:(requests_running|requests_waiting) (\d+)\s*$", re.M)
+#: The server's seed domain: ``seed_for`` derives an omitted seed as 63 bits, and the samplers mask
+#: what they are sent to 63.
+_SEED_BITS = 63
 
 _DEFAULT_INACTIVITY_SECONDS = 120.0
 _DEFAULT_RELEASE_SECONDS = 30.0
@@ -316,8 +322,9 @@ class TensorFoldAdapter(LLMPort):
         }
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
-        if seed is not None:
-            payload["seed"] = seed
+        # A seed on every call (§9j): TensorFold keys an omitted one to the prompt. Drawn from the
+        # OS, not ``random``, whose state anything in the process may have seeded.
+        payload["seed"] = secrets.randbits(_SEED_BITS) if seed is None else seed
         payload["temperature"] = recipe.temperature if temperature is None else temperature
         payload["top_p"] = recipe.top_p if top_p is None else top_p
         payload["top_k"] = recipe.top_k
@@ -548,13 +555,14 @@ class TensorFoldAdapter(LLMPort):
         message = reply.message(time.monotonic() - started)
         logger.info(
             "LLM chat_stream_with_usage completed: model=%s, prompt_tokens=%s, "
-            "completion_tokens=%s, reasoning_tokens=%s, termination=%s, t/s=%.1f",
+            "completion_tokens=%s, reasoning_tokens=%s, termination=%s, t/s=%.1f, seed=%s",
             resolved,
             message.prompt_tokens,
             message.completion_tokens,
             message.reasoning_tokens,
             message.termination,
             message.tokens_per_second or 0.0,
+            payload["seed"],
         )
         return message
 
@@ -640,6 +648,7 @@ class TensorFoldAdapter(LLMPort):
             async for frame in frames:
                 for piece in reply.read(frame):
                     yield piece
+        logger.info("LLM chat_stream completed: model=%s, seed=%s", resolved, payload["seed"])
 
     # ------------------------------------------------------------------ models and residency
 

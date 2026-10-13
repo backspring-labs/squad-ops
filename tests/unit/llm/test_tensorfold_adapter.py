@@ -10,12 +10,15 @@ What bug would these catch?
   larger window than the server serves.
 - A residency read as idle from anything but the authenticated sources, an alias read as a second
   model, or the frozen recipe and the adapter's table drifting apart.
+- A call that sets no seed left to the server, which keys it to the prompt, so a repeated prompt
+  repeats its answer (#2281). Or the seed drawn and never named, so the call cannot be replayed.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from pathlib import Path
 
 import httpx
@@ -36,7 +39,7 @@ from squadops.llm.exceptions import (
     LLMTimeoutError,
 )
 from squadops.llm.model_registry import get_model_spec
-from squadops.llm.models import ChatMessage
+from squadops.llm.models import ChatMessage, LLMRequest
 from tests.unit.llm.conformance import (
     TENSORFOLD_KEY,
     TENSORFOLD_MODELS,
@@ -368,3 +371,41 @@ async def test_every_level_reaches_tensorfold_as_ollamas_prompt(level, fields):
         await _adapter().chat_stream_with_usage(_MESSAGES, reasoning=level)
 
     assert {k: sent[k] for k in ("chat_template_kwargs", "reasoning_effort") if k in sent} == fields
+
+
+async def _call(adapter: TensorFoldAdapter, method: str, seed: int | None) -> None:
+    if method == "generate":
+        await adapter.generate(LLMRequest(prompt="write the routes", seed=seed))
+    elif method == "chat_stream":
+        async for _ in adapter.chat_stream(_MESSAGES, seed=seed):
+            pass
+    else:
+        await getattr(adapter, method)(_MESSAGES, seed=seed)
+
+
+@pytest.mark.parametrize("method", ["chat_stream_with_usage", "chat", "generate", "chat_stream"])
+async def test_every_call_sends_a_seed_fresh_unless_the_call_sets_one(method, caplog):
+    """§9j, #2281. Entered at ``chat_stream_with_usage``, the call every handler makes, without a
+    seed, as no handler sets one. Bug caught: the seed left to TensorFold, which keys it to the
+    prompt, so G3's two rolls on a stack planned identically; a replay's seed replaced, or a seed
+    of 0 read as none; or the drawn seed named nowhere, so the call cannot be replayed."""
+    sent: list[int] = []
+    server = _Server()
+
+    def capture(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/chat/completions":
+            sent.append(json.loads(request.content)["seed"])
+        return server(request)
+
+    adapter = _adapter()
+    with wire(capture), caplog.at_level(logging.INFO, logger=tensorfold.__name__):
+        for seed in (None, None, 0, 1001):
+            await _call(adapter, method, seed)
+
+    fresh, again, zero, replay = sent
+    assert fresh != again
+    assert all(0 <= s < 2**63 for s in (fresh, again))
+    assert (zero, replay) == (0, 1001)
+    lines = [r.getMessage() for r in caplog.records]
+    named = [line.rsplit("seed=", 1)[1] for line in lines if "seed=" in line]
+    assert named == [str(s) for s in sent]
