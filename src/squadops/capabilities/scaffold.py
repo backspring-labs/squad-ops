@@ -137,6 +137,35 @@ class RequestShape:
         return declared[0] if len(declared) == 1 else None
 
 
+#: The directions a declared list order may take (#2202).
+ORDER_DIRECTIONS = ("asc", "desc")
+#: Field types whose JSON values compare the same way in every judge: strings lexically,
+#: numbers numerically (#2202). A boolean, a list or an entity has no order to declare.
+ORDERABLE_FIELD_TYPES = frozenset(
+    {"string", "str", "datetime", "date", "integer", "int", "number", "float", "decimal"}
+)
+
+
+@dataclass(frozen=True)
+class ListOrder:
+    """The order a GET collection endpoint returns its elements in (#2202).
+
+    **Structure, not prose.** Campaign 3's calibration manifest declared datetime sorting as a
+    ``decisions[]`` entry, its delivered ``GET /runs`` returned insertion order, and every gate
+    passed: no gate reads a decision. A judgment whose choice is checkable belongs here, where
+    the contract derives a probe from it. A decision may still carry the warrant.
+    """
+
+    field: str
+    direction: str
+
+    def instruction(self) -> str:
+        """The line a route stub carries, so the developer filling it reads the declared order
+        where they write the handler. Both stacks render this one sentence."""
+        word = "descending" if self.direction == "desc" else "ascending"
+        return f"Return the list ordered by {self.field}, {word}: the contract checks it."
+
+
 @dataclass(frozen=True)
 class Endpoint:
     method: str
@@ -153,6 +182,8 @@ class Endpoint:
     # depended on the dev agent volunteering ``status_code=201``: pf-38 did, pf-39 did
     # not, and that single token was the whole difference. None = framework default.
     success_status: int | None = None
+    #: A collection GET's declared element order (#2202). ``None`` declares none.
+    order: ListOrder | None = None
 
 
 @dataclass(frozen=True)
@@ -463,6 +494,14 @@ class InterfaceManifest:
                         # manifests that produce different skeletons hash identically
                         # and silently keep a contract bound to the wrong one.
                         "success_status": ep.success_status,
+                        # #2202: present only when declared, for the reason ``values`` is
+                        # above. It changes the derived probes, so it moves the hash; a
+                        # manifest that declares none hashes exactly as it did before.
+                        **(
+                            {"order": {"field": ep.order.field, "direction": ep.order.direction}}
+                            if ep.order
+                            else {}
+                        ),
                     }
                     for ep in self.api.endpoints
                 ],
@@ -543,11 +582,52 @@ class InterfaceManifest:
                 errors.append(
                     f"{label}: errors {undeclared} are not defined in api.error_contract.codes"
                 )
+            errors.extend(f"{label}: {e}" for e in self._order_errors(ep))
 
         for route in self.frontend.routes:
             if not route.view:
                 errors.append(f"frontend route {route.path!r}: view is required")
 
+        return errors
+
+    def _order_errors(self, ep: Endpoint) -> list[str]:
+        """Why ``ep``'s declared order cannot be checked, if it declares one and it cannot
+        (#2202).
+
+        Each refusal is a declaration the derived probe could not test without inventing
+        something: a body that is not a list, a field some elements may lack, or no create to
+        seed the list from. A declared order that nothing tests is the defect this field exists
+        to remove, so it is refused rather than carried.
+        """
+        order = ep.order
+        if order is None:
+            return []
+        response = (ep.response or "").strip()
+        if ep.method != "GET" or "{" in ep.path or not response.startswith("list["):
+            return [
+                "order is declared only on a GET collection endpoint: no path parameters and a "
+                "list[Entity] response"
+            ]
+        errors: list[str] = []
+        if order.direction not in ORDER_DIRECTIONS:
+            errors.append(
+                f"order.direction {order.direction!r} must be one of {list(ORDER_DIRECTIONS)}"
+            )
+        listed = base_type_name(response)
+        entity = next((e for e in self.entities if e.name == listed), None)
+        declared = (
+            next((f for f in entity.fields if f.name == order.field), None) if entity else None
+        )
+        if declared is None:
+            errors.append(f"order.field {order.field!r} is not a field of {listed!r}")
+        elif not declared.required or declared.type.strip().lower() not in ORDERABLE_FIELD_TYPES:
+            errors.append(
+                f"order.field {order.field!r} must be a required string or number field, which "
+                f"every element carries (it is {declared.type!r}, "
+                f"{'required' if declared.required else 'optional'})"
+            )
+        if not any(e.method == "POST" and e.path == ep.path for e in self.api.endpoints):
+            errors.append(f"order needs a POST {ep.path} to create the elements it is checked on")
         return errors
 
 
@@ -620,6 +700,7 @@ def _parse_api(raw: dict[str, Any]) -> Api:
             success_status=(
                 int(ep["success_status"]) if ep.get("success_status") is not None else None
             ),
+            order=_parse_order(ep.get("order")),
         )
         for ep in raw.get("endpoints", [])
     )
@@ -636,6 +717,17 @@ def _parse_api(raw: dict[str, Any]) -> Api:
         request_shapes=shapes,
         endpoints=endpoints,
         error_contract=error_contract,
+    )
+
+
+def _parse_order(raw: Any) -> ListOrder | None:
+    """An endpoint's ``order: {field, direction}``, or ``None`` when it declares none (#2202)."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError(f"an endpoint's order must be a mapping {{field, direction}}, got {raw!r}")
+    return ListOrder(
+        field=str(raw.get("field", "")), direction=str(raw.get("direction", "")).strip().lower()
     )
 
 

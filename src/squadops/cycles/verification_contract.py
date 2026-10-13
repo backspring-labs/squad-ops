@@ -161,6 +161,11 @@ class Probe:
     # probe fails on its unresolved placeholder — exactly the fill-behavior
     # gate semantics.
     capture: dict[str, str] = field(default_factory=dict)
+    #: #2202: requests issued, in order, before ``request``: the state the expectation is
+    #: judged on. An ordered list is checked on elements created out of order, so an
+    #: application that returns insertion order cannot pass by accident. Each seed must
+    #: answer 2xx, or the probe fails naming it. Empty for every probe that needs no state.
+    seed: tuple[dict[str, Any], ...] = ()
 
     @classmethod
     def from_dict(cls, raw: Any) -> Probe:
@@ -169,6 +174,7 @@ class Probe:
         request = raw.get("request", {})
         expect = raw.get("expect", {})
         capture = raw.get("capture", {})
+        seed = raw.get("seed") or ()
         return cls(
             id=str(raw.get("id", "")),
             subject=str(raw.get("subject", "")),
@@ -176,6 +182,11 @@ class Probe:
             expect=dict(expect) if isinstance(expect, dict) else {},
             guards=str(raw.get("guards", "")),
             capture=dict(capture) if isinstance(capture, dict) else {},
+            # A malformed entry is kept as an empty request, so the lint names it rather than
+            # the parse dropping it and the probe passing on less state than it declared.
+            seed=tuple(dict(s) if isinstance(s, dict) else {} for s in seed)
+            if isinstance(seed, list | tuple)
+            else ({},),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -190,6 +201,8 @@ class Probe:
             out["guards"] = self.guards
         if self.capture:
             out["capture"] = self.capture
+        if self.seed:
+            out["seed"] = [dict(s) for s in self.seed]
         return out
 
     def path_placeholders(self) -> list[str]:
@@ -845,6 +858,12 @@ class VerificationContract:
                 errors.append(f"{label}: expect must declare a 'status'")
             if probe.guards not in ("", "scaffold"):
                 errors.append(f"{label}: guards must be '' or 'scaffold', got {probe.guards!r}")
+            for index, seed in enumerate(probe.seed):
+                if "method" not in seed or "path" not in seed or "{" in str(seed.get("path")):
+                    errors.append(
+                        f"{label}: seed[{index}] must declare 'method' and a 'path' with no "
+                        f"placeholder"
+                    )
             # #651: sequenced probes — placeholders must be satisfied by an
             # EARLIER probe's capture (probes execute in contract order), and
             # capture declarations must be non-empty identifier -> key strings.

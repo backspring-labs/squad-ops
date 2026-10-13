@@ -517,7 +517,47 @@ def evaluate_expectations(expect: Mapping[str, Any], status_code: int, payload: 
         actual = _error_code_of(payload)
         if actual != error_code:
             return f"error_code {actual!r} != expected {error_code!r}"
+
+    ordered_by = expect.get("ordered_by")
+    if ordered_by:
+        return _order_failure(payload, str(ordered_by.get("field")), ordered_by.get("direction"))
     return None
+
+
+def _order_failure(payload: Any, field_name: str, direction: Any) -> str | None:
+    """Why ``payload`` is not a list ordered by ``field_name`` in ``direction`` (#2202).
+
+    Strings compare lexically and numbers numerically, as the Next.js shell's spine compares
+    them, so both judges reach one verdict. Ties are in order either way. A list whose elements
+    lack the field, or mix strings and numbers, has no declared order to hold.
+    """
+    if not isinstance(payload, list):
+        return f"ordered_by {field_name!r}: the response body is not a list"
+    if not all(isinstance(item, dict) and field_name in item for item in payload):
+        return f"ordered_by {field_name!r}: not every element carries the field"
+    values = [item[field_name] for item in payload]
+    numeric = all(isinstance(v, int | float) and not isinstance(v, bool) for v in values)
+    if not numeric and not all(isinstance(v, str) for v in values):
+        return f"ordered_by {field_name!r}: values are not all strings or all numbers: {values!r}"
+    descending = direction == "desc"
+    for earlier, later in zip(values, values[1:], strict=False):
+        if (earlier < later) if descending else (earlier > later):
+            return (
+                f"ordered_by {field_name!r} {'desc' if descending else 'asc'}: {earlier!r} comes "
+                f"before {later!r} (the list read back: {values!r})"
+            )
+    return None
+
+
+def seed_failure(index: int, seed: Mapping[str, Any], status_code: int) -> str | None:
+    """Why a probe's seed request failed, if it did (#2202). Shared by the in-cycle runner and
+    the delivered-app audit, which each issue the seeds over their own transport."""
+    if 200 <= status_code < 300:
+        return None
+    return (
+        f"seed[{index}] {seed.get('method')} {seed.get('path')} answered {status_code}, so the "
+        f"state the expectation is judged on was never created"
+    )
 
 
 def _run_one(
@@ -535,6 +575,19 @@ def _run_one(
             f"unresolved path placeholder {{{missing}}} — no prior probe captured it "
             f"(its upstream probe failed or captured nothing)",
         )
+    for index, seed in enumerate(probe.seed):
+        try:
+            seeded = httpx.request(
+                str(seed.get("method", "POST")).upper(),
+                base_url + str(seed.get("path", "/")),
+                json=seed.get("json"),
+                timeout=profile.request_timeout_s,
+            )
+        except httpx.HTTPError as exc:
+            return ProbeOutcome(probe.id, "failed", f"seed[{index}] request error: {exc}")
+        failure = seed_failure(index, seed, seeded.status_code)
+        if failure is not None:
+            return ProbeOutcome(probe.id, "failed", failure)
     body = probe.request.get("json")
     try:
         resp = httpx.request(method, base_url + path, json=body, timeout=profile.request_timeout_s)

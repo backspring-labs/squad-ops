@@ -1,6 +1,6 @@
 ---
 template_id: request.strategy_propose_increment
-version: "10"
+version: "11"
 required_variables:
   - objective_statement
   - objective_measurement
@@ -62,6 +62,10 @@ declarations expand to, and tests. A `feature` or `fix` with an empty `manifest_
 nothing to change, and is refused. For example: where the manifest already gives Run a `capacity`
 and the join endpoint a `capacity_reached` error, the capacity limit is already enforced, and
 proposing it again with an empty delta has nothing to build.
+
+**A `decisions[]` entry is a reason, not a behaviour.** A list is ordered only where its endpoint
+declares `order: { field, direction }`. A decision that describes an ordering the endpoint does not
+declare is not built: to add the ordering, modify the endpoint to declare it.
 
 ### The accepted application's interface manifest, exactly as it stands
 
