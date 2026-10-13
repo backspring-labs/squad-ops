@@ -375,7 +375,7 @@ v1.6.0 could record zero code drift; v1.6.2 could not, and said so.
 - **The standard is `docs/architecture/api-route-lanes.md`** (#218), enforced by `tests/unit/api/test_route_lanes.py`, which enumerates every registered router and fails a route off every lane. Before adding or moving any route, read the **whole** existing surface — do not reason only about the neighborhood. Conform to a lane; if none covers your case, surface the gap and propose it **before** adding.
 - **Lanes:** authenticated, managed REST resources → `/api/v1/<resource>` (default home for anything new). `/health/*` = read-only, unauthenticated operational probes/heartbeats **only** — never a writable business resource (it's the only no-auth lane). `/auth/*` = identity. **Do not add `/api/v2`** — extend v1.
 - A new prefix/variant is a deliberate, justified decision, never a default. "It doesn't collide" is not a justification.
-- Known route deviations: none recorded (`test_route_lanes.py`'s `KNOWN_DEVIATIONS` is empty; #219 closed). The plain-string error bodies left on the health, agent-status and auth routes are #1976's (2.3). Don't add to them.
+- Known route deviations: none recorded (`test_route_lanes.py`'s `KNOWN_DEVIATIONS` is empty; #219 closed). Every error body is the standard envelope, built by `squadops.api.errors`; a server failure gives the request id, never the exception's text (#1976). `test_route_lanes.py` refuses a plain string.
 
 **Typed checks (adding or binding one)**: a criterion is evaluated in more places than the
 one you are adding it for. Before binding a check onto a task's artifacts, table every seam

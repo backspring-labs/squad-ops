@@ -4,9 +4,10 @@ Project API routes (SIP-0064 §9.1).
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import PlainTextResponse
 
+from squadops.api.errors import http_error
 from squadops.api.middleware.auth import require_scopes
 from squadops.api.routes.cycles.mapping import project_to_response
 from squadops.auth.models import Scope
@@ -45,15 +46,17 @@ async def get_project_prd_content(request: Request, project_id: str):
     project = await registry.get_project(project_id)
 
     if not project.prd_path:
-        raise HTTPException(404, detail="No PRD file configured for this project")
+        raise http_error(404, "PRD_NOT_FOUND", "No PRD file configured for this project")
 
     prd_path = Path(project.prd_path)
     if not prd_path.is_file():
-        raise HTTPException(404, detail=f"PRD file not found: {project.prd_path}")
+        raise http_error(404, "PRD_NOT_FOUND", f"PRD file not found: {project.prd_path}")
 
     try:
         content = prd_path.read_text()
     except OSError as exc:
-        raise HTTPException(404, detail=f"PRD file not readable: {project.prd_path}") from exc
+        raise http_error(
+            404, "PRD_NOT_FOUND", f"PRD file not readable: {project.prd_path}"
+        ) from exc
 
     return PlainTextResponse(content)

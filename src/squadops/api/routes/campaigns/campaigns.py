@@ -41,6 +41,7 @@ from squadops.api.campaign_schemas import (
     LeaseResultResponse,
     ResumeRequest,
 )
+from squadops.api.errors import error_body
 from squadops.api.middleware.auth import holds_scopes, require_scopes
 from squadops.auth.models import Identity, Role, Scope
 from squadops.campaigns import lifecycle
@@ -214,9 +215,7 @@ async def create_campaign(
             definition=definition,
         )
     except ValueError as e:
-        raise HTTPException(
-            422, {"error": {"code": "VALIDATION_ERROR", "message": str(e), "details": None}}
-        ) from e
+        raise HTTPException(422, _validation(str(e))) from e
     _project(request, result, identity)
     return _result(result)
 
@@ -272,7 +271,7 @@ async def start_campaign(
         )
     except FileNotFoundError as e:
         # The policy names a request profile that does not exist: nothing can launch.
-        raise HTTPException(status_code=422, detail=str(e)) from e
+        raise HTTPException(status_code=422, detail=_validation(str(e))) from e
     result = await apply_control(request, campaign_id, transition, identity)
     # SIP-0110 §0.7: the campaign pins its memory snapshot at admission, before its calibration
     # launches, so every proposal and cycle of it selects from one snapshot.
@@ -724,7 +723,7 @@ def _escalation(e: Escalation) -> EscalationResponse:
 
 
 def _validation(message: str) -> dict:
-    return {"error": {"code": "VALIDATION_ERROR", "message": message, "details": None}}
+    return error_body("VALIDATION_ERROR", message)
 
 
 @router.post("/{campaign_id}/abort")
@@ -842,9 +841,7 @@ def _transition(
             expected_state=stated or expected_state,
         )
     except ValueError as e:
-        raise HTTPException(
-            422, {"error": {"code": "VALIDATION_ERROR", "message": str(e), "details": None}}
-        ) from e
+        raise HTTPException(422, _validation(str(e))) from e
 
 
 def _paused_from(log: list[ControlLogEntry]) -> CampaignState | None:

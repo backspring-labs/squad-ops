@@ -12,9 +12,11 @@ GET probes may live here. Agent-status writes are on the authed /api/v1 lane
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from fastapi import APIRouter, HTTPException, Request
 
+from squadops.api.errors import http_error, server_error
 from squadops.api.runtime.agent_labels import get_role_label
 from squadops.campaigns.box import (
     DISK_FLOOR_BYTES,
@@ -24,6 +26,7 @@ from squadops.campaigns.box import (
 from squadops.cycles.deploy_record import revision_matches_deploy
 
 router = APIRouter(prefix="/health", tags=["platform-health"])
+logger = logging.getLogger(__name__)
 
 
 def _get_health_checker(request: Request):
@@ -128,7 +131,7 @@ async def get_agent_status_by_id(request: Request, agent_id: str):
                 agent_id.lower(),
             )
         if not row:
-            raise HTTPException(status_code=404, detail=f"Agent status {agent_id} not found")
+            raise http_error(404, "AGENT_NOT_FOUND", f"Agent status {agent_id} not found")
 
         lifecycle_state = (
             (row["lifecycle_state"] or "UNKNOWN")
@@ -166,7 +169,7 @@ async def get_agent_status_by_id(request: Request, agent_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get agent status: {e}") from e
+        raise server_error(request, "Failed to get agent status", e, logger) from e
 
 
 @router.get("/agents/{agent_id}/runtime-state")
@@ -182,11 +185,10 @@ async def get_agent_runtime_state(request: Request, agent_id: str):
         # which lower-cases agent_id; rows are stored lower-cased.
         state = await hc.get_runtime_state(agent_id.lower())
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to read runtime state: {e}") from e
+        raise server_error(request, "Failed to read runtime state", e, logger) from e
     if state is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No runtime state for agent_id={agent_id}",
+        raise http_error(
+            404, "RUNTIME_STATE_NOT_FOUND", f"No runtime state for agent_id={agent_id}"
         )
     return state
 
@@ -202,12 +204,9 @@ async def get_agent_current_activity(request: Request, agent_id: str):
     try:
         activity = await hc.get_current_activity(agent_id.lower())
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to read activity: {e}") from e
+        raise server_error(request, "Failed to read activity", e, logger) from e
     if activity is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No active activity for agent_id={agent_id}",
-        )
+        raise http_error(404, "ACTIVITY_NOT_FOUND", f"No active activity for agent_id={agent_id}")
     return activity
 
 

@@ -140,3 +140,57 @@ def test_the_standard_names_every_lane_and_the_deviation():
     doc = (_REPO / "docs" / "architecture" / "api-route-lanes.md").read_text(encoding="utf-8")
     for token in ("/api/v1/<resource>", "/health/*", "/auth/*", "No `/api/v2`", "#219"):
         assert token in doc, token
+
+
+def _plain_error_bodies(path: Path, root: Path = _REPO) -> list[str]:
+    """Each error body in ``path`` written as a bare string, an f-string or a ``str(...)``."""
+
+    def plain(node: ast.expr | None) -> bool:
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return True
+        if isinstance(node, ast.JoinedStr | ast.BoolOp):
+            return True
+        return isinstance(node, ast.Call) and getattr(node.func, "id", None) == "str"
+
+    found = []
+    for node in ast.walk(ast.parse(path.read_text())):
+        if not isinstance(node, ast.Call):
+            continue
+        name = getattr(node.func, "id", getattr(node.func, "attr", None))
+        kwargs = {k.arg: k.value for k in node.keywords}
+        if name == "HTTPException":
+            detail = kwargs.get("detail", node.args[1] if len(node.args) > 1 else None)
+            if plain(detail):
+                found.append(f"{path.relative_to(root)}:{node.lineno}")
+        if name == "JSONResponse" and isinstance(kwargs.get("content"), ast.Dict):
+            content = kwargs["content"]
+            for key, value in zip(content.keys, content.values, strict=True):
+                if isinstance(key, ast.Constant) and key.value == "detail" and plain(value):
+                    found.append(f"{path.relative_to(root)}:{node.lineno}")
+    return found
+
+
+def test_no_route_or_middleware_answers_an_error_with_a_plain_string():
+    """#1976, the standard's rule 5. Bug caught: an error body a client can't read as
+    ``{"error": {"code", "message", "details"}}``. 24 were left on the auth middleware and the
+    health, agent-status, auth, model, project and profile routes, and some 500s carried the
+    exception's text on unauthenticated routes. ``squadops.api.errors`` builds the body."""
+    found = [
+        hit
+        for path in sorted((_REPO / "src" / "squadops" / "api").rglob("*.py"))
+        for hit in _plain_error_bodies(path)
+    ]
+    assert found == []
+
+
+def test_the_scan_finds_each_plain_form(tmp_path):
+    source = tmp_path / "routes.py"
+    source.write_text(
+        "raise HTTPException(404, 'gone')\n"
+        "raise HTTPException(status_code=500, detail=f'failed: {e}')\n"
+        "raise HTTPException(status_code=422, detail=str(e))\n"
+        "raise HTTPException(status_code=403, detail=reason or 'Forbidden')\n"
+        "return JSONResponse(content={'detail': 'Authentication service unavailable'})\n"
+        "raise HTTPException(status_code=404, detail=error_body('X', 'gone'))\n"
+    )
+    assert _plain_error_bodies(source, tmp_path) == [f"routes.py:{n}" for n in (1, 2, 3, 4, 5)]
