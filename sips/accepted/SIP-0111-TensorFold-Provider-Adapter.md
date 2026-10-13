@@ -757,3 +757,30 @@ change.
 **Who ruled it.** The owner, on 2026-10-12. Told the finding, the owner answered "once per prompt, run on 0.6.6,
 NVFP4". The same answer chose the checkpoint. The pre-registration
 (`docs/plans/verification-sets/2-3-0-tensorfold-27b-preregistration.md`) records it.
+
+### 9f. G2's port amendments, as built (2026-10-13, with #2200's first PR)
+
+**What was built** is §5.1 (a) and §5.2 (c) and (d), for every existing adapter. Two parts differ from the text.
+
+- **`thinking_budget` is a port field with no deploy route.** §5.1 has the deploy's model configuration set it and the
+  handlers pass it through `chat_kwargs`. The frozen recipe sets no budget (§9d; the pre-registration's §3), so that
+  route would carry only `None`. The field, its capability and the refusal are built. The route is not, until a
+  recipe sets a budget, and a recipe change re-runs G0 and G1 anyway.
+- **The overflow is held by the agent, which the cycle executor already reads.** §5.2 has "the executor" classify
+  `LLMContextOverflowError` as infrastructure. Every handler catches `LLMError` its own way, and some name their own
+  outcome. So the one call every generation goes through (`_llm_call`) records the overflow on the task's context, and
+  the handler executor gives any failed task with one `TaskOutcome.BLOCKED` and the evidence (`infrastructure_block`),
+  whatever the handler named. The cycle executor pauses a run on a blocked result, as it does today. There is no
+  retry and no correction round.
+
+**What did not change:** Ollama leaves `termination` unset, and its cap is still read from the token count. vLLM
+declares `SEED`; Atlas declares neither control. A provider refuses an undeclared control with `ValueError` before
+any call, on all four generation methods.
+
+**The evidence:** the conformance suite runs each control on all four methods of every adapter. A termination-decides-
+the-cap test and the overflow test each enter where a live cycle enters (`handle`, and the handler executor).
+
+**Who ruled it.** No one yet: the supervisor proposes both in the PR that builds them, under the owner's G2 go of
+2026-10-13 (§9e), and the owner rules them with its merge. Neither changes a behaviour Q6 approved. The first leaves
+a route unbuilt because nothing would travel it. The second places §5.2's classification at the one seam that sees
+every handler's failure.
