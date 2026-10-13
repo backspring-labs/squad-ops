@@ -172,18 +172,33 @@ check_ollama() {
 
 # Function to check database connectivity
 
-# SIP-0111 §5.6: while TensorFold serves, step 1 would start Ollama's container beside it, and the
-# deploy would recreate the model clients on Ollama. The engines never run together: switch back first.
+# SIP-0111 §5.6: the deploy runs one engine, the one its .env records (engine_switch.py writes it at
+# every switch). On TensorFold, step 1 must not start Ollama beside it, and the restarts below keep
+# the clients on it through docker-compose.tensorfold.yml in COMPOSE_FILE. A TensorFold serving a
+# deploy whose .env says Ollama is a switch left half-done: refused, never guessed at.
+DEPLOY_ENGINE="$(.venv/bin/python scripts/dev/ops/engine_switch.py deploy-engine 2>/dev/null || echo unknown)"
+TENSORFOLD_SERVING=false
 if docker inspect -f '{{.State.Running}}' squadops-tensorfold 2>/dev/null | grep -qx true; then
-    echo -e "${RED}❌ TensorFold is serving (squadops-tensorfold): a deploy would start Ollama beside it.${NC}"
-    echo -e "${YELLOW}   Switch back first: python scripts/dev/ops/engine_switch.py to-ollama${NC}"
+    TENSORFOLD_SERVING=true
+fi
+if [ "$DEPLOY_ENGINE" = "tensorfold" ] && [ "$TENSORFOLD_SERVING" != true ]; then
+    echo -e "${RED}❌ The deploy's engine is TensorFold (COMPOSE_FILE in .env), but it is not serving.${NC}"
+    echo -e "${YELLOW}   Start it: python scripts/dev/ops/engine_switch.py to-tensorfold infra/tensorfold/recipes/<recipe>.yaml${NC}"
+    echo -e "${YELLOW}   or move the deploy back: python scripts/dev/ops/engine_switch.py to-ollama${NC}"
+    exit 1
+fi
+if [ "$DEPLOY_ENGINE" != "tensorfold" ] && [ "$TENSORFOLD_SERVING" = true ]; then
+    echo -e "${RED}❌ TensorFold is serving (squadops-tensorfold), but the deploy's .env records ${DEPLOY_ENGINE}: a deploy would start Ollama beside it.${NC}"
+    echo -e "${YELLOW}   Finish the switch first: python scripts/dev/ops/engine_switch.py to-ollama (or to-tensorfold <recipe>)${NC}"
     exit 1
 fi
 
-# Step 1: Check Ollama (external service)
+# Step 1: Check the engine (external service)
 echo ""
 echo -e "${BLUE}📊 Step 1: Checking infrastructure prerequisites...${NC}"
-if ! check_ollama; then
+if [ "$DEPLOY_ENGINE" = "tensorfold" ]; then
+    echo -e "${GREEN}✅ TensorFold serves this deploy (engine_switch.py); Ollama stays stopped${NC}"
+elif ! check_ollama; then
     echo -e "${RED}⚠️  Ollama check failed - agents that use LLM may not work${NC}"
     echo -e "${YELLOW}   Continue anyway? (y/n)${NC}"
     read -t 10 -n 1 answer || answer="n"

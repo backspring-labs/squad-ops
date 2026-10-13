@@ -583,3 +583,60 @@ class TestMemoryContainmentDeclaration:
 
         with pytest.raises(BootstrapProfileError, match="free_swap_percent"):
             load_bootstrap_profile("bad-threshold", profiles_dir=tmp_profile_dir)
+
+
+_FROZEN = "infra/tensorfold/recipes/qwen27b-nvfp4.yaml"
+_PROVISIONAL = "infra/tensorfold/recipes/qwen27b-mlx4.yaml"
+
+
+@pytest.mark.parametrize(
+    ("block", "engine", "recipe"),
+    [
+        (None, None, None),
+        ({"engine": "ollama"}, "ollama", None),
+        ({"engine": "tensorfold", "recipe": _FROZEN}, "tensorfold", _FROZEN),
+    ],
+    ids=["absent: Ollama as before", "ollama", "tensorfold on a frozen recipe"],
+)
+def test_the_inference_engine_is_read_from_the_profile(
+    tmp_profile_dir, write_profile, minimal_profile_data, block, engine, recipe
+):
+    if block is not None:
+        minimal_profile_data["inference_engine"] = block
+    write_profile("engine", minimal_profile_data)
+
+    declared = load_bootstrap_profile("engine", profiles_dir=tmp_profile_dir).inference_engine
+
+    assert (declared and declared.engine, declared and declared.recipe) == (engine, recipe)
+
+
+@pytest.mark.parametrize(
+    ("block", "said"),
+    [
+        ({"engine": "vllm"}, "must be one of"),
+        ({"engine": "tensorfold"}, "needs its 'recipe'"),
+        (
+            {"engine": "tensorfold", "recipe": "infra/tensorfold/recipes/none.yaml"},
+            "does not exist",
+        ),
+        ({"engine": "tensorfold", "recipe": _PROVISIONAL}, "is not frozen"),
+        ({"engine": "ollama", "recipe": _FROZEN}, "takes no 'recipe'"),
+    ],
+    ids=[
+        "an unknown engine",
+        "no recipe",
+        "a missing recipe",
+        "an unfrozen recipe",
+        "ollama with a recipe",
+    ],
+)
+def test_an_engine_bootstrap_could_not_install_as_measured_is_refused(
+    tmp_profile_dir, write_profile, minimal_profile_data, block, said
+):
+    """SIP-0111: bootstrap installs exactly what the recipe pins. Bugs caught: a fresh box set up on
+    a recipe no gate measured (a provisional one), or a typo that silently ran Ollama."""
+    minimal_profile_data["inference_engine"] = block
+    write_profile("engine", minimal_profile_data)
+
+    with pytest.raises(BootstrapProfileError, match=said):
+        load_bootstrap_profile("engine", profiles_dir=tmp_profile_dir)

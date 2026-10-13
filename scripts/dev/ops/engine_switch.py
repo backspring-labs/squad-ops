@@ -456,9 +456,38 @@ def deploy_compose_files() -> str:
     return "docker-compose.yml"
 
 
+def base_compose_files() -> str:
+    """The deploy's files without the TensorFold overlay: what its clients run with on Ollama."""
+    return ":".join(f for f in deploy_compose_files().split(":") if f and f != TF_OVERLAY)
+
+
 def client_files(engine: str) -> str:
-    base = deploy_compose_files()
+    base = base_compose_files()
     return f"{base}:{TF_OVERLAY}" if engine == "tensorfold" else base
+
+
+def deploy_engine() -> str:
+    """The engine the deploy runs, as its .env records it: the switch writes it, every
+    ``docker compose`` there reads it, and a rebuild keeps it (``rebuild_and_deploy.sh``)."""
+    return "tensorfold" if TF_OVERLAY in deploy_compose_files().split(":") else "ollama"
+
+
+def persist_engine(rec: Record, engine: str) -> None:
+    """Record ``engine`` as the deploy's in its .env (``COMPOSE_FILE``), so the next rebuild, or any
+    ``docker compose`` run there, recreates the clients on the engine that is serving rather than
+    the one the deploy started with. The file keeps its owner-only mode (it holds credentials)."""
+    env = MAIN / ".env"
+    files = client_files(engine)
+    lines = env.read_text().splitlines() if env.is_file() else []
+    at = [i for i, line in enumerate(lines) if line.startswith("COMPOSE_FILE=")]
+    if at:
+        lines[at[0]] = f"COMPOSE_FILE={files}"
+    else:
+        lines.append(f"COMPOSE_FILE={files}")
+    mode = env.stat().st_mode & 0o777 if env.is_file() else 0o600
+    env.write_text("\n".join(lines) + "\n")
+    env.chmod(mode)
+    rec.write("deploy_engine", engine=engine, compose_file=files)
 
 
 def llm_clients(files: str) -> list[str]:
@@ -502,6 +531,7 @@ def switch_clients(rec: Record, engine: str, model: str) -> None:
     if wrong:
         raise SwitchFailed(f"clients not on {engine} after recreation: {wrong}")
     rec.write("clients_switched", engine=engine, services=services)
+    persist_engine(rec, engine)
     t0 = time.monotonic()
     probe = subprocess.run(
         ["docker", "exec", "-i", PROBE_AGENT, "python", "-", model],
@@ -523,12 +553,20 @@ def switch_clients(rec: Record, engine: str, model: str) -> None:
 
 def to_ollama(rec: Record) -> None:
     """Restoration: TensorFold stopped and its release confirmed BEFORE Ollama starts; never both.
-    Then the clients, if any had moved: a switch that failed before step 7 never moved them."""
+    Then the clients, if any had moved: a switch that failed before step 7 never moved them.
+
+    Ollama is stopped too, as ``to_tensorfold`` stops both. Asked for while Ollama was already
+    serving, the release check counted Ollama's own ``llama-server`` and failed after 180 s: G3's
+    rolls stage, 2026-10-13, whose shakeouts stage had ended on Ollama. Now every switch back
+    leaves a freshly started Ollama, whichever engine was resident."""
+    stop_ollama(rec)
     stop_tensorfold(rec)
     wait_released(rec, "released_for_ollama")
     start_ollama(rec)
-    files = deploy_compose_files()
-    if any(client_engine(s) == "tensorfold" for s in llm_clients(files)):
+    files = base_compose_files()
+    if deploy_engine() == "tensorfold" or any(
+        client_engine(s) == "tensorfold" for s in llm_clients(files)
+    ):
         switch_clients(rec, "ollama", ollama_model())
 
 
@@ -561,7 +599,12 @@ def main() -> int:
     )
     sub.add_parser("to-ollama")
     sub.add_parser("status")
+    # For rebuild_and_deploy.sh: one word, the engine the deploy's .env records. No record.
+    sub.add_parser("deploy-engine")
     args = parser.parse_args()
+    if args.command == "deploy-engine":
+        print(deploy_engine())
+        return 0
 
     RECORDS.mkdir(parents=True, exist_ok=True)
     rec = Record(RECORDS / f"{datetime.now(UTC):%Y%m%dT%H%M%SZ}-{args.command}.jsonl")
@@ -570,6 +613,7 @@ def main() -> int:
             "status",
             tensorfold=container_running(TF_CONTAINER),
             ollama=container_running("squadops-ollama"),
+            deploy_engine=deploy_engine(),
             gpu_processes=gpu_compute_processes(),
         )
         return 0

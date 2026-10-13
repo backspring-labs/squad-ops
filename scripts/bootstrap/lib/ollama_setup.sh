@@ -54,7 +54,13 @@ configure_ollama_container() {
     local uid gid
     uid="$(stat -c %u "${home}/.ollama" 2>/dev/null || id -u)"
     gid="$(stat -c %g "${home}/.ollama" 2>/dev/null || id -g)"
-    set_env_value COMPOSE_FILE "docker-compose.yml:docker-compose.ollama.yml"
+    # SIP-0111: a deploy whose engine is TensorFold keeps its overlay. The switch changes engines,
+    # never bootstrap (scripts/dev/ops/engine_switch.py records the engine in COMPOSE_FILE).
+    local files="docker-compose.yml:docker-compose.ollama.yml"
+    if grep -q "^COMPOSE_FILE=.*docker-compose\.tensorfold\.yml" .env 2>/dev/null; then
+        files="${files}:docker-compose.tensorfold.yml"
+    fi
+    set_env_value COMPOSE_FILE "$files"
     set_env_value COMPOSE_PROFILES "gpu"
     set_env_value SQUADOPS__LLM__URL "http://ollama:11434"
     set_env_value SQUADOPS_OLLAMA_HOME "$home"

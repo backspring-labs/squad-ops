@@ -893,3 +893,48 @@ engines. From this ruling:
 **Who ruled it.** The owner, on 2026-10-13. Asked where the agents should get the key and whether the switch should
 also move the clients, the owner answered "2 and 3, as recommended": the key from `.env`, registered for rotation, and
 the switch moving the clients through an overlay that drops their dependency on Ollama.
+
+### 9i. The cutover's machinery, built before G4 (2026-10-13, with #2229's readiness PR)
+
+**What changed.** §4 has G4's cutover "by S's switching path", and §9h has the switch move the clients. Neither
+covered what a deploy does after the cutover, so a TensorFold deploy could not be rebuilt. Since §9h, the rebuild
+script refused while TensorFold served, its first step starts Ollama's container, and a re-bootstrap rewrote
+`COMPOSE_FILE` back to Ollama's. A fresh box had no way to install TensorFold at all. So, ahead of G4:
+- **The deploy records its engine.** Every switch writes it to `.env`'s `COMPOSE_FILE` (the TensorFold overlay
+  named, or not), and `engine_switch.py deploy-engine` reads it.
+  - `rebuild_and_deploy.sh` keeps it: on TensorFold it starts no Ollama and the clients come back on TensorFold.
+  - A rebuild refuses a half-done switch, which is TensorFold serving a deploy whose `.env` says Ollama, or the
+    reverse.
+  - Bootstrap's Ollama setup keeps the overlay. A rollback (`to-ollama`) records Ollama again.
+- **The launch gate reads a busy TensorFold as not quiet** (§5.5, which closes §9g item 7). A port reading,
+  `requests_in_flight`, is declared as `loaded_models` is: TensorFold declares it from its authenticated request
+  gauges, and the other adapters don't. `box_quietness` names any request in flight before a launch. Unread is an
+  unread engine, never quiet.
+- **A fresh box installs exactly what the frozen recipe pins.** `tensorfold_install.py` builds the image at the
+  recipe's TensorFold commit (checked against the image's revision label) and fetches the checkpoint and drafter
+  at their revisions, through the image itself. It is idempotent.
+  - A bootstrap profile declares `inference_engine: {engine: tensorfold, recipe: …}`. The recipe must be a frozen
+    one in the repository.
+  - Bootstrap installs the recipe before the services start and switches at the end. Ollama stays installed as
+    the rollback.
+- **The runbook** is `docs/ops/inference_engine.md`.
+
+**What it leaves for G4's own PR**, on the owner's decision:
+- `local-spark` declaring `inference_engine: tensorfold`;
+- the switch that makes TensorFold production on this box;
+- the cut set on `full-38-tf`;
+- this SIP's G4 row.
+
+**The evidence:** each part is tested where it runs.
+- The rebuild guard's own lines run against a fake `docker`, in five cases.
+- Bootstrap's own function runs on a scratch `.env`, keeping the overlay.
+- The switch writes the deploy's `.env`, a scratch one in the tests: its other lines and owner-only mode are kept,
+  and a rollback clears the overlay.
+- The quiet-box check runs through the real TensorFold adapter: idle is quiet; busy and a refused key are not.
+- The installer runs against a fake `docker`: it builds and fetches at the pins, leaves a complete box alone, and
+  refuses an image from another commit.
+- The installer's dry run on the Spark reports the image, checkpoint and drafter present.
+
+**Who ruled it.** The owner, directing the work on 2026-10-13: "I just want to implement tensorfold and complete the
+2.3 plan!". The design of each part is proposed in its PR, and the owner rules it with the merge. It merges after
+G3's last roll, because G3's switches run the main checkout's `engine_switch.py`.

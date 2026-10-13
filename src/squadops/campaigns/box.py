@@ -71,11 +71,13 @@ class Model:
 @dataclass(frozen=True)
 class EngineReading:
     """One engine's loaded models, or ``None`` when it could not be read (and ``error`` says
-    why)."""
+    why). ``in_flight`` is the requests it is serving now, where the engine reports them
+    (SIP-0111 §5.5), and ``None`` where it does not."""
 
     engine: str
     loaded: tuple[Model, ...] | None
     error: str = ""
+    in_flight: int | None = None
 
 
 @dataclass(frozen=True)
@@ -85,8 +87,9 @@ class Quietness:
 
 
 def box_quietness(declared: Iterable[Model], readings: Iterable[EngineReading]) -> Quietness:
-    """Quiet when every engine was read and every model it has loaded is declared by the active
-    deploy record. Every reason is reported, not the first."""
+    """Quiet when every engine was read, every model it has loaded is declared by the active
+    deploy record, and none that reports its requests is serving any (SIP-0111 §5.5: only an
+    idle engine is safe to launch on). Every reason is reported, not the first."""
     declared = tuple(declared)
     reasons: list[str] = []
     for reading in readings:
@@ -100,6 +103,11 @@ def box_quietness(declared: Iterable[Model], readings: Iterable[EngineReading]) 
                     + (f" ({model.digest[:12]})" if model.digest else "")
                     + " loaded, which the deploy record does not declare"
                 )
+        if reading.in_flight:
+            reasons.append(
+                f"engine {reading.engine} is serving {reading.in_flight} request(s) already: "
+                "work the launch did not start"
+            )
     return Quietness(not reasons, tuple(reasons))
 
 

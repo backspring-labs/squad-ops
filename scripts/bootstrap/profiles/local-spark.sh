@@ -56,6 +56,9 @@ run_bootstrap() {
     # Ollama in a container, and the `gpu` profile's services (the DCGM exporter, #2204), start
     # with the rest: .env names the overlay and the profile (#2249).
     configure_ollama_container
+    # SIP-0111: when the profile serves with TensorFold, its recipe is installed before anything
+    # starts (the image, the checkpoint and the drafter), and the switch runs at the end.
+    install_inference_engine "config/profiles/bootstrap/local-spark.yaml"
     local docker_rc=0
     start_docker_services || docker_rc=$?
     if [[ "$docker_rc" == "1" ]]; then
@@ -77,4 +80,9 @@ run_bootstrap() {
     info "=== Ollama Models ==="
 
     pull_models_from_profile "config/profiles/bootstrap/local-spark.yaml"
+
+    # ── The inference engine (SIP-0111) ─────────────────────────────
+    # Last, with every service up and the Ollama models pulled: Ollama is the rollback.
+    select_inference_engine "config/profiles/bootstrap/local-spark.yaml" \
+        || warn "The switch to TensorFold failed and restored Ollama — see var/engine_switch/"
 }

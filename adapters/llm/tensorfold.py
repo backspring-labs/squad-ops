@@ -271,6 +271,8 @@ class TensorFoldAdapter(LLMPort):
             LLMCapability.LOADED_MODELS: True,
             LLMCapability.SEED: True,
             LLMCapability.THINKING_BUDGET: True,
+            # ``tensorfold:requests_running`` + ``requests_waiting``, authenticated (§5.5).
+            LLMCapability.REQUESTS_IN_FLIGHT: True,
         }
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -671,6 +673,11 @@ class TensorFoldAdapter(LLMPort):
         id first and its aliases after it. The drafter is part of the recipe, not a model."""
         ids = await self._model_ids()
         return [ModelInfo(name=ids[0])] if ids else []
+
+    async def requests_in_flight(self) -> int:
+        """The requests TensorFold is running or holding now, from its authenticated ``/metrics``
+        (§5.5). Unreadable raises: the launch gate reads that as an unread engine, never quiet."""
+        return await self._in_flight()
 
     async def residency(self) -> str:
         """The server's state from authenticated sources only (§5.5)."""

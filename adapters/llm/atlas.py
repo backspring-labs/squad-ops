@@ -163,6 +163,7 @@ class AtlasAdapter(LLMPort):
             # Neither is documented on Atlas's API (SIP-0111 §5.1): refused, never dropped.
             LLMCapability.SEED: False,
             LLMCapability.THINKING_BUDGET: False,
+            LLMCapability.REQUESTS_IN_FLIGHT: False,
         }
 
     async def _get_client(self) -> httpx.AsyncClient:

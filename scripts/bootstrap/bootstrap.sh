@@ -78,6 +78,8 @@ source "${SCRIPT_DIR}/lib/memory_containment.sh"
 source "${SCRIPT_DIR}/lib/docker_setup.sh"
 # shellcheck source=lib/ollama_setup.sh
 source "${SCRIPT_DIR}/lib/ollama_setup.sh"
+# shellcheck source=lib/tensorfold_setup.sh
+source "${SCRIPT_DIR}/lib/tensorfold_setup.sh"
 # shellcheck source=lib/langfuse_setup.sh
 source "${SCRIPT_DIR}/lib/langfuse_setup.sh"
 
