@@ -117,6 +117,25 @@ def test_a_seam_too_small_to_bound_is_named_unbounded_and_a_bounded_one_carries_
     assert reading["speed_bounded"] is True
 
 
+def test_a_group_whose_every_pair_hit_the_cache_reads_no_speed_and_still_reads_validity():
+    """2026-10-12's held-out run: all 8 React repair pairs shared a cached prefix, and the interval had no
+    median to bound, so the reading raised before writing anything."""
+    plan = _plan({"repair": 6})
+    ollama, tf = _arms(plan)
+    tf = {k: r | {"cached_tokens": 613} for k, r in tf.items()}
+
+    reading = eg.gate(
+        eg.pairs(plan, ollama, tf, _all_pass(plan, fail_tf={"repair-0"})), resamples=200
+    )
+
+    assert (reading["median_ratio"], reading["speed_observed"], reading["speed_bounded"]) == (
+        None,
+        False,
+        False,
+    )
+    assert (reading["validity_observed"], reading["validity_bounded"]) == (False, False)
+
+
 @pytest.mark.parametrize(
     "changed, slower, within",
     [(1, 1.0, True), (2, 1.0, False), (0, 1.2, False)],

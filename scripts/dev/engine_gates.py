@@ -117,19 +117,26 @@ def interval(ps: list[dict], resamples: int = RESAMPLES, seed: int = BOOT_SEED) 
 
 
 def gate(ps: list[dict], resamples: int = RESAMPLES) -> dict[str, Any]:
-    """One group's readings, intervals and verdicts: observed, and bounded where the interval allows."""
+    """One group's readings, intervals and verdicts: observed, and bounded where the interval allows.
+
+    A group whose every pair had a cache hit has no primary timing: its median is ``None`` and its speed is
+    neither observed nor bounded, while its validity is read as any other group's."""
     point = _readings(ps)
     envelopes = len({p["envelope_id"] for p in ps})
+    timed = point["median_ratio"] == point["median_ratio"]
     reading: dict[str, Any] = {
         "envelopes": envelopes,
         "calls": len(ps),
         "cache_hits": sum(p["cache_hit"] for p in ps),
         **point,
+        "median_ratio": point["median_ratio"] if timed else None,
         "ollama_pass_rate": _rate(ps, "ollama_pass"),
         "tf_pass_rate": _rate(ps, "tf_pass"),
         "ollama_truncation_rate": _rate(ps, "ollama_truncated"),
         "tf_truncation_rate": _rate(ps, "tf_truncated"),
-        "speed_observed": point["median_ratio"] <= SPEED_BAR and point["truncation_diff"] <= 0,
+        "speed_observed": timed
+        and point["median_ratio"] <= SPEED_BAR
+        and point["truncation_diff"] <= 0,
         "validity_observed": point["pass_diff"] >= 0,
     }
     if envelopes < MIN_ENVELOPES:
@@ -138,7 +145,9 @@ def gate(ps: list[dict], resamples: int = RESAMPLES) -> dict[str, Any]:
     return reading | {
         "bounded": True,
         "interval": ci,
-        "speed_bounded": ci["median_ratio"][1] <= SPEED_BAR and ci["truncation_diff"][1] <= 0,
+        "speed_bounded": "median_ratio" in ci
+        and ci["median_ratio"][1] <= SPEED_BAR
+        and ci["truncation_diff"][1] <= 0,
         "validity_bounded": ci["pass_diff"][0] >= 0,
     }
 
@@ -191,7 +200,11 @@ def read(
             f"{s}|{k}": gate([p for p in ps if (p["seam"], p["stack"]) == (s, k)], resamples)
             for s, k in cells
         },
-        "seams_slower_than_ollama": [s for s, g in by_seam.items() if g["median_ratio"] > 1.0],
+        "seams_slower_than_ollama": [
+            s
+            for s, g in by_seam.items()
+            if g["median_ratio"] is not None and g["median_ratio"] > 1.0
+        ],
         "speed_gate": overall["speed_observed"],
         "validity_gate": overall["validity_observed"]
         and all(g["validity_observed"] for g in by_seam.values()),
