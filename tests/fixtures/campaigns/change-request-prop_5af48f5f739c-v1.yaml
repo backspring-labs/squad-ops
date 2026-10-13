@@ -1,0 +1,116 @@
+proposal_id: prop_5af48f5f739c
+version: 1
+baseline_tree: a9067b2ca6e1866bf4028fd73ca110b24d2ada276e1b10edbd9e10bf09ca5dd7
+kind: feature
+prd_delta:
+- id: improved-error-messaging
+  op: add
+  text: 'Domain error responses carry specific, human-readable messages: a duplicate
+    join explains the name has already joined; an unknown run id explains the run
+    does not exist; a leave with an absent name explains no such participant is on
+    the run. The detail view displays the server-provided error message text.'
+manifest_delta:
+- op: modify
+  target: endpoint
+  key: POST /runs/{run_id}/join
+  definition:
+    method: POST
+    path: /runs/{run_id}/join
+    summary: join a run by participant name
+    request: JoinRequest
+    response: Run
+    errors:
+    - run_not_found
+    - duplicate_participant
+    - validation_error
+    messages:
+      duplicate_participant: A participant with this name has already joined this
+        run.
+      run_not_found: This run does not exist.
+- op: modify
+  target: endpoint
+  key: POST /runs/{run_id}/leave
+  definition:
+    method: POST
+    path: /runs/{run_id}/leave
+    summary: leave a run by participant name
+    request: LeaveRequest
+    response: Run
+    errors:
+    - run_not_found
+    - participant_not_found
+    - validation_error
+    messages:
+      participant_not_found: No participant with that name is on this run.
+      run_not_found: This run does not exist.
+- op: modify
+  target: endpoint
+  key: GET /runs/{run_id}
+  definition:
+    method: GET
+    path: /runs/{run_id}
+    summary: get run detail including participant list
+    response: Run
+    errors:
+    - run_not_found
+    messages:
+      run_not_found: This run does not exist.
+- op: modify
+  target: client_route
+  key: /runs/:run_id
+  definition:
+    path: /runs/:run_id
+    view: RunDetailView
+    purpose: Display full run details, participant name list, and provide join and
+      leave forms by participant name. On API error, the error-message element displays
+      the specific message text returned by the server in body.error.message.
+    testids:
+    - run-detail-view
+    - run-detail-title
+    - run-detail-datetime
+    - run-detail-location
+    - run-detail-distance
+    - run-detail-pace
+    - run-detail-notes
+    - run-detail-capacity
+    - participant-list
+    - participant-name
+    - join-form
+    - join-name-input
+    - join-submit
+    - leave-form
+    - leave-name-input
+    - leave-submit
+    - error-message
+    - not-found-state
+criteria:
+- id: T1
+  statement: A duplicate join returns the specific "already joined" message text
+  surface_kind: endpoint
+  surface: POST /runs/{run_id}/join
+  observable: the 409 response has body.error.code equal to duplicate_participant
+    and body.error.message exactly 'A participant with this name has already joined
+    this run.'
+- id: T2
+  statement: A leave with an absent name returns the specific "no such participant"
+    message text
+  surface_kind: endpoint
+  surface: POST /runs/{run_id}/leave
+  observable: the 404 response has body.error.code equal to participant_not_found
+    and body.error.message exactly 'No participant with that name is on this run.'
+- id: T3
+  statement: An unknown run id on the detail endpoint returns the specific "does not
+    exist" message text
+  surface_kind: endpoint
+  surface: GET /runs/{run_id}
+  observable: the 404 response has body.error.code equal to run_not_found and body.error.message
+    exactly 'This run does not exist.'
+must_not_break: []
+retires: []
+replaces_verifiers: []
+footprint:
+- frontend/src/views/RunDetailView.jsx
+- backend/tests/**
+- frontend/src/__tests__/**
+- frontend/src/tests/**
+content_hash: 8341def345a48e5de2cc893f6c71f8d4dd00efb02370b6754c89c483534f3477

@@ -658,6 +658,40 @@ def _parse_provenance(raw: Any) -> Provenance | None:
     )
 
 
+#: The keys each manifest element's parser reads (``_parse_entity``, ``_parse_api``,
+#: ``_parse_frontend``). ``from_dict`` drops any other key without a word, so a change request
+#: whose delta carries one would be built from a manifest that silently lost it (#2205): the
+#: rails refuse it by name instead. Named by ``DeltaTarget``'s values, plus the entity's fields.
+#: ``test_each_declared_key_is_one_the_parser_reads`` holds this table to the parsers.
+MANIFEST_ELEMENT_KEYS: dict[str, frozenset[str]] = {
+    "entity": frozenset({"name", "fields"}),
+    "entity_field": frozenset({"name", "type", "required", "generated", "default"}),
+    "request_shape": frozenset({"required", "optional", "values"}),
+    "endpoint": frozenset(
+        {"method", "path", "summary", "request", "response", "errors", "success_status"}
+    ),
+    "client_route": frozenset({"path", "view", "purpose", "testids"}),
+    "error_code": frozenset({"http"}),
+}
+
+
+def undefined_manifest_keys(element: str, definition: Any) -> list[str]:
+    """The keys of one element's ``definition`` the manifest does not define, as written there:
+    ``messages``, or ``fields[status].label`` for an entity field's. Empty for a definition that
+    is not a mapping (the delta's own fit check refuses that)."""
+    if not isinstance(definition, dict):
+        return []
+    found = sorted(str(k) for k in set(definition) - MANIFEST_ELEMENT_KEYS[element])
+    if element == "entity":
+        for f in definition.get("fields") or []:
+            if isinstance(f, dict):
+                found += [
+                    f"fields[{f.get('name')}].{k}"
+                    for k in sorted(set(f) - MANIFEST_ELEMENT_KEYS["entity_field"])
+                ]
+    return found
+
+
 def _parse_entity(raw: dict[str, Any]) -> Entity:
     fields = []
     for f in raw.get("fields", []):

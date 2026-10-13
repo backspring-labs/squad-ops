@@ -33,6 +33,10 @@ EMPTY_DELTA_V1 = yaml.safe_load(
 BASELINE_CMP1_INC2 = (
     _FIXTURES / "baseline-cmp_c4b81554bd59-increment-2-interface_manifest.yaml"
 ).read_text()
+#: The 2.2 window's campaign 4 proposal (#2205), as ruled, and the accepted manifest it was
+#: proposed against (the calibration cycle ``cyc_39a36288fdd2``'s).
+MESSAGES_V1 = yaml.safe_load((_FIXTURES / "change-request-prop_5af48f5f739c-v1.yaml").read_text())
+BASELINE_CMP4 = (_FIXTURES / "baseline-cmp_ff3ddfdfbc70-interface_manifest.yaml").read_text()
 
 
 def _context(**overrides) -> ProposalContext:
@@ -257,3 +261,58 @@ def test_an_empty_delta_has_nothing_to_build_unless_it_is_a_refactor(kind, refus
     verdict = validate_proposal(doc, _context())
 
     assert (RefusalKind.NOTHING_TO_BUILD in _kinds(verdict)) is refused
+
+
+def test_the_windows_message_proposal_is_refused_for_its_dropped_key_and_its_unbuildable_criteria():
+    """#2205, on the stored bytes, entered at the rails as the live proposal reached them.
+    ``prop_5af48f5f739c`` v1 put each error's message under ``messages:`` in three endpoint
+    definitions, a key the manifest does not define, and reworded a view's purpose. The parser
+    dropped the key, so the footprint held only the view and the test globs. Its three criteria
+    were served by ``backend/routes.py``, which no build could touch. Bugs caught: a key dropped
+    silently, and criteria approved that no build was allowed to meet."""
+    verdict = validate_proposal(
+        _as_authored(MESSAGES_V1),
+        _context(
+            proposal_id=MESSAGES_V1["proposal_id"],
+            baseline_tree=MESSAGES_V1["baseline_tree"],
+            baseline_manifest=BASELINE_CMP4,
+            prior_criteria=(),
+        ),
+    )
+
+    assert verdict.change_request is None
+    undefined = [r.detail for r in verdict.refusals if r.kind is RefusalKind.UNDEFINED_KEY]
+    assert [d.split(":")[0] for d in undefined] == [
+        "modify endpoint 'POST /runs/{run_id}/join'",
+        "modify endpoint 'POST /runs/{run_id}/leave'",
+        "modify endpoint 'GET /runs/{run_id}'",
+    ]
+    assert all("messages is not a key the interface manifest defines" in d for d in undefined)
+    unbuildable = [
+        r.detail for r in verdict.refusals if r.kind is RefusalKind.SURFACE_OUTSIDE_FOOTPRINT
+    ]
+    assert [d.split(":")[0] for d in unbuildable] == [
+        "criterion T1",
+        "criterion T2",
+        "criterion T3",
+    ]
+    assert all("is served by backend/routes.py" in d for d in unbuildable)
+
+
+def test_a_criterion_on_an_endpoint_the_delta_does_change_is_not_refused():
+    """The control: the reference request changes ``backend/routes.py`` (its endpoints carry a new
+    field), so its endpoint criteria are buildable and nothing new refuses it."""
+    verdict = validate_proposal(_authored(), _context())
+
+    assert verdict.accepted, verdict.refusals
+
+
+def test_an_entity_fields_undefined_key_is_named_with_its_field():
+    doc = _authored()
+    op = next(o for o in doc["manifest_delta"] if o["target"] == "entity")
+    op["definition"]["fields"][0]["label"] = "Name"
+
+    verdict = validate_proposal(doc, _context())
+
+    [refusal] = [r for r in verdict.refusals if r.kind is RefusalKind.UNDEFINED_KEY]
+    assert f"fields[{op['definition']['fields'][0]['name']}].label" in refusal.detail
