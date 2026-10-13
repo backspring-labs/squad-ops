@@ -49,10 +49,19 @@ def test_every_model_client_moves_with_provider_url_key_and_model_together():
 
 
 def test_no_client_waits_for_ollama_and_each_waits_for_what_the_base_file_names():
+    """Compose merges an overlay's ``depends_on`` into the files before it unless the value is tagged
+    ``!override``. Untagged, every list here would read right and Ollama's would still be added."""
     overlay = _services("docker-compose.tensorfold.yml")
     for name, spec in _model_clients().items():
         assert overlay[name]["depends_on"] == spec["depends_on"], name
         assert "ollama" not in overlay[name]["depends_on"], name
+    root = yaml.compose((REPO / "docker-compose.tensorfold.yml").read_text())
+    services = next(v for k, v in root.value if k.value == "services")
+    tags = {
+        service.value: next(v.tag for k, v in body.value if k.value == "depends_on")
+        for service, body in services.value
+    }
+    assert tags == dict.fromkeys(_model_clients(), "!override")
 
 
 def test_the_tensorfold_profile_is_full_38_on_the_served_id():

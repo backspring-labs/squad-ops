@@ -292,3 +292,25 @@ def test_tensorfold_joins_the_squads_network_under_the_name_the_clients_call(mon
     networks.pop("squad-ops_squadnet")
     with pytest.raises(es.SwitchFailed, match="network is unknown"):
         es.squad_network()
+
+
+def test_the_clients_move_only_after_the_engine_is_verified(monkeypatch, rec, tmp_path):
+    """§5.6's order. Bug caught: clients moved to a TensorFold that never answered, or not moved at
+    all, so the squad keeps calling a stopped Ollama."""
+    order = []
+    recipe = tmp_path / "r.yaml"
+    recipe.write_text(yaml.safe_dump(RECIPE))
+    monkeypatch.setattr(es, "load_recipe", lambda path: RECIPE)
+    monkeypatch.setattr(es, "box_work", lambda: [])
+    for step in ("stop_ollama", "stop_tensorfold"):
+        monkeypatch.setattr(es, step, lambda rec, step=step: order.append(step))
+    monkeypatch.setattr(es, "wait_released", lambda rec, step: order.append("wait_released"))
+    monkeypatch.setattr(es, "start_tensorfold", lambda rec, r, t: order.append("start_tensorfold"))
+    monkeypatch.setattr(es, "verify_tensorfold", lambda rec, r: order.append("verify_tensorfold"))
+    monkeypatch.setattr(
+        es, "switch_clients", lambda rec, engine, model: order.append(("clients", engine, model))
+    )
+
+    es.to_tensorfold(rec, recipe, 60)
+
+    assert order[-2:] == ["verify_tensorfold", ("clients", "tensorfold", RECIPE["served_id"])]

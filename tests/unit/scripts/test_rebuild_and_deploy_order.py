@@ -10,7 +10,10 @@ images — so this pins the three properties the fix is made of.
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
+
+import pytest
 
 SCRIPT = Path(__file__).resolve().parents[3] / "scripts" / "dev" / "ops" / "rebuild_and_deploy.sh"
 
@@ -122,11 +125,26 @@ def test_every_image_built_from_the_source_hash_carries_it_as_its_revision_label
     assert unlabelled == []
 
 
-def test_a_deploy_refuses_while_tensorfold_serves_before_it_starts_ollama():
+@pytest.mark.parametrize(("running", "refused"), [("true", True), ("false", False), ("", False)])
+def test_a_deploy_refuses_while_tensorfold_serves_before_it_starts_ollama(
+    tmp_path, running, refused
+):
     """SIP-0111 §5.6. Bug caught: a rebuild while TensorFold serves, whose step 1 starts Ollama's
     container beside it (two engines in unified memory) and whose restarts put the clients back on
-    Ollama. The script is read, not run."""
+    Ollama. Only the guard's own lines run, against a ``docker`` that answers as the box would
+    (``""``: no TensorFold container at all)."""
     text = SCRIPT.read_text()
-    guard = text.index("docker inspect -f '{{.State.Running}}' squadops-tensorfold")
-    assert guard < text.index("if ! check_ollama; then")
-    assert "exit 1" in text[guard : text.index("\nfi\n", guard)]
+    guard = text.index("if docker inspect -f '{{.State.Running}}' squadops-tensorfold")
+    end = text.index("\nfi\n", guard) + len("\nfi\n")
+    assert end < text.index("if ! check_ollama; then"), "the guard must run before Ollama starts"
+    fake = tmp_path / "docker"
+    fake.write_text(f"#!/bin/sh\n[ -n '{running}' ] && echo {running} || exit 1\n")
+    fake.chmod(0o755)
+    done = subprocess.run(
+        ["bash", "-c", "RED= YELLOW= NC=\n" + text[guard:end] + "echo deployed\n"],
+        env={"PATH": f"{tmp_path}:/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+    )
+
+    assert (done.returncode, "deployed" in done.stdout) == ((1, False) if refused else (0, True))
