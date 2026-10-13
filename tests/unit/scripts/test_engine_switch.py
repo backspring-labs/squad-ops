@@ -257,7 +257,7 @@ def test_restoration_moves_the_clients_back_only_when_they_moved(
     """Bug caught: a restoration that leaves the squad calling a stopped TensorFold; or one that
     restarts every agent after a switch that never touched them."""
     d = deploy(clients_on)
-    for step in ("stop_tensorfold", "start_ollama"):
+    for step in ("stop_ollama", "stop_tensorfold", "start_ollama"):
         monkeypatch.setattr(es, step, lambda rec: None)
     monkeypatch.setattr(es, "wait_released", lambda rec, step: None)
 
@@ -361,7 +361,7 @@ def test_a_switch_back_moves_the_clients_when_the_deploy_records_tensorfold(
     switch had recreated them) and left the .env on TensorFold, so the next rebuild undid it."""
     d = deploy("tensorfold")
     d.engines = dict.fromkeys(d.engines, "ollama")
-    for step in ("stop_tensorfold", "start_ollama"):
+    for step in ("stop_ollama", "stop_tensorfold", "start_ollama"):
         monkeypatch.setattr(es, step, lambda rec: None)
     monkeypatch.setattr(es, "wait_released", lambda rec, step: None)
 
@@ -369,3 +369,18 @@ def test_a_switch_back_moves_the_clients_when_the_deploy_records_tensorfold(
 
     assert es.deploy_engine() == "ollama"
     assert d.ups == [(_DEPLOY_FILES, _CLIENTS)]
+
+
+def test_a_switch_back_with_ollama_already_serving_releases_it_first(deploy, rec, monkeypatch):
+    """Bug caught: ``to-ollama`` asked for while Ollama was serving. Only TensorFold was stopped,
+    so the release check counted Ollama's own process and failed after 180 s (G3's rolls stage,
+    2026-10-13). Both engines are stopped before the check, as ``to_tensorfold`` does."""
+    deploy("ollama")
+    calls: list[str] = []
+    for step in ("stop_ollama", "stop_tensorfold", "start_ollama"):
+        monkeypatch.setattr(es, step, lambda rec, step=step: calls.append(step))
+    monkeypatch.setattr(es, "wait_released", lambda rec, step: calls.append("wait_released"))
+
+    es.to_ollama(rec)
+
+    assert calls == ["stop_ollama", "stop_tensorfold", "wait_released", "start_ollama"]

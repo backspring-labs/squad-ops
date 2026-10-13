@@ -553,7 +553,13 @@ def switch_clients(rec: Record, engine: str, model: str) -> None:
 
 def to_ollama(rec: Record) -> None:
     """Restoration: TensorFold stopped and its release confirmed BEFORE Ollama starts; never both.
-    Then the clients, if any had moved: a switch that failed before step 7 never moved them."""
+    Then the clients, if any had moved: a switch that failed before step 7 never moved them.
+
+    Ollama is stopped too, as ``to_tensorfold`` stops both. Asked for while Ollama was already
+    serving, the release check counted Ollama's own ``llama-server`` and failed after 180 s: G3's
+    rolls stage, 2026-10-13, whose shakeouts stage had ended on Ollama. Now every switch back
+    leaves a freshly started Ollama, whichever engine was resident."""
+    stop_ollama(rec)
     stop_tensorfold(rec)
     wait_released(rec, "released_for_ollama")
     start_ollama(rec)
