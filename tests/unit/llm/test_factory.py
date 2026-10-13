@@ -12,6 +12,7 @@ import pytest
 from adapters.llm.atlas import AtlasAdapter
 from adapters.llm.factory import create_llm_provider
 from adapters.llm.ollama import OllamaAdapter
+from adapters.llm.tensorfold import TensorFoldAdapter
 from adapters.llm.vllm import VLLMAdapter
 
 pytestmark = [pytest.mark.domain_orchestration]
@@ -24,7 +25,12 @@ def test_a_missing_provider_is_an_error_not_ollama():
 
 @pytest.mark.parametrize(
     ("name", "cls"),
-    [("ollama", OllamaAdapter), ("vllm", VLLMAdapter), ("atlas", AtlasAdapter)],
+    [
+        ("ollama", OllamaAdapter),
+        ("vllm", VLLMAdapter),
+        ("atlas", AtlasAdapter),
+        ("tensorfold", TensorFoldAdapter),
+    ],
 )
 def test_each_registered_name_resolves_its_own_adapter_which_names_that_engine(name, cls):
     """#2260: the engine an adapter declares labels every call's metrics. Bug caught: an adapter
@@ -33,7 +39,7 @@ def test_each_registered_name_resolves_its_own_adapter_which_names_that_engine(n
     assert (type(adapter), adapter.engine) == (cls, name)
 
 
-@pytest.mark.parametrize("name", ["vllm", "atlas"])
+@pytest.mark.parametrize("name", ["vllm", "atlas", "tensorfold"])
 def test_bearer_providers_receive_their_api_key(name):
     """The one provider-specific kwarg the factory forwards; dropped, a bearer-gated
     server (Atlas is one) answers 401 to every call."""
@@ -46,3 +52,31 @@ def test_bearer_providers_receive_their_api_key(name):
 def test_an_unknown_name_raises_and_never_falls_back():
     with pytest.raises(ValueError, match="Unknown LLM provider: olama"):
         create_llm_provider(provider="olama", base_url="http://x:1", default_model="m")
+
+
+def test_a_deploy_naming_tensorfold_builds_its_adapter_with_the_key(monkeypatch):
+    """Wiring, from the environment a deploy writes to the adapter the agents' composition root
+    builds (``entrypoint.py``'s ``create_llm_provider`` call, argument for argument). Bugs caught:
+    the schema refusing the name at config load, and the key not reaching a server that answers
+    every keyless call with 401 (SIP-0111 §5.5)."""
+    from squadops.config.loader import _parse_env_overrides
+    from squadops.config.schema import LLMConfig
+
+    monkeypatch.setenv("SQUADOPS__LLM__PROVIDER", "tensorfold")
+    monkeypatch.setenv("SQUADOPS__LLM__URL", "http://squadops-tensorfold:8080")
+    monkeypatch.setenv("SQUADOPS__LLM__API_KEY", "the-deploys-key")
+    llm = LLMConfig(**_parse_env_overrides()["llm"])
+
+    adapter = create_llm_provider(
+        provider=llm.provider,
+        base_url=llm.url,
+        default_model="qwen3.8-27b-tf-nvfp4",
+        timeout_seconds=llm.timeout,
+        api_key=llm.api_key,
+    )
+
+    assert isinstance(adapter, TensorFoldAdapter)
+    assert (adapter._base_url, adapter._api_key) == (
+        "http://squadops-tensorfold:8080",
+        "the-deploys-key",
+    )

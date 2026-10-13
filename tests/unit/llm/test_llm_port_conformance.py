@@ -155,7 +155,13 @@ class TestUsageAccounting:
         """A provider that omits usage must yield None, not 0. Zero is a lie the
         cost dashboards cannot distinguish from a free call, and it silently
         drags any average toward zero."""
-        with wire(status(200, {"message": {"role": "assistant", "content": "hi"}})):
+        no_usage = case.no_usage or status(200, {"message": {"role": "assistant", "content": "hi"}})
+        if case.usage_required:
+            # SIP-0111 §5.4: a stream that ends without its usage is an error, never a success.
+            with wire(no_usage), pytest.raises(LLMConnectionError, match="no usage"):
+                await case.build().chat(_messages())
+            return
+        with wire(no_usage):
             message = await case.build().chat(_messages())
 
         assert message.prompt_tokens is None
@@ -335,7 +341,8 @@ class TestCapabilityHonesty:
         bodies: list[bytes] = []
 
         def capture(request: httpx.Request) -> httpx.Response:
-            bodies.append(request.content)
+            if request.url.path not in case.probes:
+                bodies.append(request.content)
             return case.ok(request)
 
         with wire(capture):
@@ -371,7 +378,8 @@ class TestCapabilityHonesty:
         bodies: list[bytes] = []
 
         def capture(request: httpx.Request) -> httpx.Response:
-            bodies.append(request.content)
+            if request.url.path not in case.probes:
+                bodies.append(request.content)
             return case.ok(request)
 
         with wire(capture):
@@ -554,7 +562,7 @@ class TestSamplingPairReachesTheWire:
             await case.build().chat_stream_with_usage(_messages())
 
         body = seen.get("options", seen)
-        assert "top_p" not in body, f"{case.name} invented a top_p"
+        assert body.get("top_p") == case.recipe_top_p, f"{case.name} invented a top_p"
 
     async def test_top_p_and_reasoning_do_not_bind_to_each_other(self, case):
         """The regression this guards, found while writing the fix: every payload

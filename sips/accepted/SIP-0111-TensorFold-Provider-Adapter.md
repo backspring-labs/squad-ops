@@ -784,3 +784,49 @@ the-cap test and the overflow test each enter where a live cycle enters (`handle
 2026-10-13 (§9e), and the owner rules them with its merge. Neither changes a behaviour Q6 approved. The first leaves
 a route unbuilt because nothing would travel it. The second places §5.2's classification at the one seam that sees
 every handler's failure.
+
+### 9g. G2's adapter, as built (2026-10-13, with #2200's second PR)
+
+**What was built:** `adapters/llm/tensorfold.py`, its `ModelSpec`, the factory's `tensorfold` and the config value, held
+to the conformance suite and to G0's own calls. Nothing selects it until a deploy names it, so it is inert. The wire is
+read from TensorFold's source at `cb2ebf05` (`server/http.py`, `errors.py`, `metrics.py`, `auth_http.py`). Seven parts
+differ from §5's text.
+
+1. **The registry's dial is `TOGGLE`, not `EFFORT`** (§5.3). From §9c the adapter sends thinking on or off with the
+   recipe's `parity_effort`, never the port's level. A `MEDIUM` call thinks as a `HIGH` one does and is budgeted the
+   same, which is what `TOGGLE` means to `thinking_headroom`.
+2. **The sampling is sent with every call, from the frozen recipe** (§5.1 had it as serve flags). G0's requests
+   carried it on each call, and §5.7 holds the adapter to G0's requests. The adapter's `RECIPES` table carries each
+   frozen recipe's `parity_effort` and sampling, and a test holds it to the recipe YAML. A served id with no frozen
+   recipe is refused: sent bare, it would think at the template's `xhigh` and sample at the server's defaults, which no
+   gate measured. A call's own temperature or `top_p` still wins, as on Ollama.
+3. **A call that names no reasoning level sends the effort alone.** TensorFold hears `reasoning_effort` without
+   `enable_thinking` as thinking on at that effort. That is the model's own default posture, at Ollama's prompt, and
+   no switch is sent the call did not ask for.
+4. **Every call streams, `chat` and `generate` included.** One wire path and one terminal-state check (§5.4), so
+   §5.2's case of a non-streamed reply without usage does not arise.
+5. **A cancelled request's release is read from the request gauges** (§5.4). The CUDA server counts no client
+   disconnections, only `tensorfold:requests_running` and `requests_waiting`. So the adapter reads them before each
+   request, and after one is abandoned (a deadline, a cancellation, a broken stream), the next call waits until the
+   count is back to that reading. It waits 30 s at most; past that the state is unknown, and the call raises before
+   sending anything. It waits on the next call because a cancelled task cannot wait.
+6. **The served window is checked before the first generation, not at startup** (§5.3). No composition root has a
+   startup hook for an LLM port. `/tokenize`'s `max_model_len` is read once per model, and a registry window larger
+   than it refuses every generation.
+7. **Residency is `health()["state"]`, and the launch gate does not read it yet** (§5.5). `list_loaded_models` names
+   the served id once, whatever its aliases, so the quiet-box check sees one model. The launch gate (§24an) still reads
+   loaded models, not `busy`. Wiring `idle` into it belongs with the cutover. Until then, the box lease is what keeps a
+   G3 launch off a busy engine.
+
+**The evidence:**
+- The conformance suite passes on TensorFold. It declares three things on its case: a stream must end with its usage
+  (§5.4), the recipe's `top_p` is sent (§5.7), and its window and gauge reads are not generations.
+- Every one of the run's 160 TensorFold calls, read through `chat_stream_with_usage` from its raw record, sent G0's
+  request and read G0's text, tokens and termination: 132 held-out and 28 panel calls, 0 differences. Three of them
+  are committed as fixtures.
+- §5.4's cases each raise, and the request after each is healthy and waits for the release first. Writing them found
+  a frame that raised in the caller leaving its stream open until garbage collection, which the adapter now closes.
+
+**Who ruled it.** No one yet. The supervisor proposes all seven in the PR that builds them, under the owner's G2 go
+of 2026-10-13 (§9e), and the owner rules them with its merge. The deploy overlay and the switch's network attachment
+come in their own PR, for review as §5.7 asks.
