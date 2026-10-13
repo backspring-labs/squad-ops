@@ -13,7 +13,7 @@ Part of SIP-0066 Phase 2.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -42,6 +42,10 @@ from squadops.telemetry.models import Span, StructuredEvent
 
 class NoOpLLMPort(LLMPort):
     """Hard-fail LLM stub. Used when no LLM provider is configured."""
+
+    @property
+    def engine(self) -> str:
+        return "noop"
 
     async def generate(self, request: LLMRequest) -> LLMResponse:
         raise NotImplementedError("NoOpLLMPort: no LLM provider configured")
@@ -182,7 +186,14 @@ class NoOpMetricsPort(MetricsPort):
     def gauge(self, name: str, value: float, labels: dict[str, str] | None = None) -> None:
         pass
 
-    def histogram(self, name: str, value: float, labels: dict[str, str] | None = None) -> None:
+    def histogram(
+        self,
+        name: str,
+        value: float,
+        labels: dict[str, str] | None = None,
+        *,
+        boundaries: Sequence[float] | None = None,
+    ) -> None:
         pass
 
 

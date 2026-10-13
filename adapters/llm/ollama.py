@@ -81,6 +81,10 @@ class OllamaAdapter(LLMPort):
         """Return the default model name."""
         return self._default_model
 
+    @property
+    def engine(self) -> str:
+        return "ollama"
+
     def capabilities(self) -> dict[str, bool]:
         """Declare what this adapter actually does (#572's rule, see the port).
 

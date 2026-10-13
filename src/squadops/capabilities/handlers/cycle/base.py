@@ -1849,6 +1849,7 @@ class _CycleTaskHandler(CapabilityHandler):
                     role=self._role,
                     task_type=str(self._task_type),
                     model=str(resolved_model or context.ports.llm.default_model),
+                    engine=context.ports.llm.engine,
                     duration_ms=duration_ms,
                 )
             except Exception:

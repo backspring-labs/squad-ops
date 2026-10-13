@@ -5,10 +5,16 @@ time. These are the numbers the host panel, the Grafana dashboard and SIP-0111's
 comparison read: decode rate, prompt and completion tokens, and the prefill and load time that
 the decode rate hides on a long prompt.
 
-Labels stay few, and each takes a bounded set of values: the role, the task type, the model, and
-whether the call was long. A peak decode rate is read over long calls only, because the rate falls
-as output grows, and a plain peak reports the shortest call (#2204: on 2026-10-09 the three
-fastest calls were 20-token builder calls).
+Labels stay few, and each takes a bounded set of values: the role, the task type, the model, the
+engine that served the call, and whether the call was long. A peak decode rate is read over long
+calls only, because the rate falls as output grows, and a plain peak reports the shortest call
+(#2204: on 2026-10-09 the three fastest calls were 20-token builder calls).
+
+Each instrument carries its own bucket boundaries (#2260). OpenTelemetry's defaults (0, 5, 10, 25 …
+10,000) put nearly every decode rate in one bucket and over half the 27B's prompts above the last,
+so no percentile or peak could be read. The scales below come from the 27B's held-out run
+(2026-10-12, 132 calls on each engine): decode 21–37 tok/s on Ollama and 32–106 on TensorFold;
+prompts 4,527–29,055 tokens; completions 20–12,288; calls 7–444 s; Ollama's prefill 1.5–39 s.
 """
 
 from __future__ import annotations
@@ -21,6 +27,23 @@ LLM_COMPLETION_TOKENS = "llm_completion_tokens"
 LLM_PREFILL_SECONDS = "llm_prefill_seconds"
 LLM_LOAD_SECONDS = "llm_load_seconds"
 LLM_CALL_SECONDS = "llm_call_seconds"
+
+#: Each instrument's bucket upper bounds. Kept beside the names, so a name and its scale are
+#: defined once. A bound is a bucket edge, so the edges sit where the readings are dense: every
+#: 2 tok/s through the 27B's decode range, and the registry's 8,192 and 12,288-token caps.
+LLM_HISTOGRAM_BOUNDARIES: dict[str, tuple[float, ...]] = {
+    LLM_DECODE_TOKENS_PER_SECOND: (1, 2, 5, 8, *range(10, 42, 2))
+    + (45, 50, 55, 60, 70, 80, 90, 100, 125, 150),
+    LLM_PROMPT_TOKENS: (500, *range(1000, 8001, 1000), *range(10_000, 16_001, 2000))
+    + (*range(20_000, 32_001, 4000), *range(40_000, 64_001, 8000))
+    + (96_000, 128_000, 192_000, 256_000),
+    LLM_COMPLETION_TOKENS: (16, 32, 64, 128, 256, 512, 1000, 1500, *range(2000, 7001, 1000))
+    + (8192, 10_000, 12_288, 16_384, 32_768),
+    LLM_PREFILL_SECONDS: (0.1, 0.25, 0.5, 1, 2, 3, 5, 7.5, 10, 15, 20, 30, 45, 60, 90, 120, 180),
+    LLM_LOAD_SECONDS: (0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 30, 60, 120),
+    LLM_CALL_SECONDS: (1, 2, 5, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 300, 420, 600)
+    + (900, 1200, 1800, 3600),
+}
 
 #: A call is "long" at this many completion tokens or more (#2204's peak rule).
 LONG_CALL_TOKENS = 1000
@@ -41,6 +64,7 @@ def record_llm_call(
     role: str,
     task_type: str,
     model: str,
+    engine: str,
     duration_ms: float,
 ) -> None:
     """Emit one model call's metrics. A value the provider did not report is not emitted, never
@@ -50,6 +74,7 @@ def record_llm_call(
         "role": role,
         "task_type": task_type,
         "model": model,
+        "engine": engine,
         "long": "true" if (completion or 0) >= LONG_CALL_TOKENS else "false",
     }
     duration = _number(duration_ms)
@@ -63,4 +88,4 @@ def record_llm_call(
     )
     for name, value in observed:
         if value is not None:
-            metrics.histogram(name, value, labels)
+            metrics.histogram(name, value, labels, boundaries=LLM_HISTOGRAM_BOUNDARIES[name])

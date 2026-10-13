@@ -21,6 +21,8 @@ from squadops.ports.llm.provider import LLMPort
 class _StreamingLLM(LLMPort):
     """Concrete LLMPort that yields configurable chunks."""
 
+    engine = "test"
+
     def __init__(self, chunks: list[str] | None = None):
         self._chunks = ["hello", " ", "world"] if chunks is None else chunks
 

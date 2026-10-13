@@ -26,9 +26,11 @@ def test_a_missing_provider_is_an_error_not_ollama():
     ("name", "cls"),
     [("ollama", OllamaAdapter), ("vllm", VLLMAdapter), ("atlas", AtlasAdapter)],
 )
-def test_each_registered_name_resolves_its_own_adapter(name, cls):
+def test_each_registered_name_resolves_its_own_adapter_which_names_that_engine(name, cls):
+    """#2260: the engine an adapter declares labels every call's metrics. Bug caught: an adapter
+    copied from another that kept its engine name, so its calls charted as the other engine's."""
     adapter = create_llm_provider(provider=name, base_url="http://x:1", default_model="m")
-    assert type(adapter) is cls
+    assert (type(adapter), adapter.engine) == (cls, name)
 
 
 @pytest.mark.parametrize("name", ["vllm", "atlas"])
