@@ -663,15 +663,25 @@ def _parse_provenance(raw: Any) -> Provenance | None:
 #: whose delta carries one would be built from a manifest that silently lost it (#2205): the
 #: rails refuse it by name instead. Named by ``DeltaTarget``'s values, plus the entity's fields.
 #: ``test_each_declared_key_is_one_the_parser_reads`` holds this table to the parsers.
+#:
+#: **Derived from the element's dataclass, not kept by hand.** A field added to ``Endpoint`` (as
+#: #2202's ``order`` is) is a key its parser reads, and a hand-kept list would go on refusing it
+#: in every change request that declared it. The exceptions are named: ``has_default`` is derived
+#: from whether ``default`` was written, and a request shape's and an error code's ``name`` and
+#: ``code`` are the mapping keys they sit under, not keys of their definitions.
+def _definition_keys(cls: type, *, not_written: tuple[str, ...] = ()) -> frozenset[str]:
+    import dataclasses
+
+    return frozenset(f.name for f in dataclasses.fields(cls)) - set(not_written)
+
+
 MANIFEST_ELEMENT_KEYS: dict[str, frozenset[str]] = {
-    "entity": frozenset({"name", "fields"}),
-    "entity_field": frozenset({"name", "type", "required", "generated", "default"}),
-    "request_shape": frozenset({"required", "optional", "values"}),
-    "endpoint": frozenset(
-        {"method", "path", "summary", "request", "response", "errors", "success_status"}
-    ),
-    "client_route": frozenset({"path", "view", "purpose", "testids"}),
-    "error_code": frozenset({"http"}),
+    "entity": _definition_keys(Entity),
+    "entity_field": _definition_keys(ManifestField, not_written=("has_default",)),
+    "request_shape": _definition_keys(RequestShape, not_written=("name",)),
+    "endpoint": _definition_keys(Endpoint),
+    "client_route": _definition_keys(Route),
+    "error_code": _definition_keys(ErrorCode, not_written=("code",)),
 }
 #: An element whose definition nests others, by the key that holds them and the nested kind.
 _NESTED_MANIFEST_KEYS: dict[str, tuple[str, str]] = {"entity": ("fields", "entity_field")}
