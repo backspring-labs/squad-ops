@@ -199,12 +199,20 @@ class _Deploy:
 
 
 @pytest.fixture
-def deploy(monkeypatch):
+def deploy(monkeypatch, tmp_path):
+    """A deploy whose clients are all on ``engine`` and whose ``.env`` says so. The main checkout is
+    a scratch directory: the switch writes the deploy's ``.env``, and a test must never write the
+    real one."""
+
     def at(engine: str) -> _Deploy:
         d = _Deploy(engine)
+        files = _DEPLOY_FILES + (f":{es.TF_OVERLAY}" if engine == "tensorfold" else "")
+        env = tmp_path / ".env"
+        env.write_text(f"POSTGRES_PASSWORD=kept\nCOMPOSE_FILE={files}\nCOMPOSE_PROFILES=gpu\n")
+        env.chmod(0o600)
+        monkeypatch.setattr(es, "MAIN", tmp_path)
         monkeypatch.setattr(es, "compose", d.compose)
         monkeypatch.setattr(es, "client_engine", lambda service: d.engines.get(service))
-        monkeypatch.setattr(es, "deploy_compose_files", lambda: _DEPLOY_FILES)
         monkeypatch.setattr(es.subprocess, "run", d.exec_probe)
         return d
 
@@ -223,7 +231,7 @@ def test_the_clients_move_together_and_answer_through_the_deployed_adapter(deplo
     assert d.ups == [(f"{_DEPLOY_FILES}:{es.TF_OVERLAY}", _CLIENTS)]
     assert set(d.engines.values()) == {"tensorfold"}
     assert d.probes[0][-1] == "qwen3.8-27b-tf-nvfp4"
-    assert _steps(rec) == ["clients_switched", "clients_healthy"]
+    assert _steps(rec) == ["clients_switched", "deploy_engine", "clients_healthy"]
 
 
 @pytest.mark.parametrize(
@@ -314,3 +322,50 @@ def test_the_clients_move_only_after_the_engine_is_verified(monkeypatch, rec, tm
     es.to_tensorfold(rec, recipe, 60)
 
     assert order[-2:] == ["verify_tensorfold", ("clients", "tensorfold", RECIPE["served_id"])]
+
+
+@pytest.mark.parametrize(
+    ("start", "engine", "files"),
+    [
+        ("ollama", "tensorfold", f"{_DEPLOY_FILES}:{es.TF_OVERLAY}"),
+        ("tensorfold", "ollama", _DEPLOY_FILES),
+    ],
+    ids=["to TensorFold", "back to Ollama"],
+)
+def test_a_switch_records_the_engine_in_the_deploys_env(
+    deploy, rec, tmp_path, start, engine, files
+):
+    """Bugs caught: a rebuild after the cutover recreating every client on a stopped Ollama, because
+    the deploy's .env still named Ollama's files; or a rollback that left the overlay there, so the
+    next rebuild moved the clients to a stopped TensorFold. Also: the rewrite dropping the file's
+    other lines (its credentials) or widening its owner-only mode."""
+    deploy(start)
+
+    es.switch_clients(rec, engine, "a-model")
+
+    env = tmp_path / ".env"
+    assert env.read_text().splitlines() == [
+        "POSTGRES_PASSWORD=kept",
+        f"COMPOSE_FILE={files}",
+        "COMPOSE_PROFILES=gpu",
+    ]
+    assert env.stat().st_mode & 0o777 == 0o600
+    assert es.deploy_engine() == engine
+    assert _steps(rec)[-2:] == ["deploy_engine", "clients_healthy"]
+
+
+def test_a_switch_back_moves_the_clients_when_the_deploy_records_tensorfold(
+    deploy, rec, monkeypatch
+):
+    """Bug caught: a rollback that read only the containers, found them on Ollama (an interrupted
+    switch had recreated them) and left the .env on TensorFold, so the next rebuild undid it."""
+    d = deploy("tensorfold")
+    d.engines = dict.fromkeys(d.engines, "ollama")
+    for step in ("stop_tensorfold", "start_ollama"):
+        monkeypatch.setattr(es, step, lambda rec: None)
+    monkeypatch.setattr(es, "wait_released", lambda rec, step: None)
+
+    es.to_ollama(rec)
+
+    assert es.deploy_engine() == "ollama"
+    assert d.ups == [(_DEPLOY_FILES, _CLIENTS)]
