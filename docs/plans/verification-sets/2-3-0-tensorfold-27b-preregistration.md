@@ -183,3 +183,29 @@ So a pass here would put production on an engine line its maker has moved past, 
 switch back to Ollama took at most 28.2 s overnight. **The owner ruled to run on it** (2026-10-12, "run on 0.6.6"),
 after being told that no fixes are coming for the 27B on NVIDIA and that the switch back to Ollama is the fallback.
 SIP-0111 §9d records it.
+
+## 9. The reading (2026-10-13)
+
+The run finished at 00:01 ET on 2026-10-13, with every planned call made: 132 an arm, the panels and the draft check.
+`engine_gates.py` read it as §5 fixes it, after the one change §5 records. The full reading is
+`var/engine_replay/2026-10-12-held-out/reading.json`, posted on #2199 (issuecomment-6137968954).
+
+| reading | result |
+|---|---|
+| G0, median paired ratio | **0.438** (interval 0.401–0.476), every seam under 1.0: an observed pass |
+| G0, truncation | TensorFold 1 call, Ollama 2 |
+| G1, overall | 109 of 132 against 107 of 132: an observed pass |
+| G1, per seam | build authoring 41 against 38, **plan writing 55 against 56**, proposal writing 3 against 3, repair 10 against 10 |
+| drift | 14 of 14 identical on each arm, median wall-clock change −0.3% and −0.2% |
+| the draft check | 5 of 5 byte-identical |
+
+**Plan writing missed §1's per-seam bar by one answer:** a Next.js `governance.prepare_plan_authoring_brief` whose YAML
+did not parse (line 98, a mis-indented key), finished `stop` at 7,809 tokens. No interval in G1 is bounded, so each
+validity reading, the miss included, is observed on this corpus only.
+
+**What the owner decided** (§7, checkpoint A): "1, does not fail vailidity, let's go with TensorFold. 2, no re-run".
+G1 is read as passed, the 27B goes on to G2 (#2200) on this recipe, and nothing is re-run. SIP-0111 §9e records it as
+the owner's departure from the per-seam bar, with the evidence above.
+
+**The records** are under `var/engine_replay/2026-10-12-held-out/` and travel with the 2.3 Release's records
+(`attach_release_records.py`, which carries the line's engine records from this release on).

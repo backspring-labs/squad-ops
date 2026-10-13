@@ -284,8 +284,8 @@ def serve_command(recipe: dict[str, Any]) -> list[str]:
     return cmd
 
 
-def api_key() -> str:
-    line = KEY_FILE.read_text().strip()
+def api_key(path: Path = KEY_FILE) -> str:
+    line = path.read_text().strip()
     return line.split(":", 1)[1].strip() if ":" in line else line
 
 

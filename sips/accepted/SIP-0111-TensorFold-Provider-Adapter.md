@@ -109,16 +109,16 @@ Checked against `sips/PORTFOLIO.md` on 2026-10-09, and again for revision 2 (CLA
 - **Conflicts:** one, **resolved by the owner on 2026-10-09** (Q1). 2.3 is feature-free by rule, and G0–G2 are placed
   there, dark, under SIP-0106 §4.3's waiver.
 
-## Delivery ledger (current as of 2026-10-12)
+## Delivery ledger (current as of 2026-10-13)
 
 Placed by the owner's Q1 ruling (2026-10-09). The rows are ordered as the work runs.
 
 | part | status | where |
 |---|---|---|
 | S: engine switching and rollback, with the exclusivity guard, built and exercised before the first TensorFold load (§5.6) | **shipped** | 2.3.0, #2252: the switch and the four exercises, passed (their records are on #2199) |
-| G0: throughput on held-out captured envelopes, against production Ollama, on a frozen recipe (§4) | **placed** | 2.3.0, #2199 |
-| G1: emission quality, the same calls through each task type's production validator (§4) | **placed** | 2.3.0, #2199 |
-| G2: the adapter, dark, with the port amendments, registry entries, the overlay and parity tests (§5) | **placed** | 2.3.0, #2200 (merged only if G0 and G1 pass) |
+| G0: throughput on held-out captured envelopes, against production Ollama, on a frozen recipe (§4) | **shipped** | 2.3.0, #2256 and #2262 (the harness and its reader), #2199: the 27B on NVFP4 passed, a median of 0.438 of Ollama's wall-clock (§9e) |
+| G1: emission quality, the same calls through each task type's production validator (§4) | **shipped** | 2.3.0, #2256 and #2262, #2199: passed by the owner's ruling of 2026-10-13, with plan writing one answer under Ollama's (§9e) |
+| G2: the adapter, dark, with the port amendments, registry entries, the overlay and parity tests (§5) | **placed** | 2.3.0, #2200: on the 27B's frozen recipe after G0 and G1 (§9e). The port's controls (#2268, §9f) and the adapter (#2269, §9g) are merged; the clients' switch and overlay, then the live tier on the Spark, remain |
 | G3: the selected candidate's uncounted cycle A/B on both stacks, compared on wall-clock, task times, retries, correction rounds and verdicts (§9a item 6) | **placed** | 2.3.0, #2229 |
 | G4: cutover | **placed** | 2.3.0, #2229: the owner's decision on G3's evidence, before the 2.3 cut set (the 2.3 plan's D4) |
 | a second candidate, Qwen3.8-Flash-Next on TensorFold, on its own gate path: screening, its own recipe, G0 and G1 (§9a) | **placed** | 2.4.0, #2230: moved from 2.3 by the owner on 2026-10-12 ("skip to next release"). Not measured in 2.3, which is not a negative |
@@ -758,6 +758,43 @@ change.
 NVFP4". The same answer chose the checkpoint. The pre-registration
 (`docs/plans/verification-sets/2-3-0-tensorfold-27b-preregistration.md`) records it.
 
+### 9e. The 27B's G0 and G1, read, and the owner's ruling on plan writing (RULED 2026-10-13)
+
+**What changed.** Q2's validity bar is TensorFold's pass rate at least Ollama's, overall and per seam. On the 27B's
+held-out run, plan writing came in one answer under Ollama's. The owner ruled that this does not fail G1, and that the
+27B goes on to G2 on the frozen recipe without a re-run. Every other reading met its bar. So G2 (#2200) starts on
+`infra/tensorfold/recipes/qwen27b-nvfp4.yaml`. No production switch follows from it; that is still G4.
+
+**The evidence** (the held-out run of 2026-10-12, read by `engine_gates.py` as the pre-registration fixes it;
+`docs/plans/verification-sets/2-3-0-tensorfold-27b-preregistration.md` §9, and #2199):
+- **G0 passed.** The median paired ratio was 0.438 (interval 0.401–0.476) against the bar of 0.75. By seam: build
+  authoring 0.356, plan writing 0.472, proposal writing 0.676 and repair 0.436. TensorFold hit its cap on 1 call and
+  Ollama on 2. The truncation interval's unfavourable bound is +1.5 points, so the speed pass is observed on this
+  corpus, not bounded. The arms took 3.5 h on TensorFold and 7.4 h on Ollama.
+- **G1, by seam:**
+
+  | | TensorFold | Ollama | difference (interval) |
+  |---|---|---|---|
+  | overall | 109 of 132 | 107 of 132 | +1.5 points (−4.5 to +7.6) |
+  | build authoring | 41 of 46 | 38 of 46 | +6.5 points (−4.3 to +17.4) |
+  | **plan writing** | **55 of 68** | **56 of 68** | **−1.5 points (−10.3 to +7.4)** |
+  | proposal writing | 3 of 8 | 3 of 8 | 0 |
+  | repair | 10 of 10 | 10 of 10 | 0 |
+
+- **The one answer:** a Next.js `governance.prepare_plan_authoring_brief`, whose YAML failed to parse at line 98 on a
+  mis-indented key. The model finished on its own (`stop`) at 7,809 tokens; it was not cut off.
+- **Drift:** each arm's 14-envelope panel was identical before and after, 14 of 14, with median wall-clock changes of
+  −0.3% (Ollama) and −0.2% (TensorFold).
+- **The draft check:** all 5 drafted replies matched the plain ones byte for byte.
+- **One change to the reader** after registration, before any validity verdict was read: an all-cache-hit group read
+  as untimed rather than raising (#2262; the pre-registration's §5).
+
+**Who ruled it.** The owner, on 2026-10-13, told the readings above and asked whether one answer under the bar fails
+validity or the 27B goes on to the adapter, and whether to re-run plan writing first (about 8 h, or about 3 h for Next.js
+plan writing only). The supervisor had recommended the full plan-writing re-run. The owner answered "1, does not fail
+vailidity, let's go with TensorFold. 2, no re-run". The plan-writing reading stands as an observed miss of one answer,
+and it is recorded here as the owner's departure from Q2's per-seam bar.
+
 ### 9f. G2's port amendments, as built (2026-10-13, with #2200's first PR)
 
 **What was built** is §5.1 (a) and §5.2 (c) and (d), for every existing adapter. Two parts differ from the text.
@@ -780,10 +817,9 @@ any call, on all four generation methods.
 **The evidence:** the conformance suite runs each control on all four methods of every adapter. A termination-decides-
 the-cap test and the overflow test each enter where a live cycle enters (`handle`, and the handler executor).
 
-**Who ruled it.** No one yet: the supervisor proposes both in the PR that builds them, under the owner's G2 go of
-2026-10-13 (§9e), and the owner rules them with its merge. Neither changes a behaviour Q6 approved. The first leaves
-a route unbuilt because nothing would travel it. The second places §5.2's classification at the one seam that sees
-every handler's failure.
+**Who ruled it.** The owner, on 2026-10-13, approving #2268's merge ("1, merge"), in which the supervisor proposed
+both. Neither changes a behaviour Q6 approved. The first leaves a route unbuilt because nothing would travel it. The
+second places §5.2's classification at the one seam that sees every handler's failure.
 
 ### 9g. G2's adapter, as built (2026-10-13, with #2200's second PR)
 
@@ -827,6 +863,5 @@ differ from §5's text.
 - §5.4's cases each raise, and the request after each is healthy and waits for the release first. Writing them found
   a frame that raised in the caller leaving its stream open until garbage collection, which the adapter now closes.
 
-**Who ruled it.** No one yet. The supervisor proposes all seven in the PR that builds them, under the owner's G2 go
-of 2026-10-13 (§9e), and the owner rules them with its merge. The deploy overlay and the switch's network attachment
-come in their own PR, for review as §5.7 asks.
+**Who ruled it.** The owner, on 2026-10-13, approving #2269's merge ("1, merge"), in which the supervisor proposed
+all seven. The deploy overlay and the switch's network attachment come in their own PR, for review as §5.7 asks.
