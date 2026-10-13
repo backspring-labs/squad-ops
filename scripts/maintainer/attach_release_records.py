@@ -29,7 +29,8 @@ It does three things:
    they began, not for a line, so the line's are those whose day falls in its window.
 2. **Scan every line of every file** before anything leaves the box, for:
    - the values of the deploy's secrets: ``secrets/*``, which is what ``secret://`` expands to
-   - TensorFold's API key, which is kept outside every checkout
+   - TensorFold's API key as the server reads it: its key file holds ``label: key``, so the bare
+     value is searched for as well as the file's whole line
    - secret-named values in the repo's ``.env``
    - secret-named ``SQUADOPS__*`` values in the running containers' environment
    - Langfuse and API key prefixes (``pk-lf-``, ``sk-lf-``, ``sk-``), JWTs, and private keys
