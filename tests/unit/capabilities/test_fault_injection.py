@@ -18,6 +18,7 @@ from squadops.capabilities.handlers.fault_injection import (
     DECLARATION_KEY,
     FAULTS,
     INJECTED_TASKS,
+    RUNTIME_SEAMS,
     FaultScope,
     UnknownFault,
     UnreachableFault,
@@ -247,7 +248,9 @@ def test_every_fault_names_the_roll_it_came_from_and_the_prediction_it_exercises
         assert fault.found_in.strip(), f"{name} names no roll"
         assert "#" in fault.found_in, f"{name}'s provenance cites no issue"
         assert fault.exercises.strip(), f"{name} names no prediction"
-        assert fault.task in INJECTED_TASKS, f"{name} targets an unwired task"
+        # #2279: a runtime seam's wiring is held by the test that enters at it
+        # (test_increment_gate_wiring.py), as an agent seam's is by the one below.
+        assert fault.task in INJECTED_TASKS | RUNTIME_SEAMS, f"{name} targets an unwired task"
 
 
 class TestTheFaultReachesTheHandlerTheLiveCycleCalls:
