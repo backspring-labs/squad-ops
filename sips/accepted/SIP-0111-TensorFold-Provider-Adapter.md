@@ -118,7 +118,7 @@ Placed by the owner's Q1 ruling (2026-10-09). The rows are ordered as the work r
 | S: engine switching and rollback, with the exclusivity guard, built and exercised before the first TensorFold load (§5.6) | **shipped** | 2.3.0, #2252: the switch and the four exercises, passed (their records are on #2199) |
 | G0: throughput on held-out captured envelopes, against production Ollama, on a frozen recipe (§4) | **shipped** | 2.3.0, #2256 and #2262 (the harness and its reader), #2199: the 27B on NVFP4 passed, a median of 0.438 of Ollama's wall-clock (§9e) |
 | G1: emission quality, the same calls through each task type's production validator (§4) | **shipped** | 2.3.0, #2256 and #2262, #2199: passed by the owner's ruling of 2026-10-13, with plan writing one answer under Ollama's (§9e) |
-| G2: the adapter, dark, with the port amendments, registry entries, the overlay and parity tests (§5) | **placed** | 2.3.0, #2200: on the 27B's frozen recipe after G0 and G1 (§9e). The port's controls (#2268, §9f) and the adapter (#2269, §9g) are merged; the clients' switch and overlay, then the live tier on the Spark, remain |
+| G2: the adapter, dark, with the port amendments, registry entries, the overlay and parity tests (§5) | **placed** | 2.3.0, #2200: on the 27B's frozen recipe after G0 and G1 (§9e). The port's controls (#2268, §9f), the adapter (#2269, §9g), and the clients' switch with its overlay and key (#2270, §9h) are built; the live tier on the Spark remains |
 | G3: the selected candidate's uncounted cycle A/B on both stacks, compared on wall-clock, task times, retries, correction rounds and verdicts (§9a item 6) | **placed** | 2.3.0, #2229 |
 | G4: cutover | **placed** | 2.3.0, #2229: the owner's decision on G3's evidence, before the 2.3 cut set (the 2.3 plan's D4) |
 | a second candidate, Qwen3.8-Flash-Next on TensorFold, on its own gate path: screening, its own recipe, G0 and G1 (§9a) | **placed** | 2.4.0, #2230: moved from 2.3 by the owner on 2026-10-12 ("skip to next release"). Not measured in 2.3, which is not a negative |
@@ -865,3 +865,31 @@ differ from §5's text.
 
 **Who ruled it.** The owner, on 2026-10-13, approving #2269's merge ("1, merge"), in which the supervisor proposed
 all seven. The deploy overlay and the switch's network attachment come in their own PR, for review as §5.7 asks.
+
+### 9h. The switch moves the clients, and the key is the deploy's own (RULED 2026-10-13)
+
+**What changed.** §5.6 step 7 had the clients resume "with endpoint, model, credentials and provider switched
+together", and §5.7 an API key "from the deploy's `.env`". Neither said how. S, as built for G0 (§9b), moved only the
+engines. From this ruling:
+- **`engine_switch.py to-tensorfold` moves the model clients after it verifies the engine.** It recreates every
+  running service that calls a model with `docker-compose.tensorfold.yml` appended to the deploy's `COMPOSE_FILE`.
+  That overlay sets the provider, the URL (`http://tensorfold:8080` on squadnet, which the switch now attaches
+  TensorFold to), the key and the served id together. The switch then runs one generation through the deployed
+  adapter from inside an agent.
+- **`to-ollama` moves them back**, and so does a restoration after a failed switch, whatever step it reached. An
+  asked-for switch back refuses a box with work on it, since recreating the runtime API ends any cycle it runs.
+- **The overlay replaces each client's `depends_on`, never merges it:** the Ollama overlay makes every client wait for
+  Ollama, and compose would start Ollama beside TensorFold for any client it recreated. The engines never run
+  together. Each list restates the base file's, and a test holds them equal.
+- **`rebuild_and_deploy.sh` refuses while TensorFold serves.** Its first step starts Ollama's container, and its
+  restarts would put the clients back on Ollama.
+- **The key's home is `.env`** (`SQUADOPS_TENSORFOLD_API_KEY`, in `infra/deploy_credentials.json`). `deploy_credentials.py`
+  generates it and writes the server's key file from it (`secrets/tensorfold_api_key.txt`, as `squadops: <key>`). There
+  is one home, so a rotation reaches the server and every client. The key file outside the checkout
+  (`~/tensorfold/secrets/api_key`) is retired.
+- **A cycle on TensorFold names `full-38-tf`:** the `full-38` roster on the served id, since an agent takes its squad
+  profile's model first. A test holds the two profiles equal in every other field.
+
+**Who ruled it.** The owner, on 2026-10-13. Asked where the agents should get the key and whether the switch should
+also move the clients, the owner answered "2 and 3, as recommended": the key from `.env`, registered for rotation, and
+the switch moving the clients through an overlay that drops their dependency on Ollama.

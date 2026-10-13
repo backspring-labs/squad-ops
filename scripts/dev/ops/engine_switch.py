@@ -17,7 +17,10 @@ The steps (§5.6):
 5. Start TensorFold from the recipe.
 6. Authenticate and verify: the served id, the window (``/tokenize``'s ``max_model_len``) and the recipe's
    own command line; MemAvailable >= 16 GiB after the load.
-7. One healthy generation.
+7. One healthy generation; then the clients move, together (provider, URL, key, model): every running
+   model client is recreated with ``docker-compose.tensorfold.yml`` appended to the deploy's
+   ``COMPOSE_FILE``, and one generation runs through the deployed adapter from inside an agent. The
+   switch back recreates them without it. A restoration moves them back too, whatever step failed.
 
 Every step is a JSON line in the record (``var/engine_switch/<utc>.jsonl`` under the main checkout).
 """
@@ -26,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -47,9 +51,18 @@ TF_CONTAINER = "squadops-tensorfold"
 TF_PORT = 8090
 TF_URL = f"http://127.0.0.1:{TF_PORT}"
 OLLAMA_URL = "http://127.0.0.1:11434"
-#: The checkpoints' cache and the API key's file, outside every checkout.
+#: The checkpoints' cache, outside every checkout.
 TF_HOME = Path.home() / "tensorfold"
-KEY_FILE = TF_HOME / "secrets" / "api_key"
+#: The server's key file (``label: key``), written from the deploy's SQUADOPS_TENSORFOLD_API_KEY by
+#: ``deploy_credentials.py`` (#2006): one home, so a rotation reaches the server and every client.
+KEY_FILE = MAIN / "secrets" / "tensorfold_api_key.txt"
+#: The clients' side of the switch (§5.6 step 7), appended to the deploy's COMPOSE_FILE while
+#: TensorFold serves; and the name the squad reaches it by on its network.
+TF_OVERLAY = "docker-compose.tensorfold.yml"
+TF_ALIAS = "tensorfold"
+SQUADNET = "squadnet"
+#: The agent the clients' generation runs from: one container, through the deployed adapter.
+PROBE_AGENT = "squadops-max"
 
 #: SIP-0111 §5.6 (Q7): the floors, as squadops.campaigns.box defines them.
 GIB = 2**30
@@ -144,9 +157,17 @@ def box_work() -> list[str]:
     return held
 
 
-def compose(*args: str, timeout: float = 600) -> subprocess.CompletedProcess:
+def compose(
+    *args: str, timeout: float = 600, files: str | None = None
+) -> subprocess.CompletedProcess:
+    """``docker compose`` in the main checkout; ``files`` replaces the deploy's COMPOSE_FILE."""
     return subprocess.run(
-        ["docker", "compose", *args], cwd=MAIN, capture_output=True, text=True, timeout=timeout
+        ["docker", "compose", *args],
+        cwd=MAIN,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        env={**os.environ, "COMPOSE_FILE": files} if files else None,
     )
 
 
@@ -231,7 +252,7 @@ def load_recipe(path: Path) -> dict[str, Any]:
     return recipe
 
 
-def serve_command(recipe: dict[str, Any]) -> list[str]:
+def serve_command(recipe: dict[str, Any], network: str | None = None) -> list[str]:
     """The ``docker run`` that starts the recipe: everything it pins is on this line, so the line is the
     record of what was served."""
     cache = "/cache"
@@ -266,6 +287,8 @@ def serve_command(recipe: dict[str, Any]) -> list[str]:
         f"{KEY_FILE}:/run/tensorfold_api_key:ro",
         "-p",
         f"127.0.0.1:{TF_PORT}:8080",
+        # The squad's network, where every model client reaches it as `tensorfold` (§5.6 step 7).
+        *(["--network", network, "--network-alias", TF_ALIAS] if network else []),
         recipe["image"],
         "serve",
         recipe["checkpoint"]["container_path"],
@@ -312,8 +335,32 @@ def stop_tensorfold(rec: Record) -> None:
     rec.write("tensorfold_stopped")
 
 
+def squad_network() -> str:
+    """The deploy's squadnet as compose named it (the project's name prefixes it), read from the
+    runtime API's container. Unknown fails the switch: a TensorFold no client can reach serves
+    nothing."""
+    proc = run(
+        "docker",
+        "inspect",
+        "-f",
+        "{{json .NetworkSettings.Networks}}",
+        "squadops-runtime-api",
+        check=False,
+    )
+    names = [
+        n
+        for n in (json.loads(proc.stdout or "{}") if proc.returncode == 0 else {})
+        if n == SQUADNET or n.endswith(f"_{SQUADNET}")
+    ]
+    if len(names) != 1:
+        raise SwitchFailed(f"the squad's network is unknown (the runtime API's networks: {names})")
+    return names[0]
+
+
 def start_tensorfold(rec: Record, recipe: dict[str, Any], ready_timeout: float) -> None:
-    cmd = serve_command(recipe)
+    network = squad_network()
+    rec.write("tensorfold_network", network=network, alias=TF_ALIAS)
+    cmd = serve_command(recipe, network)
     rec.write("tensorfold_starting", recipe=recipe["name"], command=cmd)
     run(*cmd)
     deadline = time.monotonic() + ready_timeout
@@ -376,14 +423,113 @@ def verify_tensorfold(rec: Record, recipe: dict[str, Any]) -> None:
     rec.write("tensorfold_healthy", generation_s=round(time.monotonic() - t0, 1))
 
 
+# --- the clients (§5.6 step 7) --------------------------------------------------------------------
+
+#: One generation through the deployed adapter, inside an agent: the URL, the key, the network and the
+#: adapter, together, as the squad will call them. It prints the engine and the reply's length only.
+CLIENT_PROBE = """
+import asyncio, sys
+from adapters.llm.factory import create_llm_provider
+from squadops.bootstrap.secrets import secret_provider_for
+from squadops.config.loader import load_config
+from squadops.llm.models import ChatMessage
+
+async def main():
+    llm = load_config(secret_provider_factory=secret_provider_for).llm
+    port = create_llm_provider(provider=llm.provider, base_url=llm.url, default_model=sys.argv[1],
+                               timeout_seconds=600.0, api_key=llm.api_key)
+    reply = await port.chat(
+        [ChatMessage(role="user", content="Reply with the word ready.")],
+        max_tokens=16, reasoning="none")
+    print(port.engine, len(reply.content.strip()))
+
+asyncio.run(main())
+"""
+
+
+def deploy_compose_files() -> str:
+    """The deploy's own COMPOSE_FILE, as its .env sets it for every ``docker compose`` there."""
+    env = MAIN / ".env"
+    for line in env.read_text().splitlines() if env.is_file() else []:
+        if line.startswith("COMPOSE_FILE="):
+            return line.split("=", 1)[1].strip().strip("'\"")
+    return "docker-compose.yml"
+
+
+def client_files(engine: str) -> str:
+    base = deploy_compose_files()
+    return f"{base}:{TF_OVERLAY}" if engine == "tensorfold" else base
+
+
+def llm_clients(files: str) -> list[str]:
+    """The running services that call a model: each sets SQUADOPS__LLM__PROVIDER. The rendered
+    composition holds the deploy's credentials, so it is parsed here and never written anywhere."""
+    config = compose("config", "--format", "json", files=files)
+    if config.returncode != 0:
+        raise SwitchFailed(f"compose config: {config.stderr.strip()[-300:]}")
+    running = set(compose("ps", "--services", "--status", "running").stdout.split())
+    return sorted(
+        name
+        for name, service in json.loads(config.stdout)["services"].items()
+        if "SQUADOPS__LLM__PROVIDER" in (service.get("environment") or {}) and name in running
+    )
+
+
+def client_engine(service: str) -> str | None:
+    """The provider a running client was started with."""
+    ids = compose("ps", "-q", service).stdout.split()
+    if not ids:
+        return None
+    env = json.loads(run("docker", "inspect", "-f", "{{json .Config.Env}}", ids[0]).stdout)
+    for item in env:
+        key, _, value = item.partition("=")
+        if key == "SQUADOPS__LLM__PROVIDER":
+            return value
+    return None
+
+
+def switch_clients(rec: Record, engine: str, model: str) -> None:
+    """Every running model client recreated on ``engine``, checked, then one generation through
+    the deployed adapter from inside an agent."""
+    files = client_files(engine)
+    services = llm_clients(files)
+    proc = compose(
+        "up", "-d", "--no-deps", "--force-recreate", "--wait", *services, files=files, timeout=900
+    )
+    if proc.returncode != 0:
+        raise SwitchFailed(f"clients to {engine}: {proc.stderr.strip()[-300:]}")
+    wrong = {s: client_engine(s) for s in services if client_engine(s) != engine}
+    if wrong:
+        raise SwitchFailed(f"clients not on {engine} after recreation: {wrong}")
+    rec.write("clients_switched", engine=engine, services=services)
+    t0 = time.monotonic()
+    probe = subprocess.run(
+        ["docker", "exec", "-i", PROBE_AGENT, "python", "-", model],
+        input=CLIENT_PROBE,
+        capture_output=True,
+        text=True,
+        timeout=900,
+    )
+    said = probe.stdout.split()
+    if probe.returncode != 0 or len(said) != 2 or said[0] != engine or said[1] == "0":
+        raise SwitchFailed(
+            f"the clients' generation on {engine} failed: {(probe.stderr or probe.stdout)[-300:]}"
+        )
+    rec.write("clients_healthy", engine=engine, generation_s=round(time.monotonic() - t0, 1))
+
+
 # --- the switch -----------------------------------------------------------------------------------
 
 
 def to_ollama(rec: Record) -> None:
-    """Restoration: TensorFold stopped and its release confirmed BEFORE Ollama starts; never both."""
+    """Restoration: TensorFold stopped and its release confirmed BEFORE Ollama starts; never both.
+    Then the clients, if any had moved: a switch that failed before step 7 never moved them."""
     stop_tensorfold(rec)
     wait_released(rec, "released_for_ollama")
     start_ollama(rec)
+    files = deploy_compose_files()
+    if any(client_engine(s) == "tensorfold" for s in llm_clients(files)):
+        switch_clients(rec, "ollama", ollama_model())
 
 
 def to_tensorfold(rec: Record, recipe_path: Path, ready_timeout: float) -> None:
@@ -397,6 +543,7 @@ def to_tensorfold(rec: Record, recipe_path: Path, ready_timeout: float) -> None:
     wait_released(rec, "released_for_tensorfold")
     start_tensorfold(rec, recipe, ready_timeout)
     verify_tensorfold(rec, recipe)
+    switch_clients(rec, "tensorfold", recipe["served_id"])
 
 
 def main() -> int:
@@ -428,6 +575,10 @@ def main() -> int:
         return 0
     try:
         if args.command == "to-ollama":
+            # Asked for, not a restoration: the clients are recreated, so nothing may be running.
+            held = box_work()
+            if held:
+                raise SwitchFailed(f"the box is not free: {'; '.join(held)}")
             to_ollama(rec)
         else:
             to_tensorfold(rec, args.recipe, args.ready_timeout)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -154,3 +155,162 @@ def test_a_restoration_that_fails_is_reported_loudly(monkeypatch, tmp_path):
         "failed",
         "RESTORATION_FAILED",
     ]
+
+
+# --- the clients (§5.6 step 7, the owner's ruling of 2026-10-13) ----------------------------------
+
+_CLIENTS = ["bob", "data", "eve", "max", "nat", "neo", "runtime-api"]
+_DEPLOY_FILES = "docker-compose.yml:docker-compose.ollama.yml"
+
+
+class _Deploy:
+    """The deploy, as compose answers for it: each running model client on an engine, one service
+    that calls no model, and every ``up`` the switch sends, with the files it named."""
+
+    def __init__(self, engine: str):
+        self.engines = dict.fromkeys(_CLIENTS, engine)
+        self.ups: list[tuple[str | None, list[str]]] = []
+        self.probes: list[list[str]] = []
+        self.probe_says = None
+
+    def compose(self, *args, timeout=600, files=None):
+        done = lambda out="": subprocess.CompletedProcess(args, 0, out, "")  # noqa: E731
+        if args[0] == "config":
+            services = {
+                s: {"environment": {"SQUADOPS__LLM__PROVIDER": e}} for s, e in self.engines.items()
+            }
+            return done(json.dumps({"services": services | {"postgres": {"environment": {}}}}))
+        if args[0] == "ps":
+            return done("\n".join([*self.engines, "postgres"]))
+        if args[0] == "up":
+            names = [a for a in args[1:] if not a.startswith("-")]
+            self.ups.append((files, names))
+            for name in names:
+                self.engines[name] = "tensorfold" if files.endswith(es.TF_OVERLAY) else "ollama"
+            return done()
+        raise AssertionError(f"unexpected compose {args}")
+
+    def exec_probe(self, cmd, **kw):
+        assert cmd[:4] == ["docker", "exec", "-i", es.PROBE_AGENT], cmd
+        assert kw["input"] == es.CLIENT_PROBE
+        self.probes.append(cmd)
+        said = f"{self.engines['max']} 5" if self.probe_says is None else self.probe_says
+        return subprocess.CompletedProcess(cmd, 0, said, "")
+
+
+@pytest.fixture
+def deploy(monkeypatch):
+    def at(engine: str) -> _Deploy:
+        d = _Deploy(engine)
+        monkeypatch.setattr(es, "compose", d.compose)
+        monkeypatch.setattr(es, "client_engine", lambda service: d.engines.get(service))
+        monkeypatch.setattr(es, "deploy_compose_files", lambda: _DEPLOY_FILES)
+        monkeypatch.setattr(es.subprocess, "run", d.exec_probe)
+        return d
+
+    return at
+
+
+def test_the_clients_move_together_and_answer_through_the_deployed_adapter(deploy, rec):
+    """Bugs caught: a client left on Ollama while the engine is TensorFold (calls to a stopped
+    engine), the overlay named without the deploy's own files (the clients lose its other
+    settings), a service that calls no model recreated, and a switch that reports the clients moved
+    without one generation through the adapter they now run."""
+    d = deploy("ollama")
+
+    es.switch_clients(rec, "tensorfold", "qwen3.8-27b-tf-nvfp4")
+
+    assert d.ups == [(f"{_DEPLOY_FILES}:{es.TF_OVERLAY}", _CLIENTS)]
+    assert set(d.engines.values()) == {"tensorfold"}
+    assert d.probes[0][-1] == "qwen3.8-27b-tf-nvfp4"
+    assert _steps(rec) == ["clients_switched", "clients_healthy"]
+
+
+@pytest.mark.parametrize(
+    "said",
+    ["ollama 5", "tensorfold 0", ""],
+    ids=["answered by the other engine", "an empty reply", "no answer"],
+)
+def test_a_client_generation_that_did_not_come_from_the_engine_fails_the_switch(deploy, rec, said):
+    d = deploy("ollama")
+    d.probe_says = said
+    with pytest.raises(es.SwitchFailed, match="clients' generation on tensorfold"):
+        es.switch_clients(rec, "tensorfold", "qwen3.8-27b-tf-nvfp4")
+
+
+@pytest.mark.parametrize(
+    ("clients_on", "ups"),
+    [("tensorfold", [(_DEPLOY_FILES, _CLIENTS)]), ("ollama", [])],
+    ids=["after the clients moved", "a switch that failed before they moved"],
+)
+def test_restoration_moves_the_clients_back_only_when_they_moved(
+    deploy, rec, monkeypatch, clients_on, ups
+):
+    """Bug caught: a restoration that leaves the squad calling a stopped TensorFold; or one that
+    restarts every agent after a switch that never touched them."""
+    d = deploy(clients_on)
+    for step in ("stop_tensorfold", "start_ollama"):
+        monkeypatch.setattr(es, step, lambda rec: None)
+    monkeypatch.setattr(es, "wait_released", lambda rec, step: None)
+
+    es.to_ollama(rec)
+
+    assert d.ups == ups
+    assert set(d.engines.values()) == {"ollama"}
+
+
+def test_an_asked_for_switch_back_refuses_a_busy_box(monkeypatch, tmp_path):
+    """Recreating the clients restarts the runtime API, which runs every cycle. Bug caught: a
+    switch back that kills a running cycle. A restoration after a failed switch is not asked
+    for and holds the box already, so it is not refused."""
+    monkeypatch.setattr(es, "RECORDS", tmp_path)
+    monkeypatch.setattr(es.sys, "argv", ["engine_switch.py", "to-ollama"])
+    monkeypatch.setattr(es, "box_work", lambda: ["run run_1 is running"])
+    monkeypatch.setattr(es, "to_ollama", lambda rec: pytest.fail("switched with work on the box"))
+
+    assert es.main() == 2
+    (record,) = tmp_path.glob("*.jsonl")
+    assert "run run_1 is running" in json.loads(record.read_text().splitlines()[-1])["error"]
+
+
+def test_tensorfold_joins_the_squads_network_under_the_name_the_clients_call(monkeypatch):
+    """Bug caught: TensorFold published on the host's loopback only, which no container reaches."""
+    cmd = es.serve_command(RECIPE, "squad-ops_squadnet")
+    assert cmd[cmd.index("--network") : cmd.index("--network") + 4] == [
+        "--network",
+        "squad-ops_squadnet",
+        "--network-alias",
+        "tensorfold",
+    ]
+    assert cmd.index("--network") < cmd.index(RECIPE["image"])
+
+    networks = {"squad-ops_squadnet": {}, "bridge": {}}
+    monkeypatch.setattr(
+        es, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, json.dumps(networks), "")
+    )
+    assert es.squad_network() == "squad-ops_squadnet"
+    networks.pop("squad-ops_squadnet")
+    with pytest.raises(es.SwitchFailed, match="network is unknown"):
+        es.squad_network()
+
+
+def test_the_clients_move_only_after_the_engine_is_verified(monkeypatch, rec, tmp_path):
+    """§5.6's order. Bug caught: clients moved to a TensorFold that never answered, or not moved at
+    all, so the squad keeps calling a stopped Ollama."""
+    order = []
+    recipe = tmp_path / "r.yaml"
+    recipe.write_text(yaml.safe_dump(RECIPE))
+    monkeypatch.setattr(es, "load_recipe", lambda path: RECIPE)
+    monkeypatch.setattr(es, "box_work", lambda: [])
+    for step in ("stop_ollama", "stop_tensorfold"):
+        monkeypatch.setattr(es, step, lambda rec, step=step: order.append(step))
+    monkeypatch.setattr(es, "wait_released", lambda rec, step: order.append("wait_released"))
+    monkeypatch.setattr(es, "start_tensorfold", lambda rec, r, t: order.append("start_tensorfold"))
+    monkeypatch.setattr(es, "verify_tensorfold", lambda rec, r: order.append("verify_tensorfold"))
+    monkeypatch.setattr(
+        es, "switch_clients", lambda rec, engine, model: order.append(("clients", engine, model))
+    )
+
+    es.to_tensorfold(rec, recipe, 60)
+
+    assert order[-2:] == ["verify_tensorfold", ("clients", "tensorfold", RECIPE["served_id"])]
