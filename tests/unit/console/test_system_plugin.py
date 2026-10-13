@@ -37,9 +37,9 @@ class TestSystemPluginRegistration:
     """Tests for squadops.system plugin register() function."""
 
     def test_register_total_contributions(self, mock_ctx):
-        """register() produces exactly 5 contributions (1 nav + 3 panel + 1 command)."""
+        """register() produces exactly 6 contributions (1 nav + 4 panel + 1 command)."""
         register(mock_ctx)
-        assert mock_ctx.register_contribution.call_count == 5
+        assert mock_ctx.register_contribution.call_count == 6
 
     def test_nav_contribution(self, mock_ctx):
         """register() adds a nav contribution with correct properties."""
@@ -52,12 +52,12 @@ class TestSystemPluginRegistration:
         assert data["priority"] == 400
 
     def test_panel_count(self, mock_ctx):
-        """register() adds exactly 3 panel contributions."""
+        """register() adds exactly 4 panel contributions."""
         register(mock_ctx)
         panel_calls = [
             c for c in mock_ctx.register_contribution.call_args_list if c[0][0] == "panel"
         ]
-        assert len(panel_calls) == 3
+        assert len(panel_calls) == 4
 
     def test_system_health_panel(self, mock_ctx):
         """register() adds a system-health panel with priority 800."""
@@ -70,7 +70,7 @@ class TestSystemPluginRegistration:
         assert health_panels[0][0][1]["priority"] == 800
 
     def test_system_plugins_panel(self, mock_ctx):
-        """register() adds a system-plugins panel with priority 600."""
+        """register() adds a system-plugins panel with priority 400."""
         register(mock_ctx)
         panel_calls = [
             c for c in mock_ctx.register_contribution.call_args_list if c[0][0] == "panel"

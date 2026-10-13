@@ -121,3 +121,33 @@ class TestConsoleMain:
 
         assert resp.status_code == 200
         assert resp.json() == {"status": "ok"}
+
+
+class TestHostProxy:
+    """``/api/health/host``, the route the Systems perspective's Host panel calls (#2204b)."""
+
+    async def _get(self, monkeypatch, status: int, body: dict):
+        import main as console_main
+        from httpx import Response
+
+        calls: list[tuple[str, str]] = []
+
+        async def fake_api_request(method, path, **kwargs):
+            calls.append((method, path))
+            return Response(status, json=body)
+
+        monkeypatch.setattr(console_main, "_api_request", fake_api_request)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            return await client.get("/api/health/host"), calls
+
+    async def test_the_panel_reads_the_runtime_apis_host_reading_unchanged(self, monkeypatch):
+        """Bug caught: the panel calling a route the console never proxies, so it shows "could
+        not be read" on a healthy deploy."""
+        reading = {"host": {"memory_available_bytes": 7.0e10}, "verdicts": {"memory": {}}}
+        resp, calls = await self._get(monkeypatch, 200, reading)
+        assert (resp.status_code, resp.json(), calls) == (200, reading, [("GET", "/health/host")])
+
+    async def test_an_upstream_failure_is_passed_on_never_an_empty_reading(self, monkeypatch):
+        resp, _ = await self._get(monkeypatch, 503, {"detail": "down"})
+        assert (resp.status_code, resp.json()) == (503, {"error": "upstream unavailable"})
