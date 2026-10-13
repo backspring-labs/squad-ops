@@ -119,8 +119,9 @@ Placed by the owner's Q1 ruling (2026-10-09). The rows are ordered as the work r
 | G0: throughput on held-out captured envelopes, against production Ollama, on a frozen recipe (§4) | **shipped** | 2.3.0, #2256 and #2262 (the harness and its reader), #2199: the 27B on NVFP4 passed, a median of 0.438 of Ollama's wall-clock (§9e) |
 | G1: emission quality, the same calls through each task type's production validator (§4) | **shipped** | 2.3.0, #2256 and #2262, #2199: passed by the owner's ruling of 2026-10-13, with plan writing one answer under Ollama's (§9e) |
 | G2: the adapter, dark, with the port amendments, registry entries, the overlay and parity tests (§5) | **shipped** | 2.3.0, #2268 (the port's controls, §9f), #2269 (the adapter, §9g) and #2270 (the clients' switch, overlay and key, §9h), closing #2200: the live tier passed on the Spark on 2026-10-13, the switch to TensorFold and back with the clients and an in-agent generation each way (#2200 issuecomment-6146480456) |
-| G3: the selected candidate's uncounted cycle A/B on both stacks, compared on wall-clock, task times, retries, correction rounds and verdicts (§9a item 6) | **placed** | 2.3.0, #2229 |
-| G4: cutover | **placed** | 2.3.0, #2229: the owner's decision on G3's evidence, before the 2.3 cut set (the 2.3 plan's D4) |
+| G3: the selected candidate's uncounted cycle A/B on both stacks, compared on wall-clock, task times, retries, correction rounds and verdicts (§9a item 6) | **shipped** | 2.3.0, #2282 (the record, `docs/plans/verification-sets/2-3-0-tensorfold-g3-record.md`): every roll accepted on both arms; TensorFold's median cycle 0.45 of Ollama's on FastAPI+React and 0.61 on Next.js; two predictions falsified as registered (decode on every task type, and volume), the rest held; its arm held one planning draw per stack, not two (§9j) |
+| a seed on every TensorFold call, G3's finding (§9j) | **shipped** | 2.3.0, #2283, closing #2281 |
+| G4: cutover | **placed** | 2.3.0, #2229: adopted by the owner on G3's evidence on 2026-10-13 (§9j). The cutover follows the seed fix, before the 2.3 cut set (the 2.3 plan's D4) |
 | a second candidate, Qwen3.8-Flash-Next on TensorFold, on its own gate path: screening, its own recipe, G0 and G1 (§9a) | **placed** | 2.4.0, #2230: moved from 2.3 by the owner on 2026-10-12 ("skip to next release"). Not measured in 2.3, which is not a negative |
 
 **What closes this SIP:** G4 decided (adopted, or parked with its record), with each earlier row shipped or its negative
@@ -938,3 +939,39 @@ script refused while TensorFold served, its first step starts Ollama's container
 **Who ruled it.** The owner, directing the work on 2026-10-13: "I just want to implement tensorfold and complete the
 2.3 plan!". The design of each part is proposed in its PR, and the owner rules it with the merge. It merges after
 G3's last roll, because G3's switches run the main checkout's `engine_switch.py`.
+
+### 9j. A seed on every call, before the cutover (RULED 2026-10-13)
+
+**What changed.** §5.1 sent both new controls "only when set", and no production call sets a seed. §2 records the
+engine's rule: "Without one, the seed is derived from the prompt, so a repeated request repeats its sample." Together
+they keyed every production call on TensorFold to its prompt, so the same prompt drew the same answer. G3 found it (#2281):
+TensorFold's two rolls on each stack planned identically, token for token, up to the merge. So its arm held one planning
+draw per stack, where two were registered. From this ruling:
+- **The TensorFold adapter sends a seed on every call:**
+  - the call's own where it sets one, so the replay tool and the G0/G1 harness keep theirs;
+  - otherwise a fresh one, drawn from the OS in the server's 63-bit domain.
+- **The call's line names the seed** (`LLM chat_stream_with_usage completed: … seed=N`, and a line of its own for
+  `chat_stream`). So any call can still be replayed with its own seed.
+- **Ollama, vLLM and Atlas are unchanged.** Ollama samples afresh without a seed, and §5.1's "sent only when set" still
+  holds for them.
+- **Production's calls become the kind G0 and G1 measured.** Every gate call carried its seed (§4, §9a item 1). G3's
+  calls were the first unseeded ones.
+- **A path that re-sends an unchanged prompt now draws afresh,** on TensorFold as on Ollama: a framing reroll, a
+  re-taken round, a blind retry. No inventory of those paths is needed for this.
+- **The server's `TENSORFOLD_SEED_SALT` is not the fix.** It is one value per process, so it re-keys the derived seed,
+  and a repeated prompt still repeats its answer.
+
+**G4.** The owner adopted TensorFold for production on G3's evidence (the record's §8), with this change landing
+first, so the 2.3 cut set's rolls are independent draws. The cutover has its own PR: the deploy's engine, the
+production switch, and the cut set on `full-38-tf`.
+
+**The evidence:**
+- The G3 record's §6.1 (`docs/plans/verification-sets/2-3-0-tensorfold-g3-record.md`): each call's prompt and
+  completion tokens in TensorFold's four rolls. Ollama's pairs differ on every row.
+- The rule, read in TensorFold's source at `cb2ebf05`:
+  - `server/request_options.py`'s `_resolve_sampling` takes `options.get("seed", seed_for(prompt_ids))`;
+  - `engine/exact_sampling.py`'s `seed_for` is a SHA-256 of the prompt's token ids and the salt, cut to 63 bits.
+
+**Who ruled it.** The owner, on 2026-10-13. Asked whether to switch production to TensorFold, with the supervisor
+recommending this fix land first, the owner answered "1, yes". Asked to approve the fix's shape, as written above, the
+owner answered "2, yes".

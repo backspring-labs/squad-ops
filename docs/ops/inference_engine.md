@@ -76,6 +76,11 @@ An agent takes its squad profile's model before the deploy's. A cycle on TensorF
 profile on the served id: `full-38-tf` is the `full-38` roster on `qwen3.8-27b-tf-nvfp4`. The
 adapter refuses a model with no frozen recipe.
 
+Every call carries a seed. TensorFold keys an omitted seed to the prompt, so without one a
+repeated prompt repeats its answer. A call that sets none gets a fresh seed, and the agent's
+`LLM chat_stream_with_usage completed` line names it (`seed=N`). Send that seed with the same
+prompt to replay the call (SIP-0111 §9j).
+
 ## When something is wrong
 
 - **The memory watchdog** (`scripts/dev/ops/memory_watchdog.py`) kills TensorFold's container when
