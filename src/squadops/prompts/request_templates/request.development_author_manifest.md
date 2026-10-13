@@ -1,6 +1,6 @@
 ---
 template_id: request.development_author_manifest
-version: "3"
+version: "2"
 required_variables:
   - prd
   - stack
@@ -58,8 +58,7 @@ api:
       optional: [done]
   endpoints:                       # every HTTP endpoint the app exposes
     - { method: GET,  path: /items, summary: list items,
-        response: "list[Item]",
-        order: { field: title, direction: asc } }   # only when the PRD orders the list
+        response: "list[Item]" }
     - { method: POST, path: /items, summary: create item,
         request: ItemCreate, response: Item,
         success_status: 201,
@@ -85,8 +84,8 @@ frontend:
 persistence: in_memory
 decisions:                         # judgments the schema cannot express mechanically
   - id: item-ordering
-    choice: alphabetical by title, declared as the list endpoint's order
-    warrant: "PRD §3.2 — 'items are listed alphabetically'"
+    choice: newest first
+    warrant: "PRD §3.2 — 'the most recent items appear at the top'"
   - id: pagination
     unresolved: true
     question: "PRD does not state a page size or whether listing is paginated at all"
