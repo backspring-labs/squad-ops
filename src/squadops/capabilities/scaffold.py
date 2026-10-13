@@ -673,6 +673,8 @@ MANIFEST_ELEMENT_KEYS: dict[str, frozenset[str]] = {
     "client_route": frozenset({"path", "view", "purpose", "testids"}),
     "error_code": frozenset({"http"}),
 }
+#: An element whose definition nests others, by the key that holds them and the nested kind.
+_NESTED_MANIFEST_KEYS: dict[str, tuple[str, str]] = {"entity": ("fields", "entity_field")}
 
 
 def undefined_manifest_keys(element: str, definition: Any) -> list[str]:
@@ -682,12 +684,13 @@ def undefined_manifest_keys(element: str, definition: Any) -> list[str]:
     if not isinstance(definition, dict):
         return []
     found = sorted(str(k) for k in set(definition) - MANIFEST_ELEMENT_KEYS[element])
-    if element == "entity":
-        for f in definition.get("fields") or []:
-            if isinstance(f, dict):
+    if element in _NESTED_MANIFEST_KEYS:
+        holder, kind = _NESTED_MANIFEST_KEYS[element]
+        for item in definition.get(holder) or []:
+            if isinstance(item, dict):
                 found += [
-                    f"fields[{f.get('name')}].{k}"
-                    for k in sorted(set(f) - MANIFEST_ELEMENT_KEYS["entity_field"])
+                    f"{holder}[{item.get('name')}].{k}"
+                    for k in sorted(set(item) - MANIFEST_ELEMENT_KEYS[kind])
                 ]
     return found
 
