@@ -340,3 +340,31 @@ def test_each_frozen_recipe_is_the_adapters_table_and_the_registrys_window():
             "min_p": recipe.min_p,
         } == doc["sampling"]
         assert get_model_spec(doc["served_id"]).context_window == doc["context"]
+
+
+@pytest.mark.parametrize(
+    ("level", "fields"),
+    [
+        (None, {"reasoning_effort": "medium"}),
+        ("none", {"chat_template_kwargs": {"enable_thinking": False}}),
+        ("low", {"chat_template_kwargs": {"enable_thinking": True}, "reasoning_effort": "medium"}),
+        ("high", {"chat_template_kwargs": {"enable_thinking": True}, "reasoning_effort": "medium"}),
+    ],
+    ids=["no level", "none", "low", "high"],
+)
+async def test_every_level_reaches_tensorfold_as_ollamas_prompt(level, fields):
+    """§9c: thinking on or off, with the recipe's parity effort, never the port's level. Bug
+    caught: a level (or no level, which the template reads as ``xhigh``) sent through, so the
+    prompt carries an effort line Ollama's never had and production stops being what G0 measured."""
+    sent: dict = {}
+    server = _Server()
+
+    def capture(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/chat/completions":
+            sent.update(json.loads(request.content))
+        return server(request)
+
+    with wire(capture):
+        await _adapter().chat_stream_with_usage(_MESSAGES, reasoning=level)
+
+    assert {k: sent[k] for k in ("chat_template_kwargs", "reasoning_effort") if k in sent} == fields
