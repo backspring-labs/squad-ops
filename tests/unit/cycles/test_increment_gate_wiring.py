@@ -86,7 +86,7 @@ def _ref(artifact_id: str, artifact_type: str, filename: str, content: str) -> t
     ), content.encode()
 
 
-def _cycle(campaign_id: str | None) -> Cycle:
+def _cycle(campaign_id: str | None, profile: str = "campaign-increment") -> Cycle:
     """An increment cycle as the launcher creates it: with the ``campaign-increment`` profile's
     own defaults applied (#1864 — its ``implementation_plan: true`` is what armed the framing plan
     check at the proposal's gate, and a cycle without the profile's defaults never reached it)."""
@@ -102,7 +102,7 @@ def _cycle(campaign_id: str | None) -> Cycle:
         squad_profile_snapshot_ref="sha256:abc",
         task_flow_policy=TaskFlowPolicy(mode="sequential"),
         build_strategy="fresh",
-        applied_defaults=dict(load_profile("campaign-increment").defaults),
+        applied_defaults=dict(load_profile(profile).defaults),
         execution_overrides={
             "plan_artifact_refs": ["art_manifest"],
             "campaign_proposal": {
@@ -498,6 +498,29 @@ async def test_the_plan_gate_reads_the_seed_forwarded_to_framing(executor, seed,
     (SIP-0083); the cycle as the launcher stores it carries none, and the question check read
     that. Entered at ``WorkloadGate.decide`` for the framing gate. Bugs caught: no increment's
     plan gate ever passing by itself; or the open question not reaching the human."""
+    asked = await _decide_framing_gate(executor, seed)
+
+    assert (asked, executor._approve_gate_without_questions.await_count) == (
+        asks_a_human,
+        0 if asks_a_human else 1,
+    )
+    if asks_a_human:
+        assert _questions_asked(executor)[0].startswith("PRD does not specify a guaranteed sort")
+
+
+def _questions_asked(executor) -> list[str]:
+    [awaiting] = [
+        c.kwargs["payload"]
+        for c in executor._cycle_event_bus.emit.call_args_list
+        if c.kwargs.get("payload", {}).get("gate_name") == "progress_plan_review"
+        and "open_questions" in c.kwargs.get("payload", {})
+    ]
+    return awaiting["open_questions"]
+
+
+async def _decide_framing_gate(executor, seed: str) -> bool:
+    """The framing's plan gate decided over ``seed``, forwarded as the run sees it. Whether it
+    stopped for a human."""
     executor._artifact_vault.stored["art_seed"] = _ref(
         "art_seed", "interface_manifest", "interface_manifest.yaml", seed
     )
@@ -531,17 +554,49 @@ async def test_the_plan_gate_reads_the_seed_forwarded_to_framing(executor, seed,
         max_framing_rerolls=0,
         max_framing_revisions=0,
     )
+    return executor._poll_inter_workload_gate.await_count == 1
 
-    asked = executor._poll_inter_workload_gate.await_count == 1
-    assert (asked, executor._approve_gate_without_questions.await_count) == (
-        asks_a_human,
-        0 if asks_a_human else 1,
+
+async def test_a_diagnostic_increments_seed_asks_the_injected_question(executor):
+    """#2279: an increment's design never asks, so the tier's timeout half (expiry, park, row
+    15, the late answer) was read only in unit tests. A cycle whose profile declares the
+    `increment_design_asks` fault seeds a manifest that asks one question, and nothing else
+    differs. Entered at the increment gate's approval, which seeds. Bugs caught: the declared
+    fault never reaching the seed; the fault changing anything but the decisions."""
+    import yaml
+
+    from squadops.campaigns.change_request import apply_manifest_delta
+    from squadops.capabilities.handlers.fault_injection import (
+        INJECTED_QUESTION,
+        INJECTED_QUESTION_ID,
     )
-    if asks_a_human:
-        [awaiting] = [
-            c.kwargs["payload"]
-            for c in executor._cycle_event_bus.emit.call_args_list
-            if c.kwargs.get("payload", {}).get("gate_name") == "progress_plan_review"
-            and "open_questions" in c.kwargs.get("payload", {})
-        ]
-        assert awaiting["open_questions"][0].startswith("PRD does not specify a guaranteed sort")
+    from squadops.cycles.manifest_authoring import open_decisions
+
+    clean = apply_manifest_delta(_BASELINE, _REQUEST.manifest_delta)
+    assert open_decisions(clean) == ()
+
+    await _reach_the_gate(executor, _cycle(CID, profile="campaign-increment-asks"))
+
+    [content] = [
+        c.decode()
+        for r, c in executor._artifact_vault.stored.values()
+        if r.artifact_type == "interface_manifest"
+    ]
+    assert open_decisions(content) == ((INJECTED_QUESTION_ID, INJECTED_QUESTION),)
+    seeded, expected = yaml.safe_load(content), yaml.safe_load(clean)
+    assert seeded["decisions"][:-1] == expected.get("decisions", [])
+    assert {k: v for k, v in seeded.items() if k != "decisions"} == {
+        k: v for k, v in expected.items() if k != "decisions"
+    }
+
+
+async def test_the_plan_gate_stops_for_the_injected_question(executor):
+    """#2279: the framing gate over an injected seed asks a human that question, which is what
+    the plan-review tier escalates and the bound then expires (§24bk). Entered at
+    ``WorkloadGate.decide``. Bug caught: a seed fault the question check does not read."""
+    from squadops.capabilities.handlers.fault_injection import INJECTED_QUESTION, seed
+
+    injected = seed(_ANSWERED, {"fault_injection": ["increment_design_asks"]})
+
+    assert await _decide_framing_gate(executor, injected)
+    assert _questions_asked(executor) == [INJECTED_QUESTION]
