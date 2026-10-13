@@ -24,6 +24,16 @@ class LLMCapability:
     THINKING_TOKENS = "thinking_tokens"
     REASONING_CONTROL = "reasoning_control"
     LOADED_MODELS = "loaded_models"
+    SEED = "seed"
+    THINKING_BUDGET = "thinking_budget"
+
+
+#: The per-call controls a provider honours only where it declares them (SIP-0111 §5.1): each
+#: argument name and the capability that admits it.
+_CONTROLS: dict[str, str] = {
+    "seed": LLMCapability.SEED,
+    "thinking_budget": LLMCapability.THINKING_BUDGET,
+}
 
 
 class LLMPort(ABC):
@@ -81,6 +91,8 @@ class LLMPort(ABC):
         top_p: float | None = None,
         timeout_seconds: float | None = None,
         reasoning: str | None = None,
+        seed: int | None = None,
+        thinking_budget: int | None = None,
     ) -> ChatMessage:
         """Chat with the LLM using message history.
 
@@ -100,6 +112,11 @@ class LLMPort(ABC):
                 (Ollama ``think``, a chat-template toggle, an effort) and an
                 adapter with no dial accepts it silently — see
                 ``capabilities()[REASONING_CONTROL]`` (#927).
+            seed: the sampler's seed (SIP-0111 §5.1). Unlike ``reasoning``, a control that
+                changes the generation is never dropped: a provider that does not declare
+                ``SEED`` raises ``ValueError`` before any call.
+            thinking_budget: a cap on reasoning tokens, refused the same way unless
+                ``THINKING_BUDGET`` is declared.
 
         Returns:
             Assistant's response message
@@ -120,6 +137,8 @@ class LLMPort(ABC):
         top_p: float | None = None,
         timeout_seconds: float | None = None,
         reasoning: str | None = None,
+        seed: int | None = None,
+        thinking_budget: int | None = None,
     ) -> AsyncIterator[str]:
         """Stream chat response as plain text chunks.
 
@@ -141,6 +160,8 @@ class LLMPort(ABC):
         top_p: float | None = None,
         timeout_seconds: float | None = None,
         reasoning: str | None = None,
+        seed: int | None = None,
+        thinking_budget: int | None = None,
     ) -> ChatMessage:
         """Stream chat internally for connection liveness, return complete ChatMessage with usage.
 
@@ -162,6 +183,8 @@ class LLMPort(ABC):
             top_p=top_p,
             timeout_seconds=timeout_seconds,
             reasoning=reasoning,
+            seed=seed,
+            thinking_budget=thinking_budget,
         )
 
     @abstractmethod
@@ -226,6 +249,10 @@ class LLMPort(ABC):
           own posture (#927).
         - ``loaded_models``: :meth:`list_loaded_models` is implemented — what the
           engine holds in memory now, not what it could serve (SIP-0109 §9.3).
+        - ``seed``: a ``seed`` passed to the generation methods reaches the sampler
+          (SIP-0111 §5.1). False means a seed is refused, never dropped.
+        - ``thinking_budget``: a ``thinking_budget`` reaches the server, refused the
+          same way where False.
 
         Defaults to all-False: an adapter that declares nothing is treated as
         supporting nothing. Failing closed keeps a silent omission from
@@ -238,11 +265,25 @@ class LLMPort(ABC):
             LLMCapability.THINKING_TOKENS: False,
             LLMCapability.REASONING_CONTROL: False,
             LLMCapability.LOADED_MODELS: False,
+            LLMCapability.SEED: False,
+            LLMCapability.THINKING_BUDGET: False,
         }
 
     def supports(self, capability: str) -> bool:
         """Whether ``capability`` is declared. Unknown names are False."""
         return self.capabilities().get(capability, False)
+
+    def refuse_undeclared_controls(self, **controls: int | None) -> None:
+        """Raise ``ValueError`` for a set control this provider does not declare (SIP-0111
+        §5.1), before any call. A seed or a budget that changes the generation and is then
+        dropped would make a replay claim draws it never made. ``None`` is always accepted:
+        it asks for nothing."""
+        for name, value in controls.items():
+            if value is not None and not self.supports(_CONTROLS[name]):
+                raise ValueError(
+                    f"{type(self).__name__} does not support {name}; "
+                    f"capabilities()['{_CONTROLS[name]}'] is False."
+                )
 
     async def list_available_models(self) -> list[ModelInfo]:
         """List models the provider can serve, with metadata where available.

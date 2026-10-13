@@ -9,6 +9,7 @@ Part of SIP-0.8.7 Infrastructure Ports Migration.
 
 from squadops.llm.exceptions import (
     LLMConnectionError,
+    LLMContextOverflowError,
     LLMError,
     LLMModelNotFoundError,
     LLMRateLimitError,
@@ -19,6 +20,7 @@ from squadops.llm.models import ChatMessage, LLMRequest, LLMResponse
 __all__ = [
     "ChatMessage",
     "LLMConnectionError",
+    "LLMContextOverflowError",
     "LLMError",
     "LLMModelNotFoundError",
     "LLMRateLimitError",

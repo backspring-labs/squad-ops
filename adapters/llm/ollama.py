@@ -101,6 +101,9 @@ class OllamaAdapter(LLMPort):
         ``reasoning_control`` is True: a level maps onto the ``think`` flag
         (#927), so the channel can at least be switched off where the output is
         a transcription — the 13.9× token difference #924 measured.
+
+        ``seed`` is True: ``options.seed``, which Ollama's sampler honours. ``thinking_budget``
+        is False: Ollama's only reasoning dial is ``think``, on or off (SIP-0111 §5.1).
         """
         return {
             LLMCapability.MODEL_LISTING: True,
@@ -109,6 +112,8 @@ class OllamaAdapter(LLMPort):
             LLMCapability.THINKING_TOKENS: False,
             LLMCapability.REASONING_CONTROL: True,
             LLMCapability.LOADED_MODELS: True,
+            LLMCapability.SEED: True,
+            LLMCapability.THINKING_BUDGET: False,
         }
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -129,6 +134,7 @@ class OllamaAdapter(LLMPort):
         Returns:
             LLM response with generated text
         """
+        self.refuse_undeclared_controls(seed=request.seed, thinking_budget=request.thinking_budget)
         client = await self._get_client()
         model = request.model or self._default_model
         timeout = request.timeout_seconds or self._timeout
@@ -141,6 +147,7 @@ class OllamaAdapter(LLMPort):
                 "temperature": request.temperature,
                 **({} if request.top_p is None else {"top_p": request.top_p}),
                 "num_predict": request.max_tokens,
+                **({} if request.seed is None else {"seed": request.seed}),
             },
         }
 
@@ -202,9 +209,11 @@ class OllamaAdapter(LLMPort):
         top_p: float | None = None,
         reasoning: str | None = None,
         *,
+        seed: int | None = None,
+        thinking_budget: int | None = None,
         stream: bool = False,
     ) -> dict[str, Any]:
-        """Build the Ollama /api/chat request payload.
+        """Build the Ollama /api/chat request payload, refusing a control Ollama does not take.
 
         ``reasoning`` maps onto Ollama's ``think`` flag — the only dial the
         dialect has, so the port's graded levels collapse to on/off here:
@@ -214,6 +223,7 @@ class OllamaAdapter(LLMPort):
         with no reasoning channel, since Ollama rejects ``think: true`` for those (400, "does not support
         thinking" — measured 2026-08-28 on 0.32.14).
         """
+        self.refuse_undeclared_controls(seed=seed, thinking_budget=thinking_budget)
         payload: dict[str, Any] = {
             "model": model,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
@@ -232,6 +242,8 @@ class OllamaAdapter(LLMPort):
         # provider and silently ignored on two — the defect this fixes, reintroduced.
         if top_p is not None:
             options["top_p"] = top_p
+        if seed is not None:
+            options["seed"] = seed
         if options:
             payload["options"] = options
         if reasoning is not None:
@@ -248,6 +260,8 @@ class OllamaAdapter(LLMPort):
         top_p: float | None = None,
         timeout_seconds: float | None = None,
         reasoning: str | None = None,
+        seed: int | None = None,
+        thinking_budget: int | None = None,
     ) -> ChatMessage:
         """Chat with the LLM using message history.
 
@@ -271,6 +285,8 @@ class OllamaAdapter(LLMPort):
             temperature,
             top_p,
             reasoning,
+            seed=seed,
+            thinking_budget=thinking_budget,
             stream=False,
         )
 
@@ -334,6 +350,8 @@ class OllamaAdapter(LLMPort):
         top_p: float | None = None,
         timeout_seconds: float | None = None,
         reasoning: str | None = None,
+        seed: int | None = None,
+        thinking_budget: int | None = None,
     ) -> ChatMessage:
         """Stream chat internally for connection liveness, return complete ChatMessage with usage.
 
@@ -351,6 +369,8 @@ class OllamaAdapter(LLMPort):
             temperature,
             top_p,
             reasoning,
+            seed=seed,
+            thinking_budget=thinking_budget,
             stream=True,
         )
 
@@ -450,6 +470,8 @@ class OllamaAdapter(LLMPort):
         top_p: float | None = None,
         timeout_seconds: float | None = None,
         reasoning: str | None = None,
+        seed: int | None = None,
+        thinking_budget: int | None = None,
     ) -> AsyncIterator[str]:
         """Stream chat response as plain text chunks.
 
@@ -466,6 +488,8 @@ class OllamaAdapter(LLMPort):
             temperature,
             top_p,
             reasoning,
+            seed=seed,
+            thinking_budget=thinking_budget,
             stream=True,
         )
 

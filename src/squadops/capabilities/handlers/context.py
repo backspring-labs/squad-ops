@@ -62,6 +62,10 @@ class ExecutionContext:
     #: The authoring replay envelope, as a dict: built by ``_llm_call`` at the task's first model
     #: call, once, and carried on the task result on every exit path.
     authoring_envelope: dict[str, Any] | None = None
+    #: SIP-0111 §5.2: a model call the infrastructure refused (a context overflow), set by
+    #: ``_llm_call`` with the error's evidence. The handler executor holds a failed task with it
+    #: (``TaskOutcome.BLOCKED``) instead of leaving it to retry or correction.
+    infrastructure_block: dict[str, Any] | None = None
 
     @classmethod
     def create(

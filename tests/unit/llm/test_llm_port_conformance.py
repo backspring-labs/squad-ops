@@ -39,6 +39,20 @@ MAX_PLAUSIBLE_TPS = 1_000_000.0
 pytestmark = pytest.mark.parametrize("case", ADAPTER_CASES, ids=str)
 
 
+_GENERATION_METHODS = ("generate", "chat", "chat_stream", "chat_stream_with_usage")
+
+
+async def _generate(adapter, method: str, controls: dict) -> None:
+    """One call through ``method``, with ``controls`` as the request's or the call's own
+    arguments, a stream drained to its end."""
+    if method == "generate":
+        await adapter.generate(LLMRequest(prompt="hi", **controls))
+    elif method == "chat_stream":
+        [_ async for _ in adapter.chat_stream(_messages(), **controls)]
+    else:
+        await getattr(adapter, method)(_messages(), **controls)
+
+
 def _messages() -> list[ChatMessage]:
     return [
         ChatMessage(role="system", content="be terse"),
@@ -268,6 +282,8 @@ class TestCapabilityHonesty:
             LLMCapability.THINKING_TOKENS,
             LLMCapability.REASONING_CONTROL,
             LLMCapability.LOADED_MODELS,
+            LLMCapability.SEED,
+            LLMCapability.THINKING_BUDGET,
         }
 
     async def test_supports_is_false_for_an_undeclared_capability(self, case):
@@ -336,6 +352,39 @@ class TestCapabilityHonesty:
             assert bare not in (none, high)
         else:
             assert bare == none == high
+
+    @pytest.mark.parametrize("method", _GENERATION_METHODS)
+    @pytest.mark.parametrize(
+        ("control", "capability"),
+        [("seed", LLMCapability.SEED), ("thinking_budget", LLMCapability.THINKING_BUDGET)],
+    )
+    async def test_a_generation_control_is_sent_where_declared_and_refused_elsewhere(
+        self, case, method, control, capability
+    ):
+        """SIP-0111 §5.1 (the owner's Q6: tested across all adapters). Declared ⇒ two values
+        send two different requests, and no value sends the request as it was. Undeclared ⇒
+        ``ValueError`` naming the control, with nothing sent: unlike a reasoning level, a seed
+        or a budget changes the generation, and dropping one makes a replay claim draws it never
+        made. Bugs this catches: a control dropped silently, sent by an adapter that refuses
+        it, or refused only on some of the four generation methods."""
+        adapter = case.build()
+        bodies: list[bytes] = []
+
+        def capture(request: httpx.Request) -> httpx.Response:
+            bodies.append(request.content)
+            return case.ok(request)
+
+        with wire(capture):
+            await _generate(adapter, method, {})
+            if adapter.supports(capability):
+                await _generate(adapter, method, {control: 1001})
+                await _generate(adapter, method, {control: 1002})
+                bare, first, second = bodies
+                assert len({bare, first, second}) == 3
+            else:
+                with pytest.raises(ValueError, match=control):
+                    await _generate(adapter, method, {control: 1001})
+                assert len(bodies) == 1
 
     async def test_reasoning_text_reaches_the_port(self, case):
         """A provider that separates its reasoning channel must surface it as
