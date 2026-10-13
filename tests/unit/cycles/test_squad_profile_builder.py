@@ -79,7 +79,9 @@ class TestFullSquadBuilderProfile:
         # solo is the Solo arm of the 1.8.1 comparison window (SIP-0108 §10i): one generalist
         # process serving every role full-38 serves. Torn down after the window by default
         # (1.8.1 plan §8 decision 12) — its removal moves this line too.
-        assert ids == {"smoke", "lite", "full", "full-38", "full-38-atlas", "solo"}
+        # full-38-tf is the same roster on TensorFold's served id (SIP-0111, #2200): for cycles
+        # while engine_switch.py has moved the clients there. Inert until a cycle names it.
+        assert ids == {"smoke", "lite", "full", "full-38", "full-38-atlas", "full-38-tf", "solo"}
 
 
 class TestFull38QaCompletionBudget:

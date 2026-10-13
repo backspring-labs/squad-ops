@@ -448,7 +448,7 @@ def test_every_compose_credential_is_the_deploys_own_with_no_default():
     Langfuse's and Grafana's literals survived). A credential is read from the environment or a
     secret, never written in, never defaulted; a registry variable compose reads is required.
     Bug caught: one deploy's credential committed for every deploy."""
-    import yaml
+    from tests.unit.config.compose_yaml import load_compose
 
     registry = {
         c["env"]
@@ -463,7 +463,7 @@ def test_every_compose_credential_is_the_deploys_own_with_no_default():
             for ref in re.findall(r"\$\{" + name + r"(:?[-?])?", text):
                 if ref != ":?":
                     violations.append(f"{file_path.name}: ${{{name}}} is not required (:?)")
-        services = (yaml.safe_load(text) or {}).get("services") or {}
+        services = load_compose(text).get("services") or {}
         for service, spec in services.items():
             env = spec.get("environment") or {}
             items = env.items() if isinstance(env, dict) else (e.partition("=")[::2] for e in env)

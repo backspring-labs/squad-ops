@@ -172,6 +172,14 @@ check_ollama() {
 
 # Function to check database connectivity
 
+# SIP-0111 §5.6: while TensorFold serves, step 1 would start Ollama's container beside it, and the
+# deploy would recreate the model clients on Ollama. The engines never run together: switch back first.
+if docker inspect -f '{{.State.Running}}' squadops-tensorfold 2>/dev/null | grep -qx true; then
+    echo -e "${RED}❌ TensorFold is serving (squadops-tensorfold): a deploy would start Ollama beside it.${NC}"
+    echo -e "${YELLOW}   Switch back first: python scripts/dev/ops/engine_switch.py to-ollama${NC}"
+    exit 1
+fi
+
 # Step 1: Check Ollama (external service)
 echo ""
 echo -e "${BLUE}📊 Step 1: Checking infrastructure prerequisites...${NC}"

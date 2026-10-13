@@ -120,3 +120,13 @@ def test_every_image_built_from_the_source_hash_carries_it_as_its_revision_label
 
     assert "src/squadops/sandbox/Dockerfile" in dockerfiles
     assert unlabelled == []
+
+
+def test_a_deploy_refuses_while_tensorfold_serves_before_it_starts_ollama():
+    """SIP-0111 §5.6. Bug caught: a rebuild while TensorFold serves, whose step 1 starts Ollama's
+    container beside it (two engines in unified memory) and whose restarts put the clients back on
+    Ollama. The script is read, not run."""
+    text = SCRIPT.read_text()
+    guard = text.index("docker inspect -f '{{.State.Running}}' squadops-tensorfold")
+    assert guard < text.index("if ! check_ollama; then")
+    assert "exit 1" in text[guard : text.index("\nfi\n", guard)]
