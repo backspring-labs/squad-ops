@@ -41,9 +41,10 @@ Documentation (`/docs`, `/openapi.json`, `/redoc`) is exposed only when
 4. **Split by nature, not by feature.** SIP-0089 is the worked example: `runtime-state` is a
    read-only status projection and stays under `/health`; `assignments` are a managed
    resource and live under `/api/v1`. One feature, two lanes, correctly.
-5. **Error bodies** on `/api/v1` use the standard `{"error": {...}}` envelope; `/health`
-   and `/auth` still return plain strings — a known deviation, tracked under #218 and not
-   to be extended.
+5. **Error bodies** on every lane, the auth middleware's refusals included, are the standard
+   `{"error": {"code", "message", "details"}}` envelope, built by `squadops.api.errors`. A
+   server failure gives what failed and the request id, never the exception's text, which is
+   logged with it (#1976). `test_route_lanes.py` refuses a plain-string body.
 
 ## Audit of the surface — 2026-09-06
 

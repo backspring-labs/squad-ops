@@ -65,7 +65,8 @@ class TestRequireAuth:
 
         resp = client.get("/protected")
         assert resp.status_code == 401
-        assert "Missing" in resp.json()["detail"]
+        assert resp.json()["detail"]["error"]["code"] == "NOT_AUTHENTICATED"
+        assert "Missing" in resp.json()["detail"]["error"]["message"]
 
     def test_non_bearer_header_returns_401(self):
         app = self._build_app(auth_port_getter=lambda: AsyncMock())
@@ -83,7 +84,8 @@ class TestRequireAuth:
 
         resp = client.get("/protected", headers={"Authorization": "Bearer bad-token"})
         assert resp.status_code == 401
-        assert "Invalid" in resp.json()["detail"]
+        assert resp.json()["detail"]["error"]["code"] == "INVALID_TOKEN"
+        assert "Invalid" in resp.json()["detail"]["error"]["message"]
 
     def test_auth_port_none_returns_503(self):
         app = self._build_app(auth_port_getter=lambda: None)
@@ -91,7 +93,8 @@ class TestRequireAuth:
 
         resp = client.get("/protected", headers={"Authorization": "Bearer some-token"})
         assert resp.status_code == 503
-        assert "unavailable" in resp.json()["detail"].lower()
+        assert resp.json()["detail"]["error"]["code"] == "AUTH_UNAVAILABLE"
+        assert "unavailable" in resp.json()["detail"]["error"]["message"].lower()
 
     def test_custom_auth_port_getter(self):
         """Custom getter is called instead of default deps."""

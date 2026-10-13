@@ -189,7 +189,8 @@ class TestUndeclaredCapabilityIsRefused:
         resp = getattr(incapable_client, method)(path, **kwargs)
 
         assert resp.status_code == 503
-        assert "does not support" in resp.json()["detail"]
+        assert resp.json()["detail"]["error"]["code"] == "CAPABILITY_UNSUPPORTED"
+        assert "does not support" in resp.json()["detail"]["error"]["message"]
 
     def test_registry_route_still_works_without_any_provider_capability(self, incapable_client):
         """The code-defined registry is not a provider surface; it must not be

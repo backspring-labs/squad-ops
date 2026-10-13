@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
 from squadops.api.cycle_schemas import (
@@ -19,6 +19,7 @@ from squadops.api.cycle_schemas import (
     PullModelRequest,
     PullStatusResponse,
 )
+from squadops.api.errors import http_error, server_error
 from squadops.api.middleware.auth import require_scopes
 from squadops.auth.models import Scope
 from squadops.ports.llm.provider import LLMCapability
@@ -63,12 +64,13 @@ def _llm_port_supporting(request: Request, capability: str):
     try:
         port = get_llm_port(request)
     except RuntimeError:
-        raise HTTPException(status_code=503, detail="LLM port not configured") from None
+        raise http_error(503, "LLM_UNAVAILABLE", "LLM port not configured") from None
 
     if not port.supports(capability):
-        raise HTTPException(
-            status_code=503,
-            detail=f"The configured LLM provider does not support '{capability}'",
+        raise http_error(
+            503,
+            "CAPABILITY_UNSUPPORTED",
+            f"The configured LLM provider does not support '{capability}'",
         )
     return port
 
@@ -83,7 +85,9 @@ async def list_pulled_models(request: Request):
     try:
         available = await port.list_available_models()
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"LLM provider unreachable: {e}") from e
+        raise server_error(
+            request, "LLM provider unreachable", e, logger, status=503, code="LLM_UNAVAILABLE"
+        ) from e
 
     # Cross-reference against active squad profile
     active_agents: dict[str, list[str]] = {}  # model -> [agent_id, ...]
@@ -160,7 +164,7 @@ async def pull_status(pull_id: str):
 
     job = get_pull_job(pull_id)
     if not job:
-        raise HTTPException(status_code=404, detail="Pull job not found or expired")
+        raise http_error(404, "PULL_JOB_NOT_FOUND", "Pull job not found or expired")
 
     return PullStatusResponse(
         pull_id=job.pull_id,
@@ -181,8 +185,8 @@ async def delete_model(request: Request, model_name: str):
         await port.delete_model(model_name)
         return {"status": "deleted", "model_name": model_name}
     except LLMModelNotFoundError as e:
-        raise HTTPException(
-            status_code=404, detail=f"Model '{model_name}' not found locally"
-        ) from e
+        raise http_error(404, "MODEL_NOT_FOUND", f"Model '{model_name}' not found locally") from e
     except LLMConnectionError as e:
-        raise HTTPException(status_code=503, detail=str(e)) from e
+        raise server_error(
+            request, "LLM provider unreachable", e, logger, status=503, code="LLM_UNAVAILABLE"
+        ) from e

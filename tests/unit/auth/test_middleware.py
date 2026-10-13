@@ -169,7 +169,8 @@ class TestMissingToken:
         client = TestClient(app)
         resp = client.get("/api/v1/tasks")
         assert resp.status_code == 401
-        assert "Missing or invalid" in resp.json()["detail"]
+        assert resp.json()["detail"]["error"]["code"] == "NOT_AUTHENTICATED"
+        assert "Missing or invalid" in resp.json()["detail"]["error"]["message"]
 
     def test_wrong_auth_scheme(self):
         auth_port = _make_auth_port()
@@ -189,7 +190,8 @@ class TestInvalidToken:
         client = TestClient(app)
         resp = client.get("/api/v1/tasks", headers={"Authorization": "Bearer bad-token"})
         assert resp.status_code == 401
-        assert "Invalid or expired" in resp.json()["detail"]
+        assert resp.json()["detail"]["error"]["code"] == "INVALID_TOKEN"
+        assert "Invalid or expired" in resp.json()["detail"]["error"]["message"]
 
 
 class TestValidToken:
@@ -217,7 +219,8 @@ class TestDisabledProvider:
         client = TestClient(app)
         resp = client.get("/api/v1/tasks")
         assert resp.status_code == 503
-        assert "unavailable" in resp.json()["detail"].lower()
+        assert resp.json()["detail"]["error"]["code"] == "AUTH_UNAVAILABLE"
+        assert "unavailable" in resp.json()["detail"]["error"]["message"].lower()
 
     def test_disabled_health_still_works(self):
         app = _make_app(provider="disabled")
