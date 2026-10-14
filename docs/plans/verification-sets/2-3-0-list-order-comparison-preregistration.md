@@ -1,6 +1,7 @@
 # 2.3: a declared list order, before and after #2276 — pre-registration
 
-**Status:** for the owner's approval. Nothing runs before it.
+**Status:** approved by the owner as written, 2026-10-14, with both choices in §8. #2276 merges between the arms on
+this approval.
 **Issue:** #2202. **The fix:** PR #2276. **Plan:** the 2.3 plan, phase 8: "#2202, then #2205: each with its own
 pre-registered before/after comparison on the chosen engine … before it is batched with anything else".
 **Uncounted.** Both arms are comparisons, not set rolls.
@@ -37,7 +38,7 @@ calibration and one increment, and the policy is campaign 3's.
 
 - **Before:** `dep_7a6cf99f7c11`, from `5105a5e2`, the deploy #2279's diagnostic runs on. It starts once that
   diagnostic has closed.
-- **Between the arms:** #2276 merges, on the owner's approval, and nothing else does. The runtime API and every agent
+- **Between the arms:** #2276 merges, approved by the owner with this pre-registration, and nothing else does. The runtime API and every agent
   are rebuilt from that merge. The deploy id, commit and image ids are recorded on #2202 before the after arm starts.
   #2276 changes the agents' handlers and the runtime's contract derivation, so all of them are rebuilt.
 - **After:** the same campaign definition, created fresh.
@@ -109,6 +110,8 @@ all, after #2279's diagnostic. The log archive (`campaign_log_archive.py --follo
   (2026-10-14), so the authoring rules' new line is the only teaching the author sees.
 
 ## 8. The owner's choices
+
+The owner approved both on 2026-10-14, and approved #2276's merge between the arms with them.
 
 1. **One campaign per arm,** on the window's sorting objective, rather than a targeted set of plain cycles. The
    objective makes an ordering likely to be declared, and a plain cycle rarely takes the PRD's expansion items. Of the
