@@ -122,6 +122,7 @@ Placed by the owner's Q1 ruling (2026-10-09). The rows are ordered as the work r
 | G3: the selected candidate's uncounted cycle A/B on both stacks, compared on wall-clock, task times, retries, correction rounds and verdicts (§9a item 6) | **shipped** | 2.3.0, #2282 (the record, `docs/plans/verification-sets/2-3-0-tensorfold-g3-record.md`): every roll accepted on both arms; TensorFold's median cycle 0.45 of Ollama's on FastAPI+React and 0.61 on Next.js; two predictions falsified as registered (decode on every task type, and volume), the rest held; its arm held one planning draw per stack, not two (§9j) |
 | a seed on every TensorFold call, G3's finding (§9j) | **shipped** | 2.3.0, #2283, closing #2281 |
 | G4: cutover | **shipped** | 2.3.0, #2285, closing #2229 and #2284 (the switch records the deploy, §9k): adopted by the owner on G3's evidence on 2026-10-13 (§9j). The Spark serves on TensorFold from 2026-10-13 20:01 ET (dep_1724f586cc3a), and its cutover pair passed (§9k) |
+| the memory watchdog as a host service that restores Ollama after a kill (§9l) | **shipped** | 2.3.0, #2289, closing #2288 |
 | a second candidate, Qwen3.8-Flash-Next on TensorFold, on its own gate path: screening, its own recipe, G0 and G1 (§9a) | **placed** | 2.4.0, #2230: moved from 2.3 by the owner on 2026-10-12 ("skip to next release"). Not measured in 2.3, which is not a negative |
 
 **What closes this SIP:** G4 decided (adopted, or parked with its record), with each earlier row shipped or its negative
@@ -1021,3 +1022,37 @@ shakeouts of one FastAPI+React request on `full-38-tf`, with what they must show
 
 **Who ruled it.** The owner, on 2026-10-13: G4 adopted ("1, yes", §9j). The design of each part is proposed in this
 PR, and the owner rules it with the merge, as §9i's were.
+
+### 9l. The memory watchdog: a host service that restores Ollama (RULED 2026-10-13)
+
+**What changed.** §5.6 has the memory watchdog kill TensorFold when `MemAvailable` stays under its floor or swap
+climbs, and "let restoration start Ollama". Two things were missing once TensorFold became production (§9k, #2288):
+- **Nothing started the watchdog.** G0, G1 and G3 had it because their chains started it. At the cutover it was
+  started by hand, so it would have stopped at the next reboot or session kill.
+- **A kill left the box with no engine.** Nothing ran the restoration, so the clients stayed on a dead TensorFold
+  until someone ran the switch back.
+
+From this ruling:
+- **The watchdog is a host service,** `squadops-memory-watchdog` (`infra/systemd/`). It is wanted at boot, restarted
+  whenever it stops, and the last process the OOM killer takes. It is installed once per machine with sudo, as the
+  backup timer is (`scripts/dev/ops/install_host_unit.sh`, which now installs a long-running unit as well as a
+  timer). It acts only while TensorFold runs, so it stays on whichever engine serves.
+- **After a kill, it runs `engine_switch.py restore`:**
+  - Ollama started and the clients moved back, as a failed switch restores, and the deploy recorded (§9k);
+  - no refusal for work on the box, since that work's engine is gone;
+  - nothing done when Ollama already serves a deploy that records it.
+- **One engine switch runs at a time on the host.** Every command that moves an engine takes one lock, and waits
+  for a switch in progress. So the watchdog's restoration never runs beside a switch's own, and a switch that
+  fails restores Ollama itself.
+
+**The evidence:**
+- The watch's step is tested where the service's loop enters it. It acts on two low readings or a swap climb while
+  TensorFold runs, and on nothing else.
+- The kill is followed by the restoration, whose failure or hang is logged as one.
+- `restore` is tested at `main`, as the watchdog runs it, in four states. A switch holding the lock makes every
+  engine command wait, touching nothing.
+- The unit guard requires a unit with no timer to be wanted at boot and restarted always. `systemd-analyze verify`
+  passes on the rendered unit.
+
+**Who ruled it.** The owner, on 2026-10-13. Asked how the watchdog should run in production, the owner chose "a": a
+host service installed once with the owner's sudo, which after a kill switches the box back to Ollama.

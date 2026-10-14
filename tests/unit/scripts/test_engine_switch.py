@@ -41,6 +41,13 @@ def rec(tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def _lock_in_tmp(monkeypatch, tmp_path):
+    """Every command that moves an engine takes the host's lock (#2288). No test takes the real
+    one, under the main checkout, which a live switch may hold."""
+    monkeypatch.setattr(es, "LOCK", tmp_path / "locks" / ".switch.lock")
+
+
+@pytest.fixture(autouse=True)
 def recorded(monkeypatch):
     """No test writes a real deploy record: ``main`` records after every completed switch and
     restoration (#2284), and the real recorder runs docker in the main checkout. The commands it
@@ -491,3 +498,86 @@ def test_a_switch_back_with_ollama_already_serving_releases_it_first(deploy, rec
     es.to_ollama(rec)
 
     assert calls == ["stop_ollama", "stop_tensorfold", "wait_released", "start_ollama"]
+
+
+# --- the watchdog's restoration and the host's lock (#2288) ---------------------------------------
+
+
+def _main(monkeypatch, tmp_path, *argv) -> tuple[int, list[str]]:
+    monkeypatch.setattr(es, "RECORDS", tmp_path)
+    monkeypatch.setattr(es.sys, "argv", ["engine_switch.py", *argv])
+    code = es.main()
+    (record,) = tmp_path.glob("*.jsonl")
+    return code, [json.loads(line)["step"] for line in record.read_text().splitlines()]
+
+
+_RESTORED = (["to_ollama"], ["restore"], ["restored", "deploy_recorded", "done"])
+
+
+@pytest.mark.parametrize(
+    ("tensorfold", "ollama", "engine", "expected"),
+    [
+        (False, True, "ollama", ([], [], ["nothing_to_restore", "done"])),
+        (False, False, "tensorfold", _RESTORED),  # the watchdog killed it: clients on nothing
+        (True, False, "tensorfold", _RESTORED),
+        (False, True, "tensorfold", _RESTORED),  # Ollama up, the clients still on TensorFold
+    ],
+    ids=["ollama serving", "killed", "tensorfold serving", "clients not moved back"],
+)
+def test_restore_moves_the_deploy_back_to_ollama_unless_it_already_is(
+    monkeypatch, tmp_path, recorded, tensorfold, ollama, engine, expected
+):
+    """Entered at ``main``, as the watchdog runs it. Bug caught: a TensorFold the watchdog killed
+    left with no engine and the clients on it, so every cycle fails until someone notices; or a
+    deploy already on Ollama recreated for nothing. It never refuses for work on the box: that
+    work's engine is gone."""
+    running = {es.TF_CONTAINER: tensorfold, "squadops-ollama": ollama}
+    monkeypatch.setattr(es, "container_running", lambda name: running[name])
+    monkeypatch.setattr(es, "deploy_engine", lambda: engine)
+    monkeypatch.setattr(es, "box_work", lambda: pytest.fail("a restoration asked about box work"))
+    moved = []
+    monkeypatch.setattr(es, "to_ollama", lambda rec: moved.append("to_ollama"))
+
+    code, steps = _main(monkeypatch, tmp_path, "restore")
+
+    assert (code, moved, recorded.commands, steps) == (0, *expected)
+
+
+def test_a_restoration_that_fails_says_so_and_is_not_retried(monkeypatch, tmp_path, recorded):
+    """Bug caught: a failed restoration reported as a plain failure, or followed by a second
+    restoration the way a failed switch to TensorFold is."""
+    monkeypatch.setattr(es, "container_running", lambda name: False)
+    monkeypatch.setattr(es, "deploy_engine", lambda: "tensorfold")
+    calls = []
+
+    def fail(rec):
+        calls.append("to_ollama")
+        raise es.SwitchFailed("Ollama did not answer")
+
+    monkeypatch.setattr(es, "to_ollama", fail)
+
+    code, steps = _main(monkeypatch, tmp_path, "restore")
+
+    assert (code, steps, calls, recorded.commands) == (
+        3,
+        ["failed", "RESTORATION_FAILED"],
+        ["to_ollama"],
+        [],
+    )
+
+
+@pytest.mark.parametrize("argv", [["restore"], ["to-ollama"], ["to-tensorfold", "r.yaml"]])
+def test_a_switch_waits_for_the_one_in_progress_and_touches_nothing_past_the_wait(
+    monkeypatch, tmp_path, argv
+):
+    """Bug caught: the watchdog's restoration running beside a switch's own, two processes
+    stopping and starting the same engines and recreating the same clients."""
+    monkeypatch.setattr(es, "LOCK_WAIT_SECONDS", 0)
+    for step in ("to_ollama", "to_tensorfold", "restore", "box_work"):
+        monkeypatch.setattr(es, step, lambda *a, step=step: pytest.fail(f"{step} ran unlocked"))
+    es.LOCK.parent.mkdir(parents=True, exist_ok=True)
+    with es.LOCK.open("a") as held:
+        es.fcntl.flock(held, es.fcntl.LOCK_EX)
+        code, steps = _main(monkeypatch, tmp_path, *argv)
+
+    assert (code, steps) == (5, ["busy"])
