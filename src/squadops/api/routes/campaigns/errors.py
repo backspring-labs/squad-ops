@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from squadops.api.errors import ErrorRow, mapped_error
 from squadops.campaigns.models import (
     CampaignError,
     CampaignExistsError,
@@ -11,7 +12,7 @@ from squadops.campaigns.models import (
     ResumeReservedToOwner,
 )
 
-_ERROR_MAP: list[tuple[type[CampaignError], int, str]] = [
+_ERROR_MAP: list[ErrorRow] = [
     (CampaignNotFoundError, 404, "CAMPAIGN_NOT_FOUND"),
     (LaunchIntentNotFoundError, 404, "LAUNCH_INTENT_NOT_FOUND"),
     (ResumeReservedToOwner, 403, "OWNER_AUTHORITY_REQUIRED"),
@@ -30,7 +31,4 @@ def campaign_error_envelope(e: CampaignError) -> tuple[int, dict]:
             "refusal": str(e.entry.refusal),
             "state": str(e.entry.prior_state),
         }
-    for exc_type, status, code in _ERROR_MAP:
-        if isinstance(e, exc_type):
-            return status, {"error": {"code": code, "message": str(e), "details": details}}
-    return 500, {"error": {"code": "INTERNAL_ERROR", "message": str(e), "details": None}}
+    return mapped_error(e, _ERROR_MAP, details)

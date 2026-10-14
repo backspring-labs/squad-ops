@@ -9,13 +9,17 @@ probes only (CLAUDE.md › API Conventions, #218). Writes live here on the authe
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
+from squadops.api.errors import http_error, server_error
 from squadops.api.middleware.auth import require_scopes
 from squadops.auth.models import Scope
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/agents", tags=["agents"])
 
@@ -60,12 +64,11 @@ async def create_or_update_agent_status(request: Request, agent_status: AgentSta
         agent_id = agent_status.agent_name.lower()
 
     if agent_status.lifecycle_state not in _VALID_LIFECYCLE_STATES:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Invalid lifecycle_state: {agent_status.lifecycle_state}. "
-                f"Must be one of {sorted(_VALID_LIFECYCLE_STATES)}"
-            ),
+        raise http_error(
+            400,
+            "VALIDATION_ERROR",
+            f"Invalid lifecycle_state: {agent_status.lifecycle_state}. "
+            f"Must be one of {sorted(_VALID_LIFECYCLE_STATES)}",
         )
 
     try:
@@ -81,7 +84,7 @@ async def create_or_update_agent_status(request: Request, agent_status: AgentSta
             }
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update agent status: {e}") from e
+        raise server_error(request, "Failed to update agent status", e, logger) from e
 
 
 @router.put("/status/{agent_id}", dependencies=[Depends(require_scopes(Scope.AGENTS_WRITE))])
@@ -115,7 +118,7 @@ async def update_agent_status(request: Request, agent_id: str, update: AgentStat
         idx += 1
 
     if not updates:
-        raise HTTPException(status_code=400, detail="No fields to update")
+        raise http_error(400, "VALIDATION_ERROR", "No fields to update")
 
     now = datetime.utcnow()
     updates.append(f"last_heartbeat = ${idx}")
@@ -132,9 +135,9 @@ async def update_agent_status(request: Request, agent_id: str, update: AgentStat
         async with hc.pg_pool.acquire() as conn:
             result = await conn.execute(query, *params)
             if result == "UPDATE 0":
-                raise HTTPException(status_code=404, detail=f"Agent status {agent_id} not found")
+                raise http_error(404, "AGENT_NOT_FOUND", f"Agent status {agent_id} not found")
         return {"status": "updated", "agent_id": agent_id}
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update agent status: {e}") from e
+        raise server_error(request, "Failed to update agent status", e, logger) from e

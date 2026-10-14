@@ -21,7 +21,7 @@ pytestmark = [pytest.mark.unit]
 def _config(**dispatch) -> AppConfig:
     return AppConfig(
         **_rest(),
-        llm=LLMConfig(provider="ollama", timeout=1800),
+        llm=LLMConfig(provider="ollama", url="http://ollama:11434", timeout=1800),
         dispatch=DispatchConfig(**dispatch),
     )
 

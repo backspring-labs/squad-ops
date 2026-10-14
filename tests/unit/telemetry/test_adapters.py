@@ -8,6 +8,7 @@ from opentelemetry import metrics, trace
 from opentelemetry.metrics import _internal as _otel_metrics_internal
 from opentelemetry.sdk import trace as _otel_sdk_trace
 from opentelemetry.sdk.metrics import _internal as _otel_sdk_metrics
+from opentelemetry.sdk.metrics.export import MetricExporter, MetricExportResult
 from opentelemetry.sdk.trace import TracerProvider as _SDKTracerProvider
 from opentelemetry.util._once import Once
 
@@ -30,6 +31,27 @@ class BrokenExporter:
 
     def force_flush(self, *args, **kwargs):
         raise RuntimeError("Simulated flush failure")
+
+
+class _CapturingExporter(MetricExporter):
+    """Keeps each metric's last exported data points, by name."""
+
+    def __init__(self):
+        super().__init__()
+        self.points: dict[str, list] = {}
+
+    def export(self, metrics_data, timeout_millis=10_000, **kwargs):
+        for resource in metrics_data.resource_metrics:
+            for scope in resource.scope_metrics:
+                for metric in scope.metrics:
+                    self.points[metric.name] = list(metric.data.data_points)
+        return MetricExportResult.SUCCESS
+
+    def force_flush(self, timeout_millis=10_000):
+        return True
+
+    def shutdown(self, timeout_millis=30_000, **kwargs):
+        pass
 
 
 class _NoopAtexit:
@@ -327,6 +349,36 @@ class TestOTelAdapter:
     def test_histogram_with_labels(self):
         adapter = OTelAdapter()
         adapter.histogram("test", 1.5, {"env": "test"})  # Must not raise
+
+    def test_a_histogram_is_bucketed_on_the_callers_boundaries_and_otherwise_on_the_sdks(self):
+        """#2260. Bug caught: every histogram on OpenTelemetry's default buckets (0, 5, 10, 25 …
+        10,000), which put nearly every decode rate in one bucket, so no percentile was readable."""
+        exporter = _CapturingExporter()
+        adapter = OTelAdapter(metric_exporter=exporter)
+
+        adapter.histogram("decode", 27.7, {"engine": "ollama"}, boundaries=(10, 20, 30, 40))
+        adapter.histogram("plain", 27.7)
+        metrics.get_meter_provider().force_flush()
+
+        [decode] = exporter.points["decode"]
+        [plain] = exporter.points["plain"]
+        assert (tuple(decode.explicit_bounds), list(decode.bucket_counts)) == (
+            (10, 20, 30, 40),
+            [0, 0, 1, 0, 0],
+        )
+        assert tuple(plain.explicit_bounds)[:4] == (0, 5, 10, 25)
+
+    def test_a_gauge_reading_replaces_the_last_one_instead_of_adding_to_it(self):
+        """#2260. Bug caught: ``gauge()`` built on an up-down counter, so 5 then 3 read 8."""
+        exporter = _CapturingExporter()
+        adapter = OTelAdapter(metric_exporter=exporter)
+
+        adapter.gauge("queue_depth", 5, {"queue": "q"})
+        adapter.gauge("queue_depth", 3, {"queue": "q"})
+        metrics.get_meter_provider().force_flush()
+
+        [point] = exporter.points["queue_depth"]
+        assert point.value == 3
 
 
 # ---------------------------------------------------------------------------

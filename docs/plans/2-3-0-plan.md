@@ -280,10 +280,10 @@ held. **No adapter code is written for either candidate before that candidate's 
 | 1 | **The benchmark deploy:** #2204a and #2201 merged, a rebuild (R1), a regression pair, every loaded check answering. **This instrumented deploy is frozen** for both candidates' benchmark arms, and its deploy id is recorded in each pre-registration. A rebuild before the last benchmark call voids the affected arms (§5) | rebuild and pair, ~2 h |
 | 2 | **S,** built and exercised on the benchmark deploy (#2199's acceptance list) | ~1–2 h |
 | 3 | **The harness and the pre-registrations:** the 27B's, and Flash-Next's screening and recipe matrix. The selection rule is in both | — |
-| 4 | **The 27B:** tuning, the frozen recipe, the drift panel, the held-out run, the drift panel again, and drafted-against-serial. **Checkpoint A** (§4) | §4 |
-| 5 | **Flash-Next,** if checkpoint A allows: S's floors with its checkpoint, the screening replay, tuning, its frozen recipe, then its held-out arm (reusing Ollama's arm only under §5's rules) | §4 |
-| 6 | **Selection** (§2.1), then **G2** for the selected candidate: the adapter, the port's four amendments, registry entries, the overlay, the conformance suite across every adapter, and parity against the harness fixtures. Then a rebuild. **Checkpoint B** | rebuild |
-| 7 | **G3** on both stacks, then **G4,** the owner's decision. On adoption, cutover by S; from here every measurement is on TensorFold | ~8 h |
+| 4 | **The 27B:** tuning, the frozen recipe, the drift panel, the held-out run, the drift panel again, and drafted-against-serial. **Checkpoint A** (§4). **Done:** the held-out run took 13.7 h (2026-10-12 10:19 to 10-13 00:01 ET). G0 passed at 0.438 of Ollama's wall-clock; G1 passed by the owner's ruling at checkpoint A, with plan writing one answer under Ollama's (SIP-0111 §9e) | §4 |
+| 5 | **Flash-Next: moved to 2.4** by the owner on 2026-10-12 ("skip to next release"), before checkpoint A. It is recorded as not measured in 2.3. Its exploratory tuning results are on #2199: 0.37 of Ollama's wall-clock against the best 27B's 0.40, short of the 0.15 selection margin. Its gate path, when it runs, is unchanged: S's floors with its checkpoint, the screening replay, tuning, its frozen recipe, then its held-out arm (reusing Ollama's arm only under §5's rules) | — |
+| 6 | **Selection** (§2.1), then **G2** for the selected candidate: the adapter, the port's four amendments, registry entries, the overlay, the conformance suite across every adapter, and parity against the harness fixtures. Then a rebuild. **Checkpoint B** **Done 2026-10-13:** the 27B is the only candidate; G2 merged as #2268, #2269 and #2270, deployed (`dep_268949794186`), and its live tier passed: the switch to TensorFold and back in 27 s and 48 s, with the clients | rebuild |
+| 7 | **G3** on both stacks, then **G4,** the owner's decision. On adoption, cutover by S; from here every measurement is on TensorFold. **Done 2026-10-13:** G3's record (#2282); the owner adopted TensorFold at G4, with the seed fix first (#2283, SIP-0111 §9j); the Spark serves on TensorFold from 20:01 ET, and the cutover pair passed (#2285, §9k) | ~8 h |
 | 8 | **Track B's merges on the chosen engine,** each rebuild with a regression pair (listed below) | ~2 h each |
 | 9 | **The cut:** a pre-registered regression set on both stacks on the chosen engine (the new baseline if TensorFold was adopted), a campaign shakeout, the release procedure | as 2.2's |
 
@@ -331,6 +331,10 @@ planning the box, not a cut-off. It counts:
 **Checkpoint A,** after the 27B's G0 and G1 are read: the owner's check-in. The supervisor reports the time used, the
 27B's readings, and the estimate for Flash-Next and G3. **The owner decides** whether Flash-Next runs now, waits for
 2.4 (as "not measured," never as a negative), or the trial changes course.
+- **Held 2026-10-13.** Flash-Next had already moved to 2.4, so the 27B is the only candidate and selection (phase 6)
+  is the 27B. Told the readings, the owner ruled the one-answer plan-writing miss does not fail G1, with no re-run
+  ("1, does not fail vailidity, let's go with TensorFold. 2, no re-run"). G2 starts on the 27B's frozen recipe
+  (#2200).
 
 **Checkpoint B,** after selection: the same check-in before G3.
 
@@ -407,14 +411,14 @@ candidate.
 | # | decision | recommendation |
 |---|---|---|
 | D1 | **the order** | **Track A first** (§3), Track B on branches meanwhile, and Track B's merges after G4, so 2.3 measures on one engine |
-| D2 | **G0 / G1's size** | **lean:** 2 generations per arm, the drift panel (§5), and the 3 checkpoints at production's thinking settings. About 34–38 h for the 27B. *As accepted:* about 55–60 h. *Leanest* (1 generation): about 22–25 h, with wider intervals |
+| D2 | **G0 / G1's size** | **lean:** 2 generations per arm, the drift panel (§5), and the 3 checkpoints at production's thinking settings. About 34–38 h for the 27B. *As accepted:* about 55–60 h. *Leanest* (1 generation): about 22–25 h, with wider intervals. **Ruled 2026-10-12: leanest, 1 generation** (the owner: "once per prompt"; SIP-0111 §9d) |
 | D3 | **G3, placed** | **in 2.3,** for the selected candidate, with its pre-registered comparison (§2.1). Tracked as #2229 |
 | D4 | **G4, the cutover decision** | **in 2.3, the owner's, on G3's evidence, before the cut set**, so the cut measures the engine 2.3 ships with. Cutover in an odd minor extends Q1's waiver from "dark" to "adopted", and that extension is the owner's to grant. If it isn't granted, G4 moves to 2.4's start, and 2.3's cut runs on Ollama |
 | D5 | **the structure batch** | **#2062 with #1993 in 2.3** (R5). **#1992 and #1994 in 2.3 unless §4's deferral rule moves them to 2.5** |
 | D6 | **the next build-side memory experiment** | **2.4,** beside Outcome Evaluation's scenarios, on the final engine |
 | D7 | **#2201's fix** | registry credentials in CI (a repository secret), or a pull-through mirror. Recommended: **credentials**. **Changed by the owner on 2026-10-11 to the mirror** ("do 2"): Google's `mirror.gcr.io`, needing no account or secret |
 | D8 | **who runs the line** | **the supervisor, on the 2.2 line's terms:** build in §3's order, merge on green with main's run read, run rebuilds and uncounted runs. **The owner's:** compose changes beyond #2204a's services and SIP-0111's overlay; G4; any lesson approval; the tag and Release unless delegated at the cut |
-| D9 | **Qwen3.8-Flash-Next on TensorFold, a second candidate** (the owner's request, 2026-10-11; tracked as #2230) | **on its own gate path** (§2.1, §2.2), behind S's floors and a screening replay, with its own frozen recipe and registry family. The owner selects between candidates on the evidence, against the written guide, and decides at checkpoint A when it runs |
+| D9 | **Qwen3.8-Flash-Next on TensorFold, a second candidate** (the owner's request, 2026-10-11; tracked as #2230) | **on its own gate path** (§2.1, §2.2), behind S's floors and a screening replay, with its own frozen recipe and registry family. The owner selects between candidates on the evidence, against the written guide, and decides at checkpoint A when it runs. **Ruled 2026-10-12, before checkpoint A:** moved to 2.4 (§3 item 5) |
 | D10 | **SIP-0111 §9a** | **ruled with this plan, before any measurement:** the self-contained harness, the statistics and drift rules, the reuse and held-out rules, the second candidate, candidate-specific outcomes, the selection rule, and G3's comparison |
 | D11 | **Track A's budget** | **about 80 box-hours as a planning guide,** with checkpoints A and B as the owner's check-ins (§4). **The numbers are accepted as guides** (the owner, 2026-10-11) |
 

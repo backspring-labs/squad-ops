@@ -1,7 +1,8 @@
 """What the quiet-box check reads (SIP-0109 §9.3; #1802).
 
 ``box.py`` decides; this reads. The declared models come from the active deploy record (#1720),
-and each engine's resident models from its LLM port's ``list_loaded_models``. An engine that
+and each engine's resident models from its LLM port's ``list_loaded_models``, with the requests
+it is serving where it reports them (``requests_in_flight``, SIP-0111 §5.5). An engine that
 cannot report what it holds is read as unreadable, never as empty: an empty listing would read
 as a quiet box.
 
@@ -47,10 +48,19 @@ async def read_engines(engines: Mapping[str, Any]) -> tuple[EngineReading, ...]:
             continue
         try:
             loaded = await port.list_loaded_models()
+            # SIP-0111 §5.5: where the engine reports what it is serving, a busy engine is not
+            # quiet. An unread count is an unread engine, never a zero.
+            in_flight = (
+                await port.requests_in_flight()
+                if port.supports(LLMCapability.REQUESTS_IN_FLIGHT)
+                else None
+            )
         except Exception as e:  # noqa: BLE001 — an unread engine is a reading, not a crash
             readings.append(EngineReading(name, None, f"{type(e).__name__}: {e}"))
             continue
-        readings.append(EngineReading(name, tuple(Model(m.name, m.digest) for m in loaded)))
+        readings.append(
+            EngineReading(name, tuple(Model(m.name, m.digest) for m in loaded), in_flight=in_flight)
+        )
     return tuple(readings)
 
 

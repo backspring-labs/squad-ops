@@ -12,6 +12,8 @@ from squadops.ports.llm.provider import LLMPort
 class _ConcreteLLM(LLMPort):
     """Minimal concrete implementation for behavioral tests."""
 
+    engine = "test"
+
     def __init__(self):
         self.last_chat_kwargs: dict[str, Any] = {}
 

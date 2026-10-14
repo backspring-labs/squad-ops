@@ -1,0 +1,41 @@
+[
+ {
+  "envelope_id": "9a59225ff865cecff0f8b37c22435a73bf2ffd2f85eed24faa11bdfc60c782ba",
+  "task_type": "development.correction_repair",
+  "raw": "9a59225ff865cecff0f8b37c22435a73bf2ffd2f85eed24faa11bdfc60c782ba-g1.jsonl",
+  "seed": 1001,
+  "max_tokens": 12288,
+  "reasoning": "medium",
+  "finish": "stop",
+  "text_sha": "4865b1c5af618271",
+  "prompt_tokens": 10800,
+  "completion_tokens": 714,
+  "reasoning_tokens": 550
+ },
+ {
+  "envelope_id": "580c02fae0cf504187bd7800ee63123f0b2708ce95eeddd40ae9bd0c9fd45804",
+  "task_type": "builder.assemble",
+  "raw": "580c02fae0cf504187bd7800ee63123f0b2708ce95eeddd40ae9bd0c9fd45804-g1.jsonl",
+  "seed": 1001,
+  "max_tokens": 8192,
+  "reasoning": "none",
+  "finish": "stop",
+  "text_sha": "eabfb6f80294f8d6",
+  "prompt_tokens": 23591,
+  "completion_tokens": 20,
+  "reasoning_tokens": 0
+ },
+ {
+  "envelope_id": "b633e9ba9410586487695b74143ac39308085cb3a3b42a86fcc93ccc8746778c",
+  "task_type": "qa.test",
+  "raw": "b633e9ba9410586487695b74143ac39308085cb3a3b42a86fcc93ccc8746778c-g1.jsonl",
+  "seed": 1001,
+  "max_tokens": 12288,
+  "reasoning": "low",
+  "finish": "length",
+  "text_sha": "7391a44b4a0fd85a",
+  "prompt_tokens": 17034,
+  "completion_tokens": 12288,
+  "reasoning_tokens": 8193
+ }
+]

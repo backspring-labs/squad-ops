@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from fastapi import HTTPException
 
+from squadops.api.errors import ErrorRow, mapped_error
 from squadops.cycles.models import (
     ActiveProfileDeletionError,
     ArtifactNotFoundError,
@@ -25,7 +26,7 @@ from squadops.cycles.models import (
     ValidationError,
 )
 
-_ERROR_MAP: list[tuple[type, int, str]] = [
+_ERROR_MAP: list[ErrorRow] = [
     (ProjectNotFoundError, 404, "PROJECT_NOT_FOUND"),
     (CycleNotFoundError, 404, "CYCLE_NOT_FOUND"),
     (RunNotFoundError, 404, "RUN_NOT_FOUND"),
@@ -45,10 +46,7 @@ _ERROR_MAP: list[tuple[type, int, str]] = [
 def cycle_error_envelope(e: CycleError) -> tuple[int, dict]:
     """The (status, detail) envelope for a domain error — one table, read by the
     app-level exception handler (#576) and by the HTTPException helper below."""
-    for exc_type, status, code in _ERROR_MAP:
-        if isinstance(e, exc_type):
-            return status, {"error": {"code": code, "message": str(e), "details": None}}
-    return 500, {"error": {"code": "INTERNAL_ERROR", "message": str(e), "details": None}}
+    return mapped_error(e, _ERROR_MAP)
 
 
 def handle_cycle_error(e: CycleError) -> HTTPException:

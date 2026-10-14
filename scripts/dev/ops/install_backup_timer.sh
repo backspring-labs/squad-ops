@@ -8,4 +8,4 @@
 #   scripts/dev/ops/install_backup_timer.sh --status   show timer state and last run
 #   scripts/dev/ops/install_backup_timer.sh --remove   stop and remove
 set -euo pipefail
-exec "$(dirname "${BASH_SOURCE[0]}")/install_timer.sh" squadops-backup "$@"
+exec "$(dirname "${BASH_SOURCE[0]}")/install_host_unit.sh" squadops-backup "$@"

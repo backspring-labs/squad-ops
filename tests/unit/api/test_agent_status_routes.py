@@ -87,7 +87,8 @@ class TestCreateOrUpdateAgentStatus:
             json={"agent_id": "max", "lifecycle_state": "INVALID"},
         )
         assert resp.status_code == 400
-        assert "Invalid lifecycle_state" in resp.json()["detail"]
+        assert resp.json()["detail"]["error"]["code"] == "VALIDATION_ERROR"
+        assert "Invalid lifecycle_state" in resp.json()["detail"]["error"]["message"]
         mock_health_checker.update_agent_status_in_db.assert_not_awaited()
 
 
@@ -95,7 +96,8 @@ class TestUpdateAgentStatus:
     def test_update_with_no_fields_returns_400(self, client):
         resp = client.put("/api/v1/agents/status/max", json={})
         assert resp.status_code == 400
-        assert "No fields" in resp.json()["detail"]
+        assert resp.json()["detail"]["error"]["code"] == "VALIDATION_ERROR"
+        assert "No fields" in resp.json()["detail"]["error"]["message"]
 
     def test_update_valid_fields(self, client, mock_health_checker):
         mock_conn = AsyncMock()
@@ -155,7 +157,8 @@ class TestAgentsWriteGuard:
     def test_viewer_role_is_403(self, mock_health_checker):
         resp = self._post(_identity_for_roles(Role.VIEWER), mock_health_checker)
         assert resp.status_code == 403
-        assert "agents:write" in resp.json()["detail"]
+        assert resp.json()["detail"]["error"]["code"] == "FORBIDDEN"
+        assert "agents:write" in resp.json()["detail"]["error"]["message"]
         mock_health_checker.update_agent_status_in_db.assert_not_awaited()
 
     def test_operator_role_is_403(self, mock_health_checker):

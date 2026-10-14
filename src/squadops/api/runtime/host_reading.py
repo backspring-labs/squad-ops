@@ -19,9 +19,67 @@ HOST_QUERIES: dict[str, str] = {
     # swap thrash that livelocked the box on 2026-08-29.
     "memory_pressure_stalled_ratio": "rate(node_pressure_memory_stalled_seconds_total[5m])",
     "disk_root_available_bytes": 'node_filesystem_avail_bytes{mountpoint="/"}',
-    "temperature_max_celsius": "max(node_hwmon_temp_celsius)",
+    # The hottest ACPI board zone, the reading the board limits below are for, read as the Spark
+    # health dashboard reads it. The NVMe sensor is left out: it has its own limit (85 C), and
+    # the zones run 30 C hotter under load.
+    "temperature_max_celsius": 'max(node_thermal_zone_temp{type="acpitz"})',
     "load_one_minute": "node_load1",
+    # The GPU, from the DCGM exporter. A host without one has no samples: unknown, not idle.
+    "gpu_utilization_percent": "max(DCGM_FI_DEV_GPU_UTIL)",
+    "gpu_power_watts": "sum(DCGM_FI_DEV_POWER_USAGE)",
+    "gpu_temperature_celsius": "max(DCGM_FI_DEV_GPU_TEMP)",
 }
+
+
+#: The board's limits (#2204b). The ACPI zones' only trip point is critical at 104 C, and the
+#: kernel does no thermal management below it. The warning leaves 6 C of margin; the Spark ran at
+#: 88-89 C for two hours under sustained load (2026-09-06). The Spark health dashboard draws the
+#: same two lines, held to these by a test.
+BOARD_TEMPERATURE_WARN_CELSIUS = 98.0
+BOARD_TEMPERATURE_CRITICAL_CELSIUS = 104.0
+
+
+def host_verdicts(
+    host: dict[str, float | None],
+    engines_loaded: list[list[str] | None] | None,
+    *,
+    memory_floor_before_load: int,
+    memory_floor_after_load: int,
+    disk_floor: int,
+) -> dict[str, dict[str, Any]]:
+    """Each reading against the limit the project operates by (#2204b): one rule, here, so the
+    console colours what this decides and never re-derives it.
+
+    **Memory** is held to the before-load floor only when every engine was read and none holds a
+    model: that is the floor an engine needs to load. Otherwise the after-load floor applies, so
+    an unread engine never makes a loaded box look short. A reading that is missing is
+    ``unknown``, never ``ok``.
+    """
+    idle = engines_loaded is not None and all(
+        loaded is not None and not loaded for loaded in engines_loaded
+    )
+    memory_floor = memory_floor_before_load if idle else memory_floor_after_load
+    return {
+        "memory": {
+            **_against_floor(host.get("memory_available_bytes"), memory_floor),
+            "floor": "before_load" if idle else "after_load",
+        },
+        "disk": _against_floor(host.get("disk_root_available_bytes"), disk_floor),
+        "board_temperature": {"state": _temperature_state(host.get("temperature_max_celsius"))},
+    }
+
+
+def _against_floor(value: float | None, floor: int) -> dict[str, Any]:
+    state = "unknown" if value is None else ("below_floor" if value < floor else "ok")
+    return {"state": state, "floor_bytes": floor}
+
+
+def _temperature_state(celsius: float | None) -> str:
+    if celsius is None:
+        return "unknown"
+    if celsius >= BOARD_TEMPERATURE_CRITICAL_CELSIUS:
+        return "critical"
+    return "warn" if celsius >= BOARD_TEMPERATURE_WARN_CELSIUS else "ok"
 
 
 def instant_value(body: Any) -> float | None:

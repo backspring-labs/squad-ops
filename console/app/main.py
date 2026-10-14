@@ -405,6 +405,18 @@ async def proxy_health_infra():
     return resp.json()
 
 
+@app.get("/api/health/host")
+async def proxy_health_host():
+    """Proxy the host's reading from runtime-api, for the Systems perspective's Host panel
+    (#2204b)."""
+    resp = await _api_request("GET", "/health/host")
+    if resp.status_code != 200:
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse({"error": "upstream unavailable"}, status_code=resp.status_code)
+    return resp.json()
+
+
 @app.get("/api/health/agents")
 async def proxy_health_agents():
     """Proxy agent health status from runtime-api."""

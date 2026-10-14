@@ -422,6 +422,20 @@ def boot(app: Path, ui_port: int, api_port: int, wait_s: int) -> None:
     raise SystemExit(f"app did not come up within {wait_s}s")
 
 
+def backend_path(path: str, base: str) -> str:
+    """The backend's own path for an endpoint the interface declares (#2234).
+
+    An interface declares its endpoints under its base path (``base_path: /api``, so
+    ``/api/runs``) or under none (``base_path: ""``, so ``/runs``). Either way the app's client
+    calls ``/api/<path>`` through the dev proxy, which strips ``/api``: the scaffold's
+    ``frontend/src/api.js`` and ``vite.config.js`` fix it, and the backend serves its router at the
+    root. So the backend's path is the declared one without the base, whatever the base is.
+    """
+    if base and (path == base or path.startswith(base + "/")):
+        return path[len(base) :] or "/"
+    return path
+
+
 def seed(port: int, requests: list[dict], id_from: str) -> None:
     """Drive the app through its own API. A non-2xx is fatal: a screenshot of a state the
     app refused to enter would be a picture of something that never happened.
@@ -568,15 +582,19 @@ def main() -> int:
     boot(app, args.ui_port, args.api_port, args.wait)
     print(f"app up — ui :{args.ui_port}, api :{args.api_port}")
     try:
-        # Through the UI port, with the interface's client-facing paths: the app's own client
-        # calls its API that way, and the dev proxy strips the base path the backend does not
-        # serve (the 1.8.2 cut's React app: base_path /api, the router at the root — a request
-        # sent straight to the backend's /api/runs was a 404).
+        # Straight to the backend, at its own paths (#2234). The UI port reached it only where the
+        # declared path began with the dev proxy's /api: an interface with no base path declares
+        # /runs, which the UI port answers from the client router, so the 2.2.1 cut's seed was a
+        # 404. And the base path must come off: the backend serves /runs, never /api/runs (the
+        # 1.8.2 cut's 404).
+        base = (manifest.get("api") or {}).get("base_path") or ""
+        id_from = backend_path(args.id_from, base) if args.id_from else ""
         if requests:
-            seed(args.ui_port, requests, args.id_from)
+            backend = [r | {"path": backend_path(r["path"], base)} for r in requests]
+            seed(args.api_port, backend, id_from)
             print(f"seeded {len(requests)} request(s) through the app's own API")
         if args.id_from:
-            ident = first_id(args.ui_port, args.id_from)
+            ident = first_id(args.api_port, id_from)
             route_testids = {r.replace("{id}", ident): t for r, t in route_testids.items()}
             routes = [(r.replace("{id}", ident), label) for r, label in routes]
         assets = RELEASES / f"v{args.version}" / "assets"

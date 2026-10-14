@@ -10,6 +10,7 @@ from squadops.telemetry.llm_metrics import (
     LLM_CALL_SECONDS,
     LLM_COMPLETION_TOKENS,
     LLM_DECODE_TOKENS_PER_SECOND,
+    LLM_HISTOGRAM_BOUNDARIES,
     LLM_LOAD_SECONDS,
     LLM_PREFILL_SECONDS,
     LLM_PROMPT_TOKENS,
@@ -20,9 +21,11 @@ from squadops.telemetry.llm_metrics import (
 class _Recorder:
     def __init__(self) -> None:
         self.observed: list[tuple[str, float, dict[str, str]]] = []
+        self.boundaries: dict[str, tuple[float, ...] | None] = {}
 
-    def histogram(self, name, value, labels=None):
+    def histogram(self, name, value, labels=None, *, boundaries=None):
         self.observed.append((name, value, labels or {}))
+        self.boundaries[name] = boundaries
 
 
 def _usage(**overrides):
@@ -41,7 +44,13 @@ def test_a_call_emits_each_number_once_with_its_labels():
     metrics = _Recorder()
 
     record_llm_call(
-        metrics, _usage(), role="qa", task_type="qa.test", model="qwen3.8:27b", duration_ms=170_000
+        metrics,
+        _usage(),
+        role="qa",
+        task_type="qa.test",
+        model="qwen3.8:27b",
+        engine="ollama",
+        duration_ms=170_000,
     )
 
     assert {name: value for name, value, _ in metrics.observed} == {
@@ -54,9 +63,29 @@ def test_a_call_emits_each_number_once_with_its_labels():
     }
     assert {frozenset(labels.items()) for _, _, labels in metrics.observed} == {
         frozenset(
-            {"role": "qa", "task_type": "qa.test", "model": "qwen3.8:27b", "long": "true"}.items()
+            {
+                "role": "qa",
+                "task_type": "qa.test",
+                "model": "qwen3.8:27b",
+                "engine": "ollama",
+                "long": "true",
+            }.items()
         )
     }
+
+
+def test_each_instrument_is_recorded_on_its_own_ascending_scale():
+    """#2260. Bug caught: an instrument recorded with no boundaries, or with boundaries out of
+    order, which the SDK drops for its defaults: the decode rate back in one 25–50 bucket."""
+    metrics = _Recorder()
+
+    record_llm_call(
+        metrics, _usage(), role="qa", task_type="t", model="m", engine="ollama", duration_ms=1
+    )
+
+    assert metrics.boundaries == LLM_HISTOGRAM_BOUNDARIES
+    for name, bounds in metrics.boundaries.items():
+        assert list(bounds) == sorted(set(bounds)), name
 
 
 @pytest.mark.parametrize(("tokens", "long"), [(999, "false"), (1000, "true"), (None, "false")])
@@ -71,6 +100,7 @@ def test_a_call_is_long_at_a_thousand_completion_tokens(tokens, long):
         role="dev",
         task_type="t",
         model="m",
+        engine="ollama",
         duration_ms=1,
     )
 
@@ -87,6 +117,7 @@ def test_a_value_the_provider_did_not_report_is_not_emitted():
         role="dev",
         task_type="t",
         model="m",
+        engine="ollama",
         duration_ms=1000,
     )
 
@@ -105,6 +136,7 @@ def test_a_value_that_is_not_a_number_is_not_emitted_and_never_raises():
         role="dev",
         task_type="t",
         model="m",
+        engine="ollama",
         duration_ms=None,
     )
 

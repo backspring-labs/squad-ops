@@ -22,8 +22,15 @@ It does three things:
    ones a tracked ``examples/*/campaigns/provenance.yaml`` names (the campaigns SquadOps runs to
    verify itself) created after the previous tag and up to this one. A campaign directory that
    no provenance names is an operator's, or provenance is stale: it is named, never carried.
+
+   **And its engine records** (SIP-0111, #2199): the replay harness's runs under
+   ``var/engine_replay/`` (each arm's every request and stream event, the scores and the gates'
+   reading) and every engine switch under ``var/engine_switch/``. They are named for the day
+   they began, not for a line, so the line's are those whose day falls in its window.
 2. **Scan every line of every file** before anything leaves the box, for:
    - the values of the deploy's secrets: ``secrets/*``, which is what ``secret://`` expands to
+   - TensorFold's API key as the server reads it: its key file holds ``label: key``, so the bare
+     value is searched for as well as the file's whole line
    - secret-named values in the repo's ``.env``
    - secret-named ``SQUADOPS__*`` values in the running containers' environment
    - Langfuse and API key prefixes (``pk-lf-``, ``sk-lf-``, ``sk-``), JWTs, and private keys
@@ -54,7 +61,7 @@ import sys
 import tarfile
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import yaml
@@ -63,9 +70,18 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "scripts" / "dev"))
 from checkouts import main_checkout  # noqa: E402
 
+sys.path.insert(0, str(REPO_ROOT / "scripts" / "dev" / "ops"))
+from engine_switch import KEY_FILE as TENSORFOLD_KEY  # noqa: E402
+from engine_switch import api_key as tensorfold_api_key  # noqa: E402
+
 RECORDS = Path("var") / "verification_sets"
 CAMPAIGNS = Path("var") / "campaigns"
 PROVENANCE = "examples/*/campaigns/provenance.yaml"
+#: SIP-0111's engine records: the replay harness's runs and the engine switches (#2199).
+ENGINE_RECORDS = (Path("var") / "engine_replay", Path("var") / "engine_switch")
+#: An engine record's name begins with the day it began: ``2026-10-12-held-out``, or a switch's
+#: UTC stamp, ``20261012T040023Z-to-ollama.jsonl``.
+_DAY = re.compile(r"(\d{4})-?(\d{2})-?(\d{2})")
 RELEASES = Path("site") / "content" / "releases"
 #: A variable whose NAME says it holds a secret. The value of anything else (a model name, a
 #: URL) appears in records legitimately and would bury a real hit.
@@ -185,6 +201,47 @@ def collect_campaigns(main: Path, tag: str) -> CampaignRecords:
     return CampaignRecords(members, carried, no_outputs, unnamed)
 
 
+@dataclass(frozen=True)
+class EngineRecords:
+    members: list[tuple[str, Path]]
+    carried: list[str]  # the line's entries, as ``var/<dir>/<name>``
+    undated: list[str]  # entries whose name begins with no day: never carried, named
+
+
+def collect_engine_records(main: Path, tag: str) -> EngineRecords:
+    """The line's engine records, ``(name in the tarball, source file)``, sorted.
+
+    An entry belongs to the line when the day its name begins with falls in the line's window,
+    counted in whole days and inclusive at both ends. A replay run is named for its local day and
+    a switch for its UTC stamp, so neither orders against a tag's commit more finely than the day:
+    a record from the day of a tag is carried by both lines, duplicated rather than lost."""
+    entries = [
+        (rel, entry)
+        for rel in ENGINE_RECORDS
+        if (main / rel).is_dir()
+        for entry in sorted((main / rel).iterdir())
+    ]
+    if not entries:
+        return EngineRecords([], [], [])
+    since, until = tag_window(main, tag)
+    members: list[tuple[str, Path]] = []
+    carried: list[str] = []
+    undated: list[str] = []
+    for rel, entry in entries:
+        named = (rel / entry.name).as_posix()
+        day = _DAY.match(entry.name)
+        if day is None:
+            undated.append(named)
+            continue
+        began = date(*map(int, day.groups()))
+        if (since is not None and began < since.date()) or began > until.date():
+            continue
+        files = [entry] if entry.is_file() else sorted(p for p in entry.rglob("*") if p.is_file())
+        carried.append(named)
+        members += [((rel / f.relative_to(main / rel)).as_posix(), f) for f in files]
+    return EngineRecords(members, carried, undated)
+
+
 def _env_secrets(pairs: Iterable[tuple[str, str]], source: str) -> list[Secret]:
     return [
         Secret(f"{source} {key}", value)
@@ -232,6 +289,8 @@ def known_secrets(main: Path, deploy_pairs: Sequence[tuple[str, str]]) -> list[S
     ]
     secrets += _env_secrets(dotenv_pairs(main / ".env"), ".env")
     secrets += _env_secrets(deploy_pairs, "deploy env")
+    if TENSORFOLD_KEY.is_file():
+        secrets.append(Secret("TensorFold's API key", tensorfold_api_key(TENSORFOLD_KEY)))
     return secrets
 
 
@@ -297,6 +356,18 @@ def record_in_package(package: Path, block: dict) -> None:
     package.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
 
 
+def _print_carried(line: str, campaigns: CampaignRecords, engines: EngineRecords) -> None:
+    print(f"campaigns carried: {len(campaigns.carried)} ({', '.join(campaigns.carried) or 'none'})")
+    for cid in campaigns.no_outputs:
+        print(f"  named by provenance for {line}, but no outputs on this box: {cid}")
+    for cid in campaigns.unnamed:
+        print(f"  not carried, named by no provenance.yaml: {cid}")
+    carried = ", ".join(engines.carried) or "none"
+    print(f"engine records carried: {len(engines.carried)} ({carried})")
+    for named in engines.undated:
+        print(f"  not carried, its name begins with no day: {named}")
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
@@ -328,11 +399,14 @@ def main(
     main_path = main_checkout(REPO_ROOT)
     package = main_path / RELEASES / tag / "package.yaml"
     campaigns = collect_campaigns(main_path, tag)
-    members = collect_records(main_path, line, args.archive_root) + campaigns.members
+    engines = collect_engine_records(main_path, tag)
+    members = (
+        collect_records(main_path, line, args.archive_root) + campaigns.members + engines.members
+    )
     if not members:
         print(
-            f"no records named for {line} under {main_path / RECORDS}, and no campaign of the "
-            "line; nothing to attach"
+            f"no records named for {line} under {main_path / RECORDS}, and no campaign or "
+            "engine record of the line; nothing to attach"
         )
         return 1
     secrets, public = split_public(
@@ -352,11 +426,7 @@ def main(
     digest = build_tarball(members, out, top)
     size = out.stat().st_size
     print(f"{len(members)} files from {line} → {out} ({size:,} bytes, sha256 {digest})")
-    print(f"campaigns carried: {len(campaigns.carried)} ({', '.join(campaigns.carried) or 'none'})")
-    for cid in campaigns.no_outputs:
-        print(f"  named by provenance for {line}, but no outputs on this box: {cid}")
-    for cid in campaigns.unnamed:
-        print(f"  not carried, named by no provenance.yaml: {cid}")
+    _print_carried(line, campaigns, engines)
     print(
         f"scanned against {len(secrets) - len(short)} known secret values + {len(PATTERNS)} patterns"
     )
@@ -394,6 +464,7 @@ def main(
             "sha256": digest,
             "files": len(members),
             "campaigns": campaigns.carried,
+            "engine_records": engines.carried,
             "bytes": size,
             "attached_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "scanned": {"secret_values": len(secrets) - len(short), "patterns": list(PATTERNS)},

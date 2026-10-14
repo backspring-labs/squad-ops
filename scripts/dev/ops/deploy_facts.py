@@ -3,7 +3,8 @@
 
     python3 scripts/dev/ops/deploy_facts.py "<recorded_by>" "<source_revision>"
 
-For every running service of this compose project: the image its container runs and that image's
+For every running service of this compose project, and each container the deploy runs outside it
+(``OUTSIDE_COMPOSE``): the image its container runs and that image's
 ``org.opencontainers.image.revision`` label. The runtime API has no Docker access, and a container
 cannot reliably read its own image ID, so this is gathered here and handed to
 ``squadops.api.runtime.record_deploy`` in the runtime image (``record_deploy.sh``).
@@ -19,6 +20,10 @@ import subprocess
 import sys
 
 REVISION_LABEL = "org.opencontainers.image.revision"
+#: The containers a deploy runs outside its compose project, by the service name its record gives
+#: each. TensorFold is started by the engine switch from a pinned recipe (SIP-0111 §5.6), and while
+#: it runs it is the engine that serves, so a record without it misdescribes the deploy (#2284).
+OUTSIDE_COMPOSE = {"tensorfold": "squadops-tensorfold"}
 
 
 def _docker(*args: str) -> str:
@@ -26,15 +31,21 @@ def _docker(*args: str) -> str:
 
 
 def running_services() -> list[tuple[str, str]]:
-    """``(service, container_id)`` for each running service. ``docker compose ps`` prints a JSON
-    array on older Compose releases and one JSON object per line on newer ones."""
+    """``(service, container_id)`` for each running service, compose's and ``OUTSIDE_COMPOSE``'s.
+    ``docker compose ps`` prints a JSON array on older Compose releases and one JSON object per
+    line on newer ones."""
     out = _docker("compose", "ps", "--format", "json").strip()
     rows = (
         json.loads(out)
         if out.startswith("[")
         else [json.loads(line) for line in out.splitlines() if line]
     )
-    return [(r["Service"], r["ID"]) for r in rows if r.get("State") == "running"]
+    services = [(r["Service"], r["ID"]) for r in rows if r.get("State") == "running"]
+    for service, name in OUTSIDE_COMPOSE.items():
+        # `ps` prints nothing for a container that is stopped or absent, where `inspect` fails.
+        found = _docker("ps", "--filter", f"name=^{name}$", "--format", "{{.ID}}").split()
+        services += [(service, container) for container in found]
+    return services
 
 
 def facts(
