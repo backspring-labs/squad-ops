@@ -7,6 +7,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -31,9 +32,28 @@ RECIPE = {
 }
 
 
+_RECORD_DEPLOY = es.record_deploy
+
+
 @pytest.fixture
 def rec(tmp_path):
     return es.Record(tmp_path / "switch.jsonl")
+
+
+@pytest.fixture(autouse=True)
+def recorded(monkeypatch):
+    """No test writes a real deploy record: ``main`` records after every completed switch and
+    restoration (#2284), and the real recorder runs docker in the main checkout. The commands it
+    was asked to record are kept, and a test sets ``ok`` to make the record fail."""
+    asked = SimpleNamespace(commands=[], ok=True)
+
+    def fake(rec, command):
+        asked.commands.append(command)
+        rec.write("deploy_recorded" if asked.ok else "deploy_record_failed")
+        return asked.ok
+
+    monkeypatch.setattr(es, "record_deploy", fake)
+    return asked
 
 
 class _Resp:
@@ -114,7 +134,7 @@ def test_the_release_is_not_confirmed_while_anything_holds_the_gpu(monkeypatch, 
         es.wait_released(rec, "released_for_tensorfold", timeout=0)
 
 
-def test_a_failed_switch_restores_ollama_and_says_so(monkeypatch, tmp_path):
+def test_a_failed_switch_restores_ollama_and_says_so(monkeypatch, tmp_path, recorded):
     """Entered at ``main``, as the overnight driver runs it. Bug caught: a switch that fails after Ollama was
     stopped and leaves the box with no engine, or restores without recording that it failed."""
     monkeypatch.setattr(es, "RECORDS", tmp_path)
@@ -134,10 +154,11 @@ def test_a_failed_switch_restores_ollama_and_says_so(monkeypatch, tmp_path):
     (record,) = tmp_path.glob("*.jsonl")
     steps = [json.loads(line)["step"] for line in record.read_text().splitlines()]
     assert calls == ["to_tensorfold", "to_ollama"]
-    assert steps == ["failed", "restored"]
+    assert steps == ["failed", "restored", "deploy_recorded"]
+    assert recorded.commands == ["to-ollama (restoration)"]
 
 
-def test_a_restoration_that_fails_is_reported_loudly(monkeypatch, tmp_path):
+def test_a_restoration_that_fails_is_reported_loudly(monkeypatch, tmp_path, recorded):
     monkeypatch.setattr(es, "RECORDS", tmp_path)
     monkeypatch.setattr(
         es.sys, "argv", ["engine_switch.py", "to-tensorfold", str(tmp_path / "r.yaml")]
@@ -155,6 +176,92 @@ def test_a_restoration_that_fails_is_reported_loudly(monkeypatch, tmp_path):
         "failed",
         "RESTORATION_FAILED",
     ]
+    assert recorded.commands == []  # no engine is known to serve: nothing true to record
+
+
+# --- the deploy record (#2284) ---------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("argv", "direction"),
+    [(["to-tensorfold", "r.yaml"], "to_tensorfold"), (["to-ollama"], "to_ollama")],
+    ids=["to-tensorfold", "to-ollama"],
+)
+@pytest.mark.parametrize(("ok", "code"), [(True, 0), (False, 4)], ids=["recorded", "unrecorded"])
+def test_a_completed_switch_records_the_deploy_it_leaves(
+    monkeypatch, tmp_path, recorded, argv, direction, ok, code
+):
+    """Entered at ``main``, as bootstrap and the operator run it. Bug caught: a switch that moves
+    the engine and every client and leaves the rebuild's record describing the engine it stopped
+    (dep_18acaffab259 said Ollama while TensorFold served); or a record that could not be written
+    read as a clean switch."""
+    monkeypatch.setattr(es, "RECORDS", tmp_path)
+    monkeypatch.setattr(es.sys, "argv", ["engine_switch.py", *argv])
+    monkeypatch.setattr(es, "box_work", lambda: [])
+    monkeypatch.setattr(es, direction, lambda *a: None)
+    recorded.ok = ok
+
+    assert es.main() == code
+    assert recorded.commands == [argv[0]]
+    (record,) = tmp_path.glob("*.jsonl")
+    assert [json.loads(line)["step"] for line in record.read_text().splitlines()] == [
+        "deploy_recorded" if ok else "deploy_record_failed",
+        "done",
+    ]
+
+
+def _labelled(label: str):
+    return lambda *cmd, check=True, timeout=120: subprocess.CompletedProcess(
+        cmd, 0, label + "\n", ""
+    )
+
+
+@pytest.mark.parametrize(
+    ("label", "revision"), [("e899a6c4", "e899a6c4"), ("<no value>", "")], ids=["label", "none"]
+)
+def test_the_record_carries_the_deploys_own_revision_and_names_the_switch(
+    monkeypatch, rec, label, revision
+):
+    """Bug caught: the record stamped with the checkout's hash, which a switch did not build; a
+    runtime image without the label recorded with the revision ``<no value>``; or the record not
+    saying a switch wrote it."""
+    asked = []
+
+    def recorder(cmd, **kw):
+        asked.append((cmd[1], kw["env"]["SOURCE_HASH"], kw["cwd"]))
+        return subprocess.CompletedProcess(cmd, 0, "deploy record dep_x: 25 services\n", "")
+
+    monkeypatch.setattr(es, "run", _labelled(label))
+    monkeypatch.setattr(es.subprocess, "run", recorder)
+
+    assert _RECORD_DEPLOY(rec, "to-tensorfold") is True
+    assert asked == [("engine_switch.py to-tensorfold", revision, es.MAIN)]
+    assert _steps(rec) == ["deploy_recorded"]
+
+
+def _refused(cmd, **kw):
+    return subprocess.CompletedProcess(cmd, 1, "", "record_deploy: refused: no services")
+
+
+def _absent(cmd, **kw):
+    raise FileNotFoundError("record_deploy.sh")
+
+
+@pytest.mark.parametrize(
+    ("recorder", "said"),
+    [(_refused, "refused: no services"), (_absent, "record_deploy.sh")],
+    ids=["refused", "absent"],
+)
+def test_a_record_that_fails_is_a_step_never_an_exception(monkeypatch, rec, recorder, said):
+    """Bug caught: the recorder's failure raised out of a switch that had completed, so the
+    caller restored Ollama over a working TensorFold; or it was swallowed with nothing written."""
+    monkeypatch.setattr(es, "run", _labelled("e899a6c4"))
+    monkeypatch.setattr(es.subprocess, "run", recorder)
+
+    assert _RECORD_DEPLOY(rec, "to-ollama") is False
+    (line,) = [json.loads(x) for x in rec.path.read_text().splitlines()]
+    assert line["step"] == "deploy_record_failed"
+    assert said in line["error"]
 
 
 # --- the clients (§5.6 step 7, the owner's ruling of 2026-10-13) ----------------------------------

@@ -6,7 +6,9 @@ Each test answers: "What bug would this catch?"
 from __future__ import annotations
 
 import pytest
+import yaml
 
+import squadops.bootstrap.setup.profile as profile_mod
 from squadops.bootstrap.setup.profile import (
     BootstrapProfile,
     BootstrapProfileError,
@@ -590,24 +592,49 @@ _PROVISIONAL = "infra/tensorfold/recipes/qwen27b-mlx4.yaml"
 
 
 @pytest.mark.parametrize(
-    ("block", "engine", "recipe"),
+    ("block", "read"),
     [
-        (None, None, None),
-        ({"engine": "ollama"}, "ollama", None),
-        ({"engine": "tensorfold", "recipe": _FROZEN}, "tensorfold", _FROZEN),
+        (None, None),
+        ({"engine": "ollama"}, ("ollama", None, None)),
+        (
+            {"engine": "tensorfold", "recipe": _FROZEN},
+            ("tensorfold", _FROZEN, "qwen3.8-27b-tf-nvfp4"),
+        ),
     ],
     ids=["absent: Ollama as before", "ollama", "tensorfold on a frozen recipe"],
 )
 def test_the_inference_engine_is_read_from_the_profile(
-    tmp_profile_dir, write_profile, minimal_profile_data, block, engine, recipe
+    tmp_profile_dir, write_profile, minimal_profile_data, block, read
 ):
+    """The served id is the recipe's own, which doctor's squad check reads (#2229)."""
     if block is not None:
         minimal_profile_data["inference_engine"] = block
     write_profile("engine", minimal_profile_data)
 
     declared = load_bootstrap_profile("engine", profiles_dir=tmp_profile_dir).inference_engine
 
-    assert (declared and declared.engine, declared and declared.recipe) == (engine, recipe)
+    assert (declared and (declared.engine, declared.recipe, declared.served_id)) == read
+
+
+def test_a_frozen_recipe_that_names_no_served_id_is_refused(
+    tmp_path, minimal_profile_data, monkeypatch
+):
+    """Bug caught: a TensorFold profile accepted with no served id, so doctor checks the squad
+    against nothing and every model reads as missing, or as available."""
+    profiles = tmp_path / "config" / "profiles" / "bootstrap"
+    recipes = tmp_path / "infra" / "tensorfold" / "recipes"
+    profiles.mkdir(parents=True)
+    recipes.mkdir(parents=True)
+    (recipes / "bare.yaml").write_text("status: frozen 2026-10-13\nname: bare\n")
+    monkeypatch.setattr(profile_mod, "_BOOTSTRAP_PROFILES_DIR", profiles)
+    minimal_profile_data["inference_engine"] = {
+        "engine": "tensorfold",
+        "recipe": "infra/tensorfold/recipes/bare.yaml",
+    }
+    (profiles / "engine.yaml").write_text(yaml.safe_dump(minimal_profile_data))
+
+    with pytest.raises(BootstrapProfileError, match="names no served_id"):
+        load_bootstrap_profile("engine", profiles_dir=profiles)
 
 
 @pytest.mark.parametrize(

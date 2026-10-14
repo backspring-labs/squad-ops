@@ -121,7 +121,7 @@ Placed by the owner's Q1 ruling (2026-10-09). The rows are ordered as the work r
 | G2: the adapter, dark, with the port amendments, registry entries, the overlay and parity tests (§5) | **shipped** | 2.3.0, #2268 (the port's controls, §9f), #2269 (the adapter, §9g) and #2270 (the clients' switch, overlay and key, §9h), closing #2200: the live tier passed on the Spark on 2026-10-13, the switch to TensorFold and back with the clients and an in-agent generation each way (#2200 issuecomment-6146480456) |
 | G3: the selected candidate's uncounted cycle A/B on both stacks, compared on wall-clock, task times, retries, correction rounds and verdicts (§9a item 6) | **shipped** | 2.3.0, #2282 (the record, `docs/plans/verification-sets/2-3-0-tensorfold-g3-record.md`): every roll accepted on both arms; TensorFold's median cycle 0.45 of Ollama's on FastAPI+React and 0.61 on Next.js; two predictions falsified as registered (decode on every task type, and volume), the rest held; its arm held one planning draw per stack, not two (§9j) |
 | a seed on every TensorFold call, G3's finding (§9j) | **shipped** | 2.3.0, #2283, closing #2281 |
-| G4: cutover | **placed** | 2.3.0, #2229: adopted by the owner on G3's evidence on 2026-10-13 (§9j). The cutover follows the seed fix, before the 2.3 cut set (the 2.3 plan's D4) |
+| G4: cutover | **shipped** | 2.3.0, #2285, closing #2229 and #2284 (the switch records the deploy, §9k): adopted by the owner on G3's evidence on 2026-10-13 (§9j). The Spark serves on TensorFold from 2026-10-13 20:01 ET (dep_1724f586cc3a), and its cutover pair passed (§9k) |
 | a second candidate, Qwen3.8-Flash-Next on TensorFold, on its own gate path: screening, its own recipe, G0 and G1 (§9a) | **placed** | 2.4.0, #2230: moved from 2.3 by the owner on 2026-10-12 ("skip to next release"). Not measured in 2.3, which is not a negative |
 
 **What closes this SIP:** G4 decided (adopted, or parked with its record), with each earlier row shipped or its negative
@@ -975,3 +975,49 @@ production switch, and the cut set on `full-38-tf`.
 **Who ruled it.** The owner, on 2026-10-13. Asked whether to switch production to TensorFold, with the supervisor
 recommending this fix land first, the owner answered "1, yes". Asked to approve the fix's shape, as written above, the
 owner answered "2, yes".
+
+### 9k. G4: the cutover, as run (2026-10-13, with #2229's cutover PR)
+
+**What changed.** The owner adopted TensorFold at G4 (§9j). §9i left four parts to this PR: `local-spark` on
+TensorFold, the production switch, the cut set on `full-38-tf`, and the G4 row. The switch found a fifth.
+- **The production switch ran on 2026-10-13 at 20:01 ET.** The deploy had been rebuilt from `e899a6c4` (the seed
+  fix included) as dep_18acaffab259, with 73 of 73 loaded checks answering. `to-tensorfold` took 26.9 s, with the
+  nine model clients moved and a generation through the deployed adapter. The deploy's `.env` records TensorFold.
+- **The switch now records the deploy it leaves** (#2284, found by this switch):
+  - **The defect:** the rebuild's record went on saying Ollama served, and `verify_loaded.py` read Ollama as
+    recorded but not running. So every cycle launched afterwards would have carried a record naming the engine it
+    did not run on.
+  - **`deploy_facts.py`** reads TensorFold's container, which runs outside compose, as the service `tensorfold`.
+  - **Each completed switch and each restoration records the deploy,** with the deploy's own revision from the
+    runtime image's label. A switch that completed but could not record exits 4.
+  - **On this deploy,** the record was written by hand with the fixed facts: dep_1724f586cc3a, which names
+    `tensorfold` (its image at TensorFold's commit `cb2ebf05`) and no `ollama`. The deploy check reads it as
+    describing what runs.
+- **`local-spark` serves on TensorFold:** the frozen NVFP4 recipe and the squad `full-38-tf`. A fresh box installs the
+  recipe and switches last (§9i).
+- **`doctor` checks the squad against the engine's models.** The engine block carries the recipe's `served_id`, and
+  on TensorFold the squad check reads it, since the adapter serves no other model (§5.3).
+- **The cut set runs on `full-38-tf`.** Its configurations come with its pre-registration, in the 2.3 plan's phase 9.
+- **Two loaded checks**, which the old code fails: `2229-quiet` (§9i's launch-gate reading) and `2281` (§9j's seed).
+
+**The evidence: the cutover pair** (`2-3-0-cutover-regression-tensorfold-fastapi-react.yaml`). It is two uncounted
+shakeouts of one FastAPI+React request on `full-38-tf`, with what they must show stated before the first launch.
+- **Both cycles completed accepted, and the boot check passed on both,** each app declaring three routes:
+  - `cyc_af79e6520ae6`: 27.6 min, 20 of 20 criteria, one correction round. A QA test was itself wrong
+    (`test_leave_run_empty_name_rejected`), classified a work-product defect, and patched.
+  - `cyc_a21e10ff8fde`: 25.1 min, 21 of 21 criteria, no rounds.
+- **The seed is live:**
+  - each of the pair's 37 calls named its seed, and none repeated;
+  - the first call, the data agent's research context, sent the same 4,247-token prompt in both cycles and answered
+    with 4,447 and 4,885 completion tokens;
+  - G3's two TensorFold React rolls had both answered that prompt with 6,129;
+  - the cycles diverge from that first call on.
+- **Every call ended `stop`,** each launch found the engine idle, and both cycles carry dep_1724f586cc3a.
+- **The box:**
+  - `MemAvailable` stayed at 70.3 GiB or more, with no swap;
+  - the memory watchdog ran throughout, started by hand as for G3, and never acted;
+  - the board peaked at 90.4 °C while the branch's test suite ran on the box during the first cycle, and at
+    84.1 °C outside that window (G3's TensorFold range was 81.2–85.0).
+
+**Who ruled it.** The owner, on 2026-10-13: G4 adopted ("1, yes", §9j). The design of each part is proposed in this
+PR, and the owner rules it with the merge, as §9i's were.

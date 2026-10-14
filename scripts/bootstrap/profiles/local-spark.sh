@@ -84,5 +84,5 @@ run_bootstrap() {
     # ── The inference engine (SIP-0111) ─────────────────────────────
     # Last, with every service up and the Ollama models pulled: Ollama is the rollback.
     select_inference_engine "config/profiles/bootstrap/local-spark.yaml" \
-        || warn "The switch to TensorFold failed and restored Ollama — see var/engine_switch/"
+        || warn "The switch to TensorFold did not complete cleanly (it restores Ollama on failure) — see var/engine_switch/"
 }

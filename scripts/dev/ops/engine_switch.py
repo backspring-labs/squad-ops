@@ -23,6 +23,11 @@ The steps (§5.6):
    switch back recreates them without it. A restoration moves them back too, whatever step failed.
 
 Every step is a JSON line in the record (``var/engine_switch/<utc>.jsonl`` under the main checkout).
+
+A switch that completes, and a restoration, then write a deploy record of what runs
+(``record_deploy.sh``, #2284): the engine and every model client changed, so the rebuild's record no
+longer describes the deploy. A switch that completed but could not record exits 4, so the stale
+record is never silent.
 """
 
 from __future__ import annotations
@@ -63,6 +68,9 @@ TF_ALIAS = "tensorfold"
 SQUADNET = "squadnet"
 #: The agent the clients' generation runs from: one container, through the deployed adapter.
 PROBE_AGENT = "squadops-max"
+#: Its image carries the revision the deploy was built from (``rebuild_and_deploy.sh``).
+RUNTIME_CONTAINER = "squadops-runtime-api"
+REVISION_LABEL = "org.opencontainers.image.revision"
 
 #: SIP-0111 §5.6 (Q7): the floors, as squadops.campaigns.box defines them.
 GIB = 2**30
@@ -548,6 +556,43 @@ def switch_clients(rec: Record, engine: str, model: str) -> None:
     rec.write("clients_healthy", engine=engine, generation_s=round(time.monotonic() - t0, 1))
 
 
+def record_deploy(rec: Record, command: str) -> bool:
+    """A deploy record of what runs now (#2284), through the rebuild's own recorder. Its source
+    revision is the deploy's, read from the runtime image's label: a switch builds nothing, and the
+    checkout may have moved since the images were built. Never raises: an engine that switched
+    stays switched, and the caller reports the stale record."""
+    revision = ""
+    try:
+        label = run(
+            "docker",
+            "inspect",
+            "-f",
+            f'{{{{index .Config.Labels "{REVISION_LABEL}"}}}}',
+            RUNTIME_CONTAINER,
+            check=False,
+        ).stdout.strip()
+        revision = "" if label in ("", "<no value>") else label
+        proc = subprocess.run(
+            [
+                str(MAIN / "scripts" / "dev" / "ops" / "record_deploy.sh"),
+                f"engine_switch.py {command}",
+            ],
+            cwd=MAIN,
+            capture_output=True,
+            text=True,
+            timeout=300,
+            env={**os.environ, "SOURCE_HASH": revision},
+        )
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        rec.write("deploy_record_failed", error=str(exc)[:300])
+        return False
+    if proc.returncode != 0:
+        rec.write("deploy_record_failed", error=(proc.stderr or proc.stdout).strip()[-300:])
+        return False
+    rec.write("deploy_recorded", source_revision=revision or None, said=proc.stdout.strip()[-300:])
+    return True
+
+
 # --- the switch -----------------------------------------------------------------------------------
 
 
@@ -626,8 +671,9 @@ def main() -> int:
             to_ollama(rec)
         else:
             to_tensorfold(rec, args.recipe, args.ready_timeout)
+        recorded = record_deploy(rec, args.command)
         rec.write("done", command=args.command)
-        return 0
+        return 0 if recorded else 4
     except (SwitchFailed, httpx.HTTPError, subprocess.TimeoutExpired, OSError, ValueError) as exc:
         rec.write("failed", error=str(exc)[:500])
         if args.command == "to-tensorfold":
@@ -637,6 +683,7 @@ def main() -> int:
             except Exception as restore_exc:  # noqa: BLE001 — say so loudly; nothing is left running
                 rec.write("RESTORATION_FAILED", error=str(restore_exc)[:500])
                 return 3
+            record_deploy(rec, "to-ollama (restoration)")
         return 2
 
 

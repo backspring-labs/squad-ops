@@ -116,10 +116,14 @@ class InferenceEngine:
     Absent means Ollama, as every profile ran before the cutover. ``tensorfold`` names the frozen
     recipe bootstrap installs (``tensorfold_install.py``) and switches to once the services are up
     (``engine_switch.py to-tensorfold``). Ollama stays installed beside it, stopped: it is the
-    rollback, and the switch back needs nothing installed."""
+    rollback, and the switch back needs nothing installed.
+
+    ``served_id`` is the recipe's: the one model a TensorFold deploy serves, since the adapter
+    refuses any other (SIP-0111 §5.3). Doctor's squad check reads it (#2229)."""
 
     engine: str
     recipe: str | None = None
+    served_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -235,10 +239,12 @@ def _validate_inference_engine(raw: dict | None) -> InferenceEngine | None:
     path = _BOOTSTRAP_PROFILES_DIR.parents[2] / str(recipe)
     if not path.is_file():
         raise BootstrapProfileError(f"inference_engine: recipe {recipe} does not exist")
-    status = str((yaml.safe_load(path.read_text()) or {}).get("status", ""))
-    if not status.startswith("frozen"):
+    doc = yaml.safe_load(path.read_text()) or {}
+    if not str(doc.get("status", "")).startswith("frozen"):
         raise BootstrapProfileError(f"inference_engine: recipe {recipe} is not frozen")
-    return InferenceEngine(engine, str(recipe))
+    if not doc.get("served_id"):
+        raise BootstrapProfileError(f"inference_engine: recipe {recipe} names no served_id")
+    return InferenceEngine(engine, str(recipe), str(doc["served_id"]))
 
 
 def _validate_memory_containment(raw: dict | None) -> MemoryContainment | None:
