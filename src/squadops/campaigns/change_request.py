@@ -516,7 +516,9 @@ def validate_proposal(authored: dict, context: ProposalContext) -> ProposalVerdi
     refusals.extend(_surface_refusals(request, candidate))
     if footprint_product_files(footprint):
         # With nothing to build, ``nothing_to_build`` above already names the cause.
-        refusals.extend(_unbuildable_surface_refusals(request, candidate, footprint))
+        refusals.extend(
+            _unbuildable_surface_refusals(request, context.baseline_manifest, candidate, footprint)
+        )
     if refusals:
         return ProposalVerdict(None, tuple(refusals), candidate)
     final = dataclasses.replace(request, footprint=footprint)
@@ -589,7 +591,7 @@ def _undefined_key_refusals(request: ChangeRequest) -> list[ProposalRefusal]:
 
 
 def _unbuildable_surface_refusals(
-    request: ChangeRequest, candidate: str, footprint: tuple[str, ...]
+    request: ChangeRequest, baseline: str, candidate: str, footprint: tuple[str, ...]
 ) -> list[ProposalRefusal]:
     """#2205: an endpoint criterion whose serving file the delta leaves alone cannot be met. The
     build may write only inside the footprint (``write_authorization``, and the plan gate), so
@@ -597,22 +599,31 @@ def _unbuildable_surface_refusals(
     own ``endpoint_owners``, the relation every repair aims by.
 
     Client-route criteria are not checked: a view's behaviour can be served by the endpoints it
-    calls, so a view outside the footprint does not show the criterion unbuildable."""
+    calls, so a view outside the footprint does not show the criterion unbuildable.
+
+    Nor is an endpoint that declares an error code whose contract the delta changes (gap 3): the
+    frozen error module renders that code's status and declared message, and the scaffold
+    regenerates it from the candidate manifest, so the change is built outside the serving
+    file."""
     from squadops.capabilities.scaffold import InterfaceManifest
     from squadops.capabilities.scaffold_contract import emit_contract_dict
     from squadops.cycles.acceptance_check_spec import parse_method_path
     from squadops.cycles.verification_contract import VerificationContract
 
-    owners = VerificationContract.from_dict(
-        emit_contract_dict(InterfaceManifest.from_yaml(candidate))
-    ).endpoint_owners()
+    before, after = InterfaceManifest.from_yaml(baseline), InterfaceManifest.from_yaml(candidate)
+    owners = VerificationContract.from_dict(emit_contract_dict(after)).endpoint_owners()
+    rewritten = _error_codes_changed(before, after)
+    errors_of = {f"{ep.method} {ep.path}": set(ep.errors) for ep in after.api.endpoints}
     buildable = set(footprint_product_files(footprint))
     refusals = []
     for c in request.criteria:
         if c.surface_kind is not SurfaceKind.ENDPOINT:
             continue
         parsed = parse_method_path(c.surface)
-        owner = owners.get(f"{parsed[0]} {parsed[1]}") if parsed else None
+        surface = f"{parsed[0]} {parsed[1]}" if parsed else ""
+        if errors_of.get(surface, set()) & rewritten:
+            continue
+        owner = owners.get(surface)
         if owner and owner not in buildable:
             refusals.append(
                 ProposalRefusal(
@@ -624,6 +635,18 @@ def _unbuildable_surface_refusals(
                 )
             )
     return refusals
+
+
+def _error_codes_changed(before: Any, after: Any) -> set[str]:
+    """The error codes whose contract entry (status or declared message) differs between the two
+    manifests, an added or removed code included."""
+
+    def entries(manifest: Any) -> dict[str, tuple[int, str | None]]:
+        contract = manifest.api.error_contract
+        return {c.code: (c.http, c.message) for c in (contract.codes if contract else ())}
+
+    old, new = entries(before), entries(after)
+    return {code for code in old.keys() | new.keys() if old.get(code) != new.get(code)}
 
 
 def _surface_refusals(request: ChangeRequest, candidate: str) -> list[ProposalRefusal]:

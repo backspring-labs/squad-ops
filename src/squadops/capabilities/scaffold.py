@@ -190,6 +190,11 @@ class Endpoint:
 class ErrorCode:
     code: str
     http: int
+    #: #2205 gap 3 (the owner's ruling, 2026-10-14): the contract may declare an error's message
+    #: text. The frozen error module then renders it word for word, whatever message the raise
+    #: passes, so every later increment keeps it until a change declares another. ``None``: the
+    #: raise's own message, as before.
+    message: str | None = None
 
 
 @dataclass(frozen=True)
@@ -508,8 +513,12 @@ class InterfaceManifest:
                 "error_contract": (
                     {
                         "shape": self.api.error_contract.shape,
+                        # A declared message is written only when there is one, so a manifest
+                        # that declares none hashes as it did before #2205.
                         "codes": [
-                            {"code": c.code, "http": c.http} for c in self.api.error_contract.codes
+                            {"code": c.code, "http": c.http}
+                            | ({"message": c.message} if c.message is not None else {})
+                            for c in self.api.error_contract.codes
                         ],
                     }
                     if self.api.error_contract
@@ -755,7 +764,15 @@ def _parse_api(raw: dict[str, Any]) -> Api:
     error_contract = None
     if ec_raw:
         codes = tuple(
-            ErrorCode(code=str(code), http=int((spec or {}).get("http", 400)))
+            ErrorCode(
+                code=str(code),
+                http=int((spec or {}).get("http", 400)),
+                message=(
+                    str((spec or {})["message"])
+                    if (spec or {}).get("message") is not None
+                    else None
+                ),
+            )
             for code, spec in (ec_raw.get("codes", {}) or {}).items()
         )
         error_contract = ErrorContract(shape=str(ec_raw.get("shape", "")), codes=codes)
@@ -1017,6 +1034,15 @@ def error_seam_for(stack: str) -> ErrorSeam | None:
     return known.error_seam if known else None
 
 
+def declared_error_messages(manifest: InterfaceManifest | None) -> dict[str, str]:
+    """Each error code's declared message, by code (#2205 gap 3): what the frozen error module
+    renders and the derived probes assert. Empty when the contract declares none."""
+    contract = manifest.api.error_contract if manifest is not None else None
+    return {
+        c.code: c.message for c in (contract.codes if contract else ()) if c.message is not None
+    }
+
+
 class ConventionKind(StrEnum):
     """A rule a stack's frozen bytes decide, told to a campaign proposal (#1962). Each kind names
     its prose asset, ``request.proposal_convention_<kind>``: the data is the stack's, the words are
@@ -1132,6 +1158,18 @@ def error_seam_instructions(manifest: InterfaceManifest | None) -> list[str]:
             f"HTTP status and renders the pinned envelope"
         ),
         f"valid error codes (code → HTTP status, mapped by frozen `{seam.module}`): {code_map}",
+    ] + _declared_message_instructions(manifest, seam)
+
+
+def _declared_message_instructions(manifest: InterfaceManifest, seam: ErrorSeam) -> list[str]:
+    """#2205 gap 3: a declared message is the contract's, so a repair never rewords it."""
+    messages = declared_error_messages(manifest)
+    if not messages:
+        return []
+    shown = ", ".join(f"`{code}` → {text!r}" for code, text in messages.items())
+    return [
+        f"declared error messages, rendered word for word by frozen `{seam.module}` whatever "
+        f"message the raise passes: {shown}"
     ]
 
 

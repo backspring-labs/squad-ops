@@ -518,6 +518,13 @@ def evaluate_expectations(expect: Mapping[str, Any], status_code: int, payload: 
         if actual != error_code:
             return f"error_code {actual!r} != expected {error_code!r}"
 
+    # #2205 gap 3: a message the error contract declares is asserted word for word.
+    error_message = expect.get("error_message")
+    if error_message is not None:
+        actual = _error_message_of(payload)
+        if actual != error_message:
+            return f"error message {actual!r} != expected {error_message!r}"
+
     ordered_by = expect.get("ordered_by")
     if ordered_by:
         return _order_failure(payload, str(ordered_by.get("field")), ordered_by.get("direction"))
@@ -632,6 +639,13 @@ def _has_key(payload: Any, key: str) -> bool:
     if isinstance(payload, list):
         return all(isinstance(item, dict) and key in item for item in payload)
     return False
+
+
+def _error_message_of(payload: Any) -> Any:
+    """Read the ``message`` from the pinned error envelope ``{"error": {"message": …}}``."""
+    if isinstance(payload, dict) and isinstance(payload.get("error"), dict):
+        return payload["error"].get("message")
+    return None
 
 
 def _error_code_of(payload: Any) -> Any:

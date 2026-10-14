@@ -28,6 +28,7 @@ _ENDPOINT = {
 _ROUTE = {"path": "/things", "view": "ThingsView", "purpose": "list things", "testids": ["things"]}
 _SHAPE = {"required": ["name"], "optional": ["note"], "values": {"kind": ["a", "b"]}}
 _FIELD = {"name": "kind", "type": "str", "required": False, "generated": True, "default": "a"}
+_CODE = {"http": 422, "message": "That thing is not valid."}
 
 
 def _manifest() -> InterfaceManifest:
@@ -43,7 +44,7 @@ def _manifest() -> InterfaceManifest:
                 "endpoints": [_ENDPOINT],
                 "error_contract": {
                     "shape": "envelope",
-                    "codes": {"validation_error": {"http": 422}},
+                    "codes": {"validation_error": _CODE},
                 },
             },
             "frontend": {"routes": [_ROUTE]},
@@ -62,7 +63,7 @@ def test_each_declared_key_is_one_the_parser_reads():
         "entity_field": {
             k for k in _FIELD if k == "name" or getattr(field, k) != {"required": True}.get(k)
         },
-        "error_code": {"http"} if m.api.error_contract.codes[0].http == 422 else set(),
+        "error_code": {k for k in _CODE if getattr(m.api.error_contract.codes[0], k) == _CODE[k]},
         "entity": {"name", "fields"} if m.entities[0].fields else set(),
     }
     assert read == {k: set(v) for k, v in MANIFEST_ELEMENT_KEYS.items()}

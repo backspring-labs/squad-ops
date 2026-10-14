@@ -299,7 +299,7 @@ from fastapi.responses import JSONResponse
 
 # code -> HTTP status, generated from the manifest error_contract.
 _ERROR_STATUS: dict[str, int] = __STATUS_MAP__
-
+__MESSAGE_MAP__
 
 class ApiError(Exception):
     """Raise from a route body to emit the pinned {"error": {...}} envelope."""
@@ -307,7 +307,7 @@ class ApiError(Exception):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
         self.code = code
-        self.message = message
+        self.message = __MESSAGE__
         self.status_code = _ERROR_STATUS.get(code, 400)
 
 
@@ -324,7 +324,7 @@ async def _validation_error_handler(
 ) -> JSONResponse:
     return JSONResponse(
         status_code=_ERROR_STATUS.get("validation_error", 422),
-        content=_envelope("validation_error", "request validation failed"),
+        content=_envelope("validation_error", __VALIDATION_MESSAGE__),
     )
 
 
@@ -342,7 +342,27 @@ def _errors_source(manifest: InterfaceManifest) -> str:
         status_map = "{\n" + entries + "\n}"
     else:
         status_map = "{}"
-    return _ERRORS_PY.replace("__STATUS_MAP__", status_map)
+    # #2205 gap 3: a declared message is the contract's, rendered whatever the raise passes. A
+    # contract that declares none emits the module byte for byte as before.
+    messages = {c.code: c.message for c in codes if c.message is not None}
+    if messages:
+        entries = "\n".join(f"    {code!r}: {text!r}," for code, text in messages.items())
+        message_map = (
+            "# code -> message, declared in the manifest error_contract: rendered word for word.\n"
+            "_ERROR_MESSAGE: dict[str, str] = {\n" + entries + "\n}\n"
+        )
+        message, validation = (
+            "_ERROR_MESSAGE.get(code, message)",
+            '_ERROR_MESSAGE.get("validation_error", "request validation failed")',
+        )
+    else:
+        message_map, message, validation = "", "message", '"request validation failed"'
+    return (
+        _ERRORS_PY.replace("__STATUS_MAP__", status_map)
+        .replace("__MESSAGE_MAP__", message_map)
+        .replace("__MESSAGE__", message)
+        .replace("__VALIDATION_MESSAGE__", validation)
+    )
 
 
 _MAIN_PY = '''"""FastAPI application entry point — scaffold-owned invariant bootstrap.

@@ -520,12 +520,24 @@ def _errors_source(manifest: Any) -> str:
     contract = getattr(manifest.api, "error_contract", None)
     codes = list(getattr(contract, "codes", ()) or ()) if contract else []
     mapping = ",\n".join(f"  {c.code}: {c.http}" for c in codes)
+    # #2205 gap 3: a declared message is the contract's, rendered whatever the throw passes. A
+    # contract that declares none emits the module byte for byte as before.
+    messages = {c.code: c.message for c in codes if getattr(c, "message", None) is not None}
+    message_map = ""
+    message = "err instanceof ApiError ? err.message : ''"
+    if messages:
+        entries = ",\n".join(f"  {code}: {json.dumps(text)}" for code, text in messages.items())
+        message_map = (
+            "\n// code→message, declared in the manifest's error contract: rendered word for word.\n"
+            "export const ERROR_MESSAGE: Record<string, string> = {\n" + entries + "\n}\n"
+        )
+        message = f"ERROR_MESSAGE[code] ?? ({message})"
     return f"""// Error envelope and code→status map, derived from the manifest's error contract.
 // Frozen: a route that invents its own envelope breaks every probe that asserts on it.
 export const ERROR_STATUS: Record<string, number> = {{
 {mapping}
 }}
-
+{message_map}
 export class ApiError extends Error {{
   constructor(
     public code: string,
@@ -538,7 +550,7 @@ export class ApiError extends Error {{
 export function errorResponse(err: unknown): Response {{
   const code = err instanceof ApiError ? err.code : 'internal_error'
   const status = ERROR_STATUS[code] ?? 500
-  const message = err instanceof ApiError ? err.message : ''
+  const message = {message}
   return Response.json({{ error: {{ code, message }} }}, {{ status }})
 }}
 """

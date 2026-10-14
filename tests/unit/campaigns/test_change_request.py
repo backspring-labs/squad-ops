@@ -299,6 +299,44 @@ def test_the_windows_message_proposal_is_refused_for_its_dropped_key_and_its_unb
     assert all("is served by backend/routes.py" in d for d in unbuildable)
 
 
+def test_the_windows_messages_declared_on_their_codes_are_built_by_the_error_module():
+    """#2205 gap 3, ruled (a) by the owner on 2026-10-14: the same proposal, its messages declared
+    where the ruling puts them, on each code in the error contract. Entered at the rails as the
+    live proposal reaches them. The footprint now holds the frozen error module the scaffold
+    regenerates, and T1-T3, on endpoints that declare those codes, are buildable. Bugs caught: the
+    footprint omitting the module a message change rewrites, and the rail refusing the criteria of
+    exactly the change the ruling allows."""
+    doc = copy.deepcopy(MESSAGES_V1)
+    messages = {
+        "duplicate_participant": (409, "A participant with this name has already joined this run."),
+        "run_not_found": (404, "This run does not exist."),
+        "participant_not_found": (404, "No participant with that name is on this run."),
+    }
+    doc["manifest_delta"] = [op for op in doc["manifest_delta"] if op["target"] != "endpoint"] + [
+        {
+            "op": "modify",
+            "target": "error_code",
+            "key": code,
+            "definition": {"http": http, "message": text},
+        }
+        for code, (http, text) in messages.items()
+    ]
+
+    verdict = validate_proposal(
+        _as_authored(doc),
+        _context(
+            proposal_id=doc["proposal_id"],
+            baseline_tree=doc["baseline_tree"],
+            baseline_manifest=BASELINE_CMP4,
+            prior_criteria=(),
+        ),
+    )
+
+    assert verdict.accepted, verdict.refusals
+    assert "backend/errors.py" in verdict.change_request.footprint
+    assert "backend/routes.py" not in verdict.change_request.footprint
+
+
 def test_a_criterion_on_an_endpoint_the_delta_does_change_is_not_refused():
     """The control: the reference request changes ``backend/routes.py`` (its endpoints carry a new
     field), so its endpoint criteria are buildable and nothing new refuses it."""
