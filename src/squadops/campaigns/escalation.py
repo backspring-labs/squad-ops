@@ -296,6 +296,10 @@ def closing_transitions(
     return out
 
 
+#: §24bj: the reason an expired escalation's run is cancelled with, recorded on the run.
+PARK_REASON = "escalation_expired"
+
+
 def parked_run(log: Sequence[ControlLogEntry], run_id: str) -> bool:
     """Whether an expired escalation parked ``run_id``: the cycle ends parked (§24bj) when its
     last run is the one an expiry named, and that run was cancelled."""
