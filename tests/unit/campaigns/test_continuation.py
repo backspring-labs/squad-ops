@@ -93,6 +93,7 @@ def counters(**overrides) -> CampaignCounters:
         repair_cycles=0,
         retry_cycles=0,
         rejected_proposals_in_row=0,
+        failed_proposals_in_row=0,
         unaccepted_increments=0,
         objective_met=False,
     )
@@ -207,6 +208,18 @@ def test_each_row_is_reached_by_a_crafted_input(verdict, kwargs, expected):
             dict(ending=CycleEnding.REJECTED_AT_GATE, rejected_proposals_in_row=2),
             (6, PendingAction.PROPOSE, Guard.PAUSED, CampaignLimit.REJECTED_PROPOSALS_IN_ROW),
         ),
+        # §24bn (#2231): a failed proposal is retried by the next proposal cycle while the
+        # policy's retries (1 here) remain; the failure past them holds that launch.
+        (
+            None,
+            dict(ending=CycleEnding.PROPOSAL_FAILED, failed_proposals_in_row=1),
+            (6, PendingAction.PROPOSE, _GO, None),
+        ),
+        (
+            None,
+            dict(ending=CycleEnding.PROPOSAL_FAILED, failed_proposals_in_row=2),
+            (6, PendingAction.PROPOSE, Guard.PAUSED, CampaignLimit.FAILED_PROPOSALS_IN_ROW),
+        ),
         # The cycle that reaches the no-progress limit by its own abandonment stops the campaign,
         # rather than launching one more proposal first.
         (
@@ -222,6 +235,8 @@ def test_each_row_is_reached_by_a_crafted_input(verdict, kwargs, expected):
         "escalate-over-pause",
         "budget-pauses",
         "rejections-pause",
+        "a-failed-proposal-is-retried",
+        "failures-past-the-retries-pause",
         "abandonment-counts",
     ],
 )

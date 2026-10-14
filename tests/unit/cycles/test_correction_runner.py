@@ -2380,6 +2380,8 @@ class TestCorrectionRunnerStandalone:
                 **repaired,
                 "producer_task_id": "repair-run_001-00-s00-builder.assemble_repair",
                 "producer_task_type": "builder.assemble_repair",
+                # #2206: and the role it ran as, so the re-store can name who wrote it.
+                "producer_role": "builder",
             }
         ]
 
