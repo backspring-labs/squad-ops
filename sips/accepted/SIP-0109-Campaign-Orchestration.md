@@ -3344,13 +3344,18 @@ its footprint caught them:
     view outside the footprint does not show the criterion unbuildable.
   - Neither rail adds to `nothing_to_build`, which already names the cause when a delta changes no product file.
 
-**What it leaves open:** #2205's third gap, whether the manifest can declare an error's message text. Without that, a
-message-only change has no buildable delta. That is a design question for the owner, and the issue records it.
+**The third gap, ruled.** #2205's third gap was whether the manifest can declare an error's message text, and without
+it a message-only change had no buildable delta. The owner ruled on 2026-10-14 that the error contract carries it
+(SIP-0103's amendment of that date). So a change to an error's wording is a `modify` of its `error_code`, and the
+footprint holds the frozen error module the scaffold regenerates. `surface_outside_footprint` therefore doesn't refuse
+an endpoint criterion when the endpoint declares a code whose contract the delta changes, because the regenerated
+module builds that change outside the serving file.
 
 **The evidence:** the proposal's stored document and the accepted manifest it was proposed against
 (`tests/fixtures/campaigns/`). Through the rails they now draw three `undefined_key` refusals (`messages`, each by its
 endpoint) and three `surface_outside_footprint` refusals (T1–T3, each served by `backend/routes.py`). The reference
-change request, whose delta does change `backend/routes.py`, still passes.
+change request, whose delta does change `backend/routes.py`, still passes. The same proposal with its messages declared
+on the codes passes the rails, with `backend/errors.py` in its footprint.
 
 ### 24bp. A park's abandonment counts at its own decision, as a rejection's does (2026-10-13, §9.5, §10 rows 4, 13 and 15, §24bj, #2294; implementer's correction, for the owner)
 
