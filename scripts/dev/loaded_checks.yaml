@@ -776,3 +776,42 @@ checks:
       from squadops.ports.memory.context_assembly import ContextAssemblyPort
       print(issubclass(LessonContextAssembly, ContextAssemblyPort), LessonContextAssembly.__module__)
     expect: "True squadops.capabilities.lesson_supply"
+  - id: "2290"
+    what: "the timeout-half fault asks at the increment's launch, before the late-answer carry, keeps an answer, and the gate applies nothing"
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from adapters.cycles.workload_gate import WorkloadGate
+      from squadops.campaigns.progress import CampaignProgress
+      from squadops.capabilities.handlers import fault_injection as fi
+      answered = "decisions:\n- id: injected-open-question\n  choice: answered\n"
+      launch = inspect.getsource(CampaignProgress._propose_launch)
+      gate = inspect.getsource(WorkloadGate._seed_increment)
+      print(fi.INCREMENT_BASELINE_SEAM, fi._increment_design_asks(answered) == answered, "fault_seed(" in launch, "fault_seed" in gate)
+    expect: "runtime:increment_baseline True True False"
+  - id: "2294"
+    what: "a parked increment counts as unaccepted at its own decision, so a run of parks stops at the no-progress limit"
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.campaigns.continuation import campaign_continuation_decision
+      print("cycle.ending is CycleEnding.PARKED" in inspect.getsource(campaign_continuation_decision))
+    expect: "True"
+  - id: "2301"
+    what: "a run cancelled at its gate stops the cycle run_cancelled and the ending reads it as stored, so an expired escalation parks"
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+      src = inspect.getsource(DispatchedFlowExecutor.execute_cycle)
+      print("except _CancellationError:" in src, "inter_workload_gate_run_cancelled" in src)
+    expect: "True True"
+  - id: "2303"
+    what: "a cycle that never reached its assessment has no verdict, so a parked increment is never promoted, and its run is cancelled with escalation_expired"
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.campaigns.continuation import cycle_verdict
+      from squadops.campaigns.escalation import PARK_REASON
+      print(PARK_REASON, "if cycle.ending is not CycleEnding.ASSESSED" in inspect.getsource(cycle_verdict))
+    expect: "escalation_expired True"

@@ -1,7 +1,8 @@
 # 2.3: the plan-review tier's timeout half, read live — pre-registration
 
-**Status:** approved by the owner as written, 2026-10-14, with the three choices in §8. Nothing runs before #2293
-and #2295 are merged and deployed (§3).
+**Status:** approved by the owner as written, 2026-10-14, with the three choices in §8. **Run, 2026-10-14: every
+reading held** — campaign A's attempt 3 (`cmp_b6d8305f2729`) and campaign B's attempt 2 (`cmp_cda1b0d177b7`), on
+`dep_c627c2873c3c`. The attempts before them stopped on #2301, #2303 and #2306; the readings are on #2279.
 **Issue:** #2279 (SIP-0109 ledger: "the timeout half, read live", placed 2.3.0). **Plan:** the 2.3 plan, phase 8,
 R3's deploy.
 **Uncounted.** Both campaigns are diagnostics: their increments declare a fault, so no cycle of theirs counts toward
@@ -48,6 +49,18 @@ That matters for B, because the tier approves only a plan inside the scope.
 The deploy id, commit and image ids are read from the running containers after the rebuild and recorded on #2279
 before campaign A is created. `squad_profile` is `full-38-tf`, and the deploy serves the squad on TensorFold (SIP-0111
 §9k). A memory watchdog runs throughout.
+
+**Attempt 1 stopped at A5** (`cmp_62e17d6d4773`, on `dep_7a6cf99f7c11`). A1–A4 held. The expired escalation's cycle
+ended `assessed`, not `parked`, because the cycle's end handed the campaign the run as loaded before the gate (#2301).
+The owner approved the fix (#2302) and the re-run on 2026-10-14. **The re-run's deploy is this one plus #2302,** with
+the runtime API rebuilt and a third loaded-check row showing #2302 loaded. Attempt 1 is aborted before campaign A is
+created again. Its readings are on #2279, and nothing else in this pre-registration changes.
+
+**Attempt 2 stopped at A6** (`cmp_391cc2d3cad6`, on `dep_57e39a35bf04`). A1–A5 held: the cycle ended `parked`. But the
+parked increment was promoted and met the objective, because its framing run's vacuous `accepted` stood in for the
+build it never reached (#2303). The run also carried no reason. The owner approved the fix (#2304) and a third attempt
+on 2026-10-14. **Attempt 3's deploy is `dep_c627c2873c3c`, from `8dded804`,** with a fourth loaded-check row showing
+#2304 loaded.
 
 **Not run if** main's run for the deployed commit is red, the box isn't idle, or a loaded check fails. Two rows show
 the fixes are loaded: the launch applies the fault before the carry, and a park counts at its own decision. They are
