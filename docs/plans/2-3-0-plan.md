@@ -249,7 +249,7 @@ Each item is a framework fix, an output-quality change, an instrument or an eval
 | **#2202** | a manifest decision the build doesn't honour passes acceptance | **output quality** | M | phase 8, its own slot: a targeted pre-registration and before/after evidence on the chosen engine |
 | **#2205** | a manifest delta's undefined key dropped, so a footprint omits the file the criteria need | **output quality** | S–M | phase 8, its own slot, as #2202 |
 | **#2208** | the `criterion_already_satisfied` rubric @3 | **evaluator change** | S | phase 8. Its new version is pinned in every later measurement, and @2 is kept for the historical results scored with it |
-| the tier's timeout half, live | a diagnostic-only fault that makes an increment's plan ask a question, then one campaign | framework | S code, ~3 h box | phase 8, R3's deploy |
+| the tier's timeout half, live | a diagnostic-only fault that makes an increment's plan ask a question, then two campaigns (the owner approved #2296's pre-registration, 2026-10-14) | framework | S code, ~3 h box | phase 8, R3's deploy |
 | #1976, #1977 | API contract residue; comms hardening | framework | M, M–L | phase 8, R4 |
 | **#2062** | hoist the 606 deferred imports #1985 left | framework (refactor) | M | phase 8, **R5, before or alongside #1993** (the 2.2 plan's D6). **It stays in 2.3 when #1992 and #1994 are deferred** |
 | #1993 | a `stacks` package | framework (refactor) | M | phase 8, R5 |
@@ -289,7 +289,8 @@ held. **No adapter code is written for either candidate before that candidate's 
 
 Phase 8's rebuilds, in order:
 - **R3:** #2206, #2210, #2231 (once its questions are ruled), #2174–#2176, with a regression pair. Then the timeout-half diagnostic on R3's deploy: the fault
-  is a diagnostic-only code path merged in R3, and one campaign follows. **The rebuild and its pair: done 2026-10-14.**
+  is a diagnostic-only code path merged in R3, and two campaigns follow: the late answer can only be read by a later
+  campaign (#2296, approved by the owner 2026-10-14). **The rebuild and its pair: done 2026-10-14.**
   #2243, #2242, #2245, #2246, #2247 and #2257 merged (closing #2206, #2210, #2231, #2174, #2175, #2176) and deployed as
   `dep_8f91bad18697` from `e30ec9cb`; both cycles of the pair were accepted on TensorFold with no new seam finding. The
   diagnostic's pre-registration is #2296.

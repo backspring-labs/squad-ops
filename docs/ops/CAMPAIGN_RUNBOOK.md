@@ -195,15 +195,23 @@ definition declares it; one that does not is refused at creation:
   campaign proposes again (row 15), or a parked calibration ends the campaign. **Held until 2.2's
   measurement window closes:** no campaign declares `tier` before then.
 
-**An escalation nobody answered in time can be answered late** (§24bl), even after its campaign has
-ended. The answer is a record: it reopens nothing. A later plan gate of a tier campaign in the same
-project reads it by the decision's id, so the question is not asked again. The digest's Escalations
-section lists each one, and its asks name the command:
+**An escalation nobody answered in time can be answered late** (§24bl, §24bm), even after its campaign
+has ended. The answer is a record: it reopens nothing. Answer each question by its decision's id, once
+per decision; one text never stands for several questions. The digest's Escalations section lists each
+one, and its asks name the command:
 
 ```bash
 squadops campaigns escalations <campaign_id>
-squadops campaigns answer <campaign_id> <escalation_id> --answer "<the answer>" --reason "<why now>"
+squadops campaigns answer <campaign_id> <escalation_id> \
+    --answer "<decision_id>=<the answer>" --reason "<why now>"
 ```
+
+**Where it is read (§24bm).** At a tier campaign's next proposal launch, in this campaign or a later one
+for the same project, an open decision in the baseline is resolved by a late answer only when both the
+decision id and the question match. The decision's `choice` becomes the answer, and its `warrant` names
+the escalation. The gate never clears a question by id. A plan that cites a late answer is approved only
+while its choice is still that answer. A parked increment's own question is asked again by the next
+increment, which launches at the park: the answer is read by a later launch.
 
 ---
 
