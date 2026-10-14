@@ -199,8 +199,12 @@ def campaign_continuation_decision(
     retries_remain = counters.retry_cycles < policy.max_retry_cycles_per_increment
     environment = primary is AttributionClass.ENVIRONMENT_OR_INFRASTRUCTURE_FAILURE
     rejected = verdict is RunVerdict.REJECTED and cycle.ending is CycleEnding.ASSESSED
-    # Row 13's predicate: this increment is abandoned, and counts as unaccepted.
-    abandons = rejected and not environment and not repairs_remain
+    # Rows 13 and 15: this decision abandons the increment, and the abandonment counts as
+    # unaccepted at this decision, so the one that reaches the limit stops rather than proposing
+    # once more (#2294). A parked calibration never reaches row 4: row 2 ends the campaign.
+    abandons = (rejected and not environment and not repairs_remain) or (
+        cycle.ending is CycleEnding.PARKED
+    )
 
     def stop(row: int, outcome: CampaignOutcome, cause: TerminalCause) -> ContinuationDecision:
         return ContinuationDecision(cycle.cycle_id, row, outcome=outcome, cause=cause)

@@ -114,6 +114,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | the late answer corrected (§24bm): one answer per decision, carried into a tier campaign's next manifest only for the same question, and an open or uncarried question escalates | **shipped** | 2.2.0, PR #2189, issue #2188 |
 | the tier's activation, after 2.2's measurement window closes, and its live reading in the cut's campaign shakeout (the 2.2 plan, steps 10–11) | **shipped** | 2.2.0, issue #1708: activated in the cut's shakeout `cmp_3c22edb866c2`, which decided all 3 of its plan gates `system:plan_review_tier` (the cut pre-registration's P3, §10, PR #2219). The tier diagnostic's calibration escalated on an open question, and the delegate's answer resolved it inside the bound. The timeout half (expiry, the parked cycle, the continuation) is read in unit tests only; its live reading is the next row |
 | the timeout half, read live: the expiry, the parked increment, row 15, the no-progress stop and the late answer, on a diagnostic campaign whose increments ask a question (the `increment_design_asks` seed fault) | **placed:** 2.3.0, #2279. Moved out of 2.2.1 by that plan's D2: an increment's design never asks without a fault | the 2.3 plan, phase 8, R3's deploy |
+| a park's abandonment counted at its own decision, so a run of parks stops at `max_unaccepted_increments` (§24bp) | **shipped** | 2.3.0, PR #2295, issue #2294 |
 | accepted increments' `prd_delta` text to the proposer | **deferred to 2.4** (ruled 2026-10-03, §24ap): "a 2.4 question" | §24ap |
 | escalating a launch the cycle-create preflight refuses | **shipped** (§24ba) | 2.1.0, PR #2052, issue #1971 |
 | re-hearing an ended cycle between restarts | **shipped**: the campaign sweep re-hears on its interval, and a cycle is heard by one hearer at a time | 2.1.0, PR #2038, issue #1972 (§24as) |
@@ -3323,3 +3324,30 @@ retry (`max_proposal_run_retries`)". The plan's §6 records that misreading, and
 **Who ruled it.** The owner, 2026-10-11: "approve your #2231 recommendations". The recommendation was
 to build no in-cycle retry, to give `max_proposal_run_retries` this meaning, to pause past it as
 rejected proposals in a row do, and to amend §9.5 accordingly. It is recorded on #2231.
+
+### 24bp. A park's abandonment counts at its own decision, as a rejection's does (2026-10-13, §9.5, §10 rows 4, 13 and 15, §24bj, #2294; implementer's correction, for the owner)
+
+**What main did.** Row 4 stops a campaign when the unaccepted increments plus the abandonment this decision would make
+reach `max_unaccepted_increments`. That second term covered row 13 only, a rejected increment with no repair left. It was
+added so the decision whose own abandonment reaches the limit stops, rather than proposing once more. Row 15 (§24bj, §24bk)
+came later: a parked increment, repair or retry is abandoned and proposes again, "counting as unaccepted". Its own
+abandonment was counted only after its decision. So under a limit of 2, two rejected increments stopped the campaign at
+the second, while two parked increments didn't: the second park proposed a third increment, and the stop came after the
+third park. The continuation test pinned the late stop.
+
+**What changed.** A parked increment, repair or retry counts its abandonment at its own decision, as row 13's does.
+Two parks in a row stop a campaign whose limit is 2, as two rejections do. A parked calibration is unaffected, because row
+2 ends the campaign before row 4 is asked. §24bj's "a run of parks is bounded by `max_unaccepted_increments`" now holds as
+written.
+
+**Evidence.**
+- `tests/unit/campaigns/test_continuation.py::test_parks_in_a_row_stop_at_the_limit_through_the_counters_the_decision_reads`
+  derives the counters with `derive_counters` from a log holding the earlier parks' row-15 decisions, as
+  `CycleCompletion.end` derives them, then decides the next park. The first park proposes again; the second stops at row
+  4 (`stop_failure`, no progress).
+- The row table's no-progress case for a park is now one earlier park, for an increment and for a retry.
+- With the old count restored, three of these cases fail.
+- Found pre-registering #2279's live reading, whose no-progress stop depends on how many parks reach it.
+
+**Who ruled it.** Proposed by the implementer, as a correction that makes row 15 match §24bj's text and row 13's precedent.
+The owner rules it with the merge.

@@ -167,10 +167,16 @@ _GO = Guard.PROCEED
             dict(ending=CycleEnding.PARKED, kind=CycleKind.CALIBRATION),
             (2, CampaignOutcome.FAILURE),
         ),
-        # A run of parks ends at the no-progress rule.
+        # A run of parks ends at the no-progress rule, the park that reaches the limit (2) counted
+        # at its own decision, as a rejection's abandonment is (#2294): one prior park and this one.
         (
             None,
-            dict(ending=CycleEnding.PARKED, unaccepted_increments=2),
+            dict(ending=CycleEnding.PARKED, unaccepted_increments=1),
+            (4, CampaignOutcome.FAILURE),
+        ),
+        (
+            None,
+            dict(ending=CycleEnding.PARKED, kind=CycleKind.RETRY, unaccepted_increments=1),
             (4, CampaignOutcome.FAILURE),
         ),
     ],
@@ -306,3 +312,50 @@ def test_an_increment_is_accepted_only_when_its_own_acceptance_is(
     )
 
     assert decision.row == expected_row
+
+
+@pytest.mark.parametrize(
+    ("earlier_parks", "expected"),
+    [(0, (15, PendingAction.ABANDON_AND_PROPOSE)), (1, (4, CampaignOutcome.FAILURE))],
+    ids=["the first park proposes again", "the second park stops"],
+)
+def test_parks_in_a_row_stop_at_the_limit_through_the_counters_the_decision_reads(
+    earlier_parks, expected
+):
+    """#2294, through ``derive_counters`` as ``CycleCompletion.end`` derives them: the earlier
+    parks' row-15 decisions on the log, then this park's decision, under a limit of 2. Bug caught:
+    the park that reaches the limit proposing once more, so a campaign whose questions nobody
+    answers launches a third increment before it stops, the shape SIP-0109 fixed for row 13."""
+    from unittest.mock import MagicMock
+
+    from squadops.campaigns.models import ControlOperation
+    from squadops.campaigns.progress import CycleRecord, derive_counters
+
+    started = MagicMock()
+    started.operation, started.committed_at = ControlOperation.START, T0
+    log = [started]
+    for _ in range(earlier_parks):
+        park = MagicMock()
+        park.operation, park.outcome = ControlOperation.DECIDE, "applied"
+        park.binding = {
+            "row": 15,
+            "ending": CycleEnding.PARKED.value,
+            "action": PendingAction.ABANDON_AND_PROPOSE.value,
+            "guard": Guard.PROCEED.value,
+        }
+        log.append(park)
+    launched = [CycleRecord(CycleKind.CALIBRATION, 10)] + [
+        CycleRecord(CycleKind.INCREMENT, 10) for _ in range(earlier_parks + 1)
+    ]
+    assert CAMPAIGN.policy.max_unaccepted_increments == 2
+
+    decision = campaign_continuation_decision(
+        CAMPAIGN,
+        derive_counters(
+            CAMPAIGN, log, launched, ending=CycleEnding.PARKED, now=T0, objective_met=False
+        ),
+        EndedCycle(CYCLE, CycleKind.INCREMENT, CycleEnding.PARKED),
+        assessment(None),
+    )
+
+    assert (decision.row, decision.outcome or decision.action) == expected
