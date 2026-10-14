@@ -1010,6 +1010,18 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         max_framing_revisions=max_framing_revisions,
                         reentry=reentered_at_gate,
                     )
+                except _CancellationError:
+                    # #2301: the run was cancelled while its gate waited. An expired escalation
+                    # parks it there (SIP-0109 §24bj). That is an ending, not a gate defect. The
+                    # run completed before the gate waited, so this copy of it reads ``completed``:
+                    # the ending is told the run as stored, or the campaign never hears the park.
+                    logger.info(
+                        "inter_workload_gate_run_cancelled",
+                        extra={"cycle_id": cycle_id, "run_id": run.run_id, "gate": gate_name},
+                    )
+                    run = await self._cycle_registry.get_run(run.run_id)
+                    stopped_because = CycleStopReason.RUN_CANCELLED
+                    break
                 except Exception:
                     # #2213: every raise in the gate is a defect, and one here used to escape a
                     # task nothing awaits, leaving the campaign waiting with no row. The cycle
