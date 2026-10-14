@@ -35,6 +35,45 @@ configure_ollama_host_binding() {
     fi
 }
 
+# The Ollama CLI that pulls and lists models: the host's by default; the local-spark profile
+# points it into the container (#2249).
+OLLAMA_CLI=(ollama)
+
+# The Spark's Ollama runs in a container (#2249, docker-compose.ollama.yml), reached on squadnet
+# at http://ollama:11434 and published on the host's loopback. Its home (the model store and CUDA's
+# compiled-kernel cache) is a host install's when one is there, kept with its owner, so nothing is
+# downloaded or compiled again; otherwise one of the box's own. A host service still serving would hold port 11434 and load models beside it: disabled.
+configure_ollama_container() {
+    local home
+    if [[ -d /usr/share/ollama/.ollama ]]; then
+        home=/usr/share/ollama
+    else
+        home="${HOME}/.squadops/ollama"
+        run_or_dry mkdir -p "${home}/.ollama/models"
+    fi
+    local uid gid
+    uid="$(stat -c %u "${home}/.ollama" 2>/dev/null || id -u)"
+    gid="$(stat -c %g "${home}/.ollama" 2>/dev/null || id -g)"
+    # SIP-0111: a deploy whose engine is TensorFold keeps its overlay. The switch changes engines,
+    # never bootstrap (scripts/dev/ops/engine_switch.py records the engine in COMPOSE_FILE).
+    local files="docker-compose.yml:docker-compose.ollama.yml"
+    if grep -q "^COMPOSE_FILE=.*docker-compose\.tensorfold\.yml" .env 2>/dev/null; then
+        files="${files}:docker-compose.tensorfold.yml"
+    fi
+    set_env_value COMPOSE_FILE "$files"
+    set_env_value COMPOSE_PROFILES "gpu"
+    set_env_value SQUADOPS__LLM__URL "http://ollama:11434"
+    set_env_value SQUADOPS_OLLAMA_HOME "$home"
+    set_env_value SQUADOPS_OLLAMA_UID "$uid"
+    set_env_value SQUADOPS_OLLAMA_GID "$gid"
+    success "Ollama runs in a container: store ${home}/.ollama, owner ${uid}:${gid}"
+    if systemctl is-enabled ollama &>/dev/null || systemctl is-active ollama &>/dev/null; then
+        info "Disabling the host Ollama service: the container serves port 11434 (#2249)"
+        run_or_dry sudo systemctl disable --now ollama
+    fi
+    OLLAMA_CLI=(docker exec squadops-ollama ollama)
+}
+
 # Install Ollama via the official install script.
 install_ollama() {
     if check_command ollama; then
@@ -61,7 +100,7 @@ pull_model() {
         return 0
     fi
     info "Pulling model ${model}..."
-    run_or_dry ollama pull "$model"
+    run_or_dry "${OLLAMA_CLI[@]}" pull "$model"
 }
 
 # Pull all models listed in a bootstrap profile YAML.
@@ -85,5 +124,5 @@ pull_models_from_profile() {
 # Check if a model is already pulled.
 check_model_present() {
     local model="$1"
-    ollama list 2>/dev/null | awk 'NR>1 {print $1}' | grep -q "^${model}$"
+    "${OLLAMA_CLI[@]}" list 2>/dev/null | awk 'NR>1 {print $1}' | grep -q "^${model}$"
 }

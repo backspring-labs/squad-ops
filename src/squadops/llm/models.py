@@ -34,6 +34,18 @@ REASONING_LEVELS: frozenset[str] = frozenset(
 )
 
 
+class Termination:
+    """How a generation ended, as the provider reported it (SIP-0111 §5.2): the port's
+    vocabulary, which each adapter maps its own stop reason onto. ``None`` on a response means
+    the provider reported none, and the cap is then read from the token count.
+
+    ``LENGTH`` says only that the completion budget was reached. It never discards output by
+    itself: what is kept is decided by the content (#2149)."""
+
+    STOP = "stop"
+    LENGTH = "length"
+
+
 @dataclass(frozen=True)
 class LLMRequest:
     """Request for LLM text generation.
@@ -52,6 +64,12 @@ class LLMRequest:
     format: str | None = None  # "json" for structured output
     timeout_seconds: float = 180.0
     reasoning: str | None = None  # a ReasoningLevel; None = the provider's own default
+    #: SIP-0111 §5.1: the sampler's seed, so repeated generations are independent draws a
+    #: replay can name. Sent only where ``LLMCapability.SEED`` is declared; refused elsewhere.
+    seed: int | None = None
+    #: SIP-0111 §5.1: a cap on reasoning tokens, separate from ``max_tokens``. Sent only where
+    #: ``LLMCapability.THINKING_BUDGET`` is declared; refused elsewhere.
+    thinking_budget: int | None = None
 
 
 @dataclass(frozen=True)
@@ -82,6 +100,8 @@ class LLMResponse:
     #: Decode speed alone hides prefill, which is the larger cost on a long prompt.
     prompt_eval_seconds: float | None = None
     load_seconds: float | None = None
+    #: SIP-0111 §5.2: a :class:`Termination`, or None when the provider reported none.
+    termination: str | None = None
 
 
 @dataclass(frozen=True)
@@ -119,3 +139,4 @@ class ChatMessage:
     reasoning_text: str | None = None  # see LLMResponse.reasoning_text (#410)
     prompt_eval_seconds: float | None = None  # see LLMResponse.prompt_eval_seconds (#2204)
     load_seconds: float | None = None  # see LLMResponse.load_seconds (#2204)
+    termination: str | None = None  # see LLMResponse.termination (SIP-0111 §5.2)

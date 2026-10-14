@@ -1,0 +1,75 @@
+# The Spark's Ollama, in a container (#2249). Named in the Spark's .env as
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.ollama.yml
+# so every `docker compose` there includes it; the Mac and PC run Ollama on the host and never
+# load this file. It is an overlay, not a profile, because compose interpolates a required
+# variable even in a service whose profile is off, and these three are the Spark's alone.
+#
+# - Pinned: the image by digest, so the engine's version is the deploy's (the deploy record
+#   names it); it matches the host service it replaced, 0.32.14, settings all default.
+# - The GPU through CDI, as the DCGM exporter has it (the local-spark bootstrap writes the spec).
+# - The home a host install left (its model store and CUDA's compiled-kernel cache), mounted
+#   where that install kept it and run as its owner: nothing is downloaded again, a rollback to the
+#   host service still owns its files, and the first load reuses the compiled kernels. Mounting
+#   only the store left the home unwritable, and every cold load compiled them again: 31 s against
+#   the host's 10, plus 15 s on the first prompt (the 2026-10-11 parity check, #2249).
+# - Published on the host's loopback only: host tools, scripts and tests keep localhost:11434;
+#   the squad reaches it on squadnet at http://ollama:11434 (SQUADOPS__LLM__URL in .env).
+# - Started before every LLM client, which waits for it to answer.
+services:
+  ollama:
+    image: ollama/ollama:0.32.14@sha256:9d30908e41144b1f1da89b9d8e33c07e4aeb43ff41a8660241b1686e2cc330ad
+    container_name: squadops-ollama
+    user: "${SQUADOPS_OLLAMA_UID:?set it in .env — the local-spark bootstrap writes it (#2249)}:${SQUADOPS_OLLAMA_GID:?set it in .env — the local-spark bootstrap writes it (#2249)}"
+    environment:
+      HOME: ${SQUADOPS_OLLAMA_HOME:?set it in .env — the local-spark bootstrap writes it (#2249)}
+    volumes:
+      - ${SQUADOPS_OLLAMA_HOME}:${SQUADOPS_OLLAMA_HOME}
+    devices:
+      - nvidia.com/gpu=all
+    ports:
+      - "127.0.0.1:11434:11434"
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+    networks:
+      - squadnet
+    restart: unless-stopped
+
+  runtime-api:
+    depends_on:
+      ollama:
+        condition: service_healthy
+  max:
+    depends_on:
+      ollama:
+        condition: service_healthy
+  nat:
+    depends_on:
+      ollama:
+        condition: service_healthy
+  neo:
+    depends_on:
+      ollama:
+        condition: service_healthy
+  eve:
+    depends_on:
+      ollama:
+        condition: service_healthy
+  data:
+    depends_on:
+      ollama:
+        condition: service_healthy
+  han:
+    depends_on:
+      ollama:
+        condition: service_healthy
+  bob:
+    depends_on:
+      ollama:
+        condition: service_healthy
+  joi:
+    depends_on:
+      ollama:
+        condition: service_healthy

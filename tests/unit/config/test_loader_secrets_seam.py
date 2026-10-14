@@ -44,6 +44,7 @@ _ENV = {
     "SQUADOPS__COMMS__RABBITMQ__URL": "amqp://test:test@localhost:5672/",
     "SQUADOPS__COMMS__REDIS__URL": "redis://localhost:6379/0",
     "SQUADOPS__LLM__PROVIDER": "ollama",
+    "SQUADOPS__LLM__URL": "http://ollama:11434",
     # #301: the three selectors are required the way llm.provider is (R2).
     "SQUADOPS__COMMS__QUEUE__PROVIDER": "rabbitmq",
     "SQUADOPS__COMMS__A2A__PROVIDER": "http",

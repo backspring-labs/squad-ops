@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
@@ -169,9 +170,10 @@ class PostgresCycleRegistry(CycleRegistryPort):
             return [self._row_to_cycle(r) for r in rows]
 
         # #1891: the filter comes before the page, as the port says. Status is derived from
-        # each cycle's latest run (N+1, D6), so the project is read newest first in batches
-        # until the page is filled; filtering one LIMIT'd page returned "the matches among the
-        # newest 50", which the API showed as the project's history (11 of 156 failed cycles).
+        # each cycle's latest run (D6), so the project is read newest first in batches until
+        # the page is filled; filtering one LIMIT'd page returned "the matches among the newest
+        # 50", which the API showed as the project's history (11 of 156 failed cycles). Each
+        # batch's latest runs are one query (#1976), not one per cycle.
         matched: list[Cycle] = []
         read = 0
         while len(matched) < offset + limit:
@@ -179,8 +181,9 @@ class PostgresCycleRegistry(CycleRegistryPort):
             if not rows:
                 break
             read += len(rows)
+            latest_runs = await self._latest_runs([row["cycle_id"] for row in rows])
             for row in rows:
-                latest = await self._latest_run_for_cycle(row["cycle_id"])
+                latest = latest_runs.get(row["cycle_id"])
                 derived = derive_cycle_status(
                     [latest] if latest else [], cycle_cancelled=row["cancelled"]
                 )
@@ -317,6 +320,44 @@ class PostgresCycleRegistry(CycleRegistryPort):
             gates_by_run.setdefault(g["run_id"], []).append(g)
 
         return [self._assemble_run(r, gates_by_run.get(r["run_id"], [])) for r in run_rows]
+
+    async def list_runs_for_cycles(
+        self, cycle_ids: Sequence[str], *, limit_per_cycle: int = 50
+    ) -> dict[str, list[Run]]:
+        """Two queries for any number of cycles: their runs, the first ``limit_per_cycle`` of
+        each by run number, then those runs' gate decisions."""
+        runs: dict[str, list[Run]] = {cycle_id: [] for cycle_id in cycle_ids}
+        if not runs:
+            return runs
+        async with self._pool.acquire() as conn:
+            run_rows = await conn.fetch(
+                "SELECT * FROM ("
+                "SELECT *, ROW_NUMBER() OVER (PARTITION BY cycle_id ORDER BY run_number) AS nth "
+                "FROM cycle_runs WHERE cycle_id = ANY($1)"
+                ") ranked WHERE nth <= $2 ORDER BY cycle_id, run_number",
+                list(runs),
+                limit_per_cycle,
+            )
+            gates_by_run = await self._gates_by_run(conn, [r["run_id"] for r in run_rows])
+        for row in run_rows:
+            gates = gates_by_run.get(row["run_id"], [])
+            runs[row["cycle_id"]].append(self._assemble_run(row, gates))
+        return runs
+
+    async def _gates_by_run(self, conn: Any, run_ids: list[str]) -> dict[str, list]:
+        """The gate decisions of ``run_ids``, by run, in the order they were recorded."""
+        if not run_ids:
+            return {}
+        gate_rows = await conn.fetch(
+            "SELECT run_id, gate_name, decision, decided_by, decided_at, notes, "
+            "waived_checks, waiver_reason "
+            "FROM cycle_gate_decisions WHERE run_id = ANY($1) ORDER BY id",
+            run_ids,
+        )
+        gates_by_run: dict[str, list] = {}
+        for g in gate_rows:
+            gates_by_run.setdefault(g["run_id"], []).append(g)
+        return gates_by_run
 
     async def update_run_status(
         self, run_id: str, status: RunStatus, *, failure_reason: str | None = None
@@ -829,21 +870,21 @@ class PostgresCycleRegistry(CycleRegistryPort):
             created_at=row["created_at"],
         )
 
-    async def _latest_run_for_cycle(self, cycle_id: str) -> Run | None:
-        """Fetch the single most recent run for status derivation (D6)."""
+    async def _latest_runs(self, cycle_ids: list[str]) -> dict[str, Run]:
+        """Each cycle's most recent run, for status derivation (D6), in two queries; a cycle
+        with no run has no key."""
+        if not cycle_ids:
+            return {}
         async with self._pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT * FROM cycle_runs WHERE cycle_id = $1 ORDER BY run_number DESC LIMIT 1",
-                cycle_id,
+            rows = await conn.fetch(
+                "SELECT DISTINCT ON (cycle_id) * FROM cycle_runs WHERE cycle_id = ANY($1) "
+                "ORDER BY cycle_id, run_number DESC",
+                cycle_ids,
             )
-            if row is None:
-                return None
-            gate_rows = await conn.fetch(
-                "SELECT gate_name, decision, decided_by, decided_at, notes "
-                "FROM cycle_gate_decisions WHERE run_id = $1 ORDER BY id",
-                row["run_id"],
-            )
-        return self._assemble_run(row, gate_rows)
+            gates_by_run = await self._gates_by_run(conn, [r["run_id"] for r in rows])
+        return {
+            r["cycle_id"]: self._assemble_run(r, gates_by_run.get(r["run_id"], [])) for r in rows
+        }
 
 
 # --- Helpers ---

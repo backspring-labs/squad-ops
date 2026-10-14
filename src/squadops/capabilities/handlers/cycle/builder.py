@@ -494,6 +494,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
                         completion_tokens=response.completion_tokens,
                         completion_cap=builder_kwargs.get("max_tokens"),
                         content=content,
+                        termination=response.termination,
                     ),
                 },
             )

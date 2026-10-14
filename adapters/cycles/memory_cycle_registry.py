@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import copy
 import dataclasses
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
@@ -159,6 +160,14 @@ class MemoryCycleRegistry(CycleRegistryPort):
         if workload_type is not None:
             results = [r for r in results if r.workload_type == workload_type]
         return results[offset : offset + limit]
+
+    async def list_runs_for_cycles(
+        self, cycle_ids: Sequence[str], *, limit_per_cycle: int = 50
+    ) -> dict[str, list[Run]]:
+        return {
+            cycle_id: await self.list_runs(cycle_id, limit=limit_per_cycle)
+            for cycle_id in cycle_ids
+        }
 
     async def update_run_status(
         self, run_id: str, status: RunStatus, *, failure_reason: str | None = None

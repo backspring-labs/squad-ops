@@ -106,29 +106,42 @@ SIGNATURE_UNEXTRACTABLE = "unextractable"
 SIGNATURE_CAP_TRUNCATED = "cap_truncated"
 
 
-def reached_cap(completion_tokens: int | None, completion_cap: int | None) -> bool:
-    """Whether the generation used its whole completion budget: the cap signal. The provider
-    reports no stop reason through this port, so the token count against the requested budget
-    is the observable; either value unknown (absent, or not a count) means the cap cannot be
-    asserted."""
+def reached_cap(
+    completion_tokens: int | None, completion_cap: int | None, termination: str | None = None
+) -> bool:
+    """Whether the generation used its whole completion budget: the cap signal.
+
+    Where the provider reported how the generation ended (SIP-0111 §5.2), that decides:
+    ``length`` is the cap, and anything else is not. Where it reported none (Ollama), the token
+    count against the requested budget is the observable; either value unknown (absent, or not a
+    count) means the cap cannot be asserted."""
+    if termination is not None:
+        # Imported here: this module sits under the pure decisions, whose import closure
+        # stays off the port packages (test_pure_decisions_do_no_io.py). It is a constant.
+        from squadops.llm.models import Termination
+
+        return termination == Termination.LENGTH
     if not isinstance(completion_tokens, int) or not isinstance(completion_cap, int):
         return False
     return completion_cap > 0 and completion_tokens >= completion_cap
 
 
 def classify_empty_emission(
-    response_chars: int, completion_tokens: int | None, completion_cap: int | None
+    response_chars: int,
+    completion_tokens: int | None,
+    completion_cap: int | None,
+    termination: str | None = None,
 ) -> str:
     """Name the zero-extraction shape from the facts the LLM call already reports (#998).
 
-    ``completion_tokens >= completion_cap`` is the cap signal — the provider reports no
-    stop reason through this port, so token count against the requested budget is the
-    observable. Either value unknown means the cap cannot be asserted, and the shape
-    falls to what the character count alone supports.
+    The cap signal is :func:`reached_cap`'s: the provider's ``termination`` where it reports
+    one, and ``completion_tokens >= completion_cap`` otherwise. Either value unknown means
+    the cap cannot be asserted, and the shape falls to what the character count alone
+    supports.
     """
     if response_chars > 0:
         return SIGNATURE_UNEXTRACTABLE
-    if reached_cap(completion_tokens, completion_cap):
+    if reached_cap(completion_tokens, completion_cap, termination):
         return SIGNATURE_CAP_EXHAUSTED
     return SIGNATURE_EMPTY
 
@@ -140,6 +153,7 @@ def no_fenced_blocks_failure(
     completion_tokens: int | None = None,
     completion_cap: int | None = None,
     content: str | None = None,
+    termination: str | None = None,
 ) -> dict[str, Any]:
     """Build the ``emission_failure`` marker for a zero-extraction failure.
 
@@ -164,7 +178,9 @@ def no_fenced_blocks_failure(
         "expected_artifacts": [str(e) for e in (expected_artifacts or [])],
         "completion_tokens": completion_tokens,
         "completion_cap": completion_cap,
-        "signature": classify_empty_emission(response_chars, completion_tokens, completion_cap),
+        "signature": classify_empty_emission(
+            response_chars, completion_tokens, completion_cap, termination
+        ),
     }
     if content is not None:
         from squadops.capabilities.handlers.emission_log import classify_fences

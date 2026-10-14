@@ -7,13 +7,14 @@ These are code/config-file-backed value objects that only change on redeploy.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
 from squadops.api.cycle_schemas import (
     CycleRequestProfileResponse,
     PromptMetaResponse,
 )
+from squadops.api.errors import http_error
 from squadops.api.middleware.auth import require_scopes
 from squadops.auth.models import Scope
 
@@ -62,5 +63,5 @@ async def get_cycle_request_profile(profile_name: str):
     try:
         profile = load_profile(profile_name)
     except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
+        raise http_error(404, "PROFILE_NOT_FOUND", str(e)) from e
     return JSONResponse(content=_profile_to_response(profile), headers=_CACHE_HEADERS)

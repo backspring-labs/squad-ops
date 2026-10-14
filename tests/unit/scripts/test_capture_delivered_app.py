@@ -170,10 +170,18 @@ def test_the_committed_seed_maps_onto_an_interface_behind_a_base_path():
     assert paths == {"/api/runs", "/api/runs/{id}/participants"}
 
 
-def test_seed_requests_reach_the_ui_port_with_the_client_facing_path(monkeypatch, tmp_path):
-    """Wiring, entered at ``main``. Bug this catches: seed requests went straight to the backend
-    port with ``/api/runs``, which the backend does not serve — the dev proxy strips ``/api`` — so
-    the 1.8.2 cut's capture failed with a 404 halfway through seeding."""
+@pytest.mark.parametrize(
+    ("manifest", "id_from"),
+    [(BEHIND_API, "/api/runs"), (SQUAD, "/runs")],
+    ids=["base path /api", "no base path"],
+)
+def test_seed_requests_reach_the_backend_at_its_own_paths_whatever_the_base_path(
+    monkeypatch, tmp_path, manifest, id_from
+):
+    """Wiring, entered at ``main``. Bugs this catches: the 1.8.2 cut's, seed requests sent to the
+    backend with ``/api/runs``, which it does not serve (the dev proxy strips ``/api``); and the
+    2.2.1 cut's (#2234), an interface with no base path seeded through the UI port at ``/runs``,
+    which the client router answers, so the seed was a 404."""
     seen: list[str] = []
 
     class _Resp:
@@ -196,7 +204,7 @@ def test_seed_requests_reach_the_ui_port_with_the_client_facing_path(monkeypatch
         seen.append(url)
         return _Resp(b'[{"id": "run-1"}]')
 
-    monkeypatch.setattr(capture, "load_manifest", lambda project, cycle, plan_refs=None: BEHIND_API)
+    monkeypatch.setattr(capture, "load_manifest", lambda project, cycle, plan_refs=None: manifest)
     monkeypatch.setattr(capture, "cycle_row", lambda project, cycle: {})
     monkeypatch.setattr(capture, "reconstruct", lambda *a: 0)
     monkeypatch.setattr(capture, "boot", lambda *a: None)
@@ -219,7 +227,7 @@ def test_seed_requests_reach_the_ui_port_with_the_client_facing_path(monkeypatch
             "--seed-file",
             str(seed_file),
             "--id-from",
-            "/api/runs",
+            id_from,
             "--route",
             "/runs/{id}:detail",
             "--ui-port",
@@ -231,8 +239,21 @@ def test_seed_requests_reach_the_ui_port_with_the_client_facing_path(monkeypatch
 
     assert capture.main() == 0
     assert seen, "nothing was seeded"
-    assert all(u.startswith("http://localhost:5199/api/runs") for u in seen), seen
-    assert not any(":8099" in u for u in seen)
+    assert all(u.startswith("http://localhost:8099/runs") for u in seen), seen
+    assert not any(":5199" in u for u in seen)
+
+
+@pytest.mark.parametrize(
+    ("path", "base", "backend"),
+    [
+        ("/api/runs/{id}/join", "/api", "/runs/{id}/join"),
+        ("/api", "/api", "/"),
+        ("/apis/runs", "/api", "/apis/runs"),
+        ("/runs", "", "/runs"),
+    ],
+)
+def test_the_base_path_comes_off_only_as_a_whole_segment(path, base, backend):
+    assert capture.backend_path(path, base) == backend
 
 
 def _stored(vault: Path, cycle: str, run: str, art_id: str, name: str, body: str, **meta) -> None:

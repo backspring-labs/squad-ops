@@ -25,6 +25,7 @@ restart, and the Keycloak admin password changes before the realm sync signs in 
 | `LANGFUSE_NEXTAUTH_SECRET`, `LANGFUSE_SALT` | compose recreates Langfuse with them (step 8). **A new `SALT` invalidates every Langfuse API key**: step 9 mints new ones |
 | `LANGFUSE_ADMIN_PASSWORD` | the Langfuse UI user's password, changed in the UI (step 9) |
 | `SQUADOPS_SANDBOX_SERVICE_TOKEN` | compose recreates the sandbox service with it (step 8) |
+| `SQUADOPS_TENSORFOLD_API_KEY` | while TensorFold serves, `engine_switch.py to-tensorfold` (after `to-ollama`) restarts it with the rewritten key file and recreates the model clients with the new value. While Ollama serves, nothing reads it until the next switch |
 
 All commands run from the repository root.
 

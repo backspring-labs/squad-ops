@@ -52,6 +52,7 @@ def mock_cycle_registry():
     mock.create_run.side_effect = lambda r: r
     mock.list_cycles.return_value = []
     mock.list_runs.return_value = []
+    mock.list_runs_for_cycles.side_effect = lambda ids, **_: {i: [] for i in ids}
     return mock
 
 
@@ -335,6 +336,47 @@ class TestListCycles:
     def test_filter_by_status(self, client):
         resp = client.get("/api/v1/projects/hello_squad/cycles?status=completed")
         assert resp.status_code == 200
+
+    def test_a_pages_runs_are_read_together_and_each_cycle_carries_its_own(
+        self, client, mock_cycle_registry
+    ):
+        """#1976. Bug caught: the list read each cycle's runs with its own query, so a page of
+        500 cycles cost 501 queries; and a batched read must not hand one cycle another's runs."""
+        cycles = [
+            Cycle(
+                cycle_id=cycle_id,
+                project_id="hello_squad",
+                created_at=NOW,
+                created_by="system",
+                prd_ref=None,
+                squad_profile_id="full",
+                squad_profile_snapshot_ref="sha256:abc",
+                task_flow_policy=TaskFlowPolicy(mode="sequential"),
+                build_strategy="fresh",
+            )
+            for cycle_id in ("cyc_new", "cyc_old")
+        ]
+        run = Run(
+            run_id="run_1",
+            cycle_id="cyc_new",
+            run_number=1,
+            status="completed",
+            initiated_by="api",
+            resolved_config_hash="h",
+        )
+        mock_cycle_registry.list_cycles.return_value = cycles
+        mock_cycle_registry.list_runs_for_cycles.side_effect = None
+        mock_cycle_registry.list_runs_for_cycles.return_value = {"cyc_new": [run], "cyc_old": []}
+
+        resp = client.get("/api/v1/projects/hello_squad/cycles")
+
+        assert resp.status_code == 200
+        assert [(c["cycle_id"], [r["run_id"] for r in c["runs"]]) for c in resp.json()] == [
+            ("cyc_new", ["run_1"]),
+            ("cyc_old", []),
+        ]
+        mock_cycle_registry.list_runs_for_cycles.assert_awaited_once_with(["cyc_new", "cyc_old"])
+        mock_cycle_registry.list_runs.assert_not_awaited()
 
 
 class TestGetCycle:

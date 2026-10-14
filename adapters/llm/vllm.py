@@ -45,7 +45,14 @@ from squadops.llm.exceptions import (
     LLMTimeoutError,
 )
 from squadops.llm.model_registry import ModelSpec, ReasoningControl, get_model_spec
-from squadops.llm.models import ChatMessage, LLMRequest, LLMResponse, ModelInfo, ReasoningLevel
+from squadops.llm.models import (
+    ChatMessage,
+    LLMRequest,
+    LLMResponse,
+    ModelInfo,
+    ReasoningLevel,
+    Termination,
+)
 from squadops.ports.llm.provider import LLMCapability, LLMPort
 
 logger = logging.getLogger(__name__)
@@ -53,6 +60,9 @@ logger = logging.getLogger(__name__)
 _DEFAULT_MODEL_LIST_TIMEOUT = 10.0
 _SSE_DATA_PREFIX = "data: "
 _SSE_DONE = "[DONE]"
+#: The OpenAI ``finish_reason`` → the port's :class:`Termination` (SIP-0111 §5.2). Anything else
+#: (a tool call, a filter) maps to None: not reported in the port's vocabulary.
+_TERMINATIONS = {"stop": Termination.STOP, "length": Termination.LENGTH}
 
 
 def _tokens_per_second(completion_tokens: int | None, elapsed_seconds: float) -> float | None:
@@ -157,6 +167,10 @@ class VLLMAdapter(LLMPort):
     def default_model(self) -> str:
         return self._default_model
 
+    @property
+    def engine(self) -> str:
+        return "vllm"
+
     def capabilities(self) -> dict[str, bool]:
         """Declare what this adapter does (#572's rule — see the port).
 
@@ -186,6 +200,10 @@ class VLLMAdapter(LLMPort):
             LLMCapability.REASONING_CONTROL: True,
             # It serves exactly the weights it was launched with: what it lists is loaded.
             LLMCapability.LOADED_MODELS: True,
+            # The OpenAI request's ``seed`` field, which vLLM's sampler honours (SIP-0111 §5.1).
+            LLMCapability.SEED: True,
+            LLMCapability.THINKING_BUDGET: False,
+            LLMCapability.REQUESTS_IN_FLIGHT: False,
         }
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -207,8 +225,11 @@ class VLLMAdapter(LLMPort):
         top_p: float | None = None,
         reasoning: str | None = None,
         *,
+        seed: int | None = None,
+        thinking_budget: int | None = None,
         stream: bool = False,
     ) -> dict[str, Any]:
+        self.refuse_undeclared_controls(seed=seed, thinking_budget=thinking_budget)
         payload: dict[str, Any] = {
             "model": model,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
@@ -227,6 +248,8 @@ class VLLMAdapter(LLMPort):
             payload["top_p"] = top_p
         if reasoning is not None:
             payload.update(_reasoning_fields(get_model_spec(model), reasoning))
+        if seed is not None:
+            payload["seed"] = seed
         if stream:
             # Without this the stream carries no usage frame at all and token
             # accounting for streamed calls is simply lost.
@@ -267,6 +290,8 @@ class VLLMAdapter(LLMPort):
             top_p=request.top_p,
             timeout_seconds=request.timeout_seconds,
             reasoning=request.reasoning,
+            seed=request.seed,
+            thinking_budget=request.thinking_budget,
             operation="generate",
         )
         return LLMResponse(
@@ -276,6 +301,7 @@ class VLLMAdapter(LLMPort):
             completion_tokens=message.completion_tokens,
             total_tokens=message.total_tokens,
             tokens_per_second=message.tokens_per_second,
+            termination=message.termination,
         )
 
     async def chat(
@@ -287,6 +313,8 @@ class VLLMAdapter(LLMPort):
         top_p: float | None = None,
         timeout_seconds: float | None = None,
         reasoning: str | None = None,
+        seed: int | None = None,
+        thinking_budget: int | None = None,
     ) -> ChatMessage:
         return await self._chat(
             messages,
@@ -296,6 +324,8 @@ class VLLMAdapter(LLMPort):
             top_p=top_p,
             timeout_seconds=timeout_seconds,
             reasoning=reasoning,
+            seed=seed,
+            thinking_budget=thinking_budget,
             operation="chat",
         )
 
@@ -309,18 +339,26 @@ class VLLMAdapter(LLMPort):
         top_p: float | None,
         timeout_seconds: float | None,
         reasoning: str | None,
+        seed: int | None,
+        thinking_budget: int | None,
         operation: str,
     ) -> ChatMessage:
+        payload = self._payload(
+            messages,
+            model,
+            max_tokens,
+            temperature,
+            top_p,
+            reasoning,
+            seed=seed,
+            thinking_budget=thinking_budget,
+        )
         client = await self._get_client()
         timeout = timeout_seconds or self._timeout
         started = time.monotonic()
 
         try:
-            response = await client.post(
-                "/v1/chat/completions",
-                json=self._payload(messages, model, max_tokens, temperature, top_p, reasoning),
-                timeout=timeout,
-            )
+            response = await client.post("/v1/chat/completions", json=payload, timeout=timeout)
             response.raise_for_status()
             data = response.json()
         except Exception as e:
@@ -353,6 +391,7 @@ class VLLMAdapter(LLMPort):
             # field when served with a --reasoning-parser. `.get` with no default
             # keeps None (no channel) distinct from "" (channel present, empty).
             reasoning_text=message.get("reasoning_content"),
+            termination=_TERMINATIONS.get(choices[0].get("finish_reason")),
         )
 
     async def _stream_frames(
@@ -365,6 +404,8 @@ class VLLMAdapter(LLMPort):
         top_p: float | None,
         timeout: float,
         reasoning: str | None,
+        seed: int | None,
+        thinking_budget: int | None,
         operation: str,
     ) -> AsyncIterator[dict[str, Any]]:
         """Yield decoded SSE frames, skipping the terminal sentinel.
@@ -373,14 +414,23 @@ class VLLMAdapter(LLMPort):
         skipped rather than fatal — one unparseable chunk must not discard a
         generation that is otherwise complete.
         """
+        payload = self._payload(
+            messages,
+            model,
+            max_tokens,
+            temperature,
+            top_p,
+            reasoning,
+            seed=seed,
+            thinking_budget=thinking_budget,
+            stream=True,
+        )
         client = await self._get_client()
         try:
             async with client.stream(
                 "POST",
                 "/v1/chat/completions",
-                json=self._payload(
-                    messages, model, max_tokens, temperature, top_p, reasoning, stream=True
-                ),
+                json=payload,
                 timeout=timeout,
             ) as response:
                 response.raise_for_status()
@@ -406,6 +456,8 @@ class VLLMAdapter(LLMPort):
         top_p: float | None = None,
         timeout_seconds: float | None = None,
         reasoning: str | None = None,
+        seed: int | None = None,
+        thinking_budget: int | None = None,
     ) -> AsyncIterator[str]:
         """Stream assistant content as plain text chunks."""
         resolved = model or self._default_model
@@ -417,6 +469,8 @@ class VLLMAdapter(LLMPort):
             top_p=top_p,
             timeout=timeout_seconds or self._timeout,
             reasoning=reasoning,
+            seed=seed,
+            thinking_budget=thinking_budget,
             operation="chat_stream",
         ):
             for choice in frame.get("choices") or []:
@@ -433,6 +487,8 @@ class VLLMAdapter(LLMPort):
         top_p: float | None = None,
         timeout_seconds: float | None = None,
         reasoning: str | None = None,
+        seed: int | None = None,
+        thinking_budget: int | None = None,
     ) -> ChatMessage:
         """Stream for connection liveness, return one assembled message.
 
@@ -446,6 +502,7 @@ class VLLMAdapter(LLMPort):
         reasoning_chunks: list[str] = []
         saw_reasoning = False
         usage_frame: dict[str, Any] = {}
+        finish_reason: str | None = None
 
         async for frame in self._stream_frames(
             messages,
@@ -455,6 +512,8 @@ class VLLMAdapter(LLMPort):
             top_p=top_p,
             timeout=timeout_seconds or self._timeout,
             reasoning=reasoning,
+            seed=seed,
+            thinking_budget=thinking_budget,
             operation="chat_stream_with_usage",
         ):
             if frame.get("usage"):
@@ -474,6 +533,8 @@ class VLLMAdapter(LLMPort):
                 if reasoning is not None:
                     saw_reasoning = True
                     reasoning_chunks.append(reasoning)
+                if choice.get("finish_reason"):
+                    finish_reason = choice["finish_reason"]
 
         elapsed = time.monotonic() - started
         prompt_tok, completion_tok, total_tok = _usage_from(usage_frame)
@@ -496,6 +557,7 @@ class VLLMAdapter(LLMPort):
             total_tokens=total_tok,
             tokens_per_second=tps,
             reasoning_text="".join(reasoning_chunks) if saw_reasoning else None,
+            termination=_TERMINATIONS.get(finish_reason or ""),
         )
 
     def list_models(self) -> list[str]:

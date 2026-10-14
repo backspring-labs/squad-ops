@@ -6,6 +6,7 @@ Part of SIP-0.8.7 Infrastructure Ports Migration.
 
 import sys
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import TextIO
 
@@ -66,8 +67,10 @@ class ConsoleAdapter(MetricsPort, EventPort):
         name: str,
         value: float,
         labels: dict[str, str] | None = None,
+        *,
+        boundaries: Sequence[float] | None = None,
     ) -> None:
-        """Log histogram metric to console."""
+        """Log histogram metric to console. It keeps no buckets, so ``boundaries`` is unused."""
         labels_str = f" {labels}" if labels else ""
         self._safe_write(f"[METRIC:HISTOGRAM] {name}={value}{labels_str}")
 

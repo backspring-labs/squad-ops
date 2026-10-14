@@ -1534,6 +1534,27 @@ class TestADiagnosticIsReadByTheSeamItReached:
             "evidence": "no readout for this fault",
         }
 
+    @pytest.mark.parametrize(
+        ("framing_status", "reached"), [("cancelled", True), ("completed", False)]
+    )
+    def test_an_injected_question_is_read_as_the_park_it_caused(
+        self, driver, framing_status, reached
+    ):
+        """#2279: an increment whose plan gate the bound expired ends with its framing run
+        cancelled. Bug caught: a completed framing (the question answered in time, or never
+        asked) read as the seam reached."""
+        _, _, read = driver.SEAM_READOUTS["increment_design_asks"]
+        rec = {
+            "runs": [
+                {"workload": "proposal", "status": "completed"},
+                {"workload": "framing", "status": framing_status},
+            ]
+        }
+        assert read(rec) == (
+            reached,
+            [("proposal", "completed"), ("framing", framing_status)],
+        )
+
     def test_every_framework_fault_has_a_seam_readout(self, driver):
         """The list that would drift: a fault added to the framework without a readout here
         runs as a diagnostic nothing can read (#1300, #1310)."""

@@ -295,6 +295,17 @@ class TestHealthHost:
             "quiet": False,
             "lease": {"holder": "supervisor", "expires_at": expires.isoformat()},
         }
+        # #2204b: the states the console colours. One engine unread, so the after-load floor
+        # holds; a reading the host did not return is unknown, never ok.
+        assert body["verdicts"] == {
+            "memory": {"state": "ok", "floor_bytes": 16 * 2**30, "floor": "after_load"},
+            "disk": {"state": "unknown", "floor_bytes": 150 * 10**9},
+            "board_temperature": {"state": "unknown"},
+        }
+        assert body["limits"] == {
+            "board_temperature_warn_celsius": 98.0,
+            "board_temperature_critical_celsius": 104.0,
+        }
         for leaked in ("ripley", "cmp_secret", "deadbeef", "ConnectError"):
             assert leaked not in resp.text
 
@@ -306,3 +317,39 @@ class TestHealthHost:
         body = self._client(mock_health_checker, reader).get("/health/host").json()
 
         assert (body["box"], body["engines"]) == (None, None)
+
+
+def test_a_server_failure_on_an_unauthenticated_route_names_the_request_never_the_exception(
+    mock_health_checker, caplog
+):
+    """#1976. Bug caught: ``/health/*`` answered a failed read with ``detail=f"...: {e}"``, so an
+    unauthenticated caller read whatever the exception carried (here a connection string). Now
+    the body says what failed and gives the request id, and the log keeps the traceback."""
+    from squadops.api.middleware.auth import RequestIDMiddleware
+
+    app = FastAPI()
+    app.add_middleware(RequestIDMiddleware)
+    app.include_router(router)
+    mock_health_checker.get_runtime_state = AsyncMock(
+        side_effect=ConnectionError("postgresql://app:hunter2@db.internal:5432/records")
+    )
+
+    with patch(
+        "squadops.api.routes.platform_health._get_health_checker", return_value=mock_health_checker
+    ):
+        resp = TestClient(app).get(
+            "/health/agents/max/runtime-state", headers={"X-Request-ID": "req-1976"}
+        )
+
+    assert resp.status_code == 500
+    assert resp.json() == {
+        "detail": {
+            "error": {
+                "code": "INTERNAL_ERROR",
+                "message": "Failed to read runtime state",
+                "details": {"request_id": "req-1976"},
+            }
+        }
+    }
+    assert "hunter2" not in resp.text
+    assert "req-1976" in caplog.text and "hunter2" in caplog.text
