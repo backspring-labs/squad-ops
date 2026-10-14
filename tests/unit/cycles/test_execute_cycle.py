@@ -783,6 +783,52 @@ class TestInterWorkloadGates:
         )
         mock_registry.create_run.assert_not_called()
 
+    async def test_a_run_cancelled_at_its_gate_reaches_the_campaign_as_stored(
+        self, executor, mock_registry, caplog
+    ):
+        """#2301: enters at ``execute_cycle`` with the real gate and the real completion boundary.
+        A plan gate waits after its framing run completed, and an expired escalation cancels the
+        run there (SIP-0109 §24bj). Bugs caught: the campaign told the run as the executor loaded
+        it before the gate, still ``completed``, so ``cycle_ending`` never read the park and every
+        expiry was decided as an unverified build (live: ``cmp_62e17d6d4773``); and the
+        cancellation logged as a gate failure, with a traceback."""
+        import dataclasses
+
+        from squadops.campaigns.models import PlanGate
+        from squadops.cycles.cycle_end import CycleStopReason
+
+        cycle = dataclasses.replace(
+            _make_cycle(
+                workload_sequence=[
+                    {"type": "framing", "gate": "progress_plan_review"},
+                    {"type": "implementation"},
+                ]
+            ),
+            campaign_id="cmp_001",
+        )
+        mock_registry.get_cycle.return_value = cycle
+        completed = _make_run("run_001", 1, "completed", "framing")
+        cancelled = _make_run("run_001", 1, "cancelled", "framing")
+        mock_registry.get_run.side_effect = [
+            completed,  # status check after the framing run
+            cancelled,  # the gate's poll: the expiry cancelled it
+            cancelled,  # the ending's read
+        ]
+        executor._campaign_progress = AsyncMock()
+        # A supervised campaign's gate waits on the same poll a tier escalation waits on.
+        executor._campaign_registry = AsyncMock()
+        executor._campaign_registry.get_campaign.return_value = MagicMock(
+            policy=MagicMock(plan_gate=PlanGate.SUPERVISED)
+        )
+
+        with patch.object(asyncio, "sleep", new_callable=AsyncMock):
+            await executor.execute_cycle("cyc_001", "run_001")
+
+        heard = executor._campaign_progress.cycle_ended.await_args.args
+        assert (heard[1].status, heard[2]) == ("cancelled", CycleStopReason.RUN_CANCELLED)
+        assert not [r for r in caplog.records if r.levelname == "ERROR"]
+        mock_registry.create_run.assert_not_called()
+
     async def test_no_gate_skips_polling(self, executor, mock_registry, mock_event_bus):
         """No gate on workload entry → advances without polling."""
         cycle = _make_cycle(
