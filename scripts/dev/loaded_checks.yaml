@@ -832,3 +832,11 @@ checks:
       from squadops.capabilities.handlers import probe_runner
       print("ordered_by" in inspect.getsource(probe_runner.evaluate_expectations), hasattr(probe_runner, "seed_failure"))
     expect: "True True"
+  - id: "2308-agent"
+    what: "a failing contract probe fails qa.test's task, so correction engages"
+    container: squadops-eve
+    code: |
+      from squadops.capabilities.handlers.cycle.qa_test import QATestHandler
+      out = {"validation_result": {"passed": True, "checks": [{"criterion_id": "vc-probe-runs-ordered", "status": "failed", "reason": "not ordered"}]}}
+      print(QATestHandler._fail_task_on_failing_probes(out), out["validation_result"]["passed"])
+    expect: "contract probe(s) failed: vc-probe-runs-ordered: not ordered False"
