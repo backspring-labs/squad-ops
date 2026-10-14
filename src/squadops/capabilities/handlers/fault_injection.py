@@ -460,13 +460,16 @@ def _planted_alias_row(artifacts: Sequence[Mapping[str, Any]]) -> dict[str, Any]
     return None
 
 
-#: The runtime's seam where an increment's candidate manifest is seeded (SIP-0109 §7.3,
-#: ``WorkloadGate._seed_increment``). A fault there transforms the manifest the runtime builds,
-#: not an agent's emission, so it is named by its seam rather than a task (#2279).
-INCREMENT_SEED_SEAM = "runtime:increment_seed"
+#: The runtime's seam where an increment is launched against the accepted baseline (SIP-0109
+#: §7.3, ``CampaignProgress._propose_launch``). A fault there transforms the baseline the increment
+#: frames from, not an agent's emission, so it is named by its seam rather than a task (#2279). It
+#: acts before §24bm's late-answer carry, so a late answer reaches its question as it reaches a
+#: real one (#2290).
+INCREMENT_BASELINE_SEAM = "runtime:increment_baseline"
 
-#: The question the increment-seed fault declares. The id is constant, so an answer recorded
-#: against it after an expiry is read at a later gate by §24ad's match on the id (§24bl).
+#: The question the increment-baseline fault declares. The id and the question are constant, so a
+#: late answer recorded against an expired escalation is carried into the next increment's
+#: baseline by §24bm's match on both, and the tier reads it there.
 INJECTED_QUESTION_ID = "injected-open-question"
 INJECTED_QUESTION = (
     "Diagnostic fault (#2279): should the list of runs be paginated? The PRD does not ask "
@@ -475,16 +478,21 @@ INJECTED_QUESTION = (
 
 
 def _increment_design_asks(manifest: str) -> str:
-    """The candidate manifest with one more decision, unresolved: the design asks a question.
+    """The baseline with one more decision, unresolved: the design asks a question.
 
     An increment's manifest is the accepted one with the approved delta applied, and a delta
     cannot carry a decision, so an increment's design never asks anything and the tier always
     reads it as quiet (2.2.1 plan §2). This is the one shape that makes it ask.
+
+    A baseline that already holds the decision keeps it, answered or not: applied again, the
+    fault asks once, and never overwrites the answer a late answer's carry wrote (#2290).
     """
     import yaml
 
     data = yaml.safe_load(manifest)
-    decisions = [d for d in (data.get("decisions") or []) if d.get("id") != INJECTED_QUESTION_ID]
+    decisions = list(data.get("decisions") or [])
+    if any(d.get("id") == INJECTED_QUESTION_ID for d in decisions):
+        return manifest
     decisions.append(
         {"id": INJECTED_QUESTION_ID, "unresolved": True, "question": INJECTED_QUESTION}
     )
@@ -546,8 +554,8 @@ class Fault:
     #: repaired file while the diagnostic asks about what the task hands on. The loop still
     #: runs, and its texture is still read from it.
     file_transform: Callable[[str, str], str] | None = None
-    #: #2279: a seed fault, not an emission's: ``seed`` applies it to the candidate manifest the
-    #: runtime builds for an increment, and ``task`` names that seam (``INCREMENT_SEED_SEAM``).
+    #: #2279: a seed fault, not an emission's: ``seed`` applies it to the baseline an increment is
+    #: launched against, and ``task`` names that seam (``INCREMENT_BASELINE_SEAM``).
     seed_transform: Callable[[str], str] | None = None
 
     @property
@@ -697,12 +705,13 @@ FAULTS: dict[str, Fault] = {
     # 2.3 plan §2 (#2279): the plan-review tier's timeout half, read live. Declared on a
     # campaign's increments through the `campaign-increment-asks` request profile.
     "increment_design_asks": Fault(
-        task=INCREMENT_SEED_SEAM,
+        task=INCREMENT_BASELINE_SEAM,
         transform=_unchanged,
         found_in="#2279 — the 2.2.1 plan §2: an increment's design never asks, so the tier's expiry, "
         "park, row 15, no-progress stop and late answer were read only in unit tests",
-        exercises="SIP-0109 §24bk and §24bl live: an escalation expires at the bound, parks the "
-        "increment, row 15 proposes again, and a late answer is read at a later gate",
+        exercises="SIP-0109 §24bk and §24bm live: an escalation expires at the bound, parks the "
+        "increment, row 15 proposes again, and a late answer is carried into the next "
+        "increment's baseline, where the tier reads it",
         seed_transform=_increment_design_asks,
     ),
 }
@@ -789,11 +798,11 @@ INJECTED_TASKS: frozenset[str] = frozenset(
 
 #: The runtime seams that apply a declared fault (#2279), held to their call site by the
 #: wiring test that enters at the seam (``test_tier_timeout_fault.py``).
-RUNTIME_SEAMS: frozenset[str] = frozenset({INCREMENT_SEED_SEAM})
+RUNTIME_SEAMS: frozenset[str] = frozenset({INCREMENT_BASELINE_SEAM})
 
 
 def seed(manifest: str, resolved_config: Mapping[str, Any] | None) -> str:
-    """The increment's candidate manifest as the cycle's declared seed faults leave it (#2279).
+    """The baseline an increment frames from, as its declared seed faults leave it (#2279).
 
     Unchanged for a cycle that declares none, which is every cycle but a diagnostic. Each
     application logs itself, as ``inject`` does: an injected question that is not obvious in

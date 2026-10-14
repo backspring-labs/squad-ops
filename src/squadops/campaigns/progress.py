@@ -75,6 +75,8 @@ from squadops.campaigns.models import (
     PlanGate,
 )
 from squadops.campaigns.prior_cycle import prior_cycle_brief
+from squadops.capabilities.handlers.fault_injection import seed as fault_seed
+from squadops.contracts.cycle_request_profiles import load_profile
 from squadops.cycles.contract_derivation import (
     is_interface_manifest,
     load_seeded_manifest_content,
@@ -1218,6 +1220,14 @@ class CampaignProgress:
                 answered_at=answer.decided_at.isoformat(),
                 where=where,
             )
+        # #2279, #2290: a diagnostic's declared seed fault makes the baseline ask, here, before
+        # the carry below, so a late answer on record reaches the question as it reaches a real
+        # one. Every other campaign's baseline is unchanged.
+        try:
+            declared = load_profile(campaign.policy.proposal_profile).defaults
+        except FileNotFoundError as e:
+            return f"the policy's proposal profile cannot be loaded: {e}"
+        baseline = fault_seed(baseline, declared)
         # §24bm: in a tier campaign, a late answer on record for one of the baseline's open
         # questions (the same decision id and the same question) is carried into the manifest the
         # proposal frames from, as §24ad's answer is, so the plan the gate reads carries it.
