@@ -7,6 +7,7 @@ Part of SIP-0.8.7 Infrastructure Ports Migration.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -158,14 +159,16 @@ class OTelAdapter(MetricsPort, EventPort):
         value: float,
         labels: dict[str, str] | None = None,
     ) -> None:
-        """Set a gauge metric value."""
+        """Set a gauge metric value: the reading replaces the last one for its labels (#2260).
+
+        A synchronous gauge, not an up-down counter: a counter's ``add`` summed every reading into
+        the last, so a gauge set to 5 and then 3 read 8."""
         try:
             if not self._ensure_initialized():
                 return
             if name not in self._gauges:
-                self._gauges[name] = self._meter.create_up_down_counter(name)
-            # OTel doesn't have a direct gauge; using up_down_counter as approximation
-            self._gauges[name].add(value, labels or {})
+                self._gauges[name] = self._meter.create_gauge(name)
+            self._gauges[name].set(value, labels or {})
         except Exception:
             # Swallow all errors - non-blocking contract
             pass
@@ -175,13 +178,21 @@ class OTelAdapter(MetricsPort, EventPort):
         name: str,
         value: float,
         labels: dict[str, str] | None = None,
+        *,
+        boundaries: Sequence[float] | None = None,
     ) -> None:
-        """Record a histogram observation."""
+        """Record a histogram observation, in the caller's buckets where it gives them (#2260).
+
+        Without boundaries the SDK's defaults apply (0, 5, 10, 25 … 10,000), which put nearly every
+        decode rate in one bucket and over half the 27B's prompts above the last."""
         try:
             if not self._ensure_initialized():
                 return
             if name not in self._histograms:
-                self._histograms[name] = self._meter.create_histogram(name)
+                advisory = (
+                    {"explicit_bucket_boundaries_advisory": list(boundaries)} if boundaries else {}
+                )
+                self._histograms[name] = self._meter.create_histogram(name, **advisory)
             self._histograms[name].record(value, labels or {})
         except Exception:
             # Swallow all errors - non-blocking contract

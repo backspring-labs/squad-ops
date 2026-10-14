@@ -19,6 +19,7 @@ import pytest
 
 from adapters.prompts.filesystem_asset_adapter import FilesystemPromptAssetAdapter
 from squadops.capabilities.handlers.impl.repair_handlers import DevelopmentCorrectionRepairHandler
+from squadops.llm.models import Termination
 from squadops.prompts.renderer import RequestTemplateRenderer
 
 pytestmark = [pytest.mark.domain_capabilities]
@@ -34,9 +35,12 @@ _EDIT = (
 
 @dataclass(frozen=True)
 class _AtCap:
-    """A call that used its whole budget and wrote ``content``: the budget stopped it there."""
+    """A call that used its whole budget and wrote ``content``: the budget stopped it there.
+    ``termination`` is how the provider said it ended: None for one that reports nothing, as
+    Ollama does, so the token count decides (SIP-0111 §5.2)."""
 
     content: str
+    termination: str | None = None
 
 
 #: The repair's edit, then a new file the budget cut off mid-line: what a generation stopped by
@@ -63,6 +67,7 @@ def _context(*shapes, renderer: bool = True):
             completion_tokens=cap if at_cap else 10,
             reasoning_tokens=None,
             reasoning_text="thinking " * 500 if shape == "cap" else "",
+            termination=shape.termination if isinstance(shape, _AtCap) else None,
         )
 
     ports = MagicMock()
@@ -199,4 +204,39 @@ async def test_only_a_block_the_cap_cut_is_dropped(shape, kept):
     result = await DevelopmentCorrectionRepairHandler().handle(ctx, _inputs())
 
     assert len(calls) == 1
+    assert sorted(_artifact_names(result)) == sorted(kept)
+
+
+@pytest.mark.parametrize(
+    ("termination", "completion_tokens", "kept", "calls_made"),
+    [
+        # The provider said the budget stopped it, with no usage to count: the cut is still read.
+        (Termination.LENGTH, None, ["backend/routes.py"], 2),
+        # The provider said it stopped on its own, at the cap's count: nothing was cut, so the
+        # unclosed final block is #431's dropped closing fence, recovered.
+        (Termination.STOP, 12288, ["backend/routes.py", "backend/extra.py"], 1),
+    ],
+    ids=["length without usage", "stop at the cap's count"],
+)
+async def test_a_reported_termination_decides_the_cap_over_the_token_count(
+    termination, completion_tokens, kept, calls_made
+):
+    """SIP-0111 §5.2, entered at ``handle``. Bugs this catches: a provider's ``length`` ignored
+    because its usage is missing, so half a file is taken as written; and a natural stop that
+    happens to equal the budget read as a cut, so a complete block is dropped and asked again."""
+    ctx, calls = _context(_CUT, _EDIT)
+    respond = ctx.ports.llm.chat_stream_with_usage.side_effect
+
+    async def reported(messages, **kwargs):
+        response = await respond(messages, **kwargs)
+        if len(calls) == 1:
+            response.termination = termination
+            response.completion_tokens = completion_tokens
+        return response
+
+    ctx.ports.llm.chat_stream_with_usage = AsyncMock(side_effect=reported)
+    result = await DevelopmentCorrectionRepairHandler().handle(ctx, _inputs())
+
+    assert len(calls) == calls_made
+    assert result.success, result.error
     assert sorted(_artifact_names(result)) == sorted(kept)

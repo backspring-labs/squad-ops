@@ -24,6 +24,17 @@ class LLMCapability:
     THINKING_TOKENS = "thinking_tokens"
     REASONING_CONTROL = "reasoning_control"
     LOADED_MODELS = "loaded_models"
+    SEED = "seed"
+    THINKING_BUDGET = "thinking_budget"
+    REQUESTS_IN_FLIGHT = "requests_in_flight"
+
+
+#: The per-call controls a provider honours only where it declares them (SIP-0111 §5.1): each
+#: argument name and the capability that admits it.
+_CONTROLS: dict[str, str] = {
+    "seed": LLMCapability.SEED,
+    "thinking_budget": LLMCapability.THINKING_BUDGET,
+}
 
 
 class LLMPort(ABC):
@@ -40,6 +51,19 @@ class LLMPort(ABC):
     def default_model(self) -> str:
         """Return the default model name used by this provider."""
         return "unknown"
+
+    @property
+    @abstractmethod
+    def engine(self) -> str:
+        """The inference engine this adapter speaks to: one value per adapter, the factory's
+        provider name (``"ollama"``, ``"vllm"``, ``"atlas"``, ``"tensorfold"``).
+
+        The per-call metrics are labelled with it (#2260). A model name can't stand in: it is
+        provider-scoped (SIP-0106 §3.4), so the same weights carry a different name on each
+        engine, and nothing in the name says which engine served the call. Required, never
+        defaulted: an adapter that named no engine would label its calls as somebody else's.
+        """
+        ...
 
     @abstractmethod
     async def generate(self, request: LLMRequest) -> LLMResponse:
@@ -68,6 +92,8 @@ class LLMPort(ABC):
         top_p: float | None = None,
         timeout_seconds: float | None = None,
         reasoning: str | None = None,
+        seed: int | None = None,
+        thinking_budget: int | None = None,
     ) -> ChatMessage:
         """Chat with the LLM using message history.
 
@@ -87,6 +113,11 @@ class LLMPort(ABC):
                 (Ollama ``think``, a chat-template toggle, an effort) and an
                 adapter with no dial accepts it silently — see
                 ``capabilities()[REASONING_CONTROL]`` (#927).
+            seed: the sampler's seed (SIP-0111 §5.1). Unlike ``reasoning``, a control that
+                changes the generation is never dropped: a provider that does not declare
+                ``SEED`` raises ``ValueError`` before any call.
+            thinking_budget: a cap on reasoning tokens, refused the same way unless
+                ``THINKING_BUDGET`` is declared.
 
         Returns:
             Assistant's response message
@@ -107,6 +138,8 @@ class LLMPort(ABC):
         top_p: float | None = None,
         timeout_seconds: float | None = None,
         reasoning: str | None = None,
+        seed: int | None = None,
+        thinking_budget: int | None = None,
     ) -> AsyncIterator[str]:
         """Stream chat response as plain text chunks.
 
@@ -128,6 +161,8 @@ class LLMPort(ABC):
         top_p: float | None = None,
         timeout_seconds: float | None = None,
         reasoning: str | None = None,
+        seed: int | None = None,
+        thinking_budget: int | None = None,
     ) -> ChatMessage:
         """Stream chat internally for connection liveness, return complete ChatMessage with usage.
 
@@ -149,6 +184,8 @@ class LLMPort(ABC):
             top_p=top_p,
             timeout_seconds=timeout_seconds,
             reasoning=reasoning,
+            seed=seed,
+            thinking_budget=thinking_budget,
         )
 
     @abstractmethod
@@ -213,6 +250,13 @@ class LLMPort(ABC):
           own posture (#927).
         - ``loaded_models``: :meth:`list_loaded_models` is implemented — what the
           engine holds in memory now, not what it could serve (SIP-0109 §9.3).
+        - ``seed``: a ``seed`` passed to the generation methods reaches the sampler
+          (SIP-0111 §5.1). False means a seed is refused, never dropped.
+        - ``thinking_budget``: a ``thinking_budget`` reaches the server, refused the
+          same way where False.
+        - ``requests_in_flight``: :meth:`requests_in_flight` is implemented: how many
+          requests the engine is serving or holding now, from an authenticated source
+          (SIP-0111 §5.5). The quiet-box check reads it before a launch.
 
         Defaults to all-False: an adapter that declares nothing is treated as
         supporting nothing. Failing closed keeps a silent omission from
@@ -225,11 +269,26 @@ class LLMPort(ABC):
             LLMCapability.THINKING_TOKENS: False,
             LLMCapability.REASONING_CONTROL: False,
             LLMCapability.LOADED_MODELS: False,
+            LLMCapability.SEED: False,
+            LLMCapability.THINKING_BUDGET: False,
+            LLMCapability.REQUESTS_IN_FLIGHT: False,
         }
 
     def supports(self, capability: str) -> bool:
         """Whether ``capability`` is declared. Unknown names are False."""
         return self.capabilities().get(capability, False)
+
+    def refuse_undeclared_controls(self, **controls: int | None) -> None:
+        """Raise ``ValueError`` for a set control this provider does not declare (SIP-0111
+        §5.1), before any call. A seed or a budget that changes the generation and is then
+        dropped would make a replay claim draws it never made. ``None`` is always accepted:
+        it asks for nothing."""
+        for name, value in controls.items():
+            if value is not None and not self.supports(_CONTROLS[name]):
+                raise ValueError(
+                    f"{type(self).__name__} does not support {name}; "
+                    f"capabilities()['{_CONTROLS[name]}'] is False."
+                )
 
     async def list_available_models(self) -> list[ModelInfo]:
         """List models the provider can serve, with metadata where available.
@@ -263,6 +322,21 @@ class LLMPort(ABC):
         raise NotImplementedError(
             f"{type(self).__name__} cannot report loaded models; "
             f"capabilities()['{LLMCapability.LOADED_MODELS}'] is False."
+        )
+
+    async def requests_in_flight(self) -> int:
+        """How many requests the engine is running or holding now (SIP-0111 §5.5).
+
+        What the launch gate reads beside the loaded models: an engine already serving
+        work the box did not launch is not quiet, whichever models it holds.
+
+        Raises:
+            NotImplementedError: when ``requests_in_flight`` is not declared. "Cannot read"
+                stays distinct from "nothing running": a zero would read as a quiet box.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} cannot report requests in flight; "
+            f"capabilities()['{LLMCapability.REQUESTS_IN_FLIGHT}'] is False."
         )
 
     async def pull_model(self, model_name: str) -> None:

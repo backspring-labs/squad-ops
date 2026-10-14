@@ -17,7 +17,9 @@ that makes this a command rather than a checklist line.
 **It refuses a run that is still going.** A timeline captured mid-flight shows a blue RUNNING
 bar and a half-drawn story, and pasted into a release page it reads as the finished article —
 the #1076 shape, where a capture that could not have been complete looked authoritative.
-Pass ``--allow-running`` only to look at something live.
+Pass ``--allow-running`` only to look at something live. **A finished run is photographed as it
+ended,** failed, crashed or cancelled as much as completed (#2234): a refused proposal run's
+timeline is evidence too.
 
 **Keep the chrome.** The left nav and the header are deliberately IN the capture, not cropped
 out (owner, 2026-09-11): the Prefect logo and nav attribute the screenshot to the tool that
@@ -57,6 +59,9 @@ DEFAULT_HEIGHT = 520
 #: Prefect's own ceiling: anything larger is refused with 422 "Invalid limit: must be less
 #: than or equal to 200", which arrives as an HTTPError rather than an empty result.
 PAGE = 200
+#: Prefect's terminal state types. Any other (scheduled, pending, running, paused, cancelling) is
+#: a run that is still going.
+FINISHED = frozenset({"COMPLETED", "FAILED", "CRASHED", "CANCELLED"})
 
 
 def api(path: str, body: dict | None = None):
@@ -150,10 +155,10 @@ def main() -> int:
     state = (run.get("state") or {}).get("type", "?")
     print(f"{run.get('name')}  state={state}  id={run['id']}")
 
-    if state == "RUNNING" and not args.allow_running:
+    if state not in FINISHED and not args.allow_running:
         raise SystemExit(
-            "REFUSING: the run is still going, and a half-drawn timeline in a release package "
-            "reads as the finished article. Wait for it, or pass --allow-running to look."
+            f"REFUSING: the run is {state}, still going, and a half-drawn timeline in a release "
+            "package reads as the finished article. Wait for it, or pass --allow-running to look."
         )
 
     tasks = repair_tasks(run["id"])

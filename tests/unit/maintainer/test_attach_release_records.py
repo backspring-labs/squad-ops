@@ -52,6 +52,8 @@ def box(tmp_path, monkeypatch):
         yaml.safe_dump({"version": "1.8.1", "tag": "v1.8.1", "cycles": [{"id": "cyc_1"}]}),
     )
     monkeypatch.setattr(attach, "main_checkout", lambda _p: main)
+    # The box's own TensorFold key is never read by a test: absent unless a test writes it.
+    monkeypatch.setattr(attach, "TENSORFOLD_KEY", tmp_path / "tensorfold" / "api_key")
     return main
 
 
@@ -397,3 +399,82 @@ def test_only_a_tracked_file_makes_a_value_public(tmp_path):
 
     assert attach.tracked_files_with(repo, "provider-word") == ["docker-compose.yml"]
     assert attach.tracked_files_with(repo, "never-committed-value") == []
+
+
+@pytest.fixture
+def engine_records(box, monkeypatch):
+    """Engine records from inside the line's window, on each of its boundary days, and from
+    before and after it; and one whose name carries no day."""
+    from datetime import datetime
+
+    replay = box / "var" / "engine_replay"
+    _write(replay / "2026-10-04-held-out" / "ollama" / "a.jsonl", '{"line": "data: {}"}\n')
+    _write(replay / "2026-10-04-held-out" / "reading.json", '{"speed_gate": true}\n')
+    _write(replay / "2026-09-30-tuning" / "tf" / "a.jsonl", "an earlier line's\n")
+    _write(replay / "2026-10-07-next" / "tf" / "a.jsonl", "a later line's\n")
+    _write(replay / "split-2199.json", "{}\n")
+    switch = box / "var" / "engine_switch"
+    _write(switch / "20261001T230000Z-to-tensorfold.jsonl", '{"step": "start"}\n')
+    _write(switch / "20261006T150000Z-to-ollama.jsonl", '{"step": "restore"}\n')
+    _write(switch / "20260930T100000Z-status.jsonl", "{}\n")
+    window = (datetime.fromisoformat(_SINCE), datetime.fromisoformat(_UNTIL))
+    monkeypatch.setattr(attach, "tag_window", lambda _main, _tag: window)
+    return box
+
+
+def test_the_lines_engine_records_are_carried_and_an_undated_one_is_named(
+    engine_records, tmp_path, monkeypatch, capsys
+):
+    """Entered at ``main``, preview then upload. Bugs this catches: the TensorFold gates'
+    records (each arm's every request and stream event, and the reading) left on one box, since
+    they sit outside ``var/verification_sets/``; another line's run or switch carried; a record
+    from a tag's own day dropped by both lines; and an undated record silently left behind."""
+    approved = _approved(engine_records, tmp_path, monkeypatch)
+    out = capsys.readouterr().out
+    monkeypatch.setattr(
+        attach.subprocess, "run", lambda cmd, **k: subprocess.CompletedProcess(cmd, 0, "", "")
+    )
+
+    assert _run(engine_records, tmp_path, "--upload", "--expect-sha256", approved) == 0
+
+    import tarfile
+
+    with tarfile.open(tmp_path / "squadops-1.8.1-records.tar.gz") as tar:
+        names = sorted(n.removeprefix("squadops-1.8.1-records/") for n in tar.getnames())
+    assert [n for n in names if n.startswith(("var/engine_replay/", "var/engine_switch/"))] == [
+        "var/engine_replay/2026-10-04-held-out/ollama/a.jsonl",
+        "var/engine_replay/2026-10-04-held-out/reading.json",
+        "var/engine_switch/20261001T230000Z-to-tensorfold.jsonl",
+        "var/engine_switch/20261006T150000Z-to-ollama.jsonl",
+    ]
+    package = yaml.safe_load(
+        (engine_records / "site/content/releases/v1.8.1/package.yaml").read_text()
+    )
+    assert package["records"]["engine_records"] == [
+        "var/engine_replay/2026-10-04-held-out",
+        "var/engine_switch/20261001T230000Z-to-tensorfold.jsonl",
+        "var/engine_switch/20261006T150000Z-to-ollama.jsonl",
+    ]
+    assert "not carried, its name begins with no day: var/engine_replay/split-2199.json" in out
+
+
+def test_tensorfolds_key_in_an_engine_record_refuses_the_upload(
+    engine_records, tmp_path, monkeypatch, capsys
+):
+    """Bug this catches: the TensorFold key, which lives outside every checkout's ``secrets/``,
+    left out of the scan of the records most likely to carry it: TensorFold's own requests and
+    logs."""
+    planted = "planted-tensorfold-value"
+    _write(tmp_path / "tensorfold" / "api_key", f"squadops: {planted}\n")
+    record = engine_records / "var/engine_replay/2026-10-04-held-out/ollama/a.jsonl"
+    _write(record, f'{{"t": 0.1}}\n{{"headers": "Bearer {planted}"}}\n')
+    monkeypatch.setattr(attach.subprocess, "run", lambda *a, **k: pytest.fail("uploaded"))
+
+    assert _run(engine_records, tmp_path, "--upload", "--expect-sha256", "any") == 1
+
+    out = capsys.readouterr().out
+    assert (
+        "var/engine_replay/2026-10-04-held-out/ollama/a.jsonl:2  the value of TensorFold's API key"
+        in out
+    )
+    assert planted not in out

@@ -64,7 +64,8 @@ class TestGetProjectPrdContent:
 
         resp = client.get("/api/v1/projects/test_proj/prd-content")
         assert resp.status_code == 404
-        assert "No PRD file configured" in resp.json()["detail"]
+        assert resp.json()["detail"]["error"]["code"] == "PRD_NOT_FOUND"
+        assert "No PRD file configured" in resp.json()["detail"]["error"]["message"]
 
     def test_404_when_file_not_found(self, client, mock_project_registry, tmp_path):
         mock_project_registry.get_project.return_value = Project(
@@ -77,7 +78,8 @@ class TestGetProjectPrdContent:
 
         resp = client.get("/api/v1/projects/test_proj/prd-content")
         assert resp.status_code == 404
-        assert "PRD file not found" in resp.json()["detail"]
+        assert resp.json()["detail"]["error"]["code"] == "PRD_NOT_FOUND"
+        assert "PRD file not found" in resp.json()["detail"]["error"]["message"]
 
     def test_404_when_project_not_found(self, client, mock_project_registry):
         mock_project_registry.get_project.side_effect = ProjectNotFoundError("Not found")

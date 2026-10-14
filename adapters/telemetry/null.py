@@ -4,6 +4,8 @@ No-op implementation for testing. Does nothing, never raises.
 Part of SIP-0.8.7 Infrastructure Ports Migration.
 """
 
+from collections.abc import Sequence
+
 from squadops.ports.telemetry.events import EventPort
 from squadops.ports.telemetry.metrics import MetricsPort
 from squadops.telemetry.models import Span, StructuredEvent
@@ -39,6 +41,8 @@ class NullAdapter(MetricsPort, EventPort):
         name: str,
         value: float,
         labels: dict[str, str] | None = None,
+        *,
+        boundaries: Sequence[float] | None = None,
     ) -> None:
         """No-op histogram."""
         pass

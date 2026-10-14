@@ -157,8 +157,9 @@ class APIClient:
 
         try:
             body = response.json()
-            # Cycle routes nest the {"error": {...}} envelope under FastAPI's `detail`
-            # ({"detail": {"error": {...}}}); health/auth return {"detail": "<string>"}.
+            # Every route nests the {"error": {...}} envelope under FastAPI's `detail`
+            # ({"detail": {"error": {...}}}); a server from before #1976 answered its health and
+            # auth routes with {"detail": "<string>"}.
             # Unwrap `detail` first, then read the error envelope — falling back to the
             # top level for an un-wrapped body (#319).
             inner = body.get("detail", body) if isinstance(body, dict) else body

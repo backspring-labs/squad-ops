@@ -16,6 +16,7 @@ from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.capabilities.disputed_checks import DISPUTED_CHECKS
 from squadops.capabilities.handlers.context import ExecutionContext
 from squadops.cycles.llm_usage import UsageTotals
+from squadops.cycles.task_outcome import TaskOutcome
 from squadops.memory.authoring_envelope import json_safe
 from squadops.orchestration.handler_registry import HandlerNotFoundError, HandlerRegistry
 from squadops.ports.capabilities.executor import CapabilityExecutor
@@ -37,6 +38,20 @@ def _with_disputes(outputs: dict[str, Any] | None, context: ExecutionContext | N
     # and a failed result's outputs need not carry the role anywhere else.
     disputes = [{**d, "by": context.role_id} for d in context.disputed_checks]
     return {**(outputs or {}), DISPUTED_CHECKS: disputes}
+
+
+def _held_if_blocked(outputs: dict[str, Any] | None, context: ExecutionContext | None):
+    """A failed task's ``outputs``, held when a model call was refused by the infrastructure
+    (SIP-0111 §5.2): ``TaskOutcome.BLOCKED`` and the refusal's evidence. The same prompt fails
+    the same way, so a retry repeats it and a correction blames the work product for a deploy
+    defect. Whatever outcome the handler named for its failure gives way to the hold."""
+    if context is None or context.infrastructure_block is None:
+        return outputs
+    return {
+        **(outputs or {}),
+        "outcome_class": TaskOutcome.BLOCKED,
+        "infrastructure_block": context.infrastructure_block,
+    }
 
 
 class HandlerExecutor(CapabilityExecutor):
@@ -211,7 +226,7 @@ class HandlerExecutor(CapabilityExecutor):
                 return TaskResult(
                     task_id=task_id,
                     status=TaskResultStatus.FAILED,
-                    outputs=_with_disputes(result.outputs, context),
+                    outputs=_held_if_blocked(_with_disputes(result.outputs, context), context),
                     error=result.error,
                     execution_evidence=self._evidence_to_dict(result.evidence),
                     llm_usage=context.llm_usage.to_dict(),
@@ -229,7 +244,7 @@ class HandlerExecutor(CapabilityExecutor):
             return TaskResult(
                 task_id=task_id,
                 status=TaskResultStatus.FAILED,
-                outputs=_with_disputes(None, context),
+                outputs=_held_if_blocked(_with_disputes(None, context), context),
                 error=str(e),
                 execution_evidence={"exception": type(e).__name__},
                 llm_usage=context.llm_usage.to_dict() if context is not None else None,

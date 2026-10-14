@@ -616,7 +616,7 @@ class LLMConfig(BaseModel):
     surface writes ``SQUADOPS__LLM__PROVIDER`` explicitly; nothing infers it.
     """
 
-    provider: Literal["ollama", "vllm", "atlas"] = Field(
+    provider: Literal["ollama", "vllm", "atlas", "tensorfold"] = Field(
         description="LLM provider selecting the adapter (required; the vocabulary is the schema's, R2)",
     )
     url: str = Field(

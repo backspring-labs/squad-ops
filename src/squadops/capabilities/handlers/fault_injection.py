@@ -460,6 +460,38 @@ def _planted_alias_row(artifacts: Sequence[Mapping[str, Any]]) -> dict[str, Any]
     return None
 
 
+#: The runtime's seam where an increment's candidate manifest is seeded (SIP-0109 §7.3,
+#: ``WorkloadGate._seed_increment``). A fault there transforms the manifest the runtime builds,
+#: not an agent's emission, so it is named by its seam rather than a task (#2279).
+INCREMENT_SEED_SEAM = "runtime:increment_seed"
+
+#: The question the increment-seed fault declares. The id is constant, so an answer recorded
+#: against it after an expiry is read at a later gate by §24ad's match on the id (§24bl).
+INJECTED_QUESTION_ID = "injected-open-question"
+INJECTED_QUESTION = (
+    "Diagnostic fault (#2279): should the list of runs be paginated? The PRD does not ask "
+    "this; the question is injected so the plan-review tier escalates."
+)
+
+
+def _increment_design_asks(manifest: str) -> str:
+    """The candidate manifest with one more decision, unresolved: the design asks a question.
+
+    An increment's manifest is the accepted one with the approved delta applied, and a delta
+    cannot carry a decision, so an increment's design never asks anything and the tier always
+    reads it as quiet (2.2.1 plan §2). This is the one shape that makes it ask.
+    """
+    import yaml
+
+    data = yaml.safe_load(manifest)
+    decisions = [d for d in (data.get("decisions") or []) if d.get("id") != INJECTED_QUESTION_ID]
+    decisions.append(
+        {"id": INJECTED_QUESTION_ID, "unresolved": True, "question": INJECTED_QUESTION}
+    )
+    data["decisions"] = decisions
+    return yaml.safe_dump(data, sort_keys=False)
+
+
 class FaultScope(Enum):
     """Which attempts of the target task take the fault — the scope of "once" (#1310).
 
@@ -514,11 +546,17 @@ class Fault:
     #: repaired file while the diagnostic asks about what the task hands on. The loop still
     #: runs, and its texture is still read from it.
     file_transform: Callable[[str, str], str] | None = None
+    #: #2279: a seed fault, not an emission's: ``seed`` applies it to the candidate manifest the
+    #: runtime builds for an increment, and ``task`` names that seam (``INCREMENT_SEED_SEAM``).
+    seed_transform: Callable[[str], str] | None = None
 
     @property
     def transforms_emission(self) -> bool:
-        """Whether ``inject`` applies it: a hold, a crash and a planted row act at other seams."""
-        return not (self.hold or self.crash or self.plant_row is not None)
+        """Whether ``inject`` applies it: a hold, a crash, a planted row and a seed fault act at
+        other seams."""
+        return not (
+            self.hold or self.crash or self.plant_row is not None or self.seed_transform is not None
+        )
 
 
 #: Every declared fault. Adding one is a declaration, not a policy change: the transform
@@ -656,6 +694,17 @@ FAULTS: dict[str, Fault] = {
         exercises="A1 (#968): a correction decision does not inherit an analyzer claim the "
         "source refutes",
     ),
+    # 2.3 plan §2 (#2279): the plan-review tier's timeout half, read live. Declared on a
+    # campaign's increments through the `campaign-increment-asks` request profile.
+    "increment_design_asks": Fault(
+        task=INCREMENT_SEED_SEAM,
+        transform=_unchanged,
+        found_in="#2279 — the 2.2.1 plan §2: an increment's design never asks, so the tier's expiry, "
+        "park, row 15, no-progress stop and late answer were read only in unit tests",
+        exercises="SIP-0109 §24bk and §24bl live: an escalation expires at the bound, parks the "
+        "increment, row 15 proposes again, and a late answer is read at a later gate",
+        seed_transform=_increment_design_asks,
+    ),
 }
 
 
@@ -701,7 +750,7 @@ def validate_declaration(resolved_config: Mapping[str, Any] | None) -> tuple[str
         raise UnknownFault(
             f"unknown fault(s) {sorted(unknown)}; declared faults are {sorted(FAULTS)}"
         )
-    unreachable = sorted({FAULTS[name].task for name in names} - INJECTED_TASKS)
+    unreachable = sorted({FAULTS[name].task for name in names} - INJECTED_TASKS - RUNTIME_SEAMS)
     if unreachable:
         raise UnreachableFault(
             f"fault(s) declared for task(s) {unreachable}, whose emission seam does not "
@@ -736,6 +785,30 @@ INJECTED_TASKS: frozenset[str] = frozenset(
         TaskType.DATA_ANALYZE_FAILURE,
     }
 )
+
+
+#: The runtime seams that apply a declared fault (#2279), held to their call site by the
+#: wiring test that enters at the seam (``test_tier_timeout_fault.py``).
+RUNTIME_SEAMS: frozenset[str] = frozenset({INCREMENT_SEED_SEAM})
+
+
+def seed(manifest: str, resolved_config: Mapping[str, Any] | None) -> str:
+    """The increment's candidate manifest as the cycle's declared seed faults leave it (#2279).
+
+    Unchanged for a cycle that declares none, which is every cycle but a diagnostic. Each
+    application logs itself, as ``inject`` does: an injected question that is not obvious in
+    the log is one a record could mistake for the design's own.
+    """
+    for name in declared_faults(resolved_config):
+        fault = FAULTS.get(name)
+        if fault is None or fault.seed_transform is None:
+            continue
+        before = len(manifest)
+        manifest = fault.seed_transform(manifest)
+        logger.warning(
+            "fault injected at %s: %s (%d -> %d chars)", fault.task, name, before, len(manifest)
+        )
+    return manifest
 
 
 #: Set by the executor every time a task's outcome is handled, so the attempt that follows

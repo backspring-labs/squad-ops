@@ -41,6 +41,7 @@ from squadops.bootstrap.setup.checks import (
 from squadops.bootstrap.setup.profile import (
     BootstrapProfile,
     DockerService,
+    InferenceEngine,
     OllamaModelAlternative,
     OllamaModelExact,
     PlatformSpec,
@@ -593,7 +594,16 @@ class TestSquadModelChecks:
     """`_collect_squad_checks` maps the shared model-availability decision to doctor
     CheckResults: available→pass(✓), missing→hard fail(✗), unreachable→warn(~)."""
 
-    def _run(self, monkeypatch, *, installed, squad=None, squad_profile="full", not_found=False):
+    def _run(
+        self,
+        monkeypatch,
+        *,
+        installed,
+        squad=None,
+        squad_profile="full",
+        not_found=False,
+        engine=None,
+    ):
         class _FakeCSP:
             def __init__(self, *a, **k):
                 pass
@@ -605,7 +615,9 @@ class TestSquadModelChecks:
 
         monkeypatch.setattr("adapters.cycles.config_squad_profile.ConfigSquadProfile", _FakeCSP)
         monkeypatch.setattr(checks_mod, "_query_ollama_models", lambda: installed)
-        return checks_mod._collect_squad_checks(SimpleNamespace(squad_profile=squad_profile))
+        return checks_mod._collect_squad_checks(
+            SimpleNamespace(squad_profile=squad_profile, inference_engine=engine)
+        )
 
     def test_all_models_available_passes(self, monkeypatch):
         results = self._run(
@@ -634,6 +646,28 @@ class TestSquadModelChecks:
         results = self._run(monkeypatch, squad=_squad_profile(["qwen3.6:27b"]), installed=set())
         (r,) = results
         assert r.passed is False and r.heuristic is False
+
+    @pytest.mark.parametrize(
+        ("model", "passed", "said"),
+        [
+            ("qwen3.8-27b-tf-nvfp4", True, "are available"),
+            ("qwen3.8:27b", False, "requires model `qwen3.8:27b`, but the LLM backend has"),
+        ],
+        ids=["the recipe's served id", "an Ollama model"],
+    )
+    def test_on_tensorfold_the_squad_is_checked_against_the_recipes_served_id(
+        self, monkeypatch, model, passed, said
+    ):
+        """#2229. Bug caught: a TensorFold deploy's squad checked against Ollama, which is stopped
+        beside it, so every doctor run warns and a squad on a model TensorFold does not serve
+        passes unseen."""
+        engine = InferenceEngine("tensorfold", "r.yaml", "qwen3.8-27b-tf-nvfp4")
+        results = self._run(
+            monkeypatch, squad=_squad_profile([model]), installed={"qwen3.8:27b"}, engine=engine
+        )
+        (r,) = results
+        assert (r.passed, r.heuristic) == (passed, False)
+        assert said in r.message
 
     def test_no_squad_profile_yields_no_checks(self, monkeypatch):
         assert self._run(monkeypatch, installed=set(), squad_profile=None) == []

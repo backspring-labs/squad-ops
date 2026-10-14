@@ -10,10 +10,11 @@ import logging
 import uuid
 from collections.abc import Callable
 
-from fastapi import HTTPException, Request, Response
+from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import JSONResponse
 
+from squadops.api.errors import error_body, http_error
 from squadops.auth.models import Identity
 from squadops.ports.auth.authentication import AuthPort
 
@@ -155,7 +156,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 denial_reason="provider_disabled",
             )
             return JSONResponse(
-                content={"detail": "Authentication service unavailable"},
+                content={
+                    "detail": error_body("AUTH_UNAVAILABLE", "Authentication service unavailable")
+                },
                 status_code=503,
                 media_type="application/json",
                 headers={"X-Request-ID": request_id},
@@ -171,7 +174,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 denial_reason="missing_bearer_token",
             )
             return JSONResponse(
-                content={"detail": "Missing or invalid Authorization header"},
+                content={
+                    "detail": error_body(
+                        "NOT_AUTHENTICATED", "Missing or invalid Authorization header"
+                    )
+                },
                 status_code=401,
                 media_type="application/json",
                 headers={"X-Request-ID": request_id},
@@ -194,7 +201,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 denial_reason="auth_service_unavailable",
             )
             return JSONResponse(
-                content={"detail": "Authentication service unavailable"},
+                content={
+                    "detail": error_body("AUTH_UNAVAILABLE", "Authentication service unavailable")
+                },
                 status_code=503,
                 media_type="application/json",
                 headers={"X-Request-ID": request_id},
@@ -218,7 +227,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 denial_reason=str(e),
             )
             return JSONResponse(
-                content={"detail": "Invalid or expired token"},
+                content={"detail": error_body("INVALID_TOKEN", "Invalid or expired token")},
                 status_code=401,
                 media_type="application/json",
                 headers={"X-Request-ID": request_id},
@@ -236,7 +245,7 @@ def require_auth(auth_port_getter=None):
     async def dependency(request: Request) -> Identity:
         auth_header = request.headers.get("authorization", "")
         if not auth_header.startswith("Bearer "):
-            raise HTTPException(401, "Missing or invalid Authorization header")
+            raise http_error(401, "NOT_AUTHENTICATED", "Missing or invalid Authorization header")
         token = auth_header[7:]
         if auth_port_getter:
             auth_port = auth_port_getter()
@@ -245,13 +254,13 @@ def require_auth(auth_port_getter=None):
 
             auth_port = get_auth_port(request)
         if auth_port is None:
-            raise HTTPException(503, "Authentication service unavailable")
+            raise http_error(503, "AUTH_UNAVAILABLE", "Authentication service unavailable")
         try:
             identity = await validate_and_resolve_identity(token, auth_port)
             request.state.identity = identity
             return identity
         except Exception:
-            raise HTTPException(401, "Invalid or expired token") from None
+            raise http_error(401, "INVALID_TOKEN", "Invalid or expired token") from None
 
     return dependency
 
@@ -277,11 +286,11 @@ async def _enforce_access(
 
     identity: Identity | None = getattr(request.state, "identity", None)
     if identity is None:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+        raise http_error(401, "NOT_AUTHENTICATED", "Not authenticated")
 
     ctx = authz.check_access(identity, required_roles=roles, required_scopes=scopes)
     if not ctx.granted:
-        raise HTTPException(status_code=403, detail=ctx.denial_reason or "Forbidden")
+        raise http_error(403, "FORBIDDEN", ctx.denial_reason or "Forbidden")
     return identity
 
 

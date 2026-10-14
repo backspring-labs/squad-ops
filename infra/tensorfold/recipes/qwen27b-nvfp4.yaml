@@ -1,6 +1,6 @@
 name: qwen27b-nvfp4
-status: "provisional: S's exercises and the 2026-10-11 exploratory tuning/screening run (#2199). NOT the frozen\
-  \ recipe, which SIP-0111 \xA74 fixes on tuning data before any held-out call."
+status: "frozen 2026-10-12 for the 27B's held-out run: the owner chose NVFP4 and TensorFold 0.6.6 (#2199,\
+  \ docs/plans/verification-sets/2-3-0-tensorfold-27b-preregistration.md). Any change re-runs both gates."
 why: NVIDIA's NVFP4 checkpoint on one GPU, with the DFlash2 drafter (docs/recipes/qwen3.8-27b.md).
 served_id: qwen3.8-27b-tf-nvfp4
 image: squadops-tensorfold:0.6.6-cb2ebf05
