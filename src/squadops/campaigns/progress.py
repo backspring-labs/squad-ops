@@ -36,6 +36,7 @@ from squadops.campaigns.continuation import (
     cycle_verdict,
 )
 from squadops.campaigns.escalation import (
+    PARK_REASON,
     EscalationState,
     RunAtGate,
     closing_transitions,
@@ -741,7 +742,10 @@ class CampaignProgress:
             logger.info("campaign_escalation_park_skipped_decided", extra={"run_id": run_id})
             return
         try:
-            await self._cycles.cancel_run(run_id)
+            # §24bj: cancelled with its reason, so the run says why it ended without the log.
+            await self._cycles.update_run_status(
+                run_id, RunStatus.CANCELLED, failure_reason=PARK_REASON
+            )
         except IllegalStateTransitionError:
             logger.info("campaign_escalation_park_run_already_ended", extra={"run_id": run_id})
 

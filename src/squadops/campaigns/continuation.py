@@ -60,7 +60,14 @@ class EndedCycle:
 def cycle_verdict(latest: CycleAssessment, cycle: EndedCycle) -> RunVerdict | None:
     """The verdict the decision reads (§8.4). A calibration's is the cycle's own. An increment is
     accepted only when the cycle's acceptance and its own (§8) both accepted: either rejecting
-    rejects it, and anything unread leaves it ``blocked_unverified``, never accepted."""
+    rejects it, and anything unread leaves it ``blocked_unverified``, never accepted.
+
+    A cycle that never reached its assessment has none (#2303): parked at its plan gate,
+    rejected at the increment gate, or its proposal failed. Its last run's summary judged a
+    framing or a proposal, never a build, and a framing run's reads ``accepted`` with nothing
+    executed. Read as the cycle's, it promoted a parked increment and met the objective with it."""
+    if cycle.ending is not CycleEnding.ASSESSED:
+        return None
     verdict = latest_verdict(latest)
     if verdict is None or cycle.increment_verdict is None:
         return verdict

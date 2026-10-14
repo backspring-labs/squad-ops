@@ -20,7 +20,9 @@ import pytest
 
 from adapters.cycles.memory_campaign_registry import MemoryCampaignRegistry
 from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
+from squadops.campaigns.continuation import PendingAction
 from squadops.campaigns.escalation import (
+    PARK_REASON,
     EscalationIdentity,
     EscalationState,
     escalations,
@@ -173,11 +175,65 @@ async def test_an_escalation_past_its_bound_expires_once_and_parks_its_run():
     assert _closings(first) == [("expired", "squadops")]
     assert [e.operation for e in first] == [ControlOperation.ESCALATION_CLOSED]
     assert again == []
-    assert (await cycles.get_run("run_f")).status == RunStatus.CANCELLED.value
+    parked = await cycles.get_run("run_f")
+    assert (parked.status, parked.failure_reason) == (RunStatus.CANCELLED.value, PARK_REASON)
     log = await campaigns.control_log(CID)
     assert parked_run(log, "run_f")
     assert [e.state for e in escalations(log, S.BUILDING)] == [EscalationState.EXPIRED]
     assert (await campaigns.get_campaign(CID)).state is S.BUILDING
+
+
+def _framing_summary(cycle_id: str):
+    """The assessment a parked cycle reads, as a live one does: its last run is the framing run,
+    whose verification summary is ``accepted`` with nothing executed, because a framing owes no
+    build check (``cyc_d07654ab6435``: ``required_not_owed=frontend_build,required_files,
+    tests_pass``)."""
+    from squadops.cycles.cycle_assessment import AssessorIdentity, CycleEvidence, RunRecord, assess
+    from squadops.cycles.verification_integrity import CycleOutcome, RunVerdict
+
+    run = RunRecord(
+        run_id="run_f",
+        run_number=2,
+        workload_type="framing",
+        status="cancelled",
+        started_at=OPENED,
+        finished_at=OPENED,
+    )
+    outcome = CycleOutcome(
+        verdict=RunVerdict.ACCEPTED,
+        verified=(),
+        failed=(),
+        unverified=(),
+        run_count=1,
+        criteria_verified=(),
+        criteria_total=(),
+    )
+    evidence = CycleEvidence(cycle_id=cycle_id, runs=(run,), verification_summary_runs=("run_f",))
+    return assess(outcome, evidence, assessor=AssessorIdentity("2.3.0", None))
+
+
+async def test_a_parked_increment_is_abandoned_never_promoted_whatever_its_framing_summary_says():
+    """#2303: from the sweep's park, through the hearing the cycle's end calls. Bugs caught: the
+    framing run's vacuous ``accepted`` read as the parked increment's verdict, so it was promoted,
+    counted toward the objective and ended the campaign a success (live: ``cmp_391cc2d3cad6``,
+    row 3); and the run cancelled with no reason, where §24bj gives ``escalation_expired``."""
+    from squadops.cycles.cycle_end import CycleStopReason
+
+    campaigns, cycles, progress, now, cycle_id = await _world()
+    progress._assess = AsyncMock(return_value=_framing_summary(cycle_id))
+    await progress.sweep_ruling_bounds()
+
+    decision = await progress.cycle_ended(
+        await cycles.get_cycle(cycle_id),
+        await cycles.get_run("run_f"),
+        CycleStopReason.RUN_CANCELLED,
+    )
+
+    log = await campaigns.control_log(CID)
+    assert (decision.row, decision.action) == (15, PendingAction.ABANDON_AND_PROPOSE)
+    assert [e for e in log if e.operation is ControlOperation.PROMOTE] == []
+    assert log[-1].binding["verdict"] is None
+    assert (await campaigns.get_campaign(CID)).outcome is None
 
 
 async def test_before_its_bound_an_escalation_waits_and_nothing_moves():
