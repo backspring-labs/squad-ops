@@ -806,3 +806,12 @@ checks:
       src = inspect.getsource(DispatchedFlowExecutor.execute_cycle)
       print("except _CancellationError:" in src, "inter_workload_gate_run_cancelled" in src)
     expect: "True True"
+  - id: "2303"
+    what: "a cycle that never reached its assessment has no verdict, so a parked increment is never promoted, and its run is cancelled with escalation_expired"
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.campaigns.continuation import cycle_verdict
+      from squadops.campaigns.escalation import PARK_REASON
+      print(PARK_REASON, "if cycle.ending is not CycleEnding.ASSESSED" in inspect.getsource(cycle_verdict))
+    expect: "escalation_expired True"
