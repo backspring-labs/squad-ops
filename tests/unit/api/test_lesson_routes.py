@@ -20,10 +20,17 @@ from adapters.auth.keycloak.authz_adapter import KeycloakAuthzAdapter
 from adapters.memory.cross_cycle import InMemoryCrossCycleMemoryStore
 from squadops.api.routes.memory import memory_router
 from squadops.auth.models import Identity, IdentityType, Role, scopes_for_roles
-from squadops.campaigns.models import ControlOperation
+from squadops.campaigns.models import (
+    CampaignNotFoundError,
+    CampaignOutcome,
+    CampaignState,
+    ControlOperation,
+)
+from squadops.cycles.models import Cycle, CycleNotFoundError, Run, TaskFlowPolicy
 from squadops.memory.lessons import UnitKind
 from squadops.memory.observations import observe_proposal_rulings
 from squadops.memory.pinning import pin_unit
+from tests.unit.campaigns.builders import T0, campaign
 from tests.unit.memory.test_observations import _entry
 
 pytestmark = pytest.mark.auth
@@ -47,6 +54,53 @@ def _identity(role: str) -> Identity:
     )
 
 
+class _Units:
+    """Each unit's state as the revocation reads it, through the campaign and cycle registries."""
+
+    WORKLOADS = ("framing", "implementation")
+
+    def __init__(self) -> None:
+        self.campaigns: dict[str, CampaignState] = {}
+        self.runs: dict[str, list[str]] = {}  # each run's status, in workload order
+
+    async def get_campaign(self, campaign_id: str):
+        if campaign_id not in self.campaigns:
+            raise CampaignNotFoundError(campaign_id)
+        state = self.campaigns[campaign_id]
+        done = state is CampaignState.COMPLETED
+        return campaign(campaign_id, state=state, outcome=CampaignOutcome.SUCCESS if done else None)
+
+    async def get_cycle(self, cycle_id: str) -> Cycle:
+        if cycle_id not in self.runs:
+            raise CycleNotFoundError(cycle_id)
+        return Cycle(
+            cycle_id=cycle_id,
+            project_id="group_run",
+            created_at=T0,
+            created_by="owner",
+            prd_ref=None,
+            squad_profile_id="full",
+            squad_profile_snapshot_ref="sha256:abc",
+            task_flow_policy=TaskFlowPolicy(mode="sequential"),
+            build_strategy="fresh",
+            applied_defaults={"workload_sequence": [{"type": t} for t in self.WORKLOADS]},
+        )
+
+    async def list_runs(self, cycle_id: str, **_) -> list[Run]:
+        return [
+            Run(
+                run_id=f"run_{n}",
+                cycle_id=cycle_id,
+                run_number=n,
+                status=status,
+                initiated_by="api",
+                resolved_config_hash="x",
+                workload_type=self.WORKLOADS[n - 1],
+            )
+            for n, status in enumerate(self.runs[cycle_id], start=1)
+        ]
+
+
 class _World:
     def __init__(self) -> None:
         self.store = InMemoryCrossCycleMemoryStore()
@@ -62,6 +116,9 @@ class _World:
         app.add_middleware(InjectIdentity)
         app.include_router(memory_router)
         app.state.memory_store = self.store
+        self.units = _Units()
+        app.state.campaign_registry = self.units
+        app.state.cycle_registry = self.units
         app.state.authz_port = KeycloakAuthzAdapter()
         self.client = TestClient(app)
 
@@ -171,6 +228,7 @@ async def test_a_revocation_names_the_running_units_that_hold_it_and_stands_once
     rewriting who revoked it and why."""
     revision_id = world.draft().json()["revision_id"]
     approval_id = world.approve(revision_id).json()["approval_id"]
+    world.units.campaigns["cmp_running"] = CampaignState.BUILDING
     await pin_unit(
         world.store,
         unit_kind=UnitKind.CAMPAIGN,
@@ -192,6 +250,69 @@ async def test_a_revocation_names_the_running_units_that_hold_it_and_stands_once
     )
     assert "halt or restart" in body["next"]
     assert again.status_code == 409
+
+
+async def _pin(world, kind: UnitKind, unit_id: str) -> None:
+    await pin_unit(
+        world.store,
+        unit_kind=kind,
+        unit_id=unit_id,
+        project_id="group_run",
+        pinned_at=datetime.now(UTC),
+        disabled=False,
+    )
+
+
+async def test_a_revocation_names_only_running_units_as_work_to_halt(world):
+    """Entered at the revocation route (#2210). Bug caught: the five finished 2.2 window
+    campaigns named as "still held", which buries the one live unit an emergency revocation
+    has to halt. A cycle between its workloads still runs though its latest run completed (the
+    reading #2214 fixed for the abort); a unit that can't be read is named."""
+    approval_id = world.approve(world.draft().json()["revision_id"]).json()["approval_id"]
+    world.units.campaigns.update(
+        {"cmp_live": CampaignState.AT_PROPOSAL, "cmp_done": CampaignState.COMPLETED}
+    )
+    world.units.runs.update({"cyc_between": ["completed"], "cyc_done": ["completed", "completed"]})
+    for kind, unit_id in [
+        (UnitKind.CAMPAIGN, "cmp_live"),
+        (UnitKind.CAMPAIGN, "cmp_done"),
+        (UnitKind.CYCLE, "cyc_between"),
+        (UnitKind.CYCLE, "cyc_done"),
+        (UnitKind.CAMPAIGN, "cmp_unreadable"),
+    ]:
+        await _pin(world, kind, unit_id)
+
+    body = world.client.post(
+        f"{BASE}/approvals/{approval_id}/revocation", json={"reason": "harm"}
+    ).json()
+
+    assert sorted(u["unit_id"] for u in body["units_holding_it"]) == [
+        "cmp_live",
+        "cmp_unreadable",
+        "cyc_between",
+    ]
+    assert sorted(u["unit_id"] for u in body["finished_units_holding_it"]) == [
+        "cmp_done",
+        "cyc_done",
+    ]
+    assert "halt or restart" in body["next"]
+
+
+async def test_a_revocation_held_only_by_finished_units_asks_no_one_to_halt(world):
+    """Bug caught: the 2026-10-10 revocation telling the operator to halt five completed
+    campaigns."""
+    approval_id = world.approve(world.draft().json()["revision_id"]).json()["approval_id"]
+    world.units.campaigns["cmp_done"] = CampaignState.COMPLETED
+    await _pin(world, UnitKind.CAMPAIGN, "cmp_done")
+
+    body = world.client.post(
+        f"{BASE}/approvals/{approval_id}/revocation", json={"reason": "disposition"}
+    ).json()
+
+    assert body["units_holding_it"] == []
+    assert [u["unit_id"] for u in body["finished_units_holding_it"]] == ["cmp_done"]
+    assert "halt" not in body["next"]
+    assert "set their measurements apart" in body["next"]
 
 
 @pytest.mark.parametrize(

@@ -56,6 +56,7 @@ def test_a_revocation_names_the_running_units_that_still_hold_the_lesson(mock_ge
     client.post.return_value = {
         "approval": {},
         "units_holding_it": [{"unit_kind": "campaign", "unit_id": "cmp_running"}],
+        "finished_units_holding_it": [{"unit_kind": "campaign", "unit_id": "cmp_done"}],
         "next": "halt or restart its work under a new snapshot",
     }
     mock_get_client.return_value = client
@@ -65,6 +66,8 @@ def test_a_revocation_names_the_running_units_that_still_hold_the_lesson(mock_ge
     assert result.exit_code == 0, result.output
     assert client.post.call_args.kwargs["json"] == {"reason": "harmful"}
     assert "still held by campaign cmp_running" in result.output
+    assert "still held by campaign cmp_done" not in result.output
+    assert "ran with it, finished: campaign cmp_done" in result.output
 
 
 @pytest.mark.parametrize("content", ["- a list\n", "not: [valid"])
