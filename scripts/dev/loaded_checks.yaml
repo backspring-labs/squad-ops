@@ -815,3 +815,20 @@ checks:
       from squadops.campaigns.escalation import PARK_REASON
       print(PARK_REASON, "if cycle.ending is not CycleEnding.ASSESSED" in inspect.getsource(cycle_verdict))
     expect: "escalation_expired True"
+  - id: "2202-runtime"
+    what: "an endpoint may declare its list order, and the probe judge reads ordered_by"
+    container: squadops-runtime-api
+    code: |
+      import dataclasses, inspect
+      from squadops.capabilities.handlers import probe_runner
+      from squadops.capabilities.scaffold import Endpoint
+      print("order" in {f.name for f in dataclasses.fields(Endpoint)}, "ordered_by" in inspect.getsource(probe_runner.evaluate_expectations))
+    expect: "True True"
+  - id: "2202-agent"
+    what: "an agent's probe judge reads ordered_by and issues a probe's seeds"
+    container: squadops-eve
+    code: |
+      import inspect
+      from squadops.capabilities.handlers import probe_runner
+      print("ordered_by" in inspect.getsource(probe_runner.evaluate_expectations), hasattr(probe_runner, "seed_failure"))
+    expect: "True True"
