@@ -631,6 +631,16 @@ def _query_ollama_models() -> set[str] | None:
     return {m["name"] for m in body["models"] if isinstance(m, dict) and m.get("name")}
 
 
+def _engine_models(profile: BootstrapProfile) -> set[str] | None:
+    """The models the deploy's engine serves, for the squad check. Ollama's are read from Ollama.
+    A TensorFold deploy serves exactly its frozen recipe's ``served_id`` (SIP-0111 §5.3), and
+    Ollama is stopped beside it, so reading Ollama there would warn on every check (#2229)."""
+    engine = profile.inference_engine
+    if engine is not None and engine.engine == "tensorfold":
+        return {engine.served_id} if engine.served_id else None
+    return _query_ollama_models()
+
+
 def _get_ollama_models() -> set[str]:
     """Installed Ollama model names, empty on failure (legacy binary pull-check)."""
     return _query_ollama_models() or set()
@@ -1056,7 +1066,7 @@ def _collect_squad_checks(profile: BootstrapProfile) -> list[CheckResult]:
             )
         ]
 
-    decision = model_availability_decision(squad, _query_ollama_models())
+    decision = model_availability_decision(squad, _engine_models(profile))
     if not decision.blocking and not decision.warnings:
         count = len({a.model for a in squad.agents if a.enabled and a.model})
         return [
