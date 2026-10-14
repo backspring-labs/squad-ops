@@ -12,7 +12,7 @@ import pytest
 import yaml
 
 from squadops.capabilities.handlers.fault_injection import (
-    INCREMENT_SEED_SEAM,
+    INCREMENT_BASELINE_SEAM,
     INJECTED_QUESTION,
     INJECTED_QUESTION_ID,
     UnknownFault,
@@ -44,7 +44,7 @@ def test_a_declaration_on_the_runtime_seam_is_accepted_and_an_unknown_one_is_not
 
 
 @pytest.mark.parametrize(
-    "task", [TaskType.DEVELOPMENT_DEVELOP, TaskType.QA_TEST, INCREMENT_SEED_SEAM]
+    "task", [TaskType.DEVELOPMENT_DEVELOP, TaskType.QA_TEST, INCREMENT_BASELINE_SEAM]
 )
 def test_no_agent_emission_takes_a_seed_fault(task):
     """The fault is the runtime's, applied once where the manifest is built. Bug caught: an
@@ -54,6 +54,24 @@ def test_no_agent_emission_takes_a_seed_fault(task):
         emission, handler_name="h", task_id=f"task-run_x-m001-{task}", resolved_config=_DECLARED
     )
     assert out == emission
+
+
+def test_an_answered_injected_question_is_kept_not_asked_again():
+    """#2290: the late answer a launch carries into the baseline is the decision, answered. Bug
+    caught: the fault removing it and asking again, so the tier never reads the late answer and
+    every increment parks until the no-progress stop."""
+    import yaml
+
+    asked = seed(_MANIFEST, _DECLARED)
+    data = yaml.safe_load(asked)
+    for d in data["decisions"]:
+        if d["id"] == INJECTED_QUESTION_ID:
+            d.pop("unresolved")
+            d["choice"] = "no; one page"
+    answered = yaml.safe_dump(data, sort_keys=False)
+
+    assert seed(answered, _DECLARED) == answered
+    assert open_decisions(answered) == ()
 
 
 def test_seeding_asks_one_question_however_often_it_runs():

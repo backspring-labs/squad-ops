@@ -777,7 +777,6 @@ class WorkloadGate:
             apply_manifest_delta,
             load_stored_change_request,
         )
-        from squadops.capabilities.handlers.fault_injection import seed as fault_seed
         from squadops.cycles.contract_derivation import (
             SEEDED_MANIFEST_FILENAME,
             derive_and_store_contract,
@@ -796,11 +795,9 @@ class WorkloadGate:
                 f"cycle {cycle.cycle_id}: its campaign_proposal block carries no baseline "
                 "manifest, so the approved delta has nothing to apply to"
             )
-        # #2279: a diagnostic's declared seed fault makes the design ask a question here, where
-        # the runtime builds the manifest; every other cycle seeds the delta's manifest as is.
-        candidate = fault_seed(
-            apply_manifest_delta(baseline, request.manifest_delta), cycle.resolved_config()
-        ).encode("utf-8")
+        # The baseline as the launch carried it: a diagnostic's seed fault already asked there,
+        # before §24bm's carry, so the gate applies nothing and overwrites no answer (#2290).
+        candidate = apply_manifest_delta(baseline, request.manifest_delta).encode("utf-8")
         await self._artifact_vault.store(
             ArtifactRef(
                 artifact_id=f"art_{uuid4().hex[:12]}",
