@@ -1,5 +1,5 @@
 # TEMPLATE — not a valid unit as committed. __USER__ and __REPO_ROOT__ are substituted by
-# scripts/dev/ops/install_timer.sh, because the user and checkout path differ per machine
+# scripts/dev/ops/install_host_unit.sh, because the user and checkout path differ per machine
 # and a hardcoded one would be wrong everywhere but here.
 #
 # Weekly Docker reclaim (#1465). Installed deliberately rather than by bootstrap, on the

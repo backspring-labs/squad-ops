@@ -1,7 +1,8 @@
 """What the quiet-box check reads (SIP-0109 §9.3; #1802).
 
 ``box.py`` decides; this reads. The declared models come from the active deploy record (#1720),
-and each engine's resident models from its LLM port's ``list_loaded_models``. An engine that
+and each engine's resident models from its LLM port's ``list_loaded_models``, with the requests
+it is serving where it reports them (``requests_in_flight``, SIP-0111 §5.5). An engine that
 cannot report what it holds is read as unreadable, never as empty: an empty listing would read
 as a quiet box.
 
@@ -12,13 +13,16 @@ the check is model-only until it is granted one (§24l).
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
 from squadops.campaigns.box import (
+    BoxLease,
     EngineReading,
     LaunchVerdict,
     Model,
+    Quietness,
     box_quietness,
     launch_verdict,
 )
@@ -44,11 +48,29 @@ async def read_engines(engines: Mapping[str, Any]) -> tuple[EngineReading, ...]:
             continue
         try:
             loaded = await port.list_loaded_models()
+            # SIP-0111 §5.5: where the engine reports what it is serving, a busy engine is not
+            # quiet. An unread count is an unread engine, never a zero.
+            in_flight = (
+                await port.requests_in_flight()
+                if port.supports(LLMCapability.REQUESTS_IN_FLIGHT)
+                else None
+            )
         except Exception as e:  # noqa: BLE001 — an unread engine is a reading, not a crash
             readings.append(EngineReading(name, None, f"{type(e).__name__}: {e}"))
             continue
-        readings.append(EngineReading(name, tuple(Model(m.name, m.digest) for m in loaded)))
+        readings.append(
+            EngineReading(name, tuple(Model(m.name, m.digest) for m in loaded), in_flight=in_flight)
+        )
     return tuple(readings)
+
+
+@dataclass(frozen=True)
+class BoxSnapshot:
+    """The box as one read saw it: its lease, each engine's reading, and whether it is quiet."""
+
+    lease: BoxLease | None
+    readings: tuple[EngineReading, ...]
+    quietness: Quietness
 
 
 class BoxReader:
@@ -71,12 +93,17 @@ class BoxReader:
         self._projects = project_registry
         self._cycles = cycle_registry
 
-    async def verdict(self) -> LaunchVerdict:
-        """Whether a cycle may launch now: the lease read first, then every engine."""
+    async def snapshot(self) -> BoxSnapshot:
+        """The lease read first, then every engine, then the quietness they give."""
         lease = await self._campaigns.box_lease()
         declared = declared_models(await self._deploy_registry.latest())
-        quietness = box_quietness(declared, await read_engines(self._engines))
-        return launch_verdict(lease, quietness, datetime.now(UTC))
+        readings = await read_engines(self._engines)
+        return BoxSnapshot(lease, readings, box_quietness(declared, readings))
+
+    async def verdict(self) -> LaunchVerdict:
+        """Whether a cycle may launch now: the lease read first, then every engine."""
+        snap = await self.snapshot()
+        return launch_verdict(snap.lease, snap.quietness, datetime.now(UTC))
 
     async def runs_in_flight(self) -> tuple[str, ...]:
         """Every run executing on the box now, by id. A run waiting at a gate or queued to start

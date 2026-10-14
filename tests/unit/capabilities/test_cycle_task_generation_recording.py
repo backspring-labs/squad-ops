@@ -200,6 +200,7 @@ class TestHandlerEmitsCallMetrics:
         nothing to read over time."""
         from squadops.telemetry.llm_metrics import (
             LLM_DECODE_TOKENS_PER_SECOND,
+            LLM_HISTOGRAM_BOUNDARIES,
             LLM_PREFILL_SECONDS,
         )
 
@@ -215,14 +216,22 @@ class TestHandlerEmitsCallMetrics:
             )
         )
         ctx.ports.metrics = MagicMock()
+        ctx.ports.llm.engine = "tensorfold"
 
         result = await StrategyAnalyzeHandler().handle(ctx, {"prd": "Build a widget"})
 
         assert result.success is True
         observed = {
-            c.args[0]: (c.args[1], c.args[2]) for c in ctx.ports.metrics.histogram.call_args_list
+            c.args[0]: (c.args[1], c.args[2], c.kwargs["boundaries"])
+            for c in ctx.ports.metrics.histogram.call_args_list
         }
         assert observed[LLM_DECODE_TOKENS_PER_SECOND][0] == 31.0
         assert observed[LLM_PREFILL_SECONDS][0] == 4.2
         assert observed[LLM_DECODE_TOKENS_PER_SECOND][1]["role"] == "strat"
         assert observed[LLM_DECODE_TOKENS_PER_SECOND][1]["long"] == "true"
+        # #2260: the engine that served the call, read from the port, and the instrument's scale
+        assert observed[LLM_DECODE_TOKENS_PER_SECOND][1]["engine"] == "tensorfold"
+        assert (
+            observed[LLM_DECODE_TOKENS_PER_SECOND][2]
+            == (LLM_HISTOGRAM_BOUNDARIES[LLM_DECODE_TOKENS_PER_SECOND])
+        )

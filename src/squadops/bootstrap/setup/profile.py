@@ -21,6 +21,7 @@ VALID_INSTALL_METHODS = frozenset({"brew", "apt", "bundled", "script", "manual",
 VALID_HEALTHCHECK_TYPES = frozenset({"http", "tcp", "docker_health"})
 VALID_PYTHON_MANAGERS = frozenset({"pyenv", "system"})
 VALID_PLATFORMS = frozenset({"darwin", "linux"})
+VALID_ENGINES = frozenset({"ollama", "tensorfold"})
 
 _BOOTSTRAP_PROFILES_DIR = Path(__file__).resolve().parents[4] / "config" / "profiles" / "bootstrap"
 
@@ -38,6 +39,7 @@ _ALLOWED_TOP_LEVEL_KEYS = frozenset(
         "deployment_profile",
         "squad_profile",
         "memory_containment",
+        "inference_engine",
     }
 )
 
@@ -108,6 +110,23 @@ OllamaModel = OllamaModelExact | OllamaModelAlternative
 
 
 @dataclass(frozen=True)
+class InferenceEngine:
+    """The engine the deploy serves its models with (SIP-0111, G4).
+
+    Absent means Ollama, as every profile ran before the cutover. ``tensorfold`` names the frozen
+    recipe bootstrap installs (``tensorfold_install.py``) and switches to once the services are up
+    (``engine_switch.py to-tensorfold``). Ollama stays installed beside it, stopped: it is the
+    rollback, and the switch back needs nothing installed.
+
+    ``served_id`` is the recipe's: the one model a TensorFold deploy serves, since the adapter
+    refuses any other (SIP-0111 §5.3). Doctor's squad check reads it (#2229)."""
+
+    engine: str
+    recipe: str | None = None
+    served_id: str | None = None
+
+
+@dataclass(frozen=True)
 class MemoryContainment:
     """What stops a memory runaway from taking the whole box (#1178).
 
@@ -145,6 +164,7 @@ class BootstrapProfile:
     deployment_profile: str | None = None
     squad_profile: str | None = None
     memory_containment: MemoryContainment | None = None
+    inference_engine: InferenceEngine | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -194,6 +214,37 @@ def _validate_system_dep(dep_data: dict, index: int) -> SystemDep:
         required=dep_data.get("required", True),
         confirm=dep_data.get("confirm", False),
     )
+
+
+def _validate_inference_engine(raw: dict | None) -> InferenceEngine | None:
+    """Validate the optional ``inference_engine`` block (SIP-0111). TensorFold needs its recipe,
+    a frozen one in the repository: bootstrap installs exactly what it pins, and an unfrozen
+    recipe is one no gate measured."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise BootstrapProfileError("inference_engine: must be a mapping")
+    engine = raw.get("engine")
+    if engine not in VALID_ENGINES:
+        raise BootstrapProfileError(
+            f"inference_engine: 'engine' must be one of {sorted(VALID_ENGINES)}, got {engine!r}"
+        )
+    recipe = raw.get("recipe")
+    if engine == "ollama":
+        if recipe is not None:
+            raise BootstrapProfileError("inference_engine: Ollama takes no 'recipe'")
+        return InferenceEngine(engine)
+    if not recipe:
+        raise BootstrapProfileError("inference_engine: TensorFold needs its 'recipe'")
+    path = _BOOTSTRAP_PROFILES_DIR.parents[2] / str(recipe)
+    if not path.is_file():
+        raise BootstrapProfileError(f"inference_engine: recipe {recipe} does not exist")
+    doc = yaml.safe_load(path.read_text()) or {}
+    if not str(doc.get("status", "")).startswith("frozen"):
+        raise BootstrapProfileError(f"inference_engine: recipe {recipe} is not frozen")
+    if not doc.get("served_id"):
+        raise BootstrapProfileError(f"inference_engine: recipe {recipe} names no served_id")
+    return InferenceEngine(engine, str(recipe), str(doc["served_id"]))
 
 
 def _validate_memory_containment(raw: dict | None) -> MemoryContainment | None:
@@ -436,6 +487,7 @@ def load_bootstrap_profile(name: str, *, profiles_dir: Path | None = None) -> Bo
         deployment_profile=raw.get("deployment_profile"),
         squad_profile=raw.get("squad_profile"),
         memory_containment=_validate_memory_containment(raw.get("memory_containment")),
+        inference_engine=_validate_inference_engine(raw.get("inference_engine")),
     )
 
 

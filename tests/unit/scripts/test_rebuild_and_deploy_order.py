@@ -10,7 +10,10 @@ images — so this pins the three properties the fix is made of.
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
+
+import pytest
 
 SCRIPT = Path(__file__).resolve().parents[3] / "scripts" / "dev" / "ops" / "rebuild_and_deploy.sh"
 
@@ -120,3 +123,59 @@ def test_every_image_built_from_the_source_hash_carries_it_as_its_revision_label
 
     assert "src/squadops/sandbox/Dockerfile" in dockerfiles
     assert unlabelled == []
+
+
+@pytest.mark.parametrize(
+    ("engine", "running", "outcome"),
+    [
+        ("tensorfold", "true", "kept"),
+        ("tensorfold", "false", "refused"),
+        ("ollama", "true", "refused"),
+        ("ollama", "false", "ollama"),
+        ("ollama", "", "ollama"),
+    ],
+    ids=[
+        "the deploy on TensorFold, serving",
+        "the deploy on TensorFold, not serving",
+        "TensorFold serving a deploy on Ollama",
+        "the deploy on Ollama",
+        "no TensorFold container",
+    ],
+)
+def test_a_deploy_keeps_the_engine_its_env_records_and_refuses_a_half_done_switch(
+    tmp_path, engine, running, outcome
+):
+    """SIP-0111 §5.6, after the cutover (#2229). Bugs caught: a rebuild on a TensorFold deploy that
+    starts Ollama beside it (two engines in unified memory) or refuses to deploy at all; one on an
+    Ollama deploy that runs beside a TensorFold a switch left serving. Only the guard and step 1's
+    choice run, against a ``docker`` and a switch that answer as the box would."""
+    text = SCRIPT.read_text()
+    guard = text.index('DEPLOY_ENGINE="$(')
+    end = text.index("elif ! check_ollama; then", guard)
+    fake = tmp_path / "docker"
+    fake.write_text(f"#!/bin/sh\n[ -n '{running}' ] && echo {running} || exit 1\n")
+    fake.chmod(0o755)
+    venv = tmp_path / ".venv" / "bin"
+    venv.mkdir(parents=True)
+    (venv / "python").write_text(f"#!/bin/sh\necho {engine}\n")
+    (venv / "python").chmod(0o755)
+    done = subprocess.run(
+        [
+            "bash",
+            "-c",
+            "RED= YELLOW= GREEN= BLUE= NC=\n"
+            + text[guard:end]
+            + "else echo ollama-step; fi\necho deployed\n",
+        ],
+        cwd=tmp_path,
+        env={"PATH": f"{tmp_path}:/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+    )
+
+    if outcome == "refused":
+        assert (done.returncode, "deployed" in done.stdout) == (1, False)
+    else:
+        assert done.returncode == 0, done.stdout
+        assert ("ollama-step" in done.stdout) is (outcome == "ollama")
+        assert "deployed" in done.stdout

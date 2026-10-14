@@ -44,7 +44,7 @@ from squadops.cycles.emission_integrity import (
 from squadops.cycles.implementation_plan import TypedCheck
 from squadops.cycles.patch_verification import materialize_artifacts
 from squadops.cycles.verification_integrity import ResultStatus
-from squadops.llm.exceptions import LLMError
+from squadops.llm.exceptions import LLMContextOverflowError, LLMError
 from squadops.llm.model_registry import get_model_spec, thinking_headroom
 from squadops.llm.models import ChatMessage
 
@@ -1186,6 +1186,7 @@ class _CycleTaskHandler(CapabilityHandler):
                     completion_tokens=response.completion_tokens,
                     completion_cap=chat_kwargs.get("max_tokens"),
                     content=content,
+                    termination=response.termination,
                 ),
             },
         )
@@ -1398,6 +1399,7 @@ class _CycleTaskHandler(CapabilityHandler):
                 completion_tokens=response.completion_tokens,
                 completion_cap=chat_kwargs.get("max_tokens"),
                 content=content,
+                termination=response.termination,
             )
 
         duration_ms = (time.perf_counter() - start_time) * 1000
@@ -1548,10 +1550,14 @@ class _CycleTaskHandler(CapabilityHandler):
                 response = await context.ports.llm.chat_stream_with_usage(
                     call_messages, **chat_kwargs
                 )
-            except BaseException:
+            except BaseException as exc:
                 context.llm_usage.record_failed_call(
                     (time.perf_counter() - call_started) * 1000, self_eval_pass=self_eval_pass
                 )
+                # SIP-0111 §5.2: the prompt did not fit the served window. Every site's own
+                # ``except LLMError`` still runs; the executor holds the task with this.
+                if isinstance(exc, LLMContextOverflowError):
+                    context.infrastructure_block = exc.evidence()
                 raise
             context.llm_usage.record_generation(
                 response,
@@ -1709,7 +1715,7 @@ class _CycleTaskHandler(CapabilityHandler):
         from squadops.capabilities.handlers.fenced_parser import cut_final_block
 
         cap = chat_kwargs.get("max_tokens")
-        if not content or not reached_cap(response.completion_tokens, cap):
+        if not content or not reached_cap(response.completion_tokens, cap, response.termination):
             return content, None, None
         start = cut_final_block(content)
         if start is None:
@@ -1763,7 +1769,9 @@ class _CycleTaskHandler(CapabilityHandler):
 
         cap = chat_kwargs.get("max_tokens")
         if (
-            classify_empty_emission(len(content or ""), response.completion_tokens, cap)
+            classify_empty_emission(
+                len(content or ""), response.completion_tokens, cap, response.termination
+            )
             != SIGNATURE_CAP_EXHAUSTED
         ):
             return None
@@ -1849,6 +1857,7 @@ class _CycleTaskHandler(CapabilityHandler):
                     role=self._role,
                     task_type=str(self._task_type),
                     model=str(resolved_model or context.ports.llm.default_model),
+                    engine=context.ports.llm.engine,
                     duration_ms=duration_ms,
                 )
             except Exception:

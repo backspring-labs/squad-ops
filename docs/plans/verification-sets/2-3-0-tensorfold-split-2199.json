@@ -1,0 +1,590 @@
+{
+  "seed": 2199,
+  "strata": {
+    "builder.assemble|fullstack_fastapi_react": {
+      "tuning": [
+        {
+          "envelope_id": "9bd17fceb173766a17514786592e7bb25f04effdbe6b6fe150dcfd942d6d68d7",
+          "task_type": "builder.assemble",
+          "seam": "build_authoring",
+          "stack": "fullstack_fastapi_react",
+          "messages_sha256": "c2d22c4455e6573de004ac1620a43901ed94d86d4054f7633368d20d4b86356f",
+          "round": 1
+        },
+        {
+          "envelope_id": "a1a1209fff26292dbc14009732b9c0ffcc502a4b72da81bc96c1eba5eb1709a3",
+          "task_type": "builder.assemble",
+          "seam": "build_authoring",
+          "stack": "fullstack_fastapi_react",
+          "messages_sha256": "0460f8c055ce79dc5a7d7bc429ce7d1da8dd2e98ef18bd4afe759e069db6c370",
+          "round": 2
+        }
+      ],
+      "held_out": [
+        "5f787131a6553241055b15da808fc5ad1eb34379e1e955535a79498cebd0e5d2",
+        "2d5fd0347299262d3b27be06f36825de502b17f0c09cb8df02cca044eac8f884",
+        "03d7f8149c3c98f39e582e61039656295b6a5ef11591e06f5383745173a0b1f4",
+        "4ce53b9c000cff6061a7b77dc7893b2d60b773d2f103aeda1b32722e8cf7822f",
+        "34d996a16b1b3fcba2562de42dfd0d9fa47af97c63fe77abedb51152977ed678",
+        "6d97c894ef8eb5d29ff4fa5a700ca7707ba40880fc723ec2d160adba412538f3",
+        "5760f76e0b8df6f5a32ec7ad347dd1cc0c543e6c35444a22010419c6439e1394",
+        "b5dff00e0cbaf7f944e5f060c86d3b9502dc1302ac9f097ed4a5163297e0aa6f"
+      ],
+      "population": 34
+    },
+    "builder.assemble|nextjs_ts": {
+      "tuning": [
+        {
+          "envelope_id": "89838e635d43704ea1d1bd69f4bd5a23ebd842a131ca417a683ab2e4c9a939ca",
+          "task_type": "builder.assemble",
+          "seam": "build_authoring",
+          "stack": "nextjs_ts",
+          "messages_sha256": "b222578f74c37b9b5a12636553a1139fbe3e263798d4d7fc2cbedb29bef73ff5",
+          "round": 1
+        },
+        {
+          "envelope_id": "aef4d83501151bb6b75023107fbac1a2baf10cabfd7511808de79532e91db732",
+          "task_type": "builder.assemble",
+          "seam": "build_authoring",
+          "stack": "nextjs_ts",
+          "messages_sha256": "2daca8fd2276686f4c479070362d504bfd2f3f6d2c37f599dd15d618e50a9c29",
+          "round": 2
+        }
+      ],
+      "held_out": [
+        "580c02fae0cf504187bd7800ee63123f0b2708ce95eeddd40ae9bd0c9fd45804",
+        "90a47c0763d7752078b14e92574b77982c2c532fa0bb4eef0a7a9b09cb77331d",
+        "ef6e2c21b1aeaed9f0e8e061194c4d4a6486b2737478051e64289d3e56d37a96",
+        "e685ac3cde5a3f90ecd4c3b9522882595b9ffa51b1b33c8912a99d10b3f25f99",
+        "113aafc45086d5acb675a779eba2ee48ecb87116bca8048e7f475672e9c796e8",
+        "da3408455cf84e0fbb93ef98b2f23a85cf2859cc47f23cede6b7a5f8843bd60e"
+      ],
+      "population": 8
+    },
+    "development.author_manifest|fullstack_fastapi_react": {
+      "tuning": [
+        {
+          "envelope_id": "733b4397295e4de98ae5b2815f3dec73cc7e4369b5d1fbc1f2905d9672a4d89d",
+          "task_type": "development.author_manifest",
+          "seam": "plan_writing",
+          "stack": "fullstack_fastapi_react",
+          "messages_sha256": "c2b8aa09f42570c6c7a3081decb074563d4cf79d6e89eebbb861a38f9d52c7aa",
+          "round": 1
+        },
+        {
+          "envelope_id": "fd16c5765878c4c45ef2b88ceb431aba732bdfa102521d44081ca38404c09e5c",
+          "task_type": "development.author_manifest",
+          "seam": "plan_writing",
+          "stack": "fullstack_fastapi_react",
+          "messages_sha256": "53186e9d2ad8489321d2673ebdc90db55b95b75003ac710e1b83346d9ef65e22",
+          "round": 2
+        }
+      ],
+      "held_out": [
+        "5449e7b74c090d47a917ea5ca90aba3db650ce879a778fd24461b9bf05c805c5",
+        "9819193d6823f3166abb0e4b86265df9b316ddd43505d544b2e700320443912e",
+        "4bcc963099bbd03c34812e64055535aff66abff9df1e9e084eb438bff085b644",
+        "6c6cc596e44d51624bd03b3bd3419f38f5f88512976068dd7e15a403c7823161",
+        "d8c5d96da5aee6a1cae9a4c2075534922c60438e293baabf87d89230b13aa6d7",
+        "9f16751f8a4665a9e18f00cb63d71f11e3e03d987336a5f2d8a9cd46745c3a02",
+        "52c49d6dfe152c2c897de000af514d1e731f70d814675f14c466d501c9668e39",
+        "dab13fc025292815ba63a290d577caae9a10a45e411cd879df85652a5a979eeb"
+      ],
+      "population": 23
+    },
+    "development.author_manifest|nextjs_ts": {
+      "tuning": [
+        {
+          "envelope_id": "16c3038ef5f93769b8e7643f42741c2d5c81b046b90f5a6aef79a723b1d8b9cb",
+          "task_type": "development.author_manifest",
+          "seam": "plan_writing",
+          "stack": "nextjs_ts",
+          "messages_sha256": "aa21ea5678a38552d98a5b5649b9ce3b898fa6c2f69b04219bfb8075b6cd193c",
+          "round": 1
+        },
+        {
+          "envelope_id": "3bd89359d82e00d8c0b9b3fcfdf64934efd3e585fb46621133d75773c9f27549",
+          "task_type": "development.author_manifest",
+          "seam": "plan_writing",
+          "stack": "nextjs_ts",
+          "messages_sha256": "d9dd5a78dad486461b11197af51aa1248ae81869099a61168e8434e37481764f",
+          "round": 2
+        }
+      ],
+      "held_out": [
+        "6148f650cf6917d6b2cf8f21c8a4f000ddb87c79f940a627af9f2afeac0af34e",
+        "5d698eb3b1c2fc6d837f58f68d5e4492bd90ad62d02b593683e7d6a44153e5c7",
+        "697d8657945a8d5c28b711ffb32f79afd3dbbedc6fccf5bc9a44090682f708ca",
+        "88dea4cbef5e7b9f4f36f51f95f1ecfc2ea1e8f5badfbc4888825b601587d661",
+        "fd142623067202fd217b115b72ccbfa088299b79e46df135624ed344e20cfdc5",
+        "4300bece108869b9b9a738c4d432e42703caa1b0e279608d31c5d365d16863a6",
+        "89ebf3837168ffd7f93e802060376a40eff153d30a8bcdd365a8e9eadf0c68b0"
+      ],
+      "population": 9
+    },
+    "development.correction_repair|fullstack_fastapi_react": {
+      "tuning": [
+        {
+          "envelope_id": "015a1f17d06dfb2d64244cbc22c1a26d5264c14a1f6ae4f89b991a40d14b5a61",
+          "task_type": "development.correction_repair",
+          "seam": "repair",
+          "stack": "fullstack_fastapi_react",
+          "messages_sha256": "126e34160bca316e6d4fd9ff61a23e05e3d6d08daafab8c11a038f97a8d51529",
+          "round": 1
+        },
+        {
+          "envelope_id": "48419efeed9138c112a9ed421d3a7f55ef7413a887a2d929e07c141b6c2ceb3e",
+          "task_type": "development.correction_repair",
+          "seam": "repair",
+          "stack": "fullstack_fastapi_react",
+          "messages_sha256": "8eff2afb855abbc26aaf14a5d75adc1dc3a08fc35b281acd42acae64fa016de8",
+          "round": 2
+        }
+      ],
+      "held_out": [
+        "0baf5a621b5be29800f38d915430ebd155fc092e9f218680d2d9f9011a55b95b",
+        "20128be6dd476b8992c8cb75b87de33eaaf950f3ed2b929632f135e09105a65c",
+        "e88841122f9df30f20ddd70b9c7c39e828ad6b0be5c0a2c762e64790271eb7b5",
+        "2506d2cd5abf243de07aa8b526151fcfbad152492e23229f43db8c9f9ac5e18f",
+        "9a59225ff865cecff0f8b37c22435a73bf2ffd2f85eed24faa11bdfc60c782ba",
+        "f789cd47ecd29bc59d66ffb8885d901b4d65c93e7188d9990d76b9d99b47aa00",
+        "c19041893568e3e4ac4be7ff7d904da59eb9448c1c0032fc357d6502bdc2e4f5",
+        "01c071f16287c0ac37dfe65496cdd907e16edcdb0d971fe85aa03a53e7c54b60"
+      ],
+      "population": 10
+    },
+    "development.correction_repair|nextjs_ts": {
+      "tuning": [
+        {
+          "envelope_id": "7ac3214e907fa6dc3da7bcbca4a111a19b4586c01ad1515cd7ebf0e1a8800e03",
+          "task_type": "development.correction_repair",
+          "seam": "repair",
+          "stack": "nextjs_ts",
+          "messages_sha256": "1dadbf71e35744ef900990385778d4a5e3e1ea8cfd2ab16d34020640b82f969c",
+          "round": 1
+        }
+      ],
+      "held_out": [],
+      "population": 1
+    },
+    "development.design_plan|fullstack_fastapi_react": {
+      "tuning": [
+        {
+          "envelope_id": "12a86f7e185cd6fc7e54f3662bd4c95d80b8de73d280ca186e9f0580f9e78550",
+          "task_type": "development.design_plan",
+          "seam": "plan_writing",
+          "stack": "fullstack_fastapi_react",
+          "messages_sha256": "08987faf7b693b2890ef4c46b0d373e02817656c03a9b0f33dbca69065af8a16",
+          "round": 1
+        },
+        {
+          "envelope_id": "9bf9fb52d035649abf506a05e6eca5de052c277ff5670defec64a438228d33b2",
+          "task_type": "development.design_plan",
+          "seam": "plan_writing",
+          "stack": "fullstack_fastapi_react",
+          "messages_sha256": "58b1de56f823d90af26329db3705b4bfee415e0f6527a19b41cdc13a61b32a9e",
+          "round": 2
+        }
+      ],
+      "held_out": [
+        "8d2581cf15baf1f0f91db845f8d831d4922a6e6699557b8ccee3b65b5effb878",
+        "fe094ededd0bd2c80721ad037ebdc8d9a1f9a9de07c6156220137c654de7915b",
+        "cdfdde3cce5ad8c30cf169b61d4b961f9a77d8dc632c6498e9490013e0b5ff64",
+        "9c0c642a99cbdb8d3e2fa2323f81fa6fdefa07ccf8e59753c66ec9dcb9d0ade7",
+        "478a7aaa4f654b4f59f0d4222e2df3b8177539871e34cc893ca2e8c6cb477f44",
+        "664c03c42378b558679269d81183c407537ebc02314ac4d208c071eb180cdc73",
+        "23c71605121abfc201c4477071d47410ba7028f52ef2dd2288a3a49daba12c2e",
+        "31060137ceb35c45d77af9beb5c573f53814c61d53fc100d5945a58657e38e96"
+      ],
+      "population": 33
+    },
+    "development.design_plan|nextjs_ts": {
+      "tuning": [
+        {
+          "envelope_id": "52b0cfcd84ee187347379d6692a4fc89c8d385675b7185e2cfa546ad9f320beb",
+          "task_type": "development.design_plan",
+          "seam": "plan_writing",
+          "stack": "nextjs_ts",
+          "messages_sha256": "0a72bb5c94ae749556ea8ce2a0609c50421dc86151341270a0a8b1b3860dab00",
+          "round": 1
+        },
+        {
+          "envelope_id": "d69707b9f574afb20f1770f5a058abea7ae692cc27b30ebffa324e87d54ddaec",
+          "task_type": "development.design_plan",
+          "seam": "plan_writing",
+          "stack": "nextjs_ts",
+          "messages_sha256": "1125c38cf0529dd3fa42816dc27ff70306a82366148e2190630c61ec46917075",
+          "round": 2
+        }
+      ],
+      "held_out": [
+        "d97699efc381372d7a43a537fe92711ec862b189b6649192d0cf9024e0269497",
+        "82c6c28c2f29bb595191338f651507d9cb2e56267d469b340529f577c6723822",
+        "1b5b554824a290d22eb634a2bb77dc19d485bbf0be1fd8477e16f1e34c641898",
+        "d2bd7b1eeff85ef3f6ede5349f64593273ef473015fbcc0a24b80c7b420bf491",
+        "7d07ed9d5f5bb4003aee2f59a0d4e05d4e5133f9c2acb8479a9170b5c290e21e",
+        "9b3ae0f90a14b52ee68978e84281aa1bdb450a97cabe0ddd3caa90819442154e",
+        "e825cd3c0876766826c44b964288ee1d8aac7beafcf97881f2c8069de154f453"
+      ],
+      "population": 9
+    },
+    "development.develop|fullstack_fastapi_react": {
+      "tuning": [
+        {
+          "envelope_id": "a5b77f9858771f26154ebf3f7f1b0206cade180607ae51f4a70f3f52c9dbe87b",
+          "task_type": "development.develop",
+          "seam": "build_authoring",
+          "stack": "fullstack_fastapi_react",
+          "messages_sha256": "1874ada0a52790daccb314b9424b7aa5fa2546ed8e19eb747355b84cc47dd425",
+          "round": 1
+        },
+        {
+          "envelope_id": "3aae92e126772509d11ecf8b236796fa601831b8bb8b3112413fcd7b4fa7fff8",
+          "task_type": "development.develop",
+          "seam": "build_authoring",
+          "stack": "fullstack_fastapi_react",
+          "messages_sha256": "0006fe5bf19bbfff408e0ca898313092bc8564f6a05d4f03b29e46ea9765b7d3",
+          "round": 2
+        }
+      ],
+      "held_out": [
+        "6088fec9138c6985139727e093b44704139c1a2f11bc68595ce10cd4306c6166",
+        "324135185f280154fa715fd501c1518d3966c59690d05227d28b1f2d73a272c5",
+        "74cf2e16025843b412287abca8c4c540f0e3098d19c2e3ae3d5517b73ffd7add",
+        "fc5892bcb6e2137372fd1a2a8b3ffd28c2b4ba1766ea1d9756c9e962b248334f",
+        "5f4b76b62236aedb80e4df39a8db6066bb5227fabbfecfce783ab7dbc05d6058",
+        "b9418e9fc3f6989f5713049ea3b836e6cde2988e572c7a966c73c039ec708e96",
+        "08e44b5465b191c684de83062da2dfd3cc7e7f75d9440292419e303bd5e808c8",
+        "ebc2b089fc2067841060cc43419a8013ae553f02e350ed20e6ae1ef8634051b8"
+      ],
+      "population": 100
+    },
+    "development.develop|nextjs_ts": {
+      "tuning": [
+        {
+          "envelope_id": "971ab1c541903394aff2a8f0c33160f793034f1fc8c662e826f9077850ca4da1",
+          "task_type": "development.develop",
+          "seam": "build_authoring",
+          "stack": "nextjs_ts",
+          "messages_sha256": "97a20b164ca36714582682e4814bb22e59059ee2e46e5ecbeff2c15cc4f412bb",
+          "round": 1
+        },
+        {
+          "envelope_id": "7c04d2e70b6ccd1a1ed8d94e2fe9153c4ad87ceff31e1959d1ab1680bf7c7ab6",
+          "task_type": "development.develop",
+          "seam": "build_authoring",
+          "stack": "nextjs_ts",
+          "messages_sha256": "abc953dfd28f8a02b3110a62db929275386d29ab881321187d778576fd9958da",
+          "round": 2
+        }
+      ],
+      "held_out": [
+        "6d18c662826ee8150db0705c8e5de7835c5395d5ceb0ee21af4bc1272ad1a9cb",
+        "a2eda0da61d201a3b70e3c7286cead05522d99174d6fb3629d0c000bd317f16e",
+        "95581f440d9488b41d41ed7a50c216b07850a858c628a61a366dad01f8040a89",
+        "aa5734d068cf197700f311e08d7dd528a1e0be23a1f8aad5c5ddca1a2c66f364",
+        "b720cb07393e255aabb5cdb73bbb8b4417ed9bd8333ab09aae68ddc3e88749e5",
+        "229987421ff67279a1ee63cb77245474d02b1e1d851ef2709c4e68252e0b2350",
+        "d0f66c01657ce06f1ef0a164306eb5425290d89ae47299e72f2372d9058b913c",
+        "4a7dd6880f92c7d03333ef309685825752c1ad5f4da685146f535aa11066c6f8"
+      ],
+      "population": 32
+    },
+    "development.propose_plan_tasks|fullstack_fastapi_react": {
+      "tuning": [
+        {
+          "envelope_id": "d1ac65ce2ef7225173594defdd6680a1f1306c04f69b2fe717b1bf802f2daa6b",
+          "task_type": "development.propose_plan_tasks",
+          "seam": "plan_writing",
+          "stack": "fullstack_fastapi_react",
+          "messages_sha256": "fbba2468048e2b1e02fcad85c82ea9bebed7bc5b9ed00880c8734b064a9ef1dd",
+          "round": 1
+        },
+        {
+          "envelope_id": "fbe86db1afdecf856b86f8949ce407aaa6cfc953088c34d49f03abd326fb65a5",
+          "task_type": "development.propose_plan_tasks",
+          "seam": "plan_writing",
+          "stack": "fullstack_fastapi_react",
+          "messages_sha256": "b48d199f38ac7e15e8e1a7635740dd5e7fb50dd1a1438b9908acabd40a146ab2",
+          "round": 2
+        }
+      ],
+      "held_out": [
+        "f5f66b35f3932095edf1dfe9dd2256d67e3ab209f3c17657a1abfe059d17ea0b",
+        "6eb8642534a4ee271a40f13d6aa8da30605bb7e8f49a5cf9545ac68832f29867",
+        "4a7c63a5d6cae47ededb65c070ca5334965d6664abac5e066c538e8b5db1600c",
+        "10c0cd9888b1d14aa17c88e54ffa0306facf082020d7e35cb741669d00153fa3",
+        "2b0455bae13c4a54b0c869a47fb3896d2f5012d52707d30a663448cd7674bc92",
+        "3eb2b65da19d2ab3943cb6046d0e5ff3e7ee70760acc4dd640ed3c018fb14d06",
+        "1364d87d9b1536355b6ce1824b3acf42d13ba4efd3119114466e5d94bb729dd7",
+        "aeef7bd6fb395e14375bb279a243c2df852fa87588230911d74e180a0d88ad7e"
+      ],
+      "population": 10
+    },
+    "governance.prepare_plan_authoring_brief|fullstack_fastapi_react": {
+      "tuning": [
+        {
+          "envelope_id": "a2d15bc3eee9ef1fcafcf6fbe1897a15b90b2005c642ac103cc819190a753a36",
+          "task_type": "governance.prepare_plan_authoring_brief",
+          "seam": "plan_writing",
+          "stack": "fullstack_fastapi_react",
+          "messages_sha256": "a85a313d02bd786213758f94531ff0c462e745e7778c4c7e56e752f7d21afdfe",
+          "round": 1
+        },
+        {
+          "envelope_id": "a425fa7a04f4d766ed17dd742058a5eb2436bc5283082c90e89562b08773a632",
+          "task_type": "governance.prepare_plan_authoring_brief",
+          "seam": "plan_writing",
+          "stack": "fullstack_fastapi_react",
+          "messages_sha256": "c201c02e1582b2922d4561b4e4bf8c884d717b2ed3168902d9ad57712f72b014",
+          "round": 2
+        }
+      ],
+      "held_out": [
+        "9e36b33ebfd672be2ba66ca99ababed1bf3ee5117c0efb319a09adfa3150670a",
+        "d70acfad3aa3584e9f79480bb1cba26486d08d5de18853c2a67f099e7089d07f",
+        "a41b92186af0a8a293a3a2736382273d37c1b4bcecef72507c72df8ab748e905",
+        "f3c6862c66b3776d3dfc21156c09413435a0c833b268ad2e96e85e54ec15e6dd",
+        "e2af0693ba58a2e81dd81d224080f0c30423a5ea55a9e3889e1b0b3ddffe990e",
+        "b8a55dac125b51e981583a1a20992bf4075077b33426cb4d542665fb7147a1d2",
+        "0c22a97ff2335c2ec1cc7eb6268440ec384b023f8d5b87ac6de59c15bc9fa58a",
+        "f87d4d7dcfcc68cb2ede20ef85cd8521ee1d8dd11020bf37f803401fdffb4bc1"
+      ],
+      "population": 33
+    },
+    "governance.prepare_plan_authoring_brief|nextjs_ts": {
+      "tuning": [
+        {
+          "envelope_id": "7cf0949098e48d5195422187c93dfb4608bd66006b56dca177ec23f5bfa596e6",
+          "task_type": "governance.prepare_plan_authoring_brief",
+          "seam": "plan_writing",
+          "stack": "nextjs_ts",
+          "messages_sha256": "b9827c3e03a7e9203692f9704b721904db6cf536fe8e63ce6fbcfedf8fcde656",
+          "round": 1
+        },
+        {
+          "envelope_id": "0caf2681fcb5d799bd187caebf7345f886ff1993a8ad44f5054552a04b14b341",
+          "task_type": "governance.prepare_plan_authoring_brief",
+          "seam": "plan_writing",
+          "stack": "nextjs_ts",
+          "messages_sha256": "4fb3ad490f85dc46ef49ed8aa5f4e52b4d14c2eafd28d1813aea0b37d8dd8da1",
+          "round": 2
+        }
+      ],
+      "held_out": [
+        "f40fa6f1d7503111ce9111874e3886374aee701a96bbb27d0cb1b0c991f69cef",
+        "aaf7efd2dff6b92fbf0f7b300b4a82d744ac254551660446dc65018193ddec31",
+        "a87c7128024b676ae33a9a7407e4e151c71646af49841d4437d6615f5d5064de",
+        "c0b80705ea895b0aff40dbb419cf0f46fbdbc13b178f821ca0bb1bb8fe87c076",
+        "2d0199b92f893a786599c1fed2255702783245ce2d0457a968dc800f5692148c",
+        "1fac05d4bcef9b217d73bde9f2969a59d0c42695bfdbb035eafe41f8867f4e75"
+      ],
+      "population": 8
+    },
+    "qa.propose_plan_tasks|fullstack_fastapi_react": {
+      "tuning": [
+        {
+          "envelope_id": "da1bc4cc7efd1dae20d5dc61e5d8f4412a9c5c6739dde36fd8f67d64307bd1e0",
+          "task_type": "qa.propose_plan_tasks",
+          "seam": "plan_writing",
+          "stack": "fullstack_fastapi_react",
+          "messages_sha256": "1c12268e7c1d1d2246f2641492a8f51074c141c2888674a582594fd72f729ca5",
+          "round": 1
+        },
+        {
+          "envelope_id": "f91ddea17a3cf15e2f588cd08fbe54e613b6a4c5f9cc49775effb261b338d75a",
+          "task_type": "qa.propose_plan_tasks",
+          "seam": "plan_writing",
+          "stack": "fullstack_fastapi_react",
+          "messages_sha256": "c8080a478f8fcec125a566b246799347555ac296baaa7640d7838378bd3d2e7f",
+          "round": 2
+        }
+      ],
+      "held_out": [
+        "727545831b863a5b468ece6548e13820cef2e09b9781f82232505072b4917c3b",
+        "45ce6434c81f5d7a99a16e3c9c3fe407f54574df9c6f03ec6a2e0832937c6cb8",
+        "0e36f685675d60fdefdbe5e94e234991adcf04b3deb4e6c768c95fe4be98fcd6",
+        "e97ea5e37450d49fa83ecaeebf6163a9acc7fb5b7480e1ee5b2965f2524e1349",
+        "e2677325053bc3e7f00d300c3ed13d7c9960c40974a956535882f4c0fa9a048e",
+        "450c5aa8d265dc0a0fe60d6b78a081bfbf7cb9863be91378ca92f1d58c0f787e",
+        "02578477b4db74091e5dd9918fd3cba02fb4ff9f9f91c93f37150905ac5ca9ab",
+        "a3cf8c910b714dbdb74b17e89a0a47d33195209f540f824d4af0be122b984e7d"
+      ],
+      "population": 10
+    },
+    "qa.test_repair|fullstack_fastapi_react": {
+      "tuning": [
+        {
+          "envelope_id": "fa8ee58d99f097d67b026eeb72a0724d6e353886910a1567297d29be3e1a351a",
+          "task_type": "qa.test_repair",
+          "seam": "repair",
+          "stack": "fullstack_fastapi_react",
+          "messages_sha256": "89d5f54063fec89614a2f6d153745ccbb4b7edc9d39bd709113a675a9c003724",
+          "round": 1
+        },
+        {
+          "envelope_id": "c5594ff78ebd8fd3ac3dd2b81f876d8d0775c27477e55e82c11ad86aeb47570b",
+          "task_type": "qa.test_repair",
+          "seam": "repair",
+          "stack": "fullstack_fastapi_react",
+          "messages_sha256": "a0d21562cd3f49ea4885fd173fb4fe211ce8f248e3cc3c388defef9f824044f0",
+          "round": 2
+        }
+      ],
+      "held_out": [],
+      "population": 2
+    },
+    "qa.test_repair|nextjs_ts": {
+      "tuning": [
+        {
+          "envelope_id": "ef7cb00c1f05cb2b034a528eb58205b61acb600f2aaa1d557877080a0b4d1f69",
+          "task_type": "qa.test_repair",
+          "seam": "repair",
+          "stack": "nextjs_ts",
+          "messages_sha256": "06ae2dec369265f3a8ba6e1bb8981839d1ee5f6166dc5ee441a0b7fbf40bf9e5",
+          "round": 1
+        },
+        {
+          "envelope_id": "a9b951263949217eb8ba7c4791ee732131e029a673fffa6ead8db78dfc914474",
+          "task_type": "qa.test_repair",
+          "seam": "repair",
+          "stack": "nextjs_ts",
+          "messages_sha256": "90dc8cb72ce6cd72d924c4b578cc6ec90491a4dd6cbb0c2169957f2538050ab4",
+          "round": 2
+        }
+      ],
+      "held_out": [
+        "1b259abb0737b55f9e92ee7a51029b423769610467cb6c30a17a18298b9dd9d6",
+        "48445a3cd64133fe4d3247a87a4ef943803473637a79e743e9793790fc5ed961"
+      ],
+      "population": 4
+    },
+    "qa.test|fullstack_fastapi_react": {
+      "tuning": [
+        {
+          "envelope_id": "ba105b183d9c3cff9441599c1f9869132080563966e0bb7b50b92d4d337c9e57",
+          "task_type": "qa.test",
+          "seam": "build_authoring",
+          "stack": "fullstack_fastapi_react",
+          "messages_sha256": "46205dbd1a6d946129bd570473de25111d2e75d8024e812a7957aa11f30088a5",
+          "round": 1
+        },
+        {
+          "envelope_id": "ef408919248ff7fe204d0c13e8b3e11360fd6d9ff39db5c6603dab64ef08997f",
+          "task_type": "qa.test",
+          "seam": "build_authoring",
+          "stack": "fullstack_fastapi_react",
+          "messages_sha256": "bc958bdd95a48241fb894592470faa14331228f440ba9ad625f69ec1d63e9983",
+          "round": 2
+        }
+      ],
+      "held_out": [
+        "860c52642ca3e2a354da25930785cc36567fda9ad3a55f8d002a31c650f893e7",
+        "f1e618fc59523e8113a213a0fb0d0db9e54664c1787fea5e983d07fd7c8bcf5d",
+        "cfcdd1ccea8bb016e24fdd9ce70ce6ceb6302826d98d44bf4a7d7b6aacb8e5f5",
+        "b0167889ed342c5b4446b3cae6c7144e78ccb25d53294abe70c3dea03592ec29",
+        "2cb14060f128eb1292584f1b9e56dbbdb4da104b4caf7fb119a43c43dc5b20b6",
+        "ee94c73883c0e6ff649ccb74d6c4f85f48381f5436f2effdd7d5c3794a3c3fd4",
+        "2dc473a3dd9a06ac8b551418c7f12c99a2432d9b8fa9f8678a57e078f4611a2f",
+        "f149f9f00b2272c4369e9b521dcab998a8458ff90fb25fa51c2f173b9779a90c"
+      ],
+      "population": 72
+    },
+    "qa.test|nextjs_ts": {
+      "tuning": [
+        {
+          "envelope_id": "6b6fe08a03a6d7b1356112151c3cd7e416afe8a3ca47735aec875978110ef42e",
+          "task_type": "qa.test",
+          "seam": "build_authoring",
+          "stack": "nextjs_ts",
+          "messages_sha256": "0d1133b0ff49fdf29d05632bb9fa8184728098cd37a7a08228db75802aeeb603",
+          "round": 1
+        },
+        {
+          "envelope_id": "29891c7a710dee4b59b31af33258357f20971511dbab0f961b87fa341abafcb3",
+          "task_type": "qa.test",
+          "seam": "build_authoring",
+          "stack": "nextjs_ts",
+          "messages_sha256": "15b036a7f15215ee74b70dab54b481fd247d0c8e38a52238c1981a607337fb94",
+          "round": 2
+        }
+      ],
+      "held_out": [
+        "811d4d00036bf6a1ed3f400f3d24525ef00e06def34e17b79e09837422ccecef",
+        "62096911d238392ff9a799ad8c51e16265bd5036b3769d3f72b7b32d3f3fc7b8",
+        "7c1ee72bdaefa77dd50cc7b61fd2c152181ae8f63fdc92b1bf1a90136438f6bb",
+        "ab5007347d53022ea107c9b0df6c7f559cf8ad67045d7eb161192f853aaa906f",
+        "82479da4e01cd673dea5c1217e91b0e318a9be25ccc2a71e7f2375f97bf7f823",
+        "b633e9ba9410586487695b74143ac39308085cb3a3b42a86fcc93ccc8746778c",
+        "e0094422ea28fe0dce58a9551bcf5b9962f0cf15b878fe5d8ec5340ff7d8ed85",
+        "511cf347c6899b5bd1a562abb2f12eb12a63af2e2b640a899221870b1fb0474d"
+      ],
+      "population": 14
+    },
+    "strategy.propose_increment|fullstack_fastapi_react": {
+      "tuning": [
+        {
+          "envelope_id": "2b9392a50e7b10a20e97edac3313c1155f743eab96bf2f04e49c874de575022b",
+          "task_type": "strategy.propose_increment",
+          "seam": "proposal_writing",
+          "stack": "fullstack_fastapi_react",
+          "messages_sha256": "c1b37430f7c59268e9ae915027ad1439b0b92b8b9758b101ee00617be31e9b6c",
+          "round": 1
+        },
+        {
+          "envelope_id": "2d0add5ec35aa449f3d85b1da96ff349e31c91acd5cfc40ecb8345b711bc3b9c",
+          "task_type": "strategy.propose_increment",
+          "seam": "proposal_writing",
+          "stack": "fullstack_fastapi_react",
+          "messages_sha256": "f62056653d6953f559bc8f495ac2209d1b0081c3d35819d90fd52288d213c5a6",
+          "round": 2
+        }
+      ],
+      "held_out": [
+        "1eaf9deecdac51d28831a409d556a2dbc0a728c854fd89d3452dface0d70847a",
+        "37af99a9faf3a36ceddea61e9b6154c1ca0cab4bff6c97e49e7885e75e3a27d9",
+        "171112e0794a84e31bd7a00867b4450ab8db527f2eac8bc2737862302c5b1369",
+        "cd0e5c799a2563fecf38f1f3b4a59b6912f419f7c188a73b3312cefa32d89a36",
+        "ccf5bf5aee5375ca1d778a8e16171df3f6b74aa16e541fce9f45d32470a7a0e9",
+        "924d0984664ca5a18232af68250373d6122f7d5c8ec4c923d30c87032f7cf518",
+        "66294087fa787ae73689535c172b2af4791feed11ddb9ae2961bdd64e794ec28",
+        "55a35be442011fecdae52f8a515af4041d11a0094f4d0b5fdb140c30ab459034"
+      ],
+      "population": 24
+    },
+    "strategy.propose_plan_guidance|fullstack_fastapi_react": {
+      "tuning": [
+        {
+          "envelope_id": "3ed3b775dd76c6d785b5cf52eabf0437e42844bc791b7cac5409050ea7bb8b56",
+          "task_type": "strategy.propose_plan_guidance",
+          "seam": "plan_writing",
+          "stack": "fullstack_fastapi_react",
+          "messages_sha256": "27b8bbe60ad89ad6a20e5c63e3ddcb746d876770e054270a0d58ebecbc6d5367",
+          "round": 1
+        },
+        {
+          "envelope_id": "5d87ddf33edf5404ee1054fa0bf17f93b8e3fa7dda20c6fcf67caf4c3e31241b",
+          "task_type": "strategy.propose_plan_guidance",
+          "seam": "plan_writing",
+          "stack": "fullstack_fastapi_react",
+          "messages_sha256": "e05f834402b9048bb04c2bcd0bf9ef9c04bcfe08598dcca51cd20e57ca49ebc6",
+          "round": 2
+        }
+      ],
+      "held_out": [
+        "4d9b5e6cc4f268840659edd34264619d83f499eb518e4006d8d97ecde7f7eeec",
+        "f34fcbd9b486e4346bad41fbc177b1e8285ca21d7052932b60cf71ff66696cd5",
+        "bbb51c34ce27c93e7765e5240363f7495bbba3636a73c1301ecfbbe3a0e1d823",
+        "634d74eeadb8a53184e958f3e5756792277cb0b213d868c56c3a13282774f990",
+        "1eb2a597774007b45406e05ad58e0d54cb2100b9a9e2d505eb123fdf92fbe270",
+        "e6a6944cb3dfcdd4caf6ce1e6989924c1a4d6159fd8ef1d5a5da72d7c0137180",
+        "24103fc6464419024d918e9fee6a97bd2d9f8fbced44a17f24228fb7655cceeb",
+        "d52261670519f31b25fafaef19279403e3344842d3ba9b4bf612ceebba68f372"
+      ],
+      "population": 10
+    }
+  },
+  "tuning_per_stratum": 2,
+  "held_out_per_stratum": 8,
+  "sha256": "27ee298ec39ec02deaaf2fae60a2c23b7bea1859c960efde54c90a4be49c7bda"
+}

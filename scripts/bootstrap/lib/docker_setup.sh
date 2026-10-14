@@ -6,6 +6,22 @@
 # rebuild/deploy path so the two cannot drift.
 source "$(dirname "${BASH_SOURCE[0]}")/../../dev/ops/secrets.sh"
 
+# Set KEY=VALUE in .env: replace the line, uncomment a commented one, or append it.
+set_env_value() {
+    local key="$1" value="$2" env_file=".env"
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then
+        info "[dry-run] set ${key} in .env"
+        return 0
+    fi
+    if grep -q "^${key}=" "$env_file"; then
+        sed -i "s|^${key}=.*|${key}=${value}|" "$env_file"
+    elif grep -q "^# *${key}=" "$env_file"; then
+        sed -i "s|^# *${key}=.*|${key}=${value}|" "$env_file"
+    else
+        echo "${key}=${value}" >> "$env_file"
+    fi
+}
+
 # Ensure .env and .env.console exist for Docker Compose.
 # Copies .env from .env.example, then generates the deploy's credentials into it (#2006).
 # Generates .env.console from console lock file if missing.
@@ -142,6 +158,23 @@ ensure_docker_group() {
         success "User $USER added to docker group — re-executing bootstrap with new group"
         exec sg docker -c "'${SQUADOPS_BOOTSTRAP_SCRIPT}' ${SQUADOPS_BOOTSTRAP_ARGS}"
     fi
+}
+
+# The GPU's CDI spec (#2204). Docker hands a container the GPU by the name `nvidia.com/gpu=all`
+# (the compose `gpu` profile's dcgm-exporter) only when /etc/cdi describes it. nvidia-ctk writes it
+# from the installed driver, so it is rewritten on every run: a driver upgrade changes the device
+# nodes, and a stale spec fails every GPU container.
+ensure_gpu_cdi_spec() {
+    if [[ "${SKIP_DOCKER:-0}" == "1" ]]; then
+        return 0
+    fi
+    if ! check_command nvidia-ctk; then
+        error "nvidia-ctk not found — the NVIDIA Container Toolkit writes the GPU's CDI spec"
+        exit 1
+    fi
+    info "Writing the GPU's CDI spec (/etc/cdi/nvidia.yaml)..."
+    run_or_dry sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+    success "GPU CDI spec written"
 }
 
 # Start Docker Compose services.

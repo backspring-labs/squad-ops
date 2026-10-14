@@ -561,6 +561,12 @@ class HealthChecker:
                 "notes": f"Error: {e}",
             }
 
+    async def read_host_resources(self) -> dict[str, float | None]:
+        """The host's resources, from Prometheus (#2204): each ``None`` when unknown."""
+        from squadops.api.runtime.host_reading import read_host
+
+        return await read_host(self._client, self._config.observability.prometheus.url)
+
     async def check_prometheus(self) -> dict[str, Any]:
         try:
             url = self._config.observability.prometheus.url

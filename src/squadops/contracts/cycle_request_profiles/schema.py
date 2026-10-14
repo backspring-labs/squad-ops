@@ -74,6 +74,9 @@ _APPLIED_DEFAULTS_EXTRA_KEYS = {
     # names/types/history (AC#5). Absent/empty → nothing required (Phase 1 ships
     # no required lists; the per-profile list is the Phase 2 throttle).
     "required_checks",
+    # #2279: a diagnostic profile's declared faults, as a cycle's overrides declare them
+    # (``fault_injection.DECLARATION_KEY``). A cycle that carries one is a diagnostic, never counted.
+    "fault_injection",
 }
 
 _ALL_ALLOWED_KEYS = _ALLOWED_DEFAULT_KEYS | _APPLIED_DEFAULTS_EXTRA_KEYS

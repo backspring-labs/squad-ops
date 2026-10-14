@@ -599,31 +599,46 @@ def check_test_database_isolation(
 # ---------------------------------------------------------------------------
 
 
+#: Where Ollama answers on the host, however it runs: the Mac's and the PC's host service, or the
+#: Spark's container, published on the host's loopback (#2249). The doctor reads its HTTP API, so it
+#: needs no host ``ollama`` binary, which a Spark no longer has.
+OLLAMA_HOST_URL = "http://localhost:11434"
+
+
+def _ollama_api(path: str) -> dict | None:
+    """``GET`` an Ollama API path on the host, or ``None`` when it can't be read."""
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(f"{OLLAMA_HOST_URL}{path}", timeout=15) as resp:
+            body = json.loads(resp.read())
+    except (OSError, ValueError):
+        return None
+    return body if isinstance(body, dict) else None
+
+
 def _query_ollama_models() -> set[str] | None:
     """Installed Ollama model names, or ``None`` if the backend can't be queried.
 
-    ``None`` (``ollama`` missing / non-zero exit / timeout) is deliberately
+    ``None`` (unreachable, or an answer that is not a model list) is deliberately
     distinct from an empty set (reachable, nothing pulled): callers that
     warn-and-allow on *unverifiable* availability (SIP-0095 §6.3) need that
     distinction, or they'd wrongly block whenever the backend hiccups.
     """
-    try:
-        result = subprocess.run(
-            ["ollama", "list"],
-            capture_output=True,
-            text=True,
-            timeout=15,
-        )
-    except (subprocess.TimeoutExpired, OSError):
+    body = _ollama_api("/api/tags")
+    if body is None or not isinstance(body.get("models"), list):
         return None
-    if result.returncode != 0:
-        return None
-    models = set()
-    for line in result.stdout.splitlines()[1:]:  # skip header
-        parts = line.split()
-        if parts:
-            models.add(parts[0])
-    return models
+    return {m["name"] for m in body["models"] if isinstance(m, dict) and m.get("name")}
+
+
+def _engine_models(profile: BootstrapProfile) -> set[str] | None:
+    """The models the deploy's engine serves, for the squad check. Ollama's are read from Ollama.
+    A TensorFold deploy serves exactly its frozen recipe's ``served_id`` (SIP-0111 §5.3), and
+    Ollama is stopped beside it, so reading Ollama there would warn on every check (#2229)."""
+    engine = profile.inference_engine
+    if engine is not None and engine.engine == "tensorfold":
+        return {engine.served_id} if engine.served_id else None
+    return _query_ollama_models()
 
 
 def _get_ollama_models() -> set[str]:
@@ -753,10 +768,23 @@ def check_nvidia_gpu() -> list[CheckResult]:
             )
         )
 
-    # Heuristic: Ollama GPU access probe
-    try:
-        proc = subprocess.run(["ollama", "ps"], capture_output=True, text=True, timeout=10)
-        gpu_detected = "gpu" in proc.stdout.lower() if proc.returncode == 0 else False
+    # Heuristic: Ollama GPU access probe. A loaded model holding GPU memory (``size_vram``) is
+    # GPU access; nothing loaded reads as not detected, as ``ollama ps`` did (#2249).
+    running = _ollama_api("/api/ps")
+    if running is None or not isinstance(running.get("models"), list):
+        results.append(
+            CheckResult(
+                name="gpu:ollama-access",
+                category="gpu",
+                passed=False,
+                message="Could not probe Ollama GPU access",
+                heuristic=True,
+            )
+        )
+    else:
+        gpu_detected = any(
+            isinstance(m, dict) and (m.get("size_vram") or 0) > 0 for m in running["models"]
+        )
         results.append(
             CheckResult(
                 name="gpu:ollama-access",
@@ -765,16 +793,6 @@ def check_nvidia_gpu() -> list[CheckResult]:
                 message="Ollama GPU access detected"
                 if gpu_detected
                 else "Ollama GPU access not detected",
-                heuristic=True,
-            )
-        )
-    except (subprocess.TimeoutExpired, OSError):
-        results.append(
-            CheckResult(
-                name="gpu:ollama-access",
-                category="gpu",
-                passed=False,
-                message="Could not probe Ollama GPU access",
                 heuristic=True,
             )
         )
@@ -1048,7 +1066,7 @@ def _collect_squad_checks(profile: BootstrapProfile) -> list[CheckResult]:
             )
         ]
 
-    decision = model_availability_decision(squad, _query_ollama_models())
+    decision = model_availability_decision(squad, _engine_models(profile))
     if not decision.blocking and not decision.warnings:
         count = len({a.model for a in squad.agents if a.enabled and a.model})
         return [

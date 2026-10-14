@@ -62,7 +62,7 @@ def _test_config():
                 "rabbitmq": {"url": "amqp://test:test@localhost:5672/"},
                 "redis": {"url": "redis://localhost:6379/0"},
             },
-            "llm": {"provider": "ollama"},
+            "llm": {"provider": "ollama", "url": "http://ollama:11434"},
             "tools": {"filesystem": {"provider": "local"}},
         }
     )

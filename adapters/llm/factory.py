@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 from adapters.llm.atlas import AtlasAdapter
 from adapters.llm.ollama import OllamaAdapter
+from adapters.llm.tensorfold import TensorFoldAdapter
 from adapters.llm.vllm import VLLMAdapter
 from squadops.ports.llm.provider import LLMPort
 
@@ -28,9 +29,9 @@ def create_llm_provider(
     """Create an LLM provider.
 
     Args:
-        provider: Provider name ("ollama", "vllm" or "atlas"). Required — no default (#1157):
-            the factory's own rule below refuses an unknown name, and a *missing*
-            one used to fall back to Ollama the same silent way.
+        provider: Provider name ("ollama", "vllm", "atlas" or "tensorfold"). Required — no
+            default (#1157): the factory's own rule below refuses an unknown name, and a
+            *missing* one used to fall back to Ollama the same silent way.
         secret_manager: Optional secret manager for resolving secret:// refs
         base_url: Base URL for the LLM server (may be secret:// ref)
         default_model: Default model to use
@@ -64,6 +65,14 @@ def create_llm_provider(
 
     if provider == "atlas":
         return AtlasAdapter(
+            base_url=base_url,
+            default_model=default_model,
+            timeout_seconds=timeout_seconds,
+            api_key=config.get("api_key"),
+        )
+
+    if provider == "tensorfold":
+        return TensorFoldAdapter(
             base_url=base_url,
             default_model=default_model,
             timeout_seconds=timeout_seconds,

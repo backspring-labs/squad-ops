@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from fastapi import HTTPException
 
+from squadops.api.errors import ErrorRow, mapped_error
 from squadops.comms.models import (
     AgentNotFoundError,
     AgentNotMessagingEnabledError,
@@ -15,7 +16,7 @@ from squadops.comms.models import (
     SessionNotFoundError,
 )
 
-_ERROR_MAP: list[tuple[type, int, str]] = [
+_ERROR_MAP: list[ErrorRow] = [
     (SessionNotFoundError, 404, "SESSION_NOT_FOUND"),
     (AgentNotFoundError, 404, "AGENT_NOT_FOUND"),
     (AgentNotMessagingEnabledError, 400, "MESSAGING_NOT_ENABLED"),
@@ -25,10 +26,7 @@ _ERROR_MAP: list[tuple[type, int, str]] = [
 def chat_error_envelope(e: ChatError) -> tuple[int, dict]:
     """The (status, detail) envelope for a domain error — one table, read by the
     app-level exception handler (#576) and by the HTTPException helper below."""
-    for exc_type, status, code in _ERROR_MAP:
-        if isinstance(e, exc_type):
-            return status, {"error": {"code": code, "message": str(e), "details": None}}
-    return 500, {"error": {"code": "INTERNAL_ERROR", "message": str(e), "details": None}}
+    return mapped_error(e, _ERROR_MAP)
 
 
 def handle_chat_error(e: ChatError) -> HTTPException:
