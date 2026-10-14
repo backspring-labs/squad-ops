@@ -17,9 +17,10 @@ if TYPE_CHECKING:
 
 def create_embeddings_provider(
     provider: str,
+    *,
+    base_url: str,
+    model: str,
     secret_manager: SecretManager | None = None,
-    base_url: str = "http://localhost:11434",
-    model: str = "nomic-embed-text",
     timeout_seconds: float = 30.0,
     **config,
 ) -> EmbeddingsPort:
@@ -27,9 +28,11 @@ def create_embeddings_provider(
 
     Args:
         provider: Provider name ("ollama")
+        base_url: Base URL for the embeddings server (may be secret:// ref). Required: the
+            default was ``localhost``, where no agent's embedder could reach a server (#2171,
+            #2174).
+        model: Embedding model to use. Required, as the server must have it installed.
         secret_manager: Optional secret manager for resolving secret:// refs
-        base_url: Base URL for the embeddings server (may be secret:// ref)
-        model: Embedding model to use
         timeout_seconds: Request timeout
         **config: Additional provider-specific configuration
 

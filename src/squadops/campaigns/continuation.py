@@ -83,6 +83,8 @@ class CampaignCounters:
     repair_cycles: int
     retry_cycles: int
     rejected_proposals_in_row: int
+    #: Proposal cycles in a row that ended ``proposal_failed`` (§24bn, #2231).
+    failed_proposals_in_row: int
     unaccepted_increments: int
     #: The objective's measurement, read with this increment counted (row 3).
     objective_met: bool
@@ -96,6 +98,7 @@ class CampaignLimit(StrEnum):
     ELAPSED_TIME = "elapsed_time"
     BUDGET = "budget"
     REJECTED_PROPOSALS_IN_ROW = "rejected_proposals_in_row"
+    FAILED_PROPOSALS_IN_ROW = "failed_proposals_in_row"
 
 
 class TerminalCause(StrEnum):
@@ -273,4 +276,8 @@ def _pausing_limit(policy: CampaignPolicy, counters: CampaignCounters) -> Campai
         return CampaignLimit.BUDGET
     if counters.rejected_proposals_in_row >= policy.max_rejected_proposals_in_row:
         return CampaignLimit.REJECTED_PROPOSALS_IN_ROW
+    # §24bn (#2231): a failed proposal is retried by the next proposal cycle (row 6), up to the
+    # policy's retries; the failure past them holds that launch for the owner.
+    if counters.failed_proposals_in_row > policy.max_proposal_run_retries:
+        return CampaignLimit.FAILED_PROPOSALS_IN_ROW
     return None

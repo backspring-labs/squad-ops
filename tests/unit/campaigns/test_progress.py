@@ -560,6 +560,71 @@ def test_the_counters_are_read_from_the_campaigns_own_records():
     assert counters.unaccepted_increments == 1
 
 
+@pytest.mark.parametrize(
+    ("earlier", "ending", "failed", "rejected"),
+    [
+        (["proposal_failed", "proposal_failed"], CycleEnding.PROPOSAL_FAILED, 3, 0),
+        (["proposal_failed", "rejected_at_gate"], CycleEnding.PROPOSAL_FAILED, 1, 0),
+        (["proposal_failed"], CycleEnding.REJECTED_AT_GATE, 0, 1),
+        (["proposal_failed"], CycleEnding.ASSESSED, 0, 0),
+    ],
+    ids=["a-run-of-failures", "a-rejection-breaks-it", "a-rejection-ends-it", "a-build-ends-it"],
+)
+def test_failed_proposals_in_a_row_are_read_back_until_another_ending(
+    earlier, ending, failed, rejected
+):
+    """§24bn (#2231). Bugs caught: failures counted across a rejection or a built increment, so
+    a campaign pauses on failures that were never consecutive; or failures and rejections
+    counted as one run."""
+    started = MagicMock()
+    started.operation, started.committed_at = ControlOperation.START, NOW
+    rows = []
+    for e in earlier:
+        entry = MagicMock()
+        entry.operation, entry.outcome = ControlOperation.DECIDE, "applied"
+        entry.binding = {"row": 6, "ending": e, "action": "propose", "guard": "proceed"}
+        rows.append(entry)
+
+    counters = derive_counters(
+        campaign(CID),
+        [started, *rows],
+        [CycleRecord(CycleKind.CALIBRATION, 100), CycleRecord(CycleKind.INCREMENT, 10)],
+        ending=ending,
+        now=NOW,
+        objective_met=False,
+    )
+
+    assert (counters.failed_proposals_in_row, counters.rejected_proposals_in_row) == (
+        failed,
+        rejected,
+    )
+
+
+async def test_the_failure_past_the_proposal_retries_pauses_the_campaign(calibrating):
+    """§24bn (#2231), entered at the completion hook as each live proposal run ends. Bug caught:
+    the 2.2.1 diagnostic's shape. ``max_proposal_run_retries`` was read nowhere, so a proposer
+    that cannot produce a valid proposal launched proposal after proposal until ``max_cycles``.
+    The first failure is retried by a new proposal cycle; the second pauses for the owner."""
+    w, run = await calibrating(RunVerdict.ACCEPTED, max_proposal_run_retries=1)
+    await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
+    w.verdict = None
+
+    first = await w.launched_cycle("increment", "cyc_inc1", "proposal", "failed")
+    await w.end("cyc_inc1", first, CycleStopReason.RUN_FAILED)
+    retried = (await w.campaigns.control_log(CID))[-1]
+    second = await w.launched_cycle("increment", "cyc_inc2", "proposal", "failed")
+    await w.end("cyc_inc2", second, CycleStopReason.RUN_FAILED)
+
+    paused = (await w.campaigns.control_log(CID))[-1]
+    assert (retried.binding["row"], retried.binding["guard"]) == (6, "proceed")
+    assert (paused.binding["row"], paused.binding["ending"], paused.binding["paused_by"]) == (
+        6,
+        "proposal_failed",
+        "failed_proposals_in_row",
+    )
+    assert (await w.campaigns.get_campaign(CID)).state is CampaignState.PAUSED
+
+
 def test_the_increment_launch_reads_its_profile_from_the_policy():
     """The increment cycle is the policy's proposal profile, run by the policy's squad."""
     from squadops.campaigns.launch_requests import increment_launch

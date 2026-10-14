@@ -23,6 +23,8 @@ logger = logging.getLogger(__name__)
 #: names the pf-31 emission-integrity payload and every evidence record use for a producer.
 PRODUCER_TASK_ID_KEY = "producer_task_id"
 PRODUCER_TASK_TYPE_KEY = "producer_task_type"
+#: The role the step ran as, so the stored copy can say who wrote it (#2206).
+PRODUCER_ROLE_KEY = "producer_role"
 
 
 @dataclass(frozen=True)
@@ -32,6 +34,7 @@ class NamedProducer:
 
     task_id: str
     task_type: str
+    role: str | None = None
 
 
 def named_producer(art: Mapping[str, Any]) -> NamedProducer | None:
@@ -47,14 +50,20 @@ def named_producer(art: Mapping[str, Any]) -> NamedProducer | None:
     task_id = art.get(PRODUCER_TASK_ID_KEY)
     task_type = art.get(PRODUCER_TASK_TYPE_KEY)
     if isinstance(task_id, str) and task_id and isinstance(task_type, str) and task_type:
-        return NamedProducer(task_id=task_id, task_type=task_type)
+        return NamedProducer(task_id=task_id, task_type=task_type, role=art.get(PRODUCER_ROLE_KEY))
     return None
 
 
 def name_producer(artifacts: Iterable[Mapping[str, Any]], envelope: Any) -> list[dict[str, Any]]:
-    """Copies of ``artifacts`` naming ``envelope``'s task as their producer (#1350)."""
+    """Copies of ``artifacts`` naming ``envelope``'s task, and the role it ran as, as their
+    producer (#1350, #2206)."""
     return [
-        {**art, PRODUCER_TASK_ID_KEY: envelope.task_id, PRODUCER_TASK_TYPE_KEY: envelope.task_type}
+        {
+            **art,
+            PRODUCER_TASK_ID_KEY: envelope.task_id,
+            PRODUCER_TASK_TYPE_KEY: envelope.task_type,
+            PRODUCER_ROLE_KEY: envelope.metadata["role"],
+        }
         for art in artifacts
     ]
 

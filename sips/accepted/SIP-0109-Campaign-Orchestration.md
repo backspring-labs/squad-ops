@@ -124,6 +124,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | the acquire race window; re-attach with the process up; a task re-asked after an agent restart | **dropped**: not built, by design (recorded) | §24ai, §24am, §24ao |
 | §24b–§24i, marked "implementer's reading, not yet ruled" | **shipped**, ratified as written (§24as) | v2.0.0 |
 | a return carries its classification, or `unclassified` with why (the 2.2 plan's D2) | **shipped** (§24bi) | 2.2.0, PR #2132 |
+| proposal-run retries bound failed proposal cycles in a row, and the failure past them pauses (§24bn) | **shipped** | 2.3.0, PR #2245, issue #2231 |
 
 **What closes this SIP:** Its 2.1.0 rows closing, #1710's remainder ruled, and #1708's remainder shipped in 2.2.0 or ruled out of scope. §24at, the consolidated status at the v2.0.0 cut, replaces the 2.0 plan's §5a as the permanent record. Promotion follows at the sweep after the last placed row closes.
 
@@ -459,7 +460,7 @@ One record per proposal version, appended as it happens (§14):
 | budget (tokens) | pause | the owner |
 | repair cycles on one increment | the increment is abandoned; it counts as unaccepted | — |
 | retry cycles on one increment | escalate | the owner |
-| proposal-run retries | the cycle ends `proposal_failed` | — |
+| proposal-run retries (failed proposal cycles in a row, §24bn) | pause | the owner |
 | revisions of one proposal | the proposal counts as rejected | — |
 | rejected proposals in a row | pause | the owner |
 | unaccepted increments (`max_unaccepted_increments`, the no-progress rule) | `stop_failure` | — |
@@ -3276,3 +3277,49 @@ Require compatible question/context, explicit coverage of each answered question
 carries the answer; otherwise continue escalating … Keep the automatic tier disabled through the window and correct
 this behavior before activating it." In the same review the owner's reviewer recommended accepting §24bk's bookkeeping
 correction, which stays the owner's ruling.
+
+### 24bn. Proposal-run retries bound failed proposals in a row, and the failure past them pauses (2026-10-11, §9.5, §10 row 6, #2231; ruled by the owner)
+
+**What §9.5 wrote, and what main did.** §9.5's row read "proposal-run retries | the cycle ends
+`proposal_failed`", which describes a retry of a failed proposal run *inside* its cycle. That retry
+was never built. The cycle ended `proposal_failed` on its first failed run, and
+`max_proposal_run_retries` was declared, required and validated, but read nowhere. Row 6 proposed
+again after every failure, so nothing but `max_cycles` bounded failures in a row. Rejected proposals in
+a row pause the campaign (`max_rejected_proposals_in_row`), but a failed proposal run is not a rejection.
+
+The 2.2.1 diagnostic (`cmp_bf5daecdf444`, uncounted) showed it live. Its rails refuse every proposal
+by design. Four proposal cycles failed in a row, each decided row 6 `propose` with guard `proceed`,
+and the campaign ended `exhausted` at `max_cycles: 5`. Its plan had predicted it would close "after one
+retry (`max_proposal_run_retries`)". The plan's §6 records that misreading, and #2231 was filed.
+
+**What changed.**
+- **The in-cycle retry is not built.** A proposal refused after its revision budget is almost always
+  refused again, and each attempt costs about 20 minutes of box time.
+- **`max_proposal_run_retries` keeps its name and gets a meaning.** It is the number of failed
+  proposal cycles the campaign retries in a row. Row 6 is the retry: the next proposal cycle.
+- **The failure past the retries pauses.** The pending launch is held, `paused_by:
+  failed_proposals_in_row`, and the campaign resumes only on the owner's recorded word, as
+  §9.5 says of every limit's pause. With `max_proposal_run_retries: 1`, the first failure is
+  retried and a second failure in a row pauses.
+- **The count** (`failed_proposals_in_row`) is read the way rejected proposals in a row are read.
+  It is the ending cycle, then the earlier decisions' rows, back to the first that ended otherwise.
+  A rejection, a built increment or a parked one breaks the run.
+- **The precedence is unchanged.** Rows 1–4 are still asked first, so a failure decided once
+  `max_cycles` or the no-progress rule is reached ends the campaign rather than pausing it. The two
+  in-a-row limits are asked after the elapsed-time and budget limits.
+
+**Evidence.**
+- `tests/unit/campaigns/test_progress.py::test_the_failure_past_the_proposal_retries_pauses_the_campaign`
+  enters at the completion hook (`CycleCompletion.end`) with two failed proposal runs. The first is
+  decided row 6 `proceed`; the second is decided row 6, `paused_by: failed_proposals_in_row`, and the
+  campaign is `paused`.
+- `test_failed_proposals_in_a_row_are_read_back_until_another_ending` covers the count: a run of
+  failures, and a rejection or a build breaking it.
+- `tests/unit/campaigns/test_continuation.py` adds two precedence cases: the retried failure, and
+  the failure past the retries.
+- With the pause removed, the wiring test and the second precedence case fail. With it asked one
+  failure early (`>=`), the wiring test and the first case fail.
+
+**Who ruled it.** The owner, 2026-10-11: "approve your #2231 recommendations". The recommendation was
+to build no in-cycle retry, to give `max_proposal_run_retries` this meaning, to pause past it as
+rejected proposals in a row do, and to amend §9.5 accordingly. It is recorded on #2231.

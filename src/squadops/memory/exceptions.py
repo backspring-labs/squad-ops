@@ -32,3 +32,9 @@ class MemoryEmbeddingError(MemoryError):
     """Failed to generate embeddings."""
 
     pass
+
+
+class MemoryDormantError(MemoryError):
+    """The legacy agent store is dormant (SIP-0110 §A.4.3, #2174): every operation is refused."""
+
+    pass

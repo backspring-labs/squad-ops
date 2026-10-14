@@ -327,6 +327,7 @@ class CampaignPolicy:
     budget_tokens: int
     max_repair_cycles_per_increment: int
     max_retry_cycles_per_increment: int
+    #: Failed proposal cycles the campaign retries in a row; the next failure pauses it (§24bn).
     max_proposal_run_retries: int
     max_proposal_revisions: int
     max_rejected_proposals_in_row: int

@@ -6,6 +6,7 @@ Tests route logic, validation, and durability semantics using mock deps.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -16,6 +17,7 @@ from squadops.api.error_handlers import register_domain_error_handlers
 from squadops.api.routes.chat import routes as chat_routes_mod
 from squadops.api.routes.chat.routes import agents_router, router
 from squadops.comms.models import ChatMessage, ChatSession, SessionNotFoundError
+from squadops.config.schema import ChatConfig
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -41,9 +43,12 @@ def _setup_app(
     chat_repo: object | None = None,
     a2a_client: object | None = None,
     chat_cache: object | None = None,
+    chat_config: ChatConfig | None = None,
 ):
     """Build a test FastAPI app with chat routes and mock deps."""
     app = FastAPI()
+    # #2175: the history bound is read from the app's config, as the runtime holds it.
+    app.state.config = SimpleNamespace(comms=SimpleNamespace(chat=chat_config or ChatConfig()))
     app.include_router(router)
     app.include_router(agents_router)
     register_domain_error_handlers(app)  # as the runtime does (#576)
@@ -603,3 +608,147 @@ class TestChatErrors:
         exc = handle_chat_error(error_cls("test"))
         assert exc.status_code == expected_status
         assert exc.detail["error"]["code"] == expected_code
+
+
+# ---------------------------------------------------------------------------
+# #2175: a session is its owner's, and a turn carries its session's history
+# ---------------------------------------------------------------------------
+
+
+def _session(user_id: str = "anonymous", agent_id: str = "comms-agent") -> ChatSession:
+    return ChatSession(session_id="s1", agent_id=agent_id, user_id=user_id, started_at=_now())
+
+
+def _message(role: str, content: str) -> ChatMessage:
+    return ChatMessage(
+        message_id=f"m-{content}", session_id="s1", role=role, content=content, created_at=_now()
+    )
+
+
+def _capturing_client() -> tuple[MagicMock, list[dict]]:
+    """An A2A client that records what each turn sends."""
+    sent: list[dict] = []
+
+    async def stream(base_url, message, **kwargs):
+        sent.append({"message": message, **kwargs})
+        yield "ok"
+
+    client = MagicMock()
+    client.send_message_stream = stream
+    return client, sent
+
+
+def _resume(client: TestClient, message: str = "third"):
+    return client.post("/api/v1/chat/comms-agent", json={"message": message, "session_id": "s1"})
+
+
+class TestSessionOwnership:
+    """T14 (#2175): a session id is not authorization."""
+
+    @pytest.mark.parametrize(
+        ("session", "call"),
+        [
+            (_session(user_id="user-a"), _resume),
+            (_session(user_id="user-a"), lambda c: c.get("/api/v1/chat/sessions/s1/messages")),
+            (_session(agent_id="other-agent"), _resume),
+        ],
+        ids=["another-user-resumes", "another-user-reads", "another-agents-session"],
+    )
+    def test_a_session_not_yours_is_refused_as_one_that_does_not_exist(self, session, call):
+        """Bugs caught: another user's conversation replayed to the agent or returned to the
+        caller by guessing its id; a session bound to one agent continued with another; or the
+        refusal differing from a missing session's, which tells the caller the id exists."""
+        repo = _make_chat_repo()
+        repo.get_session = AsyncMock(return_value=session)
+        a2a, sent = _capturing_client()
+        missing = _make_chat_repo()
+        missing.get_session = AsyncMock(side_effect=SessionNotFoundError("Session not found: s1"))
+
+        refused = call(TestClient(_setup_app(chat_repo=repo, a2a_client=a2a)[0]))
+        absent = call(TestClient(_setup_app(chat_repo=missing)[0]))
+
+        assert (refused.status_code, refused.json()) == (absent.status_code, absent.json())
+        assert absent.status_code == 404
+        assert sent == []
+        repo.get_session_messages.assert_not_awaited()
+
+
+class TestTheTurnCarriesItsHistory:
+    """SIP-0085 §4, §7, §9; #2175. Entered at ``POST /api/v1/chat/{agent_id}``, the route the
+    console calls, and read at what reaches the A2A client."""
+
+    def _send(self, repo, cache=None, config=None, message="third"):
+        a2a, sent = _capturing_client()
+        app, _ = _setup_app(chat_repo=repo, a2a_client=a2a, chat_cache=cache, chat_config=config)
+        response = _resume(TestClient(app), message)
+        return response, sent
+
+    def test_the_owners_earlier_turns_reach_the_agent_in_order(self):
+        """Bug caught: the agent answering every turn as the first (``_load_history`` was never
+        called); or the current message replayed as history as well."""
+        repo = _make_chat_repo()
+        repo.get_session_messages = AsyncMock(
+            return_value=[_message("user", "first"), _message("assistant", "second")]
+        )
+
+        response, sent = self._send(repo)
+
+        assert response.status_code == 200
+        assert [(s["message"], s["metadata"]) for s in sent] == [
+            (
+                "third",
+                {
+                    "history": [
+                        {"role": "user", "content": "first"},
+                        {"role": "assistant", "content": "second"},
+                    ],
+                    "history_dropped": 0,
+                    "history_unavailable": False,
+                },
+            )
+        ]
+
+    def test_over_the_bound_the_oldest_turns_are_dropped_and_counted(self):
+        """Bug caught: a long session sending its whole history, or cutting it silently."""
+        repo = _make_chat_repo()
+        repo.get_session_messages = AsyncMock(
+            return_value=[_message("user", "a"), _message("assistant", "b"), _message("user", "c")]
+        )
+
+        _, sent = self._send(repo, config=ChatConfig(history_max_turns=2))
+
+        assert sent[0]["metadata"]["history"] == [
+            {"role": "assistant", "content": "b"},
+            {"role": "user", "content": "c"},
+        ]
+        assert sent[0]["metadata"]["history_dropped"] == 1
+
+    def test_after_the_cache_expires_the_history_comes_from_postgres(self):
+        """Bug caught: a session resumed after Redis's expiry carried no history."""
+        repo = _make_chat_repo()
+        repo.get_session_messages = AsyncMock(return_value=[_message("user", "first")])
+        cache = _make_cache()  # get_messages answers None: a miss
+
+        _, sent = self._send(repo, cache=cache)
+
+        assert sent[0]["metadata"]["history"] == [{"role": "user", "content": "first"}]
+        repo.get_session.assert_awaited_once_with("s1")
+
+    def test_a_history_read_that_fails_is_logged_and_the_turn_still_runs(self, caplog):
+        """Bug caught: a failed history read failing the turn, or swallowed so the agent answers
+        without its history and nobody knows."""
+        repo = _make_chat_repo()
+        repo.get_session_messages = AsyncMock(side_effect=RuntimeError("postgres down"))
+
+        with caplog.at_level("WARNING", logger="squadops.api.routes.chat.routes"):
+            response, sent = self._send(repo)
+
+        assert response.status_code == 200
+        assert sent[0]["metadata"] == {
+            "history": [],
+            "history_dropped": 0,
+            "history_unavailable": True,
+        }
+        assert [r.levelname for r in caplog.records if "postgres down" in r.getMessage()] == [
+            "WARNING"
+        ]

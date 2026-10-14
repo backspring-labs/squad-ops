@@ -107,8 +107,9 @@ class TaskType(StrEnum):
         - **The definition of done** (D9): it is the thing correction would be judged against.
         - **The increment's proposal** (SIP-0109 §9.1, #2212): its output is a change request the
           proposal rails judge. A repair is a developer's edit to source, so it cannot satisfy the
-          rails, and nothing re-runs them. A refused proposal is a failed proposal run, which the
-          campaign counts under ``max_proposal_run_retries``.
+          rails, and nothing re-runs them. A refused proposal is a failed proposal run: the
+          campaign proposes again, and the failure past ``max_proposal_run_retries`` in a row
+          pauses it for the owner (SIP-0109 §24bn).
         """
         return self in (TaskType.GOVERNANCE_DEFINE_DONE, TaskType.STRATEGY_PROPOSE_INCREMENT)
 

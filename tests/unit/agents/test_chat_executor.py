@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -15,7 +15,6 @@ def _make_ports_bundle(
     *,
     stream_chunks: list[str] | None = None,
     system_prompt: str = "You are a test agent.",
-    memory_results: list | None = None,
 ):
     """Build a mock PortsBundle for executor tests."""
     from squadops.prompts.models import AssembledPrompt
@@ -43,10 +42,10 @@ def _make_ports_bundle(
         version="1",
     )
 
-    # Memory — async mock
-    bundle.memory = AsyncMock()
-    bundle.memory.search = AsyncMock(return_value=memory_results or [])
-    bundle.memory.store = AsyncMock()
+    # Memory: the port the agents hold, dormant (#2174)
+    from adapters.memory.dormant import DormantMemoryPort
+
+    bundle.memory = DormantMemoryPort()
 
     return bundle
 
@@ -229,129 +228,85 @@ class TestChatAgentExecutorErrorHandling:
         assert eq.events[0].final is True
 
 
-class TestChatAgentExecutorMemory:
-    """Memory integration (best-effort, P2-RC4)."""
+class TestLegacyMemoryIsDormant:
+    """SIP-0110 §A.4.3 (#2174): the legacy agent store is dormant. Chat neither recalls nor
+    stores, says so once at start, and a call that reaches the store is refused loudly."""
 
-    async def test_memory_search_failure_does_not_crash(self):
-        """Memory search failure is swallowed (best-effort)."""
+    def test_the_executor_says_once_that_memory_is_dormant(self, caplog):
+        """Bug caught: the dormancy silent, so an operator reads chat's missing memory section
+        as a recall that found nothing (the shape #2171 found)."""
         from adapters.comms.chat_executor import ChatAgentExecutor
 
-        ports = _make_ports_bundle()
-        ports.memory.search = AsyncMock(side_effect=RuntimeError("memory down"))
+        with caplog.at_level("WARNING", logger="adapters.comms.chat_executor"):
+            ChatAgentExecutor(ports=_make_ports_bundle(), role_id="comms")
 
-        executor = ChatAgentExecutor(ports=ports, role_id="comms")
-        ctx = _make_context()
-        eq = _make_event_queue()
-
-        await executor.execute(ctx, eq)
-
-        # Should still complete despite memory failure
-        assert eq.events[-1].status.state == "completed"
-
-    async def test_memory_store_failure_does_not_crash(self):
-        """Memory store failure is swallowed (best-effort)."""
-        from adapters.comms.chat_executor import ChatAgentExecutor
-
-        ports = _make_ports_bundle()
-        ports.memory.store = AsyncMock(side_effect=RuntimeError("memory write failed"))
-
-        executor = ChatAgentExecutor(ports=ports, role_id="comms")
-        ctx = _make_context(user_text="Please remember this: deploy on Friday")
-        eq = _make_event_queue()
-
-        await executor.execute(ctx, eq)
-
-        # Should still complete despite store failure
-        assert eq.events[-1].status.state == "completed"
+        warned = [r for r in caplog.records if "legacy agent memory dormant" in r.getMessage()]
+        assert [r.levelname for r in warned] == ["WARNING"]
 
     @pytest.mark.parametrize(
-        "user_text",
-        [
-            "Please remember this: the deploy is on Friday",
-            "Note that the API changed",
-            "Save this for later: new endpoint /v2",
-            "Store this: credentials rotated",
-        ],
+        "user_text", ["Please remember this: the deploy is on Friday", "When is the deploy?"]
     )
-    async def test_memory_store_on_explicit_intent(self, user_text):
-        """Memory.store() called with correct content when user triggers storage."""
+    async def test_chat_answers_without_reaching_the_store(self, user_text, caplog):
+        """Entered at ``execute``, with the agents' own dormant port. Bugs caught: a "remember
+        this" trigger or a recall still calling the store (the dormant port would refuse it and
+        log the refusal); or chat failing because the store is gone."""
         from adapters.comms.chat_executor import ChatAgentExecutor
 
-        ports = _make_ports_bundle()
-        executor = ChatAgentExecutor(ports=ports, role_id="comms")
-        ctx = _make_context(user_text=user_text)
-        eq = _make_event_queue()
-
-        await executor.execute(ctx, eq)
-
-        ports.memory.store.assert_called_once()
-        stored_entry = ports.memory.store.call_args[0][0]
-        assert user_text in stored_entry.content
-        assert "chat" in stored_entry.tags
-        assert "comms" in stored_entry.tags
-
-    @pytest.mark.parametrize(
-        "user_text",
-        [
-            "What is the status of the current cycle?",
-            "I remember that meeting",  # contains "remember" but not "remember this"
-        ],
-    )
-    async def test_no_memory_store_without_trigger(self, user_text):
-        """Memory.store() NOT called for regular conversation or partial matches."""
-        from adapters.comms.chat_executor import ChatAgentExecutor
-
-        ports = _make_ports_bundle()
-        executor = ChatAgentExecutor(ports=ports, role_id="comms")
-        ctx = _make_context(user_text=user_text)
-        eq = _make_event_queue()
-
-        await executor.execute(ctx, eq)
-
-        ports.memory.store.assert_not_called()
-
-    async def test_memory_trigger_is_case_insensitive(self):
-        """Trigger matching ignores case: 'REMEMBER THIS' works."""
-        from adapters.comms.chat_executor import ChatAgentExecutor
-
-        ports = _make_ports_bundle()
-        executor = ChatAgentExecutor(ports=ports, role_id="comms")
-        ctx = _make_context(user_text="REMEMBER THIS: deploy is Monday")
-        eq = _make_event_queue()
-
-        await executor.execute(ctx, eq)
-
-        ports.memory.store.assert_called_once()
-
-    async def test_memory_results_included_in_context(self):
-        """When memory returns results, they are injected into the LLM messages."""
-        from adapters.comms.chat_executor import ChatAgentExecutor
-        from squadops.memory.models import MemoryEntry, MemoryResult
-
-        memory_results = [
-            MemoryResult(
-                entry=MemoryEntry(content="Deploy is scheduled for Friday"),
-                memory_id="m1",
-                score=0.9,
-            ),
-        ]
-        ports = _make_ports_bundle(memory_results=memory_results)
-
-        # Capture LLM messages to verify memory injection
-        captured_messages: list = []
+        captured: list = []
 
         async def capturing_stream(messages, **kwargs):
-            captured_messages.extend(messages)
+            captured.extend(messages)
             yield "ok"
 
+        ports = _make_ports_bundle()
         ports.llm.chat_stream = capturing_stream
-
         executor = ChatAgentExecutor(ports=ports, role_id="comms")
-        ctx = _make_context(user_text="When is the deploy?")
         eq = _make_event_queue()
 
-        await executor.execute(ctx, eq)
+        with caplog.at_level("WARNING"):
+            await executor.execute(_make_context(user_text=user_text), eq)
 
-        # System message should contain memory context
-        system_msg = captured_messages[0]
-        assert "Deploy is scheduled for Friday" in system_msg.content
+        assert eq.events[-1].status.state == "completed"
+        assert [(m.role, m.content) for m in captured] == [
+            ("system", "You are a test agent."),
+            ("user", user_text),
+        ]
+        assert not [r for r in caplog.records if "refused" in r.getMessage()]
+
+
+class TestTheTurnsHistory:
+    """P2-RC5 (#2175): the proxy sends a session's earlier turns in the message's metadata, and
+    the agent answers inside that conversation."""
+
+    async def test_the_sent_turns_come_between_the_identity_and_this_turn(self):
+        """Entered at ``execute``. Bugs caught: the history ignored, so every turn is a first; the
+        turns reordered; or something that is not conversation replayed as a turn."""
+        from adapters.comms.chat_executor import ChatAgentExecutor
+
+        captured: list = []
+
+        async def capturing_stream(messages, **kwargs):
+            captured.extend(messages)
+            yield "ok"
+
+        ports = _make_ports_bundle()
+        ports.llm.chat_stream = capturing_stream
+        ctx = _make_context(user_text="third")
+        ctx.message.metadata = {
+            "history": [
+                {"role": "user", "content": "first"},
+                {"role": "system", "content": "not a turn"},
+                {"role": "assistant", "content": "second"},
+            ],
+            "history_dropped": 0,
+            "history_unavailable": False,
+        }
+
+        await ChatAgentExecutor(ports=ports, role_id="comms").execute(ctx, _make_event_queue())
+
+        assert [(m.role, m.content) for m in captured] == [
+            ("system", "You are a test agent."),
+            ("user", "first"),
+            ("assistant", "second"),
+            ("user", "third"),
+        ]

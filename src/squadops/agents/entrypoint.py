@@ -30,7 +30,7 @@ from squadops.comms.task_replay import DISPATCH_BOOT_METADATA_KEY, FinishedTasks
 from squadops.tasks.models import TaskEnvelope, TaskResultStatus
 
 # Configure logging early.
-# LOG_LEVEL (and MEMORY_DB_PATH / HEARTBEAT_INTERVAL below) are bare-env
+# LOG_LEVEL (and HEARTBEAT_INTERVAL below) are bare-env
 # *operational* knobs with sensible defaults — deliberately distinct from the
 # SQUADOPS__* nested-config convention and NOT the config-masking class #333
 # targets: they are optional tuning values, not required data, and a wrong value
@@ -470,15 +470,10 @@ class AgentRunner:
             api_key=config.llm.api_key,
         )
 
-        # Create memory adapter
-        # #1449: this call named its selector ``provider_type``, a keyword the factory does
-        # not have — it fell into ``**config`` and the ``"lancedb"`` default decided.
-        memory = create_memory_provider(
-            provider="lancedb",
-            # Operational default (see the LOG_LEVEL note) — intentional, not
-            # masked required config (#333).
-            db_path=os.getenv("MEMORY_DB_PATH", "/app/data/memory_db"),
-        )
+        # The legacy agent store is dormant (SIP-0110 §A.4.3, #2174): it holds no record and
+        # could embed none, and the accepted design retires it (#2184). The agents hold a port
+        # that refuses loudly, and no embedder is built. Its volume stays until the retirement.
+        memory = create_memory_provider(provider="dormant")
 
         # Create prompt service
         prompt_repo = create_prompt_repository("filesystem")  # no config field selects it

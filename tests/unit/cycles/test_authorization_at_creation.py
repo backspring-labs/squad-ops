@@ -16,6 +16,7 @@ verified set must be the set that will be stored). Same grants, same evidence re
 
 from __future__ import annotations
 
+import dataclasses
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -27,6 +28,7 @@ from adapters.cycles.execution_errors import _ExecutionError
 from adapters.noop.ports import NoOpFailurePatternRecall
 from squadops.capabilities.scaffold import InterfaceManifest
 from squadops.cycles.bound_scaffold_record import build_bound_record
+from squadops.cycles.delivered_tree import StoredArtifact, delivered_files
 from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.implementation_plan import TypedCheck
 from squadops.cycles.models import ArtifactRef, Cycle, TaskFlowPolicy
@@ -60,10 +62,17 @@ def _record():
     return build_bound_record(manifest, run_id="run_1", attempt_id="run_1", created_at="t")
 
 
+_ROLE = {"development": "dev", "builder": "builder", "qa": "qa"}
+
+
 def _repair_by(task_type: str, *artifacts: dict) -> list[dict]:
     """Repair artifacts as the correction runner hands them over (#1350): naming the step
     that emitted them, whose grants — not the failed task's — are the ones that apply."""
-    step = SimpleNamespace(task_id=f"repair-run_1-00-{task_type}", task_type=task_type)
+    step = SimpleNamespace(
+        task_id=f"repair-run_1-00-{task_type}",
+        task_type=task_type,
+        metadata={"role": _ROLE[task_type.split(".")[0]]},
+    )
     return name_producer(artifacts, step)
 
 
@@ -642,3 +651,113 @@ class TestTheVerifiedCandidateIsTheStoredCandidate:
                 compliance_counter={"n": 0},
             )
         assert _stored_names(executor) == []
+
+
+# --- the re-store: the step that wrote the bytes is named (#2206) -------------------------
+
+
+def _qa_envelope() -> TaskEnvelope:
+    return dataclasses.replace(
+        _builder_envelope(),
+        task_id="task-run_1-m001-qa.test",
+        task_type="qa.test",
+        inputs={"resolved_config": {}},
+        metadata={"role": "qa"},
+    )
+
+
+class TestAnAcceptedRepairNamesTheStepThatWroteIt:
+    """Entry points: ``_try_accept_patch`` then ``_collect_artifacts_and_checkpoint``, the two
+    calls the correction loop makes when it accepts a repair, with the real ``_store_artifact``
+    writing the labels the delivered tree and the audits read (#2206)."""
+
+    @pytest.fixture
+    def storing(self, executor):
+        del executor._store_artifact  # the real labelling, into a vault that keeps each ref
+        executor._artifact_vault.store = AsyncMock(side_effect=lambda ref, content: ref)
+        return executor
+
+    async def _restore(self, ex, result, envelope, bound_record) -> dict[str, dict]:
+        stored: list = []
+        await ex._collect_artifacts_and_checkpoint(
+            result,
+            envelope,
+            _cycle(),
+            "run_1",
+            {},
+            [],
+            stored,
+            [],
+            [],
+            bound_record=bound_record,
+            compliance_counter={"n": 0},
+        )
+        refs = dict(stored)
+        delivered = delivered_files(
+            StoredArtifact.from_record(dataclasses.asdict(ref)) for ref in refs.values()
+        )
+        return {name: refs[art_id].metadata for name, art_id in delivered.items()}
+
+    async def test_the_delivered_file_a_dev_repair_wrote_names_the_dev_step(self, storing):
+        """Bug caught: ``cyc_2e957ffcab08``. The accepted tree pointed at a dev-written file
+        labelled only as the failed task's, so the application read as that role's work. The
+        slot's labels stay, because a repair type there drops the file from the delivered
+        tree, and the writer is named beside them."""
+        holder: dict = {}
+        action = await storing._try_accept_patch(
+            _builder_envelope(),
+            _failed([]),
+            _repair_by(
+                "development.correction_repair", {**UNAUTHORIZED, "type": "source"}, AUTHORIZED
+            ),
+            holder,
+            bound_record=_record(),
+            compliance_counter={"n": 0},
+        )
+
+        delivered = await self._restore(
+            storing, holder["patched_result"], _builder_envelope(), _record()
+        )
+
+        assert action == "accept_patch"
+        assert delivered["start.py"] == {
+            "task_id": "task-run_1-m004-builder.assemble",
+            "role": "builder",
+            "producing_task_type": "builder.assemble",
+            "written_by_task_id": "repair-run_1-00-development.correction_repair",
+            "written_by_task_type": "development.correction_repair",
+            "written_by_role": "dev",
+        }
+
+    async def test_a_qa_failures_own_suite_is_not_named_as_the_repairs(self, storing):
+        """The issue's case at the re-store: a dev repair of a qa.test failure. Bugs caught:
+        the dev-written view stored as QA's alone; and the opposite slip, the suite QA wrote
+        itself labelled as the repair's because it rode the same corrected result."""
+        corrected = TaskResult(
+            task_id="task-run_1-m001-qa.test",
+            status="SUCCEEDED",
+            outputs={
+                "artifacts": [
+                    {"name": "tests/test_join.py", "type": "test", "content": "def test_j(): 1\n"},
+                    *_repair_by(
+                        "development.correction_repair",
+                        {
+                            "name": "frontend/src/views/RunDetailView.jsx",
+                            "type": "source",
+                            "content": "export default () => null\n",
+                        },
+                    ),
+                ]
+            },
+        )
+
+        delivered = await self._restore(storing, corrected, _qa_envelope(), None)
+
+        view = delivered["frontend/src/views/RunDetailView.jsx"]
+        assert (view["role"], view["written_by_role"]) == ("qa", "dev")
+        assert view["written_by_task_type"] == "development.correction_repair"
+        assert delivered["tests/test_join.py"] == {
+            "task_id": "task-run_1-m001-qa.test",
+            "role": "qa",
+            "producing_task_type": "qa.test",
+        }
