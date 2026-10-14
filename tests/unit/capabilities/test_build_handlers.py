@@ -1634,8 +1634,11 @@ class TestQAContractProbeEmission:
                 "criterion_id": "vc-probe-dup",
             },
         ]
-        # Additive evidence: a failed probe surfaces at the rollup, not as task failure.
-        assert result.success is True
+        # #2308: a failed probe fails the task's RESULT, which is what the executor routes by.
+        # This line asserted ``success is True`` until #2308: #1223 marked only the outputs, so
+        # the task stayed successful and the run was rejected with no correction round.
+        assert result.success is False
+        assert result.error == "contract probe(s) failed: vc-probe-dup: status 200 != expected 409"
 
     @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
     async def test_retest_path_appends_probe_rows(
@@ -1668,6 +1671,10 @@ class TestQAContractProbeEmission:
         probe_rows = [r for r in rows if r.get("criterion_id")]
         assert [r["criterion_id"] for r in probe_rows] == ["vc-probe-create", "vc-probe-dup"]
         assert probe_rows[1]["status"] == "failed"
+        # #2308: a repaired suite that passes while the patched app still fails a probe is a
+        # failed retest, so the repair is not accepted on the suite alone.
+        assert result.success is False
+        assert result.error == "contract probe(s) failed: vc-probe-dup: status 200 != expected 409"
 
     @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
     async def test_malformed_probe_entry_skipped_valid_ones_still_run(

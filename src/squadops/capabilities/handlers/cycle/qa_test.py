@@ -707,8 +707,14 @@ class QATestHandler(_CycleTaskHandler):
             }
 
     @staticmethod
-    def _fail_task_on_failing_probes(outputs: dict[str, Any]) -> None:
+    def _fail_task_on_failing_probes(outputs: dict[str, Any]) -> str | None:
         """A failing contract probe fails this task, so the correction loop engages (#1223).
+
+        Returns the failure, for the task's result, or ``None`` when every probe passed. The
+        executor routes a task by its result's ``success``, never by these outputs, so marking
+        only the outputs left the task successful and the run rejected with no correction round
+        (#2308: ``cyc_1aeaea1c304d``'s declared list order, unrepaired). Both paths fold the
+        returned failure into the result they return.
 
         Probes execute here but their rows were appended as evidence only: ``passed`` is
         computed from ``test_result`` alone, so a suite that passes while the delivered
@@ -738,7 +744,7 @@ class QATestHandler(_CycleTaskHandler):
             and row.get("status") in {ResultStatus.FAILED, ResultStatus.ERROR}
         ]
         if not failing:
-            return
+            return None
         vr["passed"] = False
         outputs["outcome_class"] = TaskOutcome.SEMANTIC_FAILURE
         outputs.setdefault("failure_classification", FailureClassification.WORK_PRODUCT)
@@ -747,6 +753,9 @@ class QATestHandler(_CycleTaskHandler):
             "engages (#1223): %s",
             len(failing),
             ", ".join(str(r.get("criterion_id")) for r in failing),
+        )
+        return "contract probe(s) failed: " + "; ".join(
+            f"{r.get('criterion_id')}: {r.get('reason') or r.get('status')}" for r in failing
         )
 
     async def _append_contract_probe_rows(
@@ -1716,7 +1725,10 @@ class QATestHandler(_CycleTaskHandler):
         # suite's run must not under-count contract-criterion coverage. The
         # patched files overlay the dispatch-time sources (#639).
         await self._append_contract_probe_rows(inputs, outputs, patched_files=extracted)
-        self._fail_task_on_failing_probes(outputs)
+        probe_failure = self._fail_task_on_failing_probes(outputs)
+        if probe_failure:
+            summary = probe_failure if passed else f"{summary}; {probe_failure}"
+            passed = False
         # #1937: the tree this retest evaluated, the patched files over the sources (#639).
         await self._record_lint(
             outputs, {**sources, **{f["filename"]: f["content"] for f in extracted}}
@@ -2207,7 +2219,15 @@ class QATestHandler(_CycleTaskHandler):
         # SIP-0098 98.5: execute seeded behavioral probes and append their rows
         # (both verdict paths, like frontend_build above — additive evidence).
         await self._append_contract_probe_rows(inputs, outputs)
-        self._fail_task_on_failing_probes(outputs)
+        probe_failure = self._fail_task_on_failing_probes(outputs)
+        if probe_failure:
+            validation = dataclasses.replace(
+                validation,
+                passed=False,
+                summary=(
+                    probe_failure if validation.passed else f"{validation.summary}; {probe_failure}"
+                ),
+            )
         await self._record_lint(outputs, sources)
 
         # SIP-0104 P5: the scaffold evidence, after the probes (register entry 43).
