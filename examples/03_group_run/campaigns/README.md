@@ -8,7 +8,9 @@ slice 4 pre-registration, `docs/plans/2-2-0-slice4-preregistration.md` §4), and
 plan-review tier's diagnostic (`2-2-0-cut-shakeout.yaml`, `2-2-0-cut-tier-diag.yaml`, under
 `docs/plans/2-2-0-cut-preregistration.md` §2), and 2.2.1's diagnostic (`2-2-1-proposal-failure-diag.yaml`, under
 `docs/plans/2-2-1-plan.md` §3), and 2.3's plan-review tier timeout diagnostic (`2-3-0-tier-timeout-a.yaml`, then
-`2-3-0-tier-timeout-b.yaml`, under `docs/plans/verification-sets/2-3-0-tier-timeout-preregistration.md`).
+`2-3-0-tier-timeout-b.yaml`, under `docs/plans/verification-sets/2-3-0-tier-timeout-preregistration.md`), and #2202's
+before-and-after comparison (`2-3-0-list-order-comparison.yaml`, one campaign per arm, under
+`docs/plans/verification-sets/2-3-0-list-order-comparison-preregistration.md`).
 Campaigns an operator runs for their own purposes are theirs to keep, wherever they like.
 
 **A definition is the record of a campaign only when it reconciles with the stored campaign:** the same
