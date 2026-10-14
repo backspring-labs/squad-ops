@@ -88,10 +88,26 @@ repeated prompt repeats its answer. A call that sets none gets a fresh seed, and
 `LLM chat_stream_with_usage completed` line names it (`seed=N`). Send that seed with the same
 prompt to replay the call (SIP-0111 §9j).
 
+## The memory watchdog, installed once per machine
+
+It runs as a host service, always on, and acts only while TensorFold runs (#2288). Installing it
+needs sudo once, as the backup timer does, so it is a deliberate step rather than bootstrap's:
+
+```bash
+./scripts/dev/ops/install_host_unit.sh squadops-memory-watchdog            # install and start
+./scripts/dev/ops/install_host_unit.sh squadops-memory-watchdog --status   # its state, and its log
+```
+
+The service restarts if it stops, and the OOM killer takes it last. One engine switch runs at a time
+on the host (`var/engine_switch/.switch.lock`), so its restoration waits for a switch in progress.
+
 ## When something is wrong
 
 - **The memory watchdog** (`scripts/dev/ops/memory_watchdog.py`) kills TensorFold's container when
-  `MemAvailable` stays under its floor or swap climbs. Then run `to-ollama`.
+  `MemAvailable` stays under its floor or swap climbs. It then runs `engine_switch.py restore`, so
+  Ollama serves and the clients move back. Cycles running at the kill fail, because their engine is
+  gone. Its record is `var/engine_switch/<utc>-watchdog.jsonl`, and the restoration's is
+  `<utc>-restore.jsonl`.
 - **The launch gate** refuses a launch while TensorFold is serving requests the launch did not start,
   or while its authenticated endpoints can't be read (SIP-0111 §5.5).
 - **A task whose prompt is larger than the served window** is held (`BLOCKED`), not retried. The
