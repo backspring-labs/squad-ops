@@ -519,7 +519,7 @@ ruling (§5c.9, extension point declared as `INPUT_CONTRACT_EXTENSION_POINTS`), 
 
 **What it leaves alone.** §5c.4 still governs every judgment the schema cannot check. Pagination, authorization and idempotency stay prose. The first checkable judgment moved here is ordering, because its choice tests directly.
 
-**Not changed: the worked example.** `request.development_author_manifest.md`'s example still records `item-ordering: newest first` as a decision only. The owner pinned it on 2026-08-15 as a held-constant condition of the authored-mode yield measurement (`test_the_manifest_example_is_pinned_for_the_measurement_window`). Changing it needs the owner's ruling. It is asked in this amendment's PR.
+**Not changed: the worked example.** `request.development_author_manifest.md`'s example still records `item-ordering: newest first` as a decision only. The owner pinned it on 2026-08-15 as a held-constant condition of the authored-mode yield measurement (`test_the_manifest_example_is_pinned_for_the_measurement_window`). The owner ruled on 2026-10-14 to keep the pin, with the rules appendix teaching the order.
 
 **Evidence.** Campaign 3's calibration cycle in the 2.2 window (`cyc_03b6f8ef0749`, campaign `cmp_d4181c169653`) declared `datetime-list-sorting` as a decision. Its delivered `GET /runs` returned insertion order, and the cycle was accepted. Two replays against its manifest with the order declared:
 - **The delivered `backend/routes.py`:** the five existing probes pass, and `vc-probe-runs-ordered` fails, reading back `['2026-08-01T08:00:00', '2026-08-03T08:00:00', '2026-08-01T09:00:00', '2026-08-02T08:00:00']`.
