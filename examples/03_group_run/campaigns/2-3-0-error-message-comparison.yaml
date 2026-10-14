@@ -1,0 +1,31 @@
+# 2.3: an error's message declared on its code, before and after #2275 (#2205), uncounted. Pre-registration:
+# docs/plans/verification-sets/2-3-0-error-message-comparison-preregistration.md. Created once per arm: before #2275 on
+# the deploy #2202's after arm ran on, and after it on a rebuild that adds only #2275.
+# The 2.2 window's campaign 4 (2-2-0-window-4-errors.yaml) with three changes: the squad full-38-tf, plan gates
+# supervised by the pre-registration's fixed rules (§4), and this header. Its objective is the PRD's expansion item
+# "improving the error messages the UI shows" (examples/03_group_run/prd.md §4.1, Tier 1, item 4).
+project_id: group_run
+objective:
+  statement: "evolve group_run toward its PRD's expansion scope by improving the error messages the UI shows (PRD §4.1, Tier 1, item 4)"
+  allowed_scope: ["backend/**", "frontend/**"]
+  measurement: "one accepted increment"
+  target_accepted_increments: 1
+policy:
+  # 1 calibration + 1 increment + one repair or retry (1) + 1 replacement for an abandoned one.
+  max_cycles: 4
+  max_elapsed_s: 43200
+  budget_tokens: 4000000
+  max_repair_cycles_per_increment: 1
+  max_retry_cycles_per_increment: 1
+  max_proposal_run_retries: 1
+  max_proposal_revisions: 2
+  max_rejected_proposals_in_row: 2
+  max_unaccepted_increments: 2
+  ruling_bound_s: 1800
+  lease_expiry_s: 3600
+  launch_blocked_interval_s: 300
+  launch_blocked_attempts: 6
+  calibration_profile: validated-fullstack
+  proposal_profile: campaign-increment
+  squad_profile: full-38-tf
+  plan_gate: supervised
