@@ -1,6 +1,7 @@
 # 2.3: the plan-review tier's timeout half, read live — pre-registration
 
-**Status:** for the owner's approval. Nothing runs before it.
+**Status:** approved by the owner as written, 2026-10-14, with the three choices in §8. Nothing runs before #2293
+and #2295 are merged and deployed (§3).
 **Issue:** #2279 (SIP-0109 ledger: "the timeout half, read live", placed 2.3.0). **Plan:** the 2.3 plan, phase 8,
 R3's deploy.
 **Uncounted.** Both campaigns are diagnostics: their increments declare a fault, so no cycle of theirs counts toward
@@ -130,6 +131,8 @@ The log archive (`campaign_log_archive.py --follow`) runs beside each campaign.
 - **Supervised campaigns,** which carry nothing (§24bm).
 
 ## 8. The owner's choices
+
+The owner approved the pre-registration as written on 2026-10-14, which settles these three:
 
 1. Two campaigns (A, then B), as §2 argues, rather than one campaign that reads parts 1–4 only.
 2. `ruling_bound_s: 600` and `max_unaccepted_increments: 2`, as the 2.2 cut's tier diagnostic declared.
