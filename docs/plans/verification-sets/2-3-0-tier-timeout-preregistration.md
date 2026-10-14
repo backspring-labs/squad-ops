@@ -55,6 +55,12 @@ The owner approved the fix (#2302) and the re-run on 2026-10-14. **The re-run's 
 the runtime API rebuilt and a third loaded-check row showing #2302 loaded. Attempt 1 is aborted before campaign A is
 created again. Its readings are on #2279, and nothing else in this pre-registration changes.
 
+**Attempt 2 stopped at A6** (`cmp_391cc2d3cad6`, on `dep_57e39a35bf04`). A1–A5 held: the cycle ended `parked`. But the
+parked increment was promoted and met the objective, because its framing run's vacuous `accepted` stood in for the
+build it never reached (#2303). The run also carried no reason. The owner approved the fix (#2304) and a third attempt
+on 2026-10-14. **Attempt 3's deploy is `dep_c627c2873c3c`, from `8dded804`,** with a fourth loaded-check row showing
+#2304 loaded.
+
 **Not run if** main's run for the deployed commit is red, the box isn't idle, or a loaded check fails. Two rows show
 the fixes are loaded: the launch applies the fault before the carry, and a park counts at its own decision. They are
 added to `scripts/dev/loaded_checks.yaml` with the rebuild.
