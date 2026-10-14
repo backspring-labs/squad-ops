@@ -1,7 +1,8 @@
 # 2.3: the plan-review tier's timeout half, read live — pre-registration
 
-**Status:** approved by the owner as written, 2026-10-14, with the three choices in §8. Nothing runs before #2293
-and #2295 are merged and deployed (§3).
+**Status:** approved by the owner as written, 2026-10-14, with the three choices in §8. **Run, 2026-10-14: every
+reading held** — campaign A's attempt 3 (`cmp_b6d8305f2729`) and campaign B's attempt 2 (`cmp_cda1b0d177b7`), on
+`dep_c627c2873c3c`. The attempts before them stopped on #2301, #2303 and #2306; the readings are on #2279.
 **Issue:** #2279 (SIP-0109 ledger: "the timeout half, read live", placed 2.3.0). **Plan:** the 2.3 plan, phase 8,
 R3's deploy.
 **Uncounted.** Both campaigns are diagnostics: their increments declare a fault, so no cycle of theirs counts toward

@@ -293,7 +293,8 @@ Phase 8's rebuilds, in order:
   campaign (#2296, approved by the owner 2026-10-14). **The rebuild and its pair: done 2026-10-14.**
   #2243, #2242, #2245, #2246, #2247 and #2257 merged (closing #2206, #2210, #2231, #2174, #2175, #2176) and deployed as
   `dep_8f91bad18697` from `e30ec9cb`; both cycles of the pair were accepted on TensorFold with no new seam finding. The
-  diagnostic's pre-registration is #2296.
+  diagnostic's pre-registration is #2296. **The diagnostic: done 2026-10-14.** Every reading held on `dep_c627c2873c3c`,
+  after three defects it found were fixed (#2293, #2302, #2304); the readings are on #2279.
 - **#2202, then #2205:** each with its own pre-registered before/after comparison on the chosen engine (a targeted set,
   or one campaign), before it is batched with anything else.
 - **#2208,** its rubric version pinned.
