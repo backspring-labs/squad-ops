@@ -37,7 +37,7 @@ def _config(*, enabled: bool, poll: int = 30) -> AppConfig:
 
     return AppConfig(
         **_rest(),
-        llm=LLMConfig(provider="ollama"),
+        llm=LLMConfig(provider="ollama", url="http://ollama:11434"),
         runtime={"scheduler": {"enabled": enabled, "poll_interval_seconds": poll}},
     )
 

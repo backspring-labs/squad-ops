@@ -1,0 +1,31 @@
+name: flashnext-exl3-305
+status: "provisional: S's exercises and the 2026-10-11 exploratory tuning/screening run (#2199). NOT the frozen\
+  \ recipe, which SIP-0111 \xA74 fixes on tuning data before any held-out call."
+why: 'turboderp''s EXL3 3.05bpw_h5_ng5 pack (52 GB weights, full window, a 32.6 GB n-gram table in the page cache):
+  the one Flash-Next checkpoint expected inside S''s floors. Drafting is its own MTP head at the CUDA defaults (6
+  drafts, confidence 0.70).'
+served_id: qwen3.8-flash-next-tf-exl3-305
+image: squadops-tensorfold:0.6.6-cb2ebf05
+image_id: sha256:b62567b8d89fca5ca126e614162d65b4a6eecaacd63d75699fdf70ff268f45f8
+tensorfold_commit: cb2ebf0540f42604e2759b2ddef497861e928248
+checkpoint:
+  repo: turboderp/Qwen3.8-Flash-Next-exl3
+  revision: 69e33439ae950f17bcbe95c98f117d80f759ab6d
+  container_path: /cache/hf/hub/models--turboderp--Qwen3.8-Flash-Next-exl3/snapshots/69e33439ae950f17bcbe95c98f117d80f759ab6d
+# The checkpoint's template writes an effort line for xhigh (its default) and low, and none for medium;
+# Ollama's has none. Medium renders Ollama's prompt to the token (#2199, /tokenize on round 1).
+parity_effort: medium
+context: 65536
+memory_reserve_gib: 20
+serve_flags:
+- --drafter
+- none
+- --mtp-drafts
+- '6'
+- --mtp-confidence
+- '0.7'
+sampling:
+  temperature: 1.0
+  top_p: 0.95
+  top_k: 20
+  min_p: 0.0

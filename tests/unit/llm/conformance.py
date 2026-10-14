@@ -35,6 +35,7 @@ import httpx
 
 from adapters.llm.atlas import AtlasAdapter
 from adapters.llm.ollama import OllamaAdapter
+from adapters.llm.tensorfold import TensorFoldAdapter
 from adapters.llm.vllm import VLLMAdapter
 from squadops.ports.llm.provider import LLMPort
 
@@ -79,6 +80,16 @@ class AdapterCase:
     #: whatever the dialect calls that field. None for a dialect that has no such
     #: channel — the port must then report None, not "".
     reasoning_text: str | None
+    #: Paths this provider reads that are not generations: TensorFold's served window and request
+    #: gauges (SIP-0111 §5.3, §5.4). A test comparing generation requests leaves them out.
+    probes: frozenset[str] = frozenset()
+    #: SIP-0111 §5.4: a provider whose stream must end with its usage refuses a reply without it,
+    #: rather than reporting None. ``no_usage`` answers a generation that way in its dialect.
+    usage_required: bool = False
+    no_usage: DialectHandler | None = None
+    #: SIP-0111 §5.7: the frozen recipe's ``top_p``, sent when the call sets none, as the gates'
+    #: requests sent it. None: the provider sends no ``top_p`` the call did not set (#901).
+    recipe_top_p: float | None = None
 
     def __str__(self) -> str:  # pytest id
         return self.name
@@ -471,6 +482,92 @@ def atlas_nameless_model(request: httpx.Request) -> httpx.Response:
 
 
 # ---------------------------------------------------------------------------
+# TensorFold dialect: v0.6.6's CUDA server, read from its source at cb2ebf05 (SIP-0111 §5).
+# Keyed, streamed only, a finish frame with its own timings, then usage, then [DONE].
+# ---------------------------------------------------------------------------
+
+TENSORFOLD_SERVED = "qwen3.8-27b-tf-nvfp4"
+#: The served id first, then an alias: one resident model (§5.5).
+TENSORFOLD_MODELS = [TENSORFOLD_SERVED, "qwen27b"]
+TENSORFOLD_KEY = "tf-test-key"
+TENSORFOLD_CONTENT = "the assembled answer"
+TENSORFOLD_STREAM_PARTS = ["the ", "assembled ", "answer"]
+TENSORFOLD_REASONING = "thought through, in reasoning_content"
+_TF_PROMPT_TOKENS = 20
+_TF_COMPLETION_TOKENS = 40
+_TF_REASONING_TOKENS = 12
+_TF_DECODE_S = 4.0  # 40 tokens over 4 s of TensorFold's own decode: exactly 10.0
+
+
+def _tf_frames(*, usage: bool = True) -> list[dict]:
+    frames: list[dict] = [{"choices": [{"index": 0, "delta": {"role": "assistant"}}]}]
+    frames += [
+        {"choices": [{"index": 0, "delta": {"reasoning_content": part}}]}
+        for part in _in_two(TENSORFOLD_REASONING)
+    ]
+    frames += [
+        {"choices": [{"index": 0, "delta": {"content": part}}]} for part in TENSORFOLD_STREAM_PARTS
+    ]
+    frames.append(
+        {
+            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+            "tensorfold": {"prefill_s": 0.5, "decode_s": _TF_DECODE_S, "cached": 0},
+        }
+    )
+    if usage:
+        frames.append(
+            {
+                "choices": [],
+                "usage": {
+                    "prompt_tokens": _TF_PROMPT_TOKENS,
+                    "completion_tokens": _TF_COMPLETION_TOKENS,
+                    "total_tokens": _TF_PROMPT_TOKENS + _TF_COMPLETION_TOKENS,
+                    "prompt_tokens_details": {"cached_tokens": 0},
+                    "completion_tokens_details": {"reasoning_tokens": _TF_REASONING_TOKENS},
+                },
+            }
+        )
+    return frames
+
+
+def _tensorfold(frames: list[dict]) -> DialectHandler:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.headers.get("Authorization") != f"Bearer {TENSORFOLD_KEY}":
+            return httpx.Response(
+                401,
+                json={
+                    "error": {"message": "A valid API key is required", "code": "invalid_api_key"}
+                },
+            )
+        path = request.url.path
+        if path == "/v1/models":
+            return httpx.Response(
+                200, json={"object": "list", "data": [{"id": m} for m in TENSORFOLD_MODELS]}
+            )
+        if path == "/metrics":
+            return httpx.Response(
+                200, text="tensorfold:requests_running 0\ntensorfold:requests_waiting 0\n"
+            )
+        if path == "/tokenize":
+            return httpx.Response(200, json={"count": 1, "tokens": [87], "max_model_len": 65536})
+        if path == "/v1/chat/completions":
+            return httpx.Response(200, content=_sse(frames))
+        return httpx.Response(404, json={"error": {"message": f"unknown path {path}"}})
+
+    return handler
+
+
+tensorfold_ok = _tensorfold(_tf_frames())
+tensorfold_no_usage = _tensorfold(_tf_frames(usage=False))
+
+
+def tensorfold_nameless_model(request: httpx.Request) -> httpx.Response:
+    if request.url.path == "/v1/models":
+        return httpx.Response(200, json={"object": "list", "data": [{"object": "model"}]})
+    return tensorfold_ok(request)
+
+
+# ---------------------------------------------------------------------------
 # The registry — one entry per adapter under conformance.
 #
 # Atlas (P4) and vLLM (P6) each land here as one AdapterCase with their own
@@ -536,6 +633,32 @@ ADAPTER_CASES: list[AdapterCase] = [
         tokens_per_second=_ATLAS_TPS,  # exact: the engine's own `response_token/s`
         reasoning_model="Qwen/Qwen3.8-27B-FP8",
         reasoning_text=ATLAS_REASONING,
+    ),
+    AdapterCase(
+        name="tensorfold",
+        build=lambda: TensorFoldAdapter(
+            base_url="http://localhost:8090",
+            default_model=TENSORFOLD_SERVED,
+            timeout_seconds=5.0,
+            api_key=TENSORFOLD_KEY,
+        ),
+        ok=tensorfold_ok,
+        nameless_model=tensorfold_nameless_model,
+        default_model=TENSORFOLD_SERVED,
+        # One frozen recipe is served: an id without one is refused (``RECIPES``).
+        override_model=TENSORFOLD_SERVED,
+        models=TENSORFOLD_MODELS,
+        loaded=[TENSORFOLD_SERVED],
+        content=TENSORFOLD_CONTENT,
+        prompt_tokens=_TF_PROMPT_TOKENS,
+        completion_tokens=_TF_COMPLETION_TOKENS,
+        tokens_per_second=10.0,  # exact: TensorFold's own decode seconds
+        reasoning_model=TENSORFOLD_SERVED,
+        reasoning_text=TENSORFOLD_REASONING,
+        probes=frozenset({"/tokenize", "/metrics", "/v1/models"}),
+        usage_required=True,
+        no_usage=tensorfold_no_usage,
+        recipe_top_p=0.95,
     ),
 ]
 

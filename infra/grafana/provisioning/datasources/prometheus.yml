@@ -2,6 +2,10 @@ apiVersion: 1
 
 datasources:
   - name: Prometheus
+    # The uid Grafana derives for a datasource provisioned without one (sha256 of the name), so
+    # pinning it changes nothing on a box that already has it. The alert rules in ../alerting
+    # can only name a datasource by uid, and the dashboards in infra/grafana/dashboards name it too.
+    uid: PBFA97CFB590B2093
     type: prometheus
     access: proxy
     url: http://prometheus:9090

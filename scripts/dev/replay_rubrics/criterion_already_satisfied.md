@@ -1,4 +1,10 @@
-# Rubric `lesson.criterion_already_satisfied@2`
+# Rubric `lesson.criterion_already_satisfied@3`
+
+**Version 3 (2026-10-13), from the 2.2 window's independent adjudication (#2208; PR #2207).** It states which reading
+decides when the prompt's sources are silent or contradict the delivered code, and how the meaningful-criteria guardrail
+reads then (§ "When the sources are silent, or the code contradicts them"). The window scored by that reading already,
+so @3 writes down the rule @2 left unstated. Like every version, it is used only by an experiment whose manifest names
+it, never retroactively.
 
 **Version 2 (2026-10-09), from the owner's review.** It adds the case-level objective check, the completeness rule
 and the rubric's calibration, and it separates the evaluator from the lesson's drafter. Version 1 scored the lesson's
@@ -38,6 +44,25 @@ a proposal cannot say an objective is met (the rails refuse `nothing_to_build`).
 3. The criterion is **already satisfied** when that answer meets its observable, so a test of it
    would pass on the accepted application before the change.
 
+## When the sources are silent, or the code contradicts them (@3)
+
+**The delivered application decides.** The verdict is about the accepted application, and the application is the
+code it was accepted with (its stored tree), so where the three sources above don't settle a request, the code does.
+- **Silent sources.** When the manifest, the frozen criteria and the frozen conventions say nothing about the
+  request, read the delivered code and cite the file and line that answers it. Cases from the 2.2 window:
+  - whether leaving a run matches a name by case, where the uniqueness decision names only duplicate joins;
+  - whether a view shows the server's error message text;
+  - how internal whitespace in a name is handled.
+
+  Each is settled by the code (`present` or `absent after assessment`). It is `unassessed` only when the code doesn't
+  settle it either, for example when the behaviour depends on input the stored tree cannot show.
+- **A contradiction.** When a source declares a behaviour the code does not implement, the code decides, and the
+  contradiction is recorded beside the verdict as a manifest defect. The case from the window: a manifest declaring
+  lexical datetime sorting for the runs list whose `GET /runs` returned insertion order (#2202). A new sort criterion
+  there is **not** already satisfied: a test of it fails on the accepted application.
+- **The record** names, per criterion, which settled it: a source or the code. A reader can then recompute the case by
+  the sources alone (the window's "reading B"). That reading is reported beside the verdict, never in its place.
+
 ## The verdict, per proposal
 
 | verdict | when |
@@ -54,7 +79,9 @@ criterion the element that settled it.
 
 - **The objective:** the proposal's change moves toward the campaign's objective (yes, no, unclear).
 - **Scope and meaningful criteria:** at least one new criterion that is not already satisfied, and a
-  footprint inside the allowed scope.
+  footprint inside the allowed scope. "Already satisfied" is read as the verdict reads it (@3): by the delivered
+  code where the sources are silent or contradict it. So a criterion a manifest declares but the code does not
+  implement is meaningful work, and the manifest defect is recorded.
 - **Other serious defects:** any other return class the proposal would draw (SIP-0109 §9.4),
   named. One that grows under the lesson is a harm signal, whatever this target does.
 - **Context cost:** the lesson's injected tokens, as the replay record measures them.

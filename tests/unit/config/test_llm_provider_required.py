@@ -64,9 +64,18 @@ def test_app_config_without_an_llm_section_fails_rather_than_defaulting():
 
 
 def test_the_provider_is_carried_through_and_other_llm_fields_keep_defaults():
-    cfg = AppConfig(**_rest(), llm=LLMConfig(provider="vllm"))
+    cfg = AppConfig(**_rest(), llm=LLMConfig(provider="vllm", url="http://vllm:8000"))
     assert cfg.llm.provider == "vllm"
-    assert cfg.llm.timeout == 180  # only the selector is required
+    assert cfg.llm.timeout == 180  # the selector and the URL are required, the rest default
+
+
+def test_an_llm_config_without_its_url_fails_rather_than_reaching_the_host_gateway():
+    """#2249. Bug caught: a deploy surface that leaves the URL out silently reaching
+    ``host.docker.internal:11434``, a host service the Spark no longer runs, so every model call
+    fails at the first task instead of the config failing at start."""
+    with pytest.raises(ValidationError) as exc:
+        LLMConfig(provider="ollama")  # type: ignore[call-arg]
+    assert "url" in str(exc.value)
 
 
 def test_env_var_reaches_the_llm_provider_field(monkeypatch):

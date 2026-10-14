@@ -27,15 +27,42 @@ _ROWS = [
 ]
 
 
+def _docker(compose_ps: str, tensorfold: str = ""):
+    """``docker`` as the box answers: compose's services, and ``ps`` for the engine run outside it."""
+
+    def answer(*args):
+        if args[:2] == ("compose", "ps"):
+            return compose_ps
+        if args[0] == "ps" and "name=^squadops-tensorfold$" in args:
+            return tensorfold
+        raise AssertionError(f"an unexpected docker call: {args}")
+
+    return answer
+
+
 @pytest.mark.parametrize(
     "printed",
     ["\n".join(json.dumps(r) for r in _ROWS), json.dumps(_ROWS)],
     ids=["one-object-per-line", "json-array"],
 )
 def test_the_running_services_are_read_in_either_compose_format(monkeypatch, printed):
-    monkeypatch.setattr(deploy_facts, "_docker", lambda *args: printed)
+    monkeypatch.setattr(deploy_facts, "_docker", _docker(printed))
 
     assert deploy_facts.running_services() == [("neo", "c-neo"), ("postgres", "c-pg")]
+
+
+@pytest.mark.parametrize(
+    ("ps", "engine"),
+    [("c-tf\n", [("tensorfold", "c-tf")]), ("", [])],
+    ids=["tensorfold-serving", "tensorfold-stopped"],
+)
+def test_the_engine_run_outside_compose_is_a_service_while_it_runs(monkeypatch, ps, engine):
+    """#2284. Bug caught: a record of a TensorFold deploy that names no engine, because the
+    engine switch starts TensorFold with ``docker run`` and compose never lists it; or a stopped
+    TensorFold recorded as serving."""
+    monkeypatch.setattr(deploy_facts, "_docker", _docker(json.dumps(_ROWS), ps))
+
+    assert deploy_facts.running_services() == [("neo", "c-neo"), ("postgres", "c-pg"), *engine]
 
 
 def test_each_service_carries_its_images_revision_label_or_none():

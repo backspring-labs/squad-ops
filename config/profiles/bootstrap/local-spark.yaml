@@ -31,11 +31,6 @@ system_deps:
     package: "docker-compose-plugin"
     required: true
 
-  - name: ollama
-    check: "ollama --version"
-    install: script  # curl -fsSL https://ollama.com/install.sh | sh
-    required: true
-
   - name: git
     check: "git --version"
     install: apt
@@ -132,5 +127,13 @@ memory_containment:
   # the runway, it does not bound anything. The box shipped at the 60 default.
   swappiness: 10
 
+# SIP-0111 G4 (adopted by the owner 2026-10-13, #2229): the Spark serves the squad with TensorFold
+# on the frozen NVFP4 recipe. Bootstrap installs what the recipe pins and switches to it last;
+# Ollama stays installed beside it, stopped, as the rollback (docs/ops/inference_engine.md).
+inference_engine:
+  engine: tensorfold
+  recipe: infra/tensorfold/recipes/qwen27b-nvfp4.yaml
+
 deployment_profile: local
-squad_profile: full
+# The squad on the recipe's served id. Doctor checks its models against the engine's.
+squad_profile: full-38-tf

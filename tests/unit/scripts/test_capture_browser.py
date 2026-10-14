@@ -117,3 +117,49 @@ def test_the_prefect_capture_drives_the_browser_it_is_given(tmp_path, monkeypatc
 
     assert shots == ["/snap/chromium/current/usr/lib/chromium-browser/chrome"]
     assert dest.read_bytes() == b"png"
+
+
+def test_a_browser_that_outlives_its_budget_is_stopped_and_named(tmp_path, monkeypatch):
+    """#2234. The bug: ``--virtual-time-budget`` bounds the page's clock, not the process, so the
+    2.2.1 cut's Prefect capture ran until an outer 600-second wrapper killed it, and said nothing."""
+    stuck = tmp_path / "chrome"
+    stuck.write_text("#!/bin/sh\nsleep 30\n")
+    stuck.chmod(0o755)
+    monkeypatch.setattr(browser, "WALL_MARGIN_S", 1)
+
+    with pytest.raises(SystemExit, match=r"still running on http://x/ after 1 s, and was stopped"):
+        browser.loaded_dom(str(stuck), "http://x/", 0)
+
+
+def _prefect_main(monkeypatch, tmp_path, state: str) -> list[str]:
+    run = {"id": "f1d2", "name": "group_run/cyc_78515574/run_41a819d3", "state": {"type": state}}
+    shot: list[str] = []
+
+    def _shoot(browser_, flow_run_id, dest, width, height):
+        shot.append(flow_run_id)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b"png")
+
+    monkeypatch.setattr(prefect, "api", lambda path, body=None: run if "flow_runs/" in path else [])
+    monkeypatch.setattr(prefect, "shoot", _shoot)
+    monkeypatch.setattr(prefect, "REPO", tmp_path)
+    monkeypatch.setattr(prefect, "RELEASES", tmp_path / "releases")
+    monkeypatch.setattr(
+        sys, "argv", ["capture", "--flow-run", "f1d2", "--version", "2.3.0", "--browser", "b"]
+    )
+    prefect.main()
+    return shot
+
+
+@pytest.mark.parametrize("state", ["FAILED", "CRASHED", "CANCELLED", "COMPLETED"])
+def test_a_finished_flow_run_is_photographed_as_it_ended(monkeypatch, tmp_path, state):
+    """#2234: a refused proposal run's timeline is evidence. Entered at ``main``."""
+    assert _prefect_main(monkeypatch, tmp_path, state) == ["f1d2"]
+
+
+@pytest.mark.parametrize("state", ["RUNNING", "PENDING", "SCHEDULED", "PAUSED", "CANCELLING"])
+def test_a_flow_run_that_is_still_going_is_refused_whatever_its_state(monkeypatch, tmp_path, state):
+    """The bug: only RUNNING was refused, so a pending or paused run's half-drawn timeline could
+    be written as the finished article."""
+    with pytest.raises(SystemExit, match=f"REFUSING: the run is {state}"):
+        _prefect_main(monkeypatch, tmp_path, state)

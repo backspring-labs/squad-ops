@@ -24,6 +24,17 @@ def register(ctx):
         },
     )
 
+    # #2204b: the machine the deploy runs on, beside the services' health.
+    ctx.register_contribution(
+        "panel",
+        {
+            "slot": "ui.slot.main",
+            "perspective": "systems",
+            "component": "squadops-system-host",
+            "priority": 700,
+        },
+    )
+
     ctx.register_contribution(
         "panel",
         {
