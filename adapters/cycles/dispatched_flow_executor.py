@@ -1015,11 +1015,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     # parks it there (SIP-0109 §24bj). That is an ending, not a gate defect. The
                     # run completed before the gate waited, so this copy of it reads ``completed``:
                     # the ending is told the run as stored, or the campaign never hears the park.
+                    # mypy: the registry is wired for every cycle this runs; it read the cycle above.
                     logger.info(
                         "inter_workload_gate_run_cancelled",
                         extra={"cycle_id": cycle_id, "run_id": run.run_id, "gate": gate_name},
                     )
-                    run = await self._cycle_registry.get_run(run.run_id)
+                    run = await self._cycle_registry.get_run(run.run_id)  # type: ignore[union-attr]
                     stopped_because = CycleStopReason.RUN_CANCELLED
                     break
                 except Exception:
