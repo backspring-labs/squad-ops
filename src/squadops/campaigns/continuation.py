@@ -60,7 +60,14 @@ class EndedCycle:
 def cycle_verdict(latest: CycleAssessment, cycle: EndedCycle) -> RunVerdict | None:
     """The verdict the decision reads (§8.4). A calibration's is the cycle's own. An increment is
     accepted only when the cycle's acceptance and its own (§8) both accepted: either rejecting
-    rejects it, and anything unread leaves it ``blocked_unverified``, never accepted."""
+    rejects it, and anything unread leaves it ``blocked_unverified``, never accepted.
+
+    A cycle that never reached its assessment has none (#2303): parked at its plan gate,
+    rejected at the increment gate, or its proposal failed. Its last run's summary judged a
+    framing or a proposal, never a build, and a framing run's reads ``accepted`` with nothing
+    executed. Read as the cycle's, it promoted a parked increment and met the objective with it."""
+    if cycle.ending is not CycleEnding.ASSESSED:
+        return None
     verdict = latest_verdict(latest)
     if verdict is None or cycle.increment_verdict is None:
         return verdict
@@ -83,6 +90,8 @@ class CampaignCounters:
     repair_cycles: int
     retry_cycles: int
     rejected_proposals_in_row: int
+    #: Proposal cycles in a row that ended ``proposal_failed`` (§24bn, #2231).
+    failed_proposals_in_row: int
     unaccepted_increments: int
     #: The objective's measurement, read with this increment counted (row 3).
     objective_met: bool
@@ -96,6 +105,7 @@ class CampaignLimit(StrEnum):
     ELAPSED_TIME = "elapsed_time"
     BUDGET = "budget"
     REJECTED_PROPOSALS_IN_ROW = "rejected_proposals_in_row"
+    FAILED_PROPOSALS_IN_ROW = "failed_proposals_in_row"
 
 
 class TerminalCause(StrEnum):
@@ -196,8 +206,12 @@ def campaign_continuation_decision(
     retries_remain = counters.retry_cycles < policy.max_retry_cycles_per_increment
     environment = primary is AttributionClass.ENVIRONMENT_OR_INFRASTRUCTURE_FAILURE
     rejected = verdict is RunVerdict.REJECTED and cycle.ending is CycleEnding.ASSESSED
-    # Row 13's predicate: this increment is abandoned, and counts as unaccepted.
-    abandons = rejected and not environment and not repairs_remain
+    # Rows 13 and 15: this decision abandons the increment, and the abandonment counts as
+    # unaccepted at this decision, so the one that reaches the limit stops rather than proposing
+    # once more (#2294). A parked calibration never reaches row 4: row 2 ends the campaign.
+    abandons = (rejected and not environment and not repairs_remain) or (
+        cycle.ending is CycleEnding.PARKED
+    )
 
     def stop(row: int, outcome: CampaignOutcome, cause: TerminalCause) -> ContinuationDecision:
         return ContinuationDecision(cycle.cycle_id, row, outcome=outcome, cause=cause)
@@ -273,4 +287,8 @@ def _pausing_limit(policy: CampaignPolicy, counters: CampaignCounters) -> Campai
         return CampaignLimit.BUDGET
     if counters.rejected_proposals_in_row >= policy.max_rejected_proposals_in_row:
         return CampaignLimit.REJECTED_PROPOSALS_IN_ROW
+    # §24bn (#2231): a failed proposal is retried by the next proposal cycle (row 6), up to the
+    # policy's retries; the failure past them holds that launch for the owner.
+    if counters.failed_proposals_in_row > policy.max_proposal_run_retries:
+        return CampaignLimit.FAILED_PROPOSALS_IN_ROW
     return None

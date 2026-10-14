@@ -140,7 +140,8 @@ def revoke(
     approval_id: str = typer.Argument(...),
     reason: str = typer.Option(..., "--reason", help="Why the approval is revoked"),
 ):
-    """The owner's revocation (SIP-0110 §0.7). Names the running units that still hold it."""
+    """The owner's revocation (SIP-0110 §0.7). Names the running units that still hold it, and
+    apart from them the finished units that ran with it."""
     data = _call(
         ctx,
         "post",
@@ -153,6 +154,8 @@ def revoke(
     print_success(f"revoked {approval_id}")
     for unit in data["units_holding_it"]:
         print_success(f"still held by {unit['unit_kind']} {unit['unit_id']}")
+    for unit in data["finished_units_holding_it"]:
+        print_success(f"ran with it, finished: {unit['unit_kind']} {unit['unit_id']}")
     print_success(data["next"])
 
 

@@ -684,3 +684,134 @@ checks:
       from squadops.campaigns.box import MEMORY_FLOOR_AFTER_LOAD_BYTES
       print(len(HOST_QUERIES), MEMORY_FLOOR_AFTER_LOAD_BYTES)
     expect: "10 17179869184"
+  - id: "2229-quiet"
+    what: SIP-0111 §5.5 - the launch gate reads an engine serving requests as not quiet, and an idle one as quiet
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.box import EngineReading, Model, box_quietness
+      served = (Model("qwen3.8-27b-tf-nvfp4"),)
+      busy = box_quietness(served, [EngineReading("tensorfold", served, in_flight=1)])
+      idle = box_quietness(served, [EngineReading("tensorfold", served, in_flight=0)])
+      print(busy.quiet, idle.quiet)
+    expect: "False True"
+  - id: "2281"
+    what: SIP-0111 §9j - a TensorFold call that sets no seed sends a fresh one, and a call's own seed is sent as it is
+    container: squadops-max
+    code: |
+      from adapters.llm.tensorfold import RECIPES, TensorFoldAdapter
+      from squadops.llm.models import ChatMessage
+      served = next(iter(RECIPES))
+      tf = TensorFoldAdapter(base_url="http://tensorfold:8080", default_model=served, api_key="probe")
+      msgs = [ChatMessage(role="user", content="probe")]
+      seeds = [tf._payload(msgs, served, None, None, None, None, seed=s, thinking_budget=None)["seed"] for s in (None, None, 0)]
+      print(seeds[0] != seeds[1], seeds[2])
+    expect: "True 0"
+  - id: "2206"
+    what: "an accepted repair's stored copy names the role the step ran as, beside the task it ran as"
+    container: squadops-runtime-api
+    code: |
+      from types import SimpleNamespace
+      from squadops.cycles.scaffold_enforcement import name_producer, named_producer
+      env = SimpleNamespace(task_id="task-probe", task_type="development.correction_repair", metadata={"role": "qa"})
+      (art,) = name_producer([{"name": "tests/test_api.py"}], env)
+      print(named_producer(art).task_type, named_producer(art).role)
+    expect: "development.correction_repair qa"
+  - id: "2210"
+    what: "a revocation names only running units as work to halt, read by the cycle states that still run"
+    container: squadops-runtime-api
+    code: |
+      from squadops.api.routes.memory import lessons
+      print(sorted(str(s.value) for s in lessons._RUNNING_CYCLE))
+    expect: "['active', 'created', 'paused']"
+  - id: "2231"
+    what: "max_proposal_run_retries bounds failed proposal cycles in a row, and the failure past it is its own limit"
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.continuation import CampaignLimit
+      from squadops.campaigns.models import CampaignPolicy
+      import inspect
+      print(CampaignLimit.FAILED_PROPOSALS_IN_ROW.value, "max_proposal_run_retries" in inspect.signature(CampaignPolicy).parameters)
+    expect: "failed_proposals_in_row True"
+  - id: "2174"
+    what: "the agents hold the legacy store dormant, a call is refused, and the entrypoint builds it so"
+    container: squadops-neo
+    code: |
+      import asyncio, inspect, logging
+      logging.disable(logging.WARNING)
+      from adapters.memory.factory import create_memory_provider
+      from squadops.agents import entrypoint
+      from squadops.memory.exceptions import MemoryDormantError
+      port = create_memory_provider(provider="dormant")
+      try:
+          asyncio.run(port.get("probe"))
+          said = "answered"
+      except MemoryDormantError:
+          said = "refused"
+      print(type(port).__name__, said, 'create_memory_provider(provider="dormant")' in inspect.getsource(entrypoint))
+    expect: "DormantMemoryPort refused True"
+  - id: "2175-agent"
+    what: "a chat turn's earlier turns, sent in its metadata, reach the agent's messages"
+    container: squadops-max
+    code: |
+      from adapters.comms.chat_executor import ChatAgentExecutor
+      from squadops.comms.chat_history import HISTORY_KEY, HISTORY_ROLES
+      print(HISTORY_KEY, sorted(HISTORY_ROLES), callable(getattr(ChatAgentExecutor, "_history", None)))
+    expect: "history ['assistant', 'user'] True"
+  - id: "2175-runtime"
+    what: "the chat route bounds a session's history to the newest turns that fit, and counts the rest dropped"
+    container: squadops-runtime-api
+    code: |
+      from squadops.api.routes.chat import routes
+      from squadops.comms.chat_history import bound_history
+      turns = [{"role": "user", "content": "a" * 8}, {"role": "system", "content": "x"},
+               {"role": "assistant", "content": "b" * 8}, {"role": "user", "content": "c" * 8}]
+      h = bound_history(turns, max_turns=2, max_tokens=100)
+      print([t["role"] for t in h.turns], h.dropped, routes.bound_history is bound_history)
+    expect: "['assistant', 'user'] 1 True"
+  - id: "2176"
+    what: "the context-assembly port's 2.3 implementation is the lesson supply the authoring seams ask"
+    container: squadops-neo
+    code: |
+      from squadops.capabilities.lesson_supply import LessonContextAssembly
+      from squadops.ports.memory.context_assembly import ContextAssemblyPort
+      print(issubclass(LessonContextAssembly, ContextAssemblyPort), LessonContextAssembly.__module__)
+    expect: "True squadops.capabilities.lesson_supply"
+  - id: "2290"
+    what: "the timeout-half fault asks at the increment's launch, before the late-answer carry, keeps an answer, and the gate applies nothing"
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from adapters.cycles.workload_gate import WorkloadGate
+      from squadops.campaigns.progress import CampaignProgress
+      from squadops.capabilities.handlers import fault_injection as fi
+      answered = "decisions:\n- id: injected-open-question\n  choice: answered\n"
+      launch = inspect.getsource(CampaignProgress._propose_launch)
+      gate = inspect.getsource(WorkloadGate._seed_increment)
+      print(fi.INCREMENT_BASELINE_SEAM, fi._increment_design_asks(answered) == answered, "fault_seed(" in launch, "fault_seed" in gate)
+    expect: "runtime:increment_baseline True True False"
+  - id: "2294"
+    what: "a parked increment counts as unaccepted at its own decision, so a run of parks stops at the no-progress limit"
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.campaigns.continuation import campaign_continuation_decision
+      print("cycle.ending is CycleEnding.PARKED" in inspect.getsource(campaign_continuation_decision))
+    expect: "True"
+  - id: "2301"
+    what: "a run cancelled at its gate stops the cycle run_cancelled and the ending reads it as stored, so an expired escalation parks"
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+      src = inspect.getsource(DispatchedFlowExecutor.execute_cycle)
+      print("except _CancellationError:" in src, "inter_workload_gate_run_cancelled" in src)
+    expect: "True True"
+  - id: "2303"
+    what: "a cycle that never reached its assessment has no verdict, so a parked increment is never promoted, and its run is cancelled with escalation_expired"
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.campaigns.continuation import cycle_verdict
+      from squadops.campaigns.escalation import PARK_REASON
+      print(PARK_REASON, "if cycle.ending is not CycleEnding.ASSESSED" in inspect.getsource(cycle_verdict))
+    expect: "escalation_expired True"

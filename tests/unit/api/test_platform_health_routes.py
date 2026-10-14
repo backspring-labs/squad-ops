@@ -295,6 +295,17 @@ class TestHealthHost:
             "quiet": False,
             "lease": {"holder": "supervisor", "expires_at": expires.isoformat()},
         }
+        # #2204b: the states the console colours. One engine unread, so the after-load floor
+        # holds; a reading the host did not return is unknown, never ok.
+        assert body["verdicts"] == {
+            "memory": {"state": "ok", "floor_bytes": 16 * 2**30, "floor": "after_load"},
+            "disk": {"state": "unknown", "floor_bytes": 150 * 10**9},
+            "board_temperature": {"state": "unknown"},
+        }
+        assert body["limits"] == {
+            "board_temperature_warn_celsius": 98.0,
+            "board_temperature_critical_celsius": 104.0,
+        }
         for leaked in ("ripley", "cmp_secret", "deadbeef", "ConnectError"):
             assert leaked not in resp.text
 

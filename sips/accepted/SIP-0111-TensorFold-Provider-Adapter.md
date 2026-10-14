@@ -119,8 +119,10 @@ Placed by the owner's Q1 ruling (2026-10-09). The rows are ordered as the work r
 | G0: throughput on held-out captured envelopes, against production Ollama, on a frozen recipe (§4) | **shipped** | 2.3.0, #2256 and #2262 (the harness and its reader), #2199: the 27B on NVFP4 passed, a median of 0.438 of Ollama's wall-clock (§9e) |
 | G1: emission quality, the same calls through each task type's production validator (§4) | **shipped** | 2.3.0, #2256 and #2262, #2199: passed by the owner's ruling of 2026-10-13, with plan writing one answer under Ollama's (§9e) |
 | G2: the adapter, dark, with the port amendments, registry entries, the overlay and parity tests (§5) | **shipped** | 2.3.0, #2268 (the port's controls, §9f), #2269 (the adapter, §9g) and #2270 (the clients' switch, overlay and key, §9h), closing #2200: the live tier passed on the Spark on 2026-10-13, the switch to TensorFold and back with the clients and an in-agent generation each way (#2200 issuecomment-6146480456) |
-| G3: the selected candidate's uncounted cycle A/B on both stacks, compared on wall-clock, task times, retries, correction rounds and verdicts (§9a item 6) | **placed** | 2.3.0, #2229 |
-| G4: cutover | **placed** | 2.3.0, #2229: the owner's decision on G3's evidence, before the 2.3 cut set (the 2.3 plan's D4) |
+| G3: the selected candidate's uncounted cycle A/B on both stacks, compared on wall-clock, task times, retries, correction rounds and verdicts (§9a item 6) | **shipped** | 2.3.0, #2282 (the record, `docs/plans/verification-sets/2-3-0-tensorfold-g3-record.md`): every roll accepted on both arms; TensorFold's median cycle 0.45 of Ollama's on FastAPI+React and 0.61 on Next.js; two predictions falsified as registered (decode on every task type, and volume), the rest held; its arm held one planning draw per stack, not two (§9j) |
+| a seed on every TensorFold call, G3's finding (§9j) | **shipped** | 2.3.0, #2283, closing #2281 |
+| G4: cutover | **shipped** | 2.3.0, #2285, closing #2229 and #2284 (the switch records the deploy, §9k): adopted by the owner on G3's evidence on 2026-10-13 (§9j). The Spark serves on TensorFold from 2026-10-13 20:01 ET (dep_1724f586cc3a), and its cutover pair passed (§9k) |
+| the memory watchdog as a host service that restores Ollama after a kill (§9l) | **shipped** | 2.3.0, #2289, closing #2288 |
 | a second candidate, Qwen3.8-Flash-Next on TensorFold, on its own gate path: screening, its own recipe, G0 and G1 (§9a) | **placed** | 2.4.0, #2230: moved from 2.3 by the owner on 2026-10-12 ("skip to next release"). Not measured in 2.3, which is not a negative |
 
 **What closes this SIP:** G4 decided (adopted, or parked with its record), with each earlier row shipped or its negative
@@ -893,3 +895,164 @@ engines. From this ruling:
 **Who ruled it.** The owner, on 2026-10-13. Asked where the agents should get the key and whether the switch should
 also move the clients, the owner answered "2 and 3, as recommended": the key from `.env`, registered for rotation, and
 the switch moving the clients through an overlay that drops their dependency on Ollama.
+
+### 9i. The cutover's machinery, built before G4 (2026-10-13, with #2229's readiness PR)
+
+**What changed.** §4 has G4's cutover "by S's switching path", and §9h has the switch move the clients. Neither
+covered what a deploy does after the cutover, so a TensorFold deploy could not be rebuilt. Since §9h, the rebuild
+script refused while TensorFold served, its first step starts Ollama's container, and a re-bootstrap rewrote
+`COMPOSE_FILE` back to Ollama's. A fresh box had no way to install TensorFold at all. So, ahead of G4:
+- **The deploy records its engine.** Every switch writes it to `.env`'s `COMPOSE_FILE` (the TensorFold overlay
+  named, or not), and `engine_switch.py deploy-engine` reads it.
+  - `rebuild_and_deploy.sh` keeps it: on TensorFold it starts no Ollama and the clients come back on TensorFold.
+  - A rebuild refuses a half-done switch, which is TensorFold serving a deploy whose `.env` says Ollama, or the
+    reverse.
+  - Bootstrap's Ollama setup keeps the overlay. A rollback (`to-ollama`) records Ollama again.
+- **The launch gate reads a busy TensorFold as not quiet** (§5.5, which closes §9g item 7). A port reading,
+  `requests_in_flight`, is declared as `loaded_models` is: TensorFold declares it from its authenticated request
+  gauges, and the other adapters don't. `box_quietness` names any request in flight before a launch. Unread is an
+  unread engine, never quiet.
+- **A fresh box installs exactly what the frozen recipe pins.** `tensorfold_install.py` builds the image at the
+  recipe's TensorFold commit (checked against the image's revision label) and fetches the checkpoint and drafter
+  at their revisions, through the image itself. It is idempotent.
+  - A bootstrap profile declares `inference_engine: {engine: tensorfold, recipe: …}`. The recipe must be a frozen
+    one in the repository.
+  - Bootstrap installs the recipe before the services start and switches at the end. Ollama stays installed as
+    the rollback.
+- **The runbook** is `docs/ops/inference_engine.md`.
+
+**What it leaves for G4's own PR**, on the owner's decision:
+- `local-spark` declaring `inference_engine: tensorfold`;
+- the switch that makes TensorFold production on this box;
+- the cut set on `full-38-tf`;
+- this SIP's G4 row.
+
+**The evidence:** each part is tested where it runs.
+- The rebuild guard's own lines run against a fake `docker`, in five cases.
+- Bootstrap's own function runs on a scratch `.env`, keeping the overlay.
+- The switch writes the deploy's `.env`, a scratch one in the tests: its other lines and owner-only mode are kept,
+  and a rollback clears the overlay.
+- The quiet-box check runs through the real TensorFold adapter: idle is quiet; busy and a refused key are not.
+- The installer runs against a fake `docker`: it builds and fetches at the pins, leaves a complete box alone, and
+  refuses an image from another commit.
+- The installer's dry run on the Spark reports the image, checkpoint and drafter present.
+
+**Who ruled it.** The owner, directing the work on 2026-10-13: "I just want to implement tensorfold and complete the
+2.3 plan!". The design of each part is proposed in its PR, and the owner rules it with the merge. It merges after
+G3's last roll, because G3's switches run the main checkout's `engine_switch.py`.
+
+### 9j. A seed on every call, before the cutover (RULED 2026-10-13)
+
+**What changed.** §5.1 sent both new controls "only when set", and no production call sets a seed. §2 records the
+engine's rule: "Without one, the seed is derived from the prompt, so a repeated request repeats its sample." Together
+they keyed every production call on TensorFold to its prompt, so the same prompt drew the same answer. G3 found it (#2281):
+TensorFold's two rolls on each stack planned identically, token for token, up to the merge. So its arm held one planning
+draw per stack, where two were registered. From this ruling:
+- **The TensorFold adapter sends a seed on every call:**
+  - the call's own where it sets one, so the replay tool and the G0/G1 harness keep theirs;
+  - otherwise a fresh one, drawn from the OS in the server's 63-bit domain.
+- **The call's line names the seed** (`LLM chat_stream_with_usage completed: … seed=N`, and a line of its own for
+  `chat_stream`). So any call can still be replayed with its own seed.
+- **Ollama, vLLM and Atlas are unchanged.** Ollama samples afresh without a seed, and §5.1's "sent only when set" still
+  holds for them.
+- **Production's calls become the kind G0 and G1 measured.** Every gate call carried its seed (§4, §9a item 1). G3's
+  calls were the first unseeded ones.
+- **A path that re-sends an unchanged prompt now draws afresh,** on TensorFold as on Ollama: a framing reroll, a
+  re-taken round, a blind retry. No inventory of those paths is needed for this.
+- **The server's `TENSORFOLD_SEED_SALT` is not the fix.** It is one value per process, so it re-keys the derived seed,
+  and a repeated prompt still repeats its answer.
+
+**G4.** The owner adopted TensorFold for production on G3's evidence (the record's §8), with this change landing
+first, so the 2.3 cut set's rolls are independent draws. The cutover has its own PR: the deploy's engine, the
+production switch, and the cut set on `full-38-tf`.
+
+**The evidence:**
+- The G3 record's §6.1 (`docs/plans/verification-sets/2-3-0-tensorfold-g3-record.md`): each call's prompt and
+  completion tokens in TensorFold's four rolls. Ollama's pairs differ on every row.
+- The rule, read in TensorFold's source at `cb2ebf05`:
+  - `server/request_options.py`'s `_resolve_sampling` takes `options.get("seed", seed_for(prompt_ids))`;
+  - `engine/exact_sampling.py`'s `seed_for` is a SHA-256 of the prompt's token ids and the salt, cut to 63 bits.
+
+**Who ruled it.** The owner, on 2026-10-13. Asked whether to switch production to TensorFold, with the supervisor
+recommending this fix land first, the owner answered "1, yes". Asked to approve the fix's shape, as written above, the
+owner answered "2, yes".
+
+### 9k. G4: the cutover, as run (2026-10-13, with #2229's cutover PR)
+
+**What changed.** The owner adopted TensorFold at G4 (§9j). §9i left four parts to this PR: `local-spark` on
+TensorFold, the production switch, the cut set on `full-38-tf`, and the G4 row. The switch found a fifth.
+- **The production switch ran on 2026-10-13 at 20:01 ET.** The deploy had been rebuilt from `e899a6c4` (the seed
+  fix included) as dep_18acaffab259, with 73 of 73 loaded checks answering. `to-tensorfold` took 26.9 s, with the
+  nine model clients moved and a generation through the deployed adapter. The deploy's `.env` records TensorFold.
+- **The switch now records the deploy it leaves** (#2284, found by this switch):
+  - **The defect:** the rebuild's record went on saying Ollama served, and `verify_loaded.py` read Ollama as
+    recorded but not running. So every cycle launched afterwards would have carried a record naming the engine it
+    did not run on.
+  - **`deploy_facts.py`** reads TensorFold's container, which runs outside compose, as the service `tensorfold`.
+  - **Each completed switch and each restoration records the deploy,** with the deploy's own revision from the
+    runtime image's label. A switch that completed but could not record exits 4.
+  - **On this deploy,** the record was written by hand with the fixed facts: dep_1724f586cc3a, which names
+    `tensorfold` (its image at TensorFold's commit `cb2ebf05`) and no `ollama`. The deploy check reads it as
+    describing what runs.
+- **`local-spark` serves on TensorFold:** the frozen NVFP4 recipe and the squad `full-38-tf`. A fresh box installs the
+  recipe and switches last (§9i).
+- **`doctor` checks the squad against the engine's models.** The engine block carries the recipe's `served_id`, and
+  on TensorFold the squad check reads it, since the adapter serves no other model (§5.3).
+- **The cut set runs on `full-38-tf`.** Its configurations come with its pre-registration, in the 2.3 plan's phase 9.
+- **Two loaded checks**, which the old code fails: `2229-quiet` (§9i's launch-gate reading) and `2281` (§9j's seed).
+
+**The evidence: the cutover pair** (`2-3-0-cutover-regression-tensorfold-fastapi-react.yaml`). It is two uncounted
+shakeouts of one FastAPI+React request on `full-38-tf`, with what they must show stated before the first launch.
+- **Both cycles completed accepted, and the boot check passed on both,** each app declaring three routes:
+  - `cyc_af79e6520ae6`: 27.6 min, 20 of 20 criteria, one correction round. A QA test was itself wrong
+    (`test_leave_run_empty_name_rejected`), classified a work-product defect, and patched.
+  - `cyc_a21e10ff8fde`: 25.1 min, 21 of 21 criteria, no rounds.
+- **The seed is live:**
+  - each of the pair's 37 calls named its seed, and none repeated;
+  - the first call, the data agent's research context, sent the same 4,247-token prompt in both cycles and answered
+    with 4,447 and 4,885 completion tokens;
+  - G3's two TensorFold React rolls had both answered that prompt with 6,129;
+  - the cycles diverge from that first call on.
+- **Every call ended `stop`,** each launch found the engine idle, and both cycles carry dep_1724f586cc3a.
+- **The box:**
+  - `MemAvailable` stayed at 70.3 GiB or more, with no swap;
+  - the memory watchdog ran throughout, started by hand as for G3, and never acted;
+  - the board peaked at 90.4 °C while the branch's test suite ran on the box during the first cycle, and at
+    84.1 °C outside that window (G3's TensorFold range was 81.2–85.0).
+
+**Who ruled it.** The owner, on 2026-10-13: G4 adopted ("1, yes", §9j). The design of each part is proposed in this
+PR, and the owner rules it with the merge, as §9i's were.
+
+### 9l. The memory watchdog: a host service that restores Ollama (RULED 2026-10-13)
+
+**What changed.** §5.6 has the memory watchdog kill TensorFold when `MemAvailable` stays under its floor or swap
+climbs, and "let restoration start Ollama". Two things were missing once TensorFold became production (§9k, #2288):
+- **Nothing started the watchdog.** G0, G1 and G3 had it because their chains started it. At the cutover it was
+  started by hand, so it would have stopped at the next reboot or session kill.
+- **A kill left the box with no engine.** Nothing ran the restoration, so the clients stayed on a dead TensorFold
+  until someone ran the switch back.
+
+From this ruling:
+- **The watchdog is a host service,** `squadops-memory-watchdog` (`infra/systemd/`). It is wanted at boot, restarted
+  whenever it stops, and the last process the OOM killer takes. It is installed once per machine with sudo, as the
+  backup timer is (`scripts/dev/ops/install_host_unit.sh`, which now installs a long-running unit as well as a
+  timer). It acts only while TensorFold runs, so it stays on whichever engine serves.
+- **After a kill, it runs `engine_switch.py restore`:**
+  - Ollama started and the clients moved back, as a failed switch restores, and the deploy recorded (§9k);
+  - no refusal for work on the box, since that work's engine is gone;
+  - nothing done when Ollama already serves a deploy that records it.
+- **One engine switch runs at a time on the host.** Every command that moves an engine takes one lock, and waits
+  for a switch in progress. So the watchdog's restoration never runs beside a switch's own, and a switch that
+  fails restores Ollama itself.
+
+**The evidence:**
+- The watch's step is tested where the service's loop enters it. It acts on two low readings or a swap climb while
+  TensorFold runs, and on nothing else.
+- The kill is followed by the restoration, whose failure or hang is logged as one.
+- `restore` is tested at `main`, as the watchdog runs it, in four states. A switch holding the lock makes every
+  engine command wait, touching nothing.
+- The unit guard requires a unit with no timer to be wanted at boot and restarted always. `systemd-analyze verify`
+  passes on the rendered unit.
+
+**Who ruled it.** The owner, on 2026-10-13. Asked how the watchdog should run in production, the owner chose "a": a
+host service installed once with the owner's sudo, which after a kill switches the box back to Ollama.

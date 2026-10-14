@@ -60,12 +60,22 @@ async def health_host(request: Request):
     unauthenticated, so no process name, command line, path or deploy identifier. A source that
     can't be read reports as unknown, never as healthy."""
     from squadops.api.runtime.deps import get_box_reader
+    from squadops.api.runtime.host_reading import (
+        BOARD_TEMPERATURE_CRITICAL_CELSIUS,
+        BOARD_TEMPERATURE_WARN_CELSIUS,
+        host_verdicts,
+    )
 
     host = await _get_health_checker(request).read_host_resources()
     try:
         snap = await get_box_reader(request).snapshot()
     except Exception:  # noqa: BLE001 — an unread box is unknown, never quiet
         snap = None
+    loaded = (
+        None
+        if snap is None
+        else [None if r.loaded is None else [m.name for m in r.loaded] for r in snap.readings]
+    )
     return {
         "host": host,
         "floors": {
@@ -73,6 +83,18 @@ async def health_host(request: Request):
             "memory_available_after_load_bytes": MEMORY_FLOOR_AFTER_LOAD_BYTES,
             "disk_available_bytes": DISK_FLOOR_BYTES,
         },
+        "limits": {
+            "board_temperature_warn_celsius": BOARD_TEMPERATURE_WARN_CELSIUS,
+            "board_temperature_critical_celsius": BOARD_TEMPERATURE_CRITICAL_CELSIUS,
+        },
+        # #2204b: each reading against its limit, decided here so the console only colours it.
+        "verdicts": host_verdicts(
+            host,
+            loaded,
+            memory_floor_before_load=MEMORY_FLOOR_BEFORE_LOAD_BYTES,
+            memory_floor_after_load=MEMORY_FLOOR_AFTER_LOAD_BYTES,
+            disk_floor=DISK_FLOOR_BYTES,
+        ),
         "engines": (
             None
             if snap is None

@@ -153,19 +153,14 @@ class TestOllamaEmbeddingsAdapterAsync:
 class TestEmbeddingsFactory:
     """Tests for embeddings factory."""
 
-    def test_create_ollama_provider(self):
-        """Factory creates Ollama provider."""
-        from adapters.embeddings.factory import create_embeddings_provider
-
-        provider = create_embeddings_provider(provider="ollama")
-        assert isinstance(provider, OllamaEmbeddingsAdapter)
-
     def test_create_unknown_provider_raises(self):
         """Factory raises ValueError for unknown provider."""
         from adapters.embeddings.factory import create_embeddings_provider
 
         with pytest.raises(ValueError, match="Unknown embeddings provider"):
-            create_embeddings_provider(provider="unknown")
+            create_embeddings_provider(
+                provider="unknown", base_url="http://ollama:11434", model="nomic-embed-text"
+            )
 
     def test_create_with_custom_config(self):
         """Factory passes configuration to adapter."""

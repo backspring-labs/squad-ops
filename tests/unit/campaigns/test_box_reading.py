@@ -84,3 +84,53 @@ async def test_an_engine_that_cannot_be_read_is_never_quiet():
 
 def test_no_recorded_deploy_declares_nothing():
     assert declared_models(None) == ()
+
+
+def _tensorfold(running: int | None) -> object:
+    """TensorFold as the quiet-box check reads it: its authenticated ``/v1/models`` and
+    ``/metrics`` (SIP-0111 §5.5). ``None``: the metrics refuse the key."""
+    from adapters.llm.tensorfold import TensorFoldAdapter
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/models":
+            return httpx.Response(200, json={"data": [{"id": "qwen3.8-27b-tf-nvfp4"}, {"id": "q"}]})
+        if running is None:
+            return httpx.Response(401, json={"error": {"message": "A valid API key is required"}})
+        return httpx.Response(
+            200,
+            text=f"tensorfold:requests_running {running}\ntensorfold:requests_waiting 0\n",
+        )
+
+    adapter = TensorFoldAdapter(
+        base_url="http://tensorfold:8080", default_model="qwen3.8-27b-tf-nvfp4", api_key="k"
+    )
+    adapter._client = httpx.AsyncClient(
+        base_url="http://tensorfold:8080", transport=httpx.MockTransport(handler)
+    )
+    return adapter
+
+
+@pytest.mark.parametrize(
+    ("running", "quiet", "said"),
+    [
+        (0, True, None),
+        (1, False, "is serving 1 request(s) already"),
+        (None, False, "could not be read"),
+    ],
+    ids=["idle", "busy", "refused the key"],
+)
+async def test_tensorfold_is_quiet_only_when_idle(running, quiet, said):
+    """SIP-0111 §5.5, entered at the TensorFold adapter. Bugs caught: a busy TensorFold read as a
+    quiet box because the model it holds is the declared one, so a launch lands on an engine
+    already serving someone else's work; an alias read as a second model; and a refused key read
+    as an idle engine."""
+    readings = await read_engines({"tensorfold": _tensorfold(running)})
+    declared = declared_models(_record(ModelWeights("qwen3.8-27b-tf-nvfp4", None)))
+
+    quietness = box_quietness(declared, readings)
+
+    assert quietness.quiet is quiet
+    if said:
+        assert any(said in reason for reason in quietness.reasons), quietness.reasons
+    else:
+        assert quietness.reasons == ()

@@ -6,6 +6,8 @@ from a pinned recipe (``infra/tensorfold/recipes/*.yaml``). Only one is ever res
 
     engine_switch.py to-tensorfold RECIPE   the switch, steps 1-7; any failure restores Ollama
     engine_switch.py to-ollama              restoration: TensorFold stopped and released, then Ollama
+    engine_switch.py restore                the same, for the memory watchdog after it killed TensorFold:
+                                            no refusal for work on the box, nothing done if Ollama serves
     engine_switch.py status                 what is resident, and the memory
 
 The steps (§5.6):
@@ -23,16 +25,28 @@ The steps (§5.6):
    switch back recreates them without it. A restoration moves them back too, whatever step failed.
 
 Every step is a JSON line in the record (``var/engine_switch/<utc>.jsonl`` under the main checkout).
+
+One switch runs at a time on the host: each command that moves an engine takes ``LOCK`` first, and
+waits for one in progress (#2288). The watchdog's restoration therefore never runs beside a switch's
+own, and a switch that fails restores Ollama itself.
+
+A switch that completes, and a restoration, then write a deploy record of what runs
+(``record_deploy.sh``, #2284): the engine and every model client changed, so the rebuild's record no
+longer describes the deploy. A switch that completed but could not record exits 4, so the stale
+record is never silent.
 """
 
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import subprocess
 import sys
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -47,6 +61,10 @@ from checkouts import main_checkout  # noqa: E402
 #: The records go under the main checkout, whichever checkout runs the switch (scripts/dev/checkouts.py).
 MAIN = main_checkout(Path(__file__).resolve().parents[3])
 RECORDS = MAIN / "var" / "engine_switch"
+#: Taken by every command that moves an engine (#2288). The kernel releases it when its holder dies.
+LOCK = RECORDS / ".switch.lock"
+#: A switch to TensorFold takes about 30 s with its kernels cached, and a first start compiles them.
+LOCK_WAIT_SECONDS = 2700
 TF_CONTAINER = "squadops-tensorfold"
 TF_PORT = 8090
 TF_URL = f"http://127.0.0.1:{TF_PORT}"
@@ -63,11 +81,40 @@ TF_ALIAS = "tensorfold"
 SQUADNET = "squadnet"
 #: The agent the clients' generation runs from: one container, through the deployed adapter.
 PROBE_AGENT = "squadops-max"
+#: Its image carries the revision the deploy was built from (``rebuild_and_deploy.sh``).
+RUNTIME_CONTAINER = "squadops-runtime-api"
+REVISION_LABEL = "org.opencontainers.image.revision"
 
 #: SIP-0111 §5.6 (Q7): the floors, as squadops.campaigns.box defines them.
 GIB = 2**30
 FLOOR_BEFORE_LOAD = 90 * GIB
 FLOOR_AFTER_LOAD = 16 * GIB
+
+
+class SwitchBusy(RuntimeError):
+    """Another switch held the engine past the wait. Nothing was touched, so nothing is restored."""
+
+
+@contextmanager
+def switch_lock() -> Iterator[None]:
+    """The host's one switch at a time (#2288), waited for rather than refused: the watchdog's
+    restoration must still run once a switch in progress has finished."""
+    wait = LOCK_WAIT_SECONDS
+    LOCK.parent.mkdir(parents=True, exist_ok=True)
+    with LOCK.open("a") as handle:
+        give_up = time.monotonic() + wait
+        while True:
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= give_up:
+                    raise SwitchBusy(f"another switch held the engine for {wait:.0f}s") from None
+                time.sleep(1)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
 
 
 class SwitchFailed(RuntimeError):
@@ -456,9 +503,38 @@ def deploy_compose_files() -> str:
     return "docker-compose.yml"
 
 
+def base_compose_files() -> str:
+    """The deploy's files without the TensorFold overlay: what its clients run with on Ollama."""
+    return ":".join(f for f in deploy_compose_files().split(":") if f and f != TF_OVERLAY)
+
+
 def client_files(engine: str) -> str:
-    base = deploy_compose_files()
+    base = base_compose_files()
     return f"{base}:{TF_OVERLAY}" if engine == "tensorfold" else base
+
+
+def deploy_engine() -> str:
+    """The engine the deploy runs, as its .env records it: the switch writes it, every
+    ``docker compose`` there reads it, and a rebuild keeps it (``rebuild_and_deploy.sh``)."""
+    return "tensorfold" if TF_OVERLAY in deploy_compose_files().split(":") else "ollama"
+
+
+def persist_engine(rec: Record, engine: str) -> None:
+    """Record ``engine`` as the deploy's in its .env (``COMPOSE_FILE``), so the next rebuild, or any
+    ``docker compose`` run there, recreates the clients on the engine that is serving rather than
+    the one the deploy started with. The file keeps its owner-only mode (it holds credentials)."""
+    env = MAIN / ".env"
+    files = client_files(engine)
+    lines = env.read_text().splitlines() if env.is_file() else []
+    at = [i for i, line in enumerate(lines) if line.startswith("COMPOSE_FILE=")]
+    if at:
+        lines[at[0]] = f"COMPOSE_FILE={files}"
+    else:
+        lines.append(f"COMPOSE_FILE={files}")
+    mode = env.stat().st_mode & 0o777 if env.is_file() else 0o600
+    env.write_text("\n".join(lines) + "\n")
+    env.chmod(mode)
+    rec.write("deploy_engine", engine=engine, compose_file=files)
 
 
 def llm_clients(files: str) -> list[str]:
@@ -502,6 +578,7 @@ def switch_clients(rec: Record, engine: str, model: str) -> None:
     if wrong:
         raise SwitchFailed(f"clients not on {engine} after recreation: {wrong}")
     rec.write("clients_switched", engine=engine, services=services)
+    persist_engine(rec, engine)
     t0 = time.monotonic()
     probe = subprocess.run(
         ["docker", "exec", "-i", PROBE_AGENT, "python", "-", model],
@@ -518,18 +595,80 @@ def switch_clients(rec: Record, engine: str, model: str) -> None:
     rec.write("clients_healthy", engine=engine, generation_s=round(time.monotonic() - t0, 1))
 
 
+def record_deploy(rec: Record, command: str) -> bool:
+    """A deploy record of what runs now (#2284), through the rebuild's own recorder. Its source
+    revision is the deploy's, read from the runtime image's label: a switch builds nothing, and the
+    checkout may have moved since the images were built. Never raises: an engine that switched
+    stays switched, and the caller reports the stale record."""
+    revision = ""
+    try:
+        label = run(
+            "docker",
+            "inspect",
+            "-f",
+            f'{{{{index .Config.Labels "{REVISION_LABEL}"}}}}',
+            RUNTIME_CONTAINER,
+            check=False,
+        ).stdout.strip()
+        revision = "" if label in ("", "<no value>") else label
+        proc = subprocess.run(
+            [
+                str(MAIN / "scripts" / "dev" / "ops" / "record_deploy.sh"),
+                f"engine_switch.py {command}",
+            ],
+            cwd=MAIN,
+            capture_output=True,
+            text=True,
+            timeout=300,
+            env={**os.environ, "SOURCE_HASH": revision},
+        )
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        rec.write("deploy_record_failed", error=str(exc)[:300])
+        return False
+    if proc.returncode != 0:
+        rec.write("deploy_record_failed", error=(proc.stderr or proc.stdout).strip()[-300:])
+        return False
+    rec.write("deploy_recorded", source_revision=revision or None, said=proc.stdout.strip()[-300:])
+    return True
+
+
 # --- the switch -----------------------------------------------------------------------------------
 
 
 def to_ollama(rec: Record) -> None:
     """Restoration: TensorFold stopped and its release confirmed BEFORE Ollama starts; never both.
-    Then the clients, if any had moved: a switch that failed before step 7 never moved them."""
+    Then the clients, if any had moved: a switch that failed before step 7 never moved them.
+
+    Ollama is stopped too, as ``to_tensorfold`` stops both. Asked for while Ollama was already
+    serving, the release check counted Ollama's own ``llama-server`` and failed after 180 s: G3's
+    rolls stage, 2026-10-13, whose shakeouts stage had ended on Ollama. Now every switch back
+    leaves a freshly started Ollama, whichever engine was resident."""
+    stop_ollama(rec)
     stop_tensorfold(rec)
     wait_released(rec, "released_for_ollama")
     start_ollama(rec)
-    files = deploy_compose_files()
-    if any(client_engine(s) == "tensorfold" for s in llm_clients(files)):
+    files = base_compose_files()
+    if deploy_engine() == "tensorfold" or any(
+        client_engine(s) == "tensorfold" for s in llm_clients(files)
+    ):
         switch_clients(rec, "ollama", ollama_model())
+
+
+def restore(rec: Record) -> bool:
+    """The restoration the memory watchdog runs after it killed TensorFold (#2288): Ollama
+    started and the clients moved back, as a failed switch restores. It does not refuse work on
+    the box: the engine that work ran on is gone, and its cycles fail until Ollama serves. False,
+    with nothing touched, when Ollama already serves a deploy that records it."""
+    if (
+        not container_running(TF_CONTAINER)
+        and container_running("squadops-ollama")
+        and deploy_engine() == "ollama"
+    ):
+        rec.write("nothing_to_restore")
+        return False
+    to_ollama(rec)
+    rec.write("restored", engine="ollama")
+    return True
 
 
 def to_tensorfold(rec: Record, recipe_path: Path, ready_timeout: float) -> None:
@@ -560,8 +699,14 @@ def main() -> int:
         help="seconds for the first answer (a first start compiles TensorFold's kernels)",
     )
     sub.add_parser("to-ollama")
+    sub.add_parser("restore")
     sub.add_parser("status")
+    # For rebuild_and_deploy.sh: one word, the engine the deploy's .env records. No record.
+    sub.add_parser("deploy-engine")
     args = parser.parse_args()
+    if args.command == "deploy-engine":
+        print(deploy_engine())
+        return 0
 
     RECORDS.mkdir(parents=True, exist_ok=True)
     rec = Record(RECORDS / f"{datetime.now(UTC):%Y%m%dT%H%M%SZ}-{args.command}.jsonl")
@@ -570,9 +715,22 @@ def main() -> int:
             "status",
             tensorfold=container_running(TF_CONTAINER),
             ollama=container_running("squadops-ollama"),
+            deploy_engine=deploy_engine(),
             gpu_processes=gpu_compute_processes(),
         )
         return 0
+    try:
+        with switch_lock():
+            return switch(args, rec)
+    except SwitchBusy as exc:
+        rec.write("busy", error=str(exc))
+        return 5
+
+
+def switch(args: argparse.Namespace, rec: Record) -> int:
+    """One command that moves an engine, under the host's lock. Exits 0 when it completed and
+    recorded the deploy, 2 when it failed (a failed switch to TensorFold restores Ollama), 3 when
+    a restoration failed, and 4 when it completed but could not record."""
     try:
         if args.command == "to-ollama":
             # Asked for, not a restoration: the clients are recreated, so nothing may be running.
@@ -580,12 +738,20 @@ def main() -> int:
             if held:
                 raise SwitchFailed(f"the box is not free: {'; '.join(held)}")
             to_ollama(rec)
+        elif args.command == "restore":
+            if not restore(rec):
+                rec.write("done", command=args.command)
+                return 0
         else:
             to_tensorfold(rec, args.recipe, args.ready_timeout)
+        recorded = record_deploy(rec, args.command)
         rec.write("done", command=args.command)
-        return 0
+        return 0 if recorded else 4
     except (SwitchFailed, httpx.HTTPError, subprocess.TimeoutExpired, OSError, ValueError) as exc:
         rec.write("failed", error=str(exc)[:500])
+        if args.command == "restore":
+            rec.write("RESTORATION_FAILED", error=str(exc)[:500])
+            return 3
         if args.command == "to-tensorfold":
             try:
                 to_ollama(rec)
@@ -593,6 +759,7 @@ def main() -> int:
             except Exception as restore_exc:  # noqa: BLE001 — say so loudly; nothing is left running
                 rec.write("RESTORATION_FAILED", error=str(restore_exc)[:500])
                 return 3
+            record_deploy(rec, "to-ollama (restoration)")
         return 2
 
 

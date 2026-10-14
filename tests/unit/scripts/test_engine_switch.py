@@ -7,6 +7,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -31,9 +32,35 @@ RECIPE = {
 }
 
 
+_RECORD_DEPLOY = es.record_deploy
+
+
 @pytest.fixture
 def rec(tmp_path):
     return es.Record(tmp_path / "switch.jsonl")
+
+
+@pytest.fixture(autouse=True)
+def _lock_in_tmp(monkeypatch, tmp_path):
+    """Every command that moves an engine takes the host's lock (#2288). No test takes the real
+    one, under the main checkout, which a live switch may hold."""
+    monkeypatch.setattr(es, "LOCK", tmp_path / "locks" / ".switch.lock")
+
+
+@pytest.fixture(autouse=True)
+def recorded(monkeypatch):
+    """No test writes a real deploy record: ``main`` records after every completed switch and
+    restoration (#2284), and the real recorder runs docker in the main checkout. The commands it
+    was asked to record are kept, and a test sets ``ok`` to make the record fail."""
+    asked = SimpleNamespace(commands=[], ok=True)
+
+    def fake(rec, command):
+        asked.commands.append(command)
+        rec.write("deploy_recorded" if asked.ok else "deploy_record_failed")
+        return asked.ok
+
+    monkeypatch.setattr(es, "record_deploy", fake)
+    return asked
 
 
 class _Resp:
@@ -114,7 +141,7 @@ def test_the_release_is_not_confirmed_while_anything_holds_the_gpu(monkeypatch, 
         es.wait_released(rec, "released_for_tensorfold", timeout=0)
 
 
-def test_a_failed_switch_restores_ollama_and_says_so(monkeypatch, tmp_path):
+def test_a_failed_switch_restores_ollama_and_says_so(monkeypatch, tmp_path, recorded):
     """Entered at ``main``, as the overnight driver runs it. Bug caught: a switch that fails after Ollama was
     stopped and leaves the box with no engine, or restores without recording that it failed."""
     monkeypatch.setattr(es, "RECORDS", tmp_path)
@@ -134,10 +161,11 @@ def test_a_failed_switch_restores_ollama_and_says_so(monkeypatch, tmp_path):
     (record,) = tmp_path.glob("*.jsonl")
     steps = [json.loads(line)["step"] for line in record.read_text().splitlines()]
     assert calls == ["to_tensorfold", "to_ollama"]
-    assert steps == ["failed", "restored"]
+    assert steps == ["failed", "restored", "deploy_recorded"]
+    assert recorded.commands == ["to-ollama (restoration)"]
 
 
-def test_a_restoration_that_fails_is_reported_loudly(monkeypatch, tmp_path):
+def test_a_restoration_that_fails_is_reported_loudly(monkeypatch, tmp_path, recorded):
     monkeypatch.setattr(es, "RECORDS", tmp_path)
     monkeypatch.setattr(
         es.sys, "argv", ["engine_switch.py", "to-tensorfold", str(tmp_path / "r.yaml")]
@@ -155,6 +183,92 @@ def test_a_restoration_that_fails_is_reported_loudly(monkeypatch, tmp_path):
         "failed",
         "RESTORATION_FAILED",
     ]
+    assert recorded.commands == []  # no engine is known to serve: nothing true to record
+
+
+# --- the deploy record (#2284) ---------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("argv", "direction"),
+    [(["to-tensorfold", "r.yaml"], "to_tensorfold"), (["to-ollama"], "to_ollama")],
+    ids=["to-tensorfold", "to-ollama"],
+)
+@pytest.mark.parametrize(("ok", "code"), [(True, 0), (False, 4)], ids=["recorded", "unrecorded"])
+def test_a_completed_switch_records_the_deploy_it_leaves(
+    monkeypatch, tmp_path, recorded, argv, direction, ok, code
+):
+    """Entered at ``main``, as bootstrap and the operator run it. Bug caught: a switch that moves
+    the engine and every client and leaves the rebuild's record describing the engine it stopped
+    (dep_18acaffab259 said Ollama while TensorFold served); or a record that could not be written
+    read as a clean switch."""
+    monkeypatch.setattr(es, "RECORDS", tmp_path)
+    monkeypatch.setattr(es.sys, "argv", ["engine_switch.py", *argv])
+    monkeypatch.setattr(es, "box_work", lambda: [])
+    monkeypatch.setattr(es, direction, lambda *a: None)
+    recorded.ok = ok
+
+    assert es.main() == code
+    assert recorded.commands == [argv[0]]
+    (record,) = tmp_path.glob("*.jsonl")
+    assert [json.loads(line)["step"] for line in record.read_text().splitlines()] == [
+        "deploy_recorded" if ok else "deploy_record_failed",
+        "done",
+    ]
+
+
+def _labelled(label: str):
+    return lambda *cmd, check=True, timeout=120: subprocess.CompletedProcess(
+        cmd, 0, label + "\n", ""
+    )
+
+
+@pytest.mark.parametrize(
+    ("label", "revision"), [("e899a6c4", "e899a6c4"), ("<no value>", "")], ids=["label", "none"]
+)
+def test_the_record_carries_the_deploys_own_revision_and_names_the_switch(
+    monkeypatch, rec, label, revision
+):
+    """Bug caught: the record stamped with the checkout's hash, which a switch did not build; a
+    runtime image without the label recorded with the revision ``<no value>``; or the record not
+    saying a switch wrote it."""
+    asked = []
+
+    def recorder(cmd, **kw):
+        asked.append((cmd[1], kw["env"]["SOURCE_HASH"], kw["cwd"]))
+        return subprocess.CompletedProcess(cmd, 0, "deploy record dep_x: 25 services\n", "")
+
+    monkeypatch.setattr(es, "run", _labelled(label))
+    monkeypatch.setattr(es.subprocess, "run", recorder)
+
+    assert _RECORD_DEPLOY(rec, "to-tensorfold") is True
+    assert asked == [("engine_switch.py to-tensorfold", revision, es.MAIN)]
+    assert _steps(rec) == ["deploy_recorded"]
+
+
+def _refused(cmd, **kw):
+    return subprocess.CompletedProcess(cmd, 1, "", "record_deploy: refused: no services")
+
+
+def _absent(cmd, **kw):
+    raise FileNotFoundError("record_deploy.sh")
+
+
+@pytest.mark.parametrize(
+    ("recorder", "said"),
+    [(_refused, "refused: no services"), (_absent, "record_deploy.sh")],
+    ids=["refused", "absent"],
+)
+def test_a_record_that_fails_is_a_step_never_an_exception(monkeypatch, rec, recorder, said):
+    """Bug caught: the recorder's failure raised out of a switch that had completed, so the
+    caller restored Ollama over a working TensorFold; or it was swallowed with nothing written."""
+    monkeypatch.setattr(es, "run", _labelled("e899a6c4"))
+    monkeypatch.setattr(es.subprocess, "run", recorder)
+
+    assert _RECORD_DEPLOY(rec, "to-ollama") is False
+    (line,) = [json.loads(x) for x in rec.path.read_text().splitlines()]
+    assert line["step"] == "deploy_record_failed"
+    assert said in line["error"]
 
 
 # --- the clients (§5.6 step 7, the owner's ruling of 2026-10-13) ----------------------------------
@@ -199,12 +313,20 @@ class _Deploy:
 
 
 @pytest.fixture
-def deploy(monkeypatch):
+def deploy(monkeypatch, tmp_path):
+    """A deploy whose clients are all on ``engine`` and whose ``.env`` says so. The main checkout is
+    a scratch directory: the switch writes the deploy's ``.env``, and a test must never write the
+    real one."""
+
     def at(engine: str) -> _Deploy:
         d = _Deploy(engine)
+        files = _DEPLOY_FILES + (f":{es.TF_OVERLAY}" if engine == "tensorfold" else "")
+        env = tmp_path / ".env"
+        env.write_text(f"POSTGRES_PASSWORD=kept\nCOMPOSE_FILE={files}\nCOMPOSE_PROFILES=gpu\n")
+        env.chmod(0o600)
+        monkeypatch.setattr(es, "MAIN", tmp_path)
         monkeypatch.setattr(es, "compose", d.compose)
         monkeypatch.setattr(es, "client_engine", lambda service: d.engines.get(service))
-        monkeypatch.setattr(es, "deploy_compose_files", lambda: _DEPLOY_FILES)
         monkeypatch.setattr(es.subprocess, "run", d.exec_probe)
         return d
 
@@ -223,7 +345,7 @@ def test_the_clients_move_together_and_answer_through_the_deployed_adapter(deplo
     assert d.ups == [(f"{_DEPLOY_FILES}:{es.TF_OVERLAY}", _CLIENTS)]
     assert set(d.engines.values()) == {"tensorfold"}
     assert d.probes[0][-1] == "qwen3.8-27b-tf-nvfp4"
-    assert _steps(rec) == ["clients_switched", "clients_healthy"]
+    assert _steps(rec) == ["clients_switched", "deploy_engine", "clients_healthy"]
 
 
 @pytest.mark.parametrize(
@@ -249,7 +371,7 @@ def test_restoration_moves_the_clients_back_only_when_they_moved(
     """Bug caught: a restoration that leaves the squad calling a stopped TensorFold; or one that
     restarts every agent after a switch that never touched them."""
     d = deploy(clients_on)
-    for step in ("stop_tensorfold", "start_ollama"):
+    for step in ("stop_ollama", "stop_tensorfold", "start_ollama"):
         monkeypatch.setattr(es, step, lambda rec: None)
     monkeypatch.setattr(es, "wait_released", lambda rec, step: None)
 
@@ -314,3 +436,148 @@ def test_the_clients_move_only_after_the_engine_is_verified(monkeypatch, rec, tm
     es.to_tensorfold(rec, recipe, 60)
 
     assert order[-2:] == ["verify_tensorfold", ("clients", "tensorfold", RECIPE["served_id"])]
+
+
+@pytest.mark.parametrize(
+    ("start", "engine", "files"),
+    [
+        ("ollama", "tensorfold", f"{_DEPLOY_FILES}:{es.TF_OVERLAY}"),
+        ("tensorfold", "ollama", _DEPLOY_FILES),
+    ],
+    ids=["to TensorFold", "back to Ollama"],
+)
+def test_a_switch_records_the_engine_in_the_deploys_env(
+    deploy, rec, tmp_path, start, engine, files
+):
+    """Bugs caught: a rebuild after the cutover recreating every client on a stopped Ollama, because
+    the deploy's .env still named Ollama's files; or a rollback that left the overlay there, so the
+    next rebuild moved the clients to a stopped TensorFold. Also: the rewrite dropping the file's
+    other lines (its credentials) or widening its owner-only mode."""
+    deploy(start)
+
+    es.switch_clients(rec, engine, "a-model")
+
+    env = tmp_path / ".env"
+    assert env.read_text().splitlines() == [
+        "POSTGRES_PASSWORD=kept",
+        f"COMPOSE_FILE={files}",
+        "COMPOSE_PROFILES=gpu",
+    ]
+    assert env.stat().st_mode & 0o777 == 0o600
+    assert es.deploy_engine() == engine
+    assert _steps(rec)[-2:] == ["deploy_engine", "clients_healthy"]
+
+
+def test_a_switch_back_moves_the_clients_when_the_deploy_records_tensorfold(
+    deploy, rec, monkeypatch
+):
+    """Bug caught: a rollback that read only the containers, found them on Ollama (an interrupted
+    switch had recreated them) and left the .env on TensorFold, so the next rebuild undid it."""
+    d = deploy("tensorfold")
+    d.engines = dict.fromkeys(d.engines, "ollama")
+    for step in ("stop_ollama", "stop_tensorfold", "start_ollama"):
+        monkeypatch.setattr(es, step, lambda rec: None)
+    monkeypatch.setattr(es, "wait_released", lambda rec, step: None)
+
+    es.to_ollama(rec)
+
+    assert es.deploy_engine() == "ollama"
+    assert d.ups == [(_DEPLOY_FILES, _CLIENTS)]
+
+
+def test_a_switch_back_with_ollama_already_serving_releases_it_first(deploy, rec, monkeypatch):
+    """Bug caught: ``to-ollama`` asked for while Ollama was serving. Only TensorFold was stopped,
+    so the release check counted Ollama's own process and failed after 180 s (G3's rolls stage,
+    2026-10-13). Both engines are stopped before the check, as ``to_tensorfold`` does."""
+    deploy("ollama")
+    calls: list[str] = []
+    for step in ("stop_ollama", "stop_tensorfold", "start_ollama"):
+        monkeypatch.setattr(es, step, lambda rec, step=step: calls.append(step))
+    monkeypatch.setattr(es, "wait_released", lambda rec, step: calls.append("wait_released"))
+
+    es.to_ollama(rec)
+
+    assert calls == ["stop_ollama", "stop_tensorfold", "wait_released", "start_ollama"]
+
+
+# --- the watchdog's restoration and the host's lock (#2288) ---------------------------------------
+
+
+def _main(monkeypatch, tmp_path, *argv) -> tuple[int, list[str]]:
+    monkeypatch.setattr(es, "RECORDS", tmp_path)
+    monkeypatch.setattr(es.sys, "argv", ["engine_switch.py", *argv])
+    code = es.main()
+    (record,) = tmp_path.glob("*.jsonl")
+    return code, [json.loads(line)["step"] for line in record.read_text().splitlines()]
+
+
+_RESTORED = (["to_ollama"], ["restore"], ["restored", "deploy_recorded", "done"])
+
+
+@pytest.mark.parametrize(
+    ("tensorfold", "ollama", "engine", "expected"),
+    [
+        (False, True, "ollama", ([], [], ["nothing_to_restore", "done"])),
+        (False, False, "tensorfold", _RESTORED),  # the watchdog killed it: clients on nothing
+        (True, False, "tensorfold", _RESTORED),
+        (False, True, "tensorfold", _RESTORED),  # Ollama up, the clients still on TensorFold
+    ],
+    ids=["ollama serving", "killed", "tensorfold serving", "clients not moved back"],
+)
+def test_restore_moves_the_deploy_back_to_ollama_unless_it_already_is(
+    monkeypatch, tmp_path, recorded, tensorfold, ollama, engine, expected
+):
+    """Entered at ``main``, as the watchdog runs it. Bug caught: a TensorFold the watchdog killed
+    left with no engine and the clients on it, so every cycle fails until someone notices; or a
+    deploy already on Ollama recreated for nothing. It never refuses for work on the box: that
+    work's engine is gone."""
+    running = {es.TF_CONTAINER: tensorfold, "squadops-ollama": ollama}
+    monkeypatch.setattr(es, "container_running", lambda name: running[name])
+    monkeypatch.setattr(es, "deploy_engine", lambda: engine)
+    monkeypatch.setattr(es, "box_work", lambda: pytest.fail("a restoration asked about box work"))
+    moved = []
+    monkeypatch.setattr(es, "to_ollama", lambda rec: moved.append("to_ollama"))
+
+    code, steps = _main(monkeypatch, tmp_path, "restore")
+
+    assert (code, moved, recorded.commands, steps) == (0, *expected)
+
+
+def test_a_restoration_that_fails_says_so_and_is_not_retried(monkeypatch, tmp_path, recorded):
+    """Bug caught: a failed restoration reported as a plain failure, or followed by a second
+    restoration the way a failed switch to TensorFold is."""
+    monkeypatch.setattr(es, "container_running", lambda name: False)
+    monkeypatch.setattr(es, "deploy_engine", lambda: "tensorfold")
+    calls = []
+
+    def fail(rec):
+        calls.append("to_ollama")
+        raise es.SwitchFailed("Ollama did not answer")
+
+    monkeypatch.setattr(es, "to_ollama", fail)
+
+    code, steps = _main(monkeypatch, tmp_path, "restore")
+
+    assert (code, steps, calls, recorded.commands) == (
+        3,
+        ["failed", "RESTORATION_FAILED"],
+        ["to_ollama"],
+        [],
+    )
+
+
+@pytest.mark.parametrize("argv", [["restore"], ["to-ollama"], ["to-tensorfold", "r.yaml"]])
+def test_a_switch_waits_for_the_one_in_progress_and_touches_nothing_past_the_wait(
+    monkeypatch, tmp_path, argv
+):
+    """Bug caught: the watchdog's restoration running beside a switch's own, two processes
+    stopping and starting the same engines and recreating the same clients."""
+    monkeypatch.setattr(es, "LOCK_WAIT_SECONDS", 0)
+    for step in ("to_ollama", "to_tensorfold", "restore", "box_work"):
+        monkeypatch.setattr(es, step, lambda *a, step=step: pytest.fail(f"{step} ran unlocked"))
+    es.LOCK.parent.mkdir(parents=True, exist_ok=True)
+    with es.LOCK.open("a") as held:
+        es.fcntl.flock(held, es.fcntl.LOCK_EX)
+        code, steps = _main(monkeypatch, tmp_path, *argv)
+
+    assert (code, steps) == (5, ["busy"])

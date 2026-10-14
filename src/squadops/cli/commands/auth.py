@@ -38,7 +38,14 @@ _DEFAULT_CLIENT_ID = "squadops-cli"
 def login(
     ctx: typer.Context,
     username: str | None = typer.Option(None, "--username", "-u", help="Username"),
-    password: str | None = typer.Option(None, "--password", "-p", help="Password"),
+    password: str | None = typer.Option(
+        None,
+        "--password",
+        "-p",
+        envvar="SQUADOPS_PASSWORD",
+        help="Password. A script passes it as SQUADOPS_PASSWORD, never -p: an argument is shown "
+        "to every user by ps, and printed by any message that quotes the command (#2291)",
+    ),
     client_credentials: bool = typer.Option(
         False, "--client-credentials", help="Use client_credentials grant"
     ),

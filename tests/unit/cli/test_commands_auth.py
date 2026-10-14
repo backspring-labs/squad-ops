@@ -61,6 +61,38 @@ class TestLoginCommand:
         assert "Login successful" in result.output
         mock_login.assert_called_once()
 
+    @pytest.mark.parametrize(
+        ("argv", "used"),
+        [
+            (["login", "-u", "admin"], "from-env"),
+            (["login", "-u", "admin", "-p", "typed"], "typed"),
+        ],
+        ids=["the environment", "-p over the environment"],
+    )
+    @patch("squadops.cli.commands.auth.getpass.getpass")
+    @patch("squadops.cli.commands.auth.password_login")
+    def test_the_password_comes_from_the_environment_without_a_prompt(
+        self, mock_login, mock_prompt, monkeypatch, argv, used
+    ):
+        """#2291: a script passes the password as SQUADOPS_PASSWORD, so it is never an argument
+        `ps` shows or a failure quotes. Bug caught: the variable ignored, so a detached script
+        blocks on a prompt it can't answer; or it overriding a password typed on purpose."""
+        mock_login.return_value = CachedToken(
+            access_token="tok",
+            refresh_token="ref",
+            expires_at=time.time() + 300,
+            token_endpoint="http://kc/token",
+            client_id="squadops-cli",
+            grant_type="password",
+        )
+        monkeypatch.setenv("SQUADOPS_PASSWORD", "from-env")
+
+        result = runner.invoke(app, argv)
+
+        assert result.exit_code == 0
+        assert mock_login.call_args.args[3] == used
+        mock_prompt.assert_not_called()
+
     @patch("squadops.cli.commands.auth.client_credentials_login")
     def test_client_credentials_login_success(self, mock_login):
         mock_login.return_value = CachedToken(

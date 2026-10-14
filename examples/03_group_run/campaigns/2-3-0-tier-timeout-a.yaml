@@ -1,0 +1,31 @@
+# The plan-review tier's timeout half, read live: campaign A (#2279), uncounted, a diagnostic.
+# Pre-registration: docs/plans/verification-sets/2-3-0-tier-timeout-preregistration.md.
+# Its increments declare `increment_design_asks` (the `campaign-increment-asks` profile), so each launches on a
+# baseline that asks one injected question. Nobody answers its plan gates: each escalation expires at the bound, the
+# increment parks, row 15 proposes again, and the no-progress rule ends the campaign at the second park.
+# The objective is the 2.2 cut shakeout's, whose increments stayed inside its scope.
+project_id: group_run
+objective:
+  statement: "evolve group_run toward its PRD's expansion scope, one increment at a time"
+  allowed_scope: ["backend/**", "frontend/**"]
+  measurement: "one accepted increment"
+  target_accepted_increments: 1
+policy:
+  # 1 calibration + 2 parked increments, with 2 to spare: the no-progress rule ends it, never this cap.
+  max_cycles: 5
+  max_elapsed_s: 43200
+  budget_tokens: 4000000
+  max_repair_cycles_per_increment: 1
+  max_retry_cycles_per_increment: 1
+  max_proposal_run_retries: 1
+  max_proposal_revisions: 2
+  max_rejected_proposals_in_row: 2
+  max_unaccepted_increments: 2
+  ruling_bound_s: 600
+  lease_expiry_s: 3600
+  launch_blocked_interval_s: 300
+  launch_blocked_attempts: 6
+  calibration_profile: validated-fullstack
+  proposal_profile: campaign-increment-asks
+  squad_profile: full-38-tf
+  plan_gate: tier

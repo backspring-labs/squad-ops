@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from adapters.memory.dormant import DormantMemoryPort
 from adapters.memory.lancedb import LanceDBAdapter
 from squadops.ports.memory.store import MemoryPort
 
@@ -20,40 +21,37 @@ if TYPE_CHECKING:
 
 def create_memory_provider(
     provider: str,
-    secret_manager: SecretManager | None = None,
+    *,
     embeddings: EmbeddingsPort | None = None,
-    db_path: str = "./data/memory.lancedb",
+    db_path: str | None = None,
+    secret_manager: SecretManager | None = None,
     **config,
 ) -> MemoryPort:
     """Create a memory provider.
 
     Args:
-        provider: Provider name ("lancedb")
+        provider: ``"dormant"`` (what the agents hold, SIP-0110 §A.4.3, #2174) or ``"lancedb"``
+        embeddings: EmbeddingsPort for generating vectors. Required by ``lancedb``: no embedder is
+            built at an address nobody set (#2174).
+        db_path: Path to database (may be secret:// ref). Required by ``lancedb``.
         secret_manager: Optional secret manager for resolving secret:// refs
-        embeddings: EmbeddingsPort for generating vectors. If None, creates default Ollama adapter.
-        db_path: Path to database (may be secret:// ref for credentials)
         **config: Additional provider-specific configuration
 
     Returns:
         MemoryPort implementation
 
     Raises:
-        ValueError: If provider is unknown
+        ValueError: If provider is unknown, or ``lancedb`` is missing what it requires
     """
-    # Resolve secret:// refs via SecretManager (SIP §7.6)
-    if secret_manager and db_path.startswith("secret://"):
-        db_path = secret_manager.resolve(db_path[9:])
-
-    # Create default embeddings provider if not provided
-    if embeddings is None:
-        from adapters.embeddings.factory import create_embeddings_provider
-
-        embeddings = create_embeddings_provider(
-            provider="ollama",
-            secret_manager=secret_manager,
-        )
+    if provider == "dormant":
+        return DormantMemoryPort()
 
     if provider == "lancedb":
+        if embeddings is None or db_path is None:
+            raise ValueError("the lancedb memory provider requires its embeddings and its db_path")
+        # Resolve secret:// refs via SecretManager (SIP §7.6)
+        if secret_manager and db_path.startswith("secret://"):
+            db_path = secret_manager.resolve(db_path[9:])
         return LanceDBAdapter(
             db_path=db_path,
             embeddings=embeddings,

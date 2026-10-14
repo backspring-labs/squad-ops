@@ -18,7 +18,6 @@ fails, and so does a row nobody reads.
 | `SQUADOPS_AGENT_ROLE` | `src/squadops/agents/entrypoint.py` | the process's role, read before config to build its prompt layers |
 | `SQUADOPS_AGENT_SERVES_ROLES` | `src/squadops/agents/entrypoint.py` | the roles a generalist agent serves, beside its role |
 | `LOG_LEVEL` | `src/squadops/agents/entrypoint.py` | the agent's logging, configured at import, before config loads |
-| `MEMORY_DB_PATH` | `src/squadops/agents/entrypoint.py` | an operational default for the memory store's file (#333 names it intentional) |
 | `HEARTBEAT_INTERVAL` | `src/squadops/agents/readiness.py` | the heartbeat period, read by the readiness probe outside the agent's config |
 | `SQUADOPS_LOG_LEVEL` | `src/squadops/api/runtime/logging_setup.py` | the runtime API's logging, configured before config loads |
 | `SQUADOPS_AUDIT_LOG_PATH` | `src/squadops/api/runtime/logging_setup.py` | the audit log's file, opened with the logging |

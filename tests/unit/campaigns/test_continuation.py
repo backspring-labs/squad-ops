@@ -93,6 +93,7 @@ def counters(**overrides) -> CampaignCounters:
         repair_cycles=0,
         retry_cycles=0,
         rejected_proposals_in_row=0,
+        failed_proposals_in_row=0,
         unaccepted_increments=0,
         objective_met=False,
     )
@@ -166,10 +167,16 @@ _GO = Guard.PROCEED
             dict(ending=CycleEnding.PARKED, kind=CycleKind.CALIBRATION),
             (2, CampaignOutcome.FAILURE),
         ),
-        # A run of parks ends at the no-progress rule.
+        # A run of parks ends at the no-progress rule, the park that reaches the limit (2) counted
+        # at its own decision, as a rejection's abandonment is (#2294): one prior park and this one.
         (
             None,
-            dict(ending=CycleEnding.PARKED, unaccepted_increments=2),
+            dict(ending=CycleEnding.PARKED, unaccepted_increments=1),
+            (4, CampaignOutcome.FAILURE),
+        ),
+        (
+            None,
+            dict(ending=CycleEnding.PARKED, kind=CycleKind.RETRY, unaccepted_increments=1),
             (4, CampaignOutcome.FAILURE),
         ),
     ],
@@ -207,6 +214,18 @@ def test_each_row_is_reached_by_a_crafted_input(verdict, kwargs, expected):
             dict(ending=CycleEnding.REJECTED_AT_GATE, rejected_proposals_in_row=2),
             (6, PendingAction.PROPOSE, Guard.PAUSED, CampaignLimit.REJECTED_PROPOSALS_IN_ROW),
         ),
+        # §24bn (#2231): a failed proposal is retried by the next proposal cycle while the
+        # policy's retries (1 here) remain; the failure past them holds that launch.
+        (
+            None,
+            dict(ending=CycleEnding.PROPOSAL_FAILED, failed_proposals_in_row=1),
+            (6, PendingAction.PROPOSE, _GO, None),
+        ),
+        (
+            None,
+            dict(ending=CycleEnding.PROPOSAL_FAILED, failed_proposals_in_row=2),
+            (6, PendingAction.PROPOSE, Guard.PAUSED, CampaignLimit.FAILED_PROPOSALS_IN_ROW),
+        ),
         # The cycle that reaches the no-progress limit by its own abandonment stops the campaign,
         # rather than launching one more proposal first.
         (
@@ -222,6 +241,8 @@ def test_each_row_is_reached_by_a_crafted_input(verdict, kwargs, expected):
         "escalate-over-pause",
         "budget-pauses",
         "rejections-pause",
+        "a-failed-proposal-is-retried",
+        "failures-past-the-retries-pause",
         "abandonment-counts",
     ],
 )
@@ -291,3 +312,50 @@ def test_an_increment_is_accepted_only_when_its_own_acceptance_is(
     )
 
     assert decision.row == expected_row
+
+
+@pytest.mark.parametrize(
+    ("earlier_parks", "expected"),
+    [(0, (15, PendingAction.ABANDON_AND_PROPOSE)), (1, (4, CampaignOutcome.FAILURE))],
+    ids=["the first park proposes again", "the second park stops"],
+)
+def test_parks_in_a_row_stop_at_the_limit_through_the_counters_the_decision_reads(
+    earlier_parks, expected
+):
+    """#2294, through ``derive_counters`` as ``CycleCompletion.end`` derives them: the earlier
+    parks' row-15 decisions on the log, then this park's decision, under a limit of 2. Bug caught:
+    the park that reaches the limit proposing once more, so a campaign whose questions nobody
+    answers launches a third increment before it stops, the shape SIP-0109 fixed for row 13."""
+    from unittest.mock import MagicMock
+
+    from squadops.campaigns.models import ControlOperation
+    from squadops.campaigns.progress import CycleRecord, derive_counters
+
+    started = MagicMock()
+    started.operation, started.committed_at = ControlOperation.START, T0
+    log = [started]
+    for _ in range(earlier_parks):
+        park = MagicMock()
+        park.operation, park.outcome = ControlOperation.DECIDE, "applied"
+        park.binding = {
+            "row": 15,
+            "ending": CycleEnding.PARKED.value,
+            "action": PendingAction.ABANDON_AND_PROPOSE.value,
+            "guard": Guard.PROCEED.value,
+        }
+        log.append(park)
+    launched = [CycleRecord(CycleKind.CALIBRATION, 10)] + [
+        CycleRecord(CycleKind.INCREMENT, 10) for _ in range(earlier_parks + 1)
+    ]
+    assert CAMPAIGN.policy.max_unaccepted_increments == 2
+
+    decision = campaign_continuation_decision(
+        CAMPAIGN,
+        derive_counters(
+            CAMPAIGN, log, launched, ending=CycleEnding.PARKED, now=T0, objective_met=False
+        ),
+        EndedCycle(CYCLE, CycleKind.INCREMENT, CycleEnding.PARKED),
+        assessment(None),
+    )
+
+    assert (decision.row, decision.outcome or decision.action) == expected

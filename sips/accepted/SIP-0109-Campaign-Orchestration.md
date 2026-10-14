@@ -112,7 +112,9 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | the escalation queue: its store, the bound's expiry and the parked cycle (§24bk) | **shipped** | 2.2.0, PR #2147 |
 | the escalation queue's late answer, its digest lists and its CLI (§24bl) | **shipped** | 2.2.0, PR #2148 |
 | the late answer corrected (§24bm): one answer per decision, carried into a tier campaign's next manifest only for the same question, and an open or uncarried question escalates | **shipped** | 2.2.0, PR #2189, issue #2188 |
-| the tier's activation, after 2.2's measurement window closes, and its live reading in the cut's campaign shakeout (the 2.2 plan, steps 10–11) | **shipped** | 2.2.0, issue #1708: activated in the cut's shakeout `cmp_3c22edb866c2`, which decided all 3 of its plan gates `system:plan_review_tier` (the cut pre-registration's P3, §10, PR #2219). The tier diagnostic's calibration escalated on an open question, and the delegate's answer resolved it inside the bound. The timeout half (expiry, the parked cycle, the continuation) is read in unit tests only. Its live reading goes with the fixes to #2212, #2213 and #2214, which the owner placed in 2.2.1 |
+| the tier's activation, after 2.2's measurement window closes, and its live reading in the cut's campaign shakeout (the 2.2 plan, steps 10–11) | **shipped** | 2.2.0, issue #1708: activated in the cut's shakeout `cmp_3c22edb866c2`, which decided all 3 of its plan gates `system:plan_review_tier` (the cut pre-registration's P3, §10, PR #2219). The tier diagnostic's calibration escalated on an open question, and the delegate's answer resolved it inside the bound. The timeout half (expiry, the parked cycle, the continuation) is read in unit tests only; its live reading is the next row |
+| the timeout half, read live: the expiry, the parked increment, row 15, the no-progress stop and the late answer, on a diagnostic campaign whose increments ask a question (the `increment_design_asks` seed fault) | **shipped:** 2.3.0, PR #2307, issue #2279. Read live on `dep_c627c2873c3c`, 2026-10-14: every pre-registered reading held, after the reading found #2290, #2301 and #2303 (fixed by #2293, #2302 and #2304) | the 2.3 plan, phase 8, R3's deploy |
+| a park's abandonment counted at its own decision, so a run of parks stops at `max_unaccepted_increments` (§24bp) | **shipped** | 2.3.0, PR #2295, issue #2294 |
 | accepted increments' `prd_delta` text to the proposer | **deferred to 2.4** (ruled 2026-10-03, §24ap): "a 2.4 question" | §24ap |
 | escalating a launch the cycle-create preflight refuses | **shipped** (§24ba) | 2.1.0, PR #2052, issue #1971 |
 | re-hearing an ended cycle between restarts | **shipped**: the campaign sweep re-hears on its interval, and a cycle is heard by one hearer at a time | 2.1.0, PR #2038, issue #1972 (§24as) |
@@ -123,6 +125,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | the acquire race window; re-attach with the process up; a task re-asked after an agent restart | **dropped**: not built, by design (recorded) | §24ai, §24am, §24ao |
 | §24b–§24i, marked "implementer's reading, not yet ruled" | **shipped**, ratified as written (§24as) | v2.0.0 |
 | a return carries its classification, or `unclassified` with why (the 2.2 plan's D2) | **shipped** (§24bi) | 2.2.0, PR #2132 |
+| proposal-run retries bound failed proposal cycles in a row, and the failure past them pauses (§24bn) | **shipped** | 2.3.0, PR #2245, issue #2231 |
 
 **What closes this SIP:** Its 2.1.0 rows closing, #1710's remainder ruled, and #1708's remainder shipped in 2.2.0 or ruled out of scope. §24at, the consolidated status at the v2.0.0 cut, replaces the 2.0 plan's §5a as the permanent record. Promotion follows at the sweep after the last placed row closes.
 
@@ -458,7 +461,7 @@ One record per proposal version, appended as it happens (§14):
 | budget (tokens) | pause | the owner |
 | repair cycles on one increment | the increment is abandoned; it counts as unaccepted | — |
 | retry cycles on one increment | escalate | the owner |
-| proposal-run retries | the cycle ends `proposal_failed` | — |
+| proposal-run retries (failed proposal cycles in a row, §24bn) | pause | the owner |
 | revisions of one proposal | the proposal counts as rejected | — |
 | rejected proposals in a row | pause | the owner |
 | unaccepted increments (`max_unaccepted_increments`, the no-progress rule) | `stop_failure` | — |
@@ -3275,3 +3278,76 @@ Require compatible question/context, explicit coverage of each answered question
 carries the answer; otherwise continue escalating … Keep the automatic tier disabled through the window and correct
 this behavior before activating it." In the same review the owner's reviewer recommended accepting §24bk's bookkeeping
 correction, which stays the owner's ruling.
+
+### 24bn. Proposal-run retries bound failed proposals in a row, and the failure past them pauses (2026-10-11, §9.5, §10 row 6, #2231; ruled by the owner)
+
+**What §9.5 wrote, and what main did.** §9.5's row read "proposal-run retries | the cycle ends
+`proposal_failed`", which describes a retry of a failed proposal run *inside* its cycle. That retry
+was never built. The cycle ended `proposal_failed` on its first failed run, and
+`max_proposal_run_retries` was declared, required and validated, but read nowhere. Row 6 proposed
+again after every failure, so nothing but `max_cycles` bounded failures in a row. Rejected proposals in
+a row pause the campaign (`max_rejected_proposals_in_row`), but a failed proposal run is not a rejection.
+
+The 2.2.1 diagnostic (`cmp_bf5daecdf444`, uncounted) showed it live. Its rails refuse every proposal
+by design. Four proposal cycles failed in a row, each decided row 6 `propose` with guard `proceed`,
+and the campaign ended `exhausted` at `max_cycles: 5`. Its plan had predicted it would close "after one
+retry (`max_proposal_run_retries`)". The plan's §6 records that misreading, and #2231 was filed.
+
+**What changed.**
+- **The in-cycle retry is not built.** A proposal refused after its revision budget is almost always
+  refused again, and each attempt costs about 20 minutes of box time.
+- **`max_proposal_run_retries` keeps its name and gets a meaning.** It is the number of failed
+  proposal cycles the campaign retries in a row. Row 6 is the retry: the next proposal cycle.
+- **The failure past the retries pauses.** The pending launch is held, `paused_by:
+  failed_proposals_in_row`, and the campaign resumes only on the owner's recorded word, as
+  §9.5 says of every limit's pause. With `max_proposal_run_retries: 1`, the first failure is
+  retried and a second failure in a row pauses.
+- **The count** (`failed_proposals_in_row`) is read the way rejected proposals in a row are read.
+  It is the ending cycle, then the earlier decisions' rows, back to the first that ended otherwise.
+  A rejection, a built increment or a parked one breaks the run.
+- **The precedence is unchanged.** Rows 1–4 are still asked first, so a failure decided once
+  `max_cycles` or the no-progress rule is reached ends the campaign rather than pausing it. The two
+  in-a-row limits are asked after the elapsed-time and budget limits.
+
+**Evidence.**
+- `tests/unit/campaigns/test_progress.py::test_the_failure_past_the_proposal_retries_pauses_the_campaign`
+  enters at the completion hook (`CycleCompletion.end`) with two failed proposal runs. The first is
+  decided row 6 `proceed`; the second is decided row 6, `paused_by: failed_proposals_in_row`, and the
+  campaign is `paused`.
+- `test_failed_proposals_in_a_row_are_read_back_until_another_ending` covers the count: a run of
+  failures, and a rejection or a build breaking it.
+- `tests/unit/campaigns/test_continuation.py` adds two precedence cases: the retried failure, and
+  the failure past the retries.
+- With the pause removed, the wiring test and the second precedence case fail. With it asked one
+  failure early (`>=`), the wiring test and the first case fail.
+
+**Who ruled it.** The owner, 2026-10-11: "approve your #2231 recommendations". The recommendation was
+to build no in-cycle retry, to give `max_proposal_run_retries` this meaning, to pause past it as
+rejected proposals in a row do, and to amend §9.5 accordingly. It is recorded on #2231.
+
+### 24bp. A park's abandonment counts at its own decision, as a rejection's does (2026-10-13, §9.5, §10 rows 4, 13 and 15, §24bj, #2294; implementer's correction, for the owner)
+
+**What main did.** Row 4 stops a campaign when the unaccepted increments plus the abandonment this decision would make
+reach `max_unaccepted_increments`. That second term covered row 13 only, a rejected increment with no repair left. It was
+added so the decision whose own abandonment reaches the limit stops, rather than proposing once more. Row 15 (§24bj, §24bk)
+came later: a parked increment, repair or retry is abandoned and proposes again, "counting as unaccepted". Its own
+abandonment was counted only after its decision. So under a limit of 2, two rejected increments stopped the campaign at
+the second, while two parked increments didn't: the second park proposed a third increment, and the stop came after the
+third park. The continuation test pinned the late stop.
+
+**What changed.** A parked increment, repair or retry counts its abandonment at its own decision, as row 13's does.
+Two parks in a row stop a campaign whose limit is 2, as two rejections do. A parked calibration is unaffected, because row
+2 ends the campaign before row 4 is asked. §24bj's "a run of parks is bounded by `max_unaccepted_increments`" now holds as
+written.
+
+**Evidence.**
+- `tests/unit/campaigns/test_continuation.py::test_parks_in_a_row_stop_at_the_limit_through_the_counters_the_decision_reads`
+  derives the counters with `derive_counters` from a log holding the earlier parks' row-15 decisions, as
+  `CycleCompletion.end` derives them, then decides the next park. The first park proposes again; the second stops at row
+  4 (`stop_failure`, no progress).
+- The row table's no-progress case for a park is now one earlier park, for an increment and for a retry.
+- With the old count restored, three of these cases fail.
+- Found pre-registering #2279's live reading, whose no-progress stop depends on how many parks reach it.
+
+**Who ruled it.** Proposed by the implementer, as a correction that makes row 15 match §24bj's text and row 13's precedent.
+The owner rules it with the merge.

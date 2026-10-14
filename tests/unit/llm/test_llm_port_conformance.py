@@ -290,6 +290,7 @@ class TestCapabilityHonesty:
             LLMCapability.LOADED_MODELS,
             LLMCapability.SEED,
             LLMCapability.THINKING_BUDGET,
+            LLMCapability.REQUESTS_IN_FLIGHT,
         }
 
     async def test_supports_is_false_for_an_undeclared_capability(self, case):
@@ -318,6 +319,17 @@ class TestCapabilityHonesty:
             else:
                 with pytest.raises(NotImplementedError):
                     await adapter.list_loaded_models()
+
+    async def test_requests_in_flight_declaration_matches_behavior(self, case):
+        """SIP-0111 §5.5: the launch gate reads it. Declared ⇒ a count from the engine (the ok
+        handler's is zero). Undeclared ⇒ it raises, because a zero would read as an idle engine."""
+        adapter = case.build()
+        with wire(case.ok):
+            if adapter.supports(LLMCapability.REQUESTS_IN_FLIGHT):
+                assert await adapter.requests_in_flight() == 0
+            else:
+                with pytest.raises(NotImplementedError):
+                    await adapter.requests_in_flight()
 
     async def test_model_management_declaration_matches_behavior(self, case):
         adapter = case.build()

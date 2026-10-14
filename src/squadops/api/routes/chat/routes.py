@@ -21,6 +21,7 @@ from squadops.api.routes.chat.dtos import (
     MessagingAgentDTO,
 )
 from squadops.api.routes.chat.errors import handle_chat_error
+from squadops.comms.chat_history import BoundedHistory, bound_history, turn_metadata
 from squadops.comms.models import (
     AgentNotFoundError,
     AgentNotMessagingEnabledError,
@@ -129,13 +130,17 @@ async def send_chat_message(
 
     # Resolve or create session
     now = datetime.now(UTC)
+    history, history_unavailable = BoundedHistory(turns=(), dropped=0), False
     if body.session_id:
         session_id = body.session_id
-        # Verify session exists — catch specific error, let DB errors propagate as 500
+        # #2175: the session must be this user's, with this agent, before anything of it is
+        # replayed. Catch the specific error; DB errors propagate as 500.
         try:
-            await chat_repo.get_session(session_id)
+            await _owned_session(chat_repo, session_id, user_id, agent_id)
         except SessionNotFoundError as e:
             raise handle_chat_error(e) from e
+        # Its earlier turns, read before this turn's message is stored.
+        history, history_unavailable = await _history_for_turn(request, session_id)
     else:
         session_id = str(uuid.uuid4())
         session = ChatSession(
@@ -178,6 +183,7 @@ async def send_chat_message(
                 base_url,
                 body.message,
                 context_id=session_id,
+                metadata=turn_metadata(history, unavailable=history_unavailable),
             ):
                 collected_chunks.append(chunk)
                 # SSE format: data line + blank line
@@ -226,11 +232,11 @@ async def send_chat_message(
 
 @router.get("/sessions/{session_id}/messages")
 async def get_session_messages(session_id: str, request: Request):
-    """Get message history for a session, ordered chronologically."""
+    """Get message history for a session, ordered chronologically. Only its owner reads it."""
     chat_repo = _get_chat_repo(request)
 
     try:
-        await chat_repo.get_session(session_id)
+        await _owned_session(chat_repo, session_id, _get_user_id(request))
     except SessionNotFoundError as e:
         raise handle_chat_error(e) from e
 
@@ -283,8 +289,52 @@ async def list_messaging_agents(request: Request):
 
 
 # =============================================================================
-# History assembly (P3-RC3)
+# Session ownership and history assembly (P3-RC3, #2175)
 # =============================================================================
+
+
+async def _owned_session(
+    chat_repo, session_id: str, user_id: str, agent_id: str | None = None
+) -> ChatSession:
+    """The session, when ``user_id`` owns it and, given an agent, it is that agent's.
+
+    A session id is not authorization (#2175). Another user's session, or one bound to another
+    agent, is refused exactly as a session that does not exist, so the refusal does not say
+    which it was.
+    """
+    session = await chat_repo.get_session(session_id)
+    if session.user_id != user_id or (agent_id is not None and session.agent_id != agent_id):
+        logger.warning(
+            "chat_session_refused",
+            extra={"session_id": session_id, "user_id": user_id, "agent_id": agent_id},
+        )
+        raise SessionNotFoundError(f"Session not found: {session_id}")
+    return session
+
+
+async def _history_for_turn(request: Request, session_id: str) -> tuple[BoundedHistory, bool]:
+    """The session's earlier turns, bounded by ``comms.chat`` (#2175), and whether the read
+    failed. A failed read is logged at WARNING with its error, and the turn runs without the
+    history, its request saying so."""
+    chat = request.app.state.config.comms.chat
+    try:
+        loaded = await _load_history(request, session_id)
+    except Exception as e:  # noqa: BLE001 — the turn runs; the request says what it lacks
+        logger.warning("chat_history_unavailable: %s", e, extra={"session_id": session_id})
+        return BoundedHistory(turns=(), dropped=0), True
+    bounded = bound_history(
+        loaded, max_turns=chat.history_max_turns, max_tokens=chat.history_max_tokens
+    )
+    if bounded.dropped:
+        logger.info(
+            "chat_history_bounded",
+            extra={
+                "session_id": session_id,
+                "kept": len(bounded.turns),
+                "dropped": bounded.dropped,
+            },
+        )
+    return bounded, False
 
 
 async def _load_history(request: Request, session_id: str) -> list[dict]:

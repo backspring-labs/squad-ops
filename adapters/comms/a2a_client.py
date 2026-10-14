@@ -102,6 +102,7 @@ class A2AClientAdapter:
         *,
         context_id: str | None = None,
         task_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> AsyncIterator[str]:
         """Send a message and stream text chunks via SSE.
 
@@ -110,6 +111,7 @@ class A2AClientAdapter:
             message: User message text.
             context_id: Optional conversation context ID.
             task_id: Optional task ID for continuation.
+            metadata: The message's metadata: a chat turn's history (#2175).
 
         Yields:
             Text content chunks from the agent's streaming response.
@@ -120,6 +122,7 @@ class A2AClientAdapter:
             method="message/stream",
             context_id=context_id,
             task_id=task_id,
+            metadata=metadata,
         )
 
         async with client.stream(
@@ -153,6 +156,7 @@ class A2AClientAdapter:
         method: str = "message/send",
         context_id: str | None = None,
         task_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Build the JSON-RPC payload for sending a message."""
         params: dict[str, Any] = {
@@ -167,6 +171,8 @@ class A2AClientAdapter:
             params["message"]["contextId"] = context_id
         if task_id:
             params["message"]["taskId"] = task_id
+        if metadata:
+            params["message"]["metadata"] = metadata
 
         return {
             "jsonrpc": "2.0",

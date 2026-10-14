@@ -13,6 +13,7 @@ import dataclasses
 import importlib.util
 import json
 import re
+import subprocess
 import sys
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
@@ -105,6 +106,21 @@ def _the_driver_signs_in_with_a_test_password(monkeypatch):
     """#2079: the driver's login reads the deploy's own admin password and refuses without one.
     Tests run with no deploy, so they give it one; the tests of that lookup set or clear it."""
     monkeypatch.setenv("SQUADOPS_DRIVER_PASSWORD", "test-password")
+
+
+@pytest.fixture(autouse=True)
+def _no_test_logs_in_to_the_live_keycloak(request, monkeypatch):
+    """#2291: three tests reached ``login``, which runs this checkout's real CLI with the test
+    password. On a deploy box that is failed logins for the admin user, and Keycloak's
+    brute-force protection then refused the driver's own login a minute later. A test of the
+    login itself sets ``runs_the_login``, and replaces the process it starts."""
+    if getattr(request.cls, "runs_the_login", False) or "driver" not in request.fixturenames:
+        return
+    driver = request.getfixturevalue("driver")
+    monkeypatch.setattr(driver, "login", lambda *a, **k: None)
+    # Any other call through the CLI would reach the live API on a deploy box: here it reaches
+    # nothing, and the driver reads it as unanswered.
+    monkeypatch.setattr(driver, "SQUADOPS", "/nonexistent/squadops-in-a-unit-test")
 
 
 @pytest.fixture(autouse=True)
@@ -1533,6 +1549,27 @@ class TestADiagnosticIsReadByTheSeamItReached:
             "reached": None,
             "evidence": "no readout for this fault",
         }
+
+    @pytest.mark.parametrize(
+        ("framing_status", "reached"), [("cancelled", True), ("completed", False)]
+    )
+    def test_an_injected_question_is_read_as_the_park_it_caused(
+        self, driver, framing_status, reached
+    ):
+        """#2279: an increment whose plan gate the bound expired ends with its framing run
+        cancelled. Bug caught: a completed framing (the question answered in time, or never
+        asked) read as the seam reached."""
+        _, _, read = driver.SEAM_READOUTS["increment_design_asks"]
+        rec = {
+            "runs": [
+                {"workload": "proposal", "status": "completed"},
+                {"workload": "framing", "status": framing_status},
+            ]
+        }
+        assert read(rec) == (
+            reached,
+            [("proposal", "completed"), ("framing", framing_status)],
+        )
 
     def test_every_framework_fault_has_a_seam_readout(self, driver):
         """The list that would drift: a fault added to the framework without a readout here
@@ -3555,14 +3592,13 @@ class TestTheRecordRendersTheAssessment:
         session = {"fresh": False}
 
         def cli(cmd, check=True):
-            if " login " in cmd:
-                session["fresh"] = True
-                return "Login successful"
             if "cycles assess" in cmd:
                 return json.dumps(self._SERVED) if session["fresh"] else ""
             raise AssertionError(cmd)
 
         monkeypatch.setattr(driver, "sh", cli)
+        # The login runs its own process (#2291), so it is watched here, not through `sh`.
+        monkeypatch.setattr(driver, "login", lambda *a, **k: session.update(fresh=True))
         out = driver.cycle_assessment(types.SimpleNamespace(project="p"), "cyc_1")
         assert out["state"] == "observed"
         assert out["evidence_identity"] == "sha256:abc"
@@ -3952,6 +3988,10 @@ class TestTheRecordCarriesTheCyclesCodeLineage:
 
         monkeypatch.setattr(driver, "psql", fake_psql)
         monkeypatch.setattr(driver, "artifact_dirs", lambda cfg, c, r: [])
+        # #2291: the assessment is read through the CLI, which on a deploy box is the live API.
+        monkeypatch.setattr(
+            driver, "cycle_assessment", lambda cfg, c: {"state": "unaskable", "reason": "test"}
+        )
         p = tmp_path / "set.yaml"
         p.write_text(
             yaml.safe_dump(
@@ -7200,3 +7240,41 @@ class TestTheDriverSignsInWithTheDeploysOwnPassword:
 
         with pytest.raises(SystemExit, match="SQUADOPS_ADMIN_PASSWORD"):
             driver.admin_password(tmp_path)
+
+
+class TestTheLoginKeepsThePasswordOutOfTheCommand:
+    """#2291: the driver's failed login printed the admin password into a set's records."""
+
+    runs_the_login = True
+
+    @staticmethod
+    def _cli(driver, monkeypatch, code: int) -> list:
+        monkeypatch.setenv("SQUADOPS_DRIVER_PASSWORD", "s3cret-pw")
+        ran = []
+
+        def fake_run(argv, **kw):
+            ran.append((argv, kw["env"].get("SQUADOPS_PASSWORD")))
+            return subprocess.CompletedProcess(argv, code, "", "Error: invalid credentials")
+
+        monkeypatch.setattr(driver.subprocess, "run", fake_run)
+        return ran
+
+    def test_the_password_is_in_the_environment_never_an_argument(self, driver, monkeypatch):
+        """Bug caught: the password in the argument list, which `ps` shows every user."""
+        ran = self._cli(driver, monkeypatch, 0)
+
+        driver.login("/repo/.venv/bin/squadops")
+
+        assert ran == [(["/repo/.venv/bin/squadops", "login", "-u", "squadops-admin"], "s3cret-pw")]
+
+    def test_a_refused_login_names_the_command_without_the_password(self, driver, monkeypatch):
+        """Bug caught: the refusal's message quoting the password, which the driver writes into
+        the set's records and the operator's session."""
+        self._cli(driver, monkeypatch, 1)
+
+        with pytest.raises(SystemExit) as refused:
+            driver.login("/repo/.venv/bin/squadops")
+
+        assert "s3cret-pw" not in str(refused.value)
+        assert "login -u squadops-admin" in str(refused.value)
+        assert "invalid credentials" in str(refused.value)

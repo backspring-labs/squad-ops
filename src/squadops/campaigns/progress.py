@@ -36,6 +36,7 @@ from squadops.campaigns.continuation import (
     cycle_verdict,
 )
 from squadops.campaigns.escalation import (
+    PARK_REASON,
     EscalationState,
     RunAtGate,
     closing_transitions,
@@ -75,6 +76,8 @@ from squadops.campaigns.models import (
     PlanGate,
 )
 from squadops.campaigns.prior_cycle import prior_cycle_brief
+from squadops.capabilities.handlers.fault_injection import seed as fault_seed
+from squadops.contracts.cycle_request_profiles import load_profile
 from squadops.cycles.contract_derivation import (
     is_interface_manifest,
     load_seeded_manifest_content,
@@ -391,19 +394,14 @@ def derive_counters(
     decisions = [
         e.binding for e in applied if e.operation == ControlOperation.DECIDE and "row" in e.binding
     ]
-    rejected_in_row = 1 if ending is CycleEnding.REJECTED_AT_GATE else 0
-    if rejected_in_row:
-        for binding in reversed(decisions):
-            if binding.get("ending") != CycleEnding.REJECTED_AT_GATE:
-                break
-            rejected_in_row += 1
     return CampaignCounters(
         cycles=len(launched),
         elapsed_s=int((now - started).total_seconds()),
         tokens=sum(r.tokens for r in launched),
         repair_cycles=since_increment.count(CycleKind.REPAIR),
         retry_cycles=since_increment.count(CycleKind.RETRY),
-        rejected_proposals_in_row=rejected_in_row,
+        rejected_proposals_in_row=_in_row(CycleEnding.REJECTED_AT_GATE, ending, decisions),
+        failed_proposals_in_row=_in_row(CycleEnding.PROPOSAL_FAILED, ending, decisions),
         # An abandonment is counted wherever it was executed: by a decision under ``proceed``,
         # or by the owner's word (a held action resumed, an escalation ruled).
         unaccepted_increments=sum(
@@ -414,6 +412,19 @@ def derive_counters(
         ),
         objective_met=objective_met,
     )
+
+
+def _in_row(kind: CycleEnding, ending: CycleEnding, decisions: list[dict]) -> int:
+    """How many cycles in a row, the ending one last, ended ``kind``: the earlier ones read back
+    from the decisions' rows until one ended otherwise."""
+    if ending is not kind:
+        return 0
+    count = 1
+    for binding in reversed(decisions):
+        if binding.get("ending") != kind:
+            break
+        count += 1
+    return count
 
 
 def accepted_increments(log: list, intents: list) -> int:
@@ -731,7 +742,10 @@ class CampaignProgress:
             logger.info("campaign_escalation_park_skipped_decided", extra={"run_id": run_id})
             return
         try:
-            await self._cycles.cancel_run(run_id)
+            # §24bj: cancelled with its reason, so the run says why it ended without the log.
+            await self._cycles.update_run_status(
+                run_id, RunStatus.CANCELLED, failure_reason=PARK_REASON
+            )
         except IllegalStateTransitionError:
             logger.info("campaign_escalation_park_run_already_ended", extra={"run_id": run_id})
 
@@ -1210,6 +1224,14 @@ class CampaignProgress:
                 answered_at=answer.decided_at.isoformat(),
                 where=where,
             )
+        # #2279, #2290: a diagnostic's declared seed fault makes the baseline ask, here, before
+        # the carry below, so a late answer on record reaches the question as it reaches a real
+        # one. Every other campaign's baseline is unchanged.
+        try:
+            declared = load_profile(campaign.policy.proposal_profile).defaults
+        except FileNotFoundError as e:
+            return f"the policy's proposal profile cannot be loaded: {e}"
+        baseline = fault_seed(baseline, declared)
         # §24bm: in a tier campaign, a late answer on record for one of the baseline's open
         # questions (the same decision id and the same question) is carried into the manifest the
         # proposal frames from, as §24ad's answer is, so the plan the gate reads carries it.

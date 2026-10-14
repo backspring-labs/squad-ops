@@ -249,7 +249,7 @@ Each item is a framework fix, an output-quality change, an instrument or an eval
 | **#2202** | a manifest decision the build doesn't honour passes acceptance | **output quality** | M | phase 8, its own slot: a targeted pre-registration and before/after evidence on the chosen engine |
 | **#2205** | a manifest delta's undefined key dropped, so a footprint omits the file the criteria need | **output quality** | S–M | phase 8, its own slot, as #2202 |
 | **#2208** | the `criterion_already_satisfied` rubric @3 | **evaluator change** | S | phase 8. Its new version is pinned in every later measurement, and @2 is kept for the historical results scored with it |
-| the tier's timeout half, live | a diagnostic-only fault that makes an increment's plan ask a question, then one campaign | framework | S code, ~3 h box | phase 8, R3's deploy |
+| the tier's timeout half, live | a diagnostic-only fault that makes an increment's plan ask a question, then two campaigns (the owner approved #2296's pre-registration, 2026-10-14) | framework | S code, ~3 h box | phase 8, R3's deploy |
 | #1976, #1977 | API contract residue; comms hardening | framework | M, M–L | phase 8, R4 |
 | **#2062** | hoist the 606 deferred imports #1985 left | framework (refactor) | M | phase 8, **R5, before or alongside #1993** (the 2.2 plan's D6). **It stays in 2.3 when #1992 and #1994 are deferred** |
 | #1993 | a `stacks` package | framework (refactor) | M | phase 8, R5 |
@@ -283,13 +283,18 @@ held. **No adapter code is written for either candidate before that candidate's 
 | 4 | **The 27B:** tuning, the frozen recipe, the drift panel, the held-out run, the drift panel again, and drafted-against-serial. **Checkpoint A** (§4). **Done:** the held-out run took 13.7 h (2026-10-12 10:19 to 10-13 00:01 ET). G0 passed at 0.438 of Ollama's wall-clock; G1 passed by the owner's ruling at checkpoint A, with plan writing one answer under Ollama's (SIP-0111 §9e) | §4 |
 | 5 | **Flash-Next: moved to 2.4** by the owner on 2026-10-12 ("skip to next release"), before checkpoint A. It is recorded as not measured in 2.3. Its exploratory tuning results are on #2199: 0.37 of Ollama's wall-clock against the best 27B's 0.40, short of the 0.15 selection margin. Its gate path, when it runs, is unchanged: S's floors with its checkpoint, the screening replay, tuning, its frozen recipe, then its held-out arm (reusing Ollama's arm only under §5's rules) | — |
 | 6 | **Selection** (§2.1), then **G2** for the selected candidate: the adapter, the port's four amendments, registry entries, the overlay, the conformance suite across every adapter, and parity against the harness fixtures. Then a rebuild. **Checkpoint B** **Done 2026-10-13:** the 27B is the only candidate; G2 merged as #2268, #2269 and #2270, deployed (`dep_268949794186`), and its live tier passed: the switch to TensorFold and back in 27 s and 48 s, with the clients | rebuild |
-| 7 | **G3** on both stacks, then **G4,** the owner's decision. On adoption, cutover by S; from here every measurement is on TensorFold | ~8 h |
+| 7 | **G3** on both stacks, then **G4,** the owner's decision. On adoption, cutover by S; from here every measurement is on TensorFold. **Done 2026-10-13:** G3's record (#2282); the owner adopted TensorFold at G4, with the seed fix first (#2283, SIP-0111 §9j); the Spark serves on TensorFold from 20:01 ET, and the cutover pair passed (#2285, §9k) | ~8 h |
 | 8 | **Track B's merges on the chosen engine,** each rebuild with a regression pair (listed below) | ~2 h each |
 | 9 | **The cut:** a pre-registered regression set on both stacks on the chosen engine (the new baseline if TensorFold was adopted), a campaign shakeout, the release procedure | as 2.2's |
 
 Phase 8's rebuilds, in order:
 - **R3:** #2206, #2210, #2231 (once its questions are ruled), #2174–#2176, with a regression pair. Then the timeout-half diagnostic on R3's deploy: the fault
-  is a diagnostic-only code path merged in R3, and one campaign follows.
+  is a diagnostic-only code path merged in R3, and two campaigns follow: the late answer can only be read by a later
+  campaign (#2296, approved by the owner 2026-10-14). **The rebuild and its pair: done 2026-10-14.**
+  #2243, #2242, #2245, #2246, #2247 and #2257 merged (closing #2206, #2210, #2231, #2174, #2175, #2176) and deployed as
+  `dep_8f91bad18697` from `e30ec9cb`; both cycles of the pair were accepted on TensorFold with no new seam finding. The
+  diagnostic's pre-registration is #2296. **The diagnostic: done 2026-10-14.** Every reading held on `dep_c627c2873c3c`,
+  after three defects it found were fixed (#2293, #2302, #2304); the readings are on #2279.
 - **#2202, then #2205:** each with its own pre-registered before/after comparison on the chosen engine (a targeted set,
   or one campaign), before it is batched with anything else.
 - **#2208,** its rubric version pinned.

@@ -1011,8 +1011,16 @@ def login(squadops: str = SQUADOPS) -> None:
     the CLI to log in with: another script's resolves the main checkout's (the recovery
     diagnostics, #1803), where this one's is its own tree's."""
     user = os.environ.get("SQUADOPS_DRIVER_USER", "squadops-admin")
-    password = admin_password(REPO)
-    sh(f"{squadops} login -u {shlex.quote(user)} -p {shlex.quote(password)}")
+    # #2291: the password goes through the environment, never the argument list, which `ps`
+    # shows every user on the box and a failed command's message printed into the set's records.
+    proc = subprocess.run(
+        [squadops, "login", "-u", user],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "SQUADOPS_PASSWORD": admin_password(REPO)},
+    )
+    if proc.returncode != 0:
+        raise SystemExit(f"FAILED: {squadops} login -u {user}\n{proc.stdout}\n{proc.stderr}")
 
 
 def admin_password(repo: Path) -> str:
@@ -3721,6 +3729,21 @@ SEAM_READOUTS: dict[str, tuple[str, tuple[str, ...], Callable[[dict], tuple[bool
     # carries the refuted claim; a decision that inherited it is the seam reached and the
     # invariant false, which the evidence names by artifact (pre-#968 that is the expected
     # reading — the diagnostic proves the fault reaches the decision).
+    # #2279: the diagnostic is a campaign, whose control log holds the whole reading (the
+    # escalation opened on the injected question, then expired). What an increment's own cycle
+    # record shows is the park: its framing run, waiting at the plan gate, ended cancelled.
+    "increment_design_asks": (
+        "§24bk: the increment's plan gate stopped on the injected question and the bound parked "
+        "it (its framing run cancelled); the campaign's control log carries the escalation",
+        ("runs",),
+        lambda rec: (
+            any(
+                r.get("workload") == "framing" and r.get("status") == "cancelled"
+                for r in value_at(rec, "runs", []) or []
+            ),
+            [(r.get("workload"), r.get("status")) for r in value_at(rec, "runs", []) or []],
+        ),
+    ),
     "analyzer_false_source_claim": (
         "A1: the framework refuted the claim against the workspace, a decision was reached, "
         "and none of them inherited it — quoting a refuted path to reject it is not "

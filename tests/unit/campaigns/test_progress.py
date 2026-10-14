@@ -200,8 +200,7 @@ async def calibrating() -> _World:
             CID,
             policy=policy(
                 calibration_profile="framing",
-                proposal_profile="campaign-increment",
-                **policy_overrides,
+                **{"proposal_profile": "campaign-increment", **policy_overrides},
             ),
             **({"objective": objective} if objective is not None else {}),
         )
@@ -558,6 +557,71 @@ def test_the_counters_are_read_from_the_campaigns_own_records():
     assert (counters.repair_cycles, counters.retry_cycles) == (1, 0)
     assert counters.rejected_proposals_in_row == 2
     assert counters.unaccepted_increments == 1
+
+
+@pytest.mark.parametrize(
+    ("earlier", "ending", "failed", "rejected"),
+    [
+        (["proposal_failed", "proposal_failed"], CycleEnding.PROPOSAL_FAILED, 3, 0),
+        (["proposal_failed", "rejected_at_gate"], CycleEnding.PROPOSAL_FAILED, 1, 0),
+        (["proposal_failed"], CycleEnding.REJECTED_AT_GATE, 0, 1),
+        (["proposal_failed"], CycleEnding.ASSESSED, 0, 0),
+    ],
+    ids=["a-run-of-failures", "a-rejection-breaks-it", "a-rejection-ends-it", "a-build-ends-it"],
+)
+def test_failed_proposals_in_a_row_are_read_back_until_another_ending(
+    earlier, ending, failed, rejected
+):
+    """§24bn (#2231). Bugs caught: failures counted across a rejection or a built increment, so
+    a campaign pauses on failures that were never consecutive; or failures and rejections
+    counted as one run."""
+    started = MagicMock()
+    started.operation, started.committed_at = ControlOperation.START, NOW
+    rows = []
+    for e in earlier:
+        entry = MagicMock()
+        entry.operation, entry.outcome = ControlOperation.DECIDE, "applied"
+        entry.binding = {"row": 6, "ending": e, "action": "propose", "guard": "proceed"}
+        rows.append(entry)
+
+    counters = derive_counters(
+        campaign(CID),
+        [started, *rows],
+        [CycleRecord(CycleKind.CALIBRATION, 100), CycleRecord(CycleKind.INCREMENT, 10)],
+        ending=ending,
+        now=NOW,
+        objective_met=False,
+    )
+
+    assert (counters.failed_proposals_in_row, counters.rejected_proposals_in_row) == (
+        failed,
+        rejected,
+    )
+
+
+async def test_the_failure_past_the_proposal_retries_pauses_the_campaign(calibrating):
+    """§24bn (#2231), entered at the completion hook as each live proposal run ends. Bug caught:
+    the 2.2.1 diagnostic's shape. ``max_proposal_run_retries`` was read nowhere, so a proposer
+    that cannot produce a valid proposal launched proposal after proposal until ``max_cycles``.
+    The first failure is retried by a new proposal cycle; the second pauses for the owner."""
+    w, run = await calibrating(RunVerdict.ACCEPTED, max_proposal_run_retries=1)
+    await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
+    w.verdict = None
+
+    first = await w.launched_cycle("increment", "cyc_inc1", "proposal", "failed")
+    await w.end("cyc_inc1", first, CycleStopReason.RUN_FAILED)
+    retried = (await w.campaigns.control_log(CID))[-1]
+    second = await w.launched_cycle("increment", "cyc_inc2", "proposal", "failed")
+    await w.end("cyc_inc2", second, CycleStopReason.RUN_FAILED)
+
+    paused = (await w.campaigns.control_log(CID))[-1]
+    assert (retried.binding["row"], retried.binding["guard"]) == (6, "proceed")
+    assert (paused.binding["row"], paused.binding["ending"], paused.binding["paused_by"]) == (
+        6,
+        "proposal_failed",
+        "failed_proposals_in_row",
+    )
+    assert (await w.campaigns.get_campaign(CID)).state is CampaignState.PAUSED
 
 
 def test_the_increment_launch_reads_its_profile_from_the_policy():
@@ -1238,7 +1302,7 @@ async def _answered_calibration(
     *,
     decided_by: str,
     notes: str | None,
-    late_answer: tuple[str, str] | None = None,
+    late_answer: tuple[str, str] | tuple[str, str, str] | None = None,
     **policy_overrides,
 ):
     """The calibration accepted on ``_OPEN_MANIFEST`` and its gate decided, then its cycle ended.
@@ -1283,8 +1347,10 @@ async def _answered_calibration(
     return increment.cycle_request["body"]["execution_overrides"]["campaign_proposal"]
 
 
-async def _a_late_answer_on_record(campaigns, question: str, answer: str) -> str:
-    """An earlier campaign of the project whose escalation on ``run-list-ordering`` (asked as
+async def _a_late_answer_on_record(
+    campaigns, question: str, answer: str, decision_id: str = "run-list-ordering"
+) -> str:
+    """An earlier campaign of the project whose escalation on ``decision_id`` (asked as
     ``question``) expired, and which the owner answered late. Returns the escalation's id."""
     from squadops.campaigns.escalation import (
         EscalationIdentity,
@@ -1315,7 +1381,7 @@ async def _a_late_answer_on_record(campaigns, question: str, answer: str) -> str
         answered_on_record={},
     )
     await campaigns.transition(
-        prior, opening_transition(identity, verdict, (("run-list-ordering", question),), NOW)
+        prior, opening_transition(identity, verdict, ((decision_id, question),), NOW)
     )
     await campaigns.transition(
         prior,
@@ -1335,7 +1401,7 @@ async def _a_late_answer_on_record(campaigns, question: str, answer: str) -> str
         prior,
         answer_transition(
             expired,
-            {"run-list-ordering": answer},
+            {decision_id: answer},
             actor="human:owner",
             actor_role="owner",
             reason="late",
@@ -1755,3 +1821,49 @@ async def test_a_late_answer_reaches_a_tier_increment_only_for_the_same_question
         assert LATE_ANSWER_WARRANT in baseline
     else:
         assert baseline == _OPEN_MANIFEST
+
+
+@pytest.mark.parametrize(
+    ("profile", "answered", "expected"),
+    [
+        ("campaign-increment-asks", False, "asks"),
+        ("campaign-increment-asks", True, "carried"),
+        ("campaign-increment", True, "unchanged"),
+    ],
+    ids=["a diagnostic, no answer yet", "a diagnostic, answered late", "an ordinary campaign"],
+)
+async def test_a_diagnostic_increment_launches_on_a_baseline_that_asks_and_carries_a_late_answer(
+    calibrating, monkeypatch, profile, answered, expected
+):
+    """#2279, #2290: the timeout half's late answer, readable live. Entered at
+    ``CycleCompletion.end``, which launches the increment, on shakeout 4's calibration manifest
+    with its own question answered at its gate (§24ad). A tier campaign whose proposal profile
+    declares ``increment_design_asks`` launches on a baseline that asks the injected question, and
+    a late answer recorded against it is carried in (§24bm), so the plan the gate reads cites it.
+    Bugs caught: the fault applied after the carry, or overwriting the answer, so increment 2 asks
+    again and parks; an ordinary campaign's baseline changed."""
+    from squadops.campaigns.models import PlanGate
+    from squadops.capabilities.handlers.fault_injection import (
+        INJECTED_QUESTION,
+        INJECTED_QUESTION_ID,
+    )
+    from squadops.cycles.manifest_authoring import cited_late_answers, open_decisions
+
+    proposal = await _answered_calibration(
+        calibrating,
+        monkeypatch,
+        decided_by="agent:005159fd",
+        notes=_ANSWER,
+        late_answer=(INJECTED_QUESTION, "no; one page", INJECTED_QUESTION_ID) if answered else None,
+        plan_gate=PlanGate.TIER,
+        proposal_profile=profile,
+    )
+    baseline = proposal["baseline_manifest"]
+
+    seen = {
+        "asks": open_decisions(baseline) == ((INJECTED_QUESTION_ID, INJECTED_QUESTION),),
+        "carried": open_decisions(baseline) == ()
+        and [c for c, _esc in cited_late_answers(baseline).values()] == ["no; one page"],
+        "unchanged": INJECTED_QUESTION_ID not in baseline and open_decisions(baseline) == (),
+    }
+    assert [k for k, held in seen.items() if held] == [expected]

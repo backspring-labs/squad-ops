@@ -795,6 +795,8 @@ class WorkloadGate:
                 f"cycle {cycle.cycle_id}: its campaign_proposal block carries no baseline "
                 "manifest, so the approved delta has nothing to apply to"
             )
+        # The baseline as the launch carried it: a diagnostic's seed fault already asked there,
+        # before §24bm's carry, so the gate applies nothing and overwrites no answer (#2290).
         candidate = apply_manifest_delta(baseline, request.manifest_delta).encode("utf-8")
         await self._artifact_vault.store(
             ArtifactRef(

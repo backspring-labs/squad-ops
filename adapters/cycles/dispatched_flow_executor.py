@@ -1010,6 +1010,19 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         max_framing_revisions=max_framing_revisions,
                         reentry=reentered_at_gate,
                     )
+                except _CancellationError:
+                    # #2301: the run was cancelled while its gate waited. An expired escalation
+                    # parks it there (SIP-0109 §24bj). That is an ending, not a gate defect. The
+                    # run completed before the gate waited, so this copy of it reads ``completed``:
+                    # the ending is told the run as stored, or the campaign never hears the park.
+                    # mypy: the registry is wired for every cycle this runs; it read the cycle above.
+                    logger.info(
+                        "inter_workload_gate_run_cancelled",
+                        extra={"cycle_id": cycle_id, "run_id": run.run_id, "gate": gate_name},
+                    )
+                    run = await self._cycle_registry.get_run(run.run_id)  # type: ignore[union-attr]
+                    stopped_because = CycleStopReason.RUN_CANCELLED
+                    break
                 except Exception:
                     # #2213: every raise in the gate is a defect, and one here used to escape a
                     # task nothing awaits, leaving the campaign waiting with no row. The cycle
@@ -4328,7 +4341,16 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         reach a workspace view or the assembled deliverable, and the readers that
         enforce that (``_resolve_artifact_contents`` here, ``_pull_run_artifacts`` in
         the audit script) key on this one field.
+
+        ``task_id``, ``role`` and ``producing_task_type`` name the task whose output this is:
+        the slot the workspace, the delivered tree and the audits read. A repair's accepted
+        bytes are stored under the task they repaired, and the repairing step can be another
+        role's (a dev repair of a qa failure). Relabelling the slot would drop the file, since
+        those readers leave a repair type's candidates out. So the step that wrote the bytes
+        is named beside it, as ``written_by_*``, whenever it is not the envelope's task (#2206).
         """
+        from squadops.cycles.scaffold_enforcement import named_producer
+
         content = art_dict.get("content", "").encode("utf-8")
         metadata: dict[str, Any] = {
             "task_id": envelope.task_id,
@@ -4336,6 +4358,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         }
         if producing_task_type:
             metadata["producing_task_type"] = producing_task_type
+        writer = named_producer(art_dict)
+        if writer is not None and writer.task_id != envelope.task_id:
+            metadata["written_by_task_id"] = writer.task_id
+            metadata["written_by_task_type"] = writer.task_type
+            metadata["written_by_role"] = writer.role
         if emission_status:
             metadata["emission_status"] = emission_status
         if attempt is not None:
