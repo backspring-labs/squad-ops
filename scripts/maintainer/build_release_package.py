@@ -44,8 +44,15 @@ sys.path.insert(0, str(REPO_ROOT / "scripts" / "dev"))
 from closing_refs import closing_refs, quoted_refs  # noqa: E402
 
 
-def run(*args: str, check: bool = True) -> str:
-    result = subprocess.run(args, cwd=REPO_ROOT, capture_output=True, text=True)
+def run(*args: str, check: bool = True, env: dict[str, str] | None = None) -> str:
+    """``env`` is added to this process's environment: where a secret goes, never ``args``."""
+    result = subprocess.run(
+        args,
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        env={**os.environ, **env} if env else None,
+    )
     if check and result.returncode != 0:
         raise SystemExit(f"command failed: {' '.join(args)}\n{result.stderr.strip()}")
     return result.stdout.strip()
@@ -286,7 +293,8 @@ def _login() -> None:
     )
     if not password:
         return
-    run(str(cli), "login", "-u", user, "-p", password, check=False)
+    # #2291: through the environment, never the argument list `ps` shows and an error quotes.
+    run(str(cli), "login", "-u", user, check=False, env={"SQUADOPS_PASSWORD": password})
 
 
 #: What a captured cycle WAS to the release — the page must say it, or a fault-injected
