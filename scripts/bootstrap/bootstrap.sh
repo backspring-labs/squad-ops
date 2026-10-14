@@ -163,4 +163,4 @@ success "Bootstrap complete for profile: ${PROFILE}"
 echo ""
 info "Next step: authenticate with Keycloak"
 info "  source .venv/bin/activate && set -a && source .env && set +a"
-info '  squadops login -u squadops-admin -p "$SQUADOPS_ADMIN_PASSWORD"   # the deploy'"'"'s own, in .env (#2079)'
+info '  SQUADOPS_PASSWORD="$SQUADOPS_ADMIN_PASSWORD" squadops login -u squadops-admin   # the deploy'"'"'s own, in .env (#2079, #2291)'

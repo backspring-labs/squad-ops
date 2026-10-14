@@ -1011,8 +1011,16 @@ def login(squadops: str = SQUADOPS) -> None:
     the CLI to log in with: another script's resolves the main checkout's (the recovery
     diagnostics, #1803), where this one's is its own tree's."""
     user = os.environ.get("SQUADOPS_DRIVER_USER", "squadops-admin")
-    password = admin_password(REPO)
-    sh(f"{squadops} login -u {shlex.quote(user)} -p {shlex.quote(password)}")
+    # #2291: the password goes through the environment, never the argument list, which `ps`
+    # shows every user on the box and a failed command's message printed into the set's records.
+    proc = subprocess.run(
+        [squadops, "login", "-u", user],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "SQUADOPS_PASSWORD": admin_password(REPO)},
+    )
+    if proc.returncode != 0:
+        raise SystemExit(f"FAILED: {squadops} login -u {user}\n{proc.stdout}\n{proc.stderr}")
 
 
 def admin_password(repo: Path) -> str:
