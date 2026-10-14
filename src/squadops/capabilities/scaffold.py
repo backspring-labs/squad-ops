@@ -1161,7 +1161,9 @@ def error_seam_instructions(manifest: InterfaceManifest | None) -> list[str]:
     ] + _declared_message_instructions(manifest, seam)
 
 
-def _declared_message_instructions(manifest: InterfaceManifest, seam: ErrorSeam) -> list[str]:
+def _declared_message_instructions(
+    manifest: InterfaceManifest | None, seam: ErrorSeam
+) -> list[str]:
     """#2205 gap 3: a declared message is the contract's, so a repair never rewords it."""
     messages = declared_error_messages(manifest)
     if not messages:
