@@ -504,3 +504,27 @@ ruling (§5c.9, extension point declared as `INPUT_CONTRACT_EXTENSION_POINTS`), 
 **Evidence.** The read-only SIP-portfolio audit of 2026-10-04.
 
 **Who ruled it.** the owner's rulings of 2026-10-04 on the SIP-portfolio audit (`sips/PORTFOLIO.md` Q22): "I accept all your other recommendations to keep SIPs current".
+
+## Post-implementation amendment (2026-10-13): a list's order is declared on its endpoint (#2202)
+
+**What changed.** §5c.4 made `decisions[]` the place for every judgment the schema could not express, ordering among them. Ordering is now structure. A GET collection endpoint may declare `order: { field, direction }`:
+- **The verification contract derives a probe from it** (SIP-0098 §13), and the route stubs on both stacks state it.
+- **The authoring gate refuses an order the probe could not check:**
+  - one that isn't on a GET with no path parameters and a `list[Entity]` response;
+  - a field that isn't a required string or number field of that entity;
+  - a direction other than `asc` or `desc`;
+  - a path with no `POST` to create elements from.
+- **It is in the canonical projection only when declared,** so every manifest written before it keeps its hash and its bound contract.
+- **A decision may still carry the warrant.** The rules appendix and the proposal prompt now say that a decision is a reason, not a behaviour.
+
+**What it leaves alone.** §5c.4 still governs every judgment the schema cannot check. Pagination, authorization and idempotency stay prose. The first checkable judgment moved here is ordering, because its choice tests directly.
+
+**Not changed: the worked example.** `request.development_author_manifest.md`'s example still records `item-ordering: newest first` as a decision only. The owner pinned it on 2026-08-15 as a held-constant condition of the authored-mode yield measurement (`test_the_manifest_example_is_pinned_for_the_measurement_window`). The owner ruled on 2026-10-14 to keep the pin, with the rules appendix teaching the order.
+
+**Evidence.** Campaign 3's calibration cycle in the 2.2 window (`cyc_03b6f8ef0749`, campaign `cmp_d4181c169653`) declared `datetime-list-sorting` as a decision. Its delivered `GET /runs` returned insertion order, and the cycle was accepted. Two replays against its manifest with the order declared:
+- **The delivered `backend/routes.py`:** the five existing probes pass, and `vc-probe-runs-ordered` fails, reading back `['2026-08-01T08:00:00', '2026-08-03T08:00:00', '2026-08-01T09:00:00', '2026-08-02T08:00:00']`.
+- **The same file sorting by `datetime`:** all six pass.
+
+The window's replay (pre-registration §12, PR #2207) also showed the cost on the proposal side. A proposer read the decision as built and proposed other scope.
+
+**Who ruled it.** The owner placed #2202 in the adopted 2.3 plan (§2, output quality, phase 8). The design is the issue's first remedy, posted on #2202 on 2026-10-13. The owner rules it by approving this PR.

@@ -225,3 +225,19 @@ The fill contract leaves the PRD: file lists, frozen-file language, interface ex
 ## 12. Relationship to the arc (traceability)
 
 This SIP is the structural closure of the 2026-07 hardening arc: #464/#472 (vocabulary + teaching examples) become schema constraints; #462/#469 (environment/package context) become declared `env` requirements validated at authoring; #456/#458 (retest, ordering) remain the runtime enforcement the contract's evidence flows through; #473's recorded rejection is the failure mode for bind violations; #465 and the "hardwired manifest" / "no code structure in a PRD" design calls (2026-07-16) are its requirements statement.
+
+## 13. Post-implementation amendment (2026-10-13): probe seeds and `ordered_by` (#2202)
+
+**What changed.** §6.4's probe issues one request and judges its response. A probe may now carry `seed`: requests issued in order before `request`, which create the state the expectation is judged on.
+- **Each seed must answer 2xx,** or the probe fails and names the seed.
+- **One new expectation, `ordered_by: {field, direction}`:**
+  - the body must be a list whose elements all carry the field;
+  - the values compare as all strings (lexically) or all numbers (numerically);
+  - the order holds, with ties allowed.
+- **One judge.** `probe_runner.evaluate_expectations` judges `ordered_by` for the in-cycle runner and the boot audit (#1079's rule: one judge for one contract). Both issue the seeds over their own transport. The Next.js shell's frozen spine requires each seed and asserts the same order.
+
+**The first producer** is the manifest's declared list order (SIP-0103's amendment of 2026-10-13). There are three seeds, whose values are sent so that insertion order is neither ascending nor descending. So an application that returns insertion order fails either direction.
+
+**Unchanged:** `contract_version` stays 1. The field is omitted when empty, so every contract emitted before it round-trips byte for byte. The Next.js scaffold generator moved to version 9; a manifest that declares no order emits what version 8 emitted.
+
+**Evidence and who ruled it.** As in SIP-0103's amendment of the same date.

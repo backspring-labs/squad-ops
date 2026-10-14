@@ -57,7 +57,10 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 #: field renders its interface (``Participant[]``, not ``string[]``), the store exports a
 #: table only for root-persisted entities, and the harness addresses one of those. Only
 #: ``expanded_tree_hash`` changes; the spine and scaffold hashes are byte-identical to 7.
-GENERATOR_VERSION = 8
+#: 9 (#2202) — a GET collection that declares an ``order`` emits one more shell: its seeds as
+#: prerequisites, each required to succeed, and the declared order asserted in the spine. A
+#: manifest that declares no order emits exactly what version 8 emitted.
+GENERATOR_VERSION = 9
 
 #: The stored manifest artifact's filename (the executor persists it beside the contract).
 VERIFICATION_SCAFFOLD_MANIFEST_FILENAME = "verification_scaffold_manifest.yaml"

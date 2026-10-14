@@ -122,6 +122,9 @@ class _Behavior:
     #: qa rounds, all "expected undefined to be 'sample'"). Error behaviors carry
     #: ``None`` — a 4xx body is the envelope's business, not the entity's.
     expect_response: ResponseShape | None = None
+    #: #2202: ``(field, direction)`` the list body must be ordered by, from an ordered probe.
+    #: Frozen spine, like the two above: the declared order is the manifest's, not the fill's.
+    expect_order: tuple[str, str] | None = None
 
 
 def _fail_missing_surface(url_path: str, method: str, route_file: str, reason: str) -> None:
@@ -154,18 +157,21 @@ def _require_surfaces(behaviors: list[_Behavior], expanded: dict[str, str]) -> N
 
 
 def _classify_probes(probes: list[dict]) -> list[tuple[str, dict]]:
-    """Structurally classify each probe: create / reject / child / duplicate.
+    """Structurally classify each probe: create / reject / child / duplicate / ordered.
 
     Structural, not id-string, classification (the strings-boundary rule): a rejection twin
     is guarded by the scaffold; a child touches a parameterized path; a duplicate repeats an
-    earlier child's exact request with a different expectation.
+    earlier child's exact request with a different expectation; an ordered read carries the
+    seeds it is judged on (#2202).
     """
     classified: list[tuple[str, dict]] = []
     seen_child_requests: set[str] = set()
     for probe in probes:
         request = probe.get("request", {})
         key = json.dumps(request, sort_keys=True)
-        if probe.get("guards") == "scaffold":
+        if probe.get("seed"):
+            classified.append(("ordered", probe))
+        elif probe.get("guards") == "scaffold":
             classified.append(("reject", probe))
         elif "{" in request.get("path", ""):
             if key in seen_child_requests:
@@ -250,6 +256,27 @@ def _behaviors_from_probes(
                     final=_final(probe),
                     probe_id=probe["id"],
                     expect_response=_success_shape(shapes, request, expect),
+                )
+            )
+        elif kind == "ordered":
+            order = probe["expect"]["ordered_by"]
+            label = (
+                f"{request['method']} {request['path']} ordered by {order['field']} "
+                f"{order['direction']} -> {expect}"
+            )
+            behaviors.append(
+                _Behavior(
+                    behavior_id=probe["id"],
+                    label=label,
+                    expect_status=expect,
+                    final=_final(probe),
+                    probe_id=probe["id"],
+                    prerequisites=tuple(
+                        _Step(method=s["method"], url_path=s["path"], body=s.get("json"))
+                        for s in probe["seed"]
+                    ),
+                    expect_response=_success_shape(shapes, request, expect),
+                    expect_order=(str(order["field"]), str(order["direction"])),
                 )
             )
         elif kind == "reject":
@@ -396,7 +423,8 @@ def _shape_lines(shape: ResponseShape) -> list[str]:
 
     Subset checks only, matching the derivation's budget: declared-required fields are
     present, and a declared collection's elements match their declared kind. Never an
-    exact field set, never a value, never ordering — an app that adds a field is making
+    exact field set, never a value, never ordering (a declared order is its own assertion,
+    #2202) — an app that adds a field is making
     a legitimate choice and failing it would spend the budget punishing correctness.
 
     Emitted as one named predicate applied to the body (or to each element of a
@@ -487,7 +515,12 @@ def _shell_source(behavior: _Behavior, *, store_symbols: tuple[str, ...]) -> str
         f"  it('{behavior.label} [{behavior.behavior_id}]', async () => {{",
     ]
     for index, step in enumerate(behavior.prerequisites):
-        if index == 0:
+        if behavior.expect_order:
+            # #2202: an ordered read's seeds must each succeed, as the probe runner requires;
+            # a refused seed would leave a shorter list that is ordered by accident.
+            lines += _invocation_lines(step, assign=f"const seed{index}Res = ")
+            lines.append(f"    expect(seed{index}Res.ok).toBe(true)")
+        elif index == 0:
             lines += _invocation_lines(step, assign="const createRes = ")
             lines.append("    const created: any = await createRes.json().catch(() => ({}))")
         else:
@@ -508,6 +541,18 @@ def _shell_source(behavior: _Behavior, *, store_symbols: tuple[str, ...]) -> str
         # element kinds, and until now nothing read them, so both sides invented a
         # shape and the disagreement cost correction rounds or the roll.
         lines += _shape_lines(behavior.expect_response)
+    if behavior.expect_order:
+        # #2202: the declared order, judged as the probe runner judges it — strings
+        # lexically, numbers numerically, ties in order. The seeds above went in out of
+        # order, so a handler that returns insertion order fails here.
+        field_name, direction = behavior.expect_order
+        before, after = ("1", "-1") if direction == "desc" else ("-1", "1")
+        lines += [
+            f"    const ordered = (body as any[]).map((element) => element[{field_name!r}])",
+            "    expect(ordered).toEqual(",
+            f"      [...ordered].sort((a, b) => (a < b ? {before} : a > b ? {after} : 0)),",
+            "    )",
+        ]
     lines += [
         f"    {slot_begin_marker(slot_id)}",
         "    // FILL (qa): domain assertions for this behavior — response values and store",

@@ -635,6 +635,96 @@ def _probes(manifest: InterfaceManifest, pack: CriteriaPack) -> list[dict[str, A
             # Guessing which action conflicts is exactly the class of invention this fix
             # exists to avoid, so the duplicate case stays uncovered AND VISIBLE (#951)
             # rather than covered by assumption.
+    probes.extend(_ordered_probes(manifest))
+    return probes
+
+
+#: Three values per orderable kind, in the order the seeds send them: first > third > second.
+#: So the seeds alone fall and then rise, and insertion order is neither ascending nor
+#: descending whatever the create probe's own element adds ahead of them (a Next.js shell
+#: resets the store, so its list holds only the seeds). An application that returns insertion
+#: order fails either direction; one that sorts passes (#2202).
+_ORDER_SEEDS: dict[str, tuple[Any, Any, Any]] = {
+    "datetime": ("2026-08-03T08:00:00", "2026-08-01T09:00:00", "2026-08-02T08:00:00"),
+    "email": ("charlie@example.com", "alpha@example.com", "bravo@example.com"),
+    "url": ("https://example.com/c", "https://example.com/a", "https://example.com/b"),
+    "integer": (30, 10, 20),
+    "number": (30.0, 10.0, 20.0),
+    "string": ("sample charlie", "sample alpha", "sample bravo"),
+}
+
+
+def _order_seed_kind(field_name: str, field_type: str) -> str:
+    """Which of ``_ORDER_SEEDS`` a field takes: the hint ``_probe_sample_value`` reads first."""
+    sample = _probe_sample_value(field_name, field_type)
+    if isinstance(sample, bool):  # the lint refuses a boolean order; never reached
+        return "string"
+    if isinstance(sample, int):
+        return "integer"
+    if isinstance(sample, float):
+        return "number"
+    if sample == _probe_sample_value("datetime", "string"):
+        return "datetime"
+    if sample == _probe_sample_value("email", "string"):
+        return "email"
+    if sample == _probe_sample_value("url", "string"):
+        return "url"
+    return "string"
+
+
+def _body_accepts(manifest: InterfaceManifest, request: str | None, field_name: str) -> bool:
+    """Whether a create body for ``request`` may carry ``field_name``: a shape's required or
+    optional field, or an entity's non-generated one."""
+    for shape in manifest.api.request_shapes:
+        if shape.name == request:
+            return field_name in (*shape.required, *shape.optional)
+    for entity in manifest.entities:
+        if entity.name == request:
+            return any(f.name == field_name and not f.generated for f in entity.fields)
+    return False
+
+
+def _ordered_probes(manifest: InterfaceManifest) -> list[dict[str, Any]]:
+    """One probe per collection GET that declares an ``order`` (#2202).
+
+    Campaign 3's calibration manifest declared datetime sorting as prose, its delivered
+    ``GET /runs`` returned insertion order, and every gate passed. A declared order is now a
+    criterion: the probe seeds three creates, out of order, and judges the list it reads back.
+
+    The seeds set the order field when the create body takes it. When it does not (a generated
+    ``created_at``), each seed sends the create's own body, and the probe still requires the
+    order it reads: a newest-first list then fails an application that returns insertion
+    order, and an oldest-first one cannot tell the two apart, which is no false failure.
+    Plain ``sample`` strings are numbered per seed, so a create that refuses a duplicate is
+    not refused by the seeds. The lint (``InterfaceManifest.lint``) has already refused an
+    order this cannot check, so every declared order here derives its probe.
+    """
+    creates = {ep.path: ep for ep in manifest.api.endpoints if ep.method == "POST"}
+    probes: list[dict[str, Any]] = []
+    for ep in manifest.api.endpoints:
+        create = creates.get(ep.path)
+        if ep.order is None or ep.method != "GET" or create is None:
+            continue
+        base = create_request_body(manifest, create)
+        values = _ORDER_SEEDS[_order_seed_kind(ep.order.field, manifest.field_type(ep.order.field))]
+        settable = _body_accepts(manifest, create.request, ep.order.field)
+        seeds = []
+        for index, value in enumerate(values, start=1):
+            body = {k: (f"sample {index}" if v == "sample" else v) for k, v in base.items()}
+            if settable:
+                body[ep.order.field] = value
+            seeds.append({"method": "POST", "path": ep.path, "json": body})
+        expect = _success_expect(manifest, success_status_for(ep), ep.response)
+        expect["ordered_by"] = {"field": ep.order.field, "direction": ep.order.direction}
+        probes.append(
+            {
+                "id": f"vc-probe-{_slug(ep.path) or 'root'}-ordered",
+                "subject": "backend",
+                "seed": seeds,
+                "request": {"method": "GET", "path": ep.path},
+                "expect": expect,
+            }
+        )
     return probes
 
 

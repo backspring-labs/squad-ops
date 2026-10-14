@@ -1,6 +1,6 @@
 ---
 template_id: request.manifest_authoring_rules_appendix
-version: "4"
+version: "5"
 required_variables: []
 ---
 ## MANIFEST RULES (authoritative — a manifest that breaks one is rejected)
@@ -100,6 +100,21 @@ Declare one such field per shape. Two would make the set of behaviors a cross pr
 which combinations are legal is not something the shape can state — so a shape naming two is
 read as naming none.
 
+**a-list-order-is-declared-on-its-endpoint** — When the PRD says how a list is ordered,
+declare it on the list endpoint, not only in `decisions[]`:
+
+```yaml
+- { method: GET, path: /runs, response: "list[Run]",
+    order: { field: datetime, direction: asc } }   # asc | desc
+```
+
+The field must be a required string or number field of the listed entity, and the same path
+needs a `POST` that creates its elements. The verification layer creates elements out of order
+and checks the list it reads back. An order written only in `decisions[]` is checked by
+nothing: a build declared datetime sorting there, returned its runs in insertion order, and
+passed every gate. Keep the decision for the warrant; the endpoint states what the application
+does.
+
 **every-view-declares-anchors** — Every frontend route declares `testids`: the stable
 `data-testid` values the view exposes, root container first. These are the only handles the
 test suite is permitted to query, so a view with none is a view nothing can verify — and
@@ -129,7 +144,8 @@ did before a human saw it.
 
 **record-judgments-with-warrants** — Every judgment the schema cannot express mechanically
 goes in `decisions[]`: pagination, authorization boundaries, idempotency, caching,
-uniqueness, ordering. Each entry needs an `id`, and then either:
+uniqueness, and the reason for a list's order (the order itself is declared on its endpoint,
+above). Each entry needs an `id`, and then either:
 
 - a `choice` **and** a `warrant` citing the PRD section it follows from — a choice with no
   citation is indistinguishable from an invention; or

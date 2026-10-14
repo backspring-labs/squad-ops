@@ -268,7 +268,14 @@ def _routes_source(manifest: InterfaceManifest) -> str:
         lines.append(decorator)
         lines.append(f"def {fn}({sig}):")
         summary = ep.summary or fn
-        lines.append(f'    """{summary} — TODO: implement (scaffold stub)."""')
+        if ep.order is not None:
+            # #2202: the declared order, where the handler is written.
+            lines.append(f'    """{summary} — TODO: implement (scaffold stub).')
+            lines.append("")
+            lines.append(f"    {ep.order.instruction()}")
+            lines.append('    """')
+        else:
+            lines.append(f'    """{summary} — TODO: implement (scaffold stub)."""')
         lines.append('    raise HTTPException(status_code=501, detail="not implemented")')
         lines.append("")
     return "\n".join(lines)

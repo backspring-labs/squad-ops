@@ -1877,7 +1877,7 @@
      "filled": 2,
      "missing": 6
     },
-    "generator_version": 8,
+    "generator_version": 9,
     "observations": [
      {
       "criterion_id": "vc-probe-api-runs",
@@ -2907,7 +2907,7 @@
      "filled": 2,
      "missing": 6
     },
-    "generator_version": 8,
+    "generator_version": 9,
     "observations": [],
     "probe_redundant_findings": 0,
     "shell_count": 8,

@@ -49,7 +49,7 @@ import httpx
 
 from adapters.sandbox.container_backend import ContainerBackend
 from adapters.tools.docker import DockerAdapter
-from squadops.capabilities.handlers.probe_runner import evaluate_expectations
+from squadops.capabilities.handlers.probe_runner import evaluate_expectations, seed_failure
 from squadops.capabilities.ui_data_path import (
     LIVE_SERVER,
     SERVED,
@@ -204,6 +204,29 @@ def response_excerpt(text: str, payload: object) -> str:
     return body
 
 
+async def _issue_seeds(client: httpx.AsyncClient, probe) -> str | None:
+    """#2202: the state an expectation is judged on, issued first, as the in-cycle runner issues
+    it. Why the first seed that failed did, with the response it gave; ``None`` when all
+    succeeded."""
+    for index, seed in enumerate(probe.seed):
+        try:
+            seeded = await client.request(
+                str(seed.get("method", "POST")).upper(),
+                str(seed.get("path", "/")),
+                json=seed.get("json"),
+            )
+        except httpx.HTTPError as exc:
+            return f"seed[{index}] transport error {exc!r}"
+        failure = seed_failure(index, seed, seeded.status_code)
+        if failure is not None:
+            try:
+                payload = seeded.json()
+            except ValueError:
+                payload = None
+            return f"{failure} — response: {response_excerpt(seeded.text, payload)}"
+    return None
+
+
 async def _run_probes(contract: VerificationContract, base_url: str) -> list[str]:
     """Issue every contract probe over HTTP, in order, sharing the capture
     context (#651 — join/leave resolve the id the create captured); return
@@ -220,6 +243,10 @@ async def _run_probes(contract: VerificationContract, base_url: str) -> list[str
                     f"probe {probe.id}: unresolved path placeholder {{{missing}}} "
                     f"(its upstream probe failed or captured nothing)"
                 )
+                continue
+            seed_failed = await _issue_seeds(client, probe)
+            if seed_failed is not None:
+                failures.append(f"probe {probe.id}: {seed_failed}")
                 continue
             body = probe.request.get("json")
             try:

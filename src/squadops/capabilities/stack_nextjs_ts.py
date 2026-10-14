@@ -567,10 +567,13 @@ def _route_stub(path: str, endpoints: list[Any]) -> str:
     body = []
     for ep in endpoints:
         status = success_status_for(ep)
+        # #2202: a declared order is stated where the handler is written.
+        order = [f"    // {ep.order.instruction()}"] if ep.order is not None else []
         body += [
             f"export async function {ep.method.upper()}(request: Request) {{",
             "  try {",
             f"    // TODO: implement {ep.method} {ep.path} — respond {status}",
+            *order,
             f"    throw new ApiError('not_implemented', '{ep.method} {ep.path}')",
             "  } catch (err) {",
             "    return errorResponse(err)",

@@ -73,6 +73,9 @@ _MANIFEST_HASH = "ac1e7be378c54d5966680b85824c6f2c2e4d158eb8dec14d081209223e0705
 # manifest's `expanded_tree_hash` changed, and the two pins below are byte-identical to
 # version 7 — which is the evidence that the fix touched exactly the files it meant to and
 # nothing the qa author fills.
+# Version 9 (#2202) added a shell kind, the ordered read, emitted only for a collection GET that
+# declares an `order`. The reference manifest declares none, so every shell and both pins below
+# are byte-identical to version 8; the manifest's `generator_version` line is the one change.
 _AGGREGATE_SPINE_HASH = "1ff59445d016f6d7385d713c5f31de7620fe3f065344db6a083bae7b1a0ab962"
 _SCAFFOLD_HASH = "6fc46f50369bc9afd34e40607350b2464b74f79a6a8ef62772470037f5e98854"
 
@@ -93,12 +96,12 @@ def test_the_reference_manifest_is_unmoved():
 def test_generator_version_is_the_fixture_generation(emission):
     """A generator change without a version bump is drift by definition (SIP §4.3);
     a bump without regenerating the fixture is a pin measuring the wrong version."""
-    assert GENERATOR_VERSION == 8
-    assert emission.manifest.generator_version == 8
+    assert GENERATOR_VERSION == 9
+    assert emission.manifest.generator_version == 9
     stored = yaml.safe_load(
         (_FIXTURE_DIR / "verification_scaffold_manifest.yaml").read_text(encoding="utf-8")
     )
-    assert stored["generator_version"] == 8
+    assert stored["generator_version"] == 9
 
 
 def test_emission_reproduces_the_fixture_byte_for_byte(emission):
