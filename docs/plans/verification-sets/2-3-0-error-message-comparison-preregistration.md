@@ -1,6 +1,7 @@
 # 2.3: an error's message declared on its code, before and after #2275 — pre-registration
 
-**Status:** for the owner's approval. Nothing runs before it.
+**Status:** approved by the owner as written, 2026-10-14, with the three choices in §8. #2275 merges between the
+arms on this approval.
 **Issue:** #2205. **The fix:** PR #2275. **Plan:** the 2.3 plan, phase 8: "#2202, then #2205: each with its own
 pre-registered before/after comparison on the chosen engine … before it is batched with anything else". It follows
 #2202's comparison (`2-3-0-list-order-comparison-preregistration.md`).
@@ -42,7 +43,7 @@ a calibration and one increment, and the policy is campaign 4's.
 
 - **Before:** the deploy #2202's after arm runs on, which carries #2276 and not #2275. It starts once that arm has
   closed, so no rebuild comes between them.
-- **Between the arms:** #2275 merges, on the owner's approval, and nothing else does. The runtime API and every agent
+- **Between the arms:** #2275 merges, approved by the owner with this pre-registration, and nothing else does. The runtime API and every agent
   are rebuilt from that merge, because #2275 changes the runtime's rails and derivation, the scaffold the agents expand,
   and the probe judge they run. The deploy id, commit and image ids are recorded on #2205 before the after arm starts.
 - **After:** the same campaign definition, created fresh.
@@ -107,6 +108,8 @@ all, after #2202's comparison. The before arm needs no rebuild of its own. The l
 - **Wording that differs by endpoint for one code,** which the ruling's design doesn't express.
 
 ## 8. The owner's choices
+
+The owner approved all three on 2026-10-14.
 
 1. **One campaign per arm** on the window's error-message objective, rather than a targeted set of plain cycles: no
    plain cycle asks for exact error wording.
