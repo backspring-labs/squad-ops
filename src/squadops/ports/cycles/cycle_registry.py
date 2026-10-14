@@ -5,6 +5,7 @@ CycleRegistryPort — abstract interface for cycle and run persistence (SIP-0064
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
@@ -112,6 +113,17 @@ class CycleRegistryPort(ABC):
         offset: int = 0,
     ) -> list[Run]:
         """List runs for a cycle, with optional workload_type filter and pagination."""
+
+    @abstractmethod
+    async def list_runs_for_cycles(
+        self, cycle_ids: Sequence[str], *, limit_per_cycle: int = 50
+    ) -> dict[str, list[Run]]:
+        """Each cycle's runs in run order, at most ``limit_per_cycle`` of them, read together.
+
+        What :meth:`list_runs` gives one cycle at a time, for a page of cycles at once (#1976):
+        the cycle list read each page's runs one cycle at a time. A cycle with no runs maps
+        to an empty list, so every id asked for is a key.
+        """
 
     @abstractmethod
     async def update_run_status(

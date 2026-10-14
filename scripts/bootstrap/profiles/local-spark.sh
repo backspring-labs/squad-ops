@@ -24,6 +24,7 @@ run_bootstrap() {
         error "nvidia-container-toolkit not found — required for GPU containers"
         exit 1
     fi
+    ensure_gpu_cdi_spec
 
     # ── System deps (fail-fast per R7) ─────────────────────────────
     info "=== System Dependencies ==="
@@ -32,8 +33,6 @@ run_bootstrap() {
     apt_install_package "docker-compose-plugin" "docker"
     apt_install_package "git"
     apt_install_package "curl"
-    install_ollama
-    configure_ollama_host_binding
 
     # ── Memory containment (#1178) ─────────────────────────────────
     # Before the services start: a box with no containment is one oversized allocation
@@ -54,7 +53,12 @@ run_bootstrap() {
     enable_docker_on_boot
     DEPLOYMENT_PROFILE=local
     ensure_env_file
-
+    # Ollama in a container, and the `gpu` profile's services (the DCGM exporter, #2204), start
+    # with the rest: .env names the overlay and the profile (#2249).
+    configure_ollama_container
+    # SIP-0111: when the profile serves with TensorFold, its recipe is installed before anything
+    # starts (the image, the checkpoint and the drafter), and the switch runs at the end.
+    install_inference_engine "config/profiles/bootstrap/local-spark.yaml"
     local docker_rc=0
     start_docker_services || docker_rc=$?
     if [[ "$docker_rc" == "1" ]]; then
@@ -76,4 +80,9 @@ run_bootstrap() {
     info "=== Ollama Models ==="
 
     pull_models_from_profile "config/profiles/bootstrap/local-spark.yaml"
+
+    # ── The inference engine (SIP-0111) ─────────────────────────────
+    # Last, with every service up and the Ollama models pulled: Ollama is the rollback.
+    select_inference_engine "config/profiles/bootstrap/local-spark.yaml" \
+        || warn "The switch to TensorFold did not complete cleanly (it restores Ollama on failure) — see var/engine_switch/"
 }

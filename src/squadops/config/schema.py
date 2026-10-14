@@ -631,11 +631,14 @@ class LLMConfig(BaseModel):
     surface writes ``SQUADOPS__LLM__PROVIDER`` explicitly; nothing infers it.
     """
 
-    provider: Literal["ollama", "vllm", "atlas"] = Field(
+    provider: Literal["ollama", "vllm", "atlas", "tensorfold"] = Field(
         description="LLM provider selecting the adapter (required; the vocabulary is the schema's, R2)",
     )
     url: str = Field(
-        default="http://host.docker.internal:11434", description="LLM API URL (Ollama)"
+        description=(
+            "LLM API URL (required, never defaulted, #2249): a host Ollama through the Docker host "
+            "gateway, the Spark's container at http://ollama:11434"
+        ),
     )
     api_key: str | None = Field(
         default=None,

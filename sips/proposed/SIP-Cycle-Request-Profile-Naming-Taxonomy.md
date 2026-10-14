@@ -15,12 +15,128 @@ created_at: '2026-07-01T00:00:00Z'
 **Status:** Proposed
 **Authors:** SquadOps Architecture (Spark lane)
 **Created:** 2026-07-01
-**Revision:** 1
+**Revision:** 2 (2026-10-13; revision 1 was 2026-07-01)
 **Tracking:** #316 (holds the deferred #279 fold)
+
+## Revision 2 (2026-10-13): the facts re-read against main, and what they change
+
+Revision 1 framed the decision in July. The profile set has grown since, two of its questions are answered by code that
+now exists, and one finding changes the recommendation. **The rest of this document is revision 1, unchanged except
+§1's count.** This section is what a reviewer reads first.
+
+### R2.1 The inventory: 20 profiles, read from their YAML
+
+| profile | phases | depth | stack | plan authoring | correction | pulse | budget | required checks |
+|---|---|---|---|---|---|---|---|---|
+| `selftest` | plan (no sequence) | none | — | sole | analyze, decide, repair | — | — | — |
+| `default` | plan (no sequence) | default | — | sole | analyze, decide, repair | — | — | — |
+| `benchmark` | plan (no sequence) | default, plus a metrics artifact | — | sole | analyze, decide, repair | — | — | — |
+| `pulse-check` | plan (no sequence) | default | — | sole | analyze, decide, repair | yes | — | — |
+| `pulse-check-build` | plan + build (no sequence) | default | — | sole | analyze, decide, repair | yes | — | — |
+| `builder-assemble` | plan + build (no sequence) | default | `python_cli_builder` | sole | analyze, decide, repair | — | — | — |
+| `fullstack-fastapi-react` | plan + build (no sequence) | default | `fullstack_fastapi_react` | sole | analyze, decide, repair | — | — | — |
+| `build-only` | build, from a prior cycle's plan | default | — | sole | analyze, decide, repair | — | — | — |
+| `framing` | framing, implementation | default | — | sole | analyze, decide, repair | yes | — | — |
+| `build` | framing, implementation | output validation | — | sole | analyze, decide, repair | — | — | — |
+| `implementation` | implementation | output validation, 2 corrections | — | sole | analyze, decide, repair | yes | 2 h | — |
+| `validation` | framing, implementation | output and typed validation, 3 corrections | — | sole | analyze, decide, repair | — | 2 h | — |
+| `validation-multirole` | framing, implementation | as `validation` | — | **multi-role** | analyze, decide, repair | — | 2 h | — |
+| `validated-fullstack` | framing, implementation | as `validation` | `fullstack_fastapi_react` | sole | analyze, decide, repair | — | **3 h** | **tests_pass, frontend_build, required_files** |
+| `validated-fullstack-solo` | framing, implementation | as `validation` | `fullstack_fastapi_react` | sole | **repair only** | — | 3 h | as above |
+| `multi-phase` | framing, implementation, wrapup | default | — | sole | analyze, decide, repair | — | — | — |
+| `wrapup` | wrapup | default | — | sole | analyze, decide, repair | yes | — | — |
+| `campaign-reference` | framing, implementation | as `validation` | `fullstack_fastapi_react` | multi-role | analyze, decide, repair | — | 3 h | as `validated-fullstack` |
+| `campaign-proposal` | proposal | default | `fullstack_fastapi_react` | sole | analyze, decide, repair | — | — | — |
+| `campaign-increment` | proposal, framing, implementation | as `validation` | `fullstack_fastapi_react` | multi-role | analyze, decide, repair | — | 3 h | as `validated-fullstack` |
+
+**Use, by reference count** (configs and scripts outside the profiles themselves):
+- `validated-fullstack` names 120 files, every verification set since 1.7.
+- `validated-fullstack-solo` and `selftest` name a handful.
+- The three `campaign-*` profiles are named by the campaign code, not by operators (`campaigns/reference.py` `REFERENCE_PROPOSAL_PROFILE`, and the launch requests).
+- Most of the rest are named only by their own tests.
+
+**Two axes revision 1 did not have:**
+- **The correction path** (SIP-0108 §10i): `validated-fullstack-solo` is `validated-fullstack` with `correction_steps: [repair]`, its one difference, asserted by a test.
+- **The proposal workload** (SIP-0109): the campaign profiles.
+
+**One name that misleads, unverified beyond the YAML:** `framing` declares a framing *and* an implementation phase, with no build tasks. Its name says "planning only". The implementing PR reads what its implementation phase does before mapping it.
+
+### R2.2 Questions §9 asked, answered by code that now exists
+
+1. **Is the stack settable at create time, independent of the profile?** **Yes.**
+   - `squadops cycles create --set build_profile=<stack> --set development_profile=<stack>` sets it. `--set` writes any key into `execution_overrides`, which merge over the profile's defaults (`merge_config`), `pulse_checks`, `plan_authoring_contributors` and `correction_steps` included.
+   - **It is already how every Next.js verification set runs.** They name `validated-fullstack` and override its stack to `nextjs_ts` (for example `2-3-0-g3-regression-tensorfold-nextjs.yaml`). So the profile named for FastAPI and React carries the Next.js counted rolls, which is #316's problem in practice.
+   - Scheme A's "main implementation cost" (§8) is already paid. Named flags (`--stack`, `--pulse`, `--multirole`) would be sugar over `--set`.
+2. **CLI flags or overrides?** Overrides exist. Flags are optional, and if they are added, they write the same keys.
+3. **The deprecation window:** ruled for campaign definitions on 2026-10-04 (old names resolve indefinitely, Q13). This revision recommends the same for every pinned verification-set config, since the records cite them; see R2.4.
+4. **`build-only`:** it is already a profile that requires `plan_artifact_refs` in the overrides. It can stay an edge profile, or become `build` plus that override.
+5. **Mac-lane sign-off:** moot. Both lanes' work runs on the Spark from one queue.
+
+### R2.3 The finding that changes the recommendation: a stack carries defaults of its own
+
+`validated-fullstack` differs from `validation` in six keys, not one:
+- `build_profile` and `development_profile`: the stack;
+- `required_checks: [tests_pass, frontend_build, required_files]`;
+- `time_budget_seconds: 10800` (against 7200);
+- `manifest_max_attempts: 4`;
+- `notes`.
+
+So "the stack is a parameter" (P1) is not enough. `validate --set build_profile=fullstack_fastapi_react` would silently drop three requirements, among them `frontend_build`, which only means something on a stack that has a frontend. **Where each one lives decides whether P1 holds:**
+- **`required_checks`:** **the stack declares the checks it requires.** A backend-only stack has no frontend build to require. The codebase already keeps stack-shaped literals behind the stack seam (`test_stack_shaped_literals_live_behind_the_seam.py`).
+- **`time_budget_seconds` and `manifest_max_attempts`:** **the stack declares them too.** They are what a scaffolded full-stack build costs, not what "validate" means.
+- **The request profile names the depth** (`validate`). **The stack says what that depth requires of it.**
+
+The cycle-create resolver adds the stack's defaults to `applied_defaults`, so `validate` with the fullstack stack asks for what `validated-fullstack` asked for. **It does not reproduce its config hash, and need not.** `compute_config_hash` is the SHA-256 of the merged defaults and overrides (`cycles/lifecycle.py`), and those include text like `notes`. Pinned configs keep their hashes because the old profiles stay (R2.4), not because a new name imitates them.
+
+### R2.4 The recommendation, concretely
+
+**Scheme A, with R2.3's stack defaults.**
+
+- **The operator's set is seven names:**
+
+  | name | runs | replaces |
+  |---|---|---|
+  | `smoke` | minimal | `selftest`, `default` |
+  | `build` | framing then implementation, output validation | `build`, `builder-assemble`, `fullstack-fastapi-react`, `pulse-check-build` |
+  | `validate` | as `build`, with typed validation and three corrections | `validation`, `validation-multirole`, `validated-fullstack`, `validated-fullstack-solo` |
+  | `implement` | implementation alone | `implementation`, `build-only` |
+  | `ship` | framing, implementation and wrapup | `multi-phase` |
+  | `wrapup` | wrapup alone | `wrapup` |
+  | `benchmark` | `smoke`, plus the metrics artifact | `benchmark` |
+
+  `pulse-check` and `framing` are mapped once R2.1's `framing` question is read.
+- **Set at create time, never in a name:**
+  - the stack (`build_profile`, with the defaults it carries);
+  - pulse checks;
+  - multi-role authoring;
+  - the correction path;
+  - a prior cycle's plan.
+- **The campaign's three profiles stay the campaign's,** outside the operator's set. The campaign code names them, nobody chooses them, and SIP-0109's pinned definitions resolve them.
+- **Old names resolve forever, to exactly what they ran.** Every old profile's YAML is kept, frozen, under its old name, outside the operator's listing. A pinned config, whether a campaign definition or a verification set, resolves to the same defaults and the same config hash, by construction. That extends Q13's ruling from campaign definitions to every pinned verification-set config.
+  - **Aliasing an old name to a new name plus overrides is not offered.** An override can add or change a key but never remove one, and the hashed defaults include their `notes`. So an alias could not keep the hash it claimed.
+  - **The implementing PR's test:** each frozen profile is byte-identical to its last released YAML, and the operator's listing shows only the new names.
+
+### R2.5 Decisions requested (replaces §10)
+
+1. **Scheme A** (R2.4), or another of §6.
+2. **The stack declares its required checks, time budget and manifest attempts** (R2.3). Otherwise the stack stays in the profile name, and P1 is withdrawn.
+3. **Old profiles stay, frozen, under their old names,** so every pinned config resolves to what it ran. Q13 already rules this for campaign definitions.
+4. **The campaign profiles stay outside the operator's set.**
+
+### Delivery ledger (current as of 2026-10-13)
+
+| part | status | where |
+|---|---|---|
+| the design (this SIP accepted) | **placed:** 2.3.0, #316 | the owner's review of revision 2 |
+| the stack-declared defaults and the resolver (R2.3) | **placed:** 2.3.0, #316 | the plan's R8 |
+| the new names, with every old profile frozen under its old name | **placed:** 2.3.0, #316 | the plan's R8 |
+| CLI sugar flags (`--stack`, `--pulse`, `--multirole`) | **unplaced**, deliberately: `--set` covers them | — |
+
+**What closes this SIP:** acceptance, then the resolver and the new names shipped, with every old profile frozen and byte-identical.
 
 ## 1. Abstract
 
-The 15 cycle request-profiles in `src/squadops/contracts/cycle_request_profiles/profiles/` are individually functional but **incoherent as a set**: each is named after a *different* axis, so a profile name doesn't tell you what it varies or how to choose between near-duplicates. This SIP diagnoses the taxonomy problem, extracts the axes that actually vary, states naming principles, and presents **three candidate schemes** with a migration map for the existing profiles — for the team to react to before any rename lands. It does **not** finalize a scheme; it frames the decision.
+The 15 cycle request-profiles (20 at revision 2, R2.1) in `src/squadops/contracts/cycle_request_profiles/profiles/` are individually functional but **incoherent as a set**: each is named after a *different* axis, so a profile name doesn't tell you what it varies or how to choose between near-duplicates. This SIP diagnoses the taxonomy problem, extracts the axes that actually vary, states naming principles, and presents **three candidate schemes** with a migration map for the existing profiles — for the team to react to before any rename lands. It does **not** finalize a scheme; it frames the decision.
 
 ## 2. Problem Statement
 

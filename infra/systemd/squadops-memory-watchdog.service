@@ -1,0 +1,30 @@
+# TEMPLATE — not a valid unit as committed. __USER__ and __REPO_ROOT__ are substituted by
+# scripts/dev/ops/install_host_unit.sh, because the user and checkout path differ per machine and
+# a hardcoded one would be wrong everywhere but here.
+#
+# The unified-memory watchdog (SIP-0111 §5.6, #2288). It kills TensorFold when MemAvailable stays
+# under its floor or swap climbs, then restores Ollama, so a runaway load cannot freeze the host and
+# the squad is never left on a dead engine. It acts only while TensorFold runs, so it is always on,
+# whichever engine serves.
+#
+# A long-running service, not a timer: it is wanted at boot and restarted whenever it stops.
+# Installed deliberately per machine, as the backup timer is (the owner, 2026-10-13: "2, a"):
+#   sudo is needed once, and a machine that never serves TensorFold has no need of it.
+[Unit]
+Description=SquadOps memory watchdog: TensorFold killed under memory pressure, Ollama restored
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__REPO_ROOT__
+ExecStart=__REPO_ROOT__/.venv/bin/python __REPO_ROOT__/scripts/dev/ops/memory_watchdog.py
+Restart=always
+RestartSec=5
+# It must outlast the pressure it exists for: the kernel's OOM killer, and earlyoom, which picks by
+# oom_score, take it last.
+OOMScoreAdjust=-900
+
+[Install]
+WantedBy=multi-user.target

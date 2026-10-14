@@ -22,6 +22,16 @@ scrape_configs:
           - 'node-exporter:9100'
     scrape_interval: 15s
 
+  # #2204: the GPU (dcgm-exporter, docker-compose.yml). It runs only on a GPU host, under the
+  # compose profile `gpu`, so on any other host this target reads down: there is no GPU exporter
+  # there. A static target fails quietly (up=0); discovery by DNS logged an ERROR every 30 s
+  # wherever the exporter doesn't run (2026-10-11).
+  - job_name: 'gpu'
+    static_configs:
+      - targets:
+          - 'dcgm-exporter:9400'
+    scrape_interval: 15s
+
   # The agents' metrics, through the OpenTelemetry Collector's Prometheus exporter
   - job_name: 'otel-collector'
     static_configs:

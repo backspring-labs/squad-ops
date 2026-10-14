@@ -39,6 +39,20 @@ MAX_PLAUSIBLE_TPS = 1_000_000.0
 pytestmark = pytest.mark.parametrize("case", ADAPTER_CASES, ids=str)
 
 
+_GENERATION_METHODS = ("generate", "chat", "chat_stream", "chat_stream_with_usage")
+
+
+async def _generate(adapter, method: str, controls: dict) -> None:
+    """One call through ``method``, with ``controls`` as the request's or the call's own
+    arguments, a stream drained to its end."""
+    if method == "generate":
+        await adapter.generate(LLMRequest(prompt="hi", **controls))
+    elif method == "chat_stream":
+        [_ async for _ in adapter.chat_stream(_messages(), **controls)]
+    else:
+        await getattr(adapter, method)(_messages(), **controls)
+
+
 def _messages() -> list[ChatMessage]:
     return [
         ChatMessage(role="system", content="be terse"),
@@ -141,7 +155,13 @@ class TestUsageAccounting:
         """A provider that omits usage must yield None, not 0. Zero is a lie the
         cost dashboards cannot distinguish from a free call, and it silently
         drags any average toward zero."""
-        with wire(status(200, {"message": {"role": "assistant", "content": "hi"}})):
+        no_usage = case.no_usage or status(200, {"message": {"role": "assistant", "content": "hi"}})
+        if case.usage_required:
+            # SIP-0111 §5.4: a stream that ends without its usage is an error, never a success.
+            with wire(no_usage), pytest.raises(LLMConnectionError, match="no usage"):
+                await case.build().chat(_messages())
+            return
+        with wire(no_usage):
             message = await case.build().chat(_messages())
 
         assert message.prompt_tokens is None
@@ -268,6 +288,9 @@ class TestCapabilityHonesty:
             LLMCapability.THINKING_TOKENS,
             LLMCapability.REASONING_CONTROL,
             LLMCapability.LOADED_MODELS,
+            LLMCapability.SEED,
+            LLMCapability.THINKING_BUDGET,
+            LLMCapability.REQUESTS_IN_FLIGHT,
         }
 
     async def test_supports_is_false_for_an_undeclared_capability(self, case):
@@ -297,6 +320,17 @@ class TestCapabilityHonesty:
                 with pytest.raises(NotImplementedError):
                     await adapter.list_loaded_models()
 
+    async def test_requests_in_flight_declaration_matches_behavior(self, case):
+        """SIP-0111 §5.5: the launch gate reads it. Declared ⇒ a count from the engine (the ok
+        handler's is zero). Undeclared ⇒ it raises, because a zero would read as an idle engine."""
+        adapter = case.build()
+        with wire(case.ok):
+            if adapter.supports(LLMCapability.REQUESTS_IN_FLIGHT):
+                assert await adapter.requests_in_flight() == 0
+            else:
+                with pytest.raises(NotImplementedError):
+                    await adapter.requests_in_flight()
+
     async def test_model_management_declaration_matches_behavior(self, case):
         adapter = case.build()
         with wire(case.ok):
@@ -319,7 +353,8 @@ class TestCapabilityHonesty:
         bodies: list[bytes] = []
 
         def capture(request: httpx.Request) -> httpx.Response:
-            bodies.append(request.content)
+            if request.url.path not in case.probes:
+                bodies.append(request.content)
             return case.ok(request)
 
         with wire(capture):
@@ -336,6 +371,40 @@ class TestCapabilityHonesty:
             assert bare not in (none, high)
         else:
             assert bare == none == high
+
+    @pytest.mark.parametrize("method", _GENERATION_METHODS)
+    @pytest.mark.parametrize(
+        ("control", "capability"),
+        [("seed", LLMCapability.SEED), ("thinking_budget", LLMCapability.THINKING_BUDGET)],
+    )
+    async def test_a_generation_control_is_sent_where_declared_and_refused_elsewhere(
+        self, case, method, control, capability
+    ):
+        """SIP-0111 §5.1 (the owner's Q6: tested across all adapters). Declared ⇒ two values
+        send two different requests, and no value sends the request as it was. Undeclared ⇒
+        ``ValueError`` naming the control, with nothing sent: unlike a reasoning level, a seed
+        or a budget changes the generation, and dropping one makes a replay claim draws it never
+        made. Bugs this catches: a control dropped silently, sent by an adapter that refuses
+        it, or refused only on some of the four generation methods."""
+        adapter = case.build()
+        bodies: list[bytes] = []
+
+        def capture(request: httpx.Request) -> httpx.Response:
+            if request.url.path not in case.probes:
+                bodies.append(request.content)
+            return case.ok(request)
+
+        with wire(capture):
+            await _generate(adapter, method, {})
+            if adapter.supports(capability):
+                await _generate(adapter, method, {control: 1001})
+                await _generate(adapter, method, {control: 1002})
+                bare, first, second = bodies
+                assert len({bare, first, second}) == 3
+            else:
+                with pytest.raises(ValueError, match=control):
+                    await _generate(adapter, method, {control: 1001})
+                assert len(bodies) == 1
 
     async def test_reasoning_text_reaches_the_port(self, case):
         """A provider that separates its reasoning channel must surface it as
@@ -505,7 +574,7 @@ class TestSamplingPairReachesTheWire:
             await case.build().chat_stream_with_usage(_messages())
 
         body = seen.get("options", seen)
-        assert "top_p" not in body, f"{case.name} invented a top_p"
+        assert body.get("top_p") == case.recipe_top_p, f"{case.name} invented a top_p"
 
     async def test_top_p_and_reasoning_do_not_bind_to_each_other(self, case):
         """The regression this guards, found while writing the fix: every payload

@@ -1,4 +1,4 @@
-"""Host systemd timers: what they may remove, and that they render (#1465).
+"""Host systemd units: what they may remove, that they render, and that they run (#1465, #2288).
 
 These guard two things a code review cannot reliably catch by eye, on files that run
 UNATTENDED AS ROOT'S NEIGHBOUR on a box holding the only copy of the evidence base.
@@ -13,7 +13,9 @@ Bug classes guarded:
   reasonable "reclaim more" edit in a diff;
 - **a unit template that cannot render.** The installer substitutes exactly `__USER__` and
   `__REPO_ROOT__` and refuses anything with a `__` left; a template introducing a third
-  placeholder installs nothing and is only discovered by a human running it with sudo.
+  placeholder installs nothing and is only discovered by a human running it with sudo;
+- **a unit that never runs.** A scheduled unit needs its timer, and a long-running one (the memory
+  watchdog) must be wanted at boot and restarted when it stops, or it reads as protection it is not.
 """
 
 from __future__ import annotations
@@ -28,7 +30,7 @@ pytestmark = [pytest.mark.unit]
 _REPO = Path(__file__).resolve().parents[3]
 _SYSTEMD = _REPO / "infra" / "systemd"
 _PRUNE = _REPO / "scripts" / "dev" / "ops" / "prune_docker.sh"
-_INSTALLER = _REPO / "scripts" / "dev" / "ops" / "install_timer.sh"
+_INSTALLER = _REPO / "scripts" / "dev" / "ops" / "install_host_unit.sh"
 
 #: What the installer's sed actually replaces. A template may use these and nothing else.
 SUBSTITUTED = ("__USER__", "__REPO_ROOT__")
@@ -36,6 +38,10 @@ SUBSTITUTED = ("__USER__", "__REPO_ROOT__")
 
 def _units() -> list[Path]:
     return sorted(_SYSTEMD.glob("*.service"))
+
+
+def _timers() -> list[Path]:
+    return sorted(_SYSTEMD.glob("*.timer"))
 
 
 def _executable_lines(path: Path) -> str:
@@ -98,30 +104,53 @@ def test_every_unit_template_uses_only_placeholders_the_installer_substitutes(un
     )
 
 
-@pytest.mark.parametrize("unit", _units(), ids=lambda p: p.name)
-def test_every_service_template_has_a_paired_timer(unit):
-    """A .service with no .timer never fires and reads as scheduled to anyone listing the
-    directory — the failure mode is silence, which is the one nobody notices."""
-    assert unit.with_suffix(".timer").exists(), f"{unit.name} has no paired .timer"
+def _long_running() -> list[Path]:
+    return [u for u in _units() if not u.with_suffix(".timer").exists()]
 
 
-@pytest.mark.parametrize("unit", _units(), ids=lambda p: p.name)
-def test_every_timer_survives_a_missed_window(unit):
+def test_the_watchdog_is_a_long_running_unit():
+    """The list below is the units with no timer; an empty one would pass vacuously."""
+    assert [u.name for u in _long_running()] == ["squadops-memory-watchdog.service"]
+
+
+@pytest.mark.parametrize("unit", _long_running(), ids=lambda p: p.name)
+def test_a_service_without_a_timer_runs_always(unit):
+    """A .service with no .timer never fires, unless it is wanted at boot and restarted
+    whenever it stops. The failure mode is silence, which is the one nobody notices: a watchdog
+    that died at the last reboot reads as installed."""
+    body = unit.read_text(encoding="utf-8")
+
+    assert re.search(r"^WantedBy=multi-user\.target$", body, re.MULTILINE), (
+        f"{unit.name} has no .timer and is not wanted at boot"
+    )
+    assert re.search(r"^Restart=always$", body, re.MULTILINE), (
+        f"{unit.name} has no .timer and is not restarted when it stops"
+    )
+
+
+def test_every_timer_has_its_service():
+    """A timer activates the service of its name; one without it fires into nothing."""
+    orphans = [t.name for t in _timers() if not t.with_suffix(".service").exists()]
+    assert not orphans, f"timers with no .service: {orphans}"
+
+
+@pytest.mark.parametrize("timer", _timers(), ids=lambda p: p.name)
+def test_every_timer_survives_a_missed_window(timer):
     """The Spark has hard-halted five times. Without Persistent=true a timer whose window
     passed while the box was down simply skips that run, silently."""
-    timer = unit.with_suffix(".timer").read_text(encoding="utf-8")
-
-    assert "Persistent=true" in timer, f"{unit.stem}.timer would skip a missed window"
+    assert "Persistent=true" in timer.read_text(encoding="utf-8"), (
+        f"{timer.name} would skip a missed window"
+    )
 
 
 def test_the_scheduled_timers_do_not_fire_at_the_same_minute():
     """Two unattended jobs at one OnCalendar compete for the box, and the pairing that
     matters is the reclaim slowing the backup — the one job whose failure costs evidence."""
     times = {}
-    for unit in _units():
-        body = unit.with_suffix(".timer").read_text(encoding="utf-8")
+    for timer in _timers():
+        body = timer.read_text(encoding="utf-8")
         for match in re.findall(r"^OnCalendar=(.+)$", body, re.MULTILINE):
-            times.setdefault(match.strip(), []).append(unit.stem)
+            times.setdefault(match.strip(), []).append(timer.stem)
 
     collisions = {when: names for when, names in times.items() if len(names) > 1}
     assert not collisions, f"timers share an OnCalendar: {collisions}"
