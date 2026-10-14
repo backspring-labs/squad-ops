@@ -118,3 +118,29 @@ The owner approved both on 2026-10-14, and approved #2276's merge between the ar
    last four TensorFold cycles, one manifest mentioned sorting, and it put it out of scope.
 2. **#2276 merges between the arms,** because deploys are built from main. The after deploy then differs from the
    before deploy by #2276 alone.
+
+## 9. Deviation: the after arm re-runs on #2276 and #2309
+
+Recorded 2026-10-14, before the re-run starts. The owner approved it the same day.
+
+**What happened.** The first after arm (`cmp_f59a69f07bc0`, on `dep_4dbbbb990e74` from `f34b9df9`) stopped at its
+calibration (`cyc_1aeaea1c304d`):
+- A1, A2 and A5 held;
+- A4 held only in part. The ordered probe ran and failed on an insertion-order list, but no correction round followed;
+- A3 wasn't reached.
+
+The cause was #2308, which predates #2276. When a contract probe failed, qa.test marked its outputs failed but returned
+the task as successful. Only the task's result decides whether correction runs, so no failed probe had been repaired
+since #1223. #2309 fixes it. The readings are on #2202.
+
+**The change.** #2309 merged (`7eb661e3`), and the runtime API and every agent are rebuilt from it. eve runs qa.test, so
+it is among them. The after arm runs again, on the same campaign definition, created fresh. The first after arm's
+readings stand as recorded, and the re-run's are recorded beside them.
+
+**What it does to the comparison.** The after deploy now differs from the before deploy by #2276 and #2309, not #2276
+alone (§3 and §8, choice 2). #2309 changes only what happens after a contract probe fails, and no contract probe failed
+in the before arm: neither cycle's eve log has qa.test's failing-probe line. So the before arm's readings would have
+been the same on #2309, and the difference between the arms is still #2276's.
+
+**#2205's comparison** runs its before arm on this same deploy, as its pre-registration's §3 says ("the deploy #2202's
+after arm runs on").
