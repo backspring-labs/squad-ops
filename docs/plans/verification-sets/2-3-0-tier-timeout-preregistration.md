@@ -49,6 +49,12 @@ The deploy id, commit and image ids are read from the running containers after t
 before campaign A is created. `squad_profile` is `full-38-tf`, and the deploy serves the squad on TensorFold (SIP-0111
 §9k). A memory watchdog runs throughout.
 
+**Attempt 1 stopped at A5** (`cmp_62e17d6d4773`, on `dep_7a6cf99f7c11`). A1–A4 held. The expired escalation's cycle
+ended `assessed`, not `parked`, because the cycle's end handed the campaign the run as loaded before the gate (#2301).
+The owner approved the fix (#2302) and the re-run on 2026-10-14. **The re-run's deploy is this one plus #2302,** with
+the runtime API rebuilt and a third loaded-check row showing #2302 loaded. Attempt 1 is aborted before campaign A is
+created again. Its readings are on #2279, and nothing else in this pre-registration changes.
+
 **Not run if** main's run for the deployed commit is red, the box isn't idle, or a loaded check fails. Two rows show
 the fixes are loaded: the launch applies the fault before the carry, and a park counts at its own decision. They are
 added to `scripts/dev/loaded_checks.yaml` with the rebuild.

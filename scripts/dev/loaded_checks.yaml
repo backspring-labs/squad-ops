@@ -797,3 +797,12 @@ checks:
       from squadops.campaigns.continuation import campaign_continuation_decision
       print("cycle.ending is CycleEnding.PARKED" in inspect.getsource(campaign_continuation_decision))
     expect: "True"
+  - id: "2301"
+    what: "a run cancelled at its gate stops the cycle run_cancelled and the ending reads it as stored, so an expired escalation parks"
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+      src = inspect.getsource(DispatchedFlowExecutor.execute_cycle)
+      print("except _CancellationError:" in src, "inter_workload_gate_run_cancelled" in src)
+    expect: "True True"
