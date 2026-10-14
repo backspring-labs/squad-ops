@@ -86,7 +86,9 @@ def _ref(artifact_id: str, artifact_type: str, filename: str, content: str) -> t
     ), content.encode()
 
 
-def _cycle(campaign_id: str | None, profile: str = "campaign-increment") -> Cycle:
+def _cycle(
+    campaign_id: str | None, profile: str = "campaign-increment", baseline: str = _BASELINE
+) -> Cycle:
     """An increment cycle as the launcher creates it: with the ``campaign-increment`` profile's
     own defaults applied (#1864 — its ``implementation_plan: true`` is what armed the framing plan
     check at the proposal's gate, and a cycle without the profile's defaults never reached it)."""
@@ -109,7 +111,7 @@ def _cycle(campaign_id: str | None, profile: str = "campaign-increment") -> Cycl
                 "proposal_id": "prop_cap",
                 "version": 1,
                 "max_revisions": 1,
-                "baseline_manifest": _BASELINE,
+                "baseline_manifest": baseline,
             },
         },
         campaign_id=campaign_id,
@@ -557,37 +559,32 @@ async def _decide_framing_gate(executor, seed: str) -> bool:
     return executor._poll_inter_workload_gate.await_count == 1
 
 
-async def test_a_diagnostic_increments_seed_asks_the_injected_question(executor):
-    """#2279: an increment's design never asks, so the tier's timeout half (expiry, park, row
-    15, the late answer) was read only in unit tests. A cycle whose profile declares the
-    `increment_design_asks` fault seeds a manifest that asks one question, and nothing else
-    differs. Entered at the increment gate's approval, which seeds. Bugs caught: the declared
-    fault never reaching the seed; the fault changing anything but the decisions."""
-    import yaml
-
+@pytest.mark.parametrize(
+    "asked", [False, True], ids=["a clean baseline", "a baseline the launch made ask"]
+)
+async def test_the_gate_seeds_the_launch_baseline_and_applies_no_fault(executor, asked):
+    """#2290: a diagnostic's seed fault acts where the increment launches, before §24bm's
+    late-answer carry, so the gate seeds the baseline the launch carried, as it carried it.
+    Entered at the increment gate's approval, which seeds, on a cycle that declares the fault.
+    Bug caught: the gate applying the fault again, so a clean baseline asks at the gate, where no
+    late answer can reach the question, and the tier's late answer is never read live."""
     from squadops.campaigns.change_request import apply_manifest_delta
-    from squadops.capabilities.handlers.fault_injection import (
-        INJECTED_QUESTION,
-        INJECTED_QUESTION_ID,
+    from squadops.capabilities.handlers.fault_injection import seed
+
+    baseline = (
+        seed(_BASELINE, {"fault_injection": ["increment_design_asks"]}) if asked else _BASELINE
     )
-    from squadops.cycles.manifest_authoring import open_decisions
 
-    clean = apply_manifest_delta(_BASELINE, _REQUEST.manifest_delta)
-    assert open_decisions(clean) == ()
-
-    await _reach_the_gate(executor, _cycle(CID, profile="campaign-increment-asks"))
+    await _reach_the_gate(
+        executor, _cycle(CID, profile="campaign-increment-asks", baseline=baseline)
+    )
 
     [content] = [
         c.decode()
         for r, c in executor._artifact_vault.stored.values()
         if r.artifact_type == "interface_manifest"
     ]
-    assert open_decisions(content) == ((INJECTED_QUESTION_ID, INJECTED_QUESTION),)
-    seeded, expected = yaml.safe_load(content), yaml.safe_load(clean)
-    assert seeded["decisions"][:-1] == expected.get("decisions", [])
-    assert {k: v for k, v in seeded.items() if k != "decisions"} == {
-        k: v for k, v in expected.items() if k != "decisions"
-    }
+    assert content == apply_manifest_delta(baseline, _REQUEST.manifest_delta)
 
 
 async def test_the_plan_gate_stops_for_the_injected_question(executor):
