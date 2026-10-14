@@ -261,7 +261,7 @@ class TestTokenResolution:
 
         def _fake_run(*args, **kwargs):
             if args[1:2] == ("login",):
-                calls["logins"].append(args)
+                calls["logins"].append((args, kwargs.get("env")))
                 if calls["on_login"]:
                     auth.save_token(calls["on_login"])
                 return ""
@@ -300,7 +300,11 @@ class TestTokenResolution:
 
         assert got["captured"] is True
         assert len(calls["logins"]) == 1
-        assert calls["logins"][0][1:] == ("login", "-u", "maint", "-p", "pw-1")
+        # #2291: the password through the environment, never an argument `ps` shows.
+        assert calls["logins"][0] == (
+            (calls["logins"][0][0][0], "login", "-u", "maint"),
+            {"SQUADOPS_PASSWORD": "pw-1"},
+        )
         assert "Authorization: Bearer logged-in" in calls["api"][0]
 
     def test_a_valid_token_is_used_as_is(self, env, monkeypatch):

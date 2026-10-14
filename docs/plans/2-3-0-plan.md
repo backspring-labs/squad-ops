@@ -289,7 +289,10 @@ held. **No adapter code is written for either candidate before that candidate's 
 
 Phase 8's rebuilds, in order:
 - **R3:** #2206, #2210, #2231 (once its questions are ruled), #2174–#2176, with a regression pair. Then the timeout-half diagnostic on R3's deploy: the fault
-  is a diagnostic-only code path merged in R3, and one campaign follows.
+  is a diagnostic-only code path merged in R3, and one campaign follows. **The rebuild and its pair: done 2026-10-14.**
+  #2243, #2242, #2245, #2246, #2247 and #2257 merged (closing #2206, #2210, #2231, #2174, #2175, #2176) and deployed as
+  `dep_8f91bad18697` from `e30ec9cb`; both cycles of the pair were accepted on TensorFold with no new seam finding. The
+  diagnostic's pre-registration is #2296.
 - **#2202, then #2205:** each with its own pre-registered before/after comparison on the chosen engine (a targeted set,
   or one campaign), before it is batched with anything else.
 - **#2208,** its rubric version pinned.

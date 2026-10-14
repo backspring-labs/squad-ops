@@ -95,7 +95,8 @@ python3 scripts/dev/ops/keycloak_realm_sync.py infra/auth/squadops-realm.json in
 Each client prints `secret set from .env`, and `squadops-admin` prints `password set from .env`
 (#2079). It signs in with the new admin password from `secrets/keycloak_admin_password.txt`, which
 step 2's `ensure` wrote. Then sign the CLI in with the new realm password:
-`.venv/bin/squadops login -u squadops-admin -p "$(val SQUADOPS_ADMIN_PASSWORD)"`. The
+`SQUADOPS_PASSWORD="$(val SQUADOPS_ADMIN_PASSWORD)" .venv/bin/squadops login -u squadops-admin`,
+the password in the environment rather than an argument `ps` shows (#2291). The
 verification-set driver and the release capture read it from `.env` themselves.
 
 ## 7. Grafana's admin
