@@ -84,7 +84,12 @@ class RabbitMQAdapter(QueuePort):
             logger.info("RabbitMQ connection established")
 
         if self._channel is None or self._channel.is_closed:
-            self._channel = await self._connection.channel()
+            # #1977, SIP-Agent-Comms-Delivery-Guarantees §5.2: the broker confirms each publish, and
+            # a mandatory publish it cannot route is returned as an error. aio_pika's default
+            # (on_return_raises=False) resolved a returned publish as if it were delivered.
+            self._channel = await self._connection.channel(
+                publisher_confirms=True, on_return_raises=True
+            )
             if self._prefetch_count is not None:
                 # #323: bound unacked deliveries so a persistent subscribe()
                 # consumer is handed one message at a time instead of the
@@ -188,9 +193,13 @@ class RabbitMQAdapter(QueuePort):
                 await self._ensure_connection()
                 queue = await self._get_queue(queue_name)
 
+                # mandatory (§5.2): an unroutable publish is returned, and with the channel's
+                # on_return_raises it raises here, into the retry and then QueueError. A broker
+                # nack raises the same way under publisher confirms.
                 await self._channel.default_exchange.publish(
                     message,
                     routing_key=queue.name,
+                    mandatory=True,
                 )
 
                 if attempt > 1:
