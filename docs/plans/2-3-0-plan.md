@@ -315,7 +315,8 @@ Phase 8's rebuilds, in order:
   R4's seven among them. No new seam finding.
 - **R5:** #2062 with #1993.
 - **R6:** #1992 (deferrable).
-- **R7:** #1994 (deferrable).
+- **R7:** #1994 (deferrable). Its map, `docs/plans/2-3-0-r7-extraction-map.md`: the owner approved
+  unit 1's step table on 2026-10-15, and reviews each later unit's before its first extraction PR.
 - **R8:** #316, once its SIP is accepted.
 - **R9:** Outcome Evaluation's instruments, once their SIP is accepted.
 - **#2204b** at any of them.
