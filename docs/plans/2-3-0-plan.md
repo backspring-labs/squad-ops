@@ -308,7 +308,11 @@ Phase 8's rebuilds, in order:
   version by its text: an authoring replay's manifest records the named version's hash, a version the repository
   doesn't hold is refused, and @2's text is kept verbatim (`criterion_already_satisfied@2.md`) for the results
   scored with it.
-- **R4:** #1976 and #1977, with #2315 (placed by the owner, 2026-10-14).
+- **R4:** #1976 and #1977, with #2315 (placed by the owner, 2026-10-14). **The rebuild and its pair: done
+  2026-10-15.** #2317, #2319, #2320, #2321, #2323 and #2324 merged (closing #1976, #1977 and #2315) and deployed
+  as `dep_fd13cc434ac7` from `8f98c070`. Both cycles of the pair were accepted on TensorFold, with the boot audit
+  passing and no intervention (`cyc_6178d14156b8`, `cyc_18f12f4be0e3`), and every tracked loaded check answered,
+  R4's seven among them. No new seam finding.
 - **R5:** #2062 with #1993.
 - **R6:** #1992 (deferrable).
 - **R7:** #1994 (deferrable).
