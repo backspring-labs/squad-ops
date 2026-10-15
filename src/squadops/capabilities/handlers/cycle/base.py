@@ -1326,6 +1326,37 @@ class _CycleTaskHandler(CapabilityHandler):
             "prompt_provenance": provenance,
             **response_outputs,
         }
+        self._mark_contentless(outputs, content, artifacts, inputs, response, chat_kwargs)
+
+        duration_ms = (time.perf_counter() - start_time) * 1000
+
+        evidence = HandlerEvidence.create(
+            handler_name=self._handler_name,
+            task_type=self._task_type,
+            duration_ms=duration_ms,
+            inputs_hash=self._hash_dict(inputs),
+            outputs_hash=self._hash_dict(outputs),
+        )
+
+        return HandlerResult(
+            success=True,
+            outputs=outputs,
+            _evidence=evidence,
+        )
+
+    @staticmethod
+    def _mark_contentless(
+        outputs: dict[str, Any],
+        content: str,
+        artifacts: list[dict],
+        inputs: dict[str, Any],
+        response: ChatMessage,
+        chat_kwargs: dict[str, Any],
+    ) -> None:
+        """Mark an empty or contentless emission on the generic path, mutating ``outputs``.
+
+        Moved from ``handle`` (#1994).
+        """
         if (not content.strip() or not artifacts) and "emission_failure" not in outputs:
             # #998: an EMPTY emission on the generic path — which every repair handler
             # rides — carried no marker at all, so the correction loop could refund the
@@ -1350,22 +1381,6 @@ class _CycleTaskHandler(CapabilityHandler):
                 content=content,
                 termination=response.termination,
             )
-
-        duration_ms = (time.perf_counter() - start_time) * 1000
-
-        evidence = HandlerEvidence.create(
-            handler_name=self._handler_name,
-            task_type=self._task_type,
-            duration_ms=duration_ms,
-            inputs_hash=self._hash_dict(inputs),
-            outputs_hash=self._hash_dict(outputs),
-        )
-
-        return HandlerResult(
-            success=True,
-            outputs=outputs,
-            _evidence=evidence,
-        )
 
     def _resolve_artifact_content(
         self,
@@ -1466,23 +1481,7 @@ class _CycleTaskHandler(CapabilityHandler):
         Reading it off ``messages`` rather than taking it as an argument is what stops
         the two drifting apart.
         """
-        # SIP-0110 §0.11 (#2105): an authoring seam's first call is captured before the model is
-        # asked, once per task, and its capture time is the task's pre-authoring cutoff. A
-        # re-ask or a self-eval call is the same authoring: the envelope already holds what it
-        # was given.
-        # Beside the authoring, never in its way: a capture that fails is logged, the call goes
-        # ahead, and the reconstruction proof is what finds the missing envelope.
-        if isinstance(context.authoring_inputs, dict) and context.authoring_envelope is None:
-            try:
-                context.authoring_envelope = self._authoring_envelope(
-                    context, messages, chat_kwargs, rendered
-                )
-            except Exception:
-                logger.warning(
-                    "authoring_envelope_not_captured",
-                    extra={"task_id": context.task_id, "handler": self._handler_name},
-                    exc_info=True,
-                )
+        self._capture_authoring_envelope(context, messages, chat_kwargs, rendered)
         # 1.8.2 item 2: a call that spent its whole completion budget and wrote nothing is
         # asked again once, with that fact. The loop keeps ONE call and one sequence: every
         # call — the discarded one included — is accounted, shape-logged and recorded here,
@@ -1589,6 +1588,36 @@ class _CycleTaskHandler(CapabilityHandler):
                 return response, content
             retried = True
             call_messages = [*messages, ChatMessage(role="user", content=retry_fact)]
+
+    def _capture_authoring_envelope(
+        self,
+        context: ExecutionContext,
+        messages: list[ChatMessage],
+        chat_kwargs: dict[str, Any],
+        rendered: object | None,
+    ) -> None:
+        """Capture this task's authoring replay envelope before its first model call, once.
+
+        Moved from ``_llm_call`` (#1994): it runs once before the call loop, and changes for its
+        own reason.
+        """
+        # SIP-0110 §0.11 (#2105): an authoring seam's first call is captured before the model is
+        # asked, once per task, and its capture time is the task's pre-authoring cutoff. A
+        # re-ask or a self-eval call is the same authoring: the envelope already holds what it
+        # was given.
+        # Beside the authoring, never in its way: a capture that fails is logged, the call goes
+        # ahead, and the reconstruction proof is what finds the missing envelope.
+        if isinstance(context.authoring_inputs, dict) and context.authoring_envelope is None:
+            try:
+                context.authoring_envelope = self._authoring_envelope(
+                    context, messages, chat_kwargs, rendered
+                )
+            except Exception:
+                logger.warning(
+                    "authoring_envelope_not_captured",
+                    extra={"task_id": context.task_id, "handler": self._handler_name},
+                    exc_info=True,
+                )
 
     def _authoring_envelope(
         self,
