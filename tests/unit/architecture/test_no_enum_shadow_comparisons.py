@@ -43,6 +43,9 @@ _ALLOWLIST: set[tuple[str, str]] = {
     # keeps its summary-line filter over the same vocabulary.
     ("src/squadops/capabilities/handlers/cycle/base.py", "failed"),
     ("src/squadops/capabilities/handlers/cycle/develop.py", "failed"),
+    # The loop's check row and RC-9's blocking matrix, moved beside the evaluator (#1994):
+    # the same CheckOutcome.status comparisons, in their new file.
+    ("src/squadops/cycles/acceptance_evaluation.py", "failed"),
     # Same CheckOutcome.status vocabulary, evaluated executor-side for patch
     # verification (#389).
     ("src/squadops/cycles/patch_verification.py", "failed"),

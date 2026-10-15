@@ -20,7 +20,6 @@ from squadops.capabilities.handlers.base import (
 from squadops.capabilities.reasoning_policy import resolve_reasoning_level
 from squadops.cycles.acceptance_check_spec import (
     CHECK_SPECS,
-    CONFIG_OFF_SKIP_REASONS,
     INJECTION_SCOPE_FILE,
     INJECTION_SCOPE_RECIPE,
     INJECTION_SCOPE_SUITE,
@@ -30,6 +29,8 @@ from squadops.cycles.acceptance_check_spec import (
 )
 from squadops.cycles.acceptance_checks import CheckOutcome
 from squadops.cycles.acceptance_evaluation import (
+    acceptance_check_record,
+    apply_blocking_matrix,
     evaluate_criterion,
     resolve_check_stack,
     split_acceptance_criteria,
@@ -700,53 +701,13 @@ class _CycleTaskHandler(CapabilityHandler):
                     typed_acceptance_enabled=typed_acceptance_enabled,
                     command_acceptance_enabled=command_acceptance_enabled,
                 )
-                # #423: an *authored* error-severity check that the evaluator
-                # skipped for any reason other than deliberate config-off is an
-                # evidence gap — the author asked for enforcement on a concrete
-                # target and the evaluator declared it cannot deliver
-                # (unsupported extension/stack, missing tooling). Distinct from
-                # the benign classes: config-off skips, and framework-injected
-                # checks (which target only files in their own family, #605).
-                # A gap must never read `passed: true` — that is the false
-                # green #423 measured (7 of 14 evaluations skipped-yet-passed,
-                # the whole frontend contract surface unenforced) — but it also
-                # must not mission a correction: no code repair can close an
-                # evaluator limitation. It surfaces as unverified at the
-                # SIP-0096 roll-up instead (see verification_normalize /
-                # aggregate_verification).
-                evidence_gap = (
-                    outcome.status == ResultStatus.SKIPPED
-                    and check_index < len(authored_criteria)
-                    and criterion.severity == "error"
-                    and outcome.reason not in CONFIG_OFF_SKIP_REASONS
+                check_record = acceptance_check_record(
+                    criterion,
+                    outcome,
+                    check_index,
+                    check_index < len(authored_criteria),
+                    inputs.get("subtask_index"),
                 )
-                check_record = {
-                    "check": f"acceptance:{criterion.check}",
-                    "severity": criterion.severity,
-                    "params": criterion.params,
-                    "description": criterion.description,
-                    "status": outcome.status,
-                    "actual": outcome.actual,
-                    "reason": outcome.reason,
-                    # `passed` flag for compatibility with the legacy
-                    # all-checks-pass aggregator: severity=error AND blocking
-                    # status, or an evidence-gap skip (#423), counts as
-                    # not-passed.
-                    "passed": not (
-                        criterion.severity == "error" and outcome.status in {"failed", "error"}
-                    )
-                    and not evidence_gap,
-                    "evidence_gap": evidence_gap,
-                    # Issue #114: identity fields for downstream trigger
-                    # composition and per-cycle evaluation persistence.
-                    # task_index is None for tasks not driven by an
-                    # implementation_plan (legacy monolithic flow).
-                    "task_index": inputs.get("subtask_index"),
-                    "check_index": check_index,
-                    # SIP-0098 98.3: the contract criterion id when this check was
-                    # resolved from a bind-mode criteria_ref; None for authored checks.
-                    "criterion_id": criterion.id or None,
-                }
                 checks.append(check_record)
 
                 # Issue #83: per-check observability. Without these the M1.3
@@ -763,23 +724,8 @@ class _CycleTaskHandler(CapabilityHandler):
                     outcome.reason or "",
                 )
 
-                # RC-9: severity AND status are independent. Only error+blocking missions.
-                if criterion.severity != "error":
-                    continue
-                if outcome.status == "failed":
-                    # RC-9a: app-incompleteness wording.
-                    label = criterion.description or criterion.check
-                    missing.append(f"acceptance:{label}")
-                elif outcome.status == "error":
-                    fp = criterion.fingerprint()
-                    prior = typed_error_counts.get(fp, 0)
-                    if prior < 2:
-                        # RC-9a: evaluator-error wording, distinct from app-incomplete.
-                        missing.append(f"evaluator-error:{criterion.check}: {outcome.reason}")
-                    else:
-                        self._escalate_persistent_evaluator_error(criterion, outcome)
-                    typed_error_counts[fp] = prior + 1
-                # status in {passed, skipped} never blocks.
+                if apply_blocking_matrix(criterion, outcome, missing, typed_error_counts):
+                    self._escalate_persistent_evaluator_error(criterion, outcome)
 
     # Shared with the executor-side patch verification (#389) — one
     # materializer, one safety policy.
