@@ -224,6 +224,26 @@ class ChatConfig(BaseModel):
     )
 
 
+class CommsDeliveryConfig(BaseModel):
+    """How many times an agent runs one dispatched task, and the record that counts them (#1977;
+    SIP-Agent-Comms-Delivery-Guarantees §5.1, §5.3 and §5.3a, as amended 2026-10-15)."""
+
+    max_attempts: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+        description="Deliveries of one task an agent runs before it quarantines and fails it",
+    )
+    marker_ttl_seconds: int = Field(
+        default=86400,
+        ge=60,
+        description="How long a task's attempt count and completion mark are kept in Redis",
+    )
+    dead_letter_queue: str = Field(
+        default="comms.dlq", description="Where a task past its attempts is quarantined"
+    )
+
+
 class CommsConfig(BaseModel):
     """Communication services configuration."""
 
@@ -232,6 +252,9 @@ class CommsConfig(BaseModel):
     rabbitmq: RabbitMQConfig = Field(..., description="RabbitMQ configuration")
     redis: RedisConfig = Field(..., description="Redis configuration")
     chat: ChatConfig = Field(default_factory=ChatConfig, description="Console chat's tunables")
+    delivery: CommsDeliveryConfig = Field(
+        default_factory=CommsDeliveryConfig, description="A dispatched task's delivery bound (#1977)"
+    )
 
 
 class FilesystemToolConfig(BaseModel):

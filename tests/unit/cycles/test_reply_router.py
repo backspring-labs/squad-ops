@@ -20,7 +20,7 @@ from adapters.cycles.reply_router import (
     ReplyRouterStopped,
 )
 from squadops.comms.queue_message import QueueMessage
-from squadops.ports.comms.queue import QueuePort
+from squadops.ports.comms.queue import AckPolicy, QueuePort
 from squadops.tasks.models import TaskResult
 
 pytestmark = [pytest.mark.unit]
@@ -64,13 +64,15 @@ class FakeQueue(QueuePort):
 
     def __init__(self):
         self.handlers: dict[str, object] = {}
+        self.policies: dict[str, object] = {}
         self.handles: dict[str, _Handle] = {}
         self.acked: list[str] = []
         self._tag = 0
 
-    async def subscribe(self, queue_name: str, *, on_message):
+    async def subscribe(self, queue_name: str, *, on_message, ack_policy):
         await asyncio.sleep(0)  # force a yield so D4 concurrency is exercised
         self.handlers[queue_name] = on_message
+        self.policies[queue_name] = ack_policy
         handle = _Handle()
         self.handles[queue_name] = handle
         return handle
@@ -124,6 +126,8 @@ async def test_register_and_resolve_by_task_id():
 
     assert result == TaskResult(task_id="t1", status="SUCCEEDED", outputs={"x": 1})
     assert q.acked == ["1"]  # exactly one ack, from the primitive
+    # SIP-0094 D12, as #1977 names it: a reply is never handed back for redelivery.
+    assert q.policies == {"neo_replies": AckPolicy.ACK_ALWAYS}
     assert router.metrics()["pending_futures"] == 0
 
 

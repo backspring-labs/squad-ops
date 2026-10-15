@@ -22,6 +22,7 @@ from adapters.comms.rabbitmq import RabbitMQAdapter
 from squadops.config.schema import CommsConfig
 from squadops.ports.comms.messaging import MessagingPort
 from squadops.ports.comms.queue import QueuePort
+from squadops.ports.comms.task_attempts import TaskAttemptsPort
 
 logger = logging.getLogger(__name__)
 
@@ -83,3 +84,12 @@ def create_a2a_server(
             agent_card=agent_card, executor=executor, host=host, port=port, log_level=log_level
         )
     raise ValueError(f"comms.a2a.provider={provider!r}: no A2A server for that selector")
+
+
+def create_task_attempts(comms: CommsConfig) -> TaskAttemptsPort:
+    """A dispatched task's delivery record (#1977): its attempts and its completion, in the
+    stack's Redis (``comms.redis.url``), kept for ``comms.delivery.marker_ttl_seconds``. Imported
+    here so the runtime API, which has no use for it, never needs the import."""
+    from adapters.comms.redis_task_attempts import RedisTaskAttempts
+
+    return RedisTaskAttempts.from_url(comms.redis.url, comms.delivery.marker_ttl_seconds)

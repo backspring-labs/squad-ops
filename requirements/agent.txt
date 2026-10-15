@@ -13,6 +13,11 @@
 # Message queue
 aio-pika>=9.3.1
 
+# Comms delivery record (#1977, SIP-Agent-Comms-Delivery-Guarantees §5.1/§5.3, amended 2026-10-15):
+# a task's attempt count and completion mark, in the Redis the stack already runs. A floor, as in
+# api.txt, so the CI constraint governs the version.
+redis>=5.0.0
+
 # Memory system (SIP-042)
 lancedb>=0.8.2
 

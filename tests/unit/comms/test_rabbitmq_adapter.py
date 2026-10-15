@@ -16,7 +16,7 @@ import pytest
 import adapters.comms.rabbitmq as rabbitmq_mod
 from adapters.comms.rabbitmq import QueueError, RabbitMQAdapter
 from squadops.comms.queue_message import QueueMessage
-from squadops.ports.comms.queue import REPLY_QUEUE_DECLARE_ARGS
+from squadops.ports.comms.queue import REPLY_QUEUE_DECLARE_ARGS, AckPolicy
 
 pytestmark = [pytest.mark.unit]
 
@@ -384,9 +384,13 @@ class _FakeIncoming:
         self.exchange = ""
         self.redelivered = False
         self.acked = False
+        self.requeued = False
 
     async def ack(self) -> None:
         self.acked = True
+
+    async def nack(self, requeue: bool = True) -> None:
+        self.requeued = requeue
 
 
 class _FakeIterator:
@@ -455,7 +459,9 @@ class TestNativeSubscribe:
             received.append(m)
             got.set()
 
-        handle = await adapter.subscribe("neo_replies", on_message=on_message)
+        handle = await adapter.subscribe(
+            "neo_replies", on_message=on_message, ack_policy=AckPolicy.ACK_ALWAYS
+        )
         await asyncio.wait_for(got.wait(), timeout=2.0)
         await handle.cancel()
 
@@ -479,12 +485,39 @@ class TestNativeSubscribe:
             received.append(m)
             second.set()
 
-        handle = await adapter.subscribe("neo_replies", on_message=on_message)
+        handle = await adapter.subscribe(
+            "neo_replies", on_message=on_message, ack_policy=AckPolicy.ACK_ALWAYS
+        )
         await asyncio.wait_for(second.wait(), timeout=2.0)
         await handle.cancel()
 
         assert [m.payload for m in received] == ["ok"]
         assert m1.acked is True and m2.acked is True
+        assert adapter._resubscribe_total == 0
+
+    async def test_a_comms_callback_that_raises_is_handed_back_not_acked(self) -> None:
+        """#1977, REDELIVER_ON_FAILURE: the raising delivery is nacked with requeue, so the broker
+        redelivers it and the subscriber's attempt count bounds it. Bug caught: a failed task's
+        delivery acked and lost, as D12's ack-always does. The next delivery still arrives and
+        a returning callback's delivery is acked."""
+        m1 = _FakeIncoming(1, "boom")
+        m2 = _FakeIncoming(2, "ok")
+        adapter = _subscribe_adapter([_FakeIterator([m1, m2])])
+        second = asyncio.Event()
+
+        async def on_message(m):
+            if m.message_id == "1":
+                raise RuntimeError("task handler failed")
+            second.set()
+
+        handle = await adapter.subscribe(
+            "neo_comms", on_message=on_message, ack_policy=AckPolicy.REDELIVER_ON_FAILURE
+        )
+        await asyncio.wait_for(second.wait(), timeout=2.0)
+        await handle.cancel()
+
+        assert (m1.acked, m1.requeued) == (False, True)
+        assert (m2.acked, m2.requeued) == (True, False)
         assert adapter._resubscribe_total == 0
 
     async def test_channel_close_triggers_transparent_resubscribe(self, monkeypatch) -> None:
@@ -504,7 +537,9 @@ class TestNativeSubscribe:
             received.append(m)
             got.set()
 
-        handle = await adapter.subscribe("neo_replies", on_message=on_message)
+        handle = await adapter.subscribe(
+            "neo_replies", on_message=on_message, ack_policy=AckPolicy.ACK_ALWAYS
+        )
         await asyncio.wait_for(got.wait(), timeout=2.0)
         await handle.cancel()
 
@@ -520,7 +555,9 @@ class TestNativeSubscribe:
         it = _FakeIterator([])  # no messages -> blocks until cancelled
         adapter = _subscribe_adapter([it])
 
-        handle = await adapter.subscribe("neo_replies", on_message=lambda m: None)
+        handle = await adapter.subscribe(
+            "neo_replies", on_message=lambda m: None, ack_policy=AckPolicy.ACK_ALWAYS
+        )
         await asyncio.sleep(0.05)  # let the loop enter the iterator
         assert it.entered is True
         assert handle.active is True

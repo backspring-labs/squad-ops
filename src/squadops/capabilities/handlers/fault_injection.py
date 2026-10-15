@@ -684,14 +684,16 @@ FAULTS: dict[str, Fault] = {
         stacks=frozenset({"nextjs_ts"}),
     ),
     # 1.8.2 plan §4.1 `redelivery`: the qa agent's process killed mid-repair, on the roll's own
-    # path, in the producing role's container (#1251). The broker redelivers; #1627 refuses.
+    # path, in the producing role's container (#1251). The broker redelivers the same task id,
+    # so the fault kills each delivery, until the task's attempts run out (#1977).
     "qa_repair_process_killed": Fault(
         task=TaskType.QA_TEST_REPAIR,
         transform=_unchanged,
         found_in="#1626 / #1627 — the qa agent SEGFAULTED on one message and was restarted 37 "
         "times on its redelivery, with no record and no termination",
-        exercises="#1627's rule and #1626's containment: a typed FAILED for the original task "
-        "id, the queue drained, the handler not re-run, and the run leaving `running`",
+        exercises="#1977's bound and #1626's containment: the task run within its attempts, then "
+        "quarantined and a typed FAILED for the original task id, the queue drained, and the run "
+        "leaving `running`",
         crash=True,
     ),
     "analyzer_false_source_claim": Fault(
