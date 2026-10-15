@@ -1423,3 +1423,42 @@ stays shrunk.
   termination stored; the control, a `tests_pass` failure at the same attempt, proceeds to analysis
   (`test_correction_runner.py`);
 - a mutation check: with the runner's call removed, the refusal test fails.
+
+### 12d. 2026-10-15 — a contract probe that still fails for a new reason is progress (#2340)
+
+**Ruled by the owner, 2026-10-15** (on #2340, option (a)).
+
+**What §12b said.** A repair is kept when its retest's failure signature is `MOVEMENT_PROGRESS`
+against the round's: fewer failures and none new. A signature element is
+`(check_id, subject, reason_token)`, so a check still failing for a different reason is a new
+element, and the retest reads as `shifted`.
+
+**The evidence.** R5's second regression pair (the 2.3 plan, phase 8): the Next.js cycle
+`cyc_8174805a98ca`, run `run_2f14e827c8d2`.
+- The developer's `POST /api/runs` stored a run without an `id`. Round 0 failed three tests and
+  four contract probes.
+- The repair added the `id`, and its retest cleared six of the seven. The ordering probe still
+  failed, but its reason moved from `response missing key(s): ['id']` to the list's order, a defect
+  the missing `id` had masked.
+- §12b read that as a failure the repair added. It discarded the repair, and the task re-ran
+  against the unrepaired tree. qa re-authored its suite, and round 1 terminated the run as
+  `plan_defect`.
+
+**What changes.**
+- **The task's declared contract probes** (`contract_probes`, their ids) are compared without their
+  reason, in the comparison and in what the retest is said to have cleared. A probe stops at its
+  first failed assertion, so fixing that assertion always moves its reason on to the next.
+- **Every other check keeps its reason.** A still-failing check whose reason changed may be one the
+  repair broke a new way, which pf-31 Fix E keeps from superseding the accepted state.
+- **A refusal is logged:**
+  `progress_not_kept task=… why=… round=[…] retest=[…] evaluated=…`. `why` is `no_signature`,
+  `movement=<class>` or `unevaluated=<checks>`. Before, why a retest wasn't kept could be read only
+  by replaying evidence that isn't stored.
+
+**Verified by** `test_outcome_routing.py`, at the executor's acceptance entry:
+- a declared probe still failing for a new reason, with nothing new failing, is kept;
+- the same rows with the probe undeclared are discarded, and so is a typed check whose reason
+  changed. Both log `progress_not_kept … why=movement=shifted`.
+
+On the code before the change, the kept case is discarded, and the two discarded cases log no
+refusal.

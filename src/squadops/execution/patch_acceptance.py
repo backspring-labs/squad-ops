@@ -38,8 +38,9 @@ from squadops.cycles.check_registry import (
 from squadops.cycles.correction_signature import (
     REPAIR_REFUSED_MARKER,
     RetestReduction,
+    failure_signature,
     render_signature,
-    retest_reduction,
+    retest_reduction_or_refusal,
 )
 from squadops.cycles.failure_evidence import build_failure_evidence
 from squadops.cycles.implementation_plan import resolve_criteria_for_files
@@ -58,6 +59,7 @@ from squadops.cycles.patch_verification import (
 from squadops.cycles.scaffold_enforcement import named_producer
 from squadops.cycles.scaffold_integrity_evidence import STAGE_PATCH_VERIFICATION
 from squadops.cycles.verification_contract import VerificationContract
+from squadops.cycles.verification_normalize import row_is_blocking_failure
 from squadops.execution.execution_errors import _ExecutionError
 from squadops.stacks.development_profiles import (
     collected_test_patterns_for,
@@ -183,11 +185,28 @@ def _retest_reduction_of(
     test_result = retest_outputs.get("test_result")
     if isinstance(test_result, dict) and test_result.get("executed") is True:
         evaluated.add(CHECK_TESTS_PASS)
-    return retest_reduction(
-        build_failure_evidence(envelope, result, prior_plan_deltas_count=0),
-        build_failure_evidence(envelope, retest_result, prior_plan_deltas_count=0),
-        frozenset(evaluated),
+    # #2340: the task's contract probes are compared without their reason.
+    probe_ids = frozenset(
+        str(probe["id"])
+        for probe in (envelope.inputs or {}).get("contract_probes") or []
+        if isinstance(probe, Mapping) and probe.get("id")
     )
+    round_evidence = build_failure_evidence(envelope, result, prior_plan_deltas_count=0)
+    retest_evidence = build_failure_evidence(envelope, retest_result, prior_plan_deltas_count=0)
+    reduction, refusal = retest_reduction_or_refusal(
+        round_evidence, retest_evidence, frozenset(evaluated), probe_ids
+    )
+    if reduction is None:
+        # #2340: why a retest that failed was not taken as progress, readable without a replay.
+        logger.info(
+            "progress_not_kept task=%s why=%s round=[%s] retest=[%s] evaluated=%s (#1522)",
+            envelope.task_id,
+            refusal,
+            "; ".join(render_signature(failure_signature(round_evidence) or frozenset())),
+            "; ".join(render_signature(failure_signature(retest_evidence) or frozenset())),
+            ",".join(sorted(evaluated)),
+        )
+    return reduction
 
 
 def _repaired_suite_files(
@@ -839,10 +858,12 @@ class PatchAcceptance:
             retest_validation_rows = (retest_outputs.get("validation_result") or {}).get(
                 "checks"
             ) or []
+            # #2341: judged as every other reader judges a row, so a contract probe's row, which
+            # carries a status and no ``passed``, is named too.
             failing_rows = "; ".join(
                 f"{row.get('check', '?')}: {row.get('reason') or 'failed'}"
                 for row in retest_validation_rows
-                if isinstance(row, dict) and row.get("passed") is False
+                if isinstance(row, dict) and row_is_blocking_failure(row)
             )
             retest_reason = str(
                 (retest_outputs.get("validation_result") or {}).get("summary")

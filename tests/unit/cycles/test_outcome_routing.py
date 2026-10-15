@@ -1129,6 +1129,113 @@ class TestAcceptPatchRetest:
         [entry] = carry["task_9"]
         assert "repaired suite retest FAILED" in entry
 
+    _PROBE = "vc-probe-api-runs-ordered"
+
+    def _probe_row(self, reason: str) -> dict:
+        # As ``probe_check_rows`` writes it: a status and no ``passed``.
+        return {
+            "check": self._PROBE,
+            "status": "failed",
+            "reason": reason,
+            "criterion_id": self._PROBE,
+        }
+
+    def _with_rows(self, result: TaskResult, *rows: dict) -> TaskResult:
+        result.outputs["validation_result"]["checks"].extend(rows)
+        return result
+
+    @pytest.mark.parametrize(
+        "declared, changed_row, kept",
+        [
+            (True, "probe", True),
+            (False, "probe", False),
+            (True, "typed", False),
+        ],
+        ids=["declared-probe-kept", "undeclared-probe-discarded", "typed-check-discarded"],
+    )
+    async def test_a_check_still_failing_for_a_new_reason_is_progress_only_for_a_probe(
+        self, executor, cycle, caplog, declared, changed_row, kept
+    ):
+        """Bug caught (#2340, R5's Next.js `cyc_8174805a98ca`): the repair added the run's id and
+        cleared six of seven failures, but the ordering probe it half-fixed then failed for its
+        next reason, read as a failure the repair added, and the repair was discarded. A probe
+        stops at its first failed assertion, so the task's declared probes compare without
+        their reason; any other check keeps its reason, since it may be one the repair broke
+        a new way."""
+        from squadops.execution.patch_acceptance import KEEP_PROGRESS
+
+        if changed_row == "probe":
+            before = self._probe_row("response missing key(s): ['id']")
+            after = self._probe_row("not ordered: dateTime")
+        else:
+            before = {"check": "acceptance:endpoint_defined", "passed": False, "reason": "missing"}
+            after = {"check": "acceptance:endpoint_defined", "passed": False, "reason": "wrong"}
+        envelope = self._qa_envelope()
+        if declared:
+            envelope.inputs["contract_probes"] = [{"id": self._PROBE}]
+        executor._correction_runner.reexecute_repaired_suite = AsyncMock(
+            return_value=self._with_rows(self._retest_failing("b"), after)
+        )
+        holder: dict = {}
+        carry: dict = {}
+        with caplog.at_level("INFO", logger="squadops.execution.patch_acceptance"):
+            action = await executor._try_accept_patch(
+                envelope,
+                self._round_failing("a", "b", extra_rows=(before,)),
+                self._repair(),
+                holder,
+                repair_rejection_carry=carry,
+                **self._kwargs(cycle),
+            )
+
+        [entry] = carry["task_9"]
+        if kept:
+            assert action == KEEP_PROGRESS
+            assert entry.startswith(
+                "correction attempt 0: repaired suite retest cleared 1 of 3 failure(s) and added none"
+            )
+        else:
+            assert action == "continue"
+            assert "repaired suite retest FAILED" in entry
+            [refused] = [
+                r.getMessage() for r in caplog.records if "progress_not_kept" in r.getMessage()
+            ]
+            assert refused.startswith("progress_not_kept task=task_9 why=movement=shifted round=[")
+
+    async def test_the_retest_line_names_a_failed_probe(self, executor, cycle, caplog):
+        """Bug caught (#2341): the retest's verdict text listed only rows carrying
+        ``passed: False``. A probe's row carries a status instead, so on R5's Next.js cycle the
+        line read as though only the suite failed while the ordering probe failed too."""
+        envelope = self._qa_envelope()
+        envelope.inputs["contract_probes"] = [{"id": self._PROBE}]
+        executor._correction_runner.reexecute_repaired_suite = AsyncMock(
+            return_value=self._with_rows(
+                self._retest_failing("b"),
+                self._probe_row("not ordered: dateTime"),
+                {"check": "vc-probe-api-runs", "status": "passed", "reason": "ok"},
+            )
+        )
+        with caplog.at_level("INFO", logger="squadops.execution.patch_acceptance"):
+            await executor._try_accept_patch(
+                envelope,
+                self._round_failing("a", "b"),
+                self._repair(),
+                {},
+                repair_rejection_carry={},
+                **self._kwargs(cycle),
+            )
+
+        [line] = [
+            r.getMessage()
+            for r in caplog.records
+            if r.getMessage().startswith("patch_retest task=")
+        ]
+        # The failed probe is named beside the suite; the passing probe is not.
+        assert line.endswith(
+            "reason=Repaired suite still fails (exit 1) "
+            "[tests_pass: failed; vc-probe-api-runs-ordered: not ordered: dateTime]"
+        )
+
     async def test_missing_retest_context_never_accepts_stale_evidence(self, executor):
         """Bug caught: a legacy call shape (no cycle) silently accepting with
         the stale test_result — conservative fallback is re-dispatch."""
