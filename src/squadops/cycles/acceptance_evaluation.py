@@ -20,8 +20,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from squadops.cycles.acceptance_check_spec import CONFIG_OFF_SKIP_REASONS
 from squadops.cycles.acceptance_checks import CheckOutcome, get_check
 from squadops.cycles.implementation_plan import TypedCheck, _parse_acceptance_criteria
+from squadops.cycles.verification_integrity import ResultStatus
 from squadops.stacks.scaffold import check_stack_for
 
 logger = logging.getLogger(__name__)
@@ -143,3 +145,95 @@ async def evaluate_criterion(
         # treat as evaluator-error rather than crashing the cycle.
         return CheckOutcome.error(reason="no_evaluator_registered")
     return await evaluator.evaluate(criterion.params, workspace_root, stack=stack)
+
+
+def acceptance_check_record(
+    criterion: TypedCheck,
+    outcome: CheckOutcome,
+    check_index: int,
+    authored: bool,
+    subtask_index: Any,
+) -> dict[str, Any]:
+    """The evidence row for one evaluated criterion, its evidence-gap flag included (#423).
+
+    ``authored`` says whether the author wrote the criterion, as opposed to the framework
+    injecting it; ``subtask_index`` is the task's index in its implementation plan, or None.
+    Moved from ``_CycleTaskHandler._evaluate_typed_acceptance`` (#1994).
+    """
+    # #423: an *authored* error-severity check that the evaluator
+    # skipped for any reason other than deliberate config-off is an
+    # evidence gap — the author asked for enforcement on a concrete
+    # target and the evaluator declared it cannot deliver
+    # (unsupported extension/stack, missing tooling). Distinct from
+    # the benign classes: config-off skips, and framework-injected
+    # checks (which target only files in their own family, #605).
+    # A gap must never read `passed: true` — that is the false
+    # green #423 measured (7 of 14 evaluations skipped-yet-passed,
+    # the whole frontend contract surface unenforced) — but it also
+    # must not mission a correction: no code repair can close an
+    # evaluator limitation. It surfaces as unverified at the
+    # SIP-0096 roll-up instead (see verification_normalize /
+    # aggregate_verification).
+    evidence_gap = (
+        outcome.status == ResultStatus.SKIPPED
+        and authored
+        and criterion.severity == "error"
+        and outcome.reason not in CONFIG_OFF_SKIP_REASONS
+    )
+    return {
+        "check": f"acceptance:{criterion.check}",
+        "severity": criterion.severity,
+        "params": criterion.params,
+        "description": criterion.description,
+        "status": outcome.status,
+        "actual": outcome.actual,
+        "reason": outcome.reason,
+        # `passed` flag for compatibility with the legacy
+        # all-checks-pass aggregator: severity=error AND blocking
+        # status, or an evidence-gap skip (#423), counts as
+        # not-passed.
+        "passed": not (criterion.severity == "error" and outcome.status in {"failed", "error"})
+        and not evidence_gap,
+        "evidence_gap": evidence_gap,
+        # Issue #114: identity fields for downstream trigger
+        # composition and per-cycle evaluation persistence.
+        # task_index is None for tasks not driven by an
+        # implementation_plan (legacy monolithic flow).
+        "task_index": subtask_index,
+        "check_index": check_index,
+        # SIP-0098 98.3: the contract criterion id when this check was
+        # resolved from a bind-mode criteria_ref; None for authored checks.
+        "criterion_id": criterion.id or None,
+    }
+
+
+def apply_blocking_matrix(
+    criterion: TypedCheck,
+    outcome: CheckOutcome,
+    missing: list[str],
+    typed_error_counts: dict[str, int],
+) -> bool:
+    """RC-9's blocking matrix for one evaluated criterion, mutating ``missing`` and
+    ``typed_error_counts`` in place (RC-9, RC-9a, RC-9b).
+
+    Returns whether an evaluator error is past its second strike: it's counted and not fed
+    back, and the caller escalates it. Moved from
+    ``_CycleTaskHandler._evaluate_typed_acceptance`` (#1994).
+    """
+    # RC-9: severity AND status are independent. Only error+blocking missions.
+    if criterion.severity != "error":
+        return False
+    if outcome.status == "failed":
+        # RC-9a: app-incompleteness wording.
+        label = criterion.description or criterion.check
+        missing.append(f"acceptance:{label}")
+    elif outcome.status == "error":
+        fp = criterion.fingerprint()
+        prior = typed_error_counts.get(fp, 0)
+        if prior < 2:
+            # RC-9a: evaluator-error wording, distinct from app-incomplete.
+            missing.append(f"evaluator-error:{criterion.check}: {outcome.reason}")
+        typed_error_counts[fp] = prior + 1
+        return prior >= 2
+    # status in {passed, skipped} never blocks.
+    return False
