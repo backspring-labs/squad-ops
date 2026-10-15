@@ -48,9 +48,13 @@ def create_cycle_registry(provider: str, **kwargs) -> CycleRegistryPort:
         pool = kwargs.get("pool")
         if pool is None:
             raise ValueError("pool is required for postgres cycle registry provider")
+        retry = kwargs.get("retry")  # the config's ``db.retry`` (#1976)
+        if retry is None:
+            raise ValueError("retry is required for postgres cycle registry provider (#1976)")
         from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
+        from adapters.persistence.transient import TransientRetry
 
-        return PostgresCycleRegistry(pool=pool)
+        return PostgresCycleRegistry(pool=pool, retry=TransientRetry.of(retry))
     raise ValueError(f"Unknown cycle registry provider: {provider}")
 
 

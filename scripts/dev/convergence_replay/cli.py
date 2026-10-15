@@ -42,6 +42,8 @@ from read_only_vault import ReadOnlyVault  # noqa: E402
 
 from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry  # noqa: E402
 from adapters.persistence.pool import create_pool  # noqa: E402
+from adapters.persistence.transient import TransientRetry  # noqa: E402
+from squadops.config.schema import DBRetryConfig  # noqa: E402
 
 DSN_ENV = "SQUADOPS__DB__URL"
 
@@ -92,7 +94,7 @@ def _stack(cycle) -> str | None:
 
 async def build_corpus(dsn: str, vault: Path, records_root: Path) -> tuple[list[Round], dict]:
     pool = await _read_only_pool(dsn)
-    registry = PostgresCycleRegistry(pool)
+    registry = PostgresCycleRegistry(pool, TransientRetry.of(DBRetryConfig()))
     refused: collections.Counter[str] = collections.Counter()
     kept_paths: collections.Counter[str] = collections.Counter()
     provenance = _provenance(records_root)
@@ -154,7 +156,7 @@ async def build_bundles(dsn: str, vault_dir: Path, corpus: Path, out: Path) -> d
     from adapters.cycles.postgres_squad_profile import PostgresSquadProfile
 
     pool = await _read_only_pool(dsn)
-    registry = PostgresCycleRegistry(pool)
+    registry = PostgresCycleRegistry(pool, TransientRetry.of(DBRetryConfig()))
     vault = ReadOnlyVault(vault_dir)
     profiles = PostgresSquadProfile(pool=pool)
     from adapters.cycles.factory import create_project_registry

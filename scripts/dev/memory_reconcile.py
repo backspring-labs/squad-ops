@@ -35,6 +35,8 @@ async def reconcile_all(dsn: str, vault_dir: Path, *, write: bool) -> dict:
         PostgresCrossCycleMemoryStore,
     )
     from adapters.persistence.pool import create_pool
+    from adapters.persistence.transient import TransientRetry
+    from squadops.config.schema import DBRetryConfig
     from squadops.memory.observations import ineligibility
     from squadops.memory.reconcile import reconcile_campaign, reconcile_cycle
 
@@ -42,7 +44,7 @@ async def reconcile_all(dsn: str, vault_dir: Path, *, write: bool) -> dict:
     settings = {} if write else {"default_transaction_read_only": "on"}
     pool = await create_pool(dsn, min_size=1, max_size=2, server_settings=settings)
     try:
-        registry = PostgresCycleRegistry(pool=pool)
+        registry = PostgresCycleRegistry(pool=pool, retry=TransientRetry.of(DBRetryConfig()))
         campaigns = PostgresCampaignRegistry(pool)
         vault = FilesystemArtifactVault(base_dir=vault_dir)
         store = (

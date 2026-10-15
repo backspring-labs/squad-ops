@@ -20,6 +20,7 @@ from adapters.cycles import postgres_campaign_registry
 from adapters.cycles.postgres_campaign_registry import PostgresCampaignRegistry
 from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
 from adapters.persistence.pool import create_pool
+from adapters.persistence.transient import TransientRetry
 from squadops.campaigns.gate import ruling_transition, submission
 from squadops.campaigns.launcher import CampaignLauncher
 from squadops.campaigns.models import (
@@ -39,6 +40,9 @@ from squadops.campaigns.models import (
 from squadops.cycles.models import GateDecisionValue
 from tests.integration.conftest import integration_postgres_dsn
 from tests.unit.campaigns.builders import campaign, cycle_for, move, quiet_box
+
+#: #1976: one try, so a test sees the registry's own behaviour, never a retry.
+ONE_TRY = TransientRetry(attempts=1, backoff_seconds=0.0)
 
 pytestmark = [pytest.mark.docker, pytest.mark.domain_orchestration]
 
@@ -334,14 +338,14 @@ async def test_two_launchers_on_their_own_connections_create_one_cycle(campaigns
         launchers = [
             CampaignLauncher(
                 campaigns,
-                PostgresCycleRegistry(pool=pool),
+                PostgresCycleRegistry(pool=pool, retry=ONE_TRY),
                 _build,
                 actor="l1",
                 box_verdict=quiet_box,
             ),
             CampaignLauncher(
                 PostgresCampaignRegistry(pool=other_pool),
-                PostgresCycleRegistry(pool=other_pool),
+                PostgresCycleRegistry(pool=other_pool, retry=ONE_TRY),
                 _build,
                 actor="l2",
                 box_verdict=quiet_box,
@@ -372,7 +376,7 @@ class _CrashAfterCreate(PostgresCycleRegistry):
 
 async def test_a_crash_after_creation_is_found_by_the_next_drain(campaigns, pool):
     decided = await campaigns.transition(CID, _launching("k-decide"))
-    cycles = _CrashAfterCreate(pool=pool)
+    cycles = _CrashAfterCreate(pool=pool, retry=ONE_TRY)
 
     with pytest.raises(RuntimeError, match="injected"):
         await CampaignLauncher(campaigns, cycles, _build, actor="l1", box_verdict=quiet_box).drain()
@@ -390,7 +394,7 @@ async def test_a_crash_after_creation_is_found_by_the_next_drain(campaigns, pool
 
 async def test_a_cycle_no_campaign_launched_is_stored_as_before(pool):
     """§19: a cycle without a campaign gains only null columns."""
-    cycles = PostgresCycleRegistry(pool=pool)
+    cycles = PostgresCycleRegistry(pool=pool, retry=ONE_TRY)
     plain = cycle_for(
         type("I", (), {"campaign_id": None, "cycle_kind": CycleKind.INCREMENT})(),
         project_id=PROJECT,
@@ -425,7 +429,11 @@ async def test_a_campaigns_launch_intents_read_back_in_order_in_any_state(campai
     """An abort reads these to cancel what the campaign launched (§12a)."""
     first = await campaigns.transition(CID, _launching("k-1"))
     await CampaignLauncher(
-        campaigns, PostgresCycleRegistry(pool=pool), _build, actor="l1", box_verdict=quiet_box
+        campaigns,
+        PostgresCycleRegistry(pool=pool, retry=ONE_TRY),
+        _build,
+        actor="l1",
+        box_verdict=quiet_box,
     ).drain()
     await campaigns.transition(CID, move(S.AWAITING_RULING, "k-2"))
     await campaigns.transition(

@@ -38,6 +38,8 @@ async def backfill(dsn: str, vault_dir: Path, *, write: bool) -> dict:
     from adapters.cycles.filesystem_artifact_vault import FilesystemArtifactVault
     from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
     from adapters.persistence.pool import create_pool
+    from adapters.persistence.transient import TransientRetry
+    from squadops.config.schema import DBRetryConfig
     from squadops.cycles.cycle_assessment import AssessorIdentity
 
     require_readable_vault(vault_dir)
@@ -54,7 +56,7 @@ async def backfill(dsn: str, vault_dir: Path, *, write: bool) -> dict:
         "mismatch": [],
     }
     try:
-        registry = PostgresCycleRegistry(pool=pool)
+        registry = PostgresCycleRegistry(pool=pool, retry=TransientRetry.of(DBRetryConfig()))
         vault = FilesystemArtifactVault(base_dir=vault_dir)
         async with pool.acquire() as conn:
             rows = await conn.fetch(

@@ -16,6 +16,7 @@ import pytest
 import pytest_asyncio
 
 from adapters.persistence.pool import create_pool
+from adapters.persistence.transient import TransientRetry
 from squadops.cycles.models import (
     Cycle,
     CycleStatus,
@@ -31,6 +32,9 @@ from squadops.cycles.models import (
     ValidationError,
 )
 from tests.integration.conftest import integration_postgres_dsn
+
+#: #1976: one try, so a test sees the registry's own behaviour, never a retry.
+ONE_TRY = TransientRetry(attempts=1, backoff_seconds=0.0)
 
 pytestmark = [pytest.mark.docker, pytest.mark.domain_orchestration]
 
@@ -118,7 +122,7 @@ async def registry(migrated_pool):
     """Fresh PostgresCycleRegistry backed by real Postgres."""
     from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
 
-    return PostgresCycleRegistry(pool=migrated_pool)
+    return PostgresCycleRegistry(pool=migrated_pool, retry=ONE_TRY)
 
 
 def _make_cycle(**overrides) -> Cycle:
@@ -841,6 +845,28 @@ class TestConcurrentRunCreation:
         # At least some must succeed (we expect most to)
         assert successes > 0, "No runs succeeded in 20 iterations"
 
+    async def test_with_the_retry_no_rollback_reaches_the_caller(self, migrated_pool):
+        """#1976, on real Postgres: the same contention through a registry that retries. Bug
+        caught: a serialization failure (40001) handed to the caller as a failed run creation,
+        when running the transaction again allocates the next number. Three at once, twenty
+        times: every creation succeeds, and the numbers are 1 to 60 with none repeated."""
+        from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
+
+        registry = PostgresCycleRegistry(
+            pool=migrated_pool, retry=TransientRetry(attempts=6, backoff_seconds=0.01)
+        )
+        cycle = _make_cycle()
+        await registry.create_cycle(cycle)
+
+        numbers: list[int] = []
+        for _ in range(20):
+            created = await asyncio.gather(
+                *[registry.create_run(_make_run(cycle.cycle_id)) for _ in range(3)]
+            )
+            numbers.extend(r.run_number for r in created)
+
+        assert sorted(numbers) == list(range(1, 61))
+
 
 class TestMigrationRunnerIdempotent:
     """run apply_migrations() twice, no error (Plan §3.3 item 7)."""
@@ -922,7 +948,7 @@ class TestPersistenceAcrossAdapterRestart:
         from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
 
         # Adapter instance 1: create data
-        registry1 = PostgresCycleRegistry(pool=migrated_pool)
+        registry1 = PostgresCycleRegistry(pool=migrated_pool, retry=ONE_TRY)
         cycle = _make_cycle()
         await registry1.create_cycle(cycle)
         run = _make_run(cycle.cycle_id)
@@ -930,7 +956,7 @@ class TestPersistenceAcrossAdapterRestart:
         await registry1.update_run_status(created_run.run_id, RunStatus.RUNNING)
 
         # "Restart": create a completely new adapter instance
-        registry2 = PostgresCycleRegistry(pool=migrated_pool)
+        registry2 = PostgresCycleRegistry(pool=migrated_pool, retry=ONE_TRY)
 
         # Verify cycle survives
         fetched_cycle = await registry2.get_cycle(cycle.cycle_id)

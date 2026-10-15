@@ -12,8 +12,10 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
+import asyncpg
 import pytest
 
+from adapters.persistence.transient import TransientRetry
 from squadops.cycles.models import (
     Cycle,
     CycleNotFoundError,
@@ -29,6 +31,9 @@ from squadops.cycles.models import (
     TaskFlowPolicy,
     ValidationError,
 )
+
+#: #1976: one try, so a test sees the registry's own behaviour, never a retry.
+ONE_TRY = TransientRetry(attempts=1, backoff_seconds=0.0)
 
 pytestmark = [pytest.mark.domain_orchestration]
 
@@ -177,7 +182,7 @@ class TestPostgresCycleRegistry:
     def registry(self, pool):
         from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
 
-        return PostgresCycleRegistry(pool)
+        return PostgresCycleRegistry(pool, ONE_TRY)
 
     # ------------------------------------------------------------------
     # 1. create_cycle — verify INSERT called with correct params
@@ -302,6 +307,76 @@ class TestPostgresCycleRegistry:
         sql = conn.fetchrow.call_args[0][0]
         assert "FOR UPDATE" in sql
         assert "cancelled" in sql.lower()
+
+    async def test_a_run_number_lost_to_a_concurrent_allocation_is_allocated_again(
+        self, conn, pool
+    ):
+        """#1976, entered at the registry's create_run. Bug caught: two runs created at once for one
+        cycle, the serializable transaction rolled back (40001), and the caller handed the failure
+        when the next try would have allocated the following number."""
+        from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
+
+        conn.fetchrow.return_value = {"cancelled": False}
+        conn.fetchval.side_effect = [asyncpg.SerializationError("40001"), 3]
+        registry = PostgresCycleRegistry(pool, TransientRetry(attempts=2, backoff_seconds=0.0))
+
+        created = await registry.create_run(_RUN)
+
+        assert created.run_number == 3
+        assert conn.execute.await_count == 1  # the insert, from the second try only
+        assert conn.transaction.call_args.kwargs == {"isolation": "serializable"}
+
+    @pytest.mark.parametrize(
+        ("constraint", "attempts", "outcome"),
+        [
+            ("cycle_runs_cycle_id_run_number_key", 2, 4),
+            ("cycle_runs_cycle_id_run_number_key", 1, asyncpg.UniqueViolationError),
+            ("cycle_runs_pkey", 2, asyncpg.UniqueViolationError),
+        ],
+        ids=[
+            "the-number-taken-is-allocated-again",
+            "tries-spent",
+            "a-duplicate-run-id-is-never-retried",
+        ],
+    )
+    async def test_a_run_number_another_create_took_first_is_allocated_again(
+        self, conn, pool, constraint, attempts, outcome
+    ):
+        """#1976, as CI's Postgres showed: two runs created at once read the same highest number
+        in their own snapshots, and the second insert meets the unique index. Bugs caught: that
+        race handed to the caller; or a duplicate run id, a caller's error, retried as if it
+        were one."""
+        from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
+
+        taken = asyncpg.UniqueViolationError("duplicate key value violates unique constraint")
+        taken.constraint_name = constraint
+        conn.fetchrow.return_value = {"cancelled": False}
+        conn.fetchval.side_effect = [3, 4]
+        conn.execute.side_effect = [taken, None]
+        registry = PostgresCycleRegistry(
+            pool, TransientRetry(attempts=attempts, backoff_seconds=0.0)
+        )
+
+        if outcome is asyncpg.UniqueViolationError:
+            with pytest.raises(asyncpg.UniqueViolationError) as raised:
+                await registry.create_run(_RUN)
+            assert raised.value is taken
+            assert conn.execute.await_count == 1
+        else:
+            assert (await registry.create_run(_RUN)).run_number == outcome
+
+    async def test_a_status_write_whose_connection_was_lost_is_never_sent_again(self, conn, pool):
+        """#1976: the update may have committed before the connection dropped, so the registry
+        raises it rather than writing again, even with tries to spare."""
+        from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
+
+        conn.fetchrow.return_value = {"status": "queued"}
+        conn.execute.side_effect = asyncpg.ConnectionDoesNotExistError("closed mid-operation")
+        registry = PostgresCycleRegistry(pool, TransientRetry(attempts=3, backoff_seconds=0.0))
+
+        with pytest.raises(asyncpg.ConnectionDoesNotExistError):
+            await registry.update_run_status("run_001", RunStatus.RUNNING)
+        assert conn.execute.await_count == 1
 
     # ------------------------------------------------------------------
     # 5. create_run — allocates run_number under lock (FOR UPDATE + MAX+1)
@@ -741,7 +816,7 @@ class TestRecordRunVerificationSummary:
     def registry(self, conn):
         from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
 
-        return PostgresCycleRegistry(_make_pool(conn))
+        return PostgresCycleRegistry(_make_pool(conn), ONE_TRY)
 
     async def test_upserts_verdict_and_serialized_summary(self, registry, conn):
         from squadops.cycles.verification_integrity import CheckResult, aggregate_verification
@@ -806,7 +881,7 @@ class TestListRunVerificationSummaries:
     def registry(self, conn):
         from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
 
-        return PostgresCycleRegistry(_make_pool(conn))
+        return PostgresCycleRegistry(_make_pool(conn), ONE_TRY)
 
     async def test_reconstructs_summaries_from_jsonb_in_order(self, registry, conn):
         from adapters.cycles.postgres_cycle_registry import _verification_summary_to_dict
@@ -924,7 +999,7 @@ class TestCheckpointRetentionSQL:
     def registry(self, conn):
         from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
 
-        return PostgresCycleRegistry(_make_pool(conn))
+        return PostgresCycleRegistry(_make_pool(conn), ONE_TRY)
 
     @staticmethod
     def _checkpoint():
@@ -976,7 +1051,7 @@ class TestGateWaiverSQL:
     def registry(self, conn):
         from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
 
-        return PostgresCycleRegistry(_make_pool(conn))
+        return PostgresCycleRegistry(_make_pool(conn), ONE_TRY)
 
     async def test_insert_carries_waiver_columns(self, registry, conn):
         from datetime import UTC, datetime

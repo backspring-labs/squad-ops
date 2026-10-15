@@ -14,6 +14,7 @@ from typing import Any
 
 import asyncpg
 
+from adapters.persistence.transient import TransientRetry
 from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.cycle_end import CycleStopReason, RecordedEnd
 from squadops.cycles.failure_attribution import (
@@ -103,17 +104,29 @@ def _cycle_insert_args(cycle: Cycle) -> tuple:
     )
 
 
-class PostgresCycleRegistry(CycleRegistryPort):
-    """Postgres-backed CycleRegistryPort implementation."""
+#: The unique index a concurrent ``create_run`` loses its run number on (#1976).
+_RUN_NUMBER_UNIQUE = "cycle_runs_cycle_id_run_number_key"
 
-    def __init__(self, pool: asyncpg.Pool) -> None:
+
+class _RunNumberTaken(Exception):
+    """Another ``create_run`` committed this run number first (#1976). Each transaction reads the
+    highest number in its own snapshot, taken before the other committed, so the second insert
+    meets the unique index. Its next try reads a fresh snapshot."""
+
+
+class PostgresCycleRegistry(CycleRegistryPort):
+    """Postgres-backed CycleRegistryPort implementation. ``retry`` takes each connection and runs
+    each transaction again on a transient failure (#1976, ``adapters/persistence/transient.py``)."""
+
+    def __init__(self, pool: asyncpg.Pool, retry: TransientRetry) -> None:
         self._pool = pool
+        self._retry = retry
 
     # --- Cycle CRUD ---
 
     async def create_cycle(self, cycle: Cycle) -> Cycle:
         try:
-            async with self._pool.acquire() as conn:
+            async with self._retry.acquire(self._pool) as conn:
                 await conn.execute(
                     f"INSERT INTO cycle_registry ({_CYCLE_INSERT_COLUMNS}) "
                     f"VALUES ({_placeholders(_CYCLE_INSERT_COLUMN_COUNT)})",
@@ -132,7 +145,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
         # does nothing, and it reads the winner's cycle. A cycle_id conflict is not covered by
         # the ON CONFLICT target, so it still raises.
         try:
-            async with self._pool.acquire() as conn:
+            async with self._retry.acquire(self._pool) as conn:
                 inserted = await conn.fetchval(
                     f"INSERT INTO cycle_registry ({_CYCLE_INSERT_COLUMNS}, source_launch_id) "
                     f"VALUES ({_placeholders(_CYCLE_INSERT_COLUMN_COUNT + 1)}) "
@@ -150,7 +163,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
         return self._row_to_cycle(row)
 
     async def get_cycle(self, cycle_id: str) -> Cycle:
-        async with self._pool.acquire() as conn:
+        async with self._retry.acquire(self._pool) as conn:
             row = await conn.fetchrow("SELECT * FROM cycle_registry WHERE cycle_id = $1", cycle_id)
         if row is None:
             raise CycleNotFoundError(f"Cycle not found: {cycle_id}")
@@ -197,7 +210,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
         self, project_id: str, limit: int, offset: int, created_before: datetime | None
     ) -> list:
         """One page of the project's cycle rows, newest first, as of ``created_before``."""
-        async with self._pool.acquire() as conn:
+        async with self._retry.acquire(self._pool) as conn:
             if created_before is None:
                 return await conn.fetch(
                     "SELECT * FROM cycle_registry WHERE project_id = $1 "
@@ -217,7 +230,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
             )
 
     async def cancel_cycle(self, cycle_id: str) -> None:
-        async with self._pool.acquire() as conn:
+        async with self._retry.acquire(self._pool) as conn:
             result = await conn.execute(
                 "UPDATE cycle_registry SET cancelled = TRUE WHERE cycle_id = $1",
                 cycle_id,
@@ -228,27 +241,27 @@ class PostgresCycleRegistry(CycleRegistryPort):
     # --- Run CRUD ---
 
     async def create_run(self, run: Run) -> Run:
-        async with self._pool.acquire() as conn:
-            async with conn.transaction(isolation="serializable"):
-                # Lock cycle row and check cancelled (D2, D8)
-                cycle_row = await conn.fetchrow(
-                    "SELECT cancelled FROM cycle_registry WHERE cycle_id = $1 FOR UPDATE",
-                    run.cycle_id,
-                )
-                if cycle_row is None:
-                    raise CycleNotFoundError(f"Cycle not found: {run.cycle_id}")
-                if cycle_row["cancelled"]:
-                    raise IllegalStateTransitionError(
-                        f"Cannot create run on cancelled cycle: {run.cycle_id}"
-                    )
-
-                # Allocate next run_number under the lock
-                next_num = await conn.fetchval(
-                    "SELECT COALESCE(MAX(run_number), 0) + 1 FROM cycle_runs WHERE cycle_id = $1",
-                    run.cycle_id,
+        async def work(conn: Any) -> int:
+            # Lock cycle row and check cancelled (D2, D8)
+            cycle_row = await conn.fetchrow(
+                "SELECT cancelled FROM cycle_registry WHERE cycle_id = $1 FOR UPDATE",
+                run.cycle_id,
+            )
+            if cycle_row is None:
+                raise CycleNotFoundError(f"Cycle not found: {run.cycle_id}")
+            if cycle_row["cancelled"]:
+                raise IllegalStateTransitionError(
+                    f"Cannot create run on cancelled cycle: {run.cycle_id}"
                 )
 
-                # Insert with allocated run_number (caller's run_number is ignored)
+            # Allocate next run_number under the lock
+            next_num = await conn.fetchval(
+                "SELECT COALESCE(MAX(run_number), 0) + 1 FROM cycle_runs WHERE cycle_id = $1",
+                run.cycle_id,
+            )
+
+            # Insert with allocated run_number (caller's run_number is ignored)
+            try:
                 await conn.execute(
                     "INSERT INTO cycle_runs "
                     "(run_id, cycle_id, run_number, status, initiated_by, "
@@ -263,10 +276,26 @@ class PostgresCycleRegistry(CycleRegistryPort):
                     run.resolved_config_ref,
                     run.workload_type,
                 )
+            except asyncpg.UniqueViolationError as err:
+                if err.constraint_name == _RUN_NUMBER_UNIQUE:
+                    raise _RunNumberTaken(f"run number {next_num} of {run.cycle_id}") from err
+                raise
+            return next_num
+
+        # #1976: two runs created at once read the same highest number. The second insert meets
+        # the unique index (seen on CI's Postgres) or is rolled back (40001), and its transaction
+        # runs again on a fresh snapshot and takes the next number.
+        try:
+            next_num = await self._retry.transaction(
+                self._pool, work, isolation="serializable", lost_race=(_RunNumberTaken,)
+            )
+        except _RunNumberTaken as taken:
+            # The unique violation itself, once the tries are spent.
+            raise (taken.__cause__ or taken) from None
         return dataclasses.replace(run, run_number=next_num)
 
     async def get_run(self, run_id: str) -> Run:
-        async with self._pool.acquire() as conn:
+        async with self._retry.acquire(self._pool) as conn:
             row = await conn.fetchrow("SELECT * FROM cycle_runs WHERE run_id = $1", run_id)
             if row is None:
                 raise RunNotFoundError(f"Run not found: {run_id}")
@@ -286,7 +315,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
         limit: int = 50,
         offset: int = 0,
     ) -> list[Run]:
-        async with self._pool.acquire() as conn:
+        async with self._retry.acquire(self._pool) as conn:
             if workload_type is not None:
                 run_rows = await conn.fetch(
                     "SELECT * FROM cycle_runs WHERE cycle_id = $1 AND workload_type = $2 "
@@ -329,7 +358,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
         runs: dict[str, list[Run]] = {cycle_id: [] for cycle_id in cycle_ids}
         if not runs:
             return runs
-        async with self._pool.acquire() as conn:
+        async with self._retry.acquire(self._pool) as conn:
             run_rows = await conn.fetch(
                 "SELECT * FROM ("
                 "SELECT *, ROW_NUMBER() OVER (PARTITION BY cycle_id ORDER BY run_number) AS nth "
@@ -362,7 +391,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
     async def update_run_status(
         self, run_id: str, status: RunStatus, *, failure_reason: str | None = None
     ) -> Run:
-        async with self._pool.acquire() as conn:
+        async with self._retry.acquire(self._pool) as conn:
             row = await conn.fetchrow("SELECT status FROM cycle_runs WHERE run_id = $1", run_id)
             if row is None:
                 raise RunNotFoundError(f"Run not found: {run_id}")
@@ -404,7 +433,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
         await self.update_run_status(run_id, RunStatus.CANCELLED)
 
     async def append_artifact_refs(self, run_id: str, artifact_ids: tuple[str, ...]) -> Run:
-        async with self._pool.acquire() as conn:
+        async with self._retry.acquire(self._pool) as conn:
             row = await conn.fetchrow(
                 "SELECT artifact_refs FROM cycle_runs WHERE run_id = $1", run_id
             )
@@ -429,82 +458,77 @@ class PostgresCycleRegistry(CycleRegistryPort):
     # --- Gate decisions ---
 
     async def record_gate_decision(self, run_id: str, decision: GateDecision) -> Run:
-        async with self._pool.acquire() as conn:
-            async with conn.transaction(isolation="read_committed"):
-                # 1. Load run + validate not terminal
-                run_row = await conn.fetchrow(
-                    "SELECT status, cycle_id FROM cycle_runs WHERE run_id = $1 FOR UPDATE",
-                    run_id,
+        async def work(conn: Any) -> None:
+            # 1. Load run + validate not terminal
+            run_row = await conn.fetchrow(
+                "SELECT status, cycle_id FROM cycle_runs WHERE run_id = $1 FOR UPDATE",
+                run_id,
+            )
+            if run_row is None:
+                raise RunNotFoundError(f"Run not found: {run_id}")
+            if RunStatus(run_row["status"]) in GATE_REJECTED_STATES:
+                raise RunTerminalError(
+                    f"Cannot record gate decision on gate-rejected run (status={run_row['status']})"
                 )
-                if run_row is None:
-                    raise RunNotFoundError(f"Run not found: {run_id}")
-                if RunStatus(run_row["status"]) in GATE_REJECTED_STATES:
-                    raise RunTerminalError(
-                        f"Cannot record gate decision on gate-rejected run"
-                        f" (status={run_row['status']})"
+
+            # 2. Validate gate_name exists in cycle's policy
+            cycle_row = await conn.fetchrow(
+                "SELECT task_flow_policy FROM cycle_registry WHERE cycle_id = $1",
+                run_row["cycle_id"],
+            )
+            if cycle_row is None:
+                raise CycleNotFoundError(f"Cycle not found: {run_row['cycle_id']}")
+            policy = cycle_row["task_flow_policy"]
+            gate_names = {g["name"] for g in policy.get("gates", ())}
+            if decision.gate_name not in gate_names:
+                raise ValidationError(f"Gate {decision.gate_name!r} not found in TaskFlowPolicy")
+
+            # 3. Check existing decision for this gate
+            existing = await conn.fetchrow(
+                "SELECT decision FROM cycle_gate_decisions WHERE run_id = $1 AND gate_name = $2",
+                run_id,
+                decision.gate_name,
+            )
+            if existing is not None:
+                if existing["decision"] == decision.decision:
+                    # Idempotent — same decision is a no-op
+                    return
+                else:
+                    raise GateAlreadyDecidedError(
+                        f"Gate {decision.gate_name!r} already decided as {existing['decision']!r}"
                     )
 
-                # 2. Validate gate_name exists in cycle's policy
-                cycle_row = await conn.fetchrow(
-                    "SELECT task_flow_policy FROM cycle_registry WHERE cycle_id = $1",
-                    run_row["cycle_id"],
-                )
-                if cycle_row is None:
-                    raise CycleNotFoundError(f"Cycle not found: {run_row['cycle_id']}")
-                policy = cycle_row["task_flow_policy"]
-                gate_names = {g["name"] for g in policy.get("gates", ())}
-                if decision.gate_name not in gate_names:
-                    raise ValidationError(
-                        f"Gate {decision.gate_name!r} not found in TaskFlowPolicy"
-                    )
-
-                # 3. Check existing decision for this gate
-                existing = await conn.fetchrow(
-                    "SELECT decision FROM cycle_gate_decisions "
-                    "WHERE run_id = $1 AND gate_name = $2",
+            # 4. Insert new decision (decided_at is caller-provided, D4)
+            try:
+                await conn.execute(
+                    "INSERT INTO cycle_gate_decisions "
+                    "(run_id, gate_name, decision, decided_by, decided_at, notes, "
+                    "waived_checks, waiver_reason) "
+                    "VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
                     run_id,
                     decision.gate_name,
+                    decision.decision,
+                    decision.decided_by,
+                    decision.decided_at,
+                    decision.notes,
+                    # NULL (no waiver) stays distinguishable from a recorded one
+                    list(decision.waived_checks) if decision.waived_checks else None,
+                    decision.waiver_reason,
                 )
-                if existing is not None:
-                    if existing["decision"] == decision.decision:
-                        # Idempotent — same decision is a no-op
-                        return await self.get_run(run_id)
-                    else:
-                        raise GateAlreadyDecidedError(
-                            f"Gate {decision.gate_name!r} already decided "
-                            f"as {existing['decision']!r}"
-                        )
+            except asyncpg.UniqueViolationError as err:
+                # Safety net: concurrent race between two transactions
+                raise GateAlreadyDecidedError(
+                    f"Gate {decision.gate_name!r} already decided (concurrent race)"
+                ) from err
 
-                # 4. Insert new decision (decided_at is caller-provided, D4)
-                try:
-                    await conn.execute(
-                        "INSERT INTO cycle_gate_decisions "
-                        "(run_id, gate_name, decision, decided_by, decided_at, notes, "
-                        "waived_checks, waiver_reason) "
-                        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-                        run_id,
-                        decision.gate_name,
-                        decision.decision,
-                        decision.decided_by,
-                        decision.decided_at,
-                        decision.notes,
-                        # NULL (no waiver) stays distinguishable from a recorded one
-                        list(decision.waived_checks) if decision.waived_checks else None,
-                        decision.waiver_reason,
-                    )
-                except asyncpg.UniqueViolationError as err:
-                    # Safety net: concurrent race between two transactions
-                    raise GateAlreadyDecidedError(
-                        f"Gate {decision.gate_name!r} already decided (concurrent race)"
-                    ) from err
-
+        await self._retry.transaction(self._pool, work, isolation="read_committed")
         return await self.get_run(run_id)
 
     # --- Pulse Verification (SIP-0070) ---
 
     async def record_pulse_verification(self, run_id: str, record: PulseVerificationRecord) -> Run:
         """Persist a pulse verification record to Postgres."""
-        async with self._pool.acquire() as conn:
+        async with self._retry.acquire(self._pool) as conn:
             # Validate run exists and is not terminal
             row = await conn.fetchrow("SELECT status FROM cycle_runs WHERE run_id = $1", run_id)
             if row is None:
@@ -539,7 +563,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
         self, run_id: str, summary: RunVerificationSummary
     ) -> None:
         """Persist a run's verification roll-up to Postgres (upsert, terminal-OK)."""
-        async with self._pool.acquire() as conn:
+        async with self._retry.acquire(self._pool) as conn:
             row = await conn.fetchrow("SELECT 1 FROM cycle_runs WHERE run_id = $1", run_id)
             if row is None:
                 raise RunNotFoundError(f"Run not found: {run_id}")
@@ -557,7 +581,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
 
     async def record_run_loop_summary(self, run_id: str, summary: RunLoopSummary) -> None:
         """Persist a run's loop facts to Postgres (SIP-0108 §4.1; upsert, terminal-OK)."""
-        async with self._pool.acquire() as conn:
+        async with self._retry.acquire(self._pool) as conn:
             row = await conn.fetchrow("SELECT 1 FROM cycle_runs WHERE run_id = $1", run_id)
             if row is None:
                 raise RunNotFoundError(f"Run not found: {run_id}")
@@ -573,7 +597,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
 
     async def get_run_loop_summary(self, run_id: str) -> RunLoopSummary | None:
         """One run's persisted loop facts, or None (a run finalized before the row existed)."""
-        async with self._pool.acquire() as conn:
+        async with self._retry.acquire(self._pool) as conn:
             row = await conn.fetchrow(
                 "SELECT summary FROM run_loop_summaries WHERE run_id = $1", run_id
             )
@@ -584,7 +608,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
     async def record_authoring_envelope(self, run_id: str, envelope: dict[str, Any]) -> bool:
         """Insert one authoring seam's replay envelope (SIP-0110 §0.11). A duplicate delivery of
         the same capture keeps the first row; returns whether this one was new."""
-        async with self._pool.acquire() as conn:
+        async with self._retry.acquire(self._pool) as conn:
             row = await conn.fetchrow("SELECT 1 FROM cycle_runs WHERE run_id = $1", run_id)
             if row is None:
                 raise RunNotFoundError(f"Run not found: {run_id}")
@@ -605,7 +629,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
 
     async def list_authoring_envelopes(self, run_id: str) -> list[dict[str, Any]]:
         """A run's recorded envelopes, in capture order."""
-        async with self._pool.acquire() as conn:
+        async with self._retry.acquire(self._pool) as conn:
             rows = await conn.fetch(
                 "SELECT envelope FROM authoring_envelopes WHERE run_id = $1 "
                 "ORDER BY captured_at, envelope_id",
@@ -621,7 +645,8 @@ class PostgresCycleRegistry(CycleRegistryPort):
         The cycle's row lock serializes two endings of one cycle, so each set takes the next
         index; the set row and its records commit together or not at all.
         """
-        async with self._pool.acquire() as conn, conn.transaction():
+
+        async def work(conn: Any) -> int:
             exists = await conn.fetchval(
                 "SELECT 1 FROM cycle_registry WHERE cycle_id = $1 FOR UPDATE", cycle_id
             )
@@ -650,12 +675,15 @@ class PostgresCycleRegistry(CycleRegistryPort):
                     "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
                     [_failure_record_args(cycle_id, set_index, r) for r in records],
                 )
-        return set_index
+            return set_index
+
+        return await self._retry.transaction(self._pool, work)
 
     async def record_cycle_end(self, end: RecordedEnd) -> int:
         """Append one ending (SIP-0109 §12a, #1803). The cycle's row lock serializes two endings
         of one cycle, so each takes the next index."""
-        async with self._pool.acquire() as conn, conn.transaction():
+
+        async def work(conn: Any) -> int:
             exists = await conn.fetchval(
                 "SELECT 1 FROM cycle_registry WHERE cycle_id = $1 FOR UPDATE", end.cycle_id
             )
@@ -676,8 +704,10 @@ class PostgresCycleRegistry(CycleRegistryPort):
             )
             return end_index
 
+        return await self._retry.transaction(self._pool, work)
+
     async def get_cycle_end(self, cycle_id: str) -> RecordedEnd | None:
-        async with self._pool.acquire() as conn:
+        async with self._retry.acquire(self._pool) as conn:
             row = await conn.fetchrow(
                 "SELECT last_run_id, stopped_because FROM cycle_ends WHERE cycle_id = $1 "
                 "ORDER BY end_index DESC LIMIT 1",
@@ -692,7 +722,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
         )
 
     async def get_failure_records(self, cycle_id: str) -> tuple[FailureRecord, ...] | None:
-        async with self._pool.acquire() as conn:
+        async with self._retry.acquire(self._pool) as conn:
             set_index = await conn.fetchval(
                 "SELECT MAX(set_index) FROM cycle_failure_record_sets WHERE cycle_id = $1",
                 cycle_id,
@@ -709,7 +739,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
 
     async def get_run_verification_summary(self, run_id: str) -> RunVerificationSummary | None:
         """One run's persisted verification roll-up, or None (#682)."""
-        async with self._pool.acquire() as conn:
+        async with self._retry.acquire(self._pool) as conn:
             row = await conn.fetchrow(
                 "SELECT summary FROM run_verification_summaries WHERE run_id = $1", run_id
             )
@@ -719,7 +749,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
 
     async def list_run_verification_summaries(self, cycle_id: str) -> list[RunVerificationSummary]:
         """Return a cycle's persisted per-run verification summaries (SIP-0096 §10)."""
-        async with self._pool.acquire() as conn:
+        async with self._retry.acquire(self._pool) as conn:
             rows = await conn.fetch(
                 "SELECT rvs.summary FROM run_verification_summaries rvs "
                 "JOIN cycle_runs r ON r.run_id = rvs.run_id "
@@ -734,40 +764,42 @@ class PostgresCycleRegistry(CycleRegistryPort):
         self, checkpoint: RunCheckpoint, max_keep: int = 5, retain: bool = False
     ) -> None:
         """Persist a run checkpoint, pruning older checkpoints beyond max_keep."""
-        async with self._pool.acquire() as conn:
-            async with conn.transaction():
-                await conn.execute(
-                    "INSERT INTO run_checkpoints "
-                    "(run_id, checkpoint_index, completed_task_ids, prior_outputs, "
-                    "artifact_refs, plan_delta_refs, created_at, retained) "
-                    "VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-                    checkpoint.run_id,
-                    checkpoint.checkpoint_index,
-                    list(checkpoint.completed_task_ids),
-                    checkpoint.prior_outputs,
-                    list(checkpoint.artifact_refs),
-                    list(checkpoint.plan_delta_refs),
-                    checkpoint.created_at,
-                    retain,
-                )
-                # Prune: keep only the latest max_keep checkpoints. SIP-0101
-                # Slice 2: retained boundary checkpoints are never pruned —
-                # unretained pruning is unchanged (window still counted over
-                # ALL rows, so retention widens survival, never narrows it).
-                await conn.execute(
-                    "DELETE FROM run_checkpoints WHERE run_id = $1 "
-                    "AND retained = FALSE "
-                    "AND checkpoint_index NOT IN ("
-                    "  SELECT checkpoint_index FROM run_checkpoints "
-                    "  WHERE run_id = $1 ORDER BY checkpoint_index DESC LIMIT $2"
-                    ")",
-                    checkpoint.run_id,
-                    max_keep,
-                )
+
+        async def work(conn: Any) -> None:
+            await conn.execute(
+                "INSERT INTO run_checkpoints "
+                "(run_id, checkpoint_index, completed_task_ids, prior_outputs, "
+                "artifact_refs, plan_delta_refs, created_at, retained) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                checkpoint.run_id,
+                checkpoint.checkpoint_index,
+                list(checkpoint.completed_task_ids),
+                checkpoint.prior_outputs,
+                list(checkpoint.artifact_refs),
+                list(checkpoint.plan_delta_refs),
+                checkpoint.created_at,
+                retain,
+            )
+            # Prune: keep only the latest max_keep checkpoints. SIP-0101
+            # Slice 2: retained boundary checkpoints are never pruned —
+            # unretained pruning is unchanged (window still counted over
+            # ALL rows, so retention widens survival, never narrows it).
+            await conn.execute(
+                "DELETE FROM run_checkpoints WHERE run_id = $1 "
+                "AND retained = FALSE "
+                "AND checkpoint_index NOT IN ("
+                "  SELECT checkpoint_index FROM run_checkpoints "
+                "  WHERE run_id = $1 ORDER BY checkpoint_index DESC LIMIT $2"
+                ")",
+                checkpoint.run_id,
+                max_keep,
+            )
+
+        await self._retry.transaction(self._pool, work)
 
     async def get_latest_checkpoint(self, run_id: str) -> RunCheckpoint | None:
         """Return the latest checkpoint for a run, or None."""
-        async with self._pool.acquire() as conn:
+        async with self._retry.acquire(self._pool) as conn:
             row = await conn.fetchrow(
                 "SELECT * FROM run_checkpoints WHERE run_id = $1 "
                 "ORDER BY checkpoint_index DESC LIMIT 1",
@@ -779,7 +811,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
 
     async def list_checkpoints(self, run_id: str) -> list[RunCheckpoint]:
         """Return all checkpoints for a run, ordered by checkpoint_index ascending."""
-        async with self._pool.acquire() as conn:
+        async with self._retry.acquire(self._pool) as conn:
             rows = await conn.fetch(
                 "SELECT * FROM run_checkpoints WHERE run_id = $1 ORDER BY checkpoint_index ASC",
                 run_id,
@@ -875,7 +907,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
         with no run has no key."""
         if not cycle_ids:
             return {}
-        async with self._pool.acquire() as conn:
+        async with self._retry.acquire(self._pool) as conn:
             rows = await conn.fetch(
                 "SELECT DISTINCT ON (cycle_id) * FROM cycle_runs WHERE cycle_id = ANY($1) "
                 "ORDER BY cycle_id, run_number DESC",
