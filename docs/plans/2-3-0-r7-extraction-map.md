@@ -1,13 +1,14 @@
 # 2.3 R7: the largest-units extraction map (#1994)
 
-**Status:** a draft for the owner's review, as 1.7.5's extraction map was reviewed before its first
-extraction PR. The plan owns R7's placement (phase 8, after R6). This map owns each unit's scope, its
-steps, the data that crosses each step, and the proof each PR carries.
+**Status:** reviewed. The owner approved unit 1's step table on 2026-10-15, and chose to review each
+of units 2–5 at the step before its first extraction PR (#1994, comment 6188687592). The plan owns R7's
+placement (phase 8, after R6). This map owns each unit's scope, its steps, the data that crosses each
+step, and the proof each PR carries.
 
 **Granularity:** unit 1 is mapped to the step. Units 2–5 are mapped to the block here. Each gets
 its step table in this file, re-measured on the tree it extracts from, and reviewed before its first
 extraction PR. Measured on R6's tree (PR #2327), where units 3 and 4 live after the orchestration
-move. If R6 lands under `squadops.cycles.execution` instead, only their package changes.
+move, to the top-level `squadops.execution` the owner ruled (#1992, comment 6188687208).
 
 ## 1. The invariant
 
