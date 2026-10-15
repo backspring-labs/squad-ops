@@ -299,7 +299,10 @@ Phase 8's rebuilds, in order:
   or one campaign), before it is batched with anything else. **#2202's comparison: done 2026-10-14.** #2276 merged
   between its arms, and #2309 before the after arm's re-run (its pre-registration's §9). Every reading reached held,
   and the proposer's wasn't exercised; the readings are on #2202. It found #2308 (fixed by #2309) and #2310.
-- **#2208,** its rubric version pinned.
+- **#2208,** its rubric version pinned. **Done 2026-10-14.** @3 merged as #2274 on 2026-10-13. #2313 pins each
+  version by its text: an authoring replay's manifest records the named version's hash, a version the repository
+  doesn't hold is refused, and @2's text is kept verbatim (`criterion_already_satisfied@2.md`) for the results
+  scored with it.
 - **R4:** #1976 and #1977.
 - **R5:** #2062 with #1993.
 - **R6:** #1992 (deferrable).
