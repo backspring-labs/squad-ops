@@ -339,6 +339,12 @@ Phase 8's rebuilds, in order:
   as `dep_59af9bbbc3dd` from `8cc3f8b3`. Both cycles of the pair were accepted on TensorFold, with the boot audit
   passing and no intervention (`cyc_73198e1cc055` 20/20, `cyc_90af2aa1c71c` 16/16). Every tracked loaded check
   answered, R6's own among them. No new seam finding.
+- **R6's fixes:** #2343, closing #2340 and #2341 (found by R5's second pair; placed by the owner in their own
+  rebuild after R6's pair). **The rebuild and its pair: done 2026-10-15.** It was deployed as `dep_d3dced7c5c9e`
+  from `de811cf2`. Both cycles of the pair were accepted on TensorFold, with the boot audit passing and no
+  intervention (`cyc_e8b065df3e58` 17/17; `cyc_9b99b2cd1e53` 17/17 after one correction round, whose repair passed
+  its retest). Every tracked loaded check answered, #2343's two among them. No retest failed, so the probe rule
+  (#2340) wasn't exercised live; its tests enter at the executor's acceptance entry. No new seam finding.
 - **R7:** #1994 (deferrable). Its map, `docs/plans/2-3-0-r7-extraction-map.md`: the owner approved
   unit 1's step table on 2026-10-15, and reviews each later unit's before its first extraction PR.
 - **R8:** #316, once its SIP is accepted.
