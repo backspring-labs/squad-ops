@@ -439,7 +439,8 @@ checks:
       from squadops.cycles.verification_integrity import RunVerdict
       c = EndedCycle("c", CycleKind.INCREMENT, CycleEnding.ASSESSED)
       blk = RunVerdict.BLOCKED_UNVERIFIED
-      print(_pending(c, blk, True, True, True)[0], _pending(c, blk, False, True, True)[0])
+      # #2319 added the already-met argument (row 16); False keeps this row's question unchanged.
+      print(_pending(c, blk, True, True, True, False)[0], _pending(c, blk, False, True, True, False)[0])
     expect: "10 8"
   - id: "2105-runtime"
     what: SIP-0110 slice 1 - the runtime records each authoring seam's envelope through the cycle registry
