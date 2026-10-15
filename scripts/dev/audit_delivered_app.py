@@ -5,12 +5,19 @@ run's own verdict: assemble the deliverable from stored artifacts, stand it up
 in the SIP-0102 canonical environment, and make it answer its contract's
 probes over real HTTP.
 
-Selection mirrors the executor's acceptance-aware rule (pf-31 Fix E,
-dispatched_flow_executor ~L1026): per filename, the LATEST stored artifact
-whose ``producing_task_type`` is NOT a repair-candidate type — accepted
-repairs are re-stored under the task's own type (#389 swap), so rejected
-candidates never enter the tree. pf-54 is the canonical trap this rule
-survives: last-wins-by-time would pick a *rejected* repair that boots.
+The deliverable is selected the way the release capture selects it
+(``capture_delivered_app.delivered_dirs``, #2310), from the deploy's vault:
+- **a promoted campaign increment** is its accepted tree, the whole app its
+  promotion recorded. Its own run holds only the files its change touched, plus
+  the scaffold's stubs for the rest, so a run-only selection audited the stubs;
+- **a cycle built on an accepted one without a promotion** (the reference
+  increment, #2008) is composed on the tree it built on;
+- **any other run** is its own files by the executor's acceptance-aware rule
+  (pf-31 Fix E): per filename, the LATEST stored artifact whose
+  ``producing_task_type`` is NOT a repair-candidate type. Accepted repairs are
+  re-stored under the task's own type (#389 swap), so rejected candidates never
+  enter the tree. pf-54 is the canonical trap this rule survives: last-wins-by-time
+  would pick a *rejected* repair that boots.
 
 #971 adds the second exclusion: an emission marked ``emission_status="failed"``
 is banked for triage and is never deliverable. The trap there is narrower and
@@ -42,7 +49,6 @@ import json
 import shutil
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 import httpx
@@ -58,7 +64,6 @@ from squadops.capabilities.ui_data_path import (
     expects_json,
     extract_ui_calls,
 )
-from squadops.cycles.delivered_tree import StoredArtifact, delivered_files
 from squadops.cycles.verification_contract import (
     VerificationContract,
     capture_probe_values,
@@ -76,7 +81,6 @@ _ASSEMBLY_SENTINELS: dict[str, str] = {
     "nextjs_ts": "package.json",
 }
 
-_VAULT_CONTAINER = "squadops-runtime-api"
 #: Where each declared route is rendered (#1796): the qa role's container, the one image that
 #: declares a browser and Node (``agents/instances/qa/system-packages.txt``). The audit's sandbox
 #: image has neither, and on the React stack the sandbox serves only the backend.
@@ -99,32 +103,17 @@ print(json.dumps({route: (sorted(ids) if ids is not None else None) for route, i
 _AUDIT_ROOT = Path("/tmp/squadops-sandbox-audit")
 
 
-def _pull_run_artifacts(project: str, cycle_id: str, run_id: str, dest: Path) -> None:
-    """Copy the run's vault subtree (contents + metadata.json) out of the
-    runtime-api container in one shot."""
-    vault_path = f"data/artifacts/{project}/{cycle_id}/{run_id}"
-    tar = subprocess.run(  # noqa: S603 - fixed argv, dev tooling
-        ["docker", "exec", _VAULT_CONTAINER, "sh", "-c", f"cd {vault_path} && tar cf - ."],
-        capture_output=True,
-    )
-    if tar.returncode != 0:
-        raise SystemExit(f"AUDITOR ERROR: cannot read vault for {run_id}: {tar.stderr.decode()!r}")
-    subprocess.run(  # noqa: S603
-        ["tar", "xf", "-", "-C", str(dest)], input=tar.stdout, check=True
-    )
+def _select_deliverable(
+    project: str, cycle_id: str, run_id: str, built_on: str | None = None
+) -> tuple[dict[str, str], str]:
+    """filename -> content: the delivered app, by the release capture's selection, and the line
+    saying which tree it is (``delivered_dirs``, #2310). This kept a run-only copy before, so a
+    campaign increment that left ``backend/routes.py`` alone was audited with the scaffold's stub,
+    every route answering 501, while its accepted tree named the working file."""
+    from capture_delivered_app import delivered_dirs
 
-
-def _select_deliverable(pulled: Path) -> dict[str, str]:
-    """filename -> content: the run's delivered files, by the one rule every reader uses
-    (``squadops.cycles.delivered_tree``, #1832). An artifact whose content file is missing
-    is not a record of anything delivered."""
-    records = {}
-    for meta_path in pulled.glob("*/metadata.json"):
-        meta = json.loads(meta_path.read_text())
-        if (meta_path.parent / meta["filename"]).is_file():
-            records[meta["artifact_id"]] = (meta, meta_path.parent)
-    delivered = delivered_files(StoredArtifact.from_record(m) for m, _ in records.values())
-    return {name: (records[art_id][1] / name).read_text() for name, art_id in delivered.items()}
+    dirs, how = delivered_dirs(project, cycle_id, run_id, built_on)
+    return {name: (d / name).read_text() for name, d in dirs.items()}, how
 
 
 async def _run_ui_data_path(files: dict[str, str], stack: str, base_url: str) -> list[str]:
@@ -338,12 +327,10 @@ def route_failures(
 async def _audit(args: argparse.Namespace) -> int:
     contract = VerificationContract.from_yaml(Path(args.contract).read_text(encoding="utf-8"))
 
-    pulled = Path(tempfile.mkdtemp(prefix="fay_audit_pull_"))
-    try:
-        _pull_run_artifacts(args.project, args.cycle_id, args.run_id, pulled)
-        files = _select_deliverable(pulled)
-    finally:
-        shutil.rmtree(pulled, ignore_errors=True)
+    from capture_delivered_app import built_on_cycle, cycle_overrides
+
+    built_on = built_on_cycle(cycle_overrides(args.project, args.cycle_id))
+    files, how = _select_deliverable(args.project, args.cycle_id, args.run_id, built_on)
     # The stack is the contract's own fact (``skeleton.expander``), never assumed: this
     # auditor was FastAPI-only until SIP-0104's window needed it for stack #2, and a
     # hardcoded environment would have stood a Next.js tree up with uvicorn and reported
@@ -356,7 +343,7 @@ async def _audit(args: argparse.Namespace) -> int:
     if sentinel not in files:
         print(f"AUDITOR ERROR: no {sentinel} among {len(files)} selected files")
         return 2
-    print(f"assembled {len(files)} files for stack {stack} (acceptance-aware last-wins)")
+    print(f"assembled {len(files)} files for stack {stack}: {how}")
 
     audit_cycle = f"audit_{args.run_id[:16]}"
     shutil.rmtree(_AUDIT_ROOT / "cycles" / audit_cycle, ignore_errors=True)

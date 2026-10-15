@@ -134,11 +134,18 @@ class _VaultDir:
         raise SystemExit(f"the vault holds no {artifact_id}")
 
 
-def reconstruct(project: str, cycle: str, run: str, out: Path, built_on: str | None = None) -> int:
-    """The delivered tree, by the one rule the audit reads too (#1832): per filename, the latest
-    workspace artifact the run accepted. A rejected repair candidate or a failed emission is
-    never what the run delivered, however recent; this took the newest file by name before, and
-    so could photograph a repair the framework had rejected.
+def delivered_dirs(
+    project: str, cycle: str, run: str, built_on: str | None = None
+) -> tuple[dict[str, Path], str]:
+    """The delivered app's files, each name to the vault directory of the artifact that holds it,
+    and a line saying which tree that is. One selection for both readers, the capture and the boot
+    audit (``audit_delivered_app.py``, #2310): two judges assembling one app two ways is #1079's
+    shape, and the audit, which kept its own run-only copy, audited an increment's untouched files
+    as the scaffold's stubs.
+
+    Per filename, the latest workspace artifact the run accepted. A rejected repair candidate or a
+    failed emission is never what the run delivered, however recent; this took the newest file by
+    name before, and so could photograph a repair the framework had rejected.
 
     **A campaign increment is the exception** (#2000): its promotion recorded the whole app as an
     accepted tree, which is what it delivered, so that tree is reconstructed instead, each file from
@@ -153,6 +160,45 @@ def reconstruct(project: str, cycle: str, run: str, out: Path, built_on: str | N
     src = VAULT / project / cycle / run
     if not src.is_dir():
         raise SystemExit(f"no vault directory for {project}/{cycle}/{run}")
+    tree = accepted_tree(project, cycle)
+    if tree is not None:
+        tree_id, files = tree
+        dirs = _artifact_dirs(project, set(files.values()))
+        missing = sorted(name for name, art_id in files.items() if art_id not in dirs)
+        if missing:
+            raise SystemExit(
+                f"the accepted tree {tree_id} of {cycle} names artifacts the vault does not hold: "
+                f"{', '.join(missing)}"
+            )
+        latest = {name: dirs[art_id] for name, art_id in files.items()}
+        how = f"the cycle's accepted tree {tree_id}: the whole app its promotion recorded"
+    elif built_on is not None:
+        import asyncio
+
+        from squadops.campaigns.increment_tree import compose_accepted_tree
+        from squadops.cycles.models import ArtifactRef
+
+        own = [ArtifactRef(**json.loads(p.read_text())) for p in src.glob("art_*/metadata.json")]
+        files = asyncio.run(compose_accepted_tree(_VaultDir(project), built_on, own))
+        dirs = _artifact_dirs(project, set(files.values()))
+        latest = {name: dirs[art_id] for name, art_id in files.items() if art_id in dirs}
+        how = f"composed on {built_on}'s accepted tree: the whole app the run built on"
+    else:
+        # An artifact whose content file is missing is not a record of anything delivered.
+        records = {}
+        for meta_path in src.glob("art_*/metadata.json"):
+            meta = json.loads(meta_path.read_text())
+            if (meta_path.parent / meta["filename"]).is_file():
+                records[meta["artifact_id"]] = (meta, meta_path.parent)
+        delivered = delivered_files(StoredArtifact.from_record(m) for m, _ in records.values())
+        latest = {name: records[art_id][1] for name, art_id in delivered.items()}
+        how = "the run's own files, by the acceptance-aware rule (#1832)"
+    return latest, how
+
+
+def reconstruct(project: str, cycle: str, run: str, out: Path, built_on: str | None = None) -> int:
+    """The delivered tree (``delivered_dirs``), copied into ``out``."""
+    latest, how = delivered_dirs(project, cycle, run, built_on)
     if out.exists():
         try:
             shutil.rmtree(out)
@@ -173,36 +219,7 @@ def reconstruct(project: str, cycle: str, run: str, out: Path, built_on: str | N
             )
             if out.exists():
                 raise SystemExit(f"could not clear {out} — remove it by hand and re-run") from None
-    tree = accepted_tree(project, cycle)
-    if tree is not None:
-        tree_id, files = tree
-        dirs = _artifact_dirs(project, set(files.values()))
-        missing = sorted(name for name, art_id in files.items() if art_id not in dirs)
-        if missing:
-            raise SystemExit(
-                f"the accepted tree {tree_id} of {cycle} names artifacts the vault does not hold: "
-                f"{', '.join(missing)}"
-            )
-        latest = {name: dirs[art_id] for name, art_id in files.items()}
-        print(f"  the cycle's accepted tree {tree_id}: the whole app its promotion recorded")
-    elif built_on is not None:
-        import asyncio
-
-        from squadops.campaigns.increment_tree import compose_accepted_tree
-        from squadops.cycles.models import ArtifactRef
-
-        own = [ArtifactRef(**json.loads(p.read_text())) for p in src.glob("art_*/metadata.json")]
-        files = asyncio.run(compose_accepted_tree(_VaultDir(project), built_on, own))
-        dirs = _artifact_dirs(project, set(files.values()))
-        latest = {name: dirs[art_id] for name, art_id in files.items() if art_id in dirs}
-        print(f"  composed on {built_on}'s accepted tree: the whole app the run built on")
-    else:
-        records = {}
-        for meta_path in src.glob("art_*/metadata.json"):
-            meta = json.loads(meta_path.read_text())
-            records[meta["artifact_id"]] = (meta, meta_path.parent)
-        delivered = delivered_files(StoredArtifact.from_record(m) for m, _ in records.values())
-        latest = {name: records[art_id][1] for name, art_id in delivered.items()}
+    print(f"  {how}")
     for name, art_dir in latest.items():
         source = art_dir / name
         if not source.exists():
@@ -214,6 +231,20 @@ def reconstruct(project: str, cycle: str, run: str, out: Path, built_on: str | N
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, dest)
     return len(latest)
+
+
+def cycle_overrides(project: str, cycle: str) -> dict:
+    """A cycle's execution overrides, for the two facts a reference increment keeps only there
+    (#2008): it stores no manifest of its own, so its registry row names the seeded one and the
+    accepted cycle it built on. Every other cycle is read from the vault alone: ``{}``."""
+    stored = (VAULT / project / cycle).glob("run_*/art_*/interface_manifest.yaml")
+    row = {} if any(stored) else cycle_row(project, cycle)
+    return row.get("execution_overrides") or {}
+
+
+def built_on_cycle(overrides: dict) -> str | None:
+    """The accepted cycle a reference increment built on (#2008), from its overrides."""
+    return (overrides.get("campaign_proposal") or {}).get("accepted_cycle_id")
 
 
 def cycle_row(project: str, cycle: str) -> dict:
@@ -556,13 +587,9 @@ def main() -> int:
     if not routes:
         raise SystemExit("nothing to photograph — pass at least one --route PATH:LABEL")
 
-    # #2008: a reference increment stores no manifest of its own; its row names the seeded one and
-    # the accepted cycle it built on. Every other cycle is read from the vault alone.
-    stored = (VAULT / args.project / args.cycle).glob("run_*/art_*/interface_manifest.yaml")
-    row = {} if any(stored) else cycle_row(args.project, args.cycle)
-    overrides = row.get("execution_overrides") or {}
+    overrides = cycle_overrides(args.project, args.cycle)
     manifest = load_manifest(args.project, args.cycle, overrides.get("plan_artifact_refs"))
-    built_on = (overrides.get("campaign_proposal") or {}).get("accepted_cycle_id")
+    built_on = built_on_cycle(overrides)
     # Resolved against the run's interface BEFORE anything boots: a mismatch is named here, not
     # discovered as a 422 halfway through seeding or a blank page on the release.
     route_testids = declared_routes(manifest, routes)
