@@ -200,16 +200,16 @@ class TestSeedVerificationScaffoldArtifacts:
         and let the failure surface as burned LLM rounds instead of a setup rejection."""
         import pytest
 
-        from squadops.stacks import verification_scaffold_emission as emission_module
+        import adapters.cycles.dispatched_flow_executor as executor_module
         from squadops.stacks.verification_scaffold import ScaffoldValidationError
         from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
         def _boom(manifest, **kwargs):
             raise ScaffoldValidationError("injected generator defect")
 
-        monkeypatch.setattr(emission_module, "emit_verification_scaffold", _boom)
-        # the executor imports the symbol inside the helper, so patch the module attr
-        # it resolves at call time
+        # the executor imports the symbol at load (#1993), so patch its own binding, which the
+        # helper resolves at call time
+        monkeypatch.setattr(executor_module, "emit_verification_scaffold", _boom)
         executor = _make_executor()
         with pytest.raises(ScaffoldValidationError, match="injected generator defect"):
             await executor._seed_verification_scaffold_artifacts(

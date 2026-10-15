@@ -357,7 +357,8 @@ def test_a_structurally_invalid_contract_is_a_winnability_finding(monkeypatch):
                 entry["id"] = "vc-same"
         return contract
 
-    monkeypatch.setattr(scaffold_contract, "emit_contract_dict", colliding)
+    # Patched where the gate looks it up: it imports the emitter at load (#1993).
+    monkeypatch.setattr("squadops.cycles.manifest_gates.emit_contract_dict", colliding)
 
     findings = assess_winnability(_REFERENCE.read_text(encoding="utf-8"))
 
@@ -385,7 +386,8 @@ def test_the_rejection_says_why_a_duplicate_id_matters(monkeypatch):
                 entry["id"] = "vc-same"
         return contract
 
-    monkeypatch.setattr(scaffold_contract, "emit_contract_dict", colliding)
+    # Patched where the gate looks it up: it imports the emitter at load (#1993).
+    monkeypatch.setattr("squadops.cycles.manifest_gates.emit_contract_dict", colliding)
 
     detail = next(
         f.detail
@@ -426,14 +428,14 @@ class TestScaffoldReadinessProof:
 
     def test_an_emission_refusal_is_a_winnability_finding(self, monkeypatch):
         from squadops.cycles.manifest_gates import PROOF_SCAFFOLD_READY
-        from squadops.stacks import verification_scaffold_emission as emission_module
         from squadops.stacks.verification_scaffold import ScaffoldDerivationError
         from tests.unit.capabilities._stack_fixtures import manifest_dict_for_stack
 
         def _refuse(manifest, **kwargs):
             raise ScaffoldDerivationError("injected derivation refusal")
 
-        monkeypatch.setattr(emission_module, "emit_verification_scaffold", _refuse)
+        # Patched where the gate looks it up: it imports the emitter at load (#1993).
+        monkeypatch.setattr("squadops.cycles.manifest_gates.emit_verification_scaffold", _refuse)
         content = yaml.safe_dump(manifest_dict_for_stack("nextjs_ts"), sort_keys=False)
         findings = assess_winnability(content)
         assert PROOF_SCAFFOLD_READY in _proofs(findings)

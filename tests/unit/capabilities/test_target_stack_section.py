@@ -107,7 +107,10 @@ async def test_no_section_when_the_cycle_has_no_stack(config):
 async def test_a_registered_stack_with_no_narrative_renders_nothing(monkeypatch):
     """Silence beats an authoritative-looking empty section — a heading with no content reads
     as instruction while teaching nothing."""
-    monkeypatch.setattr("squadops.stacks.stack_narratives.stack_narrative", lambda s: "")
+    # Patched where the planning handler looks it up: it imports the name at load (#1993).
+    monkeypatch.setattr(
+        "squadops.capabilities.handlers.planning.base.stack_narrative", lambda s: ""
+    )
 
     assert await _section(DevelopmentDesignPlanHandler(), {"build_profile": "nextjs_ts"}) == ""
 

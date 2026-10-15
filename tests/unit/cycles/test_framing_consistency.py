@@ -343,11 +343,12 @@ class TestTheOmissionHalfIsUnreachableByConstruction:
         the remedy. Proven by removing both channels and running the real validator."""
         from squadops.cycles.framing_consistency import validate_manifest_plan_consistency
 
+        # Patched where the check looks them up: it imports both at load (#1993).
         monkeypatch.setattr(
-            "squadops.stacks.scaffold.skeleton_pins_success_status_for", lambda _s: False
+            "squadops.cycles.framing_consistency.skeleton_pins_success_status_for", lambda _s: False
         )
         monkeypatch.setattr(
-            "squadops.stacks.scaffold.brief_carries_success_status_for", lambda _s: False
+            "squadops.cycles.framing_consistency.brief_carries_success_status_for", lambda _s: False
         )
         manifest = _manifest(
             "    - method: POST\n      path: /api/runs\n      success_status: 201\n"
@@ -365,7 +366,7 @@ class TestTheOmissionHalfIsUnreachableByConstruction:
         from squadops.cycles.framing_consistency import validate_manifest_plan_consistency
 
         monkeypatch.setattr(
-            "squadops.stacks.scaffold.skeleton_pins_success_status_for", lambda _s: True
+            "squadops.cycles.framing_consistency.skeleton_pins_success_status_for", lambda _s: True
         )
         manifest = _manifest(
             "    - method: POST\n      path: /api/runs\n      success_status: 201\n"
