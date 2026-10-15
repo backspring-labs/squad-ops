@@ -44,6 +44,7 @@ from squadops.llm.models import ChatMessage
 from squadops.stacks.app_invocation import AppInvocation
 from squadops.stacks.development_profiles import (
     DEFAULT_DEVELOPMENT_PROFILE,
+    DevelopmentProfile,
     effective_development_profile,
     get_development_profile,
 )
@@ -511,6 +512,41 @@ def _settle_outlet(
     return kept, dataclasses.replace(
         validation, passed=passed, checks=checks, summary=summary or "All checks passed"
     )
+
+
+@dataclasses.dataclass(frozen=True)
+class _QAPrompt:
+    """What step 1a composes (#1994): the user prompt so far, the template it rendered (``None`` on
+    the focused path), the source artifacts, and what a re-take after a refunded repair was shown."""
+
+    user_prompt: str
+    rendered: Any
+    sources: dict[str, str]
+    retake_offered: dict[str, int]
+
+
+@dataclasses.dataclass(frozen=True)
+class _QARequest:
+    """The one generation request step 1c builds (#1994). The self-evaluation pass reads the same
+    ``chat_kwargs`` and the same transcript."""
+
+    assembled: Any
+    system_prompt: str
+    user_prompt: str
+    messages: list[ChatMessage]
+    chat_kwargs: dict[str, Any]
+
+
+@dataclasses.dataclass(frozen=True)
+class _QAEmission:
+    """What step 1d settles (#1994). Frozen in its binding, not its contents: the verdict half
+    appends to ``artifacts``, adds to ``evidence_extra`` and marks ``retake_form``, as
+    ``RunState``'s lists are (1.7.5 §4 step 6)."""
+
+    content: str
+    artifacts: list[dict[str, Any]]
+    evidence_extra: dict[str, Any]
+    retake_form: dict[str, Any] | None
 
 
 class QATestHandler(_CycleTaskHandler):
@@ -1764,158 +1800,24 @@ class QATestHandler(_CycleTaskHandler):
                 context, inputs, capability, start_time, inputs["retest_files"]
             )
 
-        # SIP-0086 §12a change 3: what a re-take after a refunded repair was shown, if it is one.
-        retake_offered: dict[str, int] = {}
-        # SIP-0086 RC-6: focused prompt path for manifest-driven subtasks
-        if inputs.get("subtask_focus") is not None:
-            user_prompt = self._build_focused_prompt(inputs)
-            behavior_section = await self._behavior_contract_section(context, inputs)
-            if behavior_section:
-                user_prompt = f"{user_prompt}\n{behavior_section}"
-            dom_anchor_section = await self._dom_anchor_section(context, inputs)
-            if dom_anchor_section:
-                user_prompt = f"{user_prompt}\n{dom_anchor_section}"
-            client_surface_section = await self._client_surface_section(context, inputs)
-            if client_surface_section:
-                user_prompt = f"{user_prompt}\n{client_surface_section}"
-            retained_cases_section = await self._retained_cases_section(context, inputs)
-            if retained_cases_section:
-                user_prompt = f"{user_prompt}\n{retained_cases_section}"
-            frozen_section = await self._frozen_surface_section(context, inputs)
-            if frozen_section:
-                user_prompt = f"{user_prompt}\n{frozen_section}"
-            assembly_notes_section = await self._assembly_notes_section(context, inputs)
-            if assembly_notes_section:
-                user_prompt = f"{user_prompt}\n{assembly_notes_section}"
-            disputes_section = await self._disputed_checks_section(
-                getattr(context.ports, "request_renderer", None),
-                criterion_identities(inputs.get("acceptance_criteria")),
-            )
-            if disputes_section:
-                user_prompt = f"{user_prompt}\n{disputes_section}"
-            # #1692: a bound cycle's test author is shown the failed cycle it continues.
-            prior_section = await prior_cycle_section(
-                getattr(context.ports, "request_renderer", None), inputs
-            )
-            if prior_section:
-                user_prompt = f"{user_prompt}\n{prior_section}"
-            # SIP-0110 §0.9: the lessons approved for this task, in a slot of their own. The
-            # section opens with its own paragraph break.
-            lessons_section = await cross_cycle_lessons_section(
-                getattr(context.ports, "request_renderer", None), inputs
-            )
-            if lessons_section:
-                user_prompt = f"{user_prompt}{lessons_section}"
-            retake_section, retake_offered = await self._retake_section(context, inputs)
-            if retake_section:
-                user_prompt = f"{user_prompt}\n{retake_section}"
-            rendered = None
-            sources = self._get_source_artifacts(inputs)
-        else:
-            # Legacy monolithic prompt path (unchanged)
-
-            # Resolve plan artifacts with vault fallback (D3)
-            val_plan = await self._resolve_with_vault_fallback(inputs, "validation_plan")
-            sources = self._get_source_artifacts(inputs)
-
-            # Check required artifacts (fail only when vault was available but empty)
-            if val_plan is None and inputs.get("artifact_vault") is not None:
-                return self._fail_result(
-                    start_time, inputs, "Required plan artifacts not available"
-                )
-
-            rendered, user_prompt = await self._build_qa_prompt(
-                context,
-                prd,
-                prior_outputs,
-                capability,
-                val_plan,
-                sources,
-                capability_name,
-            )
-
-        # The output this generation produces (#1285, #1444): whole suite files, or fills
-        # under a verification scaffold. Every step where the two differ is the shape's.
-        shape = self._SHAPES[self._output_shape(inputs)](self, inputs)
-
-        # #1884 (the owner's rule): what an increment's tests may assert, on both prompt paths,
-        # before the fill appendix so the output form stays the last instruction.
-        scope_section = await increment_test_scope_section(
-            getattr(context.ports, "request_renderer", None), inputs
+        prompt = await self._compose_user_prompt(
+            context, inputs, capability, capability_name, prd, prior_outputs, start_time
         )
-        if scope_section:
-            user_prompt = f"{user_prompt}\n{scope_section}"
-            # The rule's other half: where unsupported behaviour goes instead of a test. The
-            # suite's author alone is given the outlet; its repair is not (``repair_handlers``).
-            renderer = getattr(context.ports, "request_renderer", None)
-            if renderer is not None:
-                outlet = await renderer.render("request.qa_test_proposed_behaviours_appendix", {})
-                user_prompt = f"{user_prompt}\n{outlet.content}"
-
-        # SIP-0104 P3: fill mode rides both prompt paths; a whole-file task adds nothing.
-        fill_section = await shape.prompt_section(context)
-        if fill_section:
-            user_prompt = f"{user_prompt}\n{fill_section}"
-
-        # #448: include the qa.test task_type fragment (dependency constraint,
-        # scope discipline) in the assembled system prompt. The fragment is the
-        # externalized owner of task-content guidance — not inline literals.
-        # SIP-0108 §10m: the identity layer is what the process IS (``context.role_id``); the
-        # task-type fragment is the step's and is unchanged.
-        assembled = context.ports.prompt_service.assemble(
-            context.role_id, "agent_start", task_type=TaskType.QA_TEST
+        if isinstance(prompt, HandlerResult):
+            return prompt
+        rendered, sources = prompt.rendered, prompt.sources
+        shape, user_prompt = await self._shape_and_sections(context, inputs, prompt.user_prompt)
+        request = await self._generation_request(
+            context, inputs, capability, resolved_config, user_prompt, start_time
         )
-        system_prompt = assembled.content
-
-        # Resolve model, token budget, and prompt guard
-        model_name, max_tokens, context_window = self._resolve_model_budget(
-            inputs, capability.max_completion_tokens, context.ports.llm.default_model
+        if isinstance(request, HandlerResult):
+            return request
+        assembled, system_prompt = request.assembled, request.system_prompt
+        user_prompt, messages, chat_kwargs = (
+            request.user_prompt,
+            request.messages,
+            request.chat_kwargs,
         )
-
-        # #566: a re-dispatch after a zero-extraction failure carries the prior
-        # marker — tell the model exactly what was discarded and the required
-        # fence format instead of re-rolling blind.
-        user_prompt = await self._apply_emission_retry_feedback(context, inputs, user_prompt)
-
-        try:
-            user_prompt = _guard_prompt_size(
-                system_prompt,
-                user_prompt,
-                max_tokens,
-                context_window,
-                model_name,
-            )
-        except ValueError as exc:
-            return self._fail_result(start_time, inputs, str(exc))
-
-        generation_timeout = resolved_config.get("generation_timeout", 300)
-        agent_overrides = inputs.get("agent_config_overrides", {})
-        agent_model = inputs.get("agent_model") or None
-
-        chat_kwargs: dict[str, Any] = {
-            "max_tokens": max_tokens,
-            "timeout_seconds": generation_timeout,
-        }
-        if agent_model:
-            chat_kwargs["model"] = agent_model
-        if "temperature" in agent_overrides:
-            chat_kwargs["temperature"] = agent_overrides["temperature"]
-        # #1285: which of this capability's two outputs this generation produces. The
-        # handler already knows — `verification_scaffold` is what puts it in fill mode —
-        # and the declaration is about the output, so it is told rather than inferring
-        # from the id alone.
-        reasoning = resolve_reasoning_level(
-            self._task_type,
-            agent_overrides=agent_overrides,
-            model_name=model_name,
-            output_shape=self._output_shape(inputs),
-        )
-        chat_kwargs.update(reasoning_kwargs(reasoning))
-
-        messages = [
-            ChatMessage(role="system", content=system_prompt),
-            ChatMessage(role="user", content=user_prompt),
-        ]
 
         try:
             response, content = await self._llm_call(
@@ -1932,56 +1834,23 @@ class QATestHandler(_CycleTaskHandler):
             logger.warning("LLM call failed for %s: %s", self._handler_name, exc)
             return self._fail_result(start_time, inputs, str(exc))
 
-        # SIP-0086 §12a change 3: a re-take's edits apply to the suite it was shown, in one
-        # transaction; a refused one fails the task with the refusal, as a repair's does.
-        content, retake_edited, retake_refused, retake_form = self._apply_retake_edits(
-            context, content, inputs, shape, retake_offered
+        emission = self._settle_emission(
+            context,
+            inputs,
+            content,
+            response,
+            chat_kwargs,
+            shape,
+            prompt.retake_offered,
+            start_time,
         )
-        if retake_refused is not None:
-            return self._fail_result(
-                start_time, inputs, "the re-take's edits were refused", outputs=retake_refused
-            )
-        extracted = extract_fenced_files(
-            shape.split(content), expected_artifacts=inputs.get("expected_artifacts")
-        )
-        # #924: the three outcomes below are indistinguishable afterwards, and P3 renders
-        # a REJECTED fill as the same failing state as a MISSING one — so "the author
-        # emitted nothing", "the author emitted fills that were refused", and "the author
-        # emitted a file instead of fills" all present identically as unfilled slots.
-        # Window rolls 3 and 5 were each diagnosed twice from the result rather than the
-        # emission, wrongly, for exactly this reason.
-        logger.info(
-            "%s emission parse: fills=%d duplicate_slots=%d extracted_files=%d "
-            "expected=%s scaffold_bound=%s",
-            self._handler_name,
-            shape.fill_count,
-            shape.duplicate_count,
-            len(extracted),
-            inputs.get("expected_artifacts"),
-            shape.scaffold_bound,
-        )
-        if not extracted and not shape.has_fills() and not retake_edited:
-            return self._no_fenced_blocks_result(start_time, inputs, content, response, chat_kwargs)
-
-        artifacts = [
-            {
-                "name": f["filename"],
-                "content": f["content"],
-                "media_type": _classify_file(f["filename"])[1],
-                "type": _extracted_type(f["filename"]),
-            }
-            for f in extracted
-        ] + retake_edited
+        if isinstance(emission, HandlerResult):
+            return emission
+        content, artifacts = emission.content, emission.artifacts
+        evidence_extra, retake_form = emission.evidence_extra, emission.retake_form
 
         # SIP-0086: Output validation + self-evaluation
-        evidence_extra: dict[str, Any] = {}
-        if retake_form is not None:
-            # #1710: the form the re-take took is the task's record, not only a log line.
-            evidence_extra["qa_retake_revision_form"] = retake_form
         output_validation_enabled = resolved_config.get("output_validation", False)
-
-        artifacts = shape.merge(artifacts, evidence_extra)
-        artifacts = self._authorized(artifacts, inputs, evidence_extra)
 
         # #670 / RC-9b: shared across self-eval passes so per-criterion
         # evaluator-error counts accumulate (2-strikes escalation), dev parity
@@ -2219,6 +2088,271 @@ class QATestHandler(_CycleTaskHandler):
             outputs[RETAKE_EVALUATED_REVISION_KEY] = candidate_revision_id(None, artifacts)
 
         return self._finish(start_time, inputs, outputs, validation, evidence_extra)
+
+    async def _compose_user_prompt(
+        self,
+        context: ExecutionContext,
+        inputs: dict[str, Any],
+        capability: DevelopmentProfile,
+        capability_name: str,
+        prd: str,
+        prior_outputs: dict | None,
+        start_time: float,
+    ) -> _QAPrompt | HandlerResult:
+        """Step 1a (#1994): the user prompt on the focused or the monolithic path, the template it
+        rendered, the source artifacts and what a re-take was shown; or the failure when the plan's
+        artifacts are missing."""
+        # SIP-0086 §12a change 3: what a re-take after a refunded repair was shown, if it is one.
+        retake_offered: dict[str, int] = {}
+        # SIP-0086 RC-6: focused prompt path for manifest-driven subtasks
+        if inputs.get("subtask_focus") is not None:
+            user_prompt = self._build_focused_prompt(inputs)
+            behavior_section = await self._behavior_contract_section(context, inputs)
+            if behavior_section:
+                user_prompt = f"{user_prompt}\n{behavior_section}"
+            dom_anchor_section = await self._dom_anchor_section(context, inputs)
+            if dom_anchor_section:
+                user_prompt = f"{user_prompt}\n{dom_anchor_section}"
+            client_surface_section = await self._client_surface_section(context, inputs)
+            if client_surface_section:
+                user_prompt = f"{user_prompt}\n{client_surface_section}"
+            retained_cases_section = await self._retained_cases_section(context, inputs)
+            if retained_cases_section:
+                user_prompt = f"{user_prompt}\n{retained_cases_section}"
+            frozen_section = await self._frozen_surface_section(context, inputs)
+            if frozen_section:
+                user_prompt = f"{user_prompt}\n{frozen_section}"
+            assembly_notes_section = await self._assembly_notes_section(context, inputs)
+            if assembly_notes_section:
+                user_prompt = f"{user_prompt}\n{assembly_notes_section}"
+            disputes_section = await self._disputed_checks_section(
+                getattr(context.ports, "request_renderer", None),
+                criterion_identities(inputs.get("acceptance_criteria")),
+            )
+            if disputes_section:
+                user_prompt = f"{user_prompt}\n{disputes_section}"
+            # #1692: a bound cycle's test author is shown the failed cycle it continues.
+            prior_section = await prior_cycle_section(
+                getattr(context.ports, "request_renderer", None), inputs
+            )
+            if prior_section:
+                user_prompt = f"{user_prompt}\n{prior_section}"
+            # SIP-0110 §0.9: the lessons approved for this task, in a slot of their own. The
+            # section opens with its own paragraph break.
+            lessons_section = await cross_cycle_lessons_section(
+                getattr(context.ports, "request_renderer", None), inputs
+            )
+            if lessons_section:
+                user_prompt = f"{user_prompt}{lessons_section}"
+            retake_section, retake_offered = await self._retake_section(context, inputs)
+            if retake_section:
+                user_prompt = f"{user_prompt}\n{retake_section}"
+            rendered = None
+            sources = self._get_source_artifacts(inputs)
+        else:
+            # Legacy monolithic prompt path (unchanged)
+
+            # Resolve plan artifacts with vault fallback (D3)
+            val_plan = await self._resolve_with_vault_fallback(inputs, "validation_plan")
+            sources = self._get_source_artifacts(inputs)
+
+            # Check required artifacts (fail only when vault was available but empty)
+            if val_plan is None and inputs.get("artifact_vault") is not None:
+                return self._fail_result(
+                    start_time, inputs, "Required plan artifacts not available"
+                )
+
+            rendered, user_prompt = await self._build_qa_prompt(
+                context,
+                prd,
+                prior_outputs,
+                capability,
+                val_plan,
+                sources,
+                capability_name,
+            )
+        return _QAPrompt(
+            user_prompt=user_prompt,
+            rendered=rendered,
+            sources=sources,
+            retake_offered=retake_offered,
+        )
+
+    async def _shape_and_sections(
+        self, context: ExecutionContext, inputs: dict[str, Any], user_prompt: str
+    ) -> tuple[_WholeFileTests, str]:
+        """Step 1b (#1994): the output shape, and the prompt with the increment's test scope, the
+        outlet's appendix and the shape's fill section."""
+        # The output this generation produces (#1285, #1444): whole suite files, or fills
+        # under a verification scaffold. Every step where the two differ is the shape's.
+        shape = self._SHAPES[self._output_shape(inputs)](self, inputs)
+
+        # #1884 (the owner's rule): what an increment's tests may assert, on both prompt paths,
+        # before the fill appendix so the output form stays the last instruction.
+        scope_section = await increment_test_scope_section(
+            getattr(context.ports, "request_renderer", None), inputs
+        )
+        if scope_section:
+            user_prompt = f"{user_prompt}\n{scope_section}"
+            # The rule's other half: where unsupported behaviour goes instead of a test. The
+            # suite's author alone is given the outlet; its repair is not (``repair_handlers``).
+            renderer = getattr(context.ports, "request_renderer", None)
+            if renderer is not None:
+                outlet = await renderer.render("request.qa_test_proposed_behaviours_appendix", {})
+                user_prompt = f"{user_prompt}\n{outlet.content}"
+
+        # SIP-0104 P3: fill mode rides both prompt paths; a whole-file task adds nothing.
+        fill_section = await shape.prompt_section(context)
+        if fill_section:
+            user_prompt = f"{user_prompt}\n{fill_section}"
+        return shape, user_prompt
+
+    async def _generation_request(
+        self,
+        context: ExecutionContext,
+        inputs: dict[str, Any],
+        capability: DevelopmentProfile,
+        resolved_config: dict[str, Any],
+        user_prompt: str,
+        start_time: float,
+    ) -> _QARequest | HandlerResult:
+        """Step 1c (#1994): the assembled system prompt, the prompt after the retry feedback and the
+        size guard, the messages and the chat kwargs; or the guard's failure."""
+        # #448: include the qa.test task_type fragment (dependency constraint,
+        # scope discipline) in the assembled system prompt. The fragment is the
+        # externalized owner of task-content guidance — not inline literals.
+        # SIP-0108 §10m: the identity layer is what the process IS (``context.role_id``); the
+        # task-type fragment is the step's and is unchanged.
+        assembled = context.ports.prompt_service.assemble(
+            context.role_id, "agent_start", task_type=TaskType.QA_TEST
+        )
+        system_prompt = assembled.content
+
+        # Resolve model, token budget, and prompt guard
+        model_name, max_tokens, context_window = self._resolve_model_budget(
+            inputs, capability.max_completion_tokens, context.ports.llm.default_model
+        )
+
+        # #566: a re-dispatch after a zero-extraction failure carries the prior
+        # marker — tell the model exactly what was discarded and the required
+        # fence format instead of re-rolling blind.
+        user_prompt = await self._apply_emission_retry_feedback(context, inputs, user_prompt)
+
+        try:
+            user_prompt = _guard_prompt_size(
+                system_prompt,
+                user_prompt,
+                max_tokens,
+                context_window,
+                model_name,
+            )
+        except ValueError as exc:
+            return self._fail_result(start_time, inputs, str(exc))
+
+        generation_timeout = resolved_config.get("generation_timeout", 300)
+        agent_overrides = inputs.get("agent_config_overrides", {})
+        agent_model = inputs.get("agent_model") or None
+
+        chat_kwargs: dict[str, Any] = {
+            "max_tokens": max_tokens,
+            "timeout_seconds": generation_timeout,
+        }
+        if agent_model:
+            chat_kwargs["model"] = agent_model
+        if "temperature" in agent_overrides:
+            chat_kwargs["temperature"] = agent_overrides["temperature"]
+        # #1285: which of this capability's two outputs this generation produces. The
+        # handler already knows — `verification_scaffold` is what puts it in fill mode —
+        # and the declaration is about the output, so it is told rather than inferring
+        # from the id alone.
+        reasoning = resolve_reasoning_level(
+            self._task_type,
+            agent_overrides=agent_overrides,
+            model_name=model_name,
+            output_shape=self._output_shape(inputs),
+        )
+        chat_kwargs.update(reasoning_kwargs(reasoning))
+
+        messages = [
+            ChatMessage(role="system", content=system_prompt),
+            ChatMessage(role="user", content=user_prompt),
+        ]
+        return _QARequest(
+            assembled=assembled,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            messages=messages,
+            chat_kwargs=chat_kwargs,
+        )
+
+    def _settle_emission(
+        self,
+        context: ExecutionContext,
+        inputs: dict[str, Any],
+        content: str,
+        response: ChatMessage,
+        chat_kwargs: dict[str, Any],
+        shape: _WholeFileTests,
+        retake_offered: dict[str, int],
+        start_time: float,
+    ) -> _QAEmission | HandlerResult:
+        """Step 1d (#1994): the response after the re-take's edits, its files merged and authorized,
+        and the evidence it starts; or the refusal, or the failure for a response with nothing to
+        extract."""
+        # SIP-0086 §12a change 3: a re-take's edits apply to the suite it was shown, in one
+        # transaction; a refused one fails the task with the refusal, as a repair's does.
+        content, retake_edited, retake_refused, retake_form = self._apply_retake_edits(
+            context, content, inputs, shape, retake_offered
+        )
+        if retake_refused is not None:
+            return self._fail_result(
+                start_time, inputs, "the re-take's edits were refused", outputs=retake_refused
+            )
+        extracted = extract_fenced_files(
+            shape.split(content), expected_artifacts=inputs.get("expected_artifacts")
+        )
+        # #924: the three outcomes below are indistinguishable afterwards, and P3 renders
+        # a REJECTED fill as the same failing state as a MISSING one — so "the author
+        # emitted nothing", "the author emitted fills that were refused", and "the author
+        # emitted a file instead of fills" all present identically as unfilled slots.
+        # Window rolls 3 and 5 were each diagnosed twice from the result rather than the
+        # emission, wrongly, for exactly this reason.
+        logger.info(
+            "%s emission parse: fills=%d duplicate_slots=%d extracted_files=%d "
+            "expected=%s scaffold_bound=%s",
+            self._handler_name,
+            shape.fill_count,
+            shape.duplicate_count,
+            len(extracted),
+            inputs.get("expected_artifacts"),
+            shape.scaffold_bound,
+        )
+        if not extracted and not shape.has_fills() and not retake_edited:
+            return self._no_fenced_blocks_result(start_time, inputs, content, response, chat_kwargs)
+
+        artifacts = [
+            {
+                "name": f["filename"],
+                "content": f["content"],
+                "media_type": _classify_file(f["filename"])[1],
+                "type": _extracted_type(f["filename"]),
+            }
+            for f in extracted
+        ] + retake_edited
+
+        evidence_extra: dict[str, Any] = {}
+        if retake_form is not None:
+            # #1710: the form the re-take took is the task's record, not only a log line.
+            evidence_extra["qa_retake_revision_form"] = retake_form
+
+        artifacts = shape.merge(artifacts, evidence_extra)
+        artifacts = self._authorized(artifacts, inputs, evidence_extra)
+        return _QAEmission(
+            content=content,
+            artifacts=artifacts,
+            evidence_extra=evidence_extra,
+            retake_form=retake_form,
+        )
 
     def _authorized(
         self, artifacts: list[dict], inputs: dict[str, Any], evidence_extra: dict[str, Any]
