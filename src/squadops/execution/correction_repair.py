@@ -26,7 +26,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from adapters.cycles.correction_ids import correction_task_id
+from squadops.capabilities.anchored_edits import REVISION_REFUSED_FAILURES
 from squadops.capabilities.context_assembly import (
     REPAIR_CONTEXT_CONTRACT,
     forwarded_failed_artifacts,
@@ -34,11 +34,31 @@ from squadops.capabilities.context_assembly import (
     repair_forwarded_inputs,
 )
 from squadops.capabilities.lesson_supply import supply_for_cycle
+from squadops.cycles.acceptance_check_spec import is_frontend_source
 from squadops.cycles.agent_config import resolve_agent_config
+from squadops.cycles.check_registry import CHECK_FRONTEND_BUILD
+from squadops.cycles.failure_evidence import (
+    OWN_ARTIFACT_FROM_TESTS_PASS_ROW,
+    FailureLocus,
+    _locus_from_scaffold_classification,
+    absent_anchor_cases,
+    classify_failure_locus,
+    decision_disputes_own_artifact,
+    failing_cases_from_evidence,
+    own_artifact_signal,
+    qa_owned_suite_defects,
+    suite_files_named_unanimously,
+)
+from squadops.cycles.patch_verification import rebase_artifact_paths
 from squadops.cycles.scaffold_enforcement import name_producer
-from squadops.cycles.task_plan import repair_steps_for
+from squadops.cycles.scaffold_evidence import CLASS_APP_CONTRACT, CLASS_FILL
+from squadops.cycles.task_plan import own_artifact_role, repair_steps_for
+from squadops.cycles.verification_contract import Probe
+from squadops.cycles.write_authorization import normalize_ws_path
+from squadops.execution.correction_ids import correction_task_id
 from squadops.stacks.development_profiles import matches_test_file_patterns, test_file_patterns_for
 from squadops.tasks.models import TaskEnvelope
+from squadops.tasks.task_types import authors_qa_suite
 
 if TYPE_CHECKING:
     from squadops.cycles.models import ArtifactRef, Cycle
@@ -78,7 +98,6 @@ def _scope_to_shared_language(candidates: list[str], anchors: list[str]) -> list
     regress frontend source" — expressed against the source language instead of the
     directory tree, so it holds wherever the suite was authored.
     """
-    from squadops.cycles.acceptance_check_spec import is_frontend_source
 
     anchor_sides = {is_frontend_source(a) for a in anchors if a}
     if len(anchor_sides) != 1:
@@ -126,7 +145,6 @@ def _frontend_build_failed(failure_evidence: Any) -> bool:
     matter which task reported it — the check runs inside the backend qa.test
     task, so ownership-anchored targeting never reaches the broken view.
     """
-    from squadops.cycles.check_registry import CHECK_FRONTEND_BUILD
 
     if not isinstance(failure_evidence, dict):
         return False
@@ -189,7 +207,6 @@ def _failed_probe_ids(failure_evidence: Any) -> list[str]:
     # ``vc-probe-api-runs-join``, and never as an HTTP probe row; so the #688 chain to
     # the owning slot started from an empty list every round. Fill-layer and
     # generator-layer observations carry no criterion and indict no endpoint.
-    from squadops.cycles.scaffold_evidence import CLASS_APP_CONTRACT
 
     summary = failure_evidence.get("scaffold_evidence")
     observations = (summary.get("observations") or []) if isinstance(summary, dict) else []
@@ -231,8 +248,6 @@ def _probe_owned_slots(failure_evidence: Any, failed_inputs: dict[str, Any]) -> 
     if not failed_ids:
         return []
 
-    from squadops.cycles.verification_contract import Probe
-
     tokens_by_id: dict[str, str] = {}
     for raw in probes:
         try:
@@ -267,7 +282,6 @@ def _fill_observations(failure_evidence: Any) -> list[dict[str, str]]:
     """
     if not isinstance(failure_evidence, dict):
         return []
-    from squadops.cycles.scaffold_evidence import CLASS_FILL
 
     summary = failure_evidence.get("scaffold_evidence")
     observations = (summary.get("observations") or []) if isinstance(summary, dict) else []
@@ -316,7 +330,6 @@ def _anchored_edits_refused(result: Any) -> bool:
     """Whether a repair step's revision was refused on its retry too: its anchored edits, or a
     whole re-emission of an existing file (SIP-0107 §22, §46s). A refused repair failed; it is
     never an absent one, so its round is not refunded."""
-    from squadops.capabilities.anchored_edits import REVISION_REFUSED_FAILURES
 
     marker = (getattr(result, "outputs", None) or {}).get("emission_failure")
     return isinstance(marker, dict) and marker.get("reason") in REVISION_REFUSED_FAILURES
@@ -520,8 +533,6 @@ def _own_files_named_by_failing_cases(failure_evidence: Any, own_expected: list[
     task's own spelling, deduplicated, in case order. Read from the runner's ``tests_pass``
     rows (``failing_cases_from_evidence``); a case in a file the task does not own is not
     the task's to repair and is left to the classifier's read."""
-    from squadops.cycles.failure_evidence import failing_cases_from_evidence
-    from squadops.cycles.write_authorization import normalize_ws_path
 
     own = {normalize_ws_path(str(f)): str(f) for f in own_expected if f}
     out: list[str] = []
@@ -548,18 +559,6 @@ def _locus_and_repair_target(
     re-author would aim it at app source files. Every other locus keeps the
     existing target resolution unchanged.
     """
-    from squadops.cycles.failure_evidence import (
-        OWN_ARTIFACT_FROM_TESTS_PASS_ROW,
-        FailureLocus,
-        _locus_from_scaffold_classification,
-        absent_anchor_cases,
-        classify_failure_locus,
-        decision_disputes_own_artifact,
-        own_artifact_signal,
-        qa_owned_suite_defects,
-        suite_files_named_unanimously,
-    )
-    from squadops.tasks.task_types import authors_qa_suite
 
     failure_locus = classify_failure_locus(failure_evidence)
     own_expected = [str(e) for e in (failed_inputs.get("expected_artifacts") or []) if e]
@@ -740,7 +739,6 @@ def _log_repair_brief(
     """
     if role != "qa":
         return
-    from squadops.cycles.failure_evidence import failing_cases_from_evidence
 
     evidence = failure_evidence if isinstance(failure_evidence, dict) else {}
     rows = (evidence.get("validation_result") or {}).get("checks") or []
@@ -778,7 +776,6 @@ def _apply_ownership_veto(
     own-artifact case — logged as such, and the repair proceeds empty rather
     than handing the artifacts across the boundary.
     """
-    from squadops.cycles.task_plan import own_artifact_role
 
     owner = own_artifact_role(failed_task_type)
     if owner is None or step_role == owner:
@@ -832,7 +829,6 @@ def _apply_emission_ownership_veto(
     Same-role steps and task types with no declared owner pass through
     untouched, mirroring the targeting veto's scope exactly.
     """
-    from squadops.cycles.task_plan import own_artifact_role
 
     owner = own_artifact_role(failed_task_type)
     if owner is None or step_role == owner:
@@ -1152,7 +1148,6 @@ class CorrectionRepair:
                 # the wrong directory otherwise lands as a net-new file, patch
                 # verification runs on the un-patched original, and the
                 # validated repair is discarded by re-dispatch.
-                from squadops.cycles.patch_verification import rebase_artifact_paths
 
                 rebased = rebase_artifact_paths(
                     [a for a in step_artifacts if isinstance(a, dict)],

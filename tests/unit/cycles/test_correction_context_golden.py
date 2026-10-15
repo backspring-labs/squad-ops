@@ -27,9 +27,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from adapters.cycles.correction_runner import CorrectionRunner
 from adapters.noop.ports import NoOpFailurePatternRecall
 from squadops.cycles.models import AgentProfileEntry, SquadProfile
+from squadops.execution.correction_runner import CorrectionRunner
 from squadops.stacks.scaffold import InterfaceManifest
 from squadops.tasks.models import TaskEnvelope, TaskResult
 

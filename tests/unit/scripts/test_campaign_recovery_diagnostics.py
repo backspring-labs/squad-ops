@@ -178,7 +178,7 @@ def test_the_kill_reads_the_records_while_the_process_is_down(monkeypatch):
 
 #: A runtime line as the 2.0.1 deploy prints it, and the agent's replay line as #1929 writes it.
 _DISPATCH = (
-    "2026-10-05 00:22:12,601 INFO adapters.cycles.task_dispatcher: Dispatched task {id} "
+    "2026-10-05 00:22:12,601 INFO squadops.execution.task_dispatcher: Dispatched task {id} "
     "({type}) to nat_comms, awaiting reply on nat_replies\n"
 )
 _REPLAY = (

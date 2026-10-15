@@ -150,7 +150,7 @@ def run():
 
 @pytest.fixture
 def executor(mock_registry, mock_vault, mock_queue, mock_squad_profile, reply_router, cycle, run):
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     mock_registry.get_cycle.return_value = cycle
     mock_registry.get_run.return_value = run
@@ -203,7 +203,7 @@ class TestPulseVerificationBackwardCompat:
         """Run with no pulse_checks in applied_defaults completes as before."""
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -223,7 +223,7 @@ class TestPulseVerificationMilestone:
         mock_squad_profile,
         cycle,
     ):
-        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+        from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
         mock_registry.get_cycle.return_value = cycle
         mock_registry.record_pulse_verification.return_value = mock_registry.get_run.return_value
@@ -269,11 +269,11 @@ class TestPulseVerificationMilestone:
         # Mock the engine to return PASS
         with (
             patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
             patch(
-                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
+                "squadops.execution.pulse_boundary_runner.run_pulse_verification",
             ) as mock_run_pv,
         ):
             from squadops.cycles.pulse_models import PulseVerificationRecord
@@ -319,11 +319,11 @@ class TestPulseVerificationMilestone:
 
         with (
             patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
             patch(
-                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
+                "squadops.execution.pulse_boundary_runner.run_pulse_verification",
             ) as mock_run_pv,
         ):
             from squadops.cycles.pulse_models import PulseVerificationRecord
@@ -354,7 +354,7 @@ class TestPulseVerificationCadence:
         mock_squad_profile,
         cycle,
     ):
-        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+        from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
         mock_registry.get_cycle.return_value = cycle
         mock_registry.record_pulse_verification.return_value = mock_registry.get_run.return_value
@@ -399,11 +399,11 @@ class TestPulseVerificationCadence:
 
         with (
             patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
             patch(
-                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
+                "squadops.execution.pulse_boundary_runner.run_pulse_verification",
             ) as mock_run_pv,
         ):
             from squadops.cycles.pulse_models import PulseVerificationRecord
@@ -451,11 +451,11 @@ class TestPulseVerificationCadence:
 
         with (
             patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
             patch(
-                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
+                "squadops.execution.pulse_boundary_runner.run_pulse_verification",
             ) as mock_run_pv,
         ):
             from squadops.cycles.pulse_models import PulseVerificationRecord
@@ -533,15 +533,15 @@ class TestPulseVerificationCadence:
             # cadence_start_time; the runner computes elapsed (SIP-0097
             # slice 4) — patch monotonic in both to the same fake.
             patch(
-                "adapters.cycles.dispatched_flow_executor.time.monotonic",
+                "squadops.execution.dispatched_flow_executor.time.monotonic",
                 side_effect=fake_monotonic,
             ),
             patch(
-                "adapters.cycles.pulse_boundary_runner.time.monotonic",
+                "squadops.execution.pulse_boundary_runner.time.monotonic",
                 side_effect=fake_monotonic,
             ),
             patch(
-                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
+                "squadops.execution.pulse_boundary_runner.run_pulse_verification",
             ) as mock_run_pv,
         ):
             from squadops.cycles.pulse_models import PulseVerificationRecord
@@ -576,7 +576,7 @@ class TestPulseVerificationTelemetry:
         mock_squad_profile,
         cycle,
     ):
-        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+        from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
         mock_registry.get_cycle.return_value = cycle
         mock_registry.record_pulse_verification.return_value = mock_registry.get_run.return_value
@@ -623,11 +623,11 @@ class TestPulseVerificationTelemetry:
 
         with (
             patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
             patch(
-                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
+                "squadops.execution.pulse_boundary_runner.run_pulse_verification",
             ) as mock_run_pv,
         ):
             from squadops.cycles.pulse_models import PulseVerificationRecord
@@ -678,11 +678,11 @@ class TestPulseVerificationTelemetry:
 
         with (
             patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
             patch(
-                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
+                "squadops.execution.pulse_boundary_runner.run_pulse_verification",
             ) as mock_run_pv,
         ):
             from squadops.cycles.pulse_models import PulseVerificationRecord
@@ -729,11 +729,11 @@ class TestPulseVerificationTelemetry:
 
         with (
             patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
             patch(
-                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
+                "squadops.execution.pulse_boundary_runner.run_pulse_verification",
             ) as mock_run_pv,
         ):
             from squadops.cycles.pulse_models import PulseVerificationRecord
@@ -778,7 +778,7 @@ class TestPulseVerificationTelemetry:
         )
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -798,7 +798,7 @@ class TestPulseVerificationCombined:
         mock_squad_profile,
         cycle,
     ):
-        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+        from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
         mock_registry.get_cycle.return_value = cycle
         mock_registry.record_pulse_verification.return_value = mock_registry.get_run.return_value
@@ -852,11 +852,11 @@ class TestPulseVerificationCombined:
 
         with (
             patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
             patch(
-                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
+                "squadops.execution.pulse_boundary_runner.run_pulse_verification",
             ) as mock_run_pv,
         ):
             from squadops.cycles.pulse_models import PulseVerificationRecord
@@ -894,7 +894,7 @@ class TestPulseVerificationRecordPersistence:
         mock_squad_profile,
         cycle,
     ):
-        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+        from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
         mock_registry.get_cycle.return_value = cycle
         mock_registry.record_pulse_verification.return_value = mock_registry.get_run.return_value
@@ -939,11 +939,11 @@ class TestPulseVerificationRecordPersistence:
 
         with (
             patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
             patch(
-                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
+                "squadops.execution.pulse_boundary_runner.run_pulse_verification",
             ) as mock_run_pv,
         ):
             from squadops.cycles.pulse_models import PulseVerificationRecord
@@ -982,7 +982,7 @@ class TestPulseRepairLoop:
         mock_squad_profile,
         cycle,
     ):
-        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+        from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
         mock_registry.get_cycle.return_value = cycle
         mock_registry.record_pulse_verification.return_value = mock_registry.get_run.return_value
@@ -1046,9 +1046,11 @@ class TestPulseRepairLoop:
             ]
 
         with (
-            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
             patch(
-                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
+            patch(
+                "squadops.execution.pulse_boundary_runner.run_pulse_verification",
                 side_effect=run_pv_side_effect,
             ),
         ):
@@ -1101,9 +1103,11 @@ class TestPulseRepairLoop:
             ]
 
         with (
-            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
             patch(
-                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
+            patch(
+                "squadops.execution.pulse_boundary_runner.run_pulse_verification",
                 side_effect=always_fail,
             ),
         ):
@@ -1157,9 +1161,11 @@ class TestPulseRepairLoop:
             ]
 
         with (
-            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
             patch(
-                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
+            patch(
+                "squadops.execution.pulse_boundary_runner.run_pulse_verification",
                 side_effect=always_fail,
             ),
         ):
@@ -1229,9 +1235,11 @@ class TestPulseRepairLoop:
             return records
 
         with (
-            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
             patch(
-                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
+            patch(
+                "squadops.execution.pulse_boundary_runner.run_pulse_verification",
                 side_effect=mixed_pv,
             ),
         ):
@@ -1290,9 +1298,11 @@ class TestPulseRepairLoop:
             ]
 
         with (
-            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
             patch(
-                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
+            patch(
+                "squadops.execution.pulse_boundary_runner.run_pulse_verification",
                 side_effect=always_fail,
             ),
         ):
@@ -1346,9 +1356,11 @@ class TestPulseRepairLoop:
             ]
 
         with (
-            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
             patch(
-                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
+            patch(
+                "squadops.execution.pulse_boundary_runner.run_pulse_verification",
                 side_effect=pv_side_effect,
             ),
         ):
@@ -1402,9 +1414,11 @@ class TestPulseRepairLoop:
             ]
 
         with (
-            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
             patch(
-                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
+            patch(
+                "squadops.execution.pulse_boundary_runner.run_pulse_verification",
                 side_effect=pv_side,
             ),
         ):
@@ -1471,9 +1485,11 @@ class TestPulseRepairLoop:
             ]
 
         with (
-            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
             patch(
-                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
+            patch(
+                "squadops.execution.pulse_boundary_runner.run_pulse_verification",
                 side_effect=pv_side,
             ),
         ):
@@ -1532,9 +1548,11 @@ class TestPulseRepairLoop:
             ]
 
         with (
-            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
             patch(
-                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
+            patch(
+                "squadops.execution.pulse_boundary_runner.run_pulse_verification",
                 side_effect=pv_side,
             ),
         ):
@@ -1561,7 +1579,7 @@ class TestPulseRepairTelemetry:
         mock_squad_profile,
         cycle,
     ):
-        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+        from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
         mock_registry.get_cycle.return_value = cycle
         mock_registry.record_pulse_verification.return_value = mock_registry.get_run.return_value
@@ -1627,9 +1645,11 @@ class TestPulseRepairTelemetry:
             ]
 
         with (
-            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
             patch(
-                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
+            patch(
+                "squadops.execution.pulse_boundary_runner.run_pulse_verification",
                 side_effect=pv_side,
             ),
         ):
@@ -1679,9 +1699,11 @@ class TestPulseRepairTelemetry:
             ]
 
         with (
-            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
             patch(
-                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
+            patch(
+                "squadops.execution.pulse_boundary_runner.run_pulse_verification",
                 side_effect=always_fail,
             ),
         ):
@@ -1741,9 +1763,11 @@ class TestPulseRepairTelemetry:
             ]
 
         with (
-            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
             patch(
-                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
+            patch(
+                "squadops.execution.pulse_boundary_runner.run_pulse_verification",
                 side_effect=always_fail,
             ),
         ):
@@ -1808,9 +1832,11 @@ class TestPulseRepairTelemetry:
             ]
 
         with (
-            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
             patch(
-                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
+            patch(
+                "squadops.execution.pulse_boundary_runner.run_pulse_verification",
                 side_effect=pv_side,
             ),
         ):
@@ -1874,9 +1900,11 @@ class TestPulseRepairTelemetry:
             ]
 
         with (
-            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
             patch(
-                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
+            patch(
+                "squadops.execution.pulse_boundary_runner.run_pulse_verification",
                 side_effect=pv_side,
             ),
         ):
@@ -1945,9 +1973,11 @@ class TestPulseRepairTelemetry:
             ]
 
         with (
-            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
             patch(
-                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
+            patch(
+                "squadops.execution.pulse_boundary_runner.run_pulse_verification",
                 side_effect=pv_side,
             ),
         ):
@@ -1981,7 +2011,7 @@ class TestPulseBoundaryRunnerStandalone:
     with scripted callables — no executor anywhere."""
 
     def _make_runner(self, registry=None, bus=None):
-        from adapters.cycles.pulse_boundary_runner import PulseBoundaryRunner
+        from squadops.execution.pulse_boundary_runner import PulseBoundaryRunner
 
         registry = registry or AsyncMock()
         bus = bus or MagicMock()
@@ -2046,7 +2076,7 @@ class TestPulseBoundaryRunnerStandalone:
             )
         ]
         with patch(
-            "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
+            "squadops.execution.pulse_boundary_runner.run_pulse_verification",
             return_value=records,
         ):
             decision, out_records = await runner._run_boundary_verification(
@@ -2080,8 +2110,8 @@ class TestPulseBoundaryRunnerStandalone:
         """Error path: suites that keep failing exhaust the repair budget —
         PULSE_REPAIR_EXHAUSTED is emitted and the same _ExecutionError the
         run loop converts to FAILED is raised, naming the boundary."""
-        from adapters.cycles.execution_errors import _ExecutionError
         from squadops.cycles.pulse_models import PulseVerificationRecord
+        from squadops.execution.execution_errors import _ExecutionError
 
         runner, _registry, bus = self._make_runner()
 
@@ -2103,7 +2133,7 @@ class TestPulseBoundaryRunnerStandalone:
         suite = MagicMock(suite_id="suite_a")
         with (
             patch(
-                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
+                "squadops.execution.pulse_boundary_runner.run_pulse_verification",
                 side_effect=fake_run_pv,
             ),
             pytest.raises(_ExecutionError, match="VERIFICATION_EXHAUSTED.*boundary_x"),
@@ -2158,10 +2188,10 @@ async def test_the_pulse_repair_chain_runs_on_the_profiles_models_and_its_repair
     asking for its lessons, or the analysis steps, which author no output, handed them."""
     import dataclasses
 
-    from adapters.cycles.pulse_boundary_runner import PulseBoundaryRunner
     from adapters.memory.cross_cycle import InMemoryCrossCycleMemoryStore
     from adapters.memory.recall import SnapshotRecall
     from squadops.cycles.pulse_models import PulseVerificationRecord
+    from squadops.execution.pulse_boundary_runner import PulseBoundaryRunner
     from squadops.memory.lessons import (
         ANY_STACK,
         Applicability,
@@ -2246,7 +2276,9 @@ async def test_the_pulse_repair_chain_runs_on_the_profiles_models_and_its_repair
         ]
 
     with (
-        patch("adapters.cycles.pulse_boundary_runner.run_pulse_verification", side_effect=failing),
+        patch(
+            "squadops.execution.pulse_boundary_runner.run_pulse_verification", side_effect=failing
+        ),
         pytest.raises(Exception, match="VERIFICATION_EXHAUSTED"),
     ):
         await runner._verify_with_repair(

@@ -841,9 +841,9 @@ class TestAdditiveContainmentLocus:
         and it is the ONLY failing row: 1.8.0 deploy A's Next.js checkpoint
         (``cyc_79f70a0bbac1``) carried exactly that and sent the suite's defect to the dev
         role, which rewrote seven working files and could not touch the suite."""
-        from adapters.cycles.correction_repair import _locus_and_repair_target
         from squadops.capabilities.handlers.cycle.qa_test import QATestHandler
         from squadops.cycles.task_plan import repair_steps_for
+        from squadops.execution.correction_repair import _locus_and_repair_target
 
         suite = "__tests__/runs-ui.test.ts"
         artifacts = [

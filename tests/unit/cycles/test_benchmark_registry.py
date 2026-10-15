@@ -20,8 +20,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-from adapters.cycles.benchmark_regrade import regrade
-from adapters.cycles.cycle_evidence import assess_cycle
 from adapters.cycles.filesystem_artifact_vault import FilesystemArtifactVault
 from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
 from adapters.cycles.memory_deploy_registry import MemoryDeployRegistry
@@ -43,6 +41,8 @@ from squadops.cycles.cycle_assessment import AssessorIdentity, CycleEvidence, Ru
 from squadops.cycles.deploy_record import DeployRecord, ModelWeights, ServiceImage
 from squadops.cycles.models import Cycle, Run, TaskFlowPolicy
 from squadops.cycles.verification_integrity import aggregate_verification
+from squadops.execution.benchmark_regrade import regrade
+from squadops.execution.cycle_evidence import assess_cycle
 
 pytestmark = [pytest.mark.domain_orchestration]
 

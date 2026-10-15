@@ -6,10 +6,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
-from adapters.cycles.execution_errors import _ExecutionError
 from squadops.cycles.scaffold_integrity_evidence import ScaffoldIntegrityEvidence
 from squadops.cycles.task_outcome import ContractComplianceViolation
+from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
+from squadops.execution.execution_errors import _ExecutionError
 
 
 def _ev(code: str) -> ScaffoldIntegrityEvidence:

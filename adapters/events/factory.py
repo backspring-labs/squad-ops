@@ -49,7 +49,7 @@ def create_cycle_event_bus(
             source_version=kwargs.get("source_version", "0.0.0"),
         )
     elif provider == "noop":
-        from adapters.events.noop_cycle_event_bus import NoOpCycleEventBus
+        from squadops.ports.events.noop import NoOpCycleEventBus
 
         bus = NoOpCycleEventBus()
     else:

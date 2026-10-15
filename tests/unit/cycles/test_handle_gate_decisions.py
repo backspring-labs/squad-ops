@@ -73,7 +73,7 @@ def mock_event_bus():
 
 @pytest.fixture
 def executor(mock_registry, mock_event_bus, reply_router):
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     exec_ = DispatchedFlowExecutor(
         cycle_registry=mock_registry,
@@ -160,7 +160,7 @@ class TestHandleGateDecisions:
 
     async def test_rejected_raises_execution_error(self, executor, mock_registry, cycle):
         """rejected → raises _ExecutionError."""
-        from adapters.cycles.dispatched_flow_executor import _ExecutionError
+        from squadops.execution.dispatched_flow_executor import _ExecutionError
 
         mock_registry.get_run.return_value = _run_with_gate_decision(
             GateDecisionValue.REJECTED, notes="not ready"
@@ -175,7 +175,7 @@ class TestHandleGateDecisions:
         self, executor, mock_registry, cycle
     ):
         """returned_for_revision → raises _ExecutionError explaining manual retry is needed."""
-        from adapters.cycles.dispatched_flow_executor import _ExecutionError
+        from squadops.execution.dispatched_flow_executor import _ExecutionError
 
         mock_registry.get_run.return_value = _run_with_gate_decision(
             GateDecisionValue.RETURNED_FOR_REVISION, notes="needs more detail"
@@ -292,7 +292,7 @@ class TestPlanReviewGateCheck:
         must now fail AT the gate, with the role, profile, and gate named —
         and the run must never pause (the operator is not asked to review a
         doomed plan)."""
-        from adapters.cycles.execution_errors import _ExecutionError
+        from squadops.execution.execution_errors import _ExecutionError
 
         stored = [
             _plan_artifact(executor._artifact_vault, "art_plan", _PLAN_YAML_WITH_BUILDER_ROLE)
@@ -450,7 +450,7 @@ class TestCriteriaScopeGateCheck:
     async def test_source_regex_plan_rejected_before_pause(
         self, executor, mock_registry, mock_event_bus, cycle
     ):
-        from adapters.cycles.execution_errors import _ExecutionError
+        from squadops.execution.execution_errors import _ExecutionError
 
         stored = [_plan_artifact(executor._artifact_vault, "art_plan", _PLAN_YAML_SOURCE_REGEX)]
 

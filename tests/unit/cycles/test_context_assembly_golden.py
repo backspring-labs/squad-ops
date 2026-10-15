@@ -112,7 +112,7 @@ def _envelope(task_type: str, inputs: dict | None = None) -> TaskEnvelope:
 
 @pytest.fixture
 def executor(reply_router):
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     vault = AsyncMock()
     by_id = {aid: (ref, f"body of {ref.filename}".encode()) for aid, ref in _STORED_PAIRS}

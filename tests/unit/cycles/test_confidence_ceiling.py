@@ -136,7 +136,7 @@ class TestExecutorWrapupInjection:
     def _executor_with(outcome_summaries):
         from unittest.mock import AsyncMock, MagicMock
 
-        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+        from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
         registry = AsyncMock()
         registry.list_run_verification_summaries.return_value = outcome_summaries
@@ -187,7 +187,7 @@ class TestExecutorWrapupInjection:
     async def test_derivation_failure_never_raises(self):
         from unittest.mock import AsyncMock, MagicMock
 
-        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+        from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
         registry = AsyncMock()
         registry.list_run_verification_summaries.side_effect = RuntimeError("db down")

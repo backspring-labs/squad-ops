@@ -9,7 +9,7 @@ the two outputs:
         --dsn "$DSN" --vault <checkout>/data/artifacts > attribution-<tree>.json
 
 Each cycle's outcome and evidence are assembled exactly as the assessment route assembles them
-(``adapters.cycles.cycle_evidence.assess_cycle``), through the runtime's own adapters. The database
+(``squadops.execution.cycle_evidence.assess_cycle``), through the runtime's own adapters. The database
 session is read-only (``default_transaction_read_only``), so the script cannot write the registry.
 A cycle whose evidence cannot be assembled is reported with its error, never skipped: a snapshot
 that silently drops cycles would compare equal while proving nothing about them.
@@ -33,7 +33,6 @@ async def snapshot(dsn: str, vault_dir: Path) -> dict[str, dict]:
     sys.path.insert(0, str(Path(__file__).resolve().parent))  # the guard sits beside this script
     from _evidence_read_guard import UnreadableEvidence, require_readable_vault
 
-    from adapters.cycles.cycle_evidence import assemble_cycle_evidence
     from adapters.cycles.filesystem_artifact_vault import FilesystemArtifactVault
     from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
     from adapters.persistence.pool import create_pool
@@ -41,6 +40,7 @@ async def snapshot(dsn: str, vault_dir: Path) -> dict[str, dict]:
     from squadops.config.schema import DBRetryConfig
     from squadops.cycles.cycle_assessment import AssessorIdentity, assess
     from squadops.cycles.cycle_outcome import resolve_cycle_outcome
+    from squadops.execution.cycle_evidence import assemble_cycle_evidence
 
     require_readable_vault(vault_dir)
     unreadable = UnreadableEvidence()

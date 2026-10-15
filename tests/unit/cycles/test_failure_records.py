@@ -14,8 +14,6 @@ from pathlib import Path
 
 import pytest
 
-from adapters.cycles.cycle_completion import CycleCompletion
-from adapters.cycles.cycle_evidence import assess_cycle, record_cycle_failures
 from adapters.cycles.filesystem_artifact_vault import FilesystemArtifactVault
 from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
 from squadops.cycles.cycle_assessment import (
@@ -40,6 +38,8 @@ from squadops.cycles.llm_usage import RunUsage
 from squadops.cycles.models import Cycle, Run, TaskFlowPolicy
 from squadops.cycles.run_loop_summary import RoundFailure, RunLoopSummary, RunTerminalDecision
 from squadops.cycles.verification_integrity import aggregate_verification
+from squadops.execution.cycle_completion import CycleCompletion
+from squadops.execution.cycle_evidence import assess_cycle, record_cycle_failures
 
 pytestmark = [pytest.mark.domain_orchestration]
 

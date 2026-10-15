@@ -30,9 +30,12 @@ models and decisions around them, and `adapters/` implements the ports against r
   CLAUDE.md "Task-type identifiers").
 - **Where code goes:** a domain model, decision or port goes in `src/squadops/`; anything that
   speaks to a database, queue, model server, filesystem or vendor SDK goes in `adapters/`, behind a
-  port. **One known exception:** the cycle orchestration in `adapters/cycles` (about 12,000 lines)
-  holds domain logic with no infrastructure import; its move into `squadops.cycles.execution` is
-  placed in 2.3 (#1992).
+  port. The cycle orchestration (about 12,500 lines with no infrastructure import) was the one
+  exception, filed under `adapters/cycles` beside the executor's port; it moved to `squadops.execution`
+  in 2.3 (#1992).
+- **The orchestration sits above what it orchestrates** (#1992, `test_package_import_direction.py`):
+  `squadops.execution` imports `cycles`, `campaigns`, `capabilities` and `stacks`, and none of them
+  imports it, so it forms no mutual pair.
 
 ## Core packages (`src/squadops/`)
 
@@ -91,11 +94,18 @@ and lineage helpers.
 ### `squadops.cycles`
 The cycle execution domain (SIP-0064): projects, cycles, runs, gates and squad profiles as frozen
 dataclasses, the lifecycle state machine, task planning (`task_plan`), the implementation plan, the
-verification evidence rules (SIP-0096) and the delivered-tree rules. Its executor lives in
-`adapters.cycles` today (#1992).
+verification evidence rules (SIP-0096) and the delivered-tree rules. Its executor is
+`squadops.execution` (#1992).
 
 ### `squadops.embeddings`
 The embeddings domain: the request and result models an `EmbeddingsPort` adapter serves.
+
+### `squadops.execution`
+The cycle's orchestration (#1992): `DispatchedFlowExecutor`, which implements `FlowExecutionPort`, and
+its collaborators: run admission, provisioning and completion, task dispatch and the reply router, the
+correction runner and repair, patch acceptance, the pulse-boundary runner, the framing and workload
+gates, cycle evidence and benchmark regrading. It reaches infrastructure only through ports, and sits
+above `cycles`, `campaigns`, `capabilities` and `stacks`: it imports them, and they don't import it.
 
 ### `squadops.events`
 The cycle lifecycle event system: event types, payload models and the public emission API. The bus
@@ -169,10 +179,10 @@ Queue transport: RabbitMQ, and the A2A server and client modules, imported lazil
 agents with A2A install their dependencies.
 
 ### `adapters.cycles`
-Cycle execution (SIP-0064, SIP-0066): `DispatchedFlowExecutor`, the correction runner and repair
-loop, run provisioning and completion, the memory and Postgres cycle registries and their factory.
-Most of it is orchestration with no infrastructure import, moving to `squadops.cycles.execution` in
-2.3 (#1992).
+Cycle infrastructure (SIP-0064, SIP-0066): the memory and Postgres cycle, campaign, deploy and squad
+profile registries, the filesystem artifact vault, the Prefect workflow tracker and log forwarder, the
+config-backed project registry, and the factory that composes the executor from `squadops.execution`
+with the ports a root has bound.
 
 ### `adapters.embeddings`
 Implementations of `EmbeddingsPort`.

@@ -192,7 +192,7 @@ async def test_the_evaluation_is_handed_the_accepted_tree_as_the_increment_seede
     """Entered at ``_enrich_envelope``, as every dispatch passes it. Bug caught: the accepted
     tree read from the candidate — the increment's own edits as the baseline, so nothing
     ever discriminates — or from nothing at all."""
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     stored = {
         "a_routes": (_ref("a_routes", "backend/routes.py", "cyc_accepted"), b"accepted routes"),
@@ -238,7 +238,7 @@ async def test_the_evaluation_is_handed_the_bundles_its_launch_pinned():
     import dataclasses
     import json
 
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     bundle = {"files": {"backend/tests/criteria/test_F1.py": "def test(): ..."}, "invocation": []}
     stored = {
@@ -355,7 +355,7 @@ async def test_the_evaluation_judges_the_candidate_with_its_qa_suites():
     widened to tests, which the typed-acceptance checks were never meant to read."""
     import dataclasses
 
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     suite = dataclasses.replace(
         _ref("i_c1", "backend/tests/criteria/test_C1.py", "cyc_inc"),

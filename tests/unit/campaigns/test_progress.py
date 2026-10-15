@@ -120,7 +120,7 @@ class _Vault:
 
 class _World:
     def __init__(self, verdict: RunVerdict | None) -> None:
-        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+        from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
         self.campaigns = MemoryCampaignRegistry()
         self.cycles = MemoryCycleRegistry()

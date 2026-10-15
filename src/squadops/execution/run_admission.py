@@ -16,10 +16,10 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
-from adapters.cycles.execution_errors import _ExecutionError, _RecruitmentRejectedError
-from adapters.cycles.run_provisioning import RunInProgress
 from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.run_loop_summary import RunTerminalDecision
+from squadops.execution.execution_errors import _ExecutionError, _RecruitmentRejectedError
+from squadops.execution.run_provisioning import RunInProgress
 from squadops.runtime import reasons
 from squadops.runtime.admission import admit_participants, release_participants
 from squadops.runtime.focus_reaper import release_owner_leases
@@ -27,7 +27,7 @@ from squadops.runtime.recruitment import reserve_buffer_decision
 
 # The executor's logger name, not this module's: the sweep's warning is read by where it has always
 # come from, and an extraction changes no line anyone reads.
-logger = logging.getLogger("adapters.cycles.dispatched_flow_executor")
+logger = logging.getLogger("squadops.execution.dispatched_flow_executor")
 
 #: How often a run waiting for the box reads the lease again (SIP-0109 §9.3; #1802).
 BOX_POLL_S = 15.0

@@ -30,11 +30,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import yaml
 
-from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 from adapters.noop.ports import NoOpFailurePatternRecall
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
 from squadops.cycles.manifest_authoring import MANIFEST_ARTIFACT_TYPE
 from squadops.cycles.manifest_gates import assess_schema, assess_winnability
+from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 from squadops.stacks.scaffold import InterfaceManifest, is_scaffoldable_stack
 
 pytestmark = [pytest.mark.domain_capabilities]
@@ -315,7 +315,6 @@ async def test_forwarding_still_carries_the_plan_and_still_drops_run_local_outpu
 def test_an_advisory_proof_is_reported_in_the_note_but_not_recorded_as_failed(monkeypatch):
     """SIP-0108 §4.2 with #820. Bug caught: an advisory proof — reported, refusing nothing —
     recorded among the proofs that failed, so a refusal reads as caused by what never blocked."""
-    import squadops.cycles.authoring_failure as authoring_failure
     from squadops.cycles.authoring_failure import AuthoringOutcome, ClassifiedFinding
     from squadops.cycles.rejection_baseline import RejectionClassifier
 
@@ -327,7 +326,10 @@ def test_an_advisory_proof_is_reported_in_the_note_but_not_recorded_as_failed(mo
             ),
         )
     )
-    monkeypatch.setattr(authoring_failure, "assess_authoring_outcome", lambda content: outcome)
+    # Patched where the framing gate looks it up: it imports the name at load (#1992).
+    monkeypatch.setattr(
+        "squadops.execution.framing_gate_check.assess_authoring_outcome", lambda content: outcome
+    )
     classifier = RejectionClassifier()
 
     errors = DispatchedFlowExecutor._validate_interface_manifest("manifest", classifier)

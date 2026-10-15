@@ -264,7 +264,7 @@ async def test_a_sample_keeps_what_each_empty_repair_said(monkeypatch, content, 
         await recorder.chat_stream_with_usage([])
         return SimpleNamespace(outputs={"llm_usage": None, "anchored_edits": transaction})
 
-    from adapters.cycles.correction_repair import CorrectionRepair
+    from squadops.execution.correction_repair import CorrectionRepair
 
     constructed: dict = {}
 
@@ -300,8 +300,8 @@ async def test_a_sample_keeps_what_each_empty_repair_said(monkeypatch, content, 
         async def accept(self, *a, **k):
             return "reject_patch"
 
-    monkeypatch.setattr("adapters.cycles.correction_repair.CorrectionRepair", _Repair)
-    monkeypatch.setattr("adapters.cycles.patch_acceptance.PatchAcceptance", _Judge)
+    monkeypatch.setattr("squadops.execution.correction_repair.CorrectionRepair", _Repair)
+    monkeypatch.setattr("squadops.execution.patch_acceptance.PatchAcceptance", _Judge)
     monkeypatch.setattr(container, "cycle_from_dict", lambda d: SimpleNamespace())
     monkeypatch.setattr(container, "profile_from_dict", lambda d: SimpleNamespace())
     bundle = {**_bundle(["tests_pass"]), "analysis": {}, "decision": {}, "cycle": {}, "profile": {}}

@@ -13,7 +13,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor, _ExecutionError
 from adapters.noop.ports import NoOpFailurePatternRecall
 from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.models import Run
@@ -28,6 +27,7 @@ from squadops.cycles.verification_integrity import (
     RunVerdict,
     aggregate_cycle_outcome,
 )
+from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor, _ExecutionError
 
 pytestmark = [pytest.mark.domain_cycles]
 

@@ -21,6 +21,7 @@ from fastapi import Request
 from squadops import __version__ as SQUADOPS_VERSION
 from squadops._version import resolve_git_sha
 from squadops.cycles.cycle_assessment import AssessorIdentity, CycleAssessment
+from squadops.execution.cycle_evidence import assess_cycle
 from squadops.ports.auth.authentication import AuthPort
 from squadops.ports.auth.authorization import AuthorizationPort
 from squadops.ports.comms.queue import QueuePort
@@ -33,6 +34,7 @@ from squadops.ports.cycles.project_registry import ProjectRegistryPort
 from squadops.ports.cycles.squad_profile import SquadProfilePort
 from squadops.ports.cycles.workflow_tracker import WorkflowTrackerPort
 from squadops.ports.events.cycle_event_bus import CycleEventBusPort
+from squadops.ports.events.noop import NoOpCycleEventBus
 from squadops.ports.llm.provider import LLMPort
 from squadops.ports.runtime.assignments import AssignmentPort
 
@@ -165,7 +167,6 @@ async def assess_cycle_from_stores(request: Request, cycle_id: str) -> CycleAsse
     ``squadops.cycles.cycle_assessment``; nothing is stored, and the assessor identity is
     this deploy's, the same pair a cycle records at creation (#80).
     """
-    from adapters.cycles.cycle_evidence import assess_cycle
 
     return await assess_cycle(
         get_cycle_registry(request),
@@ -219,7 +220,6 @@ def get_cycle_event_bus(request: Request) -> CycleEventBusPort:
         "CycleEventBusPort not configured — using NoOpCycleEventBus. "
         "Canonical event publication is disabled/degraded.",
     )
-    from adapters.events.noop_cycle_event_bus import NoOpCycleEventBus
 
     return NoOpCycleEventBus()
 

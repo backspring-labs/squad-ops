@@ -152,7 +152,7 @@ def mock_event_bus():
 
 @pytest.fixture
 def executor(mock_registry, mock_vault, mock_queue, mock_squad_profile, impl_cycle, mock_event_bus):
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     mock_registry.get_cycle.return_value = impl_cycle
     return DispatchedFlowExecutor(
@@ -182,7 +182,7 @@ class TestCheckpointOnSuccess:
     async def test_checkpoint_saved_per_task(self, executor, mock_registry, mock_queue) -> None:
         """save_checkpoint called once per successful task (3 for implementation)."""
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
@@ -192,7 +192,7 @@ class TestCheckpointOnSuccess:
     async def test_checkpoint_indices_increment(self, executor, mock_registry, mock_queue) -> None:
         """Each checkpoint has sequential checkpoint_index."""
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
@@ -206,7 +206,7 @@ class TestCheckpointOnSuccess:
     ) -> None:
         """Each checkpoint records all completed tasks so far."""
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
@@ -241,7 +241,7 @@ class TestCheckpointOnSuccess:
         mock_queue.reply_router.responder = fail_second
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
@@ -260,7 +260,7 @@ class TestCheckpointEvents:
 
     async def test_checkpoint_created_event(self, executor, mock_event_bus, mock_queue) -> None:
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
@@ -274,7 +274,7 @@ class TestCheckpointEvents:
 
     async def test_checkpoint_created_payload(self, executor, mock_event_bus, mock_queue) -> None:
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
@@ -313,7 +313,7 @@ class TestResumeFromCheckpoint:
             created_at=NOW,
         )
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
@@ -334,7 +334,7 @@ class TestResumeFromCheckpoint:
             created_at=NOW,
         )
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
@@ -370,7 +370,7 @@ class TestResumeFromCheckpoint:
             created_at=NOW,
         )
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
@@ -398,7 +398,7 @@ class TestResumeFromCheckpoint:
             created_at=NOW,
         )
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
@@ -425,7 +425,7 @@ class TestResumeFromCheckpoint:
             created_at=NOW,
         )
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
@@ -439,7 +439,7 @@ class TestResumeFromCheckpoint:
     ) -> None:
         """Fresh run (no checkpoint) emits RUN_STARTED, not RUN_RESUMED."""
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
@@ -466,7 +466,7 @@ class TestTimeBudget:
         budget_cycle = dataclasses.replace(impl_cycle, applied_defaults={"time_budget_seconds": 0})
         mock_registry.get_cycle.return_value = budget_cycle
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
@@ -479,7 +479,7 @@ class TestTimeBudget:
     async def test_no_time_budget_no_enforcement(self, executor, mock_registry, mock_queue) -> None:
         """When time_budget_seconds is not set, no enforcement."""
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
@@ -497,7 +497,7 @@ class TestTimeBudget:
         budget_cycle = dataclasses.replace(impl_cycle, applied_defaults={"time_budget_seconds": 0})
         mock_registry.get_cycle.return_value = budget_cycle
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
@@ -524,12 +524,12 @@ class TestPausedHandler:
         self, executor, mock_registry, mock_queue, mock_event_bus
     ) -> None:
         """_PausedError in _execute_sequential → run PAUSED."""
-        from adapters.cycles.dispatched_flow_executor import _PausedError
+        from squadops.execution.dispatched_flow_executor import _PausedError
 
         with (
             patch.object(executor, "_execute_sequential", side_effect=_PausedError("blocked")),
             patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
         ):
@@ -544,12 +544,12 @@ class TestPausedHandler:
     async def test_paused_emits_run_paused_event(
         self, executor, mock_registry, mock_queue, mock_event_bus
     ) -> None:
-        from adapters.cycles.dispatched_flow_executor import _PausedError
+        from squadops.execution.dispatched_flow_executor import _PausedError
 
         with (
             patch.object(executor, "_execute_sequential", side_effect=_PausedError("blocked")),
             patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
         ):
@@ -665,7 +665,7 @@ class TestVerificationEvidenceRecording:
         mock_queue.reply_router.responder = responder
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
 
@@ -695,7 +695,7 @@ class TestVerificationEvidenceRecording:
         mock_queue.reply_router.responder = responder
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
 
@@ -724,7 +724,7 @@ class TestVerificationEvidenceRecording:
         mock_queue.reply_router.responder = responder
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
 
@@ -756,7 +756,9 @@ class TestVerificationEvidenceRecording:
                 new_callable=AsyncMock,
                 return_value=(False, failed),
             ),
-            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
+            patch(
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
 
@@ -813,7 +815,9 @@ class TestVerificationEvidenceRecording:
 
         with (
             patch.object(RunLedger, "record_check_result", _spy),
-            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
+            patch(
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
 
@@ -848,7 +852,7 @@ class TestBoundaryRetentionThreading:
         self, executor, mock_registry, mock_queue
     ) -> None:
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
@@ -861,7 +865,7 @@ class TestBoundaryRetentionThreading:
         # the last task always closes a phase — its checkpoint is the terminal
         # replay boundary and must survive pruning
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")

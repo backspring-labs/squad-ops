@@ -57,13 +57,13 @@ def _find_event_type_refs_in_file(filepath: Path) -> set[str]:
 # slice 5 moved the retry loop's per-attempt TASK_* emits to TaskDispatcher;
 # #1507 step 2 moved the run's RUN_STARTED/RUN_RESUMED announcement to RunProvisioning;
 # #1507 step 3 moved the inter-workload gate's emits to WorkloadGate.)
-_EXECUTOR_PATH = Path("adapters/cycles/dispatched_flow_executor.py")
-_RUN_PROVISIONING_PATH = Path("adapters/cycles/run_provisioning.py")
-_WORKLOAD_GATE_PATH = Path("adapters/cycles/workload_gate.py")
-_RUN_COMPLETION_PATH = Path("adapters/cycles/run_completion.py")
-_CORRECTION_RUNNER_PATH = Path("adapters/cycles/correction_runner.py")
-_PULSE_BOUNDARY_RUNNER_PATH = Path("adapters/cycles/pulse_boundary_runner.py")
-_TASK_DISPATCHER_PATH = Path("adapters/cycles/task_dispatcher.py")
+_EXECUTOR_PATH = Path("src/squadops/execution/dispatched_flow_executor.py")
+_RUN_PROVISIONING_PATH = Path("src/squadops/execution/run_provisioning.py")
+_WORKLOAD_GATE_PATH = Path("src/squadops/execution/workload_gate.py")
+_RUN_COMPLETION_PATH = Path("src/squadops/execution/run_completion.py")
+_CORRECTION_RUNNER_PATH = Path("src/squadops/execution/correction_runner.py")
+_PULSE_BOUNDARY_RUNNER_PATH = Path("src/squadops/execution/pulse_boundary_runner.py")
+_TASK_DISPATCHER_PATH = Path("src/squadops/execution/task_dispatcher.py")
 _CYCLES_ROUTE = Path("src/squadops/api/routes/cycles/cycles.py")
 # SIP-0109 #1799: the cycle cancel path moved here, shared by the cycle route and a campaign's
 # abort, and its CYCLE_CANCELLED emit with it.

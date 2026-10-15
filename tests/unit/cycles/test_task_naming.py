@@ -1,4 +1,4 @@
-"""Tests for build_task_name (adapters/cycles/task_naming.py, #185 / #277).
+"""Tests for build_task_name (src/squadops/execution/task_naming.py, #185 / #277).
 
 The Prefect/Gantt task label is ``{agent} [{n}/{total}]: {task_type}[ — focus]``:
 prefix with the agent that ran the task (``envelope.agent_id``), falling back to
@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from adapters.cycles.task_naming import build_task_name
+from squadops.execution.task_naming import build_task_name
 from squadops.tasks.models import TaskEnvelope
 
 pytestmark = [pytest.mark.domain_orchestration]

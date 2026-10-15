@@ -15,7 +15,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from adapters.cycles.dispatched_flow_executor import record_task_evidence
 from adapters.cycles.postgres_cycle_registry import (
     _verification_summary_from_dict,
     _verification_summary_to_dict,
@@ -27,6 +26,7 @@ from squadops.capabilities.disputed_checks import mark_contested
 from squadops.cycles.failure_evidence import build_failure_evidence
 from squadops.cycles.run_ledger import RunLedger
 from squadops.cycles.verification_integrity import Contest, RunVerdict, aggregate_verification
+from squadops.execution.dispatched_flow_executor import record_task_evidence
 from squadops.llm.models import ChatMessage
 from squadops.orchestration.handler_executor import HandlerExecutor
 from squadops.prompts.renderer import RequestTemplateRenderer

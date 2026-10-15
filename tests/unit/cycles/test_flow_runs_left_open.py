@@ -75,7 +75,7 @@ class _Prefect(WorkflowTrackerPort):
 
 
 def _executor(prefect, reply_router):
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     cycle = Cycle(
         cycle_id="cyc_001",
@@ -138,7 +138,7 @@ def _executor(prefect, reply_router):
 
 
 async def _execute(executor) -> None:
-    with patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock):
+    with patch("squadops.execution.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock):
         await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
 
 

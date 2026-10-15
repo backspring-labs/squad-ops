@@ -15,9 +15,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from adapters.cycles.run_provisioning import ProvisionedRun, RunInProgress
 from adapters.noop.ports import NoOpFailurePatternRecall
 from squadops.cycles.models import ArtifactRef, Cycle, Run, TaskFlowPolicy
+from squadops.execution.run_provisioning import ProvisionedRun, RunInProgress
 
 NOW = datetime(2026, 10, 2, 13, 0, tzinfo=UTC)
 _MANIFEST = (
@@ -129,7 +129,7 @@ def _cycle(
 
 
 async def _seed_and_compose(vault, cycle: Cycle) -> tuple[list[str], dict[str, str]]:
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     executor = DispatchedFlowExecutor(
         cycle_registry=AsyncMock(),
@@ -157,7 +157,7 @@ async def _seed_and_compose(vault, cycle: Cycle) -> tuple[list[str], dict[str, s
 
 async def _workspace(vault, seeds: list[str], task_type: str) -> dict[str, str]:
     """The files ``task_type`` is composed from the seeded set, as dispatch composes them."""
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     executor = DispatchedFlowExecutor(
         cycle_registry=AsyncMock(),

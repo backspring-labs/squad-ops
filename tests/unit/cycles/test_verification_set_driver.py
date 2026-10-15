@@ -1712,12 +1712,12 @@ class TestCandidateIdentityIsReadFromThePatchPath:
     accepted-patch path writes, beside its other patch-path readouts."""
 
     _AGREE = (
-        "2026-09-14 12:00:00,000 INFO adapters.cycles.patch_acceptance: patch_candidate_identity "
+        "2026-09-14 12:00:00,000 INFO squadops.execution.patch_acceptance: patch_candidate_identity "
         "task=task-run_1-m004-builder.assemble verified_revision_id=aaa persisted_revision_id=aaa "
         "base_revision_id=bbb (SIP-0107 §20)"
     )
     _MISMATCH = (
-        "2026-09-14 12:05:00,000 ERROR adapters.cycles.patch_acceptance: patch_candidate_identity "
+        "2026-09-14 12:05:00,000 ERROR squadops.execution.patch_acceptance: patch_candidate_identity "
         "task=task-run_1-m005-qa.test MISMATCH verified_revision_id=aaa persisted_revision_id=ccc "
         "base_revision_id=bbb (SIP-0107 §20)"
     )
@@ -1860,7 +1860,7 @@ class TestRetryFeedbackIsReadFromBothWindows:
     the #1276 shape again, where a readout keyed on the wrong container read nothing."""
 
     _AIMED = (
-        "2026-09-08 01:02:03,004 - adapters.cycles.dispatched_flow_executor - INFO - "
+        "2026-09-08 01:02:03,004 - squadops.execution.dispatched_flow_executor - INFO - "
         "Retryable failure for task-run_x-m004-qa.test (attempt 1), retrying — "
         "signature=unextractable response_chars=148 completion_tokens=114 completion_cap=6000"
     )
@@ -2297,7 +2297,7 @@ class TestF1HasAProducerBeforeRollOne:
     executor's own line, kept by the runtime window and banked as a fact."""
 
     _LINE = (
-        "2026-09-08 06:16:33,216 INFO adapters.cycles.dispatched_flow_executor: patch "
+        "2026-09-08 06:16:33,216 INFO squadops.execution.dispatched_flow_executor: patch "
         "task=task-run_fed2c9cc-m004-builder.assemble re-derived required_files on the "
         "patched set: passed=True missing=- (no rows; #1318, #1364)"
     )
@@ -3249,7 +3249,7 @@ class TestTheInstrumentMayNotJudgeWithCodeTheDeployNeverRan:
         def fake_sh(cmd: str, check: bool = True) -> str:
             if "rev-parse" in cmd:
                 return "abc123"
-            return "src/squadops/stacks/scaffold.py\nadapters/cycles/correction_runner.py"
+            return "src/squadops/stacks/scaffold.py\nsrc/squadops/execution/correction_runner.py"
 
         monkeypatch.setattr(driver, "sh", fake_sh)
         problems = driver.framework_drift_problems(
@@ -4588,13 +4588,13 @@ class TestAReTakesVerificationIsRecorded:
     # Real: A′'s `own-frame-then-prose-repair` (React), run_99242d1e947f — m005's first dispatch,
     # its re-dispatch for the re-take, then m006's (the saved runtime-api log, 2026-09-28).
     _DISPATCHES = [
-        "2026-09-28 13:30:20,315 INFO adapters.cycles.task_dispatcher: Dispatched task "
+        "2026-09-28 13:30:20,315 INFO squadops.execution.task_dispatcher: Dispatched task "
         "task-run_99242d1e-m005-qa.test (qa.test) to eve_comms, awaiting reply on eve_replies",
-        "2026-09-28 13:36:04,038 INFO adapters.cycles.task_dispatcher: Dispatched task "
+        "2026-09-28 13:36:04,038 INFO squadops.execution.task_dispatcher: Dispatched task "
         "task-run_99242d1e-m005-qa.test (qa.test) to eve_comms, awaiting reply on eve_replies",
-        "2026-09-28 13:38:40,000 INFO adapters.cycles.task_dispatcher: Dispatched task "
+        "2026-09-28 13:38:40,000 INFO squadops.execution.task_dispatcher: Dispatched task "
         "task-run_99242d1e-m004-builder.assemble (builder.assemble) to bob_comms, awaiting reply",
-        "2026-09-28 13:38:53,927 INFO adapters.cycles.task_dispatcher: Dispatched task "
+        "2026-09-28 13:38:53,927 INFO squadops.execution.task_dispatcher: Dispatched task "
         "task-run_99242d1e-m006-qa.test (qa.test) to eve_comms, awaiting reply on eve_replies",
     ]
 
@@ -5038,7 +5038,7 @@ class TestTheRefutationMarkerSurvivesTheRuntimeFilter:
     #1250/#1256/#1261 shape. These tests enter at the filter."""
 
     REFUTATION = (
-        "2026-09-21 10:43:35,824 WARNING adapters.cycles.correction_runner: "
+        "2026-09-21 10:43:35,824 WARNING squadops.execution.correction_runner: "
         "analyzer_claim_refuted task=task-run_01bb55b8-m005-qa.test "
         "decision_task=corr-run_01bb55b8-00-governance.correction_decision "
         "paths=backend/__squadops_injected_fault__.py"
@@ -5799,15 +5799,15 @@ class TestTheChainRunsUnattended:
                 "neo - LLM throughput: 32.8 t/s",
             ],
         )
-        # The reply router's own drop line (adapters/cycles/reply_router.py), for the cancelled
+        # The reply router's own drop line (src/squadops/execution/reply_router.py), for the cancelled
         # run's task and for another run's, which must not count.
         monkeypatch.setattr(
             driver,
             "docker_logs",
             lambda container, since, until=None: [
-                "WARNING adapters.cycles.reply_router: reply-router: reply for unknown/late task "
+                "WARNING squadops.execution.reply_router: reply-router: reply for unknown/late task "
                 "task-run_2-m000-development.develop — dropping",
-                "WARNING adapters.cycles.reply_router: reply-router: reply for unknown/late task "
+                "WARNING squadops.execution.reply_router: reply-router: reply for unknown/late task "
                 "task-run_9-m000-development.develop — dropping",
             ],
         )
@@ -6254,7 +6254,7 @@ class TestEveryCollectorMarkerSurvivesItsFilter:
         dispatch of an id is never a repeat, so each line alone reads nothing), and a sample
         that survives the filter and changes nothing, kept as if it proved a form."""
         dead = (
-            "2026-09-23 12:47:34,637 INFO adapters.cycles.task_dispatcher: Dispatched task "
+            "2026-09-23 12:47:34,637 INFO squadops.execution.task_dispatcher: Dispatched task "
             "task-run_3aff38c4-m004-development.develop (development.develop) to neo_comms"
         )
         samples = dict(driver.RUNTIME_MARKER_SAMPLES)
@@ -6525,7 +6525,7 @@ ReferenceError: title is not defined
 
     #: Deploy A's `redelivery` (cyc_8176207ea2f3): one repair id, dispatched twice (#1697).
     _TWICE = [
-        f"2026-09-25 16:{mm},000 INFO adapters.cycles.task_dispatcher: Dispatched task "
+        f"2026-09-25 16:{mm},000 INFO squadops.execution.task_dispatcher: Dispatched task "
         "repair-run_ab12cd34-00-development.correction_repair "
         "(development.correction_repair) to neo_comms, awaiting reply on neo_replies"
         for mm in ("46:44", "53:53")
@@ -6851,7 +6851,7 @@ class TestALostWindowIsReadFromPrefectsStoredLog:
     _ROWS = [
         {
             "t": "2026-09-29 18:24:28,785",
-            "n": "adapters.cycles.dispatched_flow_executor",
+            "n": "squadops.execution.dispatched_flow_executor",
             "l": 30,
             "m": "correction attempt 0 refunded (round s00): the repair emitted no content "
             "(signature unreported), so the round is re-taken rather than spent (refund 1 of 3, "
@@ -6974,8 +6974,8 @@ class TestTheHangBoundIsReadFromTheLineTheDispatcherWrites:
     ):
         import asyncio
 
-        from adapters.cycles.task_dispatcher import TaskDispatcher
         from squadops.capabilities.handlers import fault_injection
+        from squadops.execution.task_dispatcher import TaskDispatcher
         from squadops.tasks.models import TaskEnvelope
 
         class _NeverReplies:
@@ -7015,7 +7015,7 @@ class TestTheHangBoundIsReadFromTheLineTheDispatcherWrites:
                 resolved_config={fault_injection.DECLARATION_KEY: ["handler_hang"]},
             )
         lines = [
-            f"2026-09-25 00:00:00,000 WARNING adapters.cycles.task_dispatcher: {r.getMessage()}"
+            f"2026-09-25 00:00:00,000 WARNING squadops.execution.task_dispatcher: {r.getMessage()}"
             for r in caplog.records
             if "task_timeout task=" in r.getMessage()
             or "fault_injection: APPLIED" in r.getMessage()

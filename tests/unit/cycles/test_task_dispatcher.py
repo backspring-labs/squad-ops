@@ -1,4 +1,4 @@
-"""Tests for TaskDispatcher (adapters/cycles/task_dispatcher.py).
+"""Tests for TaskDispatcher (src/squadops/execution/task_dispatcher.py).
 
 The request/reply transport moved out of DispatchedFlowExecutor in SIP-0097
 slice 5; these classes moved with it (from test_dispatched_flow_executor.py,
@@ -18,10 +18,10 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
-from adapters.cycles.execution_errors import _CancellationError
-from adapters.cycles.task_dispatcher import TaskDispatcher
 from squadops.comms.queue_message import QueueMessage
 from squadops.config.schema import CommsDeliveryConfig
+from squadops.execution.execution_errors import _CancellationError
+from squadops.execution.task_dispatcher import TaskDispatcher
 from squadops.ports.comms.task_attempts import TaskAttemptsPort
 from squadops.tasks.models import TaskEnvelope, TaskResult
 
@@ -81,7 +81,7 @@ class TestDispatchTask:
         )
 
         with patch(
-            "adapters.cycles.task_dispatcher.asyncio.sleep",
+            "squadops.execution.task_dispatcher.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await dispatcher.dispatch_task(envelope, "run_001")
@@ -223,7 +223,7 @@ class TestDispatchTaskPrefectLifecycle:
         dispatcher = self._build_dispatcher(mock_queue, mock_reporter)
 
         with patch(
-            "adapters.cycles.task_dispatcher.asyncio.sleep",
+            "squadops.execution.task_dispatcher.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await dispatcher.dispatch_task(envelope, "run_001", flow_run_id="fr_abc")
@@ -245,7 +245,7 @@ class TestDispatchTaskPrefectLifecycle:
         dispatcher = self._build_dispatcher(mock_queue, mock_reporter=None)
 
         with patch(
-            "adapters.cycles.task_dispatcher.asyncio.sleep",
+            "squadops.execution.task_dispatcher.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             result = await dispatcher.dispatch_task(envelope, "run_001", flow_run_id="fr_abc")
@@ -259,7 +259,7 @@ class TestDispatchTaskPrefectLifecycle:
         dispatcher = self._build_dispatcher(mock_queue, mock_reporter)
 
         with patch(
-            "adapters.cycles.task_dispatcher.asyncio.sleep",
+            "squadops.execution.task_dispatcher.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await dispatcher.dispatch_task(envelope, "run_001", flow_run_id=None)
@@ -280,7 +280,7 @@ class TestDispatchTaskPrefectLifecycle:
         dispatcher = self._build_dispatcher(mock_queue, mock_reporter)
 
         with patch(
-            "adapters.cycles.task_dispatcher.asyncio.sleep",
+            "squadops.execution.task_dispatcher.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await dispatcher.dispatch_task(
@@ -302,7 +302,7 @@ class TestDispatchTaskPrefectLifecycle:
         dispatcher = self._build_dispatcher(mock_queue, mock_reporter)
 
         with patch(
-            "adapters.cycles.task_dispatcher.asyncio.sleep",
+            "squadops.execution.task_dispatcher.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await dispatcher.dispatch_task(envelope, "run_001", flow_run_id="fr_abc")
@@ -319,7 +319,7 @@ class TestDispatchTaskPrefectLifecycle:
         dispatcher = self._build_dispatcher(mock_queue, mock_reporter)
 
         with patch(
-            "adapters.cycles.task_dispatcher.asyncio.sleep",
+            "squadops.execution.task_dispatcher.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             result = await dispatcher.dispatch_task(
@@ -342,7 +342,7 @@ class TestDispatchTaskPrefectLifecycle:
         dispatcher = self._build_dispatcher(mock_queue, mock_reporter)
 
         with patch(
-            "adapters.cycles.task_dispatcher.asyncio.sleep",
+            "squadops.execution.task_dispatcher.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await dispatcher.dispatch_task(
@@ -366,7 +366,7 @@ class TestDispatchTaskPrefectLifecycle:
         dispatcher = self._build_dispatcher(mock_queue, mock_reporter=None)
 
         with patch(
-            "adapters.cycles.task_dispatcher.asyncio.sleep",
+            "squadops.execution.task_dispatcher.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await dispatcher.dispatch_task(envelope, "run_001")
@@ -394,7 +394,7 @@ class TestDispatchTaskPrefectLifecycle:
         dispatcher = self._build_dispatcher(mock_queue, mock_reporter)
 
         with patch(
-            "adapters.cycles.task_dispatcher.asyncio.sleep",
+            "squadops.execution.task_dispatcher.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await dispatcher.dispatch_task(
@@ -416,7 +416,7 @@ class TestDispatchTaskPrefectLifecycle:
         the live correlation context so records are tagged for Prefect."""
         import logging as stdlog
 
-        import adapters.cycles.task_dispatcher as dfe
+        import squadops.execution.task_dispatcher as dfe
         from squadops.telemetry.context import (
             get_correlation_context,
             use_correlation_context,
@@ -476,7 +476,7 @@ class TestDispatchTaskPrefectLifecycle:
         dispatcher = self._build_dispatcher(mock_queue, mock_reporter)
 
         with patch(
-            "adapters.cycles.task_dispatcher.asyncio.sleep",
+            "squadops.execution.task_dispatcher.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await dispatcher.dispatch_task(
@@ -647,7 +647,7 @@ class TestAcceptPatchToken:
         async def handle_outcome(result):
             return "accept_patch"
 
-        with patch("adapters.cycles.task_dispatcher.asyncio.sleep", new_callable=AsyncMock):
+        with patch("squadops.execution.task_dispatcher.asyncio.sleep", new_callable=AsyncMock):
             task_succeeded, result = await dispatcher.dispatch_with_retry(
                 envelope,
                 envelope,
@@ -742,7 +742,7 @@ class TestCancellationProbe:
             is_cancelled=probe,
         )
 
-        with patch("adapters.cycles.task_dispatcher.asyncio.sleep", new_callable=AsyncMock):
+        with patch("squadops.execution.task_dispatcher.asyncio.sleep", new_callable=AsyncMock):
             result = await dispatcher.dispatch_task(self._envelope(), "run_001")
 
         assert result.status == "SUCCEEDED"
@@ -774,7 +774,7 @@ class TestCancellationProbe:
         nothing replied, and the wait ran its whole 1,800 s bound — then logged a timeout,
         retried, and finalized the cancelled run while the next cycle ran. Bug caught: a
         wait that asks about the cancel only before publishing."""
-        monkeypatch.setattr("adapters.cycles.task_dispatcher.CANCEL_PROBE_SECONDS", 0.01)
+        monkeypatch.setattr("squadops.execution.task_dispatcher.CANCEL_PROBE_SECONDS", 0.01)
         reply_router.suppress.add("task_repair")  # the agent dropped it: nothing replies
         dispatcher = TaskDispatcher(
             queue=mock_queue,
@@ -798,7 +798,7 @@ class TestCancellationProbe:
     ) -> None:
         """Bug caught: a registry blip during a long wait abandoning a task its agent is still
         working. The wait's probe is not the fail-closed pre-dispatch one (#586)."""
-        monkeypatch.setattr("adapters.cycles.task_dispatcher.CANCEL_PROBE_SECONDS", 0.01)
+        monkeypatch.setattr("squadops.execution.task_dispatcher.CANCEL_PROBE_SECONDS", 0.01)
         reply_router.suppress.add("task_repair")
         calls = 0
 
@@ -831,7 +831,7 @@ class TestCancellationProbe:
             task_timeout=5.0,
         )
 
-        with patch("adapters.cycles.task_dispatcher.asyncio.sleep", new_callable=AsyncMock):
+        with patch("squadops.execution.task_dispatcher.asyncio.sleep", new_callable=AsyncMock):
             result = await dispatcher.dispatch_task(self._envelope(), "run_001")
 
         assert result.status == "SUCCEEDED"
@@ -881,7 +881,7 @@ class TestCancellationProbe:
         )
 
         with (
-            patch("adapters.cycles.task_dispatcher.asyncio.sleep", new_callable=AsyncMock),
+            patch("squadops.execution.task_dispatcher.asyncio.sleep", new_callable=AsyncMock),
             pytest.raises(_CancellationError),
         ):
             await dispatcher.dispatch_with_retry(
@@ -901,13 +901,13 @@ class TestHeartbeatMilestones:
     three-hour task emits ~21 lines instead of ~360."""
 
     def test_the_cadence(self):
-        from adapters.cycles.task_dispatcher import heartbeat_milestones
+        from squadops.execution.task_dispatcher import heartbeat_milestones
 
         gen = heartbeat_milestones(30.0)
         assert [next(gen) for _ in range(6)] == [60.0, 300.0, 600.0, 1200.0, 1800.0, 2400.0]
 
     def test_a_slow_poll_still_gets_its_first_line(self):
-        from adapters.cycles.task_dispatcher import heartbeat_milestones
+        from squadops.execution.task_dispatcher import heartbeat_milestones
 
         gen = heartbeat_milestones(120.0)
         assert [next(gen) for _ in range(3)] == [120.0, 1200.0, 1800.0]
@@ -915,8 +915,8 @@ class TestHeartbeatMilestones:
     async def test_the_loop_logs_only_at_milestones(self, caplog):
         import logging as stdlog
 
-        import adapters.cycles.task_dispatcher as dfe
-        from adapters.cycles.task_dispatcher import TaskDispatcher
+        import squadops.execution.task_dispatcher as dfe
+        from squadops.execution.task_dispatcher import TaskDispatcher
 
         envelope = TaskEnvelope(
             task_id="task_abc",
@@ -1075,7 +1075,7 @@ class TestARestartedRuntimesRedispatchIsAnsweredNotRerun:
 
     @staticmethod
     async def _sent(dispatcher, mock_queue, envelope) -> dict:
-        with patch("adapters.cycles.task_dispatcher.asyncio.sleep", new_callable=AsyncMock):
+        with patch("squadops.execution.task_dispatcher.asyncio.sleep", new_callable=AsyncMock):
             await dispatcher.dispatch_task(envelope, "run_001")
         return json.loads(mock_queue.publish.call_args.args[1])
 

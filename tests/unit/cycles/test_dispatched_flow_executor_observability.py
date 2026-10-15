@@ -150,7 +150,7 @@ def executor(
     mock_llm_obs,
     mock_prefect,
 ):
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     mock_registry.get_cycle.return_value = cycle
     return DispatchedFlowExecutor(
@@ -172,7 +172,7 @@ def executor(
 
 @pytest.fixture
 def executor_no_obs(mock_registry, mock_vault, mock_queue, mock_squad_profile, cycle):
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     mock_registry.get_cycle.return_value = cycle
     return DispatchedFlowExecutor(
@@ -200,7 +200,7 @@ class TestLangFuseCycleEvents:
 
     async def test_emits_langfuse_cycle_events(self, executor, mock_queue, mock_llm_obs):
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -217,7 +217,7 @@ class TestLangFuseCycleEvents:
 
     async def test_langfuse_context_has_trace_id(self, executor, mock_queue, mock_llm_obs):
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -235,7 +235,7 @@ class TestWithoutObservability:
         self, executor_no_obs, mock_queue, mock_registry
     ):
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor_no_obs.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -276,7 +276,7 @@ class TestFlowLevelCorrelationScope:
 
         try:
             with patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ):
                 await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -307,7 +307,7 @@ class TestPrefectFlowRun:
 
     async def test_creates_prefect_flow_run(self, executor, mock_queue, mock_prefect):
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -398,7 +398,7 @@ class TestPrefectTaskRuns:
         """Executor creates task runs + transitions to RUNNING directly so the
         ``task_run_id`` is available for the per-task log forwarder."""
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -435,7 +435,7 @@ class TestPrefectTaskRuns:
         executor._cycle_event_bus.emit = capture_emit
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")

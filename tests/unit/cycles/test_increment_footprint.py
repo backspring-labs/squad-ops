@@ -135,7 +135,7 @@ def _cycle(increment: bool) -> Cycle:
 
 
 async def _gate_errors(plan: str, increment: bool = True) -> list[str]:
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     executor = DispatchedFlowExecutor(
         cycle_registry=AsyncMock(),
@@ -460,7 +460,7 @@ async def test_an_increment_plan_with_a_suiteless_qa_task_is_rejected_at_its_gat
     "full-suite regression" qa task with nothing expected passes the gate, fails whatever it
     returns, and ends the increment blocked_unverified. The control is the same plan with the
     task naming its suite."""
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     def plan(qa_expected: list[str]) -> str:
         d = yaml.safe_load(_plan("backend/routes.py"))

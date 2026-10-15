@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 from squadops.capabilities.context_assembly import get_context_contract
+from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
 # ---------------------------------------------------------------------------
 # Lightweight fakes

@@ -41,7 +41,6 @@ sys.path.insert(0, str(REPO_ROOT / "scripts" / "dev"))
 
 from read_only_vault import ReadOnlyVault  # noqa: E402
 
-from adapters.cycles.benchmark_regrade import regrade  # noqa: E402
 from adapters.cycles.memory_deploy_registry import MemoryDeployRegistry  # noqa: E402
 from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry  # noqa: E402
 from adapters.cycles.postgres_deploy_registry import PostgresDeployRegistry  # noqa: E402
@@ -57,6 +56,7 @@ from squadops.cycles.benchmark_registry import (  # noqa: E402
 )
 from squadops.cycles.cycle_assessment import ASSESSMENT_VERSION, AssessorIdentity  # noqa: E402
 from squadops.cycles.failure_attribution import ATTRIBUTION_REGISTRY_VERSION  # noqa: E402
+from squadops.execution.benchmark_regrade import regrade  # noqa: E402
 
 MANIFEST = REPO_ROOT / "docs" / "benchmark" / "rolls.yaml"
 CAPTURE = REPO_ROOT / "docs" / "benchmark" / "regrade.json"

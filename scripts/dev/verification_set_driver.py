@@ -2579,7 +2579,7 @@ _RUNTIME_LINE_KEYS = (
     "correction_repair_brief",
     "decided_by_agent=",
     # #1631: #968's prose refutation is logged on its OWN line by
-    # `adapters.cycles.correction_runner`, carrying no other key — so without it here the
+    # `squadops.execution.correction_runner`, carrying no other key — so without it here the
     # line never reaches `analyzer_claims_refuted` and A1 reads NO on a mechanism that
     # fired. #1616 added the reader and the decision_task join and did not add this, and
     # its replay fed `docker logs` straight to the reader, bypassing this filter: it
@@ -3013,45 +3013,45 @@ RUNTIME_MARKER_SAMPLES: dict[str, tuple[str, ...]] = {
     # form's second dispatch is rendered: one dispatch is never a repeat, so a lone retest line
     # could not show the form is read (#1696).
     "repeated_round_ids": (
-        "2026-09-25 16:46:44,393 INFO adapters.cycles.task_dispatcher: Dispatched task "
+        "2026-09-25 16:46:44,393 INFO squadops.execution.task_dispatcher: Dispatched task "
         "repair-run_f10f98e6-00-qa.test_repair (qa.test_repair) to eve_comms, awaiting reply "
         "on eve_replies",
-        "2026-09-25 16:53:53,744 INFO adapters.cycles.task_dispatcher: Dispatched task "
+        "2026-09-25 16:53:53,744 INFO squadops.execution.task_dispatcher: Dispatched task "
         "repair-run_f10f98e6-00-qa.test_repair (qa.test_repair) to eve_comms, awaiting reply "
         "on eve_replies",
-        "2026-09-23 13:45:11,223 INFO adapters.cycles.task_dispatcher: Dispatched task "
+        "2026-09-23 13:45:11,223 INFO squadops.execution.task_dispatcher: Dispatched task "
         "retest-run_c2103c7f-00-qa.test (qa.test) to eve_comms, awaiting reply on eve_replies",
-        "2026-09-23 13:52:40,000 INFO adapters.cycles.task_dispatcher: Dispatched task "
+        "2026-09-23 13:52:40,000 INFO squadops.execution.task_dispatcher: Dispatched task "
         "retest-run_c2103c7f-00-qa.test (qa.test) to eve_comms, awaiting reply on eve_replies",
     ),
     "narrowed_targets": (
-        "2026-09-21 05:52:53,066 INFO adapters.cycles.correction_repair: correction_repair_target: "
+        "2026-09-21 05:52:53,066 INFO squadops.execution.correction_repair: correction_repair_target: "
         "narrowed to the slot(s) owning the failing probe(s) — backend/routes.py; the "
         "language-wide surface is withheld (#1015)",
     ),
     "language_fallbacks": (
-        "2026-09-21 02:32:30,594 INFO adapters.cycles.correction_repair: correction_repair_target: "
+        "2026-09-21 02:32:30,594 INFO squadops.execution.correction_repair: correction_repair_target: "
         "package scoping matched nothing for anchors __tests__/runs.api.test.ts — falling back "
         "to same-language implementation source app/api/runs/route.ts (#688)",
     ),
-    # Rendered: adapters/cycles/correction_repair.py, the #970 re-fill locus.
+    # Rendered: src/squadops/execution/correction_repair.py, the #970 re-fill locus.
     "fill_targets": (
-        "2026-09-24 00:00:00,000 INFO adapters.cycles.correction_repair: correction_repair_locus: "
+        "2026-09-24 00:00:00,000 INFO squadops.execution.correction_repair: correction_repair_locus: "
         "own_artifact — qa.test re-fills slot(s) runs-create in backend/tests/test_runs.py (#970)",
     ),
     "refused_patches": (
-        "2026-09-21 10:46:18,252 INFO adapters.cycles.patch_acceptance: patch_verification "
+        "2026-09-21 10:46:18,252 INFO squadops.execution.patch_acceptance: patch_verification "
         "task=task-run_01bb55b8-m005-qa.test task_type=qa.test status=failed reason= checks=8 "
         "failed=contract_assertions_match decided_by_agent=0 agent_rows=5 agent_executed=5 "
         "skips=-",
         # Rendered: patch_acceptance.py's verification line, unverifiable, then the executor
         # re-dispatching the task (the Next.js 1.6.6 shape the refused reading counts).
-        "2026-09-24 00:00:00,000 INFO adapters.cycles.patch_acceptance: patch_verification "
+        "2026-09-24 00:00:00,000 INFO squadops.execution.patch_acceptance: patch_verification "
         "task=task-run_3aff38c4-m004-development.develop task_type=development.develop "
         "status=unverifiable reason=no_executed_blocking_checks checks=0 failed=- "
         "decided_by_agent=0 agent_rows=0 agent_executed=0 skips=missing_tooling:2",
         FilterOnly(
-            "2026-09-23 12:47:34,637 INFO adapters.cycles.task_dispatcher: Dispatched task "
+            "2026-09-23 12:47:34,637 INFO squadops.execution.task_dispatcher: Dispatched task "
             "task-run_3aff38c4-m004-development.develop (development.develop) to neo_comms, "
             "awaiting reply on neo_replies",
             why="the re-dispatch refuses an unverifiable patch at once, but one no retest "
@@ -3060,59 +3060,59 @@ RUNTIME_MARKER_SAMPLES: dict[str, tuple[str, ...]] = {
         ),
     ),
     "patch_verifications": (
-        "2026-09-23 13:45:11,184 INFO adapters.cycles.patch_acceptance: patch_verification "
+        "2026-09-23 13:45:11,184 INFO squadops.execution.patch_acceptance: patch_verification "
         "task=task-run_c2103c7f-m006-qa.test task_type=qa.test status=passed reason= checks=16 "
         "failed=- decided_by_agent=1 agent_rows=10 agent_executed=10 skips=missing_tooling:3",
     ),
     "retests": (
-        "2026-09-23 13:45:20,213 INFO adapters.cycles.patch_acceptance: patch_retest "
+        "2026-09-23 13:45:20,213 INFO squadops.execution.patch_acceptance: patch_retest "
         "task=task-run_c2103c7f-m006-qa.test status=SUCCEEDED passed=True reason=Repaired suite "
         "passed",
     ),
     "plan_defect_terminations": (
-        "2026-09-22 11:34:10,301 WARNING adapters.cycles.correction_runner: "
+        "2026-09-22 11:34:10,301 WARNING squadops.execution.correction_runner: "
         "correction_terminated_plan_defect task=task-run_56d6ead9-m005-qa.test rounds=1..1 "
         "candidate=tighten_acceptance carried=2 cleared=2 added=5 signature=tests_pass",
     ),
     "refused_rounds_not_counted": (
-        "2026-09-22 04:59:11,312 INFO adapters.cycles.correction_runner: plan_defect terminal: "
+        "2026-09-22 04:59:11,312 INFO squadops.execution.correction_runner: plan_defect terminal: "
         "round 1's repair for task=task-run_b2a73746-m006-builder.assemble was refused by patch "
         "verification and never applied — its signature is not counted as a repeat (#1129)",
     ),
     "emission_retries": (
-        "2026-09-21 07:43:54,557 INFO adapters.cycles.dispatched_flow_executor: Retryable "
+        "2026-09-21 07:43:54,557 INFO squadops.execution.dispatched_flow_executor: Retryable "
         "failure for task-run_1d52abf3-m005-qa.test (attempt 1), retrying — "
         "signature=unextractable response_chars=48 completion_tokens=8820 completion_cap=12288",
     ),
     "required_files_declared": (
-        "2026-09-24 01:56:22,050 INFO adapters.cycles.patch_acceptance: patch "
+        "2026-09-24 01:56:22,050 INFO squadops.execution.patch_acceptance: patch "
         "task=task-run_6072d5fd-m004-builder.assemble re-derived required_files on the patched "
         "set: passed=True required=assembly_notes.md missing=- (#1318, #1364, #1374)",
     ),
     "candidate_identities": (
-        "2026-09-23 13:45:20,213 INFO adapters.cycles.patch_acceptance: patch_candidate_identity "
+        "2026-09-23 13:45:20,213 INFO squadops.execution.patch_acceptance: patch_candidate_identity "
         "task=task-run_c2103c7f-m006-qa.test verified_revision_id=2404c4ed "
         "persisted_revision_id=2404c4ed base_revision_id=51a0a734 (SIP-0107 §20)",
     ),
-    # Rendered: adapters/cycles/correction_repair.py, #968's structured half.
+    # Rendered: src/squadops/execution/correction_repair.py, #968's structured half.
     "analyzer_claims_dropped": (
-        "2026-09-24 00:00:00,000 INFO adapters.cycles.correction_repair: correction_repair_target: "
+        "2026-09-24 00:00:00,000 INFO squadops.execution.correction_repair: correction_repair_target: "
         "analyzer implicated backend/__squadops_injected_fault__.py but the workspace has no "
         "such file — dropped, not aimed at (#968)",
     ),
     "analyzer_claims_refuted": (
-        "2026-09-21 09:54:39,998 WARNING adapters.cycles.correction_runner: analyzer_claim_refuted "
+        "2026-09-21 09:54:39,998 WARNING squadops.execution.correction_runner: analyzer_claim_refuted "
         "task=task-run_94fc5be2-m005-qa.test decision_task=corr-run_94fc5be2-00-governance."
         "correction_decision paths=backend/__squadops_injected_fault__.py — the workspace has "
         "no such file; the decision is told rather than inheriting it (#968)",
     ),
     "refunded_rounds": (
-        "2026-09-21 02:35:02,717 WARNING adapters.cycles.dispatched_flow_executor: correction "
+        "2026-09-21 02:35:02,717 WARNING squadops.execution.dispatched_flow_executor: correction "
         "attempt 0 refunded: the repair emitted no content (signature unreported), so the round "
         "is re-taken rather than spent (refund 1 of 3, #1053/#998)",
         # Real: the #1697 verification's `redelivery` re-run, cyc_cfc00ce6ebd8 — the form every
         # refund takes since #1697, which this collector read as none until it was sampled.
-        "2026-09-29 18:32:11,452 WARNING adapters.cycles.dispatched_flow_executor: correction "
+        "2026-09-29 18:32:11,452 WARNING squadops.execution.dispatched_flow_executor: correction "
         "attempt 0 refunded (round s01): the repair emitted no content (signature unreported), "
         "so the round is re-taken rather than spent (refund 2 of 3, #1053/#998)",
     ),
@@ -3120,7 +3120,7 @@ RUNTIME_MARKER_SAMPLES: dict[str, tuple[str, ...]] = {
     # `PatchAcceptance._keep_progress`, filled by the real `retest_reduction` and
     # `render_signature` over a three-to-one reduction.
     "progress_kept": (
-        "2026-09-30 09:00:00,000 INFO adapters.cycles.patch_acceptance: progress_kept task=task"
+        "2026-09-30 09:00:00,000 INFO squadops.execution.patch_acceptance: progress_kept task=task"
         "-run_b6a8121c-m006-qa.test round=0 failing_before=3 failing_after=1 cleared=tests_pass"
         "|frontend/src/__tests__/runViews.test.jsx|failed;runner=vitest;exit=1;test=renders the"
         " list; tests_pass|frontend/src/__tests__/runViews.test.jsx|failed;runner=vitest;exit=1"
@@ -3128,39 +3128,39 @@ RUNTIME_MARKER_SAMPLES: dict[str, tuple[str, ...]] = {
         "cb4ed2e4dd7f2d34cad73bfd4a1 (#1522)",
     ),
     "evidence_superseded": (
-        "2026-09-23 13:45:20,213 INFO adapters.cycles.patch_acceptance: patch "
+        "2026-09-23 13:45:20,213 INFO squadops.execution.patch_acceptance: patch "
         "task=task-run_c2103c7f-m006-qa.test failed-attempt evidence superseded: "
         "replaced=test_report.md dropped=typed_check_evaluation_task_6.json (retest=yes) "
         "(#1111/#1318)",
     ),
     "qa_owned_routed": (
-        "2026-09-23 20:46:40,636 INFO adapters.cycles.correction_repair: correction_repair_locus: "
+        "2026-09-23 20:46:40,636 INFO squadops.execution.correction_repair: correction_repair_locus: "
         "own_artifact — qa_owned_routed: backend/tests/test_runs.py raised TypeError in its own "
         "frame (test_leave_run_happy_path:211); qa.test re-authors backend/tests/test_runs.py "
         "(#1130)",
     ),
-    # Rendered: adapters/cycles/correction_repair.py, the #1123 undeclared-anchor route.
+    # Rendered: src/squadops/execution/correction_repair.py, the #1123 undeclared-anchor route.
     "absent_anchor_routed": (
-        "2026-09-24 00:00:00,000 INFO adapters.cycles.correction_repair: correction_repair_locus: "
+        "2026-09-24 00:00:00,000 INFO squadops.execution.correction_repair: correction_repair_locus: "
         "own_artifact — absent_anchor_routed: backend/tests/test_runs.py asserted undeclared "
         "anchor(s) runs-empty; qa.test re-authors backend/tests/test_runs.py (#1123)",
     ),
-    # Rendered: adapters/cycles/task_dispatcher.py, the declared wait running out (item 15).
-    # Rendered: adapters/cycles/correction_runner.py, a round's disputes as ruled (§17a).
+    # Rendered: src/squadops/execution/task_dispatcher.py, the declared wait running out (item 15).
+    # Rendered: src/squadops/execution/correction_runner.py, a round's disputes as ruled (§17a).
     "contested_rows": (
-        "2026-09-25 00:00:00,000 INFO adapters.cycles.correction_runner: contested_rows "
+        "2026-09-25 00:00:00,000 INFO squadops.execution.correction_runner: contested_rows "
         "task=task-run_ab12cd34-m004-development.develop round=1 confirmed=1 rejected=0 "
         "unruled=0 unmatched=0 by=dev — acceptance:declared_imports on "
         "frontend/src/views/RunList.jsx (vc-list): confirmed",
     ),
     "task_timeouts": (
-        "2026-09-25 00:00:00,000 WARNING adapters.cycles.task_dispatcher: task_timeout "
+        "2026-09-25 00:00:00,000 WARNING squadops.execution.task_dispatcher: task_timeout "
         "task=task-run_ab12cd34-m000-development.develop type=development.develop agent=neo "
         "seconds=1800.0 — the declared per-task wait ran out; the task is failed as a typed "
         "fact (#995)",
     ),
     "repair_brief_case_counts": (
-        "2026-09-23 20:46:40,636 INFO adapters.cycles.correction_repair: correction_repair_brief: "
+        "2026-09-23 20:46:40,636 INFO squadops.execution.correction_repair: correction_repair_brief: "
         "qa.test_repair carries 3 failing case(s) for backend/tests/test_runs.py "
         "from=task-run_7960da38-m005-qa.test tests_pass_rows=1",
     ),
@@ -6487,7 +6487,7 @@ ACTIVE_ACTIVITY_STATES = ("pending", "running", "paused")
 #: cycle id, so a ghost is read by time window under run-state isolation, never by id.
 GHOST_MARKER = "emission shape:"
 #: The runtime API's reply router consumes every ``<agent>_replies`` delivery and drops one
-#: nothing awaits (``adapters/cycles/reply_router.py``); a late reply is this line, by task id.
+#: nothing awaits (``src/squadops/execution/reply_router.py``); a late reply is this line, by task id.
 LATE_REPLY_MARKER = "reply-router: reply for unknown/late task "
 
 

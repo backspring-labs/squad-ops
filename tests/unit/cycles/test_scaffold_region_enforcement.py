@@ -295,7 +295,7 @@ class TestRepairPathSignal:
         """Restore-and-signal on the repair path (Gate 4 exit): a repair step's shell
         rewrite is dropped IN PLACE and the next attempt's carry receives the
         instruction — through the runner's own enforcement method."""
-        from adapters.cycles.correction_runner import CorrectionRunner
+        from squadops.execution.correction_runner import CorrectionRunner
 
         runner = CorrectionRunner.__new__(CorrectionRunner)
         runner._emit_scaffold_integrity_evidence = lambda *a, **k: None

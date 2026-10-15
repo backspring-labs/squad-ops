@@ -40,16 +40,15 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any
 
-from adapters.cycles.correction_ids import correction_task_id
-from adapters.cycles.correction_repair import CorrectionRepair
-from adapters.cycles.execution_errors import _ExecutionError
 from squadops.campaigns.proposed_behaviours import QA_PROPOSED_BEHAVIOURS_ARTIFACT_TYPE
 from squadops.capabilities.context_assembly import (
     retest_forwarded_inputs,
 )
+from squadops.capabilities.disputed_checks import contest_name, rule_contests
 from squadops.cycles.agent_config import resolve_agent_config
 from squadops.cycles.checkpoint import RunCheckpoint
-from squadops.cycles.correction_policy import last_attempt_reserved
+from squadops.cycles.contract_expectations import expectation_lines
+from squadops.cycles.correction_policy import last_attempt_reserved, resolve_correction_path
 from squadops.cycles.correction_signature import (
     carried_failures,
     classify_movement,
@@ -58,12 +57,18 @@ from squadops.cycles.correction_signature import (
     repair_not_applied_in_round,
     should_terminate_plan_defect,
 )
+from squadops.cycles.emission_integrity import (
+    emission_integrity_instruction,
+    syntax_gate_python_artifacts,
+)
 from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.failure_evidence import (
     build_failure_evidence,
     compose_failure_trigger,
     mark_contested_rows,
+    prior_emission_history,
 )
+from squadops.cycles.interface_conformance import detect_interface_drift
 from squadops.cycles.models import ArtifactRef
 from squadops.cycles.plan_delta import PlanDelta
 from squadops.cycles.run_loop_summary import (
@@ -74,13 +79,26 @@ from squadops.cycles.run_loop_summary import (
     RoundFailure,
     RunTerminalDecision,
 )
+from squadops.cycles.scaffold_enforcement import (
+    bound_record_or_none,
+    enforce_frozen_ownership,
+    enforcement_instruction,
+)
 from squadops.cycles.scaffold_integrity_evidence import emit_enforcement
 from squadops.cycles.task_outcome import (
     CORRECTION_TERMINATION_ARTIFACT_TYPE,
     CorrectionTermination,
     CorrectionTerminationReason,
 )
+from squadops.cycles.task_plan import (
+    correction_task_steps,
+    decision_is_declared,
+    declared_correction_steps,
+)
 from squadops.events.types import EventType
+from squadops.execution.correction_ids import correction_task_id
+from squadops.execution.correction_repair import CorrectionRepair
+from squadops.execution.execution_errors import _ExecutionError
 from squadops.stacks.scaffold import error_seam_instructions, model_surface_instructions
 from squadops.tasks.models import TaskEnvelope, TaskResultStatus
 from squadops.tasks.task_types import TaskType
@@ -88,9 +106,9 @@ from squadops.tasks.task_types import TaskType
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from adapters.cycles.task_dispatcher import TaskDispatcher
     from squadops.cycles.models import Cycle
     from squadops.cycles.run_ledger import RunLedger
+    from squadops.execution.task_dispatcher import TaskDispatcher
     from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
     from squadops.ports.cycles.cycle_registry import CycleRegistryPort
     from squadops.ports.events.cycle_event_bus import CycleEventBusPort
@@ -247,8 +265,6 @@ def _inject_deterministic_evidence(
       gate rejects such a patch but never says what the right names are, so the
       next attempt guesses again.
     """
-    from squadops.cycles.contract_expectations import expectation_lines
-    from squadops.cycles.interface_conformance import detect_interface_drift
 
     drift = detect_interface_drift(
         interface_manifest,
@@ -281,7 +297,6 @@ def _inject_deterministic_evidence(
     # its last read — V7 roll 1's two substantive emissions were erased and the analysis
     # named a mechanism the logs disprove. Same transport as the two above, same reason:
     # the loop must be TOLD rather than left to infer from an absence.
-    from squadops.cycles.failure_evidence import prior_emission_history
 
     history = prior_emission_history(
         str(getattr(envelope, "task_id", "") or ""), stored_artifacts or ()
@@ -524,11 +539,6 @@ class CorrectionRunner:
         # result.outputs.
         step_artifacts = (result.outputs or {}).get("artifacts") or []
         if bound_record is not None and step_artifacts:
-            from squadops.cycles.scaffold_enforcement import (
-                enforce_frozen_ownership,
-                enforcement_instruction,
-            )
-
             enforced, integrity_evidence = enforce_frozen_ownership(
                 step_artifacts, bound_record, step_envelope
             )
@@ -554,11 +564,6 @@ class CorrectionRunner:
         # current for RC3 and the retest; the next attempt is told what was
         # discarded via the same carry transport as the frozen restores.
         if step_artifacts:
-            from squadops.cycles.emission_integrity import (
-                emission_integrity_instruction,
-                syntax_gate_python_artifacts,
-            )
-
             kept, rejected = syntax_gate_python_artifacts(step_artifacts)
             if rejected:
                 result.outputs["artifacts"] = kept
@@ -782,8 +787,6 @@ class CorrectionRunner:
                 )
             )
 
-        from squadops.cycles.task_plan import decision_is_declared
-
         if should_terminate_plan_defect(
             prev_sig,
             current_sig,
@@ -931,7 +934,6 @@ class CorrectionRunner:
         decides, as for ``blocked_unverified`` (§6.5). The row stays failed. A contest the
         analyzer did not confirm proceeds as the failure it disputes.
         """
-        from squadops.capabilities.disputed_checks import contest_name, rule_contests
 
         evidence = diagnosis.failure_evidence
         confirmed, rejected, unruled = rule_contests(
@@ -1037,7 +1039,7 @@ class CorrectionRunner:
         has_accepted_repair: bool = False,
         dispute_carry: dict[str, list[dict[str, Any]]] | None = None,
         # #1697: the run's round sequence, never reset. It makes the round's task ids unique when
-        # a refunded round reuses the attempt index (adapters/cycles/correction_ids.py).
+        # a refunded round reuses the attempt index (src/squadops/execution/correction_ids.py).
         round_seq: int = 0,
     ) -> CorrectionProtocolResult:
         """Run the correction protocol: analyze → decide → act.
@@ -1071,8 +1073,6 @@ class CorrectionRunner:
         blind — roll 12's non-compiling repair was rejected honestly and
         nothing downstream was ever told why.
         """
-
-        from squadops.cycles.scaffold_enforcement import bound_record_or_none
 
         # SIP-0100 3.4b: repair emissions are subject to the same frozen-ownership
         # enforcement as regular task storage — None on unbound runs (no-op).
@@ -1237,8 +1237,6 @@ class CorrectionRunner:
         decision step does not carry those fields forward.
         """
         from uuid import uuid4
-
-        from squadops.cycles.task_plan import correction_task_steps
 
         # SIP-0108 §10i item 3: the profile declares what this protocol runs. Until 1.8.1 the
         # steps were a module constant, so every cycle analyzed and decided whether or not its
@@ -1414,8 +1412,6 @@ class CorrectionRunner:
         # and failed while this chain's repair slot is unspent. The model's
         # original rationale stays intact in the decision artifact; the
         # override is disclosed in the event payload below.
-        from squadops.cycles.correction_policy import resolve_correction_path
-        from squadops.cycles.task_plan import decision_is_declared
 
         # SIP-0108 §10i item 3: with no `decide` step there is no decision to read, and the
         # rule is deterministic — patch. The `abort` default below belongs to a DECLARED
@@ -1509,7 +1505,6 @@ class CorrectionRunner:
         failure_evidence = diagnosis.failure_evidence
         analysis_outputs = diagnosis.analysis_outputs
         decision_outputs = diagnosis.decision_outputs
-        from squadops.cycles.task_plan import decision_is_declared, declared_correction_steps
 
         decided = decision_is_declared(cycle.resolved_config())
         # A profile may declare neither `analyze` nor `decide` (SIP-0108 §10i item 3), and the

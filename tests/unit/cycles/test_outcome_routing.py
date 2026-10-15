@@ -173,7 +173,7 @@ def run():
 
 @pytest.fixture
 def executor(mock_registry, mock_vault, mock_queue, mock_squad_profile, cycle, run):
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     mock_registry.get_cycle.return_value = cycle
     mock_registry.get_run.return_value = run
@@ -244,7 +244,7 @@ class TestRetryableFailure:
         mock_queue.reply_router.responder = _scripted_responder(responses)
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -277,7 +277,7 @@ class TestRetryableFailure:
         mock_queue.reply_router.responder = _scripted_responder(responses)
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -312,7 +312,7 @@ class TestSemanticFailure:
         mock_queue.reply_router.responder = _scripted_responder(responses)
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -341,7 +341,7 @@ class TestBlockedOutcome:
         mock_queue.reply_router.responder = _scripted_responder(responses)
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -363,7 +363,7 @@ class TestSuccessOutcome:
         mock_queue.reply_router.responder = _scripted_responder({})
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -379,7 +379,7 @@ class TestSuccessOutcome:
         mock_queue.reply_router.responder = _scripted_responder(responses)
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -411,7 +411,7 @@ class TestNeedReplanFromContract:
         mock_queue.reply_router.responder = _scripted_responder(responses)
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -436,7 +436,7 @@ class TestFallbackTable:
         mock_queue.reply_router.responder = _scripted_responder(responses)
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -453,7 +453,7 @@ class TestFallbackTable:
         mock_queue.reply_router.responder = _scripted_responder(responses)
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -484,7 +484,7 @@ class TestNeedsRepairOutcome:
         mock_queue.reply_router.responder = _scripted_responder(responses)
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -1047,13 +1047,13 @@ class TestAcceptPatchRetest:
         """Bug caught (#1522, 1.7.5 React roll 3 `cyc_89153929749f`): round 0's repair cleared
         three of seven failures on its own retest and was thrown away, so the task re-ran
         against the unrepaired tree and the next round measured the original app."""
-        from adapters.cycles.patch_acceptance import (
+        from squadops.cycles.patch_verification import candidate_revision_id
+        from squadops.execution.patch_acceptance import (
             KEEP_PROGRESS,
             KEPT_ARTIFACTS_KEY,
             KEPT_NEXT_FAILURE_KEY,
             KEPT_OUTPUTS_KEY,
         )
-        from squadops.cycles.patch_verification import candidate_revision_id
 
         executor._correction_runner.reexecute_repaired_suite = AsyncMock(
             return_value=self._retest_failing("c")
@@ -1289,7 +1289,7 @@ class TestEmissionRetryFeedbackThreading:
         mock_queue.reply_router.responder = _scripted_responder(responses)
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -1320,7 +1320,7 @@ class TestEmissionRetryFeedbackThreading:
         mock_queue.reply_router.responder = _scripted_responder(responses)
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -1360,7 +1360,7 @@ class TestEmissionRetryFeedbackThreading:
         mock_queue.reply_router.responder = _scripted_responder(responses)
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -1402,7 +1402,7 @@ class TestEmissionRetryFeedbackThreading:
         mock_queue.reply_router.responder = _scripted_responder(responses)
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -1425,7 +1425,7 @@ class TestEmissionRetryFeedbackThreading:
         mock_queue.reply_router.responder = _scripted_responder(responses)
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -1622,7 +1622,7 @@ class TestAcceptPatchStructurallyUnevaluable:
                 status=PATCH_UNVERIFIABLE, reason="evaluator_error:function_defined"
             )
 
-        import adapters.cycles.patch_acceptance as ex_mod
+        import squadops.execution.patch_acceptance as ex_mod
 
         monkeypatch.setattr(ex_mod, "verify_patched_artifacts", _broken_evaluator)
         executor._correction_runner.reexecute_repaired_suite = AsyncMock(
@@ -1843,7 +1843,7 @@ class TestRepairRejectionCarry:
 
     def test_the_carry_is_bounded(self):
         """Bug caught: an unbounded carry growing into the prompt budget."""
-        from adapters.cycles.patch_acceptance import _record_repair_rejection
+        from squadops.execution.patch_acceptance import _record_repair_rejection
 
         carry: dict = {}
         for n in range(5):
@@ -1986,7 +1986,7 @@ class TestRetestIsKeyedOnWhatThePatchContains:
         """Not the artifact's `type`: a repair's files are typed by extension, so the
         repaired `backend/tests/test_runs.py` arrives as `code` and a type-keyed rule
         would miss the very case this fixes."""
-        from adapters.cycles.patch_acceptance import _repaired_suite_files
+        from squadops.execution.patch_acceptance import _repaired_suite_files
 
         assert _repaired_suite_files([{"name": self._SUITE, "type": "code"}], self._CONFIG) == [
             self._SUITE
@@ -2091,10 +2091,10 @@ class TestTheTerminationNamesWhichAbsence:
         )
         with (
             patch(
-                "adapters.cycles.patch_acceptance.verify_patched_artifacts",
+                "squadops.execution.patch_acceptance.verify_patched_artifacts",
                 AsyncMock(return_value=verification),
             ),
-            caplog.at_level(logging.WARNING, logger="adapters.cycles.patch_acceptance"),
+            caplog.at_level(logging.WARNING, logger="squadops.execution.patch_acceptance"),
         ):
             action = await executor._try_accept_patch(
                 self._qa_envelope(),
@@ -2126,10 +2126,10 @@ class TestTheTerminationNamesWhichAbsence:
         )
         with (
             patch(
-                "adapters.cycles.patch_acceptance.verify_patched_artifacts",
+                "squadops.execution.patch_acceptance.verify_patched_artifacts",
                 AsyncMock(return_value=verification),
             ),
-            caplog.at_level(logging.WARNING, logger="adapters.cycles.patch_acceptance"),
+            caplog.at_level(logging.WARNING, logger="squadops.execution.patch_acceptance"),
         ):
             await executor._try_accept_patch(
                 self._qa_envelope(),
@@ -2168,7 +2168,7 @@ class TestTheNextAttemptKeepsTheCasesThisOneExposed:
     async def _route(executor, cycle, envelope, enriched, result):
         import contextlib
 
-        from adapters.cycles.execution_errors import _ExecutionError
+        from squadops.execution.execution_errors import _ExecutionError
 
         with contextlib.suppress(_ExecutionError):
             await executor._handle_task_outcome(
@@ -2289,7 +2289,7 @@ class TestTheRetryLineNamesTheSignatureItRetriesOn:
         )
         with (
             patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
             caplog.at_level("INFO"),
@@ -2309,7 +2309,7 @@ class TestTheRetryLineNamesTheSignatureItRetriesOn:
         mock_queue.reply_router.responder = _scripted_responder({0: ("FAILED", None, "transient")})
         with (
             patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
             caplog.at_level("INFO"),
@@ -2442,7 +2442,7 @@ class TestTheExecutorStampsTheReAttemptMarker:
 
         mock_queue.reply_router.responder = recording
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
         mock_queue.reply_router.responder = original
@@ -2592,7 +2592,7 @@ class TestTheAcceptedRepairFactReachesTheCorrectionPolicy:
     async def _capture(self, executor, cycle, accepted: set[str], **threaded) -> dict:
         import contextlib
 
-        from adapters.cycles.execution_errors import _ExecutionError
+        from squadops.execution.execution_errors import _ExecutionError
 
         seen: dict = {}
 

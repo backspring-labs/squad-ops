@@ -152,8 +152,8 @@ async def build_corpus(dsn: str, vault: Path, records_root: Path) -> tuple[list[
 
 async def build_bundles(dsn: str, vault_dir: Path, corpus: Path, out: Path) -> dict:
     """One bundle per corpus round, rebuilt by the executor's own loaders (``bundle.py``)."""
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
     from adapters.cycles.postgres_squad_profile import PostgresSquadProfile
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     pool = await _read_only_pool(dsn)
     registry = PostgresCycleRegistry(pool, TransientRetry.of(DBRetryConfig()))

@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from adapters.cycles.cycle_evidence import assemble_cycle_evidence, unresolved_refs
 from squadops.cycles.benchmark_registry import (
     BenchmarkRoll,
     BenchmarkRow,
@@ -23,6 +22,7 @@ from squadops.cycles.cycle_assessment import assess
 from squadops.cycles.cycle_outcome import resolve_cycle_outcome
 from squadops.cycles.lineage import series_for
 from squadops.cycles.models import CycleNotFoundError
+from squadops.execution.cycle_evidence import assemble_cycle_evidence, unresolved_refs
 
 if TYPE_CHECKING:
     from collections.abc import Iterable

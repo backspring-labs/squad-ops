@@ -32,7 +32,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 from adapters.noop.ports import NoOpFailurePatternRecall
 from squadops.cycles.contract_derivation import (
     CONTRACT_ARTIFACT_TYPE,
@@ -42,6 +41,7 @@ from squadops.cycles.contract_derivation import (
 from squadops.cycles.implementation_plan import ImplementationPlan
 from squadops.cycles.manifest_authoring import MANIFEST_ARTIFACT_TYPE
 from squadops.cycles.verification_contract import VerificationContract
+from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 from squadops.stacks.scaffold import InterfaceManifest
 from squadops.tasks.models import TaskEnvelope
 

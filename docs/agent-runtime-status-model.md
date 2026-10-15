@@ -65,7 +65,8 @@ ago**. RuntimeActivity integrity is therefore load-bearing for a claim *this* mo
 
 **The mechanism is not a missing close — it's the absence of recovery.** The cycle
 dispatcher opens and closes activities correctly on the happy path (`_start_task_activity`
-→ try/else/except `_finish_task_activity`, `adapters/cycles/task_dispatcher.py:176-188`).
+→ try/else/except `_finish_task_activity`, in `TaskDispatcher.dispatch_task`,
+`src/squadops/execution/task_dispatcher.py`).
 The failure is structural:
 
 1. **Orphaning.** If the process/container dies between `start_activity` and

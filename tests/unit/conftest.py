@@ -20,7 +20,7 @@ from squadops.tasks.models import TaskResult
 
 class FakeReplyRouter:
     """Shared test double for the SIP-0094 ReplyRouter
-    (``adapters/cycles/reply_router.py``).
+    (``src/squadops/execution/reply_router.py``).
 
     Post-cutover the executor awaits this router instead of polling the queue.
     It simulates the agent round-trip: :meth:`bind` wires a mock QueuePort so

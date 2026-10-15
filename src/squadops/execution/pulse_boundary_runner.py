@@ -32,8 +32,9 @@ import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from adapters.cycles.execution_errors import _ExecutionError
+from squadops.capabilities.acceptance import AcceptanceCheckEngine
 from squadops.capabilities.lesson_supply import supply_for_cycle
+from squadops.capabilities.models import AcceptanceContext
 from squadops.cycles.agent_config import build_agent_resolver, resolve_agent_config
 from squadops.cycles.pulse_models import (
     CADENCE_BOUNDARY_ID,
@@ -50,17 +51,19 @@ from squadops.cycles.pulse_verification import (
     run_pulse_verification,
 )
 from squadops.events.types import EventType
+from squadops.execution.execution_errors import _ExecutionError
 from squadops.tasks.models import TaskResultStatus
+from squadops.telemetry.models import StructuredEvent
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from adapters.cycles.task_dispatcher import TaskDispatcher
     from squadops.capabilities.acceptance import AcceptanceCheckEngine
     from squadops.capabilities.models import AcceptanceContext
     from squadops.cycles.models import ArtifactRef, Cycle, SquadProfile
     from squadops.cycles.pulse_models import PulseCheckDefinition, PulseVerificationRecord
     from squadops.cycles.run_ledger import RunLedger
+    from squadops.execution.task_dispatcher import TaskDispatcher
     from squadops.ports.cycles.cycle_registry import CycleRegistryPort
     from squadops.ports.events.cycle_event_bus import CycleEventBusPort
     from squadops.ports.memory.recall import FailurePatternRecallPort
@@ -147,8 +150,6 @@ class PulseBoundaryRunner:
         if has_pulse_checks:
             from pathlib import Path
 
-            from squadops.capabilities.acceptance import AcceptanceCheckEngine
-
             engine = AcceptanceCheckEngine(chroot=Path.cwd())
 
         return {
@@ -198,7 +199,6 @@ class PulseBoundaryRunner:
         ledger: RunLedger,
     ) -> None:
         """Run milestone and cadence pulse evaluations at the current boundary."""
-        from squadops.capabilities.models import AcceptanceContext
 
         acc_ctx = AcceptanceContext(
             run_root=run_root,
@@ -270,7 +270,6 @@ class PulseBoundaryRunner:
         """Emit a pulse_check.* telemetry event via LLM observability port."""
         if not self._llm_observability or not obs_ctx:
             return
-        from squadops.telemetry.models import StructuredEvent
 
         attrs: list[tuple[str, Any]] = [
             ("suite_id", suite_id),

@@ -25,30 +25,12 @@ from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from adapters.cycles.correction_repair import CorrectionRepair
-from adapters.cycles.correction_runner import CorrectionRunner
-from adapters.cycles.cycle_completion import CycleCompletion
-from adapters.cycles.execution_errors import (
-    _CancellationError,
-    _ExecutionError,
-    _PausedError,
+from squadops.campaigns.increment_tree import (
+    accepted_tree_contents,
+    frozen_bundle_contents,
+    increment_seed,
 )
-from adapters.cycles.framing_gate_check import FramingGateCheck
-from adapters.cycles.patch_acceptance import (
-    KEEP_PROGRESS,
-    KEPT_ARTIFACTS_KEY,
-    KEPT_NEXT_FAILURE_KEY,
-    KEPT_OUTPUTS_KEY,
-    PatchAcceptance,
-    _record_repair_rejection,
-)
-from adapters.cycles.pulse_boundary_runner import PulseBoundaryRunner
-from adapters.cycles.run_admission import RunAdmission
-from adapters.cycles.run_completion import RunCompletion, resolve_terminal_outcome
-from adapters.cycles.run_provisioning import RunInProgress, RunProvisioning
-from adapters.cycles.task_dispatcher import TaskDispatcher
-from adapters.cycles.task_naming import build_task_name
-from adapters.cycles.workload_gate import GateOutcome, WorkloadGate, stored_change_request
+from squadops.capabilities.assembly_notes import ASSEMBLY_NOTES_DOCUMENT
 from squadops.capabilities.context_assembly import (
     ACCEPTANCE_WORKSPACE_FILTER,
     INCREMENT_CANDIDATE_FILTER,
@@ -60,22 +42,32 @@ from squadops.capabilities.context_assembly import (
     retake_suite_files,
     wrapup_evidence_applies,
 )
+from squadops.capabilities.handlers.build_profiles import get_profile
 from squadops.capabilities.lesson_supply import supply_the_redispatch
 from squadops.cycles.build_completeness import compute_missing_required_files
 from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.contract_derivation import (
     CONTRACT_ARTIFACT_TYPE,
     SEEDED_MANIFEST_FILENAME,
+    derive_and_store_contract,
+    find_interface_manifest,
     is_interface_manifest,
+    load_seeded_manifest_content,
 )
 from squadops.cycles.correction_signature import REPAIR_EMPTY_MARKER
 from squadops.cycles.cycle_end import STOP_REASON_FOR_UNCOMPLETED_RUN, CycleStopReason
+from squadops.cycles.cycle_outcome import resolve_cycle_outcome
 from squadops.cycles.emission_integrity import EMISSION_FAILURE_KEY, EMISSION_STATUS_FAILED
 from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.failure_evidence import failing_cases_from_evidence
+from squadops.cycles.flow_runs import end_open_flow_runs
+from squadops.cycles.gate_decisions import record_gate_decision
+from squadops.cycles.implementation_plan import ImplementationPlan
 from squadops.cycles.manifest_authoring import (
     GATE_DECIDED_BY_NO_QUESTIONS,
     MANIFEST_ARTIFACT_TYPE,
+    REVISION_RESTART_TASK_TYPE,
+    open_questions,
 )
 from squadops.cycles.models import (
     APPROVING_DECISIONS,
@@ -96,6 +88,7 @@ from squadops.cycles.patch_verification import (
 from squadops.cycles.rejection_baseline import (
     RejectionClassifier,
 )
+from squadops.cycles.replay import parse_replay_declaration, translate_checkpoint_for_replay
 from squadops.cycles.run_ledger import RunLedger
 from squadops.cycles.run_loop_summary import (
     REFUND_EMPTY_REPAIR_EMISSION,
@@ -103,17 +96,56 @@ from squadops.cycles.run_loop_summary import (
     RefundedRound,
     RunTerminalDecision,
 )
+from squadops.cycles.scaffold_enforcement import (
+    bound_record_or_none,
+    enforce_frozen_ownership,
+    named_producer,
+)
 from squadops.cycles.scaffold_integrity_evidence import (
+    STAGE_ARTIFACT_STORAGE,
     STAGE_FAILED_EMISSION,
     emit_enforcement,
 )
-from squadops.cycles.task_outcome import CorrectionTerminationReason, TaskOutcome
-from squadops.cycles.task_plan import inject_contract_inputs
+from squadops.cycles.task_outcome import (
+    ContractComplianceViolation,
+    CorrectionTerminationReason,
+    FailureClassification,
+    TaskOutcome,
+)
+from squadops.cycles.task_plan import REPAIR_TASK_TYPES, inject_contract_inputs
 from squadops.cycles.vault_reads import retrieve_or_absent
+from squadops.cycles.verification_contract import VerificationContract
 from squadops.cycles.verification_normalize import normalize_task_checks
+from squadops.cycles.wrapup_models import verification_evidence_summary
 from squadops.events.types import EventType
+from squadops.execution.correction_repair import CorrectionRepair
+from squadops.execution.correction_runner import CorrectionRunner
+from squadops.execution.cycle_completion import CycleCompletion
+from squadops.execution.execution_errors import (
+    _CancellationError,
+    _ExecutionError,
+    _PausedError,
+)
+from squadops.execution.framing_gate_check import FramingGateCheck
+from squadops.execution.patch_acceptance import (
+    KEEP_PROGRESS,
+    KEPT_ARTIFACTS_KEY,
+    KEPT_NEXT_FAILURE_KEY,
+    KEPT_OUTPUTS_KEY,
+    PatchAcceptance,
+    _record_repair_rejection,
+)
+from squadops.execution.pulse_boundary_runner import PulseBoundaryRunner
+from squadops.execution.run_admission import RunAdmission
+from squadops.execution.run_completion import RunCompletion, resolve_terminal_outcome
+from squadops.execution.run_provisioning import RunInProgress, RunProvisioning
+from squadops.execution.task_dispatcher import TaskDispatcher
+from squadops.execution.task_naming import build_task_name
+from squadops.execution.workload_gate import GateOutcome, WorkloadGate, stored_change_request
 from squadops.ports.comms.queue import QueueError
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
+from squadops.ports.events.noop import NoOpCycleEventBus
+from squadops.sandbox.models import RevisionOrigin, WorkspaceRevision
 from squadops.stacks.scaffold import (
     InterfaceManifest,
     expand,
@@ -133,13 +165,13 @@ from squadops.tasks.task_types import (
     fails_without_correction,
 )
 from squadops.telemetry.context import use_correlation_context
-from squadops.telemetry.models import CorrelationContext
+from squadops.telemetry.models import CorrelationContext, StructuredEvent
 
 if TYPE_CHECKING:
-    from adapters.cycles.reply_router import ReplyRouter
     from squadops.campaigns.launcher import BoxVerdict
     from squadops.campaigns.progress import CampaignProgress
     from squadops.cycles.models import SquadProfile
+    from squadops.execution.reply_router import ReplyRouter
     from squadops.ports.comms.queue import QueuePort
     from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
     from squadops.ports.cycles.campaign_registry import CampaignRegistryPort
@@ -287,7 +319,7 @@ class _CorrectionRound:
     attempt: int
     max_attempts: int
     #: #1697: the run's round sequence. Unlike ``attempt``, a refund never resets it, so the
-    #: round's task ids stay unique (adapters/cycles/correction_ids.py).
+    #: round's task ids stay unique (src/squadops/execution/correction_ids.py).
     round_seq: int = 0
 
 
@@ -449,7 +481,6 @@ def _flow_run_tags_for(cycle: Cycle) -> list[str]:
     """#1722, #1728: the cycle's Prefect tags, from what the cycle already holds. A replay
     declaration is validated at create; one that no longer parses is left untagged rather than
     failing the flow run's creation."""
-    from squadops.cycles.replay import parse_replay_declaration
 
     try:
         replay = parse_replay_declaration(cycle.execution_overrides or {})
@@ -569,8 +600,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
         # SIP-0077: Cycle event bus (defaults to NoOp if not provided)
         if event_bus is None:
-            from adapters.events.noop_cycle_event_bus import NoOpCycleEventBus
-
             event_bus = NoOpCycleEventBus()
         self._cycle_event_bus = event_bus
         # SIP-0097 §6.1: task-dispatch collaborator (request/reply transport +
@@ -1266,7 +1295,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # contract and the change request — binds every workload after the proposal, as a seed
         # from cycle creation binds every workload (#779). It outranks anything a workload
         # derives: an increment authors no manifest.
-        from squadops.campaigns.increment_tree import increment_seed
 
         seed = await increment_seed(
             self._artifact_vault, self._cycle_registry, cycle, completed_run
@@ -1421,8 +1449,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         ]
 
         if not include_repair_candidates:
-            from squadops.cycles.task_plan import REPAIR_TASK_TYPES
-
             stored_artifacts = [
                 (art_id, ref)
                 for art_id, ref in stored_artifacts
@@ -1520,8 +1546,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         Returns ``None`` when the builder emitted none, which is the expected case: the
         file is optional and silence is a complete answer.
         """
-        from squadops.capabilities.assembly_notes import ASSEMBLY_NOTES_DOCUMENT
-        from squadops.cycles.task_plan import REPAIR_TASK_TYPES
 
         latest: tuple[str, Any] | None = None
         for art_id, ref in stored_artifacts:
@@ -2035,7 +2059,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
         Returns ImplementationPlan or None (RC-4 graceful fallback).
         """
-        from squadops.cycles.implementation_plan import ImplementationPlan
 
         # Only load the plan when implementation_plan is enabled in resolved config
         if not cycle.resolved_config().get("implementation_plan", False):
@@ -2134,7 +2157,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         module). Never crashes the run: an unscaffoldable stack or an expander failure
         yields ``[]`` and the run proceeds on today's non-scaffolded path.
         """
-        from squadops.capabilities.handlers.build_profiles import get_profile
 
         if not is_scaffoldable_stack(manifest.stack):
             return []
@@ -2331,7 +2353,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         first guard exists to forbid. The question is a property of the design, not of who
         supplied it.
         """
-        from squadops.cycles.manifest_authoring import open_questions
 
         content = await self._run_manifest_content(run, cycle)
         return None if content is None else open_questions(content)
@@ -2344,7 +2365,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         operator-seeded one on the cycle's ``plan_artifact_refs`` — because behavior keyed on
         *who supplied the design* is the authoring-mode branch Guard 1a forbids.
         """
-        from squadops.cycles.contract_derivation import load_seeded_manifest_content
 
         # The completed run the caller already fetched — re-reading it here would add a
         # registry round-trip per gate for a value the loop is holding.
@@ -2388,7 +2408,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # #854: an approval promotes the run's artifacts whoever approved it; this path once
         # recorded an approval and forwarded nothing. #1986: the one recorder does all three
         # (row, promotion, event), so a decider cannot drop a step.
-        from squadops.cycles.gate_decisions import record_gate_decision
 
         if self._cycle_registry is None:
             raise RuntimeError(
@@ -2438,11 +2457,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         gate rejects it with the deriver's own reason (``contract_derives``, attributed to
         infrastructure by M6) rather than this seam inventing a second verdict.
         """
-        from squadops.cycles.contract_derivation import (
-            derive_and_store_contract,
-            find_interface_manifest,
-        )
-        from squadops.cycles.verification_contract import VerificationContract
 
         contract, _manifest = current
         if contract is not None or self._is_bind_mode(cycle):
@@ -2503,7 +2517,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         treated as author mode — ``_is_bind_mode`` stays true, so the plan-validation
         net records a rejection rather than letting the run fall through unverified
         (the stale-binding class, SIP §10)."""
-        from squadops.cycles.verification_contract import VerificationContract
 
         ref = ref or cycle.execution_overrides.get("contract_ref")
         if not ref:
@@ -2582,9 +2595,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         if not wrapup_evidence_applies(e.task_type for e in plan):
             return
         try:
-            from squadops.cycles.cycle_outcome import resolve_cycle_outcome
-            from squadops.cycles.wrapup_models import verification_evidence_summary
-
             outcome = await resolve_cycle_outcome(self._cycle_registry, cycle.cycle_id)
             outcome_dict = outcome.to_dict()
             prior_outputs["verification_evidence"] = {
@@ -2679,11 +2689,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 extra_inputs["assembly_notes"] = notes
 
         if contract.increment_evaluation:
-            from squadops.campaigns.increment_tree import (
-                accepted_tree_contents,
-                frozen_bundle_contents,
-            )
-
             resolved = envelope.inputs.get("resolved_config")
             extra_inputs["accepted_tree_files"] = await accepted_tree_contents(
                 self._artifact_vault, resolved
@@ -2718,7 +2723,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # verdict names the tree it ran against. An empty context is a
             # nameable state — evaluation still runs with the task's own
             # artifacts overlaid, so the id is stamped unconditionally.
-            from squadops.sandbox.models import RevisionOrigin, WorkspaceRevision
 
             extra_inputs["workspace_revision_id"] = WorkspaceRevision.cut(
                 cycle_id=envelope.cycle_id,
@@ -2743,10 +2747,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         translated raises ``_ExecutionError`` rather than silently executing the
         full plan as if earned.
         """
-        from squadops.cycles.replay import (
-            parse_replay_declaration,
-            translate_checkpoint_for_replay,
-        )
 
         try:
             replay_req = parse_replay_declaration(cycle.execution_overrides or {})
@@ -2795,8 +2795,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         this did before the optimisation existed. So an unresolvable boundary logs and
         returns ``None``.
         """
-        from squadops.cycles.manifest_authoring import REVISION_RESTART_TASK_TYPE
-        from squadops.cycles.replay import translate_checkpoint_for_replay
 
         source_run_id = (cycle.execution_overrides or {}).get("framing_revision_source")
         if not source_run_id:
@@ -3494,7 +3492,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         """SIP-0100 2.4: build the bound scaffold record (frozen paths + bytes) for a scaffold-bound
         run, or None for unbound/legacy runs (no manifest / non-scaffoldable stack → no enforcement,
         plan §10). Best-effort: a build failure disables enforcement rather than failing the run."""
-        from squadops.cycles.scaffold_enforcement import bound_record_or_none
 
         return bound_record_or_none(interface_manifest, run_id, resolved_config)
 
@@ -3527,8 +3524,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         source under test to agree with its own test (the pf-26 class, one step past ``main.py``).
         QA emissions in its namespace, and undeclared paths (deliverables like ``test_report.md``),
         pass through. Non-QA producers are unaffected here (frozen-restore only)."""
-        from squadops.cycles.scaffold_enforcement import enforce_frozen_ownership
-        from squadops.cycles.scaffold_integrity_evidence import STAGE_ARTIFACT_STORAGE
 
         return enforce_frozen_ownership(
             artifacts, bound_record, envelope, stage=stage or STAGE_ARTIFACT_STORAGE
@@ -3559,10 +3554,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         terminates with a CONTRACT_COMPLIANCE failure (honest terminal state, not a silent green).
         (Option B — an active targeted correction that re-dispatches the producer with slot
         guidance — is deferred.)"""
-        from squadops.cycles.task_outcome import (
-            ContractComplianceViolation,
-            FailureClassification,
-        )
 
         unauthorized = sum(
             1
@@ -3844,8 +3835,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # LangFuse: open cycle trace keyed by shared trace_id
         trace_id = plan[0].trace_id if plan else None
         if self._llm_observability:
-            from squadops.telemetry.models import CorrelationContext, StructuredEvent
-
             obs_ctx = CorrelationContext(cycle_id=cycle_id, trace_id=trace_id)
             self._llm_observability.start_cycle_trace(obs_ctx)
             self._llm_observability.record_event(
@@ -3860,7 +3849,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         if self._workflow_tracker:
             # #2007: an open flow run with this run's name belongs to a process that died (a
             # restart, then this re-attach). Ended first, so the run shows one live flow run.
-            from squadops.cycles.flow_runs import end_open_flow_runs
 
             left = await end_open_flow_runs(
                 self._workflow_tracker, [flow_run_name(cycle.project_id, cycle_id, run_id)]
@@ -4160,7 +4148,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         The selection rule itself lives in ``cycles.contract_derivation`` (#779) so the
         create path, which derives a contract from this same artifact, cannot disagree
         with the executor about which ref is the manifest."""
-        from squadops.cycles.contract_derivation import load_seeded_manifest_content
 
         return await load_seeded_manifest_content(
             self._artifact_vault, cycle.execution_overrides.get("plan_artifact_refs")
@@ -4222,8 +4209,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         """
         if not cycle.resolved_config().get("implementation_plan", False):
             return
-
-        from squadops.cycles.implementation_plan import ImplementationPlan
 
         plan = None
         for artifact_id, ref in stored_artifacts:
@@ -4348,7 +4333,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         those readers leave a repair type's candidates out. So the step that wrote the bytes
         is named beside it, as ``written_by_*``, whenever it is not the envelope's task (#2206).
         """
-        from squadops.cycles.scaffold_enforcement import named_producer
 
         content = art_dict.get("content", "").encode("utf-8")
         metadata: dict[str, Any] = {

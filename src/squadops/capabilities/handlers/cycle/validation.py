@@ -342,7 +342,7 @@ def _is_test_file(path: str, patterns: tuple[str, ...]) -> bool:
     ``f"/{path}"`` prefix is the whole fix — the convention is the directory, wherever it sits,
     and the leading slash keeps it a *path segment* rather than a bare substring, so
     ``app/my__tests__util.ts`` stays source. The dev-repair emission veto already read the
-    convention this way (#1014, ``adapters/cycles/correction_repair.py``); the two exclusions
+    convention this way (#1014, ``src/squadops/execution/correction_repair.py``); the two exclusions
     now agree on it.
     """
 

@@ -19,7 +19,11 @@ import pytest
 pytestmark = [pytest.mark.domain_orchestration]
 
 _EXECUTOR_PATH = (
-    Path(__file__).resolve().parents[3] / "adapters" / "cycles" / "dispatched_flow_executor.py"
+    Path(__file__).resolve().parents[3]
+    / "src"
+    / "squadops"
+    / "execution"
+    / "dispatched_flow_executor.py"
 )
 #: #1507 step 1: the promotion seam's body moved to the framing gate's plan check; the executor
 #: keeps it as a delegate, so its definition and call site are read above and its validators here.

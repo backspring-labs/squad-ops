@@ -9,17 +9,17 @@ from __future__ import annotations
 
 import pytest
 
-from adapters.cycles.execution_errors import (
+from squadops.cycles.failure_attribution import TerminalKind
+from squadops.cycles.llm_usage import RunUsage
+from squadops.cycles.run_loop_summary import RunLoopSummary, RunTerminalDecision
+from squadops.cycles.task_outcome import CorrectionTerminationReason, FailureClassification
+from squadops.execution.execution_errors import (
     _CancellationError,
     _ExecutionError,
     _PausedError,
     _RecruitmentRejectedError,
 )
-from adapters.cycles.run_completion import resolve_terminal_outcome
-from squadops.cycles.failure_attribution import TerminalKind
-from squadops.cycles.llm_usage import RunUsage
-from squadops.cycles.run_loop_summary import RunLoopSummary, RunTerminalDecision
-from squadops.cycles.task_outcome import CorrectionTerminationReason, FailureClassification
+from squadops.execution.run_completion import resolve_terminal_outcome
 
 pytestmark = [pytest.mark.domain_orchestration]
 

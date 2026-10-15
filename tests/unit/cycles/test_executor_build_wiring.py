@@ -54,7 +54,7 @@ def _make_artifact_ref(
 @pytest.fixture
 def executor(reply_router):
     """Create a DispatchedFlowExecutor with mocked ports."""
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     vault = AsyncMock()
     registry = AsyncMock()
@@ -438,7 +438,7 @@ class TestProducingTaskTypeMetadata:
 class TestBuildOnlyValidation:
     async def test_build_only_missing_refs_fails(self, reply_router):
         """Build-only cycle without plan_artifact_refs raises _ExecutionError."""
-        from adapters.cycles.dispatched_flow_executor import (
+        from squadops.execution.dispatched_flow_executor import (
             DispatchedFlowExecutor,
         )
 
@@ -566,7 +566,7 @@ class TestBuildOnlySeeding:
 
     async def test_build_only_with_valid_refs_passes_validation(self, reply_router):
         """Build-only cycle with plan_artifact_refs does not raise."""
-        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+        from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
         ref_plan = _make_artifact_ref("art_plan_001", "implementation_plan.md", "document")
 
@@ -771,7 +771,7 @@ class TestBuilderDeliverableCompleteness:
         """fullstack_fastapi_react requires Dockerfile + qa_handoff.md. The build
         emits only qa_handoff.md (no Dockerfile) → the run must transition FAILED,
         not COMPLETED. This is the exact #276 green-on-broken-deliverable bug."""
-        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+        from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
         from squadops.tasks.models import TaskResult
 
         cycle = self._builder_cycle()
@@ -828,7 +828,7 @@ class TestBuilderDeliverableCompleteness:
         """The gate must not over-fire: when the build emits the profile's required notes, the
         run completes — proving the FAILED case above is the missing file, not merely 'a
         builder run'."""
-        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+        from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
         from squadops.tasks.models import TaskResult
 
         cycle = self._builder_cycle()
@@ -886,7 +886,7 @@ class TestPlanOnlyCyclesUnaffected:
 
     async def test_plan_only_cycle_no_build_validation(self, reply_router):
         """Plan-only cycle doesn't trigger build-only validation."""
-        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+        from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
         cycle = Cycle(
             cycle_id="cyc_001",
@@ -1322,7 +1322,7 @@ class TestThePatchAcceptanceCollaboratorIsBuiltWhereItIsCalled:
     """
 
     def _executor(self, reply_router, **kw):
-        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+        from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
         return DispatchedFlowExecutor(
             task_timeout=300.0,
@@ -1347,7 +1347,7 @@ class TestThePatchAcceptanceCollaboratorIsBuiltWhereItIsCalled:
         every override silently inert, which is the shape #1157's require-don't-default
         ruling exists for one seam over.
         """
-        from adapters.cycles.patch_acceptance import PatchAcceptance
+        from squadops.execution.patch_acceptance import PatchAcceptance
 
         seen: list[tuple] = []
 
@@ -1415,7 +1415,7 @@ class TestTheCorrectionRepairCollaboratorIsBuiltWhereItIsCalled:
     """
 
     def _executor(self, reply_router, **kw):
-        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+        from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
         return DispatchedFlowExecutor(
             task_timeout=300.0,
@@ -1439,7 +1439,7 @@ class TestTheCorrectionRepairCollaboratorIsBuiltWhereItIsCalled:
         repairs through whichever the runner held — while an injected override silently
         did nothing, which is the shape that makes a swapped policy untestable.
         """
-        from adapters.cycles.correction_repair import CorrectionRepair
+        from squadops.execution.correction_repair import CorrectionRepair
 
         override = CorrectionRepair(
             dispatch_step=AsyncMock(), failure_recall=NoOpFailurePatternRecall()

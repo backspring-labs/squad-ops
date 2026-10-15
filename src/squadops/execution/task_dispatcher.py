@@ -43,14 +43,14 @@ import time
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from adapters.cycles.execution_errors import _CancellationError
-from adapters.cycles.task_naming import build_task_name
 from squadops.comms.run_cancellation import RUN_ID_METADATA_KEY
 from squadops.comms.task_delivery import DISPATCH_ID_METADATA_KEY
 from squadops.comms.task_replay import DISPATCH_BOOT_METADATA_KEY
 from squadops.cycles.llm_usage import RunUsage, RunUsageAccumulator
 from squadops.cycles.run_loop_summary import revision_forms_of
 from squadops.events.types import EventType
+from squadops.execution.execution_errors import _CancellationError
+from squadops.execution.task_naming import build_task_name
 from squadops.runtime import reasons
 from squadops.tasks.models import TaskResult, TaskResultStatus
 from squadops.telemetry.context import use_correlation_context, use_run_ids
@@ -59,8 +59,8 @@ from squadops.telemetry.models import CorrelationContext
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from adapters.cycles.reply_router import ReplyRouter
     from squadops.cycles.models import Cycle
+    from squadops.execution.reply_router import ReplyRouter
     from squadops.ports.comms.queue import QueuePort
     from squadops.ports.cycles.workflow_tracker import WorkflowTrackerPort
     from squadops.ports.events.cycle_event_bus import CycleEventBusPort

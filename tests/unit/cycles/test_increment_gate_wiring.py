@@ -179,7 +179,7 @@ class _Vault:
 
 @pytest.fixture
 def executor(campaigns):
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     vault = _Vault(
         _ref("art_cr", "change_request", "change_request.yaml", _CHANGE_REQUEST),
@@ -300,7 +300,7 @@ async def test_a_returned_proposal_is_revised_in_a_new_run_from_the_version_it_r
     """§9.2: request revision → a new proposal run with the note; the supervisor never edits.
     Bugs caught: the sequence stopping (today's non-framing revision), the revision run given
     the original block (version 1 again, no note), or the returned run left occupying its place."""
-    from adapters.cycles.workload_gate import GateOutcome
+    from squadops.execution.workload_gate import GateOutcome
 
     step = await _reach_the_gate(revising, _cycle(CID))
 
@@ -316,8 +316,8 @@ async def test_a_returned_proposal_is_revised_in_a_new_run_from_the_version_it_r
 async def test_a_proposal_whose_revisions_are_spent_stops_and_counts_as_rejected(revising):
     """§9.5: the revisions of one proposal are bounded. The count is the cycle's superseded
     proposal runs, read from the registry, so a restart counts the same."""
-    from adapters.cycles.workload_gate import GateOutcome
     from squadops.cycles.cycle_end import CycleStopReason
+    from squadops.execution.workload_gate import GateOutcome
 
     superseded = dataclasses.replace(_PROPOSAL_RUN, run_id="run_prop0", status="cancelled")
     revising._cycle_registry.list_runs.return_value = [superseded, _PROPOSAL_RUN]

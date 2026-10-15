@@ -31,7 +31,7 @@ TRUNCATED = "export async function POST(req: Request) {\n  const body = await re
 
 @pytest.fixture
 def executor(reply_router):
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     registry = AsyncMock()
     registry.get_latest_checkpoint.return_value = None

@@ -139,7 +139,7 @@ def test_the_executor_reads_authoring_only_for_gate_and_artifact_vocabulary():
     imported vocabulary keeps this test honest about what it is permitting rather than
     silently allowing anything the executor cares to import later.
     """
-    executor = _REPO / "adapters" / "cycles" / "dispatched_flow_executor.py"
+    executor = _REPO / "src" / "squadops" / "execution" / "dispatched_flow_executor.py"
     tree = ast.parse(executor.read_text(encoding="utf-8"))
 
     imported = {

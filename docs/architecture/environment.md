@@ -22,7 +22,7 @@ fails, and so does a row nobody reads.
 | `SQUADOPS_LOG_LEVEL` | `src/squadops/api/runtime/logging_setup.py` | the runtime API's logging, configured before config loads |
 | `SQUADOPS_AUDIT_LOG_PATH` | `src/squadops/api/runtime/logging_setup.py` | the audit log's file, opened with the logging |
 | `SQUADOPS_GIT_SHA` | `src/squadops/_version.py` | the build's commit, stamped into the image at build time |
-| `SQUADOPS_RUN_ROOT` | `adapters/cycles/dispatched_flow_executor.py` | where a run's working tree is made; a temporary directory when unset |
+| `SQUADOPS_RUN_ROOT` | `src/squadops/execution/dispatched_flow_executor.py` | where a run's working tree is made; a temporary directory when unset |
 | `SQUADOPS_RUNTIME_API_URL` | `adapters/observability/healthcheck_http.py` | where an agent finds the runtime API: service discovery, with the compose name as its default |
 | `SQUADOPS_HOST` | `src/squadops/cli/commands/auth.py` | the CLI's server, on the operator's machine, which has no server config |
 | `SQUADOPS_REALM` | `src/squadops/cli/commands/auth.py` | the CLI's identity realm, likewise |

@@ -310,7 +310,7 @@ class TestModelSurfaceReachesTheRepairPrompt:
         envelope's failure_evidence, or the renderer above never sees them."""
         from types import SimpleNamespace
 
-        from adapters.cycles.correction_runner import _inject_deterministic_evidence
+        from squadops.execution.correction_runner import _inject_deterministic_evidence
 
         manifest = self._manifest()
         evidence: dict = {}

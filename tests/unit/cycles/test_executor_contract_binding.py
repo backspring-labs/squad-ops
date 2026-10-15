@@ -13,8 +13,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
-from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 from squadops.cycles.verification_contract import VerificationContract
+from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 from squadops.stacks.scaffold import InterfaceManifest
 from squadops.stacks.scaffold_contract import emit_contract_yaml
 

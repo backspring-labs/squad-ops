@@ -46,7 +46,7 @@ def _manifest(stack: str) -> InterfaceManifest:
 
 
 def _executor():
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     return DispatchedFlowExecutor(
         task_timeout=300.0,
