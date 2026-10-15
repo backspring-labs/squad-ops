@@ -171,7 +171,7 @@ def cycle():
 def executor(
     mock_registry, mock_vault, mock_queue, mock_squad_profile, cycle, event_bus, collector
 ):
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     event_bus.subscribe(collector)
     mock_registry.get_cycle.return_value = cycle

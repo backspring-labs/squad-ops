@@ -26,7 +26,6 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from adapters.cycles.correction_ids import correction_task_id
 from squadops.capabilities.context_assembly import (
     REPAIR_CONTEXT_CONTRACT,
     forwarded_failed_artifacts,
@@ -37,6 +36,7 @@ from squadops.capabilities.lesson_supply import supply_for_cycle
 from squadops.cycles.agent_config import resolve_agent_config
 from squadops.cycles.scaffold_enforcement import name_producer
 from squadops.cycles.task_plan import repair_steps_for
+from squadops.execution.correction_ids import correction_task_id
 from squadops.stacks.development_profiles import matches_test_file_patterns, test_file_patterns_for
 from squadops.tasks.models import TaskEnvelope
 

@@ -30,9 +30,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from adapters.cycles.execution_errors import _ExecutionError
-from adapters.cycles.run_admission import RunAdmission
-from adapters.cycles.run_completion import RunCompletion, resolve_terminal_outcome
 from squadops.campaigns.continuation import (
     CycleEnding,
     EndedCycle,
@@ -46,6 +43,9 @@ from squadops.cycles.llm_usage import RunUsage
 from squadops.cycles.models import RunStatus
 from squadops.cycles.run_loop_summary import RunLoopSummary, RunTerminalDecision
 from squadops.cycles.verification_integrity import CycleOutcome, RunVerdict
+from squadops.execution.execution_errors import _ExecutionError
+from squadops.execution.run_admission import RunAdmission
+from squadops.execution.run_completion import RunCompletion, resolve_terminal_outcome
 from squadops.ports.comms.queue import QueueError
 from tests.unit.campaigns.builders import campaign
 from tests.unit.campaigns.test_continuation import assessment as continuation_assessment

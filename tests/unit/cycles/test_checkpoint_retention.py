@@ -12,9 +12,9 @@ from datetime import UTC, datetime
 
 import pytest
 
-from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
 from squadops.cycles.checkpoint import RunCheckpoint
+from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 from squadops.tasks.models import TaskEnvelope
 
 pytestmark = [pytest.mark.domain_cycles]

@@ -147,14 +147,14 @@ checks:
           except ModuleNotFoundError:
               return True
       print(gone("adapters.cycles.in_process_flow_executor"), gone("adapters.tasks.prefect"),
-            not gone("adapters.cycles.dispatched_flow_executor"))
+            not gone("squadops.execution.dispatched_flow_executor"))
     expect: True True True
   - id: "1987"
     what: the flow executor's safety dependencies and the recall have no default; a test seam keeps its own
     container: squadops-runtime-api
     code: |
       import inspect
-      from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+      from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
       ps = inspect.signature(DispatchedFlowExecutor.__init__).parameters
       print(ps["box_verdict"].default is inspect.Parameter.empty,
             ps["failure_recall"].default is inspect.Parameter.empty, ps["task_dispatcher"].default is None)
@@ -209,7 +209,7 @@ checks:
     container: squadops-runtime-api
     code: |
       # A source read: the gate's dispatch needs a whole cycle. Two calls: the recorder's, and the notes'.
-      import inspect, adapters.cycles.workload_gate as w
+      import inspect, squadops.execution.workload_gate as w
       print(inspect.getsource(w).count("await promote_run_artifacts("))
     expect: "2"
   - id: "1960"
@@ -281,7 +281,7 @@ checks:
     container: squadops-runtime-api
     code: |
       import dataclasses
-      from adapters.cycles.correction_runner import CorrectionProtocolResult
+      from squadops.execution.correction_runner import CorrectionProtocolResult
       from squadops.cycles.run_loop_summary import AbsentEmission
       fields = {f.name for f in dataclasses.fields(CorrectionProtocolResult)}
       print("empty_emission_offered_scoped" in fields, AbsentEmission(task_id="t", offered_scoped=True).to_dict()["offered_scoped"])
@@ -491,7 +491,7 @@ checks:
     container: squadops-runtime-api
     code: |
       import inspect
-      from adapters.cycles.pulse_boundary_runner import PulseBoundaryRunner
+      from squadops.execution.pulse_boundary_runner import PulseBoundaryRunner
       print("failure_recall" in inspect.signature(PulseBoundaryRunner).parameters)
     expect: "True"
   - id: "2132"
@@ -551,7 +551,7 @@ checks:
     what: the analyzer-claim refutation knows the scaffold's frozen files
     container: squadops-runtime-api
     code: |
-      from adapters.cycles.correction_runner import refuted_source_claims
+      from squadops.execution.correction_runner import refuted_source_claims
       analysis = {"analysis_summary": "The routes do not use lib/errors.ts errorResponse."}
       known = {"implementation_artifacts": ["app/api/runs/route.ts"]}
       print(refuted_source_claims(analysis, known, {"lib/errors.ts"}))
@@ -621,7 +621,7 @@ checks:
     container: squadops-runtime-api
     code: |
       from datetime import UTC, datetime
-      import adapters.cycles.workload_gate as gate
+      import squadops.execution.workload_gate as gate
       from squadops.campaigns.escalation import RecordedAnswer, same_question, uncarried
       held = {"d": RecordedAnswer("d", "Which order?", "descending", "o", datetime(2026, 10, 9, tzinfo=UTC), "esc_a")}
       print(same_question("Which order?", "which  order"), [d for d, _ in uncarried({"d": ("ascending", "esc_a")}, held)], hasattr(gate, "uncarried"))
@@ -639,7 +639,7 @@ checks:
     code: |
       import asyncio
       import asyncpg
-      from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+      from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
       from squadops.bootstrap.secrets import secret_provider_for
       from squadops.campaigns.progress import cycle_ending
       from squadops.config import load_config
@@ -782,7 +782,7 @@ checks:
     container: squadops-runtime-api
     code: |
       import inspect
-      from adapters.cycles.workload_gate import WorkloadGate
+      from squadops.execution.workload_gate import WorkloadGate
       from squadops.campaigns.progress import CampaignProgress
       from squadops.capabilities.handlers import fault_injection as fi
       answered = "decisions:\n- id: injected-open-question\n  choice: answered\n"
@@ -803,7 +803,7 @@ checks:
     container: squadops-runtime-api
     code: |
       import inspect
-      from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+      from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
       src = inspect.getsource(DispatchedFlowExecutor.execute_cycle)
       print("except _CancellationError:" in src, "inter_workload_gate_run_cancelled" in src)
     expect: "True True"

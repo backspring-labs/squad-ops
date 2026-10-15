@@ -46,7 +46,7 @@ def mock_vault():
 
 @pytest.fixture
 def executor(mock_vault):
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     return DispatchedFlowExecutor(
         cycle_registry=AsyncMock(),

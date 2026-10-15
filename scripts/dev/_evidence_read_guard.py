@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-_EVIDENCE_LOGGER = "adapters.cycles.cycle_evidence"
+_EVIDENCE_LOGGER = "squadops.execution.cycle_evidence"
 
 
 def require_readable_vault(vault_dir: Path) -> None:

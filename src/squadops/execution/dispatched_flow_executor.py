@@ -25,30 +25,6 @@ from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from adapters.cycles.correction_repair import CorrectionRepair
-from adapters.cycles.correction_runner import CorrectionRunner
-from adapters.cycles.cycle_completion import CycleCompletion
-from adapters.cycles.execution_errors import (
-    _CancellationError,
-    _ExecutionError,
-    _PausedError,
-)
-from adapters.cycles.framing_gate_check import FramingGateCheck
-from adapters.cycles.patch_acceptance import (
-    KEEP_PROGRESS,
-    KEPT_ARTIFACTS_KEY,
-    KEPT_NEXT_FAILURE_KEY,
-    KEPT_OUTPUTS_KEY,
-    PatchAcceptance,
-    _record_repair_rejection,
-)
-from adapters.cycles.pulse_boundary_runner import PulseBoundaryRunner
-from adapters.cycles.run_admission import RunAdmission
-from adapters.cycles.run_completion import RunCompletion, resolve_terminal_outcome
-from adapters.cycles.run_provisioning import RunInProgress, RunProvisioning
-from adapters.cycles.task_dispatcher import TaskDispatcher
-from adapters.cycles.task_naming import build_task_name
-from adapters.cycles.workload_gate import GateOutcome, WorkloadGate, stored_change_request
 from squadops.capabilities.context_assembly import (
     ACCEPTANCE_WORKSPACE_FILTER,
     INCREMENT_CANDIDATE_FILTER,
@@ -112,6 +88,30 @@ from squadops.cycles.task_plan import inject_contract_inputs
 from squadops.cycles.vault_reads import retrieve_or_absent
 from squadops.cycles.verification_normalize import normalize_task_checks
 from squadops.events.types import EventType
+from squadops.execution.correction_repair import CorrectionRepair
+from squadops.execution.correction_runner import CorrectionRunner
+from squadops.execution.cycle_completion import CycleCompletion
+from squadops.execution.execution_errors import (
+    _CancellationError,
+    _ExecutionError,
+    _PausedError,
+)
+from squadops.execution.framing_gate_check import FramingGateCheck
+from squadops.execution.patch_acceptance import (
+    KEEP_PROGRESS,
+    KEPT_ARTIFACTS_KEY,
+    KEPT_NEXT_FAILURE_KEY,
+    KEPT_OUTPUTS_KEY,
+    PatchAcceptance,
+    _record_repair_rejection,
+)
+from squadops.execution.pulse_boundary_runner import PulseBoundaryRunner
+from squadops.execution.run_admission import RunAdmission
+from squadops.execution.run_completion import RunCompletion, resolve_terminal_outcome
+from squadops.execution.run_provisioning import RunInProgress, RunProvisioning
+from squadops.execution.task_dispatcher import TaskDispatcher
+from squadops.execution.task_naming import build_task_name
+from squadops.execution.workload_gate import GateOutcome, WorkloadGate, stored_change_request
 from squadops.ports.comms.queue import QueueError
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
 from squadops.stacks.scaffold import (
@@ -136,10 +136,10 @@ from squadops.telemetry.context import use_correlation_context
 from squadops.telemetry.models import CorrelationContext
 
 if TYPE_CHECKING:
-    from adapters.cycles.reply_router import ReplyRouter
     from squadops.campaigns.launcher import BoxVerdict
     from squadops.campaigns.progress import CampaignProgress
     from squadops.cycles.models import SquadProfile
+    from squadops.execution.reply_router import ReplyRouter
     from squadops.ports.comms.queue import QueuePort
     from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
     from squadops.ports.cycles.campaign_registry import CampaignRegistryPort
@@ -287,7 +287,7 @@ class _CorrectionRound:
     attempt: int
     max_attempts: int
     #: #1697: the run's round sequence. Unlike ``attempt``, a refund never resets it, so the
-    #: round's task ids stay unique (adapters/cycles/correction_ids.py).
+    #: round's task ids stay unique (src/squadops/execution/correction_ids.py).
     round_seq: int = 0
 
 
@@ -569,7 +569,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
         # SIP-0077: Cycle event bus (defaults to NoOp if not provided)
         if event_bus is None:
-            from adapters.events.noop_cycle_event_bus import NoOpCycleEventBus
+            from squadops.ports.events.noop import NoOpCycleEventBus
 
             event_bus = NoOpCycleEventBus()
         self._cycle_event_bus = event_bus

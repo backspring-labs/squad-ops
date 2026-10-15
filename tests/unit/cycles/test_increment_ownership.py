@@ -49,7 +49,7 @@ ACCEPTED = "frontend/src/views/RunListView.jsx"  # a fill slot the change does n
 def _enforce(config: dict, task_type: str) -> tuple[list[str], list]:
     """Entered where a bound run builds its record and stores an emission (the executor's own
     seam pair), as a repair's emission reaches it too (``correction_runner``)."""
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     record = DispatchedFlowExecutor._build_bound_record_for_run(
         object(), CANDIDATE, "run_i", config

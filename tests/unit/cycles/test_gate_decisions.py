@@ -145,7 +145,7 @@ def test_the_route_records_promotes_and_emits_through_the_recorder(decision, pro
 
 
 def _executor(bus: MagicMock, vault: SimpleNamespace, registry: AsyncMock):
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     executor = DispatchedFlowExecutor(
         cycle_registry=registry,

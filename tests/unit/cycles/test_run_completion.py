@@ -92,7 +92,7 @@ def _make_plan(count: int = 3) -> list[TaskEnvelope]:
 @pytest.fixture
 def completion():
     """Create a RunCompletion with mocked ports — no executor needed."""
-    from adapters.cycles.run_completion import RunCompletion
+    from squadops.execution.run_completion import RunCompletion
 
     vault = AsyncMock()
     vault.store = AsyncMock(side_effect=lambda ref, content: ref)
@@ -292,10 +292,10 @@ class TestReportWithoutCycleOrPlan:
 
 class TestResolveTerminalOutcome:
     def test_cancellation_maps_to_cancelled(self):
-        from adapters.cycles.execution_errors import _CancellationError
-        from adapters.cycles.run_completion import resolve_terminal_outcome
         from squadops.cycles.models import RunStatus
         from squadops.events.types import EventType
+        from squadops.execution.execution_errors import _CancellationError
+        from squadops.execution.run_completion import resolve_terminal_outcome
 
         outcome = resolve_terminal_outcome(_CancellationError("run_1"), "run_1")
         assert outcome.run_status is RunStatus.CANCELLED
@@ -309,10 +309,10 @@ class TestResolveTerminalOutcome:
         """A duty deferral must stay distinguishable from a BLOCKED pause —
         losing the reason/agent payload would break the operator's resume
         triage (SIP-0089 §2.5)."""
-        from adapters.cycles.execution_errors import _RecruitmentRejectedError
-        from adapters.cycles.run_completion import resolve_terminal_outcome
         from squadops.cycles.models import RunStatus
         from squadops.events.types import EventType
+        from squadops.execution.execution_errors import _RecruitmentRejectedError
+        from squadops.execution.run_completion import resolve_terminal_outcome
 
         exc = _RecruitmentRejectedError("max", "hard_duty_window")
         outcome = resolve_terminal_outcome(exc, "run_1")
@@ -327,10 +327,10 @@ class TestResolveTerminalOutcome:
         assert "recruitment deferred" in outcome.log_message
 
     def test_paused_error_maps_to_paused_without_payload(self):
-        from adapters.cycles.execution_errors import _PausedError
-        from adapters.cycles.run_completion import resolve_terminal_outcome
         from squadops.cycles.models import RunStatus
         from squadops.events.types import EventType
+        from squadops.execution.execution_errors import _PausedError
+        from squadops.execution.run_completion import resolve_terminal_outcome
 
         outcome = resolve_terminal_outcome(_PausedError("blocked"), "run_1")
         assert outcome.run_status is RunStatus.PAUSED
@@ -340,10 +340,10 @@ class TestResolveTerminalOutcome:
         assert outcome.log_message == "Run run_1 paused"
 
     def test_execution_error_maps_to_failed_with_error_payload(self):
-        from adapters.cycles.execution_errors import _ExecutionError
-        from adapters.cycles.run_completion import resolve_terminal_outcome
         from squadops.cycles.models import RunStatus
         from squadops.events.types import EventType
+        from squadops.execution.execution_errors import _ExecutionError
+        from squadops.execution.run_completion import resolve_terminal_outcome
 
         outcome = resolve_terminal_outcome(_ExecutionError("task t-1 failed"), "run_1")
         assert outcome.run_status is RunStatus.FAILED
@@ -355,9 +355,9 @@ class TestResolveTerminalOutcome:
     def test_unexpected_exception_maps_to_failed_with_traceback_logging(self):
         """An unclassified crash must keep log_kind='exception' — downgrading
         it to 'error' silently drops the traceback from the logs."""
-        from adapters.cycles.run_completion import resolve_terminal_outcome
         from squadops.cycles.models import RunStatus
         from squadops.events.types import EventType
+        from squadops.execution.run_completion import resolve_terminal_outcome
 
         outcome = resolve_terminal_outcome(ValueError("boom"), "run_1")
         assert outcome.run_status is RunStatus.FAILED
@@ -370,8 +370,8 @@ class TestResolveTerminalOutcome:
     def test_recruitment_rejection_checked_before_generic_paused(self):
         """_RecruitmentRejectedError must not fall through to the payload-less
         PAUSED branch — the reason payload is the resume affordance."""
-        from adapters.cycles.execution_errors import _RecruitmentRejectedError
-        from adapters.cycles.run_completion import resolve_terminal_outcome
+        from squadops.execution.execution_errors import _RecruitmentRejectedError
+        from squadops.execution.run_completion import resolve_terminal_outcome
 
         outcome = resolve_terminal_outcome(_RecruitmentRejectedError(None, None), "run_1")
         assert outcome.event_payload == {"reason": None, "deferred_for_agent": None}
@@ -414,8 +414,8 @@ class TestRunLedger:
     async def test_report_renders_ledger_entries(self):
         """End-to-end through generate_run_report: ledger entries reach the
         pulse section — the seam SIP-0096 will aggregate over."""
-        from adapters.cycles.run_completion import RunCompletion
         from squadops.cycles.run_ledger import RunLedger
+        from squadops.execution.run_completion import RunCompletion
 
         vault = AsyncMock()
         vault.store = AsyncMock(side_effect=lambda ref, content: ref)
@@ -474,7 +474,7 @@ class TestRunLedger:
 
 class TestVerificationIntegrityWiring:
     def _completion(self):
-        from adapters.cycles.run_completion import RunCompletion
+        from squadops.execution.run_completion import RunCompletion
 
         vault = AsyncMock()
         vault.store = AsyncMock(side_effect=lambda ref, content: ref)
@@ -769,10 +769,10 @@ class TestVerificationIntegrityWiring:
 
 from pathlib import Path  # noqa: E402
 
-from adapters.cycles.run_completion import RunCompletion  # noqa: E402
 from squadops.cycles.run_ledger import RunLedger  # noqa: E402
 from squadops.cycles.verification_contract import VerificationContract  # noqa: E402
 from squadops.cycles.verification_integrity import CheckResult, ResultStatus  # noqa: E402
+from squadops.execution.run_completion import RunCompletion  # noqa: E402
 from squadops.stacks.scaffold import InterfaceManifest  # noqa: E402
 from squadops.stacks.scaffold_contract import emit_contract_yaml  # noqa: E402
 
@@ -862,7 +862,7 @@ class TestStrandedActivitySweep:
     """#672: finalize ends the finishing cycle's still-active activities."""
 
     def _completion_with_activity_port(self, activity_port):
-        from adapters.cycles.run_completion import RunCompletion
+        from squadops.execution.run_completion import RunCompletion
 
         vault = AsyncMock()
         vault.store = AsyncMock(side_effect=lambda ref, content: ref)
@@ -919,8 +919,8 @@ class TestTerminalOutcomeFailureReason:
     """#427: the FAILED mappings carry the persisted reason; others do not."""
 
     def test_execution_error_reason_is_message_without_wrapper_type(self):
-        from adapters.cycles.execution_errors import _ExecutionError
-        from adapters.cycles.run_completion import resolve_terminal_outcome
+        from squadops.execution.execution_errors import _ExecutionError
+        from squadops.execution.run_completion import resolve_terminal_outcome
 
         outcome = resolve_terminal_outcome(
             _ExecutionError("Max correction attempts (5) exhausted"), "run_x"
@@ -928,20 +928,20 @@ class TestTerminalOutcomeFailureReason:
         assert outcome.failure_reason == "Max correction attempts (5) exhausted"
 
     def test_unexpected_error_reason_includes_type(self):
-        from adapters.cycles.run_completion import resolve_terminal_outcome
+        from squadops.execution.run_completion import resolve_terminal_outcome
 
         outcome = resolve_terminal_outcome(KeyError("build_profile"), "run_x")
         assert outcome.failure_reason == "KeyError: 'build_profile'"
 
     def test_cancellation_and_pause_carry_no_reason(self):
-        from adapters.cycles.execution_errors import _CancellationError, _PausedError
-        from adapters.cycles.run_completion import resolve_terminal_outcome
+        from squadops.execution.execution_errors import _CancellationError, _PausedError
+        from squadops.execution.run_completion import resolve_terminal_outcome
 
         assert resolve_terminal_outcome(_CancellationError(), "run_x").failure_reason is None
         assert resolve_terminal_outcome(_PausedError(), "run_x").failure_reason is None
 
     def test_reason_is_bounded(self):
-        from adapters.cycles.run_completion import (
+        from squadops.execution.run_completion import (
             _FAILURE_REASON_MAX_CHARS,
             failure_reason_text,
         )
@@ -951,6 +951,6 @@ class TestTerminalOutcomeFailureReason:
         assert text.endswith("…")
 
     def test_messageless_exception_falls_back_to_type_name(self):
-        from adapters.cycles.run_completion import failure_reason_text
+        from squadops.execution.run_completion import failure_reason_text
 
         assert failure_reason_text(RuntimeError(), include_type=False) == "RuntimeError"

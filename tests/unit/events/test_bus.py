@@ -4,10 +4,10 @@ import pytest
 
 from adapters.events.factory import create_cycle_event_bus
 from adapters.events.in_process_cycle_event_bus import InProcessCycleEventBus
-from adapters.events.noop_cycle_event_bus import NoOpCycleEventBus
 from squadops.events.models import CycleEvent
 from squadops.events.types import EventType
 from squadops.ports.events.cycle_event_bus import CycleEventBusPort
+from squadops.ports.events.noop import NoOpCycleEventBus
 from tests.unit.events.conftest import CollectingSubscriber
 
 

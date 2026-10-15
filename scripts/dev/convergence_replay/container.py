@@ -165,7 +165,7 @@ def retest_envelope(bundle: dict[str, Any], files: list[dict[str, str]]) -> Any:
 def workspace_files(artifacts: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """The artifacts that belong in a tree: the product's own exclusion, by type, of the records a
     task writes beside its files (``CorrectionRunner._NON_WORKSPACE_ARTIFACT_TYPES``)."""
-    from adapters.cycles.correction_runner import CorrectionRunner
+    from squadops.execution.correction_runner import CorrectionRunner
 
     return [
         a
@@ -553,11 +553,11 @@ async def replay_sample(
     import time
     from uuid import uuid4
 
-    from adapters.cycles.correction_repair import CorrectionRepair
-    from adapters.cycles.correction_runner import _Diagnosis, _inject_deterministic_evidence
-    from adapters.cycles.patch_acceptance import PatchAcceptance
     from adapters.noop.ports import NoOpFailurePatternRecall
     from squadops.cycles.failure_evidence import build_failure_evidence
+    from squadops.execution.correction_repair import CorrectionRepair
+    from squadops.execution.correction_runner import _Diagnosis, _inject_deterministic_evidence
+    from squadops.execution.patch_acceptance import PatchAcceptance
     from squadops.stacks.scaffold import InterfaceManifest
     from squadops.tasks.models import TaskEnvelope
 

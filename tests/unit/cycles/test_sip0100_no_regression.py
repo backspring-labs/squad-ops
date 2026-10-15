@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 from squadops.stacks.scaffold import InterfaceManifest
 
 _MANIFEST = Path(__file__).parents[3] / "examples" / "03_group_run" / "interface_manifest.yaml"

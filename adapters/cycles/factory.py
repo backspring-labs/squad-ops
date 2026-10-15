@@ -15,9 +15,9 @@ from squadops.ports.cycles.project_registry import ProjectRegistryPort
 from squadops.ports.cycles.squad_profile import SquadProfilePort
 
 if TYPE_CHECKING:
-    from adapters.cycles.reply_router import ReplyRouter
     from squadops.campaigns.launcher import BoxVerdict
     from squadops.campaigns.progress import CampaignProgress
+    from squadops.execution.reply_router import ReplyRouter
     from squadops.ports.comms.queue import QueuePort
     from squadops.ports.cycles.workflow_tracker import WorkflowTrackerPort
     from squadops.ports.events.cycle_event_bus import CycleEventBusPort
@@ -158,7 +158,7 @@ def create_flow_executor(
     if provider != "dispatched":
         raise ValueError(f"Unknown flow executor provider: {provider}")
 
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     if not workflow_tracker and prefect_api_url:
         # Route through the shared factory so the NoOp-fallback and init

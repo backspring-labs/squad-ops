@@ -27,7 +27,6 @@ import logging
 from collections.abc import Callable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
-from adapters.cycles.execution_errors import _ExecutionError
 from squadops.cycles.acceptance_evaluation import resolve_check_stack
 from squadops.cycles.check_registry import (
     CHECK_TESTS_PASS,
@@ -56,6 +55,7 @@ from squadops.cycles.patch_verification import (
     verify_patched_artifacts,
 )
 from squadops.cycles.scaffold_integrity_evidence import STAGE_PATCH_VERIFICATION
+from squadops.execution.execution_errors import _ExecutionError
 from squadops.stacks.development_profiles import (
     collected_test_patterns_for,
     matches_test_file_patterns,

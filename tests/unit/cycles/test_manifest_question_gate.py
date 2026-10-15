@@ -26,7 +26,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import yaml
 
-from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 from adapters.noop.ports import NoOpFailurePatternRecall
 from squadops.cycles.manifest_authoring import (
     GATE_DECIDED_BY_NO_QUESTIONS,
@@ -34,6 +33,7 @@ from squadops.cycles.manifest_authoring import (
     open_questions,
 )
 from squadops.cycles.models import GateDecisionValue
+from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
 pytestmark = [pytest.mark.domain_orchestration]
 

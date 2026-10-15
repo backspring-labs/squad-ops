@@ -44,7 +44,7 @@ async def test_new_enrichment_is_a_registry_edit_only(reply_router, monkeypatch)
     touch the executor. Bug caught: someone reintroduces a task-type branch in
     ``_enrich_envelope``, and new declarations silently need executor edits
     again (the accretion pattern #663 exists to end)."""
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     monkeypatch.setitem(
         ca.CONTEXT_CONTRACTS,
@@ -186,7 +186,7 @@ def _source_ref(artifact_id, filename):
 
 
 def _executor_with(reply_router, universe):
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     by_id = {aid: (ref, body) for aid, ref, body in universe}
     vault = AsyncMock()

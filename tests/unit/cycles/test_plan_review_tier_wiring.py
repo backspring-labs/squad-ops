@@ -19,7 +19,6 @@ import pytest
 import yaml
 
 from adapters.cycles.memory_campaign_registry import MemoryCampaignRegistry
-from adapters.cycles.workload_gate import GateOutcome
 from adapters.noop.ports import NoOpFailurePatternRecall
 from squadops.campaigns.escalation import (
     EscalationIdentity,
@@ -47,6 +46,7 @@ from squadops.cycles.models import (
     TaskFlowPolicy,
 )
 from squadops.events.types import EventType
+from squadops.execution.workload_gate import GateOutcome
 from tests.unit.campaigns.builders import campaign, move, policy
 
 NOW = datetime(2026, 10, 8, 14, 0, tzinfo=UTC)
@@ -259,7 +259,7 @@ async def _reach_the_gate(
     )
     await campaigns.transition(CID, move(CampaignState.CALIBRATING, "cal"))
 
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     framing = _run("run_frame")
     registry = AsyncMock()

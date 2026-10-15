@@ -117,7 +117,7 @@ def mock_prefect_workflow_tracker() -> AsyncMock:
 
 def _make_executor(mock_prefect_workflow_tracker, reply_router):
     """Build a minimally-wired executor for direct method calls."""
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     registry = AsyncMock()
     vault = AsyncMock()
@@ -504,14 +504,14 @@ class TestTheVerifierIsHandedTheRepairsRows:
     async def test_the_protocol_results_rows_reach_verify_patched_artifacts(
         self, mock_prefect_workflow_tracker, cycle, failed_envelope, reply_router, monkeypatch
     ):
-        from adapters.cycles import patch_acceptance as executor_module
-        from adapters.cycles.correction_runner import CorrectionProtocolResult
         from squadops.cycles.patch_verification import (
             PATCH_UNVERIFIABLE,
             REASON_NO_EXECUTED_BLOCKING_CHECKS,
             PatchVerification,
         )
         from squadops.cycles.task_outcome import TaskOutcome
+        from squadops.execution import patch_acceptance as executor_module
+        from squadops.execution.correction_runner import CorrectionProtocolResult
 
         ex = _make_executor(mock_prefect_workflow_tracker, reply_router)
         rows = {

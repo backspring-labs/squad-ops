@@ -213,7 +213,7 @@ class TestTheAgentSideCarriesUsageOnEveryExit:
 class TestTheRuntimeSideSumsEveryDispatch:
     @pytest.fixture
     def dispatcher(self, reply_router):
-        from adapters.cycles.task_dispatcher import TaskDispatcher
+        from squadops.execution.task_dispatcher import TaskDispatcher
 
         queue = AsyncMock()
         return TaskDispatcher(
@@ -227,7 +227,7 @@ class TestTheRuntimeSideSumsEveryDispatch:
             task_id="t-a", status="FAILED", llm_usage=UsageTotals(calls=2, failed_calls=1).to_dict()
         )
         reply_router.results["t-b"] = TaskResult(task_id="t-b", status="SUCCEEDED")
-        with patch("adapters.cycles.task_dispatcher.asyncio.sleep", new_callable=AsyncMock):
+        with patch("squadops.execution.task_dispatcher.asyncio.sleep", new_callable=AsyncMock):
             await dispatcher.dispatch_task(_envelope("t-a"), "run_a")
             await dispatcher.dispatch_task(_envelope("t-b"), "run_b")
 

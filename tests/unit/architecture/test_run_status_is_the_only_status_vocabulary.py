@@ -70,7 +70,7 @@ def test_terminal_outcome_carries_the_enum_only():
     a Prefect-shaped shadow of a field it already had."""
     import dataclasses
 
-    from adapters.cycles.run_completion import TerminalOutcome
+    from squadops.execution.run_completion import TerminalOutcome
 
     names = {f.name for f in dataclasses.fields(TerminalOutcome)}
     assert "run_status" in names and "terminal_status" not in names

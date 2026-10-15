@@ -20,7 +20,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from adapters.cycles.task_dispatcher import TaskDispatcher
+from squadops.execution.task_dispatcher import TaskDispatcher
 from squadops.ports.runtime.activity import RuntimeActivityPort
 from squadops.runtime.models import RuntimeActivity
 from squadops.tasks.models import TaskEnvelope, TaskResult

@@ -34,13 +34,13 @@ async def backfill(dsn: str, vault_dir: Path, *, write: bool) -> dict:
     sys.path.insert(0, str(Path(__file__).resolve().parent))  # the guard sits beside this script
     from _evidence_read_guard import UnreadableEvidence, require_readable_vault
 
-    from adapters.cycles.cycle_evidence import assess_cycle, record_cycle_failures
     from adapters.cycles.filesystem_artifact_vault import FilesystemArtifactVault
     from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
     from adapters.persistence.pool import create_pool
     from adapters.persistence.transient import TransientRetry
     from squadops.config.schema import DBRetryConfig
     from squadops.cycles.cycle_assessment import AssessorIdentity
+    from squadops.execution.cycle_evidence import assess_cycle, record_cycle_failures
 
     require_readable_vault(vault_dir)
     unreadable = UnreadableEvidence()

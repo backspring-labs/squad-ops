@@ -144,7 +144,7 @@ Keycloak names its signing key. The next change of library runs the same tests.
 ---
 
 *Entries 16–26 were harvested on 2026-09-09 from the comment rationale in
-`DispatchedFlowExecutor._try_accept_patch` (`adapters/cycles/dispatched_flow_executor.py:3245–3755`)
+`DispatchedFlowExecutor._try_accept_patch` (`src/squadops/execution/dispatched_flow_executor.py:3245–3755`)
 before the 1.7.5 recovery extraction moves that code (#1149; the map is
 `docs/plans/1-7-5-recovery-extraction-map.md` §4 step 1, and each entry names the block it
 lives in so an extraction PR cites the entry rather than re-reading the comment). Keyed to

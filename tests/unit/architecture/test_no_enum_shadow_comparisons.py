@@ -63,12 +63,12 @@ _ALLOWLIST: set[tuple[str, str]] = {
     # behind as a rule about a comparison that is no longer there. (Its `"failed"` entry for
     # #971's `emission_status` marker went too, once the marker became
     # `emission_integrity.EMISSION_STATUS_FAILED`.)
-    ("adapters/cycles/patch_acceptance.py", "failed"),
-    ("adapters/cycles/patch_acceptance.py", "error"),
+    ("src/squadops/execution/patch_acceptance.py", "failed"),
+    ("src/squadops/execution/patch_acceptance.py", "error"),
     # The repair half of the protocol left the runner with #1152 step 5; the entry moved
     # with the code, and the runner's own went with it — verified dead by deleting it and
     # re-running, rather than left as a rule about a comparison that is no longer there.
-    ("adapters/cycles/correction_repair.py", "failed"),
+    ("src/squadops/execution/correction_repair.py", "failed"),
     # External Ollama model-pull job status — a vendor vocabulary, not a domain enum.
     ("src/squadops/cli/commands/models.py", "failed"),
     # window_state() returns a duty-window lifecycle token ("active"/
@@ -92,7 +92,7 @@ _ALLOWLIST: set[tuple[str, str]] = {
     # - a planning handler's outcome-dict status ("failure" is its own token);
     ("src/squadops/capabilities/handlers/planning/merge.py", "failure"),
     # - the correction protocol's decided path ("abort" ends the run, not a campaign).
-    ("adapters/cycles/dispatched_flow_executor.py", "abort"),
+    ("src/squadops/execution/dispatched_flow_executor.py", "abort"),
     # SIP-0109 step 2's change-request vocabularies (#1706) share three more words, none about a
     # change request:
     # - an anchored edit's verb ("REMOVE" deletes the anchored span);

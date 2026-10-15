@@ -14,12 +14,12 @@ import json
 
 import pytest
 
-from adapters.cycles.reply_router import (
+from squadops.comms.queue_message import QueueMessage
+from squadops.execution.reply_router import (
     DuplicateRegistration,
     ReplyRouter,
     ReplyRouterStopped,
 )
-from squadops.comms.queue_message import QueueMessage
 from squadops.ports.comms.queue import AckPolicy, QueuePort
 from squadops.tasks.models import TaskResult
 

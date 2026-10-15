@@ -19,7 +19,7 @@ _READING = {"version": 1, "total": 2, "by_rule": {"ruff:F401": 2}, "by_file": {"
 
 @pytest.fixture
 def dispatcher(reply_router):
-    from adapters.cycles.task_dispatcher import TaskDispatcher
+    from squadops.execution.task_dispatcher import TaskDispatcher
 
     return TaskDispatcher(
         queue=reply_router.bind(AsyncMock()), reply_router=reply_router, task_timeout=5.0
@@ -38,7 +38,7 @@ async def test_the_runs_latest_reading_is_taken_once_with_its_task(dispatcher, r
     reply_router.results["t-3"] = TaskResult(
         task_id="t-3", status="SUCCEEDED", outputs={"lint_findings": later}
     )
-    with patch("adapters.cycles.task_dispatcher.asyncio.sleep", new_callable=AsyncMock):
+    with patch("squadops.execution.task_dispatcher.asyncio.sleep", new_callable=AsyncMock):
         for task in ("t-1", "t-2", "t-3"):
             await dispatcher.dispatch_task(_envelope(task), "run_a")
 

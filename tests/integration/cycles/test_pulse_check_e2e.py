@@ -127,7 +127,7 @@ class _E2EReplyRouter:
 
 
 def _make_executor(registry, cycle):
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     mock_vault = AsyncMock()
     mock_queue = AsyncMock()
@@ -193,7 +193,7 @@ class TestPulseCheckE2E:
         executor, mock_queue = _make_executor(registry, cycle)
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_e2e", run_id="run_e2e")
@@ -233,11 +233,11 @@ class TestPulseCheckE2E:
 
         with (
             patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
             patch(
-                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
+                "squadops.execution.pulse_boundary_runner.run_pulse_verification",
                 side_effect=all_pass,
             ),
         ):
@@ -282,11 +282,11 @@ class TestPulseCheckE2E:
 
         with (
             patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
             patch(
-                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
+                "squadops.execution.pulse_boundary_runner.run_pulse_verification",
                 side_effect=fail_then_pass,
             ),
         ):
@@ -327,11 +327,11 @@ class TestPulseCheckE2E:
 
         with (
             patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
             patch(
-                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
+                "squadops.execution.pulse_boundary_runner.run_pulse_verification",
                 side_effect=always_fail,
             ),
         ):
@@ -372,11 +372,11 @@ class TestPulseCheckE2E:
 
         with (
             patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+                "squadops.execution.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
             patch(
-                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
+                "squadops.execution.pulse_boundary_runner.run_pulse_verification",
                 side_effect=all_pass,
             ),
         ):

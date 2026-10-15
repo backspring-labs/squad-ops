@@ -1,6 +1,6 @@
 """How a cycle ended — the typed, read-only view at the completion boundary (#1507 step 3).
 
-``CycleCompletion`` (``adapters/cycles/cycle_completion.py``) produces one ``CycleEnd`` for every way
+``CycleCompletion`` (``src/squadops/execution/cycle_completion.py``) produces one ``CycleEnd`` for every way
 ``execute_cycle`` ends, and it is the one place 2.0's continuation request enters (the Campaign
 SIP's Appendix A). In 1.9 nothing consumes it beyond its wiring test: it is a view, and a PR in
 which it changes an outcome has changed behaviour (the map's §5).
@@ -57,7 +57,7 @@ STOP_REASON_FOR_UNCOMPLETED_RUN: dict[RunStatus, CycleStopReason] = {
 @dataclass(frozen=True)
 class CycleEnd:
     """A cycle's end, read-only. The cycle's ``CycleAssessment`` is read by ``cycle_id``
-    (``adapters/cycles/cycle_evidence.assess_cycle``); this view never computes it."""
+    (``src/squadops/execution/cycle_evidence.assess_cycle``); this view never computes it."""
 
     cycle_id: str
     last_run_id: str

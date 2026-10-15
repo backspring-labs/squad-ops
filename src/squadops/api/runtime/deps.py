@@ -165,7 +165,7 @@ async def assess_cycle_from_stores(request: Request, cycle_id: str) -> CycleAsse
     ``squadops.cycles.cycle_assessment``; nothing is stored, and the assessor identity is
     this deploy's, the same pair a cycle records at creation (#80).
     """
-    from adapters.cycles.cycle_evidence import assess_cycle
+    from squadops.execution.cycle_evidence import assess_cycle
 
     return await assess_cycle(
         get_cycle_registry(request),
@@ -219,7 +219,7 @@ def get_cycle_event_bus(request: Request) -> CycleEventBusPort:
         "CycleEventBusPort not configured — using NoOpCycleEventBus. "
         "Canonical event publication is disabled/degraded.",
     )
-    from adapters.events.noop_cycle_event_bus import NoOpCycleEventBus
+    from squadops.ports.events.noop import NoOpCycleEventBus
 
     return NoOpCycleEventBus()
 

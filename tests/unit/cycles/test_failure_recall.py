@@ -355,7 +355,7 @@ async def test_a_task_the_run_dispatches_again_records_an_exposure_per_dispatch(
     rebuild 5 and 6 Next.js regression cycles): the re-dispatch rode the first attempt's envelope
     and recorded nothing, so 11 authorings had 10 exposures. Each dispatch's exposure is joined by
     the attempt its envelope carries."""
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
     from squadops.tasks.models import TaskResult
 
     store = await _store_with()
@@ -394,7 +394,7 @@ async def test_a_task_the_run_dispatches_again_records_an_exposure_per_dispatch(
         return TaskResult(task_id=env["task_id"], status="SUCCEEDED", outputs={"summary": "ok"})
 
     reply_router.responder = responder
-    with patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock):
+    with patch("squadops.execution.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock):
         await executor.execute_run(cycle_id=cycle.cycle_id, run_id=run.run_id)
 
     consuming = {t for t, _ in dispatched if authoring_seam_of(t.rsplit("-", 1)[-1])}
@@ -407,8 +407,8 @@ async def test_provisioning_supplies_the_plan_it_builds():
     """Wiring, entered at ``RunProvisioning.prepare``, the step ``execute_run`` takes before
     dispatch, with the real plan generation and the snapshot recall over a store. Bug caught: the
     call site off the run's path, so an approved lesson would reach no envelope."""
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
-    from adapters.cycles.run_provisioning import RunInProgress
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.run_provisioning import RunInProgress
 
     store = await _store_with(("Name the manifest element each criterion checks.", _DESIGN))
     await _pinned(store, UnitKind.CYCLE, "cyc_recall")
@@ -448,7 +448,7 @@ async def test_a_correction_repair_is_supplied_its_lessons_when_it_is_composed()
     recall, composing a real dev repair of a failed ``development.develop``. Bugs caught: the
     repair composed without asking, so a correction-round lesson reaches only the next cycle's
     first authoring; or the analyzer and the decision, which author no output, handed lessons."""
-    from adapters.cycles.correction_runner import CorrectionRunner
+    from squadops.execution.correction_runner import CorrectionRunner
     from squadops.tasks.models import TaskResult
     from tests.unit.cycles.test_correction_context_golden import (
         _CYCLE,

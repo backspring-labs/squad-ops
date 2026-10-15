@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
-from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
 _GROUP_RUN_MANIFEST = (
     Path(__file__).resolve().parents[3] / "examples" / "03_group_run" / "interface_manifest.yaml"
@@ -200,7 +200,7 @@ class TestSeedVerificationScaffoldArtifacts:
         and let the failure surface as burned LLM rounds instead of a setup rejection."""
         import pytest
 
-        import adapters.cycles.dispatched_flow_executor as executor_module
+        import squadops.execution.dispatched_flow_executor as executor_module
         from squadops.stacks.verification_scaffold import ScaffoldValidationError
         from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 

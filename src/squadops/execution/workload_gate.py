@@ -69,7 +69,7 @@ from squadops.cycles.models import (
 from squadops.events.types import EventType
 
 # The executor's logger name: the gate's lines are read by where they have always come from.
-logger = logging.getLogger("adapters.cycles.dispatched_flow_executor")
+logger = logging.getLogger("squadops.execution.dispatched_flow_executor")
 
 
 #: The decider of a plan-validation refusal: a re-rolled framing's earlier run carries it (§24bj).

@@ -24,11 +24,11 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from adapters.cycles.execution_errors import _ExecutionError
 from squadops.capabilities.lesson_supply import supply_for_cycle
 from squadops.cycles.models import Cycle, RunStatus, WorkloadType
 from squadops.cycles.task_plan import generate_task_plan
 from squadops.events.types import EventType
+from squadops.execution.execution_errors import _ExecutionError
 from squadops.stacks.scaffold import frozen_paths
 
 

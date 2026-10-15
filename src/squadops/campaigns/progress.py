@@ -481,7 +481,7 @@ def accepted_increments(log: list, intents: list) -> int:
 _INCREMENT_FAMILY = frozenset({CycleKind.INCREMENT, CycleKind.REPAIR, CycleKind.RETRY})
 
 
-#: Reads a cycle's assessment from the stores: ``adapters.cycles.cycle_evidence.assess_cycle``.
+#: Reads a cycle's assessment from the stores: ``squadops.execution.cycle_evidence.assess_cycle``.
 Assess = Callable[[str], Awaitable[CycleAssessment]]
 
 

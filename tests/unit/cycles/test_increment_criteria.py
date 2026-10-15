@@ -225,7 +225,7 @@ class _Vault:
 async def test_the_plan_gate_refuses_a_plan_that_leaves_a_criterion_unproven(qa_files, refused):
     """Wiring, entered at the inter-workload plan gate the framing re-roll keys on (#522), with
     the cycle as the framing run saw it (#1849)."""
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     plan = _plan_yaml(("qa.test", qa_files))
     executor = DispatchedFlowExecutor(
@@ -307,7 +307,7 @@ async def test_the_plan_gate_refuses_a_plan_that_rewrites_a_frozen_verifier(
     """§8.1, SIP-0109 §19 item 12e, entered at the plan gate. Bug caught: an increment's qa task
     rewriting an earlier criterion's test to agree with the new change, so the regression it
     exists to catch is edited away."""
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     document = _retiring_f1() if change_request == "retiring" else change_request
     vault = _Vault(_plan_yaml(("qa.test", qa_files)))

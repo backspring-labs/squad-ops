@@ -26,12 +26,6 @@ from hashlib import sha256
 from typing import TYPE_CHECKING, Any, Literal
 from uuid import uuid4
 
-from adapters.cycles.execution_errors import (
-    _CancellationError,
-    _ExecutionError,
-    _PausedError,
-    _RecruitmentRejectedError,
-)
 from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.llm_usage import RunUsage
 from squadops.cycles.models import ArtifactRef, RunStatus
@@ -42,6 +36,12 @@ from squadops.cycles.verification_integrity import (
     aggregate_verification,
 )
 from squadops.events.types import EventType
+from squadops.execution.execution_errors import (
+    _CancellationError,
+    _ExecutionError,
+    _PausedError,
+    _RecruitmentRejectedError,
+)
 from squadops.ports.comms.queue import QueueError
 from squadops.runtime.activity_reaper import abort_cycle_activities
 

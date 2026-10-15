@@ -36,7 +36,7 @@ def _captured(task_id: str = "t-1", captured_at: str = "2026-10-08T02:00:00+00:0
 
 
 def _dispatcher(reply_router, recorder):
-    from adapters.cycles.task_dispatcher import TaskDispatcher
+    from squadops.execution.task_dispatcher import TaskDispatcher
 
     return TaskDispatcher(
         queue=reply_router.bind(AsyncMock()),
@@ -57,7 +57,7 @@ async def test_a_reply_carrying_an_envelope_is_recorded_for_its_run(reply_router
     )
     reply_router.results["t-2"] = TaskResult(task_id="t-2", status="SUCCEEDED", outputs={})
 
-    with patch("adapters.cycles.task_dispatcher.asyncio.sleep", new_callable=AsyncMock):
+    with patch("squadops.execution.task_dispatcher.asyncio.sleep", new_callable=AsyncMock):
         dispatcher = _dispatcher(reply_router, recorder)
         for task in ("t-1", "t-2"):
             await dispatcher.dispatch_task(_envelope(task), "run_a")
@@ -72,7 +72,7 @@ async def test_a_store_that_fails_leaves_the_task_and_its_result_alone(reply_rou
         task_id="t-1", status="SUCCEEDED", outputs={"ok": 1}, authoring_envelope=_captured()
     )
 
-    with patch("adapters.cycles.task_dispatcher.asyncio.sleep", new_callable=AsyncMock):
+    with patch("squadops.execution.task_dispatcher.asyncio.sleep", new_callable=AsyncMock):
         result = await _dispatcher(reply_router, recorder).dispatch_task(_envelope("t-1"), "run_a")
 
     assert result.status == "SUCCEEDED" and result.outputs == {"ok": 1}
@@ -128,8 +128,8 @@ async def test_the_executors_dispatcher_records_into_its_cycle_registry(reply_ro
     recorder the executor composes. Bug caught: the dispatcher built without the recorder (every
     envelope logged as not recorded), or the recorder pointed somewhere other than the registry
     the run lives in."""
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
     from adapters.noop.ports import NoOpFailurePatternRecall
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     registry = await _registry_with_run()
     executor = DispatchedFlowExecutor(
@@ -150,7 +150,7 @@ async def test_the_executors_dispatcher_records_into_its_cycle_registry(reply_ro
         task_id="t-1", status="SUCCEEDED", outputs={}, authoring_envelope=captured
     )
 
-    with patch("adapters.cycles.task_dispatcher.asyncio.sleep", new_callable=AsyncMock):
+    with patch("squadops.execution.task_dispatcher.asyncio.sleep", new_callable=AsyncMock):
         await executor._task_dispatcher.dispatch_task(_envelope("t-1"), "run_a")
 
     assert await registry.list_authoring_envelopes("run_a") == [captured]

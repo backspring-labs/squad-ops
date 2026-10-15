@@ -17,8 +17,8 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from adapters.cycles.cycle_evidence import record_cycle_failures
 from squadops.cycles.cycle_end import CycleEnd, CycleStopReason, RecordedEnd
+from squadops.execution.cycle_evidence import record_cycle_failures
 
 logger = logging.getLogger(__name__)
 

@@ -15,10 +15,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from adapters.cycles.correction_runner import CorrectionRunner
-from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 from squadops.cycles.scaffold_integrity_evidence import emit_enforcement
 from squadops.events.types import EventType
+from squadops.execution.correction_runner import CorrectionRunner
+from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
 
 def _record():

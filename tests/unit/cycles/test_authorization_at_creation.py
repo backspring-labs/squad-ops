@@ -24,7 +24,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from adapters.cycles.execution_errors import _ExecutionError
 from adapters.noop.ports import NoOpFailurePatternRecall
 from squadops.cycles.bound_scaffold_record import build_bound_record
 from squadops.cycles.delivered_tree import StoredArtifact, delivered_files
@@ -39,6 +38,7 @@ from squadops.cycles.scaffold_integrity_evidence import (
     STAGE_PATCH_VERIFICATION,
 )
 from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
+from squadops.execution.execution_errors import _ExecutionError
 from squadops.stacks.scaffold import InterfaceManifest
 from squadops.tasks.models import TaskEnvelope, TaskResult
 
@@ -147,7 +147,7 @@ def _ref(name: str) -> ArtifactRef:
 
 @pytest.fixture
 def executor(reply_router):
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     registry = AsyncMock()
     registry.get_latest_checkpoint.return_value = None
@@ -357,7 +357,7 @@ class TestTheRepairIsAuthorizedBeforeItIsVerified:
         """Bug caught: the silent fallback. Judged under the failed task's grants, an unnamed
         dev repair is #1350 again — so an artifact that names no step fails the run naming
         the seam, before a grant is derived or a verifier runs."""
-        import adapters.cycles.patch_acceptance as mod
+        import squadops.execution.patch_acceptance as mod
 
         verifier = AsyncMock()
         monkeypatch.setattr(mod, "verify_patched_artifacts", verifier)
@@ -377,7 +377,7 @@ class TestTheRepairIsAuthorizedBeforeItIsVerified:
     ):
         """Bug caught: verifying nothing and reporting the patch passed. With every repaired
         path dropped there is no patch — the loop continues, the failed rows stand."""
-        import adapters.cycles.patch_acceptance as mod
+        import squadops.execution.patch_acceptance as mod
 
         verifier = AsyncMock()
         monkeypatch.setattr(mod, "verify_patched_artifacts", verifier)
@@ -573,8 +573,8 @@ class TestTheVerifiedCandidateIsTheStoredCandidate:
         """Bug caught: SIP-0107 §20's prohibited shape, ``verify A → filter → persist B``. A
         step after the verdict that touched work product would store a tree nothing
         verified; it must fail the run, not re-dispatch as an ordinary correction."""
-        from adapters.cycles import patch_acceptance
         from squadops.cycles.patch_verification import EvidenceSupersession
+        from squadops.execution import patch_acceptance
 
         def _rewrites_work_product(patched, retest):
             return EvidenceSupersession(

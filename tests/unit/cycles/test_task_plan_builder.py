@@ -145,7 +145,7 @@ def _make_cycle(applied_defaults: dict) -> Cycle:
 class TestOneAgentServesEveryPlannedRole:
     """The wiring seam the plan names (`docs/plans/1-8-1-plan.md` §3.2 step 4), entered at
     ``generate_task_plan`` — the call the executor makes to build a run's envelopes
-    (`adapters/cycles/dispatched_flow_executor.py:631`).
+    (`src/squadops/execution/dispatched_flow_executor.py:631`).
 
     Bug this catches: a resolver that reads one role per agent leaves every step of a
     one-agent profile unresolved. Before 1.8.1 that produced an agent id equal to the role —

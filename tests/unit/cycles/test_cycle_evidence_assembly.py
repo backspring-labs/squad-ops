@@ -14,7 +14,6 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from adapters.cycles.cycle_evidence import assess_cycle, unresolved_refs
 from adapters.cycles.filesystem_artifact_vault import FilesystemArtifactVault
 from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
 from squadops.cycles.cycle_assessment import (
@@ -30,6 +29,7 @@ from squadops.cycles.llm_usage import RunUsage, UsageTotals
 from squadops.cycles.models import ArtifactRef, Cycle, GateDecision, Run, TaskFlowPolicy
 from squadops.cycles.run_loop_summary import MovementRecord, RunLoopSummary, RunTerminalDecision
 from squadops.cycles.verification_integrity import aggregate_verification
+from squadops.execution.cycle_evidence import assess_cycle, unresolved_refs
 
 pytestmark = [pytest.mark.domain_orchestration]
 

@@ -40,9 +40,6 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any
 
-from adapters.cycles.correction_ids import correction_task_id
-from adapters.cycles.correction_repair import CorrectionRepair
-from adapters.cycles.execution_errors import _ExecutionError
 from squadops.campaigns.proposed_behaviours import QA_PROPOSED_BEHAVIOURS_ARTIFACT_TYPE
 from squadops.capabilities.context_assembly import (
     retest_forwarded_inputs,
@@ -81,6 +78,9 @@ from squadops.cycles.task_outcome import (
     CorrectionTerminationReason,
 )
 from squadops.events.types import EventType
+from squadops.execution.correction_ids import correction_task_id
+from squadops.execution.correction_repair import CorrectionRepair
+from squadops.execution.execution_errors import _ExecutionError
 from squadops.stacks.scaffold import error_seam_instructions, model_surface_instructions
 from squadops.tasks.models import TaskEnvelope, TaskResultStatus
 from squadops.tasks.task_types import TaskType
@@ -88,9 +88,9 @@ from squadops.tasks.task_types import TaskType
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from adapters.cycles.task_dispatcher import TaskDispatcher
     from squadops.cycles.models import Cycle
     from squadops.cycles.run_ledger import RunLedger
+    from squadops.execution.task_dispatcher import TaskDispatcher
     from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
     from squadops.ports.cycles.cycle_registry import CycleRegistryPort
     from squadops.ports.events.cycle_event_bus import CycleEventBusPort
@@ -1037,7 +1037,7 @@ class CorrectionRunner:
         has_accepted_repair: bool = False,
         dispute_carry: dict[str, list[dict[str, Any]]] | None = None,
         # #1697: the run's round sequence, never reset. It makes the round's task ids unique when
-        # a refunded round reuses the attempt index (adapters/cycles/correction_ids.py).
+        # a refunded round reuses the attempt index (src/squadops/execution/correction_ids.py).
         round_seq: int = 0,
     ) -> CorrectionProtocolResult:
         """Run the correction protocol: analyze → decide → act.

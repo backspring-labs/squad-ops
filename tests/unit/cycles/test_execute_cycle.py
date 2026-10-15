@@ -107,7 +107,7 @@ def mock_event_bus():
 
 @pytest.fixture
 def executor(mock_registry, mock_event_bus):
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     vault = AsyncMock()
     vault.list_artifacts.return_value = []  # Default: no promoted artifacts
@@ -250,7 +250,7 @@ class TestStartingWorkloadIndex:
     execute_cycle can resume mid-sequence instead of always starting at 0."""
 
     def _bare_executor(self, registry):
-        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+        from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
         return DispatchedFlowExecutor(
             cycle_registry=registry,
@@ -1145,7 +1145,7 @@ class TestPollInterWorkloadGate:
 
     async def test_cancellation_during_poll_raises(self, executor, mock_registry):
         """Cancellation check during polling raises _CancellationError."""
-        from adapters.cycles.dispatched_flow_executor import _CancellationError
+        from squadops.execution.dispatched_flow_executor import _CancellationError
 
         cycle = _make_cycle()
         # _is_cancelled returns True

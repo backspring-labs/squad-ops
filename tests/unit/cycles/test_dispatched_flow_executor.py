@@ -1,4 +1,4 @@
-"""Tests for DispatchedFlowExecutor (adapters/cycles/dispatched_flow_executor.py).
+"""Tests for DispatchedFlowExecutor (src/squadops/execution/dispatched_flow_executor.py).
 
 Covers dispatch via RabbitMQ publish/consume, sequential happy path,
 fail-fast, cancellation, artifact storage, output chaining, and timeout.
@@ -156,7 +156,7 @@ def run():
 
 @pytest.fixture
 def executor(mock_registry, mock_vault, mock_queue, mock_squad_profile, reply_router, cycle, run):
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     mock_registry.get_cycle.return_value = cycle
     mock_registry.get_run.return_value = run
@@ -213,7 +213,7 @@ class TestSequentialHappyPath:
         self._wire_canned_replies(mock_queue)
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -252,7 +252,7 @@ class TestSequentialHappyPath:
 
         mock_queue.reply_router.responder = responder
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -283,7 +283,7 @@ class TestSequentialHappyPath:
 
         mock_queue.reply_router.responder = responder
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -317,7 +317,7 @@ class TestSequentialHappyPath:
 
         mock_queue.reply_router.responder = responder
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -335,7 +335,7 @@ class TestSequentialHappyPath:
         self._wire_canned_replies(mock_queue)
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -347,7 +347,7 @@ class TestSequentialHappyPath:
         self._wire_canned_replies(mock_queue)
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -366,7 +366,7 @@ class TestSequentialHappyPath:
         self._wire_canned_replies(mock_queue)
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -402,12 +402,12 @@ class TestAFailedRunFinalizesWithTheStateItReached:
         generated = []
         if fails_at == "plan generation":
             plan_patch = patch(
-                "adapters.cycles.run_provisioning.generate_task_plan",
+                "squadops.execution.run_provisioning.generate_task_plan",
                 side_effect=RuntimeError("plan generation failed"),
             )
         else:
             plan_patch = patch(
-                "adapters.cycles.run_provisioning.generate_task_plan", return_value=generated
+                "squadops.execution.run_provisioning.generate_task_plan", return_value=generated
             )
             executor._load_interface_manifest_for_run = AsyncMock(
                 side_effect=RuntimeError("seeding failed")
@@ -445,7 +445,7 @@ class TestFailFast:
         )
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -604,7 +604,7 @@ class TestReserveBufferGuard:
         event_bus,
         assignment_port,
     ):
-        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+        from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
         mock_registry.get_cycle.return_value = cycle
         mock_registry.get_run.return_value = run
@@ -650,7 +650,7 @@ class TestReserveBufferGuard:
         )
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -804,7 +804,7 @@ class TestRecruitmentCoordinatorAdmission:
         event_bus,
         coordinator,
     ):
-        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+        from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
         mock_registry.get_cycle.return_value = cycle
         mock_registry.get_run.return_value = run
@@ -850,7 +850,7 @@ class TestRecruitmentCoordinatorAdmission:
         )
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -958,7 +958,7 @@ class TestArtifactStorage:
         )
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -1000,7 +1000,7 @@ def _one_artifact_reply(env, role: str = "strat") -> TaskResult:
 
 async def _execute(executor) -> None:
     with patch(
-        "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+        "squadops.execution.dispatched_flow_executor.asyncio.sleep",
         new_callable=AsyncMock,
     ):
         await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -1130,12 +1130,12 @@ class TestCancellationProbeWiring:
         chain: 30 minutes, then a retry and a finalization while the next cycle ran)."""
         import asyncio
 
-        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
-        from adapters.cycles.execution_errors import _CancellationError
         from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
+        from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
+        from squadops.execution.execution_errors import _CancellationError
         from squadops.tasks.models import TaskEnvelope
 
-        monkeypatch.setattr("adapters.cycles.task_dispatcher.CANCEL_PROBE_SECONDS", 0.01)
+        monkeypatch.setattr("squadops.execution.task_dispatcher.CANCEL_PROBE_SECONDS", 0.01)
         registry = MemoryCycleRegistry()
         await registry.create_run(run)
         executor = DispatchedFlowExecutor(
@@ -1323,7 +1323,7 @@ class TestRunCompletionActivityWiring:
         unit test of RunCompletion itself still passes."""
         from unittest.mock import AsyncMock
 
-        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+        from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
         activity_port = AsyncMock()
         executor = DispatchedFlowExecutor(
@@ -1427,7 +1427,7 @@ class TestGateRejectsBuilderPlanWithoutBuildProfile:
     async def test_rejected_when_no_build_profile_configured(self, executor, mock_vault, cycle):
         import dataclasses
 
-        from adapters.cycles.execution_errors import _ExecutionError
+        from squadops.execution.execution_errors import _ExecutionError
 
         gated_cycle = dataclasses.replace(
             cycle,
@@ -1489,7 +1489,7 @@ class TestMidRunGateRejectsUnwinnableQaTask:
     async def test_rejected_when_tests_pass_required(self, executor, mock_vault, cycle):
         import dataclasses
 
-        from adapters.cycles.execution_errors import _ExecutionError
+        from squadops.execution.execution_errors import _ExecutionError
 
         gated_cycle = dataclasses.replace(
             cycle,
@@ -1756,7 +1756,7 @@ class TestResumeDoesNotReseedSkeleton:
         self._wire(mock_registry, mock_vault, mock_queue, cycle, run)
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -1780,7 +1780,7 @@ class TestResumeDoesNotReseedSkeleton:
         )
 
         with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -1806,7 +1806,7 @@ class TestCorrectionDeadlockIsNotRetried:
 
     @staticmethod
     def _deadlocked(status, reason, retest=False):
-        from adapters.cycles.patch_acceptance import correction_is_deadlocked
+        from squadops.execution.patch_acceptance import correction_is_deadlocked
 
         return correction_is_deadlocked(status, reason, retest_decides=retest)
 
@@ -1866,7 +1866,7 @@ class TestGateRejectsAQaTaskThatAuthorsNoSuite:
     ):
         import dataclasses
 
-        from adapters.cycles.execution_errors import _ExecutionError
+        from squadops.execution.execution_errors import _ExecutionError
 
         assert "EXPECTED" in self._PLAN
         gated_cycle = dataclasses.replace(
@@ -1921,7 +1921,7 @@ class TestGateRejectsAQaSuiteOutsideTheStacksNamespace:
     async def test_rejected_under_the_namespace_validator_alone(self, executor, mock_vault, cycle):
         import dataclasses
 
-        from adapters.cycles.execution_errors import _ExecutionError
+        from squadops.execution.execution_errors import _ExecutionError
 
         gated_cycle = dataclasses.replace(
             cycle,
@@ -2049,7 +2049,7 @@ class TestARunStartsOnlyWhenALaunchCould:
                 waits.append([c.args[1] for c in mock_registry.update_run_status.call_args_list])
                 await reg.change_box_lease("cmp_c", release, runs_in_flight=())
 
-        with patch("adapters.cycles.run_admission.asyncio.sleep", side_effect=sleep):
+        with patch("squadops.execution.run_admission.asyncio.sleep", side_effect=sleep):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
 
         statuses = [c.args[1] for c in mock_registry.update_run_status.call_args_list]
@@ -2082,7 +2082,7 @@ class TestARunStartsOnlyWhenALaunchCould:
             else:
                 resident.clear()  # the supervisor unloads it
 
-        with patch("adapters.cycles.run_admission.asyncio.sleep", side_effect=sleep):
+        with patch("squadops.execution.run_admission.asyncio.sleep", side_effect=sleep):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
 
         statuses = [c.args[1] for c in mock_registry.update_run_status.call_args_list]
@@ -2127,8 +2127,8 @@ class TestARunStartsOnlyWhenALaunchCould:
         run = self._enforcing_transitions(mock_registry)
 
         with (
-            patch("adapters.cycles.run_admission.datetime", self._clock()),
-            patch("adapters.cycles.run_admission.asyncio.sleep", new_callable=AsyncMock),
+            patch("squadops.execution.run_admission.datetime", self._clock()),
+            patch("squadops.execution.run_admission.asyncio.sleep", new_callable=AsyncMock),
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
 
@@ -2153,7 +2153,7 @@ class TestARunStartsOnlyWhenALaunchCould:
         run = self._enforcing_transitions(mock_registry)
         box_sleep = AsyncMock()
 
-        with patch("adapters.cycles.run_admission.asyncio.sleep", box_sleep):
+        with patch("squadops.execution.run_admission.asyncio.sleep", box_sleep):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
 
         calls = mock_registry.update_run_status.call_args_list
