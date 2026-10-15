@@ -2,11 +2,13 @@
 
 **Status:** reviewed. The owner approved unit 1's step table on 2026-10-15, and chose to review each
 of units 2–5 at the step before its first extraction PR (#1994, comment 6188687592). It reviewed unit 2's
-on the same day (§4b; #1994, comment 6191733584). The plan owns R7's
+on the same day (§4b; #1994, comment 6191733584), and unit 3's that evening (§4c; #1994, comment
+6204066944). The plan owns R7's
 placement (phase 8, after R6). This map owns each unit's scope, its steps, the data that crosses each
 step, and the proof each PR carries.
 
-**Granularity:** units 1 and 2 are mapped to the step (§4, §4b). Units 3–5 are mapped to the block here. Each gets
+**Granularity:** units 1, 2 and 3 are mapped to the step (§4, §4b, §4c). Units 4 and 5 are mapped to the block
+here. Each gets
 its step table in this file, re-measured on the tree it extracts from, and reviewed before its first
 extraction PR. Measured on R6's tree (PR #2327), where units 3 and 4 live after the orchestration
 move, to the top-level `squadops.execution` the owner ruled (#1992, comment 6188687208).
@@ -166,6 +168,116 @@ is 1,665 lines with 42 methods. Four of them are over 100 lines: `_llm_call` (17
 - The other 37 methods: none over 60 lines.
 
 **Order:** step 0, then 2a, then 2b with 2c-3, then unit 2's rebuild and regression pair; then #2335.
+
+## 4c. Unit 3: `DispatchedFlowExecutor._execute_task`, step by step (reviewed by the owner, 2026-10-15)
+
+**The owner's choices** (2026-10-15 19:00 ET, #1994, comment 6204066944):
+- **the router** lives in `dispatched_flow_executor.py`, beside the executor (3a);
+- **the success tail** is one method, `_after_task_success` (3c);
+- **the dispatch announcement** becomes its own method, `_announce_dispatch` (3d).
+
+Measured on main at `012208ee`: `src/squadops/execution/dispatched_flow_executor.py`, lines 1731–2043,
+313 lines. The method runs one task of the plan. Its blocks:
+
+| lines | block | lines in it |
+|---|---|---:|
+| 1731–1756 | signature and docstring | 26 |
+| 1757–1768 | preconditions: skipped on resume, cancelled, past the time budget | 12 |
+| 1770–1779 | enrich the envelope with the chain's context | 10 |
+| 1781–1802 | announce the dispatch: create the Prefect task run (SIP-0087), emit `task.dispatched` (SIP-0077) | 22 |
+| 1804–1927 | **the routing closures:** the held failed result, `_next_action`, `_route_outcome`, `_record_task_evidence` | 124 |
+| 1929–1944 | dispatch with retry; on an abort, record the held result and re-raise | 16 |
+| 1946–1969 | the patched-result swap (#389), the final evidence, the failure bookkeeping, the early return | 24 |
+| 1971–1996 | on success: reset the failure count, collect and checkpoint, bind an authored manifest (#796) | 26 |
+| 1998–2033 | pulse boundaries (SIP-0070) and the cadence bookkeeping | 36 |
+| 2035–2043 | the gate | 9 |
+
+**Why the closures are the long part.** `_next_action` passes 26 arguments to `_handle_task_outcome`.
+Twelve values reach the three closures by capture: the executor, `state`, `envelope`, `enriched`, `cycle`,
+`run_id`, `flow_run_id`, `profile`, `interface_manifest`, `budget_guard`, `ledger` and the held result.
+Fifteen more are reached through `state`. Two capture rules are behaviour, and the move keeps both:
+- **`consecutive_failures` is a snapshot.** `_route_outcome` binds `state.routing.consecutive_failures` as a
+  default, so every routing decision in this task sees the count from before the first dispatch, not
+  the live one.
+- **The held result is one dict, shared.** `_handle_task_outcome` writes the verified patch into it
+  (`patched_result_holder`), and the swap after dispatch pops it from the same object.
+
+**Step 0, its own PR: a characterization of `_execute_task`** (the §3 table pre-registered it).
+- **What it records,** per case, in a golden beside the executor's tests:
+  - the events emitted, with their context and payload;
+  - the routing calls in order: `_admit_failed_emission`, `_handle_task_outcome` (the result it was given,
+    the failure count it saw, whether it got the shared holder), `_store_kept_progress`, `supply_the_redispatch`;
+  - the ledger's rows afterwards;
+  - the collection call (which result, whether the checkpoint is retained), the manifest bind, the pulse
+    calls and the gate;
+  - `state` afterwards: the failure count, the accepted-repair ids, the cadence counters;
+  - for the abort, the exception and the row recorded before it.
+- **The cases:**
+  - declined by a precondition (nothing dispatched);
+  - a first-try success at a phase boundary, with pulse checks and a gate;
+  - a failure re-dispatched once, then a success;
+  - a failure whose repair is accepted (the patched result is swapped in before collection);
+  - a kept-progress round (#1522), then an accepted repair;
+  - a failure the correction lets through (`task_succeeded` false: no collection);
+  - an abort raised from inside the dispatch.
+- **How it runs:** it enters at `DispatchedFlowExecutor._execute_task` with a real `RunState` and `RunLedger`.
+  Two collaborators are scripted:
+  - the dispatcher's `dispatch_with_retry`, which calls the routing callback once per failed attempt,
+    re-dispatches on `"continue"` and returns on `"accept_patch"` or `"break_correction"`, as the real one
+    does (`task_dispatcher.py:653–663`);
+  - `_handle_task_outcome` on the instance, which returns each case's actions.
+
+  The steps below keep calling `_handle_task_outcome` through the executor and keep every module-level
+  name in this module, so neither patch target moves and the test needs no edit.
+
+**3a: the routing closures become a per-task router** (1804–1927, and the two uses at 1937 and 1943).
+
+| step | lines (now) | becomes | holds | does |
+|---|---|---|---|---|
+| 3a | 1816–1927 | `_TaskOutcomeRouter`, a frozen dataclass in this module, built once per task where the closures are now | the twelve captured values; the failure count, read from `state` when it is built (the same moment the default was bound); the held-result dict | `next_action(result)` (was `_next_action`), `route(result)` (was `_route_outcome`; it's what `dispatch_with_retry` receives), `record_evidence(result)` (was `_record_task_evidence`) |
+
+- **The bodies move as they are.** Each method's first lines unpack the attributes into the names the
+  closure used (`cycle`, `run_id`, `state`, `ledger`, `_envelope`, `_enriched`, `_consecutive_failures`,
+  `_holder`, and `_next_action` and `_record_task_evidence` bound to the router's own methods).
+  `next_action` keeps `_next_action`'s parameters. So every line of each body appears in the line diff
+  unchanged, re-indented. The unpack lines, the class and method signatures and the construction call
+  are the new lines, and the PR lists them.
+- **Outside the router, two call lines change:** `handle_task_outcome=_route_outcome` becomes
+  `router.route`, and the abort path's `_record_task_evidence(_last_failed_result.get("result"))` becomes
+  `router.record_evidence(router.held.get("result"))`.
+- **Why the same module** (the owner's choice 1): the router calls four of the executor's private methods
+  (`_handle_task_outcome`, `_admit_failed_emission`, `_store_kept_progress`, `_failure_recall`) and three
+  of this module's names (`record_absent_emission`, `record_task_evidence`, `supply_the_redispatch`). In
+  another module, those calls would cross a module boundary into private names, and a test that patches
+  a name here would stop reaching the code (the hoist lesson, #2062).
+
+**3b: the patched-result swap and the failure bookkeeping become one step** (1946–1964):
+`router.settle(task_succeeded, result) -> TaskResult`. It pops the verified patch from the held dict, records
+the final evidence and resets the failure count on a failed task. It returns the result. The early
+`return` (1966–1969) stays in `_execute_task`.
+
+**3c: the success tail becomes `_after_task_success`** (1971–2043, 73 lines). It takes `state`, the
+envelope, the result and the run-invariant parameters it reads (`task_idx`, `plan`, `cycle`, `run_id`,
+`flow_run_id`, `profile`, `run_root`, `obs_ctx`, `ledger`, `pulse`). Its four blocks are each one or two
+calls already, so it stays one method (the owner's choice 2).
+
+**3d: the dispatch announcement becomes `_announce_dispatch`** (1781–1802). It creates the Prefect task run,
+emits `task.dispatched` and returns the task-run id. This one isn't in §5's block list. It's added because
+it changes for its own reasons (SIP-0087, SIP-0077) and sits between the enrichment and the routing
+(the owner's choice 3).
+
+**After:** `_execute_task` reads as preconditions, enrich, announce, build the router, dispatch, settle,
+and the success tail: about 100 lines, most of them the signature and the calls' keyword arguments.
+
+**Not on unit 3's table:**
+- **The two failure-count resets.** Lines 1964 and 1972 both set `state.routing.consecutive_failures = 0`:
+  one on a failed task, one on a success. Merging them would change no behaviour, but it isn't a move,
+  so 3b and 3c each keep their line.
+- **`_handle_task_outcome` itself:** it's unit 4's neighbour, and the correction protocol's entry. It
+  isn't touched here.
+
+**The PRs:** step 0; then 3a with 3b (the router and what settles through it); then 3c with 3d; then
+unit 3's rebuild and regression pair.
 
 ## 5. Units 2–5, to the block
 
