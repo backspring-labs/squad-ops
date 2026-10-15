@@ -597,6 +597,7 @@ def authoring_seam_of(task_type: str) -> AuthoringSeam | None:
     if contract.plan_rejection_context:
         return AuthoringSeam.PLAN_WRITING
     # Local: task_plan imports this module, so a module-level import would be a cycle.
+    # deferred (cycle): cycles.task_plan loads this module
     from squadops.cycles.task_plan import REPAIR_TASK_TYPES
 
     if task_type in REPAIR_TASK_TYPES:

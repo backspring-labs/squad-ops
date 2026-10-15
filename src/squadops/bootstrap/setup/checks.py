@@ -821,6 +821,7 @@ def check_nvidia_gpu() -> list[CheckResult]:
 def check_auth_token() -> CheckResult:
     """Check that a cached auth token exists and is not expired."""
     try:
+        # deferred (probe): the import is the check, and ImportError its answer
         from squadops.cli.auth import is_expired, load_cached_token
 
         token = load_cached_token()
@@ -1393,6 +1394,7 @@ def _collect_sandbox_checks(profile: BootstrapProfile) -> list[CheckResult]:
     """Sandbox environment reconciliation — the SAME decision the cycle-create
     preflight applies (SIP-0102 102.2c), rendered as doctor results, so
     doctor and create-time never disagree."""
+    # deferred (optional): loads fastapi, which the base install lacks
     from squadops.sandbox.main import sandbox_config_from_env
 
     try:

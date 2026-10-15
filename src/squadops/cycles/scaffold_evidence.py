@@ -107,6 +107,7 @@ def classify_shell_failures(
     dev round; a misroute toward qa invites the suite to be rewritten to agree with a
     broken app.
     """
+    # deferred (pure): it would load asyncio into cycles.cycle_assessment
     from squadops.capabilities.handlers.scaffold_execution import _is_assertion_failure
 
     shell_records = {f.path: f for f in scaffold_manifest.files}

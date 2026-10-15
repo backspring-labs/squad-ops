@@ -331,6 +331,7 @@ def candidate_revision_id(
     workspace_files: Mapping[str, Any] | None, artifacts: Sequence[Mapping[str, Any]] | None
 ) -> str:
     """The candidate's identity: ``compute_revision_id`` over :func:`candidate_files`."""
+    # deferred (pair): cycles and sandbox would import each other at load
     from squadops.sandbox.models import compute_revision_id
 
     return compute_revision_id(candidate_files(workspace_files, artifacts))
@@ -871,6 +872,7 @@ async def verify_patched_artifacts(
     records: list[PatchCheckRecord] = []
     # #734 Slice A: name the exact workspace mapping evaluated below — computed
     # from the parameter (the post-filter mapping handed in), never store state.
+    # deferred (pair): cycles and sandbox would import each other at load
     from squadops.sandbox.models import compute_revision_id
 
     revision_id = compute_revision_id(workspace_files or {})

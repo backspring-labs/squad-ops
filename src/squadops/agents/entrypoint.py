@@ -283,6 +283,7 @@ class AgentRunner:
 
         Bootstraps the system, connects to queue, and starts consuming tasks.
         """
+        # deferred (pair): agents and bootstrap would import each other at load
         from squadops.bootstrap.secrets import secret_provider_for
 
         # #1691: a restarted process never inherits its predecessor's readiness mark — the
@@ -427,7 +428,10 @@ class AgentRunner:
 
         Creates all port adapters and bootstraps the system.
         """
+        # deferred (pair): agents and bootstrap would import each other at load
         from squadops.bootstrap import SystemConfig, create_system
+
+        # deferred (pair): agents and bootstrap would import each other at load
         from squadops.bootstrap.secrets import secret_provider_for
 
         # Reuse config loaded by start(); only load if invoked standalone.

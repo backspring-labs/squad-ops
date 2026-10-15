@@ -257,6 +257,7 @@ class GovernanceMergePlanHandler(_CycleTaskHandler):
         failures were recorded) or populated (every configured role
         failed).
         """
+        # deferred (cycle): capabilities.handlers._plan_authoring_service loads this module
         from squadops.capabilities.handlers._plan_authoring_service import (
             produce_plan,
         )

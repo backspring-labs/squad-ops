@@ -13,6 +13,7 @@ async def increment_test_scope_section(renderer: Any, inputs: dict[str, Any]) ->
     scope = inputs.get("increment_test_scope")
     if renderer is None or not isinstance(scope, dict):
         return ""
+    # deferred (cycle): campaigns.increment_tree loads this module
     from squadops.campaigns.increment_tree import test_scope_lines
 
     rendered = await renderer.render(

@@ -47,6 +47,7 @@ def _profile_to_response(profile) -> CycleRequestProfileResponse:
 @router.get("", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def list_cycle_request_profiles(response: Response) -> list[CycleRequestProfileResponse]:
     """Return all registered cycle request profiles with prompts metadata."""
+    # deferred (pair): api and contracts would import each other at load
     from squadops.contracts.cycle_request_profiles import list_profiles, load_profile
 
     names = list_profiles()
@@ -59,6 +60,7 @@ async def get_cycle_request_profile(
     profile_name: str, response: Response
 ) -> CycleRequestProfileResponse:
     """Return a single cycle request profile by name."""
+    # deferred (pair): api and contracts would import each other at load
     from squadops.contracts.cycle_request_profiles import load_profile
 
     try:

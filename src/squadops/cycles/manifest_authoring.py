@@ -178,6 +178,7 @@ def resolve_late_answers(manifest_content: str, answers: Mapping[str, Any]) -> s
     question. The decision's ``choice`` becomes the answer, and its ``warrant`` names the
     escalation, so a later gate can check the plan carries it. Content with nothing to resolve
     comes back unchanged, byte for byte."""
+    # deferred (pair): cycles and campaigns would import each other at load
     from squadops.campaigns.escalation import same_question
 
     compatible = {

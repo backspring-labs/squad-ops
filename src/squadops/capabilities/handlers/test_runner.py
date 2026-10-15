@@ -893,6 +893,7 @@ def parse_vitest_failure_rows(
     ``failureMessages``: without them a vitest failure could not be classified as the
     suite's own, whatever it raised.
     """
+    # deferred (cycle): capabilities.handlers.scaffold_execution loads this module
     from squadops.capabilities.handlers.scaffold_execution import _VITEST_STATUS_FAILED
 
     root = workspace_root.rstrip("/") + "/"

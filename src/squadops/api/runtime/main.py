@@ -281,6 +281,7 @@ async def _init_migrations(config, pool) -> None:
     try:
         from pathlib import Path
 
+        # deferred (optional): loads asyncpg, which the base install lacks
         from squadops.api.runtime.migrations import apply_migrations
 
         migrations_dir = Path(config.db.migrations_dir)
@@ -441,6 +442,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     # here and reused by the duty scheduler (see _init_duty_scheduler) so the
     # executor's recruitment and the scheduler drive the same mode-writer.
     # None when pool-less → recruitment falls back to the §2.5 guard only.
+    # deferred (optional): loads asyncpg, which the base install lacks
     from squadops.api.runtime.scheduler_bootstrap import create_runtime_coordinator
 
     state.runtime_coordinator = create_runtime_coordinator(pool)
@@ -584,6 +586,8 @@ async def _init_monitoring(state, config, pool) -> None:
         import redis.asyncio as aioredis
 
         from adapters.persistence.runtime import PostgresRuntimeActivity, PostgresRuntimeState
+
+        # deferred (optional): loads asyncpg, which the base install lacks
         from squadops.api.runtime.health_checker import HealthChecker
 
         redis_url = config.comms.redis.url
@@ -655,6 +659,7 @@ async def _init_duty_scheduler(state, config, pool) -> None:
     loop). See `scheduler_bootstrap` for the single-writer constraint.
     """
     try:
+        # deferred (optional): loads asyncpg, which the base install lacks
         from squadops.api.runtime.scheduler_bootstrap import create_duty_scheduler
 
         # Reuse the single-writer coordinator built in _init_cycle_subsystem (D16);

@@ -615,6 +615,7 @@ def emit_nextjs_ts_verification_scaffold(
     stays per-behavior. Deterministic order: probe twins in probe order, then minted read
     shells in endpoint declaration order.
     """
+    # deferred (cycle): stacks.scaffold_coverage loads this module
     from squadops.stacks.scaffold_coverage import (
         probe_routes,
         slot_routes,

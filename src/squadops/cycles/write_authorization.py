@@ -89,6 +89,7 @@ class WorkspaceOwnership:
         accepted file stays. The plan gate refuses such a task first; this is the net under it."""
         if not self.increment_footprint:
             return self.fill_slots
+        # deferred (pair): cycles and campaigns would import each other at load
         from squadops.campaigns.change_request import in_footprint
 
         return frozenset(s for s in self.fill_slots if in_footprint(s, self.increment_footprint))

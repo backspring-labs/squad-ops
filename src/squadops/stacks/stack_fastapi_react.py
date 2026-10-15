@@ -201,6 +201,7 @@ def _routes_source(manifest: InterfaceManifest) -> str:
     # stub exactly as the error seam is. The fill then USES the store instead of
     # inventing a module for it — which is what pf-40 did, with a broken import.
     # Function-local as in the Next.js module: scaffold.py imports this module.
+    # deferred (cycle): stacks.scaffold loads this module
     from squadops.stacks.scaffold import root_persisted_entities
 
     store_names = [f"{_snake(name)}_store" for name in root_persisted_entities(manifest)]
@@ -778,6 +779,7 @@ def _store_source(manifest: InterfaceManifest) -> str:
     stores for one stored thing. The shapes are named here, with why they have no table,
     so neither author has to guess (the same rule drives the Next.js ``TABLES``).
     """
+    # deferred (cycle): stacks.scaffold loads this module
     from squadops.stacks.scaffold import root_persisted_entities, shape_entities
 
     entities = list(root_persisted_entities(manifest))
@@ -888,6 +890,7 @@ def store_brief_lines(manifest: InterfaceManifest) -> list[str]:
     """
     if manifest.persistence != "in_memory":
         return []
+    # deferred (cycle): stacks.scaffold loads this module
     from squadops.stacks.scaffold import root_persisted_entities, shape_entities
 
     stores = ", ".join(f"`{_snake(name)}_store`" for name in root_persisted_entities(manifest))

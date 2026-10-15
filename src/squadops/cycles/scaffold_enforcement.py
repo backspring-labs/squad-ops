@@ -120,6 +120,7 @@ def bound_record_or_none(interface_manifest: Any, run_id: str, resolved_config: 
     if interface_manifest is None:
         return None
     try:
+        # deferred (pair): cycles and campaigns would import each other at load
         from squadops.campaigns.increment_tree import increment_footprint
 
         if not is_scaffoldable_stack(getattr(interface_manifest, "stack", "")):

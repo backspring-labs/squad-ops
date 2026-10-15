@@ -681,6 +681,7 @@ def _require_profiles(policy: CampaignPolicy) -> None:
     """Every request profile the policy names must exist, and the proposal profile must reach
     the increment ruling: a campaign whose launches could never be built, or whose increments
     could never be ruled, is refused at its creation, not discovered at its first launch."""
+    # deferred (pair): api and contracts would import each other at load
     from squadops.contracts.cycle_request_profiles import load_profile
 
     profiles = {}

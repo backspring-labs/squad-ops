@@ -143,6 +143,7 @@ class Observation:
 
 def ineligibility(cycle: Cycle) -> str | None:
     """Why ``cycle`` produces no observation, or ``None`` when it does (§0.3)."""
+    # deferred (pair): memory and capabilities would import each other at load
     from squadops.capabilities.handlers.fault_injection import DECLARATION_KEY
 
     overrides = cycle.execution_overrides or {}
@@ -268,6 +269,7 @@ def _failure_shapes(failed_detail: Sequence[tuple[str, str]]) -> dict[str, Any]:
     """Each failing case's shape, by the table of the runner that ran it (§0.4, D14): an observed
     signature, never a cause. A case no row matches is recorded with no shape: unclassified."""
     # Local: the runner's tables sit in capabilities, which imports this package.
+    # deferred (pair): memory and capabilities would import each other at load
     from squadops.capabilities.handlers.test_runner import (
         FAILURE_SHAPE_TABLE_VERSION,
         failure_shape_of,

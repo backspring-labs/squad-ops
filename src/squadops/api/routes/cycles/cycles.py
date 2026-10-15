@@ -662,6 +662,7 @@ async def rate_proposal(
     """
     import hashlib
 
+    # deferred (cycle): api.routes.campaigns.campaigns loads this module
     from squadops.api.routes.campaigns.campaigns import actor_from
 
     cycle = await get_cycle_registry(request).get_cycle(cycle_id)
@@ -725,6 +726,7 @@ async def rate_proposal(
 
 @router.post("/{cycle_id}/cancel", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
 async def cancel_cycle(request: Request, project_id: str, cycle_id: str) -> CycleCancelResponse:
+    # deferred (cycle): api.routes.cycles.cancellation loads this module
     from squadops.api.routes.cycles.cancellation import cancel_cycle_by_the_existing_path
 
     return await cancel_cycle_by_the_existing_path(request, project_id, cycle_id)

@@ -2054,6 +2054,7 @@ def brief_carries_success_status_for(stack: str) -> bool:
     ``False`` for unknown stacks and unresolvable capabilities — the conservative answer
     when we cannot prove the fact travels is that it does not.
     """
+    # deferred (cycle): stacks.development_profiles loads this module
     from squadops.stacks.development_profiles import get_development_profile
 
     known = _STACKS.get(stack)

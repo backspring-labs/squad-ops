@@ -520,6 +520,7 @@ def _resolve_workload_steps(
         # SIP-0093 PR 93.3: framing sequence is dynamic per
         # plan_authoring_contributors config. Empty/missing contributors
         # → sole-author route through the merger.
+        # deferred (cycle): campaigns.increment_tree loads this module
         from squadops.campaigns.increment_tree import increment_baseline
 
         contributors = (resolved_config or {}).get("plan_authoring_contributors")
@@ -706,6 +707,7 @@ def _inject_increment_indexes(
     # ``refactor`` with no criteria included (#1886's rule rode the criteria appendix, which a
     # change without criteria never rendered).
     if test_scope is not None:
+        # deferred (cycle): campaigns.increment_tree loads this module
         from squadops.campaigns.increment_tree import test_scope_lines
 
         inputs["increment_test_scope_index"] = test_scope_lines(test_scope)
@@ -718,6 +720,7 @@ def _increment_criterion_files(
     for every other run."""
     if not change_request:
         return ()
+    # deferred (cycle): campaigns.increment_tree loads this module
     from squadops.campaigns.increment_tree import increment_criterion_files
 
     return increment_criterion_files(change_request, scaffold_stack_for(resolved_config))
@@ -734,6 +737,7 @@ def _require_change_request_for_increment(
     implementation's evaluation judges the criteria the request names (§8); nothing else is
     handed one. Without it the framing would design the accepted application again from its
     PRD; given to another run, it would frame a cycle that never proposed it."""
+    # deferred (cycle): campaigns.increment_tree loads this module
     from squadops.campaigns.increment_tree import increment_baseline
 
     in_an_increment = (
@@ -769,6 +773,7 @@ def _increment_evaluation(
 ) -> _IncrementEvaluation:
     if run.workload_type != WorkloadType.IMPLEMENTATION or not change_request:
         return _IncrementEvaluation()
+    # deferred (cycle): campaigns.increment_tree loads this module
     from squadops.campaigns.increment_tree import increment_evaluation_inputs
 
     return _IncrementEvaluation(
@@ -802,6 +807,7 @@ def _prior_cycle_inputs(resolved_config: Mapping[str, Any], task_type: str) -> d
     """#1692, SIP-0109 §10a: a retry's or a repair's authors are handed the failed cycle it
     continues — its brief, as its launch carried it. WHO is the registry's declaration
     (``prior_cycle_brief``); this composer owns only the derivation."""
+    # deferred (pair): cycles and campaigns would import each other at load
     from squadops.campaigns.prior_cycle import brief_lines
 
     if not get_context_contract(task_type).prior_cycle_brief:
@@ -1281,13 +1287,16 @@ def generate_task_plan(
     # plan-authoring tasks only (below).
     framing_rejection_context = resolved_config.pop("framing_rejection_context", None)
     # SIP-0109 §7.3 (#1705 d): an increment cycle's footprint, for its plan authors.
+    # deferred (cycle): campaigns.increment_tree loads this module
     from squadops.campaigns.increment_tree import increment_footprint
 
     footprint = increment_footprint(resolved_config, interface_manifest)
     criterion_files = _increment_criterion_files(change_request, resolved_config)
+    # deferred (cycle): campaigns.increment_tree loads this module
     from squadops.campaigns.increment_tree import increment_frozen_files
 
     frozen_files = increment_frozen_files(resolved_config, change_request)
+    # deferred (cycle): campaigns.increment_tree loads this module
     from squadops.campaigns.increment_tree import increment_test_scope
 
     test_scope = increment_test_scope(resolved_config, change_request)

@@ -442,6 +442,7 @@ def memory_declaration_decision(config: Mapping[str, Any]) -> PreflightDecision:
     A typo is refused rather than read either way: read as enabled, it would hand a counted roll
     its lessons (D12); read as disabled, it would leave a memory arm without memory.
     """
+    # deferred (pair): cycles and memory would import each other at load
     from squadops.memory.declarations import memory_disabled
 
     try:

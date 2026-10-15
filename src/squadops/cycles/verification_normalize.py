@@ -394,6 +394,7 @@ def _contested_rows(checks: Any, disputes: Any) -> Any:
     classified, so a result carries its contest to the ledger and the roll-up."""
     if not checks or not disputes:
         return checks
+    # deferred (cycle): capabilities.disputed_checks loads this module
     from squadops.capabilities.disputed_checks import mark_contested
 
     marked, _unmatched = mark_contested(checks, disputes)

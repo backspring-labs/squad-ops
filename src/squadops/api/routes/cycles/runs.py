@@ -211,6 +211,7 @@ async def cancel_run(
     # finalize would have torn down has to be torn down here: the Prefect
     # flow run (#77), the focus leases the run holds (#529), and the cycle's
     # open activity rows (#561).
+    # deferred (cycle): api.routes.cycles.cancellation loads this module
     from squadops.api.routes.cycles.cancellation import (
         abort_cancelled_cycle_activities,
         cancel_orphaned_flow_runs,
@@ -257,6 +258,7 @@ async def _rule_increment(
     nothing. Returns whether the gate decision is still to be recorded: a repeated ruling
     replays its row, and records the decision only if the first attempt never did.
     """
+    # deferred (cycle): api.routes.campaigns.campaigns loads this module
     from squadops.api.routes.campaigns.campaigns import actor_from, apply_control
 
     reason = (body.notes or "").strip()

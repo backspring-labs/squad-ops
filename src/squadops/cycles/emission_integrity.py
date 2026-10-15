@@ -120,6 +120,7 @@ def reached_cap(
     if termination is not None:
         # Imported here: this module sits under the pure decisions, whose import closure
         # stays off the port packages (test_pure_decisions_do_no_io.py). It is a constant.
+        # deferred (pure): it would load squadops.llm.models into cycles.cycle_assessment
         from squadops.llm.models import Termination
 
         return termination == Termination.LENGTH

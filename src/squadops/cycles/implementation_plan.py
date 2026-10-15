@@ -371,6 +371,7 @@ class ImplementationPlan:
         pin. Logic lives in ``framing_consistency`` (pure, cross-artifact);
         this method is the seam the plan-gate validators and the #686
         author-teaching classification both discover."""
+        # deferred (name): this module defines its own validate_manifest_plan_consistency
         from squadops.cycles.framing_consistency import validate_manifest_plan_consistency
 
         return validate_manifest_plan_consistency(manifest, self)
@@ -724,6 +725,7 @@ class ImplementationPlan:
         """
         import re as _re
 
+        # deferred (name): this module defines its own resolve_contract_refs
         from squadops.cycles.task_plan import resolve_contract_refs
 
         # #629 (A6/D2): the ADVISORY status-code rule — its own identity so its
@@ -970,6 +972,7 @@ class ImplementationPlan:
         """
         if not footprint:
             return []
+        # deferred (pair): cycles and campaigns would import each other at load
         from squadops.campaigns.change_request import in_footprint
 
         return [
