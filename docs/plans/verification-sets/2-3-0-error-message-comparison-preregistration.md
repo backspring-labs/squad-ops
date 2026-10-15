@@ -117,3 +117,58 @@ The owner approved all three on 2026-10-14.
    supervisor's reading is what caught gap 1.
 3. **#2275 merges between the arms,** because deploys are built from main. The after deploy then differs from the
    before deploy by #2275 alone.
+
+## 9. What the arms met that §5 didn't anticipate
+
+Recorded 2026-10-14. The deploys, the campaign and the supervisor's rules ran as §3 and §4 fix them:
+- the before arm ran on `dep_0eafe15d5819` (`7eb661e3`);
+- the after arm ran on `dep_6b56d325a89c` (`6863e052`), which adds #2275 alone.
+
+Three things came up that §5 doesn't name. None of them changed what the supervisor did:
+- **The after calibration's first plan was refused by plan validation.** Its `qa.test` named a test file the stack's
+  runner doesn't discover. The campaign wrote a second plan, which asked nothing and was approved by
+  `system:no_open_questions`.
+- **The after arm's first increment was rejected, repaired once, and abandoned.**
+  - Its endpoint criteria on the wording (T1–T4) were met.
+  - Its two criteria that the run view shows the text (T5, T6) got `no_baseline_failure`: the accepted view already
+    shows the server's message.
+  - §10 row 12 sent it to a repair, which could not change that, and row 13 abandoned it. Filed as #2315.
+  - A second proposal followed, and the supervisor approved it as it arrived (v1), as §4 says.
+- **§7's "a message for `validation_error`, unless the proposer declares one"** was covered after all. Both after
+  proposals declared one, and the blank-name probe asserted it.
+
+## 10. Result
+
+Recorded 2026-10-14. The readings, with their evidence, are on #2205. The records are under
+`var/verification_sets/2-3-0-error-message/`.
+
+**Before #2275** (`cmp_a9a15dd33fe0`, on `dep_0eafe15d5819` from `7eb661e3`): B1 and B3 weren't exercised; B2 held
+trivially.
+- The calibration's error contract declared four codes and no wording. The manifest had nowhere to put it.
+- The proposal asked for no exact wording. It added `join-error` and `leave-error` areas to the run view and required
+  non-empty text there, and its footprint was the view.
+- The build rendered the server's own message in each area, and the increment was accepted.
+- **As §5 anticipated,** a proposer that keeps the wording in the view leaves gap 3 unexercised. The window's
+  `prop_5af48f5f739c` v1 remains the live evidence of gaps 1–3, and #2275's wiring tests replay it.
+
+**After #2275** (`cmp_fd71a56a9142`, on `dep_6b56d325a89c` from `6863e052`): A1–A5 held.
+- **A1:** both proposals declared the wording on the codes, as a `modify` of each `error_code` with `message`, four codes
+  each. Both arrived at v1, and nothing was refused.
+- **A2:** both footprints held `backend/errors.py`, with no `surface_outside_footprint` refusal.
+- **A3:** both derived rejection probes carry the code's declared message (`validation_error` at 422 and
+  `duplicate_name` at 409).
+- **A4:** the delivered `errors.py` renders the four messages word for word, and all four probes executed and passed.
+  T1–T4 each fail on the accepted tree and pass on the candidate, and the second increment was accepted with 31 files.
+- **A5:** all eight endpoint criteria across the two proposals were met by a build. The first proposal's rejection was
+  on view criteria the accepted app already met (§9).
+- **The replays:** both the calibration's accepted tree (26 files) and the increment's (31 files) pass the boot audit
+  with their own contracts, the message checks included.
+
+**What the comparison shows, and what it doesn't:**
+- **#2275's path held where the before arm couldn't reach it.** Wording was declared on the codes, the rails passed
+  it, the footprint held the frozen error module, the contract asserted the wording, and the build returned it word for
+  word.
+- **The proposer's choice differs between the arms, but the comparison can't attribute that.** Before #2275 the
+  proposer kept the wording in the view, and after it both proposals put it on the codes. That is one campaign per
+  arm, and a proposer may choose differently on another run. #2275 is responsible for the path once wording is
+  declared, A2 to A4.
