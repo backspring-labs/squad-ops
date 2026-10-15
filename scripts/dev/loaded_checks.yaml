@@ -939,3 +939,38 @@ checks:
       from squadops.comms.task_delivery import delivery_key
       print(delivery_key("t", {"dispatch_id": "d"}), delivery_key("t", {}), "delivery_key(task_id" in inspect.getsource(AgentRunner._deliver_task))
     expect: "t@d t True"
+  - id: "1993-runtime"
+    what: "the stack registry is squadops.stacks, and nothing is left under capabilities"
+    container: squadops-runtime-api
+    code: |
+      import importlib.util
+      from squadops.stacks.scaffold import is_scaffoldable_stack
+      print(importlib.util.find_spec("squadops.capabilities.scaffold") is None, is_scaffoldable_stack("fullstack_fastapi_react"), is_scaffoldable_stack("nextjs_ts"))
+    expect: "True True True"
+  - id: "1993-agent"
+    what: "an agent reads the stack registry from squadops.stacks"
+    container: squadops-neo
+    code: |
+      import importlib.util
+      from squadops.stacks.scaffold import is_scaffoldable_stack
+      print(importlib.util.find_spec("squadops.capabilities.scaffold") is None, is_scaffoldable_stack("fullstack_fastapi_react"), is_scaffoldable_stack("nextjs_ts"))
+    expect: "True True True"
+  - id: "2062-runtime"
+    what: "the sandbox port loads as a first import, a hoisted name is bound at load, and the sandbox root re-exports nothing"
+    container: squadops-runtime-api
+    code: |
+      import subprocess, sys
+      first = subprocess.run([sys.executable, "-c", "import squadops.ports.sandbox"], capture_output=True).returncode
+      import squadops.api.middleware.auth as auth
+      import squadops.sandbox as sandbox
+      print(first, hasattr(auth, "get_auth_port"), hasattr(sandbox, "SandboxService"))
+    expect: "0 True False"
+  - id: "2062-agent"
+    what: "on an agent, the sandbox port loads first and the qa handler binds its suite runners at load"
+    container: squadops-eve
+    code: |
+      import subprocess, sys
+      first = subprocess.run([sys.executable, "-c", "import squadops.ports.sandbox"], capture_output=True).returncode
+      import squadops.capabilities.handlers.cycle.qa_test as qa
+      print(first, hasattr(qa, "run_probes"), hasattr(qa, "run_build_validation"))
+    expect: "0 True True"
